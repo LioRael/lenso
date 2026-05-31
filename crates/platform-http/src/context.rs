@@ -12,6 +12,7 @@ use tracing::Instrument;
 
 const REQUEST_ID_HEADER: &str = "x-request-id";
 const CORRELATION_ID_HEADER: &str = "x-correlation-id";
+const AUTHORIZATION_HEADER: &str = "authorization";
 
 #[derive(Debug, Clone)]
 pub struct HttpRequestContext(pub RequestContext);
@@ -29,6 +30,9 @@ pub async fn request_context_middleware(mut request: Request<Body>, next: Next) 
         .unwrap_or_else(|| UuidGenerator.new_id("req"));
     let correlation_id = header_value(request.headers(), CORRELATION_ID_HEADER)
         .unwrap_or_else(|| UuidGenerator.new_id("corr"));
+    let actor = authorization_header(request.headers())
+        .and_then(parse_dev_bearer_actor)
+        .unwrap_or_default();
     let method = request.method().clone();
     let path = request.uri().path().to_owned();
 
@@ -36,7 +40,7 @@ pub async fn request_context_middleware(mut request: Request<Body>, next: Next) 
         request_id: RequestId::new(request_id),
         correlation_id: CorrelationId::new(correlation_id),
         trace: TraceContext::default(),
-        actor: ActorContext::Anonymous,
+        actor,
         tenant_id: None,
         causation_id: None,
     };
@@ -103,4 +107,33 @@ fn header_value(headers: &axum::http::HeaderMap, name: &str) -> Option<String> {
         .and_then(|value| value.to_str().ok())
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
+}
+
+fn authorization_header(headers: &axum::http::HeaderMap) -> Option<String> {
+    let name = HeaderName::from_static(AUTHORIZATION_HEADER);
+    headers
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn parse_dev_bearer_actor(value: String) -> Option<ActorContext> {
+    let token = value.strip_prefix("Bearer ")?;
+
+    if let Some(user_id) = token.strip_prefix("dev-user:") {
+        return Some(ActorContext::User {
+            user_id: user_id.to_owned(),
+            scopes: Vec::new(),
+        });
+    }
+
+    if let Some(service_id) = token.strip_prefix("dev-service:") {
+        return Some(ActorContext::Service {
+            service_id: service_id.to_owned(),
+            scopes: Vec::new(),
+        });
+    }
+
+    None
 }

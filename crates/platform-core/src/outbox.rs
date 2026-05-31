@@ -60,6 +60,7 @@ impl OutboxEvent {
             occurred_at: event.occurred_at,
             payload: event.payload.clone(),
             headers: json!({
+                "actor": event.actor,
                 "schema_ref": event.schema_ref,
                 "trace": event.trace,
             }),

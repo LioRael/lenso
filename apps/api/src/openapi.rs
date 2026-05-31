@@ -1,4 +1,7 @@
-use identity::dto::{CreateUserRequest, CreateUserResponse, CreateUserResponseEnvelope};
+use identity::dto::{
+    CreateUserRequest, CreateUserResponse, CreateUserResponseEnvelope, MeResponse,
+    MeResponseEnvelope,
+};
 use platform_http::{ErrorBody, ErrorResponse, ValidationErrorDetail};
 use utoipa::OpenApi;
 
@@ -9,12 +12,14 @@ use utoipa::OpenApi;
         version = "1.0.0",
         description = "Rust-first modular monolith API contract"
     ),
-    paths(identity_create_user_contract),
+    paths(identity_create_user_contract, identity_me_contract),
     components(
         schemas(
             CreateUserRequest,
             CreateUserResponse,
             CreateUserResponseEnvelope,
+            MeResponse,
+            MeResponseEnvelope,
             ErrorResponse,
             ErrorBody,
             ValidationErrorDetail
@@ -89,3 +94,59 @@ pub fn openapi_document() -> utoipa::openapi::OpenApi {
 )]
 #[allow(dead_code)]
 fn identity_create_user_contract() {}
+
+#[utoipa::path(
+    get,
+    path = "/v1/identity/me",
+    operation_id = "identity_me",
+    tag = "identity",
+    params(
+        ("authorization" = String, Header, description = "Development bearer token, for example `Bearer dev-user:user_123`"),
+        ("x-request-id" = Option<String>, Header, description = "Optional caller-provided request identifier"),
+        ("x-correlation-id" = Option<String>, Header, description = "Optional caller-provided correlation identifier")
+    ),
+    responses(
+        (
+            status = 200,
+            description = "Current authenticated user",
+            body = MeResponseEnvelope,
+            content_type = "application/json",
+            headers(
+                ("x-request-id" = String, description = "Request identifier for this HTTP request"),
+                ("x-correlation-id" = String, description = "Correlation identifier shared across related work")
+            )
+        ),
+        (
+            status = 401,
+            description = "Authentication is required",
+            body = ErrorResponse,
+            content_type = "application/json",
+            headers(
+                ("x-request-id" = String, description = "Request identifier for this HTTP request"),
+                ("x-correlation-id" = String, description = "Correlation identifier shared across related work")
+            )
+        ),
+        (
+            status = 403,
+            description = "User authentication is required",
+            body = ErrorResponse,
+            content_type = "application/json",
+            headers(
+                ("x-request-id" = String, description = "Request identifier for this HTTP request"),
+                ("x-correlation-id" = String, description = "Correlation identifier shared across related work")
+            )
+        ),
+        (
+            status = 500,
+            description = "Internal server error",
+            body = ErrorResponse,
+            content_type = "application/json",
+            headers(
+                ("x-request-id" = String, description = "Request identifier for this HTTP request"),
+                ("x-correlation-id" = String, description = "Correlation identifier shared across related work")
+            )
+        )
+    )
+)]
+#[allow(dead_code)]
+fn identity_me_contract() {}

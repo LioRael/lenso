@@ -7,6 +7,95 @@ info:
     identifier: UNLICENSED
   version: 1.0.0
 paths:
+  /v1/identity/me:
+    get:
+      tags:
+      - identity
+      operationId: identity_me
+      parameters:
+      - name: authorization
+        in: header
+        description: Development bearer token, for example `Bearer dev-user:user_123`
+        required: true
+        schema:
+          type: string
+      - name: x-request-id
+        in: header
+        description: Optional caller-provided request identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: x-correlation-id
+        in: header
+        description: Optional caller-provided correlation identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      responses:
+        '200':
+          description: Current authenticated user
+          headers:
+            x-correlation-id:
+              schema:
+                type: string
+              description: Correlation identifier shared across related work
+            x-request-id:
+              schema:
+                type: string
+              description: Request identifier for this HTTP request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeResponseEnvelope'
+        '401':
+          description: Authentication is required
+          headers:
+            x-correlation-id:
+              schema:
+                type: string
+              description: Correlation identifier shared across related work
+            x-request-id:
+              schema:
+                type: string
+              description: Request identifier for this HTTP request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: User authentication is required
+          headers:
+            x-correlation-id:
+              schema:
+                type: string
+              description: Correlation identifier shared across related work
+            x-request-id:
+              schema:
+                type: string
+              description: Request identifier for this HTTP request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          headers:
+            x-correlation-id:
+              schema:
+                type: string
+              description: Correlation identifier shared across related work
+            x-request-id:
+              schema:
+                type: string
+              description: Request identifier for this HTTP request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /v1/identity/users:
     post:
       tags:
@@ -165,6 +254,25 @@ components:
       properties:
         error:
           $ref: '#/components/schemas/ErrorBody'
+    MeResponse:
+      type: object
+      required:
+      - user_id
+      - scopes
+      properties:
+        scopes:
+          type: array
+          items:
+            type: string
+        user_id:
+          type: string
+    MeResponseEnvelope:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/MeResponse'
     ValidationErrorDetail:
       type: object
       required:

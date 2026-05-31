@@ -64,6 +64,42 @@ async fn provided_headers_are_preserved_in_request_context() {
 }
 
 #[tokio::test]
+async fn dev_user_bearer_token_sets_user_actor_context() {
+    let response = router()
+        .oneshot(
+            Request::builder()
+                .uri("/context")
+                .header("authorization", "Bearer dev-user:user_123")
+                .body(Body::empty())
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should complete");
+
+    let body = json_body(response).await;
+    assert_eq!(body["actor"]["kind"], "user");
+    assert_eq!(body["actor"]["user_id"], "user_123");
+}
+
+#[tokio::test]
+async fn dev_service_bearer_token_sets_service_actor_context() {
+    let response = router()
+        .oneshot(
+            Request::builder()
+                .uri("/context")
+                .header("authorization", "Bearer dev-service:worker")
+                .body(Body::empty())
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should complete");
+
+    let body = json_body(response).await;
+    assert_eq!(body["actor"]["kind"], "service");
+    assert_eq!(body["actor"]["service_id"], "worker");
+}
+
+#[tokio::test]
 async fn malformed_json_returns_standard_error_shape_with_request_context() {
     let response = router()
         .oneshot(
@@ -102,6 +138,7 @@ async fn context_handler(HttpRequestContext(ctx): HttpRequestContext) -> impl In
     axum::Json(serde_json::json!({
         "request_id": ctx.request_id.0,
         "correlation_id": ctx.correlation_id.0,
+        "actor": ctx.actor,
     }))
 }
 

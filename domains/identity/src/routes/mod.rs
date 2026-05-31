@@ -1,5 +1,5 @@
 use crate::commands::create_user::IdentityCommands;
-use crate::dto::{CreateUserRequest, CreateUserResponse};
+use crate::dto::{CreateUserRequest, CreateUserResponse, MeResponse};
 use crate::public::{CreateUserCommand, IdentityService};
 use crate::repositories::PostgresUserRepository;
 use axum::extract::State;
@@ -7,7 +7,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use platform_core::AppContext;
 use platform_http::responses::{json, DataResponse};
-use platform_http::{ApiErrorResponse, HttpRequestContext, JsonBody};
+use platform_http::{ApiErrorResponse, HttpRequestContext, JsonBody, UserActor};
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
@@ -32,6 +32,7 @@ pub fn router() -> Router<AppContext> {
     Router::new()
         .route("/v1/identity/health", get(health))
         .route("/v1/identity/users", post(create_user))
+        .route("/v1/identity/me", get(me))
 }
 
 async fn health() -> Json<DataResponse<&'static str>> {
@@ -57,4 +58,11 @@ async fn create_user(
         .map_err(|error| ApiErrorResponse::with_context(error, &request_ctx))?;
 
     Ok(json(user.into()))
+}
+
+async fn me(user: UserActor) -> Json<DataResponse<MeResponse>> {
+    json(MeResponse {
+        user_id: user.user_id,
+        scopes: user.scopes,
+    })
 }

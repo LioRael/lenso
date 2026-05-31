@@ -194,6 +194,91 @@ async fn malformed_json_returns_standard_shape() {
 }
 
 #[tokio::test]
+async fn me_requires_authentication() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/identity/me")
+                .header("x-request-id", "req-me-missing")
+                .header("x-correlation-id", "corr-me-missing")
+                .body(Body::empty())
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let body = json_body(response).await;
+    assert_eq!(body["error"]["code"], "unauthorized");
+    assert_eq!(body["error"]["request_id"], "req-me-missing");
+    assert_eq!(body["error"]["correlation_id"], "corr-me-missing");
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn dev_user_can_call_me() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/identity/me")
+                .header("authorization", "Bearer dev-user:user_123")
+                .body(Body::empty())
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["data"]["user_id"], "user_123");
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn dev_service_cannot_call_user_only_me() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/identity/me")
+                .header("authorization", "Bearer dev-service:worker")
+                .header("x-request-id", "req-me-service")
+                .header("x-correlation-id", "corr-me-service")
+                .body(Body::empty())
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    let body = json_body(response).await;
+    assert_eq!(body["error"]["code"], "forbidden");
+    assert_eq!(body["error"]["request_id"], "req-me-service");
+    assert_eq!(body["error"]["correlation_id"], "corr-me-service");
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
 async fn outbox_event_uses_request_correlation_id() {
     let Some(db) = TestDatabase::create().await else {
         return;
@@ -219,6 +304,34 @@ async fn outbox_event_uses_request_correlation_id() {
 
     assert_eq!(correlation_id, "corr-outbox");
     assert_eq!(causation_id, None);
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn outbox_event_includes_authenticated_actor_context() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+
+    let response = app
+        .oneshot(
+            create_user_request("grace@example.com")
+                .with_header("authorization", "Bearer dev-user:user_123"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let headers: Value = sqlx::query_scalar("select headers from platform.outbox limit 1")
+        .fetch_one(&db.pool)
+        .await
+        .expect("outbox row should exist");
+
+    assert_eq!(headers["actor"]["kind"], "user");
+    assert_eq!(headers["actor"]["user_id"], "user_123");
 
     db.cleanup().await;
 }

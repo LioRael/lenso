@@ -18,6 +18,18 @@ pub struct CreateUserResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+pub struct MeResponse {
+    pub user_id: String,
+    pub scopes: Vec<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(as = MeResponseEnvelope)]
+pub struct MeResponseEnvelope {
+    pub data: MeResponse,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 #[schema(as = CreateUserResponseEnvelope)]
 pub struct CreateUserResponseEnvelope {
     pub data: CreateUserResponse,
