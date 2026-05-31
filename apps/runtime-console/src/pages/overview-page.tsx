@@ -6,70 +6,22 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { Panel } from "../components/ui/panel";
-import { functionRuns, queueHealth, runtimeEvents } from "../data/mock-runtime";
 import {
-  useRuntimeEvents,
-  useRuntimeFunctions,
+  useRuntimeSummary,
+  type RuntimeSummary,
 } from "../hooks/use-runtime-queries";
 import { relativeAge, time } from "../lib/format";
 
 export function OverviewPage() {
-  const eventsQuery = useRuntimeEvents();
-  const functionsQuery = useRuntimeFunctions();
-  const events = eventsQuery.data ?? runtimeEvents;
-  const functions = functionsQuery.data ?? functionRuns;
-  const pendingEvents = events.filter(
-    (event) => event.status === "pending"
-  ).length;
-  const runningFunctions = functions.filter(
-    (run) => run.status === "running"
-  ).length;
-  const failedFunctions = functions.filter(
-    (run) => run.status === "failed"
-  ).length;
+  const summaryQuery = useRuntimeSummary();
+  const summary = summaryQuery.data;
+  const pendingEvents = summary?.outbox.pending ?? 0;
+  const runningFunctions = summary?.functions.running ?? 0;
+  const failedFunctions = summary?.functions.failed ?? 0;
   const deadLetters =
-    events.filter((event) => event.status === "dead").length +
-    functions.filter((run) => run.status === "dead").length;
-
-  const activity = [
-    ...events.map((event) => ({
-      id: event.id,
-      name: event.eventName,
-      subtitle: event.correlationId,
-      status: event.status,
-      at: event.createdAt,
-    })),
-    ...functions.map((run) => ({
-      id: run.id,
-      name: run.functionName,
-      subtitle: run.correlationId,
-      status: run.status,
-      at: run.createdAt,
-    })),
-  ]
-    .sort((a, b) => b.at.localeCompare(a.at))
-    .slice(0, 6);
-
-  const failures = [
-    ...events
-      .filter((event) => event.status === "failed" || event.status === "dead")
-      .map((event) => ({
-        id: event.id,
-        name: event.eventName,
-        status: event.status,
-        error: event.lastError ?? "unknown error",
-        correlationId: event.correlationId,
-      })),
-    ...functions
-      .filter((run) => run.status === "failed" || run.status === "dead")
-      .map((run) => ({
-        id: run.id,
-        name: run.functionName,
-        status: run.status,
-        error: run.lastError ?? "unknown error",
-        correlationId: run.correlationId,
-      })),
-  ];
+    (summary?.outbox.dead ?? 0) + (summary?.functions.dead ?? 0);
+  const activity = summary?.recentActivity.slice(0, 6) ?? [];
+  const failures = summary?.recentFailures ?? [];
 
   return (
     <section>
@@ -85,10 +37,10 @@ export function OverviewPage() {
         </div>
         <Badge className="max-sm:mt-3">
           <Radio size={13} />
-          {eventsQuery.isError || functionsQuery.isError
+          {summaryQuery.isError
             ? "degraded"
-            : "healthy"}{" "}
-          · {eventsQuery.data || functionsQuery.data ? "query/mock" : "mock"}
+            : (summary?.status ?? "loading")} ·{" "}
+          mock
         </Badge>
       </div>
 
@@ -97,19 +49,19 @@ export function OverviewPage() {
           icon={<Inbox size={15} />}
           label="Pending Events"
           value={pendingEvents}
-          note="oldest pending 38s"
+          note={ageNote(summary?.outbox.oldestPendingAgeSeconds)}
         />
         <MetricCard
           icon={<Cpu size={15} />}
           label="Running Functions"
           value={runningFunctions}
-          note="2 workers active"
+          note={ageNote(summary?.functions.oldestPendingAgeSeconds)}
         />
         <MetricCard
           icon={<AlertTriangle size={15} />}
           label="Failed Functions"
           value={failedFunctions}
-          note="retryable"
+          note={failedNote(summary?.functions.oldestFailedAgeSeconds)}
         />
         <MetricCard
           icon={<Clock size={15} />}
@@ -129,25 +81,33 @@ export function OverviewPage() {
               </span>
             </Panel.Header>
             <Panel.Content className="grid">
-              {activity.map((item) => (
-                <div
-                  className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 border-b border-white/10 px-3.5 py-3 last:border-b-0"
-                  key={item.id}
-                >
-                  <StatusPill status={item.status} />
-                  <div className="min-w-0">
-                    <div className="truncate text-[13px] font-semibold text-slate-100">
-                      {item.name}
+              {summaryQuery.isLoading ? (
+                <LoadingRows />
+              ) : summaryQuery.isError ? (
+                <ErrorState message={errorMessage(summaryQuery.error)} />
+              ) : activity.length === 0 ? (
+                <EmptyRow label="No recent runtime activity" />
+              ) : (
+                activity.map((item) => (
+                  <div
+                    className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 border-b border-white/10 px-3.5 py-3 last:border-b-0"
+                    key={item.id}
+                  >
+                    <StatusPill status={item.status} />
+                    <div className="min-w-0">
+                      <div className="truncate text-[13px] font-semibold text-slate-100">
+                        {item.name}
+                      </div>
+                      <div className="mono mt-0.5 truncate text-xs text-slate-500">
+                        {item.correlationId}
+                      </div>
                     </div>
-                    <div className="mono mt-0.5 truncate text-xs text-slate-500">
-                      {item.subtitle}
-                    </div>
+                    <span className="text-xs text-slate-500">
+                      {time(item.createdAt)}
+                    </span>
                   </div>
-                  <span className="text-xs text-slate-500">
-                    {time(item.at)}
-                  </span>
-                </div>
-              ))}
+                ))
+              )}
             </Panel.Content>
           </Panel>
 
@@ -157,27 +117,36 @@ export function OverviewPage() {
               <span className="text-xs text-slate-500">runtime stores</span>
             </Panel.Header>
             <Panel.Content className="grid">
-              {queueHealth.map((queue) => (
+              {summary ? (
+                runtimeQueues(summary).map((queue) => (
+                  <div
+                    className="border-b border-white/10 px-3.5 py-3 last:border-b-0"
+                    key={queue.name}
+                  >
+                    <div className="min-w-0">
+                      <div className="mono text-[13px] font-semibold text-slate-100">
+                        {queue.name}
+                      </div>
+                      <div className="mt-0.5 text-xs text-slate-500">
+                        {queue.oldest}
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-x-3.5 gap-y-2 text-xs text-slate-500">
+                      <span>pending {queue.pending}</span>
+                      <span>running {queue.running}</span>
+                      <span>failed {queue.failed}</span>
+                      <span>dead {queue.dead}</span>
+                    </div>
+                  </div>
+                ))
+              ) : (
                 <div
-                  className="border-b border-white/10 px-3.5 py-3 last:border-b-0"
-                  key={queue.name}
+                  className="px-3.5 py-3 text-xs text-slate-500"
+                  key="queue-loading"
                 >
-                  <div className="min-w-0">
-                    <div className="mono text-[13px] font-semibold text-slate-100">
-                      {queue.name}
-                    </div>
-                    <div className="mt-0.5 text-xs text-slate-500">
-                      oldest pending {queue.oldest}
-                    </div>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-x-3.5 gap-y-2 text-xs text-slate-500">
-                    <span>pending {queue.pending}</span>
-                    <span>running {queue.running}</span>
-                    <span>failed {queue.failed}</span>
-                    <span>dead {queue.dead}</span>
-                  </div>
+                  Runtime summary unavailable.
                 </div>
-              ))}
+              )}
             </Panel.Content>
           </Panel>
         </div>
@@ -188,37 +157,106 @@ export function OverviewPage() {
             <span className="text-xs text-slate-500">needs attention</span>
           </Panel.Header>
           <Panel.Content className="grid">
-            {failures.map((failure) => (
-              <div
-                className="border-b border-white/10 px-3.5 py-3.5 last:border-b-0"
-                key={failure.id}
-              >
-                <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2">
-                  <StatusPill status={failure.status} />
-                  <span className="text-xs text-slate-500">
-                    {relativeAge("2026-05-31T09:18:18.180Z")}
-                  </span>
+            {summaryQuery.isLoading ? (
+              <LoadingRows />
+            ) : failures.length === 0 ? (
+              <EmptyRow label="No failed or dead runtime work" />
+            ) : (
+              failures.map((failure) => (
+                <div
+                  className="border-b border-white/10 px-3.5 py-3.5 last:border-b-0"
+                  key={failure.id}
+                >
+                  <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2">
+                    <StatusPill status={failure.status} />
+                    <span className="text-xs text-slate-500">
+                      {relativeAge(failure.createdAt)}
+                    </span>
+                  </div>
+                  <div className="mt-3 truncate text-[13px] font-semibold text-slate-100">
+                    {failure.name}
+                  </div>
+                  <div className="mono mt-0.5 truncate text-xs text-slate-500">
+                    {failure.correlationId}
+                  </div>
+                  <div className="mono mt-2 text-xs text-rose-100">
+                    {failure.lastError ?? "unknown error"}
+                  </div>
+                  <div className="mt-3 flex gap-2.5">
+                    <Button variant="ghost">Timeline</Button>
+                    <Button variant="danger">Retry</Button>
+                  </div>
                 </div>
-                <div className="mt-3 truncate text-[13px] font-semibold text-slate-100">
-                  {failure.name}
-                </div>
-                <div className="mono mt-0.5 truncate text-xs text-slate-500">
-                  {failure.correlationId}
-                </div>
-                <div className="mono mt-2 text-xs text-rose-100">
-                  {failure.error}
-                </div>
-                <div className="mt-3 flex gap-2.5">
-                  <Button variant="ghost">Timeline</Button>
-                  <Button variant="danger">Retry</Button>
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </Panel.Content>
         </Panel>
       </div>
     </section>
   );
+}
+
+function runtimeQueues(summary: RuntimeSummary) {
+  return [
+    {
+      name: "outbox",
+      pending: summary.outbox.pending,
+      running: summary.outbox.processing,
+      failed: summary.outbox.failed,
+      dead: summary.outbox.dead,
+      oldest: ageNote(summary.outbox.oldestPendingAgeSeconds),
+    },
+    {
+      name: "runtime.functions",
+      pending: summary.functions.pending,
+      running: summary.functions.running,
+      failed: summary.functions.failed,
+      dead: summary.functions.dead,
+      oldest: ageNote(summary.functions.oldestPendingAgeSeconds),
+    },
+  ];
+}
+
+function ageNote(seconds?: number) {
+  return seconds === undefined
+    ? "no pending work"
+    : `oldest pending ${seconds}s`;
+}
+
+function failedNote(seconds?: number) {
+  return seconds === undefined ? "retryable" : `oldest failed ${seconds}s`;
+}
+
+function LoadingRows() {
+  return (
+    <>
+      <div className="h-14 animate-pulse border-b border-white/10 bg-white/[0.03]" />
+      <div className="h-14 animate-pulse border-b border-white/10 bg-white/[0.03]" />
+      <div className="h-14 animate-pulse bg-white/[0.03]" />
+    </>
+  );
+}
+
+function ErrorState({ message }: { message: string }) {
+  return (
+    <div className="m-3 rounded-lg border border-rose-300/30 bg-black/20 p-3 text-xs text-rose-100">
+      {message}
+    </div>
+  );
+}
+
+function EmptyRow({ label }: { label: string }) {
+  return (
+    <div className="px-3.5 py-8 text-center text-xs text-slate-500">
+      {label}
+    </div>
+  );
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error
+    ? error.message
+    : "Runtime summary request failed";
 }
 
 function MetricCard({

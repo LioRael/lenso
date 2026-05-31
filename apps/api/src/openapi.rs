@@ -1,8 +1,10 @@
 use crate::admin_runtime::{
     AdminFunctionRun, AdminFunctionRunDetail, AdminFunctionRunListResponse,
     AdminFunctionRunResponse, AdminOutboxEvent, AdminOutboxEventDetail,
-    AdminOutboxEventDetailResponse, AdminOutboxListResponse, AdminRuntimeTimelineItem,
-    AdminRuntimeTimelineResponse, FunctionRunQuery, OutboxQuery, PageInfo, TimelineQuery,
+    AdminOutboxEventDetailResponse, AdminOutboxListResponse, AdminRuntimeFunctionSummary,
+    AdminRuntimeOutboxSummary, AdminRuntimeSummaryItem, AdminRuntimeSummaryResponse,
+    AdminRuntimeTimelineItem, AdminRuntimeTimelineResponse, FunctionRunQuery, OutboxQuery,
+    PageInfo, TimelineQuery,
 };
 use identity::dto::{
     CreateUserRequest, CreateUserResponse, CreateUserResponseEnvelope, MeResponse,
@@ -21,6 +23,7 @@ use utoipa::OpenApi;
     paths(
         identity_create_user_contract,
         identity_me_contract,
+        admin_runtime_get_summary_contract,
         admin_runtime_get_timeline_contract,
         admin_runtime_list_outbox_contract,
         admin_runtime_get_outbox_contract,
@@ -39,6 +42,10 @@ use utoipa::OpenApi;
             AdminOutboxEventDetail,
             AdminOutboxEventDetailResponse,
             AdminOutboxListResponse,
+            AdminRuntimeFunctionSummary,
+            AdminRuntimeOutboxSummary,
+            AdminRuntimeSummaryItem,
+            AdminRuntimeSummaryResponse,
             AdminRuntimeTimelineItem,
             AdminRuntimeTimelineResponse,
             CreateUserRequest,
@@ -178,6 +185,50 @@ fn identity_create_user_contract() {}
 )]
 #[allow(dead_code)]
 fn identity_me_contract() {}
+
+#[utoipa::path(
+    get,
+    path = "/admin/runtime/summary",
+    operation_id = "admin_runtime_get_summary",
+    tag = "admin-runtime",
+    params(
+        ("authorization" = String, Header, description = "Development service bearer token, for example `Bearer dev-service:admin`"),
+        ("x-request-id" = Option<String>, Header, description = "Optional caller-provided request identifier"),
+        ("x-correlation-id" = Option<String>, Header, description = "Optional caller-provided correlation identifier")
+    ),
+    responses(
+        (
+            status = 200,
+            description = "Compact runtime health summary",
+            body = AdminRuntimeSummaryResponse,
+            content_type = "application/json",
+            headers(
+                ("x-request-id" = String, description = "Request identifier for this HTTP request"),
+                ("x-correlation-id" = String, description = "Correlation identifier shared across related work")
+            )
+        ),
+        (
+            status = 401,
+            description = "Authentication is required",
+            body = ErrorResponse,
+            content_type = "application/json"
+        ),
+        (
+            status = 403,
+            description = "Service or system authentication is required",
+            body = ErrorResponse,
+            content_type = "application/json"
+        ),
+        (
+            status = 500,
+            description = "Internal server error",
+            body = ErrorResponse,
+            content_type = "application/json"
+        )
+    )
+)]
+#[allow(dead_code)]
+fn admin_runtime_get_summary_contract() {}
 
 #[utoipa::path(
     get,

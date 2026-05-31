@@ -499,6 +499,68 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /admin/runtime/summary:
+    get:
+      tags:
+      - admin-runtime
+      operationId: admin_runtime_get_summary
+      parameters:
+      - name: authorization
+        in: header
+        description: Development service bearer token, for example `Bearer dev-service:admin`
+        required: true
+        schema:
+          type: string
+      - name: x-request-id
+        in: header
+        description: Optional caller-provided request identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: x-correlation-id
+        in: header
+        description: Optional caller-provided correlation identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      responses:
+        '200':
+          description: Compact runtime health summary
+          headers:
+            x-correlation-id:
+              schema:
+                type: string
+              description: Correlation identifier shared across related work
+            x-request-id:
+              schema:
+                type: string
+              description: Request identifier for this HTTP request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminRuntimeSummaryResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/runtime/timeline/{correlation_id}:
     get:
       tags:
@@ -1025,6 +1087,133 @@ components:
             $ref: '#/components/schemas/AdminOutboxEvent'
         page:
           $ref: '#/components/schemas/PageInfo'
+    AdminRuntimeFunctionSummary:
+      type: object
+      required:
+      - pending
+      - running
+      - completed
+      - failed
+      - dead
+      properties:
+        completed:
+          type: integer
+          format: int64
+        dead:
+          type: integer
+          format: int64
+        failed:
+          type: integer
+          format: int64
+        oldest_failed_age_seconds:
+          type:
+          - integer
+          - 'null'
+          format: int64
+        oldest_pending_age_seconds:
+          type:
+          - integer
+          - 'null'
+          format: int64
+        pending:
+          type: integer
+          format: int64
+        running:
+          type: integer
+          format: int64
+    AdminRuntimeOutboxSummary:
+      type: object
+      required:
+      - pending
+      - processing
+      - published
+      - failed
+      - dead
+      properties:
+        dead:
+          type: integer
+          format: int64
+        failed:
+          type: integer
+          format: int64
+        oldest_failed_age_seconds:
+          type:
+          - integer
+          - 'null'
+          format: int64
+        oldest_pending_age_seconds:
+          type:
+          - integer
+          - 'null'
+          format: int64
+        pending:
+          type: integer
+          format: int64
+        processing:
+          type: integer
+          format: int64
+        published:
+          type: integer
+          format: int64
+    AdminRuntimeSummaryItem:
+      type: object
+      required:
+      - type
+      - id
+      - name
+      - status
+      - attempts
+      - max_attempts
+      - created_at
+      properties:
+        attempts:
+          type: integer
+          format: int32
+        correlation_id:
+          type:
+          - string
+          - 'null'
+        created_at:
+          type: string
+          format: date-time
+        id:
+          type: string
+        last_error:
+          type:
+          - string
+          - 'null'
+        max_attempts:
+          type: integer
+          format: int32
+        name:
+          type: string
+        status:
+          type: string
+        type:
+          type: string
+    AdminRuntimeSummaryResponse:
+      type: object
+      required:
+      - status
+      - outbox
+      - functions
+      - recent_activity
+      - recent_failures
+      properties:
+        functions:
+          $ref: '#/components/schemas/AdminRuntimeFunctionSummary'
+        outbox:
+          $ref: '#/components/schemas/AdminRuntimeOutboxSummary'
+        recent_activity:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminRuntimeSummaryItem'
+        recent_failures:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminRuntimeSummaryItem'
+        status:
+          type: string
     AdminRuntimeTimelineItem:
       type: object
       required:

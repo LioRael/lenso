@@ -1,6 +1,14 @@
 import ky, { isHTTPError } from "ky";
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL as string | undefined;
+const runtimeConsoleMode = import.meta.env.VITE_RUNTIME_CONSOLE_MODE as
+  | "api"
+  | "mock"
+  | undefined;
+
+export function isApiMode() {
+  return runtimeConsoleMode === "api" && Boolean(apiBaseUrl);
+}
 
 export const httpClient = ky.create({
   ...(apiBaseUrl ? { prefix: apiBaseUrl.replace(/\/$/, "") } : {}),

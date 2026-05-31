@@ -9,6 +9,7 @@ export default defineConfig({
     {
       files: ["src/**/*.{ts,tsx}", "vite.config.ts"],
       rules: {
+        complexity: "off",
         "func-style": "off",
         "import/consistent-type-specifier-style": "off",
         "import/no-cycle": "off",

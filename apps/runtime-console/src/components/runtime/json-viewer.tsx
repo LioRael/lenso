@@ -17,9 +17,9 @@ export function JsonViewer({
   const [expanded, setExpanded] = useState(defaultExpanded);
 
   return (
-    <section className="overflow-hidden rounded-lg border border-white/10">
+    <section className="overflow-hidden border border-white/10">
       <button
-        className="flex w-full items-center gap-2 border-b border-white/10 bg-white/[0.025] px-3 py-2.5 text-left text-xs font-semibold text-slate-400 hover:bg-white/[0.045]"
+        className="flex w-full items-center gap-2 border-b border-white/10 bg-white/[0.018] px-2.5 py-2 text-left font-mono text-[11px] font-semibold text-slate-500 hover:bg-white/[0.04]"
         onClick={() => setExpanded((current) => !current)}
       >
         {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
@@ -29,7 +29,7 @@ export function JsonViewer({
         </span>
       </button>
       {expanded ? (
-        <pre className="mono overflow-auto bg-black/20 p-3 text-xs leading-6 text-slate-200">
+        <pre className="mono overflow-auto bg-black/25 p-2.5 text-[11px] leading-5 text-slate-300">
           {prettyJson(value)}
         </pre>
       ) : null}

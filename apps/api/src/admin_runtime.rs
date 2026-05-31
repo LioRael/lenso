@@ -15,6 +15,7 @@ const MAX_LIMIT: i64 = 100;
 
 pub fn router() -> Router<AppContext> {
     Router::new()
+        .route("/admin/runtime/summary", get(get_summary))
         .route("/admin/runtime/timeline/:correlation_id", get(get_timeline))
         .route("/admin/runtime/outbox", get(list_outbox))
         .route("/admin/runtime/outbox/:id", get(get_outbox_event))
@@ -87,6 +88,52 @@ pub struct AdminRuntimeTimelineResponse {
     pub data: Vec<AdminRuntimeTimelineItem>,
     pub page: PageInfo,
     pub order: &'static str,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(as = AdminRuntimeSummaryResponse)]
+pub struct AdminRuntimeSummaryResponse {
+    pub status: String,
+    pub outbox: AdminRuntimeOutboxSummary,
+    pub functions: AdminRuntimeFunctionSummary,
+    pub recent_activity: Vec<AdminRuntimeSummaryItem>,
+    pub recent_failures: Vec<AdminRuntimeSummaryItem>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminRuntimeOutboxSummary {
+    pub pending: i64,
+    pub processing: i64,
+    pub published: i64,
+    pub failed: i64,
+    pub dead: i64,
+    pub oldest_pending_age_seconds: Option<i64>,
+    pub oldest_failed_age_seconds: Option<i64>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminRuntimeFunctionSummary {
+    pub pending: i64,
+    pub running: i64,
+    pub completed: i64,
+    pub failed: i64,
+    pub dead: i64,
+    pub oldest_pending_age_seconds: Option<i64>,
+    pub oldest_failed_age_seconds: Option<i64>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminRuntimeSummaryItem {
+    #[serde(rename = "type")]
+    pub item_type: String,
+    pub id: String,
+    pub name: String,
+    pub status: String,
+    pub attempts: i32,
+    pub max_attempts: i32,
+    pub correlation_id: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub last_error: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -177,6 +224,64 @@ pub struct AdminRuntimeTimelineItem {
     pub completed_at: Option<DateTime<Utc>>,
     pub last_error: Option<String>,
     pub correlation_id: String,
+}
+
+async fn get_summary(
+    _admin: AdminActor,
+    State(ctx): State<AppContext>,
+    HttpRequestContext(request_ctx): HttpRequestContext,
+) -> Result<Json<AdminRuntimeSummaryResponse>, ApiErrorResponse> {
+    let outbox_row = sqlx::query_as::<_, SummaryCountRow>(
+        r#"
+        select
+            count(*) filter (where status = 'pending')::bigint as pending,
+            count(*) filter (where status = 'processing')::bigint as processing,
+            count(*) filter (where status = 'published')::bigint as published,
+            count(*) filter (where status = 'failed')::bigint as failed,
+            count(*) filter (where status = 'dead')::bigint as dead,
+            extract(epoch from now() - min(created_at) filter (where status = 'pending'))::bigint
+                as oldest_pending_age_seconds,
+            extract(epoch from now() - min(created_at) filter (where status in ('failed', 'dead')))::bigint
+                as oldest_failed_age_seconds
+        from platform.outbox
+        "#,
+    )
+    .fetch_one(&ctx.db)
+    .await
+    .map_err(|source| query_error(source, &request_ctx))?;
+
+    let function_row = sqlx::query_as::<_, SummaryCountRow>(
+        r#"
+        select
+            count(*) filter (where status = 'pending')::bigint as pending,
+            count(*) filter (where status in ('processing', 'running'))::bigint as running,
+            count(*) filter (where status = 'completed')::bigint as completed,
+            count(*) filter (where status = 'failed')::bigint as failed,
+            count(*) filter (where status = 'dead')::bigint as dead,
+            extract(epoch from now() - min(created_at) filter (where status = 'pending'))::bigint
+                as oldest_pending_age_seconds,
+            extract(epoch from now() - min(created_at) filter (where status in ('failed', 'dead')))::bigint
+                as oldest_failed_age_seconds
+        from runtime.function_runs
+        "#,
+    )
+    .fetch_one(&ctx.db)
+    .await
+    .map_err(|source| query_error(source, &request_ctx))?;
+
+    let outbox = AdminRuntimeOutboxSummary::from(outbox_row);
+    let functions = AdminRuntimeFunctionSummary::from(function_row);
+    let recent_activity = fetch_summary_items(&ctx, &request_ctx, false).await?;
+    let recent_failures = fetch_summary_items(&ctx, &request_ctx, true).await?;
+    let status = runtime_status(&outbox, &functions).to_owned();
+
+    Ok(Json(AdminRuntimeSummaryResponse {
+        status,
+        outbox,
+        functions,
+        recent_activity,
+        recent_failures,
+    }))
 }
 
 async fn get_timeline(
@@ -586,6 +691,20 @@ type TimelineRow = (
     String,
 );
 
+type SummaryCountRow = (i64, i64, i64, i64, i64, Option<i64>, Option<i64>);
+
+type SummaryItemRow = (
+    String,
+    String,
+    String,
+    String,
+    i32,
+    i32,
+    Option<String>,
+    DateTime<Utc>,
+    Option<String>,
+);
+
 impl From<OutboxAdminRow> for AdminOutboxEvent {
     fn from(row: OutboxAdminRow) -> Self {
         let (
@@ -614,6 +733,82 @@ impl From<OutboxAdminRow> for AdminOutboxEvent {
             last_error,
             correlation_id,
             created_at,
+        }
+    }
+}
+
+impl From<SummaryCountRow> for AdminRuntimeOutboxSummary {
+    fn from(row: SummaryCountRow) -> Self {
+        let (
+            pending,
+            processing,
+            published,
+            failed,
+            dead,
+            oldest_pending_age_seconds,
+            oldest_failed_age_seconds,
+        ) = row;
+
+        Self {
+            pending,
+            processing,
+            published,
+            failed,
+            dead,
+            oldest_pending_age_seconds,
+            oldest_failed_age_seconds,
+        }
+    }
+}
+
+impl From<SummaryCountRow> for AdminRuntimeFunctionSummary {
+    fn from(row: SummaryCountRow) -> Self {
+        let (
+            pending,
+            running,
+            completed,
+            failed,
+            dead,
+            oldest_pending_age_seconds,
+            oldest_failed_age_seconds,
+        ) = row;
+
+        Self {
+            pending,
+            running,
+            completed,
+            failed,
+            dead,
+            oldest_pending_age_seconds,
+            oldest_failed_age_seconds,
+        }
+    }
+}
+
+impl From<SummaryItemRow> for AdminRuntimeSummaryItem {
+    fn from(row: SummaryItemRow) -> Self {
+        let (
+            item_type,
+            id,
+            name,
+            status,
+            attempts,
+            max_attempts,
+            correlation_id,
+            created_at,
+            last_error,
+        ) = row;
+
+        Self {
+            item_type,
+            id,
+            name,
+            status,
+            attempts,
+            max_attempts,
+            correlation_id,
+            created_at,
+            last_error,
         }
     }
 }
@@ -946,6 +1141,70 @@ async fn fetch_function_run(
     })?;
 
     Ok(row.into())
+}
+
+async fn fetch_summary_items(
+    ctx: &AppContext,
+    request_ctx: &platform_core::RequestContext,
+    failures_only: bool,
+) -> Result<Vec<AdminRuntimeSummaryItem>, ApiErrorResponse> {
+    let rows = sqlx::query_as::<_, SummaryItemRow>(
+        r#"
+        select *
+        from (
+            select
+                'outbox_event'::text as item_type,
+                id,
+                event_name as name,
+                status,
+                attempts,
+                max_attempts,
+                correlation_id,
+                created_at,
+                last_error
+            from platform.outbox
+            where (not $1 or status in ('failed', 'dead'))
+
+            union all
+
+            select
+                'function_run'::text as item_type,
+                id,
+                function_name as name,
+                status,
+                attempts,
+                max_attempts,
+                correlation_id,
+                created_at,
+                last_error
+            from runtime.function_runs
+            where (not $1 or status in ('failed', 'dead'))
+        ) summary_items
+        order by created_at desc, item_type asc, id desc
+        limit 10
+        "#,
+    )
+    .bind(failures_only)
+    .fetch_all(&ctx.db)
+    .await
+    .map_err(|source| query_error(source, request_ctx))?;
+
+    Ok(rows.into_iter().map(Into::into).collect())
+}
+
+fn runtime_status(
+    outbox: &AdminRuntimeOutboxSummary,
+    functions: &AdminRuntimeFunctionSummary,
+) -> &'static str {
+    if outbox.dead > 0 || functions.dead > 0 {
+        return "failing";
+    }
+
+    if outbox.failed > 0 || functions.failed > 0 {
+        return "degraded";
+    }
+
+    "healthy"
 }
 
 fn ensure_retryable_status(

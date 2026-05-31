@@ -12,6 +12,33 @@ use std::sync::Arc;
 use tower::ServiceExt;
 
 #[tokio::test]
+async fn admin_runtime_summary_requires_authentication() {
+    let app = auth_only_app();
+
+    let response = app
+        .oneshot(admin_get("/admin/runtime/summary"))
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn admin_runtime_summary_rejects_user_actor() {
+    let app = auth_only_app();
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/summary")
+                .with_header("authorization", "Bearer dev-user:user_123"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
 async fn admin_runtime_outbox_requires_authentication() {
     let app = auth_only_app();
 
@@ -93,6 +120,130 @@ async fn admin_runtime_function_retry_rejects_user_actor() {
         .expect("request should complete");
 
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn service_actor_can_get_runtime_summary() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+    insert_outbox_event(&db.pool).await;
+    insert_function_run(&db.pool).await;
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/summary")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["status"], "healthy");
+    assert_eq!(body["outbox"]["pending"], 1);
+    assert_eq!(body["outbox"]["processing"], 0);
+    assert_eq!(body["outbox"]["published"], 0);
+    assert_eq!(body["outbox"]["failed"], 0);
+    assert_eq!(body["outbox"]["dead"], 0);
+    assert!(body["outbox"]["oldest_pending_age_seconds"].is_number());
+    assert_eq!(body["functions"]["pending"], 1);
+    assert_eq!(body["functions"]["running"], 0);
+    assert_eq!(body["functions"]["completed"], 0);
+    assert_eq!(body["functions"]["failed"], 0);
+    assert_eq!(body["functions"]["dead"], 0);
+    assert!(body["functions"]["oldest_pending_age_seconds"].is_number());
+    assert_eq!(body["recent_activity"].as_array().unwrap().len(), 2);
+    assert_eq!(body["recent_failures"].as_array().unwrap().len(), 0);
+    assert!(body["recent_activity"][0].get("payload").is_none());
+    assert!(body["recent_activity"][0].get("input_json").is_none());
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn runtime_summary_dead_item_makes_status_failing() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+    insert_outbox_event_with_status(&db.pool, "evt_dead", "dead", 3, Some("exhausted")).await;
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/summary")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["status"], "failing");
+    assert_eq!(body["outbox"]["dead"], 1);
+    assert_eq!(body["recent_failures"].as_array().unwrap().len(), 1);
+    assert_eq!(body["recent_failures"][0]["type"], "outbox_event");
+    assert_eq!(body["recent_failures"][0]["id"], "evt_dead");
+    assert_eq!(body["recent_failures"][0]["last_error"], "exhausted");
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn runtime_summary_failed_item_makes_status_degraded() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+    insert_function_run_with_status(&db.pool, "fnrun_failed", "failed", 2, Some("timeout")).await;
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/summary")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["status"], "degraded");
+    assert_eq!(body["functions"]["failed"], 1);
+    assert_eq!(body["functions"]["dead"], 0);
+    assert_eq!(body["recent_failures"].as_array().unwrap().len(), 1);
+    assert_eq!(body["recent_failures"][0]["type"], "function_run");
+    assert_eq!(body["recent_failures"][0]["id"], "fnrun_failed");
+    assert_eq!(body["recent_failures"][0]["last_error"], "timeout");
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn runtime_summary_without_failed_or_dead_items_is_healthy() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+    insert_outbox_event_with_status(&db.pool, "evt_published", "published", 1, None).await;
+    insert_function_run_with_status(&db.pool, "fnrun_completed", "completed", 1, None).await;
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/summary")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["status"], "healthy");
+    assert_eq!(body["outbox"]["published"], 1);
+    assert_eq!(body["functions"]["completed"], 1);
+    assert_eq!(body["recent_failures"].as_array().unwrap().len(), 0);
+
+    db.cleanup().await;
 }
 
 #[tokio::test]
@@ -458,6 +609,10 @@ async fn admin_runtime_openapi_contract_is_present() {
     let value = serde_json::to_value(&document).expect("OpenAPI document should serialize");
 
     assert_eq!(
+        value["paths"]["/admin/runtime/summary"]["get"]["operationId"],
+        "admin_runtime_get_summary"
+    );
+    assert_eq!(
         value["paths"]["/admin/runtime/outbox"]["get"]["operationId"],
         "admin_runtime_list_outbox"
     );
@@ -481,6 +636,8 @@ async fn admin_runtime_openapi_contract_is_present() {
     assert!(value["components"]["schemas"]["AdminOutboxEventDetail"].is_object());
     assert!(value["components"]["schemas"]["AdminFunctionRun"].is_object());
     assert!(value["components"]["schemas"]["AdminFunctionRunDetail"].is_object());
+    assert!(value["components"]["schemas"]["AdminRuntimeSummaryResponse"].is_object());
+    assert!(value["components"]["schemas"]["AdminRuntimeSummaryItem"].is_object());
     assert!(value["components"]["schemas"]["AdminRuntimeTimelineItem"].is_object());
     assert_eq!(
         value["paths"]["/admin/runtime/outbox/{id}/retry"]["post"]["operationId"],

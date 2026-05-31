@@ -71,7 +71,316 @@ export type TimelineItem = {
   detailId?: string;
 };
 
+export type TraceSpan = {
+  id: string;
+  parentId?: string;
+  name: string;
+  service: string;
+  kind:
+    | "http"
+    | "command"
+    | "database"
+    | "event"
+    | "handler"
+    | "runtime"
+    | "function"
+    | "external";
+  status: RuntimeStatus;
+  startMs: number;
+  durationMs: number;
+  attributes: Record<string, unknown>;
+  events: Array<{
+    name: string;
+    timestampMs: number;
+    attributes?: Record<string, unknown>;
+  }>;
+  logs: string[];
+  context: Record<string, unknown>;
+  payload?: Record<string, unknown>;
+  retryable?: boolean;
+  attempts?: number;
+  maxAttempts?: number;
+};
+
+export type TraceRun = {
+  id: string;
+  name: string;
+  service: string;
+  source: string;
+  status: RuntimeStatus;
+  durationMs: number;
+  timestamp: string;
+  correlationId: string;
+  spans: TraceSpan[];
+};
+
 export const correlationId = "corr_01HX9A7K2R_RUNTIME";
+
+export const traceRuns: TraceRun[] = [
+  {
+    id: "tr_01HX9A7_RUNTIME",
+    name: "POST /v1/identity/users",
+    service: "app-api",
+    source: "http",
+    status: "failed",
+    durationMs: 6412,
+    timestamp: "2026-05-31T09:18:11.980Z",
+    correlationId,
+    spans: [
+      {
+        id: "sp_http_create_user",
+        name: "POST /v1/identity/users",
+        service: "app-api",
+        kind: "http",
+        status: "completed",
+        startMs: 0,
+        durationMs: 140,
+        attributes: {
+          "http.method": "POST",
+          "http.route": "/v1/identity/users",
+          "http.status_code": 201,
+        },
+        events: [{ name: "request.accepted", timestampMs: 4 }],
+        logs: ["request context created", "identity route matched"],
+        context: {
+          actor: "user:user_123",
+          request_id: "req_01HX9A7G",
+          correlation_id: correlationId,
+        },
+        payload: {
+          email: "alex@example.com",
+          display_name: "Alex Chen",
+        },
+      },
+      {
+        id: "sp_identity_command",
+        parentId: "sp_http_create_user",
+        name: "identity.create_user",
+        service: "identity",
+        kind: "command",
+        status: "completed",
+        startMs: 24,
+        durationMs: 91,
+        attributes: {
+          "module.name": "identity",
+          "command.name": "identity.create_user",
+        },
+        events: [{ name: "validation.passed", timestampMs: 31 }],
+        logs: ["validated email", "opened database transaction"],
+        context: {
+          actor: "user:user_123",
+          tenant_id: "local",
+        },
+      },
+      {
+        id: "sp_outbox_insert",
+        parentId: "sp_identity_command",
+        name: "platform.outbox.insert",
+        service: "postgres",
+        kind: "database",
+        status: "completed",
+        startMs: 72,
+        durationMs: 22,
+        attributes: {
+          "db.system": "postgresql",
+          "db.schema": "platform",
+          "db.operation": "insert",
+        },
+        events: [{ name: "row.inserted", timestampMs: 87 }],
+        logs: ["inserted outbox event identity.user_registered.v1"],
+        context: {
+          transaction_id: "tx_01HX9A7",
+        },
+        payload: {
+          event_name: "identity.user_registered.v1",
+          aggregate_id: "usr_01HX9A7J",
+        },
+      },
+      {
+        id: "sp_user_registered",
+        parentId: "sp_outbox_insert",
+        name: "identity.user_registered.v1",
+        service: "outbox-relay",
+        kind: "event",
+        status: "published",
+        startMs: 440,
+        durationMs: 260,
+        attributes: {
+          "event.name": "identity.user_registered.v1",
+          "event.version": 1,
+          "outbox.attempt": 1,
+        },
+        events: [
+          { name: "event.claimed", timestampMs: 441 },
+          { name: "event.dispatched", timestampMs: 687 },
+        ],
+        logs: ["claimed outbox row", "dispatching in-process handlers"],
+        context: {
+          locked_by: "worker-local-1",
+          correlation_id: correlationId,
+        },
+      },
+      {
+        id: "sp_notifications_handler",
+        parentId: "sp_user_registered",
+        name: "notifications.handle_user_registered",
+        service: "notifications",
+        kind: "handler",
+        status: "completed",
+        startMs: 712,
+        durationMs: 118,
+        attributes: {
+          "handler.event": "identity.user_registered.v1",
+          "module.name": "notifications",
+        },
+        events: [{ name: "handler.completed", timestampMs: 826 }],
+        logs: ["resolved welcome-email runtime function"],
+        context: {
+          causation_id: "evt_01HX9A7N_USER_REGISTERED",
+        },
+      },
+      {
+        id: "sp_enqueue_function",
+        parentId: "sp_notifications_handler",
+        name: "runtime.enqueue_function",
+        service: "platform-runtime",
+        kind: "runtime",
+        status: "completed",
+        startMs: 841,
+        durationMs: 38,
+        attributes: {
+          "runtime.function": "notifications.send_welcome_email.v1",
+          "runtime.max_attempts": 3,
+        },
+        events: [{ name: "function_run.created", timestampMs: 871 }],
+        logs: ["inserted runtime.function_runs row"],
+        context: {
+          function_run_id: "fn_01HX9A7Q_WELCOME_DEAD",
+        },
+      },
+      {
+        id: "sp_send_welcome",
+        parentId: "sp_enqueue_function",
+        name: "notifications.send_welcome_email.v1",
+        service: "runtime-worker",
+        kind: "function",
+        status: "dead",
+        startMs: 1120,
+        durationMs: 5290,
+        attributes: {
+          "runtime.attempt": 3,
+          "runtime.function": "notifications.send_welcome_email.v1",
+          "runtime.status": "dead",
+        },
+        events: [
+          { name: "function.claimed", timestampMs: 1120 },
+          { name: "function.retry_exhausted", timestampMs: 6410 },
+        ],
+        logs: [
+          "attempt 3/3",
+          "rendered welcome template",
+          "smtp provider timed out after 5000ms",
+        ],
+        context: {
+          locked_by: "worker-local-1",
+          actor: "system",
+        },
+        payload: {
+          user_id: "usr_01HX9A7J",
+          email: "alex@example.com",
+          template: "welcome",
+        },
+        retryable: true,
+        attempts: 3,
+        maxAttempts: 3,
+      },
+      {
+        id: "sp_smtp_provider",
+        parentId: "sp_send_welcome",
+        name: "smtp.provider.call",
+        service: "postmark",
+        kind: "external",
+        status: "failed",
+        startMs: 1285,
+        durationMs: 5000,
+        attributes: {
+          "net.peer.name": "api.postmarkapp.com",
+          provider: "postmark",
+          timeout_ms: 5000,
+        },
+        events: [{ name: "socket.timeout", timestampMs: 6285 }],
+        logs: ["connect ETIMEDOUT"],
+        context: {
+          retry_after_ms: 30_000,
+        },
+        retryable: false,
+      },
+    ],
+  },
+  {
+    id: "tr_01HX9C5_FILES",
+    name: "files.object_uploaded.v1",
+    service: "files",
+    source: "outbox",
+    status: "pending",
+    durationMs: 820,
+    timestamp: "2026-05-31T09:20:44.500Z",
+    correlationId: "corr_01HX9C5_FILES",
+    spans: [
+      {
+        id: "sp_files_upload",
+        name: "files.object_uploaded.v1",
+        service: "outbox-relay",
+        kind: "event",
+        status: "pending",
+        startMs: 0,
+        durationMs: 820,
+        attributes: {
+          "event.name": "files.object_uploaded.v1",
+          queue: "platform.outbox",
+        },
+        events: [{ name: "available", timestampMs: 0 }],
+        logs: ["waiting for relay claim"],
+        context: {
+          correlation_id: "corr_01HX9C5_FILES",
+        },
+      },
+    ],
+  },
+  {
+    id: "tr_01HX9A9_CLEANUP",
+    name: "identity.cleanup_expired_sessions.v1",
+    service: "identity",
+    source: "runtime-worker",
+    status: "completed",
+    durationMs: 128,
+    timestamp: "2026-05-31T09:14:01.000Z",
+    correlationId: "corr_01HX9A9_CLEANUP",
+    spans: [
+      {
+        id: "sp_cleanup_run",
+        name: "identity.cleanup_expired_sessions.v1",
+        service: "runtime-worker",
+        kind: "function",
+        status: "completed",
+        startMs: 0,
+        durationMs: 128,
+        attributes: {
+          "runtime.function": "identity.cleanup_expired_sessions.v1",
+          deleted_sessions: 17,
+        },
+        events: [{ name: "function.completed", timestampMs: 128 }],
+        logs: ["scanned sessions", "deleted 17 expired rows"],
+        context: {
+          locked_by: "worker-local-1",
+        },
+        payload: {
+          older_than_minutes: 60,
+        },
+      },
+    ],
+  },
+];
 
 export const runtimeEvents: RuntimeEvent[] = [
   {

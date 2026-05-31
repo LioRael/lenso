@@ -15,6 +15,7 @@ import {
   functionRuns,
   runtimeEvents,
   timelineItems,
+  traceRuns,
   type RetryTarget,
   type RuntimeRecord,
 } from "../../data/mock-runtime";
@@ -41,6 +42,15 @@ export type SearchResult =
       record: RuntimeRecord;
     }
   | {
+      kind: "trace";
+      id: string;
+      title: string;
+      subtitle: string;
+      correlationId: string;
+      traceId: string;
+      spanId?: string;
+    }
+  | {
       kind: "correlation";
       id: string;
       title: string;
@@ -53,6 +63,7 @@ type RuntimeConsoleContextValue = {
   retryTarget: RetryTarget | null;
   commandOpen: boolean;
   activeCorrelationId: string;
+  activeTraceTarget: { traceId: string; spanId?: string } | null;
   searchInputRef: RefObject<HTMLInputElement | null>;
   openDrawer: (target: RuntimeRecord | null) => void;
   closeDrawer: () => void;
@@ -62,6 +73,7 @@ type RuntimeConsoleContextValue = {
   closeCommandPalette: () => void;
   focusGlobalSearch: () => void;
   openTimeline: (nextCorrelationId: string) => void;
+  openTrace: (traceId: string, spanId?: string) => void;
   searchRuntime: (query: string) => SearchResult[];
   selectSearchResult: (result: SearchResult) => void;
 };
@@ -79,11 +91,23 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
   const [retryTarget, setRetryTarget] = useState<RetryTarget | null>(null);
   const [commandOpen, setCommandOpen] = useState(false);
   const [activeCorrelationId, setActiveCorrelationId] = useState(correlationId);
+  const [activeTraceTarget, setActiveTraceTarget] = useState<{
+    traceId: string;
+    spanId?: string;
+  } | null>(null);
 
   const openTimeline = useCallback(
     (nextCorrelationId: string) => {
       setActiveCorrelationId(nextCorrelationId);
       void navigate({ to: "/timeline" });
+    },
+    [navigate]
+  );
+
+  const openTrace = useCallback(
+    (traceId: string, spanId?: string) => {
+      setActiveTraceTarget({ traceId, ...(spanId ? { spanId } : {}) });
+      void navigate({ to: "/runtime/traces" });
     },
     [navigate]
   );
@@ -97,6 +121,46 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
 
       const events = eventsQuery.data ?? runtimeEvents;
       const runs = functionsQuery.data ?? functionRuns;
+
+      const traceResults: SearchResult[] = traceRuns.flatMap((trace) => {
+        const matchesTrace = [
+          trace.id,
+          trace.name,
+          trace.service,
+          trace.source,
+          trace.correlationId,
+        ].some((value) => value.toLowerCase().includes(normalized));
+
+        const matchingSpans = trace.spans.filter((span) =>
+          [span.id, span.name, span.service, span.kind].some((value) =>
+            value.toLowerCase().includes(normalized)
+          )
+        );
+
+        return [
+          ...(matchesTrace
+            ? [
+                {
+                  kind: "trace" as const,
+                  id: trace.id,
+                  title: trace.name,
+                  subtitle: `${trace.service}/${trace.source}`,
+                  correlationId: trace.correlationId,
+                  traceId: trace.id,
+                },
+              ]
+            : []),
+          ...matchingSpans.map<SearchResult>((span) => ({
+            kind: "trace",
+            id: span.id,
+            title: span.name,
+            subtitle: `${trace.id} · ${span.service}`,
+            correlationId: trace.correlationId,
+            traceId: trace.id,
+            spanId: span.id,
+          })),
+        ];
+      });
 
       const eventResults: SearchResult[] = events
         .filter((event) =>
@@ -145,7 +209,12 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
           correlationId: id,
         }));
 
-      return [...correlations, ...eventResults, ...functionResults].slice(0, 8);
+      return [
+        ...traceResults,
+        ...correlations,
+        ...eventResults,
+        ...functionResults,
+      ].slice(0, 8);
     },
     [eventsQuery.data, functionsQuery.data]
   );
@@ -156,9 +225,13 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
         openTimeline(result.correlationId);
         return;
       }
+      if (result.kind === "trace") {
+        openTrace(result.traceId, result.spanId);
+        return;
+      }
       setDrawerTarget(result.record);
     },
-    [openTimeline]
+    [openTimeline, openTrace]
   );
 
   const value = useMemo<RuntimeConsoleContextValue>(
@@ -167,6 +240,7 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
       retryTarget,
       commandOpen,
       activeCorrelationId,
+      activeTraceTarget,
       searchInputRef,
       openDrawer: setDrawerTarget,
       closeDrawer: () => setDrawerTarget(null),
@@ -176,14 +250,17 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
       closeCommandPalette: () => setCommandOpen(false),
       focusGlobalSearch: () => searchInputRef.current?.focus(),
       openTimeline,
+      openTrace,
       searchRuntime,
       selectSearchResult,
     }),
     [
       activeCorrelationId,
+      activeTraceTarget,
       commandOpen,
       drawerTarget,
       openTimeline,
+      openTrace,
       retryTarget,
       searchRuntime,
       selectSearchResult,

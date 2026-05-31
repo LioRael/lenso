@@ -19,15 +19,15 @@ export function RetryDialog() {
         <Dialog.Portal>
           <Dialog.Backdrop />
           <Dialog.Popup>
-            <header className="flex items-center gap-3 border-b border-white/10 p-4">
-              <div className="grid size-9 place-items-center rounded-lg border border-amber-300/30 bg-amber-300/10 text-amber-200">
+            <header className="flex items-center gap-3 border-b border-white/10 p-3">
+              <div className="grid size-8 place-items-center border border-amber-300/30 bg-amber-300/10 text-amber-200">
                 <AlertTriangle size={18} />
               </div>
               <div className="min-w-0">
-                <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                <p className="mb-1 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-600">
                   Retry confirmation
                 </p>
-                <Dialog.Title className="text-lg font-semibold text-slate-100">
+                <Dialog.Title className="font-mono text-sm font-semibold text-slate-100">
                   Replay runtime work?
                 </Dialog.Title>
               </div>
@@ -41,20 +41,20 @@ export function RetryDialog() {
               </Button>
             </header>
 
-            <div className="grid gap-3.5 p-4">
-              <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 rounded-lg border border-white/10 bg-white/[0.025] p-3">
+            <div className="grid gap-3 p-3">
+              <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 border border-white/10 bg-white/[0.02] p-2.5">
                 <StatusPill status={retryTarget.status} />
                 <div className="min-w-0">
-                  <div className="truncate text-[13px] font-semibold text-slate-100">
+                  <div className="truncate font-mono text-[11px] font-semibold text-slate-100">
                     {retryTarget.name}
                   </div>
-                  <div className="mono mt-0.5 truncate text-xs text-slate-500">
+                  <div className="mono mt-0.5 truncate text-[10px] text-slate-600">
                     {retryTarget.kind} · {retryTarget.id}
                   </div>
                 </div>
               </div>
 
-              <dl className="grid grid-cols-[120px_minmax(0,1fr)] gap-x-3.5 gap-y-2 text-xs text-slate-400 [&_dd]:m-0 [&_dt]:text-slate-600">
+              <dl className="grid grid-cols-[120px_minmax(0,1fr)] gap-x-3.5 gap-y-1.5 font-mono text-[11px] text-slate-400 [&_dd]:m-0 [&_dt]:text-slate-600">
                 <dt>attempts</dt>
                 <dd>
                   {retryTarget.attempts}/{retryTarget.maxAttempts}
@@ -65,13 +65,13 @@ export function RetryDialog() {
                 <dd>reset to pending and make available now</dd>
               </dl>
 
-              <Dialog.Description className="rounded-lg border border-amber-300/25 bg-amber-300/10 p-3 text-xs leading-5 text-amber-100">
+              <Dialog.Description className="border border-amber-300/25 bg-amber-300/10 p-2.5 font-mono text-[11px] leading-5 text-amber-100">
                 Retry is safe only when the handler is idempotent. Check
                 downstream side effects before replaying this work.
               </Dialog.Description>
             </div>
 
-            <footer className="flex justify-end gap-2.5 border-t border-white/10 p-4">
+            <footer className="flex justify-end gap-2 border-t border-white/10 p-3">
               <Button onClick={closeRetry} variant="ghost">
                 Cancel
               </Button>
@@ -90,7 +90,7 @@ export function RetryDialog() {
               </Button>
             </footer>
             {retryMutation.isError ? (
-              <div className="mono mx-4 mb-4 rounded-lg border border-rose-300/30 bg-black/20 p-3 text-xs text-rose-100">
+              <div className="mono mx-3 mb-3 border border-rose-300/30 bg-black/20 p-2.5 text-[11px] text-rose-100">
                 {errorMessage(retryMutation.error)}
               </div>
             ) : null}

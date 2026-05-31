@@ -13,6 +13,7 @@ import { EventsPage } from "../pages/events-page";
 import { FunctionsPage } from "../pages/functions-page";
 import { OverviewPage } from "../pages/overview-page";
 import { TimelinePage } from "../pages/timeline-page";
+import { TraceWorkbenchPage } from "../pages/trace-workbench-page";
 
 const rootRoute = createRootRoute({
   component: () => (
@@ -28,8 +29,14 @@ const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
   beforeLoad: () => {
-    throw redirect({ to: "/overview" });
+    throw redirect({ to: "/runtime/traces" });
   },
+});
+
+const traceWorkbenchRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/runtime/traces",
+  component: TraceWorkbenchPage,
 });
 
 const overviewRoute = createRoute({
@@ -82,6 +89,7 @@ const placeholderRoute = (path: string, title: string) =>
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
+  traceWorkbenchRoute,
   overviewRoute,
   eventsRoute,
   functionsRoute,

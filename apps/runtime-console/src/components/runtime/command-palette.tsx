@@ -36,10 +36,10 @@ export function CommandPalette() {
   const commands = useMemo<CommandItem[]>(() => {
     const items: CommandItem[] = [
       {
-        action: () => void navigate({ to: "/overview" }),
-        id: "overview",
-        subtitle: "Runtime health",
-        title: "Go to Overview",
+        action: () => void navigate({ to: "/runtime/traces" }),
+        id: "traces",
+        subtitle: "Dense execution workbench",
+        title: "Go to Traces",
       },
       {
         action: () => void navigate({ to: "/events" }),
@@ -64,6 +64,12 @@ export function CommandPalette() {
         id: "dead",
         subtitle: "Failure inbox",
         title: "Go to Dead Letters",
+      },
+      {
+        action: () => void navigate({ to: "/overview" }),
+        id: "overview",
+        subtitle: "Runtime health",
+        title: "Go to Overview",
       },
       {
         action: focusGlobalSearch,
@@ -160,11 +166,11 @@ export function CommandPalette() {
             }
           }}
         >
-          <div className="flex items-center gap-2.5 border-b border-white/10 px-4 py-3.5">
+          <div className="flex items-center gap-2.5 border-b border-white/10 px-3 py-2.5">
             <Search size={16} />
             <input
               aria-label="Command search"
-              className="w-full bg-transparent text-sm text-slate-100 outline-none placeholder:text-slate-600"
+              className="w-full bg-transparent font-mono text-xs text-slate-100 outline-none placeholder:text-slate-600"
               onChange={(event) => {
                 setQuery(event.target.value);
                 setActiveIndex(0);
@@ -174,23 +180,23 @@ export function CommandPalette() {
               value={query}
             />
           </div>
-          <div className="max-h-[420px] overflow-auto p-1.5">
+          <div className="max-h-[420px] overflow-auto p-1">
             {visible.map((command, index) => (
               <button
-                className={`grid w-full grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-2.5 rounded-lg p-2.5 text-left text-slate-100 ${
+                className={`grid w-full grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-2 border border-transparent p-2 text-left font-mono text-slate-100 ${
                   index === activeIndex
-                    ? "bg-blue-300/[0.08]"
-                    : "hover:bg-blue-300/[0.08]"
+                    ? "border-cyan-300/20 bg-cyan-300/[0.06]"
+                    : "hover:bg-cyan-300/[0.055]"
                 }`}
                 key={command.id}
                 onClick={() => runCommand(command)}
               >
                 <CommandIcon id={command.id} />
                 <span className="min-w-0">
-                  <strong className="block truncate text-[13px] font-semibold">
+                  <strong className="block truncate text-[11px] font-semibold">
                     {command.title}
                   </strong>
-                  <small className="mt-0.5 block truncate text-xs text-slate-500">
+                  <small className="mt-0.5 block truncate text-[10px] text-slate-600">
                     {command.subtitle}
                   </small>
                 </span>

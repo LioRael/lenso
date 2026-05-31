@@ -2,8 +2,8 @@
 
 Frontend prototype for the Lenso Runtime Console.
 
-The current console intentionally runs in mock mode only. The API client foundation is present for
-the next backend wiring slice, but screens still read from mock TanStack Query hooks.
+The console currently runs in mock mode with seeded data. A `ky` HTTP client foundation is present
+for the next backend wiring slice, but screens intentionally stay mock-backed.
 
 Future local API calls will use the development service token:
 
@@ -25,14 +25,37 @@ Open:
 http://localhost:5174
 ```
 
+## Backend Wiring Later
+
+Start the backend and worker from the repo root:
+
+```bash
+just db-up
+just migrate
+just api
+just worker
+```
+
+API mode is reserved for the next slice:
+
+```bash
+VITE_RUNTIME_CONSOLE_MODE=api VITE_API_BASE_URL=http://localhost:3000 pnpm dev
+```
+
+Local API calls use the development service token:
+
+```text
+Authorization: Bearer dev-service:admin
+```
+
 ## Architecture
 
 - `src/app`: router and root providers.
 - `src/components/ui`: small Tailwind-composed primitives.
 - `src/components/runtime`: Runtime Console shell, search, command palette, drawer, timeline nodes.
 - `src/data`: seeded mock runtime data.
-- `src/hooks`: keyboard and mock runtime query hooks.
-- `src/lib`: formatting, query client, and future ky HTTP client foundation.
+- `src/hooks`: keyboard and runtime query hooks with mock defaults.
+- `src/lib`: formatting, query client, and ky HTTP client foundation.
 - `src/pages`: route-level screens.
 
 ## Checks

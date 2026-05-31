@@ -28,7 +28,7 @@ function DrawerContent({
       <BaseDialog.Backdrop className="fixed inset-0 z-30 bg-black/35" />
       <BaseDialog.Popup
         className={cn(
-          "fixed right-3 top-3 z-40 h-[calc(100vh-24px)] w-[min(540px,calc(100vw-22px))] overflow-auto rounded-lg border border-white/10 bg-[#101318] shadow-2xl shadow-black/50 data-[starting-style]:translate-x-4 data-[starting-style]:opacity-0 transition duration-200",
+          "fixed right-2 top-2 z-40 h-[calc(100vh-16px)] w-[min(540px,calc(100vw-16px))] overflow-auto border border-white/10 bg-[#08090c] shadow-2xl shadow-black/50 data-[starting-style]:translate-x-4 data-[starting-style]:opacity-0 transition duration-200",
           className
         )}
         {...props}

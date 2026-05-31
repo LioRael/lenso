@@ -20,20 +20,14 @@
 }
 
 html {
-  background: #08090c;
+  background: #050609;
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background:
-    radial-gradient(
-      circle at 20% -10%,
-      rgba(115, 167, 255, 0.12),
-      transparent 34rem
-    ),
-    linear-gradient(180deg, #0a0c10 0%, #08090c 44rem);
+  background: #050609;
   color: #f4f7fb;
 }
 
@@ -60,7 +54,7 @@ input:focus-visible,
 select:focus-visible,
 a:focus-visible {
   outline: 2px solid rgba(139, 184, 255, 0.78);
-  outline-offset: 2px;
+  outline-offset: 1px;
 }
 
 code,
