@@ -1,0 +1,20 @@
+[package]
+name = "app-migrate"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+identity.workspace = true
+notifications.workspace = true
+platform-core.workspace = true
+platform-runtime.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true
+

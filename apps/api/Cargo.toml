@@ -1,0 +1,36 @@
+[package]
+name = "app-api"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+identity.workspace = true
+notifications.workspace = true
+platform-core.workspace = true
+platform-http.workspace = true
+platform-runtime.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+utoipa.workspace = true
+
+[dev-dependencies]
+platform-testing.workspace = true
+serde_yaml.workspace = true
+sqlx.workspace = true
+tower = { workspace = true, features = ["util"] }
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "app-api"
+path = "src/main.rs"
+
+[lints]
+workspace = true

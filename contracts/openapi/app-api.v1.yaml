@@ -1,0 +1,181 @@
+openapi: 3.1.0
+info:
+  title: Lenso API
+  description: Rust-first modular monolith API contract
+  license:
+    name: UNLICENSED
+    identifier: UNLICENSED
+  version: 1.0.0
+paths:
+  /v1/identity/users:
+    post:
+      tags:
+      - identity
+      operationId: identity_create_user
+      parameters:
+      - name: x-request-id
+        in: header
+        description: Optional caller-provided request identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: x-correlation-id
+        in: header
+        description: Optional caller-provided correlation identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      requestBody:
+        description: Create a new identity user
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+        required: true
+      responses:
+        '200':
+          description: User created
+          headers:
+            x-correlation-id:
+              schema:
+                type: string
+              description: Correlation identifier shared across related work
+            x-request-id:
+              schema:
+                type: string
+              description: Request identifier for this HTTP request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateUserResponseEnvelope'
+        '400':
+          description: Request validation failed
+          headers:
+            x-correlation-id:
+              schema:
+                type: string
+              description: Correlation identifier shared across related work
+            x-request-id:
+              schema:
+                type: string
+              description: Request identifier for this HTTP request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: User already exists
+          headers:
+            x-correlation-id:
+              schema:
+                type: string
+              description: Correlation identifier shared across related work
+            x-request-id:
+              schema:
+                type: string
+              description: Request identifier for this HTTP request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          headers:
+            x-correlation-id:
+              schema:
+                type: string
+              description: Correlation identifier shared across related work
+            x-request-id:
+              schema:
+                type: string
+              description: Request identifier for this HTTP request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  schemas:
+    CreateUserRequest:
+      type: object
+      required:
+      - email
+      properties:
+        display_name:
+          type:
+          - string
+          - 'null'
+        email:
+          type: string
+    CreateUserResponse:
+      type: object
+      required:
+      - id
+      - email
+      - created_at
+      properties:
+        created_at:
+          type: string
+          format: date-time
+        display_name:
+          type:
+          - string
+          - 'null'
+        email:
+          type: string
+        id:
+          type: string
+    CreateUserResponseEnvelope:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/CreateUserResponse'
+    ErrorBody:
+      type: object
+      required:
+      - code
+      - message
+      - details
+      properties:
+        code:
+          type: string
+        correlation_id:
+          type:
+          - string
+          - 'null'
+        details:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValidationErrorDetail'
+        message:
+          type: string
+        request_id:
+          type:
+          - string
+          - 'null'
+    ErrorResponse:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorBody'
+    ValidationErrorDetail:
+      type: object
+      required:
+      - reason
+      properties:
+        field:
+          type:
+          - string
+          - 'null'
+        reason:
+          type: string
+tags:
+- name: identity
+  description: Identity domain APIs

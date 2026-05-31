@@ -1,0 +1,64 @@
+[workspace]
+resolver = "2"
+members = [
+    "apps/api",
+    "apps/worker",
+    "apps/migrate",
+    "crates/platform-core",
+    "crates/platform-http",
+    "crates/platform-runtime",
+    "crates/platform-testing",
+    "domains/identity",
+    "domains/notifications",
+    "tools/generate-contracts",
+    "tools/generate-ts-sdk",
+    "tools/arch-check",
+]
+
+[workspace.package]
+edition = "2021"
+license = "UNLICENSED"
+publish = false
+rust-version = "1.78"
+
+[workspace.dependencies]
+anyhow = "1.0"
+async-trait = "0.1"
+axum = "0.7"
+chrono = { version = "0.4", features = ["serde"] }
+http = "1.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json"] }
+thiserror = "1.0"
+tokio = { version = "1.40", features = ["macros", "rt-multi-thread", "signal", "time"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace", "request-id", "util"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
+utoipa = { version = "5.2", features = ["axum_extras", "chrono", "uuid"] }
+uuid = { version = "1.10", features = ["serde", "v7"] }
+
+platform-core = { path = "crates/platform-core" }
+platform-http = { path = "crates/platform-http" }
+platform-runtime = { path = "crates/platform-runtime" }
+platform-testing = { path = "crates/platform-testing" }
+app-api = { path = "apps/api" }
+identity = { path = "domains/identity" }
+notifications = { path = "domains/notifications" }
+generate-contracts = { path = "tools/generate-contracts" }
+generate-ts-sdk = { path = "tools/generate-ts-sdk" }
+arch-check = { path = "tools/arch-check" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+all = "warn"
+pedantic = "warn"
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+must_use_candidate = "allow"

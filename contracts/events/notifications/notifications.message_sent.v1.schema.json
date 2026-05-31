@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "notifications.message_sent.v1",
+  "title": "notifications.message_sent.v1",
+  "type": "object",
+  "required": ["message_id", "channel", "recipient", "sent_at"],
+  "properties": {
+    "message_id": { "type": "string" },
+    "channel": { "type": "string" },
+    "recipient": { "type": "string" },
+    "template_id": { "type": ["string", "null"] },
+    "sent_at": { "type": "string", "format": "date-time" },
+    "provider_message_id": { "type": ["string", "null"] }
+  },
+  "additionalProperties": false
+}
+
