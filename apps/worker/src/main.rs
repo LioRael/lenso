@@ -2,7 +2,7 @@ use platform_core::{
     connect_pool, telemetry, AppConfig, AppContext, EventHandlerRegistry, LoggingEventPublisher,
     OutboxRelay, Shutdown,
 };
-use platform_runtime::FunctionRegistry;
+use platform_runtime::{FunctionRegistry, RuntimeWorker};
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::info;
@@ -16,7 +16,7 @@ async fn main() -> anyhow::Result<()> {
     let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
 
     let identity_domain = identity::domain();
-    let notifications_domain = notifications::module::domain();
+    let notifications_domain = notifications::module::domain(ctx.db.clone());
 
     let mut registry = FunctionRegistry::default();
     identity_domain.runtime.register_into(&mut registry);
@@ -32,14 +32,19 @@ async fn main() -> anyhow::Result<()> {
         "starting worker placeholder"
     );
 
-    run_worker_loop(ctx.clone(), event_handlers).await;
+    run_worker_loop(ctx.clone(), event_handlers, Arc::new(registry)).await;
     Ok(())
 }
 
-async fn run_worker_loop(ctx: AppContext, dispatcher: EventHandlerRegistry) {
+async fn run_worker_loop(
+    ctx: AppContext,
+    dispatcher: EventHandlerRegistry,
+    registry: Arc<FunctionRegistry>,
+) {
     let shutdown = ctx.shutdown.clone();
     let mut shutdown_rx = shutdown.subscribe();
     let relay = OutboxRelay::new(ctx.db.clone(), "worker-local", 25);
+    let runtime_worker = RuntimeWorker::new(ctx.db.clone(), registry, "worker-local", 25);
     loop {
         tokio::select! {
             changed = shutdown_rx.changed() => {
@@ -57,6 +62,14 @@ async fn run_worker_loop(ctx: AppContext, dispatcher: EventHandlerRegistry) {
                     }
                     Err(error) => {
                         tracing::warn!(error = ?error, "outbox relay tick failed");
+                    }
+                }
+                match runtime_worker.claim_and_run_batch().await {
+                    Ok(count) => {
+                        tracing::debug!(claimed_function_runs = count, "runtime worker tick");
+                    }
+                    Err(error) => {
+                        tracing::warn!(error = ?error, "runtime worker tick failed");
                     }
                 }
             }

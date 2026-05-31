@@ -1,5 +1,5 @@
 use platform_core::EventHandler;
-use platform_runtime::RuntimeDescriptor;
+use platform_runtime::{RuntimeClient, RuntimeDescriptor};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -20,13 +20,13 @@ impl std::fmt::Debug for DomainDescriptor {
     }
 }
 
-pub fn domain() -> DomainDescriptor {
+pub fn domain(pool: platform_core::DbPool) -> DomainDescriptor {
+    let runtime_client = RuntimeClient::new(pool);
     DomainDescriptor {
         name: "notifications",
-        runtime: RuntimeDescriptor {
-            module: "notifications",
-            ..RuntimeDescriptor::default()
-        },
-        event_handlers: vec![Arc::new(crate::events::WelcomeEmailRequestedHandler)],
+        runtime: crate::runtime::descriptor(),
+        event_handlers: vec![Arc::new(crate::events::WelcomeEmailRequestedHandler::new(
+            runtime_client,
+        ))],
     }
 }

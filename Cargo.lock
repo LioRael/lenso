@@ -38,12 +38,14 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
+ "chrono",
  "identity",
  "notifications",
  "platform-core",
  "platform-http",
  "platform-runtime",
  "platform-testing",
+ "serde",
  "serde_json",
  "serde_yaml",
  "sqlx",
@@ -1023,8 +1025,11 @@ dependencies = [
  "async-trait",
  "platform-core",
  "platform-runtime",
+ "platform-testing",
  "serde",
  "serde_json",
+ "sqlx",
+ "tokio",
  "tracing",
 ]
 
@@ -1213,9 +1218,13 @@ dependencies = [
  "async-trait",
  "chrono",
  "platform-core",
+ "platform-testing",
  "serde",
  "serde_json",
+ "sqlx",
+ "tokio",
  "tracing",
+ "uuid",
 ]
 
 [[package]]

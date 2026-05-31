@@ -12,8 +12,13 @@ chrono.workspace = true
 platform-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sqlx.workspace = true
 tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+platform-testing.workspace = true
+tokio.workspace = true
 
 [lints]
 workspace = true
-

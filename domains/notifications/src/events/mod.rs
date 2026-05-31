@@ -1,3 +1,3 @@
 pub mod user_registered;
 
-pub use user_registered::WelcomeEmailRequestedHandler;
+pub use user_registered::{RuntimeEnqueuer, WelcomeEmailRequestedHandler};

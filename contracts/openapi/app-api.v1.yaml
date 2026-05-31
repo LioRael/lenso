@@ -7,6 +7,264 @@ info:
     identifier: UNLICENSED
   version: 1.0.0
 paths:
+  /admin/runtime/functions:
+    get:
+      tags:
+      - admin-runtime
+      operationId: admin_runtime_list_function_runs
+      parameters:
+      - name: authorization
+        in: header
+        description: Development service bearer token, for example `Bearer dev-service:admin`
+        required: true
+        schema:
+          type: string
+      - name: x-request-id
+        in: header
+        description: Optional caller-provided request identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: x-correlation-id
+        in: header
+        description: Optional caller-provided correlation identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: status
+        in: path
+        required: true
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: function_name
+        in: path
+        required: true
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: limit
+        in: path
+        required: true
+        schema:
+          type:
+          - integer
+          - 'null'
+          format: int64
+      - name: created_before
+        in: path
+        required: true
+        schema:
+          type:
+          - string
+          - 'null'
+          format: date-time
+      responses:
+        '200':
+          description: Runtime function runs
+          headers:
+            x-correlation-id:
+              schema:
+                type: string
+              description: Correlation identifier shared across related work
+            x-request-id:
+              schema:
+                type: string
+              description: Request identifier for this HTTP request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminFunctionRunListResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/runtime/functions/{id}:
+    get:
+      tags:
+      - admin-runtime
+      operationId: admin_runtime_get_function_run
+      parameters:
+      - name: id
+        in: path
+        description: Runtime function run identifier
+        required: true
+        schema:
+          type: string
+      - name: authorization
+        in: header
+        description: Development service bearer token, for example `Bearer dev-service:admin`
+        required: true
+        schema:
+          type: string
+      - name: x-request-id
+        in: header
+        description: Optional caller-provided request identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: x-correlation-id
+        in: header
+        description: Optional caller-provided correlation identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      responses:
+        '200':
+          description: Runtime function run
+          headers:
+            x-correlation-id:
+              schema:
+                type: string
+              description: Correlation identifier shared across related work
+            x-request-id:
+              schema:
+                type: string
+              description: Request identifier for this HTTP request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminFunctionRunResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Function run was not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/runtime/outbox:
+    get:
+      tags:
+      - admin-runtime
+      operationId: admin_runtime_list_outbox
+      parameters:
+      - name: authorization
+        in: header
+        description: Development service bearer token, for example `Bearer dev-service:admin`
+        required: true
+        schema:
+          type: string
+      - name: x-request-id
+        in: header
+        description: Optional caller-provided request identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: x-correlation-id
+        in: header
+        description: Optional caller-provided correlation identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: status
+        in: path
+        required: true
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: event_name
+        in: path
+        required: true
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: limit
+        in: path
+        required: true
+        schema:
+          type:
+          - integer
+          - 'null'
+          format: int64
+      - name: created_before
+        in: path
+        required: true
+        schema:
+          type:
+          - string
+          - 'null'
+          format: date-time
+      responses:
+        '200':
+          description: Outbox events
+          headers:
+            x-correlation-id:
+              schema:
+                type: string
+              description: Correlation identifier shared across related work
+            x-request-id:
+              schema:
+                type: string
+              description: Request identifier for this HTTP request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminOutboxListResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /v1/identity/me:
     get:
       tags:
@@ -188,6 +446,132 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
 components:
   schemas:
+    AdminFunctionRun:
+      type: object
+      required:
+      - id
+      - function_name
+      - status
+      - attempts
+      - max_attempts
+      - available_at
+      - correlation_id
+      - created_at
+      properties:
+        attempts:
+          type: integer
+          format: int32
+        available_at:
+          type: string
+          format: date-time
+        completed_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        correlation_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        function_name:
+          type: string
+        id:
+          type: string
+        last_error:
+          type:
+          - string
+          - 'null'
+        locked_by:
+          type:
+          - string
+          - 'null'
+        max_attempts:
+          type: integer
+          format: int32
+        started_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        status:
+          type: string
+    AdminFunctionRunListResponse:
+      type: object
+      required:
+      - data
+      - page
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminFunctionRun'
+        page:
+          $ref: '#/components/schemas/PageInfo'
+    AdminFunctionRunResponse:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/AdminFunctionRun'
+    AdminOutboxEvent:
+      type: object
+      required:
+      - id
+      - event_name
+      - status
+      - attempts
+      - max_attempts
+      - available_at
+      - correlation_id
+      - created_at
+      properties:
+        attempts:
+          type: integer
+          format: int32
+        available_at:
+          type: string
+          format: date-time
+        correlation_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        event_name:
+          type: string
+        id:
+          type: string
+        last_error:
+          type:
+          - string
+          - 'null'
+        locked_by:
+          type:
+          - string
+          - 'null'
+        max_attempts:
+          type: integer
+          format: int32
+        published_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        status:
+          type: string
+    AdminOutboxListResponse:
+      type: object
+      required:
+      - data
+      - page
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminOutboxEvent'
+        page:
+          $ref: '#/components/schemas/PageInfo'
     CreateUserRequest:
       type: object
       required:
@@ -273,6 +657,19 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/MeResponse'
+    PageInfo:
+      type: object
+      required:
+      - limit
+      properties:
+        limit:
+          type: integer
+          format: int64
+        next_created_before:
+          type:
+          - string
+          - 'null'
+          format: date-time
     ValidationErrorDetail:
       type: object
       required:
@@ -287,3 +684,5 @@ components:
 tags:
 - name: identity
   description: Identity domain APIs
+- name: admin-runtime
+  description: Read-only runtime console APIs

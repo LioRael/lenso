@@ -21,6 +21,15 @@ pub struct ServiceActor {
     pub scopes: Vec<String>,
 }
 
+#[derive(Debug, Clone)]
+pub enum AdminActor {
+    Service {
+        service_id: String,
+        scopes: Vec<String>,
+    },
+    System,
+}
+
 #[async_trait::async_trait]
 impl<S> FromRequestParts<S> for OptionalActor
 where
@@ -99,6 +108,35 @@ where
                     &ctx,
                 ))
             }
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl<S> FromRequestParts<S> for AdminActor
+where
+    S: Send + Sync,
+{
+    type Rejection = ApiErrorResponse;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let HttpRequestContext(ctx) = HttpRequestContext::from_request_parts(parts, state).await?;
+        match ctx.actor {
+            ActorContext::Anonymous => Err(ApiErrorResponse::with_context(
+                AppError::new(ErrorCode::Unauthorized, "Authentication is required"),
+                &ctx,
+            )),
+            ActorContext::Service { service_id, scopes } => {
+                Ok(Self::Service { service_id, scopes })
+            }
+            ActorContext::System => Ok(Self::System),
+            ActorContext::User { .. } => Err(ApiErrorResponse::with_context(
+                AppError::new(
+                    ErrorCode::Forbidden,
+                    "Service or system authentication is required",
+                ),
+                &ctx,
+            )),
         }
     }
 }
