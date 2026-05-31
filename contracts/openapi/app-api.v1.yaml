@@ -499,6 +499,90 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /admin/runtime/timeline/{correlation_id}:
+    get:
+      tags:
+      - admin-runtime
+      operationId: admin_runtime_get_timeline
+      parameters:
+      - name: correlation_id
+        in: path
+        description: Correlation identifier shared by related runtime work
+        required: true
+        schema:
+          type: string
+      - name: authorization
+        in: header
+        description: Development service bearer token, for example `Bearer dev-service:admin`
+        required: true
+        schema:
+          type: string
+      - name: x-request-id
+        in: header
+        description: Optional caller-provided request identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: x-correlation-id
+        in: header
+        description: Optional caller-provided correlation identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: limit
+        in: path
+        required: true
+        schema:
+          type:
+          - integer
+          - 'null'
+          format: int64
+      - name: created_before
+        in: path
+        required: true
+        schema:
+          type:
+          - string
+          - 'null'
+          format: date-time
+      responses:
+        '200':
+          description: Runtime timeline items ordered by created_at ascending
+          headers:
+            x-correlation-id:
+              schema:
+                type: string
+              description: Correlation identifier shared across related work
+            x-request-id:
+              schema:
+                type: string
+              description: Request identifier for this HTTP request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminRuntimeTimelineResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /v1/identity/me:
     get:
       tags:
@@ -939,6 +1023,66 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AdminOutboxEvent'
+        page:
+          $ref: '#/components/schemas/PageInfo'
+    AdminRuntimeTimelineItem:
+      type: object
+      required:
+      - type
+      - id
+      - name
+      - status
+      - attempts
+      - max_attempts
+      - created_at
+      - correlation_id
+      properties:
+        attempts:
+          type: integer
+          format: int32
+        completed_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        correlation_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        id:
+          type: string
+        last_error:
+          type:
+          - string
+          - 'null'
+        max_attempts:
+          type: integer
+          format: int32
+        name:
+          type: string
+        started_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        status:
+          type: string
+        type:
+          type: string
+    AdminRuntimeTimelineResponse:
+      type: object
+      required:
+      - data
+      - page
+      - order
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminRuntimeTimelineItem'
+        order:
+          type: string
         page:
           $ref: '#/components/schemas/PageInfo'
     CreateUserRequest:

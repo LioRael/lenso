@@ -1,8 +1,8 @@
 use crate::admin_runtime::{
     AdminFunctionRun, AdminFunctionRunDetail, AdminFunctionRunListResponse,
     AdminFunctionRunResponse, AdminOutboxEvent, AdminOutboxEventDetail,
-    AdminOutboxEventDetailResponse, AdminOutboxListResponse, FunctionRunQuery, OutboxQuery,
-    PageInfo,
+    AdminOutboxEventDetailResponse, AdminOutboxListResponse, AdminRuntimeTimelineItem,
+    AdminRuntimeTimelineResponse, FunctionRunQuery, OutboxQuery, PageInfo, TimelineQuery,
 };
 use identity::dto::{
     CreateUserRequest, CreateUserResponse, CreateUserResponseEnvelope, MeResponse,
@@ -21,6 +21,7 @@ use utoipa::OpenApi;
     paths(
         identity_create_user_contract,
         identity_me_contract,
+        admin_runtime_get_timeline_contract,
         admin_runtime_list_outbox_contract,
         admin_runtime_get_outbox_contract,
         admin_runtime_retry_outbox_contract,
@@ -38,6 +39,8 @@ use utoipa::OpenApi;
             AdminOutboxEventDetail,
             AdminOutboxEventDetailResponse,
             AdminOutboxListResponse,
+            AdminRuntimeTimelineItem,
+            AdminRuntimeTimelineResponse,
             CreateUserRequest,
             CreateUserResponse,
             CreateUserResponseEnvelope,
@@ -175,6 +178,52 @@ fn identity_create_user_contract() {}
 )]
 #[allow(dead_code)]
 fn identity_me_contract() {}
+
+#[utoipa::path(
+    get,
+    path = "/admin/runtime/timeline/{correlation_id}",
+    operation_id = "admin_runtime_get_timeline",
+    tag = "admin-runtime",
+    params(
+        ("correlation_id" = String, Path, description = "Correlation identifier shared by related runtime work"),
+        ("authorization" = String, Header, description = "Development service bearer token, for example `Bearer dev-service:admin`"),
+        ("x-request-id" = Option<String>, Header, description = "Optional caller-provided request identifier"),
+        ("x-correlation-id" = Option<String>, Header, description = "Optional caller-provided correlation identifier"),
+        TimelineQuery
+    ),
+    responses(
+        (
+            status = 200,
+            description = "Runtime timeline items ordered by created_at ascending",
+            body = AdminRuntimeTimelineResponse,
+            content_type = "application/json",
+            headers(
+                ("x-request-id" = String, description = "Request identifier for this HTTP request"),
+                ("x-correlation-id" = String, description = "Correlation identifier shared across related work")
+            )
+        ),
+        (
+            status = 401,
+            description = "Authentication is required",
+            body = ErrorResponse,
+            content_type = "application/json"
+        ),
+        (
+            status = 403,
+            description = "Service or system authentication is required",
+            body = ErrorResponse,
+            content_type = "application/json"
+        ),
+        (
+            status = 500,
+            description = "Internal server error",
+            body = ErrorResponse,
+            content_type = "application/json"
+        )
+    )
+)]
+#[allow(dead_code)]
+fn admin_runtime_get_timeline_contract() {}
 
 #[utoipa::path(
     get,

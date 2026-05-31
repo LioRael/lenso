@@ -15,6 +15,7 @@ const MAX_LIMIT: i64 = 100;
 
 pub fn router() -> Router<AppContext> {
     Router::new()
+        .route("/admin/runtime/timeline/:correlation_id", get(get_timeline))
         .route("/admin/runtime/outbox", get(list_outbox))
         .route("/admin/runtime/outbox/:id", get(get_outbox_event))
         .route("/admin/runtime/outbox/:id/retry", post(retry_outbox_event))
@@ -38,6 +39,12 @@ pub struct OutboxQuery {
 pub struct FunctionRunQuery {
     pub status: Option<String>,
     pub function_name: Option<String>,
+    pub limit: Option<i64>,
+    pub created_before: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct TimelineQuery {
     pub limit: Option<i64>,
     pub created_before: Option<DateTime<Utc>>,
 }
@@ -72,6 +79,14 @@ pub struct AdminFunctionRunListResponse {
 #[schema(as = AdminFunctionRunResponse)]
 pub struct AdminFunctionRunResponse {
     pub data: AdminFunctionRunDetail,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(as = AdminRuntimeTimelineResponse)]
+pub struct AdminRuntimeTimelineResponse {
+    pub data: Vec<AdminRuntimeTimelineItem>,
+    pub page: PageInfo,
+    pub order: &'static str,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -146,6 +161,87 @@ pub struct AdminFunctionRunDetail {
     pub created_at: DateTime<Utc>,
     pub input_json: Value,
     pub actor: Value,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminRuntimeTimelineItem {
+    #[serde(rename = "type")]
+    pub item_type: String,
+    pub id: String,
+    pub name: String,
+    pub status: String,
+    pub attempts: i32,
+    pub max_attempts: i32,
+    pub created_at: DateTime<Utc>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub last_error: Option<String>,
+    pub correlation_id: String,
+}
+
+async fn get_timeline(
+    _admin: AdminActor,
+    State(ctx): State<AppContext>,
+    HttpRequestContext(request_ctx): HttpRequestContext,
+    Path(correlation_id): Path<String>,
+    Query(query): Query<TimelineQuery>,
+) -> Result<Json<AdminRuntimeTimelineResponse>, ApiErrorResponse> {
+    let limit = normalized_limit(query.limit);
+    let rows = sqlx::query_as::<_, TimelineRow>(
+        r#"
+        select *
+        from (
+            select
+                'outbox_event'::text as item_type,
+                id,
+                event_name as name,
+                status,
+                attempts,
+                max_attempts,
+                created_at,
+                locked_at as started_at,
+                published_at as completed_at,
+                last_error,
+                correlation_id
+            from platform.outbox
+            where correlation_id = $1
+              and ($2::timestamptz is null or created_at < $2)
+
+            union all
+
+            select
+                'function_run'::text as item_type,
+                id,
+                function_name as name,
+                status,
+                attempts,
+                max_attempts,
+                created_at,
+                coalesce(started_at, locked_at) as started_at,
+                completed_at,
+                last_error,
+                correlation_id
+            from runtime.function_runs
+            where correlation_id = $1
+              and ($2::timestamptz is null or created_at < $2)
+        ) timeline
+        order by created_at asc, item_type asc, id asc
+        limit $3
+        "#,
+    )
+    .bind(&correlation_id)
+    .bind(query.created_before)
+    .bind(limit)
+    .fetch_all(&ctx.db)
+    .await
+    .map_err(|source| query_error(source, &request_ctx))?;
+
+    let data: Vec<AdminRuntimeTimelineItem> = rows.into_iter().map(Into::into).collect();
+    Ok(Json(AdminRuntimeTimelineResponse {
+        page: page_info(limit, data.last().map(|item| item.created_at)),
+        data,
+        order: "created_at_asc",
+    }))
 }
 
 async fn list_outbox(
@@ -476,6 +572,20 @@ type FunctionRunDetailRow = (
     Value,
 );
 
+type TimelineRow = (
+    String,
+    String,
+    String,
+    String,
+    i32,
+    i32,
+    DateTime<Utc>,
+    Option<DateTime<Utc>>,
+    Option<DateTime<Utc>>,
+    Option<String>,
+    String,
+);
+
 impl From<OutboxAdminRow> for AdminOutboxEvent {
     fn from(row: OutboxAdminRow) -> Self {
         let (
@@ -635,6 +745,38 @@ impl From<FunctionRunDetailRow> for AdminFunctionRunDetail {
             created_at,
             input_json,
             actor,
+        }
+    }
+}
+
+impl From<TimelineRow> for AdminRuntimeTimelineItem {
+    fn from(row: TimelineRow) -> Self {
+        let (
+            item_type,
+            id,
+            name,
+            status,
+            attempts,
+            max_attempts,
+            created_at,
+            started_at,
+            completed_at,
+            last_error,
+            correlation_id,
+        ) = row;
+
+        Self {
+            item_type,
+            id,
+            name,
+            status,
+            attempts,
+            max_attempts,
+            created_at,
+            started_at,
+            completed_at,
+            last_error,
+            correlation_id,
         }
     }
 }
