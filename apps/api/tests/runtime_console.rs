@@ -39,6 +39,33 @@ async fn admin_runtime_outbox_rejects_user_actor() {
 }
 
 #[tokio::test]
+async fn admin_runtime_outbox_retry_requires_authentication() {
+    let app = auth_only_app();
+
+    let response = app
+        .oneshot(admin_post("/admin/runtime/outbox/evt_1/retry"))
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn admin_runtime_function_retry_rejects_user_actor() {
+    let app = auth_only_app();
+
+    let response = app
+        .oneshot(
+            admin_post("/admin/runtime/functions/fnrun_1/retry")
+                .with_header("authorization", "Bearer dev-user:user_123"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
 async fn service_actor_can_list_outbox() {
     let Some(db) = TestDatabase::create().await else {
         return;
@@ -70,6 +97,64 @@ async fn service_actor_can_list_outbox() {
     assert!(body["data"][0]["created_at"].is_string());
     assert_eq!(body["page"]["limit"], 10);
     assert!(body["page"]["next_created_before"].is_string());
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn service_actor_can_retry_failed_outbox_event() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+    insert_outbox_event_with_status(&db.pool, "evt_failed", "failed", 2, Some("boom")).await;
+
+    let response = app
+        .oneshot(
+            admin_post("/admin/runtime/outbox/evt_failed/retry")
+                .with_header("authorization", "Bearer dev-service:admin")
+                .with_header("x-correlation-id", "corr-admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["data"]["id"], "evt_failed");
+    assert_eq!(body["data"]["status"], "pending");
+    assert_eq!(body["data"]["attempts"], 2);
+    assert_eq!(body["data"]["locked_by"], Value::Null);
+    assert_eq!(body["data"]["last_error"], Value::Null);
+
+    let row = outbox_retry_state(&db.pool, "evt_failed").await;
+    assert_eq!(row.status, "pending");
+    assert_eq!(row.attempts, 2);
+    assert!(row.locked_at.is_none());
+    assert!(row.locked_by.is_none());
+    assert!(row.last_error.is_none());
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn retry_pending_outbox_event_returns_conflict() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+    insert_outbox_event_with_status(&db.pool, "evt_pending", "pending", 0, None).await;
+
+    let response = app
+        .oneshot(
+            admin_post("/admin/runtime/outbox/evt_pending/retry")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    let body = json_body(response).await;
+    assert_eq!(body["error"]["code"], "conflict");
 
     db.cleanup().await;
 }
@@ -112,6 +197,63 @@ async fn service_actor_can_list_function_runs() {
     assert!(body["data"][0]["created_at"].is_string());
     assert_eq!(body["page"]["limit"], 10);
     assert!(body["page"]["next_created_before"].is_string());
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn service_actor_can_retry_dead_function_run() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+    insert_function_run_with_status(&db.pool, "fnrun_dead", "dead", 3, Some("exhausted")).await;
+
+    let response = app
+        .oneshot(
+            admin_post("/admin/runtime/functions/fnrun_dead/retry")
+                .with_header("authorization", "Bearer dev-service:admin")
+                .with_header("x-correlation-id", "corr-admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["data"]["id"], "fnrun_dead");
+    assert_eq!(body["data"]["status"], "pending");
+    assert_eq!(body["data"]["attempts"], 3);
+    assert_eq!(body["data"]["locked_by"], Value::Null);
+    assert_eq!(body["data"]["last_error"], Value::Null);
+
+    let row = function_retry_state(&db.pool, "fnrun_dead").await;
+    assert_eq!(row.status, "pending");
+    assert_eq!(row.attempts, 3);
+    assert!(row.locked_at.is_none());
+    assert!(row.locked_by.is_none());
+    assert!(row.last_error.is_none());
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn retry_unknown_function_run_returns_not_found() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+
+    let response = app
+        .oneshot(
+            admin_post("/admin/runtime/functions/missing/retry")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let body = json_body(response).await;
+    assert_eq!(body["error"]["code"], "not_found");
 
     db.cleanup().await;
 }
@@ -163,6 +305,14 @@ async fn admin_runtime_openapi_contract_is_present() {
     );
     assert!(value["components"]["schemas"]["AdminOutboxEvent"].is_object());
     assert!(value["components"]["schemas"]["AdminFunctionRun"].is_object());
+    assert_eq!(
+        value["paths"]["/admin/runtime/outbox/{id}/retry"]["post"]["operationId"],
+        "admin_runtime_retry_outbox"
+    );
+    assert_eq!(
+        value["paths"]["/admin/runtime/functions/{id}/retry"]["post"]["operationId"],
+        "admin_runtime_retry_function_run"
+    );
 }
 
 async fn test_app(db: &TestDatabase) -> axum::Router {
@@ -229,6 +379,61 @@ async fn insert_outbox_event(pool: &platform_core::DbPool) {
     .expect("outbox event should insert");
 }
 
+async fn insert_outbox_event_with_status(
+    pool: &platform_core::DbPool,
+    id: &str,
+    status: &str,
+    attempts: i32,
+    last_error: Option<&str>,
+) {
+    sqlx::query(
+        r#"
+        insert into platform.outbox (
+            id,
+            event_name,
+            event_version,
+            source_module,
+            aggregate_type,
+            aggregate_id,
+            correlation_id,
+            occurred_at,
+            payload,
+            headers,
+            status,
+            attempts,
+            locked_at,
+            locked_by,
+            last_error
+        )
+        values (
+            $1,
+            'identity.user_registered.v1',
+            1,
+            'identity',
+            'user',
+            'usr_1',
+            'corr_1',
+            now(),
+            $2,
+            '{}'::jsonb,
+            $3,
+            $4,
+            now(),
+            'worker-a',
+            $5
+        )
+        "#,
+    )
+    .bind(id)
+    .bind(json!({ "user_id": "usr_1" }))
+    .bind(status)
+    .bind(attempts)
+    .bind(last_error)
+    .execute(pool)
+    .await
+    .expect("outbox event should insert");
+}
+
 async fn insert_function_run(pool: &platform_core::DbPool) {
     sqlx::query(
         r#"
@@ -254,9 +459,62 @@ async fn insert_function_run(pool: &platform_core::DbPool) {
     .expect("function run should insert");
 }
 
+async fn insert_function_run_with_status(
+    pool: &platform_core::DbPool,
+    id: &str,
+    status: &str,
+    attempts: i32,
+    last_error: Option<&str>,
+) {
+    sqlx::query(
+        r#"
+        insert into runtime.function_runs (
+            id,
+            function_name,
+            input_json,
+            status,
+            attempts,
+            locked_at,
+            locked_by,
+            last_error,
+            correlation_id,
+            actor
+        )
+        values (
+            $1,
+            'notifications.send_welcome_email.v1',
+            $2,
+            $3,
+            $4,
+            now(),
+            'worker-a',
+            $5,
+            'corr_1',
+            '{"kind":"system"}'::jsonb
+        )
+        "#,
+    )
+    .bind(id)
+    .bind(json!({ "user_id": "usr_1" }))
+    .bind(status)
+    .bind(attempts)
+    .bind(last_error)
+    .execute(pool)
+    .await
+    .expect("function run should insert");
+}
+
 fn admin_get(uri: &str) -> Request<Body> {
     Request::builder()
         .method("GET")
+        .uri(uri)
+        .body(Body::empty())
+        .expect("request should build")
+}
+
+fn admin_post(uri: &str) -> Request<Body> {
+    Request::builder()
+        .method("POST")
         .uri(uri)
         .body(Body::empty())
         .expect("request should build")
@@ -277,5 +535,52 @@ impl RequestExt for Request<Body> {
     fn with_header(mut self, name: &'static str, value: &'static str) -> Self {
         self.headers_mut().insert(name, value.parse().unwrap());
         self
+    }
+}
+
+#[derive(Debug)]
+struct RetryState {
+    status: String,
+    attempts: i32,
+    locked_at: Option<chrono::DateTime<chrono::Utc>>,
+    locked_by: Option<String>,
+    last_error: Option<String>,
+}
+
+async fn outbox_retry_state(pool: &platform_core::DbPool, id: &str) -> RetryState {
+    let (status, attempts, locked_at, locked_by, last_error) =
+        sqlx::query_as::<_, (String, i32, Option<_>, Option<String>, Option<String>)>(
+            "select status, attempts, locked_at, locked_by, last_error from platform.outbox where id = $1",
+        )
+        .bind(id)
+        .fetch_one(pool)
+        .await
+        .expect("outbox retry state should query");
+
+    RetryState {
+        status,
+        attempts,
+        locked_at,
+        locked_by,
+        last_error,
+    }
+}
+
+async fn function_retry_state(pool: &platform_core::DbPool, id: &str) -> RetryState {
+    let (status, attempts, locked_at, locked_by, last_error) =
+        sqlx::query_as::<_, (String, i32, Option<_>, Option<String>, Option<String>)>(
+            "select status, attempts, locked_at, locked_by, last_error from runtime.function_runs where id = $1",
+        )
+        .bind(id)
+        .fetch_one(pool)
+        .await
+        .expect("function retry state should query");
+
+    RetryState {
+        status,
+        attempts,
+        locked_at,
+        locked_by,
+        last_error,
     }
 }
