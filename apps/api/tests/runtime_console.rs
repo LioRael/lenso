@@ -39,6 +39,21 @@ async fn admin_runtime_outbox_rejects_user_actor() {
 }
 
 #[tokio::test]
+async fn admin_runtime_outbox_detail_rejects_user_actor() {
+    let app = auth_only_app();
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/outbox/evt_1")
+                .with_header("authorization", "Bearer dev-user:user_123"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
 async fn admin_runtime_outbox_retry_requires_authentication() {
     let app = auth_only_app();
 
@@ -93,10 +108,69 @@ async fn service_actor_can_list_outbox() {
     assert_eq!(body["data"][0]["published_at"], Value::Null);
     assert_eq!(body["data"][0]["last_error"], Value::Null);
     assert_eq!(body["data"][0]["correlation_id"], "corr_1");
+    assert!(body["data"][0].get("payload").is_none());
+    assert!(body["data"][0].get("headers").is_none());
     assert!(body["data"][0]["available_at"].is_string());
     assert!(body["data"][0]["created_at"].is_string());
     assert_eq!(body["page"]["limit"], 10);
     assert!(body["page"]["next_created_before"].is_string());
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn service_actor_can_fetch_outbox_detail() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+    insert_outbox_event(&db.pool).await;
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/outbox/evt_1")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["data"]["id"], "evt_1");
+    assert_eq!(body["data"]["event_name"], "identity.user_registered.v1");
+    assert_eq!(body["data"]["payload"]["user_id"], "usr_1");
+    assert_eq!(body["data"]["actor"]["kind"], "service");
+    assert_eq!(body["data"]["actor"]["service_id"], "api");
+    assert_eq!(body["data"]["trace"]["trace_id"], "trace_1");
+    assert_eq!(body["data"]["correlation_id"], "corr_1");
+    assert_eq!(body["data"]["causation_id"], "req_1");
+    assert_eq!(body["data"]["status"], "pending");
+    assert_eq!(body["data"]["attempts"], 0);
+    assert_eq!(body["data"]["max_attempts"], 3);
+    assert!(body["data"]["occurred_at"].is_string());
+    assert!(body["data"]["created_at"].is_string());
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn unknown_outbox_detail_returns_not_found() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/outbox/missing")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let body = json_body(response).await;
+    assert_eq!(body["error"]["code"], "not_found");
 
     db.cleanup().await;
 }
@@ -193,6 +267,8 @@ async fn service_actor_can_list_function_runs() {
     assert_eq!(body["data"][0]["completed_at"], Value::Null);
     assert_eq!(body["data"][0]["last_error"], Value::Null);
     assert_eq!(body["data"][0]["correlation_id"], "corr_1");
+    assert!(body["data"][0].get("input_json").is_none());
+    assert!(body["data"][0].get("actor").is_none());
     assert!(body["data"][0]["available_at"].is_string());
     assert!(body["data"][0]["created_at"].is_string());
     assert_eq!(body["page"]["limit"], 10);
@@ -282,6 +358,13 @@ async fn service_actor_can_get_function_run_by_id() {
         "notifications.send_welcome_email.v1"
     );
     assert_eq!(body["data"]["status"], "pending");
+    assert_eq!(body["data"]["input_json"]["user_id"], "usr_1");
+    assert_eq!(body["data"]["actor"]["kind"], "system");
+    assert_eq!(body["data"]["correlation_id"], "corr_1");
+    assert_eq!(body["data"]["attempts"], 0);
+    assert_eq!(body["data"]["max_attempts"], 3);
+    assert!(body["data"]["available_at"].is_string());
+    assert!(body["data"]["created_at"].is_string());
 
     db.cleanup().await;
 }
@@ -296,6 +379,10 @@ async fn admin_runtime_openapi_contract_is_present() {
         "admin_runtime_list_outbox"
     );
     assert_eq!(
+        value["paths"]["/admin/runtime/outbox/{id}"]["get"]["operationId"],
+        "admin_runtime_get_outbox"
+    );
+    assert_eq!(
         value["paths"]["/admin/runtime/functions"]["get"]["operationId"],
         "admin_runtime_list_function_runs"
     );
@@ -304,7 +391,9 @@ async fn admin_runtime_openapi_contract_is_present() {
         "admin_runtime_get_function_run"
     );
     assert!(value["components"]["schemas"]["AdminOutboxEvent"].is_object());
+    assert!(value["components"]["schemas"]["AdminOutboxEventDetail"].is_object());
     assert!(value["components"]["schemas"]["AdminFunctionRun"].is_object());
+    assert!(value["components"]["schemas"]["AdminFunctionRunDetail"].is_object());
     assert_eq!(
         value["paths"]["/admin/runtime/outbox/{id}/retry"]["post"]["operationId"],
         "admin_runtime_retry_outbox"
@@ -355,6 +444,7 @@ async fn insert_outbox_event(pool: &platform_core::DbPool) {
             aggregate_type,
             aggregate_id,
             correlation_id,
+            causation_id,
             occurred_at,
             payload,
             headers
@@ -367,13 +457,26 @@ async fn insert_outbox_event(pool: &platform_core::DbPool) {
             'user',
             'usr_1',
             'corr_1',
+            'req_1',
             now(),
             $1,
-            '{}'::jsonb
+            $2
         )
         "#,
     )
     .bind(json!({ "user_id": "usr_1" }))
+    .bind(json!({
+        "actor": {
+            "kind": "service",
+            "service_id": "api",
+            "scopes": []
+        },
+        "trace": {
+            "trace_id": "trace_1",
+            "span_id": "span_1"
+        },
+        "schema_ref": "contracts/events/identity/identity.user_registered.v1.schema.json"
+    }))
     .execute(pool)
     .await
     .expect("outbox event should insert");

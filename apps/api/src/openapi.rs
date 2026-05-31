@@ -1,6 +1,8 @@
 use crate::admin_runtime::{
-    AdminFunctionRun, AdminFunctionRunListResponse, AdminFunctionRunResponse, AdminOutboxEvent,
-    AdminOutboxListResponse, FunctionRunQuery, OutboxQuery, PageInfo,
+    AdminFunctionRun, AdminFunctionRunDetail, AdminFunctionRunListResponse,
+    AdminFunctionRunResponse, AdminOutboxEvent, AdminOutboxEventDetail,
+    AdminOutboxEventDetailResponse, AdminOutboxListResponse, FunctionRunQuery, OutboxQuery,
+    PageInfo,
 };
 use identity::dto::{
     CreateUserRequest, CreateUserResponse, CreateUserResponseEnvelope, MeResponse,
@@ -20,6 +22,7 @@ use utoipa::OpenApi;
         identity_create_user_contract,
         identity_me_contract,
         admin_runtime_list_outbox_contract,
+        admin_runtime_get_outbox_contract,
         admin_runtime_retry_outbox_contract,
         admin_runtime_list_function_runs_contract,
         admin_runtime_get_function_run_contract,
@@ -28,9 +31,12 @@ use utoipa::OpenApi;
     components(
         schemas(
             AdminFunctionRun,
+            AdminFunctionRunDetail,
             AdminFunctionRunListResponse,
             AdminFunctionRunResponse,
             AdminOutboxEvent,
+            AdminOutboxEventDetail,
+            AdminOutboxEventDetailResponse,
             AdminOutboxListResponse,
             CreateUserRequest,
             CreateUserResponse,
@@ -214,6 +220,57 @@ fn identity_me_contract() {}
 )]
 #[allow(dead_code)]
 fn admin_runtime_list_outbox_contract() {}
+
+#[utoipa::path(
+    get,
+    path = "/admin/runtime/outbox/{id}",
+    operation_id = "admin_runtime_get_outbox",
+    tag = "admin-runtime",
+    params(
+        ("id" = String, Path, description = "Outbox event identifier"),
+        ("authorization" = String, Header, description = "Development service bearer token, for example `Bearer dev-service:admin`"),
+        ("x-request-id" = Option<String>, Header, description = "Optional caller-provided request identifier"),
+        ("x-correlation-id" = Option<String>, Header, description = "Optional caller-provided correlation identifier")
+    ),
+    responses(
+        (
+            status = 200,
+            description = "Outbox event detail",
+            body = AdminOutboxEventDetailResponse,
+            content_type = "application/json",
+            headers(
+                ("x-request-id" = String, description = "Request identifier for this HTTP request"),
+                ("x-correlation-id" = String, description = "Correlation identifier shared across related work")
+            )
+        ),
+        (
+            status = 401,
+            description = "Authentication is required",
+            body = ErrorResponse,
+            content_type = "application/json"
+        ),
+        (
+            status = 403,
+            description = "Service or system authentication is required",
+            body = ErrorResponse,
+            content_type = "application/json"
+        ),
+        (
+            status = 404,
+            description = "Outbox event was not found",
+            body = ErrorResponse,
+            content_type = "application/json"
+        ),
+        (
+            status = 500,
+            description = "Internal server error",
+            body = ErrorResponse,
+            content_type = "application/json"
+        )
+    )
+)]
+#[allow(dead_code)]
+fn admin_runtime_get_outbox_contract() {}
 
 #[utoipa::path(
     post,

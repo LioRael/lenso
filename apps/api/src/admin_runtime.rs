@@ -6,6 +6,8 @@ use platform_core::{AppContext, AppError, ErrorCode};
 use platform_http::responses::{json, DataResponse};
 use platform_http::{AdminActor, ApiErrorResponse, HttpRequestContext};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use sqlx::Row;
 use utoipa::{IntoParams, ToSchema};
 
 const DEFAULT_LIMIT: i64 = 50;
@@ -14,6 +16,7 @@ const MAX_LIMIT: i64 = 100;
 pub fn router() -> Router<AppContext> {
     Router::new()
         .route("/admin/runtime/outbox", get(list_outbox))
+        .route("/admin/runtime/outbox/:id", get(get_outbox_event))
         .route("/admin/runtime/outbox/:id/retry", post(retry_outbox_event))
         .route("/admin/runtime/functions", get(list_function_runs))
         .route("/admin/runtime/functions/:id", get(get_function_run))
@@ -53,6 +56,12 @@ pub struct AdminOutboxListResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(as = AdminOutboxEventDetailResponse)]
+pub struct AdminOutboxEventDetailResponse {
+    pub data: AdminOutboxEventDetail,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 #[schema(as = AdminFunctionRunListResponse)]
 pub struct AdminFunctionRunListResponse {
     pub data: Vec<AdminFunctionRun>,
@@ -62,7 +71,7 @@ pub struct AdminFunctionRunListResponse {
 #[derive(Debug, Serialize, ToSchema)]
 #[schema(as = AdminFunctionRunResponse)]
 pub struct AdminFunctionRunResponse {
-    pub data: AdminFunctionRun,
+    pub data: AdminFunctionRunDetail,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -81,6 +90,31 @@ pub struct AdminOutboxEvent {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+pub struct AdminOutboxEventDetail {
+    pub id: String,
+    pub event_name: String,
+    pub event_version: i32,
+    pub source_module: String,
+    pub aggregate_type: String,
+    pub aggregate_id: String,
+    pub status: String,
+    pub attempts: i32,
+    pub max_attempts: i32,
+    pub available_at: DateTime<Utc>,
+    pub locked_by: Option<String>,
+    pub published_at: Option<DateTime<Utc>>,
+    pub last_error: Option<String>,
+    pub correlation_id: String,
+    pub causation_id: Option<String>,
+    pub occurred_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+    pub payload: Value,
+    pub actor: Value,
+    pub trace: Value,
+    pub headers: Value,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 pub struct AdminFunctionRun {
     pub id: String,
     pub function_name: String,
@@ -94,6 +128,24 @@ pub struct AdminFunctionRun {
     pub last_error: Option<String>,
     pub correlation_id: String,
     pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminFunctionRunDetail {
+    pub id: String,
+    pub function_name: String,
+    pub status: String,
+    pub attempts: i32,
+    pub max_attempts: i32,
+    pub available_at: DateTime<Utc>,
+    pub locked_by: Option<String>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub last_error: Option<String>,
+    pub correlation_id: String,
+    pub created_at: DateTime<Utc>,
+    pub input_json: Value,
+    pub actor: Value,
 }
 
 async fn list_outbox(
@@ -195,13 +247,23 @@ async fn list_function_runs(
     }))
 }
 
+async fn get_outbox_event(
+    _admin: AdminActor,
+    State(ctx): State<AppContext>,
+    HttpRequestContext(request_ctx): HttpRequestContext,
+    Path(id): Path<String>,
+) -> Result<Json<DataResponse<AdminOutboxEventDetail>>, ApiErrorResponse> {
+    let row = fetch_outbox_event_detail(&ctx, &request_ctx, &id).await?;
+    Ok(json(row))
+}
+
 async fn get_function_run(
     _admin: AdminActor,
     State(ctx): State<AppContext>,
     HttpRequestContext(request_ctx): HttpRequestContext,
     Path(id): Path<String>,
-) -> Result<Json<DataResponse<AdminFunctionRun>>, ApiErrorResponse> {
-    let row = sqlx::query_as::<_, FunctionRunAdminRow>(
+) -> Result<Json<DataResponse<AdminFunctionRunDetail>>, ApiErrorResponse> {
+    let row = sqlx::query_as::<_, FunctionRunDetailRow>(
         r#"
         select
             id,
@@ -215,7 +277,9 @@ async fn get_function_run(
             completed_at,
             last_error,
             correlation_id,
-            created_at
+            created_at,
+            input_json,
+            actor
         from runtime.function_runs
         where id = $1
         "#,
@@ -373,6 +437,45 @@ type FunctionRunAdminRow = (
     DateTime<Utc>,
 );
 
+type OutboxDetailRow = (
+    String,
+    String,
+    i32,
+    String,
+    String,
+    String,
+    String,
+    i32,
+    i32,
+    DateTime<Utc>,
+    Option<String>,
+    Option<DateTime<Utc>>,
+    Option<String>,
+    String,
+    Option<String>,
+    DateTime<Utc>,
+    DateTime<Utc>,
+    Value,
+    Value,
+);
+
+type FunctionRunDetailRow = (
+    String,
+    String,
+    String,
+    i32,
+    i32,
+    DateTime<Utc>,
+    Option<String>,
+    Option<DateTime<Utc>>,
+    Option<DateTime<Utc>>,
+    Option<String>,
+    String,
+    DateTime<Utc>,
+    Value,
+    Value,
+);
+
 impl From<OutboxAdminRow> for AdminOutboxEvent {
     fn from(row: OutboxAdminRow) -> Self {
         let (
@@ -439,6 +542,103 @@ impl From<FunctionRunAdminRow> for AdminFunctionRun {
     }
 }
 
+impl From<OutboxDetailRow> for AdminOutboxEventDetail {
+    fn from(row: OutboxDetailRow) -> Self {
+        let (
+            id,
+            event_name,
+            event_version,
+            source_module,
+            aggregate_type,
+            aggregate_id,
+            status,
+            attempts,
+            max_attempts,
+            available_at,
+            locked_by,
+            published_at,
+            last_error,
+            correlation_id,
+            causation_id,
+            occurred_at,
+            created_at,
+            payload,
+            headers,
+        ) = row;
+
+        let actor = headers
+            .get("actor")
+            .cloned()
+            .unwrap_or_else(|| Value::Object(Default::default()));
+        let trace = headers
+            .get("trace")
+            .cloned()
+            .unwrap_or_else(|| Value::Object(Default::default()));
+
+        Self {
+            id,
+            event_name,
+            event_version,
+            source_module,
+            aggregate_type,
+            aggregate_id,
+            status,
+            attempts,
+            max_attempts,
+            available_at,
+            locked_by,
+            published_at,
+            last_error,
+            correlation_id,
+            causation_id,
+            occurred_at,
+            created_at,
+            payload,
+            actor,
+            trace,
+            headers,
+        }
+    }
+}
+
+impl From<FunctionRunDetailRow> for AdminFunctionRunDetail {
+    fn from(row: FunctionRunDetailRow) -> Self {
+        let (
+            id,
+            function_name,
+            status,
+            attempts,
+            max_attempts,
+            available_at,
+            locked_by,
+            started_at,
+            completed_at,
+            last_error,
+            correlation_id,
+            created_at,
+            input_json,
+            actor,
+        ) = row;
+
+        Self {
+            id,
+            function_name,
+            status,
+            attempts,
+            max_attempts,
+            available_at,
+            locked_by,
+            started_at,
+            completed_at,
+            last_error,
+            correlation_id,
+            created_at,
+            input_json,
+            actor,
+        }
+    }
+}
+
 async fn fetch_outbox_event(
     ctx: &AppContext,
     request_ctx: &platform_core::RequestContext,
@@ -477,6 +677,92 @@ async fn fetch_outbox_event(
     })?;
 
     Ok(row.into())
+}
+
+async fn fetch_outbox_event_detail(
+    ctx: &AppContext,
+    request_ctx: &platform_core::RequestContext,
+    id: &str,
+) -> Result<AdminOutboxEventDetail, ApiErrorResponse> {
+    let row = sqlx::query(
+        r#"
+        select
+            id,
+            event_name,
+            event_version,
+            source_module,
+            aggregate_type,
+            aggregate_id,
+            status,
+            attempts,
+            max_attempts,
+            available_at,
+            locked_by,
+            published_at,
+            last_error,
+            correlation_id,
+            causation_id,
+            occurred_at,
+            created_at,
+            payload,
+            headers
+        from platform.outbox
+        where id = $1
+        "#,
+    )
+    .bind(id)
+    .fetch_optional(&ctx.db)
+    .await
+    .map_err(|source| query_error(source, request_ctx))?
+    .ok_or_else(|| {
+        ApiErrorResponse::with_context(
+            AppError::new(
+                ErrorCode::NotFound,
+                format!("Outbox event {id} was not found"),
+            ),
+            request_ctx,
+        )
+    })?;
+
+    outbox_detail_from_row(&row).map_err(|source| query_error(source, request_ctx))
+}
+
+fn outbox_detail_from_row(
+    row: &sqlx::postgres::PgRow,
+) -> Result<AdminOutboxEventDetail, sqlx::Error> {
+    let headers: Value = row.try_get("headers")?;
+    let actor = headers
+        .get("actor")
+        .cloned()
+        .unwrap_or_else(|| Value::Object(Default::default()));
+    let trace = headers
+        .get("trace")
+        .cloned()
+        .unwrap_or_else(|| Value::Object(Default::default()));
+
+    Ok(AdminOutboxEventDetail {
+        id: row.try_get("id")?,
+        event_name: row.try_get("event_name")?,
+        event_version: row.try_get("event_version")?,
+        source_module: row.try_get("source_module")?,
+        aggregate_type: row.try_get("aggregate_type")?,
+        aggregate_id: row.try_get("aggregate_id")?,
+        status: row.try_get("status")?,
+        attempts: row.try_get("attempts")?,
+        max_attempts: row.try_get("max_attempts")?,
+        available_at: row.try_get("available_at")?,
+        locked_by: row.try_get("locked_by")?,
+        published_at: row.try_get("published_at")?,
+        last_error: row.try_get("last_error")?,
+        correlation_id: row.try_get("correlation_id")?,
+        causation_id: row.try_get("causation_id")?,
+        occurred_at: row.try_get("occurred_at")?,
+        created_at: row.try_get("created_at")?,
+        payload: row.try_get("payload")?,
+        actor,
+        trace,
+        headers,
+    })
 }
 
 async fn fetch_function_run(

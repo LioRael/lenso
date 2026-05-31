@@ -345,6 +345,80 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /admin/runtime/outbox/{id}:
+    get:
+      tags:
+      - admin-runtime
+      operationId: admin_runtime_get_outbox
+      parameters:
+      - name: id
+        in: path
+        description: Outbox event identifier
+        required: true
+        schema:
+          type: string
+      - name: authorization
+        in: header
+        description: Development service bearer token, for example `Bearer dev-service:admin`
+        required: true
+        schema:
+          type: string
+      - name: x-request-id
+        in: header
+        description: Optional caller-provided request identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: x-correlation-id
+        in: header
+        description: Optional caller-provided correlation identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      responses:
+        '200':
+          description: Outbox event detail
+          headers:
+            x-correlation-id:
+              schema:
+                type: string
+              description: Correlation identifier shared across related work
+            x-request-id:
+              schema:
+                type: string
+              description: Request identifier for this HTTP request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminOutboxEventDetailResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Outbox event was not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/runtime/outbox/{id}/retry:
     post:
       tags:
@@ -656,6 +730,60 @@ components:
           format: date-time
         status:
           type: string
+    AdminFunctionRunDetail:
+      type: object
+      required:
+      - id
+      - function_name
+      - status
+      - attempts
+      - max_attempts
+      - available_at
+      - correlation_id
+      - created_at
+      - input_json
+      - actor
+      properties:
+        actor: {}
+        attempts:
+          type: integer
+          format: int32
+        available_at:
+          type: string
+          format: date-time
+        completed_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        correlation_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        function_name:
+          type: string
+        id:
+          type: string
+        input_json: {}
+        last_error:
+          type:
+          - string
+          - 'null'
+        locked_by:
+          type:
+          - string
+          - 'null'
+        max_attempts:
+          type: integer
+          format: int32
+        started_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        status:
+          type: string
     AdminFunctionRunListResponse:
       type: object
       required:
@@ -674,7 +802,7 @@ components:
       - data
       properties:
         data:
-          $ref: '#/components/schemas/AdminFunctionRun'
+          $ref: '#/components/schemas/AdminFunctionRunDetail'
     AdminOutboxEvent:
       type: object
       required:
@@ -720,6 +848,87 @@ components:
           format: date-time
         status:
           type: string
+    AdminOutboxEventDetail:
+      type: object
+      required:
+      - id
+      - event_name
+      - event_version
+      - source_module
+      - aggregate_type
+      - aggregate_id
+      - status
+      - attempts
+      - max_attempts
+      - available_at
+      - correlation_id
+      - occurred_at
+      - created_at
+      - payload
+      - actor
+      - trace
+      - headers
+      properties:
+        actor: {}
+        aggregate_id:
+          type: string
+        aggregate_type:
+          type: string
+        attempts:
+          type: integer
+          format: int32
+        available_at:
+          type: string
+          format: date-time
+        causation_id:
+          type:
+          - string
+          - 'null'
+        correlation_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        event_name:
+          type: string
+        event_version:
+          type: integer
+          format: int32
+        headers: {}
+        id:
+          type: string
+        last_error:
+          type:
+          - string
+          - 'null'
+        locked_by:
+          type:
+          - string
+          - 'null'
+        max_attempts:
+          type: integer
+          format: int32
+        occurred_at:
+          type: string
+          format: date-time
+        payload: {}
+        published_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        source_module:
+          type: string
+        status:
+          type: string
+        trace: {}
+    AdminOutboxEventDetailResponse:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/AdminOutboxEventDetail'
     AdminOutboxListResponse:
       type: object
       required:
