@@ -1,5 +1,5 @@
 use crate::error::{AppError, AppResult, ErrorCode};
-use sqlx::{Executor, PgPool};
+use sqlx::PgPool;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Migration {
@@ -33,7 +33,7 @@ pub async fn apply_migrations(pool: &PgPool, migrations: &[Migration]) -> AppRes
 }
 
 async fn ensure_migration_table(pool: &PgPool) -> AppResult<()> {
-    sqlx::query(
+    sqlx::raw_sql(
         r#"
         create schema if not exists platform;
 
@@ -69,7 +69,8 @@ async fn apply_migration(pool: &PgPool, migration: &Migration) -> AppResult<()> 
         return Ok(());
     }
 
-    tx.execute(migration.sql)
+    sqlx::raw_sql(migration.sql)
+        .execute(&mut *tx)
         .await
         .map_err(map_migration_error)?;
 

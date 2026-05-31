@@ -1,0 +1,36 @@
+{
+  "name": "@lenso/runtime-console",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "format": "ultracite fix --unsafe",
+    "format:check": "oxfmt --check .",
+    "lint": "ultracite check --deny-warnings",
+    "check": "ultracite check --deny-warnings && pnpm typecheck && pnpm build",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b --pretty false",
+    "preview": "vite preview --host 0.0.0.0"
+  },
+  "dependencies": {
+    "@base-ui/react": "^1.5.0",
+    "@tailwindcss/vite": "^4.1.0",
+    "@tanstack/react-query": "^5.62.0",
+    "@tanstack/react-router": "^1.99.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "ky": "^2.0.2",
+    "lucide-react": "^0.468.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "vite": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "oxfmt": "^0.52.0",
+    "oxlint": "^1.67.0",
+    "typescript": "^6.0.3",
+    "ultracite": "^7.8.1"
+  }
+}

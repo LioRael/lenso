@@ -1,0 +1,77 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+  font-family:
+    "Geist",
+    "SF Pro Display",
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: #08090c;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    radial-gradient(
+      circle at 20% -10%,
+      rgba(115, 167, 255, 0.12),
+      transparent 34rem
+    ),
+    linear-gradient(180deg, #0a0c10 0%, #08090c 44rem);
+  color: #f4f7fb;
+}
+
+::selection {
+  background: rgba(139, 184, 255, 0.28);
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+a:focus-visible {
+  outline: 2px solid rgba(139, 184, 255, 0.78);
+  outline-offset: 2px;
+}
+
+code,
+pre,
+.mono {
+  font-family:
+    "Geist Mono", "SFMono-Regular", "Cascadia Code", "Roboto Mono",
+    ui-monospace, monospace;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
