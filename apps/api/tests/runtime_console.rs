@@ -108,6 +108,48 @@ async fn admin_runtime_timeline_rejects_user_actor() {
 }
 
 #[tokio::test]
+async fn admin_runtime_stories_requires_authentication() {
+    let app = auth_only_app();
+
+    let response = app
+        .oneshot(admin_get("/admin/runtime/stories"))
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn admin_runtime_stories_rejects_user_actor() {
+    let app = auth_only_app();
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/stories")
+                .with_header("authorization", "Bearer dev-user:user_123"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn admin_runtime_story_detail_rejects_user_actor() {
+    let app = auth_only_app();
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/stories/corr_1")
+                .with_header("authorization", "Bearer dev-user:user_123"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
 async fn admin_runtime_function_retry_rejects_user_actor() {
     let app = auth_only_app();
 
@@ -242,6 +284,110 @@ async fn runtime_summary_without_failed_or_dead_items_is_healthy() {
     assert_eq!(body["outbox"]["published"], 1);
     assert_eq!(body["functions"]["completed"], 1);
     assert_eq!(body["recent_failures"].as_array().unwrap().len(), 0);
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn service_actor_can_list_runtime_stories() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+    insert_story_outbox_event(&db.pool).await;
+    insert_story_function_run(&db.pool).await;
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/stories?limit=10")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["data"].as_array().unwrap().len(), 1);
+    assert_eq!(body["data"][0]["title"], "identity.user_registered.v1");
+    assert_eq!(body["data"][0]["correlation_id"], "corr_story");
+    assert_eq!(body["data"][0]["status"], "dead");
+    assert_eq!(body["data"][0]["node_count"], 2);
+    assert_eq!(body["data"][0]["error_count"], 1);
+    assert_eq!(body["data"][0]["services"][0], "identity");
+    assert_eq!(body["data"][0]["services"][1], "notifications");
+    assert_eq!(body["data"][0]["pattern"][0], "event");
+    assert_eq!(body["data"][0]["pattern"][1], "function");
+    assert_eq!(
+        body["data"][0]["root_error"],
+        "notifications.send_welcome_email.v1: smtp timeout"
+    );
+    assert_eq!(body["page"]["limit"], 10);
+    assert!(body["data"][0].get("payload").is_none());
+    assert!(body["data"][0].get("input_json").is_none());
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn service_actor_can_fetch_runtime_story_detail() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+    insert_story_outbox_event(&db.pool).await;
+    insert_story_function_run(&db.pool).await;
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/stories/corr_story")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["data"]["summary"]["correlation_id"], "corr_story");
+    assert_eq!(body["data"]["summary"]["status"], "dead");
+    assert_eq!(body["data"]["nodes"].as_array().unwrap().len(), 2);
+    assert_eq!(body["data"]["nodes"][0]["id"], "evt_story");
+    assert_eq!(body["data"]["nodes"][0]["type"], "event");
+    assert_eq!(body["data"]["nodes"][0]["service"], "identity");
+    assert_eq!(body["data"]["nodes"][0]["metadata"]["attempts"], 1);
+    assert_eq!(body["data"]["nodes"][1]["id"], "fnrun_story");
+    assert_eq!(body["data"]["nodes"][1]["type"], "function");
+    assert_eq!(body["data"]["nodes"][1]["status"], "dead");
+    assert_eq!(body["data"]["nodes"][1]["duration_ms"], 80_000);
+    assert_eq!(body["data"]["nodes"][1]["error"], "smtp timeout");
+    assert_eq!(body["data"]["edges"].as_array().unwrap().len(), 1);
+    assert_eq!(body["data"]["edges"][0]["source"], "evt_story");
+    assert_eq!(body["data"]["edges"][0]["target"], "fnrun_story");
+    assert_eq!(body["data"]["edges"][0]["type"], "sequence");
+    assert_eq!(body["data"]["timeline_items"].as_array().unwrap().len(), 2);
+    assert!(body["data"]["nodes"][0].get("payload").is_none());
+    assert!(body["data"]["nodes"][1].get("input_json").is_none());
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn unknown_runtime_story_returns_not_found() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/stories/missing")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let body = json_body(response).await;
+    assert_eq!(body["error"]["code"], "not_found");
 
     db.cleanup().await;
 }
@@ -632,6 +778,14 @@ async fn admin_runtime_openapi_contract_is_present() {
         value["paths"]["/admin/runtime/timeline/{correlation_id}"]["get"]["operationId"],
         "admin_runtime_get_timeline"
     );
+    assert_eq!(
+        value["paths"]["/admin/runtime/stories"]["get"]["operationId"],
+        "admin_runtime_list_stories"
+    );
+    assert_eq!(
+        value["paths"]["/admin/runtime/stories/{correlation_id}"]["get"]["operationId"],
+        "admin_runtime_get_story"
+    );
     assert!(value["components"]["schemas"]["AdminOutboxEvent"].is_object());
     assert!(value["components"]["schemas"]["AdminOutboxEventDetail"].is_object());
     assert!(value["components"]["schemas"]["AdminFunctionRun"].is_object());
@@ -639,6 +793,8 @@ async fn admin_runtime_openapi_contract_is_present() {
     assert!(value["components"]["schemas"]["AdminRuntimeSummaryResponse"].is_object());
     assert!(value["components"]["schemas"]["AdminRuntimeSummaryItem"].is_object());
     assert!(value["components"]["schemas"]["AdminRuntimeTimelineItem"].is_object());
+    assert!(value["components"]["schemas"]["AdminRuntimeStoryListItem"].is_object());
+    assert!(value["components"]["schemas"]["AdminRuntimeStoryDetail"].is_object());
     assert_eq!(
         value["paths"]["/admin/runtime/outbox/{id}/retry"]["post"]["operationId"],
         "admin_runtime_retry_outbox"
@@ -942,6 +1098,98 @@ async fn insert_timeline_function_run(pool: &platform_core::DbPool) {
     .execute(pool)
     .await
     .expect("timeline function run should insert");
+}
+
+async fn insert_story_outbox_event(pool: &platform_core::DbPool) {
+    sqlx::query(
+        r#"
+        insert into platform.outbox (
+            id,
+            event_name,
+            event_version,
+            source_module,
+            aggregate_type,
+            aggregate_id,
+            correlation_id,
+            causation_id,
+            occurred_at,
+            payload,
+            headers,
+            status,
+            attempts,
+            max_attempts,
+            locked_at,
+            published_at,
+            created_at
+        )
+        values (
+            'evt_story',
+            'identity.user_registered.v1',
+            1,
+            'identity',
+            'user',
+            'usr_1',
+            'corr_story',
+            'req_story',
+            '2026-05-31T00:00:00Z',
+            $1,
+            '{}'::jsonb,
+            'published',
+            1,
+            3,
+            '2026-05-31T00:00:05Z',
+            '2026-05-31T00:00:20Z',
+            '2026-05-31T00:00:00Z'
+        )
+        "#,
+    )
+    .bind(json!({ "user_id": "usr_1" }))
+    .execute(pool)
+    .await
+    .expect("story outbox event should insert");
+}
+
+async fn insert_story_function_run(pool: &platform_core::DbPool) {
+    sqlx::query(
+        r#"
+        insert into runtime.function_runs (
+            id,
+            function_name,
+            input_json,
+            status,
+            attempts,
+            max_attempts,
+            locked_at,
+            started_at,
+            completed_at,
+            last_error,
+            correlation_id,
+            actor,
+            created_at,
+            updated_at
+        )
+        values (
+            'fnrun_story',
+            'notifications.send_welcome_email.v1',
+            $1,
+            'dead',
+            3,
+            3,
+            '2026-05-31T00:00:30Z',
+            '2026-05-31T00:00:40Z',
+            '2026-05-31T00:02:00Z',
+            'smtp timeout',
+            'corr_story',
+            '{"kind":"system"}'::jsonb,
+            '2026-05-31T00:00:30Z',
+            '2026-05-31T00:02:00Z'
+        )
+        "#,
+    )
+    .bind(json!({ "user_id": "usr_1" }))
+    .execute(pool)
+    .await
+    .expect("story function run should insert");
 }
 
 fn admin_get(uri: &str) -> Request<Body> {

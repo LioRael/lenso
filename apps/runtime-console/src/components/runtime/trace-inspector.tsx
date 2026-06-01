@@ -2,17 +2,14 @@ import { ArrowRight, Copy, RotateCcw, X } from "lucide-react";
 
 import type { TraceRun, TraceSpan } from "../../data/mock-runtime";
 import { cn } from "../../lib/cn";
-import {
-  formatTraceDuration,
-  serviceColor,
-  statusColor,
-} from "../../lib/trace-style";
+import { formatTraceDuration, serviceColor } from "../../lib/trace-style";
 import {
   HorizontalScrollArea,
   HorizontalTabScroll,
 } from "./horizontal-tab-scroll";
 import { JsonViewer } from "./json-viewer";
 import { useRuntimeConsole } from "./runtime-console-context";
+import { TraceStatusBadge } from "./trace-status-badge";
 
 type InspectorTab =
   | "info"
@@ -102,15 +99,11 @@ export function TraceInspector({
           <span className="shrink-0 text-(--accent)">
             {formatTraceDuration(span.durationMs)}
           </span>
-          <span
-            className="shrink-0 rounded-xs border px-1.5 py-0.5 uppercase"
-            style={{
-              borderColor: `${statusColor(span.status)}40`,
-              color: statusColor(span.status),
-            }}
-          >
-            {span.status}
-          </span>
+          <TraceStatusBadge
+            className="shrink-0"
+            status={span.status}
+            variant="compact"
+          />
           <span className="min-w-0 truncate">{childCount} children</span>
         </div>
       </div>

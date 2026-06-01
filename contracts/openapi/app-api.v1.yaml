@@ -499,6 +499,154 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /admin/runtime/stories:
+    get:
+      tags:
+      - admin-runtime
+      operationId: admin_runtime_list_stories
+      parameters:
+      - name: authorization
+        in: header
+        description: Development service bearer token, for example `Bearer dev-service:admin`
+        required: true
+        schema:
+          type: string
+      - name: x-request-id
+        in: header
+        description: Optional caller-provided request identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: x-correlation-id
+        in: header
+        description: Optional caller-provided correlation identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - name: created_before
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+      responses:
+        '200':
+          description: Runtime stories grouped by correlation identifier
+          headers:
+            x-correlation-id:
+              schema:
+                type: string
+              description: Correlation identifier shared across related work
+            x-request-id:
+              schema:
+                type: string
+              description: Request identifier for this HTTP request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminRuntimeStoryListResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/runtime/stories/{correlation_id}:
+    get:
+      tags:
+      - admin-runtime
+      operationId: admin_runtime_get_story
+      parameters:
+      - name: correlation_id
+        in: path
+        description: Correlation identifier shared by related runtime work
+        required: true
+        schema:
+          type: string
+      - name: authorization
+        in: header
+        description: Development service bearer token, for example `Bearer dev-service:admin`
+        required: true
+        schema:
+          type: string
+      - name: x-request-id
+        in: header
+        description: Optional caller-provided request identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: x-correlation-id
+        in: header
+        description: Optional caller-provided correlation identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      responses:
+        '200':
+          description: Runtime story detail with nodes, edges, and timeline items
+          headers:
+            x-correlation-id:
+              schema:
+                type: string
+              description: Correlation identifier shared across related work
+            x-request-id:
+              schema:
+                type: string
+              description: Request identifier for this HTTP request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminRuntimeStoryDetailResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Runtime story not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/runtime/summary:
     get:
       tags:
@@ -1155,6 +1303,150 @@ components:
         published:
           type: integer
           format: int64
+    AdminRuntimeStoryDetail:
+      type: object
+      required:
+      - summary
+      - nodes
+      - edges
+      - timeline_items
+      properties:
+        edges:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminRuntimeStoryEdge'
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminRuntimeStoryNode'
+        summary:
+          $ref: '#/components/schemas/AdminRuntimeStoryListItem'
+        timeline_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminRuntimeTimelineItem'
+    AdminRuntimeStoryDetailResponse:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/AdminRuntimeStoryDetail'
+    AdminRuntimeStoryEdge:
+      type: object
+      required:
+      - id
+      - source
+      - target
+      - type
+      properties:
+        id:
+          type: string
+        label:
+          type:
+          - string
+          - 'null'
+        source:
+          type: string
+        target:
+          type: string
+        type:
+          type: string
+    AdminRuntimeStoryListItem:
+      type: object
+      required:
+      - title
+      - correlation_id
+      - status
+      - duration
+      - node_count
+      - error_count
+      - services
+      - pattern
+      - created_at
+      - updated_at
+      properties:
+        correlation_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        duration:
+          type: integer
+          format: int64
+        error_count:
+          type: integer
+          minimum: 0
+        node_count:
+          type: integer
+          minimum: 0
+        pattern:
+          type: array
+          items:
+            type: string
+        root_error:
+          type:
+          - string
+          - 'null'
+        services:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+        title:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+    AdminRuntimeStoryListResponse:
+      type: object
+      required:
+      - data
+      - page
+      - order
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminRuntimeStoryListItem'
+        order:
+          type: string
+        page:
+          $ref: '#/components/schemas/PageInfo'
+    AdminRuntimeStoryNode:
+      type: object
+      required:
+      - id
+      - type
+      - name
+      - status
+      - service
+      - timestamp
+      - duration_ms
+      - metadata
+      properties:
+        duration_ms:
+          type: integer
+          format: int64
+        error:
+          type:
+          - string
+          - 'null'
+        id:
+          type: string
+        metadata: {}
+        name:
+          type: string
+        service:
+          type: string
+        status:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        type:
+          type: string
     AdminRuntimeSummaryItem:
       type: object
       required:

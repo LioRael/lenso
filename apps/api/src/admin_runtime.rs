@@ -20,6 +20,8 @@ pub fn router() -> Router<AppContext> {
             "/admin/runtime/timeline/{correlation_id}",
             get(get_timeline),
         )
+        .route("/admin/runtime/stories", get(list_stories))
+        .route("/admin/runtime/stories/{correlation_id}", get(get_story))
         .route("/admin/runtime/outbox", get(list_outbox))
         .route("/admin/runtime/outbox/{id}", get(get_outbox_event))
         .route("/admin/runtime/outbox/{id}/retry", post(retry_outbox_event))
@@ -49,6 +51,13 @@ pub struct FunctionRunQuery {
 
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct TimelineQuery {
+    pub limit: Option<i64>,
+    pub created_before: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct StoryQuery {
     pub limit: Option<i64>,
     pub created_before: Option<DateTime<Utc>>,
 }
@@ -91,6 +100,20 @@ pub struct AdminRuntimeTimelineResponse {
     pub data: Vec<AdminRuntimeTimelineItem>,
     pub page: PageInfo,
     pub order: &'static str,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(as = AdminRuntimeStoryListResponse)]
+pub struct AdminRuntimeStoryListResponse {
+    pub data: Vec<AdminRuntimeStoryListItem>,
+    pub page: PageInfo,
+    pub order: &'static str,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(as = AdminRuntimeStoryDetailResponse)]
+pub struct AdminRuntimeStoryDetailResponse {
+    pub data: AdminRuntimeStoryDetail,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -229,6 +252,53 @@ pub struct AdminRuntimeTimelineItem {
     pub correlation_id: String,
 }
 
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct AdminRuntimeStoryListItem {
+    pub title: String,
+    pub correlation_id: String,
+    pub status: String,
+    pub duration: i64,
+    pub node_count: usize,
+    pub error_count: usize,
+    pub services: Vec<String>,
+    pub pattern: Vec<String>,
+    pub root_error: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminRuntimeStoryDetail {
+    pub summary: AdminRuntimeStoryListItem,
+    pub nodes: Vec<AdminRuntimeStoryNode>,
+    pub edges: Vec<AdminRuntimeStoryEdge>,
+    pub timeline_items: Vec<AdminRuntimeTimelineItem>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct AdminRuntimeStoryNode {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub node_type: String,
+    pub name: String,
+    pub status: String,
+    pub service: String,
+    pub timestamp: DateTime<Utc>,
+    pub duration_ms: i64,
+    pub error: Option<String>,
+    pub metadata: Value,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminRuntimeStoryEdge {
+    pub id: String,
+    pub source: String,
+    pub target: String,
+    #[serde(rename = "type")]
+    pub edge_type: String,
+    pub label: Option<String>,
+}
+
 async fn get_summary(
     _admin: AdminActor,
     State(ctx): State<AppContext>,
@@ -284,6 +354,45 @@ async fn get_summary(
         functions,
         recent_activity,
         recent_failures,
+    }))
+}
+
+async fn list_stories(
+    _admin: AdminActor,
+    State(ctx): State<AppContext>,
+    HttpRequestContext(request_ctx): HttpRequestContext,
+    Query(query): Query<StoryQuery>,
+) -> Result<Json<AdminRuntimeStoryListResponse>, ApiErrorResponse> {
+    let limit = normalized_limit(query.limit);
+    let rows = fetch_story_rows(&ctx, &request_ctx, None, query.created_before, limit).await?;
+    let stories = build_story_summaries(rows);
+
+    Ok(Json(AdminRuntimeStoryListResponse {
+        page: page_info(limit, stories.last().map(|story| story.updated_at)),
+        data: stories,
+        order: "updated_at_desc",
+    }))
+}
+
+async fn get_story(
+    _admin: AdminActor,
+    State(ctx): State<AppContext>,
+    HttpRequestContext(request_ctx): HttpRequestContext,
+    Path(correlation_id): Path<String>,
+) -> Result<Json<AdminRuntimeStoryDetailResponse>, ApiErrorResponse> {
+    let rows = fetch_story_rows(&ctx, &request_ctx, Some(&correlation_id), None, MAX_LIMIT).await?;
+    if rows.is_empty() {
+        return Err(ApiErrorResponse::with_context(
+            AppError::new(
+                ErrorCode::NotFound,
+                format!("Runtime story {correlation_id} was not found"),
+            ),
+            &request_ctx,
+        ));
+    }
+
+    Ok(Json(AdminRuntimeStoryDetailResponse {
+        data: build_story_detail(rows),
     }))
 }
 
@@ -708,6 +817,39 @@ type SummaryItemRow = (
     Option<String>,
 );
 
+#[derive(Debug, Clone)]
+struct StoryWorkRow {
+    item_type: String,
+    id: String,
+    name: String,
+    status: String,
+    attempts: i32,
+    max_attempts: i32,
+    correlation_id: String,
+    causation_id: Option<String>,
+    service: String,
+    created_at: DateTime<Utc>,
+    started_at: Option<DateTime<Utc>>,
+    completed_at: Option<DateTime<Utc>>,
+    last_error: Option<String>,
+}
+
+type StoryWorkTuple = (
+    String,
+    String,
+    String,
+    String,
+    i32,
+    i32,
+    String,
+    Option<String>,
+    String,
+    DateTime<Utc>,
+    Option<DateTime<Utc>>,
+    Option<DateTime<Utc>>,
+    Option<String>,
+);
+
 impl From<OutboxAdminRow> for AdminOutboxEvent {
     fn from(row: OutboxAdminRow) -> Self {
         let (
@@ -979,6 +1121,65 @@ impl From<TimelineRow> for AdminRuntimeTimelineItem {
     }
 }
 
+impl From<StoryWorkTuple> for StoryWorkRow {
+    fn from(row: StoryWorkTuple) -> Self {
+        let (
+            item_type,
+            id,
+            name,
+            status,
+            attempts,
+            max_attempts,
+            correlation_id,
+            causation_id,
+            service,
+            created_at,
+            started_at,
+            completed_at,
+            last_error,
+        ) = row;
+
+        Self {
+            item_type,
+            id,
+            name,
+            status,
+            attempts,
+            max_attempts,
+            correlation_id,
+            causation_id,
+            service,
+            created_at,
+            started_at,
+            completed_at,
+            last_error,
+        }
+    }
+}
+
+impl From<&StoryWorkRow> for AdminRuntimeTimelineItem {
+    fn from(row: &StoryWorkRow) -> Self {
+        Self {
+            item_type: match row.item_type.as_str() {
+                "event" => "outbox_event",
+                "function" => "function_run",
+                other => other,
+            }
+            .to_owned(),
+            id: row.id.clone(),
+            name: row.name.clone(),
+            status: row.status.clone(),
+            attempts: row.attempts,
+            max_attempts: row.max_attempts,
+            created_at: row.created_at,
+            started_at: row.started_at,
+            completed_at: row.completed_at,
+            last_error: row.last_error.clone(),
+            correlation_id: row.correlation_id.clone(),
+        }
+    }
+}
+
 async fn fetch_outbox_event(
     ctx: &AppContext,
     request_ctx: &platform_core::RequestContext,
@@ -1193,6 +1394,281 @@ async fn fetch_summary_items(
     .map_err(|source| query_error(source, request_ctx))?;
 
     Ok(rows.into_iter().map(Into::into).collect())
+}
+
+async fn fetch_story_rows(
+    ctx: &AppContext,
+    request_ctx: &platform_core::RequestContext,
+    correlation_id: Option<&str>,
+    created_before: Option<DateTime<Utc>>,
+    limit: i64,
+) -> Result<Vec<StoryWorkRow>, ApiErrorResponse> {
+    let rows = sqlx::query_as::<_, StoryWorkTuple>(
+        r#"
+        with story_keys as (
+            select correlation_id, max(created_at) as updated_at
+            from (
+                select correlation_id, created_at
+                from platform.outbox
+                where ($1::text is null or correlation_id = $1)
+                  and ($2::timestamptz is null or created_at < $2)
+
+                union all
+
+                select correlation_id, created_at
+                from runtime.function_runs
+                where ($1::text is null or correlation_id = $1)
+                  and ($2::timestamptz is null or created_at < $2)
+            ) story_items
+            group by correlation_id
+            order by updated_at desc, correlation_id asc
+            limit $3
+        )
+        select *
+        from (
+            select
+                'event'::text as item_type,
+                id,
+                event_name as name,
+                status,
+                attempts,
+                max_attempts,
+                correlation_id,
+                causation_id,
+                source_module as service,
+                created_at,
+                locked_at as started_at,
+                published_at as completed_at,
+                last_error
+            from platform.outbox
+            where correlation_id in (select correlation_id from story_keys)
+
+            union all
+
+            select
+                'function'::text as item_type,
+                id,
+                function_name as name,
+                status,
+                attempts,
+                max_attempts,
+                correlation_id,
+                null::text as causation_id,
+                split_part(function_name, '.', 1) as service,
+                created_at,
+                coalesce(started_at, locked_at) as started_at,
+                completed_at,
+                last_error
+            from runtime.function_runs
+            where correlation_id in (select correlation_id from story_keys)
+        ) story_rows
+        order by correlation_id asc, created_at asc, item_type asc, id asc
+        "#,
+    )
+    .bind(correlation_id)
+    .bind(created_before)
+    .bind(limit)
+    .fetch_all(&ctx.db)
+    .await
+    .map_err(|source| query_error(source, request_ctx))?;
+
+    Ok(rows.into_iter().map(Into::into).collect())
+}
+
+fn build_story_summaries(rows: Vec<StoryWorkRow>) -> Vec<AdminRuntimeStoryListItem> {
+    let mut grouped: Vec<(String, Vec<StoryWorkRow>)> = Vec::new();
+    for row in rows {
+        if let Some((_, items)) = grouped
+            .iter_mut()
+            .find(|(correlation_id, _)| correlation_id == &row.correlation_id)
+        {
+            items.push(row);
+        } else {
+            grouped.push((row.correlation_id.clone(), vec![row]));
+        }
+    }
+
+    let mut summaries: Vec<AdminRuntimeStoryListItem> = grouped
+        .into_iter()
+        .map(|(_, items)| build_story_summary(&items))
+        .collect();
+    summaries.sort_by(|left, right| {
+        right
+            .updated_at
+            .cmp(&left.updated_at)
+            .then_with(|| left.correlation_id.cmp(&right.correlation_id))
+    });
+    summaries
+}
+
+fn build_story_detail(rows: Vec<StoryWorkRow>) -> AdminRuntimeStoryDetail {
+    let summary = build_story_summary(&rows);
+    let nodes: Vec<AdminRuntimeStoryNode> = rows.iter().map(build_story_node).collect();
+    let edges = build_story_edges(&rows);
+    let timeline_items = rows.iter().map(Into::into).collect();
+
+    AdminRuntimeStoryDetail {
+        summary,
+        nodes,
+        edges,
+        timeline_items,
+    }
+}
+
+fn build_story_summary(rows: &[StoryWorkRow]) -> AdminRuntimeStoryListItem {
+    let created_at = rows
+        .iter()
+        .map(|row| row.created_at)
+        .min()
+        .unwrap_or_else(Utc::now);
+    let updated_at = rows
+        .iter()
+        .map(story_row_end_timestamp)
+        .max()
+        .unwrap_or(created_at);
+    let services = rows.iter().fold(Vec::new(), |mut services, row| {
+        if !services.contains(&row.service) {
+            services.push(row.service.clone());
+        }
+        services
+    });
+    let pattern = collapse_story_pattern(rows.iter().map(|row| row.item_type.clone()));
+    let duration_ms = updated_at
+        .signed_duration_since(created_at)
+        .num_milliseconds()
+        .max(0);
+
+    AdminRuntimeStoryListItem {
+        title: rows
+            .first()
+            .map(|row| row.name.clone())
+            .unwrap_or_else(|| "Runtime Story".to_owned()),
+        correlation_id: rows
+            .first()
+            .map(|row| row.correlation_id.clone())
+            .unwrap_or_default(),
+        status: story_status(rows).to_owned(),
+        duration: duration_ms,
+        node_count: rows.len(),
+        error_count: rows
+            .iter()
+            .filter(|row| matches!(row.status.as_str(), "failed" | "dead"))
+            .count(),
+        services,
+        pattern,
+        root_error: story_root_error(rows),
+        created_at,
+        updated_at,
+    }
+}
+
+fn build_story_node(row: &StoryWorkRow) -> AdminRuntimeStoryNode {
+    AdminRuntimeStoryNode {
+        id: row.id.clone(),
+        node_type: row.item_type.clone(),
+        name: row.name.clone(),
+        status: row.status.clone(),
+        service: row.service.clone(),
+        timestamp: row.created_at,
+        duration_ms: row_duration_ms(row),
+        error: row.last_error.clone(),
+        metadata: serde_json::json!({
+            "attempts": row.attempts,
+            "max_attempts": row.max_attempts,
+            "correlation_id": row.correlation_id,
+            "causation_id": row.causation_id,
+        }),
+    }
+}
+
+fn build_story_edges(rows: &[StoryWorkRow]) -> Vec<AdminRuntimeStoryEdge> {
+    let ids = rows
+        .iter()
+        .map(|row| row.id.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+
+    rows.windows(2)
+        .filter_map(|window| {
+            let [previous, current] = window else {
+                return None;
+            };
+            let causal_source = current
+                .causation_id
+                .as_deref()
+                .filter(|causation_id| ids.contains(causation_id));
+            let (source, edge_type) = causal_source
+                .map(|source| (source.to_owned(), "causation"))
+                .unwrap_or_else(|| (previous.id.clone(), "sequence"));
+
+            Some(AdminRuntimeStoryEdge {
+                id: format!("{source}:{}:{edge_type}", current.id),
+                source,
+                target: current.id.clone(),
+                edge_type: edge_type.to_owned(),
+                label: None,
+            })
+        })
+        .collect()
+}
+
+fn collapse_story_pattern(types: impl IntoIterator<Item = String>) -> Vec<String> {
+    let mut pattern = Vec::new();
+    for node_type in types {
+        if pattern.last() != Some(&node_type) {
+            pattern.push(node_type);
+        }
+    }
+    pattern
+}
+
+fn story_status(rows: &[StoryWorkRow]) -> &'static str {
+    if rows.iter().any(|row| row.status == "dead") {
+        return "dead";
+    }
+    if rows.iter().any(|row| row.status == "failed") {
+        return "failed";
+    }
+    if rows
+        .iter()
+        .any(|row| matches!(row.status.as_str(), "processing" | "running"))
+    {
+        return "running";
+    }
+    if rows
+        .iter()
+        .all(|row| matches!(row.status.as_str(), "published" | "completed"))
+    {
+        return "completed";
+    }
+    "pending"
+}
+
+fn story_root_error(rows: &[StoryWorkRow]) -> Option<String> {
+    rows.iter()
+        .filter(|row| matches!(row.status.as_str(), "failed" | "dead"))
+        .min_by_key(|row| row.created_at)
+        .map(|row| {
+            let error = row
+                .last_error
+                .clone()
+                .unwrap_or_else(|| format!("{} runtime work", row.status));
+            format!("{}: {error}", row.name)
+        })
+}
+
+fn story_row_end_timestamp(row: &StoryWorkRow) -> DateTime<Utc> {
+    row.completed_at.unwrap_or(row.created_at)
+}
+
+fn row_duration_ms(row: &StoryWorkRow) -> i64 {
+    let Some(started_at) = row.started_at else {
+        return 0;
+    };
+    row.completed_at
+        .unwrap_or(started_at)
+        .signed_duration_since(started_at)
+        .num_milliseconds()
+        .max(0)
 }
 
 fn runtime_status(

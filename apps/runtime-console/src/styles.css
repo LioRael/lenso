@@ -374,6 +374,59 @@ a {
   --status-text: #be123c;
 }
 
+.trace-status-badge {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--trace-status) 9%, transparent),
+      transparent
+    ),
+    color-mix(in srgb, var(--trace-status) 7%, var(--surface));
+  border-color: color-mix(
+    in srgb,
+    var(--trace-status) 34%,
+    var(--border-subtle)
+  );
+  box-shadow: inset 2px 0 0
+    color-mix(in srgb, var(--trace-status) 72%, transparent);
+  color: var(--trace-status-text);
+}
+
+.trace-status-pending {
+  --trace-status: var(--muted);
+  --trace-status-text: var(--secondary);
+}
+
+.trace-status-processing,
+.trace-status-running {
+  --trace-status: var(--accent);
+  --trace-status-text: color-mix(in srgb, var(--accent) 86%, var(--foreground));
+}
+
+.trace-status-published,
+.trace-status-completed {
+  --trace-status: var(--success);
+  --trace-status-text: color-mix(
+    in srgb,
+    var(--success) 78%,
+    var(--foreground)
+  );
+}
+
+.trace-status-failed {
+  --trace-status: var(--warning);
+  --trace-status-text: color-mix(
+    in srgb,
+    var(--warning) 82%,
+    var(--foreground)
+  );
+}
+
+.trace-status-dead {
+  --trace-status: var(--error);
+  --trace-status-text: color-mix(in srgb, var(--error) 78%, var(--foreground));
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

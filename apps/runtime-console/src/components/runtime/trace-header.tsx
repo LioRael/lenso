@@ -5,7 +5,7 @@ import { cn } from "../../lib/cn";
 import { buildRuntimeStory } from "../../lib/story";
 import { formatTraceDuration } from "../../lib/trace-style";
 import { HorizontalScrollArea } from "./horizontal-tab-scroll";
-import { StatusPill } from "./status-pill";
+import { TraceStatusBadge } from "./trace-status-badge";
 
 export function TraceHeader({
   onClose,
@@ -27,7 +27,7 @@ export function TraceHeader({
             <h1 className="min-w-0 truncate text-[16px] font-semibold leading-tight text-(--foreground)">
               {story.title}
             </h1>
-            <StatusPill status={story.status} />
+            <TraceStatusBadge status={story.status} />
           </div>
           <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 font-mono text-[10px] text-(--secondary)">
             <Metric icon={<Clock size={10} />} tone="accent">
