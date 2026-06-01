@@ -99,7 +99,7 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
   const openTimeline = useCallback(
     (nextCorrelationId: string) => {
       setActiveCorrelationId(nextCorrelationId);
-      void navigate({ to: "/timeline" });
+      void navigate({ to: "/runtime/traces" });
     },
     [navigate]
   );
@@ -205,7 +205,7 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
           kind: "correlation",
           id,
           title: id,
-          subtitle: "Open correlation timeline",
+          subtitle: "Open correlation in Traces",
           correlationId: id,
         }));
 

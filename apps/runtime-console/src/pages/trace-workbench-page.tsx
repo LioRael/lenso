@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 
+import { ResizeHandle } from "../components/runtime/resize-handle";
 import { useRuntimeConsole } from "../components/runtime/runtime-console-context";
 import { ServiceSummaryStrip } from "../components/runtime/service-summary-strip";
+import { TraceHeader } from "../components/runtime/trace-header";
 import { TraceInspector } from "../components/runtime/trace-inspector";
 import { TraceList } from "../components/runtime/trace-list";
 import type { TraceViewMode } from "../components/runtime/trace-tabs";
@@ -12,8 +14,8 @@ import {
   type TraceSpan,
 } from "../data/mock-runtime";
 import { useListKeyboard } from "../hooks/use-list-keyboard";
+import { usePersistedLayout } from "../hooks/use-persisted-layout";
 import { useRuntimeTraces } from "../hooks/use-runtime-queries";
-import { time } from "../lib/format";
 
 type InspectorTab =
   | "info"
@@ -24,6 +26,14 @@ type InspectorTab =
   | "context";
 
 const emptyTraces: TraceRun[] = [];
+const traceLayoutDefaults = {
+  inspectorWidth: 376,
+  listWidth: 340,
+};
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
 
 export function TraceWorkbenchPage() {
   const { activeTraceTarget, openRetry } = useRuntimeConsole();
@@ -32,8 +42,13 @@ export function TraceWorkbenchPage() {
   const [query, setQuery] = useState("");
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
   const [selectedSpanId, setSelectedSpanId] = useState<string | null>(null);
-  const [mode, setMode] = useState<TraceViewMode>("waterfall");
+  const [mode, setMode] = useState<TraceViewMode>("heatmap");
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("info");
+  const [layout, setLayout, resetLayout] = usePersistedLayout(
+    "runtime-console:traces-layout",
+    traceLayoutDefaults
+  );
+  const traceLayout = { ...traceLayoutDefaults, ...layout };
 
   const visibleTraces = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -60,11 +75,10 @@ export function TraceWorkbenchPage() {
     visibleTraces[0] ??
     null;
   const selectedSpan =
-    selectedTrace?.spans.find(
-      (span) => span.id === (activeTraceTarget?.spanId ?? selectedSpanId)
-    ) ??
-    selectedTrace?.spans[0] ??
-    null;
+    selectedTrace?.spans.find((span) => {
+      const targetSpanId = activeTraceTarget?.spanId ?? selectedSpanId;
+      return targetSpanId ? span.id === targetSpanId : false;
+    }) ?? null;
   const selectedTraceIndex = Math.max(
     0,
     visibleTraces.findIndex((trace) => trace.id === selectedTrace?.id)
@@ -72,8 +86,30 @@ export function TraceWorkbenchPage() {
 
   const selectTrace = (trace: TraceRun) => {
     setSelectedTraceId(trace.id);
-    setSelectedSpanId(trace.spans[0]?.id ?? null);
+    setSelectedSpanId(null);
     setInspectorTab("info");
+  };
+
+  const resizeTraceList = (deltaX: number) => {
+    setLayout((current) => ({
+      ...current,
+      listWidth: clamp(
+        (current.listWidth ?? traceLayoutDefaults.listWidth) + deltaX,
+        220,
+        420
+      ),
+    }));
+  };
+
+  const resizeInspector = (deltaX: number) => {
+    setLayout((current) => ({
+      ...current,
+      inspectorWidth: clamp(
+        (current.inspectorWidth ?? traceLayoutDefaults.inspectorWidth) - deltaX,
+        320,
+        560
+      ),
+    }));
   };
 
   const selectSpan = (span: TraceSpan) => {
@@ -127,8 +163,13 @@ export function TraceWorkbenchPage() {
   }
 
   return (
-    <div className="h-[calc(100vh-68px)] overflow-hidden border border-white/10 bg-[#050609] shadow-2xl shadow-black/40">
-      <div className="grid h-full grid-cols-[318px_minmax(0,1fr)_374px] max-xl:grid-cols-[280px_minmax(0,1fr)] max-lg:grid-cols-1">
+    <div className="h-full overflow-hidden bg-black text-[#f4f4f4]">
+      <div
+        className="grid h-full min-w-0 overflow-hidden"
+        style={{
+          gridTemplateColumns: `${traceLayout.listWidth}px 4px minmax(0,1fr) 4px ${traceLayout.inspectorWidth}px`,
+        }}
+      >
         <TraceList
           onSelect={selectTrace}
           query={query}
@@ -137,33 +178,14 @@ export function TraceWorkbenchPage() {
           traces={visibleTraces}
         />
 
-        <main className="grid min-h-0 grid-rows-[48px_minmax(0,1fr)_auto]">
-          <header className="border-b border-white/10 bg-[#07080a] px-2.5 py-2">
-            <div className="flex items-center justify-between gap-4">
-              <div className="min-w-0">
-                <div className="truncate font-mono text-xs text-slate-100">
-                  {selectedTrace.name}
-                </div>
-                <div className="mt-1 truncate font-mono text-[10px] text-slate-600">
-                  {selectedTrace.id} · {selectedTrace.correlationId} ·{" "}
-                  {time(selectedTrace.timestamp)}
-                </div>
-              </div>
-              <div className="flex items-center gap-3 font-mono text-[10px] text-slate-500">
-                <span>{selectedTrace.durationMs}ms</span>
-                <span>{selectedTrace.spans.length} spans</span>
-                <span
-                  className={
-                    isRetryable(selectedTrace.status)
-                      ? "text-rose-300"
-                      : "text-cyan-300"
-                  }
-                >
-                  {selectedTrace.status}
-                </span>
-              </div>
-            </div>
-          </header>
+        <ResizeHandle
+          ariaLabel="Resize trace list panel"
+          onReset={resetLayout}
+          onResize={resizeTraceList}
+        />
+
+        <main className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden border-r border-[#1d1d1d]">
+          <TraceHeader onSelectSpan={selectSpan} trace={selectedTrace} />
 
           <TraceVisualization
             mode={mode}
@@ -176,9 +198,19 @@ export function TraceWorkbenchPage() {
           <ServiceSummaryStrip trace={selectedTrace} />
         </main>
 
-        <div className="max-xl:hidden">
+        <ResizeHandle
+          ariaLabel="Resize trace inspector panel"
+          onReset={resetLayout}
+          onResize={resizeInspector}
+        />
+
+        <div className="relative z-0 min-h-0 min-w-0 overflow-hidden">
           <TraceInspector
             activeTab={inspectorTab}
+            onClearSelection={() => {
+              setSelectedSpanId(null);
+              setInspectorTab("info");
+            }}
             selectedSpan={selectedSpan}
             setActiveTab={setInspectorTab}
             trace={selectedTrace}

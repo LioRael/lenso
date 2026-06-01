@@ -1,7 +1,12 @@
-import { RotateCcw } from "lucide-react";
+import { ArrowRight, Copy, RotateCcw, X } from "lucide-react";
 
 import type { TraceRun, TraceSpan } from "../../data/mock-runtime";
 import { cn } from "../../lib/cn";
+import {
+  formatTraceDuration,
+  serviceColor,
+  statusColor,
+} from "../../lib/trace-style";
 import { JsonViewer } from "./json-viewer";
 import { useRuntimeConsole } from "./runtime-console-context";
 
@@ -24,6 +29,7 @@ const tabs: InspectorTab[] = [
 
 export function TraceInspector({
   activeTab,
+  onClearSelection,
   selectedSpan,
   setActiveTab,
   trace,
@@ -31,40 +37,163 @@ export function TraceInspector({
   trace: TraceRun;
   selectedSpan: TraceSpan | null;
   activeTab: InspectorTab;
+  onClearSelection: () => void;
   setActiveTab: (tab: InspectorTab) => void;
 }) {
-  const span = selectedSpan ?? trace.spans[0] ?? null;
+  const span = selectedSpan;
+  const parent = span?.parentId
+    ? trace.spans.find((item) => item.id === span.parentId)
+    : null;
+  const breadcrumb = span ? buildBreadcrumb(trace, span) : [];
+  const childCount = span
+    ? trace.spans.filter((item) => item.parentId === span.id).length
+    : 0;
 
   return (
-    <aside className="min-h-0 border-l border-white/10 bg-[#07080a]">
-      <div className="border-b border-white/10 px-2.5 py-2">
-        <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-slate-600">
-          inspector
+    <aside className="grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_auto_minmax(0,1fr)] overflow-hidden border-l border-[#1d1d1d] bg-[#080808]">
+      <div className="border-b border-[#1d1d1d] bg-[#0a0a0a]">
+        <div className="flex items-start gap-2 px-3 py-2">
+          <div className="min-w-0 flex-1">
+            <div className="mb-1 flex items-center gap-1.5">
+              <span
+                className={cn(
+                  "rounded-[2px] border px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.12em]",
+                  span
+                    ? "border-[#1d1d1d] bg-[#111111] text-[#f3f724]"
+                    : "border-[#1d1d1d] bg-black text-[#5b5b5b]"
+                )}
+              >
+                {span ? typeLabel(span) : "Inspector"}
+              </span>
+              {span ? (
+                <span
+                  className="rounded-[2px] border px-1.5 py-0.5 font-mono text-[9px] font-medium uppercase tracking-wide"
+                  style={{
+                    backgroundColor: `${serviceColor(span.service)}14`,
+                    borderColor: `${serviceColor(span.service)}28`,
+                    color: serviceColor(span.service),
+                  }}
+                >
+                  {span.service}
+                </span>
+              ) : null}
+            </div>
+            <h2 className="truncate font-mono text-[13px] font-semibold leading-tight text-[#f4f4f4]">
+              {span?.name ?? "No runtime item selected"}
+            </h2>
+          </div>
+          <button
+            aria-label="Clear inspector selection"
+            className="grid size-6 flex-shrink-0 place-items-center rounded-[2px] border border-[#1d1d1d] bg-[#111111] text-[#5b5b5b] transition hover:text-[#f4f4f4]"
+            disabled={!span}
+            onClick={onClearSelection}
+            type="button"
+          >
+            <X size={13} />
+          </button>
         </div>
-        <div className="mt-1 truncate font-mono text-xs text-slate-200">
-          {span?.name ?? trace.name}
-        </div>
+
+        {span ? (
+          <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-2 border-t border-[#1d1d1d] px-3 py-1.5 font-mono text-[10px] text-[#5b5b5b]">
+            <button className="group flex min-w-0 items-center gap-1 text-left transition hover:text-[#9ca3af]">
+              <span className="truncate">{span.id.slice(0, 16)}</span>
+              <Copy className="size-2.5 opacity-0 transition group-hover:opacity-100" />
+            </button>
+            <span className="text-[#f3f724]">
+              {formatTraceDuration(span.durationMs)}
+            </span>
+            <span
+              className="rounded-[2px] border px-1.5 py-0.5 uppercase"
+              style={{
+                borderColor: `${statusColor(span.status)}40`,
+                color: statusColor(span.status),
+              }}
+            >
+              {span.status}
+            </span>
+            <span>{childCount} children</span>
+          </div>
+        ) : null}
       </div>
-      <div className="flex h-7 border-b border-white/10">
+
+      <div className="border-b border-[#1d1d1d] bg-black px-3 py-1.5">
+        {span ? (
+          <div className="flex min-w-0 items-center gap-1.5 overflow-hidden font-mono text-[10px] text-[#5b5b5b]">
+            <span className="flex-shrink-0 text-[#3d3d3d]">path</span>
+            {breadcrumb.map((item, index) => (
+              <span className="flex min-w-0 items-center gap-1.5" key={item.id}>
+                {index > 0 ? (
+                  <ArrowRight className="size-3 flex-shrink-0 text-[#3d3d3d]" />
+                ) : null}
+                <span
+                  className={cn(
+                    "truncate",
+                    item.id === span.id ? "text-[#f4f4f4]" : "text-[#9ca3af]"
+                  )}
+                  title={item.name}
+                >
+                  {item.name}
+                </span>
+              </span>
+            ))}
+            {parent ? (
+              <span className="ml-auto flex-shrink-0 text-[#5b5b5b]">
+                {formatTraceDuration(parent.durationMs)}
+              </span>
+            ) : null}
+          </div>
+        ) : (
+          <div className="font-mono text-[10px] text-[#3d3d3d]">
+            select a span from the workbench to inspect runtime context
+          </div>
+        )}
+      </div>
+
+      <div className="flex h-8 border-b border-[#1d1d1d] bg-[#0a0a0a] px-2 pt-1">
         {tabs.map((tab) => (
           <button
             className={cn(
-              "border-r border-white/10 px-2 font-mono text-[10px] text-slate-600 hover:bg-white/[0.04] hover:text-slate-300",
-              activeTab === tab && "bg-cyan-300/[0.06] text-cyan-200"
+              "border border-transparent border-b-0 px-2 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-[#5b5b5b] transition hover:bg-[#111111] hover:text-[#f4f4f4]",
+              activeTab === tab &&
+                "border-[#1d1d1d] bg-[#111111] text-[#f3f724]"
             )}
+            disabled={!span}
             key={tab}
             onClick={() => setActiveTab(tab)}
+            type="button"
           >
             {tab}
           </button>
         ))}
       </div>
-      <div className="h-[calc(100%-68px)] overflow-auto p-2.5">
+
+      <div className="min-h-0 overflow-auto bg-black">
         {span ? (
           <InspectorBody activeTab={activeTab} span={span} trace={trace} />
         ) : (
-          <div className="font-mono text-xs text-slate-600">
-            no span selected
+          <div className="p-3 font-mono">
+            <div className="border-y border-[#1d1d1d]">
+              {[
+                ["status", "-"],
+                ["duration", "-"],
+                ["service", "-"],
+                ["kind", "-"],
+                ["trace", trace.id.slice(0, 16)],
+              ].map(([label, value]) => (
+                <div
+                  className="grid grid-cols-[92px_minmax(0,1fr)] border-b border-[#1d1d1d] text-[11px] last:border-b-0"
+                  key={label}
+                >
+                  <div className="bg-[#080808] px-3 py-1.5 text-[#3d3d3d]">
+                    {label}
+                  </div>
+                  <div className="px-3 py-1.5 text-[#5b5b5b]">{value}</div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 text-[10px] leading-5 text-[#3d3d3d]">
+              select a bar, bucket, segment, or node to inspect runtime detail.
+            </div>
           </div>
         )}
       </div>
@@ -85,32 +214,26 @@ function InspectorBody({
 
   if (activeTab === "info") {
     return (
-      <div className="grid gap-3 font-mono text-[11px]">
-        <dl className="grid grid-cols-[86px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-slate-600">
-          <dt>trace</dt>
-          <dd className="truncate text-slate-300">{trace.id}</dd>
-          <dt>span</dt>
-          <dd className="truncate text-slate-300">{span.id}</dd>
-          <dt>service</dt>
-          <dd className="text-slate-300">{span.service}</dd>
-          <dt>kind</dt>
-          <dd className="text-slate-300">{span.kind}</dd>
-          <dt>status</dt>
-          <dd
-            className={
-              span.status === "failed" || span.status === "dead"
-                ? "text-rose-300"
-                : "text-cyan-300"
-            }
-          >
-            {span.status}
-          </dd>
-          <dt>duration</dt>
-          <dd className="text-slate-300">{span.durationMs}ms</dd>
-        </dl>
+      <div className="grid gap-3 p-3 font-mono text-[11px]">
+        <KeyValueTable
+          rows={[
+            ["status", span.status],
+            ["duration", formatTraceDuration(span.durationMs)],
+            ["service", span.service],
+            ["kind", span.kind],
+            ["start", formatTraceDuration(span.startMs)],
+            ["end", formatTraceDuration(span.startMs + span.durationMs)],
+            ["attempts", `${span.attempts ?? 1}/${span.maxAttempts ?? 1}`],
+            ["correlation_id", trace.correlationId],
+            [
+              "causation_id",
+              String(span.context.causation_id ?? parentId(span) ?? "-"),
+            ],
+          ]}
+        />
         {span.retryable ? (
           <button
-            className="inline-flex h-7 w-fit items-center gap-2 border border-rose-300/30 bg-rose-300/10 px-2 text-[11px] text-rose-100 hover:bg-rose-300/15"
+            className="inline-flex h-7 w-fit items-center gap-2 rounded-[2px] border border-[#ef4444]/35 bg-[#ef4444]/10 px-2 font-mono text-[10px] text-[#f4f4f4] hover:bg-[#ef4444]/15"
             onClick={() =>
               openRetry({
                 attempts: span.attempts ?? 1,
@@ -126,36 +249,205 @@ function InspectorBody({
             Retry runtime item
           </button>
         ) : null}
-        {span.payload ? (
-          <JsonViewer defaultExpanded title="Payload" value={span.payload} />
-        ) : null}
       </div>
     );
   }
 
   if (activeTab === "attributes") {
-    return (
-      <JsonViewer defaultExpanded title="Attributes" value={span.attributes} />
-    );
+    return <KeyValueTable rows={objectRows(span.attributes)} />;
   }
 
   if (activeTab === "events") {
-    return <JsonViewer defaultExpanded title="Events" value={span.events} />;
+    return <EventList span={span} />;
   }
 
   if (activeTab === "errors") {
-    const errors =
-      span.status === "failed" || span.status === "dead" ? span.logs : [];
-    return <JsonViewer defaultExpanded title="Errors" value={errors} />;
+    return <ErrorPanel span={span} />;
   }
 
   if (activeTab === "logs") {
-    return (
-      <pre className="font-mono text-[11px] leading-5 text-slate-300">
-        {span.logs.join("\n")}
-      </pre>
-    );
+    return <LogList span={span} />;
   }
 
-  return <JsonViewer defaultExpanded title="Context" value={span.context} />;
+  return (
+    <div className="grid gap-3 p-3">
+      <JsonViewer
+        defaultExpanded
+        title="payload / input"
+        value={span.payload ?? {}}
+      />
+      <JsonViewer
+        defaultExpanded
+        title="actor / trace context"
+        value={{
+          actor: span.context.actor ?? trace.service,
+          headers: span.context.headers ?? {},
+          trace_context: {
+            correlation_id: trace.correlationId,
+            parent_id: span.parentId ?? null,
+            span_id: span.id,
+            trace_id: trace.id,
+          },
+          ...span.context,
+        }}
+      />
+    </div>
+  );
+}
+
+function KeyValueTable({ rows }: { rows: Array<[string, unknown]> }) {
+  if (rows.length === 0) {
+    return <EmptyRows label="no attributes" />;
+  }
+
+  return (
+    <div className="border-y border-[#1d1d1d] font-mono text-[11px]">
+      {rows.map(([key, value]) => (
+        <div
+          className="grid grid-cols-[112px_minmax(0,1fr)] border-b border-[#1d1d1d] last:border-b-0"
+          key={key}
+        >
+          <div className="bg-[#080808] px-3 py-1.5 text-[#5b5b5b]">{key}</div>
+          <div className="min-w-0 break-words px-3 py-1.5 text-[#9ca3af]">
+            {formatCell(value)}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EventList({ span }: { span: TraceSpan }) {
+  if (span.events.length === 0) {
+    return <EmptyRows label="no events" />;
+  }
+  return (
+    <div className="font-mono text-[11px]">
+      {span.events.map((event) => (
+        <div
+          className="grid grid-cols-[58px_minmax(0,1fr)] gap-2 border-b border-[#1d1d1d] px-3 py-2"
+          key={`${event.name}-${event.timestampMs}`}
+        >
+          <span className="text-[#5b5b5b]">
+            +{formatTraceDuration(event.timestampMs)}
+          </span>
+          <div className="min-w-0">
+            <div className="truncate text-[#f4f4f4]">{event.name}</div>
+            <div className="truncate text-[10px] text-[#5b5b5b]">
+              {event.attributes
+                ? JSON.stringify(event.attributes)
+                : "payload -"}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ErrorPanel({ span }: { span: TraceSpan }) {
+  const isError = span.status === "failed" || span.status === "dead";
+  return (
+    <div className="grid gap-3 p-3 font-mono text-[11px]">
+      <KeyValueTable
+        rows={[
+          ["error_code", isError ? span.status : "-"],
+          ["message", isError ? (span.logs.at(-1) ?? "runtime error") : "-"],
+          ["stack / last_error", isError ? span.logs.join("\n") : "-"],
+          ["retryability", span.retryable ? "retryable" : "not retryable"],
+        ]}
+      />
+    </div>
+  );
+}
+
+function LogList({ span }: { span: TraceSpan }) {
+  if (span.logs.length === 0) {
+    return <EmptyRows label="no logs" />;
+  }
+  return (
+    <div className="font-mono text-[11px]">
+      {span.logs.map((log, index) => (
+        <div
+          className="grid grid-cols-[44px_54px_minmax(0,1fr)] gap-2 border-b border-[#1d1d1d] px-3 py-1.5"
+          key={`${log}-${index}`}
+        >
+          <span className="text-[#5b5b5b]">
+            +{formatTraceDuration(span.startMs + index * 12)}
+          </span>
+          <span
+            className={cn(
+              "uppercase",
+              span.status === "failed" || span.status === "dead"
+                ? "text-[#ef4444]"
+                : "text-[#22c55e]"
+            )}
+          >
+            {span.status === "failed" || span.status === "dead"
+              ? "error"
+              : "info"}
+          </span>
+          <span className="min-w-0 truncate text-[#9ca3af]">{log}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EmptyRows({ label }: { label: string }) {
+  return (
+    <div className="p-4 font-mono text-[11px] text-[#5b5b5b]">{label}</div>
+  );
+}
+
+function objectRows(value: Record<string, unknown>) {
+  return Object.entries(value).sort(([left], [right]) =>
+    left.localeCompare(right)
+  );
+}
+
+function formatCell(value: unknown) {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (value === null || value === undefined) {
+    return "-";
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return JSON.stringify(value);
+}
+
+function buildBreadcrumb(trace: TraceRun, span: TraceSpan) {
+  const path: TraceSpan[] = [];
+  let current: TraceSpan | undefined = span;
+  while (current) {
+    path.unshift(current);
+    const currentParentId: string | undefined = current.parentId;
+    current = currentParentId
+      ? trace.spans.find((item) => item.id === currentParentId)
+      : undefined;
+  }
+  return path;
+}
+
+function typeLabel(span: TraceSpan) {
+  if (span.kind === "external") {
+    return "provider";
+  }
+  if (span.kind === "function") {
+    return "function";
+  }
+  if (span.kind === "http") {
+    return "http";
+  }
+  if (span.kind === "event") {
+    return "event";
+  }
+  return "span";
+}
+
+function parentId(span: TraceSpan) {
+  return span.parentId ?? null;
 }

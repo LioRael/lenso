@@ -42,28 +42,16 @@ export function CommandPalette() {
         title: "Go to Traces",
       },
       {
-        action: () => void navigate({ to: "/events" }),
-        id: "events",
-        subtitle: "Outbox event stream",
-        title: "Go to Events",
-      },
-      {
-        action: () => void navigate({ to: "/functions" }),
-        id: "functions",
-        subtitle: "Function run explorer",
-        title: "Go to Functions",
-      },
-      {
-        action: () => openTimeline(correlationId),
-        id: "timeline",
-        subtitle: correlationId,
-        title: "Go to Timeline",
-      },
-      {
         action: () => void navigate({ to: "/dead-letters" }),
         id: "dead",
         subtitle: "Failure inbox",
         title: "Go to Dead Letters",
+      },
+      {
+        action: () => void navigate({ to: "/queues" }),
+        id: "queues",
+        subtitle: "Queue pressure",
+        title: "Go to Queues",
       },
       {
         action: () => void navigate({ to: "/overview" }),
@@ -72,10 +60,13 @@ export function CommandPalette() {
         title: "Go to Overview",
       },
       {
-        action: focusGlobalSearch,
+        action: () => {
+          openTimeline(correlationId);
+          focusGlobalSearch();
+        },
         id: "search",
-        subtitle: "Focus global runtime search",
-        title: "Search correlation ID",
+        subtitle: "Correlation search now lives in Traces",
+        title: "Search in Traces",
       },
       {
         action: closeCommandPalette,

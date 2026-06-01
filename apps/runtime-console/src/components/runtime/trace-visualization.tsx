@@ -20,9 +20,9 @@ export function TraceVisualization({
   onSelectSpan: (span: TraceSpan) => void;
 }) {
   return (
-    <section className="min-h-0 bg-[#050609]">
+    <section className="isolate grid h-full min-h-0 min-w-0 grid-rows-[32px_minmax(0,1fr)] overflow-hidden">
       <TraceTabs mode={mode} onChange={setMode} />
-      <div className="h-[calc(100%-29px)]">
+      <div className="min-h-0 min-w-0 overflow-hidden">
         {mode === "waterfall" ? (
           <WaterfallView
             onSelectSpan={onSelectSpan}

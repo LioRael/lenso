@@ -1,17 +1,18 @@
 import { RotateCcw, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { JsonViewer } from "../components/runtime/json-viewer";
+import { ResizeHandle } from "../components/runtime/resize-handle";
 import { useRuntimeConsole } from "../components/runtime/runtime-console-context";
 import { StatusPill } from "../components/runtime/status-pill";
 import { Button } from "../components/ui/button";
-import { EmptyState as EmptyStateView } from "../components/ui/empty-state";
-import { Panel } from "../components/ui/panel";
 import {
   retryTargetFor,
   type FunctionRun,
   type RuntimeEvent,
 } from "../data/mock-runtime";
 import { useListKeyboard } from "../hooks/use-list-keyboard";
+import { usePersistedLayout } from "../hooks/use-persisted-layout";
 import { useDeadLetters } from "../hooks/use-runtime-queries";
 import { time } from "../lib/format";
 
@@ -19,11 +20,24 @@ type DeadLetter =
   | { kind: "event"; item: RuntimeEvent }
   | { kind: "function"; item: FunctionRun };
 
+const deadLettersLayoutDefaults = {
+  inspectorWidth: 376,
+};
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
 export function DeadLettersPage() {
-  const { openDrawer, openRetry, openTimeline } = useRuntimeConsole();
+  const { openRetry, openTimeline } = useRuntimeConsole();
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState<"all" | "event" | "function">("all");
   const [oldestFirst, setOldestFirst] = useState(true);
+  const [layout, setLayout, resetLayout] = usePersistedLayout(
+    "runtime-console:dead-letters-layout",
+    deadLettersLayoutDefaults
+  );
+  const deadLettersLayout = { ...deadLettersLayoutDefaults, ...layout };
   const deadLettersQuery = useDeadLetters();
   const failures = useMemo<DeadLetter[]>(
     () => deadLettersQuery.data ?? [],
@@ -48,17 +62,9 @@ export function DeadLettersPage() {
     );
 
   const [selectedIndex, setSelectedIndex] = useState(0);
-  useEffect(() => {
-    setSelectedIndex(0);
-  }, [kind, oldestFirst, query]);
+  useEffect(() => setSelectedIndex(0), [kind, oldestFirst, query]);
 
   const selected = visible[selectedIndex] ?? null;
-  const openFailure = (failure: DeadLetter) =>
-    openDrawer(
-      failure.kind === "event"
-        ? { kind: "event", item: failure.item }
-        : { kind: "function", item: failure.item }
-    );
   const retryFailure = (failure: DeadLetter) => {
     const retryTarget = retryTargetFor(
       failure.kind === "event"
@@ -70,147 +76,265 @@ export function DeadLettersPage() {
     }
   };
 
+  const resizeInspector = (deltaX: number) => {
+    setLayout((current) => ({
+      ...current,
+      inspectorWidth: clamp(
+        (current.inspectorWidth ?? deadLettersLayoutDefaults.inspectorWidth) -
+          deltaX,
+        320,
+        560
+      ),
+    }));
+  };
+
   useListKeyboard({
     items: visible,
     selectedIndex,
     setSelectedIndex,
-    onOpen: openFailure,
+    onOpen: (failure) => setSelectedIndex(indexOf(visible, failure.item.id)),
     onRetry: retryFailure,
   });
 
   return (
-    <section>
-      <div className="mb-5 flex items-end justify-between gap-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-100">
-            Dead Letters
-          </h1>
-          <p className="mt-1.5 max-w-2xl text-[13px] leading-6 text-slate-400">
-            Failure inbox for retryable and exhausted runtime work.
-          </p>
-        </div>
-      </div>
-
-      <div className="mb-3 flex flex-wrap items-center gap-2.5">
-        <Button
-          onClick={() => setKind("all")}
-          variant={kind === "all" ? "default" : "ghost"}
-        >
-          All
-        </Button>
-        <Button
-          onClick={() => setKind("event")}
-          variant={kind === "event" ? "default" : "ghost"}
-        >
-          Events
-        </Button>
-        <Button
-          onClick={() => setKind("function")}
-          variant={kind === "function" ? "default" : "ghost"}
-        >
-          Functions
-        </Button>
-        <Button
-          onClick={() => setOldestFirst((current) => !current)}
-          variant="ghost"
-        >
-          {oldestFirst ? "Oldest first" : "Newest first"}
-        </Button>
-        <label className="flex h-9 min-w-[min(420px,100%)] items-center gap-2.5 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-slate-400">
-          <Search size={15} />
-          <input
-            aria-label="Search dead letters"
-            className="w-full bg-transparent text-[13px] text-slate-100 outline-none placeholder:text-slate-600"
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search failure, id, correlation..."
-            value={query}
-          />
-        </label>
-      </div>
-
-      <Panel>
-        {deadLettersQuery.isLoading ? (
-          <>
-            <div className="h-20 animate-pulse border-b border-white/10 bg-white/[0.03]" />
-            <div className="h-20 animate-pulse border-b border-white/10 bg-white/[0.03]" />
-            <div className="h-20 animate-pulse bg-white/[0.03]" />
-          </>
-        ) : deadLettersQuery.isError ? (
-          <div className="m-3 rounded-lg border border-rose-300/30 bg-black/20 p-3 text-xs text-rose-100">
-            {errorMessage(deadLettersQuery.error)}
+    <section
+      className="grid h-full min-h-0 min-w-0 overflow-hidden bg-black text-[#f4f4f4]"
+      style={{
+        gridTemplateColumns: `minmax(0,1fr) 4px ${deadLettersLayout.inspectorWidth}px`,
+      }}
+    >
+      <main className="grid min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-[#1d1d1d]">
+        <header className="border-b border-[#1d1d1d] bg-[#0a0a0a] px-3 py-2">
+          <div className="flex items-center gap-2">
+            <h1 className="font-mono text-[13px] font-semibold">
+              Dead Letters
+            </h1>
+            <span className="ml-auto font-mono text-[10px] text-[#5b5b5b]">
+              {visible.length} failures / mock
+            </span>
           </div>
-        ) : visible.length === 0 ? (
-          <EmptyStateView>
-            <EmptyStateView.Title>
-              No failed or dead runtime work.
-            </EmptyStateView.Title>
-            <EmptyStateView.Description>
-              The failure inbox is clear.
-            </EmptyStateView.Description>
-          </EmptyStateView>
-        ) : (
-          visible.map((failure) => {
-            const { item } = failure;
-            const name =
-              failure.kind === "event"
-                ? failure.item.eventName
-                : failure.item.functionName;
-            return (
-              <div
-                className={`grid w-full grid-cols-[108px_minmax(0,1fr)_auto] items-center gap-3.5 border-b border-white/10 bg-transparent p-3.5 text-left text-slate-100 last:border-b-0 hover:bg-blue-300/[0.055] max-md:grid-cols-1 ${
-                  selected?.item.id === item.id ? "bg-blue-300/[0.055]" : ""
-                }`}
-                key={item.id}
-              >
-                <StatusPill status={item.status} />
+        </header>
+
+        <div className="flex h-9 items-center gap-2 border-b border-[#1d1d1d] bg-black px-3">
+          {(["all", "event", "function"] as const).map((item) => (
+            <button
+              className={`h-6 border px-2 font-mono text-[10px] ${
+                kind === item
+                  ? "border-[#f3f724]/40 bg-[#f3f724]/[0.07] text-[#f3f724]"
+                  : "border-[#1d1d1d] text-[#5b5b5b] hover:text-[#f4f4f4]"
+              }`}
+              key={item}
+              onClick={() => setKind(item)}
+              type="button"
+            >
+              {item}
+            </button>
+          ))}
+          <button
+            className="h-6 border border-[#1d1d1d] px-2 font-mono text-[10px] text-[#5b5b5b] hover:text-[#f4f4f4]"
+            onClick={() => setOldestFirst((current) => !current)}
+            type="button"
+          >
+            {oldestFirst ? "oldest" : "newest"}
+          </button>
+          <label className="ml-auto flex h-6 w-[min(360px,45vw)] items-center gap-2 border border-[#1d1d1d] bg-[#111111] px-2 font-mono text-[#5b5b5b]">
+            <Search size={12} />
+            <input
+              aria-label="Search dead letters"
+              className="w-full bg-transparent text-[10px] text-[#f4f4f4] outline-none placeholder:text-[#5b5b5b]"
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="failure / id / correlation"
+              value={query}
+            />
+          </label>
+        </div>
+
+        <div className="min-h-0 overflow-auto">
+          {deadLettersQuery.isLoading ? (
+            <LoadingRows />
+          ) : deadLettersQuery.isError ? (
+            <MessageRow
+              message={errorMessage(deadLettersQuery.error)}
+              tone="error"
+            />
+          ) : visible.length === 0 ? (
+            <MessageRow message="failure inbox clear" />
+          ) : (
+            visible.map((failure) => {
+              const { item } = failure;
+              const name =
+                failure.kind === "event"
+                  ? failure.item.eventName
+                  : failure.item.functionName;
+              const isSelected = selected?.item.id === item.id;
+              return (
                 <button
-                  className="min-w-0 bg-transparent text-left text-slate-100"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setSelectedIndex(indexOf(visible, item.id));
-                    openFailure(failure);
-                  }}
+                  className={`grid w-full grid-cols-[104px_minmax(0,1fr)_116px] items-center gap-3 border-b border-[#1d1d1d] px-3 py-2 text-left font-mono text-[11px] ${
+                    isSelected
+                      ? "border-l-2 border-l-[#f3f724] bg-[#f3f724]/[0.055]"
+                      : "hover:bg-[#111111]"
+                  }`}
+                  key={item.id}
+                  onClick={() => setSelectedIndex(indexOf(visible, item.id))}
+                  type="button"
                 >
-                  <div className="truncate text-[13px] font-semibold text-slate-100">
-                    {name}
-                  </div>
-                  <div className="mono mt-0.5 truncate text-xs text-slate-500">
-                    {failure.kind} · {item.id} · {item.correlationId} ·{" "}
+                  <StatusPill status={item.status} />
+                  <span className="min-w-0">
+                    <span className="block truncate text-[#f4f4f4]">
+                      {name}
+                    </span>
+                    <span className="block truncate text-[10px] text-[#5b5b5b]">
+                      {failure.kind} / {item.id} / {item.correlationId}
+                    </span>
+                    {item.lastError ? (
+                      <span className="mt-1 block truncate text-[10px] text-[#ef4444]">
+                        {item.lastError}
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="text-right text-[10px] text-[#5b5b5b]">
                     {time(item.createdAt)}
-                  </div>
-                  {item.lastError ? (
-                    <div className="mono mt-2 text-xs text-rose-100">
-                      {item.lastError}
-                    </div>
-                  ) : null}
+                  </span>
                 </button>
-                <div className="flex gap-2.5">
-                  <Button
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      openTimeline(item.correlationId);
-                    }}
-                    variant="ghost"
-                  >
-                    Timeline
-                  </Button>
-                  <Button
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      retryFailure(failure);
-                    }}
-                    variant="danger"
-                  >
-                    <RotateCcw size={15} />
-                    Retry
-                  </Button>
-                </div>
-              </div>
-            );
-          })
-        )}
-      </Panel>
+              );
+            })
+          )}
+        </div>
+      </main>
+
+      <ResizeHandle
+        ariaLabel="Resize failure inspector panel"
+        onReset={resetLayout}
+        onResize={resizeInspector}
+      />
+
+      <aside className="relative z-0 grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-[#080808]">
+        <InspectorHeader failure={selected} />
+        <div className="min-h-0 overflow-auto">
+          {selected ? (
+            <FailureInspector failure={selected} />
+          ) : (
+            <MessageRow message="select a failed item" />
+          )}
+        </div>
+        <div className="flex gap-2 border-t border-[#1d1d1d] bg-[#0a0a0a] p-2">
+          <Button
+            disabled={!selected}
+            onClick={() =>
+              selected && openTimeline(selected.item.correlationId)
+            }
+            variant="ghost"
+          >
+            Traces
+          </Button>
+          <Button
+            disabled={!selected}
+            onClick={() => selected && retryFailure(selected)}
+            variant="danger"
+          >
+            <RotateCcw size={13} />
+            Retry
+          </Button>
+        </div>
+      </aside>
     </section>
+  );
+}
+
+function InspectorHeader({ failure }: { failure: DeadLetter | null }) {
+  const name = failure
+    ? failure.kind === "event"
+      ? failure.item.eventName
+      : failure.item.functionName
+    : "No failure selected";
+  return (
+    <header className="border-b border-[#1d1d1d] bg-[#0a0a0a] px-3 py-2 font-mono">
+      <div className="mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-[#f3f724]">
+        {failure?.kind ?? "Failure"}
+      </div>
+      <div className="truncate text-[13px] font-semibold text-[#f4f4f4]">
+        {name}
+      </div>
+      {failure ? (
+        <div className="mt-1 flex items-center gap-2 text-[10px] text-[#5b5b5b]">
+          <span className="truncate">{failure.item.id}</span>
+          <span>
+            {failure.item.attempts}/{failure.item.maxAttempts}
+          </span>
+          <span>{failure.item.status}</span>
+        </div>
+      ) : null}
+    </header>
+  );
+}
+
+function FailureInspector({ failure }: { failure: DeadLetter }) {
+  const { item } = failure;
+  const detail =
+    failure.kind === "event" ? failure.item.payload : failure.item.input;
+  return (
+    <div className="grid gap-3 p-3">
+      <KeyValueRows
+        rows={[
+          ["status", item.status],
+          ["attempts", `${item.attempts}/${item.maxAttempts}`],
+          ["correlation", item.correlationId],
+          ["created", item.createdAt],
+          ["last_error", item.lastError ?? "-"],
+        ]}
+      />
+      <JsonViewer
+        defaultExpanded
+        title={failure.kind === "event" ? "event payload" : "function input"}
+        value={detail}
+      />
+    </div>
+  );
+}
+
+function KeyValueRows({ rows }: { rows: Array<[string, string]> }) {
+  return (
+    <div className="border-y border-[#1d1d1d] font-mono text-[11px]">
+      {rows.map(([key, value]) => (
+        <div
+          className="grid grid-cols-[94px_minmax(0,1fr)] border-b border-[#1d1d1d] last:border-b-0"
+          key={key}
+        >
+          <div className="bg-[#080808] px-3 py-1.5 text-[#5b5b5b]">{key}</div>
+          <div className="min-w-0 break-words px-3 py-1.5 text-[#9ca3af]">
+            {value}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function LoadingRows() {
+  return (
+    <>
+      <div className="h-14 animate-pulse border-b border-[#1d1d1d] bg-[#111111]" />
+      <div className="h-14 animate-pulse border-b border-[#1d1d1d] bg-[#111111]" />
+      <div className="h-14 animate-pulse border-b border-[#1d1d1d] bg-[#111111]" />
+    </>
+  );
+}
+
+function MessageRow({
+  message,
+  tone = "muted",
+}: {
+  message: string;
+  tone?: "error" | "muted";
+}) {
+  return (
+    <div
+      className={`border-b border-[#1d1d1d] px-3 py-3 font-mono text-[11px] ${
+        tone === "error" ? "text-[#ef4444]" : "text-[#5b5b5b]"
+      }`}
+    >
+      {message}
+    </div>
   );
 }
 

@@ -2,15 +2,21 @@
 
 :root {
   color-scheme: dark;
+  --background: #000000;
+  --foreground: #f4f4f4;
+  --sidebar: #0a0a0a;
+  --elevated: #111111;
+  --hover: #1a1a1a;
+  --border: #2d2d2d;
+  --border-subtle: #1d1d1d;
+  --muted: #5b5b5b;
+  --secondary: #9ca3af;
+  --accent: #f3f724;
+  --success: #22c55e;
+  --error: #ef4444;
   font-family:
-    "Geist",
-    "SF Pro Display",
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
+    "JetBrains Mono", "Geist Mono", "SFMono-Regular", "Cascadia Code",
+    "Roboto Mono", ui-monospace, monospace;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
@@ -20,19 +26,25 @@
 }
 
 html {
-  background: #050609;
+  background: var(--background);
+  font-feature-settings:
+    "liga" 1,
+    "calt" 1;
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: #050609;
-  color: #f4f7fb;
+  background: var(--background);
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 ::selection {
-  background: rgba(139, 184, 255, 0.28);
+  background: var(--accent);
+  color: #000000;
 }
 
 button,
@@ -53,7 +65,7 @@ button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 a:focus-visible {
-  outline: 2px solid rgba(139, 184, 255, 0.78);
+  outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 
@@ -61,11 +73,53 @@ code,
 pre,
 .mono {
   font-family:
-    "Geist Mono", "SFMono-Regular", "Cascadia Code", "Roboto Mono",
-    ui-monospace, monospace;
+    "JetBrains Mono", "Geist Mono", "SFMono-Regular", "Cascadia Code",
+    "Roboto Mono", ui-monospace, monospace;
 }
 
 a {
   color: inherit;
   text-decoration: none;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-subtle);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-panel-in {
+  animation: panel-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
 }

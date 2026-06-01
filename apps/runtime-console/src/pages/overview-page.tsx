@@ -1,11 +1,6 @@
-import { AlertTriangle, Clock, Cpu, Inbox, Radio } from "lucide-react";
-import type { ReactNode } from "react";
+import { Activity, AlertTriangle, Clock, Inbox } from "lucide-react";
 
 import { StatusPill } from "../components/runtime/status-pill";
-import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
-import { Card } from "../components/ui/card";
-import { Panel } from "../components/ui/panel";
 import {
   useRuntimeSummary,
   type RuntimeSummary,
@@ -15,206 +10,197 @@ import { relativeAge, time } from "../lib/format";
 export function OverviewPage() {
   const summaryQuery = useRuntimeSummary();
   const summary = summaryQuery.data;
-  const pendingEvents = summary?.outbox.pending ?? 0;
-  const runningFunctions = summary?.functions.running ?? 0;
-  const failedFunctions = summary?.functions.failed ?? 0;
-  const deadLetters =
-    (summary?.outbox.dead ?? 0) + (summary?.functions.dead ?? 0);
-  const activity = summary?.recentActivity.slice(0, 6) ?? [];
-  const failures = summary?.recentFailures ?? [];
+  const activity = summary?.recentActivity.slice(0, 8) ?? [];
+  const failures = summary?.recentFailures.slice(0, 6) ?? [];
 
   return (
-    <section>
-      <div className="mb-5 flex items-end justify-between gap-6 max-sm:block">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-100">
+    <section className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-black text-[#f4f4f4]">
+      <header className="border-b border-[#1d1d1d] bg-[#0a0a0a] px-3 py-2">
+        <div className="flex items-center gap-2">
+          <Activity className="text-[#f3f724]" size={14} />
+          <h1 className="font-mono text-[13px] font-semibold">
             Runtime Overview
           </h1>
-          <p className="mt-1.5 max-w-2xl text-[13px] leading-6 text-slate-400">
-            Live operational posture for events, function runs, retries, and
-            dead letters.
-          </p>
+          <span className="ml-auto font-mono text-[10px] text-[#5b5b5b]">
+            status{" "}
+            {summaryQuery.isError ? "degraded" : (summary?.status ?? "loading")}{" "}
+            / mock
+          </span>
         </div>
-        <Badge className="max-sm:mt-3">
-          <Radio size={13} />
-          {summaryQuery.isError
-            ? "degraded"
-            : (summary?.status ?? "loading")} ·{" "}
-          mock
-        </Badge>
-      </div>
+      </header>
 
-      <div className="grid grid-cols-4 gap-3.5 max-lg:grid-cols-2 max-sm:grid-cols-1">
-        <MetricCard
-          icon={<Inbox size={15} />}
-          label="Pending Events"
-          value={pendingEvents}
-          note={ageNote(summary?.outbox.oldestPendingAgeSeconds)}
-        />
-        <MetricCard
-          icon={<Cpu size={15} />}
-          label="Running Functions"
-          value={runningFunctions}
-          note={ageNote(summary?.functions.oldestPendingAgeSeconds)}
-        />
-        <MetricCard
-          icon={<AlertTriangle size={15} />}
-          label="Failed Functions"
-          value={failedFunctions}
-          note={failedNote(summary?.functions.oldestFailedAgeSeconds)}
-        />
-        <MetricCard
-          icon={<Clock size={15} />}
-          label="Dead Letters"
-          value={deadLetters}
-          note="operator action needed"
-        />
-      </div>
-
-      <div className="mt-3.5 grid grid-cols-[minmax(0,1.5fr)_minmax(320px,0.9fr)] gap-3.5 max-lg:grid-cols-1">
-        <div className="grid gap-3.5">
-          <Panel>
-            <Panel.Header>
-              <Panel.Title>Recent Activity</Panel.Title>
-              <span className="text-xs text-slate-500">
-                ordered by created_at
-              </span>
-            </Panel.Header>
-            <Panel.Content className="grid">
-              {summaryQuery.isLoading ? (
-                <LoadingRows />
-              ) : summaryQuery.isError ? (
-                <ErrorState message={errorMessage(summaryQuery.error)} />
-              ) : activity.length === 0 ? (
-                <EmptyRow label="No recent runtime activity" />
-              ) : (
-                activity.map((item) => (
-                  <div
-                    className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 border-b border-white/10 px-3.5 py-3 last:border-b-0"
-                    key={item.id}
-                  >
-                    <StatusPill status={item.status} />
-                    <div className="min-w-0">
-                      <div className="truncate text-[13px] font-semibold text-slate-100">
-                        {item.name}
-                      </div>
-                      <div className="mono mt-0.5 truncate text-xs text-slate-500">
-                        {item.correlationId}
-                      </div>
-                    </div>
-                    <span className="text-xs text-slate-500">
-                      {time(item.createdAt)}
-                    </span>
-                  </div>
-                ))
-              )}
-            </Panel.Content>
-          </Panel>
-
-          <Panel>
-            <Panel.Header>
-              <Panel.Title>Queue Health</Panel.Title>
-              <span className="text-xs text-slate-500">runtime stores</span>
-            </Panel.Header>
-            <Panel.Content className="grid">
-              {summary ? (
-                runtimeQueues(summary).map((queue) => (
-                  <div
-                    className="border-b border-white/10 px-3.5 py-3 last:border-b-0"
-                    key={queue.name}
-                  >
-                    <div className="min-w-0">
-                      <div className="mono text-[13px] font-semibold text-slate-100">
-                        {queue.name}
-                      </div>
-                      <div className="mt-0.5 text-xs text-slate-500">
-                        {queue.oldest}
-                      </div>
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-x-3.5 gap-y-2 text-xs text-slate-500">
-                      <span>pending {queue.pending}</span>
-                      <span>running {queue.running}</span>
-                      <span>failed {queue.failed}</span>
-                      <span>dead {queue.dead}</span>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div
-                  className="px-3.5 py-3 text-xs text-slate-500"
-                  key="queue-loading"
-                >
-                  Runtime summary unavailable.
-                </div>
-              )}
-            </Panel.Content>
-          </Panel>
-        </div>
-
-        <Panel>
-          <Panel.Header>
-            <Panel.Title>Recent Failures</Panel.Title>
-            <span className="text-xs text-slate-500">needs attention</span>
-          </Panel.Header>
-          <Panel.Content className="grid">
+      <div className="grid min-h-0 grid-cols-[minmax(0,1.35fr)_360px] overflow-hidden max-xl:grid-cols-1">
+        <main className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-r border-[#1d1d1d] max-xl:border-r-0">
+          <SummaryStrip summary={summary} />
+          <div className="min-h-0 overflow-auto">
+            <SectionHeader
+              title="Recent Activity"
+              meta="ordered by created_at"
+            />
             {summaryQuery.isLoading ? (
               <LoadingRows />
-            ) : failures.length === 0 ? (
-              <EmptyRow label="No failed or dead runtime work" />
+            ) : summaryQuery.isError ? (
+              <MessageRow
+                message={errorMessage(summaryQuery.error)}
+                tone="error"
+              />
+            ) : activity.length === 0 ? (
+              <MessageRow message="No recent runtime activity" />
             ) : (
-              failures.map((failure) => (
+              activity.map((item) => (
                 <div
-                  className="border-b border-white/10 px-3.5 py-3.5 last:border-b-0"
-                  key={failure.id}
+                  className="grid min-h-11 grid-cols-[108px_minmax(0,1fr)_96px_120px] items-center gap-3 border-b border-[#1d1d1d] px-3 font-mono text-[11px]"
+                  key={item.id}
                 >
-                  <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2">
-                    <StatusPill status={failure.status} />
-                    <span className="text-xs text-slate-500">
-                      {relativeAge(failure.createdAt)}
-                    </span>
+                  <StatusPill status={item.status} />
+                  <div className="min-w-0">
+                    <div className="truncate text-[#f4f4f4]">{item.name}</div>
+                    <div className="truncate text-[10px] text-[#5b5b5b]">
+                      {item.id}
+                    </div>
                   </div>
-                  <div className="mt-3 truncate text-[13px] font-semibold text-slate-100">
-                    {failure.name}
-                  </div>
-                  <div className="mono mt-0.5 truncate text-xs text-slate-500">
-                    {failure.correlationId}
-                  </div>
-                  <div className="mono mt-2 text-xs text-rose-100">
-                    {failure.lastError ?? "unknown error"}
-                  </div>
-                  <div className="mt-3 flex gap-2.5">
-                    <Button variant="ghost">Timeline</Button>
-                    <Button variant="danger">Retry</Button>
-                  </div>
+                  <span className="text-[#5b5b5b]">
+                    {item.attempts}/{item.maxAttempts}
+                  </span>
+                  <span className="truncate text-right text-[#5b5b5b]">
+                    {time(item.createdAt)}
+                  </span>
                 </div>
               ))
             )}
-          </Panel.Content>
-        </Panel>
+          </div>
+        </main>
+
+        <aside className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-[#080808] max-xl:hidden">
+          <SectionHeader title="Failure Stream" meta="operator attention" />
+          <div className="min-h-0 overflow-auto">
+            {failures.length === 0 ? (
+              <MessageRow message="No failed or dead runtime work" />
+            ) : (
+              failures.map((failure) => (
+                <div
+                  className="border-b border-[#1d1d1d] px-3 py-2 font-mono text-[11px]"
+                  key={failure.id}
+                >
+                  <div className="mb-1 flex items-center gap-2">
+                    <StatusPill status={failure.status} />
+                    <span className="ml-auto text-[10px] text-[#5b5b5b]">
+                      {relativeAge(failure.createdAt)}
+                    </span>
+                  </div>
+                  <div className="truncate text-[#f4f4f4]">{failure.name}</div>
+                  <div className="truncate text-[10px] text-[#5b5b5b]">
+                    {failure.correlationId}
+                  </div>
+                  {failure.lastError ? (
+                    <div className="mt-1 text-[10px] leading-4 text-[#ef4444]">
+                      {failure.lastError}
+                    </div>
+                  ) : null}
+                </div>
+              ))
+            )}
+          </div>
+        </aside>
       </div>
     </section>
   );
 }
 
-function runtimeQueues(summary: RuntimeSummary) {
-  return [
-    {
-      name: "outbox",
-      pending: summary.outbox.pending,
-      running: summary.outbox.processing,
-      failed: summary.outbox.failed,
-      dead: summary.outbox.dead,
-      oldest: ageNote(summary.outbox.oldestPendingAgeSeconds),
-    },
-    {
-      name: "runtime.functions",
-      pending: summary.functions.pending,
-      running: summary.functions.running,
-      failed: summary.functions.failed,
-      dead: summary.functions.dead,
-      oldest: ageNote(summary.functions.oldestPendingAgeSeconds),
-    },
-  ];
+function SummaryStrip({ summary }: { summary: RuntimeSummary | undefined }) {
+  const rows = summary
+    ? [
+        {
+          icon: <Inbox size={13} />,
+          label: "outbox pending",
+          value: summary.outbox.pending,
+          note: ageNote(summary.outbox.oldestPendingAgeSeconds),
+        },
+        {
+          icon: <Clock size={13} />,
+          label: "functions running",
+          value: summary.functions.running,
+          note: ageNote(summary.functions.oldestPendingAgeSeconds),
+        },
+        {
+          icon: <AlertTriangle size={13} />,
+          label: "function failures",
+          value: summary.functions.failed,
+          note: failedNote(summary.functions.oldestFailedAgeSeconds),
+        },
+        {
+          icon: <AlertTriangle size={13} />,
+          label: "dead letters",
+          value: summary.outbox.dead + summary.functions.dead,
+          note: "operator action",
+        },
+      ]
+    : [];
+
+  return (
+    <div className="grid border-b border-[#1d1d1d] bg-[#0a0a0a] md:grid-cols-4">
+      {rows.length === 0 ? (
+        <MessageRow message="Runtime summary unavailable" />
+      ) : (
+        rows.map((row) => (
+          <div
+            className="grid grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-2 border-r border-[#1d1d1d] px-3 py-2 font-mono text-[10px] last:border-r-0"
+            key={row.label}
+          >
+            <span className="text-[#5b5b5b]">{row.icon}</span>
+            <span className="min-w-0 truncate text-[#9ca3af]">{row.label}</span>
+            <span className="text-[13px] font-semibold text-[#f4f4f4]">
+              {row.value}
+            </span>
+            <span className="col-span-3 truncate text-[#5b5b5b]">
+              {row.note}
+            </span>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+function SectionHeader({ title, meta }: { title: string; meta: string }) {
+  return (
+    <div className="flex h-8 items-center gap-2 border-b border-[#1d1d1d] bg-[#0a0a0a] px-3">
+      <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-[#9ca3af]">
+        {title}
+      </span>
+      <span className="ml-auto font-mono text-[10px] text-[#5b5b5b]">
+        {meta}
+      </span>
+    </div>
+  );
+}
+
+function LoadingRows() {
+  return (
+    <>
+      <div className="h-11 animate-pulse border-b border-[#1d1d1d] bg-[#111111]" />
+      <div className="h-11 animate-pulse border-b border-[#1d1d1d] bg-[#111111]" />
+      <div className="h-11 animate-pulse border-b border-[#1d1d1d] bg-[#111111]" />
+    </>
+  );
+}
+
+function MessageRow({
+  message,
+  tone = "muted",
+}: {
+  message: string;
+  tone?: "error" | "muted";
+}) {
+  return (
+    <div
+      className={`border-b border-[#1d1d1d] px-3 py-3 font-mono text-[11px] ${
+        tone === "error" ? "text-[#ef4444]" : "text-[#5b5b5b]"
+      }`}
+    >
+      {message}
+    </div>
+  );
 }
 
 function ageNote(seconds?: number) {
@@ -227,59 +213,8 @@ function failedNote(seconds?: number) {
   return seconds === undefined ? "retryable" : `oldest failed ${seconds}s`;
 }
 
-function LoadingRows() {
-  return (
-    <>
-      <div className="h-14 animate-pulse border-b border-white/10 bg-white/[0.03]" />
-      <div className="h-14 animate-pulse border-b border-white/10 bg-white/[0.03]" />
-      <div className="h-14 animate-pulse bg-white/[0.03]" />
-    </>
-  );
-}
-
-function ErrorState({ message }: { message: string }) {
-  return (
-    <div className="m-3 rounded-lg border border-rose-300/30 bg-black/20 p-3 text-xs text-rose-100">
-      {message}
-    </div>
-  );
-}
-
-function EmptyRow({ label }: { label: string }) {
-  return (
-    <div className="px-3.5 py-8 text-center text-xs text-slate-500">
-      {label}
-    </div>
-  );
-}
-
 function errorMessage(error: unknown) {
   return error instanceof Error
     ? error.message
     : "Runtime summary request failed";
-}
-
-function MetricCard({
-  icon,
-  label,
-  value,
-  note,
-}: {
-  icon: ReactNode;
-  label: string;
-  value: number;
-  note: string;
-}) {
-  return (
-    <Card>
-      <Card.Content>
-        <header className="flex items-center justify-between text-xs text-slate-400">
-          <span>{label}</span>
-          {icon}
-        </header>
-        <div className="mt-4 text-3xl font-bold text-slate-100">{value}</div>
-        <div className="mt-1 text-xs text-slate-500">{note}</div>
-      </Card.Content>
-    </Card>
-  );
 }
