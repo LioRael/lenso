@@ -34,7 +34,7 @@ export function ServiceSummaryStrip({
     const nodes = story.nodes.filter((node) => node.service === service);
     const durations = nodes.map((node) => node.durationMs);
     const duration = durations.reduce(
-      (total, spanDuration) => total + spanDuration,
+      (total, nodeDuration) => total + nodeDuration,
       0
     );
     const errors = nodes.filter(

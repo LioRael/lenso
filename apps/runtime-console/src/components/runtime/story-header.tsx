@@ -1,10 +1,11 @@
-import { AlertCircle, Boxes, Clock, Server, X } from "lucide-react";
+import { AlertCircle, Boxes, Clock, GitBranch, Server, X } from "lucide-react";
 
 import type { RuntimeStory, ExecutionNode } from "../../data/mock-runtime";
 import { cn } from "../../lib/cn";
 import { formatRuntimeDuration } from "../../lib/runtime-style";
 import { buildRuntimeStory } from "../../lib/story";
 import { HorizontalScrollArea } from "./horizontal-tab-scroll";
+import { buildParallelExecutionGroups } from "./parallel-execution-model";
 import { RuntimeStatusBadge } from "./runtime-status-badge";
 
 export function StoryHeader({
@@ -17,6 +18,10 @@ export function StoryHeader({
   onSelectNode: (node: ExecutionNode) => void;
 }) {
   const storySummary = buildRuntimeStory(story);
+  const [strongestParallelGroup] = buildParallelExecutionGroups(story).sort(
+    (left, right) =>
+      right.branchCount - left.branchCount || left.startMs - right.startMs
+  );
   const isError =
     storySummary.status === "failed" || storySummary.status === "dead";
 
@@ -46,6 +51,16 @@ export function StoryHeader({
             <Metric icon={<Server size={10} />}>
               {storySummary.services.length} services
             </Metric>
+            {strongestParallelGroup ? (
+              <>
+                <Metric icon={<GitBranch size={10} />} tone="accent">
+                  fan-out {strongestParallelGroup.branchCount}
+                </Metric>
+                <Metric icon={<Clock size={10} />}>
+                  longest {strongestParallelGroup.longestBranchName}
+                </Metric>
+              </>
+            ) : null}
           </div>
         </div>
 

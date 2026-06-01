@@ -4,11 +4,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { RuntimeStory, ExecutionNode } from "../../data/mock-runtime";
 import { cn } from "../../lib/cn";
-import {
-  formatRuntimeDuration,
-  serviceColor,
-  nodeDepth,
-} from "../../lib/runtime-style";
+import { formatRuntimeDuration, serviceColor } from "../../lib/runtime-style";
 import {
   clampFlowZoom,
   flowViewDefaults,
@@ -18,6 +14,11 @@ import {
   getWorkspaceLayout,
   getZoomAroundPoint,
 } from "./flow-view-layout";
+import { buildParallelExecutionGroups } from "./parallel-execution-model";
+import {
+  buildRuntimeGraphLayout,
+  buildRuntimeGraphModel,
+} from "./runtime-graph-model";
 import { RuntimeViewHeader } from "./runtime-view-header";
 
 const nodeWidth = 240;
@@ -51,24 +52,37 @@ export function FlowView({
   const [viewportSize, setViewportSize] = useState({ height: 0, width: 0 });
   const [zoom, setZoom] = useState(1);
 
-  const edges = useMemo(
-    () => story.edges ?? edgesFromParents(story.nodes),
-    [story.edges, story.nodes]
+  const graphModel = useMemo(() => buildRuntimeGraphModel(story), [story]);
+  const { edges } = graphModel;
+  const graphLayout = useMemo(() => buildRuntimeGraphLayout(story), [story]);
+  const parallelGroups = useMemo(
+    () => buildParallelExecutionGroups(story),
+    [story]
   );
-  const depthById = useMemo(
-    () => nodeDepths(story.nodes, edges),
-    [edges, story.nodes]
+  const parallelGroupByParent = useMemo(
+    () => new Map(parallelGroups.map((group) => [group.parentId, group])),
+    [parallelGroups]
+  );
+  const parallelGroupByChild = useMemo(
+    () =>
+      new Map(
+        parallelGroups.flatMap((group) =>
+          group.childIds.map((childId) => [childId, group] as const)
+        )
+      ),
+    [parallelGroups]
   );
   const nodes = useMemo(
     () =>
-      story.nodes.map((node, index) => ({
-        node,
-        x:
-          (depthById.get(node.id) ?? nodeDepth(node, story.nodes)) *
-          columnWidth,
-        y: index * rowHeight,
+      graphLayout.nodes.map((layoutNode) => ({
+        fanoutGroup: parallelGroupByParent.get(layoutNode.node.id),
+        node: layoutNode.node,
+        parallelGroup: parallelGroupByChild.get(layoutNode.node.id),
+        parentId: layoutNode.parentId,
+        x: layoutNode.depth * columnWidth,
+        y: layoutNode.row * rowHeight,
       })),
-    [depthById, story.nodes]
+    [graphLayout.nodes, parallelGroupByChild, parallelGroupByParent]
   );
   const nodesById = useMemo(
     () => new Map(nodes.map((node) => [node.node.id, node])),
@@ -273,7 +287,7 @@ export function FlowView({
     <div className="isolate relative h-full min-w-0 overflow-hidden bg-(--sidebar)">
       <div className="absolute top-0 right-0 left-0 z-2">
         <RuntimeViewHeader
-          summary={`${nodes.length} nodes at ${Math.round(zoom * 100)}%`}
+          summary={`${nodes.length} nodes · ${edges.length} ${graphModel.source === "backend" ? "backend" : "derived"} edges · ${Math.round(zoom * 100)}%`}
           title="Execution Graph"
         >
           <button
@@ -286,6 +300,21 @@ export function FlowView({
           </button>
         </RuntimeViewHeader>
       </div>
+
+      {graphModel.state === "missing-edges" ? (
+        <div className="absolute top-12 left-1/2 z-3 w-[min(520px,calc(100%-32px))] -translate-x-1/2 border border-amber-300/25 bg-[color-mix(in_srgb,var(--background)_92%,transparent)] p-3 font-mono text-[11px] text-amber-100 shadow-[0_18px_52px_var(--shadow-soft)]">
+          This story includes execution nodes, but the backend did not return
+          graph edges.
+        </div>
+      ) : null}
+
+      {graphModel.state === "empty-nodes" ? (
+        <div className="absolute inset-0 z-3 grid place-items-center p-4">
+          <div className="border border-(--border-subtle) bg-(--surface) p-4 font-mono text-xs text-(--muted)">
+            This story does not include execution nodes yet.
+          </div>
+        </div>
+      ) : null}
 
       <div
         className={cn(
@@ -347,7 +376,7 @@ export function FlowView({
               })}
             </svg>
 
-            {nodes.map(({ node, x, y }) => {
+            {nodes.map(({ fanoutGroup, node, parallelGroup, x, y }) => {
               const color = serviceColor(node.service);
               const isSelected = selectedNodeId === node.id;
               const isError =
@@ -402,8 +431,18 @@ export function FlowView({
                       <span className="block truncate font-mono text-[13px] text-(--foreground)">
                         {node.name}
                       </span>
-                      <span className="block font-mono text-[11px] text-(--muted)">
-                        {formatRuntimeDuration(node.durationMs)}
+                      <span className="mt-1 flex min-w-0 items-center gap-1.5 font-mono text-[11px] text-(--muted)">
+                        <span>{formatRuntimeDuration(node.durationMs)}</span>
+                        {fanoutGroup ? (
+                          <span className="shrink-0 rounded-xs border border-sky-300/24 bg-sky-300/10 px-1 py-0 text-[10px] text-sky-200">
+                            fan-out {fanoutGroup.branchCount}
+                          </span>
+                        ) : null}
+                        {!fanoutGroup && parallelGroup ? (
+                          <span className="shrink-0 rounded-xs border border-sky-300/20 bg-sky-300/8 px-1 py-0 text-[10px] text-sky-200">
+                            parallel
+                          </span>
+                        ) : null}
                       </span>
                     </span>
                   </span>
@@ -477,53 +516,4 @@ export function FlowView({
       </div>
     </div>
   );
-}
-
-function edgesFromParents(nodes: ExecutionNode[]) {
-  return nodes
-    .filter((node): node is ExecutionNode & { parentId: string } =>
-      Boolean(node.parentId)
-    )
-    .map((node) => ({
-      id: `${node.parentId}:${node.id}:parent`,
-      source: node.parentId,
-      target: node.id,
-      type: "sequence",
-    }));
-}
-
-function nodeDepths(
-  nodes: ExecutionNode[],
-  edges: Array<{ source: string; target: string }>
-) {
-  const parentsByTarget = new Map<string, string[]>();
-  for (const edge of edges) {
-    parentsByTarget.set(edge.target, [
-      ...(parentsByTarget.get(edge.target) ?? []),
-      edge.source,
-    ]);
-  }
-
-  const depthById = new Map<string, number>();
-  const visit = (id: string, seen = new Set<string>()): number => {
-    if (depthById.has(id)) {
-      return depthById.get(id)!;
-    }
-    if (seen.has(id)) {
-      return 0;
-    }
-    const nextSeen = new Set(seen).add(id);
-    const parents = parentsByTarget.get(id) ?? [];
-    const depth =
-      parents.length === 0
-        ? 0
-        : Math.max(...parents.map((parentId) => visit(parentId, nextSeen))) + 1;
-    depthById.set(id, depth);
-    return depth;
-  };
-
-  for (const node of nodes) {
-    visit(node.id);
-  }
-  return depthById;
 }

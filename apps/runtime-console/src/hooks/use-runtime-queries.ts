@@ -354,7 +354,7 @@ type ApiTimelineResponse = {
 };
 
 type ApiTimelineItem = {
-  type: TimelineItem["type"];
+  type: string;
   id: string;
   name: string;
   status: RuntimeStatus;
@@ -591,7 +591,7 @@ function toFunctionRun(run: ApiFunctionRun): FunctionRun {
 function toTimelineItem(item: ApiTimelineItem): TimelineItem {
   return {
     id: item.id,
-    type: item.type,
+    type: item.type as TimelineItem["type"],
     name: item.name,
     status: item.status,
     attempts: item.attempts,
@@ -683,7 +683,7 @@ function toRuntimeStory(story: ApiRuntimeStoryDetail): RuntimeStory {
       status: node.status,
     };
   });
-  const edges = (story.edges ?? []).map<ExecutionEdge>((edge) => ({
+  const edges = story.edges?.map<ExecutionEdge>((edge) => ({
     id: edge.id,
     source: edge.source,
     target: edge.target,
@@ -699,8 +699,10 @@ function toRuntimeStory(story: ApiRuntimeStoryDetail): RuntimeStory {
     service: nodes[0]?.service ?? "runtime",
     source: "runtime-story",
     nodes,
-    edges,
-    timelineItems: (story.timeline_items ?? []).map(toTimelineItem),
+    ...(edges === undefined ? {} : { edges }),
+    ...(story.timeline_items === undefined
+      ? {}
+      : { timelineItems: story.timeline_items.map(toTimelineItem) }),
     status: story.summary.status,
     timestamp: story.summary.created_at,
   };
