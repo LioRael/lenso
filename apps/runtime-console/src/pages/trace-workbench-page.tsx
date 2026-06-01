@@ -16,6 +16,7 @@ import { TraceInspector } from "../components/runtime/trace-inspector";
 import { TraceList } from "../components/runtime/trace-list";
 import type { TraceViewMode } from "../components/runtime/trace-tabs";
 import { TraceVisualization } from "../components/runtime/trace-visualization";
+import { EmptyState } from "../components/ui/empty-state";
 import {
   isRetryable,
   type TraceRun,
@@ -36,6 +37,8 @@ type InspectorTab =
   | "context";
 
 const emptyTraces: TraceRun[] = [];
+export const traceWorkbenchDefaultViewMode =
+  "waterfall" satisfies TraceViewMode;
 const traceLayoutDefaults = {
   inspectorWidth: 376,
   listWidth: 340,
@@ -54,7 +57,10 @@ export function TraceWorkbenchPage() {
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
   const [selectedSpanId, setSelectedSpanId] = useState<string | null>(null);
   const [displayedSpan, setDisplayedSpan] = useState<TraceSpan | null>(null);
-  const [mode, setMode] = useState<TraceViewMode>("heatmap");
+  const [traceDetailClosed, setTraceDetailClosed] = useState(false);
+  const [mode, setMode] = useState<TraceViewMode>(
+    traceWorkbenchDefaultViewMode
+  );
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("info");
   const workbenchRef = useRef<HTMLDivElement | null>(null);
   const inspectorPanelRef = useRef<HTMLDivElement | null>(null);
@@ -85,10 +91,12 @@ export function TraceWorkbenchPage() {
     ? traces.find((trace) => trace.id === activeTraceTarget.traceId)
     : null;
   const selectedTrace =
-    targetTrace ??
-    traces.find((trace) => trace.id === selectedTraceId) ??
-    visibleTraces[0] ??
-    null;
+    traceDetailClosed && !targetTrace
+      ? null
+      : (targetTrace ??
+        traces.find((trace) => trace.id === selectedTraceId) ??
+        visibleTraces[0] ??
+        null);
   const selectedSpan =
     selectedTrace?.spans.find((span) => {
       const targetSpanId = activeTraceTarget?.spanId ?? selectedSpanId;
@@ -191,9 +199,19 @@ export function TraceWorkbenchPage() {
   );
 
   const selectTrace = (trace: TraceRun) => {
+    setTraceDetailClosed(false);
     clearTraceTarget();
     setSelectedTraceId(trace.id);
     setSelectedSpanId(null);
+    setInspectorTab("info");
+  };
+
+  const closeTraceDetail = () => {
+    setTraceDetailClosed(true);
+    clearTraceTarget();
+    setSelectedTraceId(null);
+    setSelectedSpanId(null);
+    setDisplayedSpan(null);
     setInspectorTab("info");
   };
 
@@ -223,6 +241,7 @@ export function TraceWorkbenchPage() {
     const ownerTrace = traces.find((trace) =>
       trace.spans.some((item) => item.id === span.id)
     );
+    setTraceDetailClosed(false);
     setSelectedTraceId(ownerTrace?.id ?? selectedTrace?.id ?? selectedTraceId);
     clearTraceTarget();
     setSelectedSpanId(span.id);
@@ -266,7 +285,7 @@ export function TraceWorkbenchPage() {
     );
   }
 
-  if (tracesQuery.isError || !selectedTrace) {
+  if (tracesQuery.isError) {
     return (
       <div className="font-mono text-xs text-rose-300">
         trace workbench unavailable
@@ -289,7 +308,7 @@ export function TraceWorkbenchPage() {
         <TraceList
           onSelect={selectTrace}
           query={query}
-          selectedTraceId={selectedTrace.id}
+          selectedTraceId={selectedTrace?.id ?? null}
           setQuery={setQuery}
           traces={visibleTraces}
         />
@@ -300,21 +319,40 @@ export function TraceWorkbenchPage() {
           onResize={resizeTraceList}
         />
 
-        <main className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden">
-          <TraceHeader onSelectSpan={selectSpan} trace={selectedTrace} />
+        <main
+          className="grid min-h-0 min-w-0 overflow-hidden"
+          style={{
+            gridTemplateRows: selectedTrace
+              ? "auto minmax(0,1fr) auto"
+              : "minmax(0,1fr)",
+          }}
+        >
+          {selectedTrace ? (
+            <>
+              <TraceHeader
+                onClose={closeTraceDetail}
+                onSelectSpan={selectSpan}
+                trace={selectedTrace}
+              />
 
-          <TraceVisualization
-            mode={mode}
-            onSelectSpan={selectSpan}
-            selectedSpanId={selectedSpan?.id ?? null}
-            setMode={setMode}
-            trace={selectedTrace}
-          />
+              <TraceVisualization
+                mode={mode}
+                onSelectSpan={selectSpan}
+                selectedSpanId={selectedSpan?.id ?? null}
+                setMode={setMode}
+                trace={selectedTrace}
+              />
 
-          <ServiceSummaryStrip trace={selectedTrace} />
+              <ServiceSummaryStrip trace={selectedTrace} />
+            </>
+          ) : (
+            <EmptyState className="h-full bg-(--surface)">
+              <EmptyState.Title>No trace selected</EmptyState.Title>
+            </EmptyState>
+          )}
         </main>
 
-        {displayedSpan ? (
+        {selectedTrace && displayedSpan ? (
           <>
             <ResizeHandle
               ariaLabel="Resize trace inspector panel"

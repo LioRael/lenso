@@ -11,9 +11,11 @@ import {
 import { HorizontalScrollArea } from "./horizontal-tab-scroll";
 
 export function TraceHeader({
-  trace,
+  onClose,
   onSelectSpan,
+  trace,
 }: {
+  onClose: () => void;
   trace: TraceRun;
   onSelectSpan: (span: TraceSpan) => void;
 }) {
@@ -40,6 +42,7 @@ export function TraceHeader({
         <button
           aria-label="Close trace detail"
           className="grid size-5 place-items-center rounded-xs text-(--muted) transition hover:bg-(--hover) hover:text-(--foreground)"
+          onClick={onClose}
           type="button"
         >
           <X size={13} />
