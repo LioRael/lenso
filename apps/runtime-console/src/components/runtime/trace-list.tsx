@@ -4,7 +4,6 @@ import type { TraceRun } from "../../data/mock-runtime";
 import { cn } from "../../lib/cn";
 import { buildRuntimeStory } from "../../lib/story";
 import { formatTraceDuration, statusColor } from "../../lib/trace-style";
-import { TraceStatusBadge } from "./trace-status-badge";
 
 export function TraceList({
   query,
@@ -76,7 +75,14 @@ export function TraceList({
                 <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-(--foreground)">
                   {story.title}
                 </span>
-                <TraceStatusBadge status={story.status} variant="compact" />
+                <span
+                  className={cn(
+                    "font-mono text-[10px] uppercase",
+                    isError ? "text-[#ff8b86]" : "text-(--muted)"
+                  )}
+                >
+                  {story.status}
+                </span>
               </div>
 
               <div className="mb-1.5 truncate font-mono text-[10px] text-(--muted)">
