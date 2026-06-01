@@ -19,6 +19,7 @@ import { useCallback, useEffect, useRef } from "react";
 import type { ComponentType, CSSProperties, PropsWithChildren } from "react";
 
 import { usePersistedLayout } from "../../hooks/use-persisted-layout";
+import { runtimeConsoleDataSource } from "../../lib/http-client";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { CommandPalette } from "./command-palette";
@@ -242,7 +243,7 @@ export function RuntimeConsoleShell({ children }: PropsWithChildren) {
               aria-hidden={sidebarCollapsed}
               className="sidebar-copy ml-auto overflow-hidden whitespace-nowrap font-mono text-[10px] text-[var(--muted)]"
             >
-              mock
+              {runtimeConsoleDataSource()}
             </span>
           </div>
         </div>

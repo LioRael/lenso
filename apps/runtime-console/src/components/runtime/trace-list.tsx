@@ -23,7 +23,7 @@ export function TraceList({
   onSelect: (trace: TraceRun) => void;
 }) {
   return (
-    <aside className="grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_auto_minmax(0,1fr)] overflow-hidden border-r border-[var(--border-subtle)] bg-[var(--background)]">
+    <aside className="grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_auto_minmax(0,1fr)] overflow-hidden bg-[var(--background)]">
       <div className="flex min-h-10 items-center justify-between gap-2 border-b border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-2">
         <div>
           <h2 className="font-mono text-[13px] font-semibold tracking-tight text-[var(--foreground)]">
@@ -57,7 +57,7 @@ export function TraceList({
               className={cn(
                 "w-full border-b border-[var(--border-subtle)] px-3 py-2 text-left transition",
                 selectedTraceId === trace.id
-                  ? "border-l-2 border-l-[var(--accent)] bg-[var(--accent-soft)]"
+                  ? "bg-[var(--accent-soft)] shadow-[inset_2px_0_0_var(--accent)]"
                   : "hover:bg-[var(--elevated)]"
               )}
               key={trace.id}

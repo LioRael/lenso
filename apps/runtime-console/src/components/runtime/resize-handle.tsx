@@ -1,4 +1,4 @@
-import { GripVertical } from "lucide-react";
+import { useState } from "react";
 
 export function ResizeHandle({
   ariaLabel,
@@ -9,11 +9,18 @@ export function ResizeHandle({
   onResize: (deltaX: number) => void;
   onReset?: () => void;
 }) {
+  const [isDragging, setIsDragging] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+  const isActive = isDragging || isFocused || isHovered;
+
   return (
     <button
       aria-label={ariaLabel}
-      className="group relative z-[1] min-h-0 w-1 cursor-col-resize border-x border-transparent bg-[var(--border-subtle)] transition hover:bg-[color-mix(in_srgb,var(--accent)_45%,transparent)] focus-visible:bg-[color-mix(in_srgb,var(--accent)_45%,transparent)]"
+      className="group relative z-[1] min-h-0 w-px cursor-col-resize bg-transparent outline-none"
+      onBlur={() => setIsFocused(false)}
       onDoubleClick={onReset}
+      onFocus={() => setIsFocused(true)}
       onKeyDown={(event) => {
         if (event.key === "ArrowLeft") {
           event.preventDefault();
@@ -28,6 +35,7 @@ export function ResizeHandle({
         }
       }}
       onPointerDown={(event) => {
+        setIsDragging(true);
         event.currentTarget.setPointerCapture(event.pointerId);
         const startX = event.clientX;
         let lastDelta = 0;
@@ -39,6 +47,7 @@ export function ResizeHandle({
         };
 
         const onPointerUp = () => {
+          setIsDragging(false);
           window.removeEventListener("pointermove", onPointerMove);
           window.removeEventListener("pointerup", onPointerUp);
           document.body.style.cursor = "";
@@ -50,12 +59,19 @@ export function ResizeHandle({
         window.addEventListener("pointermove", onPointerMove);
         window.addEventListener("pointerup", onPointerUp, { once: true });
       }}
+      onPointerEnter={() => setIsHovered(true)}
+      onPointerLeave={() => setIsHovered(false)}
       type="button"
     >
-      <span className="absolute inset-y-0 -left-1 -right-1" />
-      <GripVertical
-        className="pointer-events-none absolute top-1/2 left-1/2 size-3 -translate-x-1/2 -translate-y-1/2 text-transparent transition group-hover:text-[color-mix(in_srgb,var(--inverse)_70%,transparent)] group-focus-visible:text-[color-mix(in_srgb,var(--inverse)_70%,transparent)]"
-        strokeWidth={2}
+      <span className="absolute inset-y-0 -left-1.5 -right-1.5" />
+      <span
+        className={`absolute inset-0 transition ${
+          isDragging
+            ? "bg-[color-mix(in_srgb,var(--accent)_78%,transparent)]"
+            : isActive
+              ? "bg-[color-mix(in_srgb,var(--accent)_56%,transparent)]"
+              : "bg-[var(--border-subtle)]"
+        }`}
       />
     </button>
   );

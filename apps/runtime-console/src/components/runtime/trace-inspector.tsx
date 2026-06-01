@@ -50,7 +50,7 @@ export function TraceInspector({
     : 0;
 
   return (
-    <aside className="grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_auto_minmax(0,1fr)] overflow-hidden border-l border-[var(--border-subtle)] bg-[var(--sidebar)]">
+    <aside className="grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_auto_minmax(0,1fr)] overflow-hidden bg-[var(--sidebar)]">
       <div className="border-b border-[var(--border-subtle)] bg-[var(--surface)]">
         <div className="flex items-start gap-2 px-3 py-2">
           <div className="min-w-0 flex-1">

@@ -6,6 +6,7 @@ import {
   type RuntimeSummary,
 } from "../hooks/use-runtime-queries";
 import { relativeAge, time } from "../lib/format";
+import { runtimeConsoleDataSource } from "../lib/http-client";
 
 export function OverviewPage() {
   const summaryQuery = useRuntimeSummary();
@@ -24,7 +25,7 @@ export function OverviewPage() {
           <span className="ml-auto font-mono text-[10px] text-[var(--muted)]">
             status{" "}
             {summaryQuery.isError ? "degraded" : (summary?.status ?? "loading")}{" "}
-            / mock
+            / {runtimeConsoleDataSource()}
           </span>
         </div>
       </header>

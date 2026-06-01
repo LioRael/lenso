@@ -165,9 +165,9 @@ export function TraceWorkbenchPage() {
   return (
     <div className="h-full overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
       <div
-        className="grid h-full min-w-0 overflow-hidden"
+        className="grid h-full min-w-0 overflow-x-auto overflow-y-hidden"
         style={{
-          gridTemplateColumns: `${traceLayout.listWidth}px 4px minmax(0,1fr) 4px ${traceLayout.inspectorWidth}px`,
+          gridTemplateColumns: `${traceLayout.listWidth}px 1px minmax(360px,1fr) 1px ${traceLayout.inspectorWidth}px`,
         }}
       >
         <TraceList
@@ -184,7 +184,7 @@ export function TraceWorkbenchPage() {
           onResize={resizeTraceList}
         />
 
-        <main className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden border-r border-[var(--border-subtle)]">
+        <main className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden">
           <TraceHeader onSelectSpan={selectSpan} trace={selectedTrace} />
 
           <TraceVisualization

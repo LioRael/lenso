@@ -10,6 +10,10 @@ export function isApiMode() {
   return runtimeConsoleMode === "api" && Boolean(apiBaseUrl);
 }
 
+export function runtimeConsoleDataSource() {
+  return isApiMode() ? "api" : "mock";
+}
+
 export const httpClient = ky.create({
   ...(apiBaseUrl ? { prefix: apiBaseUrl.replace(/\/$/, "") } : {}),
   hooks: {

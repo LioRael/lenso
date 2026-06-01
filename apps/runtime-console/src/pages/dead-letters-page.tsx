@@ -100,7 +100,7 @@ export function DeadLettersPage() {
     <section
       className="grid h-full min-h-0 min-w-0 overflow-hidden bg-[var(--background)] text-[var(--foreground)]"
       style={{
-        gridTemplateColumns: `minmax(0,1fr) 4px ${deadLettersLayout.inspectorWidth}px`,
+        gridTemplateColumns: `minmax(0,1fr) 1px ${deadLettersLayout.inspectorWidth}px`,
       }}
     >
       <main className="grid min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-[var(--border-subtle)]">
@@ -171,7 +171,7 @@ export function DeadLettersPage() {
                 <button
                   className={`grid w-full grid-cols-[104px_minmax(0,1fr)_116px] items-center gap-3 border-b border-[var(--border-subtle)] px-3 py-2 text-left font-mono text-[11px] ${
                     isSelected
-                      ? "border-l-2 border-l-[var(--accent)] bg-[var(--accent-soft)]"
+                      ? "bg-[var(--accent-soft)] shadow-[inset_2px_0_0_var(--accent)]"
                       : "hover:bg-[var(--elevated)]"
                   }`}
                   key={item.id}

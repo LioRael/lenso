@@ -56,7 +56,7 @@ export function WaterfallView({
               className={cn(
                 "grid w-full min-w-0 grid-cols-[minmax(220px,300px)_minmax(0,1fr)] items-center gap-4 px-3 py-1 text-left transition hover:bg-[color-mix(in_srgb,var(--hover)_64%,transparent)]",
                 selectedSpanId === span.id &&
-                  "border-l-2 border-l-[var(--accent)] bg-[var(--accent-soft)]"
+                  "bg-[var(--accent-soft)] shadow-[inset_2px_0_0_var(--accent)]"
               )}
               key={span.id}
               onClick={() => onSelectSpan(span)}

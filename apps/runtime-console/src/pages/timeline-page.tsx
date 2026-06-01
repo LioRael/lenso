@@ -21,6 +21,7 @@ import {
 } from "../data/mock-runtime";
 import { useRuntimeTimeline } from "../hooks/use-runtime-queries";
 import { duration } from "../lib/format";
+import { runtimeConsoleDataSource } from "../lib/http-client";
 
 export function TimelinePage() {
   const { activeCorrelationId, openDrawer, openRetry, openTimeline } =
@@ -109,7 +110,8 @@ export function TimelinePage() {
               {activeCorrelationId}
             </div>
             <div className="mt-0.5 text-xs text-slate-500">
-              ordered by created_at ascending · mock runtime trace
+              ordered by created_at ascending · {runtimeConsoleDataSource()}{" "}
+              runtime trace
             </div>
           </div>
           <StatusPill status={summary.status} />
