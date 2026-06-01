@@ -23,28 +23,28 @@ export function TraceList({
   onSelect: (trace: TraceRun) => void;
 }) {
   return (
-    <aside className="grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_auto_minmax(0,1fr)] overflow-hidden border-r border-[#1d1d1d] bg-black">
-      <div className="flex min-h-10 items-center justify-between gap-2 border-b border-[#1d1d1d] bg-[#0a0a0a] px-3 py-2">
+    <aside className="grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_auto_minmax(0,1fr)] overflow-hidden border-r border-[var(--border-subtle)] bg-[var(--background)]">
+      <div className="flex min-h-10 items-center justify-between gap-2 border-b border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-2">
         <div>
-          <h2 className="font-mono text-[13px] font-semibold tracking-tight text-[#f4f4f4]">
+          <h2 className="font-mono text-[13px] font-semibold tracking-tight text-[var(--foreground)]">
             Traces
           </h2>
-          <p className="font-mono text-[10px] text-[#5b5b5b]">
+          <p className="font-mono text-[10px] text-[var(--muted)]">
             {traces.length} recorded sessions
           </p>
         </div>
       </div>
-      <div className="flex h-8 items-center gap-2 border-b border-[#1d1d1d] px-3 text-[#5b5b5b]">
+      <div className="flex h-8 items-center gap-2 border-b border-[var(--border-subtle)] px-3 text-[var(--muted)]">
         <Search size={12} />
         <input
           aria-label="Search traces"
-          className="mono w-full bg-transparent text-[10px] text-[#f4f4f4] outline-none placeholder:text-[#5b5b5b]"
+          className="mono w-full bg-transparent text-[10px] text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
           onChange={(event) => setQuery(event.target.value)}
           placeholder="filter traces / service / correlation..."
           value={query}
         />
       </div>
-      <div className="grid h-6 grid-cols-[12px_minmax(0,1fr)_58px] items-center gap-2 border-b border-[#1d1d1d] px-3 font-mono text-[9px] uppercase tracking-[0.1em] text-[#5b5b5b]">
+      <div className="grid h-6 grid-cols-[12px_minmax(0,1fr)_58px] items-center gap-2 border-b border-[var(--border-subtle)] px-3 font-mono text-[9px] uppercase tracking-[0.1em] text-[var(--muted)]">
         <span />
         <span>trace</span>
         <span className="text-right">duration</span>
@@ -55,10 +55,10 @@ export function TraceList({
           return (
             <button
               className={cn(
-                "w-full border-b border-[#1d1d1d] px-3 py-2 text-left transition",
+                "w-full border-b border-[var(--border-subtle)] px-3 py-2 text-left transition",
                 selectedTraceId === trace.id
-                  ? "border-l-2 border-l-[#f3f724] bg-[#f3f724]/[0.065]"
-                  : "hover:bg-[#111111]"
+                  ? "border-l-2 border-l-[var(--accent)] bg-[var(--accent-soft)]"
+                  : "hover:bg-[var(--elevated)]"
               )}
               key={trace.id}
               onClick={() => onSelect(trace)}
@@ -74,15 +74,15 @@ export function TraceList({
                         : undefined,
                   }}
                 />
-                <span className="min-w-0 flex-1 truncate font-mono text-[12px] font-medium text-[#f4f4f4]">
+                <span className="min-w-0 flex-1 truncate font-mono text-[12px] font-medium text-[var(--foreground)]">
                   {trace.name}
                 </span>
-                <span className="font-mono text-[10px] text-[#5b5b5b]">
+                <span className="font-mono text-[10px] text-[var(--muted)]">
                   {formatTraceDuration(trace.durationMs)}
                 </span>
               </div>
-              <div className="grid grid-cols-[68px_minmax(0,1fr)_auto] items-center gap-2 font-mono text-[9px] text-[#5b5b5b]">
-                <code className="text-[10px] text-[#9ca3af]">
+              <div className="grid grid-cols-[68px_minmax(0,1fr)_auto] items-center gap-2 font-mono text-[9px] text-[var(--muted)]">
+                <code className="text-[10px] text-[var(--secondary)]">
                   {trace.id.slice(0, 10)}
                 </code>
                 <span className="truncate">

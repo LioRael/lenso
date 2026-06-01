@@ -176,7 +176,7 @@ function LoadingRows() {
 
 function ErrorState({ message }: { message: string }) {
   return (
-    <div className="m-3 rounded-lg border border-rose-300/30 bg-black/20 p-3 text-xs text-rose-100">
+    <div className="m-3 rounded-lg border border-[color-mix(in_srgb,var(--error)_30%,transparent)] bg-[color-mix(in_srgb,var(--error)_8%,transparent)] p-3 text-xs text-[var(--error)]">
       {message}
     </div>
   );

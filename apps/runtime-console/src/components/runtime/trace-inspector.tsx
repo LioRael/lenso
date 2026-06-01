@@ -50,8 +50,8 @@ export function TraceInspector({
     : 0;
 
   return (
-    <aside className="grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_auto_minmax(0,1fr)] overflow-hidden border-l border-[#1d1d1d] bg-[#080808]">
-      <div className="border-b border-[#1d1d1d] bg-[#0a0a0a]">
+    <aside className="grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_auto_minmax(0,1fr)] overflow-hidden border-l border-[var(--border-subtle)] bg-[var(--sidebar)]">
+      <div className="border-b border-[var(--border-subtle)] bg-[var(--surface)]">
         <div className="flex items-start gap-2 px-3 py-2">
           <div className="min-w-0 flex-1">
             <div className="mb-1 flex items-center gap-1.5">
@@ -59,8 +59,8 @@ export function TraceInspector({
                 className={cn(
                   "rounded-[2px] border px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.12em]",
                   span
-                    ? "border-[#1d1d1d] bg-[#111111] text-[#f3f724]"
-                    : "border-[#1d1d1d] bg-black text-[#5b5b5b]"
+                    ? "border-[var(--border-subtle)] bg-[var(--elevated)] text-[var(--accent)]"
+                    : "border-[var(--border-subtle)] bg-[var(--background)] text-[var(--muted)]"
                 )}
               >
                 {span ? typeLabel(span) : "Inspector"}
@@ -78,13 +78,13 @@ export function TraceInspector({
                 </span>
               ) : null}
             </div>
-            <h2 className="truncate font-mono text-[13px] font-semibold leading-tight text-[#f4f4f4]">
+            <h2 className="truncate font-mono text-[13px] font-semibold leading-tight text-[var(--foreground)]">
               {span?.name ?? "No runtime item selected"}
             </h2>
           </div>
           <button
             aria-label="Clear inspector selection"
-            className="grid size-6 flex-shrink-0 place-items-center rounded-[2px] border border-[#1d1d1d] bg-[#111111] text-[#5b5b5b] transition hover:text-[#f4f4f4]"
+            className="grid size-6 flex-shrink-0 place-items-center rounded-[2px] border border-[var(--border-subtle)] bg-[var(--elevated)] text-[var(--muted)] transition hover:text-[var(--foreground)]"
             disabled={!span}
             onClick={onClearSelection}
             type="button"
@@ -94,12 +94,12 @@ export function TraceInspector({
         </div>
 
         {span ? (
-          <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-2 border-t border-[#1d1d1d] px-3 py-1.5 font-mono text-[10px] text-[#5b5b5b]">
-            <button className="group flex min-w-0 items-center gap-1 text-left transition hover:text-[#9ca3af]">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-2 border-t border-[var(--border-subtle)] px-3 py-1.5 font-mono text-[10px] text-[var(--muted)]">
+            <button className="group flex min-w-0 items-center gap-1 text-left transition hover:text-[var(--secondary)]">
               <span className="truncate">{span.id.slice(0, 16)}</span>
               <Copy className="size-2.5 opacity-0 transition group-hover:opacity-100" />
             </button>
-            <span className="text-[#f3f724]">
+            <span className="text-[var(--accent)]">
               {formatTraceDuration(span.durationMs)}
             </span>
             <span
@@ -116,19 +116,19 @@ export function TraceInspector({
         ) : null}
       </div>
 
-      <div className="border-b border-[#1d1d1d] bg-black px-3 py-1.5">
+      <div className="border-b border-[var(--border-subtle)] bg-[var(--background)] px-3 py-1.5">
         {span ? (
-          <div className="flex min-w-0 items-center gap-1.5 overflow-hidden font-mono text-[10px] text-[#5b5b5b]">
-            <span className="flex-shrink-0 text-[#3d3d3d]">path</span>
+          <div className="flex min-w-0 items-center gap-1.5 overflow-hidden font-mono text-[10px] text-[var(--muted)]">
+            <span className="flex-shrink-0 text-[var(--muted-deep)]">path</span>
             {breadcrumb.map((item, index) => (
               <span className="flex min-w-0 items-center gap-1.5" key={item.id}>
                 {index > 0 ? (
-                  <ArrowRight className="size-3 flex-shrink-0 text-[#3d3d3d]" />
+                  <ArrowRight className="size-3 flex-shrink-0 text-[var(--muted-deep)]" />
                 ) : null}
                 <span
                   className={cn(
                     "truncate",
-                    item.id === span.id ? "text-[#f4f4f4]" : "text-[#9ca3af]"
+                    item.id === span.id ? "text-[var(--foreground)]" : "text-[var(--secondary)]"
                   )}
                   title={item.name}
                 >
@@ -137,25 +137,25 @@ export function TraceInspector({
               </span>
             ))}
             {parent ? (
-              <span className="ml-auto flex-shrink-0 text-[#5b5b5b]">
+              <span className="ml-auto flex-shrink-0 text-[var(--muted)]">
                 {formatTraceDuration(parent.durationMs)}
               </span>
             ) : null}
           </div>
         ) : (
-          <div className="font-mono text-[10px] text-[#3d3d3d]">
+          <div className="font-mono text-[10px] text-[var(--muted-deep)]">
             select a span from the workbench to inspect runtime context
           </div>
         )}
       </div>
 
-      <div className="flex h-8 border-b border-[#1d1d1d] bg-[#0a0a0a] px-2 pt-1">
+      <div className="flex h-8 border-b border-[var(--border-subtle)] bg-[var(--surface)] px-2 pt-1">
         {tabs.map((tab) => (
           <button
             className={cn(
-              "border border-transparent border-b-0 px-2 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-[#5b5b5b] transition hover:bg-[#111111] hover:text-[#f4f4f4]",
+              "border border-transparent border-b-0 px-2 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)] transition hover:bg-[var(--elevated)] hover:text-[var(--foreground)]",
               activeTab === tab &&
-                "border-[#1d1d1d] bg-[#111111] text-[#f3f724]"
+                "border-[var(--border-subtle)] bg-[var(--elevated)] text-[var(--accent)]"
             )}
             disabled={!span}
             key={tab}
@@ -167,12 +167,12 @@ export function TraceInspector({
         ))}
       </div>
 
-      <div className="min-h-0 overflow-auto bg-black">
+      <div className="min-h-0 overflow-auto bg-[var(--background)]">
         {span ? (
           <InspectorBody activeTab={activeTab} span={span} trace={trace} />
         ) : (
           <div className="p-3 font-mono">
-            <div className="border-y border-[#1d1d1d]">
+            <div className="border-y border-[var(--border-subtle)]">
               {[
                 ["status", "-"],
                 ["duration", "-"],
@@ -181,17 +181,17 @@ export function TraceInspector({
                 ["trace", trace.id.slice(0, 16)],
               ].map(([label, value]) => (
                 <div
-                  className="grid grid-cols-[92px_minmax(0,1fr)] border-b border-[#1d1d1d] text-[11px] last:border-b-0"
+                  className="grid grid-cols-[92px_minmax(0,1fr)] border-b border-[var(--border-subtle)] text-[11px] last:border-b-0"
                   key={label}
                 >
-                  <div className="bg-[#080808] px-3 py-1.5 text-[#3d3d3d]">
+                  <div className="bg-[var(--sidebar)] px-3 py-1.5 text-[var(--muted-deep)]">
                     {label}
                   </div>
-                  <div className="px-3 py-1.5 text-[#5b5b5b]">{value}</div>
+                  <div className="px-3 py-1.5 text-[var(--muted)]">{value}</div>
                 </div>
               ))}
             </div>
-            <div className="mt-3 text-[10px] leading-5 text-[#3d3d3d]">
+            <div className="mt-3 text-[10px] leading-5 text-[var(--muted-deep)]">
               select a bar, bucket, segment, or node to inspect runtime detail.
             </div>
           </div>
@@ -233,7 +233,7 @@ function InspectorBody({
         />
         {span.retryable ? (
           <button
-            className="inline-flex h-7 w-fit items-center gap-2 rounded-[2px] border border-[#ef4444]/35 bg-[#ef4444]/10 px-2 font-mono text-[10px] text-[#f4f4f4] hover:bg-[#ef4444]/15"
+            className="inline-flex h-7 w-fit items-center gap-2 rounded-[2px] border border-[color-mix(in_srgb,var(--error)_35%,transparent)] bg-[color-mix(in_srgb,var(--error)_10%,transparent)] px-2 font-mono text-[10px] text-[var(--foreground)] hover:bg-[color-mix(in_srgb,var(--error)_15%,transparent)]"
             onClick={() =>
               openRetry({
                 attempts: span.attempts ?? 1,
@@ -301,14 +301,14 @@ function KeyValueTable({ rows }: { rows: Array<[string, unknown]> }) {
   }
 
   return (
-    <div className="border-y border-[#1d1d1d] font-mono text-[11px]">
+    <div className="border-y border-[var(--border-subtle)] font-mono text-[11px]">
       {rows.map(([key, value]) => (
         <div
-          className="grid grid-cols-[112px_minmax(0,1fr)] border-b border-[#1d1d1d] last:border-b-0"
+          className="grid grid-cols-[112px_minmax(0,1fr)] border-b border-[var(--border-subtle)] last:border-b-0"
           key={key}
         >
-          <div className="bg-[#080808] px-3 py-1.5 text-[#5b5b5b]">{key}</div>
-          <div className="min-w-0 break-words px-3 py-1.5 text-[#9ca3af]">
+          <div className="bg-[var(--sidebar)] px-3 py-1.5 text-[var(--muted)]">{key}</div>
+          <div className="min-w-0 break-words px-3 py-1.5 text-[var(--secondary)]">
             {formatCell(value)}
           </div>
         </div>
@@ -325,15 +325,15 @@ function EventList({ span }: { span: TraceSpan }) {
     <div className="font-mono text-[11px]">
       {span.events.map((event) => (
         <div
-          className="grid grid-cols-[58px_minmax(0,1fr)] gap-2 border-b border-[#1d1d1d] px-3 py-2"
+          className="grid grid-cols-[58px_minmax(0,1fr)] gap-2 border-b border-[var(--border-subtle)] px-3 py-2"
           key={`${event.name}-${event.timestampMs}`}
         >
-          <span className="text-[#5b5b5b]">
+          <span className="text-[var(--muted)]">
             +{formatTraceDuration(event.timestampMs)}
           </span>
           <div className="min-w-0">
-            <div className="truncate text-[#f4f4f4]">{event.name}</div>
-            <div className="truncate text-[10px] text-[#5b5b5b]">
+            <div className="truncate text-[var(--foreground)]">{event.name}</div>
+            <div className="truncate text-[10px] text-[var(--muted)]">
               {event.attributes
                 ? JSON.stringify(event.attributes)
                 : "payload -"}
@@ -369,10 +369,10 @@ function LogList({ span }: { span: TraceSpan }) {
     <div className="font-mono text-[11px]">
       {span.logs.map((log, index) => (
         <div
-          className="grid grid-cols-[44px_54px_minmax(0,1fr)] gap-2 border-b border-[#1d1d1d] px-3 py-1.5"
+          className="grid grid-cols-[44px_54px_minmax(0,1fr)] gap-2 border-b border-[var(--border-subtle)] px-3 py-1.5"
           key={`${log}-${index}`}
         >
-          <span className="text-[#5b5b5b]">
+          <span className="text-[var(--muted)]">
             +{formatTraceDuration(span.startMs + index * 12)}
           </span>
           <span
@@ -387,7 +387,7 @@ function LogList({ span }: { span: TraceSpan }) {
               ? "error"
               : "info"}
           </span>
-          <span className="min-w-0 truncate text-[#9ca3af]">{log}</span>
+          <span className="min-w-0 truncate text-[var(--secondary)]">{log}</span>
         </div>
       ))}
     </div>
@@ -396,7 +396,7 @@ function LogList({ span }: { span: TraceSpan }) {
 
 function EmptyRows({ label }: { label: string }) {
   return (
-    <div className="p-4 font-mono text-[11px] text-[#5b5b5b]">{label}</div>
+    <div className="p-4 font-mono text-[11px] text-[var(--muted)]">{label}</div>
   );
 }
 

@@ -21,7 +21,7 @@ export function TraceHeader({
   const [root] = trace.spans;
 
   return (
-    <header className="border-b border-[#1d1d1d] bg-[#0a0a0a]">
+    <header className="border-b border-[var(--border-subtle)] bg-[var(--surface)]">
       <div className="flex items-center gap-2 px-3 pt-2.5 pb-1">
         <div
           className="flex-shrink-0 rounded-[2px] border px-1.5 py-0.5 font-mono text-[10px] font-medium tracking-wide"
@@ -33,12 +33,12 @@ export function TraceHeader({
         >
           {root?.service ?? trace.service}
         </div>
-        <h1 className="min-w-0 flex-1 truncate font-mono text-[13px] font-semibold leading-tight text-[#f4f4f4]">
+        <h1 className="min-w-0 flex-1 truncate font-mono text-[13px] font-semibold leading-tight text-[var(--foreground)]">
           {root?.name ?? trace.name}
         </h1>
         <button
           aria-label="Close trace detail"
-          className="grid size-5 place-items-center rounded-[2px] text-[#5b5b5b] transition hover:bg-[#1a1a1a] hover:text-[#f4f4f4]"
+          className="grid size-5 place-items-center rounded-[2px] text-[var(--muted)] transition hover:bg-[var(--hover)] hover:text-[var(--foreground)]"
           type="button"
         >
           <X size={13} />
@@ -46,10 +46,10 @@ export function TraceHeader({
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5 px-3 pb-2">
-        <span className="font-mono text-[10px] text-[#5b5b5b]">
+        <span className="font-mono text-[10px] text-[var(--muted)]">
           {trace.id.slice(0, 16)}
         </span>
-        <div className="h-3 w-px bg-[#1d1d1d]" />
+        <div className="h-3 w-px bg-[var(--border-subtle)]" />
         <MetricChip icon={<Clock size={11} />} tone="accent">
           {formatTraceDuration(trace.durationMs)}
         </MetricChip>
@@ -65,7 +65,7 @@ export function TraceHeader({
       </div>
 
       <div className="px-3 pb-2">
-        <div className="flex h-1 overflow-hidden border border-[#1d1d1d] bg-[#111111]">
+        <div className="flex h-1 overflow-hidden border border-[var(--border-subtle)] bg-[var(--elevated)]">
           {stats.services.map((service) => {
             const duration = trace.spans
               .filter((span) => span.service === service)
@@ -90,10 +90,10 @@ export function TraceHeader({
           {path.map((span, index) => (
             <Fragment key={span.id}>
               {index > 0 ? (
-                <ChevronRight className="size-3 flex-shrink-0 text-[#5b5b5b]" />
+                <ChevronRight className="size-3 flex-shrink-0 text-[var(--muted)]" />
               ) : null}
               <button
-                className="max-w-[132px] flex-shrink-0 truncate rounded-[2px] px-1 py-0.5 font-mono text-[9px] text-[#9ca3af] transition hover:bg-[#1a1a1a] hover:text-[#f4f4f4]"
+                className="max-w-[132px] flex-shrink-0 truncate rounded-[2px] px-1 py-0.5 font-mono text-[9px] text-[var(--secondary)] transition hover:bg-[var(--hover)] hover:text-[var(--foreground)]"
                 onClick={() => onSelectSpan(span)}
                 title={span.name}
                 type="button"
@@ -118,14 +118,14 @@ function MetricChip({
   tone?: "accent" | "error" | "muted";
 }) {
   const toneClass = {
-    accent: "text-[#f3f724]",
+    accent: "text-[var(--accent)]",
     error: "text-[#ef4444]",
-    muted: "text-[#9ca3af]",
+    muted: "text-[var(--secondary)]",
   }[tone];
 
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-[2px] border border-[#1d1d1d] bg-[#111111] px-1.5 py-0.5 font-mono text-[10px] ${toneClass}`}
+      className={`inline-flex items-center gap-1 rounded-[2px] border border-[var(--border-subtle)] bg-[var(--elevated)] px-1.5 py-0.5 font-mono text-[10px] ${toneClass}`}
     >
       {icon}
       {children}

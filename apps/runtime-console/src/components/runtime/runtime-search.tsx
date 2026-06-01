@@ -13,7 +13,7 @@ export function RuntimeSearch() {
 
   return (
     <div className="relative">
-      <label className="flex h-7 items-center gap-2 rounded-[6px] border border-[#1d1d1d] bg-[#111111] px-2 font-mono text-[#5b5b5b]">
+      <label className="flex h-7 items-center gap-2 border border-[var(--border-subtle)] bg-[var(--elevated)] px-2 font-mono text-[var(--muted)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition focus-within:border-[var(--border)]">
         <Search size={13} />
         <input
           ref={searchInputRef}
@@ -29,24 +29,24 @@ export function RuntimeSearch() {
               setOpen(false);
             }
           }}
-          className="w-full bg-transparent text-[11px] text-[#f4f4f4] outline-none placeholder:text-[#5b5b5b]"
+          className="w-full bg-transparent text-[11px] text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
           placeholder="trace id / span / correlation / event / function"
           value={query}
         />
-        <span className="border border-[#2d2d2d] px-1 py-0.5 text-[10px] text-[#5b5b5b]">
+        <span className="border border-[var(--border)] px-1 py-0.5 text-[10px] text-[var(--muted)]">
           /
         </span>
       </label>
       {open && query.trim() ? (
-        <div className="absolute left-0 top-9 z-30 w-[min(620px,calc(100vw-64px))] overflow-hidden rounded-[10px] border border-[#2d2d2d] bg-[#111111] shadow-[0_28px_90px_rgba(0,0,0,0.62)]">
+        <div className="absolute left-0 top-9 z-30 w-[min(620px,calc(100vw-64px))] overflow-hidden border border-[var(--border)] bg-[var(--elevated)] shadow-[0_28px_90px_var(--shadow-strong)]">
           {results.length === 0 ? (
-            <div className="p-3 font-mono text-[11px] text-[#5b5b5b]">
+            <div className="p-3 font-mono text-[11px] text-[var(--muted)]">
               No runtime objects found
             </div>
           ) : (
             results.map((result) => (
               <button
-                className="grid w-full grid-cols-[78px_minmax(0,1fr)] gap-3 border-b border-[#1d1d1d] bg-transparent px-2.5 py-2 text-left font-mono text-[#f4f4f4] last:border-b-0 hover:bg-[#1a1a1a]"
+                className="grid w-full grid-cols-[78px_minmax(0,1fr)] gap-3 border-b border-[var(--border-subtle)] bg-transparent px-2.5 py-2 text-left font-mono text-[var(--foreground)] last:border-b-0 hover:bg-[var(--hover)]"
                 key={`${result.kind}:${result.id}`}
                 onClick={() => {
                   selectSearchResult(result);
@@ -54,14 +54,14 @@ export function RuntimeSearch() {
                   setQuery("");
                 }}
               >
-                <span className="self-center text-[10px] font-bold uppercase tracking-[0.06em] text-[#5b5b5b]">
+                <span className="self-center text-[10px] font-bold uppercase tracking-[0.06em] text-[var(--muted)]">
                   {result.kind}
                 </span>
                 <span>
                   <strong className="block truncate text-[11px] font-semibold">
                     {result.title}
                   </strong>
-                  <small className="mt-0.5 block truncate text-[10px] text-[#5b5b5b]">
+                  <small className="mt-0.5 block truncate text-[10px] text-[var(--muted)]">
                     {result.subtitle}
                   </small>
                 </span>

@@ -19,25 +19,25 @@ export function JsonViewer({
   const lines = json.split("\n");
 
   return (
-    <section className="overflow-hidden border-y border-[#1d1d1d] bg-black">
+    <section className="overflow-hidden border-y border-[var(--border-subtle)] bg-[var(--background)]">
       <button
-        className="flex w-full items-center gap-2 border-b border-[#1d1d1d] bg-[#111111]/50 px-4 py-2 text-left font-mono text-[11px] font-semibold text-[#5b5b5b] hover:bg-[#111111]"
+        className="flex w-full items-center gap-2 border-b border-[var(--border-subtle)] bg-[color-mix(in_srgb,var(--elevated)_52%,transparent)] px-4 py-2 text-left font-mono text-[11px] font-semibold text-[var(--muted)] hover:bg-[var(--elevated)]"
         onClick={() => setExpanded((current) => !current)}
       >
         {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         <span>{title}</span>
-        <span className="mono ml-auto text-[10px] text-[#5b5b5b]">
+        <span className="mono ml-auto text-[10px] text-[var(--muted)]">
           {lines.length} lines
         </span>
       </button>
       {expanded ? (
-        <div className="overflow-auto bg-black py-2 font-mono text-[11px] leading-5">
+        <div className="overflow-auto bg-[var(--background)] py-2 font-mono text-[11px] leading-5">
           {lines.map((line, index) => (
             <div className="grid grid-cols-[36px_minmax(0,1fr)]" key={index}>
-              <span className="select-none border-r border-[#1d1d1d] pr-2 text-right text-[#3d3d3d]">
+              <span className="select-none border-r border-[var(--border-subtle)] pr-2 text-right text-[var(--muted-deep)]">
                 {index + 1}
               </span>
-              <code className="whitespace-pre px-3 text-[#9ca3af]">
+              <code className="whitespace-pre px-3 text-[var(--secondary)]">
                 {line || " "}
               </code>
             </div>

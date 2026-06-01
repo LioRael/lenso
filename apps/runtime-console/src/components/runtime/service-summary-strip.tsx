@@ -26,12 +26,12 @@ export function ServiceSummaryStrip({ trace }: { trace: TraceRun }) {
   });
 
   return (
-    <div className="max-h-[142px] min-w-0 overflow-hidden border-t border-[#1d1d1d] bg-[#0a0a0a]">
-      <div className="flex h-7 items-center gap-2 border-b border-[#1d1d1d] px-3">
-        <span className="font-sans text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9ca3af]">
+    <div className="max-h-[142px] min-w-0 overflow-hidden border-t border-[var(--border-subtle)] bg-[var(--surface)]">
+      <div className="flex h-7 items-center gap-2 border-b border-[var(--border-subtle)] px-3">
+        <span className="font-sans text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--secondary)]">
           Services
         </span>
-        <div className="ml-auto flex items-center gap-3 font-mono text-[10px] text-[#5b5b5b]">
+        <div className="ml-auto flex items-center gap-3 font-mono text-[10px] text-[var(--muted)]">
           <span>
             p50{" "}
             {formatTraceDuration(
@@ -61,24 +61,24 @@ export function ServiceSummaryStrip({ trace }: { trace: TraceRun }) {
       <div className="max-h-[114px] overflow-auto">
         {services.map((item) => (
           <div
-            className="grid min-w-[640px] grid-cols-[12px_minmax(130px,1fr)_52px_72px_72px_72px_minmax(92px,180px)] items-center gap-2 border-b border-[#1d1d1d] px-3 py-1.5 font-mono text-[10px] last:border-b-0"
+            className="grid min-w-[640px] grid-cols-[12px_minmax(130px,1fr)_52px_72px_72px_72px_minmax(92px,180px)] items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-1.5 font-mono text-[10px] last:border-b-0"
             key={item.service}
           >
             <div
               className="size-2 rounded-[2px]"
               style={{ backgroundColor: serviceColor(item.service) }}
             />
-            <span className="min-w-0 truncate text-[11px] font-medium text-[#f4f4f4]">
+            <span className="min-w-0 truncate text-[11px] font-medium text-[var(--foreground)]">
               {item.service}
             </span>
-            <span className="text-[#5b5b5b]">{item.spans} spans</span>
-            <span className="text-[#5b5b5b]">
+            <span className="text-[var(--muted)]">{item.spans} spans</span>
+            <span className="text-[var(--muted)]">
               p50 {formatTraceDuration(item.p50)}
             </span>
-            <span className="text-[#5b5b5b]">
+            <span className="text-[var(--muted)]">
               p95 {formatTraceDuration(item.p95)}
             </span>
-            <span className="text-[#5b5b5b]">
+            <span className="text-[var(--muted)]">
               p99 {formatTraceDuration(item.p99)}
             </span>
             <div className="flex min-w-0 items-center gap-2">
@@ -86,12 +86,12 @@ export function ServiceSummaryStrip({ trace }: { trace: TraceRun }) {
                 className={
                   item.errors > 0
                     ? "w-10 text-[#ef4444]"
-                    : "w-10 text-[#5b5b5b]"
+                    : "w-10 text-[var(--muted)]"
                 }
               >
                 {item.errors} err
               </span>
-              <div className="h-1 flex-1 overflow-hidden rounded-[1px] bg-[#111111]">
+              <div className="h-1 flex-1 overflow-hidden rounded-[1px] bg-[var(--elevated)]">
                 <div
                   className="h-full rounded-[1px]"
                   style={{

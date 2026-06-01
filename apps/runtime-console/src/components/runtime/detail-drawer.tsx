@@ -203,7 +203,7 @@ function FunctionBody({
       <JsonViewer title="Input" value={run.input} />
       {run.output ? <JsonViewer title="Output" value={run.output} /> : null}
       <DrawerSection title="Logs">
-        <pre className="mono overflow-auto rounded-lg border border-white/10 bg-black/20 p-3 text-xs leading-6 text-slate-200">
+        <pre className="mono overflow-auto rounded-lg border border-[var(--border-subtle)] bg-[color-mix(in_srgb,var(--background)_20%,transparent)] p-3 text-xs leading-6 text-[var(--secondary)]">
           {run.logs.join("\n")}
         </pre>
       </DrawerSection>
@@ -309,7 +309,7 @@ function MetadataGrid({ children }: { children: ReactNode }) {
 
 function ErrorBox({ children }: { children: ReactNode }) {
   return (
-    <div className="mono overflow-auto rounded-lg border border-rose-300/30 bg-black/20 p-3 text-xs leading-6 text-rose-100">
+    <div className="mono overflow-auto rounded-lg border border-[color-mix(in_srgb,var(--error)_30%,transparent)] bg-[color-mix(in_srgb,var(--error)_8%,transparent)] p-3 text-xs leading-6 text-[var(--error)]">
       {children}
     </div>
   );

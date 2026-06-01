@@ -23,15 +23,15 @@ export function TraceTabs({
   onChange: (mode: TraceViewMode) => void;
 }) {
   return (
-    <div className="flex h-8 items-center border-b border-[#1d1d1d] bg-[#0a0a0a] px-3">
-      <div className="inline-flex items-center gap-px rounded-[2px] border border-[#1d1d1d] bg-black p-0.5">
+    <div className="flex h-8 items-center border-b border-[var(--border-subtle)] bg-[var(--surface)] px-3">
+      <div className="inline-flex items-center gap-px rounded-[2px] border border-[var(--border-subtle)] bg-[var(--background)] p-0.5">
         {labels.map(({ icon: Icon, id, label }) => (
           <button
             className={cn(
               "flex h-6 items-center gap-1.5 rounded-[2px] px-2.5 font-mono text-[10px] transition",
               mode === id
-                ? "bg-[#f3f724] font-semibold text-black shadow-[0_0_8px_rgba(243,247,36,0.12)]"
-                : "text-[#5b5b5b] hover:bg-[#111111] hover:text-[#f4f4f4]"
+                ? "bg-[var(--accent)] font-semibold text-[var(--inverse)] shadow-[0_0_8px_color-mix(in_srgb,var(--accent)_16%,transparent)]"
+                : "text-[var(--muted)] hover:bg-[var(--elevated)] hover:text-[var(--foreground)]"
             )}
             key={id}
             onClick={() => onChange(id)}

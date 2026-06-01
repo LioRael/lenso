@@ -98,30 +98,30 @@ export function DeadLettersPage() {
 
   return (
     <section
-      className="grid h-full min-h-0 min-w-0 overflow-hidden bg-black text-[#f4f4f4]"
+      className="grid h-full min-h-0 min-w-0 overflow-hidden bg-[var(--background)] text-[var(--foreground)]"
       style={{
         gridTemplateColumns: `minmax(0,1fr) 4px ${deadLettersLayout.inspectorWidth}px`,
       }}
     >
-      <main className="grid min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-[#1d1d1d]">
-        <header className="border-b border-[#1d1d1d] bg-[#0a0a0a] px-3 py-2">
+      <main className="grid min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-[var(--border-subtle)]">
+        <header className="border-b border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-2">
           <div className="flex items-center gap-2">
             <h1 className="font-mono text-[13px] font-semibold">
               Dead Letters
             </h1>
-            <span className="ml-auto font-mono text-[10px] text-[#5b5b5b]">
+            <span className="ml-auto font-mono text-[10px] text-[var(--muted)]">
               {visible.length} failures / mock
             </span>
           </div>
         </header>
 
-        <div className="flex h-9 items-center gap-2 border-b border-[#1d1d1d] bg-black px-3">
+        <div className="flex h-9 items-center gap-2 border-b border-[var(--border-subtle)] bg-[var(--background)] px-3">
           {(["all", "event", "function"] as const).map((item) => (
             <button
               className={`h-6 border px-2 font-mono text-[10px] ${
                 kind === item
-                  ? "border-[#f3f724]/40 bg-[#f3f724]/[0.07] text-[#f3f724]"
-                  : "border-[#1d1d1d] text-[#5b5b5b] hover:text-[#f4f4f4]"
+                  ? "border-[color-mix(in_srgb,var(--accent)_40%,transparent)] bg-[var(--accent-soft)] text-[var(--accent)]"
+                  : "border-[var(--border-subtle)] text-[var(--muted)] hover:text-[var(--foreground)]"
               }`}
               key={item}
               onClick={() => setKind(item)}
@@ -131,17 +131,17 @@ export function DeadLettersPage() {
             </button>
           ))}
           <button
-            className="h-6 border border-[#1d1d1d] px-2 font-mono text-[10px] text-[#5b5b5b] hover:text-[#f4f4f4]"
+            className="h-6 border border-[var(--border-subtle)] px-2 font-mono text-[10px] text-[var(--muted)] hover:text-[var(--foreground)]"
             onClick={() => setOldestFirst((current) => !current)}
             type="button"
           >
             {oldestFirst ? "oldest" : "newest"}
           </button>
-          <label className="ml-auto flex h-6 w-[min(360px,45vw)] items-center gap-2 border border-[#1d1d1d] bg-[#111111] px-2 font-mono text-[#5b5b5b]">
+          <label className="ml-auto flex h-6 w-[min(360px,45vw)] items-center gap-2 border border-[var(--border-subtle)] bg-[var(--elevated)] px-2 font-mono text-[var(--muted)]">
             <Search size={12} />
             <input
               aria-label="Search dead letters"
-              className="w-full bg-transparent text-[10px] text-[#f4f4f4] outline-none placeholder:text-[#5b5b5b]"
+              className="w-full bg-transparent text-[10px] text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
               onChange={(event) => setQuery(event.target.value)}
               placeholder="failure / id / correlation"
               value={query}
@@ -169,10 +169,10 @@ export function DeadLettersPage() {
               const isSelected = selected?.item.id === item.id;
               return (
                 <button
-                  className={`grid w-full grid-cols-[104px_minmax(0,1fr)_116px] items-center gap-3 border-b border-[#1d1d1d] px-3 py-2 text-left font-mono text-[11px] ${
+                  className={`grid w-full grid-cols-[104px_minmax(0,1fr)_116px] items-center gap-3 border-b border-[var(--border-subtle)] px-3 py-2 text-left font-mono text-[11px] ${
                     isSelected
-                      ? "border-l-2 border-l-[#f3f724] bg-[#f3f724]/[0.055]"
-                      : "hover:bg-[#111111]"
+                      ? "border-l-2 border-l-[var(--accent)] bg-[var(--accent-soft)]"
+                      : "hover:bg-[var(--elevated)]"
                   }`}
                   key={item.id}
                   onClick={() => setSelectedIndex(indexOf(visible, item.id))}
@@ -180,10 +180,10 @@ export function DeadLettersPage() {
                 >
                   <StatusPill status={item.status} />
                   <span className="min-w-0">
-                    <span className="block truncate text-[#f4f4f4]">
+                    <span className="block truncate text-[var(--foreground)]">
                       {name}
                     </span>
-                    <span className="block truncate text-[10px] text-[#5b5b5b]">
+                    <span className="block truncate text-[10px] text-[var(--muted)]">
                       {failure.kind} / {item.id} / {item.correlationId}
                     </span>
                     {item.lastError ? (
@@ -192,7 +192,7 @@ export function DeadLettersPage() {
                       </span>
                     ) : null}
                   </span>
-                  <span className="text-right text-[10px] text-[#5b5b5b]">
+                  <span className="text-right text-[10px] text-[var(--muted)]">
                     {time(item.createdAt)}
                   </span>
                 </button>
@@ -208,7 +208,7 @@ export function DeadLettersPage() {
         onResize={resizeInspector}
       />
 
-      <aside className="relative z-0 grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-[#080808]">
+      <aside className="relative z-0 grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-[var(--sidebar)]">
         <InspectorHeader failure={selected} />
         <div className="min-h-0 overflow-auto">
           {selected ? (
@@ -217,7 +217,7 @@ export function DeadLettersPage() {
             <MessageRow message="select a failed item" />
           )}
         </div>
-        <div className="flex gap-2 border-t border-[#1d1d1d] bg-[#0a0a0a] p-2">
+        <div className="flex gap-2 border-t border-[var(--border-subtle)] bg-[var(--surface)] p-2">
           <Button
             disabled={!selected}
             onClick={() =>
@@ -248,15 +248,15 @@ function InspectorHeader({ failure }: { failure: DeadLetter | null }) {
       : failure.item.functionName
     : "No failure selected";
   return (
-    <header className="border-b border-[#1d1d1d] bg-[#0a0a0a] px-3 py-2 font-mono">
-      <div className="mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-[#f3f724]">
+    <header className="border-b border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-2 font-mono">
+      <div className="mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-[var(--accent)]">
         {failure?.kind ?? "Failure"}
       </div>
-      <div className="truncate text-[13px] font-semibold text-[#f4f4f4]">
+      <div className="truncate text-[13px] font-semibold text-[var(--foreground)]">
         {name}
       </div>
       {failure ? (
-        <div className="mt-1 flex items-center gap-2 text-[10px] text-[#5b5b5b]">
+        <div className="mt-1 flex items-center gap-2 text-[10px] text-[var(--muted)]">
           <span className="truncate">{failure.item.id}</span>
           <span>
             {failure.item.attempts}/{failure.item.maxAttempts}
@@ -294,14 +294,14 @@ function FailureInspector({ failure }: { failure: DeadLetter }) {
 
 function KeyValueRows({ rows }: { rows: Array<[string, string]> }) {
   return (
-    <div className="border-y border-[#1d1d1d] font-mono text-[11px]">
+    <div className="border-y border-[var(--border-subtle)] font-mono text-[11px]">
       {rows.map(([key, value]) => (
         <div
-          className="grid grid-cols-[94px_minmax(0,1fr)] border-b border-[#1d1d1d] last:border-b-0"
+          className="grid grid-cols-[94px_minmax(0,1fr)] border-b border-[var(--border-subtle)] last:border-b-0"
           key={key}
         >
-          <div className="bg-[#080808] px-3 py-1.5 text-[#5b5b5b]">{key}</div>
-          <div className="min-w-0 break-words px-3 py-1.5 text-[#9ca3af]">
+          <div className="bg-[var(--sidebar)] px-3 py-1.5 text-[var(--muted)]">{key}</div>
+          <div className="min-w-0 break-words px-3 py-1.5 text-[var(--secondary)]">
             {value}
           </div>
         </div>
@@ -313,9 +313,9 @@ function KeyValueRows({ rows }: { rows: Array<[string, string]> }) {
 function LoadingRows() {
   return (
     <>
-      <div className="h-14 animate-pulse border-b border-[#1d1d1d] bg-[#111111]" />
-      <div className="h-14 animate-pulse border-b border-[#1d1d1d] bg-[#111111]" />
-      <div className="h-14 animate-pulse border-b border-[#1d1d1d] bg-[#111111]" />
+      <div className="h-14 animate-pulse border-b border-[var(--border-subtle)] bg-[var(--elevated)]" />
+      <div className="h-14 animate-pulse border-b border-[var(--border-subtle)] bg-[var(--elevated)]" />
+      <div className="h-14 animate-pulse border-b border-[var(--border-subtle)] bg-[var(--elevated)]" />
     </>
   );
 }
@@ -329,8 +329,8 @@ function MessageRow({
 }) {
   return (
     <div
-      className={`border-b border-[#1d1d1d] px-3 py-3 font-mono text-[11px] ${
-        tone === "error" ? "text-[#ef4444]" : "text-[#5b5b5b]"
+      className={`border-b border-[var(--border-subtle)] px-3 py-3 font-mono text-[11px] ${
+        tone === "error" ? "text-[#ef4444]" : "text-[var(--muted)]"
       }`}
     >
       {message}

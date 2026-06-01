@@ -90,7 +90,7 @@ export function RetryDialog() {
               </Button>
             </footer>
             {retryMutation.isError ? (
-              <div className="mono mx-3 mb-3 border border-rose-300/30 bg-black/20 p-2.5 text-[11px] text-rose-100">
+              <div className="mono mx-3 mb-3 border border-[color-mix(in_srgb,var(--error)_30%,transparent)] bg-[color-mix(in_srgb,var(--error)_8%,transparent)] p-2.5 text-[11px] text-[var(--error)]">
                 {errorMessage(retryMutation.error)}
               </div>
             ) : null}

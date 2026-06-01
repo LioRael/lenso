@@ -9,7 +9,7 @@ function PanelRoot({
   return (
     <section
       className={cn(
-        "overflow-hidden rounded-lg border border-white/10 bg-[#101318]/80 shadow-2xl shadow-black/35",
+        "overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[color-mix(in_srgb,var(--surface)_88%,transparent)] shadow-2xl shadow-[var(--shadow-strong)]",
         className
       )}
     >
@@ -25,7 +25,7 @@ function PanelHeader({
   return (
     <div
       className={cn(
-        "flex items-center justify-between gap-4 border-b border-white/10 p-3.5",
+        "flex items-center justify-between gap-4 border-b border-[var(--border-subtle)] p-3.5",
         className
       )}
     >
@@ -39,7 +39,7 @@ function PanelTitle({
   className,
 }: PropsWithChildren<{ className?: string }>) {
   return (
-    <h2 className={cn("text-sm font-semibold text-slate-100", className)}>
+    <h2 className={cn("text-sm font-semibold text-[var(--foreground)]", className)}>
       {children}
     </h2>
   );

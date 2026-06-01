@@ -2,23 +2,63 @@
 
 :root {
   color-scheme: dark;
-  --background: #000000;
-  --foreground: #f4f4f4;
-  --sidebar: #0a0a0a;
-  --elevated: #111111;
-  --hover: #1a1a1a;
-  --border: #2d2d2d;
-  --border-subtle: #1d1d1d;
-  --muted: #5b5b5b;
-  --secondary: #9ca3af;
-  --accent: #f3f724;
-  --success: #22c55e;
-  --error: #ef4444;
+  --background: #050606;
+  --foreground: #f2f4ef;
+  --sidebar: #080909;
+  --surface: #0b0d0c;
+  --elevated: #111412;
+  --hover: #171b18;
+  --border: #29302b;
+  --border-subtle: #171c19;
+  --muted: #5c665f;
+  --muted-deep: #3d443f;
+  --secondary: #a3ada6;
+  --accent: #d7ff42;
+  --accent-soft: rgba(215, 255, 66, 0.1);
+  --ambient: color-mix(in srgb, var(--accent) 8%, transparent);
+  --chrome: rgba(5, 6, 6, 0.88);
+  --inverse: #000000;
+  --grid-line: rgba(255, 255, 255, 0.022);
+  --grid-line-strong: rgba(255, 255, 255, 0.028);
+  --panel-gloss: rgba(255, 255, 255, 0.026);
+  --success: #36d47b;
+  --warning: #f6c453;
+  --error: #ff5f57;
+  --shadow-strong: rgba(0, 0, 0, 0.58);
+  --shadow-soft: rgba(0, 0, 0, 0.28);
   font-family:
     "JetBrains Mono", "Geist Mono", "SFMono-Regular", "Cascadia Code",
     "Roboto Mono", ui-monospace, monospace;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --background: #f6f7f2;
+  --foreground: #171a15;
+  --sidebar: #e9eee3;
+  --surface: #fdfef9;
+  --elevated: #f5f6f0;
+  --hover: #e5edda;
+  --border: #aebda7;
+  --border-subtle: #cfdac7;
+  --muted: #677060;
+  --muted-deep: #8c9685;
+  --secondary: #2f3a32;
+  --accent: #6f8e00;
+  --accent-soft: rgba(111, 142, 0, 0.16);
+  --ambient: rgba(111, 142, 0, 0.03);
+  --chrome: rgba(255, 255, 250, 0.92);
+  --inverse: #ffffff;
+  --grid-line: rgba(23, 26, 21, 0.02);
+  --grid-line-strong: rgba(23, 26, 21, 0.032);
+  --success: #08754f;
+  --warning: #966900;
+  --error: #cf2f2d;
+  --shadow-strong: rgba(33, 39, 29, 0.18);
+  --shadow-soft: rgba(33, 39, 29, 0.1);
+  --panel-gloss: rgba(255, 255, 255, 0.72);
 }
 
 * {
@@ -36,7 +76,13 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: var(--background);
+  background:
+    radial-gradient(circle at 18% -8%, var(--ambient), transparent 30rem),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface) 88%, var(--background)) 0%,
+      var(--background) 18rem
+    );
   color: var(--foreground);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -44,12 +90,13 @@ body {
 
 ::selection {
   background: var(--accent);
-  color: #000000;
+  color: var(--inverse);
 }
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -62,11 +109,28 @@ button:disabled {
 }
 
 button:focus-visible,
-input:focus-visible,
-select:focus-visible,
 a:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+}
+
+input,
+select,
+textarea {
+  caret-color: var(--accent);
+}
+
+input:not([class*="bg-transparent"]):focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  border-color: var(--border);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent);
 }
 
 code,
@@ -113,6 +177,193 @@ a {
 
 .animate-panel-in {
   animation: panel-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.runtime-grid {
+  background-image:
+    linear-gradient(var(--grid-line-strong) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-position: -1px -1px;
+  background-size: 24px 24px;
+}
+
+.soft-panel {
+  border-color: var(--border-subtle);
+  background:
+    linear-gradient(180deg, var(--panel-gloss), rgba(255, 255, 255, 0)),
+    var(--surface);
+}
+
+.runtime-shell {
+  --sidebar-collapse: 0;
+  --sidebar-width: calc(228px - (176px * var(--sidebar-collapse)));
+  --sidebar-item-width: calc(212px - (184px * var(--sidebar-collapse)));
+  --sidebar-item-x: calc(4px * var(--sidebar-collapse));
+  --sidebar-item-gap: calc(8px * (1 - var(--sidebar-collapse)));
+  --sidebar-item-padding: calc(8px - (0.5px * var(--sidebar-collapse)));
+  --sidebar-header-content-width: calc(
+    204px - (180px * var(--sidebar-collapse))
+  );
+  --sidebar-status-height: calc(32px - (4px * var(--sidebar-collapse)));
+  --sidebar-status-x: 4px;
+  --sidebar-status-padding: calc(8px + (3px * var(--sidebar-collapse)));
+  --sidebar-copy-opacity: calc(1 - var(--sidebar-collapse));
+  --sidebar-copy-x: calc(-4px * var(--sidebar-collapse));
+  --sidebar-copy-max: calc(180px * (1 - var(--sidebar-collapse)));
+  --sidebar-group-label-height: calc(14px * (1 - var(--sidebar-collapse)));
+  --sidebar-group-label-margin: calc(4px * (1 - var(--sidebar-collapse)));
+}
+
+.sidebar-header {
+  justify-content: space-between;
+  margin-left: auto;
+  margin-right: auto;
+  width: var(--sidebar-header-content-width);
+}
+
+.sidebar-nav-item {
+  gap: var(--sidebar-item-gap);
+  padding-left: var(--sidebar-item-padding);
+  padding-right: var(--sidebar-item-padding);
+  transform: translateX(var(--sidebar-item-x));
+  width: var(--sidebar-item-width);
+}
+
+.sidebar-status-item {
+  gap: var(--sidebar-item-gap);
+  height: var(--sidebar-status-height);
+  padding-left: var(--sidebar-status-padding);
+  padding-right: var(--sidebar-status-padding);
+  transform: translateX(var(--sidebar-status-x));
+  width: var(--sidebar-item-width);
+}
+
+.sidebar-copy {
+  max-width: var(--sidebar-copy-max);
+  opacity: var(--sidebar-copy-opacity);
+  transform: translateX(var(--sidebar-copy-x));
+}
+
+.sidebar-group-label {
+  height: var(--sidebar-group-label-height);
+  margin-bottom: var(--sidebar-group-label-margin);
+}
+
+.status-pill {
+  background: var(--status-bg);
+  border-color: var(--status-border);
+  color: var(--status-text);
+  letter-spacing: 0.01em;
+}
+
+.status-pill-dot {
+  background: var(--status-dot);
+  color: var(--status-dot);
+}
+
+.theme-toggle-button {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  max-width: 28px;
+  max-height: 28px;
+  flex: 0 0 28px;
+  aspect-ratio: 1 / 1;
+  padding: 0 !important;
+}
+
+.theme-toggle-button svg {
+  width: 15px;
+  height: 15px;
+  min-width: 15px;
+  min-height: 15px;
+}
+
+.status-pill-pending {
+  --status-bg: rgba(148, 163, 184, 0.1);
+  --status-border: rgba(148, 163, 184, 0.25);
+  --status-dot: #94a3b8;
+  --status-text: #cbd5e1;
+}
+
+.status-pill-processing {
+  --status-bg: rgba(147, 197, 253, 0.1);
+  --status-border: rgba(147, 197, 253, 0.3);
+  --status-dot: #93c5fd;
+  --status-text: #bfdbfe;
+}
+
+.status-pill-running {
+  --status-bg: rgba(103, 232, 249, 0.1);
+  --status-border: rgba(103, 232, 249, 0.3);
+  --status-dot: #67e8f9;
+  --status-text: #a5f3fc;
+}
+
+.status-pill-published,
+.status-pill-completed {
+  --status-bg: rgba(110, 231, 183, 0.1);
+  --status-border: rgba(110, 231, 183, 0.3);
+  --status-dot: #6ee7b7;
+  --status-text: #a7f3d0;
+}
+
+.status-pill-failed {
+  --status-bg: rgba(252, 211, 77, 0.1);
+  --status-border: rgba(252, 211, 77, 0.3);
+  --status-dot: #fcd34d;
+  --status-text: #fde68a;
+}
+
+.status-pill-dead {
+  --status-bg: rgba(253, 164, 175, 0.1);
+  --status-border: rgba(253, 164, 175, 0.35);
+  --status-dot: #fda4af;
+  --status-text: #fecdd3;
+}
+
+:root[data-theme="light"] .status-pill-pending {
+  --status-bg: rgba(71, 85, 105, 0.08);
+  --status-border: rgba(71, 85, 105, 0.28);
+  --status-dot: #64748b;
+  --status-text: #475569;
+}
+
+:root[data-theme="light"] .status-pill-processing {
+  --status-bg: rgba(37, 99, 235, 0.08);
+  --status-border: rgba(37, 99, 235, 0.28);
+  --status-dot: #2563eb;
+  --status-text: #1d4ed8;
+}
+
+:root[data-theme="light"] .status-pill-running {
+  --status-bg: rgba(8, 145, 178, 0.08);
+  --status-border: rgba(8, 145, 178, 0.3);
+  --status-dot: #0891b2;
+  --status-text: #0e7490;
+}
+
+:root[data-theme="light"] .status-pill-published,
+:root[data-theme="light"] .status-pill-completed {
+  --status-bg: rgba(5, 150, 105, 0.08);
+  --status-border: rgba(5, 150, 105, 0.3);
+  --status-dot: #059669;
+  --status-text: #047857;
+}
+
+:root[data-theme="light"] .status-pill-failed {
+  --status-bg: rgba(202, 138, 4, 0.1);
+  --status-border: rgba(202, 138, 4, 0.34);
+  --status-dot: #ca8a04;
+  --status-text: #a16207;
+}
+
+:root[data-theme="light"] .status-pill-dead {
+  --status-bg: rgba(225, 29, 72, 0.08);
+  --status-border: rgba(225, 29, 72, 0.3);
+  --status-dot: #e11d48;
+  --status-text: #be123c;
 }
 
 @media (prefers-reduced-motion: reduce) {

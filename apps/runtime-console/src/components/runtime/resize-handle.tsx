@@ -12,7 +12,7 @@ export function ResizeHandle({
   return (
     <button
       aria-label={ariaLabel}
-      className="group relative z-[1] min-h-0 w-1 cursor-col-resize border-x border-transparent bg-[#1d1d1d] transition hover:bg-[#f3f724]/45 focus-visible:bg-[#f3f724]/45"
+      className="group relative z-[1] min-h-0 w-1 cursor-col-resize border-x border-transparent bg-[var(--border-subtle)] transition hover:bg-[color-mix(in_srgb,var(--accent)_45%,transparent)] focus-visible:bg-[color-mix(in_srgb,var(--accent)_45%,transparent)]"
       onDoubleClick={onReset}
       onKeyDown={(event) => {
         if (event.key === "ArrowLeft") {
@@ -54,7 +54,7 @@ export function ResizeHandle({
     >
       <span className="absolute inset-y-0 -left-1 -right-1" />
       <GripVertical
-        className="pointer-events-none absolute top-1/2 left-1/2 size-3 -translate-x-1/2 -translate-y-1/2 text-transparent transition group-hover:text-black/70 group-focus-visible:text-black/70"
+        className="pointer-events-none absolute top-1/2 left-1/2 size-3 -translate-x-1/2 -translate-y-1/2 text-transparent transition group-hover:text-[color-mix(in_srgb,var(--inverse)_70%,transparent)] group-focus-visible:text-[color-mix(in_srgb,var(--inverse)_70%,transparent)]"
         strokeWidth={2}
       />
     </button>

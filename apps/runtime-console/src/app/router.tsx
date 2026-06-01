@@ -78,28 +78,28 @@ const placeholderRoute = (path: string, title: string) =>
     getParentRoute: () => rootRoute,
     path,
     component: () => (
-      <section className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-black text-[#f4f4f4]">
-        <header className="border-b border-[#1d1d1d] bg-[#0a0a0a] px-3 py-2">
+      <section className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
+        <header className="border-b border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-2">
           <div className="flex items-center gap-2">
             <h1 className="font-mono text-[13px] font-semibold">{title}</h1>
-            <span className="ml-auto font-mono text-[10px] text-[#5b5b5b]">
+            <span className="ml-auto font-mono text-[10px] text-[var(--muted)]">
               deferred
             </span>
           </div>
         </header>
         <div className="p-3 font-mono">
-          <div className="border-y border-[#1d1d1d]">
-            <div className="grid grid-cols-[96px_minmax(0,1fr)] border-b border-[#1d1d1d] text-[11px]">
-              <div className="bg-[#080808] px-3 py-1.5 text-[#5b5b5b]">
+          <div className="border-y border-[var(--border-subtle)]">
+            <div className="grid grid-cols-[96px_minmax(0,1fr)] border-b border-[var(--border-subtle)] text-[11px]">
+              <div className="bg-[var(--sidebar)] px-3 py-1.5 text-[var(--muted)]">
                 status
               </div>
-              <div className="px-3 py-1.5 text-[#9ca3af]">future runtime</div>
+              <div className="px-3 py-1.5 text-[var(--secondary)]">future runtime</div>
             </div>
             <div className="grid grid-cols-[96px_minmax(0,1fr)] text-[11px]">
-              <div className="bg-[#080808] px-3 py-1.5 text-[#5b5b5b]">
+              <div className="bg-[var(--sidebar)] px-3 py-1.5 text-[var(--muted)]">
                 reason
               </div>
-              <div className="px-3 py-1.5 text-[#9ca3af]">
+              <div className="px-3 py-1.5 text-[var(--secondary)]">
                 no backend support in mock mode
               </div>
             </div>
