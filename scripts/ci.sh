@@ -1,10 +1,11 @@
 #!/usr/bin/env sh
 set -eu
 
-cargo fmt --all -- --check
-cargo check --workspace --all-targets
-cargo test --workspace
-just generate-contracts
-just generate-ts-sdk
-cargo run -p arch-check
-pnpm --dir packages/ts-sdk typecheck
+just install-ci
+just fmt-check
+just rust-check
+just test
+just generated-check
+just arch-check
+just sdk-check
+just console-check

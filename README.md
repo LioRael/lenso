@@ -1,8 +1,8 @@
 # Lenso Backend Platform
 
-Rust-first service-ready modular monolith scaffold for reusable backend projects.
+Rust-first service-ready modular monolith scaffold with a local Runtime Console and generated TypeScript SDK.
 
-The platform starts as one deployable system with clear module boundaries. Domains own business capabilities, the platform crates provide shared service-kit foundations, the runtime handles durable background work, and contracts produce stable API/event/SDK artifacts.
+The platform starts as one deployable system with clear module boundaries. Domains own business capabilities, platform crates provide shared service-kit foundations, the runtime handles durable background work, contracts produce stable API/event/SDK artifacts, and the console gives those runtime primitives an operator-facing UI.
 
 ## Architecture Overview
 
@@ -21,6 +21,7 @@ More detail lives in [docs/architecture/overview.md](docs/architecture/overview.
   - `api`: Axum HTTP API app.
   - `worker`: background worker and outbox relay app.
   - `migrate`: deterministic migration runner.
+  - `runtime-console`: Vite/React console for runtime traces, queues, functions, events, and dead letters.
 - `crates/`
   - `platform-core`: config, errors, context, DB, migrations, events, outbox, health, telemetry primitives.
   - `platform-http`: Axum adapters, request context middleware, JSON extractor, error responses, health routes.
@@ -44,10 +45,16 @@ More detail lives in [docs/architecture/overview.md](docs/architecture/overview.
 
 Prerequisites:
 
-- Rust toolchain compatible with the workspace.
+- Rust toolchain compatible with the workspace (`rust-version = 1.78`).
 - `just`.
 - Docker if you want local Postgres via `just db-up`.
-- `pnpm` and `tsc` for the TypeScript SDK checks.
+- Node 24 and `pnpm` for the SDK and Runtime Console checks.
+
+Install frontend dependencies:
+
+```sh
+just install
+```
 
 Typical loop:
 
@@ -63,26 +70,52 @@ Worker:
 just worker
 ```
 
-Regenerate contracts and SDK:
+Runtime Console with seeded data:
 
 ```sh
-just generate-contracts
-just generate-ts-sdk
+just console
+```
+
+Runtime Console pointed at the local API:
+
+```sh
+just console-api
+```
+
+Regenerate contracts and SDK after changing Rust/OpenAPI sources:
+
+```sh
+just generate
 ```
 
 ## Common Commands
 
-- `just fmt`: format Rust.
-- `just check`: run Rust formatting, workspace check, tests, architecture checks, generation, and SDK typecheck.
-- `just test`: run Rust workspace tests.
+- `just`: list available recipes.
+- `just install`: install SDK and Runtime Console pnpm dependencies.
+- `just fmt`: format Rust and Runtime Console code.
+- `just fmt-check`: check Rust and Runtime Console formatting.
+- `just check`: run the full local quality gate.
+- `just test`: run Rust workspace tests with the locked dependency graph.
+- `just rust-check`: run `cargo check` for the whole workspace.
 - `just arch-check`: run architecture guardrails.
-- `just generate-contracts`: generate OpenAPI and JSON Schema artifacts.
-- `just generate-ts-sdk`: generate TypeScript SDK files.
+- `just generate`: generate OpenAPI, JSON Schema, and TypeScript SDK artifacts.
+- `just generated-check`: regenerate committed artifacts and fail if they differ from git.
+- `just sdk-check`: typecheck `packages/ts-sdk`.
+- `just console-check`: format-check, lint, typecheck, and build `apps/runtime-console`.
 - `just ci`: run the local CI script.
 
 ## Quality Gates
 
-The architecture checker fails on:
+`just ci` runs the same gates as GitHub Actions:
+
+- Install pnpm dependencies for `packages/ts-sdk` and `apps/runtime-console` with frozen lockfiles.
+- Check Rust formatting, compile every Rust workspace target, and run Rust tests.
+- Regenerate contracts and generated SDK files, then fail if committed artifacts changed.
+- Run architecture guardrails.
+- Typecheck the TypeScript SDK.
+- Format-check, lint, typecheck, and build the Runtime Console.
+
+The architecture checker also fails on:
 
 - DDD/Clean Architecture folders inside domains: `api`, `application`, `domain`, `infrastructure`.
 - Cross-domain imports inside domain source code.
