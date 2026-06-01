@@ -1,7 +1,10 @@
 import type { RuntimeStory, ExecutionNode } from "../../data/mock-runtime";
 import { cn } from "../../lib/cn";
-import { formatTraceDuration, traceTimelineEnd } from "../../lib/trace-style";
-import { TraceViewHeader } from "./trace-view-header";
+import {
+  formatRuntimeDuration,
+  runtimeTimelineEnd,
+} from "../../lib/runtime-style";
+import { RuntimeViewHeader } from "./runtime-view-header";
 
 export function HeatmapView({
   selectedNodeId,
@@ -12,7 +15,7 @@ export function HeatmapView({
   selectedNodeId: string | null;
   onSelectNode: (node: ExecutionNode) => void;
 }) {
-  const timelineEnd = traceTimelineEnd(story);
+  const timelineEnd = runtimeTimelineEnd(story);
   const cells = Array.from({ length: 120 }, (_, index) => {
     const bucketStart = (index / 120) * timelineEnd;
     const node = story.nodes.find(
@@ -25,9 +28,9 @@ export function HeatmapView({
 
   return (
     <div className="isolate flex h-full min-w-0 flex-col overflow-hidden bg-(--background)">
-      <TraceViewHeader
+      <RuntimeViewHeader
         meta="idle · short · work · slow · fault"
-        summary={`${cells.length} buckets across ${formatTraceDuration(timelineEnd)}`}
+        summary={`${cells.length} buckets across ${formatRuntimeDuration(timelineEnd)}`}
         title="Execution Pressure"
       />
       <div className="min-h-0 flex-1 overflow-auto bg-(--background) p-3">
@@ -47,7 +50,7 @@ export function HeatmapView({
               )}
               key={cell.index}
               onClick={() => cell.node && onSelectNode(cell.node)}
-              title={cell.node?.name ?? formatTraceDuration(cell.bucketStart)}
+              title={cell.node?.name ?? formatRuntimeDuration(cell.bucketStart)}
               type="button"
             />
           ))}

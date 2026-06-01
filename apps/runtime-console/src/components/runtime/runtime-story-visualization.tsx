@@ -3,12 +3,12 @@ import { FlameView } from "./flame-view";
 import { FlowView } from "./flow-view";
 import { HeatmapView } from "./heatmap-view";
 import { RuntimeStoryView } from "./runtime-story-view";
+import type { StoryViewMode } from "./story-tabs";
+import { StoryTabs } from "./story-tabs";
 import { StoryTimelineView } from "./story-timeline-view";
-import type { TraceViewMode } from "./trace-tabs";
-import { TraceTabs } from "./trace-tabs";
 import { WaterfallView } from "./waterfall-view";
 
-export function RuntimeVisualization({
+export function RuntimeStoryVisualization({
   mode,
   selectedNodeId,
   setMode,
@@ -17,15 +17,15 @@ export function RuntimeVisualization({
   onSelectNode,
 }: {
   story: RuntimeStory;
-  mode: TraceViewMode;
+  mode: StoryViewMode;
   selectedNodeId: string | null;
-  setMode: (mode: TraceViewMode) => void;
+  setMode: (mode: StoryViewMode) => void;
   onSelectNode: (node: ExecutionNode) => void;
   onRetryNode: (node: ExecutionNode) => void;
 }) {
   return (
     <section className="isolate grid h-full min-h-0 min-w-0 grid-rows-[32px_minmax(0,1fr)] overflow-hidden">
-      <TraceTabs mode={mode} onChange={setMode} />
+      <StoryTabs mode={mode} onChange={setMode} />
       <div className="min-h-0 min-w-0 overflow-hidden">
         {mode === "story" ? (
           <RuntimeStoryView

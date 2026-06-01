@@ -11,28 +11,28 @@ import {
 import type { RuntimeStatus } from "../../data/mock-runtime";
 import { cn } from "../../lib/cn";
 
-type TraceStatusBadgeProps = {
+type RuntimeStatusBadgeProps = {
   className?: string;
   status: RuntimeStatus;
   variant?: "default" | "compact" | "table";
 };
 
-export function TraceStatusBadge({
+export function RuntimeStatusBadge({
   className,
   status,
   variant = "default",
-}: TraceStatusBadgeProps) {
-  const tone = traceStatusTone[status];
+}: RuntimeStatusBadgeProps) {
+  const tone = runtimeStatusTone[status];
   const StatusIcon = tone.icon;
   const showIcon = variant !== "table";
 
   return (
     <span
       className={cn(
-        traceStatusBadgeBaseClassName,
+        runtimeStatusBadgeBaseClassName,
         tone.className,
-        variant === "compact" && traceStatusBadgeCompactClassName,
-        variant === "table" && traceStatusBadgeTableClassName,
+        variant === "compact" && runtimeStatusBadgeCompactClassName,
+        variant === "table" && runtimeStatusBadgeTableClassName,
         className
       )}
       title={tone.label}
@@ -51,50 +51,50 @@ export function TraceStatusBadge({
   );
 }
 
-export const traceStatusBadgeBaseClassName =
-  "trace-status-badge inline-flex min-h-5 w-fit max-w-full items-center gap-1 rounded-xs border px-1.5 font-mono text-[10px] font-semibold uppercase leading-none tracking-[0.06em]";
+export const runtimeStatusBadgeBaseClassName =
+  "runtime-status-badge inline-flex min-h-5 w-fit max-w-full items-center gap-1 rounded-xs border px-1.5 font-mono text-[10px] font-semibold uppercase leading-none tracking-[0.06em]";
 
-export const traceStatusBadgeCompactClassName = "min-h-4.5 px-1 text-[9px]";
+export const runtimeStatusBadgeCompactClassName = "min-h-4.5 px-1 text-[9px]";
 
-export const traceStatusBadgeTableClassName =
+export const runtimeStatusBadgeTableClassName =
   "min-h-4.5 w-[72px] justify-center px-1 text-[9px] tracking-[0.08em]";
 
-const traceStatusTone: Record<
+const runtimeStatusTone: Record<
   RuntimeStatus,
   { className: string; icon: typeof Clock3; label: string }
 > = {
   pending: {
-    className: "trace-status-pending",
+    className: "runtime-status-pending",
     icon: Clock3,
     label: "pending",
   },
   processing: {
-    className: "trace-status-processing",
+    className: "runtime-status-processing",
     icon: LoaderCircle,
     label: "processing",
   },
   running: {
-    className: "trace-status-running",
+    className: "runtime-status-running",
     icon: Activity,
     label: "running",
   },
   published: {
-    className: "trace-status-published",
+    className: "runtime-status-published",
     icon: CircleDot,
     label: "published",
   },
   completed: {
-    className: "trace-status-completed",
+    className: "runtime-status-completed",
     icon: CheckCircle2,
     label: "completed",
   },
   failed: {
-    className: "trace-status-failed",
+    className: "runtime-status-failed",
     icon: AlertTriangle,
     label: "failed",
   },
   dead: {
-    className: "trace-status-dead",
+    className: "runtime-status-dead",
     icon: OctagonX,
     label: "dead",
   },

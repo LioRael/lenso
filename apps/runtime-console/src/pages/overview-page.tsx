@@ -1,6 +1,6 @@
 import { Activity, AlertTriangle, Clock, Inbox } from "lucide-react";
 
-import { TraceStatusBadge } from "../components/runtime/trace-status-badge";
+import { RuntimeStatusBadge } from "../components/runtime/runtime-status-badge";
 import {
   type RuntimeHeatmap,
   useRuntimeSummary,
@@ -61,7 +61,7 @@ export function OverviewPage() {
                   className="grid min-h-11 grid-cols-[108px_minmax(0,1fr)_96px_120px] items-center gap-3 border-b border-(--border-subtle) px-3 font-mono text-[11px] transition hover:bg-(--hover)"
                   key={item.id}
                 >
-                  <TraceStatusBadge status={item.status} variant="table" />
+                  <RuntimeStatusBadge status={item.status} variant="table" />
                   <div className="min-w-0">
                     <div className="truncate text-(--foreground)">
                       {item.name}
@@ -94,7 +94,10 @@ export function OverviewPage() {
                   key={failure.id}
                 >
                   <div className="mb-1 flex items-center gap-2">
-                    <TraceStatusBadge status={failure.status} variant="table" />
+                    <RuntimeStatusBadge
+                      status={failure.status}
+                      variant="table"
+                    />
                     <span className="ml-auto text-[10px] text-(--muted)">
                       {relativeAge(failure.createdAt)}
                     </span>

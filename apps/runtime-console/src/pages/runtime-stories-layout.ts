@@ -1,4 +1,4 @@
-export const traceLayoutDefaults = {
+export const runtimeStoriesLayoutDefaults = {
   inspectorWidth: 376,
   listWidth: 340,
   servicesHeight: 144,
@@ -8,39 +8,37 @@ export function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
-export function resizeTraceListWidth(
+export function resizeStoryListWidth(
   currentWidth: number | undefined,
   deltaX: number
 ) {
   return clamp(
-    (currentWidth ?? traceLayoutDefaults.listWidth) + deltaX,
+    (currentWidth ?? runtimeStoriesLayoutDefaults.listWidth) + deltaX,
     220,
     420
   );
 }
 
-export const resizeStoryListWidth = resizeTraceListWidth;
-
-export function resizeTraceInspectorWidth(
+export function resizeExecutionInspectorWidth(
   currentWidth: number | undefined,
   deltaX: number
 ) {
   return clamp(
-    (currentWidth ?? traceLayoutDefaults.inspectorWidth) - deltaX,
+    (currentWidth ?? runtimeStoriesLayoutDefaults.inspectorWidth) - deltaX,
     280,
     560
   );
 }
 
-export function resizeTraceInspectorLayout({
+export function resizeExecutionInspectorLayout({
   currentWidth,
   deltaX,
 }: {
   currentWidth: number | undefined;
   deltaX: number;
 }) {
-  const width = currentWidth ?? traceLayoutDefaults.inspectorWidth;
-  const nextWidth = resizeTraceInspectorWidth(currentWidth, deltaX);
+  const width = currentWidth ?? runtimeStoriesLayoutDefaults.inspectorWidth;
+  const nextWidth = resizeExecutionInspectorWidth(currentWidth, deltaX);
 
   return {
     open: !(width <= 280 && deltaX > 0),
@@ -53,7 +51,7 @@ export function resizeServicesPanelHeight(
   deltaY: number
 ) {
   return clamp(
-    (currentHeight ?? traceLayoutDefaults.servicesHeight) - deltaY,
+    (currentHeight ?? runtimeStoriesLayoutDefaults.servicesHeight) - deltaY,
     112,
     360
   );
@@ -68,7 +66,7 @@ export function resizeServicesPanelLayout({
   deltaY: number;
   expanded: boolean;
 }) {
-  const height = currentHeight ?? traceLayoutDefaults.servicesHeight;
+  const height = currentHeight ?? runtimeStoriesLayoutDefaults.servicesHeight;
 
   if (!expanded) {
     return {

@@ -8,14 +8,14 @@ import {
   type CSSProperties,
 } from "react";
 
+import { ExecutionInspector } from "../components/runtime/execution-inspector";
 import { ResizeHandle } from "../components/runtime/resize-handle";
 import { useRuntimeConsole } from "../components/runtime/runtime-console-context";
+import { RuntimeStoryVisualization } from "../components/runtime/runtime-story-visualization";
 import { ServiceSummaryStrip } from "../components/runtime/service-summary-strip";
-import { TraceHeader } from "../components/runtime/trace-header";
-import { TraceInspector } from "../components/runtime/trace-inspector";
-import { StoryList } from "../components/runtime/trace-list";
-import type { TraceViewMode } from "../components/runtime/trace-tabs";
-import { RuntimeVisualization } from "../components/runtime/trace-visualization";
+import { StoryHeader } from "../components/runtime/story-header";
+import { StoryList } from "../components/runtime/story-list";
+import type { StoryViewMode } from "../components/runtime/story-tabs";
 import { EmptyState } from "../components/ui/empty-state";
 import {
   isRetryable,
@@ -27,10 +27,10 @@ import { usePersistedLayout } from "../hooks/use-persisted-layout";
 import { useRuntimeStories } from "../hooks/use-runtime-queries";
 import {
   resizeServicesPanelLayout,
-  resizeTraceInspectorLayout,
+  resizeExecutionInspectorLayout,
   resizeStoryListWidth,
-  traceLayoutDefaults,
-} from "./trace-workbench-layout";
+  runtimeStoriesLayoutDefaults,
+} from "./runtime-stories-layout";
 
 gsap.registerPlugin(useGSAP);
 
@@ -43,9 +43,9 @@ type InspectorTab =
   | "context";
 
 const emptyStories: RuntimeStory[] = [];
-export const storyWorkbenchDefaultViewMode = "story" satisfies TraceViewMode;
+export const runtimeStoriesDefaultViewMode = "story" satisfies StoryViewMode;
 
-export function TraceWorkbenchPage() {
+export function RuntimeStoriesPage() {
   const { activeStoryTarget, clearStoryTarget, openRetry } =
     useRuntimeConsole();
   const storiesQuery = useRuntimeStories();
@@ -58,8 +58,8 @@ export function TraceWorkbenchPage() {
   );
   const [storyDetailClosed, setStoryDetailClosed] = useState(false);
   const [servicesExpanded, setServicesExpanded] = useState(true);
-  const [mode, setMode] = useState<TraceViewMode>(
-    storyWorkbenchDefaultViewMode
+  const [mode, setMode] = useState<StoryViewMode>(
+    runtimeStoriesDefaultViewMode
   );
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("info");
   const workbenchRef = useRef<HTMLDivElement | null>(null);
@@ -67,24 +67,24 @@ export function TraceWorkbenchPage() {
   const previousInspectorOpenRef = useRef(false);
   const [layout, setLayout, resetLayout] = usePersistedLayout(
     "runtime-console:stories-layout",
-    traceLayoutDefaults
+    runtimeStoriesLayoutDefaults
   );
-  const traceLayout = { ...traceLayoutDefaults, ...layout };
-  const inspectorWidthRef = useRef(traceLayout.inspectorWidth);
+  const storiesLayout = { ...runtimeStoriesLayoutDefaults, ...layout };
+  const inspectorWidthRef = useRef(storiesLayout.inspectorWidth);
   const servicesExpandedRef = useRef(servicesExpanded);
-  const servicesHeightRef = useRef(traceLayout.servicesHeight);
+  const servicesHeightRef = useRef(storiesLayout.servicesHeight);
 
   useEffect(() => {
-    inspectorWidthRef.current = traceLayout.inspectorWidth;
-  }, [traceLayout.inspectorWidth]);
+    inspectorWidthRef.current = storiesLayout.inspectorWidth;
+  }, [storiesLayout.inspectorWidth]);
 
   useEffect(() => {
     servicesExpandedRef.current = servicesExpanded;
   }, [servicesExpanded]);
 
   useEffect(() => {
-    servicesHeightRef.current = traceLayout.servicesHeight;
-  }, [traceLayout.servicesHeight]);
+    servicesHeightRef.current = storiesLayout.servicesHeight;
+  }, [storiesLayout.servicesHeight]);
 
   const visibleStories = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -123,8 +123,8 @@ export function TraceWorkbenchPage() {
   );
   const inspectorOpen = selectedNode !== null;
   const hasInspector = displayedNode !== null;
-  const listColumn = `clamp(220px,24vw,${traceLayout.listWidth}px)`;
-  const inspectorColumn = `clamp(280px,30vw,${traceLayout.inspectorWidth}px)`;
+  const listColumn = `clamp(220px,24vw,${storiesLayout.listWidth}px)`;
+  const inspectorColumn = `clamp(280px,30vw,${storiesLayout.inspectorWidth}px)`;
   const gridTemplateColumns = hasInspector
     ? `${listColumn} 1px minmax(0,1fr) calc(1px * var(--story-inspector-open)) minmax(0,calc(${inspectorColumn} * var(--story-inspector-open)))`
     : `${listColumn} 1px minmax(0,1fr)`;
@@ -208,8 +208,8 @@ export function TraceWorkbenchPage() {
       dependencies: [
         displayedNode?.id ?? null,
         inspectorOpen,
-        traceLayout.inspectorWidth,
-        traceLayout.servicesHeight,
+        storiesLayout.inspectorWidth,
+        storiesLayout.servicesHeight,
       ],
       scope: workbenchRef,
     }
@@ -240,7 +240,7 @@ export function TraceWorkbenchPage() {
   };
 
   const resizeInspector = (deltaX: number) => {
-    const next = resizeTraceInspectorLayout({
+    const next = resizeExecutionInspectorLayout({
       currentWidth: inspectorWidthRef.current,
       deltaX,
     });
@@ -379,13 +379,13 @@ export function TraceWorkbenchPage() {
         >
           {selectedStory ? (
             <>
-              <TraceHeader
+              <StoryHeader
                 onClose={closeStoryDetail}
                 onSelectNode={selectNode}
                 story={selectedStory}
               />
 
-              <RuntimeVisualization
+              <RuntimeStoryVisualization
                 mode={mode}
                 onRetryNode={retryNode}
                 onSelectNode={selectNode}
@@ -405,7 +405,7 @@ export function TraceWorkbenchPage() {
 
                   <ServiceSummaryStrip
                     expanded={servicesExpanded}
-                    height={traceLayout.servicesHeight}
+                    height={storiesLayout.servicesHeight}
                     onExpandedChange={setServicesExpanded}
                     story={selectedStory}
                   />
@@ -434,7 +434,7 @@ export function TraceWorkbenchPage() {
                 pointerEvents: inspectorOpen ? "auto" : "none",
               }}
             >
-              <TraceInspector
+              <ExecutionInspector
                 activeTab={inspectorTab}
                 onClearSelection={() => {
                   setSelectedStoryId(selectedStory.id);

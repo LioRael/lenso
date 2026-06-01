@@ -15,7 +15,7 @@ const serviceColors = [
   "#94a3b8",
 ] as const;
 
-export function formatTraceDuration(ms: number) {
+export function formatRuntimeDuration(ms: number) {
   if (ms < 1) {
     return `${Math.round(ms * 1000)}us`;
   }
@@ -43,7 +43,7 @@ export function serviceColor(service: string) {
   return serviceColors[hash % serviceColors.length];
 }
 
-export function traceStats(story: RuntimeStory) {
+export function runtimeStoryStats(story: RuntimeStory) {
   const errors = story.nodes.filter(
     (node) => node.status === "failed" || node.status === "dead"
   );
@@ -55,7 +55,7 @@ export function traceStats(story: RuntimeStory) {
   };
 }
 
-export function traceTimelineEnd(story: RuntimeStory) {
+export function runtimeTimelineEnd(story: RuntimeStory) {
   const latestNodeEnd = Math.max(
     0,
     ...story.nodes.map((node) => node.startMs + node.durationMs)

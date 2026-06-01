@@ -1,11 +1,11 @@
 import type { RuntimeStory, ExecutionNode } from "../../data/mock-runtime";
 import { cn } from "../../lib/cn";
 import {
-  formatTraceDuration,
+  formatRuntimeDuration,
   serviceColor,
-  traceTimelineEnd,
-} from "../../lib/trace-style";
-import { TraceViewHeader } from "./trace-view-header";
+  runtimeTimelineEnd,
+} from "../../lib/runtime-style";
+import { RuntimeViewHeader } from "./runtime-view-header";
 
 export function FlameView({
   selectedNodeId,
@@ -17,11 +17,11 @@ export function FlameView({
   onSelectNode: (node: ExecutionNode) => void;
 }) {
   const levels = buildLevels(story.nodes);
-  const timelineEnd = traceTimelineEnd(story);
+  const timelineEnd = runtimeTimelineEnd(story);
   return (
     <div className="isolate flex h-full min-w-0 flex-col overflow-hidden bg-(--background)">
-      <TraceViewHeader
-        meta={formatTraceDuration(timelineEnd)}
+      <RuntimeViewHeader
+        meta={formatRuntimeDuration(timelineEnd)}
         summary="color by service and status"
         title="Flame"
       />
@@ -59,7 +59,7 @@ export function FlameView({
                   type="button"
                 >
                   <span className="truncate">
-                    {node.name} · {formatTraceDuration(node.durationMs)}
+                    {node.name} · {formatRuntimeDuration(node.durationMs)}
                   </span>
                 </button>
               );

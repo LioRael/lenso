@@ -3,15 +3,15 @@ import type { ComponentType } from "react";
 
 import type { RuntimeStory, ExecutionNode } from "../../data/mock-runtime";
 import { cn } from "../../lib/cn";
-import { buildRuntimeStory, type RuntimeNodeType } from "../../lib/story";
 import {
-  formatTraceDuration,
+  formatRuntimeDuration,
   serviceColor,
   statusColor,
-  traceTimelineEnd,
-} from "../../lib/trace-style";
-import { traceTimelineTableHeaderClassName } from "./trace-table-header";
-import { TraceViewHeader } from "./trace-view-header";
+  runtimeTimelineEnd,
+} from "../../lib/runtime-style";
+import { buildRuntimeStory, type RuntimeNodeType } from "../../lib/story";
+import { runtimeTimelineTableHeaderClassName } from "./runtime-table-header";
+import { RuntimeViewHeader } from "./runtime-view-header";
 
 export function StoryTimelineView({
   selectedNodeId,
@@ -23,22 +23,22 @@ export function StoryTimelineView({
   onSelectNode: (node: ExecutionNode) => void;
 }) {
   const storySummary = buildRuntimeStory(story);
-  const timelineEnd = traceTimelineEnd(story);
+  const timelineEnd = runtimeTimelineEnd(story);
 
   return (
     <div className="isolate flex h-full min-w-0 flex-col overflow-hidden bg-(--background)">
-      <TraceViewHeader
-        meta={`total ${formatTraceDuration(timelineEnd)}`}
+      <RuntimeViewHeader
+        meta={`total ${formatRuntimeDuration(timelineEnd)}`}
         summary={`${storySummary.nodeCount} execution nodes from one correlation`}
         title="Business Timeline"
       />
 
-      <div className={traceTimelineTableHeaderClassName}>
+      <div className={runtimeTimelineTableHeaderClassName}>
         <span>Story Flow</span>
         <div className="grid min-w-0 grid-cols-5 overflow-hidden font-mono">
           {[0, 25, 50, 75, 100].map((tick) => (
             <span key={tick}>
-              {formatTraceDuration((timelineEnd * tick) / 100)}
+              {formatRuntimeDuration((timelineEnd * tick) / 100)}
             </span>
           ))}
         </div>
@@ -114,7 +114,7 @@ export function StoryTimelineView({
                           />
                           <span className="truncate">{node.service}</span>
                           <span className="ml-auto shrink-0">
-                            {formatTraceDuration(node.duration)}
+                            {formatRuntimeDuration(node.duration)}
                           </span>
                         </span>
                       </span>

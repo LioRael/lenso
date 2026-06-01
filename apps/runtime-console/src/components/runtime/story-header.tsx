@@ -2,12 +2,12 @@ import { AlertCircle, Boxes, Clock, Server, X } from "lucide-react";
 
 import type { RuntimeStory, ExecutionNode } from "../../data/mock-runtime";
 import { cn } from "../../lib/cn";
+import { formatRuntimeDuration } from "../../lib/runtime-style";
 import { buildRuntimeStory } from "../../lib/story";
-import { formatTraceDuration } from "../../lib/trace-style";
 import { HorizontalScrollArea } from "./horizontal-tab-scroll";
-import { TraceStatusBadge } from "./trace-status-badge";
+import { RuntimeStatusBadge } from "./runtime-status-badge";
 
-export function TraceHeader({
+export function StoryHeader({
   onClose,
   onSelectNode,
   story,
@@ -28,11 +28,11 @@ export function TraceHeader({
             <h1 className="min-w-0 truncate text-[16px] font-semibold leading-tight text-(--foreground)">
               {storySummary.title}
             </h1>
-            <TraceStatusBadge status={storySummary.status} />
+            <RuntimeStatusBadge status={storySummary.status} />
           </div>
           <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 font-mono text-[10px] text-(--secondary)">
             <Metric icon={<Clock size={10} />} tone="accent">
-              {formatTraceDuration(storySummary.duration)}
+              {formatRuntimeDuration(storySummary.duration)}
             </Metric>
             <Metric icon={<Boxes size={10} />}>
               {storySummary.nodeCount} nodes

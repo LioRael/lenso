@@ -14,15 +14,15 @@ import type { ComponentType } from "react";
 
 import type { RuntimeStory, ExecutionNode } from "../../data/mock-runtime";
 import { cn } from "../../lib/cn";
+import { formatRuntimeDuration } from "../../lib/runtime-style";
 import {
   buildRuntimeStory,
   runtimeStatusIntent,
   type RuntimeNode,
   type RuntimeNodeType,
 } from "../../lib/story";
-import { formatTraceDuration } from "../../lib/trace-style";
 import { Button } from "../ui/button";
-import { TraceViewHeader } from "./trace-view-header";
+import { RuntimeViewHeader } from "./runtime-view-header";
 
 export function RuntimeStoryView({
   selectedNodeId,
@@ -39,8 +39,8 @@ export function RuntimeStoryView({
 
   return (
     <div className="grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-(--background)">
-      <TraceViewHeader
-        meta={`${storySummary.nodeCount} nodes · ${formatTraceDuration(storySummary.duration)}`}
+      <RuntimeViewHeader
+        meta={`${storySummary.nodeCount} nodes · ${formatRuntimeDuration(storySummary.duration)}`}
         summary={storySummary.patternLabel || "No execution pattern"}
         title="Runtime Story"
       />
@@ -145,7 +145,7 @@ function GraphNode({
                 {status.label}
               </span>
               <span className="ml-auto shrink-0 font-mono text-[10px] text-(--muted)">
-                {formatTraceDuration(node.duration)}
+                {formatRuntimeDuration(node.duration)}
               </span>
             </span>
             <span className="mt-1.5 block truncate text-[14px] font-semibold text-(--foreground)">

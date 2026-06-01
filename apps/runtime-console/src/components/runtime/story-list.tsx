@@ -2,8 +2,8 @@ import { AlertCircle, Boxes, Clock, Search } from "lucide-react";
 
 import type { RuntimeStory } from "../../data/mock-runtime";
 import { cn } from "../../lib/cn";
+import { formatRuntimeDuration, statusColor } from "../../lib/runtime-style";
 import { buildRuntimeStory } from "../../lib/story";
-import { formatTraceDuration, statusColor } from "../../lib/trace-style";
 
 export function StoryList({
   query,
@@ -92,7 +92,7 @@ export function StoryList({
 
               <div className="mb-1.5 flex flex-wrap items-center gap-1.5 font-mono text-[10px] text-(--secondary)">
                 <Metric icon={<Clock size={10} />}>
-                  {formatTraceDuration(storySummary.duration)}
+                  {formatRuntimeDuration(storySummary.duration)}
                 </Metric>
                 <Metric icon={<Boxes size={10} />}>
                   {storySummary.nodeCount} nodes

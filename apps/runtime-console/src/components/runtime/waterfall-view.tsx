@@ -1,14 +1,14 @@
 import type { RuntimeStory, ExecutionNode } from "../../data/mock-runtime";
 import { cn } from "../../lib/cn";
 import {
-  formatTraceDuration,
+  formatRuntimeDuration,
   serviceColor,
   nodeDepth,
   statusColor,
-  traceTimelineEnd,
-} from "../../lib/trace-style";
-import { traceWaterfallTableHeaderClassName } from "./trace-table-header";
-import { TraceViewHeader } from "./trace-view-header";
+  runtimeTimelineEnd,
+} from "../../lib/runtime-style";
+import { runtimeWaterfallTableHeaderClassName } from "./runtime-table-header";
+import { RuntimeViewHeader } from "./runtime-view-header";
 
 export function WaterfallView({
   selectedNodeId,
@@ -19,21 +19,21 @@ export function WaterfallView({
   selectedNodeId: string | null;
   onSelectNode: (node: ExecutionNode) => void;
 }) {
-  const timelineEnd = traceTimelineEnd(story);
+  const timelineEnd = runtimeTimelineEnd(story);
 
   return (
     <div className="isolate flex h-full min-w-0 flex-col overflow-hidden bg-(--background)">
-      <TraceViewHeader
-        meta={`total ${formatTraceDuration(timelineEnd)}`}
+      <RuntimeViewHeader
+        meta={`total ${formatRuntimeDuration(timelineEnd)}`}
         summary={`node detail · ${story.nodes.length} of ${story.nodes.length} nodes`}
         title="Waterfall"
       />
-      <div className={traceWaterfallTableHeaderClassName}>
+      <div className={runtimeWaterfallTableHeaderClassName}>
         <span>Node</span>
         <div className="grid min-w-0 grid-cols-5 overflow-hidden">
           {[0, 25, 50, 75, 100].map((tick) => (
             <span className="font-mono" key={tick}>
-              {formatTraceDuration((timelineEnd * tick) / 100)}
+              {formatRuntimeDuration((timelineEnd * tick) / 100)}
             </span>
           ))}
         </div>
@@ -79,7 +79,7 @@ export function WaterfallView({
                   {node.name}
                 </span>
                 <span className="ml-auto font-mono text-xs text-(--muted)">
-                  {formatTraceDuration(node.durationMs)}
+                  {formatRuntimeDuration(node.durationMs)}
                 </span>
               </span>
               <span className="relative isolate h-6 min-w-0 overflow-hidden rounded-xs bg-[linear-gradient(90deg,transparent_0%,transparent_24.8%,var(--border-subtle)_25%,transparent_25.2%,transparent_49.8%,var(--border-subtle)_50%,transparent_50.2%,transparent_74.8%,var(--border-subtle)_75%,transparent_75.2%)]">

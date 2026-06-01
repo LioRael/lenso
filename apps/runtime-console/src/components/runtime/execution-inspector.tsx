@@ -2,14 +2,14 @@ import { ArrowRight, Copy, RotateCcw, X } from "lucide-react";
 
 import type { RuntimeStory, ExecutionNode } from "../../data/mock-runtime";
 import { cn } from "../../lib/cn";
-import { formatTraceDuration, serviceColor } from "../../lib/trace-style";
+import { formatRuntimeDuration, serviceColor } from "../../lib/runtime-style";
 import {
   HorizontalScrollArea,
   HorizontalTabScroll,
 } from "./horizontal-tab-scroll";
 import { JsonViewer } from "./json-viewer";
 import { useRuntimeConsole } from "./runtime-console-context";
-import { TraceStatusBadge } from "./trace-status-badge";
+import { RuntimeStatusBadge } from "./runtime-status-badge";
 
 type InspectorTab =
   | "info"
@@ -28,7 +28,7 @@ const tabs: InspectorTab[] = [
   "context",
 ];
 
-export function TraceInspector({
+export function ExecutionInspector({
   activeTab,
   onClearSelection,
   selectedNode,
@@ -100,9 +100,9 @@ export function TraceInspector({
             <Copy className="size-2.5 shrink-0 opacity-0 transition group-hover:opacity-100" />
           </button>
           <span className="shrink-0 text-(--accent)">
-            {formatTraceDuration(node.durationMs)}
+            {formatRuntimeDuration(node.durationMs)}
           </span>
-          <TraceStatusBadge
+          <RuntimeStatusBadge
             className="shrink-0"
             status={node.status}
             variant="compact"
@@ -144,7 +144,7 @@ export function TraceInspector({
           </HorizontalScrollArea>
           {parent ? (
             <span className="shrink-0 text-(--muted)">
-              {formatTraceDuration(parent.durationMs)}
+              {formatRuntimeDuration(parent.durationMs)}
             </span>
           ) : null}
         </div>
@@ -207,11 +207,11 @@ function InspectorBody({
         <KeyValueTable
           rows={[
             ["status", node.status],
-            ["duration", formatTraceDuration(node.durationMs)],
+            ["duration", formatRuntimeDuration(node.durationMs)],
             ["service", node.service],
             ["kind", node.kind],
-            ["start", formatTraceDuration(node.startMs)],
-            ["end", formatTraceDuration(node.startMs + node.durationMs)],
+            ["start", formatRuntimeDuration(node.startMs)],
+            ["end", formatRuntimeDuration(node.startMs + node.durationMs)],
             ["attempts", `${node.attempts ?? 1}/${node.maxAttempts ?? 1}`],
             ["correlation_id", story.correlationId],
             [
@@ -321,7 +321,7 @@ function EventList({ node }: { node: ExecutionNode }) {
           key={`${event.name}-${event.timestampMs}`}
         >
           <span className="whitespace-nowrap text-(--muted)">
-            +{formatTraceDuration(event.timestampMs)}
+            +{formatRuntimeDuration(event.timestampMs)}
           </span>
           <div>
             <div className="whitespace-nowrap text-(--foreground)">
@@ -365,7 +365,7 @@ function LogList({ node }: { node: ExecutionNode }) {
           key={`${log}-${index}`}
         >
           <span className="whitespace-nowrap text-(--muted)">
-            +{formatTraceDuration(node.startMs + index * 12)}
+            +{formatRuntimeDuration(node.startMs + index * 12)}
           </span>
           <span
             className={cn(

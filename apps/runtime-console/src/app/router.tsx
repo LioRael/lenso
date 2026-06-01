@@ -11,7 +11,7 @@ import { RuntimeConsoleShell } from "../components/runtime/runtime-console-shell
 import { DeadLettersPage } from "../pages/dead-letters-page";
 import { OverviewPage } from "../pages/overview-page";
 import { QueuesPage } from "../pages/queues-page";
-import { TraceWorkbenchPage } from "../pages/trace-workbench-page";
+import { RuntimeStoriesPage } from "../pages/runtime-stories-page";
 
 const rootRoute = createRootRoute({
   component: () => (
@@ -34,10 +34,10 @@ const indexRoute = createRoute({
 const storiesWorkbenchRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/runtime/stories",
-  component: TraceWorkbenchPage,
+  component: RuntimeStoriesPage,
 });
 
-const traceWorkbenchAliasRoute = createRoute({
+const legacyStoriesAliasRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/runtime/traces",
   beforeLoad: () => {
@@ -122,7 +122,7 @@ const placeholderRoute = (path: string, title: string) =>
 const routeTree = rootRoute.addChildren([
   indexRoute,
   storiesWorkbenchRoute,
-  traceWorkbenchAliasRoute,
+  legacyStoriesAliasRoute,
   overviewRoute,
   eventsRoute,
   functionsRoute,

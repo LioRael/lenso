@@ -3,7 +3,7 @@ import { Flame, GitBranch, Grid3X3, List, Workflow } from "lucide-react";
 import { cn } from "../../lib/cn";
 import { HorizontalTabScroll } from "./horizontal-tab-scroll";
 
-export type TraceViewMode =
+export type StoryViewMode =
   | "story"
   | "graph"
   | "timeline"
@@ -12,7 +12,7 @@ export type TraceViewMode =
   | "heatmap";
 
 const labels: Array<{
-  id: TraceViewMode;
+  id: StoryViewMode;
   label: string;
   icon: React.ComponentType<{
     className?: string;
@@ -28,12 +28,12 @@ const labels: Array<{
   { id: "flame", label: "Flame", icon: Flame },
 ];
 
-export function TraceTabs({
+export function StoryTabs({
   mode,
   onChange,
 }: {
-  mode: TraceViewMode;
-  onChange: (mode: TraceViewMode) => void;
+  mode: StoryViewMode;
+  onChange: (mode: StoryViewMode) => void;
 }) {
   return (
     <div className="min-w-0 border-b border-(--border-subtle) bg-[color-mix(in_srgb,var(--surface)_76%,var(--background))]">

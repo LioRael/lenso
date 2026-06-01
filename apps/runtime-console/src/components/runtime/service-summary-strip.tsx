@@ -5,7 +5,7 @@ import { useRef } from "react";
 
 import type { RuntimeStory } from "../../data/mock-runtime";
 import { cn } from "../../lib/cn";
-import { formatTraceDuration, serviceColor } from "../../lib/trace-style";
+import { formatRuntimeDuration, serviceColor } from "../../lib/runtime-style";
 import { getServiceSummaryPanelLayout } from "./service-summary-strip-layout";
 
 gsap.registerPlugin(useGSAP);
@@ -150,7 +150,7 @@ export function ServiceSummaryStrip({
         <div className="ml-auto flex min-w-0 items-center gap-3 overflow-hidden font-mono text-[11px] text-(--muted)">
           <span>
             p50{" "}
-            {formatTraceDuration(
+            {formatRuntimeDuration(
               percentile(
                 story.nodes.map((node) => node.durationMs),
                 50
@@ -159,7 +159,7 @@ export function ServiceSummaryStrip({
           </span>
           <span>
             p95{" "}
-            {formatTraceDuration(
+            {formatRuntimeDuration(
               percentile(
                 story.nodes.map((node) => node.durationMs),
                 95
@@ -168,7 +168,7 @@ export function ServiceSummaryStrip({
           </span>
           <span>
             max{" "}
-            {formatTraceDuration(
+            {formatRuntimeDuration(
               Math.max(...story.nodes.map((node) => node.durationMs))
             )}
           </span>
@@ -197,13 +197,13 @@ export function ServiceSummaryStrip({
               </span>
               <span className="text-(--muted)">{item.nodes} nodes</span>
               <span className="text-(--muted)">
-                p50 {formatTraceDuration(item.p50)}
+                p50 {formatRuntimeDuration(item.p50)}
               </span>
               <span className="text-(--muted)">
-                p95 {formatTraceDuration(item.p95)}
+                p95 {formatRuntimeDuration(item.p95)}
               </span>
               <span className="text-(--muted)">
-                p99 {formatTraceDuration(item.p99)}
+                p99 {formatRuntimeDuration(item.p99)}
               </span>
               <div className="flex min-w-0 items-center gap-2">
                 <span

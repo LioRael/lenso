@@ -2,14 +2,14 @@ import { Grid3X3 } from "lucide-react";
 
 import type { RuntimeStory } from "../../data/mock-runtime";
 import { buildRuntimeStory } from "../../lib/story";
-import { TraceViewHeader } from "./trace-view-header";
+import { RuntimeViewHeader } from "./runtime-view-header";
 
 export function HeatmapPlaceholderView({ story }: { story: RuntimeStory }) {
   const storySummary = buildRuntimeStory(story);
 
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-(--background)">
-      <TraceViewHeader
+      <RuntimeViewHeader
         meta={`${storySummary.services.length} services`}
         summary={`Runtime pressure map for ${storySummary.title}`}
         title="Heatmap"

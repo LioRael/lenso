@@ -124,7 +124,9 @@ export type RuntimeStory = {
   timelineItems?: TimelineItem[];
 };
 
+/** @deprecated Use ExecutionNode. Remove after downstream runtime story imports no longer need legacy trace aliases. */
 export type TraceSpan = ExecutionNode;
+/** @deprecated Use RuntimeStory. Remove after downstream runtime story imports no longer need legacy trace aliases. */
 export type TraceRun = RuntimeStory;
 
 export const correlationId = "corr_01HX9A7K2R_RUNTIME";

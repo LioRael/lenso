@@ -111,7 +111,7 @@ export function TimelinePage() {
             </div>
             <div className="mt-0.5 text-xs text-slate-500">
               ordered by created_at ascending · {runtimeConsoleDataSource()}{" "}
-              runtime trace
+              runtime story
             </div>
           </div>
           <StatusPill status={summary.status} />

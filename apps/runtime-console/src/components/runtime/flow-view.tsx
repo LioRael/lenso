@@ -5,10 +5,10 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { RuntimeStory, ExecutionNode } from "../../data/mock-runtime";
 import { cn } from "../../lib/cn";
 import {
-  formatTraceDuration,
+  formatRuntimeDuration,
   serviceColor,
   nodeDepth,
-} from "../../lib/trace-style";
+} from "../../lib/runtime-style";
 import {
   clampFlowZoom,
   flowViewDefaults,
@@ -18,7 +18,7 @@ import {
   getWorkspaceLayout,
   getZoomAroundPoint,
 } from "./flow-view-layout";
-import { TraceViewHeader } from "./trace-view-header";
+import { RuntimeViewHeader } from "./runtime-view-header";
 
 const nodeWidth = 240;
 const nodeHeight = 72;
@@ -272,7 +272,7 @@ export function FlowView({
   return (
     <div className="isolate relative h-full min-w-0 overflow-hidden bg-(--sidebar)">
       <div className="absolute top-0 right-0 left-0 z-2">
-        <TraceViewHeader
+        <RuntimeViewHeader
           summary={`${nodes.length} nodes at ${Math.round(zoom * 100)}%`}
           title="Execution Graph"
         >
@@ -284,7 +284,7 @@ export function FlowView({
             <Maximize2 size={12} />
             Frame
           </button>
-        </TraceViewHeader>
+        </RuntimeViewHeader>
       </div>
 
       <div
@@ -403,7 +403,7 @@ export function FlowView({
                         {node.name}
                       </span>
                       <span className="block font-mono text-[11px] text-(--muted)">
-                        {formatTraceDuration(node.durationMs)}
+                        {formatRuntimeDuration(node.durationMs)}
                       </span>
                     </span>
                   </span>

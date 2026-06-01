@@ -92,7 +92,7 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
   const [retryTarget, setRetryTarget] = useState<RetryTarget | null>(null);
   const [commandOpen, setCommandOpen] = useState(false);
   const [activeCorrelationId, setActiveCorrelationId] = useState(correlationId);
-  const [activeStoryTarget, setActiveTraceTarget] = useState<{
+  const [activeStoryTarget, setActiveStoryTarget] = useState<{
     storyId: string;
     nodeId?: string;
   } | null>(null);
@@ -107,14 +107,14 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
 
   const openStory = useCallback(
     (storyId: string, nodeId?: string) => {
-      setActiveTraceTarget({ storyId, ...(nodeId ? { nodeId } : {}) });
+      setActiveStoryTarget({ storyId, ...(nodeId ? { nodeId } : {}) });
       void navigate({ to: "/runtime/stories" });
     },
     [navigate]
   );
 
   const clearStoryTarget = useCallback(() => {
-    setActiveTraceTarget(null);
+    setActiveStoryTarget(null);
   }, []);
 
   const searchRuntime = useCallback(
@@ -128,7 +128,7 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
       const runs = functionsQuery.data ?? functionRuns;
 
       const storyResults: SearchResult[] = runtimeStories.flatMap((story) => {
-        const matchesTrace = [
+        const matchesStory = [
           story.id,
           story.name,
           story.service,
@@ -143,7 +143,7 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
         );
 
         return [
-          ...(matchesTrace
+          ...(matchesStory
             ? [
                 {
                   kind: "story" as const,

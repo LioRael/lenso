@@ -1,20 +1,23 @@
 import { describe, expect, test } from "vitest";
 
 import {
-  resizeTraceInspectorLayout,
+  resizeExecutionInspectorLayout,
   resizeServicesPanelHeight,
   resizeServicesPanelLayout,
-  traceLayoutDefaults,
-} from "./trace-workbench-layout";
+  runtimeStoriesLayoutDefaults,
+} from "./runtime-stories-layout";
 
-describe("trace workbench layout", () => {
+describe("runtime stories layout", () => {
   test("resizes the services panel by drag direction", () => {
     expect(
-      resizeServicesPanelHeight(traceLayoutDefaults.servicesHeight, -48)
-    ).toBe(traceLayoutDefaults.servicesHeight + 48);
+      resizeServicesPanelHeight(
+        runtimeStoriesLayoutDefaults.servicesHeight,
+        -48
+      )
+    ).toBe(runtimeStoriesLayoutDefaults.servicesHeight + 48);
     expect(
-      resizeServicesPanelHeight(traceLayoutDefaults.servicesHeight, 24)
-    ).toBe(traceLayoutDefaults.servicesHeight - 24);
+      resizeServicesPanelHeight(runtimeStoriesLayoutDefaults.servicesHeight, 24)
+    ).toBe(runtimeStoriesLayoutDefaults.servicesHeight - 24);
   });
 
   test("clamps the services panel to its supported height range", () => {
@@ -24,13 +27,13 @@ describe("trace workbench layout", () => {
 
   test("opens collapsed services when dragged upward", () => {
     const layout = resizeServicesPanelLayout({
-      currentHeight: traceLayoutDefaults.servicesHeight,
+      currentHeight: runtimeStoriesLayoutDefaults.servicesHeight,
       deltaY: -8,
       expanded: false,
     });
 
     expect(layout.expanded).toBe(true);
-    expect(layout.height).toBe(traceLayoutDefaults.servicesHeight);
+    expect(layout.height).toBe(runtimeStoriesLayoutDefaults.servicesHeight);
   });
 
   test("collapses services when dragged below the minimum height", () => {
@@ -55,8 +58,8 @@ describe("trace workbench layout", () => {
     expect(layout.height).toBe(156);
   });
 
-  test("closes the trace inspector when dragged below the minimum width", () => {
-    const layout = resizeTraceInspectorLayout({
+  test("closes the execution inspector when dragged below the minimum width", () => {
+    const layout = resizeExecutionInspectorLayout({
       currentWidth: 280,
       deltaX: 8,
     });
@@ -65,8 +68,8 @@ describe("trace workbench layout", () => {
     expect(layout.width).toBe(280);
   });
 
-  test("keeps the trace inspector open while resizing above the minimum width", () => {
-    const layout = resizeTraceInspectorLayout({
+  test("keeps the execution inspector open while resizing above the minimum width", () => {
+    const layout = resizeExecutionInspectorLayout({
       currentWidth: 320,
       deltaX: 24,
     });
