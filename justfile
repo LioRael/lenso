@@ -12,12 +12,12 @@ default:
 
 # Dependencies
 install:
-    pnpm --dir {{ts_sdk_dir}} install
-    pnpm --dir {{runtime_console_dir}} install
+    pnpm --dir={{ts_sdk_dir}} install
+    pnpm --dir={{runtime_console_dir}} install
 
 install-ci:
-    CI=true pnpm --dir {{ts_sdk_dir}} install --frozen-lockfile
-    CI=true pnpm --dir {{runtime_console_dir}} install --frozen-lockfile
+    CI=true pnpm --dir={{ts_sdk_dir}} install --frozen-lockfile
+    CI=true pnpm --dir={{runtime_console_dir}} install --frozen-lockfile
 
 # Quality gates
 fmt: rust-fmt console-fmt
@@ -56,31 +56,34 @@ migrate:
     cargo run -p {{migrate_pkg}}
 
 console:
-    pnpm --dir {{runtime_console_dir}} dev
+    pnpm --dir={{runtime_console_dir}} run dev
 
 console-api:
-    VITE_RUNTIME_CONSOLE_MODE=api VITE_API_BASE_URL=http://localhost:3000 pnpm --dir {{runtime_console_dir}} dev
+    VITE_RUNTIME_CONSOLE_MODE=api VITE_API_BASE_URL=http://localhost:3000 pnpm --dir={{runtime_console_dir}} run dev
 
 console-preview:
-    pnpm --dir {{runtime_console_dir}} preview
+    pnpm --dir={{runtime_console_dir}} run preview
 
 console-fmt:
-    pnpm --dir {{runtime_console_dir}} format
+    pnpm --dir={{runtime_console_dir}} run format
 
 console-fmt-check:
-    pnpm --dir {{runtime_console_dir}} format:check
+    pnpm --dir={{runtime_console_dir}} run format:check
 
 console-lint:
-    pnpm --dir {{runtime_console_dir}} lint
+    pnpm --dir={{runtime_console_dir}} run lint
 
 console-typecheck:
-    pnpm --dir {{runtime_console_dir}} typecheck
+    pnpm --dir={{runtime_console_dir}} run typecheck
 
 console-build:
-    pnpm --dir {{runtime_console_dir}} build
+    pnpm --dir={{runtime_console_dir}} run build
+
+console-test:
+    pnpm --dir={{runtime_console_dir}} run test
 
 console-check:
-    pnpm --dir {{runtime_console_dir}} check
+    pnpm --dir={{runtime_console_dir}} run check
 
 # Local infrastructure
 db-up:
@@ -111,12 +114,16 @@ generated-check: generate
     git diff --exit-code -- contracts packages/ts-sdk/src/generated
 
 sdk-typecheck:
-    pnpm --dir {{ts_sdk_dir}} typecheck
+    pnpm --dir={{ts_sdk_dir}} run typecheck
 
 sdk-build:
-    pnpm --dir {{ts_sdk_dir}} build
+    pnpm --dir={{ts_sdk_dir}} run build
 
-sdk-check: sdk-typecheck
+sdk-test:
+    pnpm --dir={{ts_sdk_dir}} run test
+
+sdk-check:
+    pnpm --dir={{ts_sdk_dir}} run check
 
 arch-check:
     cargo run --locked -p arch-check
