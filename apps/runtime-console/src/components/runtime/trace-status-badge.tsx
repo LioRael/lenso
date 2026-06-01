@@ -14,7 +14,7 @@ import { cn } from "../../lib/cn";
 type TraceStatusBadgeProps = {
   className?: string;
   status: RuntimeStatus;
-  variant?: "default" | "compact";
+  variant?: "default" | "compact" | "table";
 };
 
 export function TraceStatusBadge({
@@ -24,6 +24,7 @@ export function TraceStatusBadge({
 }: TraceStatusBadgeProps) {
   const tone = traceStatusTone[status];
   const StatusIcon = tone.icon;
+  const showIcon = variant !== "table";
 
   return (
     <span
@@ -31,17 +32,20 @@ export function TraceStatusBadge({
         traceStatusBadgeBaseClassName,
         tone.className,
         variant === "compact" && traceStatusBadgeCompactClassName,
+        variant === "table" && traceStatusBadgeTableClassName,
         className
       )}
       title={tone.label}
     >
-      <StatusIcon
-        className={cn(
-          "shrink-0",
-          variant === "compact" ? "size-2.5" : "size-3"
-        )}
-        strokeWidth={2.2}
-      />
+      {showIcon ? (
+        <StatusIcon
+          className={cn(
+            "shrink-0",
+            variant === "compact" ? "size-2.5" : "size-3"
+          )}
+          strokeWidth={2.2}
+        />
+      ) : null}
       <span className="truncate">{tone.label}</span>
     </span>
   );
@@ -51,6 +55,9 @@ export const traceStatusBadgeBaseClassName =
   "trace-status-badge inline-flex min-h-5 w-fit max-w-full items-center gap-1 rounded-xs border px-1.5 font-mono text-[10px] font-semibold uppercase leading-none tracking-[0.06em]";
 
 export const traceStatusBadgeCompactClassName = "min-h-4.5 px-1 text-[9px]";
+
+export const traceStatusBadgeTableClassName =
+  "min-h-4.5 w-[72px] justify-center px-1 text-[9px] tracking-[0.08em]";
 
 const traceStatusTone: Record<
   RuntimeStatus,
