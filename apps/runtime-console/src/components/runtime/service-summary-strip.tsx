@@ -1,19 +1,33 @@
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import { ChevronDown } from "lucide-react";
-import { useRef, useState } from "react";
+import { useRef } from "react";
 
 import type { TraceRun } from "../../data/mock-runtime";
 import { cn } from "../../lib/cn";
 import { formatTraceDuration, serviceColor } from "../../lib/trace-style";
+import { getServiceSummaryPanelLayout } from "./service-summary-strip-layout";
 
 gsap.registerPlugin(useGSAP);
 
-export function ServiceSummaryStrip({ trace }: { trace: TraceRun }) {
-  const [expanded, setExpanded] = useState(true);
+export function ServiceSummaryStrip({
+  expanded,
+  height,
+  onExpandedChange,
+  trace,
+}: {
+  expanded: boolean;
+  height?: number;
+  onExpandedChange: (expanded: boolean) => void;
+  trace: TraceRun;
+}) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
+  const hasMountedRef = useRef(false);
   const iconRef = useRef<SVGSVGElement | null>(null);
+  const previousExpandedRef = useRef(expanded);
+  const panelLayout = getServiceSummaryPanelLayout({ expanded, height });
+  const initialPanelLayoutRef = useRef(panelLayout);
   const services = Array.from(
     new Set(trace.spans.map((span) => span.service))
   ).map((service) => {
@@ -39,21 +53,30 @@ export function ServiceSummaryStrip({ trace }: { trace: TraceRun }) {
 
   useGSAP(
     () => {
+      const container = containerRef.current;
       const content = contentRef.current;
       const icon = iconRef.current;
 
-      if (!content || !icon) {
+      if (!container || !content || !icon) {
         return;
       }
 
       const reduceMotion = window.matchMedia(
         "(prefers-reduced-motion: reduce)"
       ).matches;
-      gsap.killTweensOf([content, icon]);
+      const didExpandedChange = previousExpandedRef.current !== expanded;
+      const shouldAnimate = hasMountedRef.current && didExpandedChange;
+      previousExpandedRef.current = expanded;
+      hasMountedRef.current = true;
 
-      if (reduceMotion) {
+      gsap.killTweensOf([container, content, icon]);
+
+      if (reduceMotion || !shouldAnimate) {
+        gsap.set(container, {
+          height: panelLayout.panelHeight,
+        });
         gsap.set(content, {
-          height: expanded ? "auto" : 0,
+          height: panelLayout.contentHeight,
           opacity: expanded ? 1 : 0,
         });
         gsap.set(icon, {
@@ -68,25 +91,36 @@ export function ServiceSummaryStrip({ trace }: { trace: TraceRun }) {
         rotate: expanded ? 0 : -90,
       });
 
+      gsap.to(container, {
+        duration: expanded ? 0.32 : 0.24,
+        ease: expanded ? "power3.out" : "power2.inOut",
+        height: panelLayout.panelHeight,
+      });
+
       gsap.to(content, {
-        duration: 0.28,
-        ease: "power3.out",
-        height: expanded ? content.scrollHeight : 0,
+        duration: expanded ? 0.32 : 0.2,
+        ease: expanded ? "power3.out" : "power2.inOut",
+        height: panelLayout.contentHeight,
         opacity: expanded ? 1 : 0,
-        onComplete: () => {
-          if (expanded) {
-            gsap.set(content, { height: "auto" });
-          }
-        },
       });
     },
-    { dependencies: [expanded, services.length], scope: containerRef }
+    {
+      dependencies: [
+        expanded,
+        height ?? null,
+        panelLayout.contentHeight,
+        panelLayout.panelHeight,
+        services.length,
+      ],
+      scope: containerRef,
+    }
   );
 
   return (
     <div
       ref={containerRef}
-      className="min-w-0 overflow-hidden border-t border-(--border-subtle) bg-(--surface)"
+      className="grid min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-t border-(--border-subtle) bg-(--surface)"
+      style={{ height: initialPanelLayoutRef.current.panelHeight }}
     >
       <div
         className={cn(
@@ -98,7 +132,7 @@ export function ServiceSummaryStrip({ trace }: { trace: TraceRun }) {
           aria-expanded={expanded}
           aria-label={expanded ? "Collapse services" : "Expand services"}
           className="flex min-w-0 items-center gap-1.5 text-left transition hover:text-(--foreground)"
-          onClick={() => setExpanded((current) => !current)}
+          onClick={() => onExpandedChange(!expanded)}
           type="button"
         >
           <ChevronDown
@@ -142,10 +176,13 @@ export function ServiceSummaryStrip({ trace }: { trace: TraceRun }) {
       </div>
       <div
         ref={contentRef}
-        className="max-h-28.5 overflow-hidden"
-        style={{ height: "auto" }}
+        className="min-h-0 overflow-hidden"
+        style={{
+          height: initialPanelLayoutRef.current.contentHeight,
+          opacity: initialPanelLayoutRef.current.contentHeight > 0 ? 1 : 0,
+        }}
       >
-        <div className="max-h-28.5 overflow-auto">
+        <div className="h-full min-h-0 overflow-auto">
           {services.map((item) => (
             <div
               className="grid min-w-175 grid-cols-[12px_minmax(150px,1fr)_64px_82px_82px_82px_minmax(104px,190px)] items-center gap-2 border-b border-(--border-subtle) px-3 py-1.5 font-mono text-[11px] last:border-b-0"

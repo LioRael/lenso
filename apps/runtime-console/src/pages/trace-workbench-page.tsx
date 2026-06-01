@@ -1,11 +1,11 @@
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import {
-  type CSSProperties,
   useEffect,
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
 } from "react";
 
 import { ResizeHandle } from "../components/runtime/resize-handle";
@@ -25,6 +25,12 @@ import {
 import { useListKeyboard } from "../hooks/use-list-keyboard";
 import { usePersistedLayout } from "../hooks/use-persisted-layout";
 import { useRuntimeTraces } from "../hooks/use-runtime-queries";
+import {
+  resizeServicesPanelLayout,
+  resizeTraceInspectorLayout,
+  resizeTraceListWidth,
+  traceLayoutDefaults,
+} from "./trace-workbench-layout";
 
 gsap.registerPlugin(useGSAP);
 
@@ -39,14 +45,6 @@ type InspectorTab =
 const emptyTraces: TraceRun[] = [];
 export const traceWorkbenchDefaultViewMode =
   "waterfall" satisfies TraceViewMode;
-const traceLayoutDefaults = {
-  inspectorWidth: 376,
-  listWidth: 340,
-};
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
-}
 
 export function TraceWorkbenchPage() {
   const { activeTraceTarget, clearTraceTarget, openRetry } =
@@ -58,6 +56,7 @@ export function TraceWorkbenchPage() {
   const [selectedSpanId, setSelectedSpanId] = useState<string | null>(null);
   const [displayedSpan, setDisplayedSpan] = useState<TraceSpan | null>(null);
   const [traceDetailClosed, setTraceDetailClosed] = useState(false);
+  const [servicesExpanded, setServicesExpanded] = useState(true);
   const [mode, setMode] = useState<TraceViewMode>(
     traceWorkbenchDefaultViewMode
   );
@@ -70,6 +69,21 @@ export function TraceWorkbenchPage() {
     traceLayoutDefaults
   );
   const traceLayout = { ...traceLayoutDefaults, ...layout };
+  const inspectorWidthRef = useRef(traceLayout.inspectorWidth);
+  const servicesExpandedRef = useRef(servicesExpanded);
+  const servicesHeightRef = useRef(traceLayout.servicesHeight);
+
+  useEffect(() => {
+    inspectorWidthRef.current = traceLayout.inspectorWidth;
+  }, [traceLayout.inspectorWidth]);
+
+  useEffect(() => {
+    servicesExpandedRef.current = servicesExpanded;
+  }, [servicesExpanded]);
+
+  useEffect(() => {
+    servicesHeightRef.current = traceLayout.servicesHeight;
+  }, [traceLayout.servicesHeight]);
 
   const visibleTraces = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -193,6 +207,7 @@ export function TraceWorkbenchPage() {
         displayedSpan?.id ?? null,
         inspectorOpen,
         traceLayout.inspectorWidth,
+        traceLayout.servicesHeight,
       ],
       scope: workbenchRef,
     }
@@ -218,22 +233,39 @@ export function TraceWorkbenchPage() {
   const resizeTraceList = (deltaX: number) => {
     setLayout((current) => ({
       ...current,
-      listWidth: clamp(
-        (current.listWidth ?? traceLayoutDefaults.listWidth) + deltaX,
-        220,
-        420
-      ),
+      listWidth: resizeTraceListWidth(current.listWidth, deltaX),
     }));
   };
 
   const resizeInspector = (deltaX: number) => {
+    const next = resizeTraceInspectorLayout({
+      currentWidth: inspectorWidthRef.current,
+      deltaX,
+    });
+    inspectorWidthRef.current = next.width;
     setLayout((current) => ({
       ...current,
-      inspectorWidth: clamp(
-        (current.inspectorWidth ?? traceLayoutDefaults.inspectorWidth) - deltaX,
-        280,
-        560
-      ),
+      inspectorWidth: next.width,
+    }));
+    if (!next.open) {
+      clearTraceTarget();
+      setSelectedSpanId(null);
+      setInspectorTab("info");
+    }
+  };
+
+  const resizeServices = (deltaY: number) => {
+    const next = resizeServicesPanelLayout({
+      currentHeight: servicesHeightRef.current,
+      deltaY,
+      expanded: servicesExpandedRef.current,
+    });
+    servicesExpandedRef.current = next.expanded;
+    servicesHeightRef.current = next.height;
+    setServicesExpanded(next.expanded);
+    setLayout((current) => ({
+      ...current,
+      servicesHeight: next.height,
     }));
   };
 
@@ -323,7 +355,7 @@ export function TraceWorkbenchPage() {
           className="grid min-h-0 min-w-0 overflow-hidden"
           style={{
             gridTemplateRows: selectedTrace
-              ? "auto minmax(0,1fr) auto"
+              ? "auto minmax(0,1fr) auto auto"
               : "minmax(0,1fr)",
           }}
         >
@@ -343,7 +375,19 @@ export function TraceWorkbenchPage() {
                 trace={selectedTrace}
               />
 
-              <ServiceSummaryStrip trace={selectedTrace} />
+              <ResizeHandle
+                ariaLabel="Resize services panel"
+                axis="vertical"
+                onReset={resetLayout}
+                onResize={resizeServices}
+              />
+
+              <ServiceSummaryStrip
+                expanded={servicesExpanded}
+                height={traceLayout.servicesHeight}
+                onExpandedChange={setServicesExpanded}
+                trace={selectedTrace}
+              />
             </>
           ) : (
             <EmptyState className="h-full bg-(--surface)">
