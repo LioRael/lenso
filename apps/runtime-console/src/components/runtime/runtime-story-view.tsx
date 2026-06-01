@@ -22,6 +22,7 @@ import {
 } from "../../lib/story";
 import { formatTraceDuration } from "../../lib/trace-style";
 import { Button } from "../ui/button";
+import { TraceViewHeader } from "./trace-view-header";
 
 export function RuntimeStoryView({
   selectedSpanId,
@@ -38,19 +39,11 @@ export function RuntimeStoryView({
 
   return (
     <div className="grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-(--background)">
-      <div className="flex min-w-0 items-center justify-between gap-3 overflow-hidden border-b border-(--border-subtle) bg-[color-mix(in_srgb,var(--elevated)_42%,transparent)] px-3 py-2">
-        <div className="flex min-w-0 items-center gap-2 overflow-hidden">
-          <span className="font-sans text-[11px] font-semibold uppercase tracking-[0.08em] text-(--muted)">
-            Runtime Story
-          </span>
-          <span className="min-w-0 truncate font-mono text-[11px] text-(--muted)">
-            {story.patternLabel || "No execution pattern"}
-          </span>
-        </div>
-        <span className="shrink-0 font-mono text-[11px] text-(--muted)">
-          {story.nodeCount} nodes · {formatTraceDuration(story.duration)}
-        </span>
-      </div>
+      <TraceViewHeader
+        meta={`${story.nodeCount} nodes · ${formatTraceDuration(story.duration)}`}
+        summary={story.patternLabel || "No execution pattern"}
+        title="Runtime Story"
+      />
 
       <div className="min-h-0 overflow-auto px-4 py-4">
         <div className="mx-auto grid w-full max-w-4xl gap-2">
@@ -121,19 +114,22 @@ function GraphNode({
         ) : null}
       </div>
 
-      <button
-        aria-label={`Select ${node.typeLabel} ${node.name}`}
+      <div
         className={cn(
-          "group min-w-0 border bg-(--surface) px-3 py-2.5 text-left shadow-[0_10px_26px_var(--shadow-soft)] transition hover:-translate-y-px hover:border-(--border) hover:bg-(--elevated)",
+          "group relative min-w-0 border bg-(--surface) px-3 py-2.5 text-left shadow-[0_10px_26px_var(--shadow-soft)] transition hover:-translate-y-px hover:border-(--border) hover:bg-(--elevated)",
           type.cardClass,
           selected &&
             "border-(--accent) bg-(--accent-soft) shadow-[inset_2px_0_0_var(--accent),0_14px_32px_var(--shadow-soft)]",
           (node.status === "failed" || node.status === "dead") &&
             "shadow-[inset_0_0_0_1px_rgba(239,68,68,0.18),0_12px_30px_var(--shadow-soft)]"
         )}
-        onClick={onSelect}
-        type="button"
       >
+        <button
+          aria-label={`Select ${node.typeLabel} ${node.name}`}
+          className="absolute inset-0 z-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300"
+          onClick={onSelect}
+          type="button"
+        />
         <span className="flex min-w-0 items-start gap-3">
           <span className="min-w-0 flex-1">
             <span className="flex min-w-0 items-center gap-2">
@@ -168,7 +164,7 @@ function GraphNode({
           </span>
 
           {retryable ? (
-            <span className="shrink-0">
+            <span className="relative z-10 shrink-0">
               <Button
                 onClick={(event) => {
                   event.stopPropagation();
@@ -182,7 +178,7 @@ function GraphNode({
             </span>
           ) : null}
         </span>
-      </button>
+      </div>
     </div>
   );
 }

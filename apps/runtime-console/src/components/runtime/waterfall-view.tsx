@@ -7,6 +7,8 @@ import {
   statusColor,
   traceTimelineEnd,
 } from "../../lib/trace-style";
+import { traceWaterfallTableHeaderClassName } from "./trace-table-header";
+import { TraceViewHeader } from "./trace-view-header";
 
 export function WaterfallView({
   selectedSpanId,
@@ -21,20 +23,12 @@ export function WaterfallView({
 
   return (
     <div className="isolate flex h-full min-w-0 flex-col overflow-hidden bg-(--background)">
-      <div className="flex min-w-0 items-center justify-between gap-3 overflow-hidden border-b border-(--border-subtle) bg-[color-mix(in_srgb,var(--elevated)_36%,transparent)] px-3 py-2">
-        <div className="flex min-w-0 items-center gap-2 overflow-hidden">
-          <span className="font-sans text-[11px] font-semibold uppercase tracking-[0.08em] text-(--muted)">
-            Waterfall
-          </span>
-          <span className="min-w-0 truncate font-mono text-[11px] text-(--muted)">
-            span detail · {trace.spans.length} of {trace.spans.length} spans
-          </span>
-        </div>
-        <div className="shrink-0 font-mono text-[11px] text-(--muted)">
-          total {formatTraceDuration(timelineEnd)}
-        </div>
-      </div>
-      <div className="grid min-w-0 grid-cols-[minmax(260px,340px)_minmax(0,1fr)] gap-4 border-b border-(--border-subtle) bg-[color-mix(in_srgb,var(--elevated)_52%,transparent)] px-3 py-2 font-sans text-[11px] font-semibold uppercase tracking-[0.06em] text-(--muted)">
+      <TraceViewHeader
+        meta={`total ${formatTraceDuration(timelineEnd)}`}
+        summary={`span detail · ${trace.spans.length} of ${trace.spans.length} spans`}
+        title="Waterfall"
+      />
+      <div className={traceWaterfallTableHeaderClassName}>
         <span>Span</span>
         <div className="grid min-w-0 grid-cols-5 overflow-hidden">
           {[0, 25, 50, 75, 100].map((tick) => (
@@ -60,6 +54,7 @@ export function WaterfallView({
               )}
               key={span.id}
               onClick={() => onSelectSpan(span)}
+              type="button"
             >
               <span className="flex min-w-0 items-center gap-1.5 overflow-hidden">
                 <span

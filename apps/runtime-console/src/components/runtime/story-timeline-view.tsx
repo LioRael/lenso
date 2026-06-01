@@ -10,6 +10,8 @@ import {
   statusColor,
   traceTimelineEnd,
 } from "../../lib/trace-style";
+import { traceTimelineTableHeaderClassName } from "./trace-table-header";
+import { TraceViewHeader } from "./trace-view-header";
 
 export function StoryTimelineView({
   selectedSpanId,
@@ -24,34 +26,26 @@ export function StoryTimelineView({
   const timelineEnd = traceTimelineEnd(trace);
 
   return (
-    <div className="grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-(--background)">
-      <div className="flex min-w-0 items-center justify-between gap-3 overflow-hidden border-b border-(--border-subtle) bg-[color-mix(in_srgb,var(--elevated)_40%,transparent)] px-3 py-2">
-        <div className="flex min-w-0 items-center gap-2 overflow-hidden">
-          <span className="font-sans text-[11px] font-semibold uppercase tracking-[0.08em] text-(--muted)">
-            Business Timeline
-          </span>
-          <span className="min-w-0 truncate font-mono text-[11px] text-(--muted)">
-            {story.nodeCount} execution nodes from one correlation
-          </span>
-        </div>
-        <div className="shrink-0 font-mono text-[11px] text-(--muted)">
-          total {formatTraceDuration(timelineEnd)}
+    <div className="isolate flex h-full min-w-0 flex-col overflow-hidden bg-(--background)">
+      <TraceViewHeader
+        meta={`total ${formatTraceDuration(timelineEnd)}`}
+        summary={`${story.nodeCount} execution nodes from one correlation`}
+        title="Business Timeline"
+      />
+
+      <div className={traceTimelineTableHeaderClassName}>
+        <span>Story Flow</span>
+        <div className="grid min-w-0 grid-cols-5 overflow-hidden font-mono">
+          {[0, 25, 50, 75, 100].map((tick) => (
+            <span key={tick}>
+              {formatTraceDuration((timelineEnd * tick) / 100)}
+            </span>
+          ))}
         </div>
       </div>
 
-      <div className="min-h-0 overflow-auto px-4 py-4">
+      <div className="min-h-0 flex-1 overflow-auto px-4 py-4">
         <div className="mx-auto w-full max-w-5xl">
-          <div className="mb-4 grid min-w-0 grid-cols-[minmax(180px,260px)_minmax(0,1fr)] gap-4 border-b border-(--border-subtle) pb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-(--muted) max-md:grid-cols-1">
-            <span>Story Flow</span>
-            <div className="grid min-w-0 grid-cols-5 overflow-hidden font-mono">
-              {[0, 25, 50, 75, 100].map((tick) => (
-                <span key={tick}>
-                  {formatTraceDuration((timelineEnd * tick) / 100)}
-                </span>
-              ))}
-            </div>
-          </div>
-
           <div className="grid gap-3">
             {story.nodes.map((node, index) => {
               const Icon = nodeIcon[node.type];

@@ -1,6 +1,7 @@
 import type { TraceRun, TraceSpan } from "../../data/mock-runtime";
 import { cn } from "../../lib/cn";
 import { formatTraceDuration, traceTimelineEnd } from "../../lib/trace-style";
+import { TraceViewHeader } from "./trace-view-header";
 
 export function HeatmapView({
   selectedSpanId,
@@ -24,23 +25,11 @@ export function HeatmapView({
 
   return (
     <div className="isolate flex h-full min-w-0 flex-col overflow-hidden bg-(--background)">
-      <div className="flex min-w-0 items-center justify-between gap-3 overflow-hidden border-b border-(--border-subtle) bg-(--surface) px-3 py-2">
-        <div className="flex min-w-0 items-center gap-2 overflow-hidden">
-          <span className="font-sans text-[11px] font-semibold uppercase tracking-[0.08em] text-(--accent)">
-            Heatmap
-          </span>
-          <span className="min-w-0 truncate font-mono text-[11px] text-(--muted)">
-            {cells.length} buckets across {formatTraceDuration(timelineEnd)}
-          </span>
-        </div>
-        <div className="flex shrink-0 items-center gap-2 font-mono text-[10px] text-(--muted)">
-          <span>idle</span>
-          <span className="text-[#3b82f6]">short</span>
-          <span className="text-[#22c55e]">work</span>
-          <span className="text-(--accent)">slow</span>
-          <span className="text-[#ef4444]">fault</span>
-        </div>
-      </div>
+      <TraceViewHeader
+        meta="idle · short · work · slow · fault"
+        summary={`${cells.length} buckets across ${formatTraceDuration(timelineEnd)}`}
+        title="Heatmap"
+      />
       <div className="min-h-0 flex-1 overflow-auto bg-(--background) p-3">
         <div className="grid grid-cols-[repeat(20,minmax(0,1fr))] gap-0.5">
           {cells.map((cell) => (
@@ -59,6 +48,7 @@ export function HeatmapView({
               key={cell.index}
               onClick={() => cell.span && onSelectSpan(cell.span)}
               title={cell.span?.name ?? formatTraceDuration(cell.bucketStart)}
+              type="button"
             />
           ))}
         </div>
