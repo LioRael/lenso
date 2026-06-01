@@ -14,8 +14,8 @@ pub mod telemetry;
 
 pub use clock::{Clock, SystemClock};
 pub use config::{
-    AppConfig, AuthConfig, DatabaseConfig, HttpConfig, ModuleConfig, RuntimeConfig, ServiceConfig,
-    TelemetryConfig,
+    AppConfig, AuthConfig, DatabaseConfig, HttpConfig, LogFormat, ModuleConfig, RuntimeConfig,
+    ServiceConfig, TelemetryConfig,
 };
 pub use context::{
     ActorContext, AppContext, CorrelationId, RequestContext, RequestId, TenantId, TraceContext,

@@ -82,6 +82,8 @@ impl Default for HttpConfig {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct TelemetryConfig {
     pub log_level: String,
+    #[serde(default)]
+    pub log_format: LogFormat,
     pub otlp_endpoint: Option<String>,
 }
 
@@ -89,7 +91,29 @@ impl Default for TelemetryConfig {
     fn default() -> Self {
         Self {
             log_level: std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_owned()),
+            log_format: std::env::var("LOG_FORMAT")
+                .ok()
+                .and_then(|value| LogFormat::from_env_value(&value))
+                .unwrap_or_default(),
             otlp_endpoint: std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum LogFormat {
+    #[default]
+    Compact,
+    Json,
+}
+
+impl LogFormat {
+    pub fn from_env_value(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "compact" | "terminal" | "text" => Some(Self::Compact),
+            "json" => Some(Self::Json),
+            _ => None,
         }
     }
 }

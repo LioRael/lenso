@@ -1,4 +1,4 @@
-use crate::config::TelemetryConfig;
+use crate::config::{LogFormat, TelemetryConfig};
 use crate::error::AppResult;
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -7,11 +7,22 @@ pub fn init(config: &TelemetryConfig) -> AppResult<()> {
         .or_else(|_| EnvFilter::try_new("info"))
         .expect("fallback tracing filter must be valid");
 
-    tracing_subscriber::registry()
-        .with(env_filter)
-        .with(fmt::layer().json())
-        .try_init()
-        .ok();
+    match config.log_format {
+        LogFormat::Compact => {
+            tracing_subscriber::registry()
+                .with(env_filter)
+                .with(fmt::layer().compact().with_target(false))
+                .try_init()
+                .ok();
+        }
+        LogFormat::Json => {
+            tracing_subscriber::registry()
+                .with(env_filter)
+                .with(fmt::layer().json())
+                .try_init()
+                .ok();
+        }
+    }
 
     Ok(())
 }
