@@ -23,8 +23,9 @@ export function useListKeyboard<T>({
         target?.tagName === "TEXTAREA" ||
         target?.tagName === "SELECT" ||
         target?.isContentEditable;
+      const hasModifier = event.metaKey || event.ctrlKey || event.altKey;
 
-      if (isTyping || items.length === 0) {
+      if (isTyping || hasModifier || items.length === 0) {
         return;
       }
 

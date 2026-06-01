@@ -24,13 +24,13 @@ export function FlowView({
   }));
 
   return (
-    <div className="isolate relative h-full min-w-0 overflow-hidden bg-[var(--sidebar)]">
-      <div className="pointer-events-none absolute top-0 right-0 left-0 z-[2] flex items-center justify-between px-4 py-2.5">
-        <span className="pointer-events-auto font-sans text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">
+    <div className="isolate relative h-full min-w-0 overflow-hidden bg-(--sidebar)">
+      <div className="pointer-events-none absolute top-0 right-0 left-0 z-2 flex items-center justify-between px-4 py-2.5">
+        <span className="pointer-events-auto font-sans text-[11px] font-semibold uppercase tracking-[0.08em] text-(--muted)">
           Span Graph
         </span>
         <button
-          className="pointer-events-auto flex items-center gap-1.5 font-mono text-[11px] text-[var(--muted)] transition hover:text-[var(--foreground)]"
+          className="pointer-events-auto flex items-center gap-1.5 font-mono text-[11px] text-(--muted) transition hover:text-(--foreground)"
           type="button"
         >
           <Maximize2 size={12} />
@@ -82,28 +82,28 @@ export function FlowView({
             return (
               <button
                 className={cn(
-                  "absolute h-[72px] w-[240px] rounded-[4px] border bg-[var(--elevated)] text-left transition hover:bg-[var(--hover)]",
+                  "absolute h-18 w-60 rounded-sm border bg-(--elevated) text-left transition hover:bg-(--hover)",
                   isSelected &&
-                    "border-[var(--accent)] shadow-[0_0_12px_color-mix(in_srgb,var(--accent)_22%,transparent)] ring-1 ring-[color-mix(in_srgb,var(--accent)_30%,transparent)]",
+                    "border-(--accent) shadow-[0_0_12px_color-mix(in_srgb,var(--accent)_22%,transparent)] ring-1 ring-[color-mix(in_srgb,var(--accent)_30%,transparent)]",
                   !isSelected &&
                     isError &&
                     "border-[color-mix(in_srgb,var(--error)_45%,transparent)]",
                   !isSelected &&
                     !isError &&
-                    "border-[var(--border-subtle)] hover:border-[var(--muted-deep)]"
+                    "border-(--border-subtle) hover:border-(--muted-deep)"
                 )}
                 key={span.id}
                 onClick={() => onSelectSpan(span)}
                 style={{ left: x, top: y }}
               >
                 <span
-                  className="absolute top-0 left-0 right-0 h-[3px] rounded-t-[4px]"
+                  className="absolute top-0 left-0 right-0 h-0.75 rounded-t-sm"
                   style={{ backgroundColor: color }}
                 />
                 <span className="flex h-full flex-col justify-between px-3 pt-2.5 pb-2">
                   <span className="flex items-start justify-between gap-2">
                     <span
-                      className="rounded-[2px] border px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.06em]"
+                      className="rounded-xs border px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.06em]"
                       style={{
                         backgroundColor: `${color}18`,
                         borderColor: `${color}30`,
@@ -114,26 +114,26 @@ export function FlowView({
                     </span>
                     <span
                       className={cn(
-                        "rounded-[2px] px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.06em]",
+                        "rounded-xs px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.06em]",
                         isError
-                          ? "bg-[color-mix(in_srgb,var(--error)_10%,transparent)] text-[var(--error)]"
-                          : "bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] text-[var(--accent)]"
+                          ? "bg-[color-mix(in_srgb,var(--error)_10%,transparent)] text-(--error)"
+                          : "bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] text-(--accent)"
                       )}
                     >
                       {span.kind}
                     </span>
                   </span>
                   <span className="min-w-0">
-                    <span className="block truncate font-mono text-[13px] text-[var(--foreground)]">
+                    <span className="block truncate font-mono text-[13px] text-(--foreground)">
                       {span.name}
                     </span>
-                    <span className="block font-mono text-[11px] text-[var(--muted)]">
+                    <span className="block font-mono text-[11px] text-(--muted)">
                       {formatTraceDuration(span.durationMs)}
                     </span>
                   </span>
                 </span>
                 {isError ? (
-                  <span className="absolute -top-1 -right-1 size-2.5 rounded-full border border-[var(--elevated)] bg-[#ef4444]" />
+                  <span className="absolute -top-1 -right-1 size-2.5 rounded-full border border-(--elevated) bg-[#ef4444]" />
                 ) : null}
               </button>
             );
@@ -141,11 +141,11 @@ export function FlowView({
         </div>
       </div>
 
-      <div className="absolute bottom-10 left-4 z-[2] flex flex-col gap-1">
+      <div className="absolute bottom-10 left-4 z-2 flex flex-col gap-1">
         {[Plus, Minus, Maximize2].map((Icon, index) => (
           <button
             aria-label="Flow view control"
-            className="grid size-7 place-items-center rounded-[2px] border border-[var(--border-subtle)] bg-[var(--elevated)] text-[var(--secondary)] transition hover:border-[var(--muted-deep)] hover:text-[var(--foreground)]"
+            className="grid size-7 place-items-center rounded-xs border border-(--border-subtle) bg-(--elevated) text-(--secondary) transition hover:border-(--muted-deep) hover:text-(--foreground)"
             key={index}
             type="button"
           >
@@ -154,11 +154,11 @@ export function FlowView({
         ))}
       </div>
 
-      <div className="absolute right-4 bottom-10 z-[2] h-[100px] w-[140px] overflow-hidden rounded-[2px] border border-[var(--border-subtle)] bg-[color-mix(in_srgb,var(--background)_90%,transparent)]">
-        <div className="scale-[0.13] origin-top-left p-4">
+      <div className="absolute right-4 bottom-10 z-2 h-25 w-35 overflow-hidden rounded-xs border border-(--border-subtle) bg-[color-mix(in_srgb,var(--background)_90%,transparent)]">
+        <div className="scale-13 origin-top-left p-4">
           {nodes.map(({ span, x, y }) => (
             <div
-              className="absolute h-[72px] w-[240px] rounded-[4px]"
+              className="absolute h-18 w-60 rounded-sm"
               key={span.id}
               style={{
                 backgroundColor: serviceColor(span.service),
@@ -171,7 +171,7 @@ export function FlowView({
         </div>
       </div>
 
-      <div className="absolute bottom-2 left-1/2 z-[2] flex -translate-x-1/2 items-center gap-4 rounded-[2px] border border-[var(--border-subtle)] bg-[color-mix(in_srgb,var(--background)_84%,transparent)] px-3 py-1.5 font-mono text-[11px] text-[var(--muted)]">
+      <div className="absolute bottom-2 left-1/2 z-2 flex -translate-x-1/2 items-center gap-4 rounded-xs border border-(--border-subtle) bg-[color-mix(in_srgb,var(--background)_84%,transparent)] px-3 py-1.5 font-mono text-[11px] text-(--muted)">
         <span>Select nodes</span>
         <span>Wheel zoom</span>
         <span>Pan canvas</span>

@@ -78,11 +78,11 @@ export function EventsPage() {
       </div>
 
       <div className="mb-3 flex flex-wrap items-center gap-2.5">
-        <label className="flex h-9 min-w-[min(420px,100%)] items-center gap-2.5 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-slate-400">
+        <label className="flex h-9 min-w-[min(420px,100%)] items-center gap-2.5 rounded-lg border border-white/10 bg-white/3.5 px-3 text-slate-400">
           <Search size={15} />
           <input
             aria-label="Search events"
-            className="w-full bg-transparent text-[13px] text-slate-100 outline-none placeholder:text-slate-600"
+            className="w-full bg-transparent text-[13px] text-slate-100 outline-hidden placeholder:text-slate-600"
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search event, id, correlation..."
             value={query}
@@ -90,7 +90,7 @@ export function EventsPage() {
         </label>
         <select
           aria-label="Filter event status"
-          className="h-9 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-[13px] text-slate-100 outline-none"
+          className="h-9 rounded-lg border border-white/10 bg-white/3.5 px-3 text-[13px] text-slate-100 outline-hidden"
           onChange={(event) =>
             setStatus(event.target.value as RuntimeStatus | "all")
           }
@@ -125,8 +125,8 @@ export function EventsPage() {
           ) : (
             filtered.map((event) => (
               <button
-                className={`grid w-full grid-cols-[110px_minmax(230px,1fr)_78px_132px_154px] items-center gap-2.5 border-b border-white/10 bg-transparent px-3.5 py-3 text-left text-slate-100 last:border-b-0 hover:bg-blue-300/[0.055] max-md:grid-cols-1 ${
-                  selected?.id === event.id ? "bg-blue-300/[0.055]" : ""
+                className={`grid w-full grid-cols-[110px_minmax(230px,1fr)_78px_132px_154px] items-center gap-2.5 border-b border-white/10 bg-transparent px-3.5 py-3 text-left text-slate-100 last:border-b-0 hover:bg-blue-300/5.5 max-md:grid-cols-1 ${
+                  selected?.id === event.id ? "bg-blue-300/5.5" : ""
                 }`}
                 key={event.id}
                 onClick={() => {
@@ -173,16 +173,16 @@ export function EventsPage() {
 function LoadingRows() {
   return (
     <>
-      <div className="h-14 animate-pulse border-b border-white/10 bg-white/[0.03]" />
-      <div className="h-14 animate-pulse border-b border-white/10 bg-white/[0.03]" />
-      <div className="h-14 animate-pulse bg-white/[0.03]" />
+      <div className="h-14 animate-pulse border-b border-white/10 bg-white/3" />
+      <div className="h-14 animate-pulse border-b border-white/10 bg-white/3" />
+      <div className="h-14 animate-pulse bg-white/3" />
     </>
   );
 }
 
 function ErrorState({ message }: { message: string }) {
   return (
-    <div className="m-3 rounded-lg border border-[color-mix(in_srgb,var(--error)_30%,transparent)] bg-[color-mix(in_srgb,var(--error)_8%,transparent)] p-3 text-xs text-[var(--error)]">
+    <div className="m-3 rounded-lg border border-[color-mix(in_srgb,var(--error)_30%,transparent)] bg-[color-mix(in_srgb,var(--error)_8%,transparent)] p-3 text-xs text-(--error)">
       {message}
     </div>
   );

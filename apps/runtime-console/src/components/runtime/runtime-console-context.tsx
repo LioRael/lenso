@@ -74,6 +74,7 @@ type RuntimeConsoleContextValue = {
   focusGlobalSearch: () => void;
   openTimeline: (nextCorrelationId: string) => void;
   openTrace: (traceId: string, spanId?: string) => void;
+  clearTraceTarget: () => void;
   searchRuntime: (query: string) => SearchResult[];
   selectSearchResult: (result: SearchResult) => void;
 };
@@ -111,6 +112,10 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
     },
     [navigate]
   );
+
+  const clearTraceTarget = useCallback(() => {
+    setActiveTraceTarget(null);
+  }, []);
 
   const searchRuntime = useCallback(
     (query: string) => {
@@ -251,12 +256,14 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
       focusGlobalSearch: () => searchInputRef.current?.focus(),
       openTimeline,
       openTrace,
+      clearTraceTarget,
       searchRuntime,
       selectSearchResult,
     }),
     [
       activeCorrelationId,
       activeTraceTarget,
+      clearTraceTarget,
       commandOpen,
       drawerTarget,
       openTimeline,

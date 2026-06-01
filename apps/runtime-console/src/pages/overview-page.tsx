@@ -15,14 +15,14 @@ export function OverviewPage() {
   const failures = summary?.recentFailures.slice(0, 6) ?? [];
 
   return (
-    <section className="runtime-grid grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
+    <section className="runtime-grid grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-(--background) text-(--foreground)">
       <header className="soft-panel border-b px-3 py-2">
         <div className="flex items-center gap-2">
-          <Activity className="text-[var(--accent)]" size={14} />
+          <Activity className="text-(--accent)" size={14} />
           <h1 className="font-mono text-[13px] font-semibold">
             Runtime Overview
           </h1>
-          <span className="ml-auto font-mono text-[10px] text-[var(--muted)]">
+          <span className="ml-auto font-mono text-[10px] text-(--muted)">
             status{" "}
             {summaryQuery.isError ? "degraded" : (summary?.status ?? "loading")}{" "}
             / {runtimeConsoleDataSource()}
@@ -31,7 +31,7 @@ export function OverviewPage() {
       </header>
 
       <div className="grid min-h-0 grid-cols-[minmax(0,1.35fr)_360px] overflow-hidden max-xl:grid-cols-1">
-        <main className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-r border-[var(--border-subtle)] bg-[color-mix(in_srgb,var(--surface)_72%,var(--background))] max-xl:border-r-0">
+        <main className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-r border-(--border-subtle) bg-[color-mix(in_srgb,var(--surface)_72%,var(--background))] max-xl:border-r-0">
           <SummaryStrip summary={summary} />
           <div className="min-h-0 overflow-auto">
             <SectionHeader
@@ -50,22 +50,22 @@ export function OverviewPage() {
             ) : (
               activity.map((item) => (
                 <div
-                  className="grid min-h-11 grid-cols-[108px_minmax(0,1fr)_96px_120px] items-center gap-3 border-b border-[var(--border-subtle)] px-3 font-mono text-[11px] transition hover:bg-[var(--hover)]"
+                  className="grid min-h-11 grid-cols-[108px_minmax(0,1fr)_96px_120px] items-center gap-3 border-b border-(--border-subtle) px-3 font-mono text-[11px] transition hover:bg-(--hover)"
                   key={item.id}
                 >
                   <StatusPill status={item.status} />
                   <div className="min-w-0">
-                    <div className="truncate text-[var(--foreground)]">
+                    <div className="truncate text-(--foreground)">
                       {item.name}
                     </div>
-                    <div className="truncate text-[10px] text-[var(--muted)]">
+                    <div className="truncate text-[10px] text-(--muted)">
                       {item.id}
                     </div>
                   </div>
-                  <span className="text-[var(--muted)]">
+                  <span className="text-(--muted)">
                     {item.attempts}/{item.maxAttempts}
                   </span>
-                  <span className="truncate text-right text-[var(--muted)]">
+                  <span className="truncate text-right text-(--muted)">
                     {time(item.createdAt)}
                   </span>
                 </div>
@@ -74,7 +74,7 @@ export function OverviewPage() {
           </div>
         </main>
 
-        <aside className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-[color-mix(in_srgb,var(--surface)_94%,var(--background))] shadow-[inset_1px_0_0_color-mix(in_srgb,var(--border)_55%,transparent)] max-xl:hidden">
+        <aside className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-[color-mix(in_srgb,var(--surface)_94%,var(--background))] max-xl:hidden">
           <SectionHeader title="Failure Stream" meta="operator attention" />
           <div className="min-h-0 overflow-auto">
             {failures.length === 0 ? (
@@ -82,23 +82,23 @@ export function OverviewPage() {
             ) : (
               failures.map((failure) => (
                 <div
-                  className="border-b border-[var(--border-subtle)] px-3 py-2 font-mono text-[11px] transition hover:bg-[var(--hover)]"
+                  className="border-b border-(--border-subtle) px-3 py-2 font-mono text-[11px] transition hover:bg-(--hover)"
                   key={failure.id}
                 >
                   <div className="mb-1 flex items-center gap-2">
                     <StatusPill status={failure.status} />
-                    <span className="ml-auto text-[10px] text-[var(--muted)]">
+                    <span className="ml-auto text-[10px] text-(--muted)">
                       {relativeAge(failure.createdAt)}
                     </span>
                   </div>
-                  <div className="truncate text-[var(--foreground)]">
+                  <div className="truncate text-(--foreground)">
                     {failure.name}
                   </div>
-                  <div className="truncate text-[10px] text-[var(--muted)]">
+                  <div className="truncate text-[10px] text-(--muted)">
                     {failure.correlationId}
                   </div>
                   {failure.lastError ? (
-                    <div className="mt-1 text-[10px] leading-4 text-[var(--error)]">
+                    <div className="mt-1 text-[10px] leading-4 text-(--error)">
                       {failure.lastError}
                     </div>
                   ) : null}
@@ -143,23 +143,23 @@ function SummaryStrip({ summary }: { summary: RuntimeSummary | undefined }) {
     : [];
 
   return (
-    <div className="grid border-b border-[var(--border-subtle)] bg-[color-mix(in_srgb,var(--surface)_92%,transparent)] md:grid-cols-4">
+    <div className="grid border-b border-(--border-subtle) bg-[color-mix(in_srgb,var(--surface)_92%,transparent)] md:grid-cols-4">
       {rows.length === 0 ? (
         <MessageRow message="Runtime summary unavailable" />
       ) : (
         rows.map((row) => (
           <div
-            className="grid grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-2 border-r border-[var(--border-subtle)] px-3 py-2 font-mono text-[10px] last:border-r-0"
+            className="grid grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-2 border-r border-(--border-subtle) px-3 py-2 font-mono text-[10px] last:border-r-0"
             key={row.label}
           >
-            <span className="text-[var(--muted)]">{row.icon}</span>
-            <span className="min-w-0 truncate text-[var(--secondary)]">
+            <span className="text-(--muted)">{row.icon}</span>
+            <span className="min-w-0 truncate text-(--secondary)">
               {row.label}
             </span>
-            <span className="text-[13px] font-semibold text-[var(--foreground)]">
+            <span className="text-[13px] font-semibold text-(--foreground)">
               {row.value}
             </span>
-            <span className="col-span-3 truncate text-[var(--muted)]">
+            <span className="col-span-3 truncate text-(--muted)">
               {row.note}
             </span>
           </div>
@@ -171,11 +171,11 @@ function SummaryStrip({ summary }: { summary: RuntimeSummary | undefined }) {
 
 function SectionHeader({ title, meta }: { title: string; meta: string }) {
   return (
-    <div className="flex h-8 items-center gap-2 border-b border-[var(--border-subtle)] bg-[color-mix(in_srgb,var(--surface)_92%,transparent)] px-3">
-      <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--secondary)]">
+    <div className="flex h-8 items-center gap-2 border-b border-(--border-subtle) bg-[color-mix(in_srgb,var(--surface)_92%,transparent)] px-3">
+      <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-(--secondary)">
         {title}
       </span>
-      <span className="ml-auto font-mono text-[10px] text-[var(--muted)]">
+      <span className="ml-auto font-mono text-[10px] text-(--muted)">
         {meta}
       </span>
     </div>
@@ -185,9 +185,9 @@ function SectionHeader({ title, meta }: { title: string; meta: string }) {
 function LoadingRows() {
   return (
     <>
-      <div className="h-11 animate-pulse border-b border-[var(--border-subtle)] bg-[var(--elevated)]" />
-      <div className="h-11 animate-pulse border-b border-[var(--border-subtle)] bg-[var(--elevated)]" />
-      <div className="h-11 animate-pulse border-b border-[var(--border-subtle)] bg-[var(--elevated)]" />
+      <div className="h-11 animate-pulse border-b border-(--border-subtle) bg-(--elevated)" />
+      <div className="h-11 animate-pulse border-b border-(--border-subtle) bg-(--elevated)" />
+      <div className="h-11 animate-pulse border-b border-(--border-subtle) bg-(--elevated)" />
     </>
   );
 }
@@ -201,8 +201,8 @@ function MessageRow({
 }) {
   return (
     <div
-      className={`border-b border-[var(--border-subtle)] bg-[color-mix(in_srgb,var(--surface)_42%,transparent)] px-3 py-3 font-mono text-[11px] ${
-        tone === "error" ? "text-[var(--error)]" : "text-[var(--muted)]"
+      className={`border-b border-(--border-subtle) bg-[color-mix(in_srgb,var(--surface)_42%,transparent)] px-3 py-3 font-mono text-[11px] ${
+        tone === "error" ? "text-(--error)" : "text-(--muted)"
       }`}
     >
       {message}

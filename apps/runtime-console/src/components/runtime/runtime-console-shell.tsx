@@ -149,7 +149,7 @@ export function RuntimeConsoleShell({ children }: PropsWithChildren) {
   return (
     <div
       ref={shellRef}
-      className="runtime-grid runtime-shell min-h-screen bg-[var(--background)] text-[var(--foreground)] lg:grid"
+      className="runtime-grid runtime-shell min-h-screen bg-(--background) text-(--foreground) lg:grid"
       style={
         {
           "--sidebar-collapse": initialCollapseRef.current,
@@ -159,15 +159,15 @@ export function RuntimeConsoleShell({ children }: PropsWithChildren) {
     >
       <aside
         aria-label="Runtime Console navigation"
-        className="relative overflow-hidden border-[var(--border)] bg-[color-mix(in_srgb,var(--sidebar)_92%,transparent)] lg:sticky lg:top-0 lg:h-screen lg:border-r max-lg:border-b"
+        className="relative overflow-hidden border-(--border) bg-[color-mix(in_srgb,var(--sidebar)_92%,transparent)] lg:sticky lg:top-0 lg:h-screen lg:border-r max-lg:border-b"
       >
-        <div className="h-11 border-b border-[var(--border)] bg-[var(--chrome)] max-lg:hidden">
+        <div className="h-11 border-b border-(--border) bg-(--chrome) max-lg:hidden">
           <div className="sidebar-header flex h-full items-center">
             <div
               aria-hidden={sidebarCollapsed}
               className="sidebar-copy flex min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap"
             >
-              <div className="grid h-5 min-w-11 place-items-center border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] bg-[var(--accent-soft)] px-1.5 text-[var(--accent)] shadow-[0_0_18px_color-mix(in_srgb,var(--accent)_14%,transparent)]">
+              <div className="grid h-5 min-w-11 place-items-center border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] bg-(--accent-soft) px-1.5 text-(--accent) shadow-[0_0_18px_color-mix(in_srgb,var(--accent)_14%,transparent)]">
                 <span className="font-mono text-[11px] font-semibold uppercase leading-none">
                   lenso
                 </span>
@@ -176,10 +176,10 @@ export function RuntimeConsoleShell({ children }: PropsWithChildren) {
                 aria-hidden={sidebarCollapsed}
                 className="min-w-0 overflow-hidden whitespace-nowrap leading-tight"
               >
-                <div className="font-mono text-[10px] uppercase tracking-[0.06em] text-[var(--secondary)]">
+                <div className="font-mono text-[10px] uppercase tracking-[0.06em] text-(--secondary)">
                   Runtime
                 </div>
-                <div className="font-mono text-[10px] uppercase tracking-[0.06em] text-[var(--muted)]">
+                <div className="font-mono text-[10px] uppercase tracking-[0.06em] text-(--muted)">
                   Console
                 </div>
               </div>
@@ -188,7 +188,7 @@ export function RuntimeConsoleShell({ children }: PropsWithChildren) {
               aria-label={
                 sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"
               }
-              className="grid size-6 flex-shrink-0 place-items-center border border-[var(--border-subtle)] bg-[var(--elevated)] text-[var(--muted)] transition hover:border-[var(--border)] hover:text-[var(--foreground)]"
+              className="grid size-6 shrink-0 place-items-center border border-(--border-subtle) bg-(--elevated) text-(--muted) transition hover:border-(--border) hover:text-(--foreground)"
               onClick={toggleSidebar}
               title={
                 sidebarCollapsed
@@ -212,10 +212,10 @@ export function RuntimeConsoleShell({ children }: PropsWithChildren) {
               <NavLink key={item.to} {...item} />
             ))}
           </div>
-          <div className="mt-3 border-t border-[var(--border-subtle)] pt-2 max-lg:hidden">
+          <div className="mt-3 border-t border-(--border-subtle) pt-2 max-lg:hidden">
             <div
               aria-hidden={sidebarCollapsed}
-              className="sidebar-copy sidebar-group-label overflow-hidden whitespace-nowrap px-2 font-mono text-[10px] uppercase tracking-[0.06em] text-[var(--muted-deep)]"
+              className="sidebar-copy sidebar-group-label overflow-hidden whitespace-nowrap px-2 font-mono text-[10px] uppercase tracking-[0.06em] text-(--muted-deep)"
             >
               Future
             </div>
@@ -224,24 +224,24 @@ export function RuntimeConsoleShell({ children }: PropsWithChildren) {
               <DisabledNav label="Agents" icon={Sparkles} />
             </div>
           </div>
-          <div className="my-2 h-px bg-[var(--border-subtle)] max-lg:hidden" />
+          <div className="my-2 h-px bg-(--border-subtle) max-lg:hidden" />
           <div className="grid gap-px max-lg:hidden">
             <NavLink {...settingsNavItem} />
           </div>
         </nav>
 
-        <div className="absolute right-0 bottom-0 left-0 border-t border-[var(--border-subtle)] bg-[color-mix(in_srgb,var(--sidebar)_92%,transparent)] p-2 max-lg:hidden">
-          <div className="sidebar-status-item flex w-full items-center gap-2 border border-[var(--border-subtle)] bg-[color-mix(in_srgb,var(--surface)_55%,transparent)] px-2">
-            <div className="size-1.5 flex-shrink-0 rounded-full bg-[var(--success)] shadow-[0_0_7px_var(--success)]" />
+        <div className="absolute right-0 bottom-0 left-0 border-t border-(--border-subtle) bg-[color-mix(in_srgb,var(--sidebar)_92%,transparent)] p-2 max-lg:hidden">
+          <div className="sidebar-status-item flex w-full items-center gap-2 border border-(--border-subtle) bg-[color-mix(in_srgb,var(--surface)_55%,transparent)] px-2">
+            <div className="size-1.5 shrink-0 rounded-full bg-(--success) shadow-[0_0_7px_var(--success)]" />
             <span
               aria-hidden={sidebarCollapsed}
-              className="sidebar-copy overflow-hidden whitespace-nowrap font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--foreground)]"
+              className="sidebar-copy overflow-hidden whitespace-nowrap font-mono text-[11px] uppercase tracking-[0.04em] text-(--foreground)"
             >
               Online
             </span>
             <span
               aria-hidden={sidebarCollapsed}
-              className="sidebar-copy ml-auto overflow-hidden whitespace-nowrap font-mono text-[11px] text-[var(--muted)]"
+              className="sidebar-copy ml-auto overflow-hidden whitespace-nowrap font-mono text-[11px] text-(--muted)"
             >
               {runtimeConsoleDataSource()}
             </span>
@@ -250,14 +250,14 @@ export function RuntimeConsoleShell({ children }: PropsWithChildren) {
       </aside>
 
       <main className="min-w-0">
-        <header className="sticky top-0 z-20 grid min-h-11 grid-cols-[minmax(220px,520px)_1fr_auto_auto_auto_auto] items-center gap-2 border-b border-[var(--border)] bg-[var(--chrome)] px-3 shadow-[0_10px_32px_var(--shadow-soft)] backdrop-blur max-lg:grid-cols-[1fr_auto] max-lg:px-2 max-sm:block max-sm:space-y-2 max-sm:py-2">
+        <header className="sticky top-0 z-20 grid min-h-11 grid-cols-[minmax(220px,520px)_1fr_auto_auto_auto_auto] items-center gap-2 border-b border-(--border) bg-(--chrome) px-3 shadow-[0_10px_32px_var(--shadow-soft)] backdrop-blur max-lg:grid-cols-[1fr_auto] max-lg:px-2 max-sm:block max-sm:space-y-2 max-sm:py-2">
           <RuntimeSearch />
           <div />
           <Button
             aria-label={
               theme === "dark" ? "Switch to light mode" : "Switch to dark mode"
             }
-            className="theme-toggle-button border-[var(--border-subtle)] bg-[var(--elevated)] text-[var(--secondary)] hover:border-[var(--border)]"
+            className="theme-toggle-button border-(--border-subtle) bg-(--elevated) text-(--secondary) hover:border-(--border)"
             onClick={toggleTheme}
             title={
               theme === "dark" ? "Switch to light mode" : "Switch to dark mode"
@@ -277,15 +277,15 @@ export function RuntimeConsoleShell({ children }: PropsWithChildren) {
           >
             <Command size={13} />
             Command
-            <span className="border border-[var(--border-subtle)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--muted)]">
+            <span className="border border-(--border-subtle) px-1.5 py-0.5 font-mono text-[11px] text-(--muted)">
               ⌘K
             </span>
           </Button>
-          <Badge className="h-7 rounded-none border-[var(--border)] bg-[var(--elevated)] font-mono text-[11px] text-[var(--secondary)] max-lg:hidden">
+          <Badge className="h-7 rounded-none border-(--border) bg-(--elevated) font-mono text-[11px] text-(--secondary) max-lg:hidden">
             <Activity size={13} />
             local
           </Badge>
-          <Badge className="h-7 rounded-none border-[var(--border)] bg-[var(--elevated)] font-mono text-[11px] text-[var(--secondary)] max-lg:hidden">
+          <Badge className="h-7 rounded-none border-(--border) bg-(--elevated) font-mono text-[11px] text-(--secondary) max-lg:hidden">
             <Command size={13} />
             service:admin
           </Badge>
@@ -312,10 +312,10 @@ function NavLink({
     <Link
       activeProps={{
         className:
-          "bg-[var(--accent-soft)] text-[var(--foreground)] shadow-[inset_16px_0_24px_color-mix(in_srgb,var(--accent)_6%,transparent)]",
+          "bg-(--accent-soft) text-(--foreground) shadow-[inset_16px_0_24px_color-mix(in_srgb,var(--accent)_6%,transparent)]",
       }}
       aria-label={label}
-      className="sidebar-nav-item flex h-7 w-full items-center gap-2 px-2 font-mono text-xs text-[var(--secondary)] transition-colors hover:bg-[var(--hover)] hover:text-[var(--foreground)] max-lg:min-w-8 max-lg:justify-center max-lg:px-2"
+      className="sidebar-nav-item flex h-7 w-full items-center gap-2 px-2 font-mono text-xs text-(--secondary) transition-colors hover:bg-(--hover) hover:text-(--foreground) max-lg:min-w-8 max-lg:justify-center max-lg:px-2"
       title={label}
       to={to}
     >
@@ -337,7 +337,7 @@ function DisabledNav({
   return (
     <div
       aria-label={`${label} later`}
-      className="sidebar-nav-item flex h-7 w-full items-center gap-2 px-2 font-mono text-xs text-[var(--muted-deep)]"
+      className="sidebar-nav-item flex h-7 w-full items-center gap-2 px-2 font-mono text-xs text-(--muted-deep)"
       title={`${label} later`}
     >
       <Icon size={13} strokeWidth={1.5} />

@@ -1,4 +1,12 @@
-import { useMemo, useState } from "react";
+import { useGSAP } from "@gsap/react";
+import gsap from "gsap";
+import {
+  type CSSProperties,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { ResizeHandle } from "../components/runtime/resize-handle";
 import { useRuntimeConsole } from "../components/runtime/runtime-console-context";
@@ -16,6 +24,8 @@ import {
 import { useListKeyboard } from "../hooks/use-list-keyboard";
 import { usePersistedLayout } from "../hooks/use-persisted-layout";
 import { useRuntimeTraces } from "../hooks/use-runtime-queries";
+
+gsap.registerPlugin(useGSAP);
 
 type InspectorTab =
   | "info"
@@ -36,14 +46,19 @@ function clamp(value: number, min: number, max: number) {
 }
 
 export function TraceWorkbenchPage() {
-  const { activeTraceTarget, openRetry } = useRuntimeConsole();
+  const { activeTraceTarget, clearTraceTarget, openRetry } =
+    useRuntimeConsole();
   const tracesQuery = useRuntimeTraces();
   const traces = tracesQuery.data ?? emptyTraces;
   const [query, setQuery] = useState("");
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
   const [selectedSpanId, setSelectedSpanId] = useState<string | null>(null);
+  const [displayedSpan, setDisplayedSpan] = useState<TraceSpan | null>(null);
   const [mode, setMode] = useState<TraceViewMode>("heatmap");
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("info");
+  const workbenchRef = useRef<HTMLDivElement | null>(null);
+  const inspectorPanelRef = useRef<HTMLDivElement | null>(null);
+  const previousInspectorOpenRef = useRef(false);
   const [layout, setLayout, resetLayout] = usePersistedLayout(
     "runtime-console:traces-layout",
     traceLayoutDefaults
@@ -83,8 +98,100 @@ export function TraceWorkbenchPage() {
     0,
     visibleTraces.findIndex((trace) => trace.id === selectedTrace?.id)
   );
+  const inspectorOpen = selectedSpan !== null;
+  const hasInspector = displayedSpan !== null;
+  const listColumn = `clamp(220px,24vw,${traceLayout.listWidth}px)`;
+  const inspectorColumn = `clamp(280px,30vw,${traceLayout.inspectorWidth}px)`;
+  const gridTemplateColumns = hasInspector
+    ? `${listColumn} 1px minmax(0,1fr) calc(1px * var(--trace-inspector-open)) minmax(0,calc(${inspectorColumn} * var(--trace-inspector-open)))`
+    : `${listColumn} 1px minmax(0,1fr)`;
+
+  useEffect(() => {
+    if (selectedSpan) {
+      setDisplayedSpan(selectedSpan);
+    }
+  }, [selectedSpan]);
+
+  useGSAP(
+    () => {
+      const workbench = workbenchRef.current;
+      const inspectorPanel = inspectorPanelRef.current;
+
+      if (!workbench || (!displayedSpan && !previousInspectorOpenRef.current)) {
+        return;
+      }
+
+      const reduceMotion = window.matchMedia(
+        "(prefers-reduced-motion: reduce)"
+      ).matches;
+      const nextOpen = inspectorOpen ? 1 : 0;
+      const hasOpenStateChanged =
+        previousInspectorOpenRef.current !== inspectorOpen;
+      previousInspectorOpenRef.current = inspectorOpen;
+      gsap.killTweensOf(workbench);
+      gsap.killTweensOf(inspectorPanel);
+
+      if (!hasOpenStateChanged) {
+        gsap.set(workbench, {
+          "--trace-inspector-open": nextOpen,
+        });
+        gsap.set(inspectorPanel, {
+          autoAlpha: nextOpen,
+          x: inspectorOpen ? 0 : 18,
+        });
+        return;
+      }
+
+      if (reduceMotion) {
+        gsap.set(workbench, {
+          "--trace-inspector-open": nextOpen,
+        });
+        gsap.set(inspectorPanel, {
+          autoAlpha: nextOpen,
+          x: 0,
+        });
+        if (!inspectorOpen) {
+          setDisplayedSpan(null);
+        }
+        return;
+      }
+
+      gsap.to(workbench, {
+        "--trace-inspector-open": nextOpen,
+        duration: inspectorOpen ? 0.32 : 0.24,
+        ease: inspectorOpen ? "power3.out" : "power2.inOut",
+        onComplete: () => {
+          if (!inspectorOpen) {
+            setDisplayedSpan(null);
+          }
+        },
+      });
+      gsap.fromTo(
+        inspectorPanel,
+        {
+          autoAlpha: inspectorOpen ? 0 : 1,
+          x: inspectorOpen ? 24 : 0,
+        },
+        {
+          autoAlpha: inspectorOpen ? 1 : 0,
+          duration: inspectorOpen ? 0.24 : 0.16,
+          ease: inspectorOpen ? "power2.out" : "power2.in",
+          x: inspectorOpen ? 0 : 18,
+        }
+      );
+    },
+    {
+      dependencies: [
+        displayedSpan?.id ?? null,
+        inspectorOpen,
+        traceLayout.inspectorWidth,
+      ],
+      scope: workbenchRef,
+    }
+  );
 
   const selectTrace = (trace: TraceRun) => {
+    clearTraceTarget();
     setSelectedTraceId(trace.id);
     setSelectedSpanId(null);
     setInspectorTab("info");
@@ -106,13 +213,18 @@ export function TraceWorkbenchPage() {
       ...current,
       inspectorWidth: clamp(
         (current.inspectorWidth ?? traceLayoutDefaults.inspectorWidth) - deltaX,
-        320,
+        280,
         560
       ),
     }));
   };
 
   const selectSpan = (span: TraceSpan) => {
+    const ownerTrace = traces.find((trace) =>
+      trace.spans.some((item) => item.id === span.id)
+    );
+    setSelectedTraceId(ownerTrace?.id ?? selectedTrace?.id ?? selectedTraceId);
+    clearTraceTarget();
     setSelectedSpanId(span.id);
     setInspectorTab(
       span.status === "failed" || span.status === "dead" ? "errors" : "info"
@@ -163,12 +275,16 @@ export function TraceWorkbenchPage() {
   }
 
   return (
-    <div className="h-full overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
+    <div className="h-full overflow-hidden bg-(--background) text-(--foreground)">
       <div
-        className="grid h-full min-w-0 overflow-x-auto overflow-y-hidden"
-        style={{
-          gridTemplateColumns: `${traceLayout.listWidth}px 1px minmax(360px,1fr) 1px ${traceLayout.inspectorWidth}px`,
-        }}
+        ref={workbenchRef}
+        className="grid h-full min-w-0 overflow-hidden"
+        style={
+          {
+            "--trace-inspector-open": previousInspectorOpenRef.current ? 1 : 0,
+            gridTemplateColumns,
+          } as CSSProperties
+        }
       >
         <TraceList
           onSelect={selectTrace}
@@ -198,24 +314,36 @@ export function TraceWorkbenchPage() {
           <ServiceSummaryStrip trace={selectedTrace} />
         </main>
 
-        <ResizeHandle
-          ariaLabel="Resize trace inspector panel"
-          onReset={resetLayout}
-          onResize={resizeInspector}
-        />
+        {displayedSpan ? (
+          <>
+            <ResizeHandle
+              ariaLabel="Resize trace inspector panel"
+              onReset={resetLayout}
+              onResize={resizeInspector}
+            />
 
-        <div className="relative z-0 min-h-0 min-w-0 overflow-hidden">
-          <TraceInspector
-            activeTab={inspectorTab}
-            onClearSelection={() => {
-              setSelectedSpanId(null);
-              setInspectorTab("info");
-            }}
-            selectedSpan={selectedSpan}
-            setActiveTab={setInspectorTab}
-            trace={selectedTrace}
-          />
-        </div>
+            <div
+              ref={inspectorPanelRef}
+              className="relative z-0 min-h-0 min-w-0 overflow-hidden"
+              style={{
+                pointerEvents: inspectorOpen ? "auto" : "none",
+              }}
+            >
+              <TraceInspector
+                activeTab={inspectorTab}
+                onClearSelection={() => {
+                  setSelectedTraceId(selectedTrace.id);
+                  clearTraceTarget();
+                  setSelectedSpanId(null);
+                  setInspectorTab("info");
+                }}
+                selectedSpan={displayedSpan}
+                setActiveTab={setInspectorTab}
+                trace={selectedTrace}
+              />
+            </div>
+          </>
+        ) : null}
       </div>
     </div>
   );

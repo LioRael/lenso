@@ -88,11 +88,11 @@ export function TimelinePage() {
           openTimeline(input.trim());
         }}
       >
-        <label className="flex h-9 min-w-[min(520px,100%)] items-center gap-2.5 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-slate-400">
+        <label className="flex h-9 min-w-[min(520px,100%)] items-center gap-2.5 rounded-lg border border-white/10 bg-white/3.5 px-3 text-slate-400">
           <Search size={15} />
           <input
             aria-label="Correlation ID"
-            className="mono w-full bg-transparent text-[13px] text-slate-100 outline-none"
+            className="mono w-full bg-transparent text-[13px] text-slate-100 outline-hidden"
             onChange={(event) => setInput(event.target.value)}
             value={input}
           />
@@ -119,9 +119,9 @@ export function TimelinePage() {
 
         {timelineQuery.isLoading ? (
           <div className="grid gap-3 p-4.5">
-            <div className="h-24 animate-pulse rounded-lg bg-white/[0.03]" />
-            <div className="h-24 animate-pulse rounded-lg bg-white/[0.03]" />
-            <div className="h-24 animate-pulse rounded-lg bg-white/[0.03]" />
+            <div className="h-24 animate-pulse rounded-lg bg-white/3" />
+            <div className="h-24 animate-pulse rounded-lg bg-white/3" />
+            <div className="h-24 animate-pulse rounded-lg bg-white/3" />
           </div>
         ) : timelineQuery.isError ? (
           <EmptyState>
@@ -173,7 +173,7 @@ export function TimelinePage() {
               />
             ))}
 
-            <div className="ml-[92px] mt-3 grid grid-cols-3 gap-2.5 max-lg:ml-0 max-md:grid-cols-1">
+            <div className="ml-23 mt-3 grid grid-cols-3 gap-2.5 max-lg:ml-0 max-md:grid-cols-1">
               {futureTimelineSlots.map((slot) => (
                 <div
                   className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 rounded-lg border border-dashed border-white/15 bg-white/[0.018] p-2.5 text-xs text-slate-500"

@@ -79,8 +79,7 @@ export function useRuntimeEvents() {
 export function useRuntimeFunctions() {
   return useQuery({
     queryKey: runtimeQueryKeys.functions,
-    queryFn: async () =>
-      isApiMode() ? fetchRuntimeFunctions() : functionRuns,
+    queryFn: async () => (isApiMode() ? fetchRuntimeFunctions() : functionRuns),
   });
 }
 

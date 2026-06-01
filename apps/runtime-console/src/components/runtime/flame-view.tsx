@@ -18,20 +18,20 @@ export function FlameView({
   const levels = buildLevels(trace.spans);
   const timelineEnd = traceTimelineEnd(trace);
   return (
-    <div className="isolate flex h-full min-w-0 flex-col overflow-hidden bg-[var(--background)]">
-      <div className="flex items-center justify-between border-b border-[var(--border-subtle)] bg-[var(--surface)] px-4 py-2">
+    <div className="isolate flex h-full min-w-0 flex-col overflow-hidden bg-(--background)">
+      <div className="flex items-center justify-between border-b border-(--border-subtle) bg-(--surface) px-4 py-2">
         <div className="flex items-center gap-2">
-          <span className="font-sans text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">
+          <span className="font-sans text-[11px] font-semibold uppercase tracking-[0.08em] text-(--muted)">
             Color
           </span>
-          <span className="rounded-[2px] bg-[var(--accent)] px-2 py-0.5 font-mono text-[11px] font-semibold text-[var(--inverse)]">
+          <span className="rounded-xs bg-(--accent) px-2 py-0.5 font-mono text-[11px] font-semibold text-(--inverse)">
             service
           </span>
-          <span className="rounded-[2px] border border-[var(--border-subtle)] bg-[var(--elevated)] px-2 py-0.5 font-mono text-[11px] text-[var(--muted)]">
+          <span className="rounded-xs border border-(--border-subtle) bg-(--elevated) px-2 py-0.5 font-mono text-[11px] text-(--muted)">
             status
           </span>
         </div>
-        <span className="font-mono text-[11px] text-[var(--muted)]">
+        <span className="font-mono text-[11px] text-(--muted)">
           {formatTraceDuration(timelineEnd)}
         </span>
       </div>
@@ -48,7 +48,7 @@ export function FlameView({
               return (
                 <button
                   className={cn(
-                    "absolute top-1 h-7 overflow-hidden rounded-[2px] border px-2 text-left font-mono text-[12px] text-[var(--foreground)] transition hover:brightness-125",
+                    "absolute top-1 h-7 overflow-hidden rounded-xs border px-2 text-left font-mono text-[12px] text-(--foreground) transition hover:brightness-125",
                     selectedSpanId === span.id &&
                       "shadow-[0_0_0_1px_var(--accent),0_0_8px_color-mix(in_srgb,var(--accent)_25%,transparent)]"
                   )}

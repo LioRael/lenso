@@ -10,7 +10,7 @@ export function StatusPill({ status }: StatusPillProps) {
   return (
     <span
       className={cn(
-        "status-pill inline-flex min-h-[23px] w-fit items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-semibold",
+        "status-pill inline-flex min-h-5.75 w-fit items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-semibold",
         tone.className
       )}
     >

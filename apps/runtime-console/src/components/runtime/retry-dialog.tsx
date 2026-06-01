@@ -42,7 +42,7 @@ export function RetryDialog() {
             </header>
 
             <div className="grid gap-3 p-3">
-              <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 border border-white/10 bg-white/[0.02] p-2.5">
+              <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 border border-white/10 bg-white/2 p-2.5">
                 <StatusPill status={retryTarget.status} />
                 <div className="min-w-0">
                   <div className="truncate font-mono text-[11px] font-semibold text-slate-100">
@@ -90,7 +90,7 @@ export function RetryDialog() {
               </Button>
             </footer>
             {retryMutation.isError ? (
-              <div className="mono mx-3 mb-3 border border-[color-mix(in_srgb,var(--error)_30%,transparent)] bg-[color-mix(in_srgb,var(--error)_8%,transparent)] p-2.5 text-[11px] text-[var(--error)]">
+              <div className="mono mx-3 mb-3 border border-[color-mix(in_srgb,var(--error)_30%,transparent)] bg-[color-mix(in_srgb,var(--error)_8%,transparent)] p-2.5 text-[11px] text-(--error)">
                 {errorMessage(retryMutation.error)}
               </div>
             ) : null}

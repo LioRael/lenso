@@ -26,10 +26,7 @@ type CommandPaletteProps = {
   onToggleTheme: () => void;
 };
 
-export function CommandPalette({
-  theme,
-  onToggleTheme,
-}: CommandPaletteProps) {
+export function CommandPalette({ theme, onToggleTheme }: CommandPaletteProps) {
   const navigate = useNavigate();
   const {
     closeCommandPalette,
@@ -73,8 +70,11 @@ export function CommandPalette({
         action: onToggleTheme,
         id: "theme-toggle",
         subtitle:
-          theme === "dark" ? "Use light console theme" : "Use dark console theme",
-        title: theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode",
+          theme === "dark"
+            ? "Use light console theme"
+            : "Use dark console theme",
+        title:
+          theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode",
       },
       {
         action: () => {
@@ -176,11 +176,11 @@ export function CommandPalette({
             }
           }}
         >
-          <div className="flex items-center gap-2.5 border-b border-[var(--border-subtle)] px-3 py-2.5 text-[var(--secondary)]">
+          <div className="flex items-center gap-2.5 border-b border-(--border-subtle) px-3 py-2.5 text-(--secondary)">
             <Search size={16} />
             <input
               aria-label="Command search"
-              className="w-full bg-transparent font-mono text-xs text-[var(--foreground)] outline-none placeholder:text-[var(--muted-deep)]"
+              className="w-full bg-transparent font-mono text-xs text-(--foreground) outline-hidden placeholder:text-(--muted-deep)"
               onChange={(event) => {
                 setQuery(event.target.value);
                 setActiveIndex(0);
@@ -190,13 +190,13 @@ export function CommandPalette({
               value={query}
             />
           </div>
-          <div className="max-h-[420px] overflow-auto p-1">
+          <div className="max-h-105 overflow-auto p-1">
             {visible.map((command, index) => (
               <button
-                className={`grid w-full grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-2 border border-transparent p-2 text-left font-mono text-[var(--foreground)] ${
+                className={`grid w-full grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-2 border border-transparent p-2 text-left font-mono text-(--foreground) ${
                   index === activeIndex
-                    ? "border-[color-mix(in_srgb,var(--accent)_32%,transparent)] bg-[var(--accent-soft)]"
-                    : "hover:bg-[var(--hover)]"
+                    ? "border-[color-mix(in_srgb,var(--accent)_32%,transparent)] bg-(--accent-soft)"
+                    : "hover:bg-(--hover)"
                 }`}
                 key={command.id}
                 onClick={() => runCommand(command)}
@@ -206,11 +206,11 @@ export function CommandPalette({
                   <strong className="block truncate text-[11px] font-semibold">
                     {command.title}
                   </strong>
-                  <small className="mt-0.5 block truncate text-[10px] text-[var(--muted)]">
+                  <small className="mt-0.5 block truncate text-[10px] text-(--muted)">
                     {command.subtitle}
                   </small>
                 </span>
-                <CornerDownLeft className="text-[var(--muted)]" size={14} />
+                <CornerDownLeft className="text-(--muted)" size={14} />
               </button>
             ))}
           </div>
@@ -235,7 +235,7 @@ function CommandIcon({ id }: { id: string }) {
 
 function ThemeCommandIcon() {
   return (
-    <span className="grid size-[15px] place-items-center">
+    <span className="grid size-3.75 place-items-center">
       <Sun className="hidden [[data-theme=dark]_&]:block" size={15} />
       <Moon className="block [[data-theme=dark]_&]:hidden" size={15} />
     </span>

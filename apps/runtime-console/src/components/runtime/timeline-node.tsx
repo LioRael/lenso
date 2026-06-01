@@ -36,10 +36,10 @@ export function TimelineNode({
       <div className="mono pt-4 text-right text-xs text-slate-600 max-sm:hidden">
         {String(index + 1).padStart(2, "0")}
       </div>
-      <div className="relative flex justify-center after:absolute after:bottom-[-14px] after:top-[34px] after:w-px after:bg-gradient-to-b after:from-white/15 after:to-white/[0.02] last:after:hidden">
+      <div className="relative flex justify-center after:absolute after:-bottom-3.5 after:top-8.5 after:w-px after:bg-gradient-to-b after:from-white/15 after:to-white/2 last:after:hidden">
         <span
           className={cn(
-            "relative z-10 mt-2 grid size-[34px] place-items-center rounded-lg border shadow-[0_0_28px_rgba(0,0,0,0.36)]",
+            "relative z-10 mt-2 grid size-8.5 place-items-center rounded-lg border shadow-[0_0_28px_rgba(0,0,0,0.36)]",
             nodeTone[item.status]
           )}
         >
@@ -48,7 +48,7 @@ export function TimelineNode({
       </div>
       <button
         className={cn(
-          "w-full rounded-lg border border-white/10 bg-white/[0.028] p-3.5 text-left text-slate-100 transition hover:-translate-y-px hover:border-blue-300/20 hover:bg-blue-300/[0.055]",
+          "w-full rounded-lg border border-white/10 bg-white/[0.028] p-3.5 text-left text-slate-100 transition hover:-translate-y-px hover:border-blue-300/20 hover:bg-blue-300/5.5",
           retryable && "border-current/20",
           item.status === "dead" && "bg-rose-300/[0.045] text-rose-200",
           item.status === "failed" && "bg-amber-300/[0.045] text-amber-200"

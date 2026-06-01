@@ -17,7 +17,7 @@ export function ResizeHandle({
   return (
     <button
       aria-label={ariaLabel}
-      className="group relative z-[1] min-h-0 w-px cursor-col-resize bg-transparent outline-none"
+      className="group relative z-1 min-h-0 w-px cursor-col-resize bg-transparent outline-hidden"
       onBlur={() => setIsFocused(false)}
       onDoubleClick={onReset}
       onFocus={() => setIsFocused(true)}
@@ -70,7 +70,7 @@ export function ResizeHandle({
             ? "bg-[color-mix(in_srgb,var(--accent)_78%,transparent)]"
             : isActive
               ? "bg-[color-mix(in_srgb,var(--accent)_56%,transparent)]"
-              : "bg-[var(--border-subtle)]"
+              : "bg-(--border-subtle)"
         }`}
       />
     </button>

@@ -9,7 +9,7 @@ function CardRoot({
   return (
     <article
       className={cn(
-        "rounded-lg border border-[var(--border-subtle)] bg-[color-mix(in_srgb,var(--surface)_88%,transparent)] shadow-2xl shadow-[var(--shadow-strong)]",
+        "rounded-lg border border-(--border-subtle) bg-[color-mix(in_srgb,var(--surface)_88%,transparent)] shadow-2xl shadow-(--shadow-strong)",
         className
       )}
     >
@@ -23,7 +23,9 @@ function CardHeader({
   className,
 }: PropsWithChildren<{ className?: string }>) {
   return (
-    <header className={cn("border-b border-[var(--border-subtle)] p-3.5", className)}>
+    <header
+      className={cn("border-b border-(--border-subtle) p-3.5", className)}
+    >
       {children}
     </header>
   );
@@ -34,7 +36,7 @@ function CardTitle({
   className,
 }: PropsWithChildren<{ className?: string }>) {
   return (
-    <h2 className={cn("text-sm font-semibold text-[var(--foreground)]", className)}>
+    <h2 className={cn("text-sm font-semibold text-(--foreground)", className)}>
       {children}
     </h2>
   );
@@ -45,7 +47,7 @@ function CardDescription({
   className,
 }: PropsWithChildren<{ className?: string }>) {
   return (
-    <p className={cn("mt-1 text-xs leading-5 text-[var(--muted)]", className)}>
+    <p className={cn("mt-1 text-xs leading-5 text-(--muted)", className)}>
       {children}
     </p>
   );
