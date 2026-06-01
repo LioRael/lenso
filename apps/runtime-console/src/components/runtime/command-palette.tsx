@@ -10,16 +10,16 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { correlationId, retryTargetFor } from "../../data/mock-runtime";
+import { retryTargetFor, runtimeStories } from "../../data/mock-runtime";
+import { queryDataWithMockFallback } from "../../hooks/runtime-query-data";
+import { useRuntimeStories } from "../../hooks/use-runtime-queries";
+import { isApiMode } from "../../lib/http-client";
 import { Dialog } from "../ui/dialog";
+import {
+  buildStoryCommandItems,
+  type CommandItem,
+} from "./command-palette-model";
 import { useRuntimeConsole } from "./runtime-console-context";
-
-type CommandItem = {
-  id: string;
-  title: string;
-  subtitle: string;
-  action: () => void;
-};
 
 type CommandPaletteProps = {
   theme: "dark" | "light";
@@ -34,41 +34,57 @@ export function CommandPalette({ theme, onToggleTheme }: CommandPaletteProps) {
     drawerTarget,
     focusGlobalSearch,
     openRetry,
-    openTimeline,
+    openStory,
   } = useRuntimeConsole();
+  const storiesQuery = useRuntimeStories();
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
 
   const commands = useMemo<CommandItem[]>(() => {
+    const stories = queryDataWithMockFallback({
+      apiMode: isApiMode(),
+      data: storiesQuery.data,
+      fallback: runtimeStories,
+      isError: storiesQuery.isError,
+    });
+    const storyItems = buildStoryCommandItems({
+      onOpenStory: openStory,
+      stories,
+    });
     const items: CommandItem[] = [
       {
         action: () => void navigate({ to: "/runtime/stories" }),
         id: "stories",
+        searchText: "go to stories runtime execution stories",
         subtitle: "Runtime execution stories",
         title: "Go to Stories",
       },
       {
         action: () => void navigate({ to: "/dead-letters" }),
         id: "dead",
+        searchText: "go to dead letters failure inbox",
         subtitle: "Failure inbox",
         title: "Go to Dead Letters",
       },
       {
         action: () => void navigate({ to: "/queues" }),
         id: "queues",
+        searchText: "go to queues queue pressure",
         subtitle: "Queue pressure",
         title: "Go to Queues",
       },
       {
         action: () => void navigate({ to: "/overview" }),
         id: "overview",
+        searchText: "go to overview runtime health",
         subtitle: "Runtime health",
         title: "Go to Overview",
       },
       {
         action: onToggleTheme,
         id: "theme-toggle",
+        searchText: "switch theme light dark mode console",
         subtitle:
           theme === "dark"
             ? "Use light console theme"
@@ -78,19 +94,21 @@ export function CommandPalette({ theme, onToggleTheme }: CommandPaletteProps) {
       },
       {
         action: () => {
-          openTimeline(correlationId);
           focusGlobalSearch();
         },
         id: "search",
+        searchText: "search in stories correlation story execution",
         subtitle: "Correlation search now lives in Stories",
         title: "Search in Stories",
       },
       {
         action: closeCommandPalette,
         id: "copy-correlation",
-        subtitle: "Mock copy current timeline correlation",
+        searchText: "copy correlation id",
+        subtitle: "Copy action is not wired yet",
         title: "Copy correlation ID",
       },
+      ...storyItems,
     ];
 
     if (drawerTarget) {
@@ -102,6 +120,7 @@ export function CommandPalette({ theme, onToggleTheme }: CommandPaletteProps) {
           }
         },
         id: "retry-selected",
+        searchText: `retry selected item ${retryTarget?.id ?? ""}`,
         subtitle: retryTarget
           ? retryTarget.id
           : "Selected item is not retryable",
@@ -117,14 +136,14 @@ export function CommandPalette({ theme, onToggleTheme }: CommandPaletteProps) {
     navigate,
     onToggleTheme,
     openRetry,
-    openTimeline,
+    openStory,
+    storiesQuery.data,
+    storiesQuery.isError,
     theme,
   ]);
 
   const visible = commands.filter((command) =>
-    `${command.title} ${command.subtitle}`
-      .toLowerCase()
-      .includes(query.trim().toLowerCase())
+    command.searchText.includes(query.trim().toLowerCase())
   );
 
   useEffect(() => {

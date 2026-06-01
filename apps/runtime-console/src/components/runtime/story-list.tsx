@@ -46,6 +46,11 @@ export function StoryList({
         <span className="text-right">state</span>
       </div>
       <div className="min-h-0 overflow-auto">
+        {stories.length === 0 ? (
+          <div className="p-4 font-mono text-[11px] leading-5 text-(--muted)">
+            No stories match the current filter.
+          </div>
+        ) : null}
         {stories.map((story) => {
           const storySummary = buildRuntimeStory(story);
           const isError =

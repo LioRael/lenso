@@ -14,49 +14,24 @@ import {
   correlationId,
   functionRuns,
   runtimeEvents,
-  timelineItems,
   runtimeStories,
+  timelineItems,
   type RetryTarget,
   type RuntimeRecord,
 } from "../../data/mock-runtime";
+import { queryDataWithMockFallback } from "../../hooks/runtime-query-data";
 import {
   useRuntimeEvents,
   useRuntimeFunctions,
+  useRuntimeStories,
 } from "../../hooks/use-runtime-queries";
+import { isApiMode } from "../../lib/http-client";
+import {
+  buildRuntimeSearchResults,
+  type RuntimeSearchResult,
+} from "./runtime-search-model";
 
-export type SearchResult =
-  | {
-      kind: "event";
-      id: string;
-      title: string;
-      subtitle: string;
-      correlationId: string;
-      record: RuntimeRecord;
-    }
-  | {
-      kind: "function";
-      id: string;
-      title: string;
-      subtitle: string;
-      correlationId: string;
-      record: RuntimeRecord;
-    }
-  | {
-      kind: "story";
-      id: string;
-      title: string;
-      subtitle: string;
-      correlationId: string;
-      storyId: string;
-      nodeId?: string;
-    }
-  | {
-      kind: "correlation";
-      id: string;
-      title: string;
-      subtitle: string;
-      correlationId: string;
-    };
+export type SearchResult = RuntimeSearchResult;
 
 type RuntimeConsoleContextValue = {
   drawerTarget: RuntimeRecord | null;
@@ -87,6 +62,7 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
   const navigate = useNavigate();
   const eventsQuery = useRuntimeEvents();
   const functionsQuery = useRuntimeFunctions();
+  const storiesQuery = useRuntimeStories();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [drawerTarget, setDrawerTarget] = useState<RuntimeRecord | null>(null);
   const [retryTarget, setRetryTarget] = useState<RetryTarget | null>(null);
@@ -124,104 +100,36 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
         return [];
       }
 
-      const events = eventsQuery.data ?? runtimeEvents;
-      const runs = functionsQuery.data ?? functionRuns;
-
-      const storyResults: SearchResult[] = runtimeStories.flatMap((story) => {
-        const matchesStory = [
-          story.id,
-          story.name,
-          story.service,
-          story.source,
-          story.correlationId,
-        ].some((value) => value.toLowerCase().includes(normalized));
-
-        const matchingNodes = story.nodes.filter((node) =>
-          [node.id, node.name, node.service, node.kind].some((value) =>
-            value.toLowerCase().includes(normalized)
-          )
-        );
-
-        return [
-          ...(matchesStory
-            ? [
-                {
-                  kind: "story" as const,
-                  id: story.id,
-                  title: story.name,
-                  subtitle: `${story.service}/${story.source}`,
-                  correlationId: story.correlationId,
-                  storyId: story.id,
-                },
-              ]
-            : []),
-          ...matchingNodes.map<SearchResult>((node) => ({
-            kind: "story",
-            id: node.id,
-            title: node.name,
-            subtitle: `${story.id} · ${node.service}`,
-            correlationId: story.correlationId,
-            storyId: story.id,
-            nodeId: node.id,
-          })),
-        ];
+      return buildRuntimeSearchResults({
+        events: queryDataWithMockFallback({
+          apiMode: isApiMode(),
+          data: eventsQuery.data,
+          fallback: runtimeEvents,
+          isError: eventsQuery.isError,
+        }),
+        functions: queryDataWithMockFallback({
+          apiMode: isApiMode(),
+          data: functionsQuery.data,
+          fallback: functionRuns,
+          isError: functionsQuery.isError,
+        }),
+        query: normalized,
+        stories: queryDataWithMockFallback({
+          apiMode: isApiMode(),
+          data: storiesQuery.data,
+          fallback: runtimeStories,
+          isError: storiesQuery.isError,
+        }),
       });
-
-      const eventResults: SearchResult[] = events
-        .filter((event) =>
-          [event.id, event.eventName, event.correlationId].some((value) =>
-            value.toLowerCase().includes(normalized)
-          )
-        )
-        .map((event) => ({
-          kind: "event",
-          id: event.id,
-          title: event.eventName,
-          subtitle: event.id,
-          correlationId: event.correlationId,
-          record: { kind: "event", item: event },
-        }));
-
-      const functionResults: SearchResult[] = runs
-        .filter((run) =>
-          [run.id, run.functionName, run.correlationId].some((value) =>
-            value.toLowerCase().includes(normalized)
-          )
-        )
-        .map((run) => ({
-          kind: "function",
-          id: run.id,
-          title: run.functionName,
-          subtitle: run.id,
-          correlationId: run.correlationId,
-          record: { kind: "function", item: run },
-        }));
-
-      const correlations = Array.from(
-        new Set([
-          ...runtimeEvents.map((event) => event.correlationId),
-          ...events.map((event) => event.correlationId),
-          ...runs.map((run) => run.correlationId),
-          ...timelineItems.map((item) => item.correlationId),
-        ])
-      )
-        .filter((id) => id.toLowerCase().includes(normalized))
-        .map<SearchResult>((id) => ({
-          kind: "correlation",
-          id,
-          title: id,
-          subtitle: "Open correlation in Stories",
-          correlationId: id,
-        }));
-
-      return [
-        ...storyResults,
-        ...correlations,
-        ...eventResults,
-        ...functionResults,
-      ].slice(0, 8);
     },
-    [eventsQuery.data, functionsQuery.data]
+    [
+      eventsQuery.data,
+      eventsQuery.isError,
+      functionsQuery.data,
+      functionsQuery.isError,
+      storiesQuery.data,
+      storiesQuery.isError,
+    ]
   );
 
   const selectSearchResult = useCallback(

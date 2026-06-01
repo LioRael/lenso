@@ -1,9 +1,26 @@
 import { Inbox } from "lucide-react";
 
-import { queueHealth } from "../data/mock-runtime";
+import { buildRuntimeQueueRows } from "../hooks/runtime-queue-model";
+import {
+  useRuntimeEvents,
+  useRuntimeFunctions,
+  useRuntimeSummary,
+} from "../hooks/use-runtime-queries";
+import { runtimeConsoleDataSource } from "../lib/http-client";
+import { buildQueueRowsFromSummary } from "./queues-model";
 
 export function QueuesPage() {
-  const totals = queueHealth.reduce(
+  const summaryQuery = useRuntimeSummary();
+  const eventsQuery = useRuntimeEvents();
+  const functionsQuery = useRuntimeFunctions();
+  const rows =
+    eventsQuery.data && functionsQuery.data
+      ? buildRuntimeQueueRows({
+          events: eventsQuery.data,
+          functions: functionsQuery.data,
+        })
+      : buildQueueRowsFromSummary(summaryQuery.data);
+  const totals = rows.reduce(
     (acc, queue) => ({
       dead: acc.dead + queue.dead,
       failed: acc.failed + queue.failed,
@@ -20,7 +37,7 @@ export function QueuesPage() {
           <Inbox className="text-(--accent)" size={14} />
           <h1 className="font-mono text-[13px] font-semibold">Queues</h1>
           <span className="ml-auto font-mono text-[10px] text-(--muted)">
-            pressure lanes / mock
+            aggregate pressure / {runtimeConsoleDataSource()}
           </span>
         </div>
       </header>
@@ -54,45 +71,98 @@ export function QueuesPage() {
           <span>oldest</span>
           <span>pressure</span>
         </div>
-        {queueHealth.map((queue) => {
-          const total =
-            queue.pending + queue.running + queue.failed + queue.dead;
-          return (
-            <div
-              className="grid min-h-11 grid-cols-[minmax(180px,1fr)_72px_72px_72px_72px_92px_minmax(120px,240px)] items-center gap-2 border-b border-(--border-subtle) px-3 font-mono text-[11px]"
-              key={queue.name}
-            >
-              <span className="truncate text-(--foreground)">{queue.name}</span>
-              <span className="text-(--secondary)">{queue.pending}</span>
-              <span className="text-(--secondary)">{queue.running}</span>
-              <span
-                className={
-                  queue.failed > 0 ? "text-[#ef4444]" : "text-(--muted)"
-                }
+        {summaryQuery.isLoading ||
+        eventsQuery.isLoading ||
+        functionsQuery.isLoading ? (
+          <QueueMessage message="Loading queue pressure..." />
+        ) : summaryQuery.isError && rows.length === 0 ? (
+          <QueueMessage
+            message={
+              summaryQuery.error instanceof Error
+                ? summaryQuery.error.message
+                : "Queue pressure unavailable"
+            }
+            tone="error"
+          />
+        ) : (
+          rows.map((queue) => {
+            const total =
+              queue.pending + queue.running + queue.failed + queue.dead;
+            return (
+              <div
+                className="grid min-h-11 grid-cols-[minmax(180px,1fr)_72px_72px_72px_72px_92px_minmax(120px,240px)] items-center gap-2 border-b border-(--border-subtle) px-3 font-mono text-[11px]"
+                key={queue.name}
               >
-                {queue.failed}
-              </span>
-              <span
-                className={queue.dead > 0 ? "text-[#ef4444]" : "text-(--muted)"}
-              >
-                {queue.dead}
-              </span>
-              <span className="text-(--muted)">{queue.oldest}</span>
-              <span className="flex min-w-0 items-center gap-2">
-                <span className="h-1 flex-1 overflow-hidden rounded-[1px] bg-(--elevated)">
-                  <span
-                    className="block h-full rounded-[1px] bg-(--accent)"
-                    style={{
-                      width: `${Math.min(100, Math.max(4, total * 5))}%`,
-                    }}
-                  />
+                <span className="truncate text-(--foreground)">
+                  {queue.name}
                 </span>
-                <span className="w-8 text-right text-(--muted)">{total}</span>
-              </span>
-            </div>
-          );
-        })}
+                <span className="text-(--secondary)">{queue.pending}</span>
+                <span className="text-(--secondary)">{queue.running}</span>
+                <span
+                  className={
+                    queue.failed > 0 ? "text-[#ef4444]" : "text-(--muted)"
+                  }
+                >
+                  {queue.failed}
+                </span>
+                <span
+                  className={
+                    queue.dead > 0 ? "text-[#ef4444]" : "text-(--muted)"
+                  }
+                >
+                  {queue.dead}
+                </span>
+                <span className="text-(--muted)">
+                  {formatOldest(queue.oldestSeconds)}
+                </span>
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="h-1 flex-1 overflow-hidden rounded-[1px] bg-(--elevated)">
+                    <span
+                      className="block h-full rounded-[1px] bg-(--accent)"
+                      style={{
+                        width: `${Math.min(100, Math.max(4, total * 5))}%`,
+                      }}
+                    />
+                  </span>
+                  <span className="w-8 text-right text-(--muted)">{total}</span>
+                </span>
+              </div>
+            );
+          })
+        )}
+        <div className="border-b border-(--border-subtle) px-3 py-2 font-mono text-[10px] text-(--muted)">
+          TODO: add a backend per-queue pressure contract when the runtime
+          exposes queue-level lanes beyond aggregate summary counts.
+        </div>
       </div>
     </section>
   );
+}
+
+function QueueMessage({
+  message,
+  tone = "muted",
+}: {
+  message: string;
+  tone?: "error" | "muted";
+}) {
+  return (
+    <div
+      className={`border-b border-(--border-subtle) px-3 py-3 font-mono text-[11px] ${
+        tone === "error" ? "text-[#ef4444]" : "text-(--muted)"
+      }`}
+    >
+      {message}
+    </div>
+  );
+}
+
+function formatOldest(seconds: number | undefined) {
+  if (seconds === undefined) {
+    return "-";
+  }
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+  return `${Math.round(seconds / 60)}m`;
 }

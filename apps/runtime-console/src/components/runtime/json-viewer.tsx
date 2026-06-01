@@ -23,6 +23,7 @@ export function JsonViewer({
       <button
         className="flex w-full items-center gap-2 border-b border-(--border-subtle) bg-[color-mix(in_srgb,var(--elevated)_52%,transparent)] px-4 py-2 text-left font-mono text-xs font-semibold text-(--muted) hover:bg-(--elevated)"
         onClick={() => setExpanded((current) => !current)}
+        type="button"
       >
         {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         <span>{title}</span>

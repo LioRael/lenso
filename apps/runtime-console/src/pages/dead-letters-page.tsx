@@ -15,6 +15,7 @@ import { useListKeyboard } from "../hooks/use-list-keyboard";
 import { usePersistedLayout } from "../hooks/use-persisted-layout";
 import { useDeadLetters } from "../hooks/use-runtime-queries";
 import { time } from "../lib/format";
+import { runtimeConsoleDataSource } from "../lib/http-client";
 
 type DeadLetter =
   | { kind: "event"; item: RuntimeEvent }
@@ -110,7 +111,7 @@ export function DeadLettersPage() {
               Dead Letters
             </h1>
             <span className="ml-auto font-mono text-[10px] text-(--muted)">
-              {visible.length} failures / mock
+              {visible.length} failures / {runtimeConsoleDataSource()}
             </span>
           </div>
         </header>

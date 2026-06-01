@@ -23,10 +23,33 @@ pub fn generated_types_source() -> anyhow::Result<String> {
 
     let mut rendered = String::from(GENERATED_HEADER);
     for schema_name in [
+        "AdminFunctionRun",
+        "AdminFunctionRunDetail",
+        "AdminFunctionRunListResponse",
+        "AdminFunctionRunResponse",
+        "AdminOutboxEvent",
+        "AdminOutboxEventDetail",
+        "AdminOutboxEventDetailResponse",
+        "AdminOutboxListResponse",
+        "AdminRuntimeFunctionSummary",
+        "AdminRuntimeHeatmapCell",
+        "AdminRuntimeHeatmapResponse",
+        "AdminRuntimeOutboxSummary",
+        "AdminRuntimeStoryDetail",
+        "AdminRuntimeStoryDetailResponse",
+        "AdminRuntimeStoryEdge",
+        "AdminRuntimeStoryListItem",
+        "AdminRuntimeStoryListResponse",
+        "AdminRuntimeStoryNode",
+        "AdminRuntimeSummaryItem",
+        "AdminRuntimeSummaryResponse",
+        "AdminRuntimeTimelineItem",
+        "AdminRuntimeTimelineResponse",
         "CreateUserRequest",
         "CreateUserResponse",
         "ErrorResponse",
         "ErrorBody",
+        "PageInfo",
         "ValidationErrorDetail",
     ] {
         let schema = schemas

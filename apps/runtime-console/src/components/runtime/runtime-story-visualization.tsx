@@ -1,4 +1,5 @@
 import type { RuntimeStory, ExecutionNode } from "../../data/mock-runtime";
+import { useRuntimeHeatmap } from "../../hooks/use-runtime-queries";
 import { FlameView } from "./flame-view";
 import { FlowView } from "./flow-view";
 import { HeatmapView } from "./heatmap-view";
@@ -23,6 +24,8 @@ export function RuntimeStoryVisualization({
   onSelectNode: (node: ExecutionNode) => void;
   onRetryNode: (node: ExecutionNode) => void;
 }) {
+  const heatmapQuery = useRuntimeHeatmap();
+
   return (
     <section className="isolate grid h-full min-h-0 min-w-0 grid-rows-[32px_minmax(0,1fr)] overflow-hidden">
       <StoryTabs mode={mode} onChange={setMode} />
@@ -65,9 +68,9 @@ export function RuntimeStoryVisualization({
         ) : null}
         {mode === "heatmap" ? (
           <HeatmapView
-            onSelectNode={onSelectNode}
-            selectedNodeId={selectedNodeId}
-            story={story}
+            heatmap={heatmapQuery.data}
+            loading={heatmapQuery.isLoading}
+            queryError={heatmapQuery.error}
           />
         ) : null}
       </div>

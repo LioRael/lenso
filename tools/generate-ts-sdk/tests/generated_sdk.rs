@@ -5,6 +5,12 @@ fn generated_types_include_openapi_models() {
 
     assert!(source.contains("export type CreateUserRequest"));
     assert!(source.contains("export type CreateUserResponse"));
+    assert!(source.contains("export type AdminRuntimeStoryDetail"));
+    assert!(source.contains("export type AdminRuntimeStoryListItem"));
+    assert!(source.contains("export type AdminRuntimeHeatmapResponse"));
+    assert!(source.contains("export type AdminRuntimeTimelineItem"));
+    assert!(source.contains("export type AdminOutboxListResponse"));
+    assert!(source.contains("export type AdminFunctionRunListResponse"));
     assert!(source.contains("export type ErrorResponse"));
 }
 

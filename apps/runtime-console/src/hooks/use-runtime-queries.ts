@@ -11,12 +11,22 @@ import {
   type TimelineItem,
   timelineItems,
   type RuntimeStory,
-  type ExecutionNode,
-  type ExecutionEdge,
   runtimeStories,
   type RuntimeStatus,
 } from "../data/mock-runtime";
 import { httpClient, isApiMode } from "../lib/http-client";
+import {
+  normalizeRuntimeHeatmap,
+  normalizeRuntimeStory,
+  normalizeRuntimeStoryListResponse,
+  normalizeTimelineItems,
+  type ApiRuntimeHeatmapResponse,
+  type ApiRuntimeStoryDetailResponse,
+  type ApiRuntimeStoryListResponse,
+  type ApiTimelineResponse,
+  type RuntimeHeatmap,
+  type RuntimeHeatmapCell,
+} from "./runtime-api-model";
 
 export const runtimeQueryKeys = {
   summary: ["runtime", "summary"] as const,
@@ -66,22 +76,7 @@ export type RuntimeSummary = {
   recentFailures: RuntimeSummaryItem[];
 };
 
-export type RuntimeHeatmapCell = {
-  bucketStart: string;
-  bucketEnd: string;
-  service: string;
-  nodeType: "event" | "function";
-  totalCount: number;
-  errorCount: number;
-  deadCount: number;
-  avgDurationMs?: number;
-  maxDurationMs?: number;
-};
-
-export type RuntimeHeatmap = {
-  bucketSeconds: number;
-  cells: RuntimeHeatmapCell[];
-};
+export type { RuntimeHeatmap, RuntimeHeatmapCell };
 
 export function useRuntimeSummary() {
   return useQuery({
@@ -349,86 +344,6 @@ type ApiFunctionRun = {
   actor?: unknown;
 };
 
-type ApiTimelineResponse = {
-  data: ApiTimelineItem[];
-};
-
-type ApiTimelineItem = {
-  type: string;
-  id: string;
-  name: string;
-  status: RuntimeStatus;
-  attempts: number;
-  max_attempts: number;
-  created_at: string;
-  started_at?: string | null;
-  completed_at?: string | null;
-  last_error?: string | null;
-  correlation_id: string;
-};
-
-type ApiRuntimeStoryListResponse = {
-  data: ApiRuntimeStoryListItem[];
-};
-
-type ApiRuntimeStoryListItem = {
-  correlation_id: string;
-};
-
-type ApiRuntimeStoryDetailResponse = {
-  data: ApiRuntimeStoryDetail;
-};
-
-type ApiRuntimeStoryDetail = {
-  summary: {
-    title: string;
-    correlation_id: string;
-    status: RuntimeStatus;
-    duration: number;
-    created_at: string;
-  };
-  nodes: ApiRuntimeStoryNode[];
-  edges?: ApiRuntimeStoryEdge[];
-  timeline_items?: ApiTimelineItem[];
-};
-
-type ApiRuntimeStoryNode = {
-  id: string;
-  type: "request" | "function" | "event" | "worker" | "external" | "unknown";
-  name: string;
-  status: RuntimeStatus;
-  service: string;
-  timestamp: string;
-  duration_ms: number;
-  error?: string | null;
-  metadata?: Record<string, unknown>;
-};
-
-type ApiRuntimeStoryEdge = {
-  id: string;
-  source: string;
-  target: string;
-  type: string;
-  label?: string | null;
-};
-
-type ApiRuntimeHeatmapResponse = {
-  data: ApiRuntimeHeatmapCell[];
-  bucket_seconds: number;
-};
-
-type ApiRuntimeHeatmapCell = {
-  bucket_start: string;
-  bucket_end: string;
-  service: string;
-  node_type: "event" | "function";
-  total_count: number;
-  error_count: number;
-  dead_count: number;
-  avg_duration_ms?: number | null;
-  max_duration_ms?: number | null;
-};
-
 async function fetchRuntimeSummary(): Promise<RuntimeSummary> {
   const response = await httpClient
     .get("admin/runtime/summary")
@@ -489,31 +404,31 @@ async function fetchRuntimeTimeline(id: string): Promise<TimelineItem[]> {
   const response = await httpClient
     .get(`admin/runtime/timeline/${encodeURIComponent(id)}`)
     .json<ApiTimelineResponse>();
-  return response.data.map(toTimelineItem);
+  return normalizeTimelineItems(response, id);
 }
 
 async function fetchRuntimeHeatmap(): Promise<RuntimeHeatmap> {
   const response = await httpClient
     .get("admin/runtime/heatmap")
     .json<ApiRuntimeHeatmapResponse>();
-  return {
-    bucketSeconds: response.bucket_seconds,
-    cells: response.data.map(toRuntimeHeatmapCell),
-  };
+  return normalizeRuntimeHeatmap(response);
 }
 
 async function fetchRuntimeStories(): Promise<RuntimeStory[]> {
   const response = await httpClient
     .get("admin/runtime/stories")
     .json<ApiRuntimeStoryListResponse>();
+  const { stories } = normalizeRuntimeStoryListResponse(response);
 
   const details = await Promise.all(
-    response.data.map((story) =>
-      fetchRuntimeStory(story.correlation_id).catch(() => null)
+    stories.map((story) =>
+      fetchRuntimeStory(story.correlationId)
+        .then((detail) => mergeStoryDetail(story, detail))
+        .catch(() => story)
     )
   );
 
-  return details.filter((story): story is RuntimeStory => story !== null);
+  return details;
 }
 
 async function fetchRuntimeStory(
@@ -522,7 +437,10 @@ async function fetchRuntimeStory(
   const response = await httpClient
     .get(`admin/runtime/stories/${encodeURIComponent(storyCorrelationId)}`)
     .json<ApiRuntimeStoryDetailResponse>();
-  return toRuntimeStory(response.data);
+  if (!response.data) {
+    throw new Error("Runtime story detail response did not include data");
+  }
+  return normalizeRuntimeStory(response.data);
 }
 
 async function retryRuntimeWork(input: {
@@ -588,41 +506,6 @@ function toFunctionRun(run: ApiFunctionRun): FunctionRun {
   };
 }
 
-function toTimelineItem(item: ApiTimelineItem): TimelineItem {
-  return {
-    id: item.id,
-    type: item.type as TimelineItem["type"],
-    name: item.name,
-    status: item.status,
-    attempts: item.attempts,
-    maxAttempts: item.max_attempts,
-    createdAt: item.created_at,
-    ...(item.started_at ? { startedAt: item.started_at } : {}),
-    ...(item.completed_at ? { completedAt: item.completed_at } : {}),
-    ...(item.last_error ? { lastError: item.last_error } : {}),
-    correlationId: item.correlation_id,
-    detailId: item.id,
-  };
-}
-
-function toRuntimeHeatmapCell(cell: ApiRuntimeHeatmapCell): RuntimeHeatmapCell {
-  return {
-    bucketStart: cell.bucket_start,
-    bucketEnd: cell.bucket_end,
-    service: cell.service,
-    nodeType: cell.node_type,
-    totalCount: cell.total_count,
-    errorCount: cell.error_count,
-    deadCount: cell.dead_count,
-    ...(cell.avg_duration_ms === null || cell.avg_duration_ms === undefined
-      ? {}
-      : { avgDurationMs: cell.avg_duration_ms }),
-    ...(cell.max_duration_ms === null || cell.max_duration_ms === undefined
-      ? {}
-      : { maxDurationMs: cell.max_duration_ms }),
-  };
-}
-
 function mockRuntimeHeatmap(): RuntimeHeatmap {
   return {
     bucketSeconds: 300,
@@ -644,97 +527,11 @@ function mockRuntimeHeatmap(): RuntimeHeatmap {
   };
 }
 
-function toRuntimeStory(story: ApiRuntimeStoryDetail): RuntimeStory {
-  const baseTimestamp = Date.parse(story.summary.created_at);
-  const parentByTarget = new Map(
-    (story.edges ?? []).map((edge) => [edge.target, edge.source])
-  );
-  const nodes = story.nodes.map((node, index): ExecutionNode => {
-    const timestamp = Date.parse(node.timestamp);
-    const error = node.error ?? undefined;
-    const metadata = node.metadata ?? {};
-    const attempts =
-      typeof metadata.attempts === "number" ? metadata.attempts : undefined;
-    const maxAttempts =
-      typeof metadata.max_attempts === "number"
-        ? metadata.max_attempts
-        : undefined;
-    const parentId = parentByTarget.get(node.id);
-
-    return {
-      ...(parentId ? { parentId } : {}),
-      ...(attempts === undefined ? {} : { attempts }),
-      ...(maxAttempts === undefined ? {} : { maxAttempts }),
-      attributes: metadata,
-      context: {
-        correlation_id: story.summary.correlation_id,
-      },
-      durationMs: node.duration_ms,
-      events: [],
-      id: node.id,
-      kind: toExecutionNodeKind(node.type),
-      logs: error ? [error] : [],
-      name: node.name,
-      retryable: node.status === "failed" || node.status === "dead",
-      service: node.service,
-      startMs: Number.isFinite(timestamp)
-        ? Math.max(0, timestamp - baseTimestamp)
-        : index,
-      status: node.status,
-    };
-  });
-  const edges = story.edges?.map<ExecutionEdge>((edge) => ({
-    id: edge.id,
-    source: edge.source,
-    target: edge.target,
-    type: edge.type,
-    ...(edge.label ? { label: edge.label } : {}),
-  }));
-
+function mergeStoryDetail(summary: RuntimeStory, detail: RuntimeStory) {
   return {
-    correlationId: story.summary.correlation_id,
-    durationMs: story.summary.duration,
-    id: story.summary.correlation_id,
-    name: story.summary.title,
-    service: nodes[0]?.service ?? "runtime",
-    source: "runtime-story",
-    nodes,
-    ...(edges === undefined ? {} : { edges }),
-    ...(story.timeline_items === undefined
-      ? {}
-      : { timelineItems: story.timeline_items.map(toTimelineItem) }),
-    status: story.summary.status,
-    timestamp: story.summary.created_at,
+    ...detail,
+    name: detail.name || summary.name,
   };
-}
-
-function toExecutionNodeKind(
-  type: ApiRuntimeStoryNode["type"]
-): ExecutionNode["kind"] {
-  switch (type) {
-    case "request": {
-      return "http";
-    }
-    case "function": {
-      return "function";
-    }
-    case "event": {
-      return "event";
-    }
-    case "worker": {
-      return "runtime";
-    }
-    case "external": {
-      return "external";
-    }
-    case "unknown": {
-      return "runtime";
-    }
-    default: {
-      const exhaustive: never = type;
-      return exhaustive;
-    }
-  }
 }
 
 function toActor(value: unknown): Actor {

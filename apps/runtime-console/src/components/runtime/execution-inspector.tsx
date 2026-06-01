@@ -4,29 +4,22 @@ import type { RuntimeStory, ExecutionNode } from "../../data/mock-runtime";
 import { cn } from "../../lib/cn";
 import { formatRuntimeDuration, serviceColor } from "../../lib/runtime-style";
 import {
+  buildExecutionActivity,
+  buildExecutionContext,
+  buildExecutionFailures,
+  buildExecutionPayload,
+  executionInspectorTabs,
+  getExecutionInspectorTabCounts,
+  type ExecutionActivityItem,
+  type ExecutionInspectorTab,
+} from "./execution-inspector-model";
+import {
   HorizontalScrollArea,
   HorizontalTabScroll,
 } from "./horizontal-tab-scroll";
 import { JsonViewer } from "./json-viewer";
 import { useRuntimeConsole } from "./runtime-console-context";
 import { RuntimeStatusBadge } from "./runtime-status-badge";
-
-type InspectorTab =
-  | "info"
-  | "attributes"
-  | "events"
-  | "errors"
-  | "logs"
-  | "context";
-
-const tabs: InspectorTab[] = [
-  "info",
-  "attributes",
-  "events",
-  "errors",
-  "logs",
-  "context",
-];
 
 export function ExecutionInspector({
   activeTab,
@@ -37,9 +30,9 @@ export function ExecutionInspector({
 }: {
   story: RuntimeStory;
   selectedNode: ExecutionNode;
-  activeTab: InspectorTab;
+  activeTab: ExecutionInspectorTab;
   onClearSelection: () => void;
-  setActiveTab: (tab: InspectorTab) => void;
+  setActiveTab: (tab: ExecutionInspectorTab) => void;
 }) {
   const node = selectedNode;
 
@@ -47,10 +40,10 @@ export function ExecutionInspector({
     ? story.nodes.find((item) => item.id === node.parentId)
     : null;
   const breadcrumb = buildBreadcrumb(story, node);
-  const childCount = story.nodes.filter(
+  const directChildCount = story.nodes.filter(
     (item) => item.parentId === node.id
   ).length;
-  const tabCounts = getTabCounts(node);
+  const tabCounts = getExecutionInspectorTabCounts(story, node);
 
   return (
     <aside className="grid h-full min-h-0 w-full min-w-0 max-w-full grid-rows-[auto_auto_auto_minmax(0,1fr)] overflow-hidden bg-(--sidebar)">
@@ -107,7 +100,7 @@ export function ExecutionInspector({
             status={node.status}
             variant="compact"
           />
-          <span className="min-w-0 truncate">{childCount} children</span>
+          <span className="min-w-0 truncate">{directChildCount} children</span>
         </div>
       </div>
 
@@ -153,28 +146,28 @@ export function ExecutionInspector({
       <div className="min-w-0 overflow-hidden border-b border-(--border-subtle) bg-[color-mix(in_srgb,var(--surface)_82%,var(--background))]">
         <HorizontalTabScroll>
           <div className="flex h-full w-max min-w-full items-stretch pr-10">
-            {tabs.map((tab) => (
+            {executionInspectorTabs.map((tab) => (
               <button
                 className={cn(
                   "inline-flex h-full shrink-0 items-center gap-1.5 whitespace-nowrap border-b border-transparent px-2 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-(--muted) transition hover:border-(--border) hover:text-(--secondary) disabled:text-(--muted-deep)",
-                  activeTab === tab &&
+                  activeTab === tab.id &&
                     "border-(--accent) bg-[color-mix(in_srgb,var(--accent)_5%,transparent)] text-(--foreground)"
                 )}
-                key={tab}
-                onClick={() => setActiveTab(tab)}
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
                 type="button"
               >
-                <span>{tab}</span>
-                {tabCounts[tab] > 0 ? (
+                <span>{tab.label}</span>
+                {tabCounts[tab.id] > 0 ? (
                   <span
                     className={cn(
                       "grid h-4.5 min-w-4.5 place-items-center border px-1 font-mono text-[10px] leading-none shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]",
-                      activeTab === tab
+                      activeTab === tab.id
                         ? "border-[color-mix(in_srgb,var(--accent)_30%,transparent)] bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] text-(--accent)"
                         : "border-(--border-subtle) bg-(--background) text-(--muted)"
                     )}
                   >
-                    {tabCounts[tab]}
+                    {tabCounts[tab.id]}
                   </span>
                 ) : null}
               </button>
@@ -197,27 +190,32 @@ function InspectorBody({
 }: {
   story: RuntimeStory;
   node: ExecutionNode;
-  activeTab: InspectorTab;
+  activeTab: ExecutionInspectorTab;
 }) {
   const { openRetry } = useRuntimeConsole();
 
-  if (activeTab === "info") {
+  if (activeTab === "overview") {
     return (
       <div className="font-mono text-xs">
+        <SummaryCard node={node} story={story} />
         <KeyValueTable
           rows={[
+            ["execution name", node.name],
+            ["execution type", typeLabel(node)],
             ["status", node.status],
             ["duration", formatRuntimeDuration(node.durationMs)],
-            ["service", node.service],
-            ["kind", node.kind],
-            ["start", formatRuntimeDuration(node.startMs)],
-            ["end", formatRuntimeDuration(node.startMs + node.durationMs)],
-            ["attempts", `${node.attempts ?? 1}/${node.maxAttempts ?? 1}`],
-            ["correlation_id", story.correlationId],
+            ["start time", formatRuntimeDuration(node.startMs)],
             [
-              "causation_id",
-              String(node.context.causation_id ?? parentId(node) ?? "-"),
+              "completion time",
+              formatRuntimeDuration(node.startMs + node.durationMs),
             ],
+            ["story id", story.id],
+            ["correlation id", story.correlationId],
+            ["retry count", Math.max(0, (node.attempts ?? 1) - 1)],
+            ["attempt", `${node.attempts ?? 1}/${node.maxAttempts ?? 1}`],
+            ["parent count", parentCount(story, node)],
+            ["child count", childCount(story, node)],
+            ["service", node.service],
           ]}
         />
         {node.retryable ? (
@@ -237,7 +235,7 @@ function InspectorBody({
               type="button"
             >
               <RotateCcw size={12} />
-              Retry runtime item
+              Retry execution
             </button>
           </div>
         ) : null}
@@ -245,42 +243,98 @@ function InspectorBody({
     );
   }
 
-  if (activeTab === "attributes") {
-    return <KeyValueTable rows={objectRows(node.attributes)} />;
+  if (activeTab === "activity") {
+    return <ActivityList activity={buildExecutionActivity(story, node)} />;
   }
 
-  if (activeTab === "events") {
-    return <EventList node={node} />;
+  if (activeTab === "payload") {
+    return <PayloadPanel node={node} />;
   }
 
-  if (activeTab === "errors") {
-    return <ErrorPanel node={node} />;
+  if (activeTab === "failures") {
+    return <FailurePanel failures={buildExecutionFailures(node)} node={node} />;
   }
 
   if (activeTab === "logs") {
     return <LogList node={node} />;
   }
 
+  if (activeTab === "context") {
+    const context = buildExecutionContext(story, node);
+    return (
+      <div className="grid min-w-full">
+        <KeyValueTable rows={context.rows} />
+        <RelatedExecutionList
+          label="upstream references"
+          nodes={context.upstream}
+        />
+        <RelatedExecutionList
+          label="downstream references"
+          nodes={context.downstream}
+        />
+        <JsonViewer
+          defaultExpanded
+          title="execution context"
+          value={{
+            attributes: node.attributes,
+            context: node.context,
+          }}
+        />
+      </div>
+    );
+  }
+
+  return <TechnicalPanel />;
+}
+
+function SummaryCard({
+  node,
+  story,
+}: {
+  story: RuntimeStory;
+  node: ExecutionNode;
+}) {
+  return (
+    <div className="border-b border-(--border-subtle) bg-[color-mix(in_srgb,var(--surface)_82%,var(--background))] p-3">
+      <div className="flex min-w-0 items-start gap-2">
+        <span
+          className="mt-1 size-2 shrink-0 rounded-xs"
+          style={{ backgroundColor: serviceColor(node.service) }}
+        />
+        <div className="min-w-0">
+          <div className="truncate text-[13px] font-semibold text-(--foreground)">
+            {node.name}
+          </div>
+          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] text-(--muted)">
+            <span>{typeLabel(node)}</span>
+            <span>·</span>
+            <span>{node.status}</span>
+            <span>·</span>
+            <span>{formatRuntimeDuration(node.durationMs)}</span>
+          </div>
+          <div className="mt-2 truncate text-[11px] text-(--muted-deep)">
+            {story.correlationId}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TechnicalPanel() {
   return (
     <div className="grid min-w-full">
+      <EmptyRows label="No technical operations recorded" />
       <JsonViewer
         defaultExpanded
-        title="payload / input"
-        value={node.payload ?? {}}
-      />
-      <JsonViewer
-        defaultExpanded
-        title="actor / story context"
+        title="future telemetry categories"
         value={{
-          actor: node.context.actor ?? story.service,
-          headers: node.context.headers ?? {},
-          execution_context: {
-            correlation_id: story.correlationId,
-            parent_id: node.parentId ?? null,
-            node_id: node.id,
-            story_id: story.id,
-          },
-          ...node.context,
+          postgres: [],
+          redis: [],
+          s3: [],
+          ses: [],
+          http: [],
+          worker: [],
         }}
       />
     </div>
@@ -289,7 +343,7 @@ function InspectorBody({
 
 function KeyValueTable({ rows }: { rows: Array<[string, unknown]> }) {
   if (rows.length === 0) {
-    return <EmptyRows label="no attributes" />;
+    return <EmptyRows label="No execution details recorded" />;
   }
 
   return (
@@ -309,28 +363,26 @@ function KeyValueTable({ rows }: { rows: Array<[string, unknown]> }) {
   );
 }
 
-function EventList({ node }: { node: ExecutionNode }) {
-  if (node.events.length === 0) {
-    return <EmptyRows label="no events" />;
+function ActivityList({ activity }: { activity: ExecutionActivityItem[] }) {
+  if (activity.length === 0) {
+    return <EmptyRows label="No activity recorded" />;
   }
   return (
     <div className="w-max min-w-full font-mono text-xs">
-      {node.events.map((event) => (
+      {activity.map((item) => (
         <div
           className="grid w-max min-w-full grid-cols-[58px_minmax(220px,max-content)] gap-2 border-b border-(--border-subtle) px-3 py-2"
-          key={`${event.name}-${event.timestampMs}`}
+          key={item.id}
         >
           <span className="whitespace-nowrap text-(--muted)">
-            +{formatRuntimeDuration(event.timestampMs)}
+            +{formatRuntimeDuration(item.timestampMs)}
           </span>
           <div>
             <div className="whitespace-nowrap text-(--foreground)">
-              {event.name}
+              {item.label}
             </div>
             <div className="whitespace-nowrap text-[11px] text-(--muted)">
-              {event.attributes
-                ? JSON.stringify(event.attributes)
-                : "payload -"}
+              {item.detail ?? `${item.kind} · ${item.status}`}
             </div>
           </div>
         </div>
@@ -339,23 +391,63 @@ function EventList({ node }: { node: ExecutionNode }) {
   );
 }
 
-function ErrorPanel({ node }: { node: ExecutionNode }) {
-  const isError = node.status === "failed" || node.status === "dead";
+function FailurePanel({
+  failures,
+  node,
+}: {
+  failures: ReturnType<typeof buildExecutionFailures>;
+  node: ExecutionNode;
+}) {
+  if (failures.length === 0) {
+    return <EmptyRows label="No failures recorded" />;
+  }
+
   return (
-    <KeyValueTable
-      rows={[
-        ["error_code", isError ? node.status : "-"],
-        ["message", isError ? (node.logs.at(-1) ?? "runtime error") : "-"],
-        ["stack / last_error", isError ? node.logs.join("\n") : "-"],
-        ["retryability", node.retryable ? "retryable" : "not retryable"],
-      ]}
-    />
+    <div className="grid min-w-full">
+      <KeyValueTable rows={failures.map((item) => [item.label, item.value])} />
+      <KeyValueTable
+        rows={[
+          ["dead letter state", node.status === "dead" ? "dead" : "-"],
+          ["retryability", node.retryable ? "retryable" : "not retryable"],
+          ["failure timeline", node.logs.join("\n") || "-"],
+        ]}
+      />
+    </div>
+  );
+}
+
+function PayloadPanel({ node }: { node: ExecutionNode }) {
+  const payload = buildExecutionPayload(node);
+  const sections = [
+    ["Input", payload.input],
+    ["Output", payload.output],
+    ["Metadata", payload.metadata],
+  ] as const;
+  const availableSections = sections.filter(([, value]) =>
+    hasPanelValue(value)
+  );
+
+  if (availableSections.length === 0) {
+    return <EmptyRows label="No payload captured for this execution." />;
+  }
+
+  return (
+    <div className="grid min-w-full">
+      {availableSections.map(([label, value], index) => (
+        <JsonViewer
+          defaultExpanded={index === 0}
+          key={label}
+          title={label}
+          value={value}
+        />
+      ))}
+    </div>
   );
 }
 
 function LogList({ node }: { node: ExecutionNode }) {
   if (node.logs.length === 0) {
-    return <EmptyRows label="no logs" />;
+    return <EmptyRows label="No logs captured for this execution yet." />;
   }
   return (
     <div className="w-max min-w-full font-mono text-xs">
@@ -390,9 +482,45 @@ function EmptyRows({ label }: { label: string }) {
   return <div className="p-4 font-mono text-xs text-(--muted)">{label}</div>;
 }
 
-function objectRows(value: Record<string, unknown>) {
-  return Object.entries(value).sort(([left], [right]) =>
-    left.localeCompare(right)
+function hasPanelValue(value: unknown) {
+  if (value === undefined || value === null) {
+    return false;
+  }
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+  if (typeof value === "object") {
+    return Object.keys(value).length > 0;
+  }
+  return true;
+}
+
+function RelatedExecutionList({
+  label,
+  nodes,
+}: {
+  label: string;
+  nodes: ExecutionNode[];
+}) {
+  if (nodes.length === 0) {
+    return <EmptyRows label={`No ${label}`} />;
+  }
+
+  return (
+    <div className="w-max min-w-full border-b border-(--border-subtle) font-mono text-xs">
+      <div className="bg-(--sidebar) px-3 py-1.5 text-(--muted)">{label}</div>
+      {nodes.map((node) => (
+        <div
+          className="grid w-max min-w-full grid-cols-[124px_minmax(220px,max-content)] border-t border-(--border-subtle)"
+          key={node.id}
+        >
+          <div className="px-3 py-1.5 text-(--muted)">{node.kind}</div>
+          <div className="whitespace-pre-wrap px-3 py-1.5 text-(--secondary)">
+            {node.name}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -438,19 +566,10 @@ function typeLabel(node: ExecutionNode) {
   return "node";
 }
 
-function parentId(node: ExecutionNode) {
-  return node.parentId ?? null;
+function parentCount(story: RuntimeStory, node: ExecutionNode) {
+  return story.nodes.filter((item) => item.id === node.parentId).length;
 }
 
-function getTabCounts(node: ExecutionNode): Record<InspectorTab, number> {
-  const errorCount = node.status === "failed" || node.status === "dead" ? 1 : 0;
-
-  return {
-    attributes: Object.keys(node.attributes).length,
-    context: Object.keys(node.context).length + (node.payload ? 1 : 0),
-    errors: errorCount,
-    events: node.events.length,
-    info: 0,
-    logs: node.logs.length,
-  };
+function childCount(story: RuntimeStory, node: ExecutionNode) {
+  return story.nodes.filter((item) => item.parentId === node.id).length;
 }

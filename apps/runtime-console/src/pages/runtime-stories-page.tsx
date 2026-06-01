@@ -9,6 +9,10 @@ import {
 } from "react";
 
 import { ExecutionInspector } from "../components/runtime/execution-inspector";
+import {
+  defaultExecutionInspectorTab,
+  type ExecutionInspectorTab,
+} from "../components/runtime/execution-inspector-model";
 import { ResizeHandle } from "../components/runtime/resize-handle";
 import { useRuntimeConsole } from "../components/runtime/runtime-console-context";
 import { RuntimeStoryVisualization } from "../components/runtime/runtime-story-visualization";
@@ -31,18 +35,12 @@ import {
   resizeStoryListWidth,
   runtimeStoriesLayoutDefaults,
 } from "./runtime-stories-layout";
+import { resolveSelectedRuntimeStory } from "./runtime-stories-selection";
 
 gsap.registerPlugin(useGSAP);
 
-type InspectorTab =
-  | "info"
-  | "attributes"
-  | "events"
-  | "errors"
-  | "logs"
-  | "context";
-
 const emptyStories: RuntimeStory[] = [];
+const selectedStoryStorageKey = "runtime-console:selected-story-correlation-id";
 export const runtimeStoriesDefaultViewMode = "story" satisfies StoryViewMode;
 
 export function RuntimeStoriesPage() {
@@ -51,7 +49,11 @@ export function RuntimeStoriesPage() {
   const storiesQuery = useRuntimeStories();
   const stories = storiesQuery.data ?? emptyStories;
   const [query, setQuery] = useState("");
-  const [selectedStoryId, setSelectedStoryId] = useState<string | null>(null);
+  const [selectedStoryId, setSelectedStoryId] = useState<string | null>(() =>
+    typeof window === "undefined"
+      ? null
+      : window.localStorage.getItem(selectedStoryStorageKey)
+  );
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [displayedNode, setDisplayedNode] = useState<ExecutionNode | null>(
     null
@@ -61,7 +63,8 @@ export function RuntimeStoriesPage() {
   const [mode, setMode] = useState<StoryViewMode>(
     runtimeStoriesDefaultViewMode
   );
-  const [inspectorTab, setInspectorTab] = useState<InspectorTab>("info");
+  const [inspectorTab, setInspectorTab] =
+    useState<ExecutionInspectorTab>("overview");
   const workbenchRef = useRef<HTMLDivElement | null>(null);
   const inspectorPanelRef = useRef<HTMLDivElement | null>(null);
   const previousInspectorOpenRef = useRef(false);
@@ -106,12 +109,12 @@ export function RuntimeStoriesPage() {
     ? stories.find((story) => story.id === activeStoryTarget.storyId)
     : null;
   const selectedStory =
-    storyDetailClosed && !targetStory
-      ? null
-      : (targetStory ??
-        stories.find((story) => story.id === selectedStoryId) ??
-        visibleStories[0] ??
-        null);
+    targetStory ??
+    resolveSelectedRuntimeStory(
+      visibleStories,
+      selectedStoryId,
+      storyDetailClosed
+    );
   const selectedNode =
     selectedStory?.nodes.find((node) => {
       const targetNodeId = activeStoryTarget?.nodeId ?? selectedNodeId;
@@ -218,18 +221,20 @@ export function RuntimeStoriesPage() {
   const selectStory = (story: RuntimeStory) => {
     setStoryDetailClosed(false);
     clearStoryTarget();
-    setSelectedStoryId(story.id);
+    setSelectedStoryId(story.correlationId);
+    window.localStorage.setItem(selectedStoryStorageKey, story.correlationId);
     setSelectedNodeId(null);
-    setInspectorTab("info");
+    setInspectorTab("overview");
   };
 
   const closeStoryDetail = () => {
     setStoryDetailClosed(true);
     clearStoryTarget();
     setSelectedStoryId(null);
+    window.localStorage.removeItem(selectedStoryStorageKey);
     setSelectedNodeId(null);
     setDisplayedNode(null);
-    setInspectorTab("info");
+    setInspectorTab("overview");
   };
 
   const resizeStoryList = (deltaX: number) => {
@@ -252,7 +257,7 @@ export function RuntimeStoriesPage() {
     if (!next.open) {
       clearStoryTarget();
       setSelectedNodeId(null);
-      setInspectorTab("info");
+      setInspectorTab("overview");
     }
   };
 
@@ -276,12 +281,17 @@ export function RuntimeStoriesPage() {
       story.nodes.some((item) => item.id === node.id)
     );
     setStoryDetailClosed(false);
-    setSelectedStoryId(ownerStory?.id ?? selectedStory?.id ?? selectedStoryId);
+    const nextStoryId =
+      ownerStory?.correlationId ??
+      selectedStory?.correlationId ??
+      selectedStoryId;
+    setSelectedStoryId(nextStoryId);
+    if (nextStoryId) {
+      window.localStorage.setItem(selectedStoryStorageKey, nextStoryId);
+    }
     clearStoryTarget();
     setSelectedNodeId(node.id);
-    setInspectorTab(
-      node.status === "failed" || node.status === "dead" ? "errors" : "info"
-    );
+    setInspectorTab(defaultExecutionInspectorTab(node));
   };
 
   const retryNode = (node: ExecutionNode) => {
@@ -329,15 +339,29 @@ export function RuntimeStoriesPage() {
 
   if (storiesQuery.isLoading) {
     return (
-      <div className="font-mono text-xs text-slate-500">loading stories...</div>
+      <div className="grid h-full grid-cols-[clamp(220px,24vw,320px)_1px_minmax(0,1fr)] overflow-hidden bg-(--background)">
+        <StoryListSkeleton />
+        <div className="bg-(--border-subtle)" />
+        <EmptyState className="h-full bg-(--surface)">
+          <EmptyState.Title>Loading stories</EmptyState.Title>
+          <EmptyState.Description>
+            Runtime executions are being loaded from the selected data source.
+          </EmptyState.Description>
+        </EmptyState>
+      </div>
     );
   }
 
   if (storiesQuery.isError) {
     return (
-      <div className="font-mono text-xs text-rose-300">
-        story workbench unavailable
-      </div>
+      <EmptyState className="h-full bg-(--surface)">
+        <EmptyState.Title>Story Explorer unavailable</EmptyState.Title>
+        <EmptyState.Description>
+          {storiesQuery.error instanceof Error
+            ? storiesQuery.error.message
+            : "Runtime story data could not be loaded."}
+        </EmptyState.Description>
+      </EmptyState>
     );
   }
 
@@ -414,7 +438,20 @@ export function RuntimeStoriesPage() {
             </>
           ) : (
             <EmptyState className="h-full bg-(--surface)">
-              <EmptyState.Title>No story selected</EmptyState.Title>
+              <EmptyState.Title>
+                {stories.length === 0
+                  ? "No runtime stories"
+                  : query
+                    ? "No matching stories"
+                    : "No story selected"}
+              </EmptyState.Title>
+              <EmptyState.Description>
+                {stories.length === 0
+                  ? "The backend returned an empty runtime story list."
+                  : query
+                    ? "Try a different story, service, event, function, or correlation filter."
+                    : "Select a story from the explorer to inspect its execution."}
+              </EmptyState.Description>
             </EmptyState>
           )}
         </main>
@@ -440,7 +477,7 @@ export function RuntimeStoriesPage() {
                   setSelectedStoryId(selectedStory.id);
                   clearStoryTarget();
                   setSelectedNodeId(null);
-                  setInspectorTab("info");
+                  setInspectorTab("overview");
                 }}
                 selectedNode={displayedNode}
                 setActiveTab={setInspectorTab}
@@ -451,5 +488,35 @@ export function RuntimeStoriesPage() {
         ) : null}
       </div>
     </div>
+  );
+}
+
+function StoryListSkeleton() {
+  return (
+    <aside className="grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_auto_minmax(0,1fr)] overflow-hidden bg-(--background)">
+      <div className="border-b border-(--border-subtle) bg-(--surface) px-3 py-2">
+        <div className="h-4 w-20 bg-(--elevated)" />
+        <div className="mt-1 h-3 w-28 bg-(--elevated)" />
+      </div>
+      <div className="h-8 border-b border-(--border-subtle) px-3 py-2">
+        <div className="h-3 w-full bg-(--elevated)" />
+      </div>
+      <div className="h-6 border-b border-(--border-subtle) px-3 py-2">
+        <div className="h-2 w-24 bg-(--elevated)" />
+      </div>
+      <div className="grid content-start gap-0">
+        {Array.from({ length: 6 }, (_, index) => (
+          <div className="border-b border-(--border-subtle) p-3" key={index}>
+            <div className="h-3 w-3/4 bg-(--elevated)" />
+            <div className="mt-2 h-2 w-5/6 bg-(--elevated)" />
+            <div className="mt-3 flex gap-1.5">
+              <span className="h-3 w-12 bg-(--elevated)" />
+              <span className="h-3 w-14 bg-(--elevated)" />
+              <span className="h-3 w-10 bg-(--elevated)" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </aside>
   );
 }
