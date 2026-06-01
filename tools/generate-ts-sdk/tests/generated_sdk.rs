@@ -1,17 +1,20 @@
 #[test]
-fn generated_types_include_openapi_models() {
+fn generated_types_include_all_openapi_component_schemas() {
+    let document: serde_json::Value =
+        serde_yaml::from_str(include_str!("../../../contracts/openapi/app-api.v1.yaml"))
+            .expect("OpenAPI contract should parse");
+    let schemas = document["components"]["schemas"]
+        .as_object()
+        .expect("OpenAPI contract should include component schemas");
     let source =
         generate_ts_sdk::generated_types_source().expect("generated types source should render");
 
-    assert!(source.contains("export type CreateUserRequest"));
-    assert!(source.contains("export type CreateUserResponse"));
-    assert!(source.contains("export type AdminRuntimeStoryDetail"));
-    assert!(source.contains("export type AdminRuntimeStoryListItem"));
-    assert!(source.contains("export type AdminRuntimeHeatmapResponse"));
-    assert!(source.contains("export type AdminRuntimeTimelineItem"));
-    assert!(source.contains("export type AdminOutboxListResponse"));
-    assert!(source.contains("export type AdminFunctionRunListResponse"));
-    assert!(source.contains("export type ErrorResponse"));
+    for schema_name in schemas.keys() {
+        assert!(
+            source.contains(&format!("export type {schema_name}")),
+            "generated types should include OpenAPI schema {schema_name}"
+        );
+    }
 }
 
 #[test]

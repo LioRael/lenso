@@ -22,39 +22,7 @@ pub fn generated_types_source() -> anyhow::Result<String> {
         .context("OpenAPI document is missing components.schemas")?;
 
     let mut rendered = String::from(GENERATED_HEADER);
-    for schema_name in [
-        "AdminFunctionRun",
-        "AdminFunctionRunDetail",
-        "AdminFunctionRunListResponse",
-        "AdminFunctionRunResponse",
-        "AdminOutboxEvent",
-        "AdminOutboxEventDetail",
-        "AdminOutboxEventDetailResponse",
-        "AdminOutboxListResponse",
-        "AdminRuntimeFunctionSummary",
-        "AdminRuntimeHeatmapCell",
-        "AdminRuntimeHeatmapResponse",
-        "AdminRuntimeOutboxSummary",
-        "AdminRuntimeStoryDetail",
-        "AdminRuntimeStoryDetailResponse",
-        "AdminRuntimeStoryEdge",
-        "AdminRuntimeStoryListItem",
-        "AdminRuntimeStoryListResponse",
-        "AdminRuntimeStoryNode",
-        "AdminRuntimeSummaryItem",
-        "AdminRuntimeSummaryResponse",
-        "AdminRuntimeTimelineItem",
-        "AdminRuntimeTimelineResponse",
-        "CreateUserRequest",
-        "CreateUserResponse",
-        "ErrorResponse",
-        "ErrorBody",
-        "PageInfo",
-        "ValidationErrorDetail",
-    ] {
-        let schema = schemas
-            .get(schema_name)
-            .with_context(|| format!("OpenAPI schema {schema_name} is missing"))?;
+    for (schema_name, schema) in schemas.iter().collect::<BTreeMap<_, _>>() {
         let required = required_fields(schema);
         rendered.push_str(&format!(
             "export type {schema_name} = {};\n\n",

@@ -231,8 +231,8 @@ export type CreateUserResponse = {
   id: string;
 };
 
-export type ErrorResponse = {
-  error: ErrorBody;
+export type CreateUserResponseEnvelope = {
+  data: CreateUserResponse;
 };
 
 export type ErrorBody = {
@@ -241,6 +241,19 @@ export type ErrorBody = {
   details: Array<ValidationErrorDetail>;
   message: string;
   request_id?: string | null;
+};
+
+export type ErrorResponse = {
+  error: ErrorBody;
+};
+
+export type MeResponse = {
+  scopes: Array<string>;
+  user_id: string;
+};
+
+export type MeResponseEnvelope = {
+  data: MeResponse;
 };
 
 export type PageInfo = {
