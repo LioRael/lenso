@@ -293,7 +293,7 @@ export function RuntimeConsoleShell({ children }: PropsWithChildren) {
       </main>
       <DetailDrawer onClose={closeDrawer} target={drawerTarget} />
       <RetryDialog />
-      <CommandPalette />
+      <CommandPalette onToggleTheme={toggleTheme} theme={theme} />
     </div>
   );
 }

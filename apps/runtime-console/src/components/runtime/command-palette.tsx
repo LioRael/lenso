@@ -3,8 +3,10 @@ import {
   Copy,
   CornerDownLeft,
   GitBranch,
+  Moon,
   RotateCcw,
   Search,
+  Sun,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -19,7 +21,15 @@ type CommandItem = {
   action: () => void;
 };
 
-export function CommandPalette() {
+type CommandPaletteProps = {
+  theme: "dark" | "light";
+  onToggleTheme: () => void;
+};
+
+export function CommandPalette({
+  theme,
+  onToggleTheme,
+}: CommandPaletteProps) {
   const navigate = useNavigate();
   const {
     closeCommandPalette,
@@ -60,6 +70,13 @@ export function CommandPalette() {
         title: "Go to Overview",
       },
       {
+        action: onToggleTheme,
+        id: "theme-toggle",
+        subtitle:
+          theme === "dark" ? "Use light console theme" : "Use dark console theme",
+        title: theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode",
+      },
+      {
         action: () => {
           openTimeline(correlationId);
           focusGlobalSearch();
@@ -98,8 +115,10 @@ export function CommandPalette() {
     drawerTarget,
     focusGlobalSearch,
     navigate,
+    onToggleTheme,
     openRetry,
     openTimeline,
+    theme,
   ]);
 
   const visible = commands.filter((command) =>
@@ -157,11 +176,11 @@ export function CommandPalette() {
             }
           }}
         >
-          <div className="flex items-center gap-2.5 border-b border-white/10 px-3 py-2.5">
+          <div className="flex items-center gap-2.5 border-b border-[var(--border-subtle)] px-3 py-2.5 text-[var(--secondary)]">
             <Search size={16} />
             <input
               aria-label="Command search"
-              className="w-full bg-transparent font-mono text-xs text-slate-100 outline-none placeholder:text-slate-600"
+              className="w-full bg-transparent font-mono text-xs text-[var(--foreground)] outline-none placeholder:text-[var(--muted-deep)]"
               onChange={(event) => {
                 setQuery(event.target.value);
                 setActiveIndex(0);
@@ -174,10 +193,10 @@ export function CommandPalette() {
           <div className="max-h-[420px] overflow-auto p-1">
             {visible.map((command, index) => (
               <button
-                className={`grid w-full grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-2 border border-transparent p-2 text-left font-mono text-slate-100 ${
+                className={`grid w-full grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-2 border border-transparent p-2 text-left font-mono text-[var(--foreground)] ${
                   index === activeIndex
-                    ? "border-cyan-300/20 bg-cyan-300/[0.06]"
-                    : "hover:bg-cyan-300/[0.055]"
+                    ? "border-[color-mix(in_srgb,var(--accent)_32%,transparent)] bg-[var(--accent-soft)]"
+                    : "hover:bg-[var(--hover)]"
                 }`}
                 key={command.id}
                 onClick={() => runCommand(command)}
@@ -187,11 +206,11 @@ export function CommandPalette() {
                   <strong className="block truncate text-[11px] font-semibold">
                     {command.title}
                   </strong>
-                  <small className="mt-0.5 block truncate text-[10px] text-slate-600">
+                  <small className="mt-0.5 block truncate text-[10px] text-[var(--muted)]">
                     {command.subtitle}
                   </small>
                 </span>
-                <CornerDownLeft size={14} />
+                <CornerDownLeft className="text-[var(--muted)]" size={14} />
               </button>
             ))}
           </div>
@@ -202,6 +221,9 @@ export function CommandPalette() {
 }
 
 function CommandIcon({ id }: { id: string }) {
+  if (id === "theme-toggle") {
+    return <ThemeCommandIcon />;
+  }
   if (id.includes("retry")) {
     return <RotateCcw size={15} />;
   }
@@ -209,4 +231,13 @@ function CommandIcon({ id }: { id: string }) {
     return <Copy size={15} />;
   }
   return <GitBranch size={15} />;
+}
+
+function ThemeCommandIcon() {
+  return (
+    <span className="grid size-[15px] place-items-center">
+      <Sun className="hidden [[data-theme=dark]_&]:block" size={15} />
+      <Moon className="block [[data-theme=dark]_&]:hidden" size={15} />
+    </span>
+  );
 }
