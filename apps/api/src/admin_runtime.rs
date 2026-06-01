@@ -20,6 +20,7 @@ pub fn router() -> Router<AppContext> {
             "/admin/runtime/timeline/{correlation_id}",
             get(get_timeline),
         )
+        .route("/admin/runtime/heatmap", get(get_heatmap))
         .route("/admin/runtime/stories", get(list_stories))
         .route("/admin/runtime/stories/{correlation_id}", get(get_story))
         .route("/admin/runtime/outbox", get(list_outbox))
@@ -58,6 +59,14 @@ pub struct TimelineQuery {
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct StoryQuery {
+    pub limit: Option<i64>,
+    pub created_before: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct HeatmapQuery {
+    pub bucket_seconds: Option<i64>,
     pub limit: Option<i64>,
     pub created_before: Option<DateTime<Utc>>,
 }
@@ -114,6 +123,15 @@ pub struct AdminRuntimeStoryListResponse {
 #[schema(as = AdminRuntimeStoryDetailResponse)]
 pub struct AdminRuntimeStoryDetailResponse {
     pub data: AdminRuntimeStoryDetail,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(as = AdminRuntimeHeatmapResponse)]
+pub struct AdminRuntimeHeatmapResponse {
+    pub data: Vec<AdminRuntimeHeatmapCell>,
+    pub bucket_seconds: i64,
+    pub page: PageInfo,
+    pub order: &'static str,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -299,6 +317,19 @@ pub struct AdminRuntimeStoryEdge {
     pub label: Option<String>,
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminRuntimeHeatmapCell {
+    pub bucket_start: DateTime<Utc>,
+    pub bucket_end: DateTime<Utc>,
+    pub service: String,
+    pub node_type: String,
+    pub total_count: i64,
+    pub error_count: i64,
+    pub dead_count: i64,
+    pub avg_duration_ms: Option<i64>,
+    pub max_duration_ms: Option<i64>,
+}
+
 async fn get_summary(
     _admin: AdminActor,
     State(ctx): State<AppContext>,
@@ -354,6 +385,97 @@ async fn get_summary(
         functions,
         recent_activity,
         recent_failures,
+    }))
+}
+
+async fn get_heatmap(
+    _admin: AdminActor,
+    State(ctx): State<AppContext>,
+    HttpRequestContext(request_ctx): HttpRequestContext,
+    Query(query): Query<HeatmapQuery>,
+) -> Result<Json<AdminRuntimeHeatmapResponse>, ApiErrorResponse> {
+    let limit = normalized_limit(query.limit);
+    let bucket_seconds = normalized_bucket_seconds(query.bucket_seconds);
+    let rows = sqlx::query_as::<_, HeatmapRow>(
+        r#"
+        with runtime_items as (
+            select
+                created_at,
+                source_module as service,
+                'event'::text as node_type,
+                status,
+                case
+                    when locked_at is not null and published_at is not null then
+                        greatest(
+                            0,
+                            extract(epoch from published_at - locked_at)::bigint * 1000
+                        )
+                    else null::bigint
+                end as duration_ms
+            from platform.outbox
+            where ($1::timestamptz is null or created_at < $1)
+
+            union all
+
+            select
+                created_at,
+                split_part(function_name, '.', 1) as service,
+                'function'::text as node_type,
+                status,
+                case
+                    when coalesce(started_at, locked_at) is not null and completed_at is not null then
+                        greatest(
+                            0,
+                            extract(epoch from completed_at - coalesce(started_at, locked_at))::bigint * 1000
+                        )
+                    else null::bigint
+                end as duration_ms
+            from runtime.function_runs
+            where ($1::timestamptz is null or created_at < $1)
+        ),
+        heatmap as (
+            select
+                to_timestamp(
+                    floor(extract(epoch from created_at) / $2::double precision) * $2
+                )::timestamptz as bucket_start,
+                service,
+                node_type,
+                count(*)::bigint as total_count,
+                count(*) filter (where status in ('failed', 'dead'))::bigint as error_count,
+                count(*) filter (where status = 'dead')::bigint as dead_count,
+                avg(duration_ms)::bigint as avg_duration_ms,
+                max(duration_ms)::bigint as max_duration_ms
+            from runtime_items
+            group by bucket_start, service, node_type
+        )
+        select
+            bucket_start,
+            bucket_start + ($2::bigint * interval '1 second') as bucket_end,
+            service,
+            node_type,
+            total_count,
+            error_count,
+            dead_count,
+            avg_duration_ms,
+            max_duration_ms
+        from heatmap
+        order by bucket_start desc, service asc, node_type asc
+        limit $3
+        "#,
+    )
+    .bind(query.created_before)
+    .bind(bucket_seconds)
+    .bind(limit)
+    .fetch_all(&ctx.db)
+    .await
+    .map_err(|source| query_error(source, &request_ctx))?;
+
+    let data: Vec<AdminRuntimeHeatmapCell> = rows.into_iter().map(Into::into).collect();
+    Ok(Json(AdminRuntimeHeatmapResponse {
+        page: page_info(limit, data.last().map(|cell| cell.bucket_start)),
+        data,
+        bucket_seconds,
+        order: "bucket_start_desc",
     }))
 }
 
@@ -817,6 +939,18 @@ type SummaryItemRow = (
     Option<String>,
 );
 
+type HeatmapRow = (
+    DateTime<Utc>,
+    DateTime<Utc>,
+    String,
+    String,
+    i64,
+    i64,
+    i64,
+    Option<i64>,
+    Option<i64>,
+);
+
 #[derive(Debug, Clone)]
 struct StoryWorkRow {
     item_type: String,
@@ -1153,6 +1287,34 @@ impl From<StoryWorkTuple> for StoryWorkRow {
             started_at,
             completed_at,
             last_error,
+        }
+    }
+}
+
+impl From<HeatmapRow> for AdminRuntimeHeatmapCell {
+    fn from(row: HeatmapRow) -> Self {
+        let (
+            bucket_start,
+            bucket_end,
+            service,
+            node_type,
+            total_count,
+            error_count,
+            dead_count,
+            avg_duration_ms,
+            max_duration_ms,
+        ) = row;
+
+        Self {
+            bucket_start,
+            bucket_end,
+            service,
+            node_type,
+            total_count,
+            error_count,
+            dead_count,
+            avg_duration_ms,
+            max_duration_ms,
         }
     }
 }
@@ -1724,6 +1886,10 @@ fn admin_audit_label(actor: &AdminActor) -> String {
 
 fn normalized_limit(limit: Option<i64>) -> i64 {
     limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT)
+}
+
+fn normalized_bucket_seconds(bucket_seconds: Option<i64>) -> i64 {
+    bucket_seconds.unwrap_or(300).clamp(60, 3600)
 }
 
 fn page_info(limit: i64, next_created_before: Option<DateTime<Utc>>) -> PageInfo {

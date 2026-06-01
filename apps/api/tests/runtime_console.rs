@@ -150,6 +150,33 @@ async fn admin_runtime_story_detail_rejects_user_actor() {
 }
 
 #[tokio::test]
+async fn admin_runtime_heatmap_requires_authentication() {
+    let app = auth_only_app();
+
+    let response = app
+        .oneshot(admin_get("/admin/runtime/heatmap"))
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn admin_runtime_heatmap_rejects_user_actor() {
+    let app = auth_only_app();
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/heatmap")
+                .with_header("authorization", "Bearer dev-user:user_123"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
 async fn admin_runtime_function_retry_rejects_user_actor() {
     let app = auth_only_app();
 
@@ -388,6 +415,74 @@ async fn unknown_runtime_story_returns_not_found() {
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
     let body = json_body(response).await;
     assert_eq!(body["error"]["code"], "not_found");
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn service_actor_can_fetch_runtime_heatmap() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+    insert_heatmap_outbox_events(&db.pool).await;
+    insert_heatmap_function_runs(&db.pool).await;
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/heatmap?bucket_seconds=60&limit=20")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["bucket_seconds"], 60);
+    assert_eq!(body["order"], "bucket_start_desc");
+    assert_eq!(body["data"].as_array().unwrap().len(), 3);
+    assert_eq!(body["data"][0]["service"], "notifications");
+    assert_eq!(body["data"][0]["node_type"], "function");
+    assert_eq!(body["data"][0]["total_count"], 1);
+    assert_eq!(body["data"][0]["max_duration_ms"], 10_000);
+    assert_eq!(body["data"][1]["service"], "identity");
+    assert_eq!(body["data"][1]["node_type"], "event");
+    assert_eq!(body["data"][1]["total_count"], 2);
+    assert_eq!(body["data"][1]["error_count"], 1);
+    assert_eq!(body["data"][1]["dead_count"], 0);
+    assert_eq!(body["data"][2]["service"], "notifications");
+    assert_eq!(body["data"][2]["node_type"], "function");
+    assert_eq!(body["data"][2]["total_count"], 2);
+    assert_eq!(body["data"][2]["error_count"], 1);
+    assert_eq!(body["data"][2]["dead_count"], 1);
+    assert_eq!(body["data"][2]["max_duration_ms"], 80_000);
+    assert!(body["data"][0]["bucket_start"].is_string());
+    assert!(body["data"][0]["bucket_end"].is_string());
+    assert!(body["data"][0].get("payload").is_none());
+    assert!(body["data"][0].get("input_json").is_none());
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn runtime_heatmap_without_runtime_work_returns_empty_data() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/heatmap")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["data"].as_array().unwrap().len(), 0);
+    assert_eq!(body["bucket_seconds"], 300);
 
     db.cleanup().await;
 }
@@ -786,6 +881,10 @@ async fn admin_runtime_openapi_contract_is_present() {
         value["paths"]["/admin/runtime/stories/{correlation_id}"]["get"]["operationId"],
         "admin_runtime_get_story"
     );
+    assert_eq!(
+        value["paths"]["/admin/runtime/heatmap"]["get"]["operationId"],
+        "admin_runtime_get_heatmap"
+    );
     assert!(value["components"]["schemas"]["AdminOutboxEvent"].is_object());
     assert!(value["components"]["schemas"]["AdminOutboxEventDetail"].is_object());
     assert!(value["components"]["schemas"]["AdminFunctionRun"].is_object());
@@ -795,6 +894,8 @@ async fn admin_runtime_openapi_contract_is_present() {
     assert!(value["components"]["schemas"]["AdminRuntimeTimelineItem"].is_object());
     assert!(value["components"]["schemas"]["AdminRuntimeStoryListItem"].is_object());
     assert!(value["components"]["schemas"]["AdminRuntimeStoryDetail"].is_object());
+    assert!(value["components"]["schemas"]["AdminRuntimeHeatmapCell"].is_object());
+    assert!(value["components"]["schemas"]["AdminRuntimeHeatmapResponse"].is_object());
     assert_eq!(
         value["paths"]["/admin/runtime/outbox/{id}/retry"]["post"]["operationId"],
         "admin_runtime_retry_outbox"
@@ -1190,6 +1291,154 @@ async fn insert_story_function_run(pool: &platform_core::DbPool) {
     .execute(pool)
     .await
     .expect("story function run should insert");
+}
+
+async fn insert_heatmap_outbox_events(pool: &platform_core::DbPool) {
+    sqlx::query(
+        r#"
+        insert into platform.outbox (
+            id,
+            event_name,
+            event_version,
+            source_module,
+            aggregate_type,
+            aggregate_id,
+            correlation_id,
+            occurred_at,
+            payload,
+            headers,
+            status,
+            attempts,
+            max_attempts,
+            locked_at,
+            published_at,
+            last_error,
+            created_at
+        )
+        values
+            (
+                'evt_heatmap_ok',
+                'identity.user_registered.v1',
+                1,
+                'identity',
+                'user',
+                'usr_1',
+                'corr_heatmap_1',
+                '2026-05-31T00:00:10Z',
+                $1,
+                '{}'::jsonb,
+                'published',
+                1,
+                3,
+                '2026-05-31T00:00:12Z',
+                '2026-05-31T00:00:20Z',
+                null,
+                '2026-05-31T00:00:10Z'
+            ),
+            (
+                'evt_heatmap_failed',
+                'identity.user_registered.v1',
+                1,
+                'identity',
+                'user',
+                'usr_2',
+                'corr_heatmap_2',
+                '2026-05-31T00:00:30Z',
+                $2,
+                '{}'::jsonb,
+                'failed',
+                2,
+                3,
+                '2026-05-31T00:00:35Z',
+                null,
+                'handler timeout',
+                '2026-05-31T00:00:30Z'
+            )
+        "#,
+    )
+    .bind(json!({ "user_id": "usr_1" }))
+    .bind(json!({ "user_id": "usr_2" }))
+    .execute(pool)
+    .await
+    .expect("heatmap outbox events should insert");
+}
+
+async fn insert_heatmap_function_runs(pool: &platform_core::DbPool) {
+    sqlx::query(
+        r#"
+        insert into runtime.function_runs (
+            id,
+            function_name,
+            input_json,
+            status,
+            attempts,
+            max_attempts,
+            locked_at,
+            started_at,
+            completed_at,
+            last_error,
+            correlation_id,
+            actor,
+            created_at,
+            updated_at
+        )
+        values
+            (
+                'fnrun_heatmap_dead',
+                'notifications.send_welcome_email.v1',
+                $1,
+                'dead',
+                3,
+                3,
+                '2026-05-31T00:00:40Z',
+                '2026-05-31T00:00:40Z',
+                '2026-05-31T00:02:00Z',
+                'smtp timeout',
+                'corr_heatmap_1',
+                '{"kind":"system"}'::jsonb,
+                '2026-05-31T00:00:40Z',
+                '2026-05-31T00:02:00Z'
+            ),
+            (
+                'fnrun_heatmap_completed',
+                'notifications.send_welcome_email.v1',
+                $2,
+                'completed',
+                1,
+                3,
+                '2026-05-31T00:00:42Z',
+                '2026-05-31T00:00:42Z',
+                '2026-05-31T00:00:50Z',
+                null,
+                'corr_heatmap_2',
+                '{"kind":"system"}'::jsonb,
+                '2026-05-31T00:00:42Z',
+                '2026-05-31T00:00:50Z'
+            ),
+            (
+                'fnrun_heatmap_later',
+                'notifications.cleanup_expired_sessions.v1',
+                $3,
+                'completed',
+                1,
+                3,
+                '2026-05-31T00:02:10Z',
+                '2026-05-31T00:02:10Z',
+                '2026-05-31T00:02:20Z',
+                null,
+                'corr_heatmap_3',
+                '{"kind":"system"}'::jsonb,
+                '2026-05-31T00:02:10Z',
+                '2026-05-31T00:02:20Z'
+            )
+        "#,
+    )
+    .bind(json!({ "user_id": "usr_1" }))
+    .bind(json!({ "user_id": "usr_2" }))
+    .bind(json!({ "job": "cleanup" }))
+    .execute(pool)
+    .await
+    .expect("heatmap function runs should insert");
 }
 
 fn admin_get(uri: &str) -> Request<Body> {

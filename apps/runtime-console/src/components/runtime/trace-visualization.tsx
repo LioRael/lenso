@@ -1,7 +1,7 @@
 import type { TraceRun, TraceSpan } from "../../data/mock-runtime";
 import { FlameView } from "./flame-view";
 import { FlowView } from "./flow-view";
-import { HeatmapPlaceholderView } from "./heatmap-placeholder-view";
+import { HeatmapView } from "./heatmap-view";
 import { RuntimeStoryView } from "./runtime-story-view";
 import { StoryTimelineView } from "./story-timeline-view";
 import type { TraceViewMode } from "./trace-tabs";
@@ -63,7 +63,13 @@ export function TraceVisualization({
             trace={trace}
           />
         ) : null}
-        {mode === "heatmap" ? <HeatmapPlaceholderView trace={trace} /> : null}
+        {mode === "heatmap" ? (
+          <HeatmapView
+            onSelectSpan={onSelectSpan}
+            selectedSpanId={selectedSpanId}
+            trace={trace}
+          />
+        ) : null}
       </div>
     </section>
   );

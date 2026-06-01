@@ -21,6 +21,7 @@ export const runtimeQueryKeys = {
   summary: ["runtime", "summary"] as const,
   events: ["runtime", "events"] as const,
   functions: ["runtime", "functions"] as const,
+  heatmap: ["runtime", "heatmap"] as const,
   timeline: (id: string) => ["runtime", "timeline", id] as const,
   traces: ["runtime", "traces"] as const,
   deadLetters: ["runtime", "dead-letters"] as const,
@@ -64,6 +65,23 @@ export type RuntimeSummary = {
   recentFailures: RuntimeSummaryItem[];
 };
 
+export type RuntimeHeatmapCell = {
+  bucketStart: string;
+  bucketEnd: string;
+  service: string;
+  nodeType: "event" | "function";
+  totalCount: number;
+  errorCount: number;
+  deadCount: number;
+  avgDurationMs?: number;
+  maxDurationMs?: number;
+};
+
+export type RuntimeHeatmap = {
+  bucketSeconds: number;
+  cells: RuntimeHeatmapCell[];
+};
+
 export function useRuntimeSummary() {
   return useQuery({
     queryKey: runtimeQueryKeys.summary,
@@ -94,6 +112,14 @@ export function useRuntimeTimeline(activeCorrelationId: string) {
         ? fetchRuntimeTimeline(id)
         : timelineItems.filter((item) => item.correlationId === id);
     },
+  });
+}
+
+export function useRuntimeHeatmap() {
+  return useQuery({
+    queryKey: runtimeQueryKeys.heatmap,
+    queryFn: async () =>
+      isApiMode() ? fetchRuntimeHeatmap() : mockRuntimeHeatmap(),
   });
 }
 
@@ -375,6 +401,23 @@ type ApiRuntimeStoryNode = {
   metadata?: Record<string, unknown>;
 };
 
+type ApiRuntimeHeatmapResponse = {
+  data: ApiRuntimeHeatmapCell[];
+  bucket_seconds: number;
+};
+
+type ApiRuntimeHeatmapCell = {
+  bucket_start: string;
+  bucket_end: string;
+  service: string;
+  node_type: "event" | "function";
+  total_count: number;
+  error_count: number;
+  dead_count: number;
+  avg_duration_ms?: number | null;
+  max_duration_ms?: number | null;
+};
+
 async function fetchRuntimeSummary(): Promise<RuntimeSummary> {
   const response = await httpClient
     .get("admin/runtime/summary")
@@ -436,6 +479,16 @@ async function fetchRuntimeTimeline(id: string): Promise<TimelineItem[]> {
     .get(`admin/runtime/timeline/${encodeURIComponent(id)}`)
     .json<ApiTimelineResponse>();
   return response.data.map(toTimelineItem);
+}
+
+async function fetchRuntimeHeatmap(): Promise<RuntimeHeatmap> {
+  const response = await httpClient
+    .get("admin/runtime/heatmap")
+    .json<ApiRuntimeHeatmapResponse>();
+  return {
+    bucketSeconds: response.bucket_seconds,
+    cells: response.data.map(toRuntimeHeatmapCell),
+  };
 }
 
 async function fetchRuntimeStories(): Promise<TraceRun[]> {
@@ -538,6 +591,46 @@ function toTimelineItem(item: ApiTimelineItem): TimelineItem {
     ...(item.last_error ? { lastError: item.last_error } : {}),
     correlationId: item.correlation_id,
     detailId: item.id,
+  };
+}
+
+function toRuntimeHeatmapCell(
+  cell: ApiRuntimeHeatmapCell
+): RuntimeHeatmapCell {
+  return {
+    bucketStart: cell.bucket_start,
+    bucketEnd: cell.bucket_end,
+    service: cell.service,
+    nodeType: cell.node_type,
+    totalCount: cell.total_count,
+    errorCount: cell.error_count,
+    deadCount: cell.dead_count,
+    ...(cell.avg_duration_ms === null || cell.avg_duration_ms === undefined
+      ? {}
+      : { avgDurationMs: cell.avg_duration_ms }),
+    ...(cell.max_duration_ms === null || cell.max_duration_ms === undefined
+      ? {}
+      : { maxDurationMs: cell.max_duration_ms }),
+  };
+}
+
+function mockRuntimeHeatmap(): RuntimeHeatmap {
+  return {
+    bucketSeconds: 300,
+    cells: traceRuns.flatMap((trace) =>
+      trace.spans
+        .filter((span) => span.kind === "event" || span.kind === "function")
+        .map<RuntimeHeatmapCell>((span) => ({
+          bucketEnd: trace.timestamp,
+          bucketStart: trace.timestamp,
+          deadCount: span.status === "dead" ? 1 : 0,
+          errorCount: span.status === "failed" || span.status === "dead" ? 1 : 0,
+          maxDurationMs: span.durationMs,
+          nodeType: span.kind === "event" ? "event" : "function",
+          service: span.service,
+          totalCount: 1,
+        }))
+    ),
   };
 }
 

@@ -253,6 +253,86 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /admin/runtime/heatmap:
+    get:
+      tags:
+      - admin-runtime
+      operationId: admin_runtime_get_heatmap
+      parameters:
+      - name: authorization
+        in: header
+        description: Development service bearer token, for example `Bearer dev-service:admin`
+        required: true
+        schema:
+          type: string
+      - name: x-request-id
+        in: header
+        description: Optional caller-provided request identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: x-correlation-id
+        in: header
+        description: Optional caller-provided correlation identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: bucket_seconds
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - name: created_before
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+      responses:
+        '200':
+          description: Runtime heatmap cells grouped by time bucket, service, and node type
+          headers:
+            x-correlation-id:
+              schema:
+                type: string
+              description: Correlation identifier shared across related work
+            x-request-id:
+              schema:
+                type: string
+              description: Request identifier for this HTTP request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminRuntimeHeatmapResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/runtime/outbox:
     get:
       tags:
@@ -1269,6 +1349,65 @@ components:
         running:
           type: integer
           format: int64
+    AdminRuntimeHeatmapCell:
+      type: object
+      required:
+      - bucket_start
+      - bucket_end
+      - service
+      - node_type
+      - total_count
+      - error_count
+      - dead_count
+      properties:
+        avg_duration_ms:
+          type:
+          - integer
+          - 'null'
+          format: int64
+        bucket_end:
+          type: string
+          format: date-time
+        bucket_start:
+          type: string
+          format: date-time
+        dead_count:
+          type: integer
+          format: int64
+        error_count:
+          type: integer
+          format: int64
+        max_duration_ms:
+          type:
+          - integer
+          - 'null'
+          format: int64
+        node_type:
+          type: string
+        service:
+          type: string
+        total_count:
+          type: integer
+          format: int64
+    AdminRuntimeHeatmapResponse:
+      type: object
+      required:
+      - data
+      - bucket_seconds
+      - page
+      - order
+      properties:
+        bucket_seconds:
+          type: integer
+          format: int64
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminRuntimeHeatmapCell'
+        order:
+          type: string
+        page:
+          $ref: '#/components/schemas/PageInfo'
     AdminRuntimeOutboxSummary:
       type: object
       required:

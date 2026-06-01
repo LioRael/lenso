@@ -2,7 +2,9 @@ import { Activity, AlertTriangle, Clock, Inbox } from "lucide-react";
 
 import { TraceStatusBadge } from "../components/runtime/trace-status-badge";
 import {
+  type RuntimeHeatmap,
   useRuntimeSummary,
+  useRuntimeHeatmap,
   type RuntimeSummary,
 } from "../hooks/use-runtime-queries";
 import { relativeAge, time } from "../lib/format";
@@ -10,7 +12,9 @@ import { runtimeConsoleDataSource } from "../lib/http-client";
 
 export function OverviewPage() {
   const summaryQuery = useRuntimeSummary();
+  const heatmapQuery = useRuntimeHeatmap();
   const summary = summaryQuery.data;
+  const heatmap = heatmapQuery.data;
   const activity = summary?.recentActivity.slice(0, 8) ?? [];
   const failures = summary?.recentFailures.slice(0, 6) ?? [];
 
@@ -31,8 +35,12 @@ export function OverviewPage() {
       </header>
 
       <div className="grid min-h-0 grid-cols-[minmax(0,1.35fr)_360px] overflow-hidden max-xl:grid-cols-1">
-        <main className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-r border-(--border-subtle) bg-[color-mix(in_srgb,var(--surface)_72%,var(--background))] max-xl:border-r-0">
+        <main className="grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-(--border-subtle) bg-[color-mix(in_srgb,var(--surface)_72%,var(--background))] max-xl:border-r-0">
           <SummaryStrip summary={summary} />
+          <RuntimeHeatmapStrip
+            heatmap={heatmap}
+            loading={heatmapQuery.isLoading}
+          />
           <div className="min-h-0 overflow-auto">
             <SectionHeader
               title="Recent Activity"
@@ -110,6 +118,72 @@ export function OverviewPage() {
       </div>
     </section>
   );
+}
+
+function RuntimeHeatmapStrip({
+  heatmap,
+  loading,
+}: {
+  heatmap: RuntimeHeatmap | undefined;
+  loading: boolean;
+}) {
+  const cells = heatmap?.cells.slice(0, 18) ?? [];
+
+  return (
+    <div className="border-b border-(--border-subtle) bg-[color-mix(in_srgb,var(--surface)_86%,transparent)] px-3 py-2">
+      <div className="mb-2 flex items-center gap-2">
+        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-(--secondary)">
+          Runtime Heatmap
+        </span>
+        <span className="ml-auto font-mono text-[10px] text-(--muted)">
+          {heatmap ? `${heatmap.bucketSeconds}s buckets` : "loading"}
+        </span>
+      </div>
+      <div className="grid grid-cols-[repeat(18,minmax(0,1fr))] gap-1">
+        {loading && cells.length === 0
+          ? Array.from({ length: 18 }, (_, index) => (
+              <span
+                className="h-7 animate-pulse border border-(--border-subtle) bg-(--elevated)"
+                key={index}
+              />
+            ))
+          : cells.map((cell, index) => (
+              <span
+                className="h-7 border border-(--border-subtle)"
+                key={`${cell.bucketStart}-${cell.service}-${cell.nodeType}-${index}`}
+                style={{
+                  backgroundColor: heatmapColor(cell),
+                }}
+                title={`${cell.service} ${cell.nodeType}: ${cell.totalCount} total, ${cell.errorCount} errors`}
+              />
+            ))}
+        {!loading && cells.length === 0 ? (
+          <span
+            className="font-mono text-[11px] text-(--muted)"
+            style={{ gridColumn: "1 / -1" }}
+          >
+            No runtime heatmap data
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function heatmapColor(cell: RuntimeHeatmap["cells"][number]) {
+  if (cell.deadCount > 0) {
+    return "rgba(239,68,68,0.82)";
+  }
+  if (cell.errorCount > 0) {
+    return "rgba(251,191,36,0.72)";
+  }
+  if ((cell.maxDurationMs ?? 0) > 30_000) {
+    return "color-mix(in srgb, var(--accent) 70%, transparent)";
+  }
+  if (cell.totalCount > 1) {
+    return "rgba(34,197,94,0.48)";
+  }
+  return "rgba(59,130,246,0.32)";
 }
 
 function SummaryStrip({ summary }: { summary: RuntimeSummary | undefined }) {

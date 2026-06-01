@@ -2,11 +2,12 @@ use crate::admin_runtime::{
     AdminFunctionRun, AdminFunctionRunDetail, AdminFunctionRunListResponse,
     AdminFunctionRunResponse, AdminOutboxEvent, AdminOutboxEventDetail,
     AdminOutboxEventDetailResponse, AdminOutboxListResponse, AdminRuntimeFunctionSummary,
-    AdminRuntimeOutboxSummary, AdminRuntimeStoryDetail, AdminRuntimeStoryDetailResponse,
-    AdminRuntimeStoryEdge, AdminRuntimeStoryListItem, AdminRuntimeStoryListResponse,
-    AdminRuntimeStoryNode, AdminRuntimeSummaryItem, AdminRuntimeSummaryResponse,
-    AdminRuntimeTimelineItem, AdminRuntimeTimelineResponse, FunctionRunQuery, OutboxQuery,
-    PageInfo, StoryQuery, TimelineQuery,
+    AdminRuntimeHeatmapCell, AdminRuntimeHeatmapResponse, AdminRuntimeOutboxSummary,
+    AdminRuntimeStoryDetail, AdminRuntimeStoryDetailResponse, AdminRuntimeStoryEdge,
+    AdminRuntimeStoryListItem, AdminRuntimeStoryListResponse, AdminRuntimeStoryNode,
+    AdminRuntimeSummaryItem, AdminRuntimeSummaryResponse, AdminRuntimeTimelineItem,
+    AdminRuntimeTimelineResponse, FunctionRunQuery, HeatmapQuery, OutboxQuery, PageInfo,
+    StoryQuery, TimelineQuery,
 };
 use identity::dto::{
     CreateUserRequest, CreateUserResponse, CreateUserResponseEnvelope, MeResponse,
@@ -27,6 +28,7 @@ use utoipa::OpenApi;
         identity_me_contract,
         admin_runtime_get_summary_contract,
         admin_runtime_get_timeline_contract,
+        admin_runtime_get_heatmap_contract,
         admin_runtime_list_stories_contract,
         admin_runtime_get_story_contract,
         admin_runtime_list_outbox_contract,
@@ -47,6 +49,8 @@ use utoipa::OpenApi;
             AdminOutboxEventDetailResponse,
             AdminOutboxListResponse,
             AdminRuntimeFunctionSummary,
+            AdminRuntimeHeatmapCell,
+            AdminRuntimeHeatmapResponse,
             AdminRuntimeOutboxSummary,
             AdminRuntimeStoryDetail,
             AdminRuntimeStoryDetailResponse,
@@ -285,6 +289,51 @@ fn admin_runtime_get_summary_contract() {}
 )]
 #[allow(dead_code)]
 fn admin_runtime_get_timeline_contract() {}
+
+#[utoipa::path(
+    get,
+    path = "/admin/runtime/heatmap",
+    operation_id = "admin_runtime_get_heatmap",
+    tag = "admin-runtime",
+    params(
+        ("authorization" = String, Header, description = "Development service bearer token, for example `Bearer dev-service:admin`"),
+        ("x-request-id" = Option<String>, Header, description = "Optional caller-provided request identifier"),
+        ("x-correlation-id" = Option<String>, Header, description = "Optional caller-provided correlation identifier"),
+        HeatmapQuery
+    ),
+    responses(
+        (
+            status = 200,
+            description = "Runtime heatmap cells grouped by time bucket, service, and node type",
+            body = AdminRuntimeHeatmapResponse,
+            content_type = "application/json",
+            headers(
+                ("x-request-id" = String, description = "Request identifier for this HTTP request"),
+                ("x-correlation-id" = String, description = "Correlation identifier shared across related work")
+            )
+        ),
+        (
+            status = 401,
+            description = "Authentication is required",
+            body = ErrorResponse,
+            content_type = "application/json"
+        ),
+        (
+            status = 403,
+            description = "Service or system authentication is required",
+            body = ErrorResponse,
+            content_type = "application/json"
+        ),
+        (
+            status = 500,
+            description = "Internal server error",
+            body = ErrorResponse,
+            content_type = "application/json"
+        )
+    )
+)]
+#[allow(dead_code)]
+fn admin_runtime_get_heatmap_contract() {}
 
 #[utoipa::path(
     get,
