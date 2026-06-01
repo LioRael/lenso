@@ -30,7 +30,7 @@ export function RuntimeSearch() {
             }
           }}
           className="w-full bg-transparent text-xs text-(--foreground) outline-hidden placeholder:text-(--muted)"
-          placeholder="trace id / span / correlation / event / function"
+          placeholder="story id / span / correlation / event / function"
           value={query}
         />
         <span className="border border-(--border) px-1 py-0.5 text-[11px] leading-none text-(--muted)">
