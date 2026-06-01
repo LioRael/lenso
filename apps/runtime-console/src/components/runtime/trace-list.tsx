@@ -26,10 +26,10 @@ export function TraceList({
     <aside className="grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_auto_minmax(0,1fr)] overflow-hidden bg-[var(--background)]">
       <div className="flex min-h-10 items-center justify-between gap-2 border-b border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-2">
         <div>
-          <h2 className="font-mono text-[13px] font-semibold tracking-tight text-[var(--foreground)]">
+          <h2 className="font-mono text-sm font-semibold tracking-tight text-[var(--foreground)]">
             Traces
           </h2>
-          <p className="font-mono text-[10px] text-[var(--muted)]">
+          <p className="font-mono text-xs text-[var(--muted)]">
             {traces.length} recorded sessions
           </p>
         </div>
@@ -38,13 +38,13 @@ export function TraceList({
         <Search size={12} />
         <input
           aria-label="Search traces"
-          className="mono w-full bg-transparent text-[10px] text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
+          className="mono w-full bg-transparent text-xs text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
           onChange={(event) => setQuery(event.target.value)}
           placeholder="filter traces / service / correlation..."
           value={query}
         />
       </div>
-      <div className="grid h-6 grid-cols-[12px_minmax(0,1fr)_58px] items-center gap-2 border-b border-[var(--border-subtle)] px-3 font-mono text-[9px] uppercase tracking-[0.1em] text-[var(--muted)]">
+      <div className="grid h-7 grid-cols-[12px_minmax(0,1fr)_64px] items-center gap-2 border-b border-[var(--border-subtle)] px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--muted)]">
         <span />
         <span>trace</span>
         <span className="text-right">duration</span>
@@ -74,15 +74,15 @@ export function TraceList({
                         : undefined,
                   }}
                 />
-                <span className="min-w-0 flex-1 truncate font-mono text-[12px] font-medium text-[var(--foreground)]">
+                <span className="min-w-0 flex-1 truncate font-mono text-[13px] font-medium text-[var(--foreground)]">
                   {trace.name}
                 </span>
-                <span className="font-mono text-[10px] text-[var(--muted)]">
+                <span className="font-mono text-[11px] text-[var(--muted)]">
                   {formatTraceDuration(trace.durationMs)}
                 </span>
               </div>
-              <div className="grid grid-cols-[68px_minmax(0,1fr)_auto] items-center gap-2 font-mono text-[9px] text-[var(--muted)]">
-                <code className="text-[10px] text-[var(--secondary)]">
+              <div className="grid grid-cols-[82px_minmax(0,1fr)_auto] items-center gap-2 font-mono text-[11px] leading-5 text-[var(--muted)]">
+                <code className="text-xs text-[var(--secondary)]">
                   {trace.id.slice(0, 10)}
                 </code>
                 <span className="truncate">
@@ -91,7 +91,7 @@ export function TraceList({
                 <span>{time(trace.timestamp)}</span>
               </div>
               {stats.errors > 0 ? (
-                <div className="mt-0.5 font-mono text-[9px] text-[#ef4444]">
+                <div className="mt-1 font-mono text-[11px] leading-4 text-[#ef4444]">
                   {stats.errors} error spans
                 </div>
               ) : null}

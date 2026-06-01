@@ -22,7 +22,7 @@ export function TraceHeader({
 
   return (
     <header className="border-b border-[var(--border-subtle)] bg-[var(--surface)]">
-      <div className="flex items-center gap-2 px-3 pt-2.5 pb-1">
+      <div className="flex items-center gap-2 px-3 pt-2 pb-1">
         <div
           className="flex-shrink-0 rounded-[2px] border px-1.5 py-0.5 font-mono text-[10px] font-medium tracking-wide"
           style={{
@@ -45,26 +45,26 @@ export function TraceHeader({
         </button>
       </div>
 
-      <div className="flex flex-wrap items-center gap-1.5 px-3 pb-2">
+      <div className="flex flex-wrap items-center gap-1.5 px-3 pb-1.5">
         <span className="font-mono text-[10px] text-[var(--muted)]">
           {trace.id.slice(0, 16)}
         </span>
         <div className="h-3 w-px bg-[var(--border-subtle)]" />
-        <MetricChip icon={<Clock size={11} />} tone="accent">
+        <MetricChip icon={<Clock size={10} />} tone="accent">
           {formatTraceDuration(trace.durationMs)}
         </MetricChip>
-        <MetricChip icon={<Layers size={11} />}>
+        <MetricChip icon={<Layers size={10} />}>
           {stats.spanCount} spans
         </MetricChip>
         <MetricChip>{stats.services.length} svc</MetricChip>
         {stats.errors > 0 ? (
-          <MetricChip icon={<AlertCircle size={11} />} tone="error">
+          <MetricChip icon={<AlertCircle size={10} />} tone="error">
             {stats.errors} err
           </MetricChip>
         ) : null}
       </div>
 
-      <div className="px-3 pb-2">
+      <div className="px-3 pb-1.5">
         <div className="flex h-1 overflow-hidden border border-[var(--border-subtle)] bg-[var(--elevated)]">
           {stats.services.map((service) => {
             const duration = trace.spans
@@ -86,14 +86,14 @@ export function TraceHeader({
       </div>
 
       {path.length > 1 ? (
-        <div className="flex items-center gap-1 overflow-x-auto px-3 pb-2">
+        <div className="flex items-center gap-1 overflow-x-auto px-3 pb-1.5">
           {path.map((span, index) => (
             <Fragment key={span.id}>
               {index > 0 ? (
-                <ChevronRight className="size-3 flex-shrink-0 text-[var(--muted)]" />
+                <ChevronRight className="size-2.5 flex-shrink-0 text-[var(--muted)]" />
               ) : null}
               <button
-                className="max-w-[132px] flex-shrink-0 truncate rounded-[2px] px-1 py-0.5 font-mono text-[9px] text-[var(--secondary)] transition hover:bg-[var(--hover)] hover:text-[var(--foreground)]"
+                className="max-w-[140px] flex-shrink-0 truncate rounded-[2px] px-1 py-0.5 font-mono text-[10px] text-[var(--secondary)] transition hover:bg-[var(--hover)] hover:text-[var(--foreground)]"
                 onClick={() => onSelectSpan(span)}
                 title={span.name}
                 type="button"
@@ -125,7 +125,7 @@ function MetricChip({
 
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-[2px] border border-[var(--border-subtle)] bg-[var(--elevated)] px-1.5 py-0.5 font-mono text-[10px] ${toneClass}`}
+      className={`inline-flex items-center gap-1 rounded-[2px] border border-[var(--border-subtle)] bg-[var(--elevated)] px-1.5 py-0.5 font-mono text-[10px] leading-none ${toneClass}`}
     >
       {icon}
       {children}

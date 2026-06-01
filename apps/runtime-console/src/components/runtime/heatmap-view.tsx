@@ -26,14 +26,14 @@ export function HeatmapView({
     <div className="isolate flex h-full min-w-0 flex-col overflow-hidden bg-[var(--background)]">
       <div className="flex items-center justify-between border-b border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-2">
         <div className="flex items-center gap-2">
-          <span className="font-sans text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--accent)]">
+          <span className="font-sans text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--accent)]">
             Heatmap
           </span>
-          <span className="font-mono text-[10px] text-[var(--muted)]">
+          <span className="font-mono text-[11px] text-[var(--muted)]">
             {cells.length} buckets across {formatTraceDuration(timelineEnd)}
           </span>
         </div>
-        <div className="flex items-center gap-2 font-mono text-[9px] text-[var(--muted)]">
+        <div className="flex items-center gap-2 font-mono text-[10px] text-[var(--muted)]">
           <span>idle</span>
           <span className="text-[#3b82f6]">short</span>
           <span className="text-[#22c55e]">work</span>

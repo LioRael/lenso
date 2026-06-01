@@ -26,11 +26,11 @@ export function FlowView({
   return (
     <div className="isolate relative h-full min-w-0 overflow-hidden bg-[var(--sidebar)]">
       <div className="pointer-events-none absolute top-0 right-0 left-0 z-[2] flex items-center justify-between px-4 py-2.5">
-        <span className="pointer-events-auto font-sans text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
+        <span className="pointer-events-auto font-sans text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">
           Span Graph
         </span>
         <button
-          className="pointer-events-auto flex items-center gap-1.5 font-mono text-[10px] text-[var(--muted)] transition hover:text-[var(--foreground)]"
+          className="pointer-events-auto flex items-center gap-1.5 font-mono text-[11px] text-[var(--muted)] transition hover:text-[var(--foreground)]"
           type="button"
         >
           <Maximize2 size={12} />
@@ -103,7 +103,7 @@ export function FlowView({
                 <span className="flex h-full flex-col justify-between px-3 pt-2.5 pb-2">
                   <span className="flex items-start justify-between gap-2">
                     <span
-                      className="rounded-[2px] border px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-wider"
+                      className="rounded-[2px] border px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.06em]"
                       style={{
                         backgroundColor: `${color}18`,
                         borderColor: `${color}30`,
@@ -114,7 +114,7 @@ export function FlowView({
                     </span>
                     <span
                       className={cn(
-                        "rounded-[2px] px-1 py-0.5 font-mono text-[8px] uppercase tracking-wider",
+                        "rounded-[2px] px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.06em]",
                         isError
                           ? "bg-[color-mix(in_srgb,var(--error)_10%,transparent)] text-[var(--error)]"
                           : "bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] text-[var(--accent)]"
@@ -124,10 +124,10 @@ export function FlowView({
                     </span>
                   </span>
                   <span className="min-w-0">
-                    <span className="block truncate font-mono text-[11px] text-[var(--foreground)]">
+                    <span className="block truncate font-mono text-[13px] text-[var(--foreground)]">
                       {span.name}
                     </span>
-                    <span className="block font-mono text-[9px] text-[var(--muted)]">
+                    <span className="block font-mono text-[11px] text-[var(--muted)]">
                       {formatTraceDuration(span.durationMs)}
                     </span>
                   </span>
@@ -171,7 +171,7 @@ export function FlowView({
         </div>
       </div>
 
-      <div className="absolute bottom-2 left-1/2 z-[2] flex -translate-x-1/2 items-center gap-4 rounded-[2px] border border-[var(--border-subtle)] bg-[color-mix(in_srgb,var(--background)_84%,transparent)] px-3 py-1.5 font-mono text-[9px] text-[var(--muted)]">
+      <div className="absolute bottom-2 left-1/2 z-[2] flex -translate-x-1/2 items-center gap-4 rounded-[2px] border border-[var(--border-subtle)] bg-[color-mix(in_srgb,var(--background)_84%,transparent)] px-3 py-1.5 font-mono text-[11px] text-[var(--muted)]">
         <span>Select nodes</span>
         <span>Wheel zoom</span>
         <span>Pan canvas</span>

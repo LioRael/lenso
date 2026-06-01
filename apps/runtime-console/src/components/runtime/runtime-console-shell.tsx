@@ -168,7 +168,7 @@ export function RuntimeConsoleShell({ children }: PropsWithChildren) {
               className="sidebar-copy flex min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap"
             >
               <div className="grid h-5 min-w-11 place-items-center border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] bg-[var(--accent-soft)] px-1.5 text-[var(--accent)] shadow-[0_0_18px_color-mix(in_srgb,var(--accent)_14%,transparent)]">
-                <span className="font-mono text-[10px] font-semibold uppercase leading-none">
+                <span className="font-mono text-[11px] font-semibold uppercase leading-none">
                   lenso
                 </span>
               </div>
@@ -176,10 +176,10 @@ export function RuntimeConsoleShell({ children }: PropsWithChildren) {
                 aria-hidden={sidebarCollapsed}
                 className="min-w-0 overflow-hidden whitespace-nowrap leading-tight"
               >
-                <div className="font-mono text-[9px] uppercase tracking-[0.08em] text-[var(--secondary)]">
+                <div className="font-mono text-[10px] uppercase tracking-[0.06em] text-[var(--secondary)]">
                   Runtime
                 </div>
-                <div className="font-mono text-[9px] uppercase tracking-[0.08em] text-[var(--muted)]">
+                <div className="font-mono text-[10px] uppercase tracking-[0.06em] text-[var(--muted)]">
                   Console
                 </div>
               </div>
@@ -215,7 +215,7 @@ export function RuntimeConsoleShell({ children }: PropsWithChildren) {
           <div className="mt-3 border-t border-[var(--border-subtle)] pt-2 max-lg:hidden">
             <div
               aria-hidden={sidebarCollapsed}
-              className="sidebar-copy sidebar-group-label overflow-hidden whitespace-nowrap px-2 font-mono text-[9px] uppercase tracking-[0.08em] text-[var(--muted-deep)]"
+              className="sidebar-copy sidebar-group-label overflow-hidden whitespace-nowrap px-2 font-mono text-[10px] uppercase tracking-[0.06em] text-[var(--muted-deep)]"
             >
               Future
             </div>
@@ -235,13 +235,13 @@ export function RuntimeConsoleShell({ children }: PropsWithChildren) {
             <div className="size-1.5 flex-shrink-0 rounded-full bg-[var(--success)] shadow-[0_0_7px_var(--success)]" />
             <span
               aria-hidden={sidebarCollapsed}
-              className="sidebar-copy overflow-hidden whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.04em] text-[var(--foreground)]"
+              className="sidebar-copy overflow-hidden whitespace-nowrap font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--foreground)]"
             >
               Online
             </span>
             <span
               aria-hidden={sidebarCollapsed}
-              className="sidebar-copy ml-auto overflow-hidden whitespace-nowrap font-mono text-[10px] text-[var(--muted)]"
+              className="sidebar-copy ml-auto overflow-hidden whitespace-nowrap font-mono text-[11px] text-[var(--muted)]"
             >
               {runtimeConsoleDataSource()}
             </span>
@@ -281,11 +281,11 @@ export function RuntimeConsoleShell({ children }: PropsWithChildren) {
               ⌘K
             </span>
           </Button>
-          <Badge className="h-7 rounded-none border-[var(--border)] bg-[var(--elevated)] font-mono text-[10px] text-[var(--secondary)] max-lg:hidden">
+          <Badge className="h-7 rounded-none border-[var(--border)] bg-[var(--elevated)] font-mono text-[11px] text-[var(--secondary)] max-lg:hidden">
             <Activity size={13} />
             local
           </Badge>
-          <Badge className="h-7 rounded-none border-[var(--border)] bg-[var(--elevated)] font-mono text-[10px] text-[var(--secondary)] max-lg:hidden">
+          <Badge className="h-7 rounded-none border-[var(--border)] bg-[var(--elevated)] font-mono text-[11px] text-[var(--secondary)] max-lg:hidden">
             <Command size={13} />
             service:admin
           </Badge>
@@ -315,7 +315,7 @@ function NavLink({
           "bg-[var(--accent-soft)] text-[var(--foreground)] shadow-[inset_16px_0_24px_color-mix(in_srgb,var(--accent)_6%,transparent)]",
       }}
       aria-label={label}
-      className="sidebar-nav-item flex h-7 w-full items-center gap-2 px-2 font-mono text-[11px] text-[var(--secondary)] transition-colors hover:bg-[var(--hover)] hover:text-[var(--foreground)] max-lg:min-w-8 max-lg:justify-center max-lg:px-2"
+      className="sidebar-nav-item flex h-7 w-full items-center gap-2 px-2 font-mono text-xs text-[var(--secondary)] transition-colors hover:bg-[var(--hover)] hover:text-[var(--foreground)] max-lg:min-w-8 max-lg:justify-center max-lg:px-2"
       title={label}
       to={to}
     >
@@ -337,14 +337,14 @@ function DisabledNav({
   return (
     <div
       aria-label={`${label} later`}
-      className="sidebar-nav-item flex h-7 w-full items-center gap-2 px-2 font-mono text-[11px] text-[var(--muted-deep)]"
+      className="sidebar-nav-item flex h-7 w-full items-center gap-2 px-2 font-mono text-xs text-[var(--muted-deep)]"
       title={`${label} later`}
     >
       <Icon size={13} strokeWidth={1.5} />
       <span className="sidebar-copy min-w-0 overflow-hidden whitespace-nowrap">
         {label}
       </span>
-      <span className="sidebar-copy ml-auto min-w-0 overflow-hidden whitespace-nowrap text-[9px]">
+      <span className="sidebar-copy ml-auto min-w-0 overflow-hidden whitespace-nowrap text-[10px]">
         later
       </span>
     </div>

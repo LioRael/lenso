@@ -23,18 +23,18 @@ export function WaterfallView({
     <div className="isolate flex h-full min-w-0 flex-col overflow-hidden bg-[var(--background)]">
       <div className="flex items-center justify-between border-b border-[var(--border-subtle)] bg-[color-mix(in_srgb,var(--elevated)_36%,transparent)] px-3 py-2">
         <div className="flex items-center gap-2">
-          <span className="font-sans text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">
+          <span className="font-sans text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">
             Waterfall
           </span>
-          <span className="font-mono text-[10px] text-[var(--muted)]">
+          <span className="font-mono text-[11px] text-[var(--muted)]">
             {trace.spans.length} of {trace.spans.length} spans
           </span>
         </div>
-        <div className="font-mono text-[10px] text-[var(--muted)]">
+        <div className="font-mono text-[11px] text-[var(--muted)]">
           total {formatTraceDuration(timelineEnd)}
         </div>
       </div>
-      <div className="grid min-w-0 grid-cols-[minmax(220px,300px)_minmax(0,1fr)] gap-4 border-b border-[var(--border-subtle)] bg-[color-mix(in_srgb,var(--elevated)_52%,transparent)] px-3 py-2 font-sans text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--muted)]">
+      <div className="grid min-w-0 grid-cols-[minmax(260px,340px)_minmax(0,1fr)] gap-4 border-b border-[var(--border-subtle)] bg-[color-mix(in_srgb,var(--elevated)_52%,transparent)] px-3 py-2 font-sans text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">
         <span>Span</span>
         <div className="grid min-w-0 grid-cols-5 overflow-hidden">
           {[0, 25, 50, 75, 100].map((tick) => (
@@ -54,7 +54,7 @@ export function WaterfallView({
             <button
               aria-label={`Select span ${span.name}`}
               className={cn(
-                "grid w-full min-w-0 grid-cols-[minmax(220px,300px)_minmax(0,1fr)] items-center gap-4 px-3 py-1 text-left transition hover:bg-[color-mix(in_srgb,var(--hover)_64%,transparent)]",
+                "grid w-full min-w-0 grid-cols-[minmax(260px,340px)_minmax(0,1fr)] items-center gap-4 px-3 py-1.5 text-left transition hover:bg-[color-mix(in_srgb,var(--hover)_64%,transparent)]",
                 selectedSpanId === span.id &&
                   "bg-[var(--accent-soft)] shadow-[inset_2px_0_0_var(--accent)]"
               )}
@@ -71,7 +71,7 @@ export function WaterfallView({
                   style={{ backgroundColor: statusColor(span.status) }}
                 />
                 <span
-                  className="rounded-[2px] border px-1.5 py-0.5 font-mono text-[10px] leading-none"
+                  className="max-w-[104px] shrink-0 truncate whitespace-nowrap rounded-[2px] border px-1.5 py-0.5 font-mono text-[11px] leading-[14px]"
                   style={{
                     backgroundColor: `${serviceColor(span.service)}12`,
                     borderColor: `${serviceColor(span.service)}24`,
@@ -80,10 +80,10 @@ export function WaterfallView({
                 >
                   {span.service}
                 </span>
-                <span className="truncate font-mono text-[12px] text-[var(--foreground)]">
+                <span className="truncate font-mono text-[13px] text-[var(--foreground)]">
                   {span.name}
                 </span>
-                <span className="ml-auto font-mono text-[11px] text-[var(--muted)]">
+                <span className="ml-auto font-mono text-xs text-[var(--muted)]">
                   {formatTraceDuration(span.durationMs)}
                 </span>
               </span>
