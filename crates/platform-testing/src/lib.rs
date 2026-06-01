@@ -67,7 +67,10 @@ impl TestDatabase {
         };
 
         let create_sql = format!(r#"create database "{name}""#);
-        if let Err(error) = sqlx::query(&create_sql).execute(&admin_pool).await {
+        if let Err(error) = sqlx::query(sqlx::AssertSqlSafe(create_sql))
+            .execute(&admin_pool)
+            .await
+        {
             eprintln!(
                 "skipping Postgres integration test: could not create test database: {error}"
             );
@@ -84,7 +87,9 @@ impl TestDatabase {
         {
             Ok(pool) => pool,
             Err(error) => {
-                eprintln!("skipping Postgres integration test: could not connect to test database: {error}");
+                eprintln!(
+                    "skipping Postgres integration test: could not connect to test database: {error}"
+                );
                 return None;
             }
         };
@@ -115,7 +120,9 @@ impl TestDatabase {
                 .await;
 
             let drop_sql = format!(r#"drop database if exists "{}""#, self.name);
-            let _ = sqlx::query(&drop_sql).execute(&admin_pool).await;
+            let _ = sqlx::query(sqlx::AssertSqlSafe(drop_sql))
+                .execute(&admin_pool)
+                .await;
             admin_pool.close().await;
         }
     }

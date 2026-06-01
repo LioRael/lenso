@@ -9,9 +9,11 @@ async fn notifications_registers_user_registered_handler() {
         descriptor.event_handlers[0].event_name(),
         "identity.user_registered.v1"
     );
-    assert!(descriptor
-        .runtime
-        .functions
-        .iter()
-        .any(|function| function.name == "notifications.send_welcome_email.v1"));
+    assert!(
+        descriptor
+            .runtime
+            .functions
+            .iter()
+            .any(|function| function.name == "notifications.send_welcome_email.v1")
+    );
 }

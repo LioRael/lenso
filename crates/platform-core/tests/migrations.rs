@@ -1,4 +1,4 @@
-use platform_core::{apply_migrations, Migration};
+use platform_core::{Migration, apply_migrations};
 use platform_testing::TestDatabase;
 
 #[tokio::test]

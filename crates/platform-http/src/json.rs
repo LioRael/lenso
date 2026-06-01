@@ -1,13 +1,12 @@
 use crate::{ApiErrorResponse, HttpRequestContext};
 use axum::extract::{FromRequest, Json, Request};
-use platform_core::error::ErrorDetail;
 use platform_core::AppError;
+use platform_core::error::ErrorDetail;
 use serde::de::DeserializeOwned;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct JsonBody<T>(pub T);
 
-#[async_trait::async_trait]
 impl<S, T> FromRequest<S> for JsonBody<T>
 where
     S: Send + Sync,

@@ -30,7 +30,6 @@ pub enum AdminActor {
     System,
 }
 
-#[async_trait::async_trait]
 impl<S> FromRequestParts<S> for OptionalActor
 where
     S: Send + Sync,
@@ -43,7 +42,6 @@ where
     }
 }
 
-#[async_trait::async_trait]
 impl<S> FromRequestParts<S> for AuthenticatedActor
 where
     S: Send + Sync,
@@ -62,7 +60,6 @@ where
     }
 }
 
-#[async_trait::async_trait]
 impl<S> FromRequestParts<S> for UserActor
 where
     S: Send + Sync,
@@ -87,7 +84,6 @@ where
     }
 }
 
-#[async_trait::async_trait]
 impl<S> FromRequestParts<S> for ServiceActor
 where
     S: Send + Sync,
@@ -112,7 +108,6 @@ where
     }
 }
 
-#[async_trait::async_trait]
 impl<S> FromRequestParts<S> for AdminActor
 where
     S: Send + Sync,

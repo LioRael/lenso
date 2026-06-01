@@ -2,8 +2,8 @@ use identity::commands::create_user::IdentityCommands;
 use identity::public::{CreateUserCommand, IdentityService};
 use identity::repositories::PostgresUserRepository;
 use platform_core::{
-    apply_migrations, CorrelationId, ErrorCode, LoggingEventPublisher, RequestContext, RequestId,
-    PLATFORM_MIGRATIONS,
+    CorrelationId, ErrorCode, LoggingEventPublisher, PLATFORM_MIGRATIONS, RequestContext,
+    RequestId, apply_migrations,
 };
 use platform_runtime::RUNTIME_MIGRATIONS;
 use platform_testing::{FixedClock, SequentialIdGenerator, TestDatabase};

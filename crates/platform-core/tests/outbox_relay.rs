@@ -1,6 +1,6 @@
 use platform_core::{
-    apply_migrations, AppError, AppResult, ClaimedOutboxEvent, ErrorCode, EventDispatcher,
-    OutboxRelay, PLATFORM_MIGRATIONS,
+    AppError, AppResult, ClaimedOutboxEvent, ErrorCode, EventDispatcher, OutboxRelay,
+    PLATFORM_MIGRATIONS, apply_migrations,
 };
 use platform_testing::TestDatabase;
 use serde_json::json;

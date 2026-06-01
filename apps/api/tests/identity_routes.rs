@@ -1,9 +1,9 @@
 use app_api::build_router;
-use axum::body::{to_bytes, Body};
+use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
 use platform_core::{
-    apply_migrations, AppConfig, AppContext, DatabaseConfig, LoggingEventPublisher,
-    PLATFORM_MIGRATIONS,
+    AppConfig, AppContext, DatabaseConfig, LoggingEventPublisher, PLATFORM_MIGRATIONS,
+    apply_migrations,
 };
 use platform_runtime::RUNTIME_MIGRATIONS;
 use platform_testing::TestDatabase;

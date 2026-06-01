@@ -1,6 +1,6 @@
 use crate::config::TelemetryConfig;
 use crate::error::AppResult;
-use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 pub fn init(config: &TelemetryConfig) -> AppResult<()> {
     let env_filter = EnvFilter::try_new(&config.log_level)

@@ -1,6 +1,6 @@
-use axum::http::{header, HeaderValue, Method};
-use axum::middleware;
 use axum::Router;
+use axum::http::{HeaderValue, Method, header};
+use axum::middleware;
 use platform_core::AppContext;
 use platform_http::request_context_middleware;
 use platform_http::routes::base_router;

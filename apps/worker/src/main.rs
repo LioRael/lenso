@@ -1,6 +1,6 @@
 use platform_core::{
-    connect_pool, telemetry, AppConfig, AppContext, EventHandlerRegistry, LoggingEventPublisher,
-    OutboxRelay, Shutdown,
+    AppConfig, AppContext, EventHandlerRegistry, LoggingEventPublisher, OutboxRelay, Shutdown,
+    connect_pool, telemetry,
 };
 use platform_runtime::{FunctionRegistry, RuntimeWorker};
 use std::sync::Arc;

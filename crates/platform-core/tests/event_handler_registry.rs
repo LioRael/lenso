@@ -3,8 +3,8 @@ use platform_core::{
     EventHandlerRegistry,
 };
 use serde_json::json;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[tokio::test]
 async fn registered_handler_runs_for_matching_event() {

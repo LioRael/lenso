@@ -1,7 +1,7 @@
 use chrono::Utc;
 use identity::models::user::{User, UserId};
 use identity::repositories::{PostgresUserRepository, UserRepository};
-use platform_core::{apply_migrations, ErrorCode, PLATFORM_MIGRATIONS};
+use platform_core::{ErrorCode, PLATFORM_MIGRATIONS, apply_migrations};
 use platform_runtime::RUNTIME_MIGRATIONS;
 use platform_testing::TestDatabase;
 

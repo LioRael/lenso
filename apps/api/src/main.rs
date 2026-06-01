@@ -1,6 +1,6 @@
 use anyhow::Context as _;
 use app_api::build_router;
-use platform_core::{connect_pool, telemetry, AppConfig, AppContext, LoggingEventPublisher};
+use platform_core::{AppConfig, AppContext, LoggingEventPublisher, connect_pool, telemetry};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tracing::info;

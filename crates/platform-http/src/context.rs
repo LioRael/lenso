@@ -73,7 +73,6 @@ pub async fn request_context_middleware(mut request: Request<Body>, next: Next) 
     response
 }
 
-#[async_trait::async_trait]
 impl<S> FromRequestParts<S> for HttpRequestContext
 where
     S: Send + Sync,

@@ -1,4 +1,4 @@
-use platform_core::{apply_migrations, connect_pool, telemetry, AppConfig, PLATFORM_MIGRATIONS};
+use platform_core::{AppConfig, PLATFORM_MIGRATIONS, apply_migrations, connect_pool, telemetry};
 use platform_runtime::RUNTIME_MIGRATIONS;
 use tracing::info;
 

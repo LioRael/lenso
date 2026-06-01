@@ -16,29 +16,29 @@ members = [
 ]
 
 [workspace.package]
-edition = "2021"
+edition = "2024"
 license = "UNLICENSED"
 publish = false
-rust-version = "1.78"
+rust-version = "1.94"
 
 [workspace.dependencies]
 anyhow = "1.0"
 async-trait = "0.1"
-axum = "0.7"
+axum = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
-http = "1.1"
+http = "1.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json"] }
-thiserror = "1.0"
-tokio = { version = "1.40", features = ["macros", "rt-multi-thread", "signal", "time"] }
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls-ring-webpki", "postgres", "uuid", "chrono", "json"] }
+thiserror = "2.0"
+tokio = { version = "1.52", features = ["macros", "rt-multi-thread", "signal", "time"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["trace", "request-id", "util", "cors"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
-utoipa = { version = "5.2", features = ["axum_extras", "chrono", "uuid"] }
-uuid = { version = "1.10", features = ["serde", "v7"] }
+utoipa = { version = "5.5", features = ["axum_extras", "chrono", "uuid"] }
+uuid = { version = "1.23", features = ["serde", "v7"] }
 
 platform-core = { path = "crates/platform-core" }
 platform-http = { path = "crates/platform-http" }

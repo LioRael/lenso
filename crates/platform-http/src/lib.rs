@@ -8,7 +8,7 @@ pub mod responses;
 pub mod routes;
 
 pub use auth::{AdminActor, AuthenticatedActor, OptionalActor, ServiceActor, UserActor};
-pub use context::{request_context_middleware, HttpRequestContext};
+pub use context::{HttpRequestContext, request_context_middleware};
 pub use errors::ApiErrorBody as ErrorResponse;
 pub use errors::{ApiErrorBody, ApiErrorResponse, ErrorBody, IntoApiError, ValidationErrorDetail};
 pub use json::JsonBody;

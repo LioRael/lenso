@@ -1,10 +1,10 @@
+use axum::Router;
 use axum::body::Body;
 use axum::extract::Request;
 use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
-use axum::Router;
 use platform_http::{HttpRequestContext, JsonBody};
 use serde::Deserialize;
 use serde_json::Value;
@@ -29,10 +29,12 @@ async fn missing_headers_generate_request_context_ids() {
     assert!(request_id.is_some());
     assert!(correlation_id.is_some());
     assert!(body["request_id"].as_str().unwrap().starts_with("req_"));
-    assert!(body["correlation_id"]
-        .as_str()
-        .unwrap()
-        .starts_with("corr_"));
+    assert!(
+        body["correlation_id"]
+            .as_str()
+            .unwrap()
+            .starts_with("corr_")
+    );
 }
 
 #[tokio::test]

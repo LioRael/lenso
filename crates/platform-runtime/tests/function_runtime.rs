@@ -1,15 +1,15 @@
 use platform_core::{
-    apply_migrations, ActorContext, AppError, AppResult, CorrelationId, ErrorCode,
-    ExecutionContext, PLATFORM_MIGRATIONS,
+    ActorContext, AppError, AppResult, CorrelationId, ErrorCode, ExecutionContext,
+    PLATFORM_MIGRATIONS, apply_migrations,
 };
 use platform_runtime::{
-    EnqueueFunctionRequest, FunctionDefinition, FunctionRegistry, RetryPolicy, RuntimeClient,
-    RuntimeFunction, RuntimeWorker, RUNTIME_MIGRATIONS,
+    EnqueueFunctionRequest, FunctionDefinition, FunctionRegistry, RUNTIME_MIGRATIONS, RetryPolicy,
+    RuntimeClient, RuntimeFunction, RuntimeWorker,
 };
 use platform_testing::TestDatabase;
-use serde_json::{json, Value};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use serde_json::{Value, json};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 #[test]

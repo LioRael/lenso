@@ -45,7 +45,7 @@ More detail lives in [docs/architecture/overview.md](docs/architecture/overview.
 
 Prerequisites:
 
-- Rust toolchain compatible with the workspace (`rust-version = 1.78`).
+- Rust toolchain compatible with the workspace (`rust-version = 1.94`).
 - `just`.
 - Docker if you want local Postgres via `just db-up`.
 - Node 24 and `pnpm` for the SDK and Runtime Console checks.

@@ -1,6 +1,6 @@
 use crate::health::{livez, readyz};
-use axum::routing::get;
 use axum::Router;
+use axum::routing::get;
 use platform_core::AppContext;
 
 pub type ApiRouter = Router<AppContext>;

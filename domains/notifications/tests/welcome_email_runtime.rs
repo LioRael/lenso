@@ -1,10 +1,10 @@
 use platform_core::{
-    apply_migrations, AppResult, ClaimedOutboxEvent, EventHandler, EventHandlerRegistry,
-    OutboxRelay, PLATFORM_MIGRATIONS,
+    AppResult, ClaimedOutboxEvent, EventHandler, EventHandlerRegistry, OutboxRelay,
+    PLATFORM_MIGRATIONS, apply_migrations,
 };
 use platform_runtime::RUNTIME_MIGRATIONS;
 use platform_testing::TestDatabase;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[tokio::test]
 async fn user_registered_event_enqueues_welcome_email_function() {

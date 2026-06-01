@@ -3,7 +3,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use chrono::{DateTime, Utc};
 use platform_core::{AppContext, AppError, ErrorCode};
-use platform_http::responses::{json, DataResponse};
+use platform_http::responses::{DataResponse, json};
 use platform_http::{AdminActor, ApiErrorResponse, HttpRequestContext};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -16,14 +16,17 @@ const MAX_LIMIT: i64 = 100;
 pub fn router() -> Router<AppContext> {
     Router::new()
         .route("/admin/runtime/summary", get(get_summary))
-        .route("/admin/runtime/timeline/:correlation_id", get(get_timeline))
-        .route("/admin/runtime/outbox", get(list_outbox))
-        .route("/admin/runtime/outbox/:id", get(get_outbox_event))
-        .route("/admin/runtime/outbox/:id/retry", post(retry_outbox_event))
-        .route("/admin/runtime/functions", get(list_function_runs))
-        .route("/admin/runtime/functions/:id", get(get_function_run))
         .route(
-            "/admin/runtime/functions/:id/retry",
+            "/admin/runtime/timeline/{correlation_id}",
+            get(get_timeline),
+        )
+        .route("/admin/runtime/outbox", get(list_outbox))
+        .route("/admin/runtime/outbox/{id}", get(get_outbox_event))
+        .route("/admin/runtime/outbox/{id}/retry", post(retry_outbox_event))
+        .route("/admin/runtime/functions", get(list_function_runs))
+        .route("/admin/runtime/functions/{id}", get(get_function_run))
+        .route(
+            "/admin/runtime/functions/{id}/retry",
             post(retry_function_run),
         )
 }

@@ -1,7 +1,7 @@
 use crate::runtime::SEND_WELCOME_EMAIL;
 use platform_core::{ActorContext, AppResult, ClaimedOutboxEvent, CorrelationId, EventHandler};
 use platform_runtime::{EnqueueFunctionRequest, RuntimeClient};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 
 pub const USER_REGISTERED: &str = "identity.user_registered.v1";

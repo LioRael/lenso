@@ -20,13 +20,13 @@ pub use config::{
 pub use context::{
     ActorContext, AppContext, CorrelationId, RequestContext, RequestId, TenantId, TraceContext,
 };
-pub use db::{connect_pool, DbPool};
+pub use db::{DbPool, connect_pool};
 pub use error::{AppError, AppResult, ErrorCode};
 pub use events::{EventEnvelope, EventPayload, EventPublisher, LoggingEventPublisher};
 pub use execution::{ExecutionContext, ExecutionId};
 pub use health::{HealthRegistry, HealthStatus};
 pub use ids::{IdGenerator, UuidGenerator};
-pub use migrations::{apply_migrations, Migration, PLATFORM_MIGRATIONS};
+pub use migrations::{Migration, PLATFORM_MIGRATIONS, apply_migrations};
 pub use outbox::{
     ClaimedOutboxEvent, EventDispatcher, EventHandler, EventHandlerRegistry,
     LoggingEventDispatcher, OutboxEvent, OutboxPublisher, OutboxRelay, OutboxStatus,
