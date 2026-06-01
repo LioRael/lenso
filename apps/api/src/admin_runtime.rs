@@ -66,7 +66,12 @@ pub struct StoryQuery {
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct HeatmapQuery {
+    pub from: Option<DateTime<Utc>>,
+    pub to: Option<DateTime<Utc>>,
     pub bucket_seconds: Option<i64>,
+    pub status: Option<String>,
+    pub event_name: Option<String>,
+    pub function_name: Option<String>,
     pub limit: Option<i64>,
     pub created_before: Option<DateTime<Utc>>,
 }
@@ -181,6 +186,7 @@ pub struct AdminRuntimeSummaryItem {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(as = AdminRuntimeOutboxItem)]
 pub struct AdminOutboxEvent {
     pub id: String,
     pub event_name: String,
@@ -221,6 +227,7 @@ pub struct AdminOutboxEventDetail {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(as = AdminRuntimeFunctionRunItem)]
 pub struct AdminFunctionRun {
     pub id: String,
     pub function_name: String,
@@ -268,6 +275,7 @@ pub struct AdminRuntimeTimelineItem {
     pub completed_at: Option<DateTime<Utc>>,
     pub last_error: Option<String>,
     pub correlation_id: String,
+    pub related_node_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -325,6 +333,7 @@ pub struct AdminRuntimeHeatmapCell {
     pub node_type: String,
     pub total_count: i64,
     pub error_count: i64,
+    pub retry_count: i64,
     pub dead_count: i64,
     pub avg_duration_ms: Option<i64>,
     pub max_duration_ms: Option<i64>,
@@ -404,6 +413,7 @@ async fn get_heatmap(
                 source_module as service,
                 'event'::text as node_type,
                 status,
+                attempts,
                 case
                     when locked_at is not null and published_at is not null then
                         greatest(
@@ -414,6 +424,11 @@ async fn get_heatmap(
                 end as duration_ms
             from platform.outbox
             where ($1::timestamptz is null or created_at < $1)
+              and ($4::timestamptz is null or created_at >= $4)
+              and ($5::timestamptz is null or created_at < $5)
+              and ($6::text is null or status = $6)
+              and ($7::text is null or event_name = $7)
+              and ($8::text is null)
 
             union all
 
@@ -422,6 +437,7 @@ async fn get_heatmap(
                 split_part(function_name, '.', 1) as service,
                 'function'::text as node_type,
                 status,
+                attempts,
                 case
                     when coalesce(started_at, locked_at) is not null and completed_at is not null then
                         greatest(
@@ -432,6 +448,11 @@ async fn get_heatmap(
                 end as duration_ms
             from runtime.function_runs
             where ($1::timestamptz is null or created_at < $1)
+              and ($4::timestamptz is null or created_at >= $4)
+              and ($5::timestamptz is null or created_at < $5)
+              and ($6::text is null or status = $6)
+              and ($7::text is null)
+              and ($8::text is null or function_name = $8)
         ),
         heatmap as (
             select
@@ -442,6 +463,7 @@ async fn get_heatmap(
                 node_type,
                 count(*)::bigint as total_count,
                 count(*) filter (where status in ('failed', 'dead'))::bigint as error_count,
+                count(*) filter (where attempts > 1)::bigint as retry_count,
                 count(*) filter (where status = 'dead')::bigint as dead_count,
                 avg(duration_ms)::bigint as avg_duration_ms,
                 max(duration_ms)::bigint as max_duration_ms
@@ -455,6 +477,7 @@ async fn get_heatmap(
             node_type,
             total_count,
             error_count,
+            retry_count,
             dead_count,
             avg_duration_ms,
             max_duration_ms
@@ -466,6 +489,11 @@ async fn get_heatmap(
     .bind(query.created_before)
     .bind(bucket_seconds)
     .bind(limit)
+    .bind(query.from)
+    .bind(query.to)
+    .bind(query.status)
+    .bind(query.event_name)
+    .bind(query.function_name)
     .fetch_all(&ctx.db)
     .await
     .map_err(|source| query_error(source, &request_ctx))?;
@@ -947,6 +975,7 @@ type HeatmapRow = (
     i64,
     i64,
     i64,
+    i64,
     Option<i64>,
     Option<i64>,
 );
@@ -966,6 +995,7 @@ struct StoryWorkRow {
     started_at: Option<DateTime<Utc>>,
     completed_at: Option<DateTime<Utc>>,
     last_error: Option<String>,
+    metadata: Value,
 }
 
 type StoryWorkTuple = (
@@ -982,6 +1012,7 @@ type StoryWorkTuple = (
     Option<DateTime<Utc>>,
     Option<DateTime<Utc>>,
     Option<String>,
+    Value,
 );
 
 impl From<OutboxAdminRow> for AdminOutboxEvent {
@@ -1238,6 +1269,7 @@ impl From<TimelineRow> for AdminRuntimeTimelineItem {
             last_error,
             correlation_id,
         ) = row;
+        let related_node_id = Some(id.clone());
 
         Self {
             item_type,
@@ -1251,6 +1283,7 @@ impl From<TimelineRow> for AdminRuntimeTimelineItem {
             completed_at,
             last_error,
             correlation_id,
+            related_node_id,
         }
     }
 }
@@ -1271,6 +1304,7 @@ impl From<StoryWorkTuple> for StoryWorkRow {
             started_at,
             completed_at,
             last_error,
+            metadata,
         ) = row;
 
         Self {
@@ -1287,6 +1321,7 @@ impl From<StoryWorkTuple> for StoryWorkRow {
             started_at,
             completed_at,
             last_error,
+            metadata,
         }
     }
 }
@@ -1300,6 +1335,7 @@ impl From<HeatmapRow> for AdminRuntimeHeatmapCell {
             node_type,
             total_count,
             error_count,
+            retry_count,
             dead_count,
             avg_duration_ms,
             max_duration_ms,
@@ -1312,6 +1348,7 @@ impl From<HeatmapRow> for AdminRuntimeHeatmapCell {
             node_type,
             total_count,
             error_count,
+            retry_count,
             dead_count,
             avg_duration_ms,
             max_duration_ms,
@@ -1322,12 +1359,7 @@ impl From<HeatmapRow> for AdminRuntimeHeatmapCell {
 impl From<&StoryWorkRow> for AdminRuntimeTimelineItem {
     fn from(row: &StoryWorkRow) -> Self {
         Self {
-            item_type: match row.item_type.as_str() {
-                "event" => "outbox_event",
-                "function" => "function_run",
-                other => other,
-            }
-            .to_owned(),
+            item_type: timeline_item_type(&row.item_type, &row.status, row.attempts).to_owned(),
             id: row.id.clone(),
             name: row.name.clone(),
             status: row.status.clone(),
@@ -1338,7 +1370,25 @@ impl From<&StoryWorkRow> for AdminRuntimeTimelineItem {
             completed_at: row.completed_at,
             last_error: row.last_error.clone(),
             correlation_id: row.correlation_id.clone(),
+            related_node_id: Some(row.id.clone()),
         }
+    }
+}
+
+fn timeline_item_type(item_type: &str, status: &str, attempts: i32) -> &'static str {
+    if status == "dead" {
+        return "dead_letter";
+    }
+    if status == "failed" {
+        return "failure";
+    }
+    if attempts > 1 {
+        return "retry";
+    }
+    match item_type {
+        "event" | "outbox_event" => "outbox_event",
+        "function" | "function_run" => "function_run",
+        _ => "runtime",
     }
 }
 
@@ -1568,21 +1618,24 @@ async fn fetch_story_rows(
     let rows = sqlx::query_as::<_, StoryWorkTuple>(
         r#"
         with story_keys as (
-            select correlation_id, max(created_at) as updated_at
+            select correlation_id, max(updated_at) as updated_at
             from (
-                select correlation_id, created_at
+                select
+                    correlation_id,
+                    coalesce(published_at, locked_at, created_at) as updated_at
                 from platform.outbox
                 where ($1::text is null or correlation_id = $1)
-                  and ($2::timestamptz is null or created_at < $2)
 
                 union all
 
-                select correlation_id, created_at
+                select
+                    correlation_id,
+                    coalesce(completed_at, started_at, locked_at, created_at) as updated_at
                 from runtime.function_runs
                 where ($1::text is null or correlation_id = $1)
-                  and ($2::timestamptz is null or created_at < $2)
             ) story_items
             group by correlation_id
+            having ($2::timestamptz is null or max(updated_at) < $2)
             order by updated_at desc, correlation_id asc
             limit $3
         )
@@ -1601,7 +1654,8 @@ async fn fetch_story_rows(
                 created_at,
                 locked_at as started_at,
                 published_at as completed_at,
-                last_error
+                last_error,
+                headers as metadata
             from platform.outbox
             where correlation_id in (select correlation_id from story_keys)
 
@@ -1620,7 +1674,8 @@ async fn fetch_story_rows(
                 created_at,
                 coalesce(started_at, locked_at) as started_at,
                 completed_at,
-                last_error
+                last_error,
+                input_json as metadata
             from runtime.function_runs
             where correlation_id in (select correlation_id from story_keys)
         ) story_rows
@@ -1665,8 +1720,12 @@ fn build_story_summaries(rows: Vec<StoryWorkRow>) -> Vec<AdminRuntimeStoryListIt
 
 fn build_story_detail(rows: Vec<StoryWorkRow>) -> AdminRuntimeStoryDetail {
     let summary = build_story_summary(&rows);
-    let nodes: Vec<AdminRuntimeStoryNode> = rows.iter().map(build_story_node).collect();
     let edges = build_story_edges(&rows);
+    let connected_ids = connected_node_ids(&edges);
+    let nodes: Vec<AdminRuntimeStoryNode> = rows
+        .iter()
+        .map(|row| build_story_node(row, &connected_ids))
+        .collect();
     let timeline_items = rows.iter().map(Into::into).collect();
 
     AdminRuntimeStoryDetail {
@@ -1724,7 +1783,15 @@ fn build_story_summary(rows: &[StoryWorkRow]) -> AdminRuntimeStoryListItem {
     }
 }
 
-fn build_story_node(row: &StoryWorkRow) -> AdminRuntimeStoryNode {
+fn build_story_node(
+    row: &StoryWorkRow,
+    connected_ids: &std::collections::BTreeSet<String>,
+) -> AdminRuntimeStoryNode {
+    let component = if connected_ids.contains(&row.id) {
+        "connected"
+    } else {
+        "orphan"
+    };
     AdminRuntimeStoryNode {
         id: row.id.clone(),
         node_type: row.item_type.clone(),
@@ -1739,6 +1806,8 @@ fn build_story_node(row: &StoryWorkRow) -> AdminRuntimeStoryNode {
             "max_attempts": row.max_attempts,
             "correlation_id": row.correlation_id,
             "causation_id": row.causation_id,
+            "component": component,
+            "source_metadata": row.metadata,
         }),
     }
 }
@@ -1749,27 +1818,61 @@ fn build_story_edges(rows: &[StoryWorkRow]) -> Vec<AdminRuntimeStoryEdge> {
         .map(|row| row.id.as_str())
         .collect::<std::collections::BTreeSet<_>>();
 
-    rows.windows(2)
-        .filter_map(|window| {
-            let [previous, current] = window else {
-                return None;
-            };
-            let causal_source = current
-                .causation_id
-                .as_deref()
-                .filter(|causation_id| ids.contains(causation_id));
-            let (source, edge_type) = causal_source
-                .map(|source| (source.to_owned(), "causation"))
-                .unwrap_or_else(|| (previous.id.clone(), "sequence"));
+    rows.iter()
+        .filter_map(|current| {
+            let source = explicit_causal_source(current, &ids)?;
 
             Some(AdminRuntimeStoryEdge {
-                id: format!("{source}:{}:{edge_type}", current.id),
-                source,
+                id: format!("{source}:{}:causation", current.id),
+                source: source.to_owned(),
                 target: current.id.clone(),
-                edge_type: edge_type.to_owned(),
+                edge_type: "causation".to_owned(),
                 label: None,
             })
         })
+        .collect()
+}
+
+fn explicit_causal_source(
+    row: &StoryWorkRow,
+    ids: &std::collections::BTreeSet<&str>,
+) -> Option<String> {
+    if let Some(source) = row.causation_id.as_deref().filter(|id| ids.contains(id)) {
+        return Some(source.to_owned());
+    }
+
+    for key in [
+        "outbox_event_id",
+        "event_id",
+        "causation_id",
+        "parent_id",
+        "source_id",
+        "function_run_id",
+    ] {
+        if let Some(source) = json_string(&row.metadata, key).filter(|id| ids.contains(*id)) {
+            return Some(source.to_owned());
+        }
+    }
+
+    if let Some(headers) = row.metadata.get("headers") {
+        for key in ["outbox_event_id", "event_id", "causation_id", "parent_id"] {
+            if let Some(source) = json_string(headers, key).filter(|id| ids.contains(*id)) {
+                return Some(source.to_owned());
+            }
+        }
+    }
+
+    None
+}
+
+fn json_string<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
+    value.get(key).and_then(Value::as_str)
+}
+
+fn connected_node_ids(edges: &[AdminRuntimeStoryEdge]) -> std::collections::BTreeSet<String> {
+    edges
+        .iter()
+        .flat_map(|edge| [edge.source.clone(), edge.target.clone()])
         .collect()
 }
 
@@ -1865,6 +1968,144 @@ fn ensure_retryable_status(
         ),
         request_ctx,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn story_edges_do_not_guess_sequence_edges_for_unlinked_work() {
+        let rows = vec![
+            story_row("event", "evt_1", None, "2026-05-31T00:00:00Z"),
+            story_row("function", "fnrun_1", None, "2026-05-31T00:00:10Z"),
+        ];
+
+        assert!(build_story_edges(&rows).is_empty());
+    }
+
+    #[test]
+    fn story_edges_preserve_explicit_causality() {
+        let mut rows = vec![
+            story_row("event", "evt_parent", None, "2026-05-31T00:00:00Z"),
+            story_row(
+                "function",
+                "fnrun_child",
+                Some("evt_parent"),
+                "2026-05-31T00:00:10Z",
+            ),
+        ];
+        rows[1].causation_id = None;
+        rows[1].metadata = serde_json::json!({ "outbox_event_id": "evt_parent" });
+
+        let edges = build_story_edges(&rows);
+
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0].source, "evt_parent");
+        assert_eq!(edges[0].target, "fnrun_child");
+        assert_eq!(edges[0].edge_type, "causation");
+    }
+
+    #[test]
+    fn story_detail_marks_orphan_and_connected_components() {
+        let rows = vec![
+            story_row("event", "evt_parent", None, "2026-05-31T00:00:00Z"),
+            story_row(
+                "function",
+                "fnrun_child",
+                Some("evt_parent"),
+                "2026-05-31T00:00:10Z",
+            ),
+            story_row("event", "evt_orphan", None, "2026-05-31T00:00:20Z"),
+        ];
+
+        let detail = build_story_detail(rows);
+
+        let components = detail
+            .nodes
+            .iter()
+            .map(|node| {
+                (
+                    node.id.as_str(),
+                    node.metadata["component"].as_str().unwrap_or_default(),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            components,
+            vec![
+                ("evt_parent", "connected"),
+                ("fnrun_child", "connected"),
+                ("evt_orphan", "orphan"),
+            ]
+        );
+    }
+
+    #[test]
+    fn timeline_item_type_preserves_failure_retry_and_dead_letter_kinds() {
+        assert_eq!(timeline_item_type("event", "published", 1), "outbox_event");
+        assert_eq!(
+            timeline_item_type("outbox_event", "published", 1),
+            "outbox_event"
+        );
+        assert_eq!(
+            timeline_item_type("function", "completed", 1),
+            "function_run"
+        );
+        assert_eq!(
+            timeline_item_type("function_run", "completed", 1),
+            "function_run"
+        );
+        assert_eq!(timeline_item_type("function", "completed", 2), "retry");
+        assert_eq!(timeline_item_type("function", "failed", 2), "failure");
+        assert_eq!(timeline_item_type("event", "dead", 3), "dead_letter");
+    }
+
+    #[test]
+    fn story_summary_cursor_uses_stable_updated_at_boundaries() {
+        let mut rows = vec![
+            story_row("event", "evt_a", None, "2026-05-31T00:00:00Z"),
+            story_row("event", "evt_b", None, "2026-05-31T00:01:00Z"),
+        ];
+        rows[1].completed_at = Some(parse_time("2026-05-31T00:03:00Z"));
+
+        let summaries = build_story_summaries(rows);
+
+        assert_eq!(summaries[0].correlation_id, "corr_test");
+        assert_eq!(summaries[0].updated_at, parse_time("2026-05-31T00:03:00Z"));
+    }
+
+    fn story_row(
+        item_type: &str,
+        id: &str,
+        causation_id: Option<&str>,
+        created_at: &str,
+    ) -> StoryWorkRow {
+        StoryWorkRow {
+            item_type: item_type.to_owned(),
+            id: id.to_owned(),
+            name: id.to_owned(),
+            status: if item_type == "event" {
+                "published".to_owned()
+            } else {
+                "completed".to_owned()
+            },
+            attempts: 1,
+            max_attempts: 3,
+            correlation_id: "corr_test".to_owned(),
+            causation_id: causation_id.map(ToOwned::to_owned),
+            service: "runtime".to_owned(),
+            created_at: parse_time(created_at),
+            started_at: Some(parse_time(created_at)),
+            completed_at: Some(parse_time(created_at)),
+            last_error: None,
+            metadata: Value::Object(Default::default()),
+        }
+    }
+
+    fn parse_time(value: &str) -> DateTime<Utc> {
+        value.parse().expect("test timestamp should parse")
+    }
 }
 
 fn query_error(

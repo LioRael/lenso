@@ -1,17 +1,17 @@
 import { GeneratedLensoClient, type LensoClientOptions } from './generated/client.js';
 
 export type {
-  AdminFunctionRun,
   AdminFunctionRunDetail,
   AdminFunctionRunListResponse,
   AdminFunctionRunResponse,
-  AdminOutboxEvent,
   AdminOutboxEventDetail,
   AdminOutboxEventDetailResponse,
   AdminOutboxListResponse,
+  AdminRuntimeFunctionRunItem,
   AdminRuntimeFunctionSummary,
   AdminRuntimeHeatmapCell,
   AdminRuntimeHeatmapResponse,
+  AdminRuntimeOutboxItem,
   AdminRuntimeOutboxSummary,
   AdminRuntimeStoryDetail,
   AdminRuntimeStoryDetailResponse,

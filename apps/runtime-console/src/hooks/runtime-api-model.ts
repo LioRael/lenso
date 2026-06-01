@@ -1,4 +1,16 @@
 import type {
+  AdminRuntimeHeatmapCell,
+  AdminRuntimeHeatmapResponse,
+  AdminRuntimeStoryDetail,
+  AdminRuntimeStoryDetailResponse,
+  AdminRuntimeStoryEdge,
+  AdminRuntimeStoryListItem,
+  AdminRuntimeStoryListResponse,
+  AdminRuntimeTimelineItem,
+  AdminRuntimeTimelineResponse,
+  PageInfo as ApiPageInfo,
+} from "../../../../packages/ts-sdk/src/generated/types";
+import type {
   ExecutionEdge,
   ExecutionNode,
   RuntimeStatus,
@@ -30,99 +42,25 @@ export type PageInfo = {
   nextCreatedBefore?: string;
 };
 
-export type ApiRuntimeStoryListResponse = {
-  data?: ApiRuntimeStoryListItem[];
-  page?: ApiPageInfo;
-  order?: string;
-};
+type DeepPartial<T> =
+  T extends Array<infer Item>
+    ? Array<DeepPartial<Item>>
+    : T extends object
+      ? { [Key in keyof T]?: DeepPartial<T[Key]> }
+      : T;
 
-export type ApiRuntimeStoryListItem = {
-  title?: string;
-  correlation_id?: string;
-  status?: string;
-  duration?: number;
-  node_count?: number;
-  error_count?: number;
-  services?: string[];
-  pattern?: string[];
-  root_error?: string | null;
-  created_at?: string;
-  updated_at?: string;
-};
-
-export type ApiRuntimeStoryDetailResponse = {
-  data?: ApiRuntimeStoryDetail;
-};
-
-export type ApiRuntimeStoryDetail = {
-  summary?: ApiRuntimeStoryListItem;
-  nodes?: ApiRuntimeStoryNode[];
-  edges?: ApiRuntimeStoryEdge[];
-  timeline_items?: ApiTimelineItem[];
-};
-
-export type ApiRuntimeStoryNode = {
-  id?: string;
-  type?: string;
-  name?: string;
-  status?: string;
-  service?: string;
-  timestamp?: string;
-  duration_ms?: number;
-  error?: string | null;
-  metadata?: unknown;
-};
-
-export type ApiRuntimeStoryEdge = {
-  id?: string;
-  source?: string;
-  target?: string;
-  type?: string;
-  label?: string | null;
-};
-
-export type ApiTimelineResponse = {
-  data?: ApiTimelineItem[];
-  page?: ApiPageInfo;
-  order?: string;
-};
-
-export type ApiTimelineItem = {
-  type?: string;
-  id?: string;
-  name?: string;
-  status?: string;
-  attempts?: number;
-  max_attempts?: number;
-  created_at?: string;
-  started_at?: string | null;
-  completed_at?: string | null;
-  last_error?: string | null;
-  correlation_id?: string;
-};
-
-export type ApiRuntimeHeatmapResponse = {
-  data?: ApiRuntimeHeatmapCell[];
-  bucket_seconds?: number;
-  page?: ApiPageInfo;
-};
-
-export type ApiRuntimeHeatmapCell = {
-  bucket_start?: string;
-  bucket_end?: string;
-  service?: string;
-  node_type?: string;
-  total_count?: number;
-  error_count?: number;
-  dead_count?: number;
-  avg_duration_ms?: number | null;
-  max_duration_ms?: number | null;
-};
-
-type ApiPageInfo = {
-  limit?: number;
-  next_created_before?: string | null;
-};
+export type ApiRuntimeStoryListResponse =
+  DeepPartial<AdminRuntimeStoryListResponse>;
+export type ApiRuntimeStoryListItem = DeepPartial<AdminRuntimeStoryListItem>;
+export type ApiRuntimeStoryDetailResponse =
+  DeepPartial<AdminRuntimeStoryDetailResponse>;
+export type ApiRuntimeStoryDetail = DeepPartial<AdminRuntimeStoryDetail>;
+export type ApiRuntimeStoryEdge = DeepPartial<AdminRuntimeStoryEdge>;
+export type ApiTimelineResponse = DeepPartial<AdminRuntimeTimelineResponse>;
+export type ApiTimelineItem = DeepPartial<AdminRuntimeTimelineItem>;
+export type ApiRuntimeHeatmapResponse =
+  DeepPartial<AdminRuntimeHeatmapResponse>;
+export type ApiRuntimeHeatmapCell = DeepPartial<AdminRuntimeHeatmapCell>;
 
 const fallbackTimestamp = "1970-01-01T00:00:00.000Z";
 
@@ -130,7 +68,7 @@ export function normalizeRuntimeStoryListResponse(
   response: ApiRuntimeStoryListResponse
 ): { stories: RuntimeStory[]; page?: PageInfo } {
   return {
-    ...(response.page ? { page: normalizePageInfo(response.page) } : {}),
+    ...(response.page ? { page: normalizePageInfoPartial(response.page) } : {}),
     stories: (response.data ?? []).map(normalizeRuntimeStoryListItem),
   };
 }
@@ -290,7 +228,7 @@ export function normalizeRuntimeHeatmap(
         ? Number(response.bucket_seconds)
         : 300,
     cells: (response.data ?? []).map(normalizeRuntimeHeatmapCell),
-    ...(response.page ? { page: normalizePageInfo(response.page) } : {}),
+    ...(response.page ? { page: normalizePageInfoPartial(response.page) } : {}),
   };
 }
 
@@ -374,7 +312,7 @@ function normalizeRuntimeHeatmapCell(
   };
 }
 
-function normalizePageInfo(page: ApiPageInfo): PageInfo {
+function normalizePageInfoPartial(page: DeepPartial<ApiPageInfo>): PageInfo {
   return {
     limit: normalizeInteger(page.limit, 0),
     ...(maybeTimestamp(page.next_created_before)

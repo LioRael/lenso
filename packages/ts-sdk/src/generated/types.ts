@@ -1,21 +1,6 @@
 /* eslint-disable */
 // Generated from contracts/openapi/app-api.v1.yaml. Do not edit by hand.
 
-export type AdminFunctionRun = {
-  attempts: number;
-  available_at: string;
-  completed_at?: string | null;
-  correlation_id: string;
-  created_at: string;
-  function_name: string;
-  id: string;
-  last_error?: string | null;
-  locked_by?: string | null;
-  max_attempts: number;
-  started_at?: string | null;
-  status: string;
-};
-
 export type AdminFunctionRunDetail = {
   actor: unknown;
   attempts: number;
@@ -34,26 +19,12 @@ export type AdminFunctionRunDetail = {
 };
 
 export type AdminFunctionRunListResponse = {
-  data: Array<AdminFunctionRun>;
+  data: Array<AdminRuntimeFunctionRunItem>;
   page: PageInfo;
 };
 
 export type AdminFunctionRunResponse = {
   data: AdminFunctionRunDetail;
-};
-
-export type AdminOutboxEvent = {
-  attempts: number;
-  available_at: string;
-  correlation_id: string;
-  created_at: string;
-  event_name: string;
-  id: string;
-  last_error?: string | null;
-  locked_by?: string | null;
-  max_attempts: number;
-  published_at?: string | null;
-  status: string;
 };
 
 export type AdminOutboxEventDetail = {
@@ -85,8 +56,23 @@ export type AdminOutboxEventDetailResponse = {
 };
 
 export type AdminOutboxListResponse = {
-  data: Array<AdminOutboxEvent>;
+  data: Array<AdminRuntimeOutboxItem>;
   page: PageInfo;
+};
+
+export type AdminRuntimeFunctionRunItem = {
+  attempts: number;
+  available_at: string;
+  completed_at?: string | null;
+  correlation_id: string;
+  created_at: string;
+  function_name: string;
+  id: string;
+  last_error?: string | null;
+  locked_by?: string | null;
+  max_attempts: number;
+  started_at?: string | null;
+  status: string;
 };
 
 export type AdminRuntimeFunctionSummary = {
@@ -107,6 +93,7 @@ export type AdminRuntimeHeatmapCell = {
   error_count: number;
   max_duration_ms?: number | null;
   node_type: string;
+  retry_count: number;
   service: string;
   total_count: number;
 };
@@ -116,6 +103,20 @@ export type AdminRuntimeHeatmapResponse = {
   data: Array<AdminRuntimeHeatmapCell>;
   order: string;
   page: PageInfo;
+};
+
+export type AdminRuntimeOutboxItem = {
+  attempts: number;
+  available_at: string;
+  correlation_id: string;
+  created_at: string;
+  event_name: string;
+  id: string;
+  last_error?: string | null;
+  locked_by?: string | null;
+  max_attempts: number;
+  published_at?: string | null;
+  status: string;
 };
 
 export type AdminRuntimeOutboxSummary = {
@@ -208,6 +209,7 @@ export type AdminRuntimeTimelineItem = {
   last_error?: string | null;
   max_attempts: number;
   name: string;
+  related_node_id?: string | null;
   started_at?: string | null;
   status: string;
   type: string;

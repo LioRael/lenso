@@ -1,5 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import type {
+  AdminFunctionRunListResponse,
+  AdminRuntimeFunctionRunItem,
+  AdminRuntimeOutboxItem,
+  AdminRuntimeSummaryItem as ApiRuntimeSummaryItem,
+  AdminRuntimeSummaryResponse as ApiRuntimeSummaryResponse,
+  AdminOutboxListResponse,
+} from "../../../../packages/ts-sdk/src/generated/types";
 import {
   correlationId,
   type Actor,
@@ -266,91 +274,13 @@ function ageFromQueue(queueName: string) {
   return undefined;
 }
 
-type ApiRuntimeSummaryResponse = {
-  status: RuntimeSummaryStatus;
-  outbox: {
-    pending: number;
-    processing: number;
-    published: number;
-    failed: number;
-    dead: number;
-    oldest_pending_age_seconds?: number | null;
-    oldest_failed_age_seconds?: number | null;
-  };
-  functions: {
-    pending: number;
-    running: number;
-    completed: number;
-    failed: number;
-    dead: number;
-    oldest_pending_age_seconds?: number | null;
-    oldest_failed_age_seconds?: number | null;
-  };
-  recent_activity: ApiRuntimeSummaryItem[];
-  recent_failures: ApiRuntimeSummaryItem[];
-};
-
-type ApiRuntimeSummaryItem = {
-  type: "outbox_event" | "function_run";
-  id: string;
-  name: string;
-  status: RuntimeStatus;
-  attempts: number;
-  max_attempts: number;
-  correlation_id?: string | null;
-  created_at: string;
-  last_error?: string | null;
-};
-
-type ApiOutboxListResponse = {
-  data: ApiOutboxEvent[];
-};
-
-type ApiOutboxEvent = {
-  id: string;
-  event_name: string;
-  status: RuntimeStatus;
-  attempts: number;
-  max_attempts: number;
-  aggregate_id?: string;
-  aggregate_type?: string;
-  correlation_id: string;
-  causation_id?: string | null;
-  created_at: string;
-  locked_by?: string | null;
-  published_at?: string | null;
-  last_error?: string | null;
-  payload?: Record<string, unknown>;
-  actor?: unknown;
-};
-
-type ApiFunctionRunListResponse = {
-  data: ApiFunctionRun[];
-};
-
-type ApiFunctionRun = {
-  id: string;
-  function_name: string;
-  status: RuntimeStatus;
-  attempts: number;
-  max_attempts: number;
-  correlation_id: string;
-  created_at: string;
-  locked_by?: string | null;
-  started_at?: string | null;
-  completed_at?: string | null;
-  last_error?: string | null;
-  input_json?: Record<string, unknown>;
-  actor?: unknown;
-};
-
 async function fetchRuntimeSummary(): Promise<RuntimeSummary> {
   const response = await httpClient
     .get("admin/runtime/summary")
     .json<ApiRuntimeSummaryResponse>();
 
   return {
-    status: response.status,
+    status: normalizeSummaryStatus(response.status),
     outbox: {
       pending: response.outbox.pending,
       processing: response.outbox.processing,
@@ -389,14 +319,14 @@ async function fetchRuntimeSummary(): Promise<RuntimeSummary> {
 async function fetchRuntimeEvents(): Promise<RuntimeEvent[]> {
   const response = await httpClient
     .get("admin/runtime/outbox")
-    .json<ApiOutboxListResponse>();
+    .json<AdminOutboxListResponse>();
   return response.data.map(toRuntimeEvent);
 }
 
 async function fetchRuntimeFunctions(): Promise<FunctionRun[]> {
   const response = await httpClient
     .get("admin/runtime/functions")
-    .json<ApiFunctionRunListResponse>();
+    .json<AdminFunctionRunListResponse>();
   return response.data.map(toFunctionRun);
 }
 
@@ -456,10 +386,10 @@ async function retryRuntimeWork(input: {
 
 function toSummaryItem(item: ApiRuntimeSummaryItem): RuntimeSummaryItem {
   return {
-    type: item.type,
+    type: normalizeSummaryItemType(item.type),
     id: item.id,
     name: item.name,
-    status: item.status,
+    status: normalizeRuntimeStatus(item.status),
     attempts: item.attempts,
     maxAttempts: item.max_attempts,
     correlationId: item.correlation_id ?? "-",
@@ -468,30 +398,30 @@ function toSummaryItem(item: ApiRuntimeSummaryItem): RuntimeSummaryItem {
   };
 }
 
-function toRuntimeEvent(event: ApiOutboxEvent): RuntimeEvent {
+function toRuntimeEvent(event: AdminRuntimeOutboxItem): RuntimeEvent {
   return {
     id: event.id,
     eventName: event.event_name,
-    status: event.status,
+    status: normalizeRuntimeStatus(event.status),
     attempts: event.attempts,
     maxAttempts: event.max_attempts,
-    aggregateId: event.aggregate_id ?? "-",
-    aggregateType: event.aggregate_type ?? "-",
+    aggregateId: "-",
+    aggregateType: "-",
     correlationId: event.correlation_id,
-    causationId: event.causation_id ?? "-",
+    causationId: "-",
     createdAt: event.created_at,
     ...(event.published_at ? { publishedAt: event.published_at } : {}),
     ...(event.last_error ? { lastError: event.last_error } : {}),
-    actor: toActor(event.actor),
-    payload: event.payload ?? {},
+    actor: toActor(undefined),
+    payload: {},
   };
 }
 
-function toFunctionRun(run: ApiFunctionRun): FunctionRun {
+function toFunctionRun(run: AdminRuntimeFunctionRunItem): FunctionRun {
   return {
     id: run.id,
     functionName: run.function_name,
-    status: run.status,
+    status: normalizeRuntimeStatus(run.status),
     attempts: run.attempts,
     maxAttempts: run.max_attempts,
     correlationId: run.correlation_id,
@@ -500,10 +430,37 @@ function toFunctionRun(run: ApiFunctionRun): FunctionRun {
     ...(run.completed_at ? { completedAt: run.completed_at } : {}),
     ...(run.locked_by ? { lockedBy: run.locked_by } : {}),
     ...(run.last_error ? { lastError: run.last_error } : {}),
-    actor: toActor(run.actor),
-    input: run.input_json ?? {},
+    actor: toActor(undefined),
+    input: {},
     logs: run.last_error ? [run.last_error] : [],
   };
+}
+
+function normalizeSummaryStatus(status: string): RuntimeSummaryStatus {
+  return status === "healthy" || status === "degraded" || status === "failing"
+    ? status
+    : "degraded";
+}
+
+function normalizeSummaryItemType(type: string): RuntimeSummaryItem["type"] {
+  return type === "function_run" ? "function_run" : "outbox_event";
+}
+
+function normalizeRuntimeStatus(status: string): RuntimeStatus {
+  switch (status) {
+    case "pending":
+    case "processing":
+    case "running":
+    case "published":
+    case "completed":
+    case "failed":
+    case "dead": {
+      return status;
+    }
+    default: {
+      return "pending";
+    }
+  }
 }
 
 function mockRuntimeHeatmap(): RuntimeHeatmap {

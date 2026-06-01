@@ -1,6 +1,7 @@
 use app_api::build_router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
+use chrono::{DateTime, Utc};
 use platform_core::{
     AppConfig, AppContext, DatabaseConfig, LoggingEventPublisher, PLATFORM_MIGRATIONS,
     apply_migrations,
@@ -28,6 +29,7 @@ async fn admin_runtime_summary_rejects_user_actor() {
     let app = auth_only_app();
 
     let response = app
+        .clone()
         .oneshot(
             admin_get("/admin/runtime/summary")
                 .with_header("authorization", "Bearer dev-user:user_123"),
@@ -356,6 +358,86 @@ async fn service_actor_can_list_runtime_stories() {
 }
 
 #[tokio::test]
+async fn runtime_story_pagination_uses_story_updated_at_cursor() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+    insert_runtime_outbox_fixture(
+        &db.pool,
+        OutboxFixture {
+            id: "evt_old_a",
+            aggregate_id: "usr_old_a",
+            correlation_id: "corr_old",
+            created_at: "2026-05-31T00:00:00Z",
+            locked_at: Some("2026-05-31T00:00:01Z"),
+            published_at: Some("2026-05-31T00:00:02Z"),
+            ..OutboxFixture::default()
+        },
+    )
+    .await;
+    insert_runtime_outbox_fixture(
+        &db.pool,
+        OutboxFixture {
+            id: "evt_old_b",
+            aggregate_id: "usr_old_b",
+            correlation_id: "corr_old",
+            created_at: "2026-05-31T00:05:00Z",
+            locked_at: Some("2026-05-31T00:05:01Z"),
+            published_at: Some("2026-05-31T00:05:02Z"),
+            ..OutboxFixture::default()
+        },
+    )
+    .await;
+    insert_runtime_outbox_fixture(
+        &db.pool,
+        OutboxFixture {
+            id: "evt_new",
+            aggregate_id: "usr_new",
+            correlation_id: "corr_new",
+            created_at: "2026-05-31T00:10:00Z",
+            locked_at: Some("2026-05-31T00:10:01Z"),
+            published_at: Some("2026-05-31T00:10:02Z"),
+            ..OutboxFixture::default()
+        },
+    )
+    .await;
+
+    let first_response = app
+        .clone()
+        .oneshot(
+            admin_get("/admin/runtime/stories?limit=1")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(first_response.status(), StatusCode::OK);
+    let first_body = json_body(first_response).await;
+    assert_eq!(first_body["data"][0]["correlation_id"], "corr_new");
+    let cursor = first_body["page"]["next_created_before"]
+        .as_str()
+        .expect("cursor should be present");
+
+    let second_response = app
+        .oneshot(
+            admin_get(&format!(
+                "/admin/runtime/stories?limit=1&created_before={cursor}"
+            ))
+            .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(second_response.status(), StatusCode::OK);
+    let second_body = json_body(second_response).await;
+    assert_eq!(second_body["data"][0]["correlation_id"], "corr_old");
+    assert_eq!(second_body["data"][0]["node_count"], 2);
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
 async fn service_actor_can_fetch_runtime_story_detail() {
     let Some(db) = TestDatabase::create().await else {
         return;
@@ -389,10 +471,167 @@ async fn service_actor_can_fetch_runtime_story_detail() {
     assert_eq!(body["data"]["edges"].as_array().unwrap().len(), 1);
     assert_eq!(body["data"]["edges"][0]["source"], "evt_story");
     assert_eq!(body["data"]["edges"][0]["target"], "fnrun_story");
-    assert_eq!(body["data"]["edges"][0]["type"], "sequence");
+    assert_eq!(body["data"]["edges"][0]["type"], "causation");
     assert_eq!(body["data"]["timeline_items"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        body["data"]["timeline_items"][0]["related_node_id"],
+        "evt_story"
+    );
+    assert_eq!(
+        body["data"]["timeline_items"][1]["related_node_id"],
+        "fnrun_story"
+    );
+    assert_eq!(
+        body["data"]["nodes"][0]["metadata"]["component"],
+        "connected"
+    );
+    assert_eq!(
+        body["data"]["nodes"][1]["metadata"]["component"],
+        "connected"
+    );
     assert!(body["data"]["nodes"][0].get("payload").is_none());
     assert!(body["data"]["nodes"][1].get("input_json").is_none());
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn runtime_story_does_not_guess_edges_for_disconnected_work() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+    insert_runtime_outbox_fixture(
+        &db.pool,
+        OutboxFixture {
+            id: "evt_unlinked",
+            correlation_id: "corr_disconnected",
+            created_at: "2026-05-31T00:00:00Z",
+            causation_id: None,
+            ..OutboxFixture::default()
+        },
+    )
+    .await;
+    insert_runtime_function_fixture(
+        &db.pool,
+        FunctionFixture {
+            id: "fnrun_unlinked",
+            correlation_id: "corr_disconnected",
+            created_at: "2026-05-31T00:00:30Z",
+            ..FunctionFixture::default()
+        },
+    )
+    .await;
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/stories/corr_disconnected")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["data"]["nodes"].as_array().unwrap().len(), 2);
+    assert_eq!(body["data"]["edges"].as_array().unwrap().len(), 0);
+    assert_eq!(body["data"]["nodes"][0]["metadata"]["component"], "orphan");
+    assert_eq!(body["data"]["nodes"][1]["metadata"]["component"], "orphan");
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn runtime_story_can_contain_only_outbox_events() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+    insert_runtime_outbox_fixture(
+        &db.pool,
+        OutboxFixture {
+            id: "evt_only_a",
+            correlation_id: "corr_outbox_only",
+            created_at: "2026-05-31T00:00:00Z",
+            ..OutboxFixture::default()
+        },
+    )
+    .await;
+    insert_runtime_outbox_fixture(
+        &db.pool,
+        OutboxFixture {
+            id: "evt_only_b",
+            aggregate_id: "usr_fixture_2",
+            correlation_id: "corr_outbox_only",
+            causation_id: Some("evt_only_a"),
+            created_at: "2026-05-31T00:00:20Z",
+            ..OutboxFixture::default()
+        },
+    )
+    .await;
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/stories/corr_outbox_only")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["data"]["summary"]["pattern"][0], "event");
+    assert_eq!(body["data"]["nodes"].as_array().unwrap().len(), 2);
+    assert_eq!(body["data"]["edges"].as_array().unwrap().len(), 1);
+    assert_eq!(body["data"]["edges"][0]["source"], "evt_only_a");
+    assert_eq!(body["data"]["edges"][0]["target"], "evt_only_b");
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn runtime_story_can_contain_only_function_runs() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+    insert_runtime_function_fixture(
+        &db.pool,
+        FunctionFixture {
+            id: "fnrun_only_a",
+            correlation_id: "corr_functions_only",
+            created_at: "2026-05-31T00:00:00Z",
+            ..FunctionFixture::default()
+        },
+    )
+    .await;
+    insert_runtime_function_fixture(
+        &db.pool,
+        FunctionFixture {
+            id: "fnrun_only_b",
+            correlation_id: "corr_functions_only",
+            created_at: "2026-05-31T00:00:10Z",
+            input_json: json!({ "function_run_id": "fnrun_only_a" }),
+            ..FunctionFixture::default()
+        },
+    )
+    .await;
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/stories/corr_functions_only")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["data"]["summary"]["pattern"][0], "function");
+    assert_eq!(body["data"]["nodes"].as_array().unwrap().len(), 2);
+    assert_eq!(body["data"]["edges"].as_array().unwrap().len(), 1);
+    assert_eq!(body["data"]["edges"][0]["source"], "fnrun_only_a");
+    assert_eq!(body["data"]["edges"][0]["target"], "fnrun_only_b");
 
     db.cleanup().await;
 }
@@ -449,17 +688,69 @@ async fn service_actor_can_fetch_runtime_heatmap() {
     assert_eq!(body["data"][1]["node_type"], "event");
     assert_eq!(body["data"][1]["total_count"], 2);
     assert_eq!(body["data"][1]["error_count"], 1);
+    assert_eq!(body["data"][1]["retry_count"], 1);
     assert_eq!(body["data"][1]["dead_count"], 0);
     assert_eq!(body["data"][2]["service"], "notifications");
     assert_eq!(body["data"][2]["node_type"], "function");
     assert_eq!(body["data"][2]["total_count"], 2);
     assert_eq!(body["data"][2]["error_count"], 1);
+    assert_eq!(body["data"][2]["retry_count"], 1);
     assert_eq!(body["data"][2]["dead_count"], 1);
     assert_eq!(body["data"][2]["max_duration_ms"], 80_000);
     assert!(body["data"][0]["bucket_start"].is_string());
     assert!(body["data"][0]["bucket_end"].is_string());
     assert!(body["data"][0].get("payload").is_none());
     assert!(body["data"][0].get("input_json").is_none());
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn runtime_heatmap_filters_by_time_status_and_names() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+    insert_heatmap_outbox_events(&db.pool).await;
+    insert_heatmap_function_runs(&db.pool).await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            admin_get(
+                "/admin/runtime/heatmap?from=2026-05-31T00:00:00Z&to=2026-05-31T00:01:00Z&bucket_seconds=60&status=failed&event_name=identity.user_registered.v1&limit=20",
+            )
+            .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["data"].as_array().unwrap().len(), 1);
+    assert_eq!(body["data"][0]["service"], "identity");
+    assert_eq!(body["data"][0]["node_type"], "event");
+    assert_eq!(body["data"][0]["total_count"], 1);
+    assert_eq!(body["data"][0]["error_count"], 1);
+    assert_eq!(body["data"][0]["retry_count"], 1);
+
+    let function_response = app
+        .oneshot(
+            admin_get(
+                "/admin/runtime/heatmap?from=2026-05-31T00:00:00Z&to=2026-05-31T00:01:00Z&bucket_seconds=60&function_name=notifications.send_welcome_email.v1&limit=20",
+            )
+            .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(function_response.status(), StatusCode::OK);
+    let function_body = json_body(function_response).await;
+    assert_eq!(function_body["data"].as_array().unwrap().len(), 1);
+    assert_eq!(function_body["data"][0]["service"], "notifications");
+    assert_eq!(function_body["data"][0]["node_type"], "function");
+    assert_eq!(function_body["data"][0]["total_count"], 2);
+    assert_eq!(function_body["data"][0]["retry_count"], 1);
 
     db.cleanup().await;
 }
@@ -804,6 +1095,7 @@ async fn service_actor_can_fetch_runtime_timeline() {
     assert_eq!(body["data"][0]["max_attempts"], 3);
     assert_eq!(body["data"][0]["correlation_id"], "corr_timeline");
     assert_eq!(body["data"][0]["completed_at"], "2026-05-31T00:00:30Z");
+    assert_eq!(body["data"][0]["related_node_id"], "evt_timeline");
     assert_eq!(body["data"][1]["type"], "function_run");
     assert_eq!(body["data"][1]["id"], "fnrun_timeline");
     assert_eq!(
@@ -813,6 +1105,7 @@ async fn service_actor_can_fetch_runtime_timeline() {
     assert_eq!(body["data"][1]["status"], "completed");
     assert_eq!(body["data"][1]["started_at"], "2026-05-31T00:01:10Z");
     assert_eq!(body["data"][1]["completed_at"], "2026-05-31T00:01:30Z");
+    assert_eq!(body["data"][1]["related_node_id"], "fnrun_timeline");
     assert_eq!(body["page"]["limit"], 10);
     assert_eq!(body["order"], "created_at_asc");
     assert!(body["data"][0].get("payload").is_none());
@@ -885,9 +1178,9 @@ async fn admin_runtime_openapi_contract_is_present() {
         value["paths"]["/admin/runtime/heatmap"]["get"]["operationId"],
         "admin_runtime_get_heatmap"
     );
-    assert!(value["components"]["schemas"]["AdminOutboxEvent"].is_object());
+    assert!(value["components"]["schemas"]["AdminRuntimeOutboxItem"].is_object());
     assert!(value["components"]["schemas"]["AdminOutboxEventDetail"].is_object());
-    assert!(value["components"]["schemas"]["AdminFunctionRun"].is_object());
+    assert!(value["components"]["schemas"]["AdminRuntimeFunctionRunItem"].is_object());
     assert!(value["components"]["schemas"]["AdminFunctionRunDetail"].is_object());
     assert!(value["components"]["schemas"]["AdminRuntimeSummaryResponse"].is_object());
     assert!(value["components"]["schemas"]["AdminRuntimeSummaryItem"].is_object());
@@ -1287,7 +1580,7 @@ async fn insert_story_function_run(pool: &platform_core::DbPool) {
         )
         "#,
     )
-    .bind(json!({ "user_id": "usr_1" }))
+    .bind(json!({ "user_id": "usr_1", "outbox_event_id": "evt_story" }))
     .execute(pool)
     .await
     .expect("story function run should insert");
@@ -1439,6 +1732,169 @@ async fn insert_heatmap_function_runs(pool: &platform_core::DbPool) {
     .execute(pool)
     .await
     .expect("heatmap function runs should insert");
+}
+
+#[derive(Clone)]
+struct OutboxFixture {
+    id: &'static str,
+    event_name: &'static str,
+    source_module: &'static str,
+    aggregate_id: &'static str,
+    correlation_id: &'static str,
+    causation_id: Option<&'static str>,
+    status: &'static str,
+    attempts: i32,
+    max_attempts: i32,
+    locked_at: Option<&'static str>,
+    published_at: Option<&'static str>,
+    last_error: Option<&'static str>,
+    created_at: &'static str,
+    headers: Value,
+}
+
+impl Default for OutboxFixture {
+    fn default() -> Self {
+        Self {
+            id: "evt_fixture",
+            event_name: "identity.user_registered.v1",
+            source_module: "identity",
+            aggregate_id: "usr_fixture",
+            correlation_id: "corr_fixture",
+            causation_id: None,
+            status: "published",
+            attempts: 1,
+            max_attempts: 3,
+            locked_at: Some("2026-05-31T00:00:01Z"),
+            published_at: Some("2026-05-31T00:00:02Z"),
+            last_error: None,
+            created_at: "2026-05-31T00:00:00Z",
+            headers: Value::Object(Default::default()),
+        }
+    }
+}
+
+#[derive(Clone)]
+struct FunctionFixture {
+    id: &'static str,
+    function_name: &'static str,
+    correlation_id: &'static str,
+    status: &'static str,
+    attempts: i32,
+    max_attempts: i32,
+    locked_at: Option<&'static str>,
+    started_at: Option<&'static str>,
+    completed_at: Option<&'static str>,
+    last_error: Option<&'static str>,
+    created_at: &'static str,
+    input_json: Value,
+}
+
+impl Default for FunctionFixture {
+    fn default() -> Self {
+        Self {
+            id: "fnrun_fixture",
+            function_name: "notifications.send_welcome_email.v1",
+            correlation_id: "corr_fixture",
+            status: "completed",
+            attempts: 1,
+            max_attempts: 3,
+            locked_at: Some("2026-05-31T00:00:03Z"),
+            started_at: Some("2026-05-31T00:00:04Z"),
+            completed_at: Some("2026-05-31T00:00:05Z"),
+            last_error: None,
+            created_at: "2026-05-31T00:00:03Z",
+            input_json: Value::Object(Default::default()),
+        }
+    }
+}
+
+async fn insert_runtime_outbox_fixture(pool: &platform_core::DbPool, fixture: OutboxFixture) {
+    sqlx::query(
+        r#"
+        insert into platform.outbox (
+            id,
+            event_name,
+            event_version,
+            source_module,
+            aggregate_type,
+            aggregate_id,
+            correlation_id,
+            causation_id,
+            occurred_at,
+            payload,
+            headers,
+            status,
+            attempts,
+            max_attempts,
+            locked_at,
+            published_at,
+            last_error,
+            created_at
+        )
+        values ($1, $2, 1, $3, 'user', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $7)
+        "#,
+    )
+    .bind(fixture.id)
+    .bind(fixture.event_name)
+    .bind(fixture.source_module)
+    .bind(fixture.aggregate_id)
+    .bind(fixture.correlation_id)
+    .bind(fixture.causation_id)
+    .bind(parse_time(fixture.created_at))
+    .bind(json!({ "aggregate_id": fixture.aggregate_id }))
+    .bind(fixture.headers)
+    .bind(fixture.status)
+    .bind(fixture.attempts)
+    .bind(fixture.max_attempts)
+    .bind(fixture.locked_at.map(parse_time))
+    .bind(fixture.published_at.map(parse_time))
+    .bind(fixture.last_error)
+    .execute(pool)
+    .await
+    .expect("runtime outbox fixture should insert");
+}
+
+async fn insert_runtime_function_fixture(pool: &platform_core::DbPool, fixture: FunctionFixture) {
+    sqlx::query(
+        r#"
+        insert into runtime.function_runs (
+            id,
+            function_name,
+            input_json,
+            status,
+            attempts,
+            max_attempts,
+            locked_at,
+            started_at,
+            completed_at,
+            last_error,
+            correlation_id,
+            actor,
+            created_at,
+            updated_at
+        )
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, '{"kind":"system"}'::jsonb, $12, coalesce($9, $12))
+        "#,
+    )
+    .bind(fixture.id)
+    .bind(fixture.function_name)
+    .bind(fixture.input_json)
+    .bind(fixture.status)
+    .bind(fixture.attempts)
+    .bind(fixture.max_attempts)
+    .bind(fixture.locked_at.map(parse_time))
+    .bind(fixture.started_at.map(parse_time))
+    .bind(fixture.completed_at.map(parse_time))
+    .bind(fixture.last_error)
+    .bind(fixture.correlation_id)
+    .bind(parse_time(fixture.created_at))
+    .execute(pool)
+    .await
+    .expect("runtime function fixture should insert");
+}
+
+fn parse_time(value: &str) -> DateTime<Utc> {
+    value.parse().expect("fixture timestamp should parse")
 }
 
 fn admin_get(uri: &str) -> Request<Body> {
