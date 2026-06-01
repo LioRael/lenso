@@ -5,10 +5,11 @@ import { HorizontalTabScroll } from "./horizontal-tab-scroll";
 
 export type TraceViewMode =
   | "story"
+  | "graph"
+  | "timeline"
   | "waterfall"
   | "flame"
-  | "heatmap"
-  | "flow";
+  | "heatmap";
 
 const labels: Array<{
   id: TraceViewMode;
@@ -19,11 +20,12 @@ const labels: Array<{
     strokeWidth?: number;
   }>;
 }> = [
-  { id: "story", label: "Timeline", icon: Workflow },
+  { id: "story", label: "Story", icon: Workflow },
+  { id: "graph", label: "Graph", icon: GitBranch },
+  { id: "timeline", label: "Timeline", icon: Workflow },
+  { id: "heatmap", label: "Heatmap", icon: Grid3X3 },
   { id: "waterfall", label: "Waterfall", icon: List },
   { id: "flame", label: "Flame", icon: Flame },
-  { id: "heatmap", label: "Heatmap", icon: Grid3X3 },
-  { id: "flow", label: "Flow", icon: GitBranch },
 ];
 
 export function TraceTabs({

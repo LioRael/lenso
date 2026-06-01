@@ -5,7 +5,7 @@ import { traceRuns } from "../data/mock-runtime";
 import { traceWorkbenchDefaultViewMode } from "./trace-workbench-page";
 
 describe("trace workbench page contracts", () => {
-  test("defaults to the story timeline visualization mode", () => {
+  test("defaults to the runtime story visualization mode", () => {
     const defaultViewMode: "story" = traceWorkbenchDefaultViewMode;
 
     expect(defaultViewMode).toBe("story");

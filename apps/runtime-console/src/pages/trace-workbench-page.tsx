@@ -126,6 +126,7 @@ export function TraceWorkbenchPage() {
   const gridTemplateColumns = hasInspector
     ? `${listColumn} 1px minmax(0,1fr) calc(1px * var(--trace-inspector-open)) minmax(0,calc(${inspectorColumn} * var(--trace-inspector-open)))`
     : `${listColumn} 1px minmax(0,1fr)`;
+  const showServicesPanel = mode === "waterfall" || mode === "flame";
 
   useEffect(() => {
     if (selectedSpan) {
@@ -281,6 +282,20 @@ export function TraceWorkbenchPage() {
     );
   };
 
+  const retrySpan = (span: TraceSpan) => {
+    selectSpan(span);
+    if (isRetryable(span.status) && span.retryable) {
+      openRetry({
+        attempts: span.attempts ?? 1,
+        id: span.id,
+        kind: "timeline",
+        maxAttempts: span.maxAttempts ?? 3,
+        name: span.name,
+        status: span.status,
+      });
+    }
+  };
+
   useListKeyboard({
     items: visibleTraces,
     onOpen: selectTrace,
@@ -354,7 +369,9 @@ export function TraceWorkbenchPage() {
           className="grid min-h-0 min-w-0 overflow-hidden"
           style={{
             gridTemplateRows: selectedTrace
-              ? "auto minmax(0,1fr) auto auto"
+              ? showServicesPanel
+                ? "auto minmax(0,1fr) auto auto"
+                : "auto minmax(0,1fr)"
               : "minmax(0,1fr)",
           }}
         >
@@ -368,25 +385,30 @@ export function TraceWorkbenchPage() {
 
               <TraceVisualization
                 mode={mode}
+                onRetrySpan={retrySpan}
                 onSelectSpan={selectSpan}
                 selectedSpanId={selectedSpan?.id ?? null}
                 setMode={setMode}
                 trace={selectedTrace}
               />
 
-              <ResizeHandle
-                ariaLabel="Resize services panel"
-                axis="vertical"
-                onReset={resetLayout}
-                onResize={resizeServices}
-              />
+              {showServicesPanel ? (
+                <>
+                  <ResizeHandle
+                    ariaLabel="Resize services panel"
+                    axis="vertical"
+                    onReset={resetLayout}
+                    onResize={resizeServices}
+                  />
 
-              <ServiceSummaryStrip
-                expanded={servicesExpanded}
-                height={traceLayout.servicesHeight}
-                onExpandedChange={setServicesExpanded}
-                trace={selectedTrace}
-              />
+                  <ServiceSummaryStrip
+                    expanded={servicesExpanded}
+                    height={traceLayout.servicesHeight}
+                    onExpandedChange={setServicesExpanded}
+                    trace={selectedTrace}
+                  />
+                </>
+              ) : null}
             </>
           ) : (
             <EmptyState className="h-full bg-(--surface)">

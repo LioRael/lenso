@@ -3,7 +3,7 @@ import type { ComponentType } from "react";
 
 import type { TraceRun, TraceSpan } from "../../data/mock-runtime";
 import { cn } from "../../lib/cn";
-import { buildRuntimeStory, type StoryNodeType } from "../../lib/story";
+import { buildRuntimeStory, type RuntimeNodeType } from "../../lib/story";
 import {
   formatTraceDuration,
   serviceColor,
@@ -31,7 +31,7 @@ export function StoryTimelineView({
             Business Timeline
           </span>
           <span className="min-w-0 truncate font-mono text-[11px] text-(--muted)">
-            {story.nodes.length} execution nodes from one correlation
+            {story.nodeCount} execution nodes from one correlation
           </span>
         </div>
         <div className="shrink-0 font-mono text-[11px] text-(--muted)">
@@ -56,9 +56,9 @@ export function StoryTimelineView({
             {story.nodes.map((node, index) => {
               const Icon = nodeIcon[node.type];
               const tone = nodeTone[node.type];
-              const left = clampPercent((node.startMs / timelineEnd) * 100);
+              const left = clampPercent((node.timestamp / timelineEnd) * 100);
               const width = Math.min(
-                Math.max((node.durationMs / timelineEnd) * 100, 1.5),
+                Math.max((node.duration / timelineEnd) * 100, 1.5),
                 100 - left
               );
               const selected = selectedSpanId === node.span.id;
@@ -67,7 +67,7 @@ export function StoryTimelineView({
 
               return (
                 <button
-                  aria-label={`Open ${node.typeLabel} ${node.title}`}
+                  aria-label={`Open ${node.typeLabel} ${node.name}`}
                   className={cn(
                     "group grid min-w-0 grid-cols-[minmax(180px,260px)_minmax(0,1fr)] gap-4 text-left transition max-md:grid-cols-1",
                     selected && "scale-[1.004]"
@@ -109,7 +109,7 @@ export function StoryTimelineView({
                           />
                         </span>
                         <span className="mt-1 block truncate text-[13px] font-semibold text-(--foreground)">
-                          {node.title}
+                          {node.name}
                         </span>
                         <span className="mt-1 flex min-w-0 items-center gap-2 font-mono text-[10px] text-(--muted)">
                           <span
@@ -120,7 +120,7 @@ export function StoryTimelineView({
                           />
                           <span className="truncate">{node.service}</span>
                           <span className="ml-auto shrink-0">
-                            {formatTraceDuration(node.durationMs)}
+                            {formatTraceDuration(node.duration)}
                           </span>
                         </span>
                       </span>
@@ -162,22 +162,22 @@ export function StoryTimelineView({
 }
 
 const nodeIcon: Record<
-  StoryNodeType,
+  RuntimeNodeType,
   ComponentType<{ size?: number; strokeWidth?: number }>
 > = {
   event: Mail,
-  external_provider: Cloud,
+  external: Cloud,
   function: Workflow,
   request: Route,
   worker: ServerCog,
 };
 
-const nodeTone: Record<StoryNodeType, { card: string; icon: string }> = {
+const nodeTone: Record<RuntimeNodeType, { card: string; icon: string }> = {
   event: {
     card: "border-sky-300/20 text-sky-200",
     icon: "border-sky-300/30 bg-sky-300/10 text-sky-200",
   },
-  external_provider: {
+  external: {
     card: "border-rose-300/24 text-rose-200",
     icon: "border-rose-300/35 bg-rose-300/10 text-rose-200",
   },

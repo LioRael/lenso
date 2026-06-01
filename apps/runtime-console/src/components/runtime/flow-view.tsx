@@ -27,7 +27,7 @@ export function FlowView({
     <div className="isolate relative h-full min-w-0 overflow-hidden bg-(--sidebar)">
       <div className="pointer-events-none absolute top-0 right-0 left-0 z-2 flex items-center justify-between px-4 py-2.5">
         <span className="pointer-events-auto font-sans text-[11px] font-semibold uppercase tracking-[0.08em] text-(--muted)">
-          Span Graph
+          Execution Graph
         </span>
         <button
           className="pointer-events-auto flex items-center gap-1.5 font-mono text-[11px] text-(--muted) transition hover:text-(--foreground)"
@@ -90,7 +90,7 @@ export function FlowView({
                     "border-[color-mix(in_srgb,var(--error)_45%,transparent)]",
                   !isSelected &&
                     !isError &&
-                    "border-(--border-subtle) hover:border-(--muted-deep)"
+                    "border-(--border-subtle) hover:border-(--muted-deep)",
                 )}
                 key={span.id}
                 onClick={() => onSelectSpan(span)}
@@ -117,7 +117,7 @@ export function FlowView({
                         "rounded-xs px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.06em]",
                         isError
                           ? "bg-[color-mix(in_srgb,var(--error)_10%,transparent)] text-(--error)"
-                          : "bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] text-(--accent)"
+                          : "bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] text-(--accent)",
                       )}
                     >
                       {span.kind}
