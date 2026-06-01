@@ -45,8 +45,8 @@ export function CommandPalette({ theme, onToggleTheme }: CommandPaletteProps) {
       {
         action: () => void navigate({ to: "/runtime/traces" }),
         id: "traces",
-        subtitle: "Dense execution workbench",
-        title: "Go to Traces",
+        subtitle: "Runtime execution stories",
+        title: "Go to Stories",
       },
       {
         action: () => void navigate({ to: "/dead-letters" }),
@@ -82,8 +82,8 @@ export function CommandPalette({ theme, onToggleTheme }: CommandPaletteProps) {
           focusGlobalSearch();
         },
         id: "search",
-        subtitle: "Correlation search now lives in Traces",
-        title: "Search in Traces",
+        subtitle: "Correlation search now lives in Stories",
+        title: "Search in Stories",
       },
       {
         action: closeCommandPalette,

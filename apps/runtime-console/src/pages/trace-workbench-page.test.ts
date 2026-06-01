@@ -5,10 +5,10 @@ import { traceRuns } from "../data/mock-runtime";
 import { traceWorkbenchDefaultViewMode } from "./trace-workbench-page";
 
 describe("trace workbench page contracts", () => {
-  test("defaults to the waterfall visualization mode", () => {
-    const defaultViewMode: "waterfall" = traceWorkbenchDefaultViewMode;
+  test("defaults to the story timeline visualization mode", () => {
+    const defaultViewMode: "story" = traceWorkbenchDefaultViewMode;
 
-    expect(defaultViewMode).toBe("waterfall");
+    expect(defaultViewMode).toBe("story");
   });
 
   test("keeps trace header props aligned with trace data", () => {

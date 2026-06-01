@@ -1,14 +1,15 @@
-import { AlertCircle, ChevronRight, Clock, Layers, X } from "lucide-react";
+import { AlertCircle, Clock, Layers, X } from "lucide-react";
 import { Fragment } from "react";
 
 import type { TraceRun, TraceSpan } from "../../data/mock-runtime";
+import { buildRuntimeStory } from "../../lib/story";
 import {
-  criticalPath,
   formatTraceDuration,
   serviceColor,
   traceStats,
 } from "../../lib/trace-style";
 import { HorizontalScrollArea } from "./horizontal-tab-scroll";
+import { StatusPill } from "./status-pill";
 
 export function TraceHeader({
   onClose,
@@ -20,8 +21,7 @@ export function TraceHeader({
   onSelectSpan: (span: TraceSpan) => void;
 }) {
   const stats = traceStats(trace);
-  const path = criticalPath(trace);
-  const [root] = trace.spans;
+  const story = buildRuntimeStory(trace);
 
   return (
     <header className="min-w-0 overflow-hidden border-b border-(--border-subtle) bg-(--surface)">
@@ -34,13 +34,14 @@ export function TraceHeader({
             color: serviceColor(trace.service),
           }}
         >
-          {root?.service ?? trace.service}
+          Story
         </div>
-        <h1 className="min-w-0 flex-1 truncate font-mono text-[13px] font-semibold leading-tight text-(--foreground)">
-          {root?.name ?? trace.name}
+        <h1 className="min-w-0 flex-1 truncate text-[15px] font-semibold leading-tight text-(--foreground)">
+          {story.title}
         </h1>
+        <StatusPill status={story.status} />
         <button
-          aria-label="Close trace detail"
+          aria-label="Close story detail"
           className="grid size-5 place-items-center rounded-xs text-(--muted) transition hover:bg-(--hover) hover:text-(--foreground)"
           onClick={onClose}
           type="button"
@@ -51,19 +52,19 @@ export function TraceHeader({
 
       <div className="flex min-w-0 flex-wrap items-center gap-1.5 overflow-hidden px-3 pb-1.5">
         <span className="shrink-0 font-mono text-[10px] text-(--muted)">
-          {trace.id.slice(0, 16)}
+          {story.correlationId}
         </span>
         <div className="h-3 w-px shrink-0 bg-(--border-subtle)" />
         <MetricChip icon={<Clock size={10} />} tone="accent">
-          {formatTraceDuration(trace.durationMs)}
+          {formatTraceDuration(story.durationMs)}
         </MetricChip>
         <MetricChip icon={<Layers size={10} />}>
-          {stats.spanCount} spans
+          {story.spanCount} spans
         </MetricChip>
         <MetricChip>{stats.services.length} svc</MetricChip>
-        {stats.errors > 0 ? (
+        {story.errorCount > 0 ? (
           <MetricChip icon={<AlertCircle size={10} />} tone="error">
-            {stats.errors} err
+            {story.errorCount} errors
           </MetricChip>
         ) : null}
       </div>
@@ -74,6 +75,10 @@ export function TraceHeader({
             const duration = trace.spans
               .filter((span) => span.service === service)
               .reduce((total, span) => total + span.durationMs, 0);
+            const width =
+              trace.durationMs > 0
+                ? Math.max(2, (duration / trace.durationMs) * 100)
+                : 100;
             return (
               <div
                 className="h-full"
@@ -81,7 +86,7 @@ export function TraceHeader({
                 style={{
                   backgroundColor: serviceColor(service),
                   opacity: 0.8,
-                  width: `${Math.max(2, (duration / trace.durationMs) * 100)}%`,
+                  width: `${width}%`,
                 }}
               />
             );
@@ -89,7 +94,7 @@ export function TraceHeader({
         </div>
       </div>
 
-      {path.length > 1 ? (
+      {story.nodes.length > 1 ? (
         <div className="min-w-0 px-3 pb-1.5">
           <HorizontalScrollArea
             className="h-5"
@@ -97,18 +102,20 @@ export function TraceHeader({
             viewportClassName="h-full"
           >
             <div className="flex h-full w-max min-w-full items-center gap-1">
-              {path.map((span, index) => (
-                <Fragment key={span.id}>
+              {story.nodes.map((node, index) => (
+                <Fragment key={node.id}>
                   {index > 0 ? (
-                    <ChevronRight className="size-2.5 shrink-0 text-(--muted)" />
+                    <span className="shrink-0 text-[10px] text-(--muted)">
+                      {">"}
+                    </span>
                   ) : null}
                   <button
-                    className="max-w-35 shrink-0 truncate rounded-xs px-1 py-0.5 font-mono text-[10px] text-(--secondary) transition hover:bg-(--hover) hover:text-(--foreground)"
-                    onClick={() => onSelectSpan(span)}
-                    title={span.name}
+                    className="max-w-42 shrink-0 truncate rounded-xs px-1 py-0.5 font-mono text-[10px] text-(--secondary) transition hover:bg-(--hover) hover:text-(--foreground)"
+                    onClick={() => onSelectSpan(node.span)}
+                    title={node.title}
                     type="button"
                   >
-                    {span.name}
+                    {node.title}
                   </button>
                 </Fragment>
               ))}

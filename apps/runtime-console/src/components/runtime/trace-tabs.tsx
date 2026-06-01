@@ -1,9 +1,14 @@
-import { Flame, GitBranch, Grid3X3, List } from "lucide-react";
+import { Flame, GitBranch, Grid3X3, List, Workflow } from "lucide-react";
 
 import { cn } from "../../lib/cn";
 import { HorizontalTabScroll } from "./horizontal-tab-scroll";
 
-export type TraceViewMode = "waterfall" | "flame" | "heatmap" | "flow";
+export type TraceViewMode =
+  | "story"
+  | "waterfall"
+  | "flame"
+  | "heatmap"
+  | "flow";
 
 const labels: Array<{
   id: TraceViewMode;
@@ -14,6 +19,7 @@ const labels: Array<{
     strokeWidth?: number;
   }>;
 }> = [
+  { id: "story", label: "Timeline", icon: Workflow },
   { id: "waterfall", label: "Waterfall", icon: List },
   { id: "flame", label: "Flame", icon: Flame },
   { id: "heatmap", label: "Heatmap", icon: Grid3X3 },

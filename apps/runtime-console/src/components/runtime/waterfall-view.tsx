@@ -27,7 +27,7 @@ export function WaterfallView({
             Waterfall
           </span>
           <span className="min-w-0 truncate font-mono text-[11px] text-(--muted)">
-            {trace.spans.length} of {trace.spans.length} spans
+            span detail · {trace.spans.length} of {trace.spans.length} spans
           </span>
         </div>
         <div className="shrink-0 font-mono text-[11px] text-(--muted)">

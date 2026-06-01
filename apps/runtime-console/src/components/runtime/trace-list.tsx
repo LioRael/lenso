@@ -3,6 +3,7 @@ import { Search } from "lucide-react";
 import type { TraceRun } from "../../data/mock-runtime";
 import { cn } from "../../lib/cn";
 import { time } from "../../lib/format";
+import { buildRuntimeStory } from "../../lib/story";
 import {
   formatTraceDuration,
   statusColor,
@@ -27,31 +28,32 @@ export function TraceList({
       <div className="flex min-h-10 items-center justify-between gap-2 border-b border-(--border-subtle) bg-(--surface) px-3 py-2">
         <div>
           <h2 className="font-mono text-sm font-semibold tracking-tight text-(--foreground)">
-            Traces
+            Stories
           </h2>
           <p className="font-mono text-xs text-(--muted)">
-            {traces.length} recorded sessions
+            {traces.length} correlations
           </p>
         </div>
       </div>
       <div className="flex h-8 items-center gap-2 border-b border-(--border-subtle) px-3 text-(--muted)">
         <Search size={12} />
         <input
-          aria-label="Search traces"
+          aria-label="Search stories"
           className="mono w-full bg-transparent text-xs text-(--foreground) outline-hidden placeholder:text-(--muted)"
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="filter traces / service / correlation..."
+          placeholder="filter story / service / correlation..."
           value={query}
         />
       </div>
       <div className="grid h-6 grid-cols-[12px_minmax(0,1fr)_58px] items-center gap-2 border-b border-(--border-subtle) px-3 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-(--muted)">
         <span />
-        <span>trace</span>
+        <span>story</span>
         <span className="text-right">duration</span>
       </div>
       <div className="min-h-0 overflow-auto">
         {traces.map((trace) => {
           const stats = traceStats(trace);
+          const story = buildRuntimeStory(trace);
           return (
             <button
               className={cn(
@@ -75,24 +77,24 @@ export function TraceList({
                   }}
                 />
                 <span className="min-w-0 flex-1 truncate font-mono text-xs font-medium text-(--foreground)">
-                  {trace.name}
+                  {story.title}
                 </span>
                 <span className="font-mono text-[10px] text-(--muted)">
-                  {formatTraceDuration(trace.durationMs)}
+                  {formatTraceDuration(story.durationMs)}
                 </span>
               </div>
               <div className="grid grid-cols-[74px_minmax(0,1fr)_auto] items-center gap-2 font-mono text-[10px] leading-5 text-(--muted)">
                 <code className="text-[11px] text-(--secondary)">
-                  {trace.id.slice(0, 10)}
+                  {story.correlationId.slice(0, 10)}
                 </code>
                 <span className="truncate">
-                  {trace.service}/{trace.source} · {stats.services.join(", ")}
+                  {story.nodes.map((node) => node.typeLabel).join(" > ")}
                 </span>
                 <span>{time(trace.timestamp)}</span>
               </div>
-              {stats.errors > 0 ? (
+              {story.errorCount > 0 ? (
                 <div className="mt-1 font-mono text-[10px] leading-4 text-[#ef4444]">
-                  {stats.errors} error spans
+                  {story.errorCount} errors · {stats.services.join(", ")}
                 </div>
               ) : null}
             </button>

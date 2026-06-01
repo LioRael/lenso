@@ -43,8 +43,7 @@ type InspectorTab =
   | "context";
 
 const emptyTraces: TraceRun[] = [];
-export const traceWorkbenchDefaultViewMode =
-  "waterfall" satisfies TraceViewMode;
+export const traceWorkbenchDefaultViewMode = "story" satisfies TraceViewMode;
 
 export function TraceWorkbenchPage() {
   const { activeTraceTarget, clearTraceTarget, openRetry } =
@@ -391,7 +390,7 @@ export function TraceWorkbenchPage() {
             </>
           ) : (
             <EmptyState className="h-full bg-(--surface)">
-              <EmptyState.Title>No trace selected</EmptyState.Title>
+              <EmptyState.Title>No story selected</EmptyState.Title>
             </EmptyState>
           )}
         </main>
