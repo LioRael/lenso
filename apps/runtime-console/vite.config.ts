@@ -4,11 +4,24 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   build: {
-    rollupOptions: {
+    rolldownOptions: {
       output: {
         manualChunks(id) {
+          if (id.includes("node_modules/react")) {
+            return "react";
+          }
+          if (id.includes("node_modules/@tanstack")) {
+            return "tanstack";
+          }
           if (id.includes("node_modules/gsap")) {
             return "gsap";
+          }
+          if (
+            id.includes("node_modules/@base-ui") ||
+            id.includes("node_modules/lucide-react") ||
+            id.includes("node_modules/ky")
+          ) {
+            return "ui-vendor";
           }
         },
       },
