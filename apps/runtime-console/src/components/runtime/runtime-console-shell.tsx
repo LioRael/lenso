@@ -32,7 +32,7 @@ gsap.registerPlugin(useGSAP);
 
 const primaryNavItems = [
   { to: "/overview", label: "Overview", icon: Activity },
-  { to: "/runtime/traces", label: "Stories", icon: Workflow },
+  { to: "/runtime/stories", label: "Stories", icon: Workflow },
   { to: "/dead-letters", label: "Dead Letters", icon: TriangleAlert },
   { to: "/queues", label: "Queues", icon: Inbox },
 ] as const;

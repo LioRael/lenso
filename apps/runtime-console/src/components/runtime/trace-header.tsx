@@ -1,6 +1,6 @@
 import { AlertCircle, Boxes, Clock, Server, X } from "lucide-react";
 
-import type { TraceRun, TraceSpan } from "../../data/mock-runtime";
+import type { RuntimeStory, ExecutionNode } from "../../data/mock-runtime";
 import { cn } from "../../lib/cn";
 import { buildRuntimeStory } from "../../lib/story";
 import { formatTraceDuration } from "../../lib/trace-style";
@@ -9,15 +9,16 @@ import { TraceStatusBadge } from "./trace-status-badge";
 
 export function TraceHeader({
   onClose,
-  onSelectSpan,
-  trace,
+  onSelectNode,
+  story,
 }: {
   onClose: () => void;
-  trace: TraceRun;
-  onSelectSpan: (span: TraceSpan) => void;
+  story: RuntimeStory;
+  onSelectNode: (node: ExecutionNode) => void;
 }) {
-  const story = buildRuntimeStory(trace);
-  const isError = story.status === "failed" || story.status === "dead";
+  const storySummary = buildRuntimeStory(story);
+  const isError =
+    storySummary.status === "failed" || storySummary.status === "dead";
 
   return (
     <header className="min-w-0 overflow-hidden border-b border-(--border-subtle) bg-(--surface)">
@@ -25,23 +26,25 @@ export function TraceHeader({
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">
             <h1 className="min-w-0 truncate text-[16px] font-semibold leading-tight text-(--foreground)">
-              {story.title}
+              {storySummary.title}
             </h1>
-            <TraceStatusBadge status={story.status} />
+            <TraceStatusBadge status={storySummary.status} />
           </div>
           <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 font-mono text-[10px] text-(--secondary)">
             <Metric icon={<Clock size={10} />} tone="accent">
-              {formatTraceDuration(story.duration)}
+              {formatTraceDuration(storySummary.duration)}
             </Metric>
-            <Metric icon={<Boxes size={10} />}>{story.nodeCount} nodes</Metric>
+            <Metric icon={<Boxes size={10} />}>
+              {storySummary.nodeCount} nodes
+            </Metric>
             <Metric
               icon={<AlertCircle size={10} />}
-              tone={story.errorCount > 0 ? "error" : "muted"}
+              tone={storySummary.errorCount > 0 ? "error" : "muted"}
             >
-              {story.errorCount} errors
+              {storySummary.errorCount} errors
             </Metric>
             <Metric icon={<Server size={10} />}>
-              {story.services.length} services
+              {storySummary.services.length} services
             </Metric>
           </div>
         </div>
@@ -59,7 +62,7 @@ export function TraceHeader({
       <div className="min-w-0 px-3 pb-1.5">
         <HorizontalScrollArea className="h-6" viewportClassName="h-full">
           <div className="flex h-full w-max min-w-full items-center gap-1.5">
-            {story.services.map((service) => (
+            {storySummary.services.map((service) => (
               <span
                 className="shrink-0 border border-(--border-subtle) bg-(--elevated) px-1.5 py-0.5 font-mono text-[10px] text-(--secondary)"
                 key={service}
@@ -73,13 +76,13 @@ export function TraceHeader({
 
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 px-3 pb-1.5 font-mono text-[10px]">
         <span className="min-w-0 truncate text-(--secondary)">
-          {story.patternLabel || "No execution pattern"}
+          {storySummary.patternLabel || "No execution pattern"}
         </span>
         <span className="text-(--muted-deep)">·</span>
         <span className="min-w-0 truncate text-(--muted)">
-          {story.correlationId}
+          {storySummary.correlationId}
         </span>
-        {story.rootError ? (
+        {storySummary.rootError ? (
           <>
             <span className="text-(--muted-deep)">·</span>
             <button
@@ -88,14 +91,14 @@ export function TraceHeader({
                 isError && "font-semibold"
               )}
               onClick={() => {
-                const errorNode = lastErrorNode(story.nodes);
+                const errorNode = lastErrorNode(storySummary.nodes);
                 if (errorNode) {
-                  onSelectSpan(errorNode.span);
+                  onSelectNode(errorNode.node);
                 }
               }}
               type="button"
             >
-              {story.rootError}
+              {storySummary.rootError}
             </button>
           </>
         ) : null}

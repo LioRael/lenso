@@ -15,7 +15,7 @@ import {
   functionRuns,
   runtimeEvents,
   timelineItems,
-  traceRuns,
+  runtimeStories,
   type RetryTarget,
   type RuntimeRecord,
 } from "../../data/mock-runtime";
@@ -42,13 +42,13 @@ export type SearchResult =
       record: RuntimeRecord;
     }
   | {
-      kind: "trace";
+      kind: "story";
       id: string;
       title: string;
       subtitle: string;
       correlationId: string;
-      traceId: string;
-      spanId?: string;
+      storyId: string;
+      nodeId?: string;
     }
   | {
       kind: "correlation";
@@ -63,7 +63,7 @@ type RuntimeConsoleContextValue = {
   retryTarget: RetryTarget | null;
   commandOpen: boolean;
   activeCorrelationId: string;
-  activeTraceTarget: { traceId: string; spanId?: string } | null;
+  activeStoryTarget: { storyId: string; nodeId?: string } | null;
   searchInputRef: RefObject<HTMLInputElement | null>;
   openDrawer: (target: RuntimeRecord | null) => void;
   closeDrawer: () => void;
@@ -73,8 +73,8 @@ type RuntimeConsoleContextValue = {
   closeCommandPalette: () => void;
   focusGlobalSearch: () => void;
   openTimeline: (nextCorrelationId: string) => void;
-  openTrace: (traceId: string, spanId?: string) => void;
-  clearTraceTarget: () => void;
+  openStory: (storyId: string, nodeId?: string) => void;
+  clearStoryTarget: () => void;
   searchRuntime: (query: string) => SearchResult[];
   selectSearchResult: (result: SearchResult) => void;
 };
@@ -92,28 +92,28 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
   const [retryTarget, setRetryTarget] = useState<RetryTarget | null>(null);
   const [commandOpen, setCommandOpen] = useState(false);
   const [activeCorrelationId, setActiveCorrelationId] = useState(correlationId);
-  const [activeTraceTarget, setActiveTraceTarget] = useState<{
-    traceId: string;
-    spanId?: string;
+  const [activeStoryTarget, setActiveTraceTarget] = useState<{
+    storyId: string;
+    nodeId?: string;
   } | null>(null);
 
   const openTimeline = useCallback(
     (nextCorrelationId: string) => {
       setActiveCorrelationId(nextCorrelationId);
-      void navigate({ to: "/runtime/traces" });
+      void navigate({ to: "/runtime/stories" });
     },
     [navigate]
   );
 
-  const openTrace = useCallback(
-    (traceId: string, spanId?: string) => {
-      setActiveTraceTarget({ traceId, ...(spanId ? { spanId } : {}) });
-      void navigate({ to: "/runtime/traces" });
+  const openStory = useCallback(
+    (storyId: string, nodeId?: string) => {
+      setActiveTraceTarget({ storyId, ...(nodeId ? { nodeId } : {}) });
+      void navigate({ to: "/runtime/stories" });
     },
     [navigate]
   );
 
-  const clearTraceTarget = useCallback(() => {
+  const clearStoryTarget = useCallback(() => {
     setActiveTraceTarget(null);
   }, []);
 
@@ -127,17 +127,17 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
       const events = eventsQuery.data ?? runtimeEvents;
       const runs = functionsQuery.data ?? functionRuns;
 
-      const traceResults: SearchResult[] = traceRuns.flatMap((trace) => {
+      const storyResults: SearchResult[] = runtimeStories.flatMap((story) => {
         const matchesTrace = [
-          trace.id,
-          trace.name,
-          trace.service,
-          trace.source,
-          trace.correlationId,
+          story.id,
+          story.name,
+          story.service,
+          story.source,
+          story.correlationId,
         ].some((value) => value.toLowerCase().includes(normalized));
 
-        const matchingSpans = trace.spans.filter((span) =>
-          [span.id, span.name, span.service, span.kind].some((value) =>
+        const matchingNodes = story.nodes.filter((node) =>
+          [node.id, node.name, node.service, node.kind].some((value) =>
             value.toLowerCase().includes(normalized)
           )
         );
@@ -146,23 +146,23 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
           ...(matchesTrace
             ? [
                 {
-                  kind: "trace" as const,
-                  id: trace.id,
-                  title: trace.name,
-                  subtitle: `${trace.service}/${trace.source}`,
-                  correlationId: trace.correlationId,
-                  traceId: trace.id,
+                  kind: "story" as const,
+                  id: story.id,
+                  title: story.name,
+                  subtitle: `${story.service}/${story.source}`,
+                  correlationId: story.correlationId,
+                  storyId: story.id,
                 },
               ]
             : []),
-          ...matchingSpans.map<SearchResult>((span) => ({
-            kind: "trace",
-            id: span.id,
-            title: span.name,
-            subtitle: `${trace.id} · ${span.service}`,
-            correlationId: trace.correlationId,
-            traceId: trace.id,
-            spanId: span.id,
+          ...matchingNodes.map<SearchResult>((node) => ({
+            kind: "story",
+            id: node.id,
+            title: node.name,
+            subtitle: `${story.id} · ${node.service}`,
+            correlationId: story.correlationId,
+            storyId: story.id,
+            nodeId: node.id,
           })),
         ];
       });
@@ -210,12 +210,12 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
           kind: "correlation",
           id,
           title: id,
-          subtitle: "Open correlation in Traces",
+          subtitle: "Open correlation in Stories",
           correlationId: id,
         }));
 
       return [
-        ...traceResults,
+        ...storyResults,
         ...correlations,
         ...eventResults,
         ...functionResults,
@@ -230,13 +230,13 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
         openTimeline(result.correlationId);
         return;
       }
-      if (result.kind === "trace") {
-        openTrace(result.traceId, result.spanId);
+      if (result.kind === "story") {
+        openStory(result.storyId, result.nodeId);
         return;
       }
       setDrawerTarget(result.record);
     },
-    [openTimeline, openTrace]
+    [openTimeline, openStory]
   );
 
   const value = useMemo<RuntimeConsoleContextValue>(
@@ -245,7 +245,7 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
       retryTarget,
       commandOpen,
       activeCorrelationId,
-      activeTraceTarget,
+      activeStoryTarget,
       searchInputRef,
       openDrawer: setDrawerTarget,
       closeDrawer: () => setDrawerTarget(null),
@@ -255,19 +255,19 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
       closeCommandPalette: () => setCommandOpen(false),
       focusGlobalSearch: () => searchInputRef.current?.focus(),
       openTimeline,
-      openTrace,
-      clearTraceTarget,
+      openStory,
+      clearStoryTarget,
       searchRuntime,
       selectSearchResult,
     }),
     [
       activeCorrelationId,
-      activeTraceTarget,
-      clearTraceTarget,
+      activeStoryTarget,
+      clearStoryTarget,
       commandOpen,
       drawerTarget,
       openTimeline,
-      openTrace,
+      openStory,
       retryTarget,
       searchRuntime,
       selectSearchResult,

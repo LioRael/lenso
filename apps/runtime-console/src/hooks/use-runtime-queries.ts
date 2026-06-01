@@ -10,9 +10,10 @@ import {
   runtimeEvents,
   type TimelineItem,
   timelineItems,
-  type TraceRun,
-  type TraceSpan,
-  traceRuns,
+  type RuntimeStory,
+  type ExecutionNode,
+  type ExecutionEdge,
+  runtimeStories,
   type RuntimeStatus,
 } from "../data/mock-runtime";
 import { httpClient, isApiMode } from "../lib/http-client";
@@ -23,7 +24,7 @@ export const runtimeQueryKeys = {
   functions: ["runtime", "functions"] as const,
   heatmap: ["runtime", "heatmap"] as const,
   timeline: (id: string) => ["runtime", "timeline", id] as const,
-  traces: ["runtime", "traces"] as const,
+  stories: ["runtime", "stories"] as const,
   deadLetters: ["runtime", "dead-letters"] as const,
 };
 
@@ -144,10 +145,10 @@ export function useDeadLetters() {
   });
 }
 
-export function useRuntimeTraces() {
+export function useRuntimeStories() {
   return useQuery({
-    queryKey: runtimeQueryKeys.traces,
-    queryFn: async () => (isApiMode() ? fetchRuntimeStories() : traceRuns),
+    queryKey: runtimeQueryKeys.stories,
+    queryFn: async () => (isApiMode() ? fetchRuntimeStories() : runtimeStories),
   });
 }
 
@@ -387,6 +388,8 @@ type ApiRuntimeStoryDetail = {
     created_at: string;
   };
   nodes: ApiRuntimeStoryNode[];
+  edges?: ApiRuntimeStoryEdge[];
+  timeline_items?: ApiTimelineItem[];
 };
 
 type ApiRuntimeStoryNode = {
@@ -399,6 +402,14 @@ type ApiRuntimeStoryNode = {
   duration_ms: number;
   error?: string | null;
   metadata?: Record<string, unknown>;
+};
+
+type ApiRuntimeStoryEdge = {
+  id: string;
+  source: string;
+  target: string;
+  type: string;
+  label?: string | null;
 };
 
 type ApiRuntimeHeatmapResponse = {
@@ -491,7 +502,7 @@ async function fetchRuntimeHeatmap(): Promise<RuntimeHeatmap> {
   };
 }
 
-async function fetchRuntimeStories(): Promise<TraceRun[]> {
+async function fetchRuntimeStories(): Promise<RuntimeStory[]> {
   const response = await httpClient
     .get("admin/runtime/stories")
     .json<ApiRuntimeStoryListResponse>();
@@ -502,16 +513,16 @@ async function fetchRuntimeStories(): Promise<TraceRun[]> {
     )
   );
 
-  return details.filter((trace): trace is TraceRun => trace !== null);
+  return details.filter((story): story is RuntimeStory => story !== null);
 }
 
 async function fetchRuntimeStory(
   storyCorrelationId: string
-): Promise<TraceRun> {
+): Promise<RuntimeStory> {
   const response = await httpClient
     .get(`admin/runtime/stories/${encodeURIComponent(storyCorrelationId)}`)
     .json<ApiRuntimeStoryDetailResponse>();
-  return toTraceRun(response.data);
+  return toRuntimeStory(response.data);
 }
 
 async function retryRuntimeWork(input: {
@@ -594,9 +605,7 @@ function toTimelineItem(item: ApiTimelineItem): TimelineItem {
   };
 }
 
-function toRuntimeHeatmapCell(
-  cell: ApiRuntimeHeatmapCell
-): RuntimeHeatmapCell {
+function toRuntimeHeatmapCell(cell: ApiRuntimeHeatmapCell): RuntimeHeatmapCell {
   return {
     bucketStart: cell.bucket_start,
     bucketEnd: cell.bucket_end,
@@ -617,26 +626,30 @@ function toRuntimeHeatmapCell(
 function mockRuntimeHeatmap(): RuntimeHeatmap {
   return {
     bucketSeconds: 300,
-    cells: traceRuns.flatMap((trace) =>
-      trace.spans
-        .filter((span) => span.kind === "event" || span.kind === "function")
-        .map<RuntimeHeatmapCell>((span) => ({
-          bucketEnd: trace.timestamp,
-          bucketStart: trace.timestamp,
-          deadCount: span.status === "dead" ? 1 : 0,
-          errorCount: span.status === "failed" || span.status === "dead" ? 1 : 0,
-          maxDurationMs: span.durationMs,
-          nodeType: span.kind === "event" ? "event" : "function",
-          service: span.service,
+    cells: runtimeStories.flatMap((story) =>
+      story.nodes
+        .filter((node) => node.kind === "event" || node.kind === "function")
+        .map<RuntimeHeatmapCell>((node) => ({
+          bucketEnd: story.timestamp,
+          bucketStart: story.timestamp,
+          deadCount: node.status === "dead" ? 1 : 0,
+          errorCount:
+            node.status === "failed" || node.status === "dead" ? 1 : 0,
+          maxDurationMs: node.durationMs,
+          nodeType: node.kind === "event" ? "event" : "function",
+          service: node.service,
           totalCount: 1,
         }))
     ),
   };
 }
 
-function toTraceRun(story: ApiRuntimeStoryDetail): TraceRun {
+function toRuntimeStory(story: ApiRuntimeStoryDetail): RuntimeStory {
   const baseTimestamp = Date.parse(story.summary.created_at);
-  const spans = story.nodes.map((node, index): TraceSpan => {
+  const parentByTarget = new Map(
+    (story.edges ?? []).map((edge) => [edge.target, edge.source])
+  );
+  const nodes = story.nodes.map((node, index): ExecutionNode => {
     const timestamp = Date.parse(node.timestamp);
     const error = node.error ?? undefined;
     const metadata = node.metadata ?? {};
@@ -646,9 +659,10 @@ function toTraceRun(story: ApiRuntimeStoryDetail): TraceRun {
       typeof metadata.max_attempts === "number"
         ? metadata.max_attempts
         : undefined;
+    const parentId = parentByTarget.get(node.id);
 
     return {
-      ...(index > 0 ? { parentId: story.nodes[index - 1]!.id } : {}),
+      ...(parentId ? { parentId } : {}),
       ...(attempts === undefined ? {} : { attempts }),
       ...(maxAttempts === undefined ? {} : { maxAttempts }),
       attributes: metadata,
@@ -658,7 +672,7 @@ function toTraceRun(story: ApiRuntimeStoryDetail): TraceRun {
       durationMs: node.duration_ms,
       events: [],
       id: node.id,
-      kind: toTraceSpanKind(node.type),
+      kind: toExecutionNodeKind(node.type),
       logs: error ? [error] : [],
       name: node.name,
       retryable: node.status === "failed" || node.status === "dead",
@@ -669,21 +683,32 @@ function toTraceRun(story: ApiRuntimeStoryDetail): TraceRun {
       status: node.status,
     };
   });
+  const edges = (story.edges ?? []).map<ExecutionEdge>((edge) => ({
+    id: edge.id,
+    source: edge.source,
+    target: edge.target,
+    type: edge.type,
+    ...(edge.label ? { label: edge.label } : {}),
+  }));
 
   return {
     correlationId: story.summary.correlation_id,
     durationMs: story.summary.duration,
     id: story.summary.correlation_id,
     name: story.summary.title,
-    service: spans[0]?.service ?? "runtime",
+    service: nodes[0]?.service ?? "runtime",
     source: "runtime-story",
-    spans,
+    nodes,
+    edges,
+    timelineItems: (story.timeline_items ?? []).map(toTimelineItem),
     status: story.summary.status,
     timestamp: story.summary.created_at,
   };
 }
 
-function toTraceSpanKind(type: ApiRuntimeStoryNode["type"]): TraceSpan["kind"] {
+function toExecutionNodeKind(
+  type: ApiRuntimeStoryNode["type"]
+): ExecutionNode["kind"] {
   switch (type) {
     case "request": {
       return "http";

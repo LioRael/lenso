@@ -1,17 +1,17 @@
 import { Grid3X3 } from "lucide-react";
 
-import type { TraceRun } from "../../data/mock-runtime";
+import type { RuntimeStory } from "../../data/mock-runtime";
 import { buildRuntimeStory } from "../../lib/story";
 import { TraceViewHeader } from "./trace-view-header";
 
-export function HeatmapPlaceholderView({ trace }: { trace: TraceRun }) {
-  const story = buildRuntimeStory(trace);
+export function HeatmapPlaceholderView({ story }: { story: RuntimeStory }) {
+  const storySummary = buildRuntimeStory(story);
 
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-(--background)">
       <TraceViewHeader
-        meta={`${story.services.length} services`}
-        summary={`Runtime pressure map for ${story.title}`}
+        meta={`${storySummary.services.length} services`}
+        summary={`Runtime pressure map for ${storySummary.title}`}
         title="Heatmap"
       />
       <div className="grid min-h-0 place-items-center overflow-hidden p-4">
@@ -23,12 +23,12 @@ export function HeatmapPlaceholderView({ trace }: { trace: TraceRun }) {
             <div className="min-w-0">
               <h2 className="text-[14px] font-semibold">Heatmap coming soon</h2>
               <p className="mt-0.5 font-mono text-[11px] text-(--muted)">
-                Runtime pressure map for {story.title}
+                Runtime pressure map for {storySummary.title}
               </p>
             </div>
           </div>
           <div className="mt-4 grid gap-2 font-mono text-[11px] text-(--muted)">
-            {story.services.slice(0, 5).map((service, index) => (
+            {storySummary.services.slice(0, 5).map((service, index) => (
               <div
                 className="grid grid-cols-[minmax(0,1fr)_120px] items-center gap-3"
                 key={service}

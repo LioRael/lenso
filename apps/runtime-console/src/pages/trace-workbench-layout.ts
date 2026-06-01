@@ -19,6 +19,8 @@ export function resizeTraceListWidth(
   );
 }
 
+export const resizeStoryListWidth = resizeTraceListWidth;
+
 export function resizeTraceInspectorWidth(
   currentWidth: number | undefined,
   deltaX: number

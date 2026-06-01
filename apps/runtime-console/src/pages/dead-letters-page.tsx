@@ -225,7 +225,7 @@ export function DeadLettersPage() {
             }
             variant="ghost"
           >
-            Traces
+            Stories
           </Button>
           <Button
             disabled={!selected}

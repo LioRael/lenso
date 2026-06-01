@@ -1,24 +1,24 @@
 import { describe, expect, test } from "vitest";
 
 import type { TraceHeader } from "../components/runtime/trace-header";
-import { traceRuns } from "../data/mock-runtime";
-import { traceWorkbenchDefaultViewMode } from "./trace-workbench-page";
+import { runtimeStories } from "../data/mock-runtime";
+import { storyWorkbenchDefaultViewMode } from "./trace-workbench-page";
 
-describe("trace workbench page contracts", () => {
+describe("story workbench page contracts", () => {
   test("defaults to the runtime story visualization mode", () => {
-    const defaultViewMode: "story" = traceWorkbenchDefaultViewMode;
+    const defaultViewMode: "story" = storyWorkbenchDefaultViewMode;
 
     expect(defaultViewMode).toBe("story");
   });
 
-  test("keeps trace header props aligned with trace data", () => {
-    const trace = traceRuns[0]!;
+  test("keeps story header props aligned with story data", () => {
+    const story = runtimeStories[0]!;
     const traceHeaderProps: Parameters<typeof TraceHeader>[0] = {
       onClose: () => undefined,
-      onSelectSpan: () => undefined,
-      trace,
+      onSelectNode: () => undefined,
+      story,
     };
 
-    expect(traceHeaderProps.trace.id).toBe(trace.id);
+    expect(traceHeaderProps.story.id).toBe(story.id);
   });
 });

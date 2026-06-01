@@ -3,7 +3,7 @@ import gsap from "gsap";
 import { ChevronDown } from "lucide-react";
 import { useRef } from "react";
 
-import type { TraceRun } from "../../data/mock-runtime";
+import type { RuntimeStory } from "../../data/mock-runtime";
 import { cn } from "../../lib/cn";
 import { formatTraceDuration, serviceColor } from "../../lib/trace-style";
 import { getServiceSummaryPanelLayout } from "./service-summary-strip-layout";
@@ -14,12 +14,12 @@ export function ServiceSummaryStrip({
   expanded,
   height,
   onExpandedChange,
-  trace,
+  story,
 }: {
   expanded: boolean;
   height?: number;
   onExpandedChange: (expanded: boolean) => void;
-  trace: TraceRun;
+  story: RuntimeStory;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -29,16 +29,16 @@ export function ServiceSummaryStrip({
   const panelLayout = getServiceSummaryPanelLayout({ expanded, height });
   const initialPanelLayoutRef = useRef(panelLayout);
   const services = Array.from(
-    new Set(trace.spans.map((span) => span.service))
+    new Set(story.nodes.map((node) => node.service))
   ).map((service) => {
-    const spans = trace.spans.filter((span) => span.service === service);
-    const durations = spans.map((span) => span.durationMs);
+    const nodes = story.nodes.filter((node) => node.service === service);
+    const durations = nodes.map((node) => node.durationMs);
     const duration = durations.reduce(
       (total, spanDuration) => total + spanDuration,
       0
     );
-    const errors = spans.filter(
-      (span) => span.status === "failed" || span.status === "dead"
+    const errors = nodes.filter(
+      (node) => node.status === "failed" || node.status === "dead"
     ).length;
     return {
       duration,
@@ -47,7 +47,7 @@ export function ServiceSummaryStrip({
       p95: percentile(durations, 95),
       p99: percentile(durations, 99),
       service,
-      spans: spans.length,
+      nodes: nodes.length,
     };
   });
 
@@ -152,7 +152,7 @@ export function ServiceSummaryStrip({
             p50{" "}
             {formatTraceDuration(
               percentile(
-                trace.spans.map((span) => span.durationMs),
+                story.nodes.map((node) => node.durationMs),
                 50
               )
             )}
@@ -161,7 +161,7 @@ export function ServiceSummaryStrip({
             p95{" "}
             {formatTraceDuration(
               percentile(
-                trace.spans.map((span) => span.durationMs),
+                story.nodes.map((node) => node.durationMs),
                 95
               )
             )}
@@ -169,7 +169,7 @@ export function ServiceSummaryStrip({
           <span>
             max{" "}
             {formatTraceDuration(
-              Math.max(...trace.spans.map((span) => span.durationMs))
+              Math.max(...story.nodes.map((node) => node.durationMs))
             )}
           </span>
         </div>
@@ -195,7 +195,7 @@ export function ServiceSummaryStrip({
               <span className="min-w-0 truncate text-xs font-medium text-(--foreground)">
                 {item.service}
               </span>
-              <span className="text-(--muted)">{item.spans} spans</span>
+              <span className="text-(--muted)">{item.nodes} nodes</span>
               <span className="text-(--muted)">
                 p50 {formatTraceDuration(item.p50)}
               </span>
@@ -221,7 +221,7 @@ export function ServiceSummaryStrip({
                     style={{
                       backgroundColor: serviceColor(item.service),
                       opacity: 0.7,
-                      width: `${Math.max(2, (item.duration / trace.durationMs) * 100)}%`,
+                      width: `${Math.max(2, (item.duration / story.durationMs) * 100)}%`,
                     }}
                   />
                 </div>

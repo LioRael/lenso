@@ -43,8 +43,8 @@ export function CommandPalette({ theme, onToggleTheme }: CommandPaletteProps) {
   const commands = useMemo<CommandItem[]>(() => {
     const items: CommandItem[] = [
       {
-        action: () => void navigate({ to: "/runtime/traces" }),
-        id: "traces",
+        action: () => void navigate({ to: "/runtime/stories" }),
+        id: "stories",
         subtitle: "Runtime execution stories",
         title: "Go to Stories",
       },
@@ -200,6 +200,7 @@ export function CommandPalette({ theme, onToggleTheme }: CommandPaletteProps) {
                 }`}
                 key={command.id}
                 onClick={() => runCommand(command)}
+                type="button"
               >
                 <CommandIcon id={command.id} />
                 <span className="min-w-0">

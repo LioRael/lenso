@@ -13,22 +13,22 @@ import { useRuntimeConsole } from "../components/runtime/runtime-console-context
 import { ServiceSummaryStrip } from "../components/runtime/service-summary-strip";
 import { TraceHeader } from "../components/runtime/trace-header";
 import { TraceInspector } from "../components/runtime/trace-inspector";
-import { TraceList } from "../components/runtime/trace-list";
+import { StoryList } from "../components/runtime/trace-list";
 import type { TraceViewMode } from "../components/runtime/trace-tabs";
-import { TraceVisualization } from "../components/runtime/trace-visualization";
+import { RuntimeVisualization } from "../components/runtime/trace-visualization";
 import { EmptyState } from "../components/ui/empty-state";
 import {
   isRetryable,
-  type TraceRun,
-  type TraceSpan,
+  type RuntimeStory,
+  type ExecutionNode,
 } from "../data/mock-runtime";
 import { useListKeyboard } from "../hooks/use-list-keyboard";
 import { usePersistedLayout } from "../hooks/use-persisted-layout";
-import { useRuntimeTraces } from "../hooks/use-runtime-queries";
+import { useRuntimeStories } from "../hooks/use-runtime-queries";
 import {
   resizeServicesPanelLayout,
   resizeTraceInspectorLayout,
-  resizeTraceListWidth,
+  resizeStoryListWidth,
   traceLayoutDefaults,
 } from "./trace-workbench-layout";
 
@@ -42,29 +42,31 @@ type InspectorTab =
   | "logs"
   | "context";
 
-const emptyTraces: TraceRun[] = [];
-export const traceWorkbenchDefaultViewMode = "story" satisfies TraceViewMode;
+const emptyStories: RuntimeStory[] = [];
+export const storyWorkbenchDefaultViewMode = "story" satisfies TraceViewMode;
 
 export function TraceWorkbenchPage() {
-  const { activeTraceTarget, clearTraceTarget, openRetry } =
+  const { activeStoryTarget, clearStoryTarget, openRetry } =
     useRuntimeConsole();
-  const tracesQuery = useRuntimeTraces();
-  const traces = tracesQuery.data ?? emptyTraces;
+  const storiesQuery = useRuntimeStories();
+  const stories = storiesQuery.data ?? emptyStories;
   const [query, setQuery] = useState("");
-  const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
-  const [selectedSpanId, setSelectedSpanId] = useState<string | null>(null);
-  const [displayedSpan, setDisplayedSpan] = useState<TraceSpan | null>(null);
-  const [traceDetailClosed, setTraceDetailClosed] = useState(false);
+  const [selectedStoryId, setSelectedStoryId] = useState<string | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [displayedNode, setDisplayedNode] = useState<ExecutionNode | null>(
+    null
+  );
+  const [storyDetailClosed, setStoryDetailClosed] = useState(false);
   const [servicesExpanded, setServicesExpanded] = useState(true);
   const [mode, setMode] = useState<TraceViewMode>(
-    traceWorkbenchDefaultViewMode
+    storyWorkbenchDefaultViewMode
   );
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("info");
   const workbenchRef = useRef<HTMLDivElement | null>(null);
   const inspectorPanelRef = useRef<HTMLDivElement | null>(null);
   const previousInspectorOpenRef = useRef(false);
   const [layout, setLayout, resetLayout] = usePersistedLayout(
-    "runtime-console:traces-layout",
+    "runtime-console:stories-layout",
     traceLayoutDefaults
   );
   const traceLayout = { ...traceLayoutDefaults, ...layout };
@@ -84,62 +86,62 @@ export function TraceWorkbenchPage() {
     servicesHeightRef.current = traceLayout.servicesHeight;
   }, [traceLayout.servicesHeight]);
 
-  const visibleTraces = useMemo(() => {
+  const visibleStories = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    return traces.filter((trace) => {
+    return stories.filter((story) => {
       if (!normalized) {
         return true;
       }
       return [
-        trace.id,
-        trace.name,
-        trace.service,
-        trace.source,
-        trace.correlationId,
+        story.id,
+        story.name,
+        story.service,
+        story.source,
+        story.correlationId,
       ].some((value) => value.toLowerCase().includes(normalized));
     });
-  }, [query, traces]);
+  }, [query, stories]);
 
-  const targetTrace = activeTraceTarget
-    ? traces.find((trace) => trace.id === activeTraceTarget.traceId)
+  const targetStory = activeStoryTarget
+    ? stories.find((story) => story.id === activeStoryTarget.storyId)
     : null;
-  const selectedTrace =
-    traceDetailClosed && !targetTrace
+  const selectedStory =
+    storyDetailClosed && !targetStory
       ? null
-      : (targetTrace ??
-        traces.find((trace) => trace.id === selectedTraceId) ??
-        visibleTraces[0] ??
+      : (targetStory ??
+        stories.find((story) => story.id === selectedStoryId) ??
+        visibleStories[0] ??
         null);
-  const selectedSpan =
-    selectedTrace?.spans.find((span) => {
-      const targetSpanId = activeTraceTarget?.spanId ?? selectedSpanId;
-      return targetSpanId ? span.id === targetSpanId : false;
+  const selectedNode =
+    selectedStory?.nodes.find((node) => {
+      const targetNodeId = activeStoryTarget?.nodeId ?? selectedNodeId;
+      return targetNodeId ? node.id === targetNodeId : false;
     }) ?? null;
-  const selectedTraceIndex = Math.max(
+  const selectedStoryIndex = Math.max(
     0,
-    visibleTraces.findIndex((trace) => trace.id === selectedTrace?.id)
+    visibleStories.findIndex((story) => story.id === selectedStory?.id)
   );
-  const inspectorOpen = selectedSpan !== null;
-  const hasInspector = displayedSpan !== null;
+  const inspectorOpen = selectedNode !== null;
+  const hasInspector = displayedNode !== null;
   const listColumn = `clamp(220px,24vw,${traceLayout.listWidth}px)`;
   const inspectorColumn = `clamp(280px,30vw,${traceLayout.inspectorWidth}px)`;
   const gridTemplateColumns = hasInspector
-    ? `${listColumn} 1px minmax(0,1fr) calc(1px * var(--trace-inspector-open)) minmax(0,calc(${inspectorColumn} * var(--trace-inspector-open)))`
+    ? `${listColumn} 1px minmax(0,1fr) calc(1px * var(--story-inspector-open)) minmax(0,calc(${inspectorColumn} * var(--story-inspector-open)))`
     : `${listColumn} 1px minmax(0,1fr)`;
   const showServicesPanel = mode === "waterfall" || mode === "flame";
 
   useEffect(() => {
-    if (selectedSpan) {
-      setDisplayedSpan(selectedSpan);
+    if (selectedNode) {
+      setDisplayedNode(selectedNode);
     }
-  }, [selectedSpan]);
+  }, [selectedNode]);
 
   useGSAP(
     () => {
       const workbench = workbenchRef.current;
       const inspectorPanel = inspectorPanelRef.current;
 
-      if (!workbench || (!displayedSpan && !previousInspectorOpenRef.current)) {
+      if (!workbench || (!displayedNode && !previousInspectorOpenRef.current)) {
         return;
       }
 
@@ -155,7 +157,7 @@ export function TraceWorkbenchPage() {
 
       if (!hasOpenStateChanged) {
         gsap.set(workbench, {
-          "--trace-inspector-open": nextOpen,
+          "--story-inspector-open": nextOpen,
         });
         gsap.set(inspectorPanel, {
           autoAlpha: nextOpen,
@@ -166,25 +168,25 @@ export function TraceWorkbenchPage() {
 
       if (reduceMotion) {
         gsap.set(workbench, {
-          "--trace-inspector-open": nextOpen,
+          "--story-inspector-open": nextOpen,
         });
         gsap.set(inspectorPanel, {
           autoAlpha: nextOpen,
           x: 0,
         });
         if (!inspectorOpen) {
-          setDisplayedSpan(null);
+          setDisplayedNode(null);
         }
         return;
       }
 
       gsap.to(workbench, {
-        "--trace-inspector-open": nextOpen,
+        "--story-inspector-open": nextOpen,
         duration: inspectorOpen ? 0.32 : 0.24,
         ease: inspectorOpen ? "power3.out" : "power2.inOut",
         onComplete: () => {
           if (!inspectorOpen) {
-            setDisplayedSpan(null);
+            setDisplayedNode(null);
           }
         },
       });
@@ -204,7 +206,7 @@ export function TraceWorkbenchPage() {
     },
     {
       dependencies: [
-        displayedSpan?.id ?? null,
+        displayedNode?.id ?? null,
         inspectorOpen,
         traceLayout.inspectorWidth,
         traceLayout.servicesHeight,
@@ -213,27 +215,27 @@ export function TraceWorkbenchPage() {
     }
   );
 
-  const selectTrace = (trace: TraceRun) => {
-    setTraceDetailClosed(false);
-    clearTraceTarget();
-    setSelectedTraceId(trace.id);
-    setSelectedSpanId(null);
+  const selectStory = (story: RuntimeStory) => {
+    setStoryDetailClosed(false);
+    clearStoryTarget();
+    setSelectedStoryId(story.id);
+    setSelectedNodeId(null);
     setInspectorTab("info");
   };
 
-  const closeTraceDetail = () => {
-    setTraceDetailClosed(true);
-    clearTraceTarget();
-    setSelectedTraceId(null);
-    setSelectedSpanId(null);
-    setDisplayedSpan(null);
+  const closeStoryDetail = () => {
+    setStoryDetailClosed(true);
+    clearStoryTarget();
+    setSelectedStoryId(null);
+    setSelectedNodeId(null);
+    setDisplayedNode(null);
     setInspectorTab("info");
   };
 
-  const resizeTraceList = (deltaX: number) => {
+  const resizeStoryList = (deltaX: number) => {
     setLayout((current) => ({
       ...current,
-      listWidth: resizeTraceListWidth(current.listWidth, deltaX),
+      listWidth: resizeStoryListWidth(current.listWidth, deltaX),
     }));
   };
 
@@ -248,8 +250,8 @@ export function TraceWorkbenchPage() {
       inspectorWidth: next.width,
     }));
     if (!next.open) {
-      clearTraceTarget();
-      setSelectedSpanId(null);
+      clearStoryTarget();
+      setSelectedNodeId(null);
       setInspectorTab("info");
     }
   };
@@ -269,72 +271,72 @@ export function TraceWorkbenchPage() {
     }));
   };
 
-  const selectSpan = (span: TraceSpan) => {
-    const ownerTrace = traces.find((trace) =>
-      trace.spans.some((item) => item.id === span.id)
+  const selectNode = (node: ExecutionNode) => {
+    const ownerStory = stories.find((story) =>
+      story.nodes.some((item) => item.id === node.id)
     );
-    setTraceDetailClosed(false);
-    setSelectedTraceId(ownerTrace?.id ?? selectedTrace?.id ?? selectedTraceId);
-    clearTraceTarget();
-    setSelectedSpanId(span.id);
+    setStoryDetailClosed(false);
+    setSelectedStoryId(ownerStory?.id ?? selectedStory?.id ?? selectedStoryId);
+    clearStoryTarget();
+    setSelectedNodeId(node.id);
     setInspectorTab(
-      span.status === "failed" || span.status === "dead" ? "errors" : "info"
+      node.status === "failed" || node.status === "dead" ? "errors" : "info"
     );
   };
 
-  const retrySpan = (span: TraceSpan) => {
-    selectSpan(span);
-    if (isRetryable(span.status) && span.retryable) {
+  const retryNode = (node: ExecutionNode) => {
+    selectNode(node);
+    if (isRetryable(node.status) && node.retryable) {
       openRetry({
-        attempts: span.attempts ?? 1,
-        id: span.id,
+        attempts: node.attempts ?? 1,
+        id: node.id,
         kind: "timeline",
-        maxAttempts: span.maxAttempts ?? 3,
-        name: span.name,
-        status: span.status,
+        maxAttempts: node.maxAttempts ?? 3,
+        name: node.name,
+        status: node.status,
       });
     }
   };
 
   useListKeyboard({
-    items: visibleTraces,
-    onOpen: selectTrace,
-    onRetry: (trace) => {
-      const retryableSpan = trace.spans.find(
-        (span) => isRetryable(span.status) && span.retryable
+    items: visibleStories,
+    onOpen: selectStory,
+    onRetry: (story) => {
+      const retryableNode = story.nodes.find(
+        (node) => isRetryable(node.status) && node.retryable
       );
-      if (retryableSpan) {
-        selectTrace(trace);
-        selectSpan(retryableSpan);
+      if (retryableNode) {
+        selectStory(story);
+        selectNode(retryableNode);
         openRetry({
-          attempts: retryableSpan.attempts ?? 1,
-          id: retryableSpan.id,
+          attempts: retryableNode.attempts ?? 1,
+          id: retryableNode.id,
           kind: "timeline",
-          maxAttempts: retryableSpan.maxAttempts ?? 3,
-          name: retryableSpan.name,
-          status: retryableSpan.status,
+          maxAttempts: retryableNode.maxAttempts ?? 3,
+          name: retryableNode.name,
+          status: retryableNode.status,
         });
       }
     },
-    selectedIndex: selectedTraceIndex,
+    selectedIndex: selectedStoryIndex,
     setSelectedIndex: (index) => {
-      const trace = visibleTraces[index];
-      if (trace) {
-        selectTrace(trace);
+      const story = visibleStories[index];
+      if (story) {
+        selectStory(story);
       }
     },
   });
 
-  if (tracesQuery.isLoading) {
+  if (storiesQuery.isLoading) {
     return (
-      <div className="font-mono text-xs text-slate-500">loading traces...</div>
+      <div className="font-mono text-xs text-slate-500">loading stories...</div>
     );
   }
 
-  if (tracesQuery.isError) {
+  if (storiesQuery.isError) {
     return (
       <div className="font-mono text-xs text-rose-300">
-        trace workbench unavailable
+        story workbench unavailable
       </div>
     );
   }
@@ -346,50 +348,50 @@ export function TraceWorkbenchPage() {
         className="grid h-full min-w-0 overflow-hidden"
         style={
           {
-            "--trace-inspector-open": previousInspectorOpenRef.current ? 1 : 0,
+            "--story-inspector-open": previousInspectorOpenRef.current ? 1 : 0,
             gridTemplateColumns,
           } as CSSProperties
         }
       >
-        <TraceList
-          onSelect={selectTrace}
+        <StoryList
+          onSelect={selectStory}
           query={query}
-          selectedTraceId={selectedTrace?.id ?? null}
+          selectedStoryId={selectedStory?.id ?? null}
           setQuery={setQuery}
-          traces={visibleTraces}
+          stories={visibleStories}
         />
 
         <ResizeHandle
-          ariaLabel="Resize trace list panel"
+          ariaLabel="Resize story list panel"
           onReset={resetLayout}
-          onResize={resizeTraceList}
+          onResize={resizeStoryList}
         />
 
         <main
           className="grid min-h-0 min-w-0 overflow-hidden"
           style={{
-            gridTemplateRows: selectedTrace
+            gridTemplateRows: selectedStory
               ? showServicesPanel
                 ? "auto minmax(0,1fr) auto auto"
                 : "auto minmax(0,1fr)"
               : "minmax(0,1fr)",
           }}
         >
-          {selectedTrace ? (
+          {selectedStory ? (
             <>
               <TraceHeader
-                onClose={closeTraceDetail}
-                onSelectSpan={selectSpan}
-                trace={selectedTrace}
+                onClose={closeStoryDetail}
+                onSelectNode={selectNode}
+                story={selectedStory}
               />
 
-              <TraceVisualization
+              <RuntimeVisualization
                 mode={mode}
-                onRetrySpan={retrySpan}
-                onSelectSpan={selectSpan}
-                selectedSpanId={selectedSpan?.id ?? null}
+                onRetryNode={retryNode}
+                onSelectNode={selectNode}
+                selectedNodeId={selectedNode?.id ?? null}
                 setMode={setMode}
-                trace={selectedTrace}
+                story={selectedStory}
               />
 
               {showServicesPanel ? (
@@ -405,7 +407,7 @@ export function TraceWorkbenchPage() {
                     expanded={servicesExpanded}
                     height={traceLayout.servicesHeight}
                     onExpandedChange={setServicesExpanded}
-                    trace={selectedTrace}
+                    story={selectedStory}
                   />
                 </>
               ) : null}
@@ -417,10 +419,10 @@ export function TraceWorkbenchPage() {
           )}
         </main>
 
-        {selectedTrace && displayedSpan ? (
+        {selectedStory && displayedNode ? (
           <>
             <ResizeHandle
-              ariaLabel="Resize trace inspector panel"
+              ariaLabel="Resize story inspector panel"
               onReset={resetLayout}
               onResize={resizeInspector}
             />
@@ -435,14 +437,14 @@ export function TraceWorkbenchPage() {
               <TraceInspector
                 activeTab={inspectorTab}
                 onClearSelection={() => {
-                  setSelectedTraceId(selectedTrace.id);
-                  clearTraceTarget();
-                  setSelectedSpanId(null);
+                  setSelectedStoryId(selectedStory.id);
+                  clearStoryTarget();
+                  setSelectedNodeId(null);
                   setInspectorTab("info");
                 }}
-                selectedSpan={displayedSpan}
+                selectedNode={displayedNode}
                 setActiveTab={setInspectorTab}
-                trace={selectedTrace}
+                story={selectedStory}
               />
             </div>
           </>

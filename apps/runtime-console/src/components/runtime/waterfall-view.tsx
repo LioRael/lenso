@@ -1,9 +1,9 @@
-import type { TraceRun, TraceSpan } from "../../data/mock-runtime";
+import type { RuntimeStory, ExecutionNode } from "../../data/mock-runtime";
 import { cn } from "../../lib/cn";
 import {
   formatTraceDuration,
   serviceColor,
-  spanDepth,
+  nodeDepth,
   statusColor,
   traceTimelineEnd,
 } from "../../lib/trace-style";
@@ -11,25 +11,25 @@ import { traceWaterfallTableHeaderClassName } from "./trace-table-header";
 import { TraceViewHeader } from "./trace-view-header";
 
 export function WaterfallView({
-  selectedSpanId,
-  trace,
-  onSelectSpan,
+  selectedNodeId,
+  story,
+  onSelectNode,
 }: {
-  trace: TraceRun;
-  selectedSpanId: string | null;
-  onSelectSpan: (span: TraceSpan) => void;
+  story: RuntimeStory;
+  selectedNodeId: string | null;
+  onSelectNode: (node: ExecutionNode) => void;
 }) {
-  const timelineEnd = traceTimelineEnd(trace);
+  const timelineEnd = traceTimelineEnd(story);
 
   return (
     <div className="isolate flex h-full min-w-0 flex-col overflow-hidden bg-(--background)">
       <TraceViewHeader
         meta={`total ${formatTraceDuration(timelineEnd)}`}
-        summary={`span detail · ${trace.spans.length} of ${trace.spans.length} spans`}
+        summary={`node detail · ${story.nodes.length} of ${story.nodes.length} nodes`}
         title="Waterfall"
       />
       <div className={traceWaterfallTableHeaderClassName}>
-        <span>Span</span>
+        <span>Node</span>
         <div className="grid min-w-0 grid-cols-5 overflow-hidden">
           {[0, 25, 50, 75, 100].map((tick) => (
             <span className="font-mono" key={tick}>
@@ -39,21 +39,21 @@ export function WaterfallView({
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
-        {trace.spans.map((span) => {
-          const left = clampPercent((span.startMs / timelineEnd) * 100);
-          const rawWidth = (span.durationMs / timelineEnd) * 100;
+        {story.nodes.map((node) => {
+          const left = clampPercent((node.startMs / timelineEnd) * 100);
+          const rawWidth = (node.durationMs / timelineEnd) * 100;
           const width = Math.min(Math.max(rawWidth, 0.8), 100 - left);
-          const depth = spanDepth(span, trace.spans);
+          const depth = nodeDepth(node, story.nodes);
           return (
             <button
-              aria-label={`Select span ${span.name}`}
+              aria-label={`Select node ${node.name}`}
               className={cn(
                 "grid w-full min-w-0 grid-cols-[minmax(260px,340px)_minmax(0,1fr)] items-center gap-4 px-3 py-1.5 text-left transition hover:bg-[color-mix(in_srgb,var(--hover)_64%,transparent)]",
-                selectedSpanId === span.id &&
+                selectedNodeId === node.id &&
                   "bg-(--accent-soft) shadow-[inset_2px_0_0_var(--accent)]"
               )}
-              key={span.id}
-              onClick={() => onSelectSpan(span)}
+              key={node.id}
+              onClick={() => onSelectNode(node)}
               type="button"
             >
               <span className="flex min-w-0 items-center gap-1.5 overflow-hidden">
@@ -63,23 +63,23 @@ export function WaterfallView({
                 />
                 <span
                   className="size-2 shrink-0 rounded-xs"
-                  style={{ backgroundColor: statusColor(span.status) }}
+                  style={{ backgroundColor: statusColor(node.status) }}
                 />
                 <span
                   className="max-w-26 shrink-0 truncate whitespace-nowrap rounded-xs border px-1.5 py-0.5 font-mono text-[11px] leading-3.5"
                   style={{
-                    backgroundColor: `${serviceColor(span.service)}12`,
-                    borderColor: `${serviceColor(span.service)}24`,
-                    color: serviceColor(span.service),
+                    backgroundColor: `${serviceColor(node.service)}12`,
+                    borderColor: `${serviceColor(node.service)}24`,
+                    color: serviceColor(node.service),
                   }}
                 >
-                  {span.service}
+                  {node.service}
                 </span>
                 <span className="truncate font-mono text-[13px] text-(--foreground)">
-                  {span.name}
+                  {node.name}
                 </span>
                 <span className="ml-auto font-mono text-xs text-(--muted)">
-                  {formatTraceDuration(span.durationMs)}
+                  {formatTraceDuration(node.durationMs)}
                 </span>
               </span>
               <span className="relative isolate h-6 min-w-0 overflow-hidden rounded-xs bg-[linear-gradient(90deg,transparent_0%,transparent_24.8%,var(--border-subtle)_25%,transparent_25.2%,transparent_49.8%,var(--border-subtle)_50%,transparent_50.2%,transparent_74.8%,var(--border-subtle)_75%,transparent_75.2%)]">
@@ -87,13 +87,13 @@ export function WaterfallView({
                   className="absolute top-1 h-4 min-w-0.75 rounded-xs transition-transform"
                   style={{
                     backgroundColor:
-                      span.status === "failed" || span.status === "dead"
+                      node.status === "failed" || node.status === "dead"
                         ? "#ef4444"
-                        : serviceColor(span.service),
+                        : serviceColor(node.service),
                     left: `${left}%`,
-                    opacity: selectedSpanId === span.id ? 1 : 0.82,
+                    opacity: selectedNodeId === node.id ? 1 : 0.82,
                     transform:
-                      selectedSpanId === span.id ? "scaleY(1.25)" : undefined,
+                      selectedNodeId === node.id ? "scaleY(1.25)" : undefined,
                     width: `${width}%`,
                   }}
                 />

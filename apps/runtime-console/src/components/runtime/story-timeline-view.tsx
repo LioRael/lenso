@@ -1,7 +1,7 @@
 import { Cloud, Mail, Route, ServerCog, Workflow } from "lucide-react";
 import type { ComponentType } from "react";
 
-import type { TraceRun, TraceSpan } from "../../data/mock-runtime";
+import type { RuntimeStory, ExecutionNode } from "../../data/mock-runtime";
 import { cn } from "../../lib/cn";
 import { buildRuntimeStory, type RuntimeNodeType } from "../../lib/story";
 import {
@@ -14,22 +14,22 @@ import { traceTimelineTableHeaderClassName } from "./trace-table-header";
 import { TraceViewHeader } from "./trace-view-header";
 
 export function StoryTimelineView({
-  selectedSpanId,
-  trace,
-  onSelectSpan,
+  selectedNodeId,
+  story,
+  onSelectNode,
 }: {
-  trace: TraceRun;
-  selectedSpanId: string | null;
-  onSelectSpan: (span: TraceSpan) => void;
+  story: RuntimeStory;
+  selectedNodeId: string | null;
+  onSelectNode: (node: ExecutionNode) => void;
 }) {
-  const story = buildRuntimeStory(trace);
-  const timelineEnd = traceTimelineEnd(trace);
+  const storySummary = buildRuntimeStory(story);
+  const timelineEnd = traceTimelineEnd(story);
 
   return (
     <div className="isolate flex h-full min-w-0 flex-col overflow-hidden bg-(--background)">
       <TraceViewHeader
         meta={`total ${formatTraceDuration(timelineEnd)}`}
-        summary={`${story.nodeCount} execution nodes from one correlation`}
+        summary={`${storySummary.nodeCount} execution nodes from one correlation`}
         title="Business Timeline"
       />
 
@@ -47,7 +47,7 @@ export function StoryTimelineView({
       <div className="min-h-0 flex-1 overflow-auto px-4 py-4">
         <div className="mx-auto w-full max-w-5xl">
           <div className="grid gap-3">
-            {story.nodes.map((node, index) => {
+            {storySummary.nodes.map((node, index) => {
               const Icon = nodeIcon[node.type];
               const tone = nodeTone[node.type];
               const left = clampPercent((node.timestamp / timelineEnd) * 100);
@@ -55,7 +55,7 @@ export function StoryTimelineView({
                 Math.max((node.duration / timelineEnd) * 100, 1.5),
                 100 - left
               );
-              const selected = selectedSpanId === node.span.id;
+              const selected = selectedNodeId === node.node.id;
               const errored =
                 node.status === "failed" || node.status === "dead";
 
@@ -67,7 +67,7 @@ export function StoryTimelineView({
                     selected && "scale-[1.004]"
                   )}
                   key={node.id}
-                  onClick={() => onSelectSpan(node.span)}
+                  onClick={() => onSelectNode(node.node)}
                   type="button"
                 >
                   <span

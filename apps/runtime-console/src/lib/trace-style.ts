@@ -1,4 +1,8 @@
-import type { RuntimeStatus, TraceRun, TraceSpan } from "../data/mock-runtime";
+import type {
+  RuntimeStatus,
+  RuntimeStory,
+  ExecutionNode,
+} from "../data/mock-runtime";
 
 const serviceColors = [
   "#f3f724",
@@ -39,32 +43,32 @@ export function serviceColor(service: string) {
   return serviceColors[hash % serviceColors.length];
 }
 
-export function traceStats(trace: TraceRun) {
-  const errors = trace.spans.filter(
-    (span) => span.status === "failed" || span.status === "dead"
+export function traceStats(story: RuntimeStory) {
+  const errors = story.nodes.filter(
+    (node) => node.status === "failed" || node.status === "dead"
   );
-  const services = Array.from(new Set(trace.spans.map((span) => span.service)));
+  const services = Array.from(new Set(story.nodes.map((node) => node.service)));
   return {
     errors: errors.length,
     services,
-    spanCount: trace.spans.length,
+    nodeCount: story.nodes.length,
   };
 }
 
-export function traceTimelineEnd(trace: TraceRun) {
-  const latestSpanEnd = Math.max(
+export function traceTimelineEnd(story: RuntimeStory) {
+  const latestNodeEnd = Math.max(
     0,
-    ...trace.spans.map((span) => span.startMs + span.durationMs)
+    ...story.nodes.map((node) => node.startMs + node.durationMs)
   );
-  return Math.max(trace.durationMs, latestSpanEnd, 1);
+  return Math.max(story.durationMs, latestNodeEnd, 1);
 }
 
-export function spanDepth(span: TraceSpan, spans: TraceSpan[]) {
+export function nodeDepth(node: ExecutionNode, nodes: ExecutionNode[]) {
   let depth = 0;
-  let { parentId } = span;
+  let { parentId } = node;
   while (parentId) {
     const currentParentId = parentId;
-    const parent = spans.find((item) => item.id === currentParentId);
+    const parent = nodes.find((item) => item.id === currentParentId);
     if (!parent) {
       break;
     }
@@ -74,13 +78,13 @@ export function spanDepth(span: TraceSpan, spans: TraceSpan[]) {
   return depth;
 }
 
-export function criticalPath(trace: TraceRun) {
-  const byParent = new Map<string | undefined, TraceSpan[]>();
-  trace.spans.forEach((span) => {
-    byParent.set(span.parentId, [...(byParent.get(span.parentId) ?? []), span]);
+export function criticalPath(story: RuntimeStory) {
+  const byParent = new Map<string | undefined, ExecutionNode[]>();
+  story.nodes.forEach((node) => {
+    byParent.set(node.parentId, [...(byParent.get(node.parentId) ?? []), node]);
   });
 
-  const path: TraceSpan[] = [];
+  const path: ExecutionNode[] = [];
   const roots = [...(byParent.get(undefined) ?? [])].sort(
     (left, right) => right.durationMs - left.durationMs
   );

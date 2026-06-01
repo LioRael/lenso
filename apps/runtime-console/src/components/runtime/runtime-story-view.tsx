@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import type { ComponentType } from "react";
 
-import type { TraceRun, TraceSpan } from "../../data/mock-runtime";
+import type { RuntimeStory, ExecutionNode } from "../../data/mock-runtime";
 import { cn } from "../../lib/cn";
 import {
   buildRuntimeStory,
@@ -25,42 +25,42 @@ import { Button } from "../ui/button";
 import { TraceViewHeader } from "./trace-view-header";
 
 export function RuntimeStoryView({
-  selectedSpanId,
-  trace,
+  selectedNodeId,
+  story,
   onRetryNode,
-  onSelectSpan,
+  onSelectNode,
 }: {
-  trace: TraceRun;
-  selectedSpanId: string | null;
-  onSelectSpan: (span: TraceSpan) => void;
+  story: RuntimeStory;
+  selectedNodeId: string | null;
+  onSelectNode: (node: ExecutionNode) => void;
   onRetryNode: (node: RuntimeNode) => void;
 }) {
-  const story = buildRuntimeStory(trace);
+  const storySummary = buildRuntimeStory(story);
 
   return (
     <div className="grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-(--background)">
       <TraceViewHeader
-        meta={`${story.nodeCount} nodes · ${formatTraceDuration(story.duration)}`}
-        summary={story.patternLabel || "No execution pattern"}
+        meta={`${storySummary.nodeCount} nodes · ${formatTraceDuration(storySummary.duration)}`}
+        summary={storySummary.patternLabel || "No execution pattern"}
         title="Runtime Story"
       />
 
       <div className="min-h-0 overflow-auto px-4 py-4">
         <div className="mx-auto grid w-full max-w-4xl gap-2">
-          {story.nodes.length === 0 ? (
+          {storySummary.nodes.length === 0 ? (
             <div className="border border-(--border-subtle) bg-(--surface) p-4 font-mono text-xs text-(--muted)">
               No runtime story nodes were derived for this story.
             </div>
           ) : null}
 
-          {story.nodes.map((node, index) => (
+          {storySummary.nodes.map((node, index) => (
             <GraphNode
               key={node.id}
               node={node}
               onRetry={() => onRetryNode(node)}
-              onSelect={() => onSelectSpan(node.span)}
-              selected={selectedSpanId === node.span.id}
-              showConnector={index < story.nodes.length - 1}
+              onSelect={() => onSelectNode(node.node)}
+              selected={selectedNodeId === node.node.id}
+              showConnector={index < storySummary.nodes.length - 1}
             />
           ))}
         </div>

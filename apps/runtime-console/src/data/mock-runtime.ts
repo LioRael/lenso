@@ -71,7 +71,7 @@ export type TimelineItem = {
   detailId?: string;
 };
 
-export type TraceSpan = {
+export type ExecutionNode = {
   id: string;
   parentId?: string;
   name: string;
@@ -102,7 +102,15 @@ export type TraceSpan = {
   maxAttempts?: number;
 };
 
-export type TraceRun = {
+export type ExecutionEdge = {
+  id: string;
+  source: string;
+  target: string;
+  type: "causation" | "sequence" | "technical" | string;
+  label?: string;
+};
+
+export type RuntimeStory = {
   id: string;
   name: string;
   service: string;
@@ -111,12 +119,17 @@ export type TraceRun = {
   durationMs: number;
   timestamp: string;
   correlationId: string;
-  spans: TraceSpan[];
+  nodes: ExecutionNode[];
+  edges?: ExecutionEdge[];
+  timelineItems?: TimelineItem[];
 };
+
+export type TraceSpan = ExecutionNode;
+export type TraceRun = RuntimeStory;
 
 export const correlationId = "corr_01HX9A7K2R_RUNTIME";
 
-export const traceRuns: TraceRun[] = [
+export const runtimeStories: RuntimeStory[] = [
   {
     id: "tr_01HX9A7_RUNTIME",
     name: "POST /v1/identity/users",
@@ -126,7 +139,7 @@ export const traceRuns: TraceRun[] = [
     durationMs: 6412,
     timestamp: "2026-05-31T09:18:11.980Z",
     correlationId,
-    spans: [
+    nodes: [
       {
         id: "sp_http_create_user",
         name: "POST /v1/identity/users",
@@ -326,7 +339,7 @@ export const traceRuns: TraceRun[] = [
     durationMs: 820,
     timestamp: "2026-05-31T09:20:44.500Z",
     correlationId: "corr_01HX9C5_FILES",
-    spans: [
+    nodes: [
       {
         id: "sp_files_upload",
         name: "files.object_uploaded.v1",
@@ -356,7 +369,7 @@ export const traceRuns: TraceRun[] = [
     durationMs: 128,
     timestamp: "2026-05-31T09:14:01.000Z",
     correlationId: "corr_01HX9A9_CLEANUP",
-    spans: [
+    nodes: [
       {
         id: "sp_cleanup_run",
         name: "identity.cleanup_expired_sessions.v1",

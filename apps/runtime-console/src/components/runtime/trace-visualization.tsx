@@ -1,4 +1,4 @@
-import type { TraceRun, TraceSpan } from "../../data/mock-runtime";
+import type { RuntimeStory, ExecutionNode } from "../../data/mock-runtime";
 import { FlameView } from "./flame-view";
 import { FlowView } from "./flow-view";
 import { HeatmapView } from "./heatmap-view";
@@ -8,20 +8,20 @@ import type { TraceViewMode } from "./trace-tabs";
 import { TraceTabs } from "./trace-tabs";
 import { WaterfallView } from "./waterfall-view";
 
-export function TraceVisualization({
+export function RuntimeVisualization({
   mode,
-  selectedSpanId,
+  selectedNodeId,
   setMode,
-  trace,
-  onRetrySpan,
-  onSelectSpan,
+  story,
+  onRetryNode,
+  onSelectNode,
 }: {
-  trace: TraceRun;
+  story: RuntimeStory;
   mode: TraceViewMode;
-  selectedSpanId: string | null;
+  selectedNodeId: string | null;
   setMode: (mode: TraceViewMode) => void;
-  onSelectSpan: (span: TraceSpan) => void;
-  onRetrySpan: (span: TraceSpan) => void;
+  onSelectNode: (node: ExecutionNode) => void;
+  onRetryNode: (node: ExecutionNode) => void;
 }) {
   return (
     <section className="isolate grid h-full min-h-0 min-w-0 grid-rows-[32px_minmax(0,1fr)] overflow-hidden">
@@ -29,45 +29,45 @@ export function TraceVisualization({
       <div className="min-h-0 min-w-0 overflow-hidden">
         {mode === "story" ? (
           <RuntimeStoryView
-            onRetryNode={(node) => onRetrySpan(node.span)}
-            onSelectSpan={onSelectSpan}
-            selectedSpanId={selectedSpanId}
-            trace={trace}
+            onRetryNode={(node) => onRetryNode(node.node)}
+            onSelectNode={onSelectNode}
+            selectedNodeId={selectedNodeId}
+            story={story}
           />
         ) : null}
         {mode === "graph" ? (
           <FlowView
-            onSelectSpan={onSelectSpan}
-            selectedSpanId={selectedSpanId}
-            trace={trace}
+            onSelectNode={onSelectNode}
+            selectedNodeId={selectedNodeId}
+            story={story}
           />
         ) : null}
         {mode === "timeline" ? (
           <StoryTimelineView
-            onSelectSpan={onSelectSpan}
-            selectedSpanId={selectedSpanId}
-            trace={trace}
+            onSelectNode={onSelectNode}
+            selectedNodeId={selectedNodeId}
+            story={story}
           />
         ) : null}
         {mode === "waterfall" ? (
           <WaterfallView
-            onSelectSpan={onSelectSpan}
-            selectedSpanId={selectedSpanId}
-            trace={trace}
+            onSelectNode={onSelectNode}
+            selectedNodeId={selectedNodeId}
+            story={story}
           />
         ) : null}
         {mode === "flame" ? (
           <FlameView
-            onSelectSpan={onSelectSpan}
-            selectedSpanId={selectedSpanId}
-            trace={trace}
+            onSelectNode={onSelectNode}
+            selectedNodeId={selectedNodeId}
+            story={story}
           />
         ) : null}
         {mode === "heatmap" ? (
           <HeatmapView
-            onSelectSpan={onSelectSpan}
-            selectedSpanId={selectedSpanId}
-            trace={trace}
+            onSelectNode={onSelectNode}
+            selectedNodeId={selectedNodeId}
+            story={story}
           />
         ) : null}
       </div>

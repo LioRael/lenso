@@ -27,14 +27,22 @@ const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
   beforeLoad: () => {
-    throw redirect({ to: "/runtime/traces" });
+    throw redirect({ to: "/runtime/stories" });
   },
 });
 
-const traceWorkbenchRoute = createRoute({
+const storiesWorkbenchRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/runtime/stories",
+  component: TraceWorkbenchPage,
+});
+
+const traceWorkbenchAliasRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/runtime/traces",
-  component: TraceWorkbenchPage,
+  beforeLoad: () => {
+    throw redirect({ to: "/runtime/stories" });
+  },
 });
 
 const overviewRoute = createRoute({
@@ -47,7 +55,7 @@ const eventsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/events",
   beforeLoad: () => {
-    throw redirect({ to: "/runtime/traces" });
+    throw redirect({ to: "/runtime/stories" });
   },
 });
 
@@ -55,7 +63,7 @@ const functionsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/functions",
   beforeLoad: () => {
-    throw redirect({ to: "/runtime/traces" });
+    throw redirect({ to: "/runtime/stories" });
   },
 });
 
@@ -63,7 +71,7 @@ const timelineRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/timeline",
   beforeLoad: () => {
-    throw redirect({ to: "/runtime/traces" });
+    throw redirect({ to: "/runtime/stories" });
   },
 });
 
@@ -113,7 +121,8 @@ const placeholderRoute = (path: string, title: string) =>
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
-  traceWorkbenchRoute,
+  storiesWorkbenchRoute,
+  traceWorkbenchAliasRoute,
   overviewRoute,
   eventsRoute,
   functionsRoute,

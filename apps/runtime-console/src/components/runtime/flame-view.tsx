@@ -1,4 +1,4 @@
-import type { TraceRun, TraceSpan } from "../../data/mock-runtime";
+import type { RuntimeStory, ExecutionNode } from "../../data/mock-runtime";
 import { cn } from "../../lib/cn";
 import {
   formatTraceDuration,
@@ -8,16 +8,16 @@ import {
 import { TraceViewHeader } from "./trace-view-header";
 
 export function FlameView({
-  selectedSpanId,
-  trace,
-  onSelectSpan,
+  selectedNodeId,
+  story,
+  onSelectNode,
 }: {
-  trace: TraceRun;
-  selectedSpanId: string | null;
-  onSelectSpan: (span: TraceSpan) => void;
+  story: RuntimeStory;
+  selectedNodeId: string | null;
+  onSelectNode: (node: ExecutionNode) => void;
 }) {
-  const levels = buildLevels(trace.spans);
-  const timelineEnd = traceTimelineEnd(trace);
+  const levels = buildLevels(story.nodes);
+  const timelineEnd = traceTimelineEnd(story);
   return (
     <div className="isolate flex h-full min-w-0 flex-col overflow-hidden bg-(--background)">
       <TraceViewHeader
@@ -31,35 +31,35 @@ export function FlameView({
             className="relative isolate h-9 overflow-hidden border-b border-[color-mix(in_srgb,var(--border-subtle)_60%,transparent)]"
             key={index}
           >
-            {level.map((span) => {
-              const left = clampPercent((span.startMs / timelineEnd) * 100);
-              const rawWidth = (span.durationMs / timelineEnd) * 100;
+            {level.map((node) => {
+              const left = clampPercent((node.startMs / timelineEnd) * 100);
+              const rawWidth = (node.durationMs / timelineEnd) * 100;
               const width = Math.min(Math.max(rawWidth, 3), 100 - left);
               return (
                 <button
                   className={cn(
                     "absolute top-1 h-7 overflow-hidden rounded-xs border px-2 text-left font-mono text-[12px] text-(--foreground) transition hover:brightness-125",
-                    selectedSpanId === span.id &&
+                    selectedNodeId === node.id &&
                       "shadow-[0_0_0_1px_var(--accent),0_0_8px_color-mix(in_srgb,var(--accent)_25%,transparent)]"
                   )}
-                  key={span.id}
-                  onClick={() => onSelectSpan(span)}
+                  key={node.id}
+                  onClick={() => onSelectNode(node)}
                   style={{
                     backgroundColor:
-                      span.status === "failed" || span.status === "dead"
+                      node.status === "failed" || node.status === "dead"
                         ? "#ef4444"
-                        : `${serviceColor(span.service)}cc`,
+                        : `${serviceColor(node.service)}cc`,
                     borderColor:
-                      span.status === "failed" || span.status === "dead"
+                      node.status === "failed" || node.status === "dead"
                         ? "#ef4444"
-                        : `${serviceColor(span.service)}99`,
+                        : `${serviceColor(node.service)}99`,
                     left: `${left}%`,
                     width: `${width}%`,
                   }}
                   type="button"
                 >
                   <span className="truncate">
-                    {span.name} · {formatTraceDuration(span.durationMs)}
+                    {node.name} · {formatTraceDuration(node.durationMs)}
                   </span>
                 </button>
               );
@@ -75,20 +75,20 @@ function clampPercent(value: number) {
   return Math.min(100, Math.max(0, value));
 }
 
-function buildLevels(spans: TraceSpan[]) {
-  const byParent = new Map<string | undefined, TraceSpan[]>();
-  spans.forEach((span) => {
-    const children = byParent.get(span.parentId) ?? [];
-    children.push(span);
-    byParent.set(span.parentId, children);
+function buildLevels(nodes: ExecutionNode[]) {
+  const byParent = new Map<string | undefined, ExecutionNode[]>();
+  nodes.forEach((node) => {
+    const children = byParent.get(node.parentId) ?? [];
+    children.push(node);
+    byParent.set(node.parentId, children);
   });
 
-  const levels: TraceSpan[][] = [];
-  const visit = (span: TraceSpan, depth: number) => {
-    levels[depth] = [...(levels[depth] ?? []), span];
-    (byParent.get(span.id) ?? []).forEach((child) => visit(child, depth + 1));
+  const levels: ExecutionNode[][] = [];
+  const visit = (node: ExecutionNode, depth: number) => {
+    levels[depth] = [...(levels[depth] ?? []), node];
+    (byParent.get(node.id) ?? []).forEach((child) => visit(child, depth + 1));
   };
 
-  (byParent.get(undefined) ?? []).forEach((span) => visit(span, 0));
+  (byParent.get(undefined) ?? []).forEach((node) => visit(node, 0));
   return levels;
 }

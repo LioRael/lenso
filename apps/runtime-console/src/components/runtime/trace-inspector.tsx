@@ -1,6 +1,6 @@
 import { ArrowRight, Copy, RotateCcw, X } from "lucide-react";
 
-import type { TraceRun, TraceSpan } from "../../data/mock-runtime";
+import type { RuntimeStory, ExecutionNode } from "../../data/mock-runtime";
 import { cn } from "../../lib/cn";
 import { formatTraceDuration, serviceColor } from "../../lib/trace-style";
 import {
@@ -31,26 +31,26 @@ const tabs: InspectorTab[] = [
 export function TraceInspector({
   activeTab,
   onClearSelection,
-  selectedSpan,
+  selectedNode,
   setActiveTab,
-  trace,
+  story,
 }: {
-  trace: TraceRun;
-  selectedSpan: TraceSpan;
+  story: RuntimeStory;
+  selectedNode: ExecutionNode;
   activeTab: InspectorTab;
   onClearSelection: () => void;
   setActiveTab: (tab: InspectorTab) => void;
 }) {
-  const span = selectedSpan;
+  const node = selectedNode;
 
-  const parent = span.parentId
-    ? trace.spans.find((item) => item.id === span.parentId)
+  const parent = node.parentId
+    ? story.nodes.find((item) => item.id === node.parentId)
     : null;
-  const breadcrumb = buildBreadcrumb(trace, span);
-  const childCount = trace.spans.filter(
-    (item) => item.parentId === span.id
+  const breadcrumb = buildBreadcrumb(story, node);
+  const childCount = story.nodes.filter(
+    (item) => item.parentId === node.id
   ).length;
-  const tabCounts = getTabCounts(span);
+  const tabCounts = getTabCounts(node);
 
   return (
     <aside className="grid h-full min-h-0 w-full min-w-0 max-w-full grid-rows-[auto_auto_auto_minmax(0,1fr)] overflow-hidden bg-(--sidebar)">
@@ -64,21 +64,21 @@ export function TraceInspector({
                   "border-(--border-subtle) bg-(--elevated) text-(--accent)"
                 )}
               >
-                {typeLabel(span)}
+                {typeLabel(node)}
               </span>
               <span
                 className="min-w-0 truncate rounded-xs border px-1.5 py-0.5 font-mono text-[10px] font-medium uppercase tracking-wide"
                 style={{
-                  backgroundColor: `${serviceColor(span.service)}14`,
-                  borderColor: `${serviceColor(span.service)}28`,
-                  color: serviceColor(span.service),
+                  backgroundColor: `${serviceColor(node.service)}14`,
+                  borderColor: `${serviceColor(node.service)}28`,
+                  color: serviceColor(node.service),
                 }}
               >
-                {span.service}
+                {node.service}
               </span>
             </div>
             <h2 className="truncate font-mono text-sm font-semibold leading-tight text-(--foreground)">
-              {span.name}
+              {node.name}
             </h2>
           </div>
           <button
@@ -92,16 +92,19 @@ export function TraceInspector({
         </div>
 
         <div className="flex min-w-0 items-center gap-2 overflow-hidden border-t border-(--border-subtle) px-3 py-1.5 font-mono text-[11px] text-(--muted)">
-          <button className="group flex min-w-10.5 flex-1 items-center gap-1 overflow-hidden text-left transition hover:text-(--secondary)">
-            <span className="truncate">{span.id.slice(0, 16)}</span>
+          <button
+            className="group flex min-w-10.5 flex-1 items-center gap-1 overflow-hidden text-left transition hover:text-(--secondary)"
+            type="button"
+          >
+            <span className="truncate">{node.id.slice(0, 16)}</span>
             <Copy className="size-2.5 shrink-0 opacity-0 transition group-hover:opacity-100" />
           </button>
           <span className="shrink-0 text-(--accent)">
-            {formatTraceDuration(span.durationMs)}
+            {formatTraceDuration(node.durationMs)}
           </span>
           <TraceStatusBadge
             className="shrink-0"
-            status={span.status}
+            status={node.status}
             variant="compact"
           />
           <span className="min-w-0 truncate">{childCount} children</span>
@@ -127,7 +130,7 @@ export function TraceInspector({
                   ) : null}
                   <span
                     className={cn(
-                      item.id === span.id
+                      item.id === node.id
                         ? "text-(--foreground)"
                         : "text-(--secondary)"
                     )}
@@ -181,7 +184,7 @@ export function TraceInspector({
       </div>
 
       <div className="min-h-0 min-w-0 overflow-auto bg-(--background)">
-        <InspectorBody activeTab={activeTab} span={span} trace={trace} />
+        <InspectorBody activeTab={activeTab} node={node} story={story} />
       </div>
     </aside>
   );
@@ -189,11 +192,11 @@ export function TraceInspector({
 
 function InspectorBody({
   activeTab,
-  span,
-  trace,
+  node,
+  story,
 }: {
-  trace: TraceRun;
-  span: TraceSpan;
+  story: RuntimeStory;
+  node: ExecutionNode;
   activeTab: InspectorTab;
 }) {
   const { openRetry } = useRuntimeConsole();
@@ -203,34 +206,35 @@ function InspectorBody({
       <div className="font-mono text-xs">
         <KeyValueTable
           rows={[
-            ["status", span.status],
-            ["duration", formatTraceDuration(span.durationMs)],
-            ["service", span.service],
-            ["kind", span.kind],
-            ["start", formatTraceDuration(span.startMs)],
-            ["end", formatTraceDuration(span.startMs + span.durationMs)],
-            ["attempts", `${span.attempts ?? 1}/${span.maxAttempts ?? 1}`],
-            ["correlation_id", trace.correlationId],
+            ["status", node.status],
+            ["duration", formatTraceDuration(node.durationMs)],
+            ["service", node.service],
+            ["kind", node.kind],
+            ["start", formatTraceDuration(node.startMs)],
+            ["end", formatTraceDuration(node.startMs + node.durationMs)],
+            ["attempts", `${node.attempts ?? 1}/${node.maxAttempts ?? 1}`],
+            ["correlation_id", story.correlationId],
             [
               "causation_id",
-              String(span.context.causation_id ?? parentId(span) ?? "-"),
+              String(node.context.causation_id ?? parentId(node) ?? "-"),
             ],
           ]}
         />
-        {span.retryable ? (
+        {node.retryable ? (
           <div className="border-b border-(--border-subtle) px-3 py-2">
             <button
               className="inline-flex h-8 w-fit items-center gap-2 rounded-xs border border-[color-mix(in_srgb,var(--error)_35%,transparent)] bg-[color-mix(in_srgb,var(--error)_10%,transparent)] px-2 font-mono text-[11px] text-(--foreground) hover:bg-[color-mix(in_srgb,var(--error)_15%,transparent)]"
               onClick={() =>
                 openRetry({
-                  attempts: span.attempts ?? 1,
-                  id: span.id,
+                  attempts: node.attempts ?? 1,
+                  id: node.id,
                   kind: "timeline",
-                  maxAttempts: span.maxAttempts ?? 3,
-                  name: span.name,
-                  status: span.status,
+                  maxAttempts: node.maxAttempts ?? 3,
+                  name: node.name,
+                  status: node.status,
                 })
               }
+              type="button"
             >
               <RotateCcw size={12} />
               Retry runtime item
@@ -242,19 +246,19 @@ function InspectorBody({
   }
 
   if (activeTab === "attributes") {
-    return <KeyValueTable rows={objectRows(span.attributes)} />;
+    return <KeyValueTable rows={objectRows(node.attributes)} />;
   }
 
   if (activeTab === "events") {
-    return <EventList span={span} />;
+    return <EventList node={node} />;
   }
 
   if (activeTab === "errors") {
-    return <ErrorPanel span={span} />;
+    return <ErrorPanel node={node} />;
   }
 
   if (activeTab === "logs") {
-    return <LogList span={span} />;
+    return <LogList node={node} />;
   }
 
   return (
@@ -262,21 +266,21 @@ function InspectorBody({
       <JsonViewer
         defaultExpanded
         title="payload / input"
-        value={span.payload ?? {}}
+        value={node.payload ?? {}}
       />
       <JsonViewer
         defaultExpanded
-        title="actor / trace context"
+        title="actor / story context"
         value={{
-          actor: span.context.actor ?? trace.service,
-          headers: span.context.headers ?? {},
-          trace_context: {
-            correlation_id: trace.correlationId,
-            parent_id: span.parentId ?? null,
-            span_id: span.id,
-            trace_id: trace.id,
+          actor: node.context.actor ?? story.service,
+          headers: node.context.headers ?? {},
+          execution_context: {
+            correlation_id: story.correlationId,
+            parent_id: node.parentId ?? null,
+            node_id: node.id,
+            story_id: story.id,
           },
-          ...span.context,
+          ...node.context,
         }}
       />
     </div>
@@ -305,13 +309,13 @@ function KeyValueTable({ rows }: { rows: Array<[string, unknown]> }) {
   );
 }
 
-function EventList({ span }: { span: TraceSpan }) {
-  if (span.events.length === 0) {
+function EventList({ node }: { node: ExecutionNode }) {
+  if (node.events.length === 0) {
     return <EmptyRows label="no events" />;
   }
   return (
     <div className="w-max min-w-full font-mono text-xs">
-      {span.events.map((event) => (
+      {node.events.map((event) => (
         <div
           className="grid w-max min-w-full grid-cols-[58px_minmax(220px,max-content)] gap-2 border-b border-(--border-subtle) px-3 py-2"
           key={`${event.name}-${event.timestampMs}`}
@@ -335,43 +339,43 @@ function EventList({ span }: { span: TraceSpan }) {
   );
 }
 
-function ErrorPanel({ span }: { span: TraceSpan }) {
-  const isError = span.status === "failed" || span.status === "dead";
+function ErrorPanel({ node }: { node: ExecutionNode }) {
+  const isError = node.status === "failed" || node.status === "dead";
   return (
     <KeyValueTable
       rows={[
-        ["error_code", isError ? span.status : "-"],
-        ["message", isError ? (span.logs.at(-1) ?? "runtime error") : "-"],
-        ["stack / last_error", isError ? span.logs.join("\n") : "-"],
-        ["retryability", span.retryable ? "retryable" : "not retryable"],
+        ["error_code", isError ? node.status : "-"],
+        ["message", isError ? (node.logs.at(-1) ?? "runtime error") : "-"],
+        ["stack / last_error", isError ? node.logs.join("\n") : "-"],
+        ["retryability", node.retryable ? "retryable" : "not retryable"],
       ]}
     />
   );
 }
 
-function LogList({ span }: { span: TraceSpan }) {
-  if (span.logs.length === 0) {
+function LogList({ node }: { node: ExecutionNode }) {
+  if (node.logs.length === 0) {
     return <EmptyRows label="no logs" />;
   }
   return (
     <div className="w-max min-w-full font-mono text-xs">
-      {span.logs.map((log, index) => (
+      {node.logs.map((log, index) => (
         <div
           className="grid w-max min-w-full grid-cols-[44px_54px_minmax(220px,max-content)] gap-2 border-b border-(--border-subtle) px-3 py-1.5"
           key={`${log}-${index}`}
         >
           <span className="whitespace-nowrap text-(--muted)">
-            +{formatTraceDuration(span.startMs + index * 12)}
+            +{formatTraceDuration(node.startMs + index * 12)}
           </span>
           <span
             className={cn(
               "uppercase",
-              span.status === "failed" || span.status === "dead"
+              node.status === "failed" || node.status === "dead"
                 ? "text-[#ef4444]"
                 : "text-[#22c55e]"
             )}
           >
-            {span.status === "failed" || span.status === "dead"
+            {node.status === "failed" || node.status === "dead"
               ? "error"
               : "info"}
           </span>
@@ -405,48 +409,48 @@ function formatCell(value: unknown) {
   return JSON.stringify(value);
 }
 
-function buildBreadcrumb(trace: TraceRun, span: TraceSpan) {
-  const path: TraceSpan[] = [];
-  let current: TraceSpan | undefined = span;
+function buildBreadcrumb(story: RuntimeStory, node: ExecutionNode) {
+  const path: ExecutionNode[] = [];
+  let current: ExecutionNode | undefined = node;
   while (current) {
     path.unshift(current);
     const currentParentId: string | undefined = current.parentId;
     current = currentParentId
-      ? trace.spans.find((item) => item.id === currentParentId)
+      ? story.nodes.find((item) => item.id === currentParentId)
       : undefined;
   }
   return path;
 }
 
-function typeLabel(span: TraceSpan) {
-  if (span.kind === "external") {
+function typeLabel(node: ExecutionNode) {
+  if (node.kind === "external") {
     return "provider";
   }
-  if (span.kind === "function") {
+  if (node.kind === "function") {
     return "function";
   }
-  if (span.kind === "http") {
+  if (node.kind === "http") {
     return "http";
   }
-  if (span.kind === "event") {
+  if (node.kind === "event") {
     return "event";
   }
-  return "span";
+  return "node";
 }
 
-function parentId(span: TraceSpan) {
-  return span.parentId ?? null;
+function parentId(node: ExecutionNode) {
+  return node.parentId ?? null;
 }
 
-function getTabCounts(span: TraceSpan): Record<InspectorTab, number> {
-  const errorCount = span.status === "failed" || span.status === "dead" ? 1 : 0;
+function getTabCounts(node: ExecutionNode): Record<InspectorTab, number> {
+  const errorCount = node.status === "failed" || node.status === "dead" ? 1 : 0;
 
   return {
-    attributes: Object.keys(span.attributes).length,
-    context: Object.keys(span.context).length + (span.payload ? 1 : 0),
+    attributes: Object.keys(node.attributes).length,
+    context: Object.keys(node.context).length + (node.payload ? 1 : 0),
     errors: errorCount,
-    events: span.events.length,
+    events: node.events.length,
     info: 0,
-    logs: span.logs.length,
+    logs: node.logs.length,
   };
 }

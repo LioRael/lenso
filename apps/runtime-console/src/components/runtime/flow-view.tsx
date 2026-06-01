@@ -2,12 +2,12 @@ import { Maximize2, Minus, Plus } from "lucide-react";
 import type { PointerEvent, WheelEvent } from "react";
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 
-import type { TraceRun, TraceSpan } from "../../data/mock-runtime";
+import type { RuntimeStory, ExecutionNode } from "../../data/mock-runtime";
 import { cn } from "../../lib/cn";
 import {
   formatTraceDuration,
   serviceColor,
-  spanDepth,
+  nodeDepth,
 } from "../../lib/trace-style";
 import {
   clampFlowZoom,
@@ -29,13 +29,13 @@ const minimapWidth = 140;
 const minimapHeight = 100;
 
 export function FlowView({
-  selectedSpanId,
-  trace,
-  onSelectSpan,
+  selectedNodeId,
+  story,
+  onSelectNode,
 }: {
-  trace: TraceRun;
-  selectedSpanId: string | null;
-  onSelectSpan: (span: TraceSpan) => void;
+  story: RuntimeStory;
+  selectedNodeId: string | null;
+  onSelectNode: (node: ExecutionNode) => void;
 }) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const panRef = useRef<{
@@ -51,14 +51,28 @@ export function FlowView({
   const [viewportSize, setViewportSize] = useState({ height: 0, width: 0 });
   const [zoom, setZoom] = useState(1);
 
+  const edges = useMemo(
+    () => story.edges ?? edgesFromParents(story.nodes),
+    [story.edges, story.nodes]
+  );
+  const depthById = useMemo(
+    () => nodeDepths(story.nodes, edges),
+    [edges, story.nodes]
+  );
   const nodes = useMemo(
     () =>
-      trace.spans.map((span, index) => ({
-        span,
-        x: spanDepth(span, trace.spans) * columnWidth,
+      story.nodes.map((node, index) => ({
+        node,
+        x:
+          (depthById.get(node.id) ?? nodeDepth(node, story.nodes)) *
+          columnWidth,
         y: index * rowHeight,
       })),
-    [trace.spans]
+    [depthById, story.nodes]
+  );
+  const nodesById = useMemo(
+    () => new Map(nodes.map((node) => [node.node.id, node])),
+    [nodes]
   );
   const nodeBounds = useMemo(
     () => getNodeBounds(nodes, nodeWidth, nodeHeight),
@@ -304,42 +318,43 @@ export function FlowView({
             }}
           >
             <svg
-              aria-label="Trace flow connectors"
+              aria-label="Story flow connectors"
               className="pointer-events-none absolute inset-0 size-full"
             >
-              <title>Trace flow connectors</title>
-              {nodes.slice(0, -1).map((node, index) => {
-                const next = nodes[index + 1];
-                if (!next) {
+              <title>Story flow connectors</title>
+              {edges.map((edge) => {
+                const source = nodesById.get(edge.source);
+                const target = nodesById.get(edge.target);
+                if (!source || !target) {
                   return null;
                 }
-                const fromX = node.x + nodeWidth;
-                const fromY = node.y + nodeHeight / 2;
-                const toX = next.x;
-                const toY = next.y + nodeHeight / 2;
+                const fromX = source.x + nodeWidth;
+                const fromY = source.y + nodeHeight / 2;
+                const toX = target.x;
+                const toY = target.y + nodeHeight / 2;
                 const midX = (fromX + toX) / 2;
                 return (
                   <path
                     d={`M ${fromX} ${fromY} C ${midX} ${fromY}, ${midX} ${toY}, ${toX} ${toY}`}
                     fill="none"
-                    key={`${node.span.id}-${next.span.id}`}
+                    key={edge.id}
                     opacity="0.72"
                     stroke="var(--muted-deep)"
-                    strokeDasharray="6 4"
+                    strokeDasharray={edge.type === "causation" ? "none" : "6 4"}
                     strokeWidth="1.5"
                   />
                 );
               })}
             </svg>
 
-            {nodes.map(({ span, x, y }) => {
-              const color = serviceColor(span.service);
-              const isSelected = selectedSpanId === span.id;
+            {nodes.map(({ node, x, y }) => {
+              const color = serviceColor(node.service);
+              const isSelected = selectedNodeId === node.id;
               const isError =
-                span.status === "failed" || span.status === "dead";
+                node.status === "failed" || node.status === "dead";
               return (
                 <button
-                  aria-label={`Select graph node ${span.name}`}
+                  aria-label={`Select graph node ${node.name}`}
                   className={cn(
                     "absolute h-18 w-60 cursor-pointer rounded-sm border bg-(--elevated) text-left transition hover:bg-(--hover)",
                     isSelected &&
@@ -351,8 +366,8 @@ export function FlowView({
                       !isError &&
                       "border-(--border-subtle) hover:border-(--muted-deep)"
                   )}
-                  key={span.id}
-                  onClick={() => onSelectSpan(span)}
+                  key={node.id}
+                  onClick={() => onSelectNode(node)}
                   style={{ left: x, top: y }}
                   type="button"
                 >
@@ -370,7 +385,7 @@ export function FlowView({
                           color,
                         }}
                       >
-                        {span.service}
+                        {node.service}
                       </span>
                       <span
                         className={cn(
@@ -380,15 +395,15 @@ export function FlowView({
                             : "bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] text-(--accent)"
                         )}
                       >
-                        {span.kind}
+                        {node.kind}
                       </span>
                     </span>
                     <span className="min-w-0">
                       <span className="block truncate font-mono text-[13px] text-(--foreground)">
-                        {span.name}
+                        {node.name}
                       </span>
                       <span className="block font-mono text-[11px] text-(--muted)">
-                        {formatTraceDuration(span.durationMs)}
+                        {formatTraceDuration(node.durationMs)}
                       </span>
                     </span>
                   </span>
@@ -439,14 +454,14 @@ export function FlowView({
             width: canvasWidth,
           }}
         >
-          {nodes.map(({ span, x, y }) => (
+          {nodes.map(({ node, x, y }) => (
             <div
               className="absolute h-18 w-60 rounded-sm"
-              key={span.id}
+              key={node.id}
               style={{
-                backgroundColor: serviceColor(span.service),
+                backgroundColor: serviceColor(node.service),
                 left: x,
-                opacity: selectedSpanId === span.id ? 1 : 0.45,
+                opacity: selectedNodeId === node.id ? 1 : 0.45,
                 top: y,
               }}
             />
@@ -462,4 +477,53 @@ export function FlowView({
       </div>
     </div>
   );
+}
+
+function edgesFromParents(nodes: ExecutionNode[]) {
+  return nodes
+    .filter((node): node is ExecutionNode & { parentId: string } =>
+      Boolean(node.parentId)
+    )
+    .map((node) => ({
+      id: `${node.parentId}:${node.id}:parent`,
+      source: node.parentId,
+      target: node.id,
+      type: "sequence",
+    }));
+}
+
+function nodeDepths(
+  nodes: ExecutionNode[],
+  edges: Array<{ source: string; target: string }>
+) {
+  const parentsByTarget = new Map<string, string[]>();
+  for (const edge of edges) {
+    parentsByTarget.set(edge.target, [
+      ...(parentsByTarget.get(edge.target) ?? []),
+      edge.source,
+    ]);
+  }
+
+  const depthById = new Map<string, number>();
+  const visit = (id: string, seen = new Set<string>()): number => {
+    if (depthById.has(id)) {
+      return depthById.get(id)!;
+    }
+    if (seen.has(id)) {
+      return 0;
+    }
+    const nextSeen = new Set(seen).add(id);
+    const parents = parentsByTarget.get(id) ?? [];
+    const depth =
+      parents.length === 0
+        ? 0
+        : Math.max(...parents.map((parentId) => visit(parentId, nextSeen))) + 1;
+    depthById.set(id, depth);
+    return depth;
+  };
+
+  for (const node of nodes) {
+    visit(node.id);
+  }
+  return depthById;
 }

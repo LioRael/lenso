@@ -30,7 +30,7 @@ export function RuntimeSearch() {
             }
           }}
           className="w-full bg-transparent text-xs text-(--foreground) outline-hidden placeholder:text-(--muted)"
-          placeholder="story id / span / correlation / event / function"
+          placeholder="story id / node / correlation / event / function"
           value={query}
         />
         <span className="border border-(--border) px-1 py-0.5 text-[11px] leading-none text-(--muted)">
@@ -53,6 +53,7 @@ export function RuntimeSearch() {
                   setOpen(false);
                   setQuery("");
                 }}
+                type="button"
               >
                 <span className="self-center text-[11px] font-bold uppercase tracking-[0.04em] text-(--muted)">
                   {result.kind}
