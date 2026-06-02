@@ -154,10 +154,12 @@ function GraphNode({
             <span className="mt-1 flex min-w-0 items-center gap-2 font-mono text-[10px] text-(--muted)">
               <span className="truncate">{node.service}</span>
               <span className="text-(--muted-deep)">·</span>
-              <span className="truncate">{node.id}</span>
+              <span className="shrink-0" title={node.id}>
+                {shortId(node.id)}
+              </span>
             </span>
             {node.error ? (
-              <span className="mt-2 block truncate border-l-2 border-[#ef4444] pl-2 font-mono text-[11px] text-[#ff8b86]">
+              <span className="mt-2 block truncate font-mono text-[11px] text-[#ff8b86]">
                 {node.error}
               </span>
             ) : null}
@@ -181,6 +183,11 @@ function GraphNode({
       </div>
     </div>
   );
+}
+
+function shortId(id: string) {
+  const tail = id.split("-").at(-1) ?? id;
+  return tail.length > 12 ? `…${tail.slice(-12)}` : `…${tail}`;
 }
 
 const nodeStyle: Record<

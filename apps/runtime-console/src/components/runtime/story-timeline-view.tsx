@@ -156,7 +156,7 @@ function TimelineRow({
           <span className="min-w-0 flex-1">
             <span className="flex min-w-0 items-center gap-2">
               <span className="truncate font-mono text-[10px] font-semibold uppercase tracking-[0.06em]">
-                {row.kind}
+                {rowKindLabel(row.kind)}
               </span>
               <span
                 className="size-1.5 shrink-0 rounded-full"
@@ -169,12 +169,6 @@ function TimelineRow({
               {row.name}
             </span>
             <span className="mt-1 flex min-w-0 items-center gap-2 font-mono text-[10px] text-(--muted)">
-              <span
-                className="h-1.5 w-1.5 shrink-0"
-                style={{
-                  backgroundColor: serviceColor(row.service),
-                }}
-              />
               <span className="truncate">{row.service}</span>
               <span className="ml-auto shrink-0">
                 {formatRuntimeDuration(row.durationMs)}
@@ -278,6 +272,22 @@ function rowIcon(
     return Cloud;
   }
   return ServerCog;
+}
+
+function rowKindLabel(kind: ExecutionTimelineRow["kind"]) {
+  if (kind === "outbox_event" || kind === "event") {
+    return "Event";
+  }
+  if (kind === "function_run" || kind === "function" || kind === "command") {
+    return "Function";
+  }
+  if (kind === "http_request" || kind === "http") {
+    return "Request";
+  }
+  if (kind === "external_provider_call" || kind === "external") {
+    return "External";
+  }
+  return "Worker";
 }
 
 function clampPercent(value: number) {

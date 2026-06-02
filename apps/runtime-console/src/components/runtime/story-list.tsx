@@ -55,12 +55,15 @@ export function StoryList({
           const storySummary = buildRuntimeStory(story);
           const isError =
             storySummary.status === "failed" || storySummary.status === "dead";
+          const isSelected = selectedStoryId === story.id;
 
           return (
             <button
               className={cn(
-                "w-full border-b border-(--border-subtle) px-3 py-2 text-left transition",
-                selectedStoryId === story.id
+                "relative w-full border-b border-(--border-subtle) py-2.5 pr-3 pl-4 text-left transition",
+                isError &&
+                  "before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-[#ef4444]",
+                isSelected
                   ? "bg-(--accent-soft) shadow-[inset_2px_0_0_var(--accent)]"
                   : "hover:bg-(--elevated)"
               )}
@@ -68,22 +71,17 @@ export function StoryList({
               onClick={() => onSelect(story)}
               type="button"
             >
-              <div className="mb-1 flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5">
                 <span
                   className="size-1.5 shrink-0 rounded-full"
-                  style={{
-                    backgroundColor: statusColor(storySummary.status),
-                    boxShadow: isError
-                      ? `0 0 8px ${statusColor(storySummary.status)}`
-                      : undefined,
-                  }}
+                  style={{ backgroundColor: statusColor(storySummary.status) }}
                 />
                 <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-(--foreground)">
                   {storySummary.title}
                 </span>
                 <span
                   className={cn(
-                    "font-mono text-[10px] uppercase",
+                    "font-mono text-[10px] uppercase tracking-wide",
                     isError ? "text-[#ff8b86]" : "text-(--muted)"
                   )}
                 >
@@ -91,32 +89,41 @@ export function StoryList({
                 </span>
               </div>
 
-              <div className="mb-1.5 truncate font-mono text-[10px] text-(--muted)">
-                {storySummary.correlationId}
-              </div>
-
-              <div className="mb-1.5 flex flex-wrap items-center gap-1.5 font-mono text-[10px] text-(--secondary)">
+              <div className="mt-1.5 flex items-center gap-2 font-mono text-[10px] text-(--secondary)">
                 <Metric icon={<Clock size={10} />}>
                   {formatRuntimeDuration(storySummary.duration)}
                 </Metric>
+                <span className="text-(--border-subtle)">·</span>
                 <Metric icon={<Boxes size={10} />}>
-                  {storySummary.nodeCount} nodes
+                  {storySummary.nodeCount}
                 </Metric>
-                <Metric
-                  className={
-                    storySummary.errorCount > 0 ? "text-[#ff8b86]" : ""
-                  }
-                  icon={<AlertCircle size={10} />}
+                {storySummary.errorCount > 0 ? (
+                  <>
+                    <span className="text-(--border-subtle)">·</span>
+                    <Metric className="text-[#ff8b86]" icon={<AlertCircle size={10} />}>
+                      {storySummary.errorCount}
+                    </Metric>
+                  </>
+                ) : null}
+                <span
+                  className="ml-auto truncate text-[10px] text-(--muted)"
+                  title={storySummary.correlationId}
                 >
-                  {storySummary.errorCount} errors
-                </Metric>
+                  {shortCorrelation(storySummary.correlationId)}
+                </span>
               </div>
 
-              <div className="truncate font-mono text-[10px] leading-4 text-(--secondary)">
-                {storySummary.patternLabel || "No execution pattern"}
-              </div>
+              {isError && storySummary.rootError ? (
+                <div className="mt-1.5 truncate font-mono text-[10px] leading-4 text-[#ff8b86]">
+                  {storySummary.rootError}
+                </div>
+              ) : (
+                <div className="mt-1.5 truncate font-mono text-[10px] leading-4 text-(--secondary)">
+                  {storySummary.patternLabel || "No execution pattern"}
+                </div>
+              )}
 
-              <div className="mt-1 flex min-w-0 flex-wrap gap-1">
+              <div className="mt-1.5 flex min-w-0 flex-wrap gap-1">
                 {storySummary.services.slice(0, 4).map((service) => (
                   <span
                     className="max-w-24 truncate border border-(--border-subtle) bg-(--elevated) px-1 py-0.5 font-mono text-[9px] text-(--muted)"
@@ -131,18 +138,17 @@ export function StoryList({
                   </span>
                 ) : null}
               </div>
-
-              {storySummary.rootError ? (
-                <div className="mt-1.5 truncate border-l-2 border-[#ef4444] pl-2 font-mono text-[10px] leading-4 text-[#ff8b86]">
-                  {storySummary.rootError}
-                </div>
-              ) : null}
             </button>
           );
         })}
       </div>
     </aside>
   );
+}
+
+function shortCorrelation(correlationId: string) {
+  const tail = correlationId.split("-").at(-1) ?? correlationId;
+  return tail.length > 12 ? `…${tail.slice(-12)}` : `…${tail}`;
 }
 
 function Metric({
