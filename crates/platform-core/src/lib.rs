@@ -10,6 +10,7 @@ pub mod health;
 pub mod ids;
 pub mod migrations;
 pub mod outbox;
+pub mod settings;
 pub mod shutdown;
 pub mod story_display;
 pub mod story_events;
@@ -39,6 +40,7 @@ pub use outbox::{
     ClaimedOutboxEvent, EventDispatcher, EventHandler, EventHandlerRegistry,
     LoggingEventDispatcher, OutboxEvent, OutboxPublisher, OutboxRelay, OutboxStatus,
 };
+pub use settings::{SettingDescriptor, SettingScope, SettingType, SettingsRegistry};
 pub use shutdown::Shutdown;
 pub use story_display::{StoryDisplayDescriptor, StoryDisplaySource};
 pub use telemetry_attrs::{
