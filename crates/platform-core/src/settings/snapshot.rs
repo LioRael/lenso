@@ -188,4 +188,12 @@ mod tests {
         let snapshot = SettingsSnapshot::resolve(&registry(), "worker", &BTreeMap::new());
         assert!(snapshot.raw("api.feature.enabled").is_none());
     }
+
+    #[test]
+    fn get_value_reads_single_key_and_errors_on_unknown() {
+        let snapshot = SettingsSnapshot::resolve(&registry(), "api", &BTreeMap::new());
+        let ttl: u64 = snapshot.get_value("identity.password_reset_ttl_minutes").unwrap();
+        assert_eq!(ttl, 30);
+        assert!(snapshot.get_value::<u64>("does.not.exist").is_err());
+    }
 }
