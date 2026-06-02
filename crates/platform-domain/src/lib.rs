@@ -6,7 +6,7 @@
 //! HTTP routes. Apps iterate descriptors instead of hand-wiring each domain, so
 //! adding a domain is one list entry rather than edits scattered across apps.
 
-use platform_core::{EventHandler, StoryDisplayDescriptor};
+use platform_core::{EventHandler, SettingDescriptor, StoryDisplayDescriptor};
 use platform_runtime::RuntimeDescriptor;
 use std::sync::Arc;
 
@@ -25,6 +25,8 @@ pub struct DomainDescriptor {
     pub event_handlers: Vec<Arc<dyn EventHandler>>,
     /// Story-display metadata for the runtime console.
     pub story_display: &'static [StoryDisplayDescriptor],
+    /// Editable configuration keys owned by the domain.
+    pub settings: &'static [SettingDescriptor],
 }
 
 impl DomainDescriptor {
@@ -36,6 +38,7 @@ impl DomainDescriptor {
             runtime,
             event_handlers: Vec::new(),
             story_display: &[],
+            settings: &[],
         }
     }
 
@@ -52,6 +55,13 @@ impl DomainDescriptor {
         self.story_display = story_display;
         self
     }
+
+    /// Attach editable configuration descriptors for the domain.
+    #[must_use]
+    pub fn with_settings(mut self, settings: &'static [SettingDescriptor]) -> Self {
+        self.settings = settings;
+        self
+    }
 }
 
 impl std::fmt::Debug for DomainDescriptor {
@@ -62,6 +72,7 @@ impl std::fmt::Debug for DomainDescriptor {
             .field("runtime", &self.runtime)
             .field("event_handlers", &self.event_handlers.len())
             .field("story_display", &self.story_display.len())
+            .field("settings", &self.settings.len())
             .finish()
     }
 }
