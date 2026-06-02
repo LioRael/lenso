@@ -1,4 +1,9 @@
-use app_api::openapi_document;
+use app_api::{build_router, openapi_document};
+use axum::body::{Body, to_bytes};
+use axum::http::{Request, StatusCode};
+use platform_core::{AppConfig, AppContext, LoggingEventPublisher};
+use std::sync::Arc;
+use tower::ServiceExt;
 
 #[test]
 fn openapi_contains_identity_create_user_contract() {
@@ -39,4 +44,43 @@ fn committed_openapi_artifact_matches_rust_source() {
             .expect("committed OpenAPI artifact should parse");
 
     assert_eq!(committed, generated);
+}
+
+#[tokio::test]
+async fn scalar_docs_route_serves_openapi_reference() {
+    let ctx = AppContext::new(
+        AppConfig::from_env(),
+        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build"),
+        Arc::new(LoggingEventPublisher),
+    );
+    let app = build_router(ctx);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/docs")
+                .body(Body::empty())
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let content_type = response
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .expect("docs response should include content type")
+        .to_str()
+        .expect("content type should be valid");
+    assert!(content_type.starts_with("text/html"));
+
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    let body = String::from_utf8(bytes.to_vec()).expect("body should be utf-8");
+
+    assert!(body.contains("@scalar/api-reference"));
+    assert!(body.contains("url: \"/openapi.json\""));
 }
