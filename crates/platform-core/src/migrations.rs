@@ -24,6 +24,10 @@ pub const PLATFORM_MIGRATIONS: &[Migration] = &[
         name: "platform/0004_add_outbox_summary_index",
         sql: include_str!("../migrations/0004_add_outbox_summary_index.sql"),
     },
+    Migration {
+        name: "platform/0005_create_execution_logs",
+        sql: include_str!("../migrations/0005_create_execution_logs.sql"),
+    },
 ];
 
 pub async fn apply_migrations(pool: &PgPool, migrations: &[Migration]) -> AppResult<()> {

@@ -44,6 +44,14 @@ async fn relay_success_marks_event_published() {
 
     assert_eq!(count, 1);
     assert_eq!(event_status(&db.pool, "evt_1").await, "published");
+    assert_eq!(
+        execution_log_bodies(&db.pool, "evt_1").await,
+        vec![
+            "Outbox event claimed".to_owned(),
+            "Outbox event dispatch started".to_owned(),
+            "Outbox event published".to_owned()
+        ]
+    );
 
     db.cleanup().await;
 }
@@ -65,6 +73,11 @@ async fn retryable_failure_increments_attempts_and_marks_failed_for_retry() {
     let (status, attempts) = event_status_and_attempts(&db.pool, "evt_1").await;
     assert_eq!(status, "failed");
     assert_eq!(attempts, 1);
+    assert!(
+        execution_log_bodies(&db.pool, "evt_1")
+            .await
+            .contains(&"Outbox event failed".to_owned())
+    );
 
     db.cleanup().await;
 }
@@ -157,4 +170,19 @@ async fn event_status_and_attempts(pool: &platform_core::DbPool, id: &str) -> (S
         .fetch_one(pool)
         .await
         .expect("status and attempts should query")
+}
+
+async fn execution_log_bodies(pool: &platform_core::DbPool, id: &str) -> Vec<String> {
+    sqlx::query_scalar(
+        r#"
+        select body
+        from platform.execution_logs
+        where execution_id = $1
+        order by occurred_at asc, id asc
+        "#,
+    )
+    .bind(id)
+    .fetch_all(pool)
+    .await
+    .expect("execution log bodies should query")
 }

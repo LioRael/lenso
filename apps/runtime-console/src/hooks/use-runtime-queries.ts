@@ -11,6 +11,7 @@ import type {
 import {
   correlationId,
   type Actor,
+  type ExecutionLogEntry,
   type ExecutionPayload,
   type FunctionRun,
   functionRuns,
@@ -27,12 +28,14 @@ import {
 import { httpClient, isApiMode } from "../lib/http-client";
 import {
   normalizeRuntimeHeatmap,
+  normalizeExecutionLogs,
   normalizeExecutionPayload,
   normalizeRuntimeStory,
   normalizeRuntimeStoryListResponse,
   normalizeTechnicalOperations,
   normalizeTimelineItems,
   type ApiRuntimeHeatmapResponse,
+  type ApiExecutionLogResponse,
   type ApiExecutionPayloadResponse,
   type ApiRuntimeStoryDetailResponse,
   type ApiRuntimeStoryListResponse,
@@ -54,6 +57,7 @@ export const runtimeQueryKeys = {
     ["runtime", "executions", id, "technical-operations"] as const,
   executionPayload: (id: string) =>
     ["runtime", "executions", id, "payload"] as const,
+  executionLogs: (id: string) => ["runtime", "executions", id, "logs"] as const,
   stories: ["runtime", "stories"] as const,
   deadLetters: ["runtime", "dead-letters"] as const,
 };
@@ -97,7 +101,7 @@ export type RuntimeSummary = {
 };
 
 export type { RuntimeHeatmap, RuntimeHeatmapCell };
-export type { ExecutionPayload, TechnicalOperation };
+export type { ExecutionLogEntry, ExecutionPayload, TechnicalOperation };
 
 export function useRuntimeSummary() {
   return useQuery({
@@ -187,6 +191,21 @@ export function useExecutionTechnicalOperations(nodeId: string) {
       isApiMode()
         ? fetchExecutionTechnicalOperations(nodeId)
         : ([] satisfies TechnicalOperation[]),
+  });
+}
+
+export function useExecutionLogs(
+  story: RuntimeStory,
+  nodeId: string,
+  enabled: boolean
+) {
+  return useQuery({
+    enabled: Boolean(nodeId) && enabled,
+    queryKey: runtimeQueryKeys.executionLogs(nodeId),
+    queryFn: async () =>
+      isApiMode()
+        ? fetchExecutionLogs(nodeId)
+        : mockExecutionLogs(story, nodeId),
   });
 }
 
@@ -454,6 +473,15 @@ async function fetchExecutionPayload(
   return normalizeExecutionPayload(response);
 }
 
+async function fetchExecutionLogs(
+  nodeId: string
+): Promise<ExecutionLogEntry[]> {
+  const response = await httpClient
+    .get(`admin/runtime/executions/${encodeURIComponent(nodeId)}/logs`)
+    .json<ApiExecutionLogResponse>();
+  return normalizeExecutionLogs(response);
+}
+
 async function retryRuntimeWork(input: {
   kind: "event" | "function" | "timeline";
   id: string;
@@ -476,6 +504,33 @@ function mockExecutionPayload(
     output: undefined,
     redactedFields: [],
   };
+}
+
+function mockExecutionLogs(
+  story: RuntimeStory,
+  nodeId: string
+): ExecutionLogEntry[] {
+  const node = story.nodes.find((item) => item.id === nodeId);
+  if (!node) {
+    return [];
+  }
+  return node.logs.map((log, index) => ({
+    attributes: {},
+    body: log,
+    correlationId: story.correlationId,
+    executionName: node.name,
+    id: `${node.id}:log:${index + 1}`,
+    nodeId: node.id,
+    nodeType: node.kind,
+    occurredAt: new Date(
+      Date.parse(story.timestamp) + node.startMs + index * 12
+    ).toISOString(),
+    redactedFields: [],
+    serviceName: node.service,
+    severity:
+      node.status === "failed" || node.status === "dead" ? "error" : "info",
+    storyId: story.id,
+  }));
 }
 
 function toSummaryItem(item: ApiRuntimeSummaryItem): RuntimeSummaryItem {

@@ -60,6 +60,29 @@ export type AdminOutboxListResponse = {
   page: PageInfo;
 };
 
+export type AdminRuntimeExecutionLog = {
+  attributes: unknown;
+  body: string;
+  correlation_id: string;
+  execution_name: string;
+  id: string;
+  node_id: string;
+  node_type: string;
+  occurred_at: string;
+  redacted_fields: Array<string>;
+  service_name: string;
+  severity: string;
+  span_id?: string | null;
+  story_id: string;
+  trace_id?: string | null;
+};
+
+export type AdminRuntimeExecutionLogListResponse = {
+  data: Array<AdminRuntimeExecutionLog>;
+  order: string;
+  page: PageInfo;
+};
+
 export type AdminRuntimeExecutionPayload = {
   input: unknown;
   metadata: unknown;

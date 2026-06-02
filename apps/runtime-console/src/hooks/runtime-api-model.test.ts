@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  normalizeExecutionLogs,
   normalizeExecutionPayload,
   normalizeRuntimeHeatmap,
   normalizeRuntimeStory,
@@ -399,5 +400,47 @@ describe("runtime API model normalization", () => {
       output: null,
       redactedFields: ["input.email"],
     });
+  });
+
+  test("normalizes execution log responses", () => {
+    const logs = normalizeExecutionLogs({
+      data: [
+        {
+          attributes: { attempt: 1 },
+          body: "Function run started",
+          correlation_id: "corr_1",
+          execution_name: "notifications.send_welcome_email.v1",
+          id: "elog_1",
+          node_id: "fnrun_1",
+          node_type: "function_run",
+          occurred_at: "2026-06-01T12:00:01.000Z",
+          redacted_fields: ["attributes.email"],
+          service_name: "notifications",
+          severity: "info",
+          span_id: "span_1",
+          story_id: "corr_1",
+          trace_id: "trace_1",
+        },
+      ],
+    });
+
+    expect(logs).toEqual([
+      {
+        attributes: { attempt: 1 },
+        body: "Function run started",
+        correlationId: "corr_1",
+        executionName: "notifications.send_welcome_email.v1",
+        id: "elog_1",
+        nodeId: "fnrun_1",
+        nodeType: "function_run",
+        occurredAt: "2026-06-01T12:00:01.000Z",
+        redactedFields: ["attributes.email"],
+        serviceName: "notifications",
+        severity: "info",
+        spanId: "span_1",
+        storyId: "corr_1",
+        traceId: "trace_1",
+      },
+    ]);
   });
 });

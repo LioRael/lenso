@@ -2,6 +2,7 @@ use crate::clock::{Clock, SystemClock};
 use crate::config::AppConfig;
 use crate::db::DbPool;
 use crate::events::EventPublisher;
+use crate::execution_logs::{ExecutionLogProvider, PostgresExecutionLogProvider};
 use crate::health::HealthRegistry;
 use crate::ids::{IdGenerator, UuidGenerator};
 use crate::shutdown::Shutdown;
@@ -90,6 +91,7 @@ pub struct AppContext {
     pub ids: Arc<dyn IdGenerator>,
     pub events: Arc<dyn EventPublisher>,
     pub telemetry_spans: Arc<dyn TelemetrySpanProvider>,
+    pub execution_logs: Arc<dyn ExecutionLogProvider>,
     pub health: HealthRegistry,
     pub shutdown: Shutdown,
 }
@@ -101,6 +103,7 @@ impl Debug for AppContext {
             .field("config", &self.config)
             .field("db", &"<pool>")
             .field("telemetry_spans", &self.telemetry_spans)
+            .field("execution_logs", &self.execution_logs)
             .field("health", &self.health)
             .field("shutdown", &self.shutdown)
             .finish_non_exhaustive()
@@ -109,6 +112,7 @@ impl Debug for AppContext {
 
 impl AppContext {
     pub fn new(config: AppConfig, db: DbPool, events: Arc<dyn EventPublisher>) -> Self {
+        let execution_logs = Arc::new(PostgresExecutionLogProvider::new(db.clone()));
         Self {
             config: Arc::new(config),
             db,
@@ -116,6 +120,7 @@ impl AppContext {
             ids: Arc::new(UuidGenerator),
             events,
             telemetry_spans: Arc::new(NoopTelemetrySpanProvider),
+            execution_logs,
             health: HealthRegistry::default(),
             shutdown: Shutdown::new(),
         }
@@ -126,6 +131,14 @@ impl AppContext {
         telemetry_spans: Arc<dyn TelemetrySpanProvider>,
     ) -> Self {
         self.telemetry_spans = telemetry_spans;
+        self
+    }
+
+    pub fn with_execution_log_provider(
+        mut self,
+        execution_logs: Arc<dyn ExecutionLogProvider>,
+    ) -> Self {
+        self.execution_logs = execution_logs;
         self
     }
 }

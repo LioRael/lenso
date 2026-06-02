@@ -5,6 +5,7 @@ pub mod db;
 pub mod error;
 pub mod events;
 pub mod execution;
+pub mod execution_logs;
 pub mod health;
 pub mod ids;
 pub mod migrations;
@@ -26,6 +27,9 @@ pub use db::{DbPool, connect_pool};
 pub use error::{AppError, AppResult, ErrorCode};
 pub use events::{EventEnvelope, EventPayload, EventPublisher, LoggingEventPublisher};
 pub use execution::{ExecutionContext, ExecutionId};
+pub use execution_logs::{
+    ExecutionLogProvider, ExecutionLogQuery, ExecutionLogRow, PostgresExecutionLogProvider,
+};
 pub use health::{HealthRegistry, HealthStatus};
 pub use ids::{IdGenerator, UuidGenerator};
 pub use migrations::{Migration, PLATFORM_MIGRATIONS, apply_migrations};

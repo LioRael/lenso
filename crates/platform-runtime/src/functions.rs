@@ -21,6 +21,21 @@ pub trait FunctionHandler: Debug + Send + Sync {
 
 pub use FunctionHandler as RuntimeFunction;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExecutionLogSeverity {
+    Info,
+    Error,
+}
+
+impl ExecutionLogSeverity {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Info => "info",
+            Self::Error => "error",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct FunctionDefinition {
     pub name: &'static str,
@@ -159,7 +174,45 @@ impl RuntimeClient {
         .instrument(span)
         .await?;
 
+        self.record_function_execution_log(
+            &FunctionLogContext {
+                id: id.clone(),
+                function_name: request.function_name,
+                correlation_id: request.correlation_id.0,
+                trace: request.trace,
+            },
+            ExecutionLogSeverity::Info,
+            "Function run enqueued",
+            serde_json::json!({
+                "attempt": 0,
+                "max_attempts": max_attempts,
+            }),
+        )
+        .await;
+
         Ok(id)
+    }
+
+    async fn record_function_execution_log(
+        &self,
+        run: &FunctionLogContext,
+        severity: ExecutionLogSeverity,
+        body: &'static str,
+        attributes: Value,
+    ) {
+        emit_function_lifecycle_event(run, severity, body, &attributes, None);
+        if let Err(error) = insert_execution_log_projection(
+            &self.pool,
+            function_log_record(run, severity, body, attributes),
+        )
+        .await
+        {
+            tracing::warn!(
+                error = ?error,
+                function_run_id = %run.id,
+                "failed to write function execution log"
+            );
+        }
     }
 }
 
@@ -195,7 +248,7 @@ impl RuntimeWorker {
         );
 
         async {
-            sqlx::query_as::<_, FunctionRunRow>(
+            let runs = sqlx::query_as::<_, FunctionRunRow>(
                 r#"
             with claimed as (
                 select id
@@ -234,7 +287,23 @@ impl RuntimeWorker {
                     .map(TryInto::try_into)
                     .collect::<AppResult<Vec<_>>>()
             })
-            .map_err(map_runtime_error)?
+            .map_err(map_runtime_error)??;
+
+            for run in &runs {
+                self.record_function_execution_log(
+                    run,
+                    ExecutionLogSeverity::Info,
+                    "Function run claimed",
+                    serde_json::json!({
+                        "attempt": run.attempts + 1,
+                        "max_attempts": run.max_attempts,
+                        "worker_id": self.worker_id,
+                    }),
+                )
+                .await;
+            }
+
+            Ok(runs)
         }
         .instrument(span)
         .await
@@ -281,6 +350,18 @@ impl RuntimeWorker {
         );
 
         async {
+            self.record_function_execution_log(
+                &run,
+                ExecutionLogSeverity::Info,
+                "Function run started",
+                serde_json::json!({
+                    "attempt": run.attempts + 1,
+                    "max_attempts": run.max_attempts,
+                    "worker_id": self.worker_id,
+                }),
+            )
+            .await;
+
             let Some(definition) = self.registry.get(&run.function_name) else {
                 let error = AppError::new(
                     ErrorCode::Internal,
@@ -306,7 +387,7 @@ impl RuntimeWorker {
             };
 
             match definition.handler.call(ctx, run.input_json.clone()).await {
-                Ok(_output) => self.mark_completed(&run.id).await,
+                Ok(_output) => self.mark_completed(&run).await,
                 Err(error) => self.mark_failed(&run, &error).await,
             }
         }
@@ -314,7 +395,7 @@ impl RuntimeWorker {
         .await
     }
 
-    pub async fn mark_completed(&self, id: &str) -> AppResult<()> {
+    pub async fn mark_completed(&self, run: &ClaimedFunctionRun) -> AppResult<()> {
         sqlx::query(
             r#"
             update runtime.function_runs
@@ -327,11 +408,25 @@ impl RuntimeWorker {
             where id = $1
             "#,
         )
-        .bind(id)
+        .bind(&run.id)
         .execute(&self.pool)
         .await
         .map(|_| ())
-        .map_err(map_runtime_error)
+        .map_err(map_runtime_error)?;
+
+        self.record_function_execution_log(
+            run,
+            ExecutionLogSeverity::Info,
+            "Function run completed",
+            serde_json::json!({
+                "attempt": run.attempts + 1,
+                "max_attempts": run.max_attempts,
+                "worker_id": self.worker_id,
+            }),
+        )
+        .await;
+
+        Ok(())
     }
 
     pub async fn mark_failed(&self, run: &ClaimedFunctionRun, error: &AppError) -> AppResult<()> {
@@ -381,10 +476,254 @@ impl RuntimeWorker {
             .execute(&self.pool)
             .await
             .map(|_| ())
-            .map_err(map_runtime_error)
+            .map_err(map_runtime_error)?;
+
+            self.record_function_execution_log(
+                run,
+                ExecutionLogSeverity::Error,
+                if status == FunctionRunStatus::Dead {
+                    "Function run marked dead"
+                } else {
+                    "Function run failed"
+                },
+                serde_json::json!({
+                    "attempt": next_attempt,
+                    "max_attempts": run.max_attempts,
+                    "status": status.as_str(),
+                    "retryable": error.retryable,
+                    "error": error.public_message,
+                    "worker_id": self.worker_id,
+                }),
+            )
+            .await;
+
+            Ok(())
         }
         .instrument(span)
         .await
+    }
+
+    async fn record_function_execution_log(
+        &self,
+        run: &ClaimedFunctionRun,
+        severity: ExecutionLogSeverity,
+        body: &'static str,
+        attributes: Value,
+    ) {
+        emit_function_lifecycle_event(run, severity, body, &attributes, Some(&self.worker_id));
+        if let Err(error) = insert_execution_log_projection(
+            &self.pool,
+            function_log_record(run, severity, body, attributes),
+        )
+        .await
+        {
+            tracing::warn!(
+                error = ?error,
+                function_run_id = %run.id,
+                "failed to write function execution log"
+            );
+        }
+    }
+}
+
+#[derive(Debug)]
+struct FunctionLogContext {
+    id: String,
+    function_name: String,
+    correlation_id: String,
+    trace: TraceContext,
+}
+
+trait FunctionLogSource {
+    fn id(&self) -> String;
+    fn function_name(&self) -> String;
+    fn correlation_id(&self) -> String;
+    fn trace(&self) -> TraceContext;
+}
+
+impl FunctionLogSource for FunctionLogContext {
+    fn id(&self) -> String {
+        self.id.clone()
+    }
+
+    fn function_name(&self) -> String {
+        self.function_name.clone()
+    }
+
+    fn correlation_id(&self) -> String {
+        self.correlation_id.clone()
+    }
+
+    fn trace(&self) -> TraceContext {
+        self.trace.clone()
+    }
+}
+
+impl FunctionLogSource for ClaimedFunctionRun {
+    fn id(&self) -> String {
+        self.id.clone()
+    }
+
+    fn function_name(&self) -> String {
+        self.function_name.clone()
+    }
+
+    fn correlation_id(&self) -> String {
+        self.correlation_id.clone()
+    }
+
+    fn trace(&self) -> TraceContext {
+        self.trace.clone()
+    }
+}
+
+fn emit_function_lifecycle_event(
+    run: &impl FunctionLogSource,
+    severity: ExecutionLogSeverity,
+    body: &'static str,
+    attributes: &Value,
+    worker_id: Option<&str>,
+) {
+    match severity {
+        ExecutionLogSeverity::Error => {
+            tracing::error!(
+                function_run_id = %run.id(),
+                function_name = %run.function_name(),
+                correlation_id = %run.correlation_id(),
+                worker_id = worker_id.unwrap_or(""),
+                attributes = %attributes,
+                "{body}"
+            );
+        }
+        _ => {
+            tracing::info!(
+                function_run_id = %run.id(),
+                function_name = %run.function_name(),
+                correlation_id = %run.correlation_id(),
+                worker_id = worker_id.unwrap_or(""),
+                attributes = %attributes,
+                "{body}"
+            );
+        }
+    }
+}
+
+fn function_log_record(
+    run: &impl FunctionLogSource,
+    severity: ExecutionLogSeverity,
+    body: impl Into<String>,
+    attributes: Value,
+) -> ExecutionLogProjectionRecord {
+    ExecutionLogProjectionRecord::from_runtime_attrs(
+        RuntimeSpanAttributes::function(run.correlation_id(), run.id(), run.function_name()),
+        severity,
+        body,
+    )
+    .with_attributes(attributes)
+    .with_trace(run.trace())
+}
+
+#[derive(Debug, Clone)]
+struct ExecutionLogProjectionRecord {
+    correlation_id: String,
+    execution_id: String,
+    execution_type: String,
+    execution_name: String,
+    severity: ExecutionLogSeverity,
+    body: String,
+    attributes: Value,
+    trace: TraceContext,
+    service_name: String,
+}
+
+impl ExecutionLogProjectionRecord {
+    fn from_runtime_attrs(
+        attrs: RuntimeSpanAttributes,
+        severity: ExecutionLogSeverity,
+        body: impl Into<String>,
+    ) -> Self {
+        let execution_id = attrs
+            .function_run_id
+            .clone()
+            .or(attrs.outbox_event_id)
+            .unwrap_or_else(|| attrs.story_id.clone());
+
+        Self {
+            correlation_id: attrs.correlation_id,
+            execution_id,
+            execution_type: attrs.execution_kind,
+            execution_name: attrs.execution_name,
+            severity,
+            body: body.into(),
+            attributes: Value::Object(Default::default()),
+            trace: TraceContext::default(),
+            service_name: "lenso".to_owned(),
+        }
+    }
+
+    fn with_attributes(mut self, attributes: Value) -> Self {
+        self.attributes = attributes;
+        self
+    }
+
+    fn with_trace(mut self, trace: TraceContext) -> Self {
+        self.trace = trace;
+        self
+    }
+}
+
+async fn insert_execution_log_projection(
+    pool: &DbPool,
+    record: ExecutionLogProjectionRecord,
+) -> AppResult<String> {
+    let id = format!("elog_{}", Uuid::now_v7());
+
+    sqlx::query(
+        r#"
+        insert into platform.execution_logs (
+            id,
+            correlation_id,
+            story_id,
+            execution_id,
+            execution_type,
+            execution_name,
+            occurred_at,
+            severity,
+            body,
+            attributes,
+            trace_id,
+            span_id,
+            service_name,
+            redacted_fields
+        )
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        "#,
+    )
+    .bind(&id)
+    .bind(&record.correlation_id)
+    .bind(&record.correlation_id)
+    .bind(&record.execution_id)
+    .bind(&record.execution_type)
+    .bind(&record.execution_name)
+    .bind(Utc::now())
+    .bind(record.severity.as_str())
+    .bind(&record.body)
+    .bind(normalize_log_attributes(record.attributes))
+    .bind(&record.trace.trace_id)
+    .bind(&record.trace.span_id)
+    .bind(&record.service_name)
+    .bind(Vec::<String>::new())
+    .execute(pool)
+    .await
+    .map_err(map_runtime_error)?;
+
+    Ok(id)
+}
+
+fn normalize_log_attributes(attributes: Value) -> Value {
+    match attributes {
+        Value::Object(_) => attributes,
+        other => serde_json::json!({ "value": other }),
     }
 }
 

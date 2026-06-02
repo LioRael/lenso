@@ -112,6 +112,23 @@ export type ExecutionPayload = {
   redactedFields: string[];
 };
 
+export type ExecutionLogEntry = {
+  id: string;
+  nodeId: string;
+  nodeType: string;
+  correlationId: string;
+  storyId: string;
+  executionName: string;
+  occurredAt: string;
+  severity: "trace" | "debug" | "info" | "warn" | "error" | string;
+  body: string;
+  attributes: Record<string, unknown>;
+  serviceName: string;
+  traceId?: string;
+  spanId?: string;
+  redactedFields: string[];
+};
+
 export type ExecutionEdge = {
   id: string;
   source: string;

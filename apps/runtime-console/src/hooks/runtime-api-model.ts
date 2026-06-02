@@ -1,6 +1,8 @@
 import type {
   AdminRuntimeHeatmapCell,
   AdminRuntimeHeatmapResponse,
+  AdminRuntimeExecutionLog,
+  AdminRuntimeExecutionLogListResponse,
   AdminRuntimeExecutionPayloadResponse,
   AdminRuntimeStoryDetail,
   AdminRuntimeStoryDetailResponse,
@@ -15,6 +17,7 @@ import type {
 } from "../../../../packages/ts-sdk/src/generated/types";
 import type {
   ExecutionEdge,
+  ExecutionLogEntry,
   ExecutionPayload,
   ExecutionNode,
   RuntimeStatus,
@@ -68,6 +71,9 @@ export type ApiRuntimeHeatmapResponse =
 export type ApiRuntimeHeatmapCell = DeepPartial<AdminRuntimeHeatmapCell>;
 export type ApiExecutionPayloadResponse =
   DeepPartial<AdminRuntimeExecutionPayloadResponse>;
+export type ApiExecutionLogResponse =
+  DeepPartial<AdminRuntimeExecutionLogListResponse>;
+export type ApiExecutionLog = DeepPartial<AdminRuntimeExecutionLog>;
 export type ApiTechnicalOperationResponse =
   DeepPartial<AdminRuntimeTechnicalOperationListResponse>;
 export type ApiTechnicalOperation = DeepPartial<AdminRuntimeTechnicalOperation>;
@@ -260,6 +266,12 @@ export function normalizeExecutionPayload(
   };
 }
 
+export function normalizeExecutionLogs(
+  response: ApiExecutionLogResponse
+): ExecutionLogEntry[] {
+  return (response.data ?? []).map(normalizeExecutionLog);
+}
+
 function normalizeRuntimeEdges(
   edges: ApiRuntimeStoryEdge[],
   nodeIdAliases: Map<string, string>,
@@ -321,6 +333,28 @@ function normalizeTimelineItem(
   };
 }
 
+function normalizeExecutionLog(log: ApiExecutionLog): ExecutionLogEntry {
+  return {
+    attributes: objectRecord(log.attributes),
+    body: safeString(log.body, ""),
+    correlationId: safeString(log.correlation_id, "unknown"),
+    executionName: safeString(log.execution_name, "Runtime Work"),
+    id: safeString(log.id, "execution_log"),
+    nodeId: safeString(log.node_id, "unknown"),
+    nodeType: safeString(log.node_type, "runtime"),
+    occurredAt: normalizeTimestamp(log.occurred_at),
+    redactedFields: normalizeStringArray(log.redacted_fields),
+    serviceName: safeString(log.service_name, "runtime"),
+    severity: normalizeLogSeverity(log.severity),
+    ...(typeof log.span_id === "string" ? { spanId: log.span_id } : {}),
+    storyId: safeString(
+      log.story_id,
+      safeString(log.correlation_id, "unknown")
+    ),
+    ...(typeof log.trace_id === "string" ? { traceId: log.trace_id } : {}),
+  };
+}
+
 function normalizeTechnicalOperation(
   operation: ApiTechnicalOperation
 ): TechnicalOperation {
@@ -340,6 +374,21 @@ function normalizeTechnicalOperation(
     status: safeString(operation.status, "unknown"),
     storyId: safeString(operation.story_id, "unknown"),
   };
+}
+
+function normalizeLogSeverity(severity: string | undefined) {
+  switch (severity) {
+    case "trace":
+    case "debug":
+    case "info":
+    case "warn":
+    case "error": {
+      return severity;
+    }
+    default: {
+      return "info";
+    }
+  }
 }
 
 function normalizeTechnicalOperationCategory(

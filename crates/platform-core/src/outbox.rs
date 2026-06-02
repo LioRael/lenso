@@ -1,7 +1,10 @@
 use crate::db::{DbPool, DbTransaction};
 use crate::error::{AppError, AppResult, ErrorCode};
 use crate::events::EventEnvelope;
-use crate::{RuntimeSpanAttributes, record_runtime_span_attributes};
+use crate::execution_logs::{
+    ExecutionLogRecord, ExecutionLogSeverity, insert_execution_log_projection,
+};
+use crate::{RuntimeSpanAttributes, record_runtime_span_attributes, trace_context_from_headers};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -268,7 +271,7 @@ impl OutboxRelay {
         );
 
         async {
-            sqlx::query_as::<_, OutboxRow>(
+            let events = sqlx::query_as::<_, OutboxRow>(
                 r#"
             with claimed as (
                 select id
@@ -307,7 +310,23 @@ impl OutboxRelay {
             .fetch_all(&self.pool)
             .await
             .map(|rows| rows.into_iter().map(Into::into).collect())
-            .map_err(map_outbox_error)
+            .map_err(map_outbox_error)?;
+
+            for event in &events {
+                self.record_outbox_execution_log(
+                    event,
+                    ExecutionLogSeverity::Info,
+                    "Outbox event claimed",
+                    json!({
+                        "attempt": event.attempts + 1,
+                        "max_attempts": event.max_attempts,
+                        "worker_id": self.worker_id,
+                    }),
+                )
+                .await;
+            }
+
+            Ok(events)
         }
         .instrument(span)
         .await
@@ -344,8 +363,19 @@ impl OutboxRelay {
                 );
 
                 async {
+                    self.record_outbox_execution_log(
+                        &event,
+                        ExecutionLogSeverity::Info,
+                        "Outbox event dispatch started",
+                        json!({
+                            "event_name": event.event_name,
+                            "attempt": event.attempts + 1,
+                            "worker_id": self.worker_id,
+                        }),
+                    )
+                    .await;
                     match dispatcher.dispatch(&event).await {
-                        Ok(()) => self.mark_published(&event.id).await?,
+                        Ok(()) => self.mark_published(&event).await?,
                         Err(error) => self.mark_dispatch_failed(&event, &error).await?,
                     }
 
@@ -361,7 +391,7 @@ impl OutboxRelay {
         .await
     }
 
-    pub async fn mark_published(&self, id: &str) -> AppResult<()> {
+    pub async fn mark_published(&self, event: &ClaimedOutboxEvent) -> AppResult<()> {
         sqlx::query(
             r#"
             update platform.outbox
@@ -373,11 +403,25 @@ impl OutboxRelay {
             where id = $1
             "#,
         )
-        .bind(id)
+        .bind(&event.id)
         .execute(&self.pool)
         .await
         .map(|_| ())
-        .map_err(map_outbox_error)
+        .map_err(map_outbox_error)?;
+
+        self.record_outbox_execution_log(
+            event,
+            ExecutionLogSeverity::Info,
+            "Outbox event published",
+            json!({
+                "event_name": event.event_name,
+                "attempt": event.attempts + 1,
+                "worker_id": self.worker_id,
+            }),
+        )
+        .await;
+
+        Ok(())
     }
 
     pub async fn mark_dispatch_failed(
@@ -430,10 +474,53 @@ impl OutboxRelay {
             .execute(&self.pool)
             .await
             .map(|_| ())
-            .map_err(map_outbox_error)
+            .map_err(map_outbox_error)?;
+
+            self.record_outbox_execution_log(
+                event,
+                ExecutionLogSeverity::Error,
+                if status == OutboxStatus::Dead {
+                    "Outbox event marked dead"
+                } else {
+                    "Outbox event failed"
+                },
+                json!({
+                    "attempt": next_attempt,
+                    "max_attempts": event.max_attempts,
+                    "status": status.as_str(),
+                    "retryable": error.retryable,
+                    "error": error.public_message,
+                    "worker_id": self.worker_id,
+                }),
+            )
+            .await;
+
+            Ok(())
         }
         .instrument(span)
         .await
+    }
+
+    async fn record_outbox_execution_log(
+        &self,
+        event: &ClaimedOutboxEvent,
+        severity: ExecutionLogSeverity,
+        body: &'static str,
+        attributes: Value,
+    ) {
+        emit_outbox_lifecycle_event(event, severity, body, &attributes, Some(&self.worker_id));
+        if let Err(error) = insert_execution_log_projection(
+            &self.pool,
+            outbox_log_record(event, severity, body, attributes),
+        )
+        .await
+        {
+            tracing::warn!(
+                error = ?error,
+                outbox_id = %event.id,
+                "failed to write outbox execution log"
+            );
+        }
     }
 }
 
@@ -493,4 +580,103 @@ impl From<OutboxRow> for ClaimedOutboxEvent {
 
 fn map_outbox_error(source: sqlx::Error) -> AppError {
     AppError::new(ErrorCode::Internal, "Outbox operation failed").with_source(source)
+}
+
+fn emit_outbox_lifecycle_event(
+    event: &ClaimedOutboxEvent,
+    severity: ExecutionLogSeverity,
+    body: &'static str,
+    attributes: &Value,
+    worker_id: Option<&str>,
+) {
+    match severity {
+        ExecutionLogSeverity::Error => {
+            tracing::error!(
+                outbox_id = %event.id,
+                event_name = %event.event_name,
+                correlation_id = %event.correlation_id,
+                worker_id = worker_id.unwrap_or(""),
+                attributes = %attributes,
+                "{body}"
+            );
+        }
+        ExecutionLogSeverity::Warn => {
+            tracing::warn!(
+                outbox_id = %event.id,
+                event_name = %event.event_name,
+                correlation_id = %event.correlation_id,
+                worker_id = worker_id.unwrap_or(""),
+                attributes = %attributes,
+                "{body}"
+            );
+        }
+        _ => {
+            tracing::info!(
+                outbox_id = %event.id,
+                event_name = %event.event_name,
+                correlation_id = %event.correlation_id,
+                worker_id = worker_id.unwrap_or(""),
+                attributes = %attributes,
+                "{body}"
+            );
+        }
+    }
+}
+
+fn outbox_log_record(
+    event: &impl OutboxLogSource,
+    severity: ExecutionLogSeverity,
+    body: impl Into<String>,
+    attributes: Value,
+) -> ExecutionLogRecord {
+    ExecutionLogRecord::from_runtime_attrs(
+        RuntimeSpanAttributes::outbox(event.correlation_id(), event.id(), event.execution_name()),
+        severity,
+        body,
+    )
+    .with_attributes(attributes)
+    .with_trace(trace_context_from_headers(event.headers()))
+}
+
+trait OutboxLogSource {
+    fn id(&self) -> String;
+    fn correlation_id(&self) -> String;
+    fn execution_name(&self) -> String;
+    fn headers(&self) -> &Value;
+}
+
+impl OutboxLogSource for OutboxEvent {
+    fn id(&self) -> String {
+        self.id.clone()
+    }
+
+    fn correlation_id(&self) -> String {
+        self.correlation_id.clone()
+    }
+
+    fn execution_name(&self) -> String {
+        self.event_name.clone()
+    }
+
+    fn headers(&self) -> &Value {
+        &self.headers
+    }
+}
+
+impl OutboxLogSource for ClaimedOutboxEvent {
+    fn id(&self) -> String {
+        self.id.clone()
+    }
+
+    fn correlation_id(&self) -> String {
+        self.correlation_id.clone()
+    }
+
+    fn execution_name(&self) -> String {
+        self.event_name.clone()
+    }
+
+    fn headers(&self) -> &Value {
+        &self.headers
+    }
 }

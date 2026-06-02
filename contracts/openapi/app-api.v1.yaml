@@ -7,6 +7,92 @@ info:
     identifier: UNLICENSED
   version: 1.0.0
 paths:
+  /admin/runtime/executions/{node_id}/logs:
+    get:
+      tags:
+      - admin-runtime
+      operationId: admin_runtime_get_execution_logs
+      parameters:
+      - name: node_id
+        in: path
+        description: Runtime execution node identifier
+        required: true
+        schema:
+          type: string
+      - name: authorization
+        in: header
+        description: Development service bearer token, for example `Bearer dev-service:admin`
+        required: true
+        schema:
+          type: string
+      - name: x-request-id
+        in: header
+        description: Optional caller-provided request identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: x-correlation-id
+        in: header
+        description: Optional caller-provided correlation identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - name: created_before
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+      responses:
+        '200':
+          description: Structured logs recorded for the runtime execution node
+          headers:
+            x-correlation-id:
+              schema:
+                type: string
+              description: Correlation identifier shared across related work
+            x-request-id:
+              schema:
+                type: string
+              description: Request identifier for this HTTP request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminRuntimeExecutionLogListResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Runtime execution node not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/runtime/executions/{node_id}/payload:
     get:
       tags:
@@ -1467,6 +1553,71 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AdminRuntimeOutboxItem'
+        page:
+          $ref: '#/components/schemas/PageInfo'
+    AdminRuntimeExecutionLog:
+      type: object
+      required:
+      - id
+      - node_id
+      - node_type
+      - correlation_id
+      - story_id
+      - execution_name
+      - occurred_at
+      - severity
+      - body
+      - attributes
+      - service_name
+      - redacted_fields
+      properties:
+        attributes: {}
+        body:
+          type: string
+        correlation_id:
+          type: string
+        execution_name:
+          type: string
+        id:
+          type: string
+        node_id:
+          type: string
+        node_type:
+          type: string
+        occurred_at:
+          type: string
+          format: date-time
+        redacted_fields:
+          type: array
+          items:
+            type: string
+        service_name:
+          type: string
+        severity:
+          type: string
+        span_id:
+          type:
+          - string
+          - 'null'
+        story_id:
+          type: string
+        trace_id:
+          type:
+          - string
+          - 'null'
+    AdminRuntimeExecutionLogListResponse:
+      type: object
+      required:
+      - data
+      - page
+      - order
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminRuntimeExecutionLog'
+        order:
+          type: string
         page:
           $ref: '#/components/schemas/PageInfo'
     AdminRuntimeExecutionPayload:

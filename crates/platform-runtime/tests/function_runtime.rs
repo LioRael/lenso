@@ -98,6 +98,15 @@ async fn worker_executes_function_and_marks_completed() {
     assert_eq!(count, 1);
     assert_eq!(calls.load(Ordering::SeqCst), 1);
     assert_eq!(run_status(&db.pool, "test.echo.v1").await, "completed");
+    assert_eq!(
+        execution_log_bodies(&db.pool, "test.echo.v1").await,
+        vec![
+            "Function run enqueued".to_owned(),
+            "Function run claimed".to_owned(),
+            "Function run started".to_owned(),
+            "Function run completed".to_owned()
+        ]
+    );
 
     db.cleanup().await;
 }
@@ -125,6 +134,11 @@ async fn failure_retries_function_run() {
     let (status, attempts) = run_status_and_attempts(&db.pool, "test.fail.v1").await;
     assert_eq!(status, "failed");
     assert_eq!(attempts, 1);
+    assert!(
+        execution_log_bodies(&db.pool, "test.fail.v1")
+            .await
+            .contains(&"Function run failed".to_owned())
+    );
 
     db.cleanup().await;
 }
@@ -256,4 +270,20 @@ async fn run_status_and_attempts(
         .fetch_one(pool)
         .await
         .expect("status and attempts should query")
+}
+
+async fn execution_log_bodies(pool: &platform_core::DbPool, function_name: &str) -> Vec<String> {
+    sqlx::query_scalar(
+        r#"
+        select log.body
+        from platform.execution_logs log
+        join runtime.function_runs run on run.id = log.execution_id
+        where run.function_name = $1
+        order by log.occurred_at asc, log.id asc
+        "#,
+    )
+    .bind(function_name)
+    .fetch_all(pool)
+    .await
+    .expect("execution log bodies should query")
 }

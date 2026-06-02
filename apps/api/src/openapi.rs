@@ -1,15 +1,16 @@
 use crate::admin_runtime::{
     AdminFunctionRun, AdminFunctionRunDetail, AdminFunctionRunListResponse,
     AdminFunctionRunResponse, AdminOutboxEvent, AdminOutboxEventDetail,
-    AdminOutboxEventDetailResponse, AdminOutboxListResponse, AdminRuntimeExecutionPayload,
+    AdminOutboxEventDetailResponse, AdminOutboxListResponse, AdminRuntimeExecutionLog,
+    AdminRuntimeExecutionLogListResponse, AdminRuntimeExecutionPayload,
     AdminRuntimeExecutionPayloadResponse, AdminRuntimeFunctionSummary, AdminRuntimeHeatmapCell,
     AdminRuntimeHeatmapResponse, AdminRuntimeOutboxSummary, AdminRuntimeStoryDetail,
     AdminRuntimeStoryDetailResponse, AdminRuntimeStoryEdge, AdminRuntimeStoryListItem,
     AdminRuntimeStoryListResponse, AdminRuntimeStoryNode, AdminRuntimeSummaryItem,
     AdminRuntimeSummaryResponse, AdminRuntimeTechnicalOperation,
     AdminRuntimeTechnicalOperationListResponse, AdminRuntimeTimelineItem,
-    AdminRuntimeTimelineResponse, FunctionRunQuery, HeatmapQuery, OutboxQuery, PageInfo,
-    StoryQuery, TimelineQuery,
+    AdminRuntimeTimelineResponse, ExecutionLogQuery, FunctionRunQuery, HeatmapQuery, OutboxQuery,
+    PageInfo, StoryQuery, TimelineQuery,
 };
 use identity::dto::{
     CreateUserRequest, CreateUserResponse, CreateUserResponseEnvelope, MeResponse,
@@ -36,6 +37,7 @@ use utoipa::OpenApi;
         admin_runtime_get_story_technical_operations_contract,
         admin_runtime_get_execution_technical_operations_contract,
         admin_runtime_get_execution_payload_contract,
+        admin_runtime_get_execution_logs_contract,
         admin_runtime_list_outbox_contract,
         admin_runtime_get_outbox_contract,
         admin_runtime_retry_outbox_contract,
@@ -56,6 +58,8 @@ use utoipa::OpenApi;
             AdminRuntimeFunctionSummary,
             AdminRuntimeHeatmapCell,
             AdminRuntimeHeatmapResponse,
+            AdminRuntimeExecutionLog,
+            AdminRuntimeExecutionLogListResponse,
             AdminRuntimeExecutionPayload,
             AdminRuntimeExecutionPayloadResponse,
             AdminRuntimeOutboxSummary,
@@ -592,6 +596,58 @@ fn admin_runtime_get_execution_technical_operations_contract() {}
 )]
 #[allow(dead_code)]
 fn admin_runtime_get_execution_payload_contract() {}
+
+#[utoipa::path(
+    get,
+    path = "/admin/runtime/executions/{node_id}/logs",
+    operation_id = "admin_runtime_get_execution_logs",
+    tag = "admin-runtime",
+    params(
+        ("node_id" = String, Path, description = "Runtime execution node identifier"),
+        ("authorization" = String, Header, description = "Development service bearer token, for example `Bearer dev-service:admin`"),
+        ("x-request-id" = Option<String>, Header, description = "Optional caller-provided request identifier"),
+        ("x-correlation-id" = Option<String>, Header, description = "Optional caller-provided correlation identifier"),
+        ExecutionLogQuery
+    ),
+    responses(
+        (
+            status = 200,
+            description = "Structured logs recorded for the runtime execution node",
+            body = AdminRuntimeExecutionLogListResponse,
+            content_type = "application/json",
+            headers(
+                ("x-request-id" = String, description = "Request identifier for this HTTP request"),
+                ("x-correlation-id" = String, description = "Correlation identifier shared across related work")
+            )
+        ),
+        (
+            status = 401,
+            description = "Authentication is required",
+            body = ErrorResponse,
+            content_type = "application/json"
+        ),
+        (
+            status = 403,
+            description = "Service or system authentication is required",
+            body = ErrorResponse,
+            content_type = "application/json"
+        ),
+        (
+            status = 404,
+            description = "Runtime execution node not found",
+            body = ErrorResponse,
+            content_type = "application/json"
+        ),
+        (
+            status = 500,
+            description = "Internal server error",
+            body = ErrorResponse,
+            content_type = "application/json"
+        )
+    )
+)]
+#[allow(dead_code)]
+fn admin_runtime_get_execution_logs_contract() {}
 
 #[utoipa::path(
     get,

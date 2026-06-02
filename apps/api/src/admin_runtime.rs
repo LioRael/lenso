@@ -2,7 +2,10 @@ use axum::extract::{Path, Query, State};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use chrono::{DateTime, Utc};
-use platform_core::{AppContext, AppError, ErrorCode, TelemetrySpan, TelemetrySpanQuery};
+use platform_core::{
+    AppContext, AppError, ErrorCode, ExecutionLogQuery as ProviderExecutionLogQuery,
+    ExecutionLogRow, TelemetrySpan, TelemetrySpanQuery,
+};
 use platform_http::responses::{DataResponse, json};
 use platform_http::{AdminActor, ApiErrorResponse, HttpRequestContext};
 use serde::{Deserialize, Serialize};
@@ -34,6 +37,10 @@ pub fn router() -> Router<AppContext> {
         .route(
             "/admin/runtime/executions/{node_id}/payload",
             get(get_execution_payload),
+        )
+        .route(
+            "/admin/runtime/executions/{node_id}/logs",
+            get(get_execution_logs),
         )
         .route("/admin/runtime/outbox", get(list_outbox))
         .route("/admin/runtime/outbox/{id}", get(get_outbox_event))
@@ -84,6 +91,13 @@ pub struct HeatmapQuery {
     pub status: Option<String>,
     pub event_name: Option<String>,
     pub function_name: Option<String>,
+    pub limit: Option<i64>,
+    pub created_before: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct ExecutionLogQuery {
     pub limit: Option<i64>,
     pub created_before: Option<DateTime<Utc>>,
 }
@@ -165,12 +179,38 @@ pub struct AdminRuntimeExecutionPayloadResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(as = AdminRuntimeExecutionLogListResponse)]
+pub struct AdminRuntimeExecutionLogListResponse {
+    pub data: Vec<AdminRuntimeExecutionLog>,
+    pub page: PageInfo,
+    pub order: &'static str,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 pub struct AdminRuntimeExecutionPayload {
     pub node_id: String,
     pub node_type: String,
     pub input: Value,
     pub output: Option<Value>,
     pub metadata: Value,
+    pub redacted_fields: Vec<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminRuntimeExecutionLog {
+    pub id: String,
+    pub node_id: String,
+    pub node_type: String,
+    pub correlation_id: String,
+    pub story_id: String,
+    pub execution_name: String,
+    pub occurred_at: DateTime<Utc>,
+    pub severity: String,
+    pub body: String,
+    pub attributes: Value,
+    pub service_name: String,
+    pub trace_id: Option<String>,
+    pub span_id: Option<String>,
     pub redacted_fields: Vec<String>,
 }
 
@@ -670,6 +710,35 @@ async fn get_execution_payload(
     };
 
     Ok(Json(AdminRuntimeExecutionPayloadResponse { data }))
+}
+
+async fn get_execution_logs(
+    _admin: AdminActor,
+    State(ctx): State<AppContext>,
+    HttpRequestContext(request_ctx): HttpRequestContext,
+    Path(node_id): Path<String>,
+    Query(query): Query<ExecutionLogQuery>,
+) -> Result<Json<AdminRuntimeExecutionLogListResponse>, ApiErrorResponse> {
+    fetch_runtime_node_ref(&ctx, &request_ctx, &node_id).await?;
+    let limit = normalized_limit(query.limit);
+    let data = ctx
+        .execution_logs
+        .query_execution_logs(ProviderExecutionLogQuery {
+            execution_id: node_id,
+            occurred_before: query.created_before,
+            limit,
+        })
+        .await
+        .map_err(|source| ApiErrorResponse::with_context(source, &request_ctx))?
+        .into_iter()
+        .map(AdminRuntimeExecutionLog::from)
+        .collect::<Vec<_>>();
+
+    Ok(Json(AdminRuntimeExecutionLogListResponse {
+        page: page_info(limit, data.first().map(|log| log.occurred_at)),
+        data,
+        order: "occurred_at_asc",
+    }))
 }
 
 async fn get_timeline(
@@ -1503,6 +1572,27 @@ impl From<RuntimeNodeRefTuple> for RuntimeNodeRef {
     fn from(row: RuntimeNodeRefTuple) -> Self {
         let (id, item_type, _correlation_id) = row;
         Self { id, item_type }
+    }
+}
+
+impl From<ExecutionLogRow> for AdminRuntimeExecutionLog {
+    fn from(row: ExecutionLogRow) -> Self {
+        Self {
+            id: row.id,
+            node_id: row.execution_id,
+            node_type: row.execution_type,
+            correlation_id: row.correlation_id,
+            story_id: row.story_id,
+            execution_name: row.execution_name,
+            occurred_at: row.occurred_at,
+            severity: row.severity,
+            body: row.body,
+            attributes: row.attributes,
+            service_name: row.service_name,
+            trace_id: row.trace_id,
+            span_id: row.span_id,
+            redacted_fields: row.redacted_fields,
+        }
     }
 }
 

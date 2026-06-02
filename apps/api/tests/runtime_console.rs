@@ -611,6 +611,112 @@ async fn service_actor_can_fetch_execution_technical_operations() {
 }
 
 #[tokio::test]
+async fn service_actor_can_fetch_execution_logs() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+    insert_story_function_run(&db.pool).await;
+    insert_execution_log(
+        &db.pool,
+        "elog_started",
+        "fnrun_story",
+        "function_run",
+        "notifications.send_welcome_email.v1",
+        "2026-05-31T00:00:01Z",
+        "info",
+        "Function run started",
+        json!({ "attempt": 1, "worker_id": "worker-a" }),
+    )
+    .await;
+    insert_execution_log(
+        &db.pool,
+        "elog_completed",
+        "fnrun_story",
+        "function_run",
+        "notifications.send_welcome_email.v1",
+        "2026-05-31T00:00:03Z",
+        "info",
+        "Function run completed",
+        json!({ "attempt": 1 }),
+    )
+    .await;
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/executions/fnrun_story/logs")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["order"], "occurred_at_asc");
+    assert_eq!(body["data"].as_array().unwrap().len(), 2);
+    assert_eq!(body["data"][0]["id"], "elog_started");
+    assert_eq!(body["data"][0]["node_id"], "fnrun_story");
+    assert_eq!(body["data"][0]["node_type"], "function_run");
+    assert_eq!(body["data"][0]["body"], "Function run started");
+    assert_eq!(body["data"][0]["attributes"]["worker_id"], "worker-a");
+    assert_eq!(body["data"][0]["trace_id"], "trace_1");
+    assert_eq!(body["data"][0]["span_id"], "span_1");
+    assert_eq!(body["data"][1]["id"], "elog_completed");
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn outbox_execution_logs_include_enqueued_projection() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+    insert_story_outbox_event(&db.pool).await;
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/executions/evt_story/logs")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["data"].as_array().unwrap().len(), 1);
+    assert_eq!(body["data"][0]["id"], "elog_outbox_enqueued_evt_story");
+    assert_eq!(body["data"][0]["body"], "Outbox event enqueued");
+    assert_eq!(body["data"][0]["node_type"], "outbox_event");
+    assert_eq!(
+        body["data"][0]["attributes"]["event_name"],
+        "identity.user_registered.v1"
+    );
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn execution_logs_for_unknown_node_return_not_found() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/executions/missing/logs")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
 async fn service_actor_can_fetch_function_execution_payload() {
     let Some(db) = TestDatabase::create().await else {
         return;
@@ -1632,6 +1738,10 @@ async fn admin_runtime_openapi_contract_is_present() {
         "admin_runtime_get_execution_payload"
     );
     assert_eq!(
+        value["paths"]["/admin/runtime/executions/{node_id}/logs"]["get"]["operationId"],
+        "admin_runtime_get_execution_logs"
+    );
+    assert_eq!(
         value["paths"]["/admin/runtime/heatmap"]["get"]["operationId"],
         "admin_runtime_get_heatmap"
     );
@@ -1648,6 +1758,8 @@ async fn admin_runtime_openapi_contract_is_present() {
     assert!(value["components"]["schemas"]["AdminRuntimeHeatmapResponse"].is_object());
     assert!(value["components"]["schemas"]["AdminRuntimeExecutionPayload"].is_object());
     assert!(value["components"]["schemas"]["AdminRuntimeExecutionPayloadResponse"].is_object());
+    assert!(value["components"]["schemas"]["AdminRuntimeExecutionLog"].is_object());
+    assert!(value["components"]["schemas"]["AdminRuntimeExecutionLogListResponse"].is_object());
     assert!(value["components"]["schemas"]["AdminRuntimeTechnicalOperation"].is_object());
     assert!(
         value["components"]["schemas"]["AdminRuntimeTechnicalOperationListResponse"].is_object()
@@ -2094,6 +2206,67 @@ async fn insert_story_function_run(pool: &platform_core::DbPool) {
     .execute(pool)
     .await
     .expect("story function run should insert");
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn insert_execution_log(
+    pool: &platform_core::DbPool,
+    id: &str,
+    execution_id: &str,
+    execution_type: &str,
+    execution_name: &str,
+    occurred_at: &str,
+    severity: &str,
+    body: &str,
+    attributes: Value,
+) {
+    sqlx::query(
+        r#"
+        insert into platform.execution_logs (
+            id,
+            correlation_id,
+            story_id,
+            execution_id,
+            execution_type,
+            execution_name,
+            occurred_at,
+            severity,
+            body,
+            attributes,
+            trace_id,
+            span_id,
+            service_name,
+            redacted_fields
+        )
+        values (
+            $1,
+            'corr_story',
+            'corr_story',
+            $2,
+            $3,
+            $4,
+            $5,
+            $6,
+            $7,
+            $8,
+            'trace_1',
+            'span_1',
+            'notifications',
+            array[]::text[]
+        )
+        "#,
+    )
+    .bind(id)
+    .bind(execution_id)
+    .bind(execution_type)
+    .bind(execution_name)
+    .bind(parse_time(occurred_at))
+    .bind(severity)
+    .bind(body)
+    .bind(attributes)
+    .execute(pool)
+    .await
+    .expect("execution log should insert");
 }
 
 async fn insert_heatmap_outbox_events(pool: &platform_core::DbPool) {

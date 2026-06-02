@@ -3,10 +3,12 @@ import { ArrowRight, Copy, RotateCcw, X } from "lucide-react";
 import type {
   RuntimeStory,
   ExecutionNode,
+  ExecutionLogEntry,
   ExecutionPayload,
   TechnicalOperation,
 } from "../../data/mock-runtime";
 import {
+  useExecutionLogs,
   useExecutionPayload,
   useExecutionTechnicalOperations,
   useStoryTechnicalOperations,
@@ -213,6 +215,7 @@ function InspectorBody({
     node.id,
     activeTab === "payload"
   );
+  const logsQuery = useExecutionLogs(story, node.id, activeTab === "logs");
   const executionOperationsQuery = useExecutionTechnicalOperations(node.id);
   const storyOperationsQuery = useStoryTechnicalOperations(story.correlationId);
 
@@ -285,7 +288,15 @@ function InspectorBody({
   }
 
   if (activeTab === "logs") {
-    return <LogList node={node} />;
+    return (
+      <LogList
+        error={logsQuery.error}
+        isError={logsQuery.isError}
+        isLoading={logsQuery.isLoading}
+        logs={logsQuery.data ?? []}
+        story={story}
+      />
+    );
   }
 
   if (activeTab === "context") {
@@ -594,39 +605,107 @@ function PayloadPanel({
   );
 }
 
-function LogList({ node }: { node: ExecutionNode }) {
-  if (node.logs.length === 0) {
+function LogList({
+  error,
+  isError,
+  isLoading,
+  logs,
+  story,
+}: {
+  story: RuntimeStory;
+  logs: ExecutionLogEntry[];
+  isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+}) {
+  if (isLoading) {
+    return <EmptyRows label="Loading execution logs..." />;
+  }
+  if (isError) {
     return (
-      <EmptyRows label="No application logs are configured for this execution. Use Technical for OTEL spans, or add a log provider to back this tab." />
+      <EmptyRows
+        label={`Execution logs could not be loaded. ${errorMessage(error)}`}
+      />
+    );
+  }
+  if (logs.length === 0) {
+    return (
+      <EmptyRows label="No runtime logs recorded for this execution yet. Runtime lifecycle logs are recorded for work processed after execution logging was enabled." />
     );
   }
   return (
     <div className="w-max min-w-full font-mono text-xs">
-      {node.logs.map((log, index) => (
+      {logs.map((log) => (
         <div
-          className="grid w-max min-w-full grid-cols-[44px_54px_minmax(220px,max-content)] gap-2 border-b border-(--border-subtle) px-3 py-1.5"
-          key={`${log}-${index}`}
+          className="grid w-max min-w-full grid-cols-[58px_58px_minmax(220px,max-content)_minmax(180px,max-content)] gap-2 border-b border-(--border-subtle) px-3 py-1.5"
+          key={log.id}
         >
           <span className="whitespace-nowrap text-(--muted)">
-            +{formatRuntimeDuration(node.startMs + index * 12)}
-          </span>
-          <span
-            className={cn(
-              "uppercase",
-              node.status === "failed" || node.status === "dead"
-                ? "text-[#ef4444]"
-                : "text-[#22c55e]"
+            +
+            {formatRuntimeDuration(
+              logOffsetMs(story.timestamp, log.occurredAt)
             )}
-          >
-            {node.status === "failed" || node.status === "dead"
-              ? "error"
-              : "info"}
           </span>
-          <span className="whitespace-nowrap text-(--secondary)">{log}</span>
+          <span className={cn("uppercase", logSeverityClass(log.severity))}>
+            {log.severity}
+          </span>
+          <span className="whitespace-nowrap text-(--secondary)">
+            {log.body || "-"}
+          </span>
+          <span className="whitespace-nowrap text-[11px] text-(--muted)">
+            {log.serviceName}
+            {log.traceId ? ` · trace ${log.traceId.slice(0, 12)}` : ""}
+          </span>
+          {Object.keys(log.attributes).length > 0 ||
+          log.redactedFields.length > 0 ? (
+            <div className="col-span-4 -mx-3 mt-1 border-t border-(--border-subtle)">
+              <JsonViewer
+                title={
+                  log.redactedFields.length > 0
+                    ? `attributes · redacted ${log.redactedFields.length}`
+                    : "attributes"
+                }
+                value={{
+                  attributes: log.attributes,
+                  ...(log.redactedFields.length > 0
+                    ? { redacted_fields: log.redactedFields }
+                    : {}),
+                  ...(log.spanId ? { span_id: log.spanId } : {}),
+                  ...(log.traceId ? { trace_id: log.traceId } : {}),
+                }}
+              />
+            </div>
+          ) : null}
         </div>
       ))}
     </div>
   );
+}
+
+function logOffsetMs(baseTimestamp: string, occurredAt: string) {
+  const base = Date.parse(baseTimestamp);
+  const occurred = Date.parse(occurredAt);
+  return Number.isFinite(base) && Number.isFinite(occurred)
+    ? Math.max(0, occurred - base)
+    : 0;
+}
+
+function logSeverityClass(severity: string) {
+  switch (severity) {
+    case "error": {
+      return "text-[#ef4444]";
+    }
+    case "warn": {
+      return "text-amber-300";
+    }
+    case "debug":
+    case "trace": {
+      return "text-(--muted)";
+    }
+    default: {
+      return "text-[#22c55e]";
+    }
+  }
 }
 
 function EmptyRows({ label }: { label: string }) {
