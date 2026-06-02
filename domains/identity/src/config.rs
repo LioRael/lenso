@@ -42,4 +42,16 @@ mod tests {
         let config: IdentityConfig = snapshot.get("identity").unwrap();
         assert_eq!(config.password_reset_ttl_minutes, 30);
     }
+
+    #[test]
+    fn default_impl_matches_descriptor_default() {
+        let descriptor_default = SETTINGS[0]
+            .default
+            .as_u64()
+            .expect("descriptor default is a number");
+        assert_eq!(
+            IdentityConfig::default().password_reset_ttl_minutes,
+            descriptor_default
+        );
+    }
 }
