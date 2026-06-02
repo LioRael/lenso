@@ -313,7 +313,12 @@ pub(crate) fn story_display_descriptor(
 }
 
 pub(crate) fn story_display_descriptors() -> impl Iterator<Item = &'static StoryDisplayDescriptor> {
-    app_bootstrap::story_display_descriptors()
+    crate::STORY_DISPLAY
+        .get()
+        .map(Vec::as_slice)
+        .unwrap_or_default()
+        .iter()
+        .copied()
 }
 
 pub(crate) fn story_title_from_event_name(value: &str) -> String {

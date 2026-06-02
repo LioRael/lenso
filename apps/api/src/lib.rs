@@ -7,7 +7,6 @@ use platform_http::request_context_middleware;
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 
-pub mod admin_runtime;
 pub mod openapi;
 
 pub use openapi::openapi_document;

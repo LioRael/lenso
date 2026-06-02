@@ -1,6 +1,11 @@
-//! Admin runtime-observability API for the Runtime Console.
+//! Runtime-observability API backing the Runtime Console.
 //!
-//! This module is split by responsibility:
+//! This is a platform cross-cutting concern, not a business domain: it only
+//! reads platform/runtime tables (`platform.outbox`, `platform.story_events`,
+//! `runtime.function_runs`) to observe the activity of every domain. It exposes
+//! a single [`router`] mounted by the API app under `/admin/runtime/*`.
+//!
+//! The crate is split by responsibility:
 //! - [`dto`]: request query params and response DTOs (re-exported for `OpenAPI`).
 //! - [`handlers`]: Axum route handlers.
 //! - [`rows`]: SQL row tuples/structs and their `From` conversions to DTOs.
@@ -8,8 +13,14 @@
 //! - [`stories`]: story graph assembly and naming.
 //! - [`spans`]: telemetry-span → technical-operation mapping and PII redaction.
 //! - [`support`]: small cross-cutting helpers (errors, pagination, limits).
+//!
+//! Story display names are domain-owned, so they are injected by the
+//! composition root via [`install_story_display`] rather than depended on
+//! directly — keeping this crate free of any business-domain dependency.
 
+use platform_core::StoryDisplayDescriptor;
 use platform_http::{ApiOpenApiRouter, OpenApiRouter, routes};
+use std::sync::OnceLock;
 
 const DEFAULT_LIMIT: i64 = 50;
 const MAX_LIMIT: i64 = 100;
@@ -35,6 +46,19 @@ use spans::*;
 use stories::*;
 #[allow(clippy::wildcard_imports)]
 use support::*;
+
+/// Domain-provided story-display catalog, injected by the composition root.
+static STORY_DISPLAY: OnceLock<Vec<&'static StoryDisplayDescriptor>> = OnceLock::new();
+
+/// Install the aggregated story-display descriptors from every domain.
+///
+/// Called once by the composition root before the router serves traffic. Story
+/// display names are domain-owned metadata; injecting them keeps this crate
+/// from depending on the domains or the composition root. Idempotent: later
+/// calls are ignored.
+pub fn install_story_display(catalog: Vec<&'static StoryDisplayDescriptor>) {
+    let _ = STORY_DISPLAY.set(catalog);
+}
 
 pub fn router() -> ApiOpenApiRouter {
     OpenApiRouter::new()

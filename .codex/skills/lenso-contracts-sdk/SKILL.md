@@ -11,7 +11,7 @@ Use this skill for contract and generated SDK work. Rust/OpenAPI/event sources a
 
 ## Source Of Truth
 
-- API OpenAPI source: per-endpoint `#[utoipa::path]` annotations on the handlers (`domains/*/src/routes/`, `apps/api/src/admin_runtime/handlers.rs`); document-level metadata and router assembly in `apps/api/src/openapi.rs`
+- API OpenAPI source: per-endpoint `#[utoipa::path]` annotations on the handlers (`domains/*/src/routes/`, `crates/platform-admin/src/handlers.rs`); document-level metadata and router assembly in `apps/api/src/openapi.rs`
 - Contract generator: `tools/generate-contracts`
 - TS SDK generator: `tools/generate-ts-sdk`
 - Committed OpenAPI artifact: `contracts/openapi/app-api.v1.yaml`

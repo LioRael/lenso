@@ -28,7 +28,7 @@ git diff -- <path>
 - `apps/api`: Axum HTTP API. OpenAPI document-level metadata and router assembly live in `apps/api/src/openapi.rs`; per-endpoint contracts are `#[utoipa::path]` annotations on the handlers themselves.
 - `apps/worker`: background worker and outbox relay composition.
 - `apps/migrate`: deterministic migration runner.
-- `crates/platform-*`: shared primitives for config, HTTP, runtime, the `DomainDescriptor` type, testing, migrations, outbox, errors, health, and telemetry.
+- `crates/platform-*`: shared primitives for config, HTTP, runtime, the `DomainDescriptor` type, the Runtime Console observability backend (`platform-admin`, `/admin/runtime/*`), testing, migrations, outbox, errors, health, and telemetry.
 - `crates/app-bootstrap`: composition root that enumerates the concrete domains for both the API and the worker.
 - `domains/*`: business capabilities with vertical domain structure.
 

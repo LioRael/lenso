@@ -5,6 +5,7 @@ members = [
     "apps/worker",
     "apps/migrate",
     "crates/app-bootstrap",
+    "crates/platform-admin",
     "crates/platform-core",
     "crates/platform-domain",
     "crates/platform-http",
@@ -49,6 +50,7 @@ utoipa-axum = "0.2"
 uuid = { version = "1.23", features = ["serde", "v7"] }
 
 platform-core = { path = "crates/platform-core" }
+platform-admin = { path = "crates/platform-admin" }
 platform-domain = { path = "crates/platform-domain" }
 platform-http = { path = "crates/platform-http" }
 platform-runtime = { path = "crates/platform-runtime" }

@@ -27,6 +27,7 @@ More detail lives in [docs/architecture/overview.md](docs/architecture/overview.
   - `platform-http`: Axum adapters, request context middleware, JSON extractor, error responses, health routes, and the `OpenApiRouter` re-exports for single-source OpenAPI.
   - `platform-runtime`: embedded runtime primitives for functions, triggers, queues, flows, retries, and store traits.
   - `platform-domain`: the shared `DomainDescriptor` each domain exposes (runtime, event handlers, story display).
+  - `platform-admin`: runtime-observability backend for the Runtime Console (`/admin/runtime/*`); reads platform/runtime tables only.
   - `platform-testing`: shared test database helpers.
   - `app-bootstrap`: composition root listing the concrete domains; both `api` and `worker` wire their domain set from here.
 - `domains/`

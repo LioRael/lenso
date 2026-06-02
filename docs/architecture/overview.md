@@ -35,6 +35,7 @@ The service kit is split into a few crates:
 - `platform-http`: Axum request context middleware, auth extractors, standard JSON error responses, JSON extractor, response helpers, health routes, and the `OpenApiRouter` re-exports used for single-source OpenAPI.
 - `platform-runtime`: embedded runtime primitives for functions, triggers, queues, flows, retry policies, registry, worker execution, and store traits.
 - `platform-domain`: the shared `DomainDescriptor` type each domain exposes, so the descriptor and its `Debug` impl are defined once rather than per domain.
+- `platform-admin`: the runtime-observability backend for the Runtime Console. It is a cross-cutting platform concern, not a business domain — it only reads platform/runtime tables (`platform.outbox`, `platform.story_events`, `runtime.function_runs`) to observe every domain's activity, and exposes one router the API app mounts under `/admin/runtime/*`.
 - `platform-testing`: shared test database utilities.
 
 A thin composition root, `app-bootstrap`, sits above the service kit. It is the single place that enumerates the concrete domains, and both the API and the worker derive their domain set from it. It depends on the domains, so it lives outside `platform-*` (those crates must not depend on business domains).
@@ -63,7 +64,7 @@ No NATS, Kafka, service mesh, or external broker is part of the current architec
 
 The Runtime Console is a Vite/React operator UI under `apps/runtime-console`. It can run with local mock data or against the API.
 
-The API exposes admin runtime endpoints under `/admin/runtime/*` for summaries, timelines, stories, heatmaps, outbox events, function runs, retries, execution payloads, and technical operations. These endpoints use the same OpenAPI contract as the public identity API.
+The API exposes admin runtime endpoints under `/admin/runtime/*` for summaries, timelines, stories, heatmaps, outbox events, function runs, retries, execution payloads, and technical operations. These are served by the `platform-admin` crate, which the API app mounts; they use the same OpenAPI contract as the public identity API. Story display names are domain-owned, so the composition root injects the aggregated catalog into `platform-admin` (via `install_story_display`) rather than having it depend on the domains.
 
 OpenTelemetry data is an enrichment layer for technical operations. See `docs/architecture/runtime-telemetry.md` for the boundary between runtime story semantics and telemetry span enrichment.
 
