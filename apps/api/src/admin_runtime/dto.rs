@@ -1,0 +1,400 @@
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use utoipa::{IntoParams, ToSchema};
+
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct OutboxQuery {
+    pub status: Option<String>,
+    pub event_name: Option<String>,
+    pub limit: Option<i64>,
+    pub created_before: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct FunctionRunQuery {
+    pub status: Option<String>,
+    pub function_name: Option<String>,
+    pub limit: Option<i64>,
+    pub created_before: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct TimelineQuery {
+    pub limit: Option<i64>,
+    pub created_before: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct StoryQuery {
+    pub limit: Option<i64>,
+    pub created_before: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct HeatmapQuery {
+    pub from: Option<DateTime<Utc>>,
+    pub to: Option<DateTime<Utc>>,
+    pub bucket_seconds: Option<i64>,
+    pub status: Option<String>,
+    pub event_name: Option<String>,
+    pub function_name: Option<String>,
+    pub limit: Option<i64>,
+    pub created_before: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct ExecutionLogQuery {
+    pub limit: Option<i64>,
+    pub created_before: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PageInfo {
+    pub limit: i64,
+    pub next_created_before: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(as = AdminOutboxListResponse)]
+pub struct AdminOutboxListResponse {
+    pub data: Vec<AdminOutboxEvent>,
+    pub page: PageInfo,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(as = AdminOutboxEventDetailResponse)]
+pub struct AdminOutboxEventDetailResponse {
+    pub data: AdminOutboxEventDetail,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(as = AdminFunctionRunListResponse)]
+pub struct AdminFunctionRunListResponse {
+    pub data: Vec<AdminFunctionRun>,
+    pub page: PageInfo,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(as = AdminFunctionRunResponse)]
+pub struct AdminFunctionRunResponse {
+    pub data: AdminFunctionRunDetail,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(as = AdminRuntimeTimelineResponse)]
+pub struct AdminRuntimeTimelineResponse {
+    pub data: Vec<AdminRuntimeTimelineItem>,
+    pub page: PageInfo,
+    pub order: &'static str,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(as = AdminRuntimeStoryListResponse)]
+pub struct AdminRuntimeStoryListResponse {
+    pub data: Vec<AdminRuntimeStoryListItem>,
+    pub page: PageInfo,
+    pub order: &'static str,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(as = AdminRuntimeStoryDetailResponse)]
+pub struct AdminRuntimeStoryDetailResponse {
+    pub data: AdminRuntimeStoryDetail,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(as = AdminRuntimeHeatmapResponse)]
+pub struct AdminRuntimeHeatmapResponse {
+    pub data: Vec<AdminRuntimeHeatmapCell>,
+    pub bucket_seconds: i64,
+    pub page: PageInfo,
+    pub order: &'static str,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(as = AdminRuntimeTechnicalOperationListResponse)]
+pub struct AdminRuntimeTechnicalOperationListResponse {
+    pub data: Vec<AdminRuntimeTechnicalOperation>,
+    pub order: &'static str,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(as = AdminRuntimeExecutionPayloadResponse)]
+pub struct AdminRuntimeExecutionPayloadResponse {
+    pub data: AdminRuntimeExecutionPayload,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(as = AdminRuntimeExecutionLogListResponse)]
+pub struct AdminRuntimeExecutionLogListResponse {
+    pub data: Vec<AdminRuntimeExecutionLog>,
+    pub page: PageInfo,
+    pub order: &'static str,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminRuntimeExecutionPayload {
+    pub node_id: String,
+    pub node_type: String,
+    pub input: Value,
+    pub output: Option<Value>,
+    pub metadata: Value,
+    pub redacted_fields: Vec<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminRuntimeExecutionLog {
+    pub id: String,
+    pub node_id: String,
+    pub node_type: String,
+    pub correlation_id: String,
+    pub story_id: String,
+    pub execution_name: String,
+    pub occurred_at: DateTime<Utc>,
+    pub severity: String,
+    pub body: String,
+    pub attributes: Value,
+    pub service_name: String,
+    pub trace_id: Option<String>,
+    pub span_id: Option<String>,
+    pub redacted_fields: Vec<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminRuntimeTechnicalOperation {
+    pub id: String,
+    pub story_id: String,
+    pub correlation_id: String,
+    pub related_node_id: Option<String>,
+    pub category: String,
+    pub name: String,
+    pub status: String,
+    pub started_at: DateTime<Utc>,
+    pub ended_at: DateTime<Utc>,
+    pub duration_ms: i64,
+    pub attributes: Value,
+    pub source: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(as = AdminRuntimeSummaryResponse)]
+pub struct AdminRuntimeSummaryResponse {
+    pub status: String,
+    pub outbox: AdminRuntimeOutboxSummary,
+    pub functions: AdminRuntimeFunctionSummary,
+    pub recent_activity: Vec<AdminRuntimeSummaryItem>,
+    pub recent_failures: Vec<AdminRuntimeSummaryItem>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminRuntimeOutboxSummary {
+    pub pending: i64,
+    pub processing: i64,
+    pub published: i64,
+    pub failed: i64,
+    pub dead: i64,
+    pub oldest_pending_age_seconds: Option<i64>,
+    pub oldest_failed_age_seconds: Option<i64>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminRuntimeFunctionSummary {
+    pub pending: i64,
+    pub running: i64,
+    pub completed: i64,
+    pub failed: i64,
+    pub dead: i64,
+    pub oldest_pending_age_seconds: Option<i64>,
+    pub oldest_failed_age_seconds: Option<i64>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminRuntimeSummaryItem {
+    #[serde(rename = "type")]
+    pub item_type: String,
+    pub id: String,
+    pub name: String,
+    pub status: String,
+    pub attempts: i32,
+    pub max_attempts: i32,
+    pub correlation_id: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub last_error: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(as = AdminRuntimeOutboxItem)]
+pub struct AdminOutboxEvent {
+    pub id: String,
+    pub event_name: String,
+    pub status: String,
+    pub attempts: i32,
+    pub max_attempts: i32,
+    pub available_at: DateTime<Utc>,
+    pub locked_by: Option<String>,
+    pub published_at: Option<DateTime<Utc>>,
+    pub last_error: Option<String>,
+    pub correlation_id: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminOutboxEventDetail {
+    pub id: String,
+    pub event_name: String,
+    pub event_version: i32,
+    pub source_module: String,
+    pub aggregate_type: String,
+    pub aggregate_id: String,
+    pub status: String,
+    pub attempts: i32,
+    pub max_attempts: i32,
+    pub available_at: DateTime<Utc>,
+    pub locked_by: Option<String>,
+    pub published_at: Option<DateTime<Utc>>,
+    pub last_error: Option<String>,
+    pub correlation_id: String,
+    pub causation_id: Option<String>,
+    pub occurred_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+    pub payload: Value,
+    pub actor: Value,
+    pub trace: Value,
+    pub headers: Value,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(as = AdminRuntimeFunctionRunItem)]
+pub struct AdminFunctionRun {
+    pub id: String,
+    pub function_name: String,
+    pub status: String,
+    pub attempts: i32,
+    pub max_attempts: i32,
+    pub available_at: DateTime<Utc>,
+    pub locked_by: Option<String>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub last_error: Option<String>,
+    pub correlation_id: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminFunctionRunDetail {
+    pub id: String,
+    pub function_name: String,
+    pub status: String,
+    pub attempts: i32,
+    pub max_attempts: i32,
+    pub available_at: DateTime<Utc>,
+    pub locked_by: Option<String>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub last_error: Option<String>,
+    pub correlation_id: String,
+    pub created_at: DateTime<Utc>,
+    pub input_json: Value,
+    pub actor: Value,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct StoryEventDetail {
+    pub(crate) id: String,
+    pub(crate) node_type: String,
+    pub(crate) name: String,
+    pub(crate) status: String,
+    pub(crate) service: String,
+    pub(crate) correlation_id: String,
+    pub(crate) causation_id: Option<String>,
+    pub(crate) started_at: DateTime<Utc>,
+    pub(crate) completed_at: Option<DateTime<Utc>>,
+    pub(crate) duration_ms: i64,
+    pub(crate) error: Option<String>,
+    pub(crate) metadata: Value,
+    pub(crate) trace_id: Option<String>,
+    pub(crate) span_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminRuntimeTimelineItem {
+    #[serde(rename = "type")]
+    pub item_type: String,
+    pub id: String,
+    pub name: String,
+    pub status: String,
+    pub attempts: i32,
+    pub max_attempts: i32,
+    pub created_at: DateTime<Utc>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub last_error: Option<String>,
+    pub correlation_id: String,
+    pub related_node_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct AdminRuntimeStoryListItem {
+    pub title: String,
+    pub correlation_id: String,
+    pub status: String,
+    pub duration: i64,
+    pub node_count: usize,
+    pub error_count: usize,
+    pub services: Vec<String>,
+    pub pattern: Vec<String>,
+    pub root_error: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminRuntimeStoryDetail {
+    pub summary: AdminRuntimeStoryListItem,
+    pub nodes: Vec<AdminRuntimeStoryNode>,
+    pub edges: Vec<AdminRuntimeStoryEdge>,
+    pub timeline_items: Vec<AdminRuntimeTimelineItem>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct AdminRuntimeStoryNode {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub node_type: String,
+    pub name: String,
+    pub display_name: String,
+    pub status: String,
+    pub service: String,
+    pub timestamp: DateTime<Utc>,
+    pub duration_ms: i64,
+    pub error: Option<String>,
+    pub metadata: Value,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminRuntimeStoryEdge {
+    pub id: String,
+    pub source: String,
+    pub target: String,
+    #[serde(rename = "type")]
+    pub edge_type: String,
+    pub label: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminRuntimeHeatmapCell {
+    pub bucket_start: DateTime<Utc>,
+    pub bucket_end: DateTime<Utc>,
+    pub service: String,
+    pub node_type: String,
+    pub total_count: i64,
+    pub error_count: i64,
+    pub retry_count: i64,
+    pub dead_count: i64,
+    pub avg_duration_ms: Option<i64>,
+    pub max_duration_ms: Option<i64>,
+}

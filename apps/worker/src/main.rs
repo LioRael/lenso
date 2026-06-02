@@ -15,21 +15,14 @@ async fn main() -> anyhow::Result<()> {
     let db = connect_pool(&config.database).await?;
     let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
 
-    let identity_domain = identity::domain();
-    let notifications_domain = notifications::module::domain(ctx.db.clone());
-
-    let mut registry = FunctionRegistry::default();
-    identity_domain.runtime.register_into(&mut registry);
-    notifications_domain.runtime.register_into(&mut registry);
-
-    let mut event_handlers = EventHandlerRegistry::new();
-    event_handlers.register_all(identity_domain.event_handlers);
-    event_handlers.register_all(notifications_domain.event_handlers);
+    let domains = app_bootstrap::domains(&ctx);
+    let registry = app_bootstrap::function_registry(&domains);
+    let event_handlers = app_bootstrap::event_handlers(&domains);
 
     info!(
         functions = registry.all().count(),
         user_registered_handlers = event_handlers.handler_count("identity.user_registered.v1"),
-        "starting worker placeholder"
+        "starting worker"
     );
 
     run_worker_loop(ctx.clone(), event_handlers, Arc::new(registry)).await;

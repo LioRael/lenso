@@ -14,7 +14,12 @@ async fn user_registered_event_enqueues_welcome_email_function() {
     apply_notifications_stack_migrations(&db).await;
     insert_user_registered_outbox_event(&db.pool).await;
 
-    let descriptor = notifications::module::domain(db.pool.clone());
+    let ctx = platform_core::AppContext::new(
+        platform_core::AppConfig::from_env(),
+        db.pool.clone(),
+        std::sync::Arc::new(platform_core::LoggingEventPublisher),
+    );
+    let descriptor = notifications::module::domain(&ctx);
     let mut registry = EventHandlerRegistry::new();
     registry.register_all(descriptor.event_handlers);
 

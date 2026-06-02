@@ -270,30 +270,30 @@ paths:
           - string
           - 'null'
       - name: status
-        in: path
-        required: true
+        in: query
+        required: false
         schema:
           type:
           - string
           - 'null'
       - name: function_name
-        in: path
-        required: true
+        in: query
+        required: false
         schema:
           type:
           - string
           - 'null'
       - name: limit
-        in: path
-        required: true
+        in: query
+        required: false
         schema:
           type:
           - integer
           - 'null'
           format: int64
       - name: created_before
-        in: path
-        required: true
+        in: query
+        required: false
         schema:
           type:
           - string
@@ -623,30 +623,30 @@ paths:
           - string
           - 'null'
       - name: status
-        in: path
-        required: true
+        in: query
+        required: false
         schema:
           type:
           - string
           - 'null'
       - name: event_name
-        in: path
-        required: true
+        in: query
+        required: false
         schema:
           type:
           - string
           - 'null'
       - name: limit
-        in: path
-        required: true
+        in: query
+        required: false
         schema:
           type:
           - integer
           - 'null'
           format: int64
       - name: created_before
-        in: path
-        required: true
+        in: query
+        required: false
         schema:
           type:
           - string
@@ -1159,16 +1159,16 @@ paths:
           - string
           - 'null'
       - name: limit
-        in: path
-        required: true
+        in: query
+        required: false
         schema:
           type:
           - integer
           - 'null'
           format: int64
       - name: created_before
-        in: path
-        required: true
+        in: query
+        required: false
         schema:
           type:
           - string

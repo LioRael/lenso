@@ -3,7 +3,6 @@ pub mod context;
 pub mod errors;
 pub mod health;
 pub mod json;
-pub mod openapi;
 pub mod responses;
 pub mod routes;
 
@@ -12,4 +11,7 @@ pub use context::{HttpRequestContext, request_context_middleware};
 pub use errors::ApiErrorBody as ErrorResponse;
 pub use errors::{ApiErrorBody, ApiErrorResponse, ErrorBody, IntoApiError, ValidationErrorDetail};
 pub use json::JsonBody;
-pub use routes::{ApiRouter, DomainHttp};
+pub use routes::{ApiOpenApiRouter, ApiRouter, base_router};
+
+pub use utoipa_axum::router::OpenApiRouter;
+pub use utoipa_axum::routes;

@@ -65,6 +65,10 @@ impl DatabaseConfig {
 pub struct HttpConfig {
     pub host: String,
     pub port: u16,
+    /// Origins permitted by CORS. Defaults to the local Runtime Console dev
+    /// ports; override with `CORS_ALLOWED_ORIGINS` (comma-separated).
+    #[serde(default)]
+    pub cors_allowed_origins: Vec<String>,
 }
 
 impl Default for HttpConfig {
@@ -75,8 +79,30 @@ impl Default for HttpConfig {
                 .ok()
                 .and_then(|value| value.parse().ok())
                 .unwrap_or(3000),
+            cors_allowed_origins: std::env::var("CORS_ALLOWED_ORIGINS").map_or_else(
+                |_| default_cors_allowed_origins(),
+                |value| parse_cors_allowed_origins(&value),
+            ),
         }
     }
+}
+
+fn default_cors_allowed_origins() -> Vec<String> {
+    (5173..=5177)
+        .map(|port| format!("http://localhost:{port}"))
+        .collect()
+}
+
+/// Parse a comma-separated `CORS_ALLOWED_ORIGINS` value into trimmed, non-empty
+/// origins.
+#[must_use]
+pub fn parse_cors_allowed_origins(value: &str) -> Vec<String> {
+    value
+        .split(',')
+        .map(str::trim)
+        .filter(|origin| !origin.is_empty())
+        .map(ToOwned::to_owned)
+        .collect()
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

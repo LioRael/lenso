@@ -37,10 +37,10 @@ name = "app-api"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "app-bootstrap",
  "axum",
  "chrono",
  "identity",
- "notifications",
  "platform-core",
  "platform-http",
  "platform-runtime",
@@ -54,6 +54,18 @@ dependencies = [
  "tower-http",
  "tracing",
  "utoipa",
+]
+
+[[package]]
+name = "app-bootstrap"
+version = "0.1.0"
+dependencies = [
+ "identity",
+ "notifications",
+ "platform-core",
+ "platform-domain",
+ "platform-http",
+ "platform-runtime",
 ]
 
 [[package]]
@@ -74,8 +86,7 @@ name = "app-worker"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "identity",
- "notifications",
+ "app-bootstrap",
  "platform-core",
  "platform-runtime",
  "tokio",
@@ -961,6 +972,7 @@ dependencies = [
  "axum",
  "chrono",
  "platform-core",
+ "platform-domain",
  "platform-http",
  "platform-runtime",
  "platform-testing",
@@ -970,6 +982,7 @@ dependencies = [
  "tokio",
  "tracing",
  "utoipa",
+ "utoipa-axum",
  "uuid",
 ]
 
@@ -1142,6 +1155,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "platform-core",
+ "platform-domain",
  "platform-runtime",
  "platform-testing",
  "serde",
@@ -1292,6 +1306,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "paste"
+version = "1.0.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
+
+[[package]]
 name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1351,6 +1371,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "platform-domain"
+version = "0.1.0"
+dependencies = [
+ "platform-core",
+ "platform-runtime",
+]
+
+[[package]]
 name = "platform-http"
 version = "0.1.0"
 dependencies = [
@@ -1366,6 +1394,7 @@ dependencies = [
  "tower-http",
  "tracing",
  "utoipa",
+ "utoipa-axum",
 ]
 
 [[package]]
@@ -2463,6 +2492,19 @@ dependencies = [
  "serde",
  "serde_json",
  "utoipa-gen",
+]
+
+[[package]]
+name = "utoipa-axum"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c25bae5bccc842449ec0c5ddc5cbb6a3a1eaeac4503895dc105a1138f8234a0"
+dependencies = [
+ "axum",
+ "paste",
+ "tower-layer",
+ "tower-service",
+ "utoipa",
 ]
 
 [[package]]

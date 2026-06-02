@@ -8,10 +8,10 @@ rust-version.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+app-bootstrap.workspace = true
 axum.workspace = true
 chrono.workspace = true
 identity.workspace = true
-notifications.workspace = true
 platform-core.workspace = true
 platform-http.workspace = true
 platform-runtime.workspace = true

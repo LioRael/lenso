@@ -11,6 +11,7 @@ async-trait.workspace = true
 axum.workspace = true
 chrono.workspace = true
 platform-core.workspace = true
+platform-domain.workspace = true
 platform-http.workspace = true
 platform-runtime.workspace = true
 serde.workspace = true
@@ -18,6 +19,7 @@ serde_json.workspace = true
 sqlx.workspace = true
 tracing.workspace = true
 utoipa.workspace = true
+utoipa-axum.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]

@@ -20,7 +20,7 @@ pub mod telemetry_query;
 pub use clock::{Clock, SystemClock};
 pub use config::{
     AppConfig, AuthConfig, DatabaseConfig, HttpConfig, LogFormat, ModuleConfig, RuntimeConfig,
-    ServiceConfig, TelemetryConfig,
+    ServiceConfig, TelemetryConfig, parse_cors_allowed_origins,
 };
 pub use context::{
     ActorContext, AppContext, CorrelationId, RequestContext, RequestId, TenantId, TraceContext,

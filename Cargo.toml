@@ -4,7 +4,9 @@ members = [
     "apps/api",
     "apps/worker",
     "apps/migrate",
+    "crates/app-bootstrap",
     "crates/platform-core",
+    "crates/platform-domain",
     "crates/platform-http",
     "crates/platform-runtime",
     "crates/platform-testing",
@@ -43,12 +45,15 @@ tracing = "0.1"
 tracing-opentelemetry = "0.33"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
 utoipa = { version = "5.5", features = ["axum_extras", "chrono", "uuid"] }
+utoipa-axum = "0.2"
 uuid = { version = "1.23", features = ["serde", "v7"] }
 
 platform-core = { path = "crates/platform-core" }
+platform-domain = { path = "crates/platform-domain" }
 platform-http = { path = "crates/platform-http" }
 platform-runtime = { path = "crates/platform-runtime" }
 platform-testing = { path = "crates/platform-testing" }
+app-bootstrap = { path = "crates/app-bootstrap" }
 app-api = { path = "apps/api" }
 identity = { path = "domains/identity" }
 notifications = { path = "domains/notifications" }
