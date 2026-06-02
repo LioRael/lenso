@@ -15,6 +15,19 @@ async fn main() -> anyhow::Result<()> {
     let db = connect_pool(&config.database).await?;
     let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
 
+    let descriptors = app_bootstrap::setting_descriptors(&ctx);
+    let registry = platform_core::SettingsRegistry::try_new(descriptors)
+        .expect("duplicate setting descriptor registered");
+    let settings = platform_core::PostgresSettingsProvider::connect(
+        ctx.db.clone(),
+        std::sync::Arc::new(registry),
+        "worker",
+    )
+    .await
+    .expect("failed to load settings snapshot");
+    settings.spawn_listener();
+    let ctx = ctx.with_settings_provider(settings);
+
     let domains = app_bootstrap::domains(&ctx);
     let registry = app_bootstrap::function_registry(&domains);
     let event_handlers = app_bootstrap::event_handlers(&domains);
