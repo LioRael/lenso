@@ -114,8 +114,8 @@ describe("execution inspector model", () => {
       "Overview",
       "Payload",
       "Activity",
-      "Failures",
       "Logs",
+      "Failures",
       "Context",
       "Technical",
     ]);

@@ -40,8 +40,8 @@ export const executionInspectorTabs = [
   { id: "overview", label: "Overview" },
   { id: "payload", label: "Payload" },
   { id: "activity", label: "Activity" },
-  { id: "failures", label: "Failures" },
   { id: "logs", label: "Logs" },
+  { id: "failures", label: "Failures" },
   { id: "context", label: "Context" },
   { id: "technical", label: "Technical" },
 ] as const satisfies ReadonlyArray<{
