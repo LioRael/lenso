@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 /// One stored setting row plus metadata, for the audit/values console views.
 #[derive(Debug, Clone)]
-pub struct StoredSetting {
+pub struct StoredRuntimeConfig {
     pub service: String,
     pub key: String,
     pub value: Value,
@@ -17,7 +17,7 @@ pub struct StoredSetting {
 
 /// One audit-log row.
 #[derive(Debug, Clone)]
-pub struct SettingAuditEntry {
+pub struct RuntimeConfigAuditEntry {
     pub service: String,
     pub key: String,
     pub old_value: Option<Value>,
@@ -50,7 +50,7 @@ pub async fn upsert_value(
     key: &str,
     value: &Value,
     actor: Option<&str>,
-) -> AppResult<StoredSetting> {
+) -> AppResult<StoredRuntimeConfig> {
     let mut tx = pool.begin().await.map_err(store_error)?;
 
     let old_value = sqlx::query_scalar::<_, Value>(
@@ -97,7 +97,7 @@ pub async fn upsert_value(
 
     tx.commit().await.map_err(store_error)?;
 
-    Ok(StoredSetting {
+    Ok(StoredRuntimeConfig {
         service: row.0,
         key: row.1,
         value: row.2,
@@ -154,7 +154,7 @@ pub async fn load_audit(
     service: &str,
     key: &str,
     limit: i64,
-) -> AppResult<Vec<SettingAuditEntry>> {
+) -> AppResult<Vec<RuntimeConfigAuditEntry>> {
     let rows = sqlx::query_as::<
         _,
         (
@@ -184,7 +184,7 @@ pub async fn load_audit(
     Ok(rows
         .into_iter()
         .map(
-            |(service, key, old_value, new_value, actor, changed_at)| SettingAuditEntry {
+            |(service, key, old_value, new_value, actor, changed_at)| RuntimeConfigAuditEntry {
                 service,
                 key,
                 old_value,

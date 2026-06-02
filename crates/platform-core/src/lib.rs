@@ -10,7 +10,7 @@ pub mod health;
 pub mod ids;
 pub mod migrations;
 pub mod outbox;
-pub mod settings;
+pub mod runtime_config;
 pub mod shutdown;
 pub mod story_display;
 pub mod story_events;
@@ -40,10 +40,11 @@ pub use outbox::{
     ClaimedOutboxEvent, EventDispatcher, EventHandler, EventHandlerRegistry,
     LoggingEventDispatcher, OutboxEvent, OutboxPublisher, OutboxRelay, OutboxStatus,
 };
-pub use settings::{
-    CONFIG_NOTIFY_CHANNEL, PostgresSettingsProvider, SettingAuditEntry, SettingDescriptor,
-    SettingScope, SettingSource, SettingType, SettingsProvider, SettingsRegistry, SettingsSnapshot,
-    SnapshotCell, StaticSettingsProvider, StoredSetting,
+pub use runtime_config::{
+    CONFIG_NOTIFY_CHANNEL, PostgresRuntimeConfigProvider, RuntimeConfigAuditEntry,
+    RuntimeConfigCell, RuntimeConfigDescriptor, RuntimeConfigProvider, RuntimeConfigRegistry,
+    RuntimeConfigScope, RuntimeConfigSnapshot, RuntimeConfigSource, RuntimeConfigType,
+    StaticRuntimeConfigProvider, StoredRuntimeConfig,
 };
 pub use shutdown::Shutdown;
 pub use story_display::{StoryDisplayDescriptor, StoryDisplaySource};

@@ -1,17 +1,18 @@
-use platform_core::settings::store::upsert_value;
+use platform_core::runtime_config::store::upsert_value;
 use platform_core::{
-    PLATFORM_MIGRATIONS, PostgresSettingsProvider, SettingDescriptor, SettingScope, SettingType,
-    SettingsProvider, SettingsRegistry, apply_migrations,
+    PLATFORM_MIGRATIONS, PostgresRuntimeConfigProvider, RuntimeConfigDescriptor,
+    RuntimeConfigProvider, RuntimeConfigRegistry, RuntimeConfigScope, RuntimeConfigType,
+    apply_migrations,
 };
 use platform_testing::TestDatabase;
 use serde_json::json;
 use std::sync::Arc;
 
-fn registry() -> SettingsRegistry {
-    SettingsRegistry::try_new(vec![SettingDescriptor {
+fn registry() -> RuntimeConfigRegistry {
+    RuntimeConfigRegistry::try_new(vec![RuntimeConfigDescriptor {
         key: "demo.ttl_minutes",
-        scope: SettingScope::Shared,
-        value_type: SettingType::Int {
+        scope: RuntimeConfigScope::Shared,
+        value_type: RuntimeConfigType::Int {
             min: Some(1),
             max: Some(1000),
         },
@@ -33,7 +34,7 @@ async fn refresh_picks_up_written_value() {
         .expect("migrations apply");
 
     let provider =
-        PostgresSettingsProvider::connect(test_db.pool.clone(), Arc::new(registry()), "api")
+        PostgresRuntimeConfigProvider::connect(test_db.pool.clone(), Arc::new(registry()), "api")
             .await
             .expect("connect provider");
 

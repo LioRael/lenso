@@ -1,5 +1,5 @@
 use crate::error::{AppError, AppResult, ErrorCode};
-use crate::settings::descriptor::SettingsRegistry;
+use crate::runtime_config::descriptor::RuntimeConfigRegistry;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 /// Where an effective value came from, for display in the console.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum SettingSource {
+pub enum RuntimeConfigSource {
     /// A stored row scoped to this service.
     Override,
     /// A stored row scoped to `*` (shared).
@@ -20,12 +20,12 @@ pub enum SettingSource {
 /// Effective configuration for a single running service: every registered key
 /// resolved to a concrete value plus the source it came from.
 #[derive(Debug, Clone, Default)]
-pub struct SettingsSnapshot {
+pub struct RuntimeConfigSnapshot {
     /// key -> (value, source)
-    values: BTreeMap<String, (Value, SettingSource)>,
+    values: BTreeMap<String, (Value, RuntimeConfigSource)>,
 }
 
-impl SettingsSnapshot {
+impl RuntimeConfigSnapshot {
     /// Resolve every descriptor for `service_key` against the stored rows.
     ///
     /// `stored` maps `(service_key, key)` to the stored JSON value. Resolution
@@ -33,7 +33,7 @@ impl SettingsSnapshot {
     /// Stored values failing validation fall back to the default.
     #[must_use]
     pub fn resolve(
-        registry: &SettingsRegistry,
+        registry: &RuntimeConfigRegistry,
         service_key: &str,
         stored: &BTreeMap<(String, String), Value>,
     ) -> Self {
@@ -51,12 +51,12 @@ impl SettingsSnapshot {
 
             let (value, source) = match (service_row, shared_row) {
                 (Some(v), _) if descriptor.validate(v).is_ok() => {
-                    (v.clone(), SettingSource::Override)
+                    (v.clone(), RuntimeConfigSource::Override)
                 }
                 (_, Some(v)) if descriptor.validate(v).is_ok() => {
-                    (v.clone(), SettingSource::Shared)
+                    (v.clone(), RuntimeConfigSource::Shared)
                 }
-                _ => (descriptor.default.clone(), SettingSource::Default),
+                _ => (descriptor.default.clone(), RuntimeConfigSource::Default),
             };
             values.insert(key, (value, source));
         }
@@ -71,7 +71,7 @@ impl SettingsSnapshot {
 
     /// The source of a key's effective value, if registered.
     #[must_use]
-    pub fn source(&self, key: &str) -> Option<SettingSource> {
+    pub fn source(&self, key: &str) -> Option<RuntimeConfigSource> {
         self.values.get(key).map(|(_, source)| *source)
     }
 
@@ -111,7 +111,7 @@ impl SettingsSnapshot {
     }
 
     /// All resolved keys with their value and source, for the console values API.
-    pub fn entries(&self) -> impl Iterator<Item = (&str, &Value, SettingSource)> {
+    pub fn entries(&self) -> impl Iterator<Item = (&str, &Value, RuntimeConfigSource)> {
         self.values.iter().map(|(k, (v, s))| (k.as_str(), v, *s))
     }
 
@@ -120,7 +120,7 @@ impl SettingsSnapshot {
     #[must_use]
     pub fn with_overrides(
         mut self,
-        overrides: &std::collections::BTreeMap<String, (Value, SettingSource)>,
+        overrides: &std::collections::BTreeMap<String, (Value, RuntimeConfigSource)>,
     ) -> Self {
         for (key, entry) in overrides {
             if self.values.contains_key(key) {
@@ -134,16 +134,18 @@ impl SettingsSnapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::settings::descriptor::{SettingDescriptor, SettingScope, SettingType};
+    use crate::runtime_config::descriptor::{
+        RuntimeConfigDescriptor, RuntimeConfigScope, RuntimeConfigType,
+    };
     use serde::Deserialize;
     use serde_json::json;
 
-    fn registry() -> SettingsRegistry {
-        SettingsRegistry::try_new(vec![
-            SettingDescriptor {
+    fn registry() -> RuntimeConfigRegistry {
+        RuntimeConfigRegistry::try_new(vec![
+            RuntimeConfigDescriptor {
                 key: "identity.password_reset_ttl_minutes",
-                scope: SettingScope::Shared,
-                value_type: SettingType::Int {
+                scope: RuntimeConfigScope::Shared,
+                value_type: RuntimeConfigType::Int {
                     min: Some(1),
                     max: Some(1440),
                 },
@@ -152,10 +154,10 @@ mod tests {
                 restart_only: false,
                 description: "ttl",
             },
-            SettingDescriptor {
+            RuntimeConfigDescriptor {
                 key: "api.feature.enabled",
-                scope: SettingScope::Service("api"),
-                value_type: SettingType::Bool,
+                scope: RuntimeConfigScope::Service("api"),
+                value_type: RuntimeConfigType::Bool,
                 default: json!(false),
                 editable: true,
                 restart_only: false,
@@ -167,14 +169,14 @@ mod tests {
 
     #[test]
     fn falls_back_to_default() {
-        let snapshot = SettingsSnapshot::resolve(&registry(), "api", &BTreeMap::new());
+        let snapshot = RuntimeConfigSnapshot::resolve(&registry(), "api", &BTreeMap::new());
         assert_eq!(
             snapshot.raw("identity.password_reset_ttl_minutes"),
             Some(&json!(30))
         );
         assert_eq!(
             snapshot.source("api.feature.enabled"),
-            Some(SettingSource::Default)
+            Some(RuntimeConfigSource::Default)
         );
     }
 
@@ -185,11 +187,11 @@ mod tests {
             ("api".to_owned(), "api.feature.enabled".to_owned()),
             json!(true),
         );
-        let snapshot = SettingsSnapshot::resolve(&registry(), "api", &stored);
+        let snapshot = RuntimeConfigSnapshot::resolve(&registry(), "api", &stored);
         assert_eq!(snapshot.raw("api.feature.enabled"), Some(&json!(true)));
         assert_eq!(
             snapshot.source("api.feature.enabled"),
-            Some(SettingSource::Override)
+            Some(RuntimeConfigSource::Override)
         );
     }
 
@@ -203,14 +205,14 @@ mod tests {
             ),
             json!(99999),
         );
-        let snapshot = SettingsSnapshot::resolve(&registry(), "api", &stored);
+        let snapshot = RuntimeConfigSnapshot::resolve(&registry(), "api", &stored);
         assert_eq!(
             snapshot.raw("identity.password_reset_ttl_minutes"),
             Some(&json!(30))
         );
         assert_eq!(
             snapshot.source("identity.password_reset_ttl_minutes"),
-            Some(SettingSource::Default)
+            Some(RuntimeConfigSource::Default)
         );
     }
 
@@ -220,7 +222,7 @@ mod tests {
         struct IdentityConfig {
             password_reset_ttl_minutes: u64,
         }
-        let snapshot = SettingsSnapshot::resolve(&registry(), "api", &BTreeMap::new());
+        let snapshot = RuntimeConfigSnapshot::resolve(&registry(), "api", &BTreeMap::new());
         let cfg: IdentityConfig = snapshot.get("identity").unwrap();
         assert_eq!(
             cfg,
@@ -232,13 +234,13 @@ mod tests {
 
     #[test]
     fn service_scoped_key_excluded_for_other_service() {
-        let snapshot = SettingsSnapshot::resolve(&registry(), "worker", &BTreeMap::new());
+        let snapshot = RuntimeConfigSnapshot::resolve(&registry(), "worker", &BTreeMap::new());
         assert!(snapshot.raw("api.feature.enabled").is_none());
     }
 
     #[test]
     fn get_value_reads_single_key_and_errors_on_unknown() {
-        let snapshot = SettingsSnapshot::resolve(&registry(), "api", &BTreeMap::new());
+        let snapshot = RuntimeConfigSnapshot::resolve(&registry(), "api", &BTreeMap::new());
         let ttl: u64 = snapshot
             .get_value("identity.password_reset_ttl_minutes")
             .unwrap();
@@ -248,16 +250,16 @@ mod tests {
 
     #[test]
     fn with_overrides_replaces_present_keys_only() {
-        let snapshot = SettingsSnapshot::resolve(&registry(), "api", &BTreeMap::new());
+        let snapshot = RuntimeConfigSnapshot::resolve(&registry(), "api", &BTreeMap::new());
         let mut overrides = BTreeMap::new();
         overrides.insert(
             "identity.password_reset_ttl_minutes".to_owned(),
-            (json!(99), SettingSource::Override),
+            (json!(99), RuntimeConfigSource::Override),
         );
         // A key not applicable to this resolution must be ignored.
         overrides.insert(
             "not.present".to_owned(),
-            (json!(1), SettingSource::Override),
+            (json!(1), RuntimeConfigSource::Override),
         );
         let result = snapshot.with_overrides(&overrides);
         assert_eq!(
@@ -266,7 +268,7 @@ mod tests {
         );
         assert_eq!(
             result.source("identity.password_reset_ttl_minutes"),
-            Some(SettingSource::Override)
+            Some(RuntimeConfigSource::Override)
         );
         assert!(result.raw("not.present").is_none());
     }
