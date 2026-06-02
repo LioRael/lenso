@@ -66,17 +66,17 @@ pub fn install_story_display(catalog: Vec<&'static StoryDisplayDescriptor>) {
     let _ = STORY_DISPLAY.set(catalog);
 }
 
-static SETTINGS_REGISTRY: OnceLock<RuntimeConfigRegistry> = OnceLock::new();
+static RUNTIME_CONFIG_REGISTRY: OnceLock<RuntimeConfigRegistry> = OnceLock::new();
 
 /// Install the aggregated settings registry from the composition root. Idempotent.
 pub fn install_runtime_config_registry(registry: RuntimeConfigRegistry) {
-    let _ = SETTINGS_REGISTRY.set(registry);
+    let _ = RUNTIME_CONFIG_REGISTRY.set(registry);
 }
 
 /// The installed registry, or an empty one if none was installed.
 fn runtime_config_registry() -> &'static RuntimeConfigRegistry {
     static EMPTY: OnceLock<RuntimeConfigRegistry> = OnceLock::new();
-    SETTINGS_REGISTRY
+    RUNTIME_CONFIG_REGISTRY
         .get()
         .unwrap_or_else(|| EMPTY.get_or_init(RuntimeConfigRegistry::default))
 }
