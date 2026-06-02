@@ -9,7 +9,10 @@ use chrono::{DateTime, Utc};
 use platform_core::{
     ActorContext, AppContext, CorrelationId, IdGenerator, RequestContext, RequestId, UuidGenerator,
     generate_trace_context,
-    story_events::{HttpRequestStoryEventRecord, insert_http_request_story_projection},
+    story_events::{
+        HttpRequestStoryEventRecord, http_request_story_creation, http_request_story_event_id,
+        insert_http_request_story_projection,
+    },
     trace_context_from_traceparent,
 };
 use std::time::Instant;
@@ -51,7 +54,7 @@ pub async fn request_context_middleware(
     let method = request.method().clone();
     let path = request.uri().path().to_owned();
 
-    let context = RequestContext {
+    let mut context = RequestContext {
         request_id: RequestId::new(request_id),
         correlation_id: CorrelationId::new(correlation_id),
         trace,
@@ -59,6 +62,7 @@ pub async fn request_context_middleware(
         tenant_id: None,
         causation_id: None,
     };
+    context.causation_id = Some(http_request_story_event_id(&context));
 
     request
         .extensions_mut()
@@ -79,18 +83,16 @@ pub async fn request_context_middleware(
     );
 
     let mut response = next.run(request).instrument(span).await;
-    if should_record_request_story(path.as_str(), response.status().as_u16()) {
-        record_failed_request_story(
-            ctx.db.clone(),
-            context.clone(),
-            method.as_str(),
-            path.as_str(),
-            response.status().as_u16(),
-            response.headers().get("x-lenso-error-code"),
-            started_at,
-            started_at_utc,
-        );
-    }
+    record_http_request_story(
+        ctx.db.clone(),
+        context.clone(),
+        method.as_str(),
+        path.as_str(),
+        response.status().as_u16(),
+        response.headers().get("x-lenso-error-code"),
+        started_at,
+        started_at_utc,
+    );
     response.headers_mut().insert(
         REQUEST_ID_HEADER,
         context.request_id.0.parse().expect("valid request id"),
@@ -106,7 +108,7 @@ pub async fn request_context_middleware(
     response
 }
 
-fn record_failed_request_story(
+fn record_http_request_story(
     pool: platform_core::DbPool,
     request_ctx: RequestContext,
     method: &str,
@@ -126,6 +128,7 @@ fn record_failed_request_story(
         path: path.to_owned(),
         status_code,
         error_code,
+        creation: http_request_story_creation(path, status_code),
         started_at: started_at_utc,
         completed_at: Utc::now(),
         duration_ms,
@@ -142,24 +145,6 @@ fn record_failed_request_story(
             );
         }
     });
-}
-
-fn should_record_request_story(path: &str, status_code: u16) -> bool {
-    if is_console_or_internal_path(path) {
-        return false;
-    }
-    if status_code >= 500 {
-        return true;
-    }
-
-    path.starts_with("/v1/") && matches!(status_code, 400 | 403 | 409 | 422)
-}
-
-fn is_console_or_internal_path(path: &str) -> bool {
-    path.starts_with("/admin/runtime")
-        || path == "/docs"
-        || path == "/openapi.json"
-        || path.ends_with("/health")
 }
 
 impl<S> FromRequestParts<S> for HttpRequestContext

@@ -366,7 +366,7 @@ async fn dev_service_cannot_call_user_only_me() {
 }
 
 #[tokio::test]
-async fn outbox_event_uses_request_correlation_id() {
+async fn outbox_event_uses_request_correlation_and_http_causation_id() {
     let Some(db) = TestDatabase::create().await else {
         return;
     };
@@ -390,7 +390,7 @@ async fn outbox_event_uses_request_correlation_id() {
             .expect("outbox row should exist");
 
     assert_eq!(correlation_id, "corr-outbox");
-    assert_eq!(causation_id, None);
+    assert_eq!(causation_id.as_deref(), Some("httpreq_req-outbox"));
 
     db.cleanup().await;
 }

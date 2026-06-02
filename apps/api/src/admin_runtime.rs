@@ -2733,6 +2733,13 @@ fn explicit_causal_source(
     if let Some(source) = row.causation_id.as_deref().filter(|id| ids.contains(id)) {
         return Some(source.to_owned());
     }
+    if let Some(source) = row
+        .causation_id
+        .as_deref()
+        .and_then(|id| request_story_node_id(id, ids))
+    {
+        return Some(source);
+    }
 
     for key in [
         "outbox_event_id",
@@ -2756,6 +2763,14 @@ fn explicit_causal_source(
     }
 
     None
+}
+
+fn request_story_node_id(
+    request_id: &str,
+    ids: &std::collections::BTreeSet<&str>,
+) -> Option<String> {
+    let node_id = format!("httpreq_{request_id}");
+    ids.contains(node_id.as_str()).then_some(node_id)
 }
 
 fn json_string<'a>(value: &'a Value, key: &str) -> Option<&'a str> {

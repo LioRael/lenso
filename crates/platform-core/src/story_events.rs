@@ -3,7 +3,6 @@ use crate::db::DbPool;
 use crate::error::{AppError, AppResult, ErrorCode};
 use chrono::{DateTime, Utc};
 use serde_json::{Value, json};
-use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 #[doc(hidden)]
@@ -12,9 +11,18 @@ pub struct HttpRequestStoryEventRecord {
     pub path: String,
     pub status_code: u16,
     pub error_code: Option<String>,
+    pub creation: HttpRequestStoryCreation,
     pub started_at: DateTime<Utc>,
     pub completed_at: DateTime<Utc>,
     pub duration_ms: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[doc(hidden)]
+pub enum HttpRequestStoryCreation {
+    Never,
+    Always,
+    WhenRuntimeWorkExists,
 }
 
 #[doc(hidden)]
@@ -23,7 +31,11 @@ pub async fn insert_http_request_story_projection(
     request_ctx: &RequestContext,
     record: HttpRequestStoryEventRecord,
 ) -> AppResult<String> {
-    let id = format!("storyevt_{}", Uuid::now_v7());
+    let id = http_request_story_event_id(request_ctx);
+    if !should_insert_http_request_story(pool, request_ctx, &record, &id).await? {
+        return Ok(id);
+    }
+
     sqlx::query(
         r#"
         insert into platform.story_events (
@@ -63,10 +75,10 @@ pub async fn insert_http_request_story_projection(
     .bind(&request_ctx.request_id.0)
     .bind("http_request")
     .bind(format!("{} {}", record.method, record.path))
-    .bind("failed")
+    .bind(http_request_status(&record))
     .bind("api")
     .bind(&request_ctx.correlation_id.0)
-    .bind(&request_ctx.causation_id)
+    .bind(None::<String>)
     .bind(record.started_at)
     .bind(record.completed_at)
     .bind(record.duration_ms)
@@ -82,11 +94,118 @@ pub async fn insert_http_request_story_projection(
     Ok(id)
 }
 
-fn http_request_error(record: &HttpRequestStoryEventRecord) -> String {
-    match record.error_code.as_deref() {
+async fn should_insert_http_request_story(
+    pool: &DbPool,
+    request_ctx: &RequestContext,
+    record: &HttpRequestStoryEventRecord,
+    story_event_id: &str,
+) -> AppResult<bool> {
+    match record.creation {
+        HttpRequestStoryCreation::Never => Ok(false),
+        HttpRequestStoryCreation::Always => Ok(true),
+        HttpRequestStoryCreation::WhenRuntimeWorkExists => {
+            request_has_runtime_work(pool, request_ctx, story_event_id).await
+        }
+    }
+}
+
+async fn request_has_runtime_work(
+    pool: &DbPool,
+    request_ctx: &RequestContext,
+    story_event_id: &str,
+) -> AppResult<bool> {
+    let has_outbox_work = sqlx::query_scalar::<_, bool>(
+        r#"
+        select exists (
+            select 1
+            from platform.outbox
+            where correlation_id = $1
+                and causation_id = $2
+        )
+        "#,
+    )
+    .bind(&request_ctx.correlation_id.0)
+    .bind(story_event_id)
+    .fetch_one(pool)
+    .await
+    .map_err(map_story_event_error)?;
+
+    if has_outbox_work {
+        return Ok(true);
+    }
+
+    let function_work = sqlx::query_scalar::<_, bool>(
+        r#"
+        select exists (
+            select 1
+            from runtime.function_runs
+            where correlation_id = $1
+                and input_json #>> '{_lenso_runtime,causation_id}' = $2
+        )
+        "#,
+    )
+    .bind(&request_ctx.correlation_id.0)
+    .bind(story_event_id)
+    .fetch_one(pool)
+    .await;
+
+    match function_work {
+        Ok(has_function_work) => Ok(has_function_work),
+        Err(error) if is_missing_runtime_relation(&error) => Ok(false),
+        Err(error) => Err(map_story_event_error(error)),
+    }
+}
+
+fn http_request_status(record: &HttpRequestStoryEventRecord) -> &'static str {
+    if record.status_code >= 400 {
+        "failed"
+    } else {
+        "completed"
+    }
+}
+
+fn http_request_error(record: &HttpRequestStoryEventRecord) -> Option<String> {
+    if record.status_code < 400 {
+        return None;
+    }
+
+    Some(match record.error_code.as_deref() {
         Some(error_code) => format!("HTTP {} {error_code}", record.status_code),
         None => format!("HTTP request failed with status {}", record.status_code),
+    })
+}
+
+pub fn http_request_story_event_id(request_ctx: &RequestContext) -> String {
+    format!("httpreq_{}", request_ctx.request_id.0)
+}
+
+pub fn http_request_story_creation(path: &str, status_code: u16) -> HttpRequestStoryCreation {
+    if is_console_or_internal_path(path) {
+        return HttpRequestStoryCreation::Never;
     }
+    if status_code >= 500 {
+        return HttpRequestStoryCreation::Always;
+    }
+    if status_code < 400 {
+        return if path.starts_with("/v1/") {
+            HttpRequestStoryCreation::WhenRuntimeWorkExists
+        } else {
+            HttpRequestStoryCreation::Never
+        };
+    }
+
+    if path.starts_with("/v1/") && matches!(status_code, 400 | 403 | 409 | 422) {
+        HttpRequestStoryCreation::Always
+    } else {
+        HttpRequestStoryCreation::Never
+    }
+}
+
+fn is_console_or_internal_path(path: &str) -> bool {
+    path.starts_with("/admin/runtime")
+        || path == "/docs"
+        || path == "/openapi.json"
+        || path.ends_with("/health")
 }
 
 fn http_request_metadata(
@@ -115,4 +234,12 @@ fn actor_kind(actor: &ActorContext) -> &'static str {
 
 fn map_story_event_error(source: sqlx::Error) -> AppError {
     AppError::new(ErrorCode::Internal, "Story event operation failed").with_source(source)
+}
+
+fn is_missing_runtime_relation(error: &sqlx::Error) -> bool {
+    let Some(database_error) = error.as_database_error() else {
+        return false;
+    };
+
+    matches!(database_error.code().as_deref(), Some("3F000" | "42P01"))
 }

@@ -425,6 +425,95 @@ async fn failed_http_request_creates_request_level_story() {
         detail_body["data"]["timeline_items"][0]["related_node_id"],
         detail_body["data"]["nodes"][0]["id"]
     );
+    assert_eq!(detail_body["data"]["edges"].as_array().unwrap().len(), 0);
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn successful_request_with_outbox_work_creates_http_root_story() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app_with_identity(&db).await;
+
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/identity/users")
+                .header("content-type", "application/json")
+                .header("x-request-id", "req_create_user_story")
+                .header("x-correlation-id", "corr_create_user_story")
+                .body(Body::from(
+                    r#"{"email":"story-root@example.test","display_name":"Ada"}"#,
+                ))
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(create_response.status(), StatusCode::OK);
+    wait_for_story_event(&db.pool, "corr_create_user_story").await;
+
+    let list_response = app
+        .clone()
+        .oneshot(
+            admin_get("/admin/runtime/stories?limit=10")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(list_response.status(), StatusCode::OK);
+    let list_body = json_body(list_response).await;
+    assert_eq!(
+        list_body["data"][0]["correlation_id"],
+        "corr_create_user_story"
+    );
+    assert_eq!(list_body["data"][0]["title"], "POST /v1/identity/users");
+    assert_eq!(list_body["data"][0]["node_count"], 2);
+    assert_eq!(list_body["data"][0]["pattern"][0], "http_request");
+    assert_eq!(list_body["data"][0]["pattern"][1], "event");
+
+    let detail_response = app
+        .oneshot(
+            admin_get("/admin/runtime/stories/corr_create_user_story")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(detail_response.status(), StatusCode::OK);
+    let detail_body = json_body(detail_response).await;
+    let nodes = detail_body["data"]["nodes"].as_array().unwrap();
+    assert_eq!(nodes.len(), 2);
+
+    let http_node = nodes
+        .iter()
+        .find(|node| node["type"] == "http_request")
+        .expect("HTTP request node should exist");
+    let event_node = nodes
+        .iter()
+        .find(|node| node["name"] == "identity.user_registered.v1")
+        .expect("outbox event node should exist");
+    let http_node_id = http_node["id"].as_str().unwrap();
+    let event_node_id = event_node["id"].as_str().unwrap();
+
+    assert_eq!(http_node_id, "httpreq_req_create_user_story");
+    assert_eq!(http_node["status"], "completed");
+    assert_eq!(http_node["service"], "api");
+    assert!(http_node["metadata"]["causation_id"].is_null());
+    assert_eq!(event_node["type"], "event");
+    assert_eq!(event_node["service"], "identity");
+    assert_eq!(event_node["metadata"]["causation_id"], http_node_id);
+
+    let edges = detail_body["data"]["edges"].as_array().unwrap();
+    assert_eq!(edges.len(), 1);
+    assert_eq!(edges[0]["source"], http_node_id);
+    assert_eq!(edges[0]["target"], event_node_id);
+    assert_eq!(edges[0]["type"], "causation");
 
     db.cleanup().await;
 }
@@ -1850,6 +1939,26 @@ async fn test_app(db: &TestDatabase) -> axum::Router {
     let migrations = PLATFORM_MIGRATIONS
         .iter()
         .chain(RUNTIME_MIGRATIONS)
+        .copied()
+        .collect::<Vec<_>>();
+    apply_migrations(&db.pool, &migrations)
+        .await
+        .expect("migrations should apply");
+
+    let mut config = AppConfig::from_env();
+    config.database = DatabaseConfig {
+        url: db.url.clone(),
+        max_connections: 5,
+    };
+    let ctx = AppContext::new(config, db.pool.clone(), Arc::new(LoggingEventPublisher));
+    build_router(ctx)
+}
+
+async fn test_app_with_identity(db: &TestDatabase) -> axum::Router {
+    let migrations = PLATFORM_MIGRATIONS
+        .iter()
+        .chain(RUNTIME_MIGRATIONS)
+        .chain(identity::migrations::IDENTITY_MIGRATIONS)
         .copied()
         .collect::<Vec<_>>();
     apply_migrations(&db.pool, &migrations)
