@@ -1,5 +1,6 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
+#[allow(clippy::wildcard_imports)]
 use crate::config_dto::*;
 use axum::Json;
 use axum::extract::{Path, Query, State};
@@ -9,13 +10,6 @@ use platform_http::{AdminActor, ApiErrorResponse, ErrorResponse, HttpRequestCont
 
 const AUDIT_DEFAULT_LIMIT: i64 = 50;
 const AUDIT_MAX_LIMIT: i64 = 200;
-
-fn actor_label(actor: &AdminActor) -> String {
-    match actor {
-        AdminActor::Service { service_id, .. } => format!("service:{service_id}"),
-        AdminActor::System => "system".to_owned(),
-    }
-}
 
 #[utoipa::path(
     get,
@@ -130,7 +124,7 @@ pub(crate) async fn put_config_value(
         .validate(&body.value)
         .map_err(|error| ApiErrorResponse::with_context(error, &request_ctx))?;
 
-    let actor = actor_label(&admin);
+    let actor = admin_audit_label(&admin);
     let stored = upsert_value(&ctx.db, &service, &key, &body.value, Some(&actor))
         .await
         .map_err(|error| ApiErrorResponse::with_context(error, &request_ctx))?;
@@ -187,12 +181,16 @@ pub(crate) async fn delete_config_value(
     })?;
     let restart_only = descriptor.restart_only;
     let default_value = descriptor.default.clone();
-    let actor = actor_label(&admin);
+    let actor = admin_audit_label(&admin);
     delete_value(&ctx.db, &service, &key, Some(&actor))
         .await
         .map_err(|error| ApiErrorResponse::with_context(error, &request_ctx))?;
     notify_config_changed(&ctx, &service, &key, &request_ctx).await?;
 
+    // `value` reports the descriptor default as the new effective value. If a
+    // shared `*` row still overrides this key, the true resolved value may be
+    // that shared value rather than the default; the snapshot reflects it on
+    // the next refresh.
     Ok(Json(ConfigWriteResponse {
         key,
         service,
