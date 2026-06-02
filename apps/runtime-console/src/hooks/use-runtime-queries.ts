@@ -65,7 +65,7 @@ export const runtimeQueryKeys = {
 export type RuntimeSummaryStatus = "healthy" | "degraded" | "failing";
 
 export type RuntimeSummaryItem = {
-  type: "outbox_event" | "function_run";
+  type: "outbox_event" | "function_run" | "http_request";
   id: string;
   name: string;
   status: RuntimeStatus;
@@ -592,7 +592,13 @@ function normalizeSummaryStatus(status: string): RuntimeSummaryStatus {
 }
 
 function normalizeSummaryItemType(type: string): RuntimeSummaryItem["type"] {
-  return type === "function_run" ? "function_run" : "outbox_event";
+  if (type === "function_run") {
+    return "function_run";
+  }
+  if (type === "http" || type === "http_request") {
+    return "http_request";
+  }
+  return "outbox_event";
 }
 
 function normalizeRuntimeStatus(status: string): RuntimeStatus {
@@ -617,7 +623,12 @@ function mockRuntimeHeatmap(): RuntimeHeatmap {
     bucketSeconds: 300,
     cells: runtimeStories.flatMap((story) =>
       story.nodes
-        .filter((node) => node.kind === "event" || node.kind === "function")
+        .filter(
+          (node) =>
+            node.kind === "event" ||
+            node.kind === "function" ||
+            node.kind === "http"
+        )
         .map<RuntimeHeatmapCell>((node) => ({
           bucketEnd: story.timestamp,
           bucketStart: story.timestamp,
@@ -625,7 +636,12 @@ function mockRuntimeHeatmap(): RuntimeHeatmap {
           errorCount:
             node.status === "failed" || node.status === "dead" ? 1 : 0,
           maxDurationMs: node.durationMs,
-          nodeType: node.kind === "event" ? "event" : "function",
+          nodeType:
+            node.kind === "event"
+              ? "event"
+              : node.kind === "http"
+                ? "http"
+                : "function",
           service: node.service,
           totalCount: 1,
         }))

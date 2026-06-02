@@ -358,6 +358,78 @@ async fn service_actor_can_list_runtime_stories() {
 }
 
 #[tokio::test]
+async fn failed_http_request_creates_request_level_story() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+
+    let failed_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/identity/users")
+                .header("content-type", "application/json")
+                .header("x-request-id", "req_validation_story")
+                .header("x-correlation-id", "corr_validation_story")
+                .body(Body::from(
+                    r#"{"email":"not-an-email","display_name":"Ada"}"#,
+                ))
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(failed_response.status(), StatusCode::BAD_REQUEST);
+    wait_for_story_event(&db.pool, "corr_validation_story").await;
+
+    let list_response = app
+        .clone()
+        .oneshot(
+            admin_get("/admin/runtime/stories?limit=10")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(list_response.status(), StatusCode::OK);
+    let list_body = json_body(list_response).await;
+    assert_eq!(
+        list_body["data"][0]["correlation_id"],
+        "corr_validation_story"
+    );
+    assert_eq!(list_body["data"][0]["title"], "POST /v1/identity/users");
+    assert_eq!(list_body["data"][0]["pattern"][0], "http_request");
+    assert_eq!(list_body["data"][0]["status"], "failed");
+    assert_eq!(list_body["data"][0]["error_count"], 1);
+
+    let detail_response = app
+        .oneshot(
+            admin_get("/admin/runtime/stories/corr_validation_story")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(detail_response.status(), StatusCode::OK);
+    let detail_body = json_body(detail_response).await;
+    assert_eq!(detail_body["data"]["nodes"][0]["type"], "http_request");
+    assert_eq!(detail_body["data"]["nodes"][0]["status"], "failed");
+    assert_eq!(
+        detail_body["data"]["nodes"][0]["metadata"]["source_metadata"]["request_id"],
+        "req_validation_story"
+    );
+    assert_eq!(detail_body["data"]["timeline_items"][0]["type"], "failure");
+    assert_eq!(
+        detail_body["data"]["timeline_items"][0]["related_node_id"],
+        detail_body["data"]["nodes"][0]["id"]
+    );
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
 async fn runtime_story_pagination_uses_story_updated_at_cursor() {
     let Some(db) = TestDatabase::create().await else {
         return;
@@ -2267,6 +2339,30 @@ async fn insert_execution_log(
     .execute(pool)
     .await
     .expect("execution log should insert");
+}
+
+async fn wait_for_story_event(pool: &platform_core::DbPool, correlation_id: &str) {
+    for _ in 0..20 {
+        let count: i64 = sqlx::query_scalar(
+            r#"
+            select count(*)::bigint
+            from platform.story_events
+            where correlation_id = $1
+            "#,
+        )
+        .bind(correlation_id)
+        .fetch_one(pool)
+        .await
+        .expect("story event count should query");
+
+        if count > 0 {
+            return;
+        }
+
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+
+    panic!("story event for {correlation_id} was not projected");
 }
 
 async fn insert_heatmap_outbox_events(pool: &platform_core::DbPool) {

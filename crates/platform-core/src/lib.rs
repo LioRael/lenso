@@ -11,6 +11,7 @@ pub mod ids;
 pub mod migrations;
 pub mod outbox;
 pub mod shutdown;
+pub mod story_events;
 pub mod telemetry;
 pub mod telemetry_attrs;
 pub mod telemetry_query;

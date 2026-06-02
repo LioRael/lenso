@@ -1,13 +1,18 @@
 use axum::body::Body;
+use axum::extract::State;
 use axum::extract::{FromRequestParts, Request};
 use axum::http::header::HeaderName;
 use axum::http::request::Parts;
 use axum::middleware::Next;
 use axum::response::Response;
+use chrono::{DateTime, Utc};
 use platform_core::{
-    ActorContext, CorrelationId, IdGenerator, RequestContext, RequestId, UuidGenerator,
-    generate_trace_context, trace_context_from_traceparent,
+    ActorContext, AppContext, CorrelationId, IdGenerator, RequestContext, RequestId, UuidGenerator,
+    generate_trace_context,
+    story_events::{HttpRequestStoryEventRecord, insert_http_request_story_projection},
+    trace_context_from_traceparent,
 };
+use std::time::Instant;
 use tracing::Instrument;
 
 const REQUEST_ID_HEADER: &str = "x-request-id";
@@ -26,7 +31,13 @@ impl std::ops::Deref for HttpRequestContext {
     }
 }
 
-pub async fn request_context_middleware(mut request: Request<Body>, next: Next) -> Response {
+pub async fn request_context_middleware(
+    State(ctx): State<AppContext>,
+    mut request: Request<Body>,
+    next: Next,
+) -> Response {
+    let started_at = Instant::now();
+    let started_at_utc = Utc::now();
     let request_id = header_value(request.headers(), REQUEST_ID_HEADER)
         .unwrap_or_else(|| UuidGenerator.new_id("req"));
     let correlation_id = header_value(request.headers(), CORRELATION_ID_HEADER)
@@ -68,6 +79,18 @@ pub async fn request_context_middleware(mut request: Request<Body>, next: Next) 
     );
 
     let mut response = next.run(request).instrument(span).await;
+    if should_record_request_story(path.as_str(), response.status().as_u16()) {
+        record_failed_request_story(
+            ctx.db.clone(),
+            context.clone(),
+            method.as_str(),
+            path.as_str(),
+            response.status().as_u16(),
+            response.headers().get("x-lenso-error-code"),
+            started_at,
+            started_at_utc,
+        );
+    }
     response.headers_mut().insert(
         REQUEST_ID_HEADER,
         context.request_id.0.parse().expect("valid request id"),
@@ -81,6 +104,62 @@ pub async fn request_context_middleware(mut request: Request<Body>, next: Next) 
             .expect("valid correlation id"),
     );
     response
+}
+
+fn record_failed_request_story(
+    pool: platform_core::DbPool,
+    request_ctx: RequestContext,
+    method: &str,
+    path: &str,
+    status_code: u16,
+    error_code_header: Option<&axum::http::HeaderValue>,
+    started_at: Instant,
+    started_at_utc: DateTime<Utc>,
+) {
+    let error_code = error_code_header
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+    let duration_ms = started_at.elapsed().as_millis().min(i64::MAX as u128) as i64;
+    let record = HttpRequestStoryEventRecord {
+        method: method.to_owned(),
+        path: path.to_owned(),
+        status_code,
+        error_code,
+        started_at: started_at_utc,
+        completed_at: Utc::now(),
+        duration_ms,
+    };
+
+    tokio::spawn(async move {
+        if let Err(error) = insert_http_request_story_projection(&pool, &request_ctx, record).await
+        {
+            tracing::warn!(
+                error = ?error,
+                request_id = %request_ctx.request_id.0,
+                correlation_id = %request_ctx.correlation_id.0,
+                "failed to write HTTP request story projection"
+            );
+        }
+    });
+}
+
+fn should_record_request_story(path: &str, status_code: u16) -> bool {
+    if is_console_or_internal_path(path) {
+        return false;
+    }
+    if status_code >= 500 {
+        return true;
+    }
+
+    path.starts_with("/v1/") && matches!(status_code, 400 | 403 | 409 | 422)
+}
+
+fn is_console_or_internal_path(path: &str) -> bool {
+    path.starts_with("/admin/runtime")
+        || path == "/docs"
+        || path == "/openapi.json"
+        || path.ends_with("/health")
 }
 
 impl<S> FromRequestParts<S> for HttpRequestContext

@@ -5,9 +5,11 @@ use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
+use platform_core::{AppConfig, AppContext, LoggingEventPublisher};
 use platform_http::{HttpRequestContext, JsonBody};
 use serde::Deserialize;
 use serde_json::Value;
+use std::sync::Arc;
 use tower::ServiceExt;
 
 #[tokio::test]
@@ -128,10 +130,18 @@ async fn malformed_json_returns_standard_error_shape_with_request_context() {
 }
 
 fn router() -> Router {
+    let ctx = AppContext::new(
+        AppConfig::from_env(),
+        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy db pool should construct"),
+        Arc::new(LoggingEventPublisher),
+    );
+
     Router::new()
         .route("/context", get(context_handler))
         .route("/json", post(json_handler))
-        .layer(middleware::from_fn(
+        .layer(middleware::from_fn_with_state(
+            ctx,
             platform_http::request_context_middleware,
         ))
 }

@@ -31,7 +31,7 @@ export type RuntimeHeatmapCell = {
   bucketStart: string;
   bucketEnd: string;
   service: string;
-  nodeType: "event" | "function";
+  nodeType: "event" | "function" | "http";
   totalCount: number;
   errorCount: number;
   deadCount: number;
@@ -425,10 +425,26 @@ function normalizeRuntimeHeatmapCell(
     errorCount: normalizeInteger(cell.error_count, 0),
     ...(avgDurationMs === undefined ? {} : { avgDurationMs }),
     ...(maxDurationMs === undefined ? {} : { maxDurationMs }),
-    nodeType: cell.node_type === "event" ? "event" : "function",
+    nodeType: normalizeHeatmapNodeType(cell.node_type),
     service: safeString(cell.service, "runtime"),
     totalCount: normalizeInteger(cell.total_count, 0),
   };
+}
+
+function normalizeHeatmapNodeType(type: string | undefined) {
+  switch (type) {
+    case "event":
+    case "outbox_event": {
+      return "event";
+    }
+    case "http":
+    case "http_request": {
+      return "http";
+    }
+    default: {
+      return "function";
+    }
+  }
 }
 
 function normalizePageInfoPartial(page: DeepPartial<ApiPageInfo>): PageInfo {

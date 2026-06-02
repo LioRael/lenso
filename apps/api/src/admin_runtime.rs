@@ -352,6 +352,24 @@ pub struct AdminFunctionRunDetail {
     pub actor: Value,
 }
 
+#[derive(Debug, Clone)]
+struct StoryEventDetail {
+    id: String,
+    node_type: String,
+    name: String,
+    status: String,
+    service: String,
+    correlation_id: String,
+    causation_id: Option<String>,
+    started_at: DateTime<Utc>,
+    completed_at: Option<DateTime<Utc>>,
+    duration_ms: i64,
+    error: Option<String>,
+    metadata: Value,
+    trace_id: Option<String>,
+    span_id: Option<String>,
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AdminRuntimeTimelineItem {
     #[serde(rename = "type")]
@@ -544,6 +562,23 @@ async fn get_heatmap(
               and ($6::text is null or status = $6)
               and ($7::text is null)
               and ($8::text is null or function_name = $8)
+
+            union all
+
+            select
+                started_at as created_at,
+                service,
+                node_type,
+                status,
+                1 as attempts,
+                duration_ms
+            from platform.story_events
+            where ($1::timestamptz is null or started_at < $1)
+              and ($4::timestamptz is null or started_at >= $4)
+              and ($5::timestamptz is null or started_at < $5)
+              and ($6::text is null or status = $6)
+              and ($7::text is null)
+              and ($8::text is null)
         ),
         heatmap as (
             select
@@ -676,7 +711,8 @@ async fn get_execution_technical_operations(
     let node = fetch_runtime_node_ref(&ctx, &request_ctx, &node_id).await?;
     let query = match node.item_type.as_str() {
         "function" => TelemetrySpanQuery::by_function_run_id(&node.id),
-        _ => TelemetrySpanQuery::by_outbox_event_id(&node.id),
+        "event" => TelemetrySpanQuery::by_outbox_event_id(&node.id),
+        _ => TelemetrySpanQuery::by_correlation_id(&node.correlation_id),
     };
     let spans = ctx
         .telemetry_spans
@@ -703,9 +739,13 @@ async fn get_execution_payload(
             let detail = fetch_function_run_detail(&ctx, &request_ctx, &node.id).await?;
             execution_payload_from_function(detail)
         }
-        _ => {
+        "event" => {
             let detail = fetch_outbox_event_detail(&ctx, &request_ctx, &node.id).await?;
             execution_payload_from_outbox(detail)
+        }
+        _ => {
+            let detail = fetch_story_event_detail(&ctx, &request_ctx, &node.id).await?;
+            execution_payload_from_story_event(detail)
         }
     };
 
@@ -719,7 +759,14 @@ async fn get_execution_logs(
     Path(node_id): Path<String>,
     Query(query): Query<ExecutionLogQuery>,
 ) -> Result<Json<AdminRuntimeExecutionLogListResponse>, ApiErrorResponse> {
-    fetch_runtime_node_ref(&ctx, &request_ctx, &node_id).await?;
+    let node = fetch_runtime_node_ref(&ctx, &request_ctx, &node_id).await?;
+    if node.item_type == "http_request" {
+        return Ok(Json(AdminRuntimeExecutionLogListResponse {
+            page: page_info(normalized_limit(query.limit), None),
+            data: Vec::new(),
+            order: "occurred_at_asc",
+        }));
+    }
     let limit = normalized_limit(query.limit);
     let data = ctx
         .execution_logs
@@ -786,6 +833,24 @@ async fn get_timeline(
             from runtime.function_runs
             where correlation_id = $1
               and ($2::timestamptz is null or created_at < $2)
+
+            union all
+
+            select
+                node_type as item_type,
+                id,
+                name,
+                status,
+                1 as attempts,
+                1 as max_attempts,
+                started_at as created_at,
+                started_at,
+                completed_at,
+                error as last_error,
+                correlation_id
+            from platform.story_events
+            where correlation_id = $1
+              and ($2::timestamptz is null or started_at < $2)
         ) timeline
         order by created_at asc, item_type asc, id asc
         limit $3
@@ -973,6 +1038,49 @@ async fn fetch_function_run_detail(
     Ok(row.into())
 }
 
+async fn fetch_story_event_detail(
+    ctx: &AppContext,
+    request_ctx: &platform_core::RequestContext,
+    id: &str,
+) -> Result<StoryEventDetail, ApiErrorResponse> {
+    let row = sqlx::query_as::<_, StoryEventDetailRow>(
+        r#"
+        select
+            id,
+            node_type,
+            name,
+            status,
+            service,
+            correlation_id,
+            causation_id,
+            started_at,
+            completed_at,
+            duration_ms,
+            error,
+            metadata,
+            trace_id,
+            span_id
+        from platform.story_events
+        where id = $1
+        "#,
+    )
+    .bind(id)
+    .fetch_optional(&ctx.db)
+    .await
+    .map_err(|source| query_error(source, request_ctx))?
+    .ok_or_else(|| {
+        ApiErrorResponse::with_context(
+            AppError::new(
+                ErrorCode::NotFound,
+                format!("Story event {id} was not found"),
+            ),
+            request_ctx,
+        )
+    })?;
+
+    Ok(row.into())
+}
+
 async fn retry_outbox_event(
     admin: AdminActor,
     State(ctx): State<AppContext>,
@@ -1143,6 +1251,23 @@ type FunctionRunDetailRow = (
     Value,
 );
 
+type StoryEventDetailRow = (
+    String,
+    String,
+    String,
+    String,
+    String,
+    String,
+    Option<String>,
+    DateTime<Utc>,
+    Option<DateTime<Utc>>,
+    i64,
+    Option<String>,
+    Value,
+    Option<String>,
+    Option<String>,
+);
+
 type TimelineRow = (
     String,
     String,
@@ -1190,6 +1315,7 @@ type RuntimeNodeRefTuple = (String, String, String);
 struct RuntimeNodeRef {
     id: String,
     item_type: String,
+    correlation_id: String,
 }
 
 #[derive(Debug, Clone)]
@@ -1466,6 +1592,44 @@ impl From<FunctionRunDetailRow> for AdminFunctionRunDetail {
     }
 }
 
+impl From<StoryEventDetailRow> for StoryEventDetail {
+    fn from(row: StoryEventDetailRow) -> Self {
+        let (
+            id,
+            node_type,
+            name,
+            status,
+            service,
+            correlation_id,
+            causation_id,
+            started_at,
+            completed_at,
+            duration_ms,
+            error,
+            metadata,
+            trace_id,
+            span_id,
+        ) = row;
+
+        Self {
+            id,
+            node_type,
+            name,
+            status,
+            service,
+            correlation_id,
+            causation_id,
+            started_at,
+            completed_at,
+            duration_ms,
+            error,
+            metadata,
+            trace_id,
+            span_id,
+        }
+    }
+}
+
 impl From<TimelineRow> for AdminRuntimeTimelineItem {
     fn from(row: TimelineRow) -> Self {
         let (
@@ -1570,8 +1734,12 @@ impl From<HeatmapRow> for AdminRuntimeHeatmapCell {
 
 impl From<RuntimeNodeRefTuple> for RuntimeNodeRef {
     fn from(row: RuntimeNodeRefTuple) -> Self {
-        let (id, item_type, _correlation_id) = row;
-        Self { id, item_type }
+        let (id, item_type, correlation_id) = row;
+        Self {
+            id,
+            item_type,
+            correlation_id,
+        }
     }
 }
 
@@ -1626,6 +1794,7 @@ fn timeline_item_type(item_type: &str, status: &str, attempts: i32) -> &'static 
         return "retry";
     }
     match item_type {
+        "http" | "http_request" => "http_request",
         "event" | "outbox_event" => "outbox_event",
         "function" | "function_run" => "function_run",
         _ => "runtime",
@@ -1835,6 +2004,21 @@ async fn fetch_summary_items(
                 last_error
             from runtime.function_runs
             where (not $1 or status in ('failed', 'dead'))
+
+            union all
+
+            select
+                node_type as item_type,
+                id,
+                name,
+                status,
+                1 as attempts,
+                1 as max_attempts,
+                correlation_id,
+                started_at as created_at,
+                error as last_error
+            from platform.story_events
+            where (not $1 or status in ('failed', 'dead'))
         ) summary_items
         order by created_at desc, item_type asc, id desc
         limit 10
@@ -1871,6 +2055,15 @@ async fn fetch_runtime_node_ref(
                 'function'::text as item_type,
                 correlation_id
             from runtime.function_runs
+            where id = $1
+
+            union all
+
+            select
+                id,
+                node_type as item_type,
+                correlation_id
+            from platform.story_events
             where id = $1
         ) runtime_nodes
         order by item_type asc
@@ -1919,6 +2112,14 @@ async fn fetch_story_rows(
                     coalesce(completed_at, started_at, locked_at, created_at) as updated_at
                 from runtime.function_runs
                 where ($1::text is null or correlation_id = $1)
+
+                union all
+
+                select
+                    correlation_id,
+                    updated_at
+                from platform.story_events
+                where ($1::text is null or correlation_id = $1)
             ) story_items
             group by correlation_id
             having ($2::timestamptz is null or max(updated_at) < $2)
@@ -1963,6 +2164,26 @@ async fn fetch_story_rows(
                 last_error,
                 input_json as metadata
             from runtime.function_runs
+            where correlation_id in (select correlation_id from story_keys)
+
+            union all
+
+            select
+                node_type as item_type,
+                id,
+                name,
+                status,
+                1 as attempts,
+                1 as max_attempts,
+                correlation_id,
+                causation_id,
+                service,
+                started_at as created_at,
+                started_at,
+                completed_at,
+                error as last_error,
+                metadata
+            from platform.story_events
             where correlation_id in (select correlation_id from story_keys)
         ) story_rows
         order by correlation_id asc, created_at asc, item_type asc, id asc
@@ -2111,6 +2332,38 @@ fn execution_payload_from_function(detail: AdminFunctionRunDetail) -> AdminRunti
         metadata,
         node_id: detail.id,
         node_type: "function".to_owned(),
+        output: None,
+        redacted_fields,
+    }
+}
+
+fn execution_payload_from_story_event(detail: StoryEventDetail) -> AdminRuntimeExecutionPayload {
+    let mut redacted_fields = Vec::new();
+    let input = redact_json_value(detail.metadata.clone(), "input", &mut redacted_fields);
+    let metadata = redact_json_value(
+        serde_json::json!({
+            "node_type": detail.node_type,
+            "name": detail.name,
+            "status": detail.status,
+            "service": detail.service,
+            "correlation_id": detail.correlation_id,
+            "causation_id": detail.causation_id,
+            "started_at": detail.started_at,
+            "completed_at": detail.completed_at,
+            "duration_ms": detail.duration_ms,
+            "error": detail.error,
+            "trace_id": detail.trace_id,
+            "span_id": detail.span_id,
+        }),
+        "metadata",
+        &mut redacted_fields,
+    );
+
+    AdminRuntimeExecutionPayload {
+        input,
+        metadata,
+        node_id: detail.id,
+        node_type: "story_event".to_owned(),
         output: None,
         redacted_fields,
     }

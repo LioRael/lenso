@@ -1,5 +1,5 @@
 use axum::Json;
-use axum::http::StatusCode;
+use axum::http::{HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use platform_core::{AppError, ErrorCode, RequestContext};
 use serde::Serialize;
@@ -101,6 +101,10 @@ impl IntoResponse for ApiErrorResponse {
                     .collect(),
             },
         };
-        (status, Json(body)).into_response()
+        let mut response = (status, Json(body)).into_response();
+        if let Ok(value) = HeaderValue::from_str(error.code.as_str()) {
+            response.headers_mut().insert("x-lenso-error-code", value);
+        }
+        response
     }
 }

@@ -20,7 +20,10 @@ pub fn build_router(ctx: AppContext) -> Router {
         .merge(admin_runtime::router())
         .route("/docs", axum::routing::get(scalar_docs))
         .route("/openapi.json", axum::routing::get(openapi_placeholder))
-        .layer(middleware::from_fn(request_context_middleware))
+        .layer(middleware::from_fn_with_state(
+            ctx.clone(),
+            request_context_middleware,
+        ))
         .layer(cors_layer())
         .with_state(ctx)
 }
