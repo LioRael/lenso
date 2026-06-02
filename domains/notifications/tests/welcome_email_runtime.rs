@@ -30,6 +30,15 @@ async fn user_registered_event_enqueues_welcome_email_function() {
     assert_eq!(row.correlation_id, "corr_1");
     assert_eq!(row.input_json["user_id"], "usr_1");
     assert_eq!(row.input_json["email"], "ada@example.com");
+    assert_eq!(row.input_json["_lenso_runtime"]["causation_id"], "evt_1");
+    assert_eq!(
+        row.input_json["_lenso_runtime"]["trace"]["trace_id"],
+        "trace_1"
+    );
+    assert_eq!(
+        row.input_json["_lenso_runtime"]["trace"]["span_id"],
+        "span_1"
+    );
     assert_eq!(row.actor["kind"], "user");
     assert_eq!(row.actor["user_id"], "usr_actor");
 
@@ -130,6 +139,11 @@ async fn insert_user_registered_outbox_event(pool: &platform_core::DbPool) {
             "kind": "user",
             "user_id": "usr_actor",
             "scopes": []
+        },
+        "trace": {
+            "trace_id": "trace_1",
+            "span_id": "span_1",
+            "baggage": []
         }
     }))
     .execute(pool)
@@ -183,6 +197,11 @@ fn claimed_user_registered_event() -> ClaimedOutboxEvent {
                 "kind": "user",
                 "user_id": "usr_actor",
                 "scopes": []
+            },
+            "trace": {
+                "trace_id": "trace_1",
+                "span_id": "span_1",
+                "baggage": []
             }
         }),
         attempts: 0,

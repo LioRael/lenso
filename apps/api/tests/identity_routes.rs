@@ -101,6 +101,93 @@ async fn provided_request_headers_are_preserved() {
 }
 
 #[tokio::test]
+async fn traceparent_is_preserved_in_outbox_headers() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+
+    let response = app
+        .oneshot(
+            create_user_request("ada@example.com")
+                .with_header("x-request-id", "req-trace")
+                .with_header("x-correlation-id", "corr-trace")
+                .with_header(
+                    "traceparent",
+                    "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+                ),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let headers: Value = sqlx::query_scalar(
+        r#"
+        select headers
+        from platform.outbox
+        where correlation_id = 'corr-trace'
+        "#,
+    )
+    .fetch_one(&db.pool)
+    .await
+    .expect("outbox headers should query");
+
+    assert_eq!(
+        headers["trace"]["trace_id"],
+        "4bf92f3577b34da6a3ce929d0e0e4736"
+    );
+    assert_eq!(headers["trace"]["span_id"], "00f067aa0ba902b7");
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn request_without_traceparent_generates_outbox_trace_context() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+
+    let response = app
+        .oneshot(
+            create_user_request("ada@example.com")
+                .with_header("x-request-id", "req-generated-trace")
+                .with_header("x-correlation-id", "corr-generated-trace"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let headers: Value = sqlx::query_scalar(
+        r#"
+        select headers
+        from platform.outbox
+        where correlation_id = 'corr-generated-trace'
+        "#,
+    )
+    .fetch_one(&db.pool)
+    .await
+    .expect("outbox headers should query");
+
+    assert_eq!(
+        headers["trace"]["trace_id"]
+            .as_str()
+            .unwrap_or_default()
+            .len(),
+        32
+    );
+    assert_eq!(
+        headers["trace"]["span_id"]
+            .as_str()
+            .unwrap_or_default()
+            .len(),
+        16
+    );
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
 async fn validation_error_returns_standard_shape() {
     let Some(db) = TestDatabase::create().await else {
         return;

@@ -7,6 +7,80 @@ info:
     identifier: UNLICENSED
   version: 1.0.0
 paths:
+  /admin/runtime/executions/{node_id}/technical-operations:
+    get:
+      tags:
+      - admin-runtime
+      operationId: admin_runtime_get_execution_technical_operations
+      parameters:
+      - name: node_id
+        in: path
+        description: Runtime execution node identifier
+        required: true
+        schema:
+          type: string
+      - name: authorization
+        in: header
+        description: Development service bearer token, for example `Bearer dev-service:admin`
+        required: true
+        schema:
+          type: string
+      - name: x-request-id
+        in: header
+        description: Optional caller-provided request identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: x-correlation-id
+        in: header
+        description: Optional caller-provided correlation identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      responses:
+        '200':
+          description: Technical operations observed for the runtime execution node
+          headers:
+            x-correlation-id:
+              schema:
+                type: string
+              description: Correlation identifier shared across related work
+            x-request-id:
+              schema:
+                type: string
+              description: Request identifier for this HTTP request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminRuntimeTechnicalOperationListResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Runtime execution node not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/runtime/functions:
     get:
       tags:
@@ -730,6 +804,80 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AdminRuntimeStoryDetailResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Runtime story not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/runtime/stories/{correlation_id}/technical-operations:
+    get:
+      tags:
+      - admin-runtime
+      operationId: admin_runtime_get_story_technical_operations
+      parameters:
+      - name: correlation_id
+        in: path
+        description: Correlation identifier shared by related runtime work
+        required: true
+        schema:
+          type: string
+      - name: authorization
+        in: header
+        description: Development service bearer token, for example `Bearer dev-service:admin`
+        required: true
+        schema:
+          type: string
+      - name: x-request-id
+        in: header
+        description: Optional caller-provided request identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: x-correlation-id
+        in: header
+        description: Optional caller-provided correlation identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      responses:
+        '200':
+          description: Technical operations observed for the runtime story
+          headers:
+            x-correlation-id:
+              schema:
+                type: string
+              description: Correlation identifier shared across related work
+            x-request-id:
+              schema:
+                type: string
+              description: Request identifier for this HTTP request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminRuntimeTechnicalOperationListResponse'
         '401':
           description: Authentication is required
           content:
@@ -1675,6 +1823,61 @@ components:
           items:
             $ref: '#/components/schemas/AdminRuntimeSummaryItem'
         status:
+          type: string
+    AdminRuntimeTechnicalOperation:
+      type: object
+      required:
+      - id
+      - story_id
+      - correlation_id
+      - category
+      - name
+      - status
+      - started_at
+      - ended_at
+      - duration_ms
+      - attributes
+      - source
+      properties:
+        attributes: {}
+        category:
+          type: string
+        correlation_id:
+          type: string
+        duration_ms:
+          type: integer
+          format: int64
+        ended_at:
+          type: string
+          format: date-time
+        id:
+          type: string
+        name:
+          type: string
+        related_node_id:
+          type:
+          - string
+          - 'null'
+        source:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+        story_id:
+          type: string
+    AdminRuntimeTechnicalOperationListResponse:
+      type: object
+      required:
+      - data
+      - order
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminRuntimeTechnicalOperation'
+        order:
           type: string
     AdminRuntimeTimelineItem:
       type: object

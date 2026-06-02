@@ -1,6 +1,7 @@
 use crate::db::{DbPool, DbTransaction};
 use crate::error::{AppError, AppResult, ErrorCode};
 use crate::events::EventEnvelope;
+use crate::{RuntimeSpanAttributes, record_runtime_span_attributes};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -8,6 +9,7 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::sync::Arc;
+use tracing::Instrument;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -94,8 +96,26 @@ impl OutboxPublisher {
         tx: &mut DbTransaction<'_>,
         event: &OutboxEvent,
     ) -> AppResult<()> {
-        sqlx::query(
-            r#"
+        let span = tracing::info_span!(
+            "outbox_publish",
+            lenso.correlation_id = tracing::field::Empty,
+            lenso.story_id = tracing::field::Empty,
+            lenso.outbox_event_id = tracing::field::Empty,
+            lenso.execution.kind = tracing::field::Empty,
+            lenso.execution.name = tracing::field::Empty,
+        );
+        record_runtime_span_attributes(
+            &span,
+            &RuntimeSpanAttributes::outbox(
+                event.correlation_id.clone(),
+                event.id.clone(),
+                event.event_name.clone(),
+            ),
+        );
+
+        async {
+            sqlx::query(
+                r#"
             insert into platform.outbox (
                 id,
                 event_name,
@@ -111,22 +131,25 @@ impl OutboxPublisher {
             )
             values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             "#,
-        )
-        .bind(&event.id)
-        .bind(&event.event_name)
-        .bind(i32::from(event.event_version))
-        .bind(&event.source_module)
-        .bind(&event.aggregate_type)
-        .bind(&event.aggregate_id)
-        .bind(&event.correlation_id)
-        .bind(&event.causation_id)
-        .bind(event.occurred_at)
-        .bind(&event.payload)
-        .bind(&event.headers)
-        .execute(&mut **tx)
+            )
+            .bind(&event.id)
+            .bind(&event.event_name)
+            .bind(i32::from(event.event_version))
+            .bind(&event.source_module)
+            .bind(&event.aggregate_type)
+            .bind(&event.aggregate_id)
+            .bind(&event.correlation_id)
+            .bind(&event.causation_id)
+            .bind(event.occurred_at)
+            .bind(&event.payload)
+            .bind(&event.headers)
+            .execute(&mut **tx)
+            .await
+            .map(|_| ())
+            .map_err(map_outbox_error)
+        }
+        .instrument(span)
         .await
-        .map(|_| ())
-        .map_err(map_outbox_error)
     }
 
     pub async fn pending_count(&self, pool: &DbPool) -> AppResult<i64> {
@@ -237,8 +260,16 @@ impl OutboxRelay {
     }
 
     pub async fn claim_batch(&self) -> AppResult<Vec<ClaimedOutboxEvent>> {
-        sqlx::query_as::<_, OutboxRow>(
-            r#"
+        let span = tracing::info_span!(
+            "outbox_claim_batch",
+            worker_id = %self.worker_id,
+            lenso.execution.kind = "outbox_claim",
+            lenso.execution.name = "outbox.claim_batch",
+        );
+
+        async {
+            sqlx::query_as::<_, OutboxRow>(
+                r#"
             with claimed as (
                 select id
                 from platform.outbox
@@ -270,27 +301,64 @@ impl OutboxRelay {
                 outbox.attempts,
                 outbox.max_attempts
             "#,
-        )
-        .bind(self.batch_size)
-        .bind(&self.worker_id)
-        .fetch_all(&self.pool)
+            )
+            .bind(self.batch_size)
+            .bind(&self.worker_id)
+            .fetch_all(&self.pool)
+            .await
+            .map(|rows| rows.into_iter().map(Into::into).collect())
+            .map_err(map_outbox_error)
+        }
+        .instrument(span)
         .await
-        .map(|rows| rows.into_iter().map(Into::into).collect())
-        .map_err(map_outbox_error)
     }
 
     pub async fn relay_once(&self, dispatcher: &dyn EventDispatcher) -> AppResult<usize> {
-        let events = self.claim_batch().await?;
-        let count = events.len();
+        let span = tracing::info_span!(
+            "outbox_relay_once",
+            worker_id = %self.worker_id,
+            lenso.execution.kind = "outbox_relay",
+            lenso.execution.name = "outbox.relay_once",
+        );
 
-        for event in events {
-            match dispatcher.dispatch(&event).await {
-                Ok(()) => self.mark_published(&event.id).await?,
-                Err(error) => self.mark_dispatch_failed(&event, &error).await?,
+        async {
+            let events = self.claim_batch().await?;
+            let count = events.len();
+
+            for event in events {
+                let event_span = tracing::info_span!(
+                    "outbox_dispatch",
+                    lenso.correlation_id = tracing::field::Empty,
+                    lenso.story_id = tracing::field::Empty,
+                    lenso.outbox_event_id = tracing::field::Empty,
+                    lenso.execution.kind = tracing::field::Empty,
+                    lenso.execution.name = tracing::field::Empty,
+                );
+                record_runtime_span_attributes(
+                    &event_span,
+                    &RuntimeSpanAttributes::outbox(
+                        event.correlation_id.clone(),
+                        event.id.clone(),
+                        event.event_name.clone(),
+                    ),
+                );
+
+                async {
+                    match dispatcher.dispatch(&event).await {
+                        Ok(()) => self.mark_published(&event.id).await?,
+                        Err(error) => self.mark_dispatch_failed(&event, &error).await?,
+                    }
+
+                    Ok::<(), AppError>(())
+                }
+                .instrument(event_span)
+                .await?;
             }
-        }
 
-        Ok(count)
+            Ok(count)
+        }
+        .instrument(span)
+        .await
     }
 
     pub async fn mark_published(&self, id: &str) -> AppResult<()> {
@@ -326,8 +394,26 @@ impl OutboxRelay {
             OutboxStatus::Dead
         };
 
-        sqlx::query(
-            r#"
+        let span = tracing::info_span!(
+            "outbox_retry",
+            lenso.correlation_id = tracing::field::Empty,
+            lenso.story_id = tracing::field::Empty,
+            lenso.outbox_event_id = tracing::field::Empty,
+            lenso.execution.kind = tracing::field::Empty,
+            lenso.execution.name = tracing::field::Empty,
+        );
+        record_runtime_span_attributes(
+            &span,
+            &RuntimeSpanAttributes::outbox(
+                event.correlation_id.clone(),
+                event.id.clone(),
+                event.event_name.clone(),
+            ),
+        );
+
+        async {
+            sqlx::query(
+                r#"
             update platform.outbox
             set status = $2,
                 attempts = attempts + 1,
@@ -337,14 +423,17 @@ impl OutboxRelay {
                 last_error = $3
             where id = $1
             "#,
-        )
-        .bind(&event.id)
-        .bind(status.as_str())
-        .bind(error.public_message.as_str())
-        .execute(&self.pool)
+            )
+            .bind(&event.id)
+            .bind(status.as_str())
+            .bind(error.public_message.as_str())
+            .execute(&self.pool)
+            .await
+            .map(|_| ())
+            .map_err(map_outbox_error)
+        }
+        .instrument(span)
         .await
-        .map(|_| ())
-        .map_err(map_outbox_error)
     }
 }
 

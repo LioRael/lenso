@@ -1,6 +1,6 @@
 use platform_core::{
     ActorContext, AppError, AppResult, CorrelationId, ErrorCode, ExecutionContext,
-    PLATFORM_MIGRATIONS, apply_migrations,
+    PLATFORM_MIGRATIONS, TraceContext, apply_migrations,
 };
 use platform_runtime::{
     EnqueueFunctionRequest, FunctionDefinition, FunctionRegistry, RUNTIME_MIGRATIONS, RetryPolicy,
@@ -38,6 +38,8 @@ async fn enqueue_creates_function_run_row() {
                 user_id: "usr_1".to_owned(),
                 scopes: vec!["test:run".to_owned()],
             },
+            trace: trace_context(),
+            causation_id: Some("evt_1".to_owned()),
             max_attempts: Some(5),
         })
         .await
@@ -56,7 +58,11 @@ async fn enqueue_creates_function_run_row() {
     .expect("function run should exist");
 
     assert_eq!(row.0, "test.echo.v1");
-    assert_eq!(row.1, json!({ "hello": "world" }));
+    assert_eq!(row.1["hello"], "world");
+    assert_eq!(row.1["_lenso_runtime"]["correlation_id"], "corr_1");
+    assert_eq!(row.1["_lenso_runtime"]["causation_id"], "evt_1");
+    assert_eq!(row.1["_lenso_runtime"]["trace"]["trace_id"], "trace_1");
+    assert_eq!(row.1["_lenso_runtime"]["trace"]["span_id"], "span_1");
     assert_eq!(row.2, "pending");
     assert_eq!(row.3, 5);
     assert_eq!(row.4, "corr_1");
@@ -171,7 +177,10 @@ impl RuntimeFunction for CountingFunction {
         self.calls.fetch_add(1, Ordering::SeqCst);
         assert_eq!(ctx.function_name, "test.echo.v1");
         assert_eq!(ctx.correlation_id.0, "corr_1");
-        assert_eq!(input, json!({ "hello": "world" }));
+        assert_eq!(ctx.trace.trace_id.as_deref(), Some("trace_1"));
+        assert_eq!(ctx.trace.span_id.as_deref(), Some("span_1"));
+        assert_eq!(ctx.causation_id.as_deref(), Some("evt_1"));
+        assert_eq!(input["hello"], "world");
         Ok(json!({ "ok": true }))
     }
 }
@@ -203,10 +212,20 @@ async fn enqueue(pool: &platform_core::DbPool, function_name: &str, max_attempts
             input_json: json!({ "hello": "world" }),
             correlation_id: CorrelationId::new("corr_1"),
             actor: ActorContext::System,
+            trace: trace_context(),
+            causation_id: Some("evt_1".to_owned()),
             max_attempts: Some(max_attempts),
         })
         .await
         .expect("function should enqueue")
+}
+
+fn trace_context() -> TraceContext {
+    TraceContext {
+        trace_id: Some("trace_1".to_owned()),
+        span_id: Some("span_1".to_owned()),
+        baggage: Vec::new(),
+    }
 }
 
 async fn apply_runtime_stack_migrations(db: &TestDatabase) {

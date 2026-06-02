@@ -1,6 +1,14 @@
 import { ArrowRight, Copy, RotateCcw, X } from "lucide-react";
 
-import type { RuntimeStory, ExecutionNode } from "../../data/mock-runtime";
+import type {
+  RuntimeStory,
+  ExecutionNode,
+  TechnicalOperation,
+} from "../../data/mock-runtime";
+import {
+  useExecutionTechnicalOperations,
+  useStoryTechnicalOperations,
+} from "../../hooks/use-runtime-queries";
 import { cn } from "../../lib/cn";
 import { formatRuntimeDuration, serviceColor } from "../../lib/runtime-style";
 import {
@@ -20,6 +28,12 @@ import {
 import { JsonViewer } from "./json-viewer";
 import { useRuntimeConsole } from "./runtime-console-context";
 import { RuntimeStatusBadge } from "./runtime-status-badge";
+import {
+  buildTechnicalOperationGroups,
+  technicalOperationsStateLabel,
+  type TechnicalOperationGroup,
+  type TechnicalOperationView,
+} from "./technical-operations-model";
 
 export function ExecutionInspector({
   activeTab,
@@ -193,6 +207,8 @@ function InspectorBody({
   activeTab: ExecutionInspectorTab;
 }) {
   const { openRetry } = useRuntimeConsole();
+  const executionOperationsQuery = useExecutionTechnicalOperations(node.id);
+  const storyOperationsQuery = useStoryTechnicalOperations(story.correlationId);
 
   if (activeTab === "overview") {
     return (
@@ -284,7 +300,19 @@ function InspectorBody({
     );
   }
 
-  return <TechnicalPanel />;
+  return (
+    <TechnicalPanel
+      executionOperations={executionOperationsQuery.data ?? []}
+      error={executionOperationsQuery.error ?? storyOperationsQuery.error}
+      isError={executionOperationsQuery.isError || storyOperationsQuery.isError}
+      isLoading={
+        executionOperationsQuery.isLoading || storyOperationsQuery.isLoading
+      }
+      node={node}
+      story={story}
+      storyOperations={storyOperationsQuery.data ?? []}
+    />
+  );
 }
 
 function SummaryCard({
@@ -321,22 +349,101 @@ function SummaryCard({
   );
 }
 
-function TechnicalPanel() {
+function TechnicalPanel({
+  executionOperations,
+  error,
+  isError,
+  isLoading,
+  node,
+  story,
+  storyOperations,
+}: {
+  executionOperations: TechnicalOperation[];
+  storyOperations: TechnicalOperation[];
+  story: RuntimeStory;
+  node: ExecutionNode;
+  isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+}) {
+  const groups = buildTechnicalOperationGroups({
+    executionOperations,
+    selectedNodeId: node.id,
+    storyOperations,
+    storyTimestamp: story.timestamp,
+  });
+  if (groups.length === 0 || isLoading || isError) {
+    return (
+      <div className="grid min-w-full">
+        <EmptyRows
+          label={technicalOperationsStateLabel({ error, isError, isLoading })}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="grid min-w-full">
-      <EmptyRows label="No technical operations recorded" />
-      <JsonViewer
-        defaultExpanded
-        title="future telemetry categories"
-        value={{
-          postgres: [],
-          redis: [],
-          s3: [],
-          ses: [],
-          http: [],
-          worker: [],
-        }}
-      />
+      {groups.map((group) => (
+        <TechnicalOperationGroupView group={group} key={group.id} />
+      ))}
+    </div>
+  );
+}
+
+function TechnicalOperationGroupView({
+  group,
+}: {
+  group: TechnicalOperationGroup;
+}) {
+  return (
+    <section className="border-b border-(--border-subtle)">
+      <div className="flex items-center gap-2 bg-(--sidebar) px-3 py-1.5 font-mono text-[11px] text-(--muted)">
+        <span>{group.label}</span>
+        <span className="rounded-xs border border-(--border-subtle) bg-(--background) px-1.5 py-0.5 text-[10px] text-(--muted)">
+          {group.operations.length}
+        </span>
+      </div>
+      {group.operations.map((operation) => (
+        <TechnicalOperationRow operation={operation} key={operation.id} />
+      ))}
+    </section>
+  );
+}
+
+function TechnicalOperationRow({
+  operation,
+}: {
+  operation: TechnicalOperationView;
+}) {
+  return (
+    <div className="border-t border-(--border-subtle) bg-(--background)">
+      <div className="grid min-w-full grid-cols-[72px_minmax(180px,1fr)_72px_64px_58px] items-center gap-2 px-3 py-2 font-mono text-xs">
+        <span className="w-fit rounded-xs border border-(--border-subtle) bg-(--elevated) px-1.5 py-0.5 text-[10px] font-semibold uppercase text-(--accent)">
+          {operation.category}
+        </span>
+        <span
+          className="min-w-0 truncate text-(--foreground)"
+          title={operation.name}
+        >
+          {operation.name}
+        </span>
+        <span
+          className={cn(
+            "text-[11px]",
+            operation.status === "error" ? "text-[#ef4444]" : "text-(--muted)"
+          )}
+        >
+          {operation.status}
+        </span>
+        <span className="text-right text-[11px] text-(--muted)">
+          {formatRuntimeDuration(operation.durationMs)}
+        </span>
+        <span className="text-right text-[11px] text-(--muted)">
+          +{formatRuntimeDuration(operation.relativeStartMs)}
+        </span>
+      </div>
+      <JsonViewer title="safe attributes" value={operation.safeAttributes} />
     </div>
   );
 }

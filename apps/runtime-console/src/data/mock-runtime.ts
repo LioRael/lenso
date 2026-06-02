@@ -127,6 +127,30 @@ export type RuntimeStory = {
   timelineItems?: TimelineItem[];
 };
 
+export type TechnicalOperation = {
+  id: string;
+  storyId: string;
+  correlationId: string;
+  relatedNodeId?: string;
+  category:
+    | "http"
+    | "db"
+    | "redis"
+    | "s3"
+    | "ses"
+    | "worker"
+    | "runtime"
+    | "external"
+    | "unknown";
+  name: string;
+  status: string;
+  startedAt: string;
+  endedAt: string;
+  durationMs: number;
+  attributes: Record<string, unknown>;
+  source: "otel";
+};
+
 export const correlationId = "corr_01HX9A7K2R_RUNTIME";
 
 export const runtimeStories: RuntimeStory[] = [

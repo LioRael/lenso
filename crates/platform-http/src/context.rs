@@ -5,14 +5,15 @@ use axum::http::request::Parts;
 use axum::middleware::Next;
 use axum::response::Response;
 use platform_core::{
-    ActorContext, CorrelationId, IdGenerator, RequestContext, RequestId, TraceContext,
-    UuidGenerator,
+    ActorContext, CorrelationId, IdGenerator, RequestContext, RequestId, UuidGenerator,
+    generate_trace_context, trace_context_from_traceparent,
 };
 use tracing::Instrument;
 
 const REQUEST_ID_HEADER: &str = "x-request-id";
 const CORRELATION_ID_HEADER: &str = "x-correlation-id";
 const AUTHORIZATION_HEADER: &str = "authorization";
+const TRACEPARENT_HEADER: &str = "traceparent";
 
 #[derive(Debug, Clone)]
 pub struct HttpRequestContext(pub RequestContext);
@@ -33,13 +34,16 @@ pub async fn request_context_middleware(mut request: Request<Body>, next: Next) 
     let actor = authorization_header(request.headers())
         .and_then(parse_dev_bearer_actor)
         .unwrap_or_default();
+    let trace = traceparent_header(request.headers())
+        .and_then(|value| trace_context_from_traceparent(&value))
+        .unwrap_or_else(generate_trace_context);
     let method = request.method().clone();
     let path = request.uri().path().to_owned();
 
     let context = RequestContext {
         request_id: RequestId::new(request_id),
         correlation_id: CorrelationId::new(correlation_id),
-        trace: TraceContext::default(),
+        trace,
         actor,
         tenant_id: None,
         causation_id: None,
@@ -53,6 +57,12 @@ pub async fn request_context_middleware(mut request: Request<Body>, next: Next) 
         "http_request",
         request_id = %context.request_id.0,
         correlation_id = %context.correlation_id.0,
+        lenso.correlation_id = %context.correlation_id.0,
+        lenso.story_id = %context.correlation_id.0,
+        lenso.execution.kind = "http_request",
+        lenso.execution.name = %format!("{} {}", method.as_str(), path.as_str()),
+        otel.trace_id = context.trace.trace_id.as_deref().unwrap_or(""),
+        otel.parent_span_id = context.trace.span_id.as_deref().unwrap_or(""),
         http_method = %method,
         http_path = %path,
     );
@@ -110,6 +120,15 @@ fn header_value(headers: &axum::http::HeaderMap, name: &str) -> Option<String> {
 
 fn authorization_header(headers: &axum::http::HeaderMap) -> Option<String> {
     let name = HeaderName::from_static(AUTHORIZATION_HEADER);
+    headers
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn traceparent_header(headers: &axum::http::HeaderMap) -> Option<String> {
+    let name = HeaderName::from_static(TRACEPARENT_HEADER);
     headers
         .get(name)
         .and_then(|value| value.to_str().ok())

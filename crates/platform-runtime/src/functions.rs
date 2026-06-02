@@ -3,13 +3,15 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use platform_core::{
     ActorContext, AppError, AppResult, CorrelationId, DbPool, ErrorCode, ExecutionContext,
-    ExecutionId, TenantId, TraceContext,
+    ExecutionId, RuntimeSpanAttributes, TenantId, TraceContext, record_runtime_span_attributes,
+    trace_context_from_headers, trace_headers,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::sync::Arc;
+use tracing::Instrument;
 use uuid::Uuid;
 
 #[async_trait]
@@ -75,6 +77,8 @@ pub struct EnqueueFunctionRequest {
     pub input_json: Value,
     pub correlation_id: CorrelationId,
     pub actor: ActorContext,
+    pub trace: TraceContext,
+    pub causation_id: Option<String>,
     pub max_attempts: Option<i32>,
 }
 
@@ -87,6 +91,8 @@ pub struct ClaimedFunctionRun {
     pub max_attempts: i32,
     pub correlation_id: String,
     pub actor: ActorContext,
+    pub trace: TraceContext,
+    pub causation_id: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -102,9 +108,33 @@ impl RuntimeClient {
     pub async fn enqueue_function(&self, request: EnqueueFunctionRequest) -> AppResult<String> {
         let id = format!("fnrun_{}", Uuid::now_v7());
         let max_attempts = request.max_attempts.unwrap_or(3);
+        let mut input_json = request.input_json;
+        attach_runtime_context_to_input(
+            &mut input_json,
+            &request.correlation_id,
+            &request.trace,
+            request.causation_id.as_deref(),
+        );
+        let span = tracing::info_span!(
+            "function_enqueue",
+            lenso.correlation_id = tracing::field::Empty,
+            lenso.story_id = tracing::field::Empty,
+            lenso.function_run_id = tracing::field::Empty,
+            lenso.execution.kind = tracing::field::Empty,
+            lenso.execution.name = tracing::field::Empty,
+        );
+        record_runtime_span_attributes(
+            &span,
+            &RuntimeSpanAttributes::function(
+                request.correlation_id.0.clone(),
+                id.clone(),
+                request.function_name.clone(),
+            ),
+        );
 
-        sqlx::query(
-            r#"
+        async {
+            sqlx::query(
+                r#"
             insert into runtime.function_runs (
                 id,
                 function_name,
@@ -115,16 +145,19 @@ impl RuntimeClient {
             )
             values ($1, $2, $3, $4, $5, $6)
             "#,
-        )
-        .bind(&id)
-        .bind(&request.function_name)
-        .bind(&request.input_json)
-        .bind(max_attempts)
-        .bind(&request.correlation_id.0)
-        .bind(serde_json::to_value(&request.actor).map_err(map_serde_error)?)
-        .execute(&self.pool)
-        .await
-        .map_err(map_runtime_error)?;
+            )
+            .bind(&id)
+            .bind(&request.function_name)
+            .bind(&input_json)
+            .bind(max_attempts)
+            .bind(&request.correlation_id.0)
+            .bind(serde_json::to_value(&request.actor).map_err(map_serde_error)?)
+            .execute(&self.pool)
+            .await
+            .map_err(map_runtime_error)
+        }
+        .instrument(span)
+        .await?;
 
         Ok(id)
     }
@@ -154,8 +187,16 @@ impl RuntimeWorker {
     }
 
     pub async fn claim_batch(&self) -> AppResult<Vec<ClaimedFunctionRun>> {
-        sqlx::query_as::<_, FunctionRunRow>(
-            r#"
+        let span = tracing::info_span!(
+            "function_claim_batch",
+            worker_id = %self.worker_id,
+            lenso.execution.kind = "function_claim",
+            lenso.execution.name = "function.claim_batch",
+        );
+
+        async {
+            sqlx::query_as::<_, FunctionRunRow>(
+                r#"
             with claimed as (
                 select id
                 from runtime.function_runs
@@ -183,59 +224,94 @@ impl RuntimeWorker {
                 function_run.correlation_id,
                 function_run.actor
             "#,
-        )
-        .bind(self.batch_size)
-        .bind(&self.worker_id)
-        .fetch_all(&self.pool)
+            )
+            .bind(self.batch_size)
+            .bind(&self.worker_id)
+            .fetch_all(&self.pool)
+            .await
+            .map(|rows| {
+                rows.into_iter()
+                    .map(TryInto::try_into)
+                    .collect::<AppResult<Vec<_>>>()
+            })
+            .map_err(map_runtime_error)?
+        }
+        .instrument(span)
         .await
-        .map(|rows| {
-            rows.into_iter()
-                .map(TryInto::try_into)
-                .collect::<AppResult<Vec<_>>>()
-        })
-        .map_err(map_runtime_error)?
     }
 
     pub async fn claim_and_run_batch(&self) -> AppResult<usize> {
-        let runs = self.claim_batch().await?;
-        let count = runs.len();
+        let span = tracing::info_span!(
+            "function_worker_loop",
+            worker_id = %self.worker_id,
+            lenso.execution.kind = "worker_loop",
+            lenso.execution.name = "runtime_worker.claim_and_run_batch",
+        );
 
-        for run in runs {
-            self.run_claimed(run).await?;
+        async {
+            let runs = self.claim_batch().await?;
+            let count = runs.len();
+
+            for run in runs {
+                self.run_claimed(run).await?;
+            }
+
+            Ok(count)
         }
-
-        Ok(count)
+        .instrument(span)
+        .await
     }
 
     async fn run_claimed(&self, run: ClaimedFunctionRun) -> AppResult<()> {
-        let Some(definition) = self.registry.get(&run.function_name) else {
-            let error = AppError::new(
-                ErrorCode::Internal,
-                format!("Runtime function {} is not registered", run.function_name),
-            )
-            .retryable();
-            self.mark_failed(&run, &error).await?;
-            return Ok(());
-        };
+        let span = tracing::info_span!(
+            "function_run",
+            lenso.correlation_id = tracing::field::Empty,
+            lenso.story_id = tracing::field::Empty,
+            lenso.function_run_id = tracing::field::Empty,
+            lenso.execution.kind = tracing::field::Empty,
+            lenso.execution.name = tracing::field::Empty,
+        );
+        record_runtime_span_attributes(
+            &span,
+            &RuntimeSpanAttributes::function(
+                run.correlation_id.clone(),
+                run.id.clone(),
+                run.function_name.clone(),
+            ),
+        );
 
-        let attempt = u32::try_from(run.attempts + 1).unwrap_or(u32::MAX);
-        let ctx = ExecutionContext {
-            execution_id: ExecutionId(run.id.clone()),
-            function_name: run.function_name.clone(),
-            attempt,
-            queue: definition.queue.to_owned(),
-            correlation_id: CorrelationId::new(run.correlation_id.clone()),
-            causation_id: None,
-            actor: run.actor.clone(),
-            tenant_id: None::<TenantId>,
-            trace: TraceContext::default(),
-            deadline: None::<DateTime<Utc>>,
-        };
+        async {
+            let Some(definition) = self.registry.get(&run.function_name) else {
+                let error = AppError::new(
+                    ErrorCode::Internal,
+                    format!("Runtime function {} is not registered", run.function_name),
+                )
+                .retryable();
+                self.mark_failed(&run, &error).await?;
+                return Ok(());
+            };
 
-        match definition.handler.call(ctx, run.input_json.clone()).await {
-            Ok(_output) => self.mark_completed(&run.id).await,
-            Err(error) => self.mark_failed(&run, &error).await,
+            let attempt = u32::try_from(run.attempts + 1).unwrap_or(u32::MAX);
+            let ctx = ExecutionContext {
+                execution_id: ExecutionId(run.id.clone()),
+                function_name: run.function_name.clone(),
+                attempt,
+                queue: definition.queue.to_owned(),
+                correlation_id: CorrelationId::new(run.correlation_id.clone()),
+                causation_id: run.causation_id.clone(),
+                actor: run.actor.clone(),
+                tenant_id: None::<TenantId>,
+                trace: run.trace.clone(),
+                deadline: None::<DateTime<Utc>>,
+            };
+
+            match definition.handler.call(ctx, run.input_json.clone()).await {
+                Ok(_output) => self.mark_completed(&run.id).await,
+                Err(error) => self.mark_failed(&run, &error).await,
+            }
         }
+        .instrument(span)
+        .await
     }
 
     pub async fn mark_completed(&self, id: &str) -> AppResult<()> {
@@ -268,8 +344,26 @@ impl RuntimeWorker {
             FunctionRunStatus::Dead
         };
 
-        sqlx::query(
-            r#"
+        let span = tracing::info_span!(
+            "function_run_fail",
+            lenso.correlation_id = tracing::field::Empty,
+            lenso.story_id = tracing::field::Empty,
+            lenso.function_run_id = tracing::field::Empty,
+            lenso.execution.kind = tracing::field::Empty,
+            lenso.execution.name = tracing::field::Empty,
+        );
+        record_runtime_span_attributes(
+            &span,
+            &RuntimeSpanAttributes::function(
+                run.correlation_id.clone(),
+                run.id.clone(),
+                run.function_name.clone(),
+            ),
+        );
+
+        async {
+            sqlx::query(
+                r#"
             update runtime.function_runs
             set status = $2,
                 attempts = attempts + 1,
@@ -280,14 +374,17 @@ impl RuntimeWorker {
                 updated_at = now()
             where id = $1
             "#,
-        )
-        .bind(&run.id)
-        .bind(status.as_str())
-        .bind(error.public_message.as_str())
-        .execute(&self.pool)
+            )
+            .bind(&run.id)
+            .bind(status.as_str())
+            .bind(error.public_message.as_str())
+            .execute(&self.pool)
+            .await
+            .map(|_| ())
+            .map_err(map_runtime_error)
+        }
+        .instrument(span)
         .await
-        .map(|_| ())
-        .map_err(map_runtime_error)
     }
 }
 
@@ -298,6 +395,14 @@ impl TryFrom<FunctionRunRow> for ClaimedFunctionRun {
 
     fn try_from(row: FunctionRunRow) -> Result<Self, Self::Error> {
         let (id, function_name, input_json, attempts, max_attempts, correlation_id, actor) = row;
+        let runtime_context = input_json.get("_lenso_runtime");
+        let trace = runtime_context
+            .map(trace_context_from_headers)
+            .unwrap_or_default();
+        let causation_id = runtime_context
+            .and_then(|context| context.get("causation_id"))
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned);
         Ok(Self {
             id,
             function_name,
@@ -306,7 +411,33 @@ impl TryFrom<FunctionRunRow> for ClaimedFunctionRun {
             max_attempts,
             correlation_id,
             actor: serde_json::from_value(actor).map_err(map_serde_error)?,
+            trace,
+            causation_id,
         })
+    }
+}
+
+fn attach_runtime_context_to_input(
+    input_json: &mut Value,
+    correlation_id: &CorrelationId,
+    trace: &TraceContext,
+    causation_id: Option<&str>,
+) {
+    let mut runtime_context = trace_headers(trace, correlation_id);
+    if let Some(causation_id) = causation_id {
+        runtime_context["causation_id"] = Value::String(causation_id.to_owned());
+    }
+
+    match input_json {
+        Value::Object(object) => {
+            object.insert("_lenso_runtime".to_owned(), runtime_context);
+        }
+        other => {
+            *other = serde_json::json!({
+                "payload": other.clone(),
+                "_lenso_runtime": runtime_context,
+            });
+        }
     }
 }
 

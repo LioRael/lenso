@@ -3,7 +3,7 @@ use identity::public::{CreateUserCommand, IdentityService};
 use identity::repositories::PostgresUserRepository;
 use platform_core::{
     CorrelationId, ErrorCode, LoggingEventPublisher, PLATFORM_MIGRATIONS, RequestContext,
-    RequestId, apply_migrations,
+    RequestId, TraceContext, apply_migrations,
 };
 use platform_runtime::RUNTIME_MIGRATIONS;
 use platform_testing::{FixedClock, SequentialIdGenerator, TestDatabase};
@@ -47,6 +47,8 @@ async fn create_user_commits_user_and_outbox_event_atomically() {
     assert_eq!(outbox.event_version, 1);
     assert_eq!(outbox.aggregate_id, user.id.0);
     assert_eq!(outbox.correlation_id, "corr_1");
+    assert_eq!(outbox.headers["trace"]["trace_id"], "trace_1");
+    assert_eq!(outbox.headers["trace"]["span_id"], "span_1");
     assert_eq!(outbox.payload["user_id"], user.id.0);
     assert_eq!(outbox.payload["email"], "ada@example.com");
 
@@ -114,13 +116,14 @@ struct OutboxRow {
     aggregate_id: String,
     correlation_id: String,
     payload: Value,
+    headers: Value,
 }
 
 async fn fetch_outbox_row(pool: &platform_core::DbPool) -> OutboxRow {
-    let (event_name, event_version, aggregate_id, correlation_id, payload) =
-        sqlx::query_as::<_, (String, i32, String, String, Value)>(
+    let (event_name, event_version, aggregate_id, correlation_id, payload, headers) =
+        sqlx::query_as::<_, (String, i32, String, String, Value, Value)>(
             r#"
-            select event_name, event_version, aggregate_id, correlation_id, payload
+            select event_name, event_version, aggregate_id, correlation_id, payload, headers
             from platform.outbox
             limit 1
             "#,
@@ -135,6 +138,7 @@ async fn fetch_outbox_row(pool: &platform_core::DbPool) -> OutboxRow {
         aggregate_id,
         correlation_id,
         payload,
+        headers,
     }
 }
 
@@ -151,7 +155,13 @@ async fn apply_identity_stack_migrations(db: &TestDatabase) {
 }
 
 fn request_context() -> RequestContext {
-    RequestContext::new(RequestId::new("req_1"), CorrelationId::new("corr_1"))
+    let mut context = RequestContext::new(RequestId::new("req_1"), CorrelationId::new("corr_1"));
+    context.trace = TraceContext {
+        trace_id: Some("trace_1".to_owned()),
+        span_id: Some("span_1".to_owned()),
+        baggage: Vec::new(),
+    };
+    context
 }
 
 fn fixed_clock() -> FixedClock {

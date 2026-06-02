@@ -2,7 +2,7 @@ use axum::extract::{Path, Query, State};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use chrono::{DateTime, Utc};
-use platform_core::{AppContext, AppError, ErrorCode};
+use platform_core::{AppContext, AppError, ErrorCode, TelemetrySpan, TelemetrySpanQuery};
 use platform_http::responses::{DataResponse, json};
 use platform_http::{AdminActor, ApiErrorResponse, HttpRequestContext};
 use serde::{Deserialize, Serialize};
@@ -23,6 +23,14 @@ pub fn router() -> Router<AppContext> {
         .route("/admin/runtime/heatmap", get(get_heatmap))
         .route("/admin/runtime/stories", get(list_stories))
         .route("/admin/runtime/stories/{correlation_id}", get(get_story))
+        .route(
+            "/admin/runtime/stories/{correlation_id}/technical-operations",
+            get(get_story_technical_operations),
+        )
+        .route(
+            "/admin/runtime/executions/{node_id}/technical-operations",
+            get(get_execution_technical_operations),
+        )
         .route("/admin/runtime/outbox", get(list_outbox))
         .route("/admin/runtime/outbox/{id}", get(get_outbox_event))
         .route("/admin/runtime/outbox/{id}/retry", post(retry_outbox_event))
@@ -137,6 +145,29 @@ pub struct AdminRuntimeHeatmapResponse {
     pub bucket_seconds: i64,
     pub page: PageInfo,
     pub order: &'static str,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(as = AdminRuntimeTechnicalOperationListResponse)]
+pub struct AdminRuntimeTechnicalOperationListResponse {
+    pub data: Vec<AdminRuntimeTechnicalOperation>,
+    pub order: &'static str,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminRuntimeTechnicalOperation {
+    pub id: String,
+    pub story_id: String,
+    pub correlation_id: String,
+    pub related_node_id: Option<String>,
+    pub category: String,
+    pub name: String,
+    pub status: String,
+    pub started_at: DateTime<Utc>,
+    pub ended_at: DateTime<Utc>,
+    pub duration_ms: i64,
+    pub attributes: Value,
+    pub source: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -543,6 +574,60 @@ async fn get_story(
 
     Ok(Json(AdminRuntimeStoryDetailResponse {
         data: build_story_detail(rows),
+    }))
+}
+
+async fn get_story_technical_operations(
+    _admin: AdminActor,
+    State(ctx): State<AppContext>,
+    HttpRequestContext(request_ctx): HttpRequestContext,
+    Path(correlation_id): Path<String>,
+) -> Result<Json<AdminRuntimeTechnicalOperationListResponse>, ApiErrorResponse> {
+    let rows = fetch_story_rows(&ctx, &request_ctx, Some(&correlation_id), None, MAX_LIMIT).await?;
+    if rows.is_empty() {
+        return Err(ApiErrorResponse::with_context(
+            AppError::new(
+                ErrorCode::NotFound,
+                format!("Runtime story {correlation_id} was not found"),
+            ),
+            &request_ctx,
+        ));
+    }
+
+    let spans = ctx
+        .telemetry_spans
+        .query_spans(TelemetrySpanQuery::by_correlation_id(&correlation_id))
+        .await
+        .map_err(|source| ApiErrorResponse::with_context(source, &request_ctx))?;
+    let data = technical_operations_from_spans(spans, &runtime_node_index(&rows));
+
+    Ok(Json(AdminRuntimeTechnicalOperationListResponse {
+        data,
+        order: "started_at_asc",
+    }))
+}
+
+async fn get_execution_technical_operations(
+    _admin: AdminActor,
+    State(ctx): State<AppContext>,
+    HttpRequestContext(request_ctx): HttpRequestContext,
+    Path(node_id): Path<String>,
+) -> Result<Json<AdminRuntimeTechnicalOperationListResponse>, ApiErrorResponse> {
+    let node = fetch_runtime_node_ref(&ctx, &request_ctx, &node_id).await?;
+    let query = match node.item_type.as_str() {
+        "function" => TelemetrySpanQuery::by_function_run_id(&node.id),
+        _ => TelemetrySpanQuery::by_outbox_event_id(&node.id),
+    };
+    let spans = ctx
+        .telemetry_spans
+        .query_spans(query)
+        .await
+        .map_err(|source| ApiErrorResponse::with_context(source, &request_ctx))?;
+    let data = technical_operations_from_spans(spans, &RuntimeNodeIndex::single(node.id));
+
+    Ok(Json(AdminRuntimeTechnicalOperationListResponse {
+        data,
+        order: "started_at_asc",
     }))
 }
 
@@ -980,6 +1065,14 @@ type HeatmapRow = (
     Option<i64>,
 );
 
+type RuntimeNodeRefTuple = (String, String, String);
+
+#[derive(Debug, Clone)]
+struct RuntimeNodeRef {
+    id: String,
+    item_type: String,
+}
+
 #[derive(Debug, Clone)]
 struct StoryWorkRow {
     item_type: String,
@@ -1356,6 +1449,13 @@ impl From<HeatmapRow> for AdminRuntimeHeatmapCell {
     }
 }
 
+impl From<RuntimeNodeRefTuple> for RuntimeNodeRef {
+    fn from(row: RuntimeNodeRefTuple) -> Self {
+        let (id, item_type, _correlation_id) = row;
+        Self { id, item_type }
+    }
+}
+
 impl From<&StoryWorkRow> for AdminRuntimeTimelineItem {
     fn from(row: &StoryWorkRow) -> Self {
         Self {
@@ -1608,6 +1708,52 @@ async fn fetch_summary_items(
     Ok(rows.into_iter().map(Into::into).collect())
 }
 
+async fn fetch_runtime_node_ref(
+    ctx: &AppContext,
+    request_ctx: &platform_core::RequestContext,
+    node_id: &str,
+) -> Result<RuntimeNodeRef, ApiErrorResponse> {
+    let row = sqlx::query_as::<_, RuntimeNodeRefTuple>(
+        r#"
+        select id, item_type, correlation_id
+        from (
+            select
+                id,
+                'event'::text as item_type,
+                correlation_id
+            from platform.outbox
+            where id = $1
+
+            union all
+
+            select
+                id,
+                'function'::text as item_type,
+                correlation_id
+            from runtime.function_runs
+            where id = $1
+        ) runtime_nodes
+        order by item_type asc
+        limit 1
+        "#,
+    )
+    .bind(node_id)
+    .fetch_optional(&ctx.db)
+    .await
+    .map_err(|source| query_error(source, request_ctx))?
+    .ok_or_else(|| {
+        ApiErrorResponse::with_context(
+            AppError::new(
+                ErrorCode::NotFound,
+                format!("Runtime execution node {node_id} was not found"),
+            ),
+            request_ctx,
+        )
+    })?;
+
+    Ok(row.into())
+}
+
 async fn fetch_story_rows(
     ctx: &AppContext,
     request_ctx: &platform_core::RequestContext,
@@ -1734,6 +1880,242 @@ fn build_story_detail(rows: Vec<StoryWorkRow>) -> AdminRuntimeStoryDetail {
         edges,
         timeline_items,
     }
+}
+
+#[derive(Debug, Clone, Default)]
+struct RuntimeNodeIndex {
+    ids: std::collections::BTreeSet<String>,
+}
+
+impl RuntimeNodeIndex {
+    fn single(id: String) -> Self {
+        Self {
+            ids: std::collections::BTreeSet::from([id]),
+        }
+    }
+
+    fn contains(&self, id: &str) -> bool {
+        self.ids.contains(id)
+    }
+}
+
+fn runtime_node_index(rows: &[StoryWorkRow]) -> RuntimeNodeIndex {
+    RuntimeNodeIndex {
+        ids: rows.iter().map(|row| row.id.clone()).collect(),
+    }
+}
+
+fn technical_operations_from_spans(
+    spans: Vec<TelemetrySpan>,
+    node_index: &RuntimeNodeIndex,
+) -> Vec<AdminRuntimeTechnicalOperation> {
+    let mut operations = spans
+        .into_iter()
+        .map(|span| technical_operation_from_span(span, node_index))
+        .collect::<Vec<_>>();
+    operations.sort_by(|left, right| {
+        left.started_at
+            .cmp(&right.started_at)
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    operations
+}
+
+fn technical_operation_from_span(
+    span: TelemetrySpan,
+    node_index: &RuntimeNodeIndex,
+) -> AdminRuntimeTechnicalOperation {
+    let correlation_id = span_attribute(&span.attributes, "lenso.correlation_id")
+        .or_else(|| span_attribute(&span.attributes, "lenso.story_id"))
+        .unwrap_or("unknown")
+        .to_owned();
+    let story_id = span_attribute(&span.attributes, "lenso.story_id")
+        .unwrap_or(&correlation_id)
+        .to_owned();
+    let duration_ms = span
+        .ended_at
+        .signed_duration_since(span.started_at)
+        .num_milliseconds()
+        .max(0);
+    let attributes = safe_span_attributes(&span.attributes);
+    let category = technical_operation_category(&span);
+    let related_node_id = related_node_id(&span.attributes, node_index);
+    let status = technical_operation_status(&span);
+
+    AdminRuntimeTechnicalOperation {
+        attributes,
+        category,
+        correlation_id,
+        duration_ms,
+        ended_at: span.ended_at,
+        id: span.id,
+        name: span.name,
+        related_node_id,
+        source: "otel".to_owned(),
+        started_at: span.started_at,
+        status,
+        story_id,
+    }
+}
+
+fn related_node_id(attributes: &Value, node_index: &RuntimeNodeIndex) -> Option<String> {
+    for key in ["lenso.function_run_id", "lenso.outbox_event_id"] {
+        let Some(id) = span_attribute(attributes, key) else {
+            continue;
+        };
+        if node_index.contains(id) {
+            return Some(id.to_owned());
+        }
+    }
+
+    None
+}
+
+fn technical_operation_category(span: &TelemetrySpan) -> String {
+    if has_attribute_with_prefix(&span.attributes, "redis.")
+        || span_attribute(&span.attributes, "db.system") == Some("redis")
+    {
+        return "redis".to_owned();
+    }
+    if has_attribute_with_prefix(&span.attributes, "db.") {
+        return "db".to_owned();
+    }
+    if has_attribute_with_prefix(&span.attributes, "http.")
+        || matches!(
+            span.name.split_whitespace().next(),
+            Some("GET" | "POST" | "PUT" | "PATCH" | "DELETE")
+        )
+    {
+        return "http".to_owned();
+    }
+    if has_attribute_with_prefix(&span.attributes, "aws.s3.")
+        || has_attribute_with_prefix(&span.attributes, "s3.")
+    {
+        return "s3".to_owned();
+    }
+    if has_attribute_with_prefix(&span.attributes, "aws.ses.")
+        || has_attribute_with_prefix(&span.attributes, "ses.")
+    {
+        return "ses".to_owned();
+    }
+
+    match span_attribute(&span.attributes, "lenso.execution.kind") {
+        Some("worker_loop" | "outbox_claim" | "function_claim") => "worker".to_owned(),
+        Some("outbox_event" | "function_run" | "runtime") => "runtime".to_owned(),
+        _ if has_attribute_with_prefix(&span.attributes, "rpc.")
+            || has_attribute_with_prefix(&span.attributes, "peer.")
+            || has_attribute_with_prefix(&span.attributes, "net.peer.") =>
+        {
+            "external".to_owned()
+        }
+        _ => "unknown".to_owned(),
+    }
+}
+
+fn technical_operation_status(span: &TelemetrySpan) -> String {
+    let raw = span
+        .status
+        .as_deref()
+        .or_else(|| span_attribute(&span.attributes, "otel.status_code"));
+    match raw.map(str::to_ascii_lowercase).as_deref() {
+        Some("ok" | "success") => "ok".to_owned(),
+        Some("error" | "err" | "failed" | "failure") => "error".to_owned(),
+        Some("unset" | "unknown") | None => {
+            if span.attributes.get("error.type").is_some() {
+                "error".to_owned()
+            } else {
+                "unknown".to_owned()
+            }
+        }
+        Some(_) => "unknown".to_owned(),
+    }
+}
+
+fn safe_span_attributes(attributes: &Value) -> Value {
+    let Some(map) = attributes.as_object() else {
+        return Value::Object(Default::default());
+    };
+
+    let mut safe = serde_json::Map::new();
+    for (key, value) in map {
+        if is_safe_span_attribute(key) && is_safe_attribute_value(value) {
+            safe.insert(key.clone(), value.clone());
+        }
+    }
+
+    Value::Object(safe)
+}
+
+fn is_safe_span_attribute(key: &str) -> bool {
+    let lower = key.to_ascii_lowercase();
+    if [
+        "authorization",
+        "cookie",
+        "password",
+        "secret",
+        "token",
+        "api_key",
+        "email",
+        "statement",
+        "query",
+        "body",
+        "payload",
+    ]
+    .iter()
+    .any(|unsafe_part| lower.contains(unsafe_part))
+    {
+        return false;
+    }
+
+    key.starts_with("lenso.")
+        || matches!(
+            key,
+            "otel.status_code"
+                | "error.type"
+                | "http.request.method"
+                | "http.route"
+                | "http.response.status_code"
+                | "url.scheme"
+                | "server.address"
+                | "server.port"
+                | "network.peer.address"
+                | "network.peer.port"
+                | "net.peer.name"
+                | "net.peer.port"
+                | "db.system"
+                | "db.name"
+                | "db.namespace"
+                | "db.operation"
+                | "db.operation.name"
+                | "db.collection.name"
+                | "db.sql.table"
+                | "rpc.system"
+                | "rpc.service"
+                | "rpc.method"
+                | "aws.s3.bucket"
+                | "aws.s3.bucket.name"
+                | "s3.bucket"
+                | "s3.bucket.name"
+                | "aws.ses.operation"
+                | "ses.operation"
+        )
+}
+
+fn is_safe_attribute_value(value: &Value) -> bool {
+    matches!(
+        value,
+        Value::String(_) | Value::Number(_) | Value::Bool(_) | Value::Null
+    )
+}
+
+fn has_attribute_with_prefix(attributes: &Value, prefix: &str) -> bool {
+    attributes
+        .as_object()
+        .is_some_and(|map| map.keys().any(|key| key.starts_with(prefix)))
+}
+
+fn span_attribute<'a>(attributes: &'a Value, key: &str) -> Option<&'a str> {
+    attributes.get(key).and_then(Value::as_str)
 }
 
 fn build_story_summary(rows: &[StoryWorkRow]) -> AdminRuntimeStoryListItem {
@@ -1973,6 +2355,7 @@ fn ensure_retryable_status(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use platform_core::TelemetrySpan;
 
     #[test]
     fn story_edges_do_not_guess_sequence_edges_for_unlinked_work() {
@@ -2075,6 +2458,123 @@ mod tests {
         assert_eq!(summaries[0].updated_at, parse_time("2026-05-31T00:03:00Z"));
     }
 
+    #[test]
+    fn technical_operation_dto_serializes_business_friendly_shape() {
+        let operation = AdminRuntimeTechnicalOperation {
+            attributes: serde_json::json!({ "db.system": "postgresql" }),
+            category: "db".to_owned(),
+            correlation_id: "corr_test".to_owned(),
+            duration_ms: 25,
+            ended_at: parse_time("2026-05-31T00:00:00.025Z"),
+            id: "span_1".to_owned(),
+            name: "INSERT runtime.function_runs".to_owned(),
+            related_node_id: Some("fnrun_test".to_owned()),
+            source: "otel".to_owned(),
+            started_at: parse_time("2026-05-31T00:00:00Z"),
+            status: "ok".to_owned(),
+            story_id: "corr_test".to_owned(),
+        };
+
+        let value = serde_json::to_value(operation).expect("operation should serialize");
+
+        assert_eq!(value["source"], "otel");
+        assert_eq!(value["category"], "db");
+        assert_eq!(value["related_node_id"], "fnrun_test");
+        assert_eq!(value["attributes"]["db.system"], "postgresql");
+    }
+
+    #[test]
+    fn telemetry_span_maps_known_function_run_to_execution_node() {
+        let rows = vec![story_row(
+            "function",
+            "fnrun_test",
+            None,
+            "2026-05-31T00:00:00Z",
+        )];
+        let operations = technical_operations_from_spans(
+            vec![telemetry_span(
+                "span_function",
+                "SELECT identity.users",
+                serde_json::json!({
+                    "lenso.correlation_id": "corr_test",
+                    "lenso.function_run_id": "fnrun_test",
+                    "db.system": "postgresql"
+                }),
+            )],
+            &runtime_node_index(&rows),
+        );
+
+        assert_eq!(operations.len(), 1);
+        assert_eq!(operations[0].related_node_id.as_deref(), Some("fnrun_test"));
+        assert_eq!(operations[0].category, "db");
+    }
+
+    #[test]
+    fn telemetry_span_maps_known_outbox_event_to_execution_node() {
+        let rows = vec![story_row("event", "evt_test", None, "2026-05-31T00:00:00Z")];
+        let operations = technical_operations_from_spans(
+            vec![telemetry_span(
+                "span_outbox",
+                "Publish event",
+                serde_json::json!({
+                    "lenso.correlation_id": "corr_test",
+                    "lenso.outbox_event_id": "evt_test",
+                    "lenso.execution.kind": "outbox_event"
+                }),
+            )],
+            &runtime_node_index(&rows),
+        );
+
+        assert_eq!(operations[0].related_node_id.as_deref(), Some("evt_test"));
+        assert_eq!(operations[0].category, "runtime");
+    }
+
+    #[test]
+    fn unknown_telemetry_span_remains_story_level_unlinked_operation() {
+        let operations = technical_operations_from_spans(
+            vec![telemetry_span(
+                "span_unlinked",
+                "GET https://api.example.test",
+                serde_json::json!({
+                    "lenso.correlation_id": "corr_test",
+                    "http.request.method": "GET"
+                }),
+            )],
+            &runtime_node_index(&[]),
+        );
+
+        assert_eq!(operations[0].related_node_id, None);
+        assert_eq!(operations[0].category, "http");
+    }
+
+    #[test]
+    fn technical_operation_attributes_are_safe_subset_only() {
+        let operations = technical_operations_from_spans(
+            vec![telemetry_span(
+                "span_sensitive",
+                "INSERT identity.users",
+                serde_json::json!({
+                    "lenso.correlation_id": "corr_test",
+                    "db.system": "postgresql",
+                    "db.statement": "insert into users(email, password) values('a@example.test', 'secret')",
+                    "http.request.header.authorization": "Bearer secret",
+                    "user.email": "a@example.test"
+                }),
+            )],
+            &runtime_node_index(&[]),
+        );
+
+        assert_eq!(operations[0].attributes["db.system"], "postgresql");
+        assert!(operations[0].attributes.get("db.statement").is_none());
+        assert!(
+            operations[0]
+                .attributes
+                .get("http.request.header.authorization")
+                .is_none()
+        );
+        assert!(operations[0].attributes.get("user.email").is_none());
+    }
+
     fn story_row(
         item_type: &str,
         id: &str,
@@ -2105,6 +2605,17 @@ mod tests {
 
     fn parse_time(value: &str) -> DateTime<Utc> {
         value.parse().expect("test timestamp should parse")
+    }
+
+    fn telemetry_span(id: &str, name: &str, attributes: Value) -> TelemetrySpan {
+        TelemetrySpan {
+            attributes,
+            ended_at: parse_time("2026-05-31T00:00:01Z"),
+            id: id.to_owned(),
+            name: name.to_owned(),
+            started_at: parse_time("2026-05-31T00:00:00Z"),
+            status: Some("ok".to_owned()),
+        }
     }
 }
 

@@ -3,8 +3,8 @@ use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
 use chrono::{DateTime, Utc};
 use platform_core::{
-    AppConfig, AppContext, DatabaseConfig, LoggingEventPublisher, PLATFORM_MIGRATIONS,
-    apply_migrations,
+    AppConfig, AppContext, DatabaseConfig, InMemoryTelemetrySpanProvider, LoggingEventPublisher,
+    PLATFORM_MIGRATIONS, TelemetrySpan, apply_migrations,
 };
 use platform_runtime::RUNTIME_MIGRATIONS;
 use platform_testing::TestDatabase;
@@ -491,6 +491,323 @@ async fn service_actor_can_fetch_runtime_story_detail() {
     );
     assert!(body["data"]["nodes"][0].get("payload").is_none());
     assert!(body["data"]["nodes"][1].get("input_json").is_none());
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn service_actor_can_fetch_story_technical_operations() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app_with_telemetry(
+        &db,
+        vec![
+            telemetry_span(
+                "span_story_function_db",
+                "SELECT identity.users",
+                json!({
+                    "lenso.correlation_id": "corr_story",
+                    "lenso.story_id": "corr_story",
+                    "lenso.function_run_id": "fnrun_story",
+                    "db.system": "postgresql",
+                    "db.statement": "select * from identity.users where email = 'a@example.test'",
+                }),
+            ),
+            telemetry_span(
+                "span_story_unlinked_http",
+                "GET https://api.example.test/resources",
+                json!({
+                    "lenso.correlation_id": "corr_story",
+                    "http.request.method": "GET",
+                    "http.request.header.authorization": "Bearer secret",
+                }),
+            ),
+        ],
+    )
+    .await;
+    insert_story_outbox_event(&db.pool).await;
+    insert_story_function_run(&db.pool).await;
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/stories/corr_story/technical-operations")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["order"], "started_at_asc");
+    assert_eq!(body["data"].as_array().unwrap().len(), 2);
+    assert_eq!(body["data"][0]["source"], "otel");
+    assert_eq!(body["data"][0]["category"], "db");
+    assert_eq!(body["data"][0]["related_node_id"], "fnrun_story");
+    assert_eq!(
+        body["data"][0]["attributes"]["lenso.function_run_id"],
+        "fnrun_story"
+    );
+    assert!(body["data"][0]["attributes"].get("db.statement").is_none());
+    assert_eq!(body["data"][1]["category"], "http");
+    assert!(body["data"][1]["related_node_id"].is_null());
+    assert!(
+        body["data"][1]["attributes"]
+            .get("http.request.header.authorization")
+            .is_none()
+    );
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn service_actor_can_fetch_execution_technical_operations() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app_with_telemetry(
+        &db,
+        vec![
+            telemetry_span(
+                "span_execution_function",
+                "function_run",
+                json!({
+                    "lenso.correlation_id": "corr_story",
+                    "lenso.function_run_id": "fnrun_story",
+                    "lenso.execution.kind": "function_run",
+                }),
+            ),
+            telemetry_span(
+                "span_other_function",
+                "function_run",
+                json!({
+                    "lenso.correlation_id": "corr_story",
+                    "lenso.function_run_id": "fnrun_other",
+                    "lenso.execution.kind": "function_run",
+                }),
+            ),
+        ],
+    )
+    .await;
+    insert_story_outbox_event(&db.pool).await;
+    insert_story_function_run(&db.pool).await;
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/executions/fnrun_story/technical-operations")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["data"].as_array().unwrap().len(), 1);
+    assert_eq!(body["data"][0]["id"], "span_execution_function");
+    assert_eq!(body["data"][0]["related_node_id"], "fnrun_story");
+    assert_eq!(body["data"][0]["category"], "runtime");
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn runtime_story_and_technical_operations_round_trip_through_admin_apis() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app_with_telemetry(
+        &db,
+        vec![
+            telemetry_span_at(
+                "span_e2e_outbox_publish",
+                "outbox publish ResourceVersionPublished",
+                "2026-05-31T10:00:00.050Z",
+                "2026-05-31T10:00:00.250Z",
+                json!({
+                    "lenso.correlation_id": "corr_e2e_runtime_telemetry",
+                    "lenso.story_id": "corr_e2e_runtime_telemetry",
+                    "lenso.outbox_event_id": "evt_e2e_resource_published",
+                    "lenso.execution.kind": "outbox_event",
+                    "lenso.execution.name": "resources.resource_version_published.v1",
+                }),
+            ),
+            telemetry_span_at(
+                "span_e2e_function_run",
+                "function GenerateSearchIndex",
+                "2026-05-31T10:00:01.000Z",
+                "2026-05-31T10:00:04.000Z",
+                json!({
+                    "lenso.correlation_id": "corr_e2e_runtime_telemetry",
+                    "lenso.story_id": "corr_e2e_runtime_telemetry",
+                    "lenso.function_run_id": "fnrun_e2e_generate_search_index",
+                    "lenso.execution.kind": "function_run",
+                    "lenso.execution.name": "search.generate_index.v1",
+                    "db.system": "postgresql",
+                    "db.statement": "insert into search.index_entries values (...)",
+                }),
+            ),
+            telemetry_span_at(
+                "span_e2e_story_level_http",
+                "POST external webhook",
+                "2026-05-31T10:00:02.000Z",
+                "2026-05-31T10:00:02.500Z",
+                json!({
+                    "lenso.correlation_id": "corr_e2e_runtime_telemetry",
+                    "lenso.story_id": "corr_e2e_runtime_telemetry",
+                    "http.request.method": "POST",
+                    "http.request.header.authorization": "Bearer secret",
+                }),
+            ),
+        ],
+    )
+    .await;
+    insert_runtime_outbox_fixture(
+        &db.pool,
+        OutboxFixture {
+            id: "evt_e2e_resource_published",
+            event_name: "resources.resource_version_published.v1",
+            source_module: "resources",
+            aggregate_id: "res_1",
+            correlation_id: "corr_e2e_runtime_telemetry",
+            causation_id: Some("req_e2e_publish_resource"),
+            created_at: "2026-05-31T10:00:00Z",
+            locked_at: Some("2026-05-31T10:00:00.050Z"),
+            published_at: Some("2026-05-31T10:00:00.250Z"),
+            headers: json!({
+                "_lenso_runtime": {
+                    "correlation_id": "corr_e2e_runtime_telemetry",
+                    "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+                }
+            }),
+            ..OutboxFixture::default()
+        },
+    )
+    .await;
+    insert_runtime_function_fixture(
+        &db.pool,
+        FunctionFixture {
+            id: "fnrun_e2e_generate_search_index",
+            function_name: "search.generate_index.v1",
+            correlation_id: "corr_e2e_runtime_telemetry",
+            created_at: "2026-05-31T10:00:01Z",
+            started_at: Some("2026-05-31T10:00:01Z"),
+            completed_at: Some("2026-05-31T10:00:04Z"),
+            input_json: json!({
+                "resource_id": "res_1",
+                "outbox_event_id": "evt_e2e_resource_published",
+                "_lenso_runtime": {
+                    "correlation_id": "corr_e2e_runtime_telemetry",
+                    "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+                }
+            }),
+            ..FunctionFixture::default()
+        },
+    )
+    .await;
+
+    let list_response = app
+        .clone()
+        .oneshot(
+            admin_get("/admin/runtime/stories?limit=10")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(list_response.status(), StatusCode::OK);
+    let list_body = json_body(list_response).await;
+    assert_eq!(
+        list_body["data"][0]["correlation_id"],
+        "corr_e2e_runtime_telemetry"
+    );
+    assert_eq!(list_body["data"][0]["node_count"], 2);
+    assert_eq!(list_body["data"][0]["status"], "completed");
+
+    let detail_response = app
+        .clone()
+        .oneshot(
+            admin_get("/admin/runtime/stories/corr_e2e_runtime_telemetry")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(detail_response.status(), StatusCode::OK);
+    let detail_body = json_body(detail_response).await;
+    assert_eq!(
+        detail_body["data"]["summary"]["correlation_id"],
+        "corr_e2e_runtime_telemetry"
+    );
+    assert_eq!(detail_body["data"]["nodes"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        detail_body["data"]["edges"][0]["source"],
+        "evt_e2e_resource_published"
+    );
+    assert_eq!(
+        detail_body["data"]["edges"][0]["target"],
+        "fnrun_e2e_generate_search_index"
+    );
+    assert_eq!(
+        detail_body["data"]["timeline_items"][0]["related_node_id"],
+        "evt_e2e_resource_published"
+    );
+    assert_eq!(
+        detail_body["data"]["timeline_items"][1]["related_node_id"],
+        "fnrun_e2e_generate_search_index"
+    );
+
+    let story_ops_response = app
+        .clone()
+        .oneshot(
+            admin_get("/admin/runtime/stories/corr_e2e_runtime_telemetry/technical-operations")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(story_ops_response.status(), StatusCode::OK);
+    let story_ops_body = json_body(story_ops_response).await;
+    let story_ops = story_ops_body["data"].as_array().unwrap();
+    assert_eq!(story_ops.len(), 3);
+    assert!(story_ops.iter().any(|operation| {
+        operation["id"] == "span_e2e_outbox_publish"
+            && operation["related_node_id"] == "evt_e2e_resource_published"
+    }));
+    assert!(story_ops.iter().any(|operation| {
+        operation["id"] == "span_e2e_function_run"
+            && operation["related_node_id"] == "fnrun_e2e_generate_search_index"
+    }));
+    assert!(story_ops.iter().any(|operation| {
+        operation["id"] == "span_e2e_story_level_http"
+            && operation["related_node_id"].is_null()
+            && operation["attributes"]
+                .get("http.request.header.authorization")
+                .is_none()
+    }));
+
+    let execution_ops_response = app
+        .oneshot(
+            admin_get(
+                "/admin/runtime/executions/fnrun_e2e_generate_search_index/technical-operations",
+            )
+            .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(execution_ops_response.status(), StatusCode::OK);
+    let execution_ops_body = json_body(execution_ops_response).await;
+    assert_eq!(execution_ops_body["data"].as_array().unwrap().len(), 1);
+    assert_eq!(execution_ops_body["data"][0]["id"], "span_e2e_function_run");
+    assert_eq!(
+        execution_ops_body["data"][0]["related_node_id"],
+        "fnrun_e2e_generate_search_index"
+    );
+    assert!(
+        execution_ops_body["data"][0]["attributes"]
+            .get("db.statement")
+            .is_none()
+    );
 
     db.cleanup().await;
 }
@@ -1175,6 +1492,14 @@ async fn admin_runtime_openapi_contract_is_present() {
         "admin_runtime_get_story"
     );
     assert_eq!(
+        value["paths"]["/admin/runtime/stories/{correlation_id}/technical-operations"]["get"]["operationId"],
+        "admin_runtime_get_story_technical_operations"
+    );
+    assert_eq!(
+        value["paths"]["/admin/runtime/executions/{node_id}/technical-operations"]["get"]["operationId"],
+        "admin_runtime_get_execution_technical_operations"
+    );
+    assert_eq!(
         value["paths"]["/admin/runtime/heatmap"]["get"]["operationId"],
         "admin_runtime_get_heatmap"
     );
@@ -1189,6 +1514,10 @@ async fn admin_runtime_openapi_contract_is_present() {
     assert!(value["components"]["schemas"]["AdminRuntimeStoryDetail"].is_object());
     assert!(value["components"]["schemas"]["AdminRuntimeHeatmapCell"].is_object());
     assert!(value["components"]["schemas"]["AdminRuntimeHeatmapResponse"].is_object());
+    assert!(value["components"]["schemas"]["AdminRuntimeTechnicalOperation"].is_object());
+    assert!(
+        value["components"]["schemas"]["AdminRuntimeTechnicalOperationListResponse"].is_object()
+    );
     assert_eq!(
         value["paths"]["/admin/runtime/outbox/{id}/retry"]["post"]["operationId"],
         "admin_runtime_retry_outbox"
@@ -1218,6 +1547,26 @@ async fn test_app(db: &TestDatabase) -> axum::Router {
     build_router(ctx)
 }
 
+async fn test_app_with_telemetry(db: &TestDatabase, spans: Vec<TelemetrySpan>) -> axum::Router {
+    let migrations = PLATFORM_MIGRATIONS
+        .iter()
+        .chain(RUNTIME_MIGRATIONS)
+        .copied()
+        .collect::<Vec<_>>();
+    apply_migrations(&db.pool, &migrations)
+        .await
+        .expect("migrations should apply");
+
+    let mut config = AppConfig::from_env();
+    config.database = DatabaseConfig {
+        url: db.url.clone(),
+        max_connections: 5,
+    };
+    let ctx = AppContext::new(config, db.pool.clone(), Arc::new(LoggingEventPublisher))
+        .with_telemetry_span_provider(Arc::new(InMemoryTelemetrySpanProvider::new(spans)));
+    build_router(ctx)
+}
+
 fn auth_only_app() -> axum::Router {
     let ctx = AppContext::new(
         AppConfig::from_env(),
@@ -1226,6 +1575,33 @@ fn auth_only_app() -> axum::Router {
         Arc::new(LoggingEventPublisher),
     );
     build_router(ctx)
+}
+
+fn telemetry_span(id: &str, name: &str, attributes: Value) -> TelemetrySpan {
+    telemetry_span_at(
+        id,
+        name,
+        "2026-05-31T00:00:00Z",
+        "2026-05-31T00:00:01Z",
+        attributes,
+    )
+}
+
+fn telemetry_span_at(
+    id: &str,
+    name: &str,
+    started_at: &str,
+    ended_at: &str,
+    attributes: Value,
+) -> TelemetrySpan {
+    TelemetrySpan {
+        attributes,
+        ended_at: ended_at.parse().expect("timestamp should parse"),
+        id: id.to_owned(),
+        name: name.to_owned(),
+        started_at: started_at.parse().expect("timestamp should parse"),
+        status: Some("ok".to_owned()),
+    }
 }
 
 async fn insert_outbox_event(pool: &platform_core::DbPool) {

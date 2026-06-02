@@ -82,6 +82,47 @@ Runtime Console pointed at the local API:
 just console-api
 ```
 
+OpenTelemetry collector for local span export:
+
+```sh
+just observability-up
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 just api
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 just worker
+```
+
+The local collector receives OTLP over gRPC on `localhost:4317` and OTLP over
+HTTP on `localhost:4318`. The Rust exporter is configured for gRPC, so use:
+
+```sh
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+```
+
+To verify the local loop without starting the API and worker, run:
+
+```sh
+just otel-smoke
+```
+
+The smoke command starts the collector, emits one outbox-style span and one
+function-style span, and checks collector debug logs for
+`lenso.correlation_id`, `lenso.story_id`, `lenso.execution.kind`,
+`lenso.outbox_event_id`, and `lenso.function_run_id`.
+
+Common local collector failures:
+
+- Docker is not running: `just observability-up` fails during the Docker daemon
+  preflight.
+- The observability profile is not selected: start the collector through
+  `just observability-up` or use
+  `docker compose -f infrastructure/local/docker-compose.yml --profile observability ...`.
+- Ports `4317` or `4318` are already occupied: stop the conflicting process or
+  update both the compose ports and `OTEL_EXPORTER_OTLP_ENDPOINT`.
+- The collector config path is wrong: `just observability-up` validates
+  `infrastructure/local/docker-compose.yml` before startup; the expected mount is
+  `infrastructure/local/otel-collector.yaml` to `/etc/otelcol/config.yaml`.
+- First startup needs an image pull: the recipe uses visible Compose output and a
+  45 second service wait timeout so failures are easier to see.
+
 Regenerate contracts and SDK after changing Rust/OpenAPI sources:
 
 ```sh

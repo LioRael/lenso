@@ -17,6 +17,7 @@ import {
   type RuntimeEvent,
   runtimeEvents,
   type TimelineItem,
+  type TechnicalOperation,
   timelineItems,
   type RuntimeStory,
   runtimeStories,
@@ -27,11 +28,13 @@ import {
   normalizeRuntimeHeatmap,
   normalizeRuntimeStory,
   normalizeRuntimeStoryListResponse,
+  normalizeTechnicalOperations,
   normalizeTimelineItems,
   type ApiRuntimeHeatmapResponse,
   type ApiRuntimeStoryDetailResponse,
   type ApiRuntimeStoryListResponse,
   type ApiTimelineResponse,
+  type ApiTechnicalOperationResponse,
   type RuntimeHeatmap,
   type RuntimeHeatmapCell,
 } from "./runtime-api-model";
@@ -42,6 +45,10 @@ export const runtimeQueryKeys = {
   functions: ["runtime", "functions"] as const,
   heatmap: ["runtime", "heatmap"] as const,
   timeline: (id: string) => ["runtime", "timeline", id] as const,
+  technicalOperationsForStory: (id: string) =>
+    ["runtime", "stories", id, "technical-operations"] as const,
+  technicalOperationsForExecution: (id: string) =>
+    ["runtime", "executions", id, "technical-operations"] as const,
   stories: ["runtime", "stories"] as const,
   deadLetters: ["runtime", "dead-letters"] as const,
 };
@@ -85,6 +92,7 @@ export type RuntimeSummary = {
 };
 
 export type { RuntimeHeatmap, RuntimeHeatmapCell };
+export type { TechnicalOperation };
 
 export function useRuntimeSummary() {
   return useQuery({
@@ -152,6 +160,28 @@ export function useRuntimeStories() {
   return useQuery({
     queryKey: runtimeQueryKeys.stories,
     queryFn: async () => (isApiMode() ? fetchRuntimeStories() : runtimeStories),
+  });
+}
+
+export function useStoryTechnicalOperations(storyCorrelationId: string) {
+  return useQuery({
+    enabled: Boolean(storyCorrelationId),
+    queryKey: runtimeQueryKeys.technicalOperationsForStory(storyCorrelationId),
+    queryFn: async () =>
+      isApiMode()
+        ? fetchStoryTechnicalOperations(storyCorrelationId)
+        : ([] satisfies TechnicalOperation[]),
+  });
+}
+
+export function useExecutionTechnicalOperations(nodeId: string) {
+  return useQuery({
+    enabled: Boolean(nodeId),
+    queryKey: runtimeQueryKeys.technicalOperationsForExecution(nodeId),
+    queryFn: async () =>
+      isApiMode()
+        ? fetchExecutionTechnicalOperations(nodeId)
+        : ([] satisfies TechnicalOperation[]),
   });
 }
 
@@ -371,6 +401,28 @@ async function fetchRuntimeStory(
     throw new Error("Runtime story detail response did not include data");
   }
   return normalizeRuntimeStory(response.data);
+}
+
+async function fetchStoryTechnicalOperations(
+  storyCorrelationId: string
+): Promise<TechnicalOperation[]> {
+  const response = await httpClient
+    .get(
+      `admin/runtime/stories/${encodeURIComponent(storyCorrelationId)}/technical-operations`
+    )
+    .json<ApiTechnicalOperationResponse>();
+  return normalizeTechnicalOperations(response);
+}
+
+async function fetchExecutionTechnicalOperations(
+  nodeId: string
+): Promise<TechnicalOperation[]> {
+  const response = await httpClient
+    .get(
+      `admin/runtime/executions/${encodeURIComponent(nodeId)}/technical-operations`
+    )
+    .json<ApiTechnicalOperationResponse>();
+  return normalizeTechnicalOperations(response);
 }
 
 async function retryRuntimeWork(input: {

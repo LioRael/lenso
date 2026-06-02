@@ -1,5 +1,8 @@
 use crate::runtime::SEND_WELCOME_EMAIL;
-use platform_core::{ActorContext, AppResult, ClaimedOutboxEvent, CorrelationId, EventHandler};
+use platform_core::{
+    ActorContext, AppResult, ClaimedOutboxEvent, CorrelationId, EventHandler,
+    trace_context_from_headers,
+};
 use platform_runtime::{EnqueueFunctionRequest, RuntimeClient};
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -27,6 +30,8 @@ impl RuntimeEnqueuer for RuntimeClient {
             input_json: payload,
             correlation_id: CorrelationId::new(event.correlation_id.clone()),
             actor: actor_from_event(event),
+            trace: trace_context_from_headers(&event.headers),
+            causation_id: Some(event.id.clone()),
             max_attempts: None,
         })
         .await

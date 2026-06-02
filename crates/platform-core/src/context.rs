@@ -5,6 +5,7 @@ use crate::events::EventPublisher;
 use crate::health::HealthRegistry;
 use crate::ids::{IdGenerator, UuidGenerator};
 use crate::shutdown::Shutdown;
+use crate::telemetry_query::{NoopTelemetrySpanProvider, TelemetrySpanProvider};
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -88,6 +89,7 @@ pub struct AppContext {
     pub clock: Arc<dyn Clock>,
     pub ids: Arc<dyn IdGenerator>,
     pub events: Arc<dyn EventPublisher>,
+    pub telemetry_spans: Arc<dyn TelemetrySpanProvider>,
     pub health: HealthRegistry,
     pub shutdown: Shutdown,
 }
@@ -98,6 +100,7 @@ impl Debug for AppContext {
             .debug_struct("AppContext")
             .field("config", &self.config)
             .field("db", &"<pool>")
+            .field("telemetry_spans", &self.telemetry_spans)
             .field("health", &self.health)
             .field("shutdown", &self.shutdown)
             .finish_non_exhaustive()
@@ -112,8 +115,17 @@ impl AppContext {
             clock: Arc::new(SystemClock),
             ids: Arc::new(UuidGenerator),
             events,
+            telemetry_spans: Arc::new(NoopTelemetrySpanProvider),
             health: HealthRegistry::default(),
             shutdown: Shutdown::new(),
         }
+    }
+
+    pub fn with_telemetry_span_provider(
+        mut self,
+        telemetry_spans: Arc<dyn TelemetrySpanProvider>,
+    ) -> Self {
+        self.telemetry_spans = telemetry_spans;
+        self
     }
 }

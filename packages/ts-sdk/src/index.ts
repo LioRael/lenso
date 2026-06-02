@@ -21,6 +21,8 @@ export type {
   AdminRuntimeStoryNode,
   AdminRuntimeSummaryItem,
   AdminRuntimeSummaryResponse,
+  AdminRuntimeTechnicalOperation,
+  AdminRuntimeTechnicalOperationListResponse,
   AdminRuntimeTimelineItem,
   AdminRuntimeTimelineResponse,
   CreateUserRequest,

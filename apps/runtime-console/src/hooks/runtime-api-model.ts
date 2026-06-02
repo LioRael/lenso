@@ -6,6 +6,8 @@ import type {
   AdminRuntimeStoryEdge,
   AdminRuntimeStoryListItem,
   AdminRuntimeStoryListResponse,
+  AdminRuntimeTechnicalOperation,
+  AdminRuntimeTechnicalOperationListResponse,
   AdminRuntimeTimelineItem,
   AdminRuntimeTimelineResponse,
   PageInfo as ApiPageInfo,
@@ -15,6 +17,7 @@ import type {
   ExecutionNode,
   RuntimeStatus,
   RuntimeStory,
+  TechnicalOperation,
   TimelineItem,
 } from "../data/mock-runtime";
 import { isRetryable } from "../data/mock-runtime";
@@ -61,6 +64,9 @@ export type ApiTimelineItem = DeepPartial<AdminRuntimeTimelineItem>;
 export type ApiRuntimeHeatmapResponse =
   DeepPartial<AdminRuntimeHeatmapResponse>;
 export type ApiRuntimeHeatmapCell = DeepPartial<AdminRuntimeHeatmapCell>;
+export type ApiTechnicalOperationResponse =
+  DeepPartial<AdminRuntimeTechnicalOperationListResponse>;
+export type ApiTechnicalOperation = DeepPartial<AdminRuntimeTechnicalOperation>;
 
 const fallbackTimestamp = "1970-01-01T00:00:00.000Z";
 
@@ -232,6 +238,12 @@ export function normalizeRuntimeHeatmap(
   };
 }
 
+export function normalizeTechnicalOperations(
+  response: ApiTechnicalOperationResponse
+): TechnicalOperation[] {
+  return (response.data ?? []).map(normalizeTechnicalOperation);
+}
+
 function normalizeRuntimeEdges(
   edges: ApiRuntimeStoryEdge[],
   nodeIdAliases: Map<string, string>,
@@ -291,6 +303,48 @@ function normalizeTimelineItem(
     status: normalizeRuntimeStatus(item.status),
     type: safeString(item.type, "runtime"),
   };
+}
+
+function normalizeTechnicalOperation(
+  operation: ApiTechnicalOperation
+): TechnicalOperation {
+  return {
+    attributes: objectRecord(operation.attributes),
+    category: normalizeTechnicalOperationCategory(operation.category),
+    correlationId: safeString(operation.correlation_id, "unknown"),
+    durationMs: normalizeDuration(operation.duration_ms),
+    endedAt: normalizeTimestamp(operation.ended_at),
+    id: safeString(operation.id, "technical_operation"),
+    name: safeString(operation.name, "Technical Operation"),
+    ...(operation.related_node_id
+      ? { relatedNodeId: operation.related_node_id }
+      : {}),
+    source: "otel",
+    startedAt: normalizeTimestamp(operation.started_at),
+    status: safeString(operation.status, "unknown"),
+    storyId: safeString(operation.story_id, "unknown"),
+  };
+}
+
+function normalizeTechnicalOperationCategory(
+  category: string | undefined
+): TechnicalOperation["category"] {
+  switch (category) {
+    case "http":
+    case "db":
+    case "redis":
+    case "s3":
+    case "ses":
+    case "worker":
+    case "runtime":
+    case "external":
+    case "unknown": {
+      return category;
+    }
+    default: {
+      return "unknown";
+    }
+  }
 }
 
 function normalizeRuntimeHeatmapCell(

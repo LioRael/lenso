@@ -11,6 +11,8 @@ pub mod migrations;
 pub mod outbox;
 pub mod shutdown;
 pub mod telemetry;
+pub mod telemetry_attrs;
+pub mod telemetry_query;
 
 pub use clock::{Clock, SystemClock};
 pub use config::{
@@ -32,3 +34,11 @@ pub use outbox::{
     LoggingEventDispatcher, OutboxEvent, OutboxPublisher, OutboxRelay, OutboxStatus,
 };
 pub use shutdown::Shutdown;
+pub use telemetry_attrs::{
+    RuntimeSpanAttributes, generate_trace_context, record_runtime_span_attributes,
+    trace_context_from_headers, trace_context_from_traceparent, trace_headers,
+};
+pub use telemetry_query::{
+    InMemoryTelemetrySpanProvider, NoopTelemetrySpanProvider, TelemetrySpan, TelemetrySpanProvider,
+    TelemetrySpanQuery,
+};

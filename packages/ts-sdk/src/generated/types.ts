@@ -200,6 +200,26 @@ export type AdminRuntimeSummaryResponse = {
   status: string;
 };
 
+export type AdminRuntimeTechnicalOperation = {
+  attributes: unknown;
+  category: string;
+  correlation_id: string;
+  duration_ms: number;
+  ended_at: string;
+  id: string;
+  name: string;
+  related_node_id?: string | null;
+  source: string;
+  started_at: string;
+  status: string;
+  story_id: string;
+};
+
+export type AdminRuntimeTechnicalOperationListResponse = {
+  data: Array<AdminRuntimeTechnicalOperation>;
+  order: string;
+};
+
 export type AdminRuntimeTimelineItem = {
   attempts: number;
   completed_at?: string | null;
