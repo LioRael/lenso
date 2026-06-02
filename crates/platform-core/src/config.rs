@@ -7,7 +7,7 @@ pub struct AppConfig {
     pub database: DatabaseConfig,
     pub http: HttpConfig,
     pub telemetry: TelemetryConfig,
-    pub runtime: RuntimeConfig,
+    pub worker: WorkerConfig,
     pub auth: AuthConfig,
     #[serde(default)]
     pub modules: BTreeMap<String, ModuleConfig>,
@@ -20,7 +20,7 @@ impl AppConfig {
             database: DatabaseConfig::from_env(),
             http: HttpConfig::default(),
             telemetry: TelemetryConfig::default(),
-            runtime: RuntimeConfig::default(),
+            worker: WorkerConfig::default(),
             auth: AuthConfig::default(),
             modules: BTreeMap::new(),
         }
@@ -145,11 +145,11 @@ impl LogFormat {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct RuntimeConfig {
+pub struct WorkerConfig {
     pub worker_poll_interval_ms: u64,
 }
 
-impl Default for RuntimeConfig {
+impl Default for WorkerConfig {
     fn default() -> Self {
         Self {
             worker_poll_interval_ms: 1_000,
