@@ -1,6 +1,7 @@
+use anyhow::Context as _;
 use platform_core::{
-    AppConfig, AppContext, EventHandlerRegistry, LoggingEventPublisher, OutboxRelay, Shutdown,
-    connect_pool, telemetry,
+    AppConfig, AppContext, EventHandlerRegistry, LoggingEventPublisher, OutboxRelay,
+    PostgresSettingsProvider, SettingsRegistry, Shutdown, connect_pool, telemetry,
 };
 use platform_runtime::{FunctionRegistry, RuntimeWorker};
 use std::sync::Arc;
@@ -16,15 +17,12 @@ async fn main() -> anyhow::Result<()> {
     let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
 
     let descriptors = app_bootstrap::setting_descriptors(&ctx);
-    let registry = platform_core::SettingsRegistry::try_new(descriptors)
-        .expect("duplicate setting descriptor registered");
-    let settings = platform_core::PostgresSettingsProvider::connect(
-        ctx.db.clone(),
-        std::sync::Arc::new(registry),
-        "worker",
-    )
-    .await
-    .expect("failed to load settings snapshot");
+    let settings_registry = SettingsRegistry::try_new(descriptors)
+        .context("duplicate setting descriptor registered")?;
+    let settings =
+        PostgresSettingsProvider::connect(ctx.db.clone(), Arc::new(settings_registry), "worker")
+            .await
+            .context("failed to load settings snapshot")?;
     settings.spawn_listener();
     let ctx = ctx.with_settings_provider(settings);
 
