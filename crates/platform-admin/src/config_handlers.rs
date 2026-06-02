@@ -4,7 +4,7 @@ use super::*;
 use crate::config_dto::*;
 use axum::Json;
 use axum::extract::{Path, Query, State};
-use platform_core::settings::store::{delete_value, load_audit, upsert_value};
+use platform_core::runtime_config::store::{delete_value, load_audit, upsert_value};
 use platform_core::{AppContext, AppError, ErrorCode};
 use platform_http::{AdminActor, ApiErrorResponse, ErrorResponse, HttpRequestContext};
 
@@ -30,7 +30,7 @@ pub(crate) async fn list_config_descriptors(
     State(_ctx): State<AppContext>,
     HttpRequestContext(_request_ctx): HttpRequestContext,
 ) -> Result<Json<ConfigDescriptorListResponse>, ApiErrorResponse> {
-    let data = settings_registry()
+    let data = runtime_config_registry()
         .iter()
         .map(|d| ConfigDescriptorDto {
             key: d.key.to_owned(),
@@ -64,7 +64,7 @@ pub(crate) async fn list_config_values(
     State(ctx): State<AppContext>,
     HttpRequestContext(_request_ctx): HttpRequestContext,
 ) -> Result<Json<ConfigValueListResponse>, ApiErrorResponse> {
-    let snapshot = ctx.settings.snapshot();
+    let snapshot = ctx.runtime_config.snapshot();
     let data = snapshot
         .entries()
         .map(|(key, value, source)| ConfigValueDto {
@@ -106,15 +106,17 @@ pub(crate) async fn put_config_value(
     Path((service, key)): Path<(String, String)>,
     Json(body): Json<ConfigWriteRequest>,
 ) -> Result<Json<ConfigWriteResponse>, ApiErrorResponse> {
-    let descriptor = settings_registry().get_raw(&service, &key).ok_or_else(|| {
-        ApiErrorResponse::with_context(
-            AppError::new(
-                ErrorCode::NotFound,
-                format!("unknown setting `{service}:{key}`"),
-            ),
-            &request_ctx,
-        )
-    })?;
+    let descriptor = runtime_config_registry()
+        .get_raw(&service, &key)
+        .ok_or_else(|| {
+            ApiErrorResponse::with_context(
+                AppError::new(
+                    ErrorCode::NotFound,
+                    format!("unknown setting `{service}:{key}`"),
+                ),
+                &request_ctx,
+            )
+        })?;
 
     if !descriptor.editable {
         return Err(ApiErrorResponse::with_context(
@@ -179,15 +181,17 @@ pub(crate) async fn delete_config_value(
     HttpRequestContext(request_ctx): HttpRequestContext,
     Path((service, key)): Path<(String, String)>,
 ) -> Result<Json<ConfigWriteResponse>, ApiErrorResponse> {
-    let descriptor = settings_registry().get_raw(&service, &key).ok_or_else(|| {
-        ApiErrorResponse::with_context(
-            AppError::new(
-                ErrorCode::NotFound,
-                format!("unknown setting `{service}:{key}`"),
-            ),
-            &request_ctx,
-        )
-    })?;
+    let descriptor = runtime_config_registry()
+        .get_raw(&service, &key)
+        .ok_or_else(|| {
+            ApiErrorResponse::with_context(
+                AppError::new(
+                    ErrorCode::NotFound,
+                    format!("unknown setting `{service}:{key}`"),
+                ),
+                &request_ctx,
+            )
+        })?;
     let restart_only = descriptor.restart_only;
     let default_value = descriptor.default.clone();
     let actor = admin_audit_label(&admin);

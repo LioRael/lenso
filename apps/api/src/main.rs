@@ -1,8 +1,8 @@
 use anyhow::Context as _;
 use app_api::build_router;
 use platform_core::{
-    AppConfig, AppContext, LoggingEventPublisher, PostgresSettingsProvider, SettingsRegistry,
-    connect_pool, telemetry,
+    AppConfig, AppContext, LoggingEventPublisher, PostgresRuntimeConfigProvider,
+    RuntimeConfigRegistry, connect_pool, telemetry,
 };
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -18,16 +18,17 @@ async fn main() -> anyhow::Result<()> {
 
     // Build the editable-settings registry from every domain and install it for
     // the console handlers and the API's own reads.
-    let descriptors = app_bootstrap::setting_descriptors(&ctx);
-    let registry = SettingsRegistry::try_new(descriptors)
+    let descriptors = app_bootstrap::runtime_config_descriptors(&ctx);
+    let registry = RuntimeConfigRegistry::try_new(descriptors)
         .context("duplicate setting descriptor registered")?;
-    platform_admin::install_settings_registry(registry.clone());
+    platform_admin::install_runtime_config_registry(registry.clone());
 
-    let settings = PostgresSettingsProvider::connect(ctx.db.clone(), Arc::new(registry), "api")
-        .await
-        .context("failed to load settings snapshot")?;
+    let settings =
+        PostgresRuntimeConfigProvider::connect(ctx.db.clone(), Arc::new(registry), "api")
+            .await
+            .context("failed to load settings snapshot")?;
     settings.spawn_listener();
-    ctx = ctx.with_settings_provider(settings);
+    ctx = ctx.with_runtime_config_provider(settings);
 
     let app = build_router(ctx.clone());
     let address: SocketAddr = format!("{}:{}", ctx.config.http.host, ctx.config.http.port)

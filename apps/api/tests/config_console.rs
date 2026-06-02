@@ -3,29 +3,29 @@ use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
 use platform_core::{
     AppConfig, AppContext, DatabaseConfig, LoggingEventPublisher, PLATFORM_MIGRATIONS,
-    PostgresSettingsProvider, SettingDescriptor, SettingScope, SettingType, SettingsRegistry,
-    apply_migrations,
+    PostgresRuntimeConfigProvider, RuntimeConfigDescriptor, RuntimeConfigRegistry,
+    RuntimeConfigScope, RuntimeConfigType, apply_migrations,
 };
 use platform_testing::TestDatabase;
 use serde_json::{Value, json};
 use std::sync::Arc;
 use tower::ServiceExt;
 
-fn registry() -> SettingsRegistry {
-    SettingsRegistry::try_new(vec![
-        SettingDescriptor {
+fn registry() -> RuntimeConfigRegistry {
+    RuntimeConfigRegistry::try_new(vec![
+        RuntimeConfigDescriptor {
             key: "demo.flag",
-            scope: SettingScope::Shared,
-            value_type: SettingType::Bool,
+            scope: RuntimeConfigScope::Shared,
+            value_type: RuntimeConfigType::Bool,
             default: json!(false),
             editable: true,
             restart_only: false,
             description: "demo flag",
         },
-        SettingDescriptor {
+        RuntimeConfigDescriptor {
             key: "demo.locked",
-            scope: SettingScope::Shared,
-            value_type: SettingType::Bool,
+            scope: RuntimeConfigScope::Shared,
+            value_type: RuntimeConfigType::Bool,
             default: json!(true),
             editable: false,
             restart_only: false,
@@ -82,7 +82,7 @@ async fn config_console_round_trip() {
         .expect("migrations apply");
 
     let reg = registry();
-    platform_admin::install_settings_registry(reg.clone());
+    platform_admin::install_runtime_config_registry(reg.clone());
 
     let mut config = AppConfig::from_env();
     config.database = DatabaseConfig {
@@ -90,10 +90,10 @@ async fn config_console_round_trip() {
         max_connections: 5,
     };
     let mut ctx = AppContext::new(config, db.pool.clone(), Arc::new(LoggingEventPublisher));
-    let settings = PostgresSettingsProvider::connect(db.pool.clone(), Arc::new(reg), "api")
+    let settings = PostgresRuntimeConfigProvider::connect(db.pool.clone(), Arc::new(reg), "api")
         .await
         .expect("connect provider");
-    ctx = ctx.with_settings_provider(settings);
+    ctx = ctx.with_runtime_config_provider(settings);
 
     let app = build_router(ctx);
 

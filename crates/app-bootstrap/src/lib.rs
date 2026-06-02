@@ -14,7 +14,9 @@
 //! When adding a domain, register it in [`domains`] and — if it has them — in
 //! [`merge_domain_http`] and [`story_display_descriptors`].
 
-use platform_core::{AppContext, EventHandlerRegistry, SettingDescriptor, StoryDisplayDescriptor};
+use platform_core::{
+    AppContext, EventHandlerRegistry, RuntimeConfigDescriptor, StoryDisplayDescriptor,
+};
 use platform_domain::DomainDescriptor;
 use platform_http::ApiOpenApiRouter;
 use platform_runtime::FunctionRegistry;
@@ -72,11 +74,11 @@ pub fn story_display_descriptors() -> impl Iterator<Item = &'static StoryDisplay
 /// Every domain's setting descriptors.
 ///
 /// The single source for the editable configuration registry. Apps build a
-/// `SettingsRegistry` from this list at startup.
+/// `RuntimeConfigRegistry` from this list at startup.
 #[must_use]
-pub fn setting_descriptors(ctx: &AppContext) -> Vec<SettingDescriptor> {
+pub fn runtime_config_descriptors(ctx: &AppContext) -> Vec<RuntimeConfigDescriptor> {
     domains(ctx)
         .iter()
-        .flat_map(|domain| domain.settings.iter().cloned())
+        .flat_map(|domain| domain.runtime_config.iter().cloned())
         .collect()
 }

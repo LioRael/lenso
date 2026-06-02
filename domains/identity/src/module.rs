@@ -25,5 +25,5 @@ pub const STORY_DISPLAY: &[StoryDisplayDescriptor] = &[
 pub fn domain(_ctx: &AppContext) -> DomainDescriptor {
     DomainDescriptor::new("identity", crate::runtime::descriptor())
         .with_story_display(STORY_DISPLAY)
-        .with_settings(crate::config::SETTINGS.as_slice())
+        .with_runtime_config(crate::config::RUNTIME_CONFIG.as_slice())
 }

@@ -1,7 +1,7 @@
 use anyhow::Context as _;
 use platform_core::{
     AppConfig, AppContext, EventHandlerRegistry, LoggingEventPublisher, OutboxRelay,
-    PostgresSettingsProvider, SettingsRegistry, Shutdown, connect_pool, telemetry,
+    PostgresRuntimeConfigProvider, RuntimeConfigRegistry, Shutdown, connect_pool, telemetry,
 };
 use platform_runtime::{FunctionRegistry, RuntimeWorker};
 use std::sync::Arc;
@@ -16,15 +16,18 @@ async fn main() -> anyhow::Result<()> {
     let db = connect_pool(&config.database).await?;
     let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
 
-    let descriptors = app_bootstrap::setting_descriptors(&ctx);
-    let settings_registry = SettingsRegistry::try_new(descriptors)
+    let descriptors = app_bootstrap::runtime_config_descriptors(&ctx);
+    let runtime_config_registry = RuntimeConfigRegistry::try_new(descriptors)
         .context("duplicate setting descriptor registered")?;
-    let settings =
-        PostgresSettingsProvider::connect(ctx.db.clone(), Arc::new(settings_registry), "worker")
-            .await
-            .context("failed to load settings snapshot")?;
+    let settings = PostgresRuntimeConfigProvider::connect(
+        ctx.db.clone(),
+        Arc::new(runtime_config_registry),
+        "worker",
+    )
+    .await
+    .context("failed to load settings snapshot")?;
     settings.spawn_listener();
-    let ctx = ctx.with_settings_provider(settings);
+    let ctx = ctx.with_runtime_config_provider(settings);
 
     let domains = app_bootstrap::domains(&ctx);
     let registry = app_bootstrap::function_registry(&domains);

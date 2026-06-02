@@ -18,7 +18,7 @@
 //! composition root via [`install_story_display`] rather than depended on
 //! directly — keeping this crate free of any business-domain dependency.
 
-use platform_core::SettingsRegistry;
+use platform_core::RuntimeConfigRegistry;
 use platform_core::StoryDisplayDescriptor;
 use platform_http::{ApiOpenApiRouter, OpenApiRouter, routes};
 use std::sync::OnceLock;
@@ -66,19 +66,19 @@ pub fn install_story_display(catalog: Vec<&'static StoryDisplayDescriptor>) {
     let _ = STORY_DISPLAY.set(catalog);
 }
 
-static SETTINGS_REGISTRY: OnceLock<SettingsRegistry> = OnceLock::new();
+static SETTINGS_REGISTRY: OnceLock<RuntimeConfigRegistry> = OnceLock::new();
 
 /// Install the aggregated settings registry from the composition root. Idempotent.
-pub fn install_settings_registry(registry: SettingsRegistry) {
+pub fn install_runtime_config_registry(registry: RuntimeConfigRegistry) {
     let _ = SETTINGS_REGISTRY.set(registry);
 }
 
 /// The installed registry, or an empty one if none was installed.
-fn settings_registry() -> &'static SettingsRegistry {
-    static EMPTY: OnceLock<SettingsRegistry> = OnceLock::new();
+fn runtime_config_registry() -> &'static RuntimeConfigRegistry {
+    static EMPTY: OnceLock<RuntimeConfigRegistry> = OnceLock::new();
     SETTINGS_REGISTRY
         .get()
-        .unwrap_or_else(|| EMPTY.get_or_init(SettingsRegistry::default))
+        .unwrap_or_else(|| EMPTY.get_or_init(RuntimeConfigRegistry::default))
 }
 
 pub fn router() -> ApiOpenApiRouter {
