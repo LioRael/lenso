@@ -114,6 +114,21 @@ impl SettingsSnapshot {
     pub fn entries(&self) -> impl Iterator<Item = (&str, &Value, SettingSource)> {
         self.values.iter().map(|(k, (v, s))| (k.as_str(), v, *s))
     }
+
+    /// Override specific keys' resolved entries. Used to carry forward values
+    /// that must not change after startup (e.g. restart-only settings).
+    #[must_use]
+    pub fn with_overrides(
+        mut self,
+        overrides: &std::collections::BTreeMap<String, (Value, SettingSource)>,
+    ) -> Self {
+        for (key, entry) in overrides {
+            if self.values.contains_key(key) {
+                self.values.insert(key.clone(), entry.clone());
+            }
+        }
+        self
+    }
 }
 
 #[cfg(test)]
@@ -229,5 +244,30 @@ mod tests {
             .unwrap();
         assert_eq!(ttl, 30);
         assert!(snapshot.get_value::<u64>("does.not.exist").is_err());
+    }
+
+    #[test]
+    fn with_overrides_replaces_present_keys_only() {
+        let snapshot = SettingsSnapshot::resolve(&registry(), "api", &BTreeMap::new());
+        let mut overrides = BTreeMap::new();
+        overrides.insert(
+            "identity.password_reset_ttl_minutes".to_owned(),
+            (json!(99), SettingSource::Override),
+        );
+        // A key not applicable to this resolution must be ignored.
+        overrides.insert(
+            "not.present".to_owned(),
+            (json!(1), SettingSource::Override),
+        );
+        let result = snapshot.with_overrides(&overrides);
+        assert_eq!(
+            result.raw("identity.password_reset_ttl_minutes"),
+            Some(&json!(99))
+        );
+        assert_eq!(
+            result.source("identity.password_reset_ttl_minutes"),
+            Some(SettingSource::Override)
+        );
+        assert!(result.raw("not.present").is_none());
     }
 }
