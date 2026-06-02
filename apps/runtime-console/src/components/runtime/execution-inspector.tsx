@@ -235,8 +235,6 @@ function InspectorBody({
               "completion time",
               formatRuntimeDuration(node.startMs + node.durationMs),
             ],
-            ["story id", story.id],
-            ["correlation id", story.correlationId],
             ["retry count", Math.max(0, (node.attempts ?? 1) - 1)],
             ["attempt", `${node.attempts ?? 1}/${node.maxAttempts ?? 1}`],
             ["parent count", parentCount(story, node)],
@@ -737,24 +735,26 @@ function RelatedExecutionList({
   label: string;
   nodes: ExecutionNode[];
 }) {
-  if (nodes.length === 0) {
-    return <EmptyRows label={`No ${label}`} />;
-  }
-
   return (
     <div className="w-max min-w-full border-b border-(--border-subtle) font-mono text-xs">
       <div className="bg-(--sidebar) px-3 py-1.5 text-(--muted)">{label}</div>
-      {nodes.map((node) => (
-        <div
-          className="grid w-max min-w-full grid-cols-[124px_minmax(220px,max-content)] border-t border-(--border-subtle)"
-          key={node.id}
-        >
-          <div className="px-3 py-1.5 text-(--muted)">{node.kind}</div>
-          <div className="whitespace-pre-wrap px-3 py-1.5 text-(--secondary)">
-            {node.name}
-          </div>
+      {nodes.length === 0 ? (
+        <div className="border-t border-(--border-subtle) px-3 py-1.5 text-(--muted)">
+          None
         </div>
-      ))}
+      ) : (
+        nodes.map((node) => (
+          <div
+            className="grid w-max min-w-full grid-cols-[124px_minmax(220px,max-content)] border-t border-(--border-subtle)"
+            key={node.id}
+          >
+            <div className="px-3 py-1.5 text-(--muted)">{node.kind}</div>
+            <div className="whitespace-pre-wrap px-3 py-1.5 text-(--secondary)">
+              {node.name}
+            </div>
+          </div>
+        ))
+      )}
     </div>
   );
 }

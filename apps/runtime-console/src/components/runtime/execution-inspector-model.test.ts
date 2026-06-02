@@ -179,7 +179,6 @@ describe("execution inspector model", () => {
       expect.arrayContaining([
         ["correlation id", "corr_drawer"],
         ["causation id", "parent"],
-        ["story id", "story_drawer"],
         ["actor", "user:1"],
         ["aggregate", "resource_1"],
         ["trigger source", "outbox"],
@@ -204,7 +203,7 @@ describe("execution inspector model", () => {
 
     expect(counts).toMatchObject({
       activity: 3,
-      context: 5,
+      context: 2,
       failures: 0,
       logs: 2,
       overview: 0,

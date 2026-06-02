@@ -202,19 +202,10 @@ export function buildExecutionContext(
     rows: [
       ["correlation id", story.correlationId],
       ["causation id", causationId ?? "-"],
-      ["story id", story.id],
       ["actor", actor ?? "-"],
       ["aggregate", aggregate ?? "-"],
       ["trigger source", triggerSource ?? "-"],
       ["related executions", upstream.length + downstream.length],
-      [
-        "upstream references",
-        upstream.map((item) => item.name).join(", ") || "-",
-      ],
-      [
-        "downstream references",
-        downstream.map((item) => item.name).join(", ") || "-",
-      ],
     ],
     upstream,
   };
@@ -226,7 +217,9 @@ export function getExecutionInspectorTabCounts(
 ): Record<ExecutionInspectorTab, number> {
   return {
     activity: buildExecutionActivity(story, node).length,
-    context: 5,
+    context:
+      relatedNodes(story, node, "upstream").length +
+      relatedNodes(story, node, "downstream").length,
     failures: buildExecutionFailures(node).length,
     logs: node.logs.length,
     overview: 0,
