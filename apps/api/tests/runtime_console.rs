@@ -399,7 +399,7 @@ async fn failed_http_request_creates_request_level_story() {
         list_body["data"][0]["correlation_id"],
         "corr_validation_story"
     );
-    assert_eq!(list_body["data"][0]["title"], "Create User Request");
+    assert_eq!(list_body["data"][0]["title"], "User Registration");
     assert_eq!(list_body["data"][0]["pattern"][0], "http_request");
     assert_eq!(list_body["data"][0]["status"], "failed");
     assert_eq!(list_body["data"][0]["error_count"], 1);

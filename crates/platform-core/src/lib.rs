@@ -11,6 +11,7 @@ pub mod ids;
 pub mod migrations;
 pub mod outbox;
 pub mod shutdown;
+pub mod story_display;
 pub mod story_events;
 pub mod telemetry;
 pub mod telemetry_attrs;
@@ -39,6 +40,7 @@ pub use outbox::{
     LoggingEventDispatcher, OutboxEvent, OutboxPublisher, OutboxRelay, OutboxStatus,
 };
 pub use shutdown::Shutdown;
+pub use story_display::{StoryDisplayDescriptor, StoryDisplaySource};
 pub use telemetry_attrs::{
     RuntimeSpanAttributes, generate_trace_context, record_runtime_span_attributes,
     trace_context_from_headers, trace_context_from_traceparent, trace_headers,

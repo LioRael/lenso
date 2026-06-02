@@ -4,7 +4,7 @@ use axum::{Json, Router};
 use chrono::{DateTime, Utc};
 use platform_core::{
     AppContext, AppError, ErrorCode, ExecutionLogQuery as ProviderExecutionLogQuery,
-    ExecutionLogRow, TelemetrySpan, TelemetrySpanQuery,
+    ExecutionLogRow, StoryDisplayDescriptor, StoryDisplaySource, TelemetrySpan, TelemetrySpanQuery,
 };
 use platform_http::responses::{DataResponse, json};
 use platform_http::{AdminActor, ApiErrorResponse, HttpRequestContext};
@@ -2705,6 +2705,13 @@ fn build_story_node(
 }
 
 fn story_title(rows: &[StoryWorkRow]) -> String {
+    if let Some(title) = rows
+        .iter()
+        .find_map(|row| story_display_descriptor(row).and_then(|descriptor| descriptor.story_title))
+    {
+        return title.to_owned();
+    }
+
     if let Some(event_title) = rows
         .iter()
         .find(|row| matches!(row.item_type.as_str(), "event" | "outbox_event"))
@@ -2719,11 +2726,43 @@ fn story_title(rows: &[StoryWorkRow]) -> String {
 }
 
 fn display_name_for_node(row: &StoryWorkRow) -> String {
+    if let Some(descriptor) = story_display_descriptor(row) {
+        return descriptor.display_name.to_owned();
+    }
+
     if row.item_type == "http_request" {
         return http_request_display_name(&row.name);
     }
 
     humanize_runtime_name(&row.name)
+}
+
+fn story_display_descriptor(row: &StoryWorkRow) -> Option<&'static StoryDisplayDescriptor> {
+    if row.item_type == "http_request" {
+        let (method, path) = row.name.split_once(' ')?;
+        return story_display_descriptors().find(|descriptor| {
+            matches!(
+                descriptor.source,
+                StoryDisplaySource::HttpRequest {
+                    method: descriptor_method,
+                    path: descriptor_path,
+                } if descriptor_method == method && descriptor_path == path
+            )
+        });
+    }
+
+    story_display_descriptors().find(|descriptor| {
+        matches!(
+            descriptor.source,
+            StoryDisplaySource::ExecutionName(name) if name == row.name.as_str()
+        )
+    })
+}
+
+fn story_display_descriptors() -> impl Iterator<Item = &'static StoryDisplayDescriptor> {
+    identity::module::STORY_DISPLAY
+        .iter()
+        .chain(notifications::module::STORY_DISPLAY.iter())
 }
 
 fn story_title_from_event_name(value: &str) -> String {
