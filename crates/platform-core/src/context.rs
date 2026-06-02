@@ -5,6 +5,7 @@ use crate::events::EventPublisher;
 use crate::execution_logs::{ExecutionLogProvider, PostgresExecutionLogProvider};
 use crate::health::HealthRegistry;
 use crate::ids::{IdGenerator, UuidGenerator};
+use crate::settings::{SettingsProvider, StaticSettingsProvider};
 use crate::shutdown::Shutdown;
 use crate::telemetry_query::{NoopTelemetrySpanProvider, TelemetrySpanProvider};
 use serde::{Deserialize, Serialize};
@@ -92,6 +93,7 @@ pub struct AppContext {
     pub events: Arc<dyn EventPublisher>,
     pub telemetry_spans: Arc<dyn TelemetrySpanProvider>,
     pub execution_logs: Arc<dyn ExecutionLogProvider>,
+    pub settings: Arc<dyn SettingsProvider>,
     pub health: HealthRegistry,
     pub shutdown: Shutdown,
 }
@@ -104,6 +106,7 @@ impl Debug for AppContext {
             .field("db", &"<pool>")
             .field("telemetry_spans", &self.telemetry_spans)
             .field("execution_logs", &self.execution_logs)
+            .field("settings", &self.settings)
             .field("health", &self.health)
             .field("shutdown", &self.shutdown)
             .finish_non_exhaustive()
@@ -121,6 +124,7 @@ impl AppContext {
             events,
             telemetry_spans: Arc::new(NoopTelemetrySpanProvider),
             execution_logs,
+            settings: Arc::new(StaticSettingsProvider::empty()),
             health: HealthRegistry::default(),
             shutdown: Shutdown::new(),
         }
@@ -139,6 +143,11 @@ impl AppContext {
         execution_logs: Arc<dyn ExecutionLogProvider>,
     ) -> Self {
         self.execution_logs = execution_logs;
+        self
+    }
+
+    pub fn with_settings_provider(mut self, settings: Arc<dyn SettingsProvider>) -> Self {
+        self.settings = settings;
         self
     }
 }

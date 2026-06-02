@@ -41,7 +41,8 @@ pub use outbox::{
     LoggingEventDispatcher, OutboxEvent, OutboxPublisher, OutboxRelay, OutboxStatus,
 };
 pub use settings::{
-    SettingDescriptor, SettingScope, SettingSource, SettingType, SettingsRegistry, SettingsSnapshot,
+    SettingDescriptor, SettingScope, SettingSource, SettingType, SettingsProvider,
+    SettingsRegistry, SettingsSnapshot, SnapshotCell, StaticSettingsProvider,
 };
 pub use shutdown::Shutdown;
 pub use story_display::{StoryDisplayDescriptor, StoryDisplaySource};
