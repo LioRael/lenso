@@ -2730,13 +2730,10 @@ fn explicit_causal_source(
     row: &StoryWorkRow,
     ids: &std::collections::BTreeSet<&str>,
 ) -> Option<String> {
-    if let Some(source) = row.causation_id.as_deref().filter(|id| ids.contains(id)) {
-        return Some(source.to_owned());
-    }
     if let Some(source) = row
         .causation_id
         .as_deref()
-        .and_then(|id| request_story_node_id(id, ids))
+        .and_then(|id| causal_source_id(id, ids, &row.id))
     {
         return Some(source);
     }
@@ -2749,20 +2746,46 @@ fn explicit_causal_source(
         "source_id",
         "function_run_id",
     ] {
-        if let Some(source) = json_string(&row.metadata, key).filter(|id| ids.contains(*id)) {
-            return Some(source.to_owned());
+        if let Some(source) =
+            json_string(&row.metadata, key).and_then(|id| causal_source_id(id, ids, &row.id))
+        {
+            return Some(source);
+        }
+    }
+
+    if let Some(runtime_context) = row.metadata.get("_lenso_runtime") {
+        for key in ["outbox_event_id", "event_id", "causation_id", "parent_id"] {
+            if let Some(source) =
+                json_string(runtime_context, key).and_then(|id| causal_source_id(id, ids, &row.id))
+            {
+                return Some(source);
+            }
         }
     }
 
     if let Some(headers) = row.metadata.get("headers") {
         for key in ["outbox_event_id", "event_id", "causation_id", "parent_id"] {
-            if let Some(source) = json_string(headers, key).filter(|id| ids.contains(*id)) {
-                return Some(source.to_owned());
+            if let Some(source) =
+                json_string(headers, key).and_then(|id| causal_source_id(id, ids, &row.id))
+            {
+                return Some(source);
             }
         }
     }
 
     None
+}
+
+fn causal_source_id(
+    candidate: &str,
+    ids: &std::collections::BTreeSet<&str>,
+    current_id: &str,
+) -> Option<String> {
+    if candidate != current_id && ids.contains(candidate) {
+        return Some(candidate.to_owned());
+    }
+
+    request_story_node_id(candidate, ids).filter(|source| source != current_id)
 }
 
 fn request_story_node_id(
@@ -2906,6 +2929,26 @@ mod tests {
         ];
         rows[1].causation_id = None;
         rows[1].metadata = serde_json::json!({ "outbox_event_id": "evt_parent" });
+
+        let edges = build_story_edges(&rows);
+
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0].source, "evt_parent");
+        assert_eq!(edges[0].target, "fnrun_child");
+        assert_eq!(edges[0].edge_type, "causation");
+    }
+
+    #[test]
+    fn story_edges_read_runtime_context_causation() {
+        let mut rows = vec![
+            story_row("event", "evt_parent", None, "2026-05-31T00:00:00Z"),
+            story_row("function", "fnrun_child", None, "2026-05-31T00:00:10Z"),
+        ];
+        rows[1].metadata = serde_json::json!({
+            "_lenso_runtime": {
+                "causation_id": "evt_parent"
+            }
+        });
 
         let edges = build_story_edges(&rows);
 

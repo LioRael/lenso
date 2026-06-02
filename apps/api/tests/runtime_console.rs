@@ -2383,7 +2383,12 @@ async fn insert_story_function_run(pool: &platform_core::DbPool) {
         )
         "#,
     )
-    .bind(json!({ "user_id": "usr_1", "outbox_event_id": "evt_story" }))
+    .bind(json!({
+        "user_id": "usr_1",
+        "_lenso_runtime": {
+            "causation_id": "evt_story"
+        }
+    }))
     .execute(pool)
     .await
     .expect("story function run should insert");
