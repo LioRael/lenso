@@ -278,6 +278,56 @@ export type AdminRuntimeTimelineResponse = {
   page: PageInfo;
 };
 
+export type ConfigAuditDto = {
+  actor?: string | null;
+  changed_at: string;
+  key: string;
+  new_value: unknown;
+  old_value?: unknown;
+  service: string;
+};
+
+export type ConfigAuditListResponse = {
+  data: Array<ConfigAuditDto>;
+};
+
+export type ConfigDescriptorDto = {
+  default: unknown;
+  description: string;
+  editable: boolean;
+  key: string;
+  restart_only: boolean;
+  service: string;
+  value_type: unknown;
+};
+
+export type ConfigDescriptorListResponse = {
+  data: Array<ConfigDescriptorDto>;
+};
+
+export type ConfigValueDto = {
+  key: string;
+  source: string;
+  value: unknown;
+};
+
+export type ConfigValueListResponse = {
+  data: Array<ConfigValueDto>;
+};
+
+export type ConfigWriteRequest = {
+  value: unknown;
+};
+
+export type ConfigWriteResponse = {
+  applies_on_restart: boolean;
+  key: string;
+  service: string;
+  updated_at: string;
+  updated_by?: string | null;
+  value: unknown;
+};
+
 export type CreateUserRequest = {
   display_name?: string | null;
   email: string;

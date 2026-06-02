@@ -12,6 +12,7 @@ import { DeadLettersPage } from "../pages/dead-letters-page";
 import { OverviewPage } from "../pages/overview-page";
 import { QueuesPage } from "../pages/queues-page";
 import { RuntimeStoriesPage } from "../pages/runtime-stories-page";
+import { SettingsPage } from "../pages/settings-page";
 
 const rootRoute = createRootRoute({
   component: () => (
@@ -81,6 +82,12 @@ const deadLettersRoute = createRoute({
   component: DeadLettersPage,
 });
 
+const settingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/settings",
+  component: SettingsPage,
+});
+
 const placeholderRoute = (path: string, title: string) =>
   createRoute({
     getParentRoute: () => rootRoute,
@@ -133,9 +140,9 @@ const routeTree = rootRoute.addChildren([
     path: "/queues",
     component: QueuesPage,
   }),
+  settingsRoute,
   placeholderRoute("/flows", "Flows"),
   placeholderRoute("/agents", "Agents"),
-  placeholderRoute("/settings", "Settings"),
 ]);
 
 export const router = createRouter({ routeTree });

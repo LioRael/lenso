@@ -7,6 +7,232 @@ info:
     identifier: UNLICENSED
   version: 1.0.0
 paths:
+  /admin/config/descriptors:
+    get:
+      tags:
+      - admin-config
+      operationId: admin_config_list_descriptors
+      parameters:
+      - name: authorization
+        in: header
+        description: Development service bearer token
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Registered setting descriptors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigDescriptorListResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/config/values:
+    get:
+      tags:
+      - admin-config
+      operationId: admin_config_list_values
+      parameters:
+      - name: authorization
+        in: header
+        description: Development service bearer token
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Effective config values
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigValueListResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/config/{service}/{key}:
+    put:
+      tags:
+      - admin-config
+      operationId: admin_config_put_value
+      parameters:
+      - name: service
+        in: path
+        description: 'Service key: a service name or `*` for shared'
+        required: true
+        schema:
+          type: string
+      - name: key
+        in: path
+        description: Setting key
+        required: true
+        schema:
+          type: string
+      - name: authorization
+        in: header
+        description: Development service bearer token
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfigWriteRequest'
+        required: true
+      responses:
+        '200':
+          description: Value written
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigWriteResponse'
+        '400':
+          description: Value failed validation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Setting is not editable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Unknown setting key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+      - admin-config
+      operationId: admin_config_delete_value
+      parameters:
+      - name: service
+        in: path
+        description: 'Service key: a service name or `*` for shared'
+        required: true
+        schema:
+          type: string
+      - name: key
+        in: path
+        description: Setting key
+        required: true
+        schema:
+          type: string
+      - name: authorization
+        in: header
+        description: Development service bearer token
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Value reset to default
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigWriteResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Unknown setting key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/config/{service}/{key}/audit:
+    get:
+      tags:
+      - admin-config
+      operationId: admin_config_get_audit
+      parameters:
+      - name: service
+        in: path
+        description: Service key
+        required: true
+        schema:
+          type: string
+      - name: key
+        in: path
+        description: Setting key
+        required: true
+        schema:
+          type: string
+      - name: authorization
+        in: header
+        description: Development service bearer token
+        required: true
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '200':
+          description: Audit history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigAuditListResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/runtime/executions/{node_id}/logs:
     get:
       tags:
@@ -2198,6 +2424,129 @@ components:
           type: string
         page:
           $ref: '#/components/schemas/PageInfo'
+    ConfigAuditDto:
+      type: object
+      description: One audit entry.
+      required:
+      - service
+      - key
+      - new_value
+      - changed_at
+      properties:
+        actor:
+          type:
+          - string
+          - 'null'
+        changed_at:
+          type: string
+          format: date-time
+        key:
+          type: string
+        new_value: {}
+        old_value: {}
+        service:
+          type: string
+    ConfigAuditListResponse:
+      type: object
+      description: Audit history response.
+      required:
+      - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConfigAuditDto'
+    ConfigDescriptorDto:
+      type: object
+      description: A registered setting's static metadata.
+      required:
+      - key
+      - service
+      - value_type
+      - default
+      - editable
+      - restart_only
+      - description
+      properties:
+        default: {}
+        description:
+          type: string
+        editable:
+          type: boolean
+        key:
+          type: string
+        restart_only:
+          type: boolean
+        service:
+          type: string
+        value_type: {}
+    ConfigDescriptorListResponse:
+      type: object
+      description: The list of all registered descriptors.
+      required:
+      - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConfigDescriptorDto'
+    ConfigValueDto:
+      type: object
+      description: A resolved effective value plus where it came from.
+      required:
+      - key
+      - value
+      - source
+      properties:
+        key:
+          type: string
+        source:
+          type: string
+        value: {}
+    ConfigValueListResponse:
+      type: object
+      description: The list of effective values for the running service.
+      required:
+      - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConfigValueDto'
+    ConfigWriteRequest:
+      type: object
+      description: Request body for writing a value.
+      required:
+      - value
+      properties:
+        value: {}
+    ConfigWriteResponse:
+      type: object
+      description: Response after a successful write.
+      required:
+      - key
+      - service
+      - value
+      - updated_at
+      - applies_on_restart
+      properties:
+        applies_on_restart:
+          type: boolean
+          description: |-
+            True when the key is restart-only: the value is persisted but not applied
+            to running instances until restart.
+        key:
+          type: string
+        service:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+        updated_by:
+          type:
+          - string
+          - 'null'
+        value: {}
     CreateUserRequest:
       type: object
       required:
@@ -2312,3 +2661,5 @@ tags:
   description: Identity domain APIs
 - name: admin-runtime
   description: Read-only runtime console APIs
+- name: admin-config
+  description: Editable configuration console APIs
