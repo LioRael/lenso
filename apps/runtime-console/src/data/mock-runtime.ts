@@ -105,6 +105,13 @@ export type ExecutionNode = {
   maxAttempts?: number;
 };
 
+export type ExecutionPayload = {
+  input?: unknown;
+  output?: unknown;
+  metadata?: unknown;
+  redactedFields: string[];
+};
+
 export type ExecutionEdge = {
   id: string;
   source: string;

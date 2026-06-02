@@ -31,6 +31,10 @@ pub fn router() -> Router<AppContext> {
             "/admin/runtime/executions/{node_id}/technical-operations",
             get(get_execution_technical_operations),
         )
+        .route(
+            "/admin/runtime/executions/{node_id}/payload",
+            get(get_execution_payload),
+        )
         .route("/admin/runtime/outbox", get(list_outbox))
         .route("/admin/runtime/outbox/{id}", get(get_outbox_event))
         .route("/admin/runtime/outbox/{id}/retry", post(retry_outbox_event))
@@ -152,6 +156,22 @@ pub struct AdminRuntimeHeatmapResponse {
 pub struct AdminRuntimeTechnicalOperationListResponse {
     pub data: Vec<AdminRuntimeTechnicalOperation>,
     pub order: &'static str,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(as = AdminRuntimeExecutionPayloadResponse)]
+pub struct AdminRuntimeExecutionPayloadResponse {
+    pub data: AdminRuntimeExecutionPayload,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminRuntimeExecutionPayload {
+    pub node_id: String,
+    pub node_type: String,
+    pub input: Value,
+    pub output: Option<Value>,
+    pub metadata: Value,
+    pub redacted_fields: Vec<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -631,6 +651,27 @@ async fn get_execution_technical_operations(
     }))
 }
 
+async fn get_execution_payload(
+    _admin: AdminActor,
+    State(ctx): State<AppContext>,
+    HttpRequestContext(request_ctx): HttpRequestContext,
+    Path(node_id): Path<String>,
+) -> Result<Json<AdminRuntimeExecutionPayloadResponse>, ApiErrorResponse> {
+    let node = fetch_runtime_node_ref(&ctx, &request_ctx, &node_id).await?;
+    let data = match node.item_type.as_str() {
+        "function" => {
+            let detail = fetch_function_run_detail(&ctx, &request_ctx, &node.id).await?;
+            execution_payload_from_function(detail)
+        }
+        _ => {
+            let detail = fetch_outbox_event_detail(&ctx, &request_ctx, &node.id).await?;
+            execution_payload_from_outbox(detail)
+        }
+    };
+
+    Ok(Json(AdminRuntimeExecutionPayloadResponse { data }))
+}
+
 async fn get_timeline(
     _admin: AdminActor,
     State(ctx): State<AppContext>,
@@ -811,6 +852,15 @@ async fn get_function_run(
     HttpRequestContext(request_ctx): HttpRequestContext,
     Path(id): Path<String>,
 ) -> Result<Json<DataResponse<AdminFunctionRunDetail>>, ApiErrorResponse> {
+    let row = fetch_function_run_detail(&ctx, &request_ctx, &id).await?;
+    Ok(json(row))
+}
+
+async fn fetch_function_run_detail(
+    ctx: &AppContext,
+    request_ctx: &platform_core::RequestContext,
+    id: &str,
+) -> Result<AdminFunctionRunDetail, ApiErrorResponse> {
     let row = sqlx::query_as::<_, FunctionRunDetailRow>(
         r#"
         select
@@ -851,7 +901,7 @@ async fn get_function_run(
         )
     })?;
 
-    Ok(json(row.into()))
+    Ok(row.into())
 }
 
 async fn retry_outbox_event(
@@ -1905,6 +1955,77 @@ fn runtime_node_index(rows: &[StoryWorkRow]) -> RuntimeNodeIndex {
     }
 }
 
+fn execution_payload_from_outbox(detail: AdminOutboxEventDetail) -> AdminRuntimeExecutionPayload {
+    let mut redacted_fields = Vec::new();
+    let input = redact_json_value(detail.payload, "input", &mut redacted_fields);
+    let metadata = redact_json_value(
+        serde_json::json!({
+            "event_name": detail.event_name,
+            "event_version": detail.event_version,
+            "source_module": detail.source_module,
+            "aggregate_type": detail.aggregate_type,
+            "aggregate_id": detail.aggregate_id,
+            "status": detail.status,
+            "attempts": detail.attempts,
+            "max_attempts": detail.max_attempts,
+            "available_at": detail.available_at,
+            "locked_by": detail.locked_by,
+            "published_at": detail.published_at,
+            "last_error": detail.last_error,
+            "correlation_id": detail.correlation_id,
+            "causation_id": detail.causation_id,
+            "occurred_at": detail.occurred_at,
+            "created_at": detail.created_at,
+            "actor": detail.actor,
+            "trace": detail.trace,
+            "headers": detail.headers,
+        }),
+        "metadata",
+        &mut redacted_fields,
+    );
+
+    AdminRuntimeExecutionPayload {
+        input,
+        metadata,
+        node_id: detail.id,
+        node_type: "event".to_owned(),
+        output: None,
+        redacted_fields,
+    }
+}
+
+fn execution_payload_from_function(detail: AdminFunctionRunDetail) -> AdminRuntimeExecutionPayload {
+    let mut redacted_fields = Vec::new();
+    let input = redact_json_value(detail.input_json, "input", &mut redacted_fields);
+    let metadata = redact_json_value(
+        serde_json::json!({
+            "function_name": detail.function_name,
+            "status": detail.status,
+            "attempts": detail.attempts,
+            "max_attempts": detail.max_attempts,
+            "available_at": detail.available_at,
+            "locked_by": detail.locked_by,
+            "started_at": detail.started_at,
+            "completed_at": detail.completed_at,
+            "last_error": detail.last_error,
+            "correlation_id": detail.correlation_id,
+            "created_at": detail.created_at,
+            "actor": detail.actor,
+        }),
+        "metadata",
+        &mut redacted_fields,
+    );
+
+    AdminRuntimeExecutionPayload {
+        input,
+        metadata,
+        node_id: detail.id,
+        node_type: "function".to_owned(),
+        output: None,
+        redacted_fields,
+    }
+}
+
 fn technical_operations_from_spans(
     spans: Vec<TelemetrySpan>,
     node_index: &RuntimeNodeIndex,
@@ -2106,6 +2227,53 @@ fn is_safe_attribute_value(value: &Value) -> bool {
         value,
         Value::String(_) | Value::Number(_) | Value::Bool(_) | Value::Null
     )
+}
+
+fn redact_json_value(value: Value, path: &str, redacted_fields: &mut Vec<String>) -> Value {
+    match value {
+        Value::Array(items) => Value::Array(
+            items
+                .into_iter()
+                .enumerate()
+                .map(|(index, item)| {
+                    redact_json_value(item, &format!("{path}[{index}]"), redacted_fields)
+                })
+                .collect(),
+        ),
+        Value::Object(map) => Value::Object(
+            map.into_iter()
+                .map(|(key, value)| {
+                    let field_path = format!("{path}.{key}");
+                    if is_sensitive_json_key(&key) {
+                        redacted_fields.push(field_path);
+                        (key, Value::String("[redacted]".to_owned()))
+                    } else {
+                        (key, redact_json_value(value, &field_path, redacted_fields))
+                    }
+                })
+                .collect(),
+        ),
+        value => value,
+    }
+}
+
+fn is_sensitive_json_key(key: &str) -> bool {
+    let lower = key.to_ascii_lowercase();
+    [
+        "authorization",
+        "cookie",
+        "password",
+        "passwd",
+        "secret",
+        "token",
+        "api_key",
+        "apikey",
+        "access_key",
+        "credential",
+        "email",
+    ]
+    .iter()
+    .any(|unsafe_part| lower.contains(unsafe_part))
 }
 
 fn has_attribute_with_prefix(attributes: &Value, prefix: &str) -> bool {

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  normalizeExecutionPayload,
   normalizeRuntimeHeatmap,
   normalizeRuntimeStory,
   normalizeRuntimeStoryListItem,
@@ -380,5 +381,23 @@ describe("runtime API model normalization", () => {
         totalCount: 0,
       },
     ]);
+  });
+
+  test("normalizes execution payload responses", () => {
+    const payload = normalizeExecutionPayload({
+      data: {
+        input: { user_id: "usr_1" },
+        metadata: { function_name: "notifications.send_welcome_email.v1" },
+        output: null,
+        redacted_fields: ["input.email"],
+      },
+    });
+
+    expect(payload).toEqual({
+      input: { user_id: "usr_1" },
+      metadata: { function_name: "notifications.send_welcome_email.v1" },
+      output: null,
+      redactedFields: ["input.email"],
+    });
   });
 });

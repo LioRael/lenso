@@ -7,6 +7,80 @@ info:
     identifier: UNLICENSED
   version: 1.0.0
 paths:
+  /admin/runtime/executions/{node_id}/payload:
+    get:
+      tags:
+      - admin-runtime
+      operationId: admin_runtime_get_execution_payload
+      parameters:
+      - name: node_id
+        in: path
+        description: Runtime execution node identifier
+        required: true
+        schema:
+          type: string
+      - name: authorization
+        in: header
+        description: Development service bearer token, for example `Bearer dev-service:admin`
+        required: true
+        schema:
+          type: string
+      - name: x-request-id
+        in: header
+        description: Optional caller-provided request identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: x-correlation-id
+        in: header
+        description: Optional caller-provided correlation identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      responses:
+        '200':
+          description: Redacted payload captured for the runtime execution node
+          headers:
+            x-correlation-id:
+              schema:
+                type: string
+              description: Correlation identifier shared across related work
+            x-request-id:
+              schema:
+                type: string
+              description: Request identifier for this HTTP request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminRuntimeExecutionPayloadResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Runtime execution node not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/runtime/executions/{node_id}/technical-operations:
     get:
       tags:
@@ -1395,6 +1469,33 @@ components:
             $ref: '#/components/schemas/AdminRuntimeOutboxItem'
         page:
           $ref: '#/components/schemas/PageInfo'
+    AdminRuntimeExecutionPayload:
+      type: object
+      required:
+      - node_id
+      - node_type
+      - input
+      - metadata
+      - redacted_fields
+      properties:
+        input: {}
+        metadata: {}
+        node_id:
+          type: string
+        node_type:
+          type: string
+        output: {}
+        redacted_fields:
+          type: array
+          items:
+            type: string
+    AdminRuntimeExecutionPayloadResponse:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/AdminRuntimeExecutionPayload'
     AdminRuntimeFunctionRunItem:
       type: object
       required:

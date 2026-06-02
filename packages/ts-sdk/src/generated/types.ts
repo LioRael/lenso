@@ -60,6 +60,19 @@ export type AdminOutboxListResponse = {
   page: PageInfo;
 };
 
+export type AdminRuntimeExecutionPayload = {
+  input: unknown;
+  metadata: unknown;
+  node_id: string;
+  node_type: string;
+  output?: unknown;
+  redacted_fields: Array<string>;
+};
+
+export type AdminRuntimeExecutionPayloadResponse = {
+  data: AdminRuntimeExecutionPayload;
+};
+
 export type AdminRuntimeFunctionRunItem = {
   attempts: number;
   available_at: string;

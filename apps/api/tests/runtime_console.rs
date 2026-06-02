@@ -611,6 +611,134 @@ async fn service_actor_can_fetch_execution_technical_operations() {
 }
 
 #[tokio::test]
+async fn service_actor_can_fetch_function_execution_payload() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+    insert_runtime_function_fixture(
+        &db.pool,
+        FunctionFixture {
+            id: "fnrun_payload",
+            correlation_id: "corr_payload",
+            input_json: json!({
+                "user_id": "usr_1",
+                "email": "ada@example.com",
+                "nested": {
+                    "access_token": "secret-token",
+                    "safe": true
+                }
+            }),
+            ..FunctionFixture::default()
+        },
+    )
+    .await;
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/executions/fnrun_payload/payload")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["data"]["node_id"], "fnrun_payload");
+    assert_eq!(body["data"]["node_type"], "function");
+    assert_eq!(body["data"]["input"]["user_id"], "usr_1");
+    assert_eq!(body["data"]["input"]["email"], "[redacted]");
+    assert_eq!(
+        body["data"]["input"]["nested"]["access_token"],
+        "[redacted]"
+    );
+    assert_eq!(body["data"]["input"]["nested"]["safe"], true);
+    assert!(body["data"]["output"].is_null());
+    assert_eq!(
+        body["data"]["metadata"]["function_name"],
+        "notifications.send_welcome_email.v1"
+    );
+    let redacted_fields = body["data"]["redacted_fields"].as_array().unwrap();
+    assert!(redacted_fields.contains(&json!("input.email")));
+    assert!(redacted_fields.contains(&json!("input.nested.access_token")));
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn service_actor_can_fetch_outbox_execution_payload() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+    insert_runtime_outbox_fixture(
+        &db.pool,
+        OutboxFixture {
+            id: "evt_payload",
+            aggregate_id: "usr_payload",
+            correlation_id: "corr_payload",
+            headers: json!({
+                "actor": {
+                    "kind": "service",
+                    "email": "ops@example.com"
+                },
+                "authorization": "Bearer secret"
+            }),
+            ..OutboxFixture::default()
+        },
+    )
+    .await;
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/executions/evt_payload/payload")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["data"]["node_id"], "evt_payload");
+    assert_eq!(body["data"]["node_type"], "event");
+    assert_eq!(body["data"]["input"]["aggregate_id"], "usr_payload");
+    assert_eq!(
+        body["data"]["metadata"]["headers"]["authorization"],
+        "[redacted]"
+    );
+    assert_eq!(
+        body["data"]["metadata"]["headers"]["actor"]["email"],
+        "[redacted]"
+    );
+    let redacted_fields = body["data"]["redacted_fields"].as_array().unwrap();
+    assert!(redacted_fields.contains(&json!("metadata.actor.email")));
+    assert!(redacted_fields.contains(&json!("metadata.headers.actor.email")));
+    assert!(redacted_fields.contains(&json!("metadata.headers.authorization")));
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn unknown_execution_payload_returns_not_found() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/executions/missing/payload")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
 async fn runtime_story_and_technical_operations_round_trip_through_admin_apis() {
     let Some(db) = TestDatabase::create().await else {
         return;
@@ -1500,6 +1628,10 @@ async fn admin_runtime_openapi_contract_is_present() {
         "admin_runtime_get_execution_technical_operations"
     );
     assert_eq!(
+        value["paths"]["/admin/runtime/executions/{node_id}/payload"]["get"]["operationId"],
+        "admin_runtime_get_execution_payload"
+    );
+    assert_eq!(
         value["paths"]["/admin/runtime/heatmap"]["get"]["operationId"],
         "admin_runtime_get_heatmap"
     );
@@ -1514,6 +1646,8 @@ async fn admin_runtime_openapi_contract_is_present() {
     assert!(value["components"]["schemas"]["AdminRuntimeStoryDetail"].is_object());
     assert!(value["components"]["schemas"]["AdminRuntimeHeatmapCell"].is_object());
     assert!(value["components"]["schemas"]["AdminRuntimeHeatmapResponse"].is_object());
+    assert!(value["components"]["schemas"]["AdminRuntimeExecutionPayload"].is_object());
+    assert!(value["components"]["schemas"]["AdminRuntimeExecutionPayloadResponse"].is_object());
     assert!(value["components"]["schemas"]["AdminRuntimeTechnicalOperation"].is_object());
     assert!(
         value["components"]["schemas"]["AdminRuntimeTechnicalOperationListResponse"].is_object()

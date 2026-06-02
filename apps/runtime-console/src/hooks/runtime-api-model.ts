@@ -1,6 +1,7 @@
 import type {
   AdminRuntimeHeatmapCell,
   AdminRuntimeHeatmapResponse,
+  AdminRuntimeExecutionPayloadResponse,
   AdminRuntimeStoryDetail,
   AdminRuntimeStoryDetailResponse,
   AdminRuntimeStoryEdge,
@@ -14,6 +15,7 @@ import type {
 } from "../../../../packages/ts-sdk/src/generated/types";
 import type {
   ExecutionEdge,
+  ExecutionPayload,
   ExecutionNode,
   RuntimeStatus,
   RuntimeStory,
@@ -64,6 +66,8 @@ export type ApiTimelineItem = DeepPartial<AdminRuntimeTimelineItem>;
 export type ApiRuntimeHeatmapResponse =
   DeepPartial<AdminRuntimeHeatmapResponse>;
 export type ApiRuntimeHeatmapCell = DeepPartial<AdminRuntimeHeatmapCell>;
+export type ApiExecutionPayloadResponse =
+  DeepPartial<AdminRuntimeExecutionPayloadResponse>;
 export type ApiTechnicalOperationResponse =
   DeepPartial<AdminRuntimeTechnicalOperationListResponse>;
 export type ApiTechnicalOperation = DeepPartial<AdminRuntimeTechnicalOperation>;
@@ -242,6 +246,18 @@ export function normalizeTechnicalOperations(
   response: ApiTechnicalOperationResponse
 ): TechnicalOperation[] {
   return (response.data ?? []).map(normalizeTechnicalOperation);
+}
+
+export function normalizeExecutionPayload(
+  response: ApiExecutionPayloadResponse
+): ExecutionPayload {
+  const data = response.data ?? {};
+  return {
+    input: data.input,
+    metadata: data.metadata,
+    output: data.output,
+    redactedFields: normalizeStringArray(data.redacted_fields),
+  };
 }
 
 function normalizeRuntimeEdges(

@@ -3,9 +3,11 @@ import { ArrowRight, Copy, RotateCcw, X } from "lucide-react";
 import type {
   RuntimeStory,
   ExecutionNode,
+  ExecutionPayload,
   TechnicalOperation,
 } from "../../data/mock-runtime";
 import {
+  useExecutionPayload,
   useExecutionTechnicalOperations,
   useStoryTechnicalOperations,
 } from "../../hooks/use-runtime-queries";
@@ -15,7 +17,6 @@ import {
   buildExecutionActivity,
   buildExecutionContext,
   buildExecutionFailures,
-  buildExecutionPayload,
   executionInspectorTabs,
   getExecutionInspectorTabCounts,
   type ExecutionActivityItem,
@@ -207,6 +208,11 @@ function InspectorBody({
   activeTab: ExecutionInspectorTab;
 }) {
   const { openRetry } = useRuntimeConsole();
+  const payloadQuery = useExecutionPayload(
+    story,
+    node.id,
+    activeTab === "payload"
+  );
   const executionOperationsQuery = useExecutionTechnicalOperations(node.id);
   const storyOperationsQuery = useStoryTechnicalOperations(story.correlationId);
 
@@ -264,7 +270,14 @@ function InspectorBody({
   }
 
   if (activeTab === "payload") {
-    return <PayloadPanel node={node} />;
+    return (
+      <PayloadPanel
+        error={payloadQuery.error}
+        isError={payloadQuery.isError}
+        isLoading={payloadQuery.isLoading}
+        payload={payloadQuery.data}
+      />
+    );
   }
 
   if (activeTab === "failures") {
@@ -523,23 +536,52 @@ function FailurePanel({
   );
 }
 
-function PayloadPanel({ node }: { node: ExecutionNode }) {
-  const payload = buildExecutionPayload(node);
+function PayloadPanel({
+  error,
+  isError,
+  isLoading,
+  payload,
+}: {
+  error: unknown;
+  isError: boolean;
+  isLoading: boolean;
+  payload: ExecutionPayload | undefined;
+}) {
+  if (isLoading) {
+    return <EmptyRows label="Loading captured execution payload..." />;
+  }
+  if (isError) {
+    return (
+      <EmptyRows
+        label={`Execution payload could not be loaded. ${errorMessage(error)}`}
+      />
+    );
+  }
+
   const sections = [
-    ["Input", payload.input],
-    ["Output", payload.output],
-    ["Metadata", payload.metadata],
+    ["Input", payload?.input],
+    ["Output", payload?.output],
+    ["Metadata", payload?.metadata],
   ] as const;
   const availableSections = sections.filter(([, value]) =>
     hasPanelValue(value)
   );
 
   if (availableSections.length === 0) {
-    return <EmptyRows label="No payload captured for this execution." />;
+    return (
+      <EmptyRows label="No payload captured for this execution. Story details stay lightweight; payload is only available for runtime records that persisted it." />
+    );
   }
 
   return (
     <div className="grid min-w-full">
+      {payload && payload.redactedFields.length > 0 ? (
+        <div className="border-b border-(--border-subtle) bg-amber-300/8 px-3 py-2 font-mono text-[11px] leading-5 text-amber-100">
+          Redacted {payload.redactedFields.length} sensitive field
+          {payload.redactedFields.length === 1 ? "" : "s"}:{" "}
+          {payload.redactedFields.join(", ")}
+        </div>
+      ) : null}
       {availableSections.map(([label, value], index) => (
         <JsonViewer
           defaultExpanded={index === 0}
@@ -554,7 +596,9 @@ function PayloadPanel({ node }: { node: ExecutionNode }) {
 
 function LogList({ node }: { node: ExecutionNode }) {
   if (node.logs.length === 0) {
-    return <EmptyRows label="No logs captured for this execution yet." />;
+    return (
+      <EmptyRows label="No application logs are configured for this execution. Use Technical for OTEL spans, or add a log provider to back this tab." />
+    );
   }
   return (
     <div className="w-max min-w-full font-mono text-xs">
@@ -587,6 +631,10 @@ function LogList({ node }: { node: ExecutionNode }) {
 
 function EmptyRows({ label }: { label: string }) {
   return <div className="p-4 font-mono text-xs text-(--muted)">{label}</div>;
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Unknown error";
 }
 
 function hasPanelValue(value: unknown) {
@@ -646,13 +694,12 @@ function formatCell(value: unknown) {
 
 function buildBreadcrumb(story: RuntimeStory, node: ExecutionNode) {
   const path: ExecutionNode[] = [];
+  const nodeById = new Map(story.nodes.map((item) => [item.id, item]));
   let current: ExecutionNode | undefined = node;
   while (current) {
     path.unshift(current);
     const currentParentId: string | undefined = current.parentId;
-    current = currentParentId
-      ? story.nodes.find((item) => item.id === currentParentId)
-      : undefined;
+    current = currentParentId ? nodeById.get(currentParentId) : undefined;
   }
   return path;
 }

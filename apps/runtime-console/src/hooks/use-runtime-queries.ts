@@ -11,6 +11,7 @@ import type {
 import {
   correlationId,
   type Actor,
+  type ExecutionPayload,
   type FunctionRun,
   functionRuns,
   queueHealth,
@@ -26,11 +27,13 @@ import {
 import { httpClient, isApiMode } from "../lib/http-client";
 import {
   normalizeRuntimeHeatmap,
+  normalizeExecutionPayload,
   normalizeRuntimeStory,
   normalizeRuntimeStoryListResponse,
   normalizeTechnicalOperations,
   normalizeTimelineItems,
   type ApiRuntimeHeatmapResponse,
+  type ApiExecutionPayloadResponse,
   type ApiRuntimeStoryDetailResponse,
   type ApiRuntimeStoryListResponse,
   type ApiTimelineResponse,
@@ -49,6 +52,8 @@ export const runtimeQueryKeys = {
     ["runtime", "stories", id, "technical-operations"] as const,
   technicalOperationsForExecution: (id: string) =>
     ["runtime", "executions", id, "technical-operations"] as const,
+  executionPayload: (id: string) =>
+    ["runtime", "executions", id, "payload"] as const,
   stories: ["runtime", "stories"] as const,
   deadLetters: ["runtime", "dead-letters"] as const,
 };
@@ -92,7 +97,7 @@ export type RuntimeSummary = {
 };
 
 export type { RuntimeHeatmap, RuntimeHeatmapCell };
-export type { TechnicalOperation };
+export type { ExecutionPayload, TechnicalOperation };
 
 export function useRuntimeSummary() {
   return useQuery({
@@ -182,6 +187,21 @@ export function useExecutionTechnicalOperations(nodeId: string) {
       isApiMode()
         ? fetchExecutionTechnicalOperations(nodeId)
         : ([] satisfies TechnicalOperation[]),
+  });
+}
+
+export function useExecutionPayload(
+  story: RuntimeStory,
+  nodeId: string,
+  enabled: boolean
+) {
+  return useQuery({
+    enabled: Boolean(nodeId) && enabled,
+    queryKey: runtimeQueryKeys.executionPayload(nodeId),
+    queryFn: async () =>
+      isApiMode()
+        ? fetchExecutionPayload(nodeId)
+        : mockExecutionPayload(story, nodeId),
   });
 }
 
@@ -425,6 +445,15 @@ async function fetchExecutionTechnicalOperations(
   return normalizeTechnicalOperations(response);
 }
 
+async function fetchExecutionPayload(
+  nodeId: string
+): Promise<ExecutionPayload> {
+  const response = await httpClient
+    .get(`admin/runtime/executions/${encodeURIComponent(nodeId)}/payload`)
+    .json<ApiExecutionPayloadResponse>();
+  return normalizeExecutionPayload(response);
+}
+
 async function retryRuntimeWork(input: {
   kind: "event" | "function" | "timeline";
   id: string;
@@ -434,6 +463,19 @@ async function retryRuntimeWork(input: {
       ? `admin/runtime/functions/${encodeURIComponent(input.id)}/retry`
       : `admin/runtime/outbox/${encodeURIComponent(input.id)}/retry`;
   await httpClient.post(route).json();
+}
+
+function mockExecutionPayload(
+  story: RuntimeStory,
+  nodeId: string
+): ExecutionPayload {
+  const node = story.nodes.find((item) => item.id === nodeId);
+  return {
+    input: node?.payload,
+    metadata: node?.attributes,
+    output: undefined,
+    redactedFields: [],
+  };
 }
 
 function toSummaryItem(item: ApiRuntimeSummaryItem): RuntimeSummaryItem {
