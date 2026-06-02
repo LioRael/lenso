@@ -26,13 +26,17 @@ impl StaticSettingsProvider {
     #[must_use]
     pub fn new(registry: &SettingsRegistry, service_key: &str) -> Self {
         let snapshot = SettingsSnapshot::resolve(registry, service_key, &BTreeMap::new());
-        Self { snapshot: Arc::new(snapshot) }
+        Self {
+            snapshot: Arc::new(snapshot),
+        }
     }
 
     /// An empty provider (no registered settings) for minimal test contexts.
     #[must_use]
     pub fn empty() -> Self {
-        Self { snapshot: Arc::new(SettingsSnapshot::default()) }
+        Self {
+            snapshot: Arc::new(SettingsSnapshot::default()),
+        }
     }
 }
 
@@ -52,7 +56,9 @@ pub struct SnapshotCell {
 impl SnapshotCell {
     #[must_use]
     pub fn new(initial: SettingsSnapshot) -> Self {
-        Self { inner: ArcSwap::from_pointee(initial) }
+        Self {
+            inner: ArcSwap::from_pointee(initial),
+        }
     }
 
     #[must_use]
@@ -101,7 +107,11 @@ mod tests {
             description: "x",
         }])
         .unwrap();
-        cell.store(SettingsSnapshot::resolve(&registry, "api", &BTreeMap::new()));
+        cell.store(SettingsSnapshot::resolve(
+            &registry,
+            "api",
+            &BTreeMap::new(),
+        ));
         assert_eq!(cell.load().raw("x"), Some(&json!(false)));
     }
 }

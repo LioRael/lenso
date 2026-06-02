@@ -31,7 +31,12 @@ impl PostgresSettingsProvider {
         let stored = load_all_values(&pool).await?;
         let snapshot = SettingsSnapshot::resolve(&registry, &service_key, &stored);
         let cell = Arc::new(SnapshotCell::new(snapshot));
-        Ok(Arc::new(Self { pool, registry, service_key, cell }))
+        Ok(Arc::new(Self {
+            pool,
+            registry,
+            service_key,
+            cell,
+        }))
     }
 
     /// Reload all stored values and swap in a fresh snapshot.

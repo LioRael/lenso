@@ -157,7 +157,14 @@ pub async fn load_audit(
 ) -> AppResult<Vec<SettingAuditEntry>> {
     let rows = sqlx::query_as::<
         _,
-        (String, String, Option<Value>, Value, Option<String>, DateTime<Utc>),
+        (
+            String,
+            String,
+            Option<Value>,
+            Value,
+            Option<String>,
+            DateTime<Utc>,
+        ),
     >(
         r#"
         select service, key, old_value, new_value, actor, changed_at
@@ -176,14 +183,16 @@ pub async fn load_audit(
 
     Ok(rows
         .into_iter()
-        .map(|(service, key, old_value, new_value, actor, changed_at)| SettingAuditEntry {
-            service,
-            key,
-            old_value,
-            new_value,
-            actor,
-            changed_at,
-        })
+        .map(
+            |(service, key, old_value, new_value, actor, changed_at)| SettingAuditEntry {
+                service,
+                key,
+                old_value,
+                new_value,
+                actor,
+                changed_at,
+            },
+        )
         .collect())
 }
 

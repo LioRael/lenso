@@ -12,7 +12,9 @@ pub struct IdentityConfig {
 
 impl Default for IdentityConfig {
     fn default() -> Self {
-        Self { password_reset_ttl_minutes: 30 }
+        Self {
+            password_reset_ttl_minutes: 30,
+        }
     }
 }
 
@@ -21,7 +23,10 @@ pub static SETTINGS: LazyLock<Vec<SettingDescriptor>> = LazyLock::new(|| {
     vec![SettingDescriptor {
         key: "identity.password_reset_ttl_minutes",
         scope: SettingScope::Shared,
-        value_type: SettingType::Int { min: Some(5), max: Some(1440) },
+        value_type: SettingType::Int {
+            min: Some(5),
+            max: Some(1440),
+        },
         default: json!(30),
         editable: true,
         restart_only: false,

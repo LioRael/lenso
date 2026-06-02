@@ -129,7 +129,8 @@ impl SettingsRegistry {
     /// Look up a descriptor by raw service-key string and key.
     #[must_use]
     pub fn get_raw(&self, service_key: &str, key: &str) -> Option<&SettingDescriptor> {
-        self.by_scope_key.get(&(service_key.to_owned(), key.to_owned()))
+        self.by_scope_key
+            .get(&(service_key.to_owned(), key.to_owned()))
     }
 
     /// All descriptors, ordered by `(service_key, key)`.
@@ -167,7 +168,10 @@ mod tests {
         let d = SettingDescriptor {
             key: "demo.count",
             scope: SettingScope::Service("api"),
-            value_type: SettingType::Int { min: Some(1), max: Some(10) },
+            value_type: SettingType::Int {
+                min: Some(1),
+                max: Some(10),
+            },
             default: json!(5),
             editable: true,
             restart_only: false,
@@ -203,7 +207,15 @@ mod tests {
     #[test]
     fn registry_looks_up_by_scope_and_key() {
         let registry = SettingsRegistry::try_new(vec![bool_descriptor()]).unwrap();
-        assert!(registry.get(&SettingScope::Shared, "demo.enabled").is_some());
-        assert!(registry.get(&SettingScope::Service("api"), "demo.enabled").is_none());
+        assert!(
+            registry
+                .get(&SettingScope::Shared, "demo.enabled")
+                .is_some()
+        );
+        assert!(
+            registry
+                .get(&SettingScope::Service("api"), "demo.enabled")
+                .is_none()
+        );
     }
 }

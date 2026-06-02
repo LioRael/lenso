@@ -48,7 +48,9 @@ fn req_json(method: &str, uri: &str, body: &Value) -> Request<Body> {
         .method(method)
         .uri(uri)
         .header("content-type", "application/json")
-        .body(Body::from(serde_json::to_vec(body).expect("serialize body")))
+        .body(Body::from(
+            serde_json::to_vec(body).expect("serialize body"),
+        ))
         .expect("request builds")
 }
 
@@ -83,7 +85,10 @@ async fn config_console_round_trip() {
     platform_admin::install_settings_registry(reg.clone());
 
     let mut config = AppConfig::from_env();
-    config.database = DatabaseConfig { url: db.url.clone(), max_connections: 5 };
+    config.database = DatabaseConfig {
+        url: db.url.clone(),
+        max_connections: 5,
+    };
     let mut ctx = AppContext::new(config, db.pool.clone(), Arc::new(LoggingEventPublisher));
     let settings = PostgresSettingsProvider::connect(db.pool.clone(), Arc::new(reg), "api")
         .await
@@ -132,7 +137,12 @@ async fn config_console_round_trip() {
     let response = app
         .clone()
         .oneshot(
-            req_json("PUT", "/admin/config/*/demo.flag", &json!({"value": "nope"})).with_admin(),
+            req_json(
+                "PUT",
+                "/admin/config/*/demo.flag",
+                &json!({"value": "nope"}),
+            )
+            .with_admin(),
         )
         .await
         .expect("request completes");
@@ -142,7 +152,12 @@ async fn config_console_round_trip() {
     let response = app
         .clone()
         .oneshot(
-            req_json("PUT", "/admin/config/*/unknown.key", &json!({"value": true})).with_admin(),
+            req_json(
+                "PUT",
+                "/admin/config/*/unknown.key",
+                &json!({"value": true}),
+            )
+            .with_admin(),
         )
         .await
         .expect("request completes");
@@ -152,7 +167,12 @@ async fn config_console_round_trip() {
     let response = app
         .clone()
         .oneshot(
-            req_json("PUT", "/admin/config/*/demo.locked", &json!({"value": false})).with_admin(),
+            req_json(
+                "PUT",
+                "/admin/config/*/demo.locked",
+                &json!({"value": false}),
+            )
+            .with_admin(),
         )
         .await
         .expect("request completes");

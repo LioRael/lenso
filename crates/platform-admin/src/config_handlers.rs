@@ -108,14 +108,20 @@ pub(crate) async fn put_config_value(
 ) -> Result<Json<ConfigWriteResponse>, ApiErrorResponse> {
     let descriptor = settings_registry().get_raw(&service, &key).ok_or_else(|| {
         ApiErrorResponse::with_context(
-            AppError::new(ErrorCode::NotFound, format!("unknown setting `{service}:{key}`")),
+            AppError::new(
+                ErrorCode::NotFound,
+                format!("unknown setting `{service}:{key}`"),
+            ),
             &request_ctx,
         )
     })?;
 
     if !descriptor.editable {
         return Err(ApiErrorResponse::with_context(
-            AppError::new(ErrorCode::Forbidden, format!("setting `{key}` is not editable")),
+            AppError::new(
+                ErrorCode::Forbidden,
+                format!("setting `{key}` is not editable"),
+            ),
             &request_ctx,
         ));
     }
@@ -175,7 +181,10 @@ pub(crate) async fn delete_config_value(
 ) -> Result<Json<ConfigWriteResponse>, ApiErrorResponse> {
     let descriptor = settings_registry().get_raw(&service, &key).ok_or_else(|| {
         ApiErrorResponse::with_context(
-            AppError::new(ErrorCode::NotFound, format!("unknown setting `{service}:{key}`")),
+            AppError::new(
+                ErrorCode::NotFound,
+                format!("unknown setting `{service}:{key}`"),
+            ),
             &request_ctx,
         )
     })?;
@@ -225,7 +234,10 @@ pub(crate) async fn get_config_audit(
     Path((service, key)): Path<(String, String)>,
     Query(query): Query<ConfigAuditQuery>,
 ) -> Result<Json<ConfigAuditListResponse>, ApiErrorResponse> {
-    let limit = query.limit.unwrap_or(AUDIT_DEFAULT_LIMIT).clamp(1, AUDIT_MAX_LIMIT);
+    let limit = query
+        .limit
+        .unwrap_or(AUDIT_DEFAULT_LIMIT)
+        .clamp(1, AUDIT_MAX_LIMIT);
     let entries = load_audit(&ctx.db, &service, &key, limit)
         .await
         .map_err(|error| ApiErrorResponse::with_context(error, &request_ctx))?;

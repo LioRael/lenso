@@ -81,8 +81,11 @@ impl SettingsSnapshot {
             AppError::new(ErrorCode::Internal, format!("unknown setting key `{key}`"))
         })?;
         serde_json::from_value(value.clone()).map_err(|source| {
-            AppError::new(ErrorCode::Internal, format!("setting `{key}` deserialize failed"))
-                .with_source(source)
+            AppError::new(
+                ErrorCode::Internal,
+                format!("setting `{key}` deserialize failed"),
+            )
+            .with_source(source)
         })
     }
 
@@ -99,8 +102,11 @@ impl SettingsSnapshot {
             }
         }
         serde_json::from_value(Value::Object(object)).map_err(|source| {
-            AppError::new(ErrorCode::Internal, format!("settings `{prefix}` deserialize failed"))
-                .with_source(source)
+            AppError::new(
+                ErrorCode::Internal,
+                format!("settings `{prefix}` deserialize failed"),
+            )
+            .with_source(source)
         })
     }
 
@@ -122,7 +128,10 @@ mod tests {
             SettingDescriptor {
                 key: "identity.password_reset_ttl_minutes",
                 scope: SettingScope::Shared,
-                value_type: SettingType::Int { min: Some(1), max: Some(1440) },
+                value_type: SettingType::Int {
+                    min: Some(1),
+                    max: Some(1440),
+                },
                 default: json!(30),
                 editable: true,
                 restart_only: false,
@@ -144,28 +153,46 @@ mod tests {
     #[test]
     fn falls_back_to_default() {
         let snapshot = SettingsSnapshot::resolve(&registry(), "api", &BTreeMap::new());
-        assert_eq!(snapshot.raw("identity.password_reset_ttl_minutes"), Some(&json!(30)));
-        assert_eq!(snapshot.source("api.feature.enabled"), Some(SettingSource::Default));
+        assert_eq!(
+            snapshot.raw("identity.password_reset_ttl_minutes"),
+            Some(&json!(30))
+        );
+        assert_eq!(
+            snapshot.source("api.feature.enabled"),
+            Some(SettingSource::Default)
+        );
     }
 
     #[test]
     fn service_row_overrides_shared_and_default() {
         let mut stored = BTreeMap::new();
-        stored.insert(("api".to_owned(), "api.feature.enabled".to_owned()), json!(true));
+        stored.insert(
+            ("api".to_owned(), "api.feature.enabled".to_owned()),
+            json!(true),
+        );
         let snapshot = SettingsSnapshot::resolve(&registry(), "api", &stored);
         assert_eq!(snapshot.raw("api.feature.enabled"), Some(&json!(true)));
-        assert_eq!(snapshot.source("api.feature.enabled"), Some(SettingSource::Override));
+        assert_eq!(
+            snapshot.source("api.feature.enabled"),
+            Some(SettingSource::Override)
+        );
     }
 
     #[test]
     fn invalid_stored_value_falls_back_to_default() {
         let mut stored = BTreeMap::new();
         stored.insert(
-            ("*".to_owned(), "identity.password_reset_ttl_minutes".to_owned()),
+            (
+                "*".to_owned(),
+                "identity.password_reset_ttl_minutes".to_owned(),
+            ),
             json!(99999),
         );
         let snapshot = SettingsSnapshot::resolve(&registry(), "api", &stored);
-        assert_eq!(snapshot.raw("identity.password_reset_ttl_minutes"), Some(&json!(30)));
+        assert_eq!(
+            snapshot.raw("identity.password_reset_ttl_minutes"),
+            Some(&json!(30))
+        );
         assert_eq!(
             snapshot.source("identity.password_reset_ttl_minutes"),
             Some(SettingSource::Default)
@@ -180,7 +207,12 @@ mod tests {
         }
         let snapshot = SettingsSnapshot::resolve(&registry(), "api", &BTreeMap::new());
         let cfg: IdentityConfig = snapshot.get("identity").unwrap();
-        assert_eq!(cfg, IdentityConfig { password_reset_ttl_minutes: 30 });
+        assert_eq!(
+            cfg,
+            IdentityConfig {
+                password_reset_ttl_minutes: 30
+            }
+        );
     }
 
     #[test]
@@ -192,7 +224,9 @@ mod tests {
     #[test]
     fn get_value_reads_single_key_and_errors_on_unknown() {
         let snapshot = SettingsSnapshot::resolve(&registry(), "api", &BTreeMap::new());
-        let ttl: u64 = snapshot.get_value("identity.password_reset_ttl_minutes").unwrap();
+        let ttl: u64 = snapshot
+            .get_value("identity.password_reset_ttl_minutes")
+            .unwrap();
         assert_eq!(ttl, 30);
         assert!(snapshot.get_value::<u64>("does.not.exist").is_err());
     }
