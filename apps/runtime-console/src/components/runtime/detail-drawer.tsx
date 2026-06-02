@@ -25,12 +25,12 @@ export function DetailDrawer({ target, onClose }: DetailDrawerProps) {
     <Drawer onOpenChange={(open) => !open && onClose()} open={Boolean(target)}>
       {target ? (
         <Drawer.Content aria-label="Runtime detail">
-          <div className="flex items-start justify-between gap-4 border-b border-white/10 p-4.5">
+          <div className="flex items-start justify-between gap-4 border-b border-(--border-subtle) p-4.5">
             <div className="min-w-0">
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-(--muted)">
                 {target.kind}
               </p>
-              <Drawer.Title className="truncate text-lg font-semibold text-slate-100">
+              <Drawer.Title className="truncate text-lg font-semibold text-(--foreground)">
                 {titleFor(target)}
               </Drawer.Title>
             </div>
@@ -81,7 +81,7 @@ function SummaryStrip({
   durationValue: string;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2 rounded-lg border border-white/10 bg-white/[0.032] p-2.5 text-xs text-slate-400">
+    <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2 rounded-lg border border-(--border-subtle) bg-(--elevated) p-2.5 text-xs text-(--secondary)">
       <StatusPill status={status} />
       <span>
         attempts {attempts}/{maxAttempts}
@@ -293,7 +293,7 @@ function DrawerSection({
 }) {
   return (
     <section className="grid gap-2">
-      <h3 className="text-xs font-semibold text-slate-400">{title}</h3>
+      <h3 className="text-xs font-semibold text-(--secondary)">{title}</h3>
       {children}
     </section>
   );
@@ -301,7 +301,7 @@ function DrawerSection({
 
 function MetadataGrid({ children }: { children: ReactNode }) {
   return (
-    <dl className="grid grid-cols-[120px_minmax(0,1fr)] gap-x-3.5 gap-y-2 text-xs text-slate-400 [&_dd]:m-0 [&_dd]:min-w-0 [&_dt]:text-slate-600">
+    <dl className="grid grid-cols-[120px_minmax(0,1fr)] gap-x-3.5 gap-y-2 text-xs text-(--secondary) [&_dd]:m-0 [&_dd]:min-w-0 [&_dt]:text-(--muted)">
       {children}
     </dl>
   );

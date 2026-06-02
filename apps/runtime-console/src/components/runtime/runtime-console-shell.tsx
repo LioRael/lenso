@@ -149,7 +149,7 @@ export function RuntimeConsoleShell({ children }: PropsWithChildren) {
   return (
     <div
       ref={shellRef}
-      className="runtime-grid runtime-shell min-h-screen bg-(--background) text-(--foreground) lg:grid"
+      className="runtime-shell min-h-screen bg-(--background) text-(--foreground) lg:grid"
       style={
         {
           "--sidebar-collapse": initialCollapseRef.current,

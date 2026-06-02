@@ -60,18 +60,18 @@ export function TimelinePage() {
     <section>
       <div className="mb-4 grid grid-cols-[minmax(0,1fr)_minmax(280px,420px)] items-end gap-4 max-lg:grid-cols-1">
         <div>
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-(--muted)">
             Execution causality
           </p>
-          <h1 className="text-3xl font-bold text-slate-100">Timeline</h1>
-          <p className="mt-2 max-w-3xl text-[13px] leading-6 text-slate-400">
+          <h1 className="text-3xl font-bold text-(--foreground)">Timeline</h1>
+          <p className="mt-2 max-w-3xl text-[13px] leading-6 text-(--secondary)">
             Follow one correlation from HTTP request through domain command,
             event relay, and runtime function execution.
           </p>
         </div>
         <Panel className="p-3.5">
           <StatusPill status={summary.status} />
-          <div className="mt-3 grid grid-cols-2 gap-x-3.5 gap-y-2 text-xs text-slate-400">
+          <div className="mt-3 grid grid-cols-2 gap-x-3.5 gap-y-2 text-xs text-(--secondary)">
             <span>{items.length} nodes</span>
             <span>{summary.completed} completed</span>
             <span>{summary.failed} failed</span>
@@ -88,11 +88,11 @@ export function TimelinePage() {
           openTimeline(input.trim());
         }}
       >
-        <label className="flex h-9 min-w-[min(520px,100%)] items-center gap-2.5 rounded-lg border border-white/10 bg-white/3.5 px-3 text-slate-400">
+        <label className="flex h-9 min-w-[min(520px,100%)] items-center gap-2.5 rounded-lg border border-(--border-subtle) bg-(--elevated) px-3 text-(--secondary)">
           <Search size={15} />
           <input
             aria-label="Correlation ID"
-            className="mono w-full bg-transparent text-[13px] text-slate-100 outline-hidden"
+            className="mono w-full bg-transparent text-[13px] text-(--foreground) outline-hidden"
             onChange={(event) => setInput(event.target.value)}
             value={input}
           />
@@ -106,10 +106,10 @@ export function TimelinePage() {
       <Panel>
         <Panel.Header>
           <div className="min-w-0">
-            <div className="mono truncate text-[13px] font-semibold text-slate-100">
+            <div className="mono truncate text-[13px] font-semibold text-(--foreground)">
               {activeCorrelationId}
             </div>
-            <div className="mt-0.5 text-xs text-slate-500">
+            <div className="mt-0.5 text-xs text-(--muted)">
               ordered by created_at ascending · {runtimeConsoleDataSource()}{" "}
               runtime story
             </div>
@@ -119,9 +119,9 @@ export function TimelinePage() {
 
         {timelineQuery.isLoading ? (
           <div className="grid gap-3 p-4.5">
-            <div className="h-24 animate-pulse rounded-lg bg-white/3" />
-            <div className="h-24 animate-pulse rounded-lg bg-white/3" />
-            <div className="h-24 animate-pulse rounded-lg bg-white/3" />
+            <div className="h-24 animate-pulse rounded-lg bg-(--elevated)" />
+            <div className="h-24 animate-pulse rounded-lg bg-(--elevated)" />
+            <div className="h-24 animate-pulse rounded-lg bg-(--elevated)" />
           </div>
         ) : timelineQuery.isError ? (
           <EmptyState>
@@ -176,7 +176,7 @@ export function TimelinePage() {
             <div className="ml-23 mt-3 grid grid-cols-3 gap-2.5 max-lg:ml-0 max-md:grid-cols-1">
               {futureTimelineSlots.map((slot) => (
                 <div
-                  className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 rounded-lg border border-dashed border-white/15 bg-white/[0.018] p-2.5 text-xs text-slate-500"
+                  className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 rounded-lg border border-dashed border-(--border-subtle) bg-(--elevated) p-2.5 text-xs text-(--muted)"
                   key={slot.type}
                 >
                   <TimelineNodeIcon type={slot.type} />

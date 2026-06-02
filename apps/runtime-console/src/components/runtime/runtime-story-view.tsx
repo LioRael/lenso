@@ -116,12 +116,12 @@ function GraphNode({
 
       <div
         className={cn(
-          "group relative min-w-0 border bg-(--surface) px-3 py-2.5 text-left shadow-[0_10px_26px_var(--shadow-soft)] transition hover:-translate-y-px hover:border-(--border) hover:bg-(--elevated)",
+          "group relative min-w-0 border bg-(--surface) px-3 py-2.5 text-left shadow-(--elevation-raised) transition hover:-translate-y-px hover:border-(--border) hover:bg-(--elevated)",
           type.cardClass,
           selected &&
-            "border-(--accent) bg-(--accent-soft) shadow-[inset_2px_0_0_var(--accent),0_14px_32px_var(--shadow-soft)]",
+            "border-(--accent) bg-(--accent-soft) shadow-[inset_2px_0_0_var(--accent),var(--elevation-raised)]",
           (node.status === "failed" || node.status === "dead") &&
-            "shadow-[inset_0_0_0_1px_rgba(239,68,68,0.18),0_12px_30px_var(--shadow-soft)]"
+            "shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--error)_20%,transparent),var(--elevation-raised)]"
         )}
       >
         <button
@@ -200,23 +200,23 @@ const nodeStyle: Record<
   }
 > = {
   event: {
-    cardClass: "border-sky-300/20",
+    cardClass: "tint-border tint-info",
     icon: Mail,
-    iconClass: "border-dashed border-sky-300/45 text-sky-200",
-    labelClass: "border-sky-300/30 bg-sky-300/10 text-sky-200",
+    iconClass: "border-dashed tint-border tint-text tint-info",
+    labelClass: "tint tint-info",
   },
   external: {
-    cardClass: "border-rose-300/28",
+    cardClass: "tint-border tint-error",
     icon: Cloud,
     iconClass:
-      "border-rose-300/55 text-rose-200 shadow-[0_0_18px_rgba(244,63,94,0.12)]",
-    labelClass: "border-rose-300/35 bg-rose-300/10 text-rose-200",
+      "tint-border tint-text tint-error shadow-[0_0_18px_rgba(244,63,94,0.12)]",
+    labelClass: "tint tint-error",
   },
   function: {
-    cardClass: "border-emerald-300/20",
+    cardClass: "tint-border tint-success",
     icon: Workflow,
-    iconClass: "border-emerald-300/40 text-emerald-200",
-    labelClass: "border-emerald-300/30 bg-emerald-300/10 text-emerald-200",
+    iconClass: "tint-border tint-text tint-success",
+    labelClass: "tint tint-success",
   },
   request: {
     cardClass: "border-[color-mix(in_srgb,var(--accent)_24%,transparent)]",
@@ -228,10 +228,10 @@ const nodeStyle: Record<
   },
   worker: {
     cardClass:
-      "border-amber-300/24 shadow-[inset_0_0_0_1px_rgba(251,191,36,0.06)]",
+      "tint-border tint-warning shadow-[inset_0_0_0_1px_rgba(251,191,36,0.06)]",
     icon: ServerCog,
-    iconClass: "border-double border-amber-300/45 text-amber-200",
-    labelClass: "border-amber-300/30 bg-amber-300/10 text-amber-200",
+    iconClass: "border-double tint-border tint-text tint-warning",
+    labelClass: "tint tint-warning",
   },
 };
 
@@ -254,25 +254,25 @@ const statusStyle: Record<
     badgeClass: "bg-amber-400 text-black",
     icon: AlertTriangle,
     label: "failed",
-    textClass: "text-amber-300",
+    textClass: "tint-text tint-warning",
   },
   retrying: {
     badgeClass: "bg-blue-300 text-black",
     icon: RefreshCcw,
     label: "retrying",
-    textClass: "text-blue-300",
+    textClass: "tint-text tint-info",
   },
   running: {
     badgeClass:
       "animate-pulse bg-cyan-300 text-black shadow-[0_0_14px_rgba(103,232,249,0.5)]",
     icon: Play,
     label: "running",
-    textClass: "text-cyan-300",
+    textClass: "tint-text tint-info",
   },
   success: {
     badgeClass: "bg-emerald-400 text-black",
     icon: Check,
     label: "success",
-    textClass: "text-emerald-300",
+    textClass: "tint-text tint-success",
   },
 };

@@ -138,12 +138,12 @@ function WaterfallRowButton({
           {row.kind}
         </span>
         {row.fanoutGroupSize ? (
-          <span className="shrink-0 rounded-xs border border-sky-300/22 bg-sky-300/10 px-1.5 py-0.5 font-mono text-[10px] leading-3.5 text-sky-200">
+          <span className="shrink-0 rounded-xs px-1.5 py-0.5 font-mono text-[10px] leading-3.5 tint tint-info">
             fan-out {row.fanoutGroupSize}
           </span>
         ) : null}
         {!row.fanoutGroupSize && row.parallelGroupSize ? (
-          <span className="shrink-0 rounded-xs border border-sky-300/18 bg-sky-300/8 px-1.5 py-0.5 font-mono text-[10px] leading-3.5 text-sky-200">
+          <span className="shrink-0 rounded-xs px-1.5 py-0.5 font-mono text-[10px] leading-3.5 tint tint-info">
             parallel group
           </span>
         ) : null}

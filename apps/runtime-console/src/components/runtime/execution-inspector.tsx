@@ -588,7 +588,7 @@ function PayloadPanel({
   return (
     <div className="grid min-w-full">
       {payload && payload.redactedFields.length > 0 ? (
-        <div className="border-b border-(--border-subtle) bg-amber-300/8 px-3 py-2 font-mono text-[11px] leading-5 text-amber-100">
+        <div className="border-b border-(--border-subtle) tint-soft tint-warning px-3 py-2 font-mono text-[11px] leading-5 tint-text">
           Redacted {payload.redactedFields.length} sensitive field
           {payload.redactedFields.length === 1 ? "" : "s"}:{" "}
           {payload.redactedFields.join(", ")}
@@ -697,7 +697,7 @@ function logSeverityClass(severity: string) {
       return "text-[#ef4444]";
     }
     case "warn": {
-      return "text-amber-300";
+      return "tint-text tint-warning";
     }
     case "debug":
     case "trace": {

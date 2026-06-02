@@ -9,7 +9,7 @@ function PanelRoot({
   return (
     <section
       className={cn(
-        "overflow-hidden rounded-lg border border-(--border-subtle) bg-[color-mix(in_srgb,var(--surface)_88%,transparent)] shadow-2xl shadow-(--shadow-strong)",
+        "overflow-hidden rounded-lg border border-(--border-subtle) bg-[color-mix(in_srgb,var(--surface)_88%,transparent)] shadow-(--elevation-card)",
         className
       )}
     >

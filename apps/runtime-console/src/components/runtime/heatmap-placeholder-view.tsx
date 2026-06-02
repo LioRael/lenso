@@ -15,9 +15,9 @@ export function HeatmapPlaceholderView({ story }: { story: RuntimeStory }) {
         title="Heatmap"
       />
       <div className="grid min-h-0 place-items-center overflow-hidden p-4">
-        <div className="w-full max-w-xl border border-(--border-subtle) bg-(--surface) p-4 shadow-[0_14px_34px_var(--shadow-soft)]">
+        <div className="w-full max-w-xl border border-(--border-subtle) bg-(--surface) p-4 shadow-(--elevation-card)">
           <div className="flex items-center gap-2 text-(--foreground)">
-            <span className="grid size-8 place-items-center border border-amber-300/30 bg-amber-300/10 text-amber-200">
+            <span className="grid size-8 place-items-center tint tint-warning">
               <Grid3X3 size={15} />
             </span>
             <div className="min-w-0">
@@ -36,7 +36,7 @@ export function HeatmapPlaceholderView({ story }: { story: RuntimeStory }) {
                 <span className="truncate">{service}</span>
                 <span className="h-2 bg-[linear-gradient(90deg,rgba(251,191,36,0.18),rgba(239,68,68,0.42))]">
                   <span
-                    className="block h-full bg-amber-300/60"
+                    className="block h-full bg-[color-mix(in_srgb,var(--warning)_60%,transparent)]"
                     style={{ width: `${Math.max(24, 86 - index * 12)}%` }}
                   />
                 </span>

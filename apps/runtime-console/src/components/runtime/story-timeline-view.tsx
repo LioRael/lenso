@@ -136,7 +136,7 @@ function TimelineRow({
     >
       <span
         className={cn(
-          "relative min-w-0 border bg-(--surface) px-3 py-2.5 shadow-[0_12px_28px_var(--shadow-soft)] transition group-hover:border-(--border)",
+          "relative min-w-0 border bg-(--surface) px-3 py-2.5 shadow-(--elevation-raised) transition group-hover:border-(--border)",
           tone.card,
           selected && "border-(--accent) shadow-[inset_2px_0_0_var(--accent)]"
         )}
@@ -207,11 +207,11 @@ function TimelineRow({
 function ParallelStartMarker({ label }: { label: string }) {
   return (
     <div className="grid min-w-0 grid-cols-[minmax(180px,260px)_minmax(0,1fr)] gap-4 max-md:grid-cols-1">
-      <div className="border border-sky-300/18 bg-sky-300/8 px-3 py-1.5 font-mono text-[11px] text-sky-200">
+      <div className="tint tint-info px-3 py-1.5 font-mono text-[11px]">
         {label}
       </div>
       <div className="grid min-w-0 items-center max-md:hidden">
-        <div className="h-px bg-sky-300/18" />
+        <div className="h-px tint-soft tint-info" />
       </div>
     </div>
   );
@@ -219,24 +219,24 @@ function ParallelStartMarker({ label }: { label: string }) {
 
 const rowToneByKind = {
   event: {
-    card: "border-sky-300/20 text-sky-200",
-    icon: "border-sky-300/30 bg-sky-300/10 text-sky-200",
+    card: "tint-border tint-text tint-info",
+    icon: "tint tint-info",
   },
   external: {
-    card: "border-rose-300/24 text-rose-200",
-    icon: "border-rose-300/35 bg-rose-300/10 text-rose-200",
+    card: "tint-border tint-text tint-error",
+    icon: "tint tint-error",
   },
   function: {
-    card: "border-emerald-300/20 text-emerald-200",
-    icon: "border-emerald-300/30 bg-emerald-300/10 text-emerald-200",
+    card: "tint-border tint-text tint-success",
+    icon: "tint tint-success",
   },
   request: {
     card: "border-[color-mix(in_srgb,var(--accent)_26%,transparent)] text-(--accent)",
     icon: "border-[color-mix(in_srgb,var(--accent)_34%,transparent)] bg-(--accent-soft) text-(--accent)",
   },
   worker: {
-    card: "border-amber-300/20 text-amber-200",
-    icon: "border-amber-300/30 bg-amber-300/10 text-amber-200",
+    card: "tint-border tint-text tint-warning",
+    icon: "tint tint-warning",
   },
 } satisfies Record<string, { card: string; icon: string }>;
 

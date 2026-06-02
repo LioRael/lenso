@@ -100,7 +100,10 @@ export function StoryList({
                 {storySummary.errorCount > 0 ? (
                   <>
                     <span className="text-(--border-subtle)">·</span>
-                    <Metric className="text-[#ff8b86]" icon={<AlertCircle size={10} />}>
+                    <Metric
+                      className="text-[#ff8b86]"
+                      icon={<AlertCircle size={10} />}
+                    >
                       {storySummary.errorCount}
                     </Metric>
                   </>

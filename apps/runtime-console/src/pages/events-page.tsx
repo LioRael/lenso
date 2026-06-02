@@ -70,19 +70,19 @@ export function EventsPage() {
     <section>
       <div className="mb-5 flex items-end justify-between gap-6">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-100">Events</h1>
-          <p className="mt-1.5 max-w-2xl text-[13px] leading-6 text-slate-400">
+          <h1 className="text-2xl font-semibold text-(--foreground)">Events</h1>
+          <p className="mt-1.5 max-w-2xl text-[13px] leading-6 text-(--secondary)">
             Explore outbox events by status, event name, and correlation ID.
           </p>
         </div>
       </div>
 
       <div className="mb-3 flex flex-wrap items-center gap-2.5">
-        <label className="flex h-9 min-w-[min(420px,100%)] items-center gap-2.5 rounded-lg border border-white/10 bg-white/3.5 px-3 text-slate-400">
+        <label className="flex h-9 min-w-[min(420px,100%)] items-center gap-2.5 rounded-lg border border-(--border-subtle) bg-(--elevated) px-3 text-(--secondary)">
           <Search size={15} />
           <input
             aria-label="Search events"
-            className="w-full bg-transparent text-[13px] text-slate-100 outline-hidden placeholder:text-slate-600"
+            className="w-full bg-transparent text-[13px] text-(--foreground) outline-hidden placeholder:text-(--muted)"
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search event, id, correlation..."
             value={query}
@@ -90,7 +90,7 @@ export function EventsPage() {
         </label>
         <select
           aria-label="Filter event status"
-          className="h-9 rounded-lg border border-white/10 bg-white/3.5 px-3 text-[13px] text-slate-100 outline-hidden"
+          className="h-9 rounded-lg border border-(--border-subtle) bg-(--elevated) px-3 text-[13px] text-(--foreground) outline-hidden"
           onChange={(event) =>
             setStatus(event.target.value as RuntimeStatus | "all")
           }
@@ -108,7 +108,7 @@ export function EventsPage() {
       </div>
 
       <Panel>
-        <div className="grid grid-cols-[110px_minmax(230px,1fr)_78px_132px_154px] border-b border-white/10 px-3.5 py-2.5 text-[11px] font-semibold uppercase tracking-[0.04em] text-slate-600 max-md:hidden">
+        <div className="grid grid-cols-[110px_minmax(230px,1fr)_78px_132px_154px] border-b border-(--border-subtle) px-3.5 py-2.5 text-[11px] font-semibold uppercase tracking-[0.04em] text-(--muted) max-md:hidden">
           <span>status</span>
           <span>event</span>
           <span>attempts</span>
@@ -125,8 +125,8 @@ export function EventsPage() {
           ) : (
             filtered.map((event) => (
               <button
-                className={`grid w-full grid-cols-[110px_minmax(230px,1fr)_78px_132px_154px] items-center gap-2.5 border-b border-white/10 bg-transparent px-3.5 py-3 text-left text-slate-100 last:border-b-0 hover:bg-blue-300/5.5 max-md:grid-cols-1 ${
-                  selected?.id === event.id ? "bg-blue-300/5.5" : ""
+                className={`grid w-full grid-cols-[110px_minmax(230px,1fr)_78px_132px_154px] items-center gap-2.5 border-b border-(--border-subtle) bg-transparent px-3.5 py-3 text-left text-(--foreground) last:border-b-0 hover:bg-(--hover) max-md:grid-cols-1 ${
+                  selected?.id === event.id ? "bg-(--hover)" : ""
                 }`}
                 key={event.id}
                 onClick={() => {
@@ -136,10 +136,10 @@ export function EventsPage() {
               >
                 <StatusPill status={event.status} />
                 <div className="min-w-0">
-                  <div className="truncate text-[13px] font-semibold text-slate-100">
+                  <div className="truncate text-[13px] font-semibold text-(--foreground)">
                     {event.eventName}
                   </div>
-                  <div className="mono mt-0.5 truncate text-xs text-slate-500">
+                  <div className="mono mt-0.5 truncate text-xs text-(--muted)">
                     {event.id}
                   </div>
                 </div>
@@ -147,7 +147,7 @@ export function EventsPage() {
                   {event.attempts}/{event.maxAttempts}
                 </span>
                 <span>{time(event.createdAt)}</span>
-                <span className="mono truncate text-xs text-slate-500">
+                <span className="mono truncate text-xs text-(--muted)">
                   {event.correlationId}
                 </span>
               </button>
@@ -173,9 +173,9 @@ export function EventsPage() {
 function LoadingRows() {
   return (
     <>
-      <div className="h-14 animate-pulse border-b border-white/10 bg-white/3" />
-      <div className="h-14 animate-pulse border-b border-white/10 bg-white/3" />
-      <div className="h-14 animate-pulse bg-white/3" />
+      <div className="h-14 animate-pulse border-b border-(--border-subtle) bg-(--elevated)" />
+      <div className="h-14 animate-pulse border-b border-(--border-subtle) bg-(--elevated)" />
+      <div className="h-14 animate-pulse bg-(--elevated)" />
     </>
   );
 }

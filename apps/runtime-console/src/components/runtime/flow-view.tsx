@@ -302,7 +302,7 @@ export function FlowView({
       </div>
 
       {graphModel.state === "missing-edges" ? (
-        <div className="absolute top-12 left-1/2 z-3 w-[min(520px,calc(100%-32px))] -translate-x-1/2 border border-amber-300/25 bg-[color-mix(in_srgb,var(--background)_92%,transparent)] p-3 font-mono text-[11px] text-amber-100 shadow-[0_18px_52px_var(--shadow-soft)]">
+        <div className="absolute top-12 left-1/2 z-3 w-[min(520px,calc(100%-32px))] -translate-x-1/2 border tint-border tint-warning bg-[color-mix(in_srgb,var(--background)_92%,transparent)] p-3 font-mono text-[11px] tint-text shadow-(--elevation-overlay)">
           This story includes execution nodes, but the backend did not return
           graph edges.
         </div>
@@ -434,12 +434,12 @@ export function FlowView({
                       <span className="mt-1 flex min-w-0 items-center gap-1.5 font-mono text-[11px] text-(--muted)">
                         <span>{formatRuntimeDuration(node.durationMs)}</span>
                         {fanoutGroup ? (
-                          <span className="shrink-0 rounded-xs border border-sky-300/24 bg-sky-300/10 px-1 py-0 text-[10px] text-sky-200">
+                          <span className="shrink-0 rounded-xs px-1 py-0 text-[10px] tint tint-info">
                             fan-out {fanoutGroup.branchCount}
                           </span>
                         ) : null}
                         {!fanoutGroup && parallelGroup ? (
-                          <span className="shrink-0 rounded-xs border border-sky-300/20 bg-sky-300/8 px-1 py-0 text-[10px] text-sky-200">
+                          <span className="shrink-0 rounded-xs px-1 py-0 text-[10px] tint tint-info">
                             parallel
                           </span>
                         ) : null}

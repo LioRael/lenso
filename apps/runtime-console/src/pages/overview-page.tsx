@@ -19,7 +19,7 @@ export function OverviewPage() {
   const failures = summary?.recentFailures.slice(0, 6) ?? [];
 
   return (
-    <section className="runtime-grid grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-(--background) text-(--foreground)">
+    <section className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-(--background) text-(--foreground)">
       <header className="soft-panel border-b px-3 py-2">
         <div className="flex items-center gap-2">
           <Activity className="text-(--accent)" size={14} />

@@ -38,7 +38,7 @@ export function RuntimeSearch() {
         </span>
       </label>
       {open && query.trim() ? (
-        <div className="absolute left-0 top-9 z-30 w-[min(620px,calc(100vw-64px))] overflow-hidden border border-(--border) bg-(--elevated) shadow-[0_28px_90px_var(--shadow-strong)]">
+        <div className="absolute left-0 top-9 z-30 w-[min(620px,calc(100vw-64px))] overflow-hidden border border-(--border) bg-(--elevated) shadow-(--elevation-overlay)">
           {results.length === 0 ? (
             <div className="p-3 font-mono text-xs text-(--muted)">
               No runtime objects found
