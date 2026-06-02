@@ -7,7 +7,9 @@
 mod descriptor;
 mod provider;
 mod snapshot;
+pub mod store;
 
 pub use descriptor::{SettingDescriptor, SettingScope, SettingType, SettingsRegistry};
 pub use provider::{SettingsProvider, SnapshotCell, StaticSettingsProvider};
 pub use snapshot::{SettingSource, SettingsSnapshot};
+pub use store::{SettingAuditEntry, StoredSetting};

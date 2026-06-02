@@ -32,6 +32,10 @@ pub const PLATFORM_MIGRATIONS: &[Migration] = &[
         name: "platform/0006_create_story_events",
         sql: include_str!("../migrations/0006_create_story_events.sql"),
     },
+    Migration {
+        name: "platform/0007_create_config_schema",
+        sql: include_str!("../migrations/0007_create_config_schema.sql"),
+    },
 ];
 
 pub async fn apply_migrations(pool: &PgPool, migrations: &[Migration]) -> AppResult<()> {
