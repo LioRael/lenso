@@ -45,9 +45,11 @@ Do not create DDD or Clean Architecture folders:
 
 - No HTTP API without OpenAPI schema coverage.
 - No event payload without a JSON Schema contract under `contracts/events/`.
+- No runtime function without a JSON Schema contract under `contracts/runtime/functions/`.
 - Error responses must use the standard error shape.
-- Contract artifacts must be regenerated with `just generate-contracts`.
+- Generated contract artifacts must be regenerated with `just generate-contracts`.
 - Generated contract artifacts must not be manually patched.
+- Handwritten contract artifacts must still parse and use names that match their path and title.
 
 ## SDK
 
@@ -60,6 +62,8 @@ Do not create DDD or Clean Architecture folders:
 
 - The runtime must not own business logic.
 - Domain commands that write data and emit events must use the transactional outbox.
+- Domain event handlers may enqueue runtime functions, but function business behavior stays in the owning domain.
+- Runtime function names must be stable, versioned, and documented under `contracts/runtime/functions/`.
 - Do not add NATS, Kafka, service mesh, or Kubernetes complexity before there is a real extraction need.
 
 ## Enforcement
@@ -70,4 +74,4 @@ Run:
 just arch-check
 ```
 
-The checker fails on forbidden domain folders, stale contracts, stale generated SDK files, missing OpenAPI artifacts, missing event contracts for current events, and forbidden cross-domain imports inside domain source code.
+The checker fails on forbidden domain folders, forbidden cross-domain imports inside domain source code, stale generated contracts, stale generated SDK files, missing OpenAPI artifacts, malformed contract JSON/YAML, missing event contracts referenced by source code, event contract name/path mismatches, missing runtime function contracts for registered domain runtime functions, and runtime function contract name/path mismatches.
