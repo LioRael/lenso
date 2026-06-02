@@ -37,6 +37,7 @@ function storySearchText(story: RuntimeStory) {
     ...story.nodes.flatMap((node) => [
       node.id,
       node.name,
+      node.canonicalName ?? "",
       node.service,
       node.kind,
       node.status,

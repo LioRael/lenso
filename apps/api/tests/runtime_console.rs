@@ -337,7 +337,7 @@ async fn service_actor_can_list_runtime_stories() {
     assert_eq!(response.status(), StatusCode::OK);
     let body = json_body(response).await;
     assert_eq!(body["data"].as_array().unwrap().len(), 1);
-    assert_eq!(body["data"][0]["title"], "identity.user_registered.v1");
+    assert_eq!(body["data"][0]["title"], "User Registration");
     assert_eq!(body["data"][0]["correlation_id"], "corr_story");
     assert_eq!(body["data"][0]["status"], "dead");
     assert_eq!(body["data"][0]["node_count"], 2);
@@ -399,7 +399,7 @@ async fn failed_http_request_creates_request_level_story() {
         list_body["data"][0]["correlation_id"],
         "corr_validation_story"
     );
-    assert_eq!(list_body["data"][0]["title"], "POST /v1/identity/users");
+    assert_eq!(list_body["data"][0]["title"], "Create User Request");
     assert_eq!(list_body["data"][0]["pattern"][0], "http_request");
     assert_eq!(list_body["data"][0]["status"], "failed");
     assert_eq!(list_body["data"][0]["error_count"], 1);
@@ -472,7 +472,7 @@ async fn successful_request_with_outbox_work_creates_http_root_story() {
         list_body["data"][0]["correlation_id"],
         "corr_create_user_story"
     );
-    assert_eq!(list_body["data"][0]["title"], "POST /v1/identity/users");
+    assert_eq!(list_body["data"][0]["title"], "User Registration");
     assert_eq!(list_body["data"][0]["node_count"], 2);
     assert_eq!(list_body["data"][0]["pattern"][0], "http_request");
     assert_eq!(list_body["data"][0]["pattern"][1], "event");
@@ -502,10 +502,14 @@ async fn successful_request_with_outbox_work_creates_http_root_story() {
     let event_node_id = event_node["id"].as_str().unwrap();
 
     assert_eq!(http_node_id, "httpreq_req_create_user_story");
+    assert_eq!(http_node["name"], "POST /v1/identity/users");
+    assert_eq!(http_node["display_name"], "Create User Request");
     assert_eq!(http_node["status"], "completed");
     assert_eq!(http_node["service"], "api");
     assert!(http_node["metadata"]["causation_id"].is_null());
     assert_eq!(event_node["type"], "event");
+    assert_eq!(event_node["name"], "identity.user_registered.v1");
+    assert_eq!(event_node["display_name"], "User Registered");
     assert_eq!(event_node["service"], "identity");
     assert_eq!(event_node["metadata"]["causation_id"], http_node_id);
 
@@ -622,10 +626,23 @@ async fn service_actor_can_fetch_runtime_story_detail() {
     assert_eq!(body["data"]["nodes"].as_array().unwrap().len(), 2);
     assert_eq!(body["data"]["nodes"][0]["id"], "evt_story");
     assert_eq!(body["data"]["nodes"][0]["type"], "event");
+    assert_eq!(
+        body["data"]["nodes"][0]["name"],
+        "identity.user_registered.v1"
+    );
+    assert_eq!(body["data"]["nodes"][0]["display_name"], "User Registered");
     assert_eq!(body["data"]["nodes"][0]["service"], "identity");
     assert_eq!(body["data"]["nodes"][0]["metadata"]["attempts"], 1);
     assert_eq!(body["data"]["nodes"][1]["id"], "fnrun_story");
     assert_eq!(body["data"]["nodes"][1]["type"], "function");
+    assert_eq!(
+        body["data"]["nodes"][1]["name"],
+        "notifications.send_welcome_email.v1"
+    );
+    assert_eq!(
+        body["data"]["nodes"][1]["display_name"],
+        "Send Welcome Email"
+    );
     assert_eq!(body["data"]["nodes"][1]["status"], "dead");
     assert_eq!(body["data"]["nodes"][1]["duration_ms"], 80_000);
     assert_eq!(body["data"]["nodes"][1]["error"], "smtp timeout");

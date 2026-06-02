@@ -1990,12 +1990,15 @@ components:
       - id
       - type
       - name
+      - display_name
       - status
       - service
       - timestamp
       - duration_ms
       - metadata
       properties:
+        display_name:
+          type: string
         duration_ms:
           type: integer
           format: int64

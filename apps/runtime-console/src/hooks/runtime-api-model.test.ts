@@ -41,6 +41,7 @@ const normalStory: ApiRuntimeStoryDetail = {
         causation_id: "fn_create_user",
         max_attempts: 3,
       },
+      display_name: "User Registered",
       name: "identity.user_registered.v1",
       service: "outbox",
       status: "published",
@@ -87,6 +88,10 @@ describe("runtime API model normalization", () => {
       "fn_create_user",
       "evt_user_registered",
     ]);
+    expect(story.nodes[1]).toMatchObject({
+      canonicalName: "identity.user_registered.v1",
+      name: "User Registered",
+    });
     expect(story.edges).toEqual(normalStory.edges);
     expect(story.timelineItems?.map((item) => item.id)).toEqual([
       "fn_create_user",

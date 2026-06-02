@@ -162,9 +162,12 @@ export function normalizeRuntimeStory(
     const status = normalizeRuntimeStatus(node.status);
     const attempts = normalizeOptionalInteger(metadata.attempts);
     const maxAttempts = normalizeOptionalInteger(metadata.max_attempts);
+    const canonicalName = safeString(node.name, "Runtime Work");
+    const displayName = safeString(node.display_name, canonicalName);
 
     return {
       ...(attempts === undefined ? {} : { attempts }),
+      ...(displayName === canonicalName ? {} : { canonicalName }),
       ...(maxAttempts === undefined ? {} : { maxAttempts }),
       attributes: metadata,
       context: {
@@ -178,7 +181,7 @@ export function normalizeRuntimeStory(
       id,
       kind: toExecutionNodeKind(node.type),
       logs: error ? [error] : [],
-      name: safeString(node.name, "Runtime Work"),
+      name: displayName,
       retryable: isRetryable(status),
       service: safeString(node.service, "runtime"),
       startMs,

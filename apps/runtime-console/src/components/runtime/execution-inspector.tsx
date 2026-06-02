@@ -225,7 +225,8 @@ function InspectorBody({
         <SummaryCard node={node} story={story} />
         <KeyValueTable
           rows={[
-            ["execution name", node.name],
+            ["display name", node.name],
+            ["execution name", node.canonicalName ?? node.name],
             ["execution type", typeLabel(node)],
             ["status", node.status],
             ["duration", formatRuntimeDuration(node.durationMs)],

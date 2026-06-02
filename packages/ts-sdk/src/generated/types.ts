@@ -205,6 +205,7 @@ export type AdminRuntimeStoryListResponse = {
 };
 
 export type AdminRuntimeStoryNode = {
+  display_name: string;
   duration_ms: number;
   error?: string | null;
   id: string;

@@ -416,6 +416,7 @@ pub struct AdminRuntimeStoryNode {
     #[serde(rename = "type")]
     pub node_type: String,
     pub name: String,
+    pub display_name: String,
     pub status: String,
     pub service: String,
     pub timestamp: DateTime<Utc>,
@@ -2653,10 +2654,7 @@ fn build_story_summary(rows: &[StoryWorkRow]) -> AdminRuntimeStoryListItem {
         .max(0);
 
     AdminRuntimeStoryListItem {
-        title: rows
-            .first()
-            .map(|row| row.name.clone())
-            .unwrap_or_else(|| "Runtime Story".to_owned()),
+        title: story_title(rows),
         correlation_id: rows
             .first()
             .map(|row| row.correlation_id.clone())
@@ -2689,6 +2687,7 @@ fn build_story_node(
         id: row.id.clone(),
         node_type: row.item_type.clone(),
         name: row.name.clone(),
+        display_name: display_name_for_node(row),
         status: row.status.clone(),
         service: row.service.clone(),
         timestamp: row.created_at,
@@ -2703,6 +2702,146 @@ fn build_story_node(
             "source_metadata": row.metadata,
         }),
     }
+}
+
+fn story_title(rows: &[StoryWorkRow]) -> String {
+    if let Some(event_title) = rows
+        .iter()
+        .find(|row| matches!(row.item_type.as_str(), "event" | "outbox_event"))
+        .map(|row| story_title_from_event_name(&row.name))
+    {
+        return event_title;
+    }
+
+    rows.first()
+        .map(display_name_for_node)
+        .unwrap_or_else(|| "Runtime Story".to_owned())
+}
+
+fn display_name_for_node(row: &StoryWorkRow) -> String {
+    if row.item_type == "http_request" {
+        return http_request_display_name(&row.name);
+    }
+
+    humanize_runtime_name(&row.name)
+}
+
+fn story_title_from_event_name(value: &str) -> String {
+    let parts = semantic_name_parts(value);
+    if parts.is_empty() {
+        return humanize_runtime_name(value);
+    }
+
+    if let Some(subject) = parts.strip_suffix(&["registered"]) {
+        return format!("{} Registration", humanize_parts(subject));
+    }
+    if let Some(subject) = parts.strip_suffix(&["uploaded"]) {
+        return format!("{} Upload", humanize_parts(subject));
+    }
+    if let Some(subject) = parts.strip_suffix(&["created"]) {
+        return format!("{} Creation", humanize_parts(subject));
+    }
+    if let Some(subject) = parts.strip_suffix(&["deleted"]) {
+        return format!("{} Deletion", humanize_parts(subject));
+    }
+
+    humanize_parts(&parts)
+}
+
+fn http_request_display_name(value: &str) -> String {
+    let Some((method, path)) = value.split_once(' ') else {
+        return humanize_runtime_name(value);
+    };
+    let Some(resource) = path
+        .split('/')
+        .filter(|segment| {
+            !segment.is_empty()
+                && !segment.starts_with(':')
+                && !segment.starts_with('{')
+                && !is_version_path_segment(segment)
+        })
+        .next_back()
+    else {
+        return value.to_owned();
+    };
+    let resource = singularize(resource);
+    let action = match method {
+        "POST" => "Create",
+        "GET" => "Fetch",
+        "PUT" | "PATCH" => "Update",
+        "DELETE" => "Delete",
+        _ => method,
+    };
+
+    format!("{action} {} Request", humanize_parts(&[resource.as_str()]))
+}
+
+fn humanize_runtime_name(value: &str) -> String {
+    if value.contains('/') || value.contains(' ') {
+        return value.to_owned();
+    }
+
+    let parts = semantic_name_parts(value);
+    if parts.is_empty() {
+        return value.to_owned();
+    }
+
+    humanize_parts(&parts)
+}
+
+fn semantic_name_parts(value: &str) -> Vec<&str> {
+    let without_version = value
+        .rsplit_once(".v")
+        .filter(|(_, version)| version.chars().all(|character| character.is_ascii_digit()))
+        .map(|(name, _)| name)
+        .unwrap_or(value);
+    let parts = without_version
+        .split(['.', '_', '-'])
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
+    if parts.len() > 1 {
+        parts[1..].to_vec()
+    } else {
+        parts
+    }
+}
+
+fn humanize_parts(parts: &[&str]) -> String {
+    parts
+        .iter()
+        .map(|part| {
+            let mut characters = part.chars();
+            let Some(first) = characters.next() else {
+                return String::new();
+            };
+            format!(
+                "{}{}",
+                first.to_ascii_uppercase(),
+                characters.as_str().to_ascii_lowercase()
+            )
+        })
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn is_version_path_segment(value: &str) -> bool {
+    value
+        .strip_prefix('v')
+        .is_some_and(|version| version.chars().all(|character| character.is_ascii_digit()))
+}
+
+fn singularize(value: &str) -> String {
+    if let Some(prefix) = value.strip_suffix("ies") {
+        return format!("{prefix}y");
+    }
+    if value.len() > 1 {
+        if let Some(prefix) = value.strip_suffix('s') {
+            return prefix.to_owned();
+        }
+    }
+
+    value.to_owned()
 }
 
 fn build_story_edges(rows: &[StoryWorkRow]) -> Vec<AdminRuntimeStoryEdge> {
@@ -2956,6 +3095,36 @@ mod tests {
         assert_eq!(edges[0].source, "evt_parent");
         assert_eq!(edges[0].target, "fnrun_child");
         assert_eq!(edges[0].edge_type, "causation");
+    }
+
+    #[test]
+    fn story_summary_uses_business_title_without_renaming_nodes() {
+        let mut rows = vec![
+            story_row(
+                "http_request",
+                "httpreq_req_1",
+                None,
+                "2026-05-31T00:00:00Z",
+            ),
+            story_row("event", "evt_user_registered", None, "2026-05-31T00:00:10Z"),
+            story_row(
+                "function",
+                "fnrun_welcome",
+                Some("evt_user_registered"),
+                "2026-05-31T00:00:20Z",
+            ),
+        ];
+        rows[0].name = "POST /v1/identity/users".to_owned();
+        rows[1].name = "identity.user_registered.v1".to_owned();
+        rows[2].name = "notifications.send_welcome_email.v1".to_owned();
+
+        let detail = build_story_detail(rows);
+
+        assert_eq!(detail.summary.title, "User Registration");
+        assert_eq!(detail.nodes[1].name, "identity.user_registered.v1");
+        assert_eq!(detail.nodes[1].display_name, "User Registered");
+        assert_eq!(detail.nodes[2].name, "notifications.send_welcome_email.v1");
+        assert_eq!(detail.nodes[2].display_name, "Send Welcome Email");
     }
 
     #[test]

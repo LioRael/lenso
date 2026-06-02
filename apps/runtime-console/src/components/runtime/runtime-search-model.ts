@@ -68,9 +68,14 @@ export function buildRuntimeSearchResults({
     ].some((value) => value.toLowerCase().includes(normalized));
 
     const matchingNodes = story.nodes.filter((node) =>
-      [node.id, node.name, node.service, node.kind, node.status].some((value) =>
-        value.toLowerCase().includes(normalized)
-      )
+      [
+        node.id,
+        node.name,
+        node.canonicalName ?? "",
+        node.service,
+        node.kind,
+        node.status,
+      ].some((value) => value.toLowerCase().includes(normalized))
     );
 
     return [

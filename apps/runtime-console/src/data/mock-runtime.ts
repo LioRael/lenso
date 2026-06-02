@@ -78,6 +78,7 @@ export type ExecutionNode = {
   id: string;
   parentId?: string;
   name: string;
+  canonicalName?: string;
   service: string;
   kind:
     | "http"
