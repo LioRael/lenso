@@ -12,15 +12,26 @@ use std::sync::Arc;
 use tower::ServiceExt;
 
 fn registry() -> SettingsRegistry {
-    SettingsRegistry::try_new(vec![SettingDescriptor {
-        key: "demo.flag",
-        scope: SettingScope::Shared,
-        value_type: SettingType::Bool,
-        default: json!(false),
-        editable: true,
-        restart_only: false,
-        description: "demo flag",
-    }])
+    SettingsRegistry::try_new(vec![
+        SettingDescriptor {
+            key: "demo.flag",
+            scope: SettingScope::Shared,
+            value_type: SettingType::Bool,
+            default: json!(false),
+            editable: true,
+            restart_only: false,
+            description: "demo flag",
+        },
+        SettingDescriptor {
+            key: "demo.locked",
+            scope: SettingScope::Shared,
+            value_type: SettingType::Bool,
+            default: json!(true),
+            editable: false,
+            restart_only: false,
+            description: "non-editable demo flag",
+        },
+    ])
     .unwrap()
 }
 
@@ -136,6 +147,16 @@ async fn config_console_round_trip() {
         .await
         .expect("request completes");
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    // 5b) writing a non-editable key returns 403
+    let response = app
+        .clone()
+        .oneshot(
+            req_json("PUT", "/admin/config/*/demo.locked", &json!({"value": false})).with_admin(),
+        )
+        .await
+        .expect("request completes");
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
 
     // 6) the audit endpoint reads the DB directly and should reflect the write
     let response = app
