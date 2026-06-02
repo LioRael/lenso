@@ -37,9 +37,9 @@ const primaryNavItems = [
   { to: "/queues", label: "Queues", icon: Inbox },
 ] as const;
 
-const settingsNavItem = {
-  to: "/settings",
-  label: "Settings",
+const configNavItem = {
+  to: "/config",
+  label: "Configuration",
   icon: Settings,
 } as const;
 
@@ -226,7 +226,7 @@ export function RuntimeConsoleShell({ children }: PropsWithChildren) {
           </div>
           <div className="my-2 h-px bg-(--border-subtle) max-lg:hidden" />
           <div className="grid gap-px max-lg:hidden">
-            <NavLink {...settingsNavItem} />
+            <NavLink {...configNavItem} />
           </div>
         </nav>
 

@@ -104,9 +104,9 @@ function useConfigValues() {
   });
 }
 
-export function SettingsPage() {
+export function ConfigPage() {
   if (!isApiMode()) {
-    return <DeferredSettings />;
+    return <DeferredConfig />;
   }
   return <ConfigSettings />;
 }
@@ -611,7 +611,7 @@ function MessageRow({
   );
 }
 
-function DeferredSettings() {
+function DeferredConfig() {
   return (
     <section className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-(--background) text-(--foreground)">
       <header className="border-b border-(--border-subtle) bg-(--surface) px-3 py-2">

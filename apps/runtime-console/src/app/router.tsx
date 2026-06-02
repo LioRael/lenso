@@ -8,11 +8,11 @@ import {
 
 import { RuntimeConsoleProvider } from "../components/runtime/runtime-console-context";
 import { RuntimeConsoleShell } from "../components/runtime/runtime-console-shell";
+import { ConfigPage } from "../pages/config-page";
 import { DeadLettersPage } from "../pages/dead-letters-page";
 import { OverviewPage } from "../pages/overview-page";
 import { QueuesPage } from "../pages/queues-page";
 import { RuntimeStoriesPage } from "../pages/runtime-stories-page";
-import { SettingsPage } from "../pages/settings-page";
 
 const rootRoute = createRootRoute({
   component: () => (
@@ -82,10 +82,10 @@ const deadLettersRoute = createRoute({
   component: DeadLettersPage,
 });
 
-const settingsRoute = createRoute({
+const configRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/settings",
-  component: SettingsPage,
+  path: "/config",
+  component: ConfigPage,
 });
 
 const placeholderRoute = (path: string, title: string) =>
@@ -140,7 +140,7 @@ const routeTree = rootRoute.addChildren([
     path: "/queues",
     component: QueuesPage,
   }),
-  settingsRoute,
+  configRoute,
   placeholderRoute("/flows", "Flows"),
   placeholderRoute("/agents", "Agents"),
 ]);
