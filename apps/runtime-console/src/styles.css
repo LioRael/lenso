@@ -392,6 +392,16 @@ a {
   color: var(--runtime-status-text);
 }
 
+.runtime-status-label {
+  background: color-mix(in srgb, var(--runtime-status) 9%, var(--elevated));
+  border-color: color-mix(
+    in srgb,
+    var(--runtime-status) 30%,
+    var(--border-subtle)
+  );
+  box-shadow: none;
+}
+
 .runtime-status-pending {
   --runtime-status: var(--muted);
   --runtime-status-text: var(--secondary);

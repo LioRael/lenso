@@ -115,7 +115,7 @@ export function ExecutionInspector({
           <RuntimeStatusBadge
             className="shrink-0"
             status={node.status}
-            variant="compact"
+            variant="label"
           />
           <span className="min-w-0 truncate">{directChildCount} children</span>
         </div>

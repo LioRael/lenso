@@ -61,7 +61,11 @@ export function OverviewPage() {
                   className="grid min-h-11 grid-cols-[108px_minmax(0,1fr)_96px_120px] items-center gap-3 border-b border-(--border-subtle) px-3 font-mono text-[11px] transition hover:bg-(--hover)"
                   key={item.id}
                 >
-                  <RuntimeStatusBadge status={item.status} variant="table" />
+                  <RuntimeStatusBadge
+                    className="w-[72px] justify-center"
+                    status={item.status}
+                    variant="label"
+                  />
                   <div className="min-w-0">
                     <div className="truncate text-(--foreground)">
                       {item.name}
@@ -95,8 +99,9 @@ export function OverviewPage() {
                 >
                   <div className="mb-1 flex items-center gap-2">
                     <RuntimeStatusBadge
+                      className="w-[72px] justify-center"
                       status={failure.status}
-                      variant="table"
+                      variant="label"
                     />
                     <span className="ml-auto text-[10px] text-(--muted)">
                       {relativeAge(failure.createdAt)}

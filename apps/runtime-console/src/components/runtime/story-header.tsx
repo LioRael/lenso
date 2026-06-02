@@ -33,7 +33,7 @@ export function StoryHeader({
             <h1 className="min-w-0 truncate text-[16px] font-semibold leading-tight text-(--foreground)">
               {storySummary.title}
             </h1>
-            <RuntimeStatusBadge status={storySummary.status} />
+            <RuntimeStatusBadge status={storySummary.status} variant="label" />
           </div>
           <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 font-mono text-[10px] text-(--secondary)">
             <Metric icon={<Clock size={10} />} tone="accent">

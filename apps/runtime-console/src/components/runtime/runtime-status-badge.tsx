@@ -14,7 +14,7 @@ import { cn } from "../../lib/cn";
 type RuntimeStatusBadgeProps = {
   className?: string;
   status: RuntimeStatus;
-  variant?: "default" | "compact" | "table";
+  variant?: "default" | "compact" | "label" | "table";
 };
 
 export function RuntimeStatusBadge({
@@ -32,6 +32,7 @@ export function RuntimeStatusBadge({
         runtimeStatusBadgeBaseClassName,
         tone.className,
         variant === "compact" && runtimeStatusBadgeCompactClassName,
+        variant === "label" && runtimeStatusBadgeLabelClassName,
         variant === "table" && runtimeStatusBadgeTableClassName,
         className
       )}
@@ -55,6 +56,9 @@ export const runtimeStatusBadgeBaseClassName =
   "runtime-status-badge inline-flex min-h-5 w-fit max-w-full items-center gap-1 rounded-xs border px-1.5 font-mono text-[10px] font-semibold uppercase leading-none tracking-[0.06em]";
 
 export const runtimeStatusBadgeCompactClassName = "min-h-4.5 px-1 text-[9px]";
+
+export const runtimeStatusBadgeLabelClassName =
+  "runtime-status-label py-0.5 text-[10px] tracking-[0.08em]";
 
 export const runtimeStatusBadgeTableClassName =
   "min-h-4.5 w-[72px] justify-center px-1 text-[9px] tracking-[0.08em]";
