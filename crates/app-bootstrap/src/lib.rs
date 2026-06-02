@@ -69,7 +69,7 @@ pub fn story_display_descriptors() -> impl Iterator<Item = &'static StoryDisplay
         .chain(notifications::module::STORY_DISPLAY.iter())
 }
 
-/// Every domain's setting descriptors, plus any platform-owned descriptors.
+/// Every domain's setting descriptors.
 ///
 /// The single source for the editable configuration registry. Apps build a
 /// `SettingsRegistry` from this list at startup.
