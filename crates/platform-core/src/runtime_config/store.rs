@@ -5,7 +5,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-/// One stored setting row plus metadata, for the audit/values console views.
+/// One stored config row plus metadata, for the audit/values console views.
 #[derive(Debug, Clone)]
 pub struct StoredRuntimeConfig {
     pub service: String,

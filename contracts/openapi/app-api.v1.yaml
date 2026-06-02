@@ -21,7 +21,7 @@ paths:
           type: string
       responses:
         '200':
-          description: Registered setting descriptors
+          description: Registered config descriptors
           content:
             application/json:
               schema:
@@ -83,7 +83,7 @@ paths:
           type: string
       - name: key
         in: path
-        description: Setting key
+        description: Config key
         required: true
         schema:
           type: string
@@ -119,13 +119,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
-          description: Setting is not editable
+          description: Config key is not editable
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: Unknown setting key
+          description: Unknown config key
           content:
             application/json:
               schema:
@@ -149,7 +149,7 @@ paths:
           type: string
       - name: key
         in: path
-        description: Setting key
+        description: Config key
         required: true
         schema:
           type: string
@@ -173,7 +173,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: Unknown setting key
+          description: Unknown config key
           content:
             application/json:
               schema:
@@ -198,7 +198,7 @@ paths:
           type: string
       - name: key
         in: path
-        description: Setting key
+        description: Config key
         required: true
         schema:
           type: string

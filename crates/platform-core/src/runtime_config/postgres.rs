@@ -33,7 +33,7 @@ fn freeze_restart_only(
     frozen
 }
 
-/// Database-backed settings provider. Holds an atomically swappable snapshot
+/// Database-backed runtime-config provider. Holds an atomically swappable snapshot
 /// resolved from the registry plus stored overrides for one running service.
 #[derive(Debug)]
 pub struct PostgresRuntimeConfigProvider {

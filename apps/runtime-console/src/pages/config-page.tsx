@@ -108,10 +108,10 @@ export function ConfigPage() {
   if (!isApiMode()) {
     return <DeferredConfig />;
   }
-  return <ConfigSettings />;
+  return <ConfigContent />;
 }
 
-function ConfigSettings() {
+function ConfigContent() {
   const descriptorsQuery = useConfigDescriptors();
   const valuesQuery = useConfigValues();
   const [auditTarget, setAuditTarget] = useState<ConfigRow | null>(null);

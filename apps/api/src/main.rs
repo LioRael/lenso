@@ -16,19 +16,19 @@ async fn main() -> anyhow::Result<()> {
     let db = connect_pool(&config.database).await?;
     let mut ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
 
-    // Build the editable-settings registry from every domain and install it for
+    // Build the editable runtime-config registry from every domain and install it for
     // the console handlers and the API's own reads.
     let descriptors = app_bootstrap::runtime_config_descriptors(&ctx);
     let registry = RuntimeConfigRegistry::try_new(descriptors)
-        .context("duplicate setting descriptor registered")?;
+        .context("duplicate runtime-config descriptor registered")?;
     platform_admin::install_runtime_config_registry(registry.clone());
 
-    let settings =
+    let runtime_config =
         PostgresRuntimeConfigProvider::connect(ctx.db.clone(), Arc::new(registry), "api")
             .await
-            .context("failed to load settings snapshot")?;
-    settings.spawn_listener();
-    ctx = ctx.with_runtime_config_provider(settings);
+            .context("failed to load runtime-config snapshot")?;
+    runtime_config.spawn_listener();
+    ctx = ctx.with_runtime_config_provider(runtime_config);
 
     let app = build_router(ctx.clone());
     let address: SocketAddr = format!("{}:{}", ctx.config.http.host, ctx.config.http.port)

@@ -20,7 +20,7 @@ const AUDIT_MAX_LIMIT: i64 = 200;
         ("authorization" = String, Header, description = "Development service bearer token"),
     ),
     responses(
-        (status = 200, description = "Registered setting descriptors", body = ConfigDescriptorListResponse, content_type = "application/json"),
+        (status = 200, description = "Registered config descriptors", body = ConfigDescriptorListResponse, content_type = "application/json"),
         (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
         (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
     )
@@ -86,7 +86,7 @@ pub(crate) async fn list_config_values(
     tag = "admin-config",
     params(
         ("service" = String, Path, description = "Service key: a service name or `*` for shared"),
-        ("key" = String, Path, description = "Setting key"),
+        ("key" = String, Path, description = "Config key"),
         ("authorization" = String, Header, description = "Development service bearer token"),
     ),
     request_body = ConfigWriteRequest,
@@ -94,8 +94,8 @@ pub(crate) async fn list_config_values(
         (status = 200, description = "Value written", body = ConfigWriteResponse, content_type = "application/json"),
         (status = 400, description = "Value failed validation", body = ErrorResponse, content_type = "application/json"),
         (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 403, description = "Setting is not editable", body = ErrorResponse, content_type = "application/json"),
-        (status = 404, description = "Unknown setting key", body = ErrorResponse, content_type = "application/json"),
+        (status = 403, description = "Config key is not editable", body = ErrorResponse, content_type = "application/json"),
+        (status = 404, description = "Unknown config key", body = ErrorResponse, content_type = "application/json"),
         (status = 500, description = "Internal server error", body = ErrorResponse, content_type = "application/json"),
     )
 )]
@@ -165,13 +165,13 @@ pub(crate) async fn put_config_value(
     tag = "admin-config",
     params(
         ("service" = String, Path, description = "Service key: a service name or `*` for shared"),
-        ("key" = String, Path, description = "Setting key"),
+        ("key" = String, Path, description = "Config key"),
         ("authorization" = String, Header, description = "Development service bearer token"),
     ),
     responses(
         (status = 200, description = "Value reset to default", body = ConfigWriteResponse, content_type = "application/json"),
         (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 404, description = "Unknown setting key", body = ErrorResponse, content_type = "application/json"),
+        (status = 404, description = "Unknown config key", body = ErrorResponse, content_type = "application/json"),
         (status = 500, description = "Internal server error", body = ErrorResponse, content_type = "application/json"),
     )
 )]
@@ -221,7 +221,7 @@ pub(crate) async fn delete_config_value(
     tag = "admin-config",
     params(
         ("service" = String, Path, description = "Service key"),
-        ("key" = String, Path, description = "Setting key"),
+        ("key" = String, Path, description = "Config key"),
         ("authorization" = String, Header, description = "Development service bearer token"),
         ConfigAuditQuery
     ),

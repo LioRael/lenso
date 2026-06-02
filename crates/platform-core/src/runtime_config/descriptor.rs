@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
-/// Which running service a setting applies to. `Shared` is stored under the
+/// Which running service a config value applies to. `Shared` is stored under the
 /// reserved service key `*` and used as a fallback for every service.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub enum RuntimeConfigScope {
@@ -22,7 +22,7 @@ impl RuntimeConfigScope {
     }
 }
 
-/// The type and constraints of a setting value. Drives write validation and the
+/// The type and constraints of a config value. Drives write validation and the
 /// console edit control.
 ///
 /// Serialized to JSON via the explicit [`RuntimeConfigType::to_json`] rather than a

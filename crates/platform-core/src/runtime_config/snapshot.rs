@@ -116,7 +116,7 @@ impl RuntimeConfigSnapshot {
     }
 
     /// Override specific keys' resolved entries. Used to carry forward values
-    /// that must not change after startup (e.g. restart-only settings).
+    /// that must not change after startup (e.g. restart-only config values).
     #[must_use]
     pub fn with_overrides(
         mut self,

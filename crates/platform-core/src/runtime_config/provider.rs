@@ -31,7 +31,7 @@ impl StaticRuntimeConfigProvider {
         }
     }
 
-    /// An empty provider (no registered settings) for minimal test contexts.
+    /// An empty provider (no registered config values) for minimal test contexts.
     #[must_use]
     pub fn empty() -> Self {
         Self {

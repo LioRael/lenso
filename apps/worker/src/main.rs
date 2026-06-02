@@ -18,16 +18,16 @@ async fn main() -> anyhow::Result<()> {
 
     let descriptors = app_bootstrap::runtime_config_descriptors(&ctx);
     let runtime_config_registry = RuntimeConfigRegistry::try_new(descriptors)
-        .context("duplicate setting descriptor registered")?;
-    let settings = PostgresRuntimeConfigProvider::connect(
+        .context("duplicate runtime-config descriptor registered")?;
+    let runtime_config = PostgresRuntimeConfigProvider::connect(
         ctx.db.clone(),
         Arc::new(runtime_config_registry),
         "worker",
     )
     .await
-    .context("failed to load settings snapshot")?;
-    settings.spawn_listener();
-    let ctx = ctx.with_runtime_config_provider(settings);
+    .context("failed to load runtime-config snapshot")?;
+    runtime_config.spawn_listener();
+    let ctx = ctx.with_runtime_config_provider(runtime_config);
 
     let domains = app_bootstrap::domains(&ctx);
     let registry = app_bootstrap::function_registry(&domains);
