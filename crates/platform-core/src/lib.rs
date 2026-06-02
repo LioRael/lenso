@@ -41,9 +41,9 @@ pub use outbox::{
     LoggingEventDispatcher, OutboxEvent, OutboxPublisher, OutboxRelay, OutboxStatus,
 };
 pub use settings::{
-    SettingAuditEntry, SettingDescriptor, SettingScope, SettingSource, SettingType,
-    SettingsProvider, SettingsRegistry, SettingsSnapshot, SnapshotCell, StaticSettingsProvider,
-    StoredSetting,
+    CONFIG_NOTIFY_CHANNEL, PostgresSettingsProvider, SettingAuditEntry, SettingDescriptor,
+    SettingScope, SettingSource, SettingType, SettingsProvider, SettingsRegistry, SettingsSnapshot,
+    SnapshotCell, StaticSettingsProvider, StoredSetting,
 };
 pub use shutdown::Shutdown;
 pub use story_display::{StoryDisplayDescriptor, StoryDisplaySource};
