@@ -41,9 +41,17 @@ Do not create DDD or Clean Architecture folders:
 - Cross-domain asynchronous work must use events.
 - Shared platform behavior belongs in `crates/platform-*`, not in a business domain.
 
+## Domain Registration
+
+- The concrete domain set is enumerated only in `crates/app-bootstrap`. Apps must not hand-wire individual domains.
+- A new domain is registered through the `app-bootstrap` entry points it needs: `domains` (runtime functions and event handlers), `merge_domain_http` (HTTP routes), and `story_display_descriptors` (runtime console metadata).
+- Each domain exposes its non-HTTP contributions as a single `DomainDescriptor` (from `platform-domain`); do not redefine that type per domain.
+
 ## Contracts
 
 - No HTTP API without OpenAPI schema coverage.
+- HTTP handlers carry their own `#[utoipa::path]` annotation and are registered via `utoipa-axum`'s `OpenApiRouter` (`routes!`), so each route's path and parameters are authored once. Do not add detached `#[utoipa::path]` stub functions.
+- `apps/api/src/openapi.rs` holds only document-level metadata (info, tags); it must not re-declare path or schema lists that the annotated handlers already provide.
 - No event payload without a JSON Schema contract under `contracts/events/`.
 - No runtime function without a JSON Schema contract under `contracts/runtime/functions/`.
 - Error responses must use the standard error shape.

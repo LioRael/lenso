@@ -10,7 +10,8 @@ Lenso is a Rust-first modular monolith with a Vite/React Runtime Console and a g
 - `apps/worker`: background worker and outbox relay.
 - `apps/migrate`: deterministic migration runner.
 - `apps/runtime-console`: Vite/React operator console.
-- `crates/platform-*`: shared platform primitives for config, HTTP, runtime, testing, migrations, outbox, errors, health, and telemetry.
+- `crates/platform-*`: shared platform primitives for config, HTTP, runtime, the domain descriptor, testing, migrations, outbox, errors, health, and telemetry.
+- `crates/app-bootstrap`: composition root that enumerates the concrete domains for the API and worker.
 - `domains/*`: business capabilities. Domains should stay modular and avoid cross-domain imports.
 - `contracts/*`: committed OpenAPI, JSON Schema, event, error, and runtime contracts.
 - `packages/ts-sdk`: generated TypeScript SDK from `contracts/openapi/app-api.v1.yaml`.

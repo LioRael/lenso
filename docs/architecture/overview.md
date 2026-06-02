@@ -12,11 +12,13 @@ Domains run in-process today. Extraction later should be mechanical: preserve th
 
 Domains own their data and behavior. A domain may expose:
 
-- HTTP routes through its `module.rs` descriptor.
+- HTTP routes through its `routes/` module, where each handler carries its own `#[utoipa::path]` annotation.
 - Stable in-process calls through `public.rs`.
 - Events under `events/`.
 - Runtime jobs/functions under `jobs/` and `runtime/`.
 - SQL and migrations under `repositories/` and `migrations/`.
+
+A domain's non-HTTP contributions (runtime functions, event handlers, story-display metadata) are bundled into a `DomainDescriptor` returned from its `module.rs`.
 
 Domains must not query another domain's tables or import another domain's internal modules. Cross-domain async work goes through events and runtime function enqueueing.
 
@@ -30,9 +32,12 @@ Current domain examples:
 The service kit is split into a few crates:
 
 - `platform-core`: config, error model, request context, actor context, IDs, clock, DB pool, migrations, events, transactional outbox, relay primitives, health, shutdown, telemetry foundations, and telemetry query abstractions.
-- `platform-http`: Axum request context middleware, auth extractors, standard JSON error responses, JSON extractor, response helpers, health routes, and OpenAPI helpers.
+- `platform-http`: Axum request context middleware, auth extractors, standard JSON error responses, JSON extractor, response helpers, health routes, and the `OpenApiRouter` re-exports used for single-source OpenAPI.
 - `platform-runtime`: embedded runtime primitives for functions, triggers, queues, flows, retry policies, registry, worker execution, and store traits.
+- `platform-domain`: the shared `DomainDescriptor` type each domain exposes, so the descriptor and its `Debug` impl are defined once rather than per domain.
 - `platform-testing`: shared test database utilities.
+
+A thin composition root, `app-bootstrap`, sits above the service kit. It is the single place that enumerates the concrete domains, and both the API and the worker derive their domain set from it. It depends on the domains, so it lives outside `platform-*` (those crates must not depend on business domains).
 
 The service kit should stay stable and small. It exists to remove boilerplate, not to own business behavior.
 
@@ -40,7 +45,7 @@ The service kit should stay stable and small. It exists to remove boilerplate, n
 
 The runtime is embedded beside the modular monolith. It manages functions, triggers, queues, flows, retry policies, function run persistence, and execution metadata. It does not own business logic.
 
-Domains register runtime functions through their module descriptors. The worker app composes all domain runtime descriptors into a `FunctionRegistry`, registers domain event handlers, runs the transactional outbox relay, and runs the runtime worker loop.
+Domains register runtime functions through their `DomainDescriptor`. The worker app gets the domain set from `app-bootstrap`, composes their runtime descriptors into a `FunctionRegistry`, registers domain event handlers, runs the transactional outbox relay, and runs the runtime worker loop.
 
 Current flow from an identity event to runtime work:
 
@@ -64,12 +69,14 @@ OpenTelemetry data is an enrichment layer for technical operations. See `docs/ar
 
 ## Contract Layer
 
-Rust is the authoring source for the OpenAPI document. `apps/api/src/openapi.rs` defines the committed API contract, including:
+Rust is the authoring source for the OpenAPI document. Each HTTP handler carries its own `#[utoipa::path]` annotation and is registered through `utoipa-axum`'s `OpenApiRouter`, so routes and their documentation share a single source. `apps/api/src/openapi.rs` holds only the document-level metadata (title, version, tags) and assembles the per-domain and admin routers into the committed contract, including:
 
 - `POST /v1/identity/users`
 - `GET /v1/identity/me`
 - `/admin/runtime/*` Runtime Console endpoints
 - standard error responses and request/correlation headers
+
+Paths and component schemas are collected automatically from the annotated handlers; `openapi.rs` declares no path or schema lists of its own.
 
 Committed contract artifacts live under `contracts/`:
 

@@ -25,10 +25,11 @@ git diff -- <path>
 
 ## Repository Shape
 
-- `apps/api`: Axum HTTP API and OpenAPI source in `apps/api/src/openapi.rs`.
+- `apps/api`: Axum HTTP API. OpenAPI document-level metadata and router assembly live in `apps/api/src/openapi.rs`; per-endpoint contracts are `#[utoipa::path]` annotations on the handlers themselves.
 - `apps/worker`: background worker and outbox relay composition.
 - `apps/migrate`: deterministic migration runner.
-- `crates/platform-*`: shared primitives for config, HTTP, runtime, testing, migrations, outbox, errors, health, and telemetry.
+- `crates/platform-*`: shared primitives for config, HTTP, runtime, the `DomainDescriptor` type, testing, migrations, outbox, errors, health, and telemetry.
+- `crates/app-bootstrap`: composition root that enumerates the concrete domains for both the API and the worker.
 - `domains/*`: business capabilities with vertical domain structure.
 
 ## Domain Rules
@@ -59,10 +60,12 @@ Do not add domain folders named `api`, `application`, `domain`, or `infrastructu
 
 Do not import another domain's internals from domain source code. Use stable public interfaces for synchronous calls and events for asynchronous cross-domain work. Shared behavior belongs in `crates/platform-*`, not in a business domain.
 
+Register domains only in `crates/app-bootstrap`, never by hand-wiring in `apps/*`. A domain's non-HTTP contributions go through a `DomainDescriptor` (`platform-domain`) returned from its `module.rs`; HTTP routes are merged via `app-bootstrap::merge_domain_http`; story-display metadata via `story_display_descriptors`.
+
 ## Implementation Workflow
 
 1. Find the owning domain or platform crate before adding abstractions.
-2. Keep business logic inside `domains/*`; keep runtime registration in module descriptors, jobs, or `runtime/`.
+2. Keep business logic inside `domains/*`; keep runtime registration in the domain `DomainDescriptor`, jobs, or `runtime/`.
 3. Use explicit SQL and existing migration patterns for schema changes.
 4. For commands that write data and emit events, write both inside the same Postgres transaction using the transactional outbox.
 5. Keep error responses aligned with the platform error model.

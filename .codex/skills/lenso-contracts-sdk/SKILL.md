@@ -11,7 +11,7 @@ Use this skill for contract and generated SDK work. Rust/OpenAPI/event sources a
 
 ## Source Of Truth
 
-- API OpenAPI source: `apps/api/src/openapi.rs`
+- API OpenAPI source: per-endpoint `#[utoipa::path]` annotations on the handlers (`domains/*/src/routes/`, `apps/api/src/admin_runtime/handlers.rs`); document-level metadata and router assembly in `apps/api/src/openapi.rs`
 - Contract generator: `tools/generate-contracts`
 - TS SDK generator: `tools/generate-ts-sdk`
 - Committed OpenAPI artifact: `contracts/openapi/app-api.v1.yaml`
@@ -26,7 +26,7 @@ Use this skill for contract and generated SDK work. Rust/OpenAPI/event sources a
 - Do not hand-edit `contracts/*` artifacts when a generator owns them.
 - Do not hand-edit `packages/ts-sdk/src/generated/*`.
 - Change Rust OpenAPI or generator sources first, then regenerate.
-- Every HTTP API needs OpenAPI coverage.
+- Every HTTP API needs OpenAPI coverage via a `#[utoipa::path]` annotation on its handler. Do not add detached `#[utoipa::path]` stub functions; do not re-declare paths/schemas in `openapi.rs`.
 - Every event payload needs a JSON Schema contract under `contracts/events/`.
 - Error responses must use the standard platform error shape.
 
@@ -64,7 +64,7 @@ just sdk-check
 For a new or changed HTTP endpoint:
 
 - Update route behavior and DTOs.
-- Update `apps/api/src/openapi.rs`.
+- Add or update the `#[utoipa::path]` annotation on the handler and register it with `routes!` in the router.
 - Regenerate with `just generate`.
 - Add or update API contract tests.
 
