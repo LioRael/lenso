@@ -126,6 +126,9 @@ pub async fn delete_value(
 
     let deleted = old_value.is_some();
     if let Some(old) = old_value {
+        // `setting_audit.new_value` is NOT NULL, so a delete records the JSON
+        // `null` literal to mean "value removed". Distinguish a delete from an
+        // upsert-of-null by the presence of `old_value`.
         sqlx::query(
             r#"
             insert into config.setting_audit (id, service, key, old_value, new_value, actor, changed_at)
