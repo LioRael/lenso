@@ -230,6 +230,7 @@ function ConfigRowEditor({
         .json<ConfigWriteResponse>(),
     onSuccess: async () => {
       setLocalError(null);
+      setDraft(toInputString(descriptor.default, valueType));
       await invalidateValues();
     },
     onError: (mutationError: unknown) =>
