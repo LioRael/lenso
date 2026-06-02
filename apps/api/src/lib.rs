@@ -48,7 +48,13 @@ fn cors_layer(ctx: &AppContext) -> CorsLayer {
 
     CorsLayer::new()
         .allow_origin(origins)
-        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
         .allow_headers([header::ACCEPT, header::AUTHORIZATION, header::CONTENT_TYPE])
 }
 
