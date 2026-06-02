@@ -40,7 +40,9 @@ pub use outbox::{
     ClaimedOutboxEvent, EventDispatcher, EventHandler, EventHandlerRegistry,
     LoggingEventDispatcher, OutboxEvent, OutboxPublisher, OutboxRelay, OutboxStatus,
 };
-pub use settings::{SettingDescriptor, SettingScope, SettingType, SettingsRegistry};
+pub use settings::{
+    SettingDescriptor, SettingScope, SettingSource, SettingType, SettingsRegistry, SettingsSnapshot,
+};
 pub use shutdown::Shutdown;
 pub use story_display::{StoryDisplayDescriptor, StoryDisplaySource};
 pub use telemetry_attrs::{

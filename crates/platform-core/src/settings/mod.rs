@@ -5,5 +5,7 @@
 //! provider that resolve effective values from defaults plus stored overrides.
 
 mod descriptor;
+mod snapshot;
 
 pub use descriptor::{SettingDescriptor, SettingScope, SettingType, SettingsRegistry};
+pub use snapshot::{SettingSource, SettingsSnapshot};
