@@ -22,7 +22,8 @@ use utoipa::OpenApi;
     ),
     tags(
         (name = "identity", description = "Identity domain APIs"),
-        (name = "admin-runtime", description = "Read-only runtime console APIs")
+        (name = "admin-runtime", description = "Read-only runtime console APIs"),
+        (name = "admin-config", description = "Editable configuration console APIs")
     )
 )]
 struct ApiDoc;

@@ -1,0 +1,79 @@
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use utoipa::{IntoParams, ToSchema};
+
+/// A registered setting's static metadata.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ConfigDescriptorDto {
+    pub key: String,
+    pub service: String,
+    pub value_type: Value,
+    pub default: Value,
+    pub editable: bool,
+    pub restart_only: bool,
+    pub description: String,
+}
+
+/// The list of all registered descriptors.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ConfigDescriptorListResponse {
+    pub data: Vec<ConfigDescriptorDto>,
+}
+
+/// A resolved effective value plus where it came from.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ConfigValueDto {
+    pub key: String,
+    pub value: Value,
+    pub source: String,
+}
+
+/// The list of effective values for the running service.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ConfigValueListResponse {
+    pub data: Vec<ConfigValueDto>,
+}
+
+/// Request body for writing a value.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ConfigWriteRequest {
+    pub value: Value,
+}
+
+/// Response after a successful write.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ConfigWriteResponse {
+    pub key: String,
+    pub service: String,
+    pub value: Value,
+    pub updated_at: DateTime<Utc>,
+    pub updated_by: Option<String>,
+    /// True when the key is restart-only: the value is persisted but not applied
+    /// to running instances until restart.
+    pub applies_on_restart: bool,
+}
+
+/// One audit entry.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ConfigAuditDto {
+    pub service: String,
+    pub key: String,
+    pub old_value: Option<Value>,
+    pub new_value: Value,
+    pub actor: Option<String>,
+    pub changed_at: DateTime<Utc>,
+}
+
+/// Audit history response.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ConfigAuditListResponse {
+    pub data: Vec<ConfigAuditDto>,
+}
+
+/// Query params for the audit endpoint.
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct ConfigAuditQuery {
+    pub limit: Option<i64>,
+}
