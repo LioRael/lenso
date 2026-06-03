@@ -144,6 +144,81 @@ async fn failure_retries_function_run() {
 }
 
 #[tokio::test]
+async fn retryable_failure_uses_function_retry_delay() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    apply_runtime_stack_migrations(&db).await;
+
+    let mut registry = FunctionRegistry::default();
+    registry.register(test_function_with_retry_policy(
+        "test.delay.v1",
+        RetryPolicy::fixed(3, Duration::from_secs(60)),
+        Arc::new(AlwaysRetryableFailure),
+    ));
+    enqueue(&db.pool, "test.delay.v1", 3).await;
+
+    let worker = RuntimeWorker::new(db.pool.clone(), Arc::new(registry), "worker-a", 10);
+    worker
+        .claim_and_run_batch()
+        .await
+        .expect("runtime worker should handle function failure");
+
+    let retry_is_delayed: bool = sqlx::query_scalar(
+        r#"
+        select available_at > now() + interval '50 seconds'
+        from runtime.function_runs
+        where function_name = 'test.delay.v1'
+        "#,
+    )
+    .fetch_one(&db.pool)
+    .await
+    .expect("available_at should query");
+
+    assert!(retry_is_delayed);
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn stale_processing_function_run_can_be_reclaimed() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    apply_runtime_stack_migrations(&db).await;
+
+    enqueue(&db.pool, "test.stale.v1", 3).await;
+    sqlx::query(
+        r#"
+        update runtime.function_runs
+        set status = 'processing',
+            locked_at = now() - interval '10 minutes',
+            locked_by = 'worker-dead'
+        where function_name = 'test.stale.v1'
+        "#,
+    )
+    .execute(&db.pool)
+    .await
+    .expect("function run should become stale");
+
+    let worker = RuntimeWorker::new(
+        db.pool.clone(),
+        Arc::new(FunctionRegistry::default()),
+        "worker-b",
+        10,
+    );
+    let claimed = worker
+        .claim_batch()
+        .await
+        .expect("stale function run should claim");
+
+    assert_eq!(claimed.len(), 1);
+    assert_eq!(claimed[0].function_name, "test.stale.v1");
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
 async fn exhausted_attempts_marks_function_run_dead() {
     let Some(db) = TestDatabase::create().await else {
         return;
@@ -210,11 +285,19 @@ impl RuntimeFunction for AlwaysRetryableFailure {
 }
 
 fn test_function(name: &'static str, handler: Arc<dyn RuntimeFunction>) -> FunctionDefinition {
+    test_function_with_retry_policy(name, RetryPolicy::fixed(3, Duration::ZERO), handler)
+}
+
+fn test_function_with_retry_policy(
+    name: &'static str,
+    retry_policy: RetryPolicy,
+    handler: Arc<dyn RuntimeFunction>,
+) -> FunctionDefinition {
     FunctionDefinition {
         name,
         version: 1,
         queue: "default",
-        retry_policy: RetryPolicy::fixed(3, Duration::ZERO),
+        retry_policy,
         handler,
     }
 }
