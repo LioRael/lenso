@@ -1,8 +1,8 @@
 use crate::config::RemoteModuleConfig;
 use crate::protocol::{RemoteGetResponse, RemoteListResponse};
+use crate::response::decode_json_response;
 use platform_core::{AppError, AppResult, ErrorCode};
 use platform_module::{AdminDataSource, AdminListQuery, AdminPage};
-use reqwest::StatusCode;
 use serde_json::Value;
 use std::time::Duration;
 
@@ -50,25 +50,7 @@ impl RemoteAdminDataSource {
             .retryable()
         })?;
 
-        if response.status() == StatusCode::NOT_FOUND {
-            return Ok(None);
-        }
-
-        if !response.status().is_success() {
-            return Err(AppError::new(
-                ErrorCode::ExternalDependency,
-                format!("remote module returned status {}", response.status()),
-            )
-            .retryable());
-        }
-
-        let body = response.json::<T>().await.map_err(|error| {
-            AppError::new(
-                ErrorCode::ExternalDependency,
-                format!("remote module response was invalid JSON: {error}"),
-            )
-        })?;
-        Ok(Some(body))
+        decode_json_response(response, "admin data", true).await
     }
 }
 

@@ -2,9 +2,9 @@ use crate::admin_data::RemoteAdminDataSource;
 use crate::binding::RemoteBinding;
 use crate::config::RemoteModuleConfig;
 use crate::protocol::RemoteManifestResponse;
+use crate::response::decode_json_response;
 use platform_core::{AppError, AppResult, ErrorCode};
 use platform_module::{AdminSurface, Module};
-use reqwest::StatusCode;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -50,7 +50,9 @@ impl RemoteModuleSource {
     }
 
     async fn fetch_manifest(&self) -> AppResult<RemoteManifestResponse> {
-        let request = self.client.get(format!("{}/manifest", self.config.base_url));
+        let request = self
+            .client
+            .get(format!("{}/manifest", self.config.base_url));
         let request = match &self.config.auth_token {
             Some(token) => request.bearer_auth(token),
             None => request,
@@ -63,28 +65,8 @@ impl RemoteModuleSource {
             .retryable()
         })?;
 
-        if response.status() == StatusCode::NOT_FOUND {
-            return Err(AppError::new(
-                ErrorCode::NotFound,
-                "remote module manifest not found",
-            ));
-        }
-        if !response.status().is_success() {
-            return Err(AppError::new(
-                ErrorCode::ExternalDependency,
-                format!("remote manifest returned status {}", response.status()),
-            )
-            .retryable());
-        }
-
-        response
-            .json::<RemoteManifestResponse>()
-            .await
-            .map_err(|error| {
-                AppError::new(
-                    ErrorCode::ExternalDependency,
-                    format!("remote manifest response was invalid JSON: {error}"),
-                )
-            })
+        decode_json_response(response, "manifest", false)
+            .await?
+            .ok_or_else(|| AppError::new(ErrorCode::NotFound, "remote module manifest not found"))
     }
 }

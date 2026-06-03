@@ -4,6 +4,28 @@ use serde_json::Value;
 
 pub type RemoteManifestResponse = ModuleManifest;
 
+/// Standard error response shape for the remote module protocol.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoteErrorEnvelope {
+    pub error: RemoteErrorBody,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoteErrorBody {
+    pub code: String,
+    pub message: String,
+    #[serde(default)]
+    pub retryable: bool,
+    #[serde(default)]
+    pub details: Vec<RemoteErrorDetail>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoteErrorDetail {
+    pub field: Option<String>,
+    pub reason: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemoteListResponse {
     pub records: Vec<Value>,

@@ -1,3 +1,4 @@
+use axum::http::StatusCode;
 use axum::{Json, Router, routing::get};
 use platform_module::{AdminDataSource, AdminListQuery, AdminSurface};
 use platform_module_remote::{RemoteAdminDataSource, RemoteModuleConfig, RemoteModuleSource};
@@ -41,6 +42,48 @@ async fn contacts() -> Json<Value> {
     }))
 }
 
+async fn manifest_error() -> (StatusCode, Json<Value>) {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(json!({
+            "error": {
+                "code": "external_dependency_failure",
+                "message": "remote registry database is unavailable",
+                "retryable": true,
+                "details": [{ "field": "store", "reason": "connection refused" }]
+            }
+        })),
+    )
+}
+
+async fn contacts_error() -> (StatusCode, Json<Value>) {
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({
+            "error": {
+                "code": "external_dependency_failure",
+                "message": "crm upstream is unavailable",
+                "retryable": true,
+                "details": [{ "field": "upstream", "reason": "timeout" }]
+            }
+        })),
+    )
+}
+
+async fn contact_missing() -> (StatusCode, Json<Value>) {
+    (
+        StatusCode::NOT_FOUND,
+        Json(json!({
+            "error": {
+                "code": "not_found",
+                "message": "contact contact_404 was not found",
+                "retryable": false,
+                "details": []
+            }
+        })),
+    )
+}
+
 #[tokio::test]
 async fn loads_manifest_and_attaches_admin_data_source() {
     let base_url = spawn_server(Router::new().route("/manifest", get(manifest))).await;
@@ -53,7 +96,10 @@ async fn loads_manifest_and_attaches_admin_data_source() {
         .expect("load remote module");
 
     assert_eq!(module.manifest.name, "remote-crm");
-    assert!(matches!(module.manifest.admin, Some(AdminSurface::Schema(_))));
+    assert!(matches!(
+        module.manifest.admin,
+        Some(AdminSurface::Schema(_))
+    ));
     assert!(module.admin_data.is_some());
 }
 
@@ -71,4 +117,61 @@ async fn remote_admin_data_source_lists_records() {
     assert_eq!(page.records.len(), 1);
     assert_eq!(page.records[0]["email"], "sam@example.com");
     assert!(page.next_cursor.is_none());
+}
+
+#[tokio::test]
+async fn manifest_error_envelope_preserves_remote_message_and_retryability() {
+    let base_url = spawn_server(Router::new().route("/manifest", get(manifest_error))).await;
+
+    let error = RemoteModuleSource::new(RemoteModuleConfig::new("remote-crm", base_url))
+        .expect("remote source")
+        .load()
+        .await
+        .expect_err("manifest load should fail");
+
+    assert_eq!(error.code, platform_core::ErrorCode::ExternalDependency);
+    assert_eq!(
+        error.public_message,
+        "remote registry database is unavailable"
+    );
+    assert!(error.retryable);
+    assert!(
+        error.details.iter().any(
+            |detail| detail.field.as_deref() == Some("remote_status") && detail.reason == "500"
+        )
+    );
+}
+
+#[tokio::test]
+async fn admin_list_error_envelope_preserves_remote_message() {
+    let base_url = spawn_server(Router::new().route("/admin/contacts", get(contacts_error))).await;
+
+    let source =
+        RemoteAdminDataSource::new(RemoteModuleConfig::new("remote-crm", base_url)).unwrap();
+    let error = source
+        .list("contacts", &AdminListQuery::new(50, None))
+        .await
+        .expect_err("list should fail");
+
+    assert_eq!(error.code, platform_core::ErrorCode::ExternalDependency);
+    assert_eq!(error.public_message, "crm upstream is unavailable");
+    assert!(error.retryable);
+}
+
+#[tokio::test]
+async fn admin_detail_not_found_envelope_preserves_remote_message() {
+    let base_url =
+        spawn_server(Router::new().route("/admin/contacts/contact_404", get(contact_missing)))
+            .await;
+
+    let source =
+        RemoteAdminDataSource::new(RemoteModuleConfig::new("remote-crm", base_url)).unwrap();
+    let error = source
+        .get("contacts", "contact_404")
+        .await
+        .expect_err("remote envelope should be preserved");
+
+    assert_eq!(error.code, platform_core::ErrorCode::NotFound);
+    assert_eq!(error.public_message, "contact contact_404 was not found");
+    assert!(!error.retryable);
 }

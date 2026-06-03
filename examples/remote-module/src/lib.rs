@@ -1,7 +1,9 @@
 use axum::extract::{Path, Query};
 use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use axum::{Json, Router, routing::get};
 use platform_module::{AdminSchema, EntitySchema, FieldSchema, FieldType, ModuleManifest};
+
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -32,6 +34,25 @@ struct DetailResponse {
     record: Value,
 }
 
+#[derive(Debug, serde::Serialize)]
+struct ErrorEnvelope {
+    error: ErrorBody,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct ErrorBody {
+    code: &'static str,
+    message: String,
+    retryable: bool,
+    details: Vec<ErrorDetail>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct ErrorDetail {
+    field: Option<&'static str>,
+    reason: String,
+}
+
 const CONTACTS: &[Contact] = &[
     Contact {
         id: "contact_1",
@@ -59,6 +80,7 @@ const CONTACTS: &[Contact] = &[
 #[must_use]
 pub fn router() -> Router {
     Router::new()
+        .route("/123", get(manifest))
         .route("/lenso/module/v1/manifest", get(manifest))
         .route("/lenso/module/v1/admin/contacts", get(list_contacts))
         .route("/lenso/module/v1/admin/contacts/{id}", get(get_contact))
@@ -137,7 +159,7 @@ async fn list_contacts(Query(query): Query<ListQuery>) -> Json<ListResponse> {
     })
 }
 
-async fn get_contact(Path(id): Path<String>) -> Result<Json<DetailResponse>, StatusCode> {
+async fn get_contact(Path(id): Path<String>) -> Result<Json<DetailResponse>, Response> {
     CONTACTS
         .iter()
         .find(|contact| contact.id == id)
@@ -146,7 +168,14 @@ async fn get_contact(Path(id): Path<String>) -> Result<Json<DetailResponse>, Sta
                 record: contact_to_value(contact),
             })
         })
-        .ok_or(StatusCode::NOT_FOUND)
+        .ok_or_else(|| {
+            remote_error(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                format!("contact {id} was not found"),
+                false,
+            )
+        })
 }
 
 fn contact_to_value(contact: &Contact) -> Value {
@@ -161,4 +190,27 @@ fn contact_to_value(contact: &Contact) -> Value {
 
 fn default_limit() -> usize {
     50
+}
+
+fn remote_error(
+    status: StatusCode,
+    code: &'static str,
+    message: String,
+    retryable: bool,
+) -> Response {
+    (
+        status,
+        Json(ErrorEnvelope {
+            error: ErrorBody {
+                code,
+                message,
+                retryable,
+                details: vec![ErrorDetail {
+                    field: Some("remote_status"),
+                    reason: status.as_u16().to_string(),
+                }],
+            },
+        }),
+    )
+        .into_response()
 }

@@ -85,4 +85,11 @@ async fn contact_detail_returns_one_record_or_404() {
         .unwrap();
 
     assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+    let body = axum::body::to_bytes(missing.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let error: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(error["error"]["code"], "not_found");
+    assert_eq!(error["error"]["retryable"], false);
+    assert_eq!(error["error"]["message"], "contact nope was not found");
 }
