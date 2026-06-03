@@ -2,7 +2,10 @@ use axum::extract::{Path, Query};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::{Json, Router, routing::get};
-use platform_module::{AdminSchema, EntitySchema, FieldSchema, FieldType, ModuleManifest};
+use platform_module::{
+    AdminEmbeddedEntry, AdminEmbeddedRuntime, AdminEmbeddedSurface, AdminSandboxPolicy,
+    AdminSchema, EntitySchema, FieldSchema, FieldType, ModuleManifest,
+};
 
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -82,6 +85,7 @@ pub fn router() -> Router {
     Router::new()
         .route("/123", get(manifest))
         .route("/lenso/module/v1/manifest", get(manifest))
+        .route("/lenso/module/v1/embedded-manifest", get(embedded_manifest))
         .route("/lenso/module/v1/admin/contacts", get(list_contacts))
         .route("/lenso/module/v1/admin/contacts/{id}", get(get_contact))
 }
@@ -89,44 +93,29 @@ pub fn router() -> Router {
 async fn manifest() -> Json<ModuleManifest> {
     Json(
         ModuleManifest::builder("remote-crm")
-            .admin(AdminSchema {
-                entities: vec![EntitySchema {
-                    name: "contacts".to_owned(),
-                    label: "Contacts".to_owned(),
-                    read_capability: "remote_crm.contacts.read".to_owned(),
-                    fields: vec![
-                        FieldSchema {
-                            name: "id".to_owned(),
-                            label: "ID".to_owned(),
-                            field_type: FieldType::String,
-                            nullable: false,
-                        },
-                        FieldSchema {
-                            name: "email".to_owned(),
-                            label: "Email".to_owned(),
-                            field_type: FieldType::String,
-                            nullable: false,
-                        },
-                        FieldSchema {
-                            name: "name".to_owned(),
-                            label: "Name".to_owned(),
-                            field_type: FieldType::String,
-                            nullable: false,
-                        },
-                        FieldSchema {
-                            name: "company".to_owned(),
-                            label: "Company".to_owned(),
-                            field_type: FieldType::String,
-                            nullable: false,
-                        },
-                        FieldSchema {
-                            name: "active".to_owned(),
-                            label: "Active".to_owned(),
-                            field_type: FieldType::Boolean,
-                            nullable: false,
-                        },
-                    ],
-                }],
+            .admin(contacts_schema())
+            .capabilities(vec!["remote_crm.contacts.read".to_owned()])
+            .build(),
+    )
+}
+
+async fn embedded_manifest() -> Json<ModuleManifest> {
+    Json(
+        ModuleManifest::builder("remote-crm-embedded")
+            .embedded_admin(AdminEmbeddedSurface {
+                runtime: AdminEmbeddedRuntime::Iframe,
+                entry: AdminEmbeddedEntry::Url {
+                    url: "https://remote-crm.example.test/admin".to_owned(),
+                    allowed_origins: vec!["https://remote-crm.example.test".to_owned()],
+                },
+                sandbox: AdminSandboxPolicy {
+                    allow_scripts: true,
+                    allow_forms: false,
+                    allow_popups: false,
+                    allow_same_origin: false,
+                },
+                permissions: vec![],
+                fallback_schema: Some(contacts_schema()),
             })
             .capabilities(vec!["remote_crm.contacts.read".to_owned()])
             .build(),
@@ -190,6 +179,48 @@ fn contact_to_value(contact: &Contact) -> Value {
 
 fn default_limit() -> usize {
     50
+}
+
+fn contacts_schema() -> AdminSchema {
+    AdminSchema {
+        entities: vec![EntitySchema {
+            name: "contacts".to_owned(),
+            label: "Contacts".to_owned(),
+            read_capability: "remote_crm.contacts.read".to_owned(),
+            fields: vec![
+                FieldSchema {
+                    name: "id".to_owned(),
+                    label: "ID".to_owned(),
+                    field_type: FieldType::String,
+                    nullable: false,
+                },
+                FieldSchema {
+                    name: "email".to_owned(),
+                    label: "Email".to_owned(),
+                    field_type: FieldType::String,
+                    nullable: false,
+                },
+                FieldSchema {
+                    name: "name".to_owned(),
+                    label: "Name".to_owned(),
+                    field_type: FieldType::String,
+                    nullable: false,
+                },
+                FieldSchema {
+                    name: "company".to_owned(),
+                    label: "Company".to_owned(),
+                    field_type: FieldType::String,
+                    nullable: false,
+                },
+                FieldSchema {
+                    name: "active".to_owned(),
+                    label: "Active".to_owned(),
+                    field_type: FieldType::Boolean,
+                    nullable: false,
+                },
+            ],
+        }],
+    }
 }
 
 fn remote_error(

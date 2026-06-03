@@ -31,6 +31,39 @@ async fn manifest_matches_remote_module_protocol() {
 }
 
 #[tokio::test]
+async fn embedded_manifest_matches_remote_module_protocol() {
+    let response = remote_module_example::router()
+        .oneshot(
+            http::Request::builder()
+                .uri("/lenso/module/v1/embedded-manifest")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let manifest: Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(manifest["name"], "remote-crm-embedded");
+    assert_eq!(manifest["admin"]["kind"], "embedded_custom");
+    assert_eq!(manifest["admin"]["runtime"], "iframe");
+    assert_eq!(manifest["admin"]["entry"]["kind"], "url");
+    assert_eq!(
+        manifest["admin"]["entry"]["allowed_origins"],
+        json!(["https://remote-crm.example.test"])
+    );
+    assert_eq!(
+        manifest["admin"]["fallback_schema"]["entities"][0]["name"],
+        "contacts"
+    );
+}
+
+#[tokio::test]
 async fn contacts_list_returns_records_and_cursor_shape() {
     let response = remote_module_example::router()
         .oneshot(

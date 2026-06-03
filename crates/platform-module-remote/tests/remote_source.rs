@@ -42,6 +42,38 @@ async fn contacts() -> Json<Value> {
     }))
 }
 
+async fn embedded_manifest() -> Json<Value> {
+    Json(json!({
+        "name": "remote-crm-embedded",
+        "story_display": [],
+        "admin": {
+            "kind": "embedded_custom",
+            "runtime": "iframe",
+            "entry": {
+                "kind": "url",
+                "url": "https://remote-crm.example.test/admin",
+                "allowed_origins": ["https://remote-crm.example.test"]
+            },
+            "sandbox": {
+                "allow_scripts": true,
+                "allow_forms": false,
+                "allow_popups": false,
+                "allow_same_origin": false
+            },
+            "permissions": [],
+            "fallback_schema": {
+                "entities": [{
+                    "name": "contacts",
+                    "label": "Contacts",
+                    "fields": [],
+                    "read_capability": "remote_crm.contacts.read"
+                }]
+            }
+        },
+        "capabilities": ["remote_crm.contacts.read"]
+    }))
+}
+
 async fn manifest_error() -> (StatusCode, Json<Value>) {
     (
         StatusCode::INTERNAL_SERVER_ERROR,
@@ -101,6 +133,25 @@ async fn loads_manifest_and_attaches_admin_data_source() {
         Some(AdminSurface::Schema(_))
     ));
     assert!(module.admin_data.is_some());
+}
+
+#[tokio::test]
+async fn loads_embedded_custom_manifest_without_admin_data_source() {
+    let base_url = spawn_server(Router::new().route("/manifest", get(embedded_manifest))).await;
+
+    let config = RemoteModuleConfig::new("remote-crm-embedded", base_url);
+    let module = RemoteModuleSource::new(config)
+        .expect("remote source")
+        .load()
+        .await
+        .expect("load remote module");
+
+    assert_eq!(module.manifest.name, "remote-crm-embedded");
+    assert!(matches!(
+        module.manifest.admin,
+        Some(AdminSurface::EmbeddedCustom(_))
+    ));
+    assert!(module.admin_data.is_none());
 }
 
 #[tokio::test]
