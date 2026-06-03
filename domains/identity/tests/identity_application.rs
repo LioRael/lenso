@@ -53,6 +53,20 @@ impl UserRepository for InMemoryUserRepository {
             .expect("repository lock poisoned");
         Ok(users.get(email).cloned())
     }
+
+    async fn list(&self, limit: i64, cursor: Option<&str>) -> AppResult<Vec<User>> {
+        let users = self
+            .users_by_email
+            .lock()
+            .expect("repository lock poisoned");
+        let mut ordered: Vec<User> = users.values().cloned().collect();
+        ordered.sort_by(|a, b| a.id.0.cmp(&b.id.0));
+        Ok(ordered
+            .into_iter()
+            .filter(|user| cursor.is_none_or(|after| user.id.0.as_str() > after))
+            .take(limit.max(0) as usize)
+            .collect())
+    }
 }
 
 #[derive(Debug, Default)]
