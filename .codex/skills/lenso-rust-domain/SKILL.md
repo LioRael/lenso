@@ -1,6 +1,6 @@
 ---
 name: lenso-rust-domain
-description: Use when changing Lenso Rust code in apps/api, apps/worker, apps/migrate, crates/platform-*, or domains/*, especially when adding domain capabilities, HTTP routes, repositories, migrations, runtime jobs, outbox events, platform primitives, or architecture-level Rust behavior.
+description: Use when changing Lenso Rust code in apps/api, apps/worker, apps/migrate, crates/platform-*, crates/app-bootstrap, or domains/*, especially when adding module capabilities, HTTP routes, repositories, migrations, runtime jobs, outbox events, admin data, platform primitives, or architecture-level Rust behavior.
 ---
 
 # Lenso Rust Domain
@@ -28,8 +28,11 @@ git diff -- <path>
 - `apps/api`: Axum HTTP API. OpenAPI document-level metadata and router assembly live in `apps/api/src/openapi.rs`; per-endpoint contracts are `#[utoipa::path]` annotations on the handlers themselves.
 - `apps/worker`: background worker and outbox relay composition.
 - `apps/migrate`: deterministic migration runner.
-- `crates/platform-*`: shared primitives for config, HTTP, runtime, the `DomainDescriptor` type, the Runtime Console observability backend (`platform-admin`, `/admin/runtime/*`), testing, migrations, outbox, errors, health, and telemetry.
-- `crates/app-bootstrap`: composition root that enumerates the concrete domains for both the API and the worker.
+- `crates/platform-*`: shared primitives for config, HTTP, runtime, module contracts, admin backends, testing, migrations, outbox, errors, health, and telemetry.
+- `crates/platform-module`: module contracts. `ModuleManifest` is owned, serializable data; `ModuleBinding` is a narrow behavior seam; `LinkedBinding` is the current compile-time source; `AdminDataSource` is the schema-admin read seam.
+- `crates/platform-admin`: Runtime Console observability backend (`/admin/runtime/*`) with no domain dependencies.
+- `crates/platform-admin-data`: schema-admin backend (`/admin/data/*`) that reads generic module data via `AdminSurface::Schema` + `AdminDataSource`, with no domain dependencies.
+- `crates/app-bootstrap`: composition root that enumerates concrete modules for both the API and the worker.
 - `domains/*`: business capabilities with vertical domain structure.
 
 ## Domain Rules
@@ -60,12 +63,16 @@ Do not add domain folders named `api`, `application`, `domain`, or `infrastructu
 
 Do not import another domain's internals from domain source code. Use stable public interfaces for synchronous calls and events for asynchronous cross-domain work. Shared behavior belongs in `crates/platform-*`, not in a business domain.
 
-Register domains only in `crates/app-bootstrap`, never by hand-wiring in `apps/*`. A domain's non-HTTP contributions go through a `DomainDescriptor` (`platform-domain`) returned from its `module.rs`; HTTP routes are merged via `app-bootstrap::merge_domain_http`; story-display metadata via `story_display_descriptors`.
+Register modules only in `crates/app-bootstrap`, never by hand-wiring in `apps/*`. A domain's module contribution is exposed from its `module.rs` as a `Module`/`ModuleManifest` using `platform-module`; HTTP routes are merged via `app-bootstrap::merge_domain_http`; story-display metadata via `story_display_descriptors`.
+
+Keep module data and behavior split. Pure declarations such as name, capabilities, story-display metadata, and `AdminSurface::Schema` belong in `ModuleManifest`; source-specific behavior belongs behind narrow traits such as `ModuleBinding`; admin record reads belong behind `AdminDataSource`.
+
+Do not add concrete domain dependencies to `platform-admin` or `platform-admin-data`. `platform-admin` observes runtime/outbox/story tables; `platform-admin-data` serves schema-admin data through injected module registries.
 
 ## Implementation Workflow
 
 1. Find the owning domain or platform crate before adding abstractions.
-2. Keep business logic inside `domains/*`; keep runtime registration in the domain `DomainDescriptor`, jobs, or `runtime/`.
+2. Keep business logic inside `domains/*`; keep runtime registration in the module binding, jobs, or `runtime/`.
 3. Use explicit SQL and existing migration patterns for schema changes.
 4. For commands that write data and emit events, write both inside the same Postgres transaction using the transactional outbox.
 5. Keep error responses aligned with the platform error model.
