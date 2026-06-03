@@ -18,6 +18,8 @@ And a declarative custom admin module base for testing
 `AdminSurface::DeclarativeCustom`:
 
 - `GET /lenso/module/v1/declarative/manifest`
+- `GET /lenso/module/v1/declarative/admin/contacts?limit=50&cursor=...`
+- `GET /lenso/module/v1/declarative/admin/contacts/{id}`
 
 Run it locally:
 

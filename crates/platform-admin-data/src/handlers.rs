@@ -126,6 +126,7 @@ fn metadata_response_modules(modules: Vec<AdminModuleMetadata>) -> Vec<AdminModu
 fn schema_response_modules(modules: Vec<AdminModule>) -> Vec<AdminModuleSchema> {
     modules
         .iter()
+        .filter(|m| m.listed_in_schema)
         .map(|m| AdminModuleSchema {
             module_name: m.module_name.clone(),
             source: m.source,

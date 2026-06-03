@@ -118,14 +118,18 @@ fn admin_modules_from_modules(modules: Vec<Module>) -> Vec<AdminModule> {
             // `modules(ctx)` yields owned Modules — move the fields out.
             let data_source = module.admin_data?;
             let ModuleManifest { name, admin, .. } = module.manifest;
-            let AdminSurface::Schema(schema) = admin? else {
-                return None;
+            let (schema, listed_in_schema) = match admin? {
+                AdminSurface::Schema(schema) => (schema, true),
+                AdminSurface::DeclarativeCustom(surface) => (surface.fallback_schema?, false),
+                AdminSurface::EmbeddedCustom(_) => return None,
+                _ => return None,
             };
             Some(AdminModule {
                 module_name: name,
                 source: module.source,
                 load_status: module.load_status,
                 schema,
+                listed_in_schema,
                 data_source: Some(data_source),
             })
         })
@@ -155,6 +159,7 @@ fn failed_remote_admin_module(name: String, message: String) -> AdminModule {
         schema: AdminSchema {
             entities: Vec::new(),
         },
+        listed_in_schema: true,
         data_source: None,
     }
 }

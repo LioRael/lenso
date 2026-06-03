@@ -14,7 +14,10 @@ use platform_module::{
 use serde_json::Value;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use tokio::sync::Mutex;
 use tower::ServiceExt;
+
+static ADMIN_DATA_CONSOLE_TEST_LOCK: Mutex<()> = Mutex::const_new(());
 
 #[derive(Debug)]
 struct StubUsers;
@@ -55,6 +58,7 @@ fn app() -> axum::Router {
         source: ModuleSource::Linked,
         load_status: ModuleLoadStatus::Loaded,
         schema: stub_schema(),
+        listed_in_schema: true,
         data_source: Some(Arc::new(StubUsers)),
     }]);
     install_admin_module_metadata(vec![AdminModuleMetadata {
@@ -97,6 +101,7 @@ async fn json_body(response: axum::response::Response) -> Value {
 
 #[tokio::test]
 async fn schema_endpoint_requires_auth() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
     let response = app()
         .oneshot(
             Request::builder()
@@ -111,6 +116,7 @@ async fn schema_endpoint_requires_auth() {
 
 #[tokio::test]
 async fn schema_endpoint_lists_installed_modules() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
     let response = app()
         .oneshot(admin_get("/admin/data/schema"))
         .await
@@ -129,6 +135,7 @@ async fn schema_endpoint_lists_installed_modules() {
 
 #[tokio::test]
 async fn modules_endpoint_lists_admin_surface_metadata() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
     let response = app()
         .oneshot(admin_get("/admin/data/modules"))
         .await
@@ -145,6 +152,7 @@ async fn modules_endpoint_lists_admin_surface_metadata() {
 
 #[tokio::test]
 async fn list_records_returns_stub_data() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
     let response = app()
         .oneshot(admin_get("/admin/data/identity/users"))
         .await
@@ -159,7 +167,60 @@ async fn list_records_returns_stub_data() {
 }
 
 #[tokio::test]
+async fn unlisted_modules_can_read_records_without_schema_discovery() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
+    install_admin_modules(vec![
+        AdminModule {
+            module_name: "identity".to_owned(),
+            source: ModuleSource::Linked,
+            load_status: ModuleLoadStatus::Loaded,
+            schema: stub_schema(),
+            listed_in_schema: true,
+            data_source: Some(Arc::new(StubUsers)),
+        },
+        AdminModule {
+            module_name: "identity-declarative".to_owned(),
+            source: ModuleSource::Linked,
+            load_status: ModuleLoadStatus::Loaded,
+            schema: stub_schema(),
+            listed_in_schema: false,
+            data_source: Some(Arc::new(StubUsers)),
+        },
+    ]);
+    install_admin_module_metadata(vec![]);
+    let ctx = AppContext::new(
+        AppConfig::from_env(),
+        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test").expect("lazy pool"),
+        Arc::new(LoggingEventPublisher),
+    );
+    let app = build_router(ctx);
+
+    let schema_response = app
+        .clone()
+        .oneshot(admin_get("/admin/data/schema"))
+        .await
+        .expect("schema request completes");
+    let schema = json_body(schema_response).await;
+    assert!(
+        !schema["modules"]
+            .as_array()
+            .expect("modules array")
+            .iter()
+            .any(|module| module["module_name"] == "identity-declarative")
+    );
+
+    let list_response = app
+        .oneshot(admin_get("/admin/data/identity-declarative/users"))
+        .await
+        .expect("list request completes");
+    assert_eq!(list_response.status(), StatusCode::OK);
+    let list = json_body(list_response).await;
+    assert_eq!(list["data"][0]["id"], "usr_1");
+}
+
+#[tokio::test]
 async fn unknown_module_returns_404() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
     let response = app()
         .oneshot(admin_get("/admin/data/widgets/things"))
         .await
@@ -169,6 +230,7 @@ async fn unknown_module_returns_404() {
 
 #[tokio::test]
 async fn refresh_schema_replaces_installed_modules() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
     static REFRESH_COUNT: AtomicUsize = AtomicUsize::new(0);
 
     install_admin_modules(vec![AdminModule {
@@ -176,6 +238,7 @@ async fn refresh_schema_replaces_installed_modules() {
         source: ModuleSource::Linked,
         load_status: ModuleLoadStatus::Loaded,
         schema: stub_schema(),
+        listed_in_schema: true,
         data_source: Some(Arc::new(StubUsers)),
     }]);
     install_admin_module_refresh_fn(|| async {
@@ -186,6 +249,7 @@ async fn refresh_schema_replaces_installed_modules() {
                 source: ModuleSource::Linked,
                 load_status: ModuleLoadStatus::Loaded,
                 schema: stub_schema(),
+                listed_in_schema: true,
                 data_source: Some(Arc::new(StubUsers)),
             },
             AdminModule {
@@ -195,6 +259,7 @@ async fn refresh_schema_replaces_installed_modules() {
                     message: "remote manifest request failed".to_owned(),
                 },
                 schema: AdminSchema { entities: vec![] },
+                listed_in_schema: true,
                 data_source: None,
             },
         ])

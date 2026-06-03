@@ -393,7 +393,11 @@ function ModuleSurfacePanel({
       {module.admin?.kind === "embedded_custom" ? (
         <EmbeddedIframeSurface compact={compact} policy={iframePolicy} />
       ) : module.admin?.kind === "declarative_custom" ? (
-        <DeclarativeSurface compact={compact} surface={module.admin} />
+        <DeclarativeSurface
+          compact={compact}
+          module={module}
+          surface={module.admin}
+        />
       ) : (
         <p className="text-(--muted)">
           {module.admin?.kind === "schema"
@@ -419,9 +423,11 @@ function ModuleSurfacePanel({
 
 function DeclarativeSurface({
   compact,
+  module,
   surface,
 }: {
   compact: boolean;
+  module: AdminModuleMetadata;
   surface: Extract<
     AdminModuleMetadata["admin"],
     { kind: "declarative_custom" }
@@ -451,6 +457,7 @@ function DeclarativeSurface({
           <div className={cn("p-2", compact && "text-[11px]")}>
             <DeclarativeComponentView
               component={section.component}
+              module={module}
               surface={surface}
             />
           </div>
@@ -462,9 +469,11 @@ function DeclarativeSurface({
 
 function DeclarativeComponentView({
   component,
+  module,
   surface,
 }: {
   component: DeclarativeComponent;
+  module: AdminModuleMetadata;
   surface: Extract<
     AdminModuleMetadata["admin"],
     { kind: "declarative_custom" }
@@ -499,7 +508,7 @@ function DeclarativeComponentView({
       if (!entity) {
         return <p className="text-(--muted)">{reason}</p>;
       }
-      return <DeclarativeEntityTable entity={entity} />;
+      return <DeclarativeEntityTable entity={entity} module={module} />;
     }
     case "entity_detail": {
       const { entity, reason } = declarativeEntitySection(
@@ -522,30 +531,43 @@ function DeclarativeComponentView({
   }
 }
 
-function DeclarativeEntityTable({ entity }: { entity: EntitySchema }) {
+function DeclarativeEntityTable({
+  entity,
+  module,
+}: {
+  entity: EntitySchema;
+  module: AdminModuleMetadata;
+}) {
+  const recordsQuery = useQuery({
+    queryKey: dataKeys.list(module.module_name, entity.name),
+    queryFn: () =>
+      httpClient
+        .get(
+          `admin/data/${encodeURIComponent(module.module_name)}/${encodeURIComponent(entity.name)}?limit=50`
+        )
+        .json<ListResponse>(),
+    enabled: isApiMode() && moduleIsLoaded(module),
+  });
+
+  if (recordsQuery.isError) {
+    return (
+      <p className="text-(--muted)">
+        Failed to load records: {String(recordsQuery.error.message)}
+      </p>
+    );
+  }
+  if (recordsQuery.isPending) {
+    return <p className="text-(--muted)">Loading…</p>;
+  }
+
   return (
-    <table className="w-full table-fixed">
-      <thead>
-        <tr>
-          <th className="px-2 py-1 text-left text-(--muted)">Field</th>
-          <th className="px-2 py-1 text-left text-(--muted)">Type</th>
-          <th className="px-2 py-1 text-left text-(--muted)">Required</th>
-        </tr>
-      </thead>
-      <tbody>
-        {entity.fields.map((field) => (
-          <tr className="border-t border-(--border-subtle)" key={field.name}>
-            <td className="truncate px-2 py-1.5">{field.label}</td>
-            <td className="truncate px-2 py-1.5 text-(--secondary)">
-              {field.field_type.kind}
-            </td>
-            <td className="truncate px-2 py-1.5 text-(--secondary)">
-              {field.nullable ? "no" : "yes"}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <RecordsTable
+      entity={entity}
+      module={module}
+      records={recordsQuery.data.data}
+      selectedRecordId={null}
+      setSelectedRecordId={() => undefined}
+    />
   );
 }
 

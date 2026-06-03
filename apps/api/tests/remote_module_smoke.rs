@@ -270,6 +270,19 @@ async fn custom_remote_modules_are_visible_through_metadata_api() {
         "contacts"
     );
 
+    let declarative_list_response = app
+        .clone()
+        .oneshot(admin_get(
+            "/admin/data/remote-crm-declarative/contacts?limit=2",
+        ))
+        .await
+        .expect("declarative list request completes");
+    assert_eq!(declarative_list_response.status(), StatusCode::OK);
+    let declarative_list = json_body(declarative_list_response).await;
+    assert_eq!(declarative_list["data"][0]["id"], "contact_1");
+    assert_eq!(declarative_list["data"][0]["email"], "ada@example.com");
+    assert_eq!(declarative_list["page"]["next_cursor"], "contact_2");
+
     let schema_response = app
         .oneshot(admin_get("/admin/data/schema"))
         .await

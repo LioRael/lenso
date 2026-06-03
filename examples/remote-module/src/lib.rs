@@ -93,6 +93,14 @@ pub fn router() -> Router {
             "/lenso/module/v1/declarative/manifest",
             get(declarative_manifest),
         )
+        .route(
+            "/lenso/module/v1/declarative/admin/contacts",
+            get(list_contacts),
+        )
+        .route(
+            "/lenso/module/v1/declarative/admin/contacts/{id}",
+            get(get_contact),
+        )
         .route("/lenso/module/v1/embedded/manifest", get(embedded_manifest))
         .route("/lenso/module/v1/embedded/admin", get(embedded_admin))
         .route("/lenso/module/v1/admin/contacts", get(list_contacts))

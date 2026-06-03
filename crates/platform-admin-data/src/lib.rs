@@ -27,6 +27,10 @@ pub struct AdminModule {
     pub load_status: ModuleLoadStatus,
     /// The module's declared admin surface (entities + fields).
     pub schema: AdminSchema,
+    /// Whether this module should appear in the generic schema-admin discovery
+    /// endpoint. Declarative custom surfaces may still be readable through
+    /// fallback schema entities without being advertised as plain schema-admin.
+    pub listed_in_schema: bool,
     /// Live read access to the module's records. Missing for degraded modules
     /// whose manifest/data source failed to load.
     pub data_source: Option<Arc<dyn AdminDataSource>>,

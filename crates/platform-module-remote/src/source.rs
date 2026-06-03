@@ -40,9 +40,13 @@ impl RemoteModuleSource {
             ));
         }
 
-        let has_schema_admin = matches!(&manifest.admin, Some(AdminSurface::Schema(_)));
+        let has_admin_data = match &manifest.admin {
+            Some(AdminSurface::Schema(_)) => true,
+            Some(AdminSurface::DeclarativeCustom(surface)) => surface.fallback_schema.is_some(),
+            _ => false,
+        };
         let mut module = Module::remote(manifest, Arc::new(RemoteBinding));
-        if has_schema_admin {
+        if has_admin_data {
             module =
                 module.with_admin_data(Arc::new(RemoteAdminDataSource::new(self.config.clone())?));
         }

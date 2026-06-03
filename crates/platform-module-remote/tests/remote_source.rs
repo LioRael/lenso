@@ -74,6 +74,38 @@ async fn embedded_manifest() -> Json<Value> {
     }))
 }
 
+async fn declarative_manifest() -> Json<Value> {
+    Json(json!({
+        "name": "remote-crm-declarative",
+        "story_display": [],
+        "admin": {
+            "kind": "declarative_custom",
+            "pages": [{
+                "name": "overview",
+                "label": "Overview",
+                "sections": [{
+                    "name": "contacts",
+                    "label": "Contacts",
+                    "component": {
+                        "kind": "entity_table",
+                        "entity": "contacts"
+                    }
+                }]
+            }],
+            "actions": [],
+            "fallback_schema": {
+                "entities": [{
+                    "name": "contacts",
+                    "label": "Contacts",
+                    "fields": [],
+                    "read_capability": "remote_crm.contacts.read"
+                }]
+            }
+        },
+        "capabilities": ["remote_crm.contacts.read"]
+    }))
+}
+
 async fn manifest_error() -> (StatusCode, Json<Value>) {
     (
         StatusCode::INTERNAL_SERVER_ERROR,
@@ -152,6 +184,25 @@ async fn loads_embedded_custom_manifest_without_admin_data_source() {
         Some(AdminSurface::EmbeddedCustom(_))
     ));
     assert!(module.admin_data.is_none());
+}
+
+#[tokio::test]
+async fn loads_declarative_custom_manifest_with_admin_data_source() {
+    let base_url = spawn_server(Router::new().route("/manifest", get(declarative_manifest))).await;
+
+    let config = RemoteModuleConfig::new("remote-crm-declarative", base_url);
+    let module = RemoteModuleSource::new(config)
+        .expect("remote source")
+        .load()
+        .await
+        .expect("load remote module");
+
+    assert_eq!(module.manifest.name, "remote-crm-declarative");
+    assert!(matches!(
+        module.manifest.admin,
+        Some(AdminSurface::DeclarativeCustom(_))
+    ));
+    assert!(module.admin_data.is_some());
 }
 
 #[tokio::test]
