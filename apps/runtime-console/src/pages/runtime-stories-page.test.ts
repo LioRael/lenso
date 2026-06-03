@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import type { StoryHeader } from "../components/runtime/story-header";
 import { runtimeStories } from "../data/mock-runtime";
+import { shouldCloseInspectorOnEscape } from "./runtime-stories-keyboard";
 import { runtimeStoriesDefaultViewMode } from "./runtime-stories-page";
 
 describe("story workbench page contracts", () => {
@@ -20,5 +21,42 @@ describe("story workbench page contracts", () => {
     };
 
     expect(storyHeaderProps.story.id).toBe(story.id);
+  });
+
+  test("closes the inspector on plain Escape outside editable controls", () => {
+    expect(
+      shouldCloseInspectorOnEscape({
+        altKey: false,
+        ctrlKey: false,
+        defaultPrevented: false,
+        key: "Escape",
+        metaKey: false,
+        target: null,
+      })
+    ).toBe(true);
+  });
+
+  test("keeps inspector open when Escape belongs to an editable target", () => {
+    expect(
+      shouldCloseInspectorOnEscape({
+        altKey: false,
+        ctrlKey: false,
+        defaultPrevented: false,
+        key: "Escape",
+        metaKey: false,
+        target: { tagName: "INPUT" } as unknown as EventTarget,
+      })
+    ).toBe(false);
+
+    expect(
+      shouldCloseInspectorOnEscape({
+        altKey: false,
+        ctrlKey: false,
+        defaultPrevented: true,
+        key: "Escape",
+        metaKey: false,
+        target: null,
+      })
+    ).toBe(false);
   });
 });
