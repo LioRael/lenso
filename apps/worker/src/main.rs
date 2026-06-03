@@ -30,9 +30,9 @@ async fn main() -> anyhow::Result<()> {
     runtime_config.spawn_listener();
     let ctx = ctx.with_runtime_config_provider(runtime_config);
 
-    let domains = app_bootstrap::domains(&ctx);
-    let registry = app_bootstrap::function_registry(&domains);
-    let event_handlers = app_bootstrap::event_handlers(&domains);
+    let modules = app_bootstrap::modules(&ctx);
+    let registry = app_bootstrap::function_registry(&modules);
+    let event_handlers = app_bootstrap::event_handlers(&modules);
 
     info!(
         functions = registry.all().count(),

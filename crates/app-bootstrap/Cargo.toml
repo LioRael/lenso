@@ -8,7 +8,7 @@ rust-version.workspace = true
 
 [dependencies]
 platform-core.workspace = true
-platform-domain.workspace = true
+platform-module.workspace = true
 platform-http.workspace = true
 platform-runtime.workspace = true
 identity.workspace = true
