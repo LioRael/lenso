@@ -433,6 +433,9 @@ function DeclarativeSurface({
     { kind: "declarative_custom" }
   >;
 }) {
+  const [selectedRecordIds, setSelectedRecordIds] = useState<
+    Record<string, string | null>
+  >({});
   const page = firstDeclarativePage(surface);
   if (!page) {
     return <p className="text-(--muted)">No declarative pages declared.</p>;
@@ -458,6 +461,13 @@ function DeclarativeSurface({
             <DeclarativeComponentView
               component={section.component}
               module={module}
+              selectedRecordIds={selectedRecordIds}
+              setSelectedRecordId={(entity, id) => {
+                setSelectedRecordIds((current) => ({
+                  ...current,
+                  [entity]: id,
+                }));
+              }}
               surface={surface}
             />
           </div>
@@ -470,10 +480,14 @@ function DeclarativeSurface({
 function DeclarativeComponentView({
   component,
   module,
+  selectedRecordIds,
+  setSelectedRecordId,
   surface,
 }: {
   component: DeclarativeComponent;
   module: AdminModuleMetadata;
+  selectedRecordIds: Record<string, string | null>;
+  setSelectedRecordId: (entity: string, id: string | null) => void;
   surface: Extract<
     AdminModuleMetadata["admin"],
     { kind: "declarative_custom" }
@@ -508,19 +522,29 @@ function DeclarativeComponentView({
       if (!entity) {
         return <p className="text-(--muted)">{reason}</p>;
       }
-      return <DeclarativeEntityTable entity={entity} module={module} />;
+      return (
+        <DeclarativeEntityTable
+          entity={entity}
+          module={module}
+          selectedRecordId={selectedRecordIds[entity.name] ?? null}
+          setSelectedRecordId={(id) => setSelectedRecordId(entity.name, id)}
+        />
+      );
     }
     case "entity_detail": {
       const { entity, reason } = declarativeEntitySection(
         surface,
         component.entity
       );
+      if (!entity) {
+        return <p className="text-(--muted)">{reason}</p>;
+      }
       return (
-        <p className="text-(--muted)">
-          {entity
-            ? `Entity detail renderer is not enabled for ${entity.label}.`
-            : reason}
-        </p>
+        <DeclarativeEntityDetail
+          entity={entity}
+          module={module}
+          selectedRecordId={selectedRecordIds[entity.name] ?? null}
+        />
       );
     }
     default: {
@@ -534,9 +558,13 @@ function DeclarativeComponentView({
 function DeclarativeEntityTable({
   entity,
   module,
+  selectedRecordId,
+  setSelectedRecordId,
 }: {
   entity: EntitySchema;
   module: AdminModuleMetadata;
+  selectedRecordId: string | null;
+  setSelectedRecordId: (id: string | null) => void;
 }) {
   const recordsQuery = useQuery({
     queryKey: dataKeys.list(module.module_name, entity.name),
@@ -565,9 +593,65 @@ function DeclarativeEntityTable({
       entity={entity}
       module={module}
       records={recordsQuery.data.data}
-      selectedRecordId={null}
-      setSelectedRecordId={() => undefined}
+      selectedRecordId={selectedRecordId}
+      setSelectedRecordId={setSelectedRecordId}
     />
+  );
+}
+
+function DeclarativeEntityDetail({
+  entity,
+  module,
+  selectedRecordId,
+}: {
+  entity: EntitySchema;
+  module: AdminModuleMetadata;
+  selectedRecordId: string | null;
+}) {
+  const detailQuery = useQuery({
+    queryKey: selectedRecordId
+      ? dataKeys.detail(module.module_name, entity.name, selectedRecordId)
+      : ["admin-data", "detail", module.module_name, entity.name, "none"],
+    queryFn: () => {
+      if (!selectedRecordId) {
+        throw new Error("no record selected");
+      }
+      return httpClient
+        .get(
+          `admin/data/${encodeURIComponent(module.module_name)}/${encodeURIComponent(entity.name)}/${encodeURIComponent(selectedRecordId)}`
+        )
+        .json<DetailResponse>();
+    },
+    enabled: isApiMode() && moduleIsLoaded(module) && selectedRecordId !== null,
+  });
+
+  if (!selectedRecordId) {
+    return <p className="text-(--muted)">Select a row to inspect detail.</p>;
+  }
+  if (detailQuery.isError) {
+    return (
+      <p className="text-(--muted)">
+        Failed to load detail: {String(detailQuery.error.message)}
+      </p>
+    );
+  }
+  if (detailQuery.isPending) {
+    return <p className="text-(--muted)">Loading…</p>;
+  }
+
+  return (
+    <dl className="grid grid-cols-[96px_minmax(0,1fr)] border-y border-(--border-subtle)">
+      {detailRows(entity, detailQuery.data.data).map((row) => (
+        <div className="contents" key={row.field}>
+          <dt className="border-b border-(--border-subtle) bg-(--sidebar) px-2 py-1.5 text-(--muted)">
+            {row.label}
+          </dt>
+          <dd className="min-w-0 truncate border-b border-(--border-subtle) px-2 py-1.5 text-(--secondary)">
+            {row.display}
+          </dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 

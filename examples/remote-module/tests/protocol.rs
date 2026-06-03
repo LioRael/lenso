@@ -99,6 +99,14 @@ async fn declarative_manifest_matches_remote_module_protocol() {
         "entity_table"
     );
     assert_eq!(
+        manifest["admin"]["pages"][0]["sections"][2]["component"]["kind"],
+        "entity_detail"
+    );
+    assert_eq!(
+        manifest["admin"]["pages"][0]["sections"][2]["component"]["entity"],
+        "contacts"
+    );
+    assert_eq!(
         manifest["admin"]["fallback_schema"]["entities"][0]["name"],
         "contacts"
     );

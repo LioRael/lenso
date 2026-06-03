@@ -151,6 +151,13 @@ async fn declarative_manifest() -> Json<ModuleManifest> {
                                 entity: "contacts".to_owned(),
                             },
                         },
+                        AdminDeclarativeSection {
+                            name: "contact_detail".to_owned(),
+                            label: "Contact Detail".to_owned(),
+                            component: AdminDeclarativeComponent::EntityDetail {
+                                entity: "contacts".to_owned(),
+                            },
+                        },
                     ],
                 }],
                 actions: vec![],

@@ -266,6 +266,14 @@ async fn custom_remote_modules_are_visible_through_metadata_api() {
         "metric_strip"
     );
     assert_eq!(
+        declarative_module["admin"]["pages"][0]["sections"][2]["component"]["kind"],
+        "entity_detail"
+    );
+    assert_eq!(
+        declarative_module["admin"]["pages"][0]["sections"][2]["component"]["entity"],
+        "contacts"
+    );
+    assert_eq!(
         declarative_module["admin"]["fallback_schema"]["entities"][0]["name"],
         "contacts"
     );
