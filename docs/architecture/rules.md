@@ -49,6 +49,8 @@ Do not create DDD or Clean Architecture folders:
 - Keep data and behavior split. Serializable declarations belong in `ModuleManifest`; behavior belongs behind narrow traits such as `ModuleBinding` and `AdminDataSource`.
 - `platform-admin` and `platform-admin-data` must not depend on concrete domain crates. Use composition-root injection and platform-module seams.
 - Remote modules may provide manifests and schema-admin read data through `platform-module-remote`; they must not contribute HTTP routes, runtime functions, or event handlers until those protocols have their own specs.
+- Custom admin UI must keep host-rendered declarations and module-owned embedded UI separate: use the future `DeclarativeCustom` lane for trusted Runtime Console rendering, and the future `EmbeddedCustom` lane for iframe/Wasm/other sandboxed module-owned UI. Do not model both as one generic `Custom` surface.
+- Embedded custom admin surfaces must not receive host bearer tokens or ad hoc bridge access. Any bridge must be a versioned protocol with explicit manifest permissions and host enforcement.
 
 ## Contracts
 

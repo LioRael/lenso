@@ -18,12 +18,12 @@ The evolution is staged:
 1. Split `DomainDescriptor` into `ModuleManifest` data plus `ModuleBinding` behavior. Done.
 2. Add `AdminSurface::Schema`, a data protocol, and capabilities for schema-driven business CRUD. Read-only vertical slice done.
 3. Add `Remote` out-of-process module source. Future.
-4. Add `AdminSurface::Custom` self-rendering modules and `Wasm` module source. Future.
+4. Add custom admin surfaces and `Wasm` module source. Future.
 
 Keep two axes separate:
 
 - Loading source: `Linked` today, later `Remote` and `Wasm`.
-- Admin rendering: `AdminSurface::Schema` for plain business-entity CRUD, later `AdminSurface::Custom` for module-owned UI.
+- Admin rendering: `AdminSurface::Schema` for plain business-entity CRUD, later `DeclarativeCustom` for host-rendered custom UI and `EmbeddedCustom` for sandboxed module-owned UI.
 
 ## Manifest And Binding
 
@@ -60,7 +60,25 @@ Important type-shape rule:
 - `platform-admin-data` is the schema-admin backend under `/admin/data/*`. It works through injected `AdminModule` registry entries, `AdminSurface::Schema`, and `AdminDataSource`; it must not depend on concrete domains.
 - `crates/app-bootstrap` is the composition root. It pairs manifests, bindings, story display descriptors, and data sources from concrete modules.
 
-The observability console may eventually become an installable module using `AdminSurface::Custom`. Do not build that now; just avoid shaping schema-admin as if every future admin surface were plain CRUD.
+The observability console may eventually become an installable module using an embedded custom surface. Do not build that now; just avoid shaping schema-admin as if every future admin surface were plain CRUD.
+
+## Custom Admin Surfaces
+
+Future custom admin UI has two distinct lanes, documented in
+`docs/architecture/module-custom-admin-surfaces.md`.
+
+- `DeclarativeCustom`: host-rendered custom UI. Modules declare pages,
+  components, data bindings, and actions as serializable manifest data. The
+  Runtime Console renders trusted components and does not execute
+  module-provided frontend code.
+- `EmbeddedCustom`: module-owned UI behind a sandbox boundary. First target is a
+  sandboxed iframe with explicit origin allowlists and no host bridge. Wasm and
+  JS bundles are reserved for later specs.
+
+Do not collapse these into one generic `Custom` variant. Their fields, security
+models, and implementation order are different. Embedded surfaces must not get
+host bearer tokens or ad hoc `postMessage` access; any bridge needs a versioned
+protocol and manifest-declared permissions.
 
 ## OpenAPI
 

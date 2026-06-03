@@ -34,14 +34,14 @@ The service kit is split into a few crates:
 - `platform-core`: config, error model, request context, actor context, IDs, clock, DB pool, migrations, events, transactional outbox, relay primitives, health, shutdown, telemetry foundations, and telemetry query abstractions.
 - `platform-http`: Axum request context middleware, auth extractors, standard JSON error responses, JSON extractor, response helpers, health routes, and the `OpenApiRouter` re-exports used for single-source OpenAPI.
 - `platform-runtime`: embedded runtime primitives for functions, triggers, queues, flows, retry policies, registry, worker execution, and store traits.
-- `platform-module`: the module framework contracts. `ModuleManifest` is owned, serializable module data; `ModuleBinding` is the narrow behavior seam; `LinkedBinding` is the current compile-time source; `AdminSurface::Schema` and `AdminDataSource` support the generic schema-admin path.
+- `platform-module`: the module framework contracts. `ModuleManifest` is owned, serializable module data; `ModuleBinding` is the narrow behavior seam; `LinkedBinding` is the current compile-time source; `AdminSurface::Schema` and `AdminDataSource` support the generic schema-admin path. Future custom admin UI is split into host-rendered `DeclarativeCustom` and sandboxed module-owned `EmbeddedCustom`; see `docs/architecture/module-custom-admin-surfaces.md`.
 - `platform-admin`: the runtime-observability backend for the Runtime Console. It is a cross-cutting platform concern, not a business domain — it only reads platform/runtime tables (`platform.outbox`, `platform.story_events`, `runtime.function_runs`) to observe every domain's activity, and exposes one router the API app mounts under `/admin/runtime/*`.
 - `platform-admin-data`: the schema-admin backend for module business data. It exposes generic `/admin/data/*` endpoints over injected `AdminSurface::Schema` manifests and `AdminDataSource` implementations, without depending on concrete domains.
 - `platform-testing`: shared test database utilities.
 
 A thin composition root, `app-bootstrap`, sits above the service kit. It is the single place that enumerates the concrete modules, and both the API and the worker derive their module set from it. It pairs manifests, bindings, runtime config descriptors, story-display metadata, and admin data sources from concrete modules. It depends on the domains, so it lives outside `platform-*` (those crates must not depend on business domains).
 
-Configured remote modules are loaded at startup through `platform-module-remote`. The first Remote slice supports manifest loading and schema-admin reads only; remote HTTP routes, runtime execution, event handling, custom UI, and marketplace trust are separate future specs.
+Configured remote modules are loaded at startup through `platform-module-remote`. The first Remote slice supports manifest loading and schema-admin reads only; remote HTTP routes, runtime execution, event handling, custom admin UI, and marketplace trust are separate future specs.
 
 The service kit should stay stable and small. It exists to remove boilerplate, not to own business behavior.
 
@@ -69,7 +69,7 @@ The Runtime Console is a Vite/React operator UI under `apps/runtime-console`. It
 
 The API exposes admin runtime endpoints under `/admin/runtime/*` for summaries, timelines, stories, heatmaps, outbox events, function runs, retries, execution payloads, and technical operations. These are served by the `platform-admin` crate, which the API app mounts; they use the same OpenAPI contract as the public identity API. Story display names are domain-owned, so the composition root injects the aggregated catalog into `platform-admin` (via `install_story_display`) rather than having it depend on the domains.
 
-The API also exposes schema-admin endpoints under `/admin/data/*`. These are served by `platform-admin-data`, which reads module schemas and data through the injected `AdminSurface::Schema` + `AdminDataSource` registry. The first implementation is a read-only identity User slice; writes, richer RBAC, remote module data sources, and custom module UI are later module-framework steps.
+The API also exposes schema-admin endpoints under `/admin/data/*`. These are served by `platform-admin-data`, which reads module schemas and data through the injected `AdminSurface::Schema` + `AdminDataSource` registry. The first implementation is a read-only identity User slice; writes, richer RBAC, and custom module UI are later module-framework steps.
 
 OpenTelemetry data is an enrichment layer for technical operations. See `docs/architecture/runtime-telemetry.md` for the boundary between runtime story semantics and telemetry span enrichment.
 
