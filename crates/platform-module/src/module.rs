@@ -34,6 +34,18 @@ impl Module {
         }
     }
 
+    /// Build a remote module from a manifest + transport-backed behavior.
+    /// Remote behavior is intentionally narrow in the first slice.
+    #[must_use]
+    pub fn remote(manifest: ModuleManifest, binding: Arc<dyn ModuleBinding>) -> Self {
+        Self {
+            manifest,
+            binding,
+            runtime_config: &[],
+            admin_data: None,
+        }
+    }
+
     /// Attach the module's editable configuration descriptors.
     #[must_use]
     pub fn with_runtime_config(
