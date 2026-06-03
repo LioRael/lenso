@@ -22,7 +22,10 @@ async fn main() -> anyhow::Result<()> {
     let registry = RuntimeConfigRegistry::try_new(descriptors)
         .context("duplicate runtime-config descriptor registered")?;
     platform_admin::install_runtime_config_registry(registry.clone());
-    platform_admin_data::install_admin_modules(app_bootstrap::admin_modules(&ctx));
+    let admin_modules = app_bootstrap::load_admin_modules(&ctx)
+        .await
+        .context("failed to load admin modules")?;
+    platform_admin_data::install_admin_modules(admin_modules);
 
     let runtime_config =
         PostgresRuntimeConfigProvider::connect(ctx.db.clone(), Arc::new(registry), "api")
