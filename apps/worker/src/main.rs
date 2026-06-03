@@ -59,6 +59,7 @@ async fn run_worker_loop(
             .snapshot()
             .get("worker")
             .unwrap_or_default();
+        // batch_size is descriptor-capped at 1000, so the u64->i64 cast is lossless.
         let batch_size = cfg.batch_size as i64;
         tokio::select! {
             changed = shutdown_rx.changed() => {

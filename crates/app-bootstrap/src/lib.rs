@@ -81,6 +81,8 @@ pub fn runtime_config_descriptors(ctx: &AppContext) -> Vec<RuntimeConfigDescript
         .iter()
         .flat_map(|domain| domain.runtime_config.iter().cloned())
         .collect::<Vec<_>>();
+    // Platform-owned descriptors (e.g. worker knobs) plus every domain's; keys
+    // are globally unique, so chain order is presentation-only.
     platform_core::worker_runtime_config::RUNTIME_CONFIG
         .iter()
         .cloned()
