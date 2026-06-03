@@ -88,6 +88,7 @@ pub fn router() -> ApiOpenApiRouter {
         .routes(routes!(get_heatmap))
         .routes(routes!(list_stories))
         .routes(routes!(get_story))
+        .routes(routes!(get_story_heatmap))
         .routes(routes!(get_story_technical_operations))
         .routes(routes!(get_execution_technical_operations))
         .routes(routes!(get_execution_payload))

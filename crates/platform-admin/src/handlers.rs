@@ -158,6 +158,112 @@ pub(crate) async fn get_heatmap(
 ) -> Result<Json<AdminRuntimeHeatmapResponse>, ApiErrorResponse> {
     let limit = normalized_limit(query.limit);
     let bucket_seconds = normalized_bucket_seconds(query.bucket_seconds);
+    let rows = fetch_heatmap_rows(&ctx, &request_ctx, &query, limit, bucket_seconds, None).await?;
+
+    let data: Vec<AdminRuntimeHeatmapCell> = rows.into_iter().map(Into::into).collect();
+    Ok(Json(AdminRuntimeHeatmapResponse {
+        page: page_info(limit, data.last().map(|cell| cell.bucket_start)),
+        data,
+        bucket_seconds,
+        order: "bucket_start_desc",
+    }))
+}
+
+#[utoipa::path(
+    get,
+    path = "/admin/runtime/stories/{correlation_id}/heatmap",
+    operation_id = "admin_runtime_get_story_heatmap",
+    tag = "admin-runtime",
+    params(
+        ("authorization" = String, Header, description = "Development service bearer token, for example `Bearer dev-service:admin`"),
+        ("x-request-id" = Option<String>, Header, description = "Optional caller-provided request identifier"),
+        ("x-correlation-id" = Option<String>, Header, description = "Optional caller-provided correlation identifier"),
+        ("correlation_id" = String, Path, description = "Story correlation identifier"),
+        HeatmapQuery
+    ),
+    responses(
+        (
+            status = 200,
+            description = "Runtime heatmap cells scoped to a single story correlation identifier",
+            body = AdminRuntimeHeatmapResponse,
+            content_type = "application/json",
+            headers(
+                ("x-request-id" = String, description = "Request identifier for this HTTP request"),
+                ("x-correlation-id" = String, description = "Correlation identifier shared across related work")
+            )
+        ),
+        (
+            status = 401,
+            description = "Authentication is required",
+            body = ErrorResponse,
+            content_type = "application/json"
+        ),
+        (
+            status = 403,
+            description = "Service or system authentication is required",
+            body = ErrorResponse,
+            content_type = "application/json"
+        ),
+        (
+            status = 404,
+            description = "Runtime story not found",
+            body = ErrorResponse,
+            content_type = "application/json"
+        ),
+        (
+            status = 500,
+            description = "Internal server error",
+            body = ErrorResponse,
+            content_type = "application/json"
+        )
+    )
+)]
+pub(crate) async fn get_story_heatmap(
+    _admin: AdminActor,
+    State(ctx): State<AppContext>,
+    HttpRequestContext(request_ctx): HttpRequestContext,
+    Path(correlation_id): Path<String>,
+    Query(query): Query<HeatmapQuery>,
+) -> Result<Json<AdminRuntimeHeatmapResponse>, ApiErrorResponse> {
+    if !runtime_story_exists(&ctx, &request_ctx, &correlation_id).await? {
+        return Err(ApiErrorResponse::with_context(
+            AppError::new(
+                ErrorCode::NotFound,
+                format!("Runtime story {correlation_id} was not found"),
+            ),
+            &request_ctx,
+        ));
+    }
+
+    let limit = normalized_limit(query.limit);
+    let bucket_seconds = normalized_bucket_seconds(query.bucket_seconds);
+    let rows = fetch_heatmap_rows(
+        &ctx,
+        &request_ctx,
+        &query,
+        limit,
+        bucket_seconds,
+        Some(&correlation_id),
+    )
+    .await?;
+
+    let data: Vec<AdminRuntimeHeatmapCell> = rows.into_iter().map(Into::into).collect();
+    Ok(Json(AdminRuntimeHeatmapResponse {
+        page: page_info(limit, data.last().map(|cell| cell.bucket_start)),
+        data,
+        bucket_seconds,
+        order: "bucket_start_desc",
+    }))
+}
+
+async fn fetch_heatmap_rows(
+    ctx: &AppContext,
+    request_ctx: &platform_core::RequestContext,
+    query: &HeatmapQuery,
+    limit: i64,
+    bucket_seconds: i64,
+    correlation_id: Option<&str>,
+) -> Result<Vec<HeatmapRow>, ApiErrorResponse> {
     let rows = sqlx::query_as::<_, HeatmapRow>(
         r#"
         with runtime_items as (
@@ -182,6 +288,7 @@ pub(crate) async fn get_heatmap(
               and ($6::text is null or status = $6)
               and ($7::text is null or event_name = $7)
               and ($8::text is null)
+              and ($9::text is null or correlation_id = $9)
 
             union all
 
@@ -206,6 +313,7 @@ pub(crate) async fn get_heatmap(
               and ($6::text is null or status = $6)
               and ($7::text is null)
               and ($8::text is null or function_name = $8)
+              and ($9::text is null or correlation_id = $9)
 
             union all
 
@@ -223,6 +331,7 @@ pub(crate) async fn get_heatmap(
               and ($6::text is null or status = $6)
               and ($7::text is null)
               and ($8::text is null)
+              and ($9::text is null or correlation_id = $9)
         ),
         heatmap as (
             select
@@ -261,20 +370,49 @@ pub(crate) async fn get_heatmap(
     .bind(limit)
     .bind(query.from)
     .bind(query.to)
-    .bind(query.status)
-    .bind(query.event_name)
-    .bind(query.function_name)
+    .bind(query.status.as_deref())
+    .bind(query.event_name.as_deref())
+    .bind(query.function_name.as_deref())
+    .bind(correlation_id)
     .fetch_all(&ctx.db)
     .await
-    .map_err(|source| query_error(source, &request_ctx))?;
+    .map_err(|source| query_error(source, request_ctx))?;
 
-    let data: Vec<AdminRuntimeHeatmapCell> = rows.into_iter().map(Into::into).collect();
-    Ok(Json(AdminRuntimeHeatmapResponse {
-        page: page_info(limit, data.last().map(|cell| cell.bucket_start)),
-        data,
-        bucket_seconds,
-        order: "bucket_start_desc",
-    }))
+    Ok(rows)
+}
+
+async fn runtime_story_exists(
+    ctx: &AppContext,
+    request_ctx: &platform_core::RequestContext,
+    correlation_id: &str,
+) -> Result<bool, ApiErrorResponse> {
+    let exists = sqlx::query_scalar::<_, bool>(
+        r#"
+        select exists (
+            select 1
+            from platform.outbox
+            where correlation_id = $1
+
+            union all
+
+            select 1
+            from runtime.function_runs
+            where correlation_id = $1
+
+            union all
+
+            select 1
+            from platform.story_events
+            where correlation_id = $1
+        )
+        "#,
+    )
+    .bind(correlation_id)
+    .fetch_one(&ctx.db)
+    .await
+    .map_err(|source| query_error(source, request_ctx))?;
+
+    Ok(exists)
 }
 
 #[utoipa::path(

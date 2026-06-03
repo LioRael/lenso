@@ -1508,6 +1508,63 @@ async fn runtime_heatmap_without_runtime_work_returns_empty_data() {
 }
 
 #[tokio::test]
+async fn service_actor_can_fetch_story_runtime_heatmap() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+    insert_heatmap_story_events(&db.pool).await;
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/stories/corr_heatmap_1/heatmap?bucket_seconds=60&limit=20")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["bucket_seconds"], 60);
+    assert_eq!(body["data"].as_array().unwrap().len(), 2);
+    assert_eq!(body["data"][0]["service"], "api");
+    assert_eq!(body["data"][0]["node_type"], "http_request");
+    assert_eq!(body["data"][0]["total_count"], 1);
+    assert_eq!(body["data"][0]["error_count"], 0);
+    assert_eq!(body["data"][0]["max_duration_ms"], 120);
+    assert_eq!(body["data"][1]["service"], "notifications");
+    assert_eq!(body["data"][1]["node_type"], "function");
+    assert_eq!(body["data"][1]["total_count"], 1);
+    assert_eq!(body["data"][1]["error_count"], 1);
+    assert_eq!(body["data"][1]["dead_count"], 1);
+    assert_eq!(body["data"][1]["max_duration_ms"], 80_000);
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn unknown_runtime_story_heatmap_returns_not_found() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/stories/missing/heatmap")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let body = json_body(response).await;
+    assert_eq!(body["error"]["code"], "not_found");
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
 async fn service_actor_can_list_outbox() {
     let Some(db) = TestDatabase::create().await else {
         return;
@@ -1902,6 +1959,10 @@ async fn admin_runtime_openapi_contract_is_present() {
     assert_eq!(
         value["paths"]["/admin/runtime/stories/{correlation_id}"]["get"]["operationId"],
         "admin_runtime_get_story"
+    );
+    assert_eq!(
+        value["paths"]["/admin/runtime/stories/{correlation_id}/heatmap"]["get"]["operationId"],
+        "admin_runtime_get_story_heatmap"
     );
     assert_eq!(
         value["paths"]["/admin/runtime/stories/{correlation_id}/technical-operations"]["get"]["operationId"],
@@ -2642,6 +2703,97 @@ async fn insert_heatmap_function_runs(pool: &platform_core::DbPool) {
     .execute(pool)
     .await
     .expect("heatmap function runs should insert");
+}
+
+async fn insert_heatmap_story_events(pool: &platform_core::DbPool) {
+    sqlx::query(
+        r#"
+        insert into platform.story_events (
+            id,
+            source_type,
+            source_id,
+            node_type,
+            name,
+            status,
+            service,
+            correlation_id,
+            causation_id,
+            started_at,
+            completed_at,
+            duration_ms,
+            error,
+            metadata,
+            trace_id,
+            span_id,
+            created_at,
+            updated_at
+        )
+        values
+            (
+                'story_heatmap_http',
+                'http_request',
+                'req_heatmap_1',
+                'http_request',
+                'POST /identity/users',
+                'completed',
+                'api',
+                'corr_heatmap_1',
+                null,
+                '2026-05-31T00:00:10Z',
+                '2026-05-31T00:00:10.120Z',
+                120,
+                null,
+                '{}'::jsonb,
+                'trace_heatmap_1',
+                'span_heatmap_1',
+                '2026-05-31T00:00:10Z',
+                '2026-05-31T00:00:10.120Z'
+            ),
+            (
+                'story_heatmap_fn_dead',
+                'function_run',
+                'fnrun_heatmap_story_dead',
+                'function',
+                'notifications.send_welcome_email.v1',
+                'dead',
+                'notifications',
+                'corr_heatmap_1',
+                'story_heatmap_http',
+                '2026-05-31T00:00:40Z',
+                '2026-05-31T00:02:00Z',
+                80000,
+                'smtp timeout',
+                '{}'::jsonb,
+                'trace_heatmap_1',
+                'span_heatmap_2',
+                '2026-05-31T00:00:40Z',
+                '2026-05-31T00:02:00Z'
+            ),
+            (
+                'story_heatmap_other',
+                'function_run',
+                'fnrun_heatmap_story_other',
+                'function',
+                'notifications.cleanup_expired_sessions.v1',
+                'completed',
+                'notifications',
+                'corr_heatmap_2',
+                null,
+                '2026-05-31T00:00:45Z',
+                '2026-05-31T00:00:50Z',
+                5000,
+                null,
+                '{}'::jsonb,
+                'trace_heatmap_2',
+                'span_heatmap_3',
+                '2026-05-31T00:00:45Z',
+                '2026-05-31T00:00:50Z'
+            )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .expect("heatmap story events should insert");
 }
 
 #[derive(Clone)]
