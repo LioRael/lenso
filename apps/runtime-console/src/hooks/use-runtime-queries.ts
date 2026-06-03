@@ -50,6 +50,7 @@ export const runtimeQueryKeys = {
   events: ["runtime", "events"] as const,
   functions: ["runtime", "functions"] as const,
   heatmap: ["runtime", "heatmap"] as const,
+  storyHeatmap: (id: string) => ["runtime", "stories", id, "heatmap"] as const,
   timeline: (id: string) => ["runtime", "timeline", id] as const,
   technicalOperationsForStory: (id: string) =>
     ["runtime", "stories", id, "technical-operations"] as const,
@@ -141,6 +142,17 @@ export function useRuntimeHeatmap() {
     queryKey: runtimeQueryKeys.heatmap,
     queryFn: async () =>
       isApiMode() ? fetchRuntimeHeatmap() : mockRuntimeHeatmap(),
+  });
+}
+
+export function useStoryHeatmap(story: RuntimeStory) {
+  return useQuery({
+    enabled: Boolean(story.correlationId),
+    queryKey: runtimeQueryKeys.storyHeatmap(story.correlationId),
+    queryFn: async () =>
+      isApiMode()
+        ? fetchStoryHeatmap(story.correlationId)
+        : mockStoryHeatmap(story),
   });
 }
 
@@ -413,6 +425,17 @@ async function fetchRuntimeHeatmap(): Promise<RuntimeHeatmap> {
   return normalizeRuntimeHeatmap(response);
 }
 
+async function fetchStoryHeatmap(
+  storyCorrelationId: string
+): Promise<RuntimeHeatmap> {
+  const response = await httpClient
+    .get(
+      `admin/runtime/stories/${encodeURIComponent(storyCorrelationId)}/heatmap`
+    )
+    .json<ApiRuntimeHeatmapResponse>();
+  return normalizeRuntimeHeatmap(response);
+}
+
 async function fetchRuntimeStories(): Promise<RuntimeStory[]> {
   const response = await httpClient
     .get("admin/runtime/stories")
@@ -621,32 +644,40 @@ function normalizeRuntimeStatus(status: string): RuntimeStatus {
 function mockRuntimeHeatmap(): RuntimeHeatmap {
   return {
     bucketSeconds: 300,
-    cells: runtimeStories.flatMap((story) =>
-      story.nodes
-        .filter(
-          (node) =>
-            node.kind === "event" ||
-            node.kind === "function" ||
-            node.kind === "http"
-        )
-        .map<RuntimeHeatmapCell>((node) => ({
-          bucketEnd: story.timestamp,
-          bucketStart: story.timestamp,
-          deadCount: node.status === "dead" ? 1 : 0,
-          errorCount:
-            node.status === "failed" || node.status === "dead" ? 1 : 0,
-          maxDurationMs: node.durationMs,
-          nodeType:
-            node.kind === "event"
-              ? "event"
-              : node.kind === "http"
-                ? "http"
-                : "function",
-          service: node.service,
-          totalCount: 1,
-        }))
-    ),
+    cells: runtimeStories.flatMap((story) => storyHeatmapCells(story)),
   };
+}
+
+function mockStoryHeatmap(story: RuntimeStory): RuntimeHeatmap {
+  return {
+    bucketSeconds: 300,
+    cells: storyHeatmapCells(story),
+  };
+}
+
+function storyHeatmapCells(story: RuntimeStory): RuntimeHeatmapCell[] {
+  return story.nodes
+    .filter(
+      (node) =>
+        node.kind === "event" ||
+        node.kind === "function" ||
+        node.kind === "http"
+    )
+    .map<RuntimeHeatmapCell>((node) => ({
+      bucketEnd: story.timestamp,
+      bucketStart: story.timestamp,
+      deadCount: node.status === "dead" ? 1 : 0,
+      errorCount: node.status === "failed" || node.status === "dead" ? 1 : 0,
+      maxDurationMs: node.durationMs,
+      nodeType:
+        node.kind === "event"
+          ? "event"
+          : node.kind === "http"
+            ? "http"
+            : "function",
+      service: node.service,
+      totalCount: 1,
+    }));
 }
 
 function mergeStoryDetail(summary: RuntimeStory, detail: RuntimeStory) {
