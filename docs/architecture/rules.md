@@ -43,9 +43,12 @@ Do not create DDD or Clean Architecture folders:
 
 ## Domain Registration
 
-- The concrete domain set is enumerated only in `crates/app-bootstrap`. Apps must not hand-wire individual domains.
-- A new domain is registered through the `app-bootstrap` entry points it needs: `domains` (runtime functions and event handlers), `merge_domain_http` (HTTP routes), and `story_display_descriptors` (runtime console metadata).
-- Each domain exposes its non-HTTP contributions as a single `DomainDescriptor` (from `platform-domain`); do not redefine that type per domain.
+- The concrete module set is enumerated only in `crates/app-bootstrap`. Apps must not hand-wire individual domains or modules.
+- A new module is registered through the `app-bootstrap` entry points it needs: `modules` (runtime functions, event handlers, runtime config, admin data), `module_manifests` (context-free metadata), `merge_domain_http` (Linked HTTP routes), and `story_display_descriptors` (runtime console metadata).
+- Each domain exposes module data as `ModuleManifest` and source-specific behavior through `ModuleBinding` from `platform-module`; do not recreate descriptor types per domain.
+- Keep data and behavior split. Serializable declarations belong in `ModuleManifest`; behavior belongs behind narrow traits such as `ModuleBinding` and `AdminDataSource`.
+- `platform-admin` and `platform-admin-data` must not depend on concrete domain crates. Use composition-root injection and platform-module seams.
+- Remote modules may provide manifests and schema-admin read data through `platform-module-remote`; they must not contribute HTTP routes, runtime functions, or event handlers until those protocols have their own specs.
 
 ## Contracts
 

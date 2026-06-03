@@ -18,7 +18,7 @@ Domains own their data and behavior. A domain may expose:
 - Runtime jobs/functions under `jobs/` and `runtime/`.
 - SQL and migrations under `repositories/` and `migrations/`.
 
-A domain's non-HTTP contributions (runtime functions, event handlers, story-display metadata) are bundled into a `DomainDescriptor` returned from its `module.rs`.
+A domain exposes module metadata and behavior through `module.rs`. Pure declarations such as the module name, story-display metadata, capabilities, and schema-admin surface live in a `ModuleManifest`; source-specific behavior such as runtime function and event-handler registration lives behind `ModuleBinding`.
 
 Domains must not query another domain's tables or import another domain's internal modules. Cross-domain async work goes through events and runtime function enqueueing.
 
@@ -34,11 +34,14 @@ The service kit is split into a few crates:
 - `platform-core`: config, error model, request context, actor context, IDs, clock, DB pool, migrations, events, transactional outbox, relay primitives, health, shutdown, telemetry foundations, and telemetry query abstractions.
 - `platform-http`: Axum request context middleware, auth extractors, standard JSON error responses, JSON extractor, response helpers, health routes, and the `OpenApiRouter` re-exports used for single-source OpenAPI.
 - `platform-runtime`: embedded runtime primitives for functions, triggers, queues, flows, retry policies, registry, worker execution, and store traits.
-- `platform-domain`: the shared `DomainDescriptor` type each domain exposes, so the descriptor and its `Debug` impl are defined once rather than per domain.
+- `platform-module`: the module framework contracts. `ModuleManifest` is owned, serializable module data; `ModuleBinding` is the narrow behavior seam; `LinkedBinding` is the current compile-time source; `AdminSurface::Schema` and `AdminDataSource` support the generic schema-admin path.
 - `platform-admin`: the runtime-observability backend for the Runtime Console. It is a cross-cutting platform concern, not a business domain — it only reads platform/runtime tables (`platform.outbox`, `platform.story_events`, `runtime.function_runs`) to observe every domain's activity, and exposes one router the API app mounts under `/admin/runtime/*`.
+- `platform-admin-data`: the schema-admin backend for module business data. It exposes generic `/admin/data/*` endpoints over injected `AdminSurface::Schema` manifests and `AdminDataSource` implementations, without depending on concrete domains.
 - `platform-testing`: shared test database utilities.
 
-A thin composition root, `app-bootstrap`, sits above the service kit. It is the single place that enumerates the concrete domains, and both the API and the worker derive their domain set from it. It depends on the domains, so it lives outside `platform-*` (those crates must not depend on business domains).
+A thin composition root, `app-bootstrap`, sits above the service kit. It is the single place that enumerates the concrete modules, and both the API and the worker derive their module set from it. It pairs manifests, bindings, runtime config descriptors, story-display metadata, and admin data sources from concrete modules. It depends on the domains, so it lives outside `platform-*` (those crates must not depend on business domains).
+
+Configured remote modules are loaded at startup through `platform-module-remote`. The first Remote slice supports manifest loading and schema-admin reads only; remote HTTP routes, runtime execution, event handling, custom UI, and marketplace trust are separate future specs.
 
 The service kit should stay stable and small. It exists to remove boilerplate, not to own business behavior.
 
@@ -46,7 +49,7 @@ The service kit should stay stable and small. It exists to remove boilerplate, n
 
 The runtime is embedded beside the modular monolith. It manages functions, triggers, queues, flows, retry policies, function run persistence, and execution metadata. It does not own business logic.
 
-Domains register runtime functions through their `DomainDescriptor`. The worker app gets the domain set from `app-bootstrap`, composes their runtime descriptors into a `FunctionRegistry`, registers domain event handlers, runs the transactional outbox relay, and runs the runtime worker loop.
+Modules register runtime functions through their `ModuleBinding`. The worker app gets the module set from `app-bootstrap`, composes their runtime descriptors into a `FunctionRegistry`, registers module event handlers, runs the transactional outbox relay, and runs the runtime worker loop.
 
 Current flow from an identity event to runtime work:
 
@@ -66,6 +69,8 @@ The Runtime Console is a Vite/React operator UI under `apps/runtime-console`. It
 
 The API exposes admin runtime endpoints under `/admin/runtime/*` for summaries, timelines, stories, heatmaps, outbox events, function runs, retries, execution payloads, and technical operations. These are served by the `platform-admin` crate, which the API app mounts; they use the same OpenAPI contract as the public identity API. Story display names are domain-owned, so the composition root injects the aggregated catalog into `platform-admin` (via `install_story_display`) rather than having it depend on the domains.
 
+The API also exposes schema-admin endpoints under `/admin/data/*`. These are served by `platform-admin-data`, which reads module schemas and data through the injected `AdminSurface::Schema` + `AdminDataSource` registry. The first implementation is a read-only identity User slice; writes, richer RBAC, remote module data sources, and custom module UI are later module-framework steps.
+
 OpenTelemetry data is an enrichment layer for technical operations. See `docs/architecture/runtime-telemetry.md` for the boundary between runtime story semantics and telemetry span enrichment.
 
 ## Contract Layer
@@ -75,6 +80,7 @@ Rust is the authoring source for the OpenAPI document. Each HTTP handler carries
 - `POST /v1/identity/users`
 - `GET /v1/identity/me`
 - `/admin/runtime/*` Runtime Console endpoints
+- `/admin/data/*` schema-admin endpoints
 - standard error responses and request/correlation headers
 
 Paths and component schemas are collected automatically from the annotated handlers; `openapi.rs` declares no path or schema lists of its own.

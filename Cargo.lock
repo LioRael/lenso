@@ -70,6 +70,7 @@ dependencies = [
  "platform-core",
  "platform-http",
  "platform-module",
+ "platform-module-remote",
  "platform-runtime",
 ]
 

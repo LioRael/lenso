@@ -22,8 +22,11 @@ pub fn run() -> anyhow::Result<()> {
         &mut failures,
     );
     collect_result(
-        check_admin_data_no_domain_deps(&root),
-        "platform-admin-data domain dependency",
+        check_crates_no_domain_deps(
+            &root,
+            &["platform-admin", "platform-admin-data", "platform-module-remote"],
+        ),
+        "platform admin/remote domain dependency",
         &mut failures,
     );
     collect_result(
@@ -128,25 +131,30 @@ pub fn check_forbidden_cross_domain_imports(root: &Path) -> anyhow::Result<()> {
     )
 }
 
-/// `platform-admin-data` must not depend on any business domain — it works only
-/// through the `AdminDataSource` seam and manifest schema.
-pub fn check_admin_data_no_domain_deps(root: &Path) -> anyhow::Result<()> {
-    let manifest = root.join("crates/platform-admin-data/Cargo.toml");
-    let source = fs::read_to_string(&manifest)
-        .with_context(|| format!("failed to read {}", manifest.display()))?;
+/// Platform admin/remote crates must not depend on business domains; they work
+/// through composition-root injection and `platform-module` seams.
+pub fn check_crates_no_domain_deps(root: &Path, crates: &[&str]) -> anyhow::Result<()> {
     let domain_names = domain_names(root)?;
     let mut violations = Vec::new();
-    for domain in &domain_names {
-        if source.contains(&format!("{domain}.workspace"))
-            || source.contains(&format!("\"{domain}\""))
-            || source.contains(&format!("{domain} ="))
-        {
-            violations.push(format!("platform-admin-data depends on domain `{domain}`"));
+
+    for crate_name in crates {
+        let manifest = root.join(format!("crates/{crate_name}/Cargo.toml"));
+        let source = fs::read_to_string(&manifest)
+            .with_context(|| format!("failed to read {}", manifest.display()))?;
+
+        for domain in &domain_names {
+            if source.contains(&format!("{domain}.workspace"))
+                || source.contains(&format!("\"{domain}\""))
+                || source.contains(&format!("{domain} ="))
+            {
+                violations.push(format!("{crate_name} depends on domain `{domain}`"));
+            }
         }
     }
+
     ensure_empty(
         violations,
-        "platform-admin-data must not depend on any domain crate (use the AdminDataSource seam)",
+        "platform admin/remote crates must not depend on any domain crate",
     )
 }
 
