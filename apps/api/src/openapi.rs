@@ -23,7 +23,8 @@ use utoipa::OpenApi;
     tags(
         (name = "identity", description = "Identity domain APIs"),
         (name = "admin-runtime", description = "Read-only runtime console APIs"),
-        (name = "admin-config", description = "Editable configuration console APIs")
+        (name = "admin-config", description = "Editable configuration console APIs"),
+        (name = "admin-data", description = "Schema-driven admin data console APIs")
     )
 )]
 struct ApiDoc;
@@ -38,7 +39,9 @@ pub(crate) fn api_router() -> ApiOpenApiRouter {
     platform_admin::install_story_display(app_bootstrap::story_display_descriptors());
 
     let base = OpenApiRouter::with_openapi(ApiDoc::openapi()).merge(base_router());
-    app_bootstrap::merge_domain_http(base).merge(platform_admin::router())
+    app_bootstrap::merge_domain_http(base)
+        .merge(platform_admin::router())
+        .merge(platform_admin_data::router())
 }
 
 /// The committed `OpenAPI` document, derived from the annotated handlers.

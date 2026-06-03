@@ -42,6 +42,7 @@ dependencies = [
  "chrono",
  "identity",
  "platform-admin",
+ "platform-admin-data",
  "platform-core",
  "platform-http",
  "platform-runtime",
@@ -63,6 +64,7 @@ version = "0.1.0"
 dependencies = [
  "identity",
  "notifications",
+ "platform-admin-data",
  "platform-core",
  "platform-http",
  "platform-module",
@@ -1372,6 +1374,19 @@ dependencies = [
  "serde_json",
  "sqlx",
  "tracing",
+ "utoipa",
+]
+
+[[package]]
+name = "platform-admin-data"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "platform-core",
+ "platform-http",
+ "platform-module",
+ "serde",
+ "serde_json",
  "utoipa",
 ]
 

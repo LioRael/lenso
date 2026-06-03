@@ -13,6 +13,7 @@ axum.workspace = true
 chrono.workspace = true
 identity.workspace = true
 platform-admin.workspace = true
+platform-admin-data.workspace = true
 platform-core.workspace = true
 platform-http.workspace = true
 platform-runtime.workspace = true
