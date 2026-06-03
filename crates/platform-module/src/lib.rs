@@ -17,7 +17,11 @@ mod linked;
 mod manifest;
 mod module;
 
-pub use admin::AdminSurface;
+pub use admin::{
+    AdminAction, AdminDeclarativeComponent, AdminDeclarativePage, AdminDeclarativeSection,
+    AdminDeclarativeSurface, AdminEmbeddedEntry, AdminEmbeddedRuntime, AdminEmbeddedSurface,
+    AdminMetricBinding, AdminPermission, AdminSandboxPolicy, AdminSurface,
+};
 pub use admin_data::{AdminDataSource, AdminListQuery, AdminPage};
 pub use admin_schema::{AdminSchema, EntitySchema, FieldSchema, FieldType};
 pub use binding::ModuleBinding;
