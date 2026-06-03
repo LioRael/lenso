@@ -7,6 +7,7 @@ publish.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+async-trait.workspace = true
 axum.workspace = true
 platform-core.workspace = true
 platform-http.workspace = true

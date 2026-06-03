@@ -11,6 +11,12 @@ pub struct AdminSchemaListResponse {
     pub modules: Vec<AdminModuleSchema>,
 }
 
+/// Response for `POST /admin/data/schema/refresh`.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminSchemaRefreshResponse {
+    pub modules: Vec<AdminModuleSchema>,
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AdminModuleSchema {
     pub module_name: String,

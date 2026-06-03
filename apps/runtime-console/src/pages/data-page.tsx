@@ -1,12 +1,17 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AlertTriangle, RefreshCw } from "lucide-react";
 import { useState } from "react";
 
+import { Button } from "../components/ui/button";
 import { cn } from "../lib/cn";
 import { httpClient, isApiMode } from "../lib/http-client";
 import {
   type AdminRecord,
   detailRows,
   type EntitySchema,
+  moduleErrorMessage,
+  moduleIsLoaded,
+  moduleNavItems,
   moduleStatusLabel,
   type ModuleSchema,
   recordId,
@@ -20,7 +25,7 @@ type ListResponse = {
 };
 type DetailResponse = { data: AdminRecord };
 
-type Selection = { module: ModuleSchema; entity: EntitySchema };
+type Selection = { module: ModuleSchema; entity: EntitySchema | null };
 
 const dataKeys = {
   schema: ["admin-data", "schema"] as const,
@@ -30,6 +35,7 @@ const dataKeys = {
 };
 
 export function DataPage() {
+  const queryClient = useQueryClient();
   const [selected, setSelected] = useState<Selection | null>(null);
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
 
@@ -41,10 +47,13 @@ export function DataPage() {
 
   const listQuery = useQuery({
     queryKey: selected
-      ? dataKeys.list(selected.module.module_name, selected.entity.name)
+      ? dataKeys.list(
+          selected.module.module_name,
+          selected.entity?.name ?? "module"
+        )
       : ["admin-data", "list", "none"],
     queryFn: () => {
-      if (!selected) {
+      if (!(selected && selected.entity)) {
         throw new Error("no entity selected");
       }
       return httpClient
@@ -53,12 +62,16 @@ export function DataPage() {
         )
         .json<ListResponse>();
     },
-    enabled: isApiMode() && selected !== null,
+    enabled:
+      isApiMode() &&
+      selected !== null &&
+      selected.entity !== null &&
+      moduleIsLoaded(selected.module),
   });
 
   const detailQuery = useQuery({
     queryKey:
-      selected && selectedRecordId
+      selected && selected.entity && selectedRecordId
         ? dataKeys.detail(
             selected.module.module_name,
             selected.entity.name,
@@ -66,7 +79,7 @@ export function DataPage() {
           )
         : ["admin-data", "detail", "none"],
     queryFn: () => {
-      if (!(selected && selectedRecordId)) {
+      if (!(selected && selected.entity && selectedRecordId)) {
         throw new Error("no record selected");
       }
       return httpClient
@@ -75,7 +88,26 @@ export function DataPage() {
         )
         .json<DetailResponse>();
     },
-    enabled: isApiMode() && selected !== null && selectedRecordId !== null,
+    enabled:
+      isApiMode() &&
+      selected !== null &&
+      selected.entity !== null &&
+      moduleIsLoaded(selected.module) &&
+      selectedRecordId !== null,
+  });
+
+  const refreshMutation = useMutation({
+    mutationFn: () =>
+      httpClient.post("admin/data/schema/refresh").json<SchemaResponse>(),
+    onSuccess: async (data) => {
+      setSelected(null);
+      setSelectedRecordId(null);
+      queryClient.setQueryData(dataKeys.schema, data);
+      await queryClient.invalidateQueries({ queryKey: ["admin-data", "list"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["admin-data", "detail"],
+      });
+    },
   });
 
   if (!isApiMode()) {
@@ -84,8 +116,23 @@ export function DataPage() {
 
   return (
     <section className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-(--background) text-(--foreground)">
-      <header className="border-b border-(--border-subtle) bg-(--surface) px-3 py-2">
+      <header className="flex items-center border-b border-(--border-subtle) bg-(--surface) px-3 py-2">
         <h1 className="font-mono text-[13px] font-semibold">Data</h1>
+        <Button
+          aria-label="Refresh admin modules"
+          className="ml-auto min-h-6 px-2"
+          disabled={refreshMutation.isPending}
+          onClick={() => refreshMutation.mutate()}
+          title="Refresh admin modules"
+          type="button"
+          variant="ghost"
+        >
+          <RefreshCw
+            className={cn(refreshMutation.isPending && "animate-spin")}
+            size={13}
+          />
+          Refresh
+        </Button>
       </header>
       <div className="grid min-h-0 grid-cols-[220px_minmax(0,1fr)_320px]">
         <nav className="overflow-auto border-r border-(--border-subtle) p-2 font-mono text-[12px]">
@@ -93,42 +140,56 @@ export function DataPage() {
             <p className="px-2 py-1 text-(--muted)">Failed to load schema.</p>
           ) : schemaQuery.isPending ? (
             <p className="px-2 py-1 text-(--muted)">Loading…</p>
-          ) : (
-            schemaQuery.data?.modules.flatMap((moduleSchema) =>
-              moduleSchema.schema.entities.map((entity) => {
-                const isSelected =
-                  selected !== null &&
-                  selected.module.module_name === moduleSchema.module_name &&
-                  selected.entity.name === entity.name;
-                return (
-                  <button
-                    className={cn(
-                      "block w-full px-2 py-1 text-left",
-                      isSelected
-                        ? "bg-(--accent-soft) shadow-[inset_2px_0_0_var(--accent)]"
-                        : "hover:bg-(--sidebar)"
+          ) : schemaQuery.data ? (
+            moduleNavItems(schemaQuery.data.modules).map((item) => {
+              const isSelected =
+                selected !== null &&
+                selected.module.module_name === item.module.module_name &&
+                selected.entity?.name === item.entity?.name;
+              return (
+                <button
+                  className={cn(
+                    "block w-full px-2 py-1 text-left disabled:cursor-default",
+                    isSelected
+                      ? "bg-(--accent-soft) shadow-[inset_2px_0_0_var(--accent)]"
+                      : "hover:bg-(--sidebar)",
+                    moduleIsLoaded(item.module)
+                      ? null
+                      : "border-l border-[color-mix(in_srgb,var(--error)_45%,transparent)] text-(--secondary)"
+                  )}
+                  key={item.key}
+                  onClick={() => {
+                    setSelected({ module: item.module, entity: item.entity });
+                    setSelectedRecordId(null);
+                  }}
+                  type="button"
+                >
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    {moduleIsLoaded(item.module) ? null : (
+                      <AlertTriangle
+                        className="shrink-0 text-(--error)"
+                        size={12}
+                      />
                     )}
-                    key={`${moduleSchema.module_name}.${entity.name}`}
-                    onClick={() => {
-                      setSelected({ module: moduleSchema, entity });
-                      setSelectedRecordId(null);
-                    }}
-                    type="button"
-                  >
-                    <span className="block truncate">
-                      {moduleSchema.module_name} / {entity.label}
-                    </span>
-                    <span className="text-[10px] text-(--muted)">
-                      {moduleSchema.source}
-                    </span>
-                  </button>
-                );
-              })
-            )
-          )}
+                    <span className="truncate">{item.label}</span>
+                  </span>
+                  <span className="block truncate text-[10px] text-(--muted)">
+                    {item.sublabel}
+                  </span>
+                </button>
+              );
+            })
+          ) : null}
+          {refreshMutation.isError ? (
+            <p className="px-2 py-2 text-[11px] text-(--error)">
+              Refresh failed: {String(refreshMutation.error.message)}
+            </p>
+          ) : null}
         </nav>
         <div className="min-w-0 overflow-auto p-3 font-mono text-[12px]">
-          {selected ? (
+          {selected && !moduleIsLoaded(selected.module) ? (
+            <ModuleErrorPanel module={selected.module} />
+          ) : selected && selected.entity ? (
             listQuery.isError ? (
               <p className="text-(--muted)">
                 Failed to load records: {String(listQuery.error.message)}
@@ -136,59 +197,13 @@ export function DataPage() {
             ) : listQuery.isPending ? (
               <p className="text-(--muted)">Loading…</p>
             ) : listQuery.data ? (
-              <>
-                <div className="mb-2 flex items-center gap-2 text-[11px] text-(--muted)">
-                  <span>{selected.module.module_name}</span>
-                  <span>/</span>
-                  <span>{selected.entity.name}</span>
-                  <span className="ml-auto border border-(--border-subtle) px-2 py-0.5 text-[10px] text-(--secondary)">
-                    {selected.module.source} /{" "}
-                    {moduleStatusLabel(selected.module)}
-                  </span>
-                </div>
-                <table className="w-full table-fixed">
-                  <thead>
-                    <tr>
-                      {selected.entity.fields.map((field) => (
-                        <th
-                          className="px-2 py-1 text-left text-(--muted)"
-                          key={field.name}
-                        >
-                          {field.label}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {listQuery.data.data.map((record, index) => {
-                      const id = recordId(record);
-                      const isSelected = id !== null && id === selectedRecordId;
-                      return (
-                        <tr
-                          className={cn(
-                            "border-t border-(--border-subtle)",
-                            isSelected && "bg-(--accent-soft)"
-                          )}
-                          key={id ?? index}
-                        >
-                          {renderRow(selected.entity, record).map((cell) => (
-                            <td className="p-0" key={cell.field}>
-                              <button
-                                className="block min-h-7 w-full truncate px-2 py-1 text-left disabled:cursor-default disabled:text-(--muted)"
-                                disabled={id === null}
-                                onClick={() => setSelectedRecordId(id)}
-                                type="button"
-                              >
-                                {cell.display}
-                              </button>
-                            </td>
-                          ))}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </>
+              <RecordsTable
+                entity={selected.entity}
+                module={selected.module}
+                records={listQuery.data.data}
+                selectedRecordId={selectedRecordId}
+                setSelectedRecordId={setSelectedRecordId}
+              />
             ) : null
           ) : (
             <p className="text-(--muted)">Select an entity.</p>
@@ -198,13 +213,17 @@ export function DataPage() {
           <div className="border-b border-(--border-subtle) px-3 py-2">
             <h2 className="font-semibold">Detail</h2>
             <p className="mt-1 truncate text-[11px] text-(--muted)">
-              {selected && selectedRecordId
+              {selected && selected.entity && selectedRecordId
                 ? `${selected.module.module_name}/${selected.entity.name}/${selectedRecordId}`
-                : "select a row"}
+                : selected && !moduleIsLoaded(selected.module)
+                  ? `${selected.module.module_name} unavailable`
+                  : "select a row"}
             </p>
           </div>
           <div className="p-3">
-            {selected && selectedRecordId ? (
+            {selected && !moduleIsLoaded(selected.module) ? (
+              <ModuleErrorPanel module={selected.module} compact />
+            ) : selected && selected.entity && selectedRecordId ? (
               detailQuery.isError ? (
                 <p className="text-(--muted)">
                   Failed to load detail: {String(detailQuery.error.message)}
@@ -234,6 +253,103 @@ export function DataPage() {
         </aside>
       </div>
     </section>
+  );
+}
+
+function RecordsTable({
+  entity,
+  module,
+  records,
+  selectedRecordId,
+  setSelectedRecordId,
+}: {
+  entity: EntitySchema;
+  module: ModuleSchema;
+  records: AdminRecord[];
+  selectedRecordId: string | null;
+  setSelectedRecordId: (id: string | null) => void;
+}) {
+  return (
+    <>
+      <div className="mb-2 flex items-center gap-2 text-[11px] text-(--muted)">
+        <span>{module.module_name}</span>
+        <span>/</span>
+        <span>{entity.name}</span>
+        <span className="ml-auto border border-(--border-subtle) px-2 py-0.5 text-[10px] text-(--secondary)">
+          {module.source} / {moduleStatusLabel(module)}
+        </span>
+      </div>
+      <table className="w-full table-fixed">
+        <thead>
+          <tr>
+            {entity.fields.map((field) => (
+              <th
+                className="px-2 py-1 text-left text-(--muted)"
+                key={field.name}
+              >
+                {field.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {records.map((record, index) => {
+            const id = recordId(record);
+            const isSelected = id !== null && id === selectedRecordId;
+            return (
+              <tr
+                className={cn(
+                  "border-t border-(--border-subtle)",
+                  isSelected && "bg-(--accent-soft)"
+                )}
+                key={id ?? index}
+              >
+                {renderRow(entity, record).map((cell) => (
+                  <td className="p-0" key={cell.field}>
+                    <button
+                      className="block min-h-7 w-full truncate px-2 py-1 text-left disabled:cursor-default disabled:text-(--muted)"
+                      disabled={id === null}
+                      onClick={() => setSelectedRecordId(id)}
+                      type="button"
+                    >
+                      {cell.display}
+                    </button>
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </>
+  );
+}
+
+function ModuleErrorPanel({
+  compact = false,
+  module,
+}: {
+  compact?: boolean;
+  module: ModuleSchema;
+}) {
+  return (
+    <div
+      className={cn(
+        "border border-[color-mix(in_srgb,var(--error)_35%,var(--border-subtle))] bg-[color-mix(in_srgb,var(--error)_8%,transparent)] p-3",
+        compact && "text-[11px]"
+      )}
+    >
+      <div className="flex items-center gap-2 font-semibold text-(--foreground)">
+        <AlertTriangle className="text-(--error)" size={14} />
+        <span>{module.module_name}</span>
+        <span className="ml-auto border border-(--border-subtle) px-2 py-0.5 text-[10px] text-(--secondary)">
+          {module.source} / {moduleStatusLabel(module)}
+        </span>
+      </div>
+      <p className="mt-2 break-words text-(--muted)">
+        {moduleErrorMessage(module)}
+      </p>
+    </div>
   );
 }
 

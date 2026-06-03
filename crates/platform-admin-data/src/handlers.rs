@@ -1,8 +1,10 @@
 use crate::dto::{
     AdminDataDetailResponse, AdminDataListResponse, AdminDataPageInfo, AdminModuleSchema,
-    AdminModuleStatus, AdminSchemaListResponse,
+    AdminModuleStatus, AdminSchemaListResponse, AdminSchemaRefreshResponse,
 };
-use crate::{AdminModule, admin_modules, find_loaded_module};
+use crate::{
+    AdminModule, admin_modules, admin_refresher, find_loaded_module, install_admin_modules,
+};
 use axum::Json;
 use axum::extract::{Path, Query};
 use platform_core::{AppError, ErrorCode, RequestContext};
@@ -35,7 +37,50 @@ pub(crate) async fn list_schemas(
     _admin: AdminActor,
     HttpRequestContext(_request_ctx): HttpRequestContext,
 ) -> Result<Json<AdminSchemaListResponse>, ApiErrorResponse> {
-    let modules = admin_modules()
+    Ok(Json(AdminSchemaListResponse {
+        modules: schema_response_modules(admin_modules()),
+    }))
+}
+
+#[utoipa::path(
+    post,
+    path = "/admin/data/schema/refresh",
+    operation_id = "admin_data_refresh_schemas",
+    tag = "admin-data",
+    params(("authorization" = String, Header, description = "Development service bearer token")),
+    responses(
+        (status = 200, description = "Refreshed admin-capable modules' schemas", body = AdminSchemaRefreshResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 502, description = "Admin module refresh is unavailable or failed", body = ErrorResponse, content_type = "application/json"),
+    )
+)]
+pub(crate) async fn refresh_schemas(
+    _admin: AdminActor,
+    HttpRequestContext(request_ctx): HttpRequestContext,
+) -> Result<Json<AdminSchemaRefreshResponse>, ApiErrorResponse> {
+    let refresher = admin_refresher().ok_or_else(|| {
+        ApiErrorResponse::with_context(
+            AppError::new(
+                ErrorCode::ExternalDependency,
+                "admin module refresh is unavailable",
+            )
+            .retryable(),
+            &request_ctx,
+        )
+    })?;
+    let modules = refresher
+        .refresh_admin_modules()
+        .await
+        .map_err(|error| ApiErrorResponse::with_context(error, &request_ctx))?;
+    install_admin_modules(modules.clone());
+    Ok(Json(AdminSchemaRefreshResponse {
+        modules: schema_response_modules(modules),
+    }))
+}
+
+fn schema_response_modules(modules: Vec<AdminModule>) -> Vec<AdminModuleSchema> {
+    modules
         .iter()
         .map(|m| AdminModuleSchema {
             module_name: m.module_name.clone(),
@@ -44,8 +89,7 @@ pub(crate) async fn list_schemas(
             error: load_error_message(&m.load_status),
             schema: m.schema.clone(),
         })
-        .collect();
-    Ok(Json(AdminSchemaListResponse { modules }))
+        .collect()
 }
 
 fn admin_module_status(status: &ModuleLoadStatus) -> AdminModuleStatus {

@@ -310,6 +310,10 @@ export type AdminSchemaListResponse = {
   modules: Array<AdminModuleSchema>;
 };
 
+export type AdminSchemaRefreshResponse = {
+  modules: Array<AdminModuleSchema>;
+};
+
 export type ConfigAuditDto = {
   actor?: string | null;
   changed_at: string;

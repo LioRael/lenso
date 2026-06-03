@@ -4,6 +4,9 @@ import {
   detailRows,
   type EntitySchema,
   type FieldSchema,
+  moduleErrorMessage,
+  moduleIsLoaded,
+  moduleNavItems,
   type ModuleSchema,
   moduleStatusLabel,
   recordId,
@@ -149,5 +152,53 @@ describe("moduleStatusLabel", () => {
         error: "manifest failed",
       })
     ).toBe("error");
+  });
+});
+
+describe("module status helpers", () => {
+  const loadedModule: ModuleSchema = {
+    module_name: "identity",
+    source: "linked",
+    status: "loaded",
+    error: null,
+    schema: { entities: [entity] },
+  };
+  const errorModule: ModuleSchema = {
+    module_name: "remote-crm",
+    source: "remote",
+    status: "error",
+    error: "remote manifest request failed",
+    schema: { entities: [] },
+  };
+
+  test("identifies loaded modules", () => {
+    expect(moduleIsLoaded(loadedModule)).toBe(true);
+    expect(moduleIsLoaded(errorModule)).toBe(false);
+  });
+
+  test("returns the backend error message for failed modules", () => {
+    expect(moduleErrorMessage(errorModule)).toBe(
+      "remote manifest request failed"
+    );
+    expect(moduleErrorMessage(loadedModule)).toBeNull();
+  });
+
+  test("keeps failed empty-schema modules visible in nav", () => {
+    expect(moduleNavItems([loadedModule, errorModule])).toEqual([
+      {
+        key: "identity.users",
+        module: loadedModule,
+        entity,
+        label: "identity / Users",
+        sublabel: "linked / loaded",
+      },
+      {
+        key: "remote-crm",
+        module: errorModule,
+        entity: null,
+        label: "remote-crm",
+        sublabel: "remote / error",
+      },
+    ]);
   });
 });

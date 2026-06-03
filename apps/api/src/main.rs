@@ -33,6 +33,11 @@ async fn main() -> anyhow::Result<()> {
             .context("failed to load runtime-config snapshot")?;
     runtime_config.spawn_listener();
     ctx = ctx.with_runtime_config_provider(runtime_config);
+    let admin_refresh_ctx = ctx.clone();
+    platform_admin_data::install_admin_module_refresh_fn(move || {
+        let ctx = admin_refresh_ctx.clone();
+        async move { app_bootstrap::load_admin_modules(&ctx).await }
+    });
 
     let app = build_router(ctx.clone());
     let address: SocketAddr = format!("{}:{}", ctx.config.http.host, ctx.config.http.port)

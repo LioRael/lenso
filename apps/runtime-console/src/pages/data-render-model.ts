@@ -37,6 +37,14 @@ export type ModuleSchema = {
 
 export type AdminRecord = Record<string, unknown>;
 
+export type ModuleNavItem = {
+  key: string;
+  module: ModuleSchema;
+  entity: EntitySchema | null;
+  label: string;
+  sublabel: string;
+};
+
 export type RenderedCell = {
   field: string;
   kind: FieldType["kind"];
@@ -52,6 +60,42 @@ export type DetailRow = {
 
 export function moduleStatusLabel(module: ModuleSchema): "loaded" | "error" {
   return module.status;
+}
+
+export function moduleIsLoaded(module: ModuleSchema): boolean {
+  return module.status === "loaded";
+}
+
+export function moduleErrorMessage(module: ModuleSchema): string | null {
+  return module.status === "error"
+    ? (module.error ?? "module failed to load")
+    : null;
+}
+
+export function moduleNavItems(modules: ModuleSchema[]): ModuleNavItem[] {
+  return modules.flatMap((module) => {
+    if (module.schema.entities.length === 0) {
+      return [
+        {
+          key: module.module_name,
+          module,
+          entity: null,
+          label: module.module_name,
+          sublabel: `${module.source} / ${moduleStatusLabel(module)}`,
+        },
+      ] satisfies ModuleNavItem[];
+    }
+
+    return module.schema.entities.map(
+      (entity): ModuleNavItem => ({
+        key: `${module.module_name}.${entity.name}`,
+        module,
+        entity,
+        label: `${module.module_name} / ${entity.label}`,
+        sublabel: `${module.source} / ${moduleStatusLabel(module)}`,
+      })
+    );
+  });
 }
 
 /** Format one raw value per its field type into a display string. */

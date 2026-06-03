@@ -33,6 +33,25 @@ pub struct AdminModule {
 }
 
 static ADMIN_REGISTRY: OnceLock<RwLock<Vec<AdminModule>>> = OnceLock::new();
+static ADMIN_REFRESHER: OnceLock<RwLock<Option<Arc<dyn AdminModuleRefresher>>>> = OnceLock::new();
+
+#[async_trait::async_trait]
+pub trait AdminModuleRefresher: Send + Sync {
+    async fn refresh_admin_modules(&self) -> platform_core::AppResult<Vec<AdminModule>>;
+}
+
+struct StaticAdminModuleRefresher<F>(F);
+
+#[async_trait::async_trait]
+impl<F, Fut> AdminModuleRefresher for StaticAdminModuleRefresher<F>
+where
+    F: Fn() -> Fut + Send + Sync,
+    Fut: std::future::Future<Output = platform_core::AppResult<Vec<AdminModule>>> + Send,
+{
+    async fn refresh_admin_modules(&self) -> platform_core::AppResult<Vec<AdminModule>> {
+        (self.0)().await
+    }
+}
 
 /// Install the admin-capable module registry. Called once by the composition
 /// root before the router serves traffic. Later calls replace the registry,
@@ -40,6 +59,23 @@ static ADMIN_REGISTRY: OnceLock<RwLock<Vec<AdminModule>>> = OnceLock::new();
 pub fn install_admin_modules(modules: Vec<AdminModule>) {
     let registry = ADMIN_REGISTRY.get_or_init(|| RwLock::new(Vec::new()));
     *registry.write().expect("admin registry lock poisoned") = modules;
+}
+
+/// Install the callback used by the explicit admin refresh endpoint.
+///
+/// Kept as an injected seam so this platform crate does not depend on the
+/// composition root that knows how to load linked and remote modules.
+pub fn install_admin_module_refresher(refresher: Arc<dyn AdminModuleRefresher>) {
+    let registry = ADMIN_REFRESHER.get_or_init(|| RwLock::new(None));
+    *registry.write().expect("admin refresher lock poisoned") = Some(refresher);
+}
+
+pub fn install_admin_module_refresh_fn<F, Fut>(refresh: F)
+where
+    F: Fn() -> Fut + Send + Sync + 'static,
+    Fut: std::future::Future<Output = platform_core::AppResult<Vec<AdminModule>>> + Send + 'static,
+{
+    install_admin_module_refresher(Arc::new(StaticAdminModuleRefresher(refresh)));
 }
 
 fn admin_modules() -> Vec<AdminModule> {
@@ -54,10 +90,16 @@ fn admin_modules() -> Vec<AdminModule> {
         .unwrap_or_default()
 }
 
-fn find_module(
-    module: &str,
-    ctx: &RequestContext,
-) -> Result<AdminModule, ApiErrorResponse> {
+fn admin_refresher() -> Option<Arc<dyn AdminModuleRefresher>> {
+    ADMIN_REFRESHER.get().and_then(|registry| {
+        registry
+            .read()
+            .expect("admin refresher lock poisoned")
+            .clone()
+    })
+}
+
+fn find_module(module: &str, ctx: &RequestContext) -> Result<AdminModule, ApiErrorResponse> {
     admin_modules()
         .into_iter()
         .find(|m| m.module_name == module)
@@ -69,10 +111,7 @@ fn find_module(
         })
 }
 
-fn find_loaded_module(
-    module: &str,
-    ctx: &RequestContext,
-) -> Result<AdminModule, ApiErrorResponse> {
+fn find_loaded_module(module: &str, ctx: &RequestContext) -> Result<AdminModule, ApiErrorResponse> {
     let admin_module = find_module(module, ctx)?;
     if admin_module.data_source.is_some() {
         Ok(admin_module)
@@ -92,6 +131,7 @@ fn find_loaded_module(
 pub fn router() -> ApiOpenApiRouter {
     OpenApiRouter::new()
         .routes(routes!(list_schemas))
+        .routes(routes!(refresh_schemas))
         .routes(routes!(list_records))
         .routes(routes!(get_record))
 }

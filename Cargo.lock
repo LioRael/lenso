@@ -1417,6 +1417,7 @@ dependencies = [
 name = "platform-admin-data"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
  "platform-core",
  "platform-http",

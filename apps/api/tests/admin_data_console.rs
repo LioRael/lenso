@@ -1,7 +1,7 @@
 use app_api::build_router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
-use platform_admin_data::{AdminModule, install_admin_modules};
+use platform_admin_data::{AdminModule, install_admin_module_refresh_fn, install_admin_modules};
 use platform_core::{AppConfig, AppContext, LoggingEventPublisher};
 use platform_module::{
     AdminDataSource, AdminListQuery, AdminPage, AdminSchema, EntitySchema, FieldSchema, FieldType,
@@ -9,6 +9,7 @@ use platform_module::{
 };
 use serde_json::Value;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tower::ServiceExt;
 
 #[derive(Debug)]
@@ -68,6 +69,22 @@ fn admin_get(path: &str) -> Request<Body> {
         .expect("request builds")
 }
 
+fn admin_post(path: &str) -> Request<Body> {
+    Request::builder()
+        .method("POST")
+        .uri(path)
+        .header("authorization", "Bearer dev-service:admin")
+        .body(Body::empty())
+        .expect("request builds")
+}
+
+async fn json_body(response: axum::response::Response) -> Value {
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body");
+    serde_json::from_slice(&bytes).expect("json body")
+}
+
 #[tokio::test]
 async fn schema_endpoint_requires_auth() {
     let response = app()
@@ -122,4 +139,73 @@ async fn unknown_module_returns_404() {
         .await
         .expect("request completes");
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn refresh_schema_replaces_installed_modules() {
+    static REFRESH_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+    install_admin_modules(vec![AdminModule {
+        module_name: "identity".to_owned(),
+        source: ModuleSource::Linked,
+        load_status: ModuleLoadStatus::Loaded,
+        schema: stub_schema(),
+        data_source: Some(Arc::new(StubUsers)),
+    }]);
+    install_admin_module_refresh_fn(|| async {
+        REFRESH_COUNT.fetch_add(1, Ordering::SeqCst);
+        Ok(vec![
+            AdminModule {
+                module_name: "identity".to_owned(),
+                source: ModuleSource::Linked,
+                load_status: ModuleLoadStatus::Loaded,
+                schema: stub_schema(),
+                data_source: Some(Arc::new(StubUsers)),
+            },
+            AdminModule {
+                module_name: "remote-crm".to_owned(),
+                source: ModuleSource::Remote,
+                load_status: ModuleLoadStatus::Error {
+                    message: "remote manifest request failed".to_owned(),
+                },
+                schema: AdminSchema { entities: vec![] },
+                data_source: None,
+            },
+        ])
+    });
+    let ctx = AppContext::new(
+        AppConfig::from_env(),
+        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test").expect("lazy pool"),
+        Arc::new(LoggingEventPublisher),
+    );
+    let app = build_router(ctx);
+
+    let refresh_response = app
+        .clone()
+        .oneshot(admin_post("/admin/data/schema/refresh"))
+        .await
+        .expect("refresh request completes");
+    assert_eq!(refresh_response.status(), StatusCode::OK);
+    let refresh_body = json_body(refresh_response).await;
+    let refreshed_remote = refresh_body["modules"]
+        .as_array()
+        .expect("modules array")
+        .iter()
+        .find(|module| module["module_name"] == "remote-crm")
+        .expect("remote-crm was refreshed");
+    assert_eq!(refreshed_remote["status"], "error");
+    assert_eq!(REFRESH_COUNT.load(Ordering::SeqCst), 1);
+
+    let schema_response = app
+        .oneshot(admin_get("/admin/data/schema"))
+        .await
+        .expect("schema request completes");
+    let schema_body = json_body(schema_response).await;
+    assert!(
+        schema_body["modules"]
+            .as_array()
+            .expect("modules array")
+            .iter()
+            .any(|module| module["module_name"] == "remote-crm")
+    );
 }

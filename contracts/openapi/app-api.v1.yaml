@@ -264,6 +264,43 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /admin/data/schema/refresh:
+    post:
+      tags:
+      - admin-data
+      operationId: admin_data_refresh_schemas
+      parameters:
+      - name: authorization
+        in: header
+        description: Development service bearer token
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Refreshed admin-capable modules' schemas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminSchemaRefreshResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Admin module refresh is unavailable or failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/data/{module}/{entity}:
     get:
       tags:
@@ -2752,6 +2789,16 @@ components:
     AdminSchemaListResponse:
       type: object
       description: 'Response for `GET /admin/data/schema`: every admin-capable module''s schema.'
+      required:
+      - modules
+      properties:
+        modules:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminModuleSchema'
+    AdminSchemaRefreshResponse:
+      type: object
+      description: Response for `POST /admin/data/schema/refresh`.
       required:
       - modules
       properties:
