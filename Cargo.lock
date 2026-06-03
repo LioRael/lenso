@@ -38,12 +38,15 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "app-bootstrap",
+ "async-trait",
  "axum",
  "chrono",
  "identity",
  "platform-admin",
+ "platform-admin-data",
  "platform-core",
  "platform-http",
+ "platform-module",
  "platform-runtime",
  "platform-testing",
  "serde",
@@ -63,6 +66,7 @@ version = "0.1.0"
 dependencies = [
  "identity",
  "notifications",
+ "platform-admin-data",
  "platform-core",
  "platform-http",
  "platform-module",
@@ -1376,6 +1380,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "platform-admin-data"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "platform-core",
+ "platform-http",
+ "platform-module",
+ "serde",
+ "serde_json",
+ "utoipa",
+]
+
+[[package]]
 name = "platform-core"
 version = "0.1.0"
 dependencies = [
@@ -1425,6 +1442,7 @@ dependencies = [
  "platform-runtime",
  "serde",
  "serde_json",
+ "utoipa",
 ]
 
 [[package]]

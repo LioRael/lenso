@@ -5,6 +5,7 @@ import {
   Activity,
   Boxes,
   Command,
+  Database,
   Inbox,
   Moon,
   PanelLeftClose,
@@ -35,6 +36,7 @@ const primaryNavItems = [
   { to: "/runtime/stories", label: "Stories", icon: Workflow },
   { to: "/dead-letters", label: "Dead Letters", icon: TriangleAlert },
   { to: "/queues", label: "Queues", icon: Inbox },
+  { to: "/data", label: "Data", icon: Database },
 ] as const;
 
 const configNavItem = {

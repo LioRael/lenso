@@ -19,8 +19,9 @@
 use platform_core::{
     AppContext, EventHandlerRegistry, RuntimeConfigDescriptor, StoryDisplayDescriptor,
 };
+use platform_admin_data::AdminModule;
 use platform_http::ApiOpenApiRouter;
-use platform_module::{Module, ModuleManifest};
+use platform_module::{AdminSurface, Module, ModuleManifest};
 use platform_runtime::FunctionRegistry;
 
 /// The authoritative list of loaded modules (context-bound: builds bindings).
@@ -36,6 +37,25 @@ pub fn modules(ctx: &AppContext) -> Vec<Module> {
 #[must_use]
 pub fn module_manifests() -> Vec<ModuleManifest> {
     vec![identity::module::manifest(), notifications::module::manifest()]
+}
+
+/// Aggregate admin-capable modules: those declaring an `AdminSurface::Schema`
+/// AND providing an `AdminDataSource`. Modules without an admin surface (e.g.
+/// notifications) are filtered out — "optional capability" semantics.
+#[must_use]
+pub fn admin_modules(ctx: &AppContext) -> Vec<AdminModule> {
+    modules(ctx)
+        .into_iter()
+        .filter_map(|module| {
+            // `modules(ctx)` yields owned Modules — move the fields out.
+            let data_source = module.admin_data?;
+            let ModuleManifest { name, admin, .. } = module.manifest;
+            let AdminSurface::Schema(schema) = admin? else {
+                return None;
+            };
+            Some(AdminModule { module_name: name, schema, data_source })
+        })
+        .collect()
 }
 
 /// Build a [`FunctionRegistry`] from every module's binding.

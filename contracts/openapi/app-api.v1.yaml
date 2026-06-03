@@ -233,6 +233,142 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /admin/data/schema:
+    get:
+      tags:
+      - admin-data
+      operationId: admin_data_list_schemas
+      parameters:
+      - name: authorization
+        in: header
+        description: Development service bearer token
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: All admin-capable modules' schemas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminSchemaListResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/data/{module}/{entity}:
+    get:
+      tags:
+      - admin-data
+      operationId: admin_data_list_records
+      parameters:
+      - name: module
+        in: path
+        description: Module name, e.g. identity
+        required: true
+        schema:
+          type: string
+      - name: entity
+        in: path
+        description: Entity name, e.g. users
+        required: true
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: Max records (default 50, max 200)
+        required: false
+        schema:
+          type: integer
+          format: int64
+      - name: cursor
+        in: query
+        description: Opaque pagination cursor
+        required: false
+        schema:
+          type: string
+      - name: authorization
+        in: header
+        description: Development service bearer token
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: A page of records
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminDataListResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Unknown module or entity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/data/{module}/{entity}/{id}:
+    get:
+      tags:
+      - admin-data
+      operationId: admin_data_get_record
+      parameters:
+      - name: module
+        in: path
+        description: Module name
+        required: true
+        schema:
+          type: string
+      - name: entity
+        in: path
+        description: Entity name
+        required: true
+        schema:
+          type: string
+      - name: id
+        in: path
+        description: Record id
+        required: true
+        schema:
+          type: string
+      - name: authorization
+        in: header
+        description: Development service bearer token
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: One record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminDataDetailResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Unknown module/entity or record not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/runtime/executions/{node_id}/logs:
     get:
       tags:
@@ -1734,6 +1870,41 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
 components:
   schemas:
+    AdminDataDetailResponse:
+      type: object
+      description: Response for `GET /admin/data/{module}/{entity}/{id}`.
+      required:
+      - data
+      properties:
+        data: {}
+    AdminDataListResponse:
+      type: object
+      description: 'Response for `GET /admin/data/{module}/{entity}`: a page of records.'
+      required:
+      - data
+      - page
+      properties:
+        data:
+          type: array
+          items: {}
+          description: Each record is an arbitrary JSON object whose keys match the entity schema.
+        page:
+          $ref: '#/components/schemas/AdminDataPageInfo'
+    AdminDataPageInfo:
+      type: object
+      description: |-
+        Pagination info. `next_cursor` is an opaque token (not a timestamp like
+        platform-admin's PageInfo) so it makes no assumption about entity shape.
+      required:
+      - limit
+      properties:
+        limit:
+          type: integer
+          format: int64
+        next_cursor:
+          type:
+          - string
+          - 'null'
     AdminFunctionRunDetail:
       type: object
       required:
@@ -1807,6 +1978,16 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/AdminFunctionRunDetail'
+    AdminModuleSchema:
+      type: object
+      required:
+      - module_name
+      - schema
+      properties:
+        module_name:
+          type: string
+        schema:
+          $ref: '#/components/schemas/AdminSchema'
     AdminOutboxEventDetail:
       type: object
       required:
@@ -2543,6 +2724,26 @@ components:
           type: string
         page:
           $ref: '#/components/schemas/PageInfo'
+    AdminSchema:
+      type: object
+      description: 'A module''s declared admin surface: which entities it exposes for management.'
+      required:
+      - entities
+      properties:
+        entities:
+          type: array
+          items:
+            $ref: '#/components/schemas/EntitySchema'
+    AdminSchemaListResponse:
+      type: object
+      description: 'Response for `GET /admin/data/schema`: every admin-capable module''s schema.'
+      required:
+      - modules
+      properties:
+        modules:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminModuleSchema'
     ConfigAuditDto:
       type: object
       description: One audit entry.
@@ -2702,6 +2903,31 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/CreateUserResponse'
+    EntitySchema:
+      type: object
+      description: One manageable entity (e.g. identity's "users").
+      required:
+      - name
+      - label
+      - fields
+      - read_capability
+      properties:
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/FieldSchema'
+          description: Ordered field descriptors driving list columns / detail rows.
+        label:
+          type: string
+          description: Human label for the console, e.g. "Users".
+        name:
+          type: string
+          description: Stable entity key, unique within the module, e.g. "users".
+        read_capability:
+          type: string
+          description: |-
+            Capability required to read this entity. Declared now; gated only
+            coarsely (AdminActor) this step. Fine-grained RBAC is a later spec.
     ErrorBody:
       type: object
       required:
@@ -2732,6 +2958,69 @@ components:
       properties:
         error:
           $ref: '#/components/schemas/ErrorBody'
+    FieldSchema:
+      type: object
+      description: One field of an entity.
+      required:
+      - name
+      - label
+      - field_type
+      properties:
+        field_type:
+          $ref: '#/components/schemas/FieldType'
+          description: Rendering hint for the console's display layer.
+        label:
+          type: string
+          description: Human label, e.g. "Email".
+        name:
+          type: string
+          description: Key in the record's JSON object, e.g. "email".
+        nullable:
+          type: boolean
+          description: Whether the value may be null/absent.
+    FieldType:
+      oneOf:
+      - type: object
+        required:
+        - kind
+        properties:
+          kind:
+            type: string
+            enum:
+            - string
+      - type: object
+        required:
+        - kind
+        properties:
+          kind:
+            type: string
+            enum:
+            - integer
+      - type: object
+        required:
+        - kind
+        properties:
+          kind:
+            type: string
+            enum:
+            - boolean
+      - type: object
+        required:
+        - kind
+        properties:
+          kind:
+            type: string
+            enum:
+            - timestamp
+      - type: object
+        required:
+        - kind
+        properties:
+          kind:
+            type: string
+            enum:
+            - json
+      description: Minimal field-type vocabulary. `Json` is the catch-all so any field renders.
     MeResponse:
       type: object
       required:
@@ -2782,3 +3071,5 @@ tags:
   description: Read-only runtime console APIs
 - name: admin-config
   description: Editable configuration console APIs
+- name: admin-data
+  description: Schema-driven admin data console APIs

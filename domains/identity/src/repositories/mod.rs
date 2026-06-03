@@ -10,6 +10,7 @@ pub trait UserRepository: std::fmt::Debug + Send + Sync {
     async fn insert_with_outbox(&self, user: &User, event: &EventEnvelope) -> AppResult<()>;
     async fn find_by_id(&self, user_id: &UserId) -> AppResult<Option<User>>;
     async fn find_by_email(&self, email: &str) -> AppResult<Option<User>>;
+    async fn list(&self, limit: i64, cursor: Option<&str>) -> AppResult<Vec<User>>;
 }
 
 #[derive(Debug, Clone)]
@@ -96,6 +97,44 @@ impl UserRepository for PostgresUserRepository {
         .await
         .map(|row| row.map(user_from_row))
         .map_err(map_sql_error)
+    }
+
+    async fn list(&self, limit: i64, cursor: Option<&str>) -> AppResult<Vec<User>> {
+        // Two branches because sqlx cannot conditionally skip a bound parameter:
+        // the cursor query binds $1=cursor,$2=limit; the first-page query binds only $1=limit.
+        let rows = match cursor {
+            Some(after) => {
+                sqlx::query_as::<_, UserRow>(
+                    r#"
+                    select id, email, display_name, created_at, updated_at
+                    from identity.users
+                    where id > $1
+                    order by id asc
+                    limit $2
+                    "#,
+                )
+                .bind(after)
+                .bind(limit)
+                .fetch_all(&self.pool)
+                .await
+            }
+            None => {
+                sqlx::query_as::<_, UserRow>(
+                    r#"
+                    select id, email, display_name, created_at, updated_at
+                    from identity.users
+                    order by id asc
+                    limit $1
+                    "#,
+                )
+                .bind(limit)
+                .fetch_all(&self.pool)
+                .await
+            }
+        }
+        .map_err(map_sql_error)?;
+
+        Ok(rows.into_iter().map(user_from_row).collect())
     }
 }
 

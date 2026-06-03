@@ -1,5 +1,6 @@
 //! A loaded module: serializable manifest + behavior binding + internal config.
 
+use crate::admin_data::AdminDataSource;
 use crate::binding::ModuleBinding;
 use crate::linked::LinkedBinding;
 use crate::manifest::ModuleManifest;
@@ -15,6 +16,9 @@ pub struct Module {
     pub manifest: ModuleManifest,
     pub binding: Arc<dyn ModuleBinding>,
     pub runtime_config: &'static [RuntimeConfigDescriptor],
+    /// Optional schema-admin data source. `None` for modules without an admin
+    /// surface (e.g. notifications). Set via [`Module::with_admin_data`].
+    pub admin_data: Option<Arc<dyn AdminDataSource>>,
 }
 
 impl Module {
@@ -26,6 +30,7 @@ impl Module {
             manifest,
             binding: Arc::new(binding),
             runtime_config: &[],
+            admin_data: None,
         }
     }
 
@@ -36,6 +41,13 @@ impl Module {
         runtime_config: &'static [RuntimeConfigDescriptor],
     ) -> Self {
         self.runtime_config = runtime_config;
+        self
+    }
+
+    /// Attach a schema-admin data source (read access to admin entities).
+    #[must_use]
+    pub fn with_admin_data(mut self, data: Arc<dyn AdminDataSource>) -> Self {
+        self.admin_data = Some(data);
         self
     }
 }

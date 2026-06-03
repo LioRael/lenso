@@ -1,6 +1,20 @@
 /* eslint-disable */
 // Generated from contracts/openapi/app-api.v1.yaml. Do not edit by hand.
 
+export type AdminDataDetailResponse = {
+  data: unknown;
+};
+
+export type AdminDataListResponse = {
+  data: Array<unknown>;
+  page: AdminDataPageInfo;
+};
+
+export type AdminDataPageInfo = {
+  limit: number;
+  next_cursor?: string | null;
+};
+
 export type AdminFunctionRunDetail = {
   actor: unknown;
   attempts: number;
@@ -25,6 +39,11 @@ export type AdminFunctionRunListResponse = {
 
 export type AdminFunctionRunResponse = {
   data: AdminFunctionRunDetail;
+};
+
+export type AdminModuleSchema = {
+  module_name: string;
+  schema: AdminSchema;
 };
 
 export type AdminOutboxEventDetail = {
@@ -278,6 +297,14 @@ export type AdminRuntimeTimelineResponse = {
   page: PageInfo;
 };
 
+export type AdminSchema = {
+  entities: Array<EntitySchema>;
+};
+
+export type AdminSchemaListResponse = {
+  modules: Array<AdminModuleSchema>;
+};
+
 export type ConfigAuditDto = {
   actor?: string | null;
   changed_at: string;
@@ -344,6 +371,13 @@ export type CreateUserResponseEnvelope = {
   data: CreateUserResponse;
 };
 
+export type EntitySchema = {
+  fields: Array<FieldSchema>;
+  label: string;
+  name: string;
+  read_capability: string;
+};
+
 export type ErrorBody = {
   code: string;
   correlation_id?: string | null;
@@ -355,6 +389,15 @@ export type ErrorBody = {
 export type ErrorResponse = {
   error: ErrorBody;
 };
+
+export type FieldSchema = {
+  field_type: FieldType;
+  label: string;
+  name: string;
+  nullable?: boolean;
+};
+
+export type FieldType = unknown;
 
 export type MeResponse = {
   scopes: Array<string>;
