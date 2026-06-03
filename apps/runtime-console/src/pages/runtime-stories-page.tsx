@@ -29,6 +29,7 @@ import {
 import { useListKeyboard } from "../hooks/use-list-keyboard";
 import { usePersistedLayout } from "../hooks/use-persisted-layout";
 import { useRuntimeStories } from "../hooks/use-runtime-queries";
+import { shouldCloseInspectorOnEscape } from "./runtime-stories-keyboard";
 import {
   resizeServicesPanelLayout,
   resizeExecutionInspectorLayout,
@@ -138,6 +139,26 @@ export function RuntimeStoriesPage() {
       setDisplayedNode(selectedNode);
     }
   }, [selectedNode]);
+
+  useEffect(() => {
+    if (!inspectorOpen) {
+      return;
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!shouldCloseInspectorOnEscape(event)) {
+        return;
+      }
+
+      event.preventDefault();
+      clearStoryTarget();
+      setSelectedNodeId(null);
+      setInspectorTab("overview");
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [clearStoryTarget, inspectorOpen]);
 
   useGSAP(
     () => {
