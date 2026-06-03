@@ -17,11 +17,12 @@ pub mod story_events;
 pub mod telemetry;
 pub mod telemetry_attrs;
 pub mod telemetry_query;
+pub mod worker_runtime_config;
 
 pub use clock::{Clock, SystemClock};
 pub use config::{
     AppConfig, AuthConfig, DatabaseConfig, HttpConfig, LogFormat, ModuleConfig, ServiceConfig,
-    TelemetryConfig, WorkerConfig, parse_cors_allowed_origins,
+    TelemetryConfig, parse_cors_allowed_origins,
 };
 pub use context::{
     ActorContext, AppContext, CorrelationId, RequestContext, RequestId, TenantId, TraceContext,
@@ -56,3 +57,4 @@ pub use telemetry_query::{
     InMemoryTelemetrySpanProvider, NoopTelemetrySpanProvider, TelemetrySpan, TelemetrySpanProvider,
     TelemetrySpanQuery,
 };
+pub use worker_runtime_config::WorkerRuntimeConfig;

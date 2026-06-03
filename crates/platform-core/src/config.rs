@@ -7,7 +7,6 @@ pub struct AppConfig {
     pub database: DatabaseConfig,
     pub http: HttpConfig,
     pub telemetry: TelemetryConfig,
-    pub worker: WorkerConfig,
     pub auth: AuthConfig,
     #[serde(default)]
     pub modules: BTreeMap<String, ModuleConfig>,
@@ -20,7 +19,6 @@ impl AppConfig {
             database: DatabaseConfig::from_env(),
             http: HttpConfig::default(),
             telemetry: TelemetryConfig::default(),
-            worker: WorkerConfig::default(),
             auth: AuthConfig::default(),
             modules: BTreeMap::new(),
         }
@@ -140,19 +138,6 @@ impl LogFormat {
             "compact" | "terminal" | "text" => Some(Self::Compact),
             "json" => Some(Self::Json),
             _ => None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct WorkerConfig {
-    pub worker_poll_interval_ms: u64,
-}
-
-impl Default for WorkerConfig {
-    fn default() -> Self {
-        Self {
-            worker_poll_interval_ms: 1_000,
         }
     }
 }
