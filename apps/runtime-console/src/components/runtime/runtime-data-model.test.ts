@@ -5,6 +5,7 @@ import {
   buildExecutionTimelineRows,
   findExecutionNodeForRow,
 } from "./execution-timeline-model";
+import { resolveHeatmapCellNodes } from "./heatmap-model";
 import {
   buildParallelExecutionGroups,
   buildTimelineParallelMarkers,
@@ -233,6 +234,40 @@ describe("runtime story data model", () => {
 
     expect(findExecutionNodeForWaterfallRow(rows[1]!)?.id).toBe("node_b");
     expect(findExecutionNodeForWaterfallRow(rows.at(-1)!)).not.toBeNull();
+  });
+
+  test("maps story heatmap cells back to matching execution nodes", () => {
+    const nodes = resolveHeatmapCellNodes({
+      cell: {
+        bucketEnd: "2026-06-01T00:00:01.000Z",
+        bucketStart: "2026-06-01T00:00:00.000Z",
+        deadCount: 0,
+        errorCount: 0,
+        nodeType: "event",
+        service: "outbox",
+        totalCount: 1,
+      },
+      story,
+    });
+
+    expect(nodes.map((node) => node.id)).toEqual(["node_b"]);
+  });
+
+  test("keeps story heatmap drilldown scoped to the bucket window", () => {
+    const nodes = resolveHeatmapCellNodes({
+      cell: {
+        bucketEnd: "2026-06-01T00:00:00.080Z",
+        bucketStart: "2026-06-01T00:00:00.000Z",
+        deadCount: 0,
+        errorCount: 0,
+        nodeType: "event",
+        service: "outbox",
+        totalCount: 1,
+      },
+      story,
+    });
+
+    expect(nodes).toEqual([]);
   });
 
   test("mock fan-out story has parallel siblings under the published event", () => {

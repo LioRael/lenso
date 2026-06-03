@@ -642,42 +642,97 @@ function normalizeRuntimeStatus(status: string): RuntimeStatus {
 }
 
 function mockRuntimeHeatmap(): RuntimeHeatmap {
+  const bucketSeconds = 300;
   return {
-    bucketSeconds: 300,
-    cells: runtimeStories.flatMap((story) => storyHeatmapCells(story)),
+    bucketSeconds,
+    cells: runtimeStories.flatMap((story) =>
+      storyHeatmapCells(story, bucketSeconds)
+    ),
   };
 }
 
 function mockStoryHeatmap(story: RuntimeStory): RuntimeHeatmap {
+  const bucketSeconds = 300;
   return {
-    bucketSeconds: 300,
-    cells: storyHeatmapCells(story),
+    bucketSeconds,
+    cells: storyHeatmapCells(story, bucketSeconds),
   };
 }
 
-function storyHeatmapCells(story: RuntimeStory): RuntimeHeatmapCell[] {
-  return story.nodes
-    .filter(
-      (node) =>
+function storyHeatmapCells(
+  story: RuntimeStory,
+  bucketSeconds: number
+): RuntimeHeatmapCell[] {
+  const storyStartMs = Date.parse(story.timestamp);
+  const bucketMs = bucketSeconds * 1000;
+  const cells = new Map<
+    string,
+    RuntimeHeatmapCell & { durationTotalMs: number }
+  >();
+
+  for (const node of story.nodes) {
+    if (
+      !(
         node.kind === "event" ||
         node.kind === "function" ||
         node.kind === "http"
-    )
-    .map<RuntimeHeatmapCell>((node) => ({
-      bucketEnd: story.timestamp,
-      bucketStart: story.timestamp,
+      )
+    ) {
+      continue;
+    }
+
+    const nodeStartedAt = Number.isFinite(storyStartMs)
+      ? storyStartMs + node.startMs
+      : Date.now();
+    const bucketStartMs = Math.floor(nodeStartedAt / bucketMs) * bucketMs;
+    const bucketEndMs = bucketStartMs + bucketMs;
+    const nodeType =
+      node.kind === "event"
+        ? "event"
+        : node.kind === "http"
+          ? "http"
+          : "function";
+    const key = `${bucketStartMs}:${node.service}:${nodeType}`;
+    const existing = cells.get(key);
+
+    if (existing) {
+      existing.deadCount += node.status === "dead" ? 1 : 0;
+      existing.durationTotalMs += node.durationMs;
+      existing.errorCount +=
+        node.status === "failed" || node.status === "dead" ? 1 : 0;
+      existing.maxDurationMs = Math.max(
+        existing.maxDurationMs ?? 0,
+        node.durationMs
+      );
+      existing.totalCount += 1;
+      existing.avgDurationMs = Math.round(
+        existing.durationTotalMs / existing.totalCount
+      );
+      continue;
+    }
+
+    cells.set(key, {
+      avgDurationMs: node.durationMs,
+      bucketEnd: new Date(bucketEndMs).toISOString(),
+      bucketStart: new Date(bucketStartMs).toISOString(),
       deadCount: node.status === "dead" ? 1 : 0,
+      durationTotalMs: node.durationMs,
       errorCount: node.status === "failed" || node.status === "dead" ? 1 : 0,
       maxDurationMs: node.durationMs,
-      nodeType:
-        node.kind === "event"
-          ? "event"
-          : node.kind === "http"
-            ? "http"
-            : "function",
+      nodeType,
       service: node.service,
       totalCount: 1,
-    }));
+    });
+  }
+
+  return [...cells.values()]
+    .sort(
+      (left, right) =>
+        right.bucketStart.localeCompare(left.bucketStart) ||
+        left.service.localeCompare(right.service) ||
+        left.nodeType.localeCompare(right.nodeType)
+    )
+    .map(({ durationTotalMs: _durationTotalMs, ...cell }) => cell);
 }
 
 function mergeStoryDetail(summary: RuntimeStory, detail: RuntimeStory) {
