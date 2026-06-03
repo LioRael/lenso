@@ -1,8 +1,11 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  detailRows,
   type EntitySchema,
   type FieldSchema,
+  moduleSourceHint,
+  recordId,
   renderCell,
   renderRow,
 } from "./data-render-model";
@@ -86,5 +89,50 @@ describe("renderRow", () => {
       "created_at",
       "meta",
     ]);
+  });
+});
+
+describe("recordId", () => {
+  test("uses a string id when present", () => {
+    expect(recordId({ id: "contact_1", email: "a@example.com" })).toBe(
+      "contact_1"
+    );
+  });
+
+  test("returns null when the record has no string id", () => {
+    expect(recordId({ email: "a@example.com" })).toBeNull();
+    expect(recordId({ id: 42 })).toBeNull();
+  });
+});
+
+describe("detailRows", () => {
+  test("renders detail values from schema fields in order", () => {
+    const rows = detailRows(entity, {
+      email: "a@example.com",
+      active: true,
+      created_at: "2026-06-03T00:00:00Z",
+      meta: { x: 1 },
+    });
+
+    expect(rows).toEqual([
+      { field: "email", label: "Email", display: "a@example.com" },
+      { field: "active", label: "Active", display: "✓" },
+      {
+        field: "created_at",
+        label: "Created",
+        display: "2026-06-03T00:00:00.000Z",
+      },
+      { field: "meta", label: "Meta", display: '{"x":1}' },
+    ]);
+  });
+});
+
+describe("moduleSourceHint", () => {
+  test("marks the remote fixture convention as remote", () => {
+    expect(moduleSourceHint("remote-crm")).toBe("remote");
+  });
+
+  test("treats ordinary linked modules as linked", () => {
+    expect(moduleSourceHint("identity")).toBe("linked");
   });
 });

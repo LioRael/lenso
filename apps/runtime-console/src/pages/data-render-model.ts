@@ -36,6 +36,12 @@ export type RenderedCell = {
   display: string;
 };
 
+export type DetailRow = {
+  field: string;
+  label: string;
+  display: string;
+};
+
 /** Format one raw value per its field type into a display string. */
 export function renderCell(field: FieldSchema, value: unknown): RenderedCell {
   const { kind } = field.field_type;
@@ -70,6 +76,25 @@ export function renderRow(
   record: AdminRecord
 ): RenderedCell[] {
   return entity.fields.map((field) => renderCell(field, record[field.name]));
+}
+
+export function detailRows(
+  entity: EntitySchema,
+  record: AdminRecord
+): DetailRow[] {
+  return entity.fields.map((field) => ({
+    field: field.name,
+    label: field.label,
+    display: renderCell(field, record[field.name]).display,
+  }));
+}
+
+export function recordId(record: AdminRecord): string | null {
+  return typeof record.id === "string" ? record.id : null;
+}
+
+export function moduleSourceHint(moduleName: string): "linked" | "remote" {
+  return moduleName.startsWith("remote-") ? "remote" : "linked";
 }
 
 function formatTimestamp(value: unknown): string {
