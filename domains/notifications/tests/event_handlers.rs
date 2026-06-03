@@ -7,18 +7,17 @@ async fn notifications_registers_user_registered_handler() {
         pool,
         std::sync::Arc::new(platform_core::LoggingEventPublisher),
     );
-    let descriptor = notifications::module::domain(&ctx);
+    let module = notifications::module::module(&ctx);
 
-    assert_eq!(descriptor.event_handlers.len(), 1);
-    assert_eq!(
-        descriptor.event_handlers[0].event_name(),
-        "identity.user_registered.v1"
-    );
+    let mut event_registry = platform_core::EventHandlerRegistry::new();
+    module.binding.register_event_handlers(&mut event_registry);
+    assert_eq!(event_registry.handler_count("identity.user_registered.v1"), 1);
+
+    let mut function_registry = platform_runtime::FunctionRegistry::default();
+    module.binding.register_functions(&mut function_registry);
     assert!(
-        descriptor
-            .runtime
-            .functions
-            .iter()
-            .any(|function| function.name == "notifications.send_welcome_email.v1")
+        function_registry
+            .get("notifications.send_welcome_email.v1")
+            .is_some()
     );
 }

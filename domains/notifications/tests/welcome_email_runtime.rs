@@ -19,9 +19,9 @@ async fn user_registered_event_enqueues_welcome_email_function() {
         db.pool.clone(),
         std::sync::Arc::new(platform_core::LoggingEventPublisher),
     );
-    let descriptor = notifications::module::domain(&ctx);
+    let module = notifications::module::module(&ctx);
     let mut registry = EventHandlerRegistry::new();
-    registry.register_all(descriptor.event_handlers);
+    module.binding.register_event_handlers(&mut registry);
 
     let relay = OutboxRelay::new(db.pool.clone(), "worker-a");
     relay

@@ -35,7 +35,7 @@ struct ApiDoc;
 /// database, so callers can either serve it (after `with_state` +
 /// `split_for_parts`) or extract the `OpenAPI` document alone.
 pub(crate) fn api_router() -> ApiOpenApiRouter {
-    platform_admin::install_story_display(app_bootstrap::story_display_descriptors().collect());
+    platform_admin::install_story_display(app_bootstrap::story_display_descriptors());
 
     let base = OpenApiRouter::with_openapi(ApiDoc::openapi()).merge(base_router());
     app_bootstrap::merge_domain_http(base).merge(platform_admin::router())

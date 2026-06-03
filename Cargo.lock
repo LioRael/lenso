@@ -64,8 +64,8 @@ dependencies = [
  "identity",
  "notifications",
  "platform-core",
- "platform-domain",
  "platform-http",
+ "platform-module",
  "platform-runtime",
 ]
 
@@ -982,8 +982,8 @@ dependencies = [
  "axum",
  "chrono",
  "platform-core",
- "platform-domain",
  "platform-http",
+ "platform-module",
  "platform-runtime",
  "platform-testing",
  "serde",
@@ -1165,7 +1165,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "platform-core",
- "platform-domain",
+ "platform-module",
  "platform-runtime",
  "platform-testing",
  "serde",
@@ -1398,14 +1398,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "platform-domain"
-version = "0.1.0"
-dependencies = [
- "platform-core",
- "platform-runtime",
-]
-
-[[package]]
 name = "platform-http"
 version = "0.1.0"
 dependencies = [
@@ -1422,6 +1414,17 @@ dependencies = [
  "tracing",
  "utoipa",
  "utoipa-axum",
+]
+
+[[package]]
+name = "platform-module"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "platform-core",
+ "platform-runtime",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

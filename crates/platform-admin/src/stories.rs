@@ -258,9 +258,9 @@ pub(crate) fn build_story_node(
 pub(crate) fn story_title(rows: &[StoryWorkRow]) -> String {
     if let Some(title) = rows
         .iter()
-        .find_map(|row| story_display_descriptor(row).and_then(|descriptor| descriptor.story_title))
+        .find_map(|row| story_display_descriptor(row).and_then(|descriptor| descriptor.story_title.clone()))
     {
-        return title.to_owned();
+        return title;
     }
 
     if let Some(event_title) = rows
@@ -278,7 +278,7 @@ pub(crate) fn story_title(rows: &[StoryWorkRow]) -> String {
 
 pub(crate) fn display_name_for_node(row: &StoryWorkRow) -> String {
     if let Some(descriptor) = story_display_descriptor(row) {
-        return descriptor.display_name.to_owned();
+        return descriptor.display_name.clone();
     }
 
     if row.item_type == "http_request" {
@@ -295,7 +295,7 @@ pub(crate) fn story_display_descriptor(
         let (method, path) = row.name.split_once(' ')?;
         return story_display_descriptors().find(|descriptor| {
             matches!(
-                descriptor.source,
+                &descriptor.source,
                 StoryDisplaySource::HttpRequest {
                     method: descriptor_method,
                     path: descriptor_path,
@@ -306,8 +306,8 @@ pub(crate) fn story_display_descriptor(
 
     story_display_descriptors().find(|descriptor| {
         matches!(
-            descriptor.source,
-            StoryDisplaySource::ExecutionName(name) if name == row.name.as_str()
+            &descriptor.source,
+            StoryDisplaySource::ExecutionName { name } if name == row.name.as_str()
         )
     })
 }
@@ -318,7 +318,6 @@ pub(crate) fn story_display_descriptors() -> impl Iterator<Item = &'static Story
         .map(Vec::as_slice)
         .unwrap_or_default()
         .iter()
-        .copied()
 }
 
 pub(crate) fn story_title_from_event_name(value: &str) -> String {

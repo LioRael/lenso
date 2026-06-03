@@ -54,7 +54,7 @@ use stories::*;
 use support::*;
 
 /// Domain-provided story-display catalog, injected by the composition root.
-static STORY_DISPLAY: OnceLock<Vec<&'static StoryDisplayDescriptor>> = OnceLock::new();
+static STORY_DISPLAY: OnceLock<Vec<StoryDisplayDescriptor>> = OnceLock::new();
 
 /// Install the aggregated story-display descriptors from every domain.
 ///
@@ -62,7 +62,7 @@ static STORY_DISPLAY: OnceLock<Vec<&'static StoryDisplayDescriptor>> = OnceLock:
 /// display names are domain-owned metadata; injecting them keeps this crate
 /// from depending on the domains or the composition root. Idempotent: later
 /// calls are ignored.
-pub fn install_story_display(catalog: Vec<&'static StoryDisplayDescriptor>) {
+pub fn install_story_display(catalog: Vec<StoryDisplayDescriptor>) {
     let _ = STORY_DISPLAY.set(catalog);
 }
 
