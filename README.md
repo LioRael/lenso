@@ -93,9 +93,11 @@ just migrate
 just embedded-admin-demo
 ```
 
-This starts the remote module example, the API with both `remote-crm` and
-`remote-crm-embedded` configured, and the Runtime Console in API mode. Open the
-Data page and select `remote-crm-embedded` to see the sandboxed iframe surface.
+This starts the remote module example, the API with `remote-crm`,
+`remote-crm-embedded`, and `remote-crm-declarative` configured, and the Runtime
+Console in API mode. Open the Data page and select `remote-crm-embedded` to see
+the sandboxed iframe surface, or `remote-crm-declarative` to see the host-rendered
+declarative surface.
 If the default ports are busy, override them with `REMOTE_MODULE_ADDR`,
 `HTTP_PORT`, or `CONSOLE_PORT`.
 

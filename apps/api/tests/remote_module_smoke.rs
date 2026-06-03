@@ -195,7 +195,7 @@ async fn failed_remote_module_load_is_reported_in_schema() {
 }
 
 #[tokio::test]
-async fn embedded_custom_remote_module_is_visible_through_metadata_api() {
+async fn custom_remote_modules_are_visible_through_metadata_api() {
     let _guard = REMOTE_SMOKE_TEST_LOCK.lock().await;
     let fixture_base = spawn_remote_module(remote_module_example::router()).await;
     let iframe_origin = fixture_base.trim_end_matches("/lenso/module/v1").to_owned();
@@ -212,6 +212,12 @@ async fn embedded_custom_remote_module_is_visible_through_metadata_api() {
             auth_token_env: None,
             timeout_ms: 5_000,
         },
+        RemoteModuleSourceConfig {
+            name: "remote-crm-declarative".to_owned(),
+            base_url: format!("{fixture_base}/declarative"),
+            auth_token_env: None,
+            timeout_ms: 5_000,
+        },
     ])
     .await;
 
@@ -222,26 +228,45 @@ async fn embedded_custom_remote_module_is_visible_through_metadata_api() {
         .expect("modules request completes");
     assert_eq!(modules_response.status(), StatusCode::OK);
     let modules = json_body(modules_response).await;
-    let remote_module = modules["modules"]
+    let embedded_module = modules["modules"]
         .as_array()
         .expect("modules array")
         .iter()
         .find(|module| module["module_name"] == "remote-crm-embedded")
         .expect("remote-crm-embedded metadata is installed");
-    assert_eq!(remote_module["source"], "remote");
-    assert_eq!(remote_module["status"], "loaded");
-    assert_eq!(remote_module["admin"]["kind"], "embedded_custom");
-    assert_eq!(remote_module["admin"]["runtime"], "iframe");
+    assert_eq!(embedded_module["source"], "remote");
+    assert_eq!(embedded_module["status"], "loaded");
+    assert_eq!(embedded_module["admin"]["kind"], "embedded_custom");
+    assert_eq!(embedded_module["admin"]["runtime"], "iframe");
     assert_eq!(
-        remote_module["admin"]["entry"]["url"],
+        embedded_module["admin"]["entry"]["url"],
         format!("{fixture_base}/embedded/admin")
     );
     assert_eq!(
-        remote_module["admin"]["entry"]["allowed_origins"],
+        embedded_module["admin"]["entry"]["allowed_origins"],
         serde_json::json!([iframe_origin])
     );
     assert_eq!(
-        remote_module["admin"]["fallback_schema"]["entities"][0]["name"],
+        embedded_module["admin"]["fallback_schema"]["entities"][0]["name"],
+        "contacts"
+    );
+
+    let declarative_module = modules["modules"]
+        .as_array()
+        .expect("modules array")
+        .iter()
+        .find(|module| module["module_name"] == "remote-crm-declarative")
+        .expect("remote-crm-declarative metadata is installed");
+    assert_eq!(declarative_module["source"], "remote");
+    assert_eq!(declarative_module["status"], "loaded");
+    assert_eq!(declarative_module["admin"]["kind"], "declarative_custom");
+    assert_eq!(declarative_module["admin"]["pages"][0]["name"], "overview");
+    assert_eq!(
+        declarative_module["admin"]["pages"][0]["sections"][0]["component"]["kind"],
+        "metric_strip"
+    );
+    assert_eq!(
+        declarative_module["admin"]["fallback_schema"]["entities"][0]["name"],
         "contacts"
     );
 
@@ -257,5 +282,12 @@ async fn embedded_custom_remote_module_is_visible_through_metadata_api() {
             .expect("modules array")
             .iter()
             .any(|module| module["module_name"] == "remote-crm-embedded")
+    );
+    assert!(
+        !schema["modules"]
+            .as_array()
+            .expect("modules array")
+            .iter()
+            .any(|module| module["module_name"] == "remote-crm-declarative")
     );
 }

@@ -3,8 +3,9 @@
 This note specifies the admin-surface direction for the module framework.
 `AdminSurface::Schema` is the generic data-admin surface. `EmbeddedCustom`
 currently has a first Runtime Console iframe renderer with origin checks,
-sandbox attributes, and no host bridge. `DeclarativeCustom` remains a contract
-only until the host-rendered component protocol is implemented.
+sandbox attributes, and no host bridge. `DeclarativeCustom` currently has a
+first host-rendered Runtime Console slice for `MetricStrip` and `EntityTable`
+components backed by `fallback_schema`.
 
 ## Why Two Custom Modes
 
@@ -67,6 +68,7 @@ Deferred from the first implementation:
 - Module-authored JavaScript.
 - Unbounded layout primitives.
 - Direct module access to host tokens.
+- Declarative action execution.
 
 ## `EmbeddedCustom`
 
@@ -146,6 +148,7 @@ The loading source axis remains separate:
    checks and `sandbox` attributes, but no message bridge. Done for the Runtime
    Console Data page.
 4. Implement a small `DeclarativeCustom` renderer for one or two trusted
-   components.
+   components. Done for `MetricStrip` and `EntityTable` on the Runtime Console
+   Data page.
 5. Specify a versioned host/module message and action protocol before enabling
    any embedded surface to call back into the host.

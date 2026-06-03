@@ -5,8 +5,10 @@ use axum::response::Html;
 use axum::response::{IntoResponse, Response};
 use axum::{Json, Router, routing::get};
 use platform_module::{
-    AdminEmbeddedEntry, AdminEmbeddedRuntime, AdminEmbeddedSurface, AdminSandboxPolicy,
-    AdminSchema, EntitySchema, FieldSchema, FieldType, ModuleManifest,
+    AdminDeclarativeComponent, AdminDeclarativePage, AdminDeclarativeSection,
+    AdminDeclarativeSurface, AdminEmbeddedEntry, AdminEmbeddedRuntime, AdminEmbeddedSurface,
+    AdminMetricBinding, AdminSandboxPolicy, AdminSchema, EntitySchema, FieldSchema, FieldType,
+    ModuleManifest,
 };
 
 use serde::Deserialize;
@@ -87,6 +89,10 @@ pub fn router() -> Router {
     Router::new()
         .route("/123", get(manifest))
         .route("/lenso/module/v1/manifest", get(manifest))
+        .route(
+            "/lenso/module/v1/declarative/manifest",
+            get(declarative_manifest),
+        )
         .route("/lenso/module/v1/embedded/manifest", get(embedded_manifest))
         .route("/lenso/module/v1/embedded/admin", get(embedded_admin))
         .route("/lenso/module/v1/admin/contacts", get(list_contacts))
@@ -97,6 +103,51 @@ async fn manifest() -> Json<ModuleManifest> {
     Json(
         ModuleManifest::builder("remote-crm")
             .admin(contacts_schema())
+            .capabilities(vec!["remote_crm.contacts.read".to_owned()])
+            .build(),
+    )
+}
+
+async fn declarative_manifest() -> Json<ModuleManifest> {
+    Json(
+        ModuleManifest::builder("remote-crm-declarative")
+            .declarative_admin(AdminDeclarativeSurface {
+                pages: vec![AdminDeclarativePage {
+                    name: "overview".to_owned(),
+                    label: "Overview".to_owned(),
+                    sections: vec![
+                        AdminDeclarativeSection {
+                            name: "contact_health".to_owned(),
+                            label: "Contact Health".to_owned(),
+                            component: AdminDeclarativeComponent::MetricStrip {
+                                metrics: vec![
+                                    AdminMetricBinding {
+                                        label: "Fields".to_owned(),
+                                        value_path:
+                                            "fallback_schema.entities.contacts.fields.count"
+                                                .to_owned(),
+                                    },
+                                    AdminMetricBinding {
+                                        label: "Capability".to_owned(),
+                                        value_path:
+                                            "fallback_schema.entities.contacts.read_capability"
+                                                .to_owned(),
+                                    },
+                                ],
+                            },
+                        },
+                        AdminDeclarativeSection {
+                            name: "contact_fields".to_owned(),
+                            label: "Contact Fields".to_owned(),
+                            component: AdminDeclarativeComponent::EntityTable {
+                                entity: "contacts".to_owned(),
+                            },
+                        },
+                    ],
+                }],
+                actions: vec![],
+                fallback_schema: Some(contacts_schema()),
+            })
             .capabilities(vec!["remote_crm.contacts.read".to_owned()])
             .build(),
     )

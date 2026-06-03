@@ -3,11 +3,15 @@ import { describe, expect, test } from "vitest";
 import {
   adminSurfaceLabel,
   adminSurfaceMetadataRows,
+  declarativeEntitySection,
+  declarativeMetricValues,
   detailRows,
   embeddedIframePolicy,
   type AdminModuleMetadata,
+  type DeclarativeAdminSurface,
   type EntitySchema,
   type FieldSchema,
+  firstDeclarativePage,
   moduleErrorMessage,
   moduleIsLoaded,
   moduleNavItems,
@@ -215,7 +219,7 @@ describe("module status helpers", () => {
       error: null,
       admin: {
         kind: "declarative_custom",
-        pages: [{ name: "overview" }],
+        pages: [{ name: "overview", label: "Overview" }],
         actions: [],
         fallback_schema: { entities: [] },
       },
@@ -302,6 +306,78 @@ describe("admin surface metadata helpers", () => {
       { label: "permissions", value: "1" },
       { label: "fallback entities", value: "1" },
     ]);
+  });
+});
+
+describe("declarative admin helpers", () => {
+  const surface: DeclarativeAdminSurface = {
+    kind: "declarative_custom",
+    pages: [
+      {
+        name: "overview",
+        label: "Overview",
+        sections: [
+          {
+            name: "health",
+            label: "Health",
+            component: {
+              kind: "metric_strip",
+              metrics: [
+                {
+                  label: "Fields",
+                  value_path: "fallback_schema.entities.users.fields.count",
+                },
+                {
+                  label: "Capability",
+                  value_path: "fallback_schema.entities.users.read_capability",
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+    actions: [],
+    fallback_schema: { entities: [entity] },
+  };
+
+  test("uses the first declared page", () => {
+    expect(firstDeclarativePage(surface)?.name).toBe("overview");
+    expect(firstDeclarativePage({ kind: "schema", entities: [] })).toBeNull();
+  });
+
+  test("resolves metric bindings from fallback schema data", () => {
+    expect(
+      declarativeMetricValues(surface, [
+        {
+          label: "Fields",
+          value_path: "fallback_schema.entities.users.fields.count",
+        },
+        {
+          label: "Capability",
+          value_path: "fallback_schema.entities.users.read_capability",
+        },
+        {
+          label: "Missing",
+          value_path: "fallback_schema.entities.widgets.fields.count",
+        },
+      ])
+    ).toEqual([
+      { label: "Fields", value: "4" },
+      { label: "Capability", value: "identity.users.read" },
+      { label: "Missing", value: "—" },
+    ]);
+  });
+
+  test("looks up entity table declarations in fallback schema", () => {
+    expect(declarativeEntitySection(surface, "users")).toEqual({
+      entity,
+      reason: null,
+    });
+    expect(declarativeEntitySection(surface, "widgets")).toEqual({
+      entity: null,
+      reason: "fallback schema has no entity 'widgets'",
+    });
   });
 });
 

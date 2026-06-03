@@ -31,9 +31,46 @@ export type SchemaAdminSurface = AdminSchema & { kind: "schema" };
 
 export type DeclarativeAdminSurface = {
   kind: "declarative_custom";
-  pages?: unknown[];
-  actions?: unknown[];
+  pages?: DeclarativePage[];
+  actions?: DeclarativeAction[];
   fallback_schema?: AdminSchema | null;
+};
+
+export type DeclarativePage = {
+  name: string;
+  label: string;
+  sections?: DeclarativeSection[];
+};
+
+export type DeclarativeSection = {
+  name: string;
+  label: string;
+  component: DeclarativeComponent;
+};
+
+export type DeclarativeComponent =
+  | {
+      kind: "metric_strip";
+      metrics?: DeclarativeMetricBinding[];
+    }
+  | {
+      kind: "entity_table";
+      entity: string;
+    }
+  | {
+      kind: "entity_detail";
+      entity: string;
+    };
+
+export type DeclarativeMetricBinding = {
+  label: string;
+  value_path: string;
+};
+
+export type DeclarativeAction = {
+  name: string;
+  label: string;
+  capability: string;
 };
 
 export type AdminUrlEmbeddedEntry = {
@@ -115,6 +152,16 @@ export type EmbeddedIframePolicy =
       status: "blocked";
       reason: string;
     };
+
+export type DeclarativeMetric = {
+  label: string;
+  value: string;
+};
+
+export type DeclarativeEntitySection = {
+  entity: EntitySchema | null;
+  reason: string | null;
+};
 
 export function moduleStatusLabel(module: AdminModuleMetadata): ModuleStatus {
   return module.status;
@@ -294,6 +341,39 @@ export function embeddedIframePolicy(
   };
 }
 
+export function firstDeclarativePage(
+  surface: AdminSurface | null
+): DeclarativePage | null {
+  return surface?.kind === "declarative_custom"
+    ? (surface.pages?.[0] ?? null)
+    : null;
+}
+
+export function declarativeMetricValues(
+  surface: DeclarativeAdminSurface,
+  metrics: DeclarativeMetricBinding[]
+): DeclarativeMetric[] {
+  return metrics.map((metric) => ({
+    label: metric.label,
+    value: displayDeclarativeValue(
+      resolveDeclarativePath(surface, metric.value_path)
+    ),
+  }));
+}
+
+export function declarativeEntitySection(
+  surface: DeclarativeAdminSurface,
+  entityName: string
+): DeclarativeEntitySection {
+  const entity =
+    surface.fallback_schema?.entities.find(
+      (candidate) => candidate.name === entityName
+    ) ?? null;
+  return entity
+    ? { entity, reason: null }
+    : { entity: null, reason: `fallback schema has no entity '${entityName}'` };
+}
+
 function embeddedEntryLabel(entry: AdminEmbeddedEntry | undefined): string {
   if (!entry) {
     return "unknown";
@@ -340,6 +420,50 @@ function normalizeAllowedOrigins(
     normalized.add(parsed.origin);
   }
   return { status: "ok", origins: [...normalized] };
+}
+
+function resolveDeclarativePath(
+  surface: DeclarativeAdminSurface,
+  path: string
+): unknown {
+  const segments = path.split(".").filter(Boolean);
+  if (segments[0] !== "fallback_schema") {
+    return undefined;
+  }
+  if (segments[1] !== "entities" || segments.length < 3) {
+    return surface.fallback_schema;
+  }
+
+  const entity = surface.fallback_schema?.entities.find(
+    (candidate) => candidate.name === segments[2]
+  );
+  if (!entity) {
+    return undefined;
+  }
+  if (segments.length === 3) {
+    return entity;
+  }
+  if (segments[3] === "fields" && segments[4] === "count") {
+    return entity.fields.length;
+  }
+  if (segments[3] === "read_capability") {
+    return entity.read_capability;
+  }
+  return undefined;
+}
+
+function displayDeclarativeValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "—";
+  }
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return String(value);
+  }
+  return JSON.stringify(value);
 }
 
 /** Format one raw value per its field type into a display string. */

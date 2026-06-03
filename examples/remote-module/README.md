@@ -14,6 +14,11 @@ It also exposes a second embedded-admin module base for testing
 - `GET /lenso/module/v1/embedded/manifest`
 - `GET /lenso/module/v1/embedded/admin`
 
+And a declarative custom admin module base for testing
+`AdminSurface::DeclarativeCustom`:
+
+- `GET /lenso/module/v1/declarative/manifest`
+
 Run it locally:
 
 ```sh
@@ -38,12 +43,14 @@ through the normal `/admin/data/*` backend.
 To load both the schema-admin module and the embedded iframe module:
 
 ```sh
-REMOTE_MODULES=remote-crm=http://127.0.0.1:4100/lenso/module/v1,remote-crm-embedded=http://127.0.0.1:4100/lenso/module/v1/embedded just api
+REMOTE_MODULES=remote-crm=http://127.0.0.1:4100/lenso/module/v1,remote-crm-embedded=http://127.0.0.1:4100/lenso/module/v1/embedded,remote-crm-declarative=http://127.0.0.1:4100/lenso/module/v1/declarative just api
 ```
 
 The embedded manifest points at the example's `/embedded/admin` page with an
 origin allowlist for the current request host, so the Runtime Console can render
 it in a sandboxed iframe without a host bridge.
+The declarative manifest uses host-rendered `metric_strip` and `entity_table`
+sections backed by the same Contacts fallback schema.
 
 For a one-command local Console demo from the repo root:
 

@@ -10,9 +10,13 @@ import {
   type AdminRecord,
   adminSurfaceLabel,
   adminSurfaceMetadataRows,
+  type DeclarativeComponent,
+  declarativeEntitySection,
+  declarativeMetricValues,
   detailRows,
   embeddedIframePolicy,
   type EntitySchema,
+  firstDeclarativePage,
   moduleErrorMessage,
   moduleIsLoaded,
   moduleNavItems,
@@ -388,6 +392,8 @@ function ModuleSurfacePanel({
       </div>
       {module.admin?.kind === "embedded_custom" ? (
         <EmbeddedIframeSurface compact={compact} policy={iframePolicy} />
+      ) : module.admin?.kind === "declarative_custom" ? (
+        <DeclarativeSurface compact={compact} surface={module.admin} />
       ) : (
         <p className="text-(--muted)">
           {module.admin?.kind === "schema"
@@ -408,6 +414,138 @@ function ModuleSurfacePanel({
         ))}
       </dl>
     </div>
+  );
+}
+
+function DeclarativeSurface({
+  compact,
+  surface,
+}: {
+  compact: boolean;
+  surface: Extract<
+    AdminModuleMetadata["admin"],
+    { kind: "declarative_custom" }
+  >;
+}) {
+  const page = firstDeclarativePage(surface);
+  if (!page) {
+    return <p className="text-(--muted)">No declarative pages declared.</p>;
+  }
+
+  return (
+    <div className="grid gap-3">
+      <div className="flex items-center gap-2 text-[11px] text-(--muted)">
+        <span>{page.label}</span>
+        <span className="ml-auto border border-(--border-subtle) px-2 py-0.5 text-[10px] text-(--secondary)">
+          host rendered
+        </span>
+      </div>
+      {(page.sections ?? []).map((section) => (
+        <section
+          className="border border-(--border-subtle) bg-(--background)"
+          key={section.name}
+        >
+          <header className="border-b border-(--border-subtle) px-2 py-1.5 font-semibold">
+            {section.label}
+          </header>
+          <div className={cn("p-2", compact && "text-[11px]")}>
+            <DeclarativeComponentView
+              component={section.component}
+              surface={surface}
+            />
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function DeclarativeComponentView({
+  component,
+  surface,
+}: {
+  component: DeclarativeComponent;
+  surface: Extract<
+    AdminModuleMetadata["admin"],
+    { kind: "declarative_custom" }
+  >;
+}) {
+  switch (component.kind) {
+    case "metric_strip": {
+      const metrics = declarativeMetricValues(surface, component.metrics ?? []);
+      return (
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] gap-2">
+          {metrics.map((metric) => (
+            <div
+              className="border border-(--border-subtle) bg-(--surface) px-2 py-1.5"
+              key={metric.label}
+            >
+              <div className="truncate text-[10px] text-(--muted)">
+                {metric.label}
+              </div>
+              <div className="mt-1 truncate text-(--foreground)">
+                {metric.value}
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+    case "entity_table": {
+      const { entity, reason } = declarativeEntitySection(
+        surface,
+        component.entity
+      );
+      if (!entity) {
+        return <p className="text-(--muted)">{reason}</p>;
+      }
+      return <DeclarativeEntityTable entity={entity} />;
+    }
+    case "entity_detail": {
+      const { entity, reason } = declarativeEntitySection(
+        surface,
+        component.entity
+      );
+      return (
+        <p className="text-(--muted)">
+          {entity
+            ? `Entity detail renderer is not enabled for ${entity.label}.`
+            : reason}
+        </p>
+      );
+    }
+    default: {
+      return (
+        <p className="text-(--muted)">Unsupported declarative component.</p>
+      );
+    }
+  }
+}
+
+function DeclarativeEntityTable({ entity }: { entity: EntitySchema }) {
+  return (
+    <table className="w-full table-fixed">
+      <thead>
+        <tr>
+          <th className="px-2 py-1 text-left text-(--muted)">Field</th>
+          <th className="px-2 py-1 text-left text-(--muted)">Type</th>
+          <th className="px-2 py-1 text-left text-(--muted)">Required</th>
+        </tr>
+      </thead>
+      <tbody>
+        {entity.fields.map((field) => (
+          <tr className="border-t border-(--border-subtle)" key={field.name}>
+            <td className="truncate px-2 py-1.5">{field.label}</td>
+            <td className="truncate px-2 py-1.5 text-(--secondary)">
+              {field.field_type.kind}
+            </td>
+            <td className="truncate px-2 py-1.5 text-(--secondary)">
+              {field.nullable ? "no" : "yes"}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 

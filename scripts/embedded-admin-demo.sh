@@ -45,7 +45,7 @@ assert_port_free "$console_port" "Runtime Console"
 start_bg env REMOTE_MODULE_ADDR="$remote_addr" cargo run --locked -p remote-module-example
 
 remote_base="http://$remote_addr/lenso/module/v1"
-remote_modules="remote-crm=$remote_base,remote-crm-embedded=$remote_base/embedded"
+remote_modules="remote-crm=$remote_base,remote-crm-embedded=$remote_base/embedded,remote-crm-declarative=$remote_base/declarative"
 
 start_bg env HTTP_HOST="$api_host" HTTP_PORT="$api_port" REMOTE_MODULES="$remote_modules" cargo run --locked -p app-api
 start_bg env VITE_RUNTIME_CONSOLE_MODE=api VITE_API_BASE_URL="$api_base" pnpm --dir=apps/runtime-console exec vite --host 0.0.0.0 --port "$console_port" --strictPort
@@ -58,7 +58,7 @@ Remote module:  http://$remote_addr
 API base:       $api_base
 Console page:   $console_url
 
-Open the Console Data page and select "remote-crm-embedded".
+Open the Console Data page and select "remote-crm-embedded" or "remote-crm-declarative".
 Press Ctrl-C here to stop all demo processes.
 
 EOF

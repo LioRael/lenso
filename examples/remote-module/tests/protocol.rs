@@ -69,6 +69,42 @@ async fn embedded_manifest_matches_remote_module_protocol() {
 }
 
 #[tokio::test]
+async fn declarative_manifest_matches_remote_module_protocol() {
+    let response = remote_module_example::router()
+        .oneshot(
+            http::Request::builder()
+                .uri("/lenso/module/v1/declarative/manifest")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let manifest: Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(manifest["name"], "remote-crm-declarative");
+    assert_eq!(manifest["admin"]["kind"], "declarative_custom");
+    assert_eq!(manifest["admin"]["pages"][0]["name"], "overview");
+    assert_eq!(
+        manifest["admin"]["pages"][0]["sections"][0]["component"]["kind"],
+        "metric_strip"
+    );
+    assert_eq!(
+        manifest["admin"]["pages"][0]["sections"][1]["component"]["kind"],
+        "entity_table"
+    );
+    assert_eq!(
+        manifest["admin"]["fallback_schema"]["entities"][0]["name"],
+        "contacts"
+    );
+}
+
+#[tokio::test]
 async fn embedded_admin_page_is_served_for_iframe_rendering() {
     let response = remote_module_example::router()
         .oneshot(
