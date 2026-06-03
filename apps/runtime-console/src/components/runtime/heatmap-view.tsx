@@ -114,7 +114,7 @@ export function HeatmapView({
       <div
         className={cn(
           "grid min-h-0 flex-1 overflow-hidden",
-          drilldownEnabled
+          drilldownEnabled && selectedCell
             ? "grid-cols-[minmax(0,1fr)_minmax(0,280px)] max-xl:grid-cols-1"
             : "grid-cols-1"
         )}
@@ -175,7 +175,7 @@ export function HeatmapView({
             })}
           </div>
         </div>
-        {drilldownEnabled ? (
+        {drilldownEnabled && selectedCell ? (
           <HeatmapCellInspector
             selected={selectedCell}
             selectedNodeId={selectedNodeId ?? null}
@@ -198,21 +198,11 @@ function HeatmapCellInspector({
     cell: RuntimeHeatmap["cells"][number];
     key: string;
     nodes: ExecutionNode[];
-  } | null;
+  };
   selectedNodeId: string | null;
   onClear: () => void;
   onSelectNode: (node: ExecutionNode) => void;
 }) {
-  if (!selected) {
-    return (
-      <aside className="hidden min-h-0 border-l border-(--border-subtle) bg-(--surface) xl:block">
-        <div className="grid h-full place-items-center p-4 text-center font-mono text-[11px] text-(--muted)">
-          Select an aggregate heatmap cell.
-        </div>
-      </aside>
-    );
-  }
-
   return (
     <aside className="min-h-0 overflow-hidden border-l border-(--border-subtle) bg-(--surface)">
       <div className="flex min-w-0 items-start gap-2 border-b border-(--border-subtle) px-3 py-2">
