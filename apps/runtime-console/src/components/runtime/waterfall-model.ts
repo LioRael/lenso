@@ -15,6 +15,7 @@ export type WaterfallTimelineMarker = {
   status: RuntimeStatus;
   startMs: number;
   durationMs: number;
+  matchesRowTiming: boolean;
 };
 
 export type WaterfallRow = {
@@ -268,6 +269,10 @@ function markerFromTimelineItem(
     durationMs: Math.max(0, endMs - startMs),
     id: item.id,
     kind: item.type,
+    matchesRowTiming:
+      node !== undefined &&
+      startMs === node.startMs &&
+      Math.max(0, endMs - startMs) === node.durationMs,
     name: item.name,
     startMs,
     status: item.status,

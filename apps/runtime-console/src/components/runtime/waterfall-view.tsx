@@ -172,16 +172,27 @@ function WaterfallRowButton({
             width: `${segment.width}%`,
           }}
         />
-        {row.markers.map((marker) => (
-          <TimelineMarker
-            key={marker.id}
-            marker={marker}
-            timelineEnd={timelineEnd}
-          />
-        ))}
+        {visibleTimelineMarkers(row, timelineEnd)}
       </span>
     </button>
   );
+}
+
+function visibleTimelineMarkers(row: WaterfallRow, timelineEnd: number) {
+  const markers = [];
+  for (const marker of row.markers) {
+    if (marker.matchesRowTiming) {
+      continue;
+    }
+    markers.push(
+      <TimelineMarker
+        key={marker.id}
+        marker={marker}
+        timelineEnd={timelineEnd}
+      />
+    );
+  }
+  return markers;
 }
 
 function TimelineMarker({

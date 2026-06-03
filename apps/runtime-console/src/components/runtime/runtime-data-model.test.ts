@@ -174,6 +174,34 @@ describe("runtime story data model", () => {
     ]);
     expect(rows[1]?.markers.map((marker) => marker.kind)).toEqual(["retry"]);
     expect(rows[1]?.markers[0]?.durationMs).toBe(120);
+    expect(rows[1]?.markers[0]?.matchesRowTiming).toBe(true);
+  });
+
+  test("waterfall marks timeline markers with timing drift", () => {
+    const rows = buildWaterfallRows({
+      ...story,
+      timelineItems: [
+        {
+          attempts: 1,
+          completedAt: "2026-06-01T00:00:00.160Z",
+          correlationId: "corr_test",
+          createdAt: "2026-06-01T00:00:00.020Z",
+          detailId: "node_a",
+          id: "timeline_drift",
+          maxAttempts: 1,
+          name: "CreateResource drift",
+          startedAt: "2026-06-01T00:00:00.020Z",
+          status: "completed",
+          type: "function_run",
+        },
+      ],
+    });
+
+    expect(rows[0]?.markers[0]).toMatchObject({
+      durationMs: 140,
+      matchesRowTiming: false,
+      startMs: 20,
+    });
   });
 
   test("keeps orphan timeline items as unlinked waterfall rows", () => {
