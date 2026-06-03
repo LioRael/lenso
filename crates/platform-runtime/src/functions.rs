@@ -221,7 +221,6 @@ pub struct RuntimeWorker {
     pool: DbPool,
     registry: Arc<FunctionRegistry>,
     worker_id: String,
-    batch_size: i64,
 }
 
 impl RuntimeWorker {
@@ -229,17 +228,15 @@ impl RuntimeWorker {
         pool: DbPool,
         registry: Arc<FunctionRegistry>,
         worker_id: impl Into<String>,
-        batch_size: i64,
     ) -> Self {
         Self {
             pool,
             registry,
             worker_id: worker_id.into(),
-            batch_size,
         }
     }
 
-    pub async fn claim_batch(&self) -> AppResult<Vec<ClaimedFunctionRun>> {
+    pub async fn claim_batch(&self, batch_size: i64) -> AppResult<Vec<ClaimedFunctionRun>> {
         let span = tracing::info_span!(
             "function_claim_batch",
             worker_id = %self.worker_id,
@@ -278,7 +275,7 @@ impl RuntimeWorker {
                 function_run.actor
             "#,
             )
-            .bind(self.batch_size)
+            .bind(batch_size)
             .bind(&self.worker_id)
             .fetch_all(&self.pool)
             .await
@@ -309,7 +306,7 @@ impl RuntimeWorker {
         .await
     }
 
-    pub async fn claim_and_run_batch(&self) -> AppResult<usize> {
+    pub async fn claim_and_run_batch(&self, batch_size: i64) -> AppResult<usize> {
         let span = tracing::info_span!(
             "function_worker_loop",
             worker_id = %self.worker_id,
@@ -318,7 +315,7 @@ impl RuntimeWorker {
         );
 
         async {
-            let runs = self.claim_batch().await?;
+            let runs = self.claim_batch(batch_size).await?;
             let count = runs.len();
 
             for run in runs {

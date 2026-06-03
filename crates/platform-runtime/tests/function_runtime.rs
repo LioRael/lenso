@@ -89,9 +89,9 @@ async fn worker_executes_function_and_marks_completed() {
 
     enqueue(&db.pool, "test.echo.v1", 3).await;
 
-    let worker = RuntimeWorker::new(db.pool.clone(), Arc::new(registry), "worker-a", 10);
+    let worker = RuntimeWorker::new(db.pool.clone(), Arc::new(registry), "worker-a");
     let count = worker
-        .claim_and_run_batch()
+        .claim_and_run_batch(10)
         .await
         .expect("runtime worker should run");
 
@@ -125,9 +125,9 @@ async fn failure_retries_function_run() {
     ));
     enqueue(&db.pool, "test.fail.v1", 3).await;
 
-    let worker = RuntimeWorker::new(db.pool.clone(), Arc::new(registry), "worker-a", 10);
+    let worker = RuntimeWorker::new(db.pool.clone(), Arc::new(registry), "worker-a");
     worker
-        .claim_and_run_batch()
+        .claim_and_run_batch(10)
         .await
         .expect("runtime worker should handle function failure");
 
@@ -157,9 +157,9 @@ async fn exhausted_attempts_marks_function_run_dead() {
     ));
     enqueue(&db.pool, "test.dead.v1", 1).await;
 
-    let worker = RuntimeWorker::new(db.pool.clone(), Arc::new(registry), "worker-a", 10);
+    let worker = RuntimeWorker::new(db.pool.clone(), Arc::new(registry), "worker-a");
     worker
-        .claim_and_run_batch()
+        .claim_and_run_batch(10)
         .await
         .expect("runtime worker should handle exhausted function failure");
 
