@@ -7,6 +7,7 @@ mod admin_data;
 mod binding;
 mod config;
 mod protocol;
+mod proxy;
 mod response;
 mod source;
 
@@ -15,5 +16,8 @@ pub use binding::RemoteBinding;
 pub use config::RemoteModuleConfig;
 pub use protocol::{
     RemoteErrorBody, RemoteErrorDetail, RemoteErrorEnvelope, RemoteManifestResponse,
+};
+pub use proxy::{
+    RemoteHttpProxyMatch, RemoteHttpProxyModule, RemoteHttpProxyRegistry, RemoteHttpProxyRoute,
 };
 pub use source::RemoteModuleSource;
