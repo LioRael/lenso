@@ -22,6 +22,7 @@ use platform_core::{
 use platform_admin_data::AdminModule;
 use platform_http::ApiOpenApiRouter;
 use platform_module::{AdminSurface, Module, ModuleManifest};
+use platform_module_remote::{RemoteModuleConfig, RemoteModuleSource};
 use platform_runtime::FunctionRegistry;
 
 /// The authoritative list of loaded modules (context-bound: builds bindings).
@@ -30,6 +31,22 @@ use platform_runtime::FunctionRegistry;
 #[must_use]
 pub fn modules(ctx: &AppContext) -> Vec<Module> {
     vec![identity::module::module(ctx), notifications::module::module(ctx)]
+}
+
+/// Load every configured module, including out-of-process remote modules.
+///
+/// The synchronous [`modules`] function remains Linked-only for call sites that
+/// must stay context-local and infallible. Startup paths that can perform IO
+/// should use this async loader.
+pub async fn load_modules(ctx: &AppContext) -> platform_core::AppResult<Vec<Module>> {
+    let mut loaded = modules(ctx);
+
+    for remote in &ctx.config.module_sources.remote {
+        let source = RemoteModuleSource::new(remote_module_config(remote))?;
+        loaded.push(source.load().await?);
+    }
+
+    Ok(loaded)
 }
 
 /// Context-free module manifests for read-only / OpenAPI paths that have no
@@ -44,7 +61,16 @@ pub fn module_manifests() -> Vec<ModuleManifest> {
 /// notifications) are filtered out — "optional capability" semantics.
 #[must_use]
 pub fn admin_modules(ctx: &AppContext) -> Vec<AdminModule> {
-    modules(ctx)
+    admin_modules_from_modules(modules(ctx))
+}
+
+/// Load schema-admin capable modules, including configured remotes.
+pub async fn load_admin_modules(ctx: &AppContext) -> platform_core::AppResult<Vec<AdminModule>> {
+    Ok(admin_modules_from_modules(load_modules(ctx).await?))
+}
+
+fn admin_modules_from_modules(modules: Vec<Module>) -> Vec<AdminModule> {
+    modules
         .into_iter()
         .filter_map(|module| {
             // `modules(ctx)` yields owned Modules — move the fields out.
@@ -56,6 +82,19 @@ pub fn admin_modules(ctx: &AppContext) -> Vec<AdminModule> {
             Some(AdminModule { module_name: name, schema, data_source })
         })
         .collect()
+}
+
+fn remote_module_config(source: &platform_core::RemoteModuleSourceConfig) -> RemoteModuleConfig {
+    let mut config = RemoteModuleConfig::new(source.name.clone(), source.base_url.clone())
+        .with_timeout_ms(source.timeout_ms);
+
+    if let Some(env_name) = &source.auth_token_env {
+        if let Ok(token) = std::env::var(env_name) {
+            config = config.with_auth_token(token);
+        }
+    }
+
+    config
 }
 
 /// Build a [`FunctionRegistry`] from every module's binding.
