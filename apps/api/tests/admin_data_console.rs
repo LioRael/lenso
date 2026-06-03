@@ -5,6 +5,7 @@ use platform_admin_data::{AdminModule, install_admin_modules};
 use platform_core::{AppConfig, AppContext, LoggingEventPublisher};
 use platform_module::{
     AdminDataSource, AdminListQuery, AdminPage, AdminSchema, EntitySchema, FieldSchema, FieldType,
+    ModuleLoadStatus, ModuleSource,
 };
 use serde_json::Value;
 use std::sync::Arc;
@@ -46,6 +47,8 @@ fn stub_schema() -> AdminSchema {
 fn app() -> axum::Router {
     install_admin_modules(vec![AdminModule {
         module_name: "identity".to_owned(),
+        source: ModuleSource::Linked,
+        load_status: ModuleLoadStatus::Loaded,
         schema: stub_schema(),
         data_source: Arc::new(StubUsers),
     }]);
@@ -86,9 +89,14 @@ async fn schema_endpoint_lists_installed_modules() {
         .await
         .expect("request completes");
     assert_eq!(response.status(), StatusCode::OK);
-    let bytes = to_bytes(response.into_body(), usize::MAX).await.expect("body");
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body");
     let json: Value = serde_json::from_slice(&bytes).expect("json");
     assert_eq!(json["modules"][0]["module_name"], "identity");
+    assert_eq!(json["modules"][0]["source"], "linked");
+    assert_eq!(json["modules"][0]["status"], "loaded");
+    assert_eq!(json["modules"][0]["error"], Value::Null);
     assert_eq!(json["modules"][0]["schema"]["entities"][0]["name"], "users");
 }
 
@@ -99,7 +107,9 @@ async fn list_records_returns_stub_data() {
         .await
         .expect("request completes");
     assert_eq!(response.status(), StatusCode::OK);
-    let bytes = to_bytes(response.into_body(), usize::MAX).await.expect("body");
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body");
     let json: Value = serde_json::from_slice(&bytes).expect("json");
     assert_eq!(json["data"][0]["id"], "usr_1");
     assert_eq!(json["data"][0]["email"], "a@example.com");

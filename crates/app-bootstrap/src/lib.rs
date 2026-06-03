@@ -16,10 +16,10 @@
 //! When adding a module, register it in [`modules`] and [`module_manifests`]
 //! and — if it has them — in [`merge_domain_http`].
 
+use platform_admin_data::AdminModule;
 use platform_core::{
     AppContext, EventHandlerRegistry, RuntimeConfigDescriptor, StoryDisplayDescriptor,
 };
-use platform_admin_data::AdminModule;
 use platform_http::ApiOpenApiRouter;
 use platform_module::{AdminSurface, Module, ModuleManifest};
 use platform_module_remote::{RemoteModuleConfig, RemoteModuleSource};
@@ -30,7 +30,10 @@ use platform_runtime::FunctionRegistry;
 /// The only function that enumerates concrete modules for the running apps.
 #[must_use]
 pub fn modules(ctx: &AppContext) -> Vec<Module> {
-    vec![identity::module::module(ctx), notifications::module::module(ctx)]
+    vec![
+        identity::module::module(ctx),
+        notifications::module::module(ctx),
+    ]
 }
 
 /// Load every configured module, including out-of-process remote modules.
@@ -53,7 +56,10 @@ pub async fn load_modules(ctx: &AppContext) -> platform_core::AppResult<Vec<Modu
 /// [`AppContext`]. Kept in sync with [`modules`] by listing the same modules.
 #[must_use]
 pub fn module_manifests() -> Vec<ModuleManifest> {
-    vec![identity::module::manifest(), notifications::module::manifest()]
+    vec![
+        identity::module::manifest(),
+        notifications::module::manifest(),
+    ]
 }
 
 /// Aggregate admin-capable modules: those declaring an `AdminSurface::Schema`
@@ -79,7 +85,13 @@ fn admin_modules_from_modules(modules: Vec<Module>) -> Vec<AdminModule> {
             let AdminSurface::Schema(schema) = admin? else {
                 return None;
             };
-            Some(AdminModule { module_name: name, schema, data_source })
+            Some(AdminModule {
+                module_name: name,
+                source: module.source,
+                load_status: module.load_status,
+                schema,
+                data_source,
+            })
         })
         .collect()
 }

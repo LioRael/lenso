@@ -7,7 +7,7 @@ import {
   type AdminRecord,
   detailRows,
   type EntitySchema,
-  moduleSourceHint,
+  moduleStatusLabel,
   type ModuleSchema,
   recordId,
   renderRow,
@@ -20,7 +20,7 @@ type ListResponse = {
 };
 type DetailResponse = { data: AdminRecord };
 
-type Selection = { module: string; entity: EntitySchema };
+type Selection = { module: ModuleSchema; entity: EntitySchema };
 
 const dataKeys = {
   schema: ["admin-data", "schema"] as const,
@@ -41,7 +41,7 @@ export function DataPage() {
 
   const listQuery = useQuery({
     queryKey: selected
-      ? dataKeys.list(selected.module, selected.entity.name)
+      ? dataKeys.list(selected.module.module_name, selected.entity.name)
       : ["admin-data", "list", "none"],
     queryFn: () => {
       if (!selected) {
@@ -49,7 +49,7 @@ export function DataPage() {
       }
       return httpClient
         .get(
-          `admin/data/${encodeURIComponent(selected.module)}/${encodeURIComponent(selected.entity.name)}?limit=50`
+          `admin/data/${encodeURIComponent(selected.module.module_name)}/${encodeURIComponent(selected.entity.name)}?limit=50`
         )
         .json<ListResponse>();
     },
@@ -60,7 +60,7 @@ export function DataPage() {
     queryKey:
       selected && selectedRecordId
         ? dataKeys.detail(
-            selected.module,
+            selected.module.module_name,
             selected.entity.name,
             selectedRecordId
           )
@@ -71,7 +71,7 @@ export function DataPage() {
       }
       return httpClient
         .get(
-          `admin/data/${encodeURIComponent(selected.module)}/${encodeURIComponent(selected.entity.name)}/${encodeURIComponent(selectedRecordId)}`
+          `admin/data/${encodeURIComponent(selected.module.module_name)}/${encodeURIComponent(selected.entity.name)}/${encodeURIComponent(selectedRecordId)}`
         )
         .json<DetailResponse>();
     },
@@ -98,7 +98,7 @@ export function DataPage() {
               moduleSchema.schema.entities.map((entity) => {
                 const isSelected =
                   selected !== null &&
-                  selected.module === moduleSchema.module_name &&
+                  selected.module.module_name === moduleSchema.module_name &&
                   selected.entity.name === entity.name;
                 return (
                   <button
@@ -110,7 +110,7 @@ export function DataPage() {
                     )}
                     key={`${moduleSchema.module_name}.${entity.name}`}
                     onClick={() => {
-                      setSelected({ module: moduleSchema.module_name, entity });
+                      setSelected({ module: moduleSchema, entity });
                       setSelectedRecordId(null);
                     }}
                     type="button"
@@ -119,7 +119,7 @@ export function DataPage() {
                       {moduleSchema.module_name} / {entity.label}
                     </span>
                     <span className="text-[10px] text-(--muted)">
-                      {moduleSourceHint(moduleSchema.module_name)}
+                      {moduleSchema.source}
                     </span>
                   </button>
                 );
@@ -138,11 +138,12 @@ export function DataPage() {
             ) : listQuery.data ? (
               <>
                 <div className="mb-2 flex items-center gap-2 text-[11px] text-(--muted)">
-                  <span>{selected.module}</span>
+                  <span>{selected.module.module_name}</span>
                   <span>/</span>
                   <span>{selected.entity.name}</span>
                   <span className="ml-auto border border-(--border-subtle) px-2 py-0.5 text-[10px] text-(--secondary)">
-                    {moduleSourceHint(selected.module)}
+                    {selected.module.source} /{" "}
+                    {moduleStatusLabel(selected.module)}
                   </span>
                 </div>
                 <table className="w-full table-fixed">
@@ -198,7 +199,7 @@ export function DataPage() {
             <h2 className="font-semibold">Detail</h2>
             <p className="mt-1 truncate text-[11px] text-(--muted)">
               {selected && selectedRecordId
-                ? `${selected.module}/${selected.entity.name}/${selectedRecordId}`
+                ? `${selected.module.module_name}/${selected.entity.name}/${selectedRecordId}`
                 : "select a row"}
             </p>
           </div>

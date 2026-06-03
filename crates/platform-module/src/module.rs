@@ -15,10 +15,25 @@ use std::sync::Arc;
 pub struct Module {
     pub manifest: ModuleManifest,
     pub binding: Arc<dyn ModuleBinding>,
+    pub source: ModuleSource,
+    pub load_status: ModuleLoadStatus,
     pub runtime_config: &'static [RuntimeConfigDescriptor],
     /// Optional schema-admin data source. `None` for modules without an admin
     /// surface (e.g. notifications). Set via [`Module::with_admin_data`].
     pub admin_data: Option<Arc<dyn AdminDataSource>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleSource {
+    Linked,
+    Remote,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModuleLoadStatus {
+    Loaded,
+    Error { message: String },
 }
 
 impl Module {
@@ -29,6 +44,8 @@ impl Module {
         Self {
             manifest,
             binding: Arc::new(binding),
+            source: ModuleSource::Linked,
+            load_status: ModuleLoadStatus::Loaded,
             runtime_config: &[],
             admin_data: None,
         }
@@ -41,6 +58,8 @@ impl Module {
         Self {
             manifest,
             binding,
+            source: ModuleSource::Remote,
+            load_status: ModuleLoadStatus::Loaded,
             runtime_config: &[],
             admin_data: None,
         }

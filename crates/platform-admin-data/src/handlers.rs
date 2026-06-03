@@ -1,13 +1,13 @@
 use crate::dto::{
     AdminDataDetailResponse, AdminDataListResponse, AdminDataPageInfo, AdminModuleSchema,
-    AdminSchemaListResponse,
+    AdminModuleStatus, AdminSchemaListResponse,
 };
 use crate::{AdminModule, admin_modules, find_module};
 use axum::Json;
 use axum::extract::{Path, Query};
 use platform_core::{AppError, ErrorCode, RequestContext};
 use platform_http::{AdminActor, ApiErrorResponse, ErrorResponse, HttpRequestContext};
-use platform_module::AdminListQuery;
+use platform_module::{AdminListQuery, ModuleLoadStatus};
 use serde::Deserialize;
 
 const DEFAULT_LIMIT: i64 = 50;
@@ -39,10 +39,27 @@ pub(crate) async fn list_schemas(
         .iter()
         .map(|m| AdminModuleSchema {
             module_name: m.module_name.clone(),
+            source: m.source,
+            status: admin_module_status(&m.load_status),
+            error: load_error_message(&m.load_status),
             schema: m.schema.clone(),
         })
         .collect();
     Ok(Json(AdminSchemaListResponse { modules }))
+}
+
+fn admin_module_status(status: &ModuleLoadStatus) -> AdminModuleStatus {
+    match status {
+        ModuleLoadStatus::Loaded => AdminModuleStatus::Loaded,
+        ModuleLoadStatus::Error { .. } => AdminModuleStatus::Error,
+    }
+}
+
+fn load_error_message(status: &ModuleLoadStatus) -> Option<String> {
+    match status {
+        ModuleLoadStatus::Loaded => None,
+        ModuleLoadStatus::Error { message } => Some(message.clone()),
+    }
 }
 
 #[utoipa::path(
@@ -81,7 +98,10 @@ pub(crate) async fn list_records(
 
     Ok(Json(AdminDataListResponse {
         data: page.records,
-        page: AdminDataPageInfo { limit, next_cursor: page.next_cursor },
+        page: AdminDataPageInfo {
+            limit,
+            next_cursor: page.next_cursor,
+        },
     }))
 }
 

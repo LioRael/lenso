@@ -1982,12 +1982,27 @@ components:
       type: object
       required:
       - module_name
+      - source
+      - status
       - schema
       properties:
+        error:
+          type:
+          - string
+          - 'null'
         module_name:
           type: string
         schema:
           $ref: '#/components/schemas/AdminSchema'
+        source:
+          $ref: '#/components/schemas/ModuleSource'
+        status:
+          $ref: '#/components/schemas/AdminModuleStatus'
+    AdminModuleStatus:
+      type: string
+      enum:
+      - loaded
+      - error
     AdminOutboxEventDetail:
       type: object
       required:
@@ -3040,6 +3055,11 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/MeResponse'
+    ModuleSource:
+      type: string
+      enum:
+      - linked
+      - remote
     PageInfo:
       type: object
       required:

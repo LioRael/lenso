@@ -25,7 +25,15 @@ export type EntitySchema = {
 
 export type AdminSchema = { entities: EntitySchema[] };
 
-export type ModuleSchema = { module_name: string; schema: AdminSchema };
+export type ModuleSource = "linked" | "remote";
+
+export type ModuleSchema = {
+  module_name: string;
+  source: ModuleSource;
+  status: "loaded" | "error";
+  error: string | null;
+  schema: AdminSchema;
+};
 
 export type AdminRecord = Record<string, unknown>;
 
@@ -41,6 +49,10 @@ export type DetailRow = {
   label: string;
   display: string;
 };
+
+export function moduleStatusLabel(module: ModuleSchema): "loaded" | "error" {
+  return module.status;
+}
 
 /** Format one raw value per its field type into a display string. */
 export function renderCell(field: FieldSchema, value: unknown): RenderedCell {
@@ -91,10 +103,6 @@ export function detailRows(
 
 export function recordId(record: AdminRecord): string | null {
   return typeof record.id === "string" ? record.id : null;
-}
-
-export function moduleSourceHint(moduleName: string): "linked" | "remote" {
-  return moduleName.startsWith("remote-") ? "remote" : "linked";
 }
 
 function formatTimestamp(value: unknown): string {

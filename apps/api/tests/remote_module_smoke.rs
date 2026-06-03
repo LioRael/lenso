@@ -91,6 +91,9 @@ async fn remote_module_fixture_is_visible_through_admin_data_api() {
         .iter()
         .find(|module| module["module_name"] == "remote-crm")
         .expect("remote-crm schema is installed");
+    assert_eq!(remote_schema["source"], "remote");
+    assert_eq!(remote_schema["status"], "loaded");
+    assert_eq!(remote_schema["error"], Value::Null);
     assert_eq!(remote_schema["schema"]["entities"][0]["name"], "contacts");
 
     let list_response = app

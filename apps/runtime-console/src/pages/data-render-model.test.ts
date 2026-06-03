@@ -4,7 +4,8 @@ import {
   detailRows,
   type EntitySchema,
   type FieldSchema,
-  moduleSourceHint,
+  type ModuleSchema,
+  moduleStatusLabel,
   recordId,
   renderCell,
   renderRow,
@@ -127,12 +128,26 @@ describe("detailRows", () => {
   });
 });
 
-describe("moduleSourceHint", () => {
-  test("marks the remote fixture convention as remote", () => {
-    expect(moduleSourceHint("remote-crm")).toBe("remote");
+describe("moduleStatusLabel", () => {
+  const moduleSchema: ModuleSchema = {
+    module_name: "remote-crm",
+    source: "remote",
+    status: "loaded",
+    error: null,
+    schema: { entities: [] },
+  };
+
+  test("uses backend loaded status verbatim", () => {
+    expect(moduleStatusLabel(moduleSchema)).toBe("loaded");
   });
 
-  test("treats ordinary linked modules as linked", () => {
-    expect(moduleSourceHint("identity")).toBe("linked");
+  test("maps backend error status objects to error", () => {
+    expect(
+      moduleStatusLabel({
+        ...moduleSchema,
+        status: "error",
+        error: "manifest failed",
+      })
+    ).toBe("error");
   });
 });

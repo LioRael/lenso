@@ -42,9 +42,14 @@ export type AdminFunctionRunResponse = {
 };
 
 export type AdminModuleSchema = {
+  error?: string | null;
   module_name: string;
   schema: AdminSchema;
+  source: ModuleSource;
+  status: AdminModuleStatus;
 };
+
+export type AdminModuleStatus = string;
 
 export type AdminOutboxEventDetail = {
   actor: unknown;
@@ -407,6 +412,8 @@ export type MeResponse = {
 export type MeResponseEnvelope = {
   data: MeResponse;
 };
+
+export type ModuleSource = string;
 
 export type PageInfo = {
   limit: number;

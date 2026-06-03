@@ -5,7 +5,7 @@
 
 use platform_core::{AppError, ErrorCode, RequestContext};
 use platform_http::{ApiErrorResponse, ApiOpenApiRouter, OpenApiRouter, routes};
-use platform_module::{AdminDataSource, AdminSchema};
+use platform_module::{AdminDataSource, AdminSchema, ModuleLoadStatus, ModuleSource};
 use std::sync::{Arc, OnceLock};
 
 mod dto;
@@ -20,6 +20,11 @@ use handlers::*;
 pub struct AdminModule {
     /// The owning module's stable name, e.g. "identity".
     pub module_name: String,
+    /// The loading source that produced this module.
+    pub source: ModuleSource,
+    /// Current load state. The first remote slice only installs loaded modules;
+    /// error entries are reserved for degraded loading in a later slice.
+    pub load_status: ModuleLoadStatus,
     /// The module's declared admin surface (entities + fields).
     pub schema: AdminSchema,
     /// Live read access to the module's records.
