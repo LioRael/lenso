@@ -9,6 +9,7 @@ members = [
     "crates/platform-admin-data",
     "crates/platform-core",
     "crates/platform-module",
+    "crates/platform-module-remote",
     "crates/platform-http",
     "crates/platform-runtime",
     "crates/platform-testing",
@@ -36,6 +37,7 @@ http = "1.4"
 opentelemetry = "0.32"
 opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic"] }
 opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
@@ -55,6 +57,7 @@ platform-core = { path = "crates/platform-core" }
 platform-admin = { path = "crates/platform-admin" }
 platform-admin-data = { path = "crates/platform-admin-data" }
 platform-module = { path = "crates/platform-module" }
+platform-module-remote = { path = "crates/platform-module-remote" }
 platform-http = { path = "crates/platform-http" }
 platform-runtime = { path = "crates/platform-runtime" }
 platform-testing = { path = "crates/platform-testing" }
