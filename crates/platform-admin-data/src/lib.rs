@@ -6,7 +6,7 @@
 use platform_core::{AppError, ErrorCode, RequestContext};
 use platform_http::{ApiErrorResponse, ApiOpenApiRouter, OpenApiRouter, routes};
 use platform_module::{AdminDataSource, AdminSchema, ModuleLoadStatus, ModuleSource};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, OnceLock, RwLock};
 
 mod dto;
 mod handlers;
@@ -27,28 +27,39 @@ pub struct AdminModule {
     pub load_status: ModuleLoadStatus,
     /// The module's declared admin surface (entities + fields).
     pub schema: AdminSchema,
-    /// Live read access to the module's records.
-    pub data_source: Arc<dyn AdminDataSource>,
+    /// Live read access to the module's records. Missing for degraded modules
+    /// whose manifest/data source failed to load.
+    pub data_source: Option<Arc<dyn AdminDataSource>>,
 }
 
-static ADMIN_REGISTRY: OnceLock<Vec<AdminModule>> = OnceLock::new();
+static ADMIN_REGISTRY: OnceLock<RwLock<Vec<AdminModule>>> = OnceLock::new();
 
 /// Install the admin-capable module registry. Called once by the composition
-/// root before the router serves traffic. Idempotent: later calls are ignored.
+/// root before the router serves traffic. Later calls replace the registry,
+/// which keeps tests isolated and leaves room for explicit refresh later.
 pub fn install_admin_modules(modules: Vec<AdminModule>) {
-    let _ = ADMIN_REGISTRY.set(modules);
+    let registry = ADMIN_REGISTRY.get_or_init(|| RwLock::new(Vec::new()));
+    *registry.write().expect("admin registry lock poisoned") = modules;
 }
 
-fn admin_modules() -> &'static [AdminModule] {
-    ADMIN_REGISTRY.get().map(Vec::as_slice).unwrap_or_default()
+fn admin_modules() -> Vec<AdminModule> {
+    ADMIN_REGISTRY
+        .get()
+        .map(|registry| {
+            registry
+                .read()
+                .expect("admin registry lock poisoned")
+                .clone()
+        })
+        .unwrap_or_default()
 }
 
 fn find_module(
     module: &str,
     ctx: &RequestContext,
-) -> Result<&'static AdminModule, ApiErrorResponse> {
+) -> Result<AdminModule, ApiErrorResponse> {
     admin_modules()
-        .iter()
+        .into_iter()
         .find(|m| m.module_name == module)
         .ok_or_else(|| {
             ApiErrorResponse::with_context(
@@ -56,6 +67,25 @@ fn find_module(
                 ctx,
             )
         })
+}
+
+fn find_loaded_module(
+    module: &str,
+    ctx: &RequestContext,
+) -> Result<AdminModule, ApiErrorResponse> {
+    let admin_module = find_module(module, ctx)?;
+    if admin_module.data_source.is_some() {
+        Ok(admin_module)
+    } else {
+        Err(ApiErrorResponse::with_context(
+            AppError::new(
+                ErrorCode::ExternalDependency,
+                format!("module {module} is not loaded"),
+            )
+            .retryable(),
+            ctx,
+        ))
+    }
 }
 
 /// The schema-admin router, mounted by the API app.

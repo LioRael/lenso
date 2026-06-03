@@ -50,7 +50,7 @@ fn app() -> axum::Router {
         source: ModuleSource::Linked,
         load_status: ModuleLoadStatus::Loaded,
         schema: stub_schema(),
-        data_source: Arc::new(StubUsers),
+        data_source: Some(Arc::new(StubUsers)),
     }]);
     let ctx = AppContext::new(
         AppConfig::from_env(),

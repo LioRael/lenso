@@ -26,6 +26,16 @@ async fn spawn_remote_module(router: Router) -> String {
 }
 
 async fn app_with_remote_module(base_url: String) -> axum::Router {
+    app_with_remote_modules(vec![RemoteModuleSourceConfig {
+        name: "remote-crm".to_owned(),
+        base_url,
+        auth_token_env: None,
+        timeout_ms: 5_000,
+    }])
+    .await
+}
+
+async fn app_with_remote_modules(remote: Vec<RemoteModuleSourceConfig>) -> axum::Router {
     let config = AppConfig {
         service: ServiceConfig::default(),
         database: DatabaseConfig {
@@ -35,14 +45,7 @@ async fn app_with_remote_module(base_url: String) -> axum::Router {
         http: HttpConfig::default(),
         telemetry: TelemetryConfig::default(),
         auth: AuthConfig::default(),
-        module_sources: ModuleSourcesConfig {
-            remote: vec![RemoteModuleSourceConfig {
-                name: "remote-crm".to_owned(),
-                base_url,
-                auth_token_env: None,
-                timeout_ms: 5_000,
-            }],
-        },
+        module_sources: ModuleSourcesConfig { remote },
         modules: Default::default(),
     };
     let ctx = AppContext::new(
@@ -115,4 +118,55 @@ async fn remote_module_fixture_is_visible_through_admin_data_api() {
     let detail = json_body(detail_response).await;
     assert_eq!(detail["data"]["id"], "contact_2");
     assert_eq!(detail["data"]["company"], "Compiler Systems");
+}
+
+#[tokio::test]
+async fn failed_remote_module_load_is_reported_in_schema() {
+    let app = app_with_remote_modules(vec![RemoteModuleSourceConfig {
+        name: "remote-crm".to_owned(),
+        base_url: "http://127.0.0.1:9/lenso/module/v1".to_owned(),
+        auth_token_env: None,
+        timeout_ms: 50,
+    }])
+    .await;
+
+    let schema_response = app
+        .clone()
+        .oneshot(admin_get("/admin/data/schema"))
+        .await
+        .expect("schema request completes");
+    assert_eq!(schema_response.status(), StatusCode::OK);
+    let schema = json_body(schema_response).await;
+    let remote_schema = schema["modules"]
+        .as_array()
+        .expect("modules array")
+        .iter()
+        .find(|module| module["module_name"] == "remote-crm")
+        .expect("failed remote is reported");
+
+    assert_eq!(remote_schema["source"], "remote");
+    assert_eq!(remote_schema["status"], "error");
+    assert!(
+        remote_schema["error"]
+            .as_str()
+            .expect("error message")
+            .contains("remote manifest request failed")
+    );
+    assert_eq!(
+        remote_schema["schema"]["entities"]
+            .as_array()
+            .expect("empty schema"),
+        &Vec::<Value>::new()
+    );
+
+    let list_response = app
+        .oneshot(admin_get("/admin/data/remote-crm/contacts"))
+        .await
+        .expect("list request completes");
+    assert_eq!(list_response.status(), StatusCode::BAD_GATEWAY);
+    let body = json_body(list_response).await;
+    assert_eq!(
+        body["error"]["message"],
+        "module remote-crm is not loaded"
+    );
 }

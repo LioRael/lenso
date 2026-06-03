@@ -21,7 +21,9 @@ use platform_core::{
     AppContext, EventHandlerRegistry, RuntimeConfigDescriptor, StoryDisplayDescriptor,
 };
 use platform_http::ApiOpenApiRouter;
-use platform_module::{AdminSurface, Module, ModuleManifest};
+use platform_module::{
+    AdminSchema, AdminSurface, Module, ModuleLoadStatus, ModuleManifest, ModuleSource,
+};
 use platform_module_remote::{RemoteModuleConfig, RemoteModuleSource};
 use platform_runtime::FunctionRegistry;
 
@@ -72,7 +74,20 @@ pub fn admin_modules(ctx: &AppContext) -> Vec<AdminModule> {
 
 /// Load schema-admin capable modules, including configured remotes.
 pub async fn load_admin_modules(ctx: &AppContext) -> platform_core::AppResult<Vec<AdminModule>> {
-    Ok(admin_modules_from_modules(load_modules(ctx).await?))
+    let mut admin_modules = admin_modules_from_modules(modules(ctx));
+
+    for remote in &ctx.config.module_sources.remote {
+        let source = RemoteModuleSource::new(remote_module_config(remote))?;
+        match source.load().await {
+            Ok(module) => admin_modules.extend(admin_modules_from_modules(vec![module])),
+            Err(error) => admin_modules.push(failed_remote_admin_module(
+                remote.name.clone(),
+                error.public_message,
+            )),
+        }
+    }
+
+    Ok(admin_modules)
 }
 
 fn admin_modules_from_modules(modules: Vec<Module>) -> Vec<AdminModule> {
@@ -90,10 +105,20 @@ fn admin_modules_from_modules(modules: Vec<Module>) -> Vec<AdminModule> {
                 source: module.source,
                 load_status: module.load_status,
                 schema,
-                data_source,
+                data_source: Some(data_source),
             })
         })
         .collect()
+}
+
+fn failed_remote_admin_module(name: String, message: String) -> AdminModule {
+    AdminModule {
+        module_name: name,
+        source: ModuleSource::Remote,
+        load_status: ModuleLoadStatus::Error { message },
+        schema: AdminSchema { entities: Vec::new() },
+        data_source: None,
+    }
 }
 
 fn remote_module_config(source: &platform_core::RemoteModuleSourceConfig) -> RemoteModuleConfig {

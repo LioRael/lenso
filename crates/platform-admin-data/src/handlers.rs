@@ -2,7 +2,7 @@ use crate::dto::{
     AdminDataDetailResponse, AdminDataListResponse, AdminDataPageInfo, AdminModuleSchema,
     AdminModuleStatus, AdminSchemaListResponse,
 };
-use crate::{AdminModule, admin_modules, find_module};
+use crate::{AdminModule, admin_modules, find_loaded_module};
 use axum::Json;
 use axum::extract::{Path, Query};
 use platform_core::{AppError, ErrorCode, RequestContext};
@@ -86,12 +86,14 @@ pub(crate) async fn list_records(
     Path((module, entity)): Path<(String, String)>,
     Query(query): Query<DataListQuery>,
 ) -> Result<Json<AdminDataListResponse>, ApiErrorResponse> {
-    let admin_module = find_module(&module, &request_ctx)?;
-    ensure_entity(admin_module, &entity, &request_ctx)?;
+    let admin_module = find_loaded_module(&module, &request_ctx)?;
+    ensure_entity(&admin_module, &entity, &request_ctx)?;
 
     let limit = query.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
     let page = admin_module
         .data_source
+        .as_ref()
+        .expect("loaded admin module has data source")
         .list(&entity, &AdminListQuery::new(limit, query.cursor))
         .await
         .map_err(|error| ApiErrorResponse::with_context(error, &request_ctx))?;
@@ -127,11 +129,13 @@ pub(crate) async fn get_record(
     HttpRequestContext(request_ctx): HttpRequestContext,
     Path((module, entity, id)): Path<(String, String, String)>,
 ) -> Result<Json<AdminDataDetailResponse>, ApiErrorResponse> {
-    let admin_module = find_module(&module, &request_ctx)?;
-    ensure_entity(admin_module, &entity, &request_ctx)?;
+    let admin_module = find_loaded_module(&module, &request_ctx)?;
+    ensure_entity(&admin_module, &entity, &request_ctx)?;
 
     match admin_module
         .data_source
+        .as_ref()
+        .expect("loaded admin module has data source")
         .get(&entity, &id)
         .await
         .map_err(|error| ApiErrorResponse::with_context(error, &request_ctx))?
