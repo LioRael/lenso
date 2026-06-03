@@ -104,6 +104,18 @@ export type MetadataRow = {
   value: string;
 };
 
+export type EmbeddedIframePolicy =
+  | {
+      status: "renderable";
+      url: string;
+      origin: string;
+      sandbox: string;
+    }
+  | {
+      status: "blocked";
+      reason: string;
+    };
+
 export function moduleStatusLabel(module: AdminModuleMetadata): ModuleStatus {
   return module.status;
 }
@@ -237,6 +249,51 @@ export function adminSurfaceMetadataRows(
   return rows;
 }
 
+export function embeddedIframePolicy(
+  surface: AdminSurface | null
+): EmbeddedIframePolicy {
+  if (surface?.kind !== "embedded_custom") {
+    return { status: "blocked", reason: "not an embedded surface" };
+  }
+  if (surface.runtime !== "iframe") {
+    return { status: "blocked", reason: "embedded runtime is not iframe" };
+  }
+  if (surface.entry?.kind !== "url" || !surface.entry.url) {
+    return { status: "blocked", reason: "iframe entry URL is missing" };
+  }
+
+  const entryUrl = parseAbsoluteHttpUrl(surface.entry.url);
+  if (!entryUrl) {
+    return {
+      status: "blocked",
+      reason: "iframe entry URL must be absolute http(s)",
+    };
+  }
+
+  const allowedOrigins = normalizeAllowedOrigins(
+    surface.entry.allowed_origins ?? []
+  );
+  if (allowedOrigins.status === "invalid") {
+    return { status: "blocked", reason: allowedOrigins.reason };
+  }
+  if (allowedOrigins.origins.length === 0) {
+    return { status: "blocked", reason: "iframe origin allowlist is empty" };
+  }
+  if (!allowedOrigins.origins.includes(entryUrl.origin)) {
+    return {
+      status: "blocked",
+      reason: "iframe entry origin is not allowed",
+    };
+  }
+
+  return {
+    status: "renderable",
+    url: entryUrl.toString(),
+    origin: entryUrl.origin,
+    sandbox: iframeSandboxAttribute(surface.sandbox),
+  };
+}
+
 function embeddedEntryLabel(entry: AdminEmbeddedEntry | undefined): string {
   if (!entry) {
     return "unknown";
@@ -245,6 +302,44 @@ function embeddedEntryLabel(entry: AdminEmbeddedEntry | undefined): string {
     return entry.url ?? "url";
   }
   return entry.kind;
+}
+
+function iframeSandboxAttribute(
+  sandbox: AdminSandboxPolicy | undefined
+): string {
+  const tokens = [
+    sandbox?.allow_scripts ? "allow-scripts" : null,
+    sandbox?.allow_forms ? "allow-forms" : null,
+    sandbox?.allow_popups ? "allow-popups" : null,
+    sandbox?.allow_same_origin ? "allow-same-origin" : null,
+  ].filter((token): token is string => token !== null);
+  return tokens.join(" ");
+}
+
+function parseAbsoluteHttpUrl(rawUrl: string): URL | null {
+  try {
+    const url = new URL(rawUrl);
+    return url.protocol === "http:" || url.protocol === "https:" ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeAllowedOrigins(
+  origins: string[]
+): { status: "ok"; origins: string[] } | { status: "invalid"; reason: string } {
+  const normalized = new Set<string>();
+  for (const origin of origins) {
+    const parsed = parseAbsoluteHttpUrl(origin);
+    if (!parsed) {
+      return {
+        status: "invalid",
+        reason: "iframe allowed origin must be absolute http(s)",
+      };
+    }
+    normalized.add(parsed.origin);
+  }
+  return { status: "ok", origins: [...normalized] };
 }
 
 /** Format one raw value per its field type into a display string. */

@@ -11,6 +11,7 @@ import {
   adminSurfaceLabel,
   adminSurfaceMetadataRows,
   detailRows,
+  embeddedIframePolicy,
   type EntitySchema,
   moduleErrorMessage,
   moduleIsLoaded,
@@ -370,10 +371,11 @@ function ModuleSurfacePanel({
 }) {
   const rows = adminSurfaceMetadataRows(module);
   const surfaceLabel = adminSurfaceLabel(module.admin);
+  const iframePolicy = embeddedIframePolicy(module.admin);
   return (
     <div
       className={cn(
-        "border border-(--border-subtle) bg-(--surface) p-3",
+        "grid gap-3 border border-(--border-subtle) bg-(--surface) p-3",
         compact && "text-[11px]"
       )}
     >
@@ -384,12 +386,16 @@ function ModuleSurfacePanel({
           {surfaceLabel}
         </span>
       </div>
-      <p className="mt-2 text-(--muted)">
-        {module.admin?.kind === "schema"
-          ? "Schema surface has no selectable entity."
-          : "Custom admin surface is discoverable. Rendering stays disabled until the host policy is implemented."}
-      </p>
-      <dl className="mt-3 grid grid-cols-[120px_minmax(0,1fr)] border-y border-(--border-subtle)">
+      {module.admin?.kind === "embedded_custom" ? (
+        <EmbeddedIframeSurface compact={compact} policy={iframePolicy} />
+      ) : (
+        <p className="text-(--muted)">
+          {module.admin?.kind === "schema"
+            ? "Schema surface has no selectable entity."
+            : "Custom admin surface is discoverable. Rendering is waiting for a host renderer."}
+        </p>
+      )}
+      <dl className="grid grid-cols-[120px_minmax(0,1fr)] border-y border-(--border-subtle)">
         {rows.map((row) => (
           <div className="contents" key={row.label}>
             <dt className="border-b border-(--border-subtle) bg-(--sidebar) px-2 py-1.5 text-(--muted)">
@@ -401,6 +407,48 @@ function ModuleSurfacePanel({
           </div>
         ))}
       </dl>
+    </div>
+  );
+}
+
+function EmbeddedIframeSurface({
+  compact,
+  policy,
+}: {
+  compact: boolean;
+  policy: ReturnType<typeof embeddedIframePolicy>;
+}) {
+  if (policy.status === "blocked") {
+    return (
+      <div className="border border-[color-mix(in_srgb,var(--warning)_35%,var(--border-subtle))] bg-[color-mix(in_srgb,var(--warning)_8%,transparent)] p-2">
+        <div className="flex items-center gap-2 font-semibold text-(--foreground)">
+          <AlertTriangle className="text-(--warning)" size={14} />
+          <span>iframe blocked</span>
+        </div>
+        <p className="mt-2 break-words text-(--muted)">{policy.reason}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-2">
+      <div className="flex items-center gap-2 text-[11px] text-(--muted)">
+        <span>iframe</span>
+        <span className="truncate">{policy.origin}</span>
+        <span className="ml-auto border border-(--border-subtle) px-2 py-0.5 text-[10px] text-(--secondary)">
+          no bridge
+        </span>
+      </div>
+      <iframe
+        className={cn(
+          "w-full border border-(--border-subtle) bg-(--background)",
+          compact ? "h-44" : "h-[min(520px,calc(100vh-230px))]"
+        )}
+        referrerPolicy="no-referrer"
+        sandbox={policy.sandbox}
+        src={policy.url}
+        title="Embedded admin surface"
+      />
     </div>
   );
 }

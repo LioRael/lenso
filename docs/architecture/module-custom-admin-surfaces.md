@@ -1,8 +1,10 @@
 # Module Custom Admin Surfaces
 
-This note specifies the next admin-surface direction for the module framework.
-It is a design target, not an implementation commitment in the current code.
-`AdminSurface::Schema` remains the only implemented admin surface today.
+This note specifies the admin-surface direction for the module framework.
+`AdminSurface::Schema` is the generic data-admin surface. `EmbeddedCustom`
+currently has a first Runtime Console iframe renderer with origin checks,
+sandbox attributes, and no host bridge. `DeclarativeCustom` remains a contract
+only until the host-rendered component protocol is implemented.
 
 ## Why Two Custom Modes
 
@@ -90,7 +92,7 @@ pub enum AdminEmbeddedRuntime {
 }
 ```
 
-Initial implementation should allow only `Iframe`. `Wasm` and `JsBundle` are
+The initial implementation allows only `Iframe`. `Wasm` and `JsBundle` are
 reserved names until they have separate execution, signing, and lifecycle specs.
 
 Rules:
@@ -141,9 +143,9 @@ The loading source axis remains separate:
 2. Teach schema/admin metadata endpoints and generated SDK types to preserve the
    new variants.
 3. Implement `EmbeddedCustom::Iframe` as a read-only visible surface with origin
-   checks and `sandbox` attributes, but no message bridge.
+   checks and `sandbox` attributes, but no message bridge. Done for the Runtime
+   Console Data page.
 4. Implement a small `DeclarativeCustom` renderer for one or two trusted
    components.
 5. Specify a versioned host/module message and action protocol before enabling
    any embedded surface to call back into the host.
-

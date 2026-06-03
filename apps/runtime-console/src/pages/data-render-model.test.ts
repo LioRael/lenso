@@ -4,6 +4,7 @@ import {
   adminSurfaceLabel,
   adminSurfaceMetadataRows,
   detailRows,
+  embeddedIframePolicy,
   type AdminModuleMetadata,
   type EntitySchema,
   type FieldSchema,
@@ -301,5 +302,98 @@ describe("admin surface metadata helpers", () => {
       { label: "permissions", value: "1" },
       { label: "fallback entities", value: "1" },
     ]);
+  });
+});
+
+describe("embeddedIframePolicy", () => {
+  test("renders an iframe only for allowed absolute http origins", () => {
+    expect(
+      embeddedIframePolicy({
+        kind: "embedded_custom",
+        runtime: "iframe",
+        entry: {
+          kind: "url",
+          url: "https://remote-crm.example.test/admin?tenant=demo",
+          allowed_origins: ["https://remote-crm.example.test"],
+        },
+        sandbox: {
+          allow_scripts: true,
+          allow_forms: true,
+          allow_popups: false,
+          allow_same_origin: false,
+        },
+      })
+    ).toEqual({
+      status: "renderable",
+      url: "https://remote-crm.example.test/admin?tenant=demo",
+      origin: "https://remote-crm.example.test",
+      sandbox: "allow-scripts allow-forms",
+    });
+  });
+
+  test("blocks iframe URLs outside the declared origin allowlist", () => {
+    expect(
+      embeddedIframePolicy({
+        kind: "embedded_custom",
+        runtime: "iframe",
+        entry: {
+          kind: "url",
+          url: "https://evil.example.test/admin",
+          allowed_origins: ["https://remote-crm.example.test"],
+        },
+      })
+    ).toEqual({
+      status: "blocked",
+      reason: "iframe entry origin is not allowed",
+    });
+  });
+
+  test("blocks non-http iframe URLs and invalid allowed origins", () => {
+    expect(
+      embeddedIframePolicy({
+        kind: "embedded_custom",
+        runtime: "iframe",
+        entry: {
+          kind: "url",
+          url: "ftp://remote-crm.example.test/admin",
+          allowed_origins: ["https://remote-crm.example.test"],
+        },
+      })
+    ).toEqual({
+      status: "blocked",
+      reason: "iframe entry URL must be absolute http(s)",
+    });
+
+    expect(
+      embeddedIframePolicy({
+        kind: "embedded_custom",
+        runtime: "iframe",
+        entry: {
+          kind: "url",
+          url: "https://remote-crm.example.test/admin",
+          allowed_origins: ["not-an-origin"],
+        },
+      })
+    ).toEqual({
+      status: "blocked",
+      reason: "iframe allowed origin must be absolute http(s)",
+    });
+  });
+
+  test("blocks reserved embedded runtimes until they have host policies", () => {
+    expect(
+      embeddedIframePolicy({
+        kind: "embedded_custom",
+        runtime: "wasm",
+        entry: {
+          kind: "url",
+          url: "https://remote-crm.example.test/admin",
+          allowed_origins: ["https://remote-crm.example.test"],
+        },
+      })
+    ).toEqual({
+      status: "blocked",
+      reason: "embedded runtime is not iframe",
+    });
   });
 });
