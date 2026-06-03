@@ -9,6 +9,7 @@ import {
 import { RuntimeConsoleProvider } from "../components/runtime/runtime-console-context";
 import { RuntimeConsoleShell } from "../components/runtime/runtime-console-shell";
 import { ConfigPage } from "../pages/config-page";
+import { DataPage } from "../pages/data-page";
 import { DeadLettersPage } from "../pages/dead-letters-page";
 import { OverviewPage } from "../pages/overview-page";
 import { QueuesPage } from "../pages/queues-page";
@@ -88,6 +89,12 @@ const configRoute = createRoute({
   component: ConfigPage,
 });
 
+const dataRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/data",
+  component: DataPage,
+});
+
 const placeholderRoute = (path: string, title: string) =>
   createRoute({
     getParentRoute: () => rootRoute,
@@ -141,6 +148,7 @@ const routeTree = rootRoute.addChildren([
     component: QueuesPage,
   }),
   configRoute,
+  dataRoute,
   placeholderRoute("/flows", "Flows"),
   placeholderRoute("/agents", "Agents"),
 ]);
