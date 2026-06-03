@@ -65,10 +65,11 @@ pub fn merge_domain_http(base: ApiOpenApiRouter) -> ApiOpenApiRouter {
 ///
 /// Replaces hard-coded per-domain chains: read-only console queries (which have
 /// no [`AppContext`]) iterate this instead of enumerating domains themselves.
-pub fn story_display_descriptors() -> impl Iterator<Item = &'static StoryDisplayDescriptor> {
-    identity::module::STORY_DISPLAY
-        .iter()
-        .chain(notifications::module::STORY_DISPLAY.iter())
+pub fn story_display_descriptors() -> Vec<StoryDisplayDescriptor> {
+    identity::module::story_display()
+        .into_iter()
+        .chain(notifications::module::story_display())
+        .collect()
 }
 
 /// Every domain's setting descriptors.

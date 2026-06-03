@@ -24,7 +24,7 @@ pub struct DomainDescriptor {
     /// In-process event handlers the domain registers on the outbox dispatcher.
     pub event_handlers: Vec<Arc<dyn EventHandler>>,
     /// Story-display metadata for the runtime console.
-    pub story_display: &'static [StoryDisplayDescriptor],
+    pub story_display: Vec<StoryDisplayDescriptor>,
     /// Editable configuration keys owned by the domain.
     pub runtime_config: &'static [RuntimeConfigDescriptor],
 }
@@ -37,7 +37,7 @@ impl DomainDescriptor {
             name,
             runtime,
             event_handlers: Vec::new(),
-            story_display: &[],
+            story_display: Vec::new(),
             runtime_config: &[],
         }
     }
@@ -51,7 +51,7 @@ impl DomainDescriptor {
 
     /// Attach story-display metadata for the runtime console.
     #[must_use]
-    pub fn with_story_display(mut self, story_display: &'static [StoryDisplayDescriptor]) -> Self {
+    pub fn with_story_display(mut self, story_display: Vec<StoryDisplayDescriptor>) -> Self {
         self.story_display = story_display;
         self
     }
