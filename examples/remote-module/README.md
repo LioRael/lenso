@@ -51,8 +51,10 @@ REMOTE_MODULES=remote-crm=http://127.0.0.1:4100/lenso/module/v1,remote-crm-embed
 The embedded manifest points at the example's `/embedded/admin` page with an
 origin allowlist for the current request host, so the Runtime Console can render
 it in a sandboxed iframe without a host bridge.
-The declarative manifest uses host-rendered `metric_strip` and `entity_table`
-sections backed by the same Contacts fallback schema.
+The declarative manifest uses host-rendered `metric_strip`, `entity_table`, and
+`entity_detail` sections backed by the same Contacts fallback schema. The table
+and detail sections are read-only and use the declarative admin data endpoints
+above; the fallback schema is not advertised as a generic schema-admin module.
 
 For a one-command local Console demo from the repo root:
 
