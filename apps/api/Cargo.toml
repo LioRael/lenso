@@ -26,6 +26,8 @@ tower-http.workspace = true
 utoipa.workspace = true
 
 [dev-dependencies]
+async-trait.workspace = true
+platform-module.workspace = true
 platform-testing.workspace = true
 serde_yaml.workspace = true
 tower = { workspace = true, features = ["util"] }

@@ -38,6 +38,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "app-bootstrap",
+ "async-trait",
  "axum",
  "chrono",
  "identity",
@@ -45,6 +46,7 @@ dependencies = [
  "platform-admin-data",
  "platform-core",
  "platform-http",
+ "platform-module",
  "platform-runtime",
  "platform-testing",
  "serde",

@@ -22,6 +22,11 @@ pub fn run() -> anyhow::Result<()> {
         &mut failures,
     );
     collect_result(
+        check_admin_data_no_domain_deps(&root),
+        "platform-admin-data domain dependency",
+        &mut failures,
+    );
+    collect_result(
         check_required_openapi_artifacts(&root),
         "required OpenAPI artifacts",
         &mut failures,
@@ -120,6 +125,28 @@ pub fn check_forbidden_cross_domain_imports(root: &Path) -> anyhow::Result<()> {
     ensure_empty(
         violations,
         "domains must call other domains through public interfaces or events",
+    )
+}
+
+/// `platform-admin-data` must not depend on any business domain — it works only
+/// through the `AdminDataSource` seam and manifest schema.
+pub fn check_admin_data_no_domain_deps(root: &Path) -> anyhow::Result<()> {
+    let manifest = root.join("crates/platform-admin-data/Cargo.toml");
+    let source = fs::read_to_string(&manifest)
+        .with_context(|| format!("failed to read {}", manifest.display()))?;
+    let domain_names = domain_names(root)?;
+    let mut violations = Vec::new();
+    for domain in &domain_names {
+        if source.contains(&format!("{domain}.workspace"))
+            || source.contains(&format!("\"{domain}\""))
+            || source.contains(&format!("{domain} ="))
+        {
+            violations.push(format!("platform-admin-data depends on domain `{domain}`"));
+        }
+    }
+    ensure_empty(
+        violations,
+        "platform-admin-data must not depend on any domain crate (use the AdminDataSource seam)",
     )
 }
 
