@@ -21,8 +21,9 @@ pub mod worker_runtime_config;
 
 pub use clock::{Clock, SystemClock};
 pub use config::{
-    AppConfig, AuthConfig, DatabaseConfig, HttpConfig, LogFormat, ModuleConfig, ServiceConfig,
-    TelemetryConfig, parse_cors_allowed_origins,
+    AppConfig, AuthConfig, DatabaseConfig, HttpConfig, LogFormat, ModuleConfig,
+    ModuleSourcesConfig, RemoteModuleSourceConfig, ServiceConfig, TelemetryConfig,
+    parse_cors_allowed_origins,
 };
 pub use context::{
     ActorContext, AppContext, CorrelationId, RequestContext, RequestId, TenantId, TraceContext,

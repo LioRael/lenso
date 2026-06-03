@@ -9,6 +9,8 @@ pub struct AppConfig {
     pub telemetry: TelemetryConfig,
     pub auth: AuthConfig,
     #[serde(default)]
+    pub module_sources: ModuleSourcesConfig,
+    #[serde(default)]
     pub modules: BTreeMap<String, ModuleConfig>,
 }
 
@@ -20,6 +22,9 @@ impl AppConfig {
             http: HttpConfig::default(),
             telemetry: TelemetryConfig::default(),
             auth: AuthConfig::default(),
+            module_sources: ModuleSourcesConfig {
+                remote: remote_module_sources_from_env(),
+            },
             modules: BTreeMap::new(),
         }
     }
@@ -152,4 +157,80 @@ pub struct AuthConfig {
 pub struct ModuleConfig {
     #[serde(flatten)]
     pub values: BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct ModuleSourcesConfig {
+    #[serde(default)]
+    pub remote: Vec<RemoteModuleSourceConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct RemoteModuleSourceConfig {
+    pub name: String,
+    pub base_url: String,
+    pub auth_token_env: Option<String>,
+    pub timeout_ms: u64,
+}
+
+fn remote_module_sources_from_env() -> Vec<RemoteModuleSourceConfig> {
+    let Some(raw) = std::env::var("REMOTE_MODULES").ok() else {
+        return Vec::new();
+    };
+
+    raw.split(',')
+        .filter_map(|entry| parse_remote_module_source(entry.trim()))
+        .collect()
+}
+
+fn parse_remote_module_source(entry: &str) -> Option<RemoteModuleSourceConfig> {
+    if entry.is_empty() {
+        return None;
+    }
+    let (name, base_url) = entry.split_once('=')?;
+    let name = name.trim();
+    let base_url = base_url.trim();
+    if name.is_empty() || base_url.is_empty() {
+        return None;
+    }
+
+    let env_prefix = name.replace('-', "_").to_ascii_uppercase();
+    let token_env = format!("REMOTE_MODULE_{env_prefix}_TOKEN");
+    let timeout_env = format!("REMOTE_MODULE_{env_prefix}_TIMEOUT_MS");
+
+    Some(RemoteModuleSourceConfig {
+        name: name.to_owned(),
+        base_url: base_url.trim_end_matches('/').to_owned(),
+        auth_token_env: Some(token_env),
+        timeout_ms: std::env::var(timeout_env)
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(5_000),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_remote_module_source_entry() {
+        let config =
+            parse_remote_module_source("remote-crm=http://localhost:4100/lenso/module/v1")
+                .expect("parse remote source");
+        assert_eq!(config.name, "remote-crm");
+        assert_eq!(config.base_url, "http://localhost:4100/lenso/module/v1");
+        assert_eq!(
+            config.auth_token_env.as_deref(),
+            Some("REMOTE_MODULE_REMOTE_CRM_TOKEN")
+        );
+        assert_eq!(config.timeout_ms, 5_000);
+    }
+
+    #[test]
+    fn ignores_malformed_remote_module_source_entry() {
+        assert!(parse_remote_module_source("").is_none());
+        assert!(parse_remote_module_source("missing-url").is_none());
+        assert!(parse_remote_module_source("=http://localhost:4100").is_none());
+    }
 }
