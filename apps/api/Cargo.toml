@@ -29,6 +29,7 @@ utoipa.workspace = true
 async-trait.workspace = true
 platform-module.workspace = true
 platform-testing.workspace = true
+remote-module-example.workspace = true
 serde_yaml.workspace = true
 tower = { workspace = true, features = ["util"] }
 

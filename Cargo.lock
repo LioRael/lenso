@@ -49,6 +49,7 @@ dependencies = [
  "platform-module",
  "platform-runtime",
  "platform-testing",
+ "remote-module-example",
  "serde",
  "serde_json",
  "serde_yaml",
