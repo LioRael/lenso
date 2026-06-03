@@ -1,11 +1,15 @@
 use app_api::build_router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
-use platform_admin_data::{AdminModule, install_admin_module_refresh_fn, install_admin_modules};
+use platform_admin_data::{
+    AdminModule, AdminModuleMetadata, install_admin_module_metadata,
+    install_admin_module_metadata_refresh_fn, install_admin_module_refresh_fn,
+    install_admin_modules,
+};
 use platform_core::{AppConfig, AppContext, LoggingEventPublisher};
 use platform_module::{
-    AdminDataSource, AdminListQuery, AdminPage, AdminSchema, EntitySchema, FieldSchema, FieldType,
-    ModuleLoadStatus, ModuleSource,
+    AdminDataSource, AdminListQuery, AdminPage, AdminSchema, AdminSurface, EntitySchema,
+    FieldSchema, FieldType, ModuleLoadStatus, ModuleSource,
 };
 use serde_json::Value;
 use std::sync::Arc;
@@ -52,6 +56,12 @@ fn app() -> axum::Router {
         load_status: ModuleLoadStatus::Loaded,
         schema: stub_schema(),
         data_source: Some(Arc::new(StubUsers)),
+    }]);
+    install_admin_module_metadata(vec![AdminModuleMetadata {
+        module_name: "identity".to_owned(),
+        source: ModuleSource::Linked,
+        load_status: ModuleLoadStatus::Loaded,
+        admin: Some(AdminSurface::Schema(stub_schema())),
     }]);
     let ctx = AppContext::new(
         AppConfig::from_env(),
@@ -118,6 +128,22 @@ async fn schema_endpoint_lists_installed_modules() {
 }
 
 #[tokio::test]
+async fn modules_endpoint_lists_admin_surface_metadata() {
+    let response = app()
+        .oneshot(admin_get("/admin/data/modules"))
+        .await
+        .expect("request completes");
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = json_body(response).await;
+    assert_eq!(json["modules"][0]["module_name"], "identity");
+    assert_eq!(json["modules"][0]["source"], "linked");
+    assert_eq!(json["modules"][0]["status"], "loaded");
+    assert_eq!(json["modules"][0]["error"], Value::Null);
+    assert_eq!(json["modules"][0]["admin"]["kind"], "schema");
+    assert_eq!(json["modules"][0]["admin"]["entities"][0]["name"], "users");
+}
+
+#[tokio::test]
 async fn list_records_returns_stub_data() {
     let response = app()
         .oneshot(admin_get("/admin/data/identity/users"))
@@ -173,6 +199,24 @@ async fn refresh_schema_replaces_installed_modules() {
             },
         ])
     });
+    install_admin_module_metadata_refresh_fn(|| async {
+        Ok(vec![
+            AdminModuleMetadata {
+                module_name: "identity".to_owned(),
+                source: ModuleSource::Linked,
+                load_status: ModuleLoadStatus::Loaded,
+                admin: Some(AdminSurface::Schema(stub_schema())),
+            },
+            AdminModuleMetadata {
+                module_name: "remote-crm".to_owned(),
+                source: ModuleSource::Remote,
+                load_status: ModuleLoadStatus::Error {
+                    message: "remote manifest request failed".to_owned(),
+                },
+                admin: None,
+            },
+        ])
+    });
     let ctx = AppContext::new(
         AppConfig::from_env(),
         platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test").expect("lazy pool"),
@@ -195,6 +239,21 @@ async fn refresh_schema_replaces_installed_modules() {
         .expect("remote-crm was refreshed");
     assert_eq!(refreshed_remote["status"], "error");
     assert_eq!(REFRESH_COUNT.load(Ordering::SeqCst), 1);
+
+    let modules_response = app
+        .clone()
+        .oneshot(admin_get("/admin/data/modules"))
+        .await
+        .expect("modules request completes");
+    let modules_body = json_body(modules_response).await;
+    let refreshed_remote_metadata = modules_body["modules"]
+        .as_array()
+        .expect("modules array")
+        .iter()
+        .find(|module| module["module_name"] == "remote-crm")
+        .expect("remote-crm metadata was refreshed");
+    assert_eq!(refreshed_remote_metadata["status"], "error");
+    assert_eq!(refreshed_remote_metadata["admin"], Value::Null);
 
     let schema_response = app
         .oneshot(admin_get("/admin/data/schema"))

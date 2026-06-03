@@ -2,12 +2,13 @@
 
 use crate::admin_schema::AdminSchema;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 /// A module's admin surface.
 ///
 /// `Schema` is implemented today. Custom surface variants are data contracts
 /// only until the Runtime Console implements their renderers/policies.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum AdminSurface {
@@ -19,7 +20,7 @@ pub enum AdminSurface {
     EmbeddedCustom(AdminEmbeddedSurface),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct AdminDeclarativeSurface {
     #[serde(default)]
     pub pages: Vec<AdminDeclarativePage>,
@@ -29,7 +30,7 @@ pub struct AdminDeclarativeSurface {
     pub fallback_schema: Option<AdminSchema>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct AdminDeclarativePage {
     pub name: String,
     pub label: String,
@@ -37,14 +38,14 @@ pub struct AdminDeclarativePage {
     pub sections: Vec<AdminDeclarativeSection>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct AdminDeclarativeSection {
     pub name: String,
     pub label: String,
     pub component: AdminDeclarativeComponent,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum AdminDeclarativeComponent {
@@ -60,20 +61,20 @@ pub enum AdminDeclarativeComponent {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct AdminMetricBinding {
     pub label: String,
     pub value_path: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct AdminAction {
     pub name: String,
     pub label: String,
     pub capability: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct AdminEmbeddedSurface {
     pub runtime: AdminEmbeddedRuntime,
     pub entry: AdminEmbeddedEntry,
@@ -84,7 +85,7 @@ pub struct AdminEmbeddedSurface {
     pub fallback_schema: Option<AdminSchema>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum AdminEmbeddedRuntime {
@@ -93,7 +94,7 @@ pub enum AdminEmbeddedRuntime {
     JsBundle,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum AdminEmbeddedEntry {
@@ -104,7 +105,7 @@ pub enum AdminEmbeddedEntry {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct AdminSandboxPolicy {
     #[serde(default)]
     pub allow_scripts: bool,
@@ -116,7 +117,7 @@ pub struct AdminSandboxPolicy {
     pub allow_same_origin: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum AdminPermission {

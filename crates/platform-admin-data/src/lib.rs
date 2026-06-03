@@ -5,7 +5,7 @@
 
 use platform_core::{AppError, ErrorCode, RequestContext};
 use platform_http::{ApiErrorResponse, ApiOpenApiRouter, OpenApiRouter, routes};
-use platform_module::{AdminDataSource, AdminSchema, ModuleLoadStatus, ModuleSource};
+use platform_module::{AdminDataSource, AdminSchema, AdminSurface, ModuleLoadStatus, ModuleSource};
 use std::sync::{Arc, OnceLock, RwLock};
 
 mod dto;
@@ -32,15 +32,41 @@ pub struct AdminModule {
     pub data_source: Option<Arc<dyn AdminDataSource>>,
 }
 
+/// One module's admin-surface metadata, independent of whether schema-admin
+/// list/detail reads are available.
+#[derive(Clone, Debug)]
+pub struct AdminModuleMetadata {
+    /// The owning module's stable name, e.g. "identity".
+    pub module_name: String,
+    /// The loading source that produced this module.
+    pub source: ModuleSource,
+    /// Current load state.
+    pub load_status: ModuleLoadStatus,
+    /// The declared admin surface. Missing for degraded failed remotes whose
+    /// manifest could not be loaded.
+    pub admin: Option<AdminSurface>,
+}
+
 static ADMIN_REGISTRY: OnceLock<RwLock<Vec<AdminModule>>> = OnceLock::new();
+static ADMIN_METADATA_REGISTRY: OnceLock<RwLock<Vec<AdminModuleMetadata>>> = OnceLock::new();
 static ADMIN_REFRESHER: OnceLock<RwLock<Option<Arc<dyn AdminModuleRefresher>>>> = OnceLock::new();
+static ADMIN_METADATA_REFRESHER: OnceLock<RwLock<Option<Arc<dyn AdminModuleMetadataRefresher>>>> =
+    OnceLock::new();
 
 #[async_trait::async_trait]
 pub trait AdminModuleRefresher: Send + Sync {
     async fn refresh_admin_modules(&self) -> platform_core::AppResult<Vec<AdminModule>>;
 }
 
+#[async_trait::async_trait]
+pub trait AdminModuleMetadataRefresher: Send + Sync {
+    async fn refresh_admin_module_metadata(
+        &self,
+    ) -> platform_core::AppResult<Vec<AdminModuleMetadata>>;
+}
+
 struct StaticAdminModuleRefresher<F>(F);
+struct StaticAdminModuleMetadataRefresher<F>(F);
 
 #[async_trait::async_trait]
 impl<F, Fut> AdminModuleRefresher for StaticAdminModuleRefresher<F>
@@ -53,12 +79,33 @@ where
     }
 }
 
+#[async_trait::async_trait]
+impl<F, Fut> AdminModuleMetadataRefresher for StaticAdminModuleMetadataRefresher<F>
+where
+    F: Fn() -> Fut + Send + Sync,
+    Fut: std::future::Future<Output = platform_core::AppResult<Vec<AdminModuleMetadata>>> + Send,
+{
+    async fn refresh_admin_module_metadata(
+        &self,
+    ) -> platform_core::AppResult<Vec<AdminModuleMetadata>> {
+        (self.0)().await
+    }
+}
+
 /// Install the admin-capable module registry. Called once by the composition
 /// root before the router serves traffic. Later calls replace the registry,
 /// which keeps tests isolated and leaves room for explicit refresh later.
 pub fn install_admin_modules(modules: Vec<AdminModule>) {
     let registry = ADMIN_REGISTRY.get_or_init(|| RwLock::new(Vec::new()));
     *registry.write().expect("admin registry lock poisoned") = modules;
+}
+
+/// Install the metadata registry for every module with an admin surface.
+pub fn install_admin_module_metadata(modules: Vec<AdminModuleMetadata>) {
+    let registry = ADMIN_METADATA_REGISTRY.get_or_init(|| RwLock::new(Vec::new()));
+    *registry
+        .write()
+        .expect("admin metadata registry lock poisoned") = modules;
 }
 
 /// Install the callback used by the explicit admin refresh endpoint.
@@ -78,6 +125,24 @@ where
     install_admin_module_refresher(Arc::new(StaticAdminModuleRefresher(refresh)));
 }
 
+/// Install the callback used to refresh admin-surface metadata.
+pub fn install_admin_module_metadata_refresher(refresher: Arc<dyn AdminModuleMetadataRefresher>) {
+    let registry = ADMIN_METADATA_REFRESHER.get_or_init(|| RwLock::new(None));
+    *registry
+        .write()
+        .expect("admin metadata refresher lock poisoned") = Some(refresher);
+}
+
+pub fn install_admin_module_metadata_refresh_fn<F, Fut>(refresh: F)
+where
+    F: Fn() -> Fut + Send + Sync + 'static,
+    Fut: std::future::Future<Output = platform_core::AppResult<Vec<AdminModuleMetadata>>>
+        + Send
+        + 'static,
+{
+    install_admin_module_metadata_refresher(Arc::new(StaticAdminModuleMetadataRefresher(refresh)));
+}
+
 fn admin_modules() -> Vec<AdminModule> {
     ADMIN_REGISTRY
         .get()
@@ -90,11 +155,32 @@ fn admin_modules() -> Vec<AdminModule> {
         .unwrap_or_default()
 }
 
+fn admin_module_metadata() -> Vec<AdminModuleMetadata> {
+    ADMIN_METADATA_REGISTRY
+        .get()
+        .map(|registry| {
+            registry
+                .read()
+                .expect("admin metadata registry lock poisoned")
+                .clone()
+        })
+        .unwrap_or_default()
+}
+
 fn admin_refresher() -> Option<Arc<dyn AdminModuleRefresher>> {
     ADMIN_REFRESHER.get().and_then(|registry| {
         registry
             .read()
             .expect("admin refresher lock poisoned")
+            .clone()
+    })
+}
+
+fn admin_metadata_refresher() -> Option<Arc<dyn AdminModuleMetadataRefresher>> {
+    ADMIN_METADATA_REFRESHER.get().and_then(|registry| {
+        registry
+            .read()
+            .expect("admin metadata refresher lock poisoned")
             .clone()
     })
 }
@@ -130,6 +216,7 @@ fn find_loaded_module(module: &str, ctx: &RequestContext) -> Result<AdminModule,
 /// The schema-admin router, mounted by the API app.
 pub fn router() -> ApiOpenApiRouter {
     OpenApiRouter::new()
+        .routes(routes!(list_modules))
         .routes(routes!(list_schemas))
         .routes(routes!(refresh_schemas))
         .routes(routes!(list_records))

@@ -1,7 +1,7 @@
 //! Generic container DTOs for schema-admin endpoints. The record shape is
 //! `serde_json::Value` because the renderer is generic across arbitrary modules.
 
-use platform_module::{AdminSchema, ModuleSource};
+use platform_module::{AdminSchema, AdminSurface, ModuleSource};
 use serde::Serialize;
 use utoipa::ToSchema;
 
@@ -15,6 +15,22 @@ pub struct AdminSchemaListResponse {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AdminSchemaRefreshResponse {
     pub modules: Vec<AdminModuleSchema>,
+}
+
+/// Response for `GET /admin/data/modules`: every admin-surface module's
+/// metadata, including non-schema custom surfaces.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminModuleMetadataListResponse {
+    pub modules: Vec<AdminModuleMetadataDto>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminModuleMetadataDto {
+    pub module_name: String,
+    pub source: ModuleSource,
+    pub status: AdminModuleStatus,
+    pub error: Option<String>,
+    pub admin: Option<AdminSurface>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

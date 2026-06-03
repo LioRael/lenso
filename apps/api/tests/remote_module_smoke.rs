@@ -1,8 +1,8 @@
 use app_api::build_router;
-use axum::Router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
-use platform_admin_data::install_admin_modules;
+use axum::{Json, Router};
+use platform_admin_data::{install_admin_module_metadata, install_admin_modules};
 use platform_core::{
     AppConfig, AppContext, AuthConfig, DatabaseConfig, DbPool, HttpConfig, LoggingEventPublisher,
     ModuleSourcesConfig, RemoteModuleSourceConfig, ServiceConfig, TelemetryConfig,
@@ -10,7 +10,10 @@ use platform_core::{
 use serde_json::Value;
 use std::sync::Arc;
 use tokio::net::TcpListener;
+use tokio::sync::Mutex;
 use tower::ServiceExt;
+
+static REMOTE_SMOKE_TEST_LOCK: Mutex<()> = Mutex::const_new(());
 
 async fn spawn_remote_module(router: Router) -> String {
     let listener = TcpListener::bind(("127.0.0.1", 0))
@@ -56,8 +59,12 @@ async fn app_with_remote_modules(remote: Vec<RemoteModuleSourceConfig>) -> axum:
     let admin_modules = app_bootstrap::load_admin_modules(&ctx)
         .await
         .expect("remote admin modules load");
+    let admin_module_metadata = app_bootstrap::load_admin_module_metadata(&ctx)
+        .await
+        .expect("remote admin module metadata loads");
 
     install_admin_modules(admin_modules);
+    install_admin_module_metadata(admin_module_metadata);
     build_router(ctx)
 }
 
@@ -76,8 +83,41 @@ async fn json_body(response: axum::response::Response) -> Value {
     serde_json::from_slice(&bytes).expect("json body")
 }
 
+async fn embedded_manifest() -> Json<Value> {
+    Json(serde_json::json!({
+        "name": "remote-crm-embedded",
+        "story_display": [],
+        "admin": {
+            "kind": "embedded_custom",
+            "runtime": "iframe",
+            "entry": {
+                "kind": "url",
+                "url": "https://remote-crm.example.test/admin",
+                "allowed_origins": ["https://remote-crm.example.test"]
+            },
+            "sandbox": {
+                "allow_scripts": true,
+                "allow_forms": false,
+                "allow_popups": false,
+                "allow_same_origin": false
+            },
+            "permissions": [],
+            "fallback_schema": {
+                "entities": [{
+                    "name": "contacts",
+                    "label": "Contacts",
+                    "fields": [],
+                    "read_capability": "remote_crm.contacts.read"
+                }]
+            }
+        },
+        "capabilities": ["remote_crm.contacts.read"]
+    }))
+}
+
 #[tokio::test]
 async fn remote_module_fixture_is_visible_through_admin_data_api() {
+    let _guard = REMOTE_SMOKE_TEST_LOCK.lock().await;
     let base_url = spawn_remote_module(remote_module_example::router()).await;
     let app = app_with_remote_module(base_url).await;
 
@@ -98,6 +138,23 @@ async fn remote_module_fixture_is_visible_through_admin_data_api() {
     assert_eq!(remote_schema["status"], "loaded");
     assert_eq!(remote_schema["error"], Value::Null);
     assert_eq!(remote_schema["schema"]["entities"][0]["name"], "contacts");
+
+    let modules_response = app
+        .clone()
+        .oneshot(admin_get("/admin/data/modules"))
+        .await
+        .expect("modules request completes");
+    assert_eq!(modules_response.status(), StatusCode::OK);
+    let modules = json_body(modules_response).await;
+    let remote_module = modules["modules"]
+        .as_array()
+        .expect("modules array")
+        .iter()
+        .find(|module| module["module_name"] == "remote-crm")
+        .expect("remote-crm metadata is installed");
+    assert_eq!(remote_module["source"], "remote");
+    assert_eq!(remote_module["status"], "loaded");
+    assert_eq!(remote_module["admin"]["kind"], "schema");
 
     let list_response = app
         .clone()
@@ -122,6 +179,7 @@ async fn remote_module_fixture_is_visible_through_admin_data_api() {
 
 #[tokio::test]
 async fn failed_remote_module_load_is_reported_in_schema() {
+    let _guard = REMOTE_SMOKE_TEST_LOCK.lock().await;
     let app = app_with_remote_modules(vec![RemoteModuleSourceConfig {
         name: "remote-crm".to_owned(),
         base_url: "http://127.0.0.1:9/lenso/module/v1".to_owned(),
@@ -165,8 +223,66 @@ async fn failed_remote_module_load_is_reported_in_schema() {
         .expect("list request completes");
     assert_eq!(list_response.status(), StatusCode::BAD_GATEWAY);
     let body = json_body(list_response).await;
+    assert_eq!(body["error"]["message"], "module remote-crm is not loaded");
+}
+
+#[tokio::test]
+async fn embedded_custom_remote_module_is_visible_through_metadata_api() {
+    let _guard = REMOTE_SMOKE_TEST_LOCK.lock().await;
+    let base_url = spawn_remote_module(Router::new().route(
+        "/lenso/module/v1/manifest",
+        axum::routing::get(embedded_manifest),
+    ))
+    .await;
+    let app = app_with_remote_modules(vec![
+        RemoteModuleSourceConfig {
+            name: "remote-crm".to_owned(),
+            base_url: spawn_remote_module(remote_module_example::router()).await,
+            auth_token_env: None,
+            timeout_ms: 5_000,
+        },
+        RemoteModuleSourceConfig {
+            name: "remote-crm-embedded".to_owned(),
+            base_url,
+            auth_token_env: None,
+            timeout_ms: 5_000,
+        },
+    ])
+    .await;
+
+    let modules_response = app
+        .clone()
+        .oneshot(admin_get("/admin/data/modules"))
+        .await
+        .expect("modules request completes");
+    assert_eq!(modules_response.status(), StatusCode::OK);
+    let modules = json_body(modules_response).await;
+    let remote_module = modules["modules"]
+        .as_array()
+        .expect("modules array")
+        .iter()
+        .find(|module| module["module_name"] == "remote-crm-embedded")
+        .expect("remote-crm-embedded metadata is installed");
+    assert_eq!(remote_module["source"], "remote");
+    assert_eq!(remote_module["status"], "loaded");
+    assert_eq!(remote_module["admin"]["kind"], "embedded_custom");
+    assert_eq!(remote_module["admin"]["runtime"], "iframe");
     assert_eq!(
-        body["error"]["message"],
-        "module remote-crm is not loaded"
+        remote_module["admin"]["fallback_schema"]["entities"][0]["name"],
+        "contacts"
+    );
+
+    let schema_response = app
+        .oneshot(admin_get("/admin/data/schema"))
+        .await
+        .expect("schema request completes");
+    assert_eq!(schema_response.status(), StatusCode::OK);
+    let schema = json_body(schema_response).await;
+    assert!(
+        !schema["modules"]
+            .as_array()
+            .expect("modules array")
+            .iter()
+            .any(|module| module["module_name"] == "remote-crm-embedded")
     );
 }

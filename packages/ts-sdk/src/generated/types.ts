@@ -1,6 +1,12 @@
 /* eslint-disable */
 // Generated from contracts/openapi/app-api.v1.yaml. Do not edit by hand.
 
+export type AdminAction = {
+  capability: string;
+  label: string;
+  name: string;
+};
+
 export type AdminDataDetailResponse = {
   data: unknown;
 };
@@ -13,6 +19,38 @@ export type AdminDataListResponse = {
 export type AdminDataPageInfo = {
   limit: number;
   next_cursor?: string | null;
+};
+
+export type AdminDeclarativeComponent = unknown;
+
+export type AdminDeclarativePage = {
+  label: string;
+  name: string;
+  sections?: Array<AdminDeclarativeSection>;
+};
+
+export type AdminDeclarativeSection = {
+  component: AdminDeclarativeComponent;
+  label: string;
+  name: string;
+};
+
+export type AdminDeclarativeSurface = {
+  actions?: Array<AdminAction>;
+  fallback_schema?: unknown;
+  pages?: Array<AdminDeclarativePage>;
+};
+
+export type AdminEmbeddedEntry = unknown;
+
+export type AdminEmbeddedRuntime = string;
+
+export type AdminEmbeddedSurface = {
+  entry: AdminEmbeddedEntry;
+  fallback_schema?: unknown;
+  permissions?: Array<AdminPermission>;
+  runtime: AdminEmbeddedRuntime;
+  sandbox: AdminSandboxPolicy;
 };
 
 export type AdminFunctionRunDetail = {
@@ -39,6 +77,23 @@ export type AdminFunctionRunListResponse = {
 
 export type AdminFunctionRunResponse = {
   data: AdminFunctionRunDetail;
+};
+
+export type AdminMetricBinding = {
+  label: string;
+  value_path: string;
+};
+
+export type AdminModuleMetadataDto = {
+  admin?: unknown;
+  error?: string | null;
+  module_name: string;
+  source: ModuleSource;
+  status: AdminModuleStatus;
+};
+
+export type AdminModuleMetadataListResponse = {
+  modules: Array<AdminModuleMetadataDto>;
 };
 
 export type AdminModuleSchema = {
@@ -83,6 +138,8 @@ export type AdminOutboxListResponse = {
   data: Array<AdminRuntimeOutboxItem>;
   page: PageInfo;
 };
+
+export type AdminPermission = unknown;
 
 export type AdminRuntimeExecutionLog = {
   attributes: unknown;
@@ -302,6 +359,13 @@ export type AdminRuntimeTimelineResponse = {
   page: PageInfo;
 };
 
+export type AdminSandboxPolicy = {
+  allow_forms?: boolean;
+  allow_popups?: boolean;
+  allow_same_origin?: boolean;
+  allow_scripts?: boolean;
+};
+
 export type AdminSchema = {
   entities: Array<EntitySchema>;
 };
@@ -313,6 +377,8 @@ export type AdminSchemaListResponse = {
 export type AdminSchemaRefreshResponse = {
   modules: Array<AdminModuleSchema>;
 };
+
+export type AdminSurface = unknown;
 
 export type ConfigAuditDto = {
   actor?: string | null;

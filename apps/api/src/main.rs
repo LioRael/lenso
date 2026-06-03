@@ -26,6 +26,10 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("failed to load admin modules")?;
     platform_admin_data::install_admin_modules(admin_modules);
+    let admin_module_metadata = app_bootstrap::load_admin_module_metadata(&ctx)
+        .await
+        .context("failed to load admin module metadata")?;
+    platform_admin_data::install_admin_module_metadata(admin_module_metadata);
 
     let runtime_config =
         PostgresRuntimeConfigProvider::connect(ctx.db.clone(), Arc::new(registry), "api")
@@ -37,6 +41,11 @@ async fn main() -> anyhow::Result<()> {
     platform_admin_data::install_admin_module_refresh_fn(move || {
         let ctx = admin_refresh_ctx.clone();
         async move { app_bootstrap::load_admin_modules(&ctx).await }
+    });
+    let admin_metadata_refresh_ctx = ctx.clone();
+    platform_admin_data::install_admin_module_metadata_refresh_fn(move || {
+        let ctx = admin_metadata_refresh_ctx.clone();
+        async move { app_bootstrap::load_admin_module_metadata(&ctx).await }
     });
 
     let app = build_router(ctx.clone());

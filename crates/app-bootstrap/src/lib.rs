@@ -16,7 +16,7 @@
 //! When adding a module, register it in [`modules`] and [`module_manifests`]
 //! and — if it has them — in [`merge_domain_http`].
 
-use platform_admin_data::AdminModule;
+use platform_admin_data::{AdminModule, AdminModuleMetadata};
 use platform_core::{
     AppContext, EventHandlerRegistry, RuntimeConfigDescriptor, StoryDisplayDescriptor,
 };
@@ -64,9 +64,9 @@ pub fn module_manifests() -> Vec<ModuleManifest> {
     ]
 }
 
-/// Aggregate admin-capable modules: those declaring an `AdminSurface::Schema`
-/// AND providing an `AdminDataSource`. Modules without an admin surface (e.g.
-/// notifications) are filtered out — "optional capability" semantics.
+/// Aggregate schema-admin capable modules: those declaring an
+/// `AdminSurface::Schema` AND providing an `AdminDataSource`. Modules without a
+/// schema data source are filtered out — "optional capability" semantics.
 #[must_use]
 pub fn admin_modules(ctx: &AppContext) -> Vec<AdminModule> {
     admin_modules_from_modules(modules(ctx))
@@ -90,6 +90,27 @@ pub async fn load_admin_modules(ctx: &AppContext) -> platform_core::AppResult<Ve
     Ok(admin_modules)
 }
 
+/// Load admin-surface metadata for every module that declares an admin surface,
+/// including custom surfaces that are not consumable by schema-admin list/detail.
+pub async fn load_admin_module_metadata(
+    ctx: &AppContext,
+) -> platform_core::AppResult<Vec<AdminModuleMetadata>> {
+    let mut metadata = admin_metadata_from_modules(modules(ctx));
+
+    for remote in &ctx.config.module_sources.remote {
+        let source = RemoteModuleSource::new(remote_module_config(remote))?;
+        match source.load().await {
+            Ok(module) => metadata.extend(admin_metadata_from_modules(vec![module])),
+            Err(error) => metadata.push(failed_remote_admin_metadata(
+                remote.name.clone(),
+                error.public_message,
+            )),
+        }
+    }
+
+    Ok(metadata)
+}
+
 fn admin_modules_from_modules(modules: Vec<Module>) -> Vec<AdminModule> {
     modules
         .into_iter()
@@ -111,13 +132,39 @@ fn admin_modules_from_modules(modules: Vec<Module>) -> Vec<AdminModule> {
         .collect()
 }
 
+fn admin_metadata_from_modules(modules: Vec<Module>) -> Vec<AdminModuleMetadata> {
+    modules
+        .into_iter()
+        .filter_map(|module| {
+            let ModuleManifest { name, admin, .. } = module.manifest;
+            admin.map(|surface| AdminModuleMetadata {
+                module_name: name,
+                source: module.source,
+                load_status: module.load_status,
+                admin: Some(surface),
+            })
+        })
+        .collect()
+}
+
 fn failed_remote_admin_module(name: String, message: String) -> AdminModule {
     AdminModule {
         module_name: name,
         source: ModuleSource::Remote,
         load_status: ModuleLoadStatus::Error { message },
-        schema: AdminSchema { entities: Vec::new() },
+        schema: AdminSchema {
+            entities: Vec::new(),
+        },
         data_source: None,
+    }
+}
+
+fn failed_remote_admin_metadata(name: String, message: String) -> AdminModuleMetadata {
+    AdminModuleMetadata {
+        module_name: name,
+        source: ModuleSource::Remote,
+        load_status: ModuleLoadStatus::Error { message },
+        admin: None,
     }
 }
 
