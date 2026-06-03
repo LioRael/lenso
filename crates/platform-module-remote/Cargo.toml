@@ -8,16 +8,18 @@ rust-version.workspace = true
 
 [dependencies]
 async-trait.workspace = true
+axum.workspace = true
 platform-core.workspace = true
+platform-http.workspace = true
 platform-module.workspace = true
 platform-runtime.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
+utoipa.workspace = true
 
 [dev-dependencies]
-axum.workspace = true
 tokio.workspace = true
 
 [lints]

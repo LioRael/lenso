@@ -499,6 +499,18 @@ export type PageInfo = {
   next_created_before?: string | null;
 };
 
+export type RemoteHttpProxySkeletonResponse = {
+  capability: string;
+  declared_path: string;
+  method: ModuleHttpMethod;
+  module_name: string;
+  path_params: Record<string, unknown>;
+  remote_path: string;
+  status: RemoteHttpProxySkeletonStatus;
+};
+
+export type RemoteHttpProxySkeletonStatus = string;
+
 export type ValidationErrorDetail = {
   field?: string | null;
   reason: string;

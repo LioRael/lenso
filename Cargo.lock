@@ -47,6 +47,7 @@ dependencies = [
  "platform-core",
  "platform-http",
  "platform-module",
+ "platform-module-remote",
  "platform-runtime",
  "platform-testing",
  "remote-module-example",
@@ -1487,6 +1488,7 @@ dependencies = [
  "async-trait",
  "axum",
  "platform-core",
+ "platform-http",
  "platform-module",
  "platform-runtime",
  "reqwest 0.12.28",
@@ -1494,6 +1496,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing",
+ "utoipa",
 ]
 
 [[package]]

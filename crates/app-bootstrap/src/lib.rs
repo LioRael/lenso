@@ -24,7 +24,7 @@ use platform_http::ApiOpenApiRouter;
 use platform_module::{
     AdminSchema, AdminSurface, Module, ModuleLoadStatus, ModuleManifest, ModuleSource,
 };
-use platform_module_remote::{RemoteModuleConfig, RemoteModuleSource};
+use platform_module_remote::{RemoteHttpProxyRegistry, RemoteModuleConfig, RemoteModuleSource};
 use platform_runtime::FunctionRegistry;
 
 /// The authoritative list of loaded modules (context-bound: builds bindings).
@@ -109,6 +109,27 @@ pub async fn load_admin_module_metadata(
     }
 
     Ok(metadata)
+}
+
+pub async fn load_remote_http_proxy_registry(
+    ctx: &AppContext,
+) -> platform_core::AppResult<RemoteHttpProxyRegistry> {
+    let mut remote_modules = Vec::new();
+    let mut remote_configs = Vec::new();
+
+    for remote in &ctx.config.module_sources.remote {
+        let config = remote_module_config(remote);
+        let source = RemoteModuleSource::new(config.clone())?;
+        if let Ok(module) = source.load().await {
+            remote_modules.push(module);
+            remote_configs.push(config);
+        }
+    }
+
+    Ok(RemoteHttpProxyRegistry::from_modules(
+        &remote_modules,
+        &remote_configs,
+    ))
 }
 
 fn admin_modules_from_modules(modules: Vec<Module>) -> Vec<AdminModule> {

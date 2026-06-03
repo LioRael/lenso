@@ -1,9 +1,10 @@
 # Remote Module HTTP Proxy
 
 This note specifies the protocol boundary for exposing remote module-owned HTTP
-routes through the host API. It is a design contract only; the current
-implementation preserves `ModuleManifest::http_routes` as metadata and does not
-mount or proxy those routes.
+routes through the host API. The current implementation preserves
+`ModuleManifest::http_routes` as metadata and exposes a skeleton host route that
+matches declarations and enforces capability gates, but it does not forward
+requests to remote modules.
 
 ## Current State
 
@@ -31,7 +32,10 @@ with `/`, must not be absolute URLs, and must not contain empty, `.`, `..`,
 query, or fragment segments. Valid declarations are exposed as metadata through
 `/admin/data/modules`.
 
-No public API route is installed from this metadata today.
+A skeleton `GET` public API route is installed at
+`/modules/{module}/http/{*path}`. It returns the matched declaration and path
+parameters. No remote request is forwarded today, and non-GET host methods are
+not mounted until the forwarding slice.
 
 ## Goals
 
@@ -197,8 +201,10 @@ OpenAPI fragments after trust, validation, and versioning are specified.
 3. Add one static host proxy route under `/modules/{module}/http/{*path}`.
 4. Enforce service/system auth and declared capabilities.
 5. Add request/response size limits and header allowlists.
-6. Normalize remote errors through the existing platform error model.
-7. Add telemetry and runtime-console visibility for proxied calls.
+6. Mount the remaining declared methods: `POST`, `PUT`, `PATCH`, and `DELETE`.
+7. Forward matched JSON requests to remote modules.
+8. Normalize remote errors through the existing platform error model.
+9. Add telemetry and runtime-console visibility for proxied calls.
 
 Do not implement per-module OpenAPI fragments, streaming, browser credentials,
 or bidirectional admin bridges in the first proxy slice.

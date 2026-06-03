@@ -9,6 +9,7 @@ mod config;
 mod protocol;
 mod proxy;
 mod response;
+mod router;
 mod source;
 
 pub use admin_data::RemoteAdminDataSource;
@@ -19,5 +20,9 @@ pub use protocol::{
 };
 pub use proxy::{
     RemoteHttpProxyMatch, RemoteHttpProxyModule, RemoteHttpProxyRegistry, RemoteHttpProxyRoute,
+};
+pub use router::{
+    RemoteHttpProxySkeletonResponse, RemoteHttpProxySkeletonStatus,
+    install_remote_http_proxy_registry, router,
 };
 pub use source::RemoteModuleSource;

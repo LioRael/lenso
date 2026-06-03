@@ -42,6 +42,7 @@ pub(crate) fn api_router() -> ApiOpenApiRouter {
     app_bootstrap::merge_domain_http(base)
         .merge(platform_admin::router())
         .merge(platform_admin_data::router())
+        .merge(platform_module_remote::router())
 }
 
 /// The committed `OpenAPI` document, derived from the annotated handlers.

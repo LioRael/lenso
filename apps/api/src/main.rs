@@ -30,6 +30,10 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("failed to load admin module metadata")?;
     platform_admin_data::install_admin_module_metadata(admin_module_metadata);
+    let remote_http_proxy_registry = app_bootstrap::load_remote_http_proxy_registry(&ctx)
+        .await
+        .context("failed to load remote HTTP proxy registry")?;
+    platform_module_remote::install_remote_http_proxy_registry(remote_http_proxy_registry);
 
     let runtime_config =
         PostgresRuntimeConfigProvider::connect(ctx.db.clone(), Arc::new(registry), "api")

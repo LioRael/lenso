@@ -101,6 +101,32 @@ async fn dev_service_bearer_token_sets_service_actor_context() {
     let body = json_body(response).await;
     assert_eq!(body["actor"]["kind"], "service");
     assert_eq!(body["actor"]["service_id"], "worker");
+    assert_eq!(body["actor"]["scopes"], serde_json::json!([]));
+}
+
+#[tokio::test]
+async fn dev_service_bearer_token_can_set_scopes() {
+    let response = router()
+        .oneshot(
+            Request::builder()
+                .uri("/context")
+                .header(
+                    "authorization",
+                    "Bearer dev-service:admin:remote_crm.contacts.read,other.scope",
+                )
+                .body(Body::empty())
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should complete");
+
+    let body = json_body(response).await;
+    assert_eq!(body["actor"]["kind"], "service");
+    assert_eq!(body["actor"]["service_id"], "admin");
+    assert_eq!(
+        body["actor"]["scopes"],
+        serde_json::json!(["remote_crm.contacts.read", "other.scope"])
+    );
 }
 
 #[tokio::test]

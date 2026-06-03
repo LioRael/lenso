@@ -1757,6 +1757,55 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /modules/{module}/http/{*path}:
+    get:
+      tags:
+      - modules
+      operationId: remote_module_http_proxy_get_skeleton
+      parameters:
+      - name: module
+        in: path
+        description: Configured remote module name
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Module-local HTTP path matched against the remote manifest
+        required: true
+        schema:
+          type: string
+      - name: authorization
+        in: header
+        description: Development service bearer token
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Remote route matched by the host skeleton. No remote request is forwarded yet.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RemoteHttpProxySkeletonResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service/system authentication or declared capability is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: No configured remote route matched
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /v1/identity/me:
     get:
       tags:
@@ -3438,6 +3487,39 @@ components:
           - string
           - 'null'
           format: date-time
+    RemoteHttpProxySkeletonResponse:
+      type: object
+      required:
+      - status
+      - module_name
+      - method
+      - declared_path
+      - remote_path
+      - capability
+      - path_params
+      properties:
+        capability:
+          type: string
+        declared_path:
+          type: string
+        method:
+          $ref: '#/components/schemas/ModuleHttpMethod'
+        module_name:
+          type: string
+        path_params:
+          type: object
+          additionalProperties:
+            type: string
+          propertyNames:
+            type: string
+        remote_path:
+          type: string
+        status:
+          $ref: '#/components/schemas/RemoteHttpProxySkeletonStatus'
+    RemoteHttpProxySkeletonStatus:
+      type: string
+      enum:
+      - matched
     ValidationErrorDetail:
       type: object
       required:

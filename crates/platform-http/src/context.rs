@@ -210,12 +210,22 @@ fn parse_dev_bearer_actor(value: String) -> Option<ActorContext> {
         });
     }
 
-    if let Some(service_id) = token.strip_prefix("dev-service:") {
-        return Some(ActorContext::Service {
-            service_id: service_id.to_owned(),
-            scopes: Vec::new(),
-        });
+    if let Some(service_token) = token.strip_prefix("dev-service:") {
+        let (service_id, scopes) = parse_dev_actor_scopes(service_token);
+        return Some(ActorContext::Service { service_id, scopes });
     }
 
     None
+}
+
+fn parse_dev_actor_scopes(value: &str) -> (String, Vec<String>) {
+    let Some((id, raw_scopes)) = value.split_once(':') else {
+        return (value.to_owned(), Vec::new());
+    };
+    let scopes = raw_scopes
+        .split(',')
+        .filter(|scope| !scope.is_empty())
+        .map(ToOwned::to_owned)
+        .collect();
+    (id.to_owned(), scopes)
 }

@@ -62,9 +62,13 @@ async fn app_with_remote_modules(remote: Vec<RemoteModuleSourceConfig>) -> axum:
     let admin_module_metadata = app_bootstrap::load_admin_module_metadata(&ctx)
         .await
         .expect("remote admin module metadata loads");
+    let remote_http_proxy_registry = app_bootstrap::load_remote_http_proxy_registry(&ctx)
+        .await
+        .expect("remote HTTP proxy registry loads");
 
     install_admin_modules(admin_modules);
     install_admin_module_metadata(admin_module_metadata);
+    platform_module_remote::install_remote_http_proxy_registry(remote_http_proxy_registry);
     build_router(ctx)
 }
 
@@ -72,6 +76,14 @@ fn admin_get(path: &str) -> Request<Body> {
     Request::builder()
         .uri(path)
         .header("authorization", "Bearer dev-service:admin")
+        .body(Body::empty())
+        .expect("request builds")
+}
+
+fn service_get(path: &str, token: &str) -> Request<Body> {
+    Request::builder()
+        .uri(path)
+        .header("authorization", format!("Bearer {token}"))
         .body(Body::empty())
         .expect("request builds")
 }
@@ -149,6 +161,62 @@ async fn remote_module_fixture_is_visible_through_admin_data_api() {
     let detail = json_body(detail_response).await;
     assert_eq!(detail["data"]["id"], "contact_2");
     assert_eq!(detail["data"]["company"], "Compiler Systems");
+}
+
+#[tokio::test]
+async fn remote_http_proxy_skeleton_matches_declared_routes() {
+    let _guard = REMOTE_SMOKE_TEST_LOCK.lock().await;
+    let base_url = spawn_remote_module(remote_module_example::router()).await;
+    let app = app_with_remote_module(base_url).await;
+
+    let unauthenticated = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/modules/remote-crm/http/contacts/contact_1")
+                .body(Body::empty())
+                .expect("request builds"),
+        )
+        .await
+        .expect("unauthenticated request completes");
+    assert_eq!(unauthenticated.status(), StatusCode::UNAUTHORIZED);
+
+    let missing_capability = app
+        .clone()
+        .oneshot(service_get(
+            "/modules/remote-crm/http/contacts/contact_1",
+            "dev-service:admin",
+        ))
+        .await
+        .expect("missing capability request completes");
+    assert_eq!(missing_capability.status(), StatusCode::FORBIDDEN);
+
+    let matched_response = app
+        .clone()
+        .oneshot(service_get(
+            "/modules/remote-crm/http/contacts/contact_1",
+            "dev-service:admin:remote_crm.contacts.read",
+        ))
+        .await
+        .expect("matched request completes");
+    assert_eq!(matched_response.status(), StatusCode::OK);
+    let matched = json_body(matched_response).await;
+    assert_eq!(matched["status"], "matched");
+    assert_eq!(matched["module_name"], "remote-crm");
+    assert_eq!(matched["method"], "GET");
+    assert_eq!(matched["declared_path"], "/contacts/{id}");
+    assert_eq!(matched["remote_path"], "/contacts/contact_1");
+    assert_eq!(matched["capability"], "remote_crm.contacts.read");
+    assert_eq!(matched["path_params"]["id"], "contact_1");
+
+    let missing_route = app
+        .oneshot(service_get(
+            "/modules/remote-crm/http/accounts/account_1",
+            "dev-service:admin:remote_crm.contacts.read",
+        ))
+        .await
+        .expect("missing route request completes");
+    assert_eq!(missing_route.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
