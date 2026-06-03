@@ -13,7 +13,7 @@ use std::sync::LazyLock;
 #[derive(Debug, Clone, Deserialize)]
 pub struct WorkerRuntimeConfig {
     pub poll_interval_ms: u64,
-    pub batch_size: i64,
+    pub batch_size: u64,
 }
 
 impl Default for WorkerRuntimeConfig {
@@ -82,7 +82,18 @@ mod tests {
             .find(|d| d.key == "worker.batch_size")
             .unwrap();
         assert_eq!(defaults.poll_interval_ms, poll.default.as_u64().unwrap());
-        assert_eq!(defaults.batch_size, batch.default.as_i64().unwrap());
+        assert_eq!(defaults.batch_size, batch.default.as_u64().unwrap());
+    }
+
+    #[test]
+    fn poll_interval_out_of_range_rejected() {
+        let poll = RUNTIME_CONFIG
+            .iter()
+            .find(|d| d.key == "worker.poll_interval_ms")
+            .unwrap();
+        assert!(poll.validate(&json!(500)).is_ok());
+        assert!(poll.validate(&json!(49)).is_err());
+        assert!(poll.validate(&json!(60_001)).is_err());
     }
 
     #[test]
