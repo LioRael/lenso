@@ -1,5 +1,4 @@
 use platform_core::{AppContext, StoryDisplayDescriptor, StoryDisplaySource};
-use platform_domain::DomainDescriptor;
 use platform_module::{LinkedBinding, Module, ModuleManifest};
 
 pub fn story_display() -> Vec<StoryDisplayDescriptor> {
@@ -23,12 +22,6 @@ pub fn story_display() -> Vec<StoryDisplayDescriptor> {
             story_title: Some("User Registration".to_owned()),
         },
     ]
-}
-
-pub fn domain(_ctx: &AppContext) -> DomainDescriptor {
-    DomainDescriptor::new("identity", crate::runtime::descriptor())
-        .with_story_display(story_display())
-        .with_runtime_config(crate::config::RUNTIME_CONFIG.as_slice())
 }
 
 /// Context-free manifest: serializable metadata only (no AppContext needed).

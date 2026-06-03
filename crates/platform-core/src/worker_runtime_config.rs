@@ -2,7 +2,7 @@
 //!
 //! These are platform-runtime concerns (poll cadence, batch size), not a
 //! business domain, so they are registered as platform-owned descriptors at the
-//! composition root rather than via a `DomainDescriptor`.
+//! composition root rather than via a module manifest.
 
 use crate::runtime_config::{RuntimeConfigDescriptor, RuntimeConfigScope, RuntimeConfigType};
 use serde::Deserialize;

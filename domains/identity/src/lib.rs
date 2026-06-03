@@ -12,5 +12,3 @@ pub mod repositories;
 pub mod routes;
 pub mod runtime;
 pub mod tests;
-
-pub use module::domain;
