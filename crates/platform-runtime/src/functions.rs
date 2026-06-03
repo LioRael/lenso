@@ -11,8 +11,11 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::sync::Arc;
+use std::time::Duration;
 use tracing::Instrument;
 use uuid::Uuid;
+
+const STALE_PROCESSING_LOCK_SECONDS: i64 = 300;
 
 #[async_trait]
 pub trait FunctionHandler: Debug + Send + Sync {
@@ -250,16 +253,22 @@ impl RuntimeWorker {
             with claimed as (
                 select id
                 from runtime.function_runs
-                where status in ('pending', 'failed')
-                  and available_at <= now()
+                where (
+                    status in ('pending', 'failed')
+                    and available_at <= now()
+                )
+                or (
+                    status = 'processing'
+                    and locked_at <= now() - ($1::double precision * interval '1 second')
+                )
                 order by available_at asc, created_at asc
-                limit $1
+                limit $2
                 for update skip locked
             )
             update runtime.function_runs function_run
             set status = 'processing',
                 locked_at = now(),
-                locked_by = $2,
+                locked_by = $3,
                 started_at = coalesce(started_at, now()),
                 last_error = null,
                 updated_at = now()
@@ -275,6 +284,7 @@ impl RuntimeWorker {
                 function_run.actor
             "#,
             )
+            .bind(stale_processing_lock_seconds())
             .bind(batch_size)
             .bind(&self.worker_id)
             .fetch_all(&self.pool)
@@ -365,7 +375,8 @@ impl RuntimeWorker {
                     format!("Runtime function {} is not registered", run.function_name),
                 )
                 .retryable();
-                self.mark_failed(&run, &error).await?;
+                self.mark_failed(&run, &error, RetryPolicy::default().initial_delay)
+                    .await?;
                 return Ok(());
             };
 
@@ -385,7 +396,10 @@ impl RuntimeWorker {
 
             match definition.handler.call(ctx, run.input_json.clone()).await {
                 Ok(_output) => self.mark_completed(&run).await,
-                Err(error) => self.mark_failed(&run, &error).await,
+                Err(error) => {
+                    self.mark_failed(&run, &error, definition.retry_policy.initial_delay)
+                        .await
+                }
             }
         }
         .instrument(span)
@@ -426,7 +440,12 @@ impl RuntimeWorker {
         Ok(())
     }
 
-    pub async fn mark_failed(&self, run: &ClaimedFunctionRun, error: &AppError) -> AppResult<()> {
+    pub async fn mark_failed(
+        &self,
+        run: &ClaimedFunctionRun,
+        error: &AppError,
+        retry_delay: Duration,
+    ) -> AppResult<()> {
         let next_attempt = run.attempts + 1;
         let status = if next_attempt >= run.max_attempts {
             FunctionRunStatus::Dead
@@ -459,7 +478,10 @@ impl RuntimeWorker {
             update runtime.function_runs
             set status = $2,
                 attempts = attempts + 1,
-                available_at = case when $2 = 'failed' then now() else available_at end,
+                available_at = case
+                    when $2 = 'failed' then now() + ($4::double precision * interval '1 second')
+                    else available_at
+                end,
                 locked_at = null,
                 locked_by = null,
                 last_error = $3,
@@ -470,6 +492,7 @@ impl RuntimeWorker {
             .bind(&run.id)
             .bind(status.as_str())
             .bind(error.public_message.as_str())
+            .bind(retry_delay_seconds(retry_delay))
             .execute(&self.pool)
             .await
             .map(|_| ())
@@ -722,6 +745,14 @@ fn normalize_log_attributes(attributes: Value) -> Value {
         Value::Object(_) => attributes,
         other => serde_json::json!({ "value": other }),
     }
+}
+
+fn stale_processing_lock_seconds() -> f64 {
+    STALE_PROCESSING_LOCK_SECONDS as f64
+}
+
+fn retry_delay_seconds(delay: Duration) -> f64 {
+    delay.as_secs_f64()
 }
 
 type FunctionRunRow = (String, String, Value, i32, i32, String, Value);

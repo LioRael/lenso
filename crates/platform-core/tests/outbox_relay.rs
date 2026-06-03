@@ -83,6 +83,67 @@ async fn retryable_failure_increments_attempts_and_marks_failed_for_retry() {
 }
 
 #[tokio::test]
+async fn retryable_failure_delays_next_outbox_attempt() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    apply_platform_migrations(&db).await;
+    insert_outbox_event(&db.pool, "evt_1", 3).await;
+
+    let relay = OutboxRelay::new(db.pool.clone(), "worker-a");
+    relay
+        .relay_once(&AlwaysRetryableFailure, 10)
+        .await
+        .expect("relay should handle dispatcher failure");
+
+    let retry_is_delayed: bool = sqlx::query_scalar(
+        r#"
+        select available_at > now()
+        from platform.outbox
+        where id = 'evt_1'
+        "#,
+    )
+    .fetch_one(&db.pool)
+    .await
+    .expect("available_at should query");
+
+    assert!(retry_is_delayed);
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn stale_processing_outbox_event_can_be_reclaimed() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    apply_platform_migrations(&db).await;
+    insert_outbox_event(&db.pool, "evt_1", 3).await;
+    sqlx::query(
+        r#"
+        update platform.outbox
+        set status = 'processing',
+            locked_at = now() - interval '10 minutes',
+            locked_by = 'worker-dead'
+        where id = 'evt_1'
+        "#,
+    )
+    .execute(&db.pool)
+    .await
+    .expect("outbox event should become stale");
+
+    let claimed = OutboxRelay::new(db.pool.clone(), "worker-b")
+        .claim_batch(10)
+        .await
+        .expect("stale outbox event should claim");
+
+    assert_eq!(claimed.len(), 1);
+    assert_eq!(claimed[0].id, "evt_1");
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
 async fn exhausted_attempts_marks_event_dead() {
     let Some(db) = TestDatabase::create().await else {
         return;

@@ -14,6 +14,9 @@ use std::fmt::Debug;
 use std::sync::Arc;
 use tracing::Instrument;
 
+const OUTBOX_RETRY_DELAY_SECONDS: i64 = 5;
+const STALE_PROCESSING_LOCK_SECONDS: i64 = 300;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum OutboxStatus {
@@ -274,16 +277,22 @@ impl OutboxRelay {
             with claimed as (
                 select id
                 from platform.outbox
-                where status in ('pending', 'failed')
-                  and available_at <= now()
+                where (
+                    status in ('pending', 'failed')
+                    and available_at <= now()
+                )
+                or (
+                    status = 'processing'
+                    and locked_at <= now() - ($1::double precision * interval '1 second')
+                )
                 order by available_at asc, created_at asc
-                limit $1
+                limit $2
                 for update skip locked
             )
             update platform.outbox outbox
             set status = 'processing',
                 locked_at = now(),
-                locked_by = $2,
+                locked_by = $3,
                 last_error = null
             from claimed
             where outbox.id = claimed.id
@@ -303,6 +312,7 @@ impl OutboxRelay {
                 outbox.max_attempts
             "#,
             )
+            .bind(stale_processing_lock_seconds())
             .bind(batch_size)
             .bind(&self.worker_id)
             .fetch_all(&self.pool)
@@ -463,7 +473,10 @@ impl OutboxRelay {
             update platform.outbox
             set status = $2,
                 attempts = attempts + 1,
-                available_at = case when $2 = 'failed' then now() else available_at end,
+                available_at = case
+                    when $2 = 'failed' then now() + ($4::double precision * interval '1 second')
+                    else available_at
+                end,
                 locked_at = null,
                 locked_by = null,
                 last_error = $3
@@ -473,6 +486,7 @@ impl OutboxRelay {
             .bind(&event.id)
             .bind(status.as_str())
             .bind(error.public_message.as_str())
+            .bind(outbox_retry_delay_seconds())
             .execute(&self.pool)
             .await
             .map(|_| ())
@@ -582,6 +596,14 @@ impl From<OutboxRow> for ClaimedOutboxEvent {
 
 fn map_outbox_error(source: sqlx::Error) -> AppError {
     AppError::new(ErrorCode::Internal, "Outbox operation failed").with_source(source)
+}
+
+fn outbox_retry_delay_seconds() -> f64 {
+    OUTBOX_RETRY_DELAY_SECONDS as f64
+}
+
+fn stale_processing_lock_seconds() -> f64 {
+    STALE_PROCESSING_LOCK_SECONDS as f64
 }
 
 fn emit_outbox_lifecycle_event(
