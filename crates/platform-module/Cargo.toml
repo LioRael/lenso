@@ -10,10 +10,9 @@ rust-version.workspace = true
 platform-core.workspace = true
 platform-runtime.workspace = true
 serde.workspace = true
-
-[dev-dependencies]
 serde_json.workspace = true
 async-trait.workspace = true
+utoipa.workspace = true
 
 [lints]
 workspace = true

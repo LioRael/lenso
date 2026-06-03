@@ -2,6 +2,7 @@
 //! behavior. Owned + serde so every loading source produces the same shape.
 
 use crate::admin::AdminSurface;
+use crate::admin_schema::AdminSchema;
 use platform_core::StoryDisplayDescriptor;
 use serde::{Deserialize, Serialize};
 
@@ -19,7 +20,8 @@ pub struct ModuleManifest {
     #[serde(default)]
     pub story_display: Vec<StoryDisplayDescriptor>,
 
-    /// RESERVED SEAM — admin surface (Schema vs Custom). Always `None` now.
+    /// Admin surface: `Some(AdminSurface::Schema(_))` for schema-driven CRUD
+    /// modules; `None` for modules with no managed entities (e.g. notifications).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub admin: Option<AdminSurface>,
 
@@ -64,6 +66,13 @@ impl ModuleManifestBuilder {
         self
     }
 
+    /// Attach a schema-driven admin surface.
+    #[must_use]
+    pub fn admin(mut self, schema: AdminSchema) -> Self {
+        self.manifest.admin = Some(AdminSurface::Schema(schema));
+        self
+    }
+
     /// Finish building.
     #[must_use]
     pub fn build(self) -> ModuleManifest {
@@ -99,5 +108,24 @@ mod tests {
         let manifest = ModuleManifest::builder("notifications").build();
         let json = serde_json::to_string(&manifest).expect("serialize");
         assert!(!json.contains("admin"), "admin: None must be skipped, got {json}");
+    }
+
+    #[test]
+    fn manifest_with_admin_serializes_schema_kind() {
+        use crate::admin_schema::{AdminSchema, EntitySchema, FieldSchema, FieldType};
+        let schema = AdminSchema {
+            entities: vec![EntitySchema {
+                name: "users".to_owned(),
+                label: "Users".to_owned(),
+                read_capability: "identity.users.read".to_owned(),
+                fields: vec![FieldSchema {
+                    name: "email".into(), label: "Email".into(),
+                    field_type: FieldType::String, nullable: false,
+                }],
+            }],
+        };
+        let manifest = ModuleManifest::builder("identity").admin(schema).build();
+        let json = serde_json::to_string(&manifest).expect("serialize");
+        assert!(json.contains(r#""kind":"schema""#), "got {json}");
     }
 }

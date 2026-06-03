@@ -1425,6 +1425,7 @@ dependencies = [
  "platform-runtime",
  "serde",
  "serde_json",
+ "utoipa",
 ]
 
 [[package]]

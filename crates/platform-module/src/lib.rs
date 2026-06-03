@@ -6,14 +6,20 @@
 //! - [`ModuleBinding`]: behavior (register functions/event handlers). One impl
 //!   per loading source; [`LinkedBinding`] is the compile-time one.
 //! - [`Module`]: a loaded module bundling manifest + binding + internal config.
+//! - [`AdminDataSource`]: the schema-admin read seam — a module's read access
+//!   to its admin entities. [`AdminSchema`] is the declared admin surface data.
 
 mod admin;
+mod admin_data;
+mod admin_schema;
 mod binding;
 mod linked;
 mod manifest;
 mod module;
 
 pub use admin::AdminSurface;
+pub use admin_data::{AdminDataSource, AdminListQuery, AdminPage};
+pub use admin_schema::{AdminSchema, EntitySchema, FieldSchema, FieldType};
 pub use binding::ModuleBinding;
 pub use linked::{LinkedBinding, LinkedBindingBuilder};
 pub use manifest::{ModuleManifest, ModuleManifestBuilder};
