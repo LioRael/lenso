@@ -4,7 +4,9 @@ import {
   formatRuntimeDuration,
   serviceColor,
   runtimeTimelineEnd,
+  timelineSegmentLayout,
 } from "../../lib/runtime-style";
+import { buildFlameLevels } from "./flame-model";
 import { RuntimeViewHeader } from "./runtime-view-header";
 
 export function FlameView({
@@ -16,7 +18,7 @@ export function FlameView({
   selectedNodeId: string | null;
   onSelectNode: (node: ExecutionNode) => void;
 }) {
-  const levels = buildLevels(story.nodes);
+  const levels = buildFlameLevels(story.nodes);
   const timelineEnd = runtimeTimelineEnd(story);
   return (
     <div className="isolate flex h-full min-w-0 flex-col overflow-hidden bg-(--background)">
@@ -26,15 +28,18 @@ export function FlameView({
         title="Flame"
       />
       <div className="min-h-0 flex-1 overflow-auto p-4">
-        {levels.map((level, index) => (
+        {levels.map((level) => (
           <div
             className="relative isolate h-9 overflow-hidden border-b border-[color-mix(in_srgb,var(--border-subtle)_60%,transparent)]"
-            key={index}
+            key={level.map((node) => node.id).join(":")}
           >
             {level.map((node) => {
-              const left = clampPercent((node.startMs / timelineEnd) * 100);
-              const rawWidth = (node.durationMs / timelineEnd) * 100;
-              const width = Math.min(Math.max(rawWidth, 3), 100 - left);
+              const segment = timelineSegmentLayout({
+                durationMs: node.durationMs,
+                minWidthPercent: 3,
+                startMs: node.startMs,
+                timelineEnd,
+              });
               return (
                 <button
                   className={cn(
@@ -53,8 +58,8 @@ export function FlameView({
                       node.status === "failed" || node.status === "dead"
                         ? "#ef4444"
                         : `${serviceColor(node.service)}99`,
-                    left: `${left}%`,
-                    width: `${width}%`,
+                    left: `${segment.left}%`,
+                    width: `${segment.width}%`,
                   }}
                   type="button"
                 >
@@ -69,26 +74,4 @@ export function FlameView({
       </div>
     </div>
   );
-}
-
-function clampPercent(value: number) {
-  return Math.min(100, Math.max(0, value));
-}
-
-function buildLevels(nodes: ExecutionNode[]) {
-  const byParent = new Map<string | undefined, ExecutionNode[]>();
-  nodes.forEach((node) => {
-    const children = byParent.get(node.parentId) ?? [];
-    children.push(node);
-    byParent.set(node.parentId, children);
-  });
-
-  const levels: ExecutionNode[][] = [];
-  const visit = (node: ExecutionNode, depth: number) => {
-    levels[depth] = [...(levels[depth] ?? []), node];
-    (byParent.get(node.id) ?? []).forEach((child) => visit(child, depth + 1));
-  };
-
-  (byParent.get(undefined) ?? []).forEach((node) => visit(node, 0));
-  return levels;
 }

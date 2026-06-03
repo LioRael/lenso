@@ -4,6 +4,7 @@ import type {
   RuntimeStory,
   TimelineItem,
 } from "../../data/mock-runtime";
+import { timelineSegmentLayout } from "../../lib/runtime-style";
 import { buildParallelExecutionGroups } from "./parallel-execution-model";
 import { buildRuntimeGraphModel } from "./runtime-graph-model";
 
@@ -31,6 +32,11 @@ export type WaterfallRow = {
   group?: "linked" | "unlinked";
   fanoutGroupSize?: number;
   parallelGroupSize?: number;
+};
+
+export type WaterfallSegmentLayout = {
+  left: number;
+  width: number;
 };
 
 export function buildWaterfallRows(story: RuntimeStory): WaterfallRow[] {
@@ -82,6 +88,25 @@ export function waterfallTimelineEnd(story: RuntimeStory) {
     )
   );
   return Math.max(story.durationMs, latestRowEnd, 1);
+}
+
+export function waterfallSegmentLayout({
+  durationMs,
+  minWidthPercent,
+  startMs,
+  timelineEnd,
+}: {
+  durationMs: number;
+  minWidthPercent: number;
+  startMs: number;
+  timelineEnd: number;
+}): WaterfallSegmentLayout {
+  return timelineSegmentLayout({
+    durationMs,
+    minWidthPercent,
+    startMs,
+    timelineEnd,
+  });
 }
 
 function buildNodeRows(story: RuntimeStory): WaterfallRow[] {

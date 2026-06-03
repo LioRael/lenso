@@ -7,6 +7,7 @@ import {
   formatRuntimeDuration,
   serviceColor,
   statusColor,
+  timelineSegmentLayout,
 } from "../../lib/runtime-style";
 import {
   buildExecutionTimelineRows,
@@ -48,7 +49,7 @@ export function StoryTimelineView({
         <span>Story Flow</span>
         <div className="grid min-w-0 grid-cols-5 overflow-hidden font-mono">
           {[0, 25, 50, 75, 100].map((tick) => (
-            <span key={tick}>
+            <span className="normal-case" key={tick}>
               {formatRuntimeDuration((timelineEnd * tick) / 100)}
             </span>
           ))}
@@ -111,11 +112,12 @@ function TimelineRow({
   const node = findExecutionNodeForRow(story, row);
   const Icon = rowIcon(row.kind);
   const tone = rowTone(row.kind);
-  const left = clampPercent((row.startMs / timelineEnd) * 100);
-  const width = Math.min(
-    Math.max((row.durationMs / timelineEnd) * 100, 1.5),
-    100 - left
-  );
+  const segment = timelineSegmentLayout({
+    durationMs: row.durationMs,
+    minWidthPercent: 1.5,
+    startMs: row.startMs,
+    timelineEnd,
+  });
   const errored = row.status === "failed" || row.status === "dead";
 
   return (
@@ -192,10 +194,10 @@ function TimelineRow({
             )}
             style={{
               backgroundColor: errored ? "#ef4444" : serviceColor(row.service),
-              left: `${left}%`,
+              left: `${segment.left}%`,
               opacity: selected ? 1 : 0.82,
               transform: selected ? "scaleY(1.22)" : undefined,
-              width: `${width}%`,
+              width: `${segment.width}%`,
             }}
           />
         </span>
@@ -288,8 +290,4 @@ function rowKindLabel(kind: ExecutionTimelineRow["kind"]) {
     return "External";
   }
   return "Worker";
-}
-
-function clampPercent(value: number) {
-  return Math.min(100, Math.max(0, value));
 }
