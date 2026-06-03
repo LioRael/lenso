@@ -10,6 +10,7 @@ import { RuntimeViewHeader } from "./runtime-view-header";
 import {
   buildWaterfallRows,
   findExecutionNodeForWaterfallRow,
+  waterfallSegmentLayout,
   waterfallTimelineEnd,
   type WaterfallRow,
   type WaterfallTimelineMarker,
@@ -39,7 +40,7 @@ export function WaterfallView({
         <span>Node</span>
         <div className="grid min-w-0 grid-cols-5 overflow-hidden">
           {[0, 25, 50, 75, 100].map((tick) => (
-            <span className="font-mono" key={tick}>
+            <span className="font-mono normal-case" key={tick}>
               {formatRuntimeDuration((timelineEnd * tick) / 100)}
             </span>
           ))}
@@ -88,9 +89,12 @@ function WaterfallRowButton({
   onSelectNode: (node: ExecutionNode) => void;
 }) {
   const node = findExecutionNodeForWaterfallRow(row);
-  const left = clampPercent((row.startMs / timelineEnd) * 100);
-  const rawWidth = (row.durationMs / timelineEnd) * 100;
-  const width = Math.min(Math.max(rawWidth, 0.8), 100 - left);
+  const segment = waterfallSegmentLayout({
+    durationMs: row.durationMs,
+    minWidthPercent: 0.8,
+    startMs: row.startMs,
+    timelineEnd,
+  });
   const selected = selectedNodeId === node?.id;
   const color = serviceColor(row.service);
 
@@ -162,10 +166,10 @@ function WaterfallRowButton({
               row.status === "failed" || row.status === "dead"
                 ? "#ef4444"
                 : color,
-            left: `${left}%`,
+            left: `${segment.left}%`,
             opacity: selected ? 1 : 0.82,
             transform: selected ? "scaleY(1.25)" : undefined,
-            width: `${width}%`,
+            width: `${segment.width}%`,
           }}
         />
         {row.markers.map((marker) => (
@@ -187,21 +191,26 @@ function TimelineMarker({
   marker: WaterfallTimelineMarker;
   timelineEnd: number;
 }) {
-  const left = clampPercent((marker.startMs / timelineEnd) * 100);
+  const segment = waterfallSegmentLayout({
+    durationMs: marker.durationMs,
+    minWidthPercent: 0.6,
+    startMs: marker.startMs,
+    timelineEnd,
+  });
+  const errored = marker.status === "failed" || marker.status === "dead";
 
   return (
     <span
-      className="absolute top-1 h-6 w-px bg-(--foreground)"
+      className={cn(
+        "absolute top-1 h-1.5 rounded-xs bg-(--foreground)",
+        errored && "shadow-[0_0_10px_rgba(239,68,68,0.32)]"
+      )}
       style={{
-        left: `${left}%`,
-        opacity:
-          marker.status === "failed" || marker.status === "dead" ? 0.9 : 0.46,
+        left: `${segment.left}%`,
+        opacity: errored ? 0.9 : 0.5,
+        width: `${segment.width}%`,
       }}
-      title={`${marker.kind}: ${marker.name}`}
+      title={`${marker.kind}: ${marker.name} · ${formatRuntimeDuration(marker.durationMs)}`}
     />
   );
-}
-
-function clampPercent(value: number) {
-  return Math.min(100, Math.max(0, value));
 }

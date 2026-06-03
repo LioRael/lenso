@@ -63,6 +63,29 @@ export function runtimeTimelineEnd(story: RuntimeStory) {
   return Math.max(story.durationMs, latestNodeEnd, 1);
 }
 
+export type TimelineSegmentLayout = {
+  left: number;
+  width: number;
+};
+
+export function timelineSegmentLayout({
+  durationMs,
+  minWidthPercent,
+  startMs,
+  timelineEnd,
+}: {
+  durationMs: number;
+  minWidthPercent: number;
+  startMs: number;
+  timelineEnd: number;
+}): TimelineSegmentLayout {
+  const left = clampPercent((startMs / timelineEnd) * 100);
+  const rawWidth = (durationMs / timelineEnd) * 100;
+  const remainingWidth = Math.max(0, 100 - left);
+  const width = Math.min(Math.max(rawWidth, minWidthPercent), remainingWidth);
+  return { left, width };
+}
+
 export function nodeDepth(node: ExecutionNode, nodes: ExecutionNode[]) {
   let depth = 0;
   let { parentId } = node;
@@ -99,4 +122,8 @@ export function criticalPath(story: RuntimeStory) {
   }
 
   return path;
+}
+
+function clampPercent(value: number) {
+  return Math.min(100, Math.max(0, value));
 }

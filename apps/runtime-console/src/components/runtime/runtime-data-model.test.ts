@@ -1,10 +1,12 @@
 import { describe, expect, test } from "vitest";
 
 import { runtimeStories, type RuntimeStory } from "../../data/mock-runtime";
+import { timelineSegmentLayout } from "../../lib/runtime-style";
 import {
   buildExecutionTimelineRows,
   findExecutionNodeForRow,
 } from "./execution-timeline-model";
+import { buildFlameLevels } from "./flame-model";
 import { resolveHeatmapCellNodes } from "./heatmap-model";
 import {
   buildParallelExecutionGroups,
@@ -17,6 +19,7 @@ import {
 import {
   buildWaterfallRows,
   findExecutionNodeForWaterfallRow,
+  waterfallSegmentLayout,
 } from "./waterfall-model";
 
 const story: RuntimeStory = {
@@ -170,6 +173,7 @@ describe("runtime story data model", () => {
       "timeline_function",
     ]);
     expect(rows[1]?.markers.map((marker) => marker.kind)).toEqual(["retry"]);
+    expect(rows[1]?.markers[0]?.durationMs).toBe(120);
   });
 
   test("keeps orphan timeline items as unlinked waterfall rows", () => {
@@ -234,6 +238,63 @@ describe("runtime story data model", () => {
 
     expect(findExecutionNodeForWaterfallRow(rows[1]!)?.id).toBe("node_b");
     expect(findExecutionNodeForWaterfallRow(rows.at(-1)!)).not.toBeNull();
+  });
+
+  test("waterfall segment layout preserves duration and clips at timeline end", () => {
+    expect(
+      timelineSegmentLayout({
+        durationMs: 120,
+        minWidthPercent: 0.8,
+        startMs: 100,
+        timelineEnd: 240,
+      })
+    ).toEqual({
+      left: 41.666_666_666_666_67,
+      width: 50,
+    });
+
+    expect(
+      waterfallSegmentLayout({
+        durationMs: 120,
+        minWidthPercent: 0.8,
+        startMs: 100,
+        timelineEnd: 240,
+      })
+    ).toEqual({
+      left: 41.666_666_666_666_67,
+      width: 50,
+    });
+
+    expect(
+      waterfallSegmentLayout({
+        durationMs: 20,
+        minWidthPercent: 0.8,
+        startMs: 230,
+        timelineEnd: 240,
+      }).width
+    ).toBeCloseTo((10 / 240) * 100);
+  });
+
+  test("flame levels keep nodes whose parent is missing", () => {
+    const missingParentNode: RuntimeStory["nodes"][number] = {
+      attributes: {},
+      context: {},
+      durationMs: 25,
+      events: [],
+      id: "node_missing_parent",
+      kind: "external",
+      logs: [],
+      name: "missing parent child",
+      parentId: "missing_parent",
+      service: "provider",
+      startMs: 20,
+      status: "completed",
+    };
+    const levels = buildFlameLevels([...story.nodes, missingParentNode]);
+
+    expect(levels.flat().map((node) => node.id)).toContain(
+      "node_missing_parent"
+    );
   });
 
   test("maps story heatmap cells back to matching execution nodes", () => {
