@@ -12,6 +12,7 @@ axum.workspace = true
 chrono.workspace = true
 platform-core.workspace = true
 platform-domain.workspace = true
+platform-module.workspace = true
 platform-http.workspace = true
 platform-runtime.workspace = true
 serde.workspace = true
