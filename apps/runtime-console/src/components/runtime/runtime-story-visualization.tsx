@@ -70,7 +70,10 @@ export function RuntimeStoryVisualization({
           <HeatmapView
             heatmap={heatmapQuery.data}
             loading={heatmapQuery.isLoading}
+            onSelectNode={onSelectNode}
             queryError={heatmapQuery.error}
+            selectedNodeId={selectedNodeId}
+            story={story}
           />
         ) : null}
       </div>
