@@ -7,6 +7,7 @@ import type {
   ExecutionPayload,
   TechnicalOperation,
 } from "../../data/mock-runtime";
+import { retryTargetForNode } from "../../data/mock-runtime";
 import {
   useExecutionLogs,
   useExecutionPayload,
@@ -220,6 +221,7 @@ function InspectorBody({
   const storyOperationsQuery = useStoryTechnicalOperations(story.correlationId);
 
   if (activeTab === "overview") {
+    const retryTarget = retryTargetForNode(node);
     return (
       <div className="font-mono text-xs">
         <SummaryCard node={node} story={story} />
@@ -242,20 +244,11 @@ function InspectorBody({
             ["service", node.service],
           ]}
         />
-        {node.retryable ? (
+        {retryTarget ? (
           <div className="border-b border-(--border-subtle) px-3 py-2">
             <button
               className="inline-flex h-8 w-fit items-center gap-2 rounded-xs border border-[color-mix(in_srgb,var(--error)_35%,transparent)] bg-[color-mix(in_srgb,var(--error)_10%,transparent)] px-2 font-mono text-[11px] text-(--foreground) hover:bg-[color-mix(in_srgb,var(--error)_15%,transparent)]"
-              onClick={() =>
-                openRetry({
-                  attempts: node.attempts ?? 1,
-                  id: node.id,
-                  kind: "timeline",
-                  maxAttempts: node.maxAttempts ?? 3,
-                  name: node.name,
-                  status: node.status,
-                })
-              }
+              onClick={() => openRetry(retryTarget)}
               type="button"
             >
               <RotateCcw size={12} />

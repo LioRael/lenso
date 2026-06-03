@@ -1055,18 +1055,41 @@ export type RetryTarget =
       status: RuntimeStatus;
       attempts: number;
       maxAttempts: number;
-    }
-  | {
-      kind: "timeline";
-      id: string;
-      name: string;
-      status: RuntimeStatus;
-      attempts: number;
-      maxAttempts: number;
     };
 
 export function isRetryable(status: RuntimeStatus) {
   return status === "failed" || status === "dead";
+}
+
+/**
+ * Maps a story-graph execution node to a retry target, or null when the node
+ * has no backend retry endpoint. Only outbox events (`event`) and function runs
+ * (`function`) are retryable; HTTP requests and story events are not, so their
+ * ids must never reach the outbox/functions retry routes.
+ */
+export function retryTargetForNode(node: ExecutionNode): RetryTarget | null {
+  if (!(node.retryable && isRetryable(node.status))) {
+    return null;
+  }
+
+  const kind =
+    node.kind === "event"
+      ? "event"
+      : node.kind === "function"
+        ? "function"
+        : null;
+  if (kind === null) {
+    return null;
+  }
+
+  return {
+    attempts: node.attempts ?? 1,
+    id: node.id,
+    kind,
+    maxAttempts: node.maxAttempts ?? 3,
+    name: node.name,
+    status: node.status,
+  };
 }
 
 export function retryTargetFor(record: RuntimeRecord): RetryTarget | null {
@@ -1101,9 +1124,21 @@ export function retryTargetFor(record: RuntimeRecord): RetryTarget | null {
   if (!isRetryable(record.item.status)) {
     return null;
   }
+  // Timeline items only map to a backend retry endpoint when they represent an
+  // outbox event or a function run; map via `detailId` (the real backend id),
+  // never the synthetic timeline id, and skip kinds with no retry route.
+  const timelineKind =
+    record.item.type === "outbox_event" || record.item.type === "event"
+      ? "event"
+      : record.item.type === "function_run" || record.item.type === "function"
+        ? "function"
+        : null;
+  if (timelineKind === null) {
+    return null;
+  }
   return {
-    kind: "timeline",
-    id: record.item.id,
+    kind: timelineKind,
+    id: record.item.detailId ?? record.item.id,
     name: record.item.name,
     status: record.item.status,
     attempts: record.item.attempts,

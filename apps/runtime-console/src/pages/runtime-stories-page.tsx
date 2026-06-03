@@ -22,7 +22,7 @@ import { StoryList } from "../components/runtime/story-list";
 import type { StoryViewMode } from "../components/runtime/story-tabs";
 import { EmptyState } from "../components/ui/empty-state";
 import {
-  isRetryable,
+  retryTargetForNode,
   type RuntimeStory,
   type ExecutionNode,
 } from "../data/mock-runtime";
@@ -317,15 +317,9 @@ export function RuntimeStoriesPage() {
 
   const retryNode = (node: ExecutionNode) => {
     selectNode(node);
-    if (isRetryable(node.status) && node.retryable) {
-      openRetry({
-        attempts: node.attempts ?? 1,
-        id: node.id,
-        kind: "timeline",
-        maxAttempts: node.maxAttempts ?? 3,
-        name: node.name,
-        status: node.status,
-      });
+    const retryTarget = retryTargetForNode(node);
+    if (retryTarget) {
+      openRetry(retryTarget);
     }
   };
 
@@ -334,19 +328,15 @@ export function RuntimeStoriesPage() {
     onOpen: selectStory,
     onRetry: (story) => {
       const retryableNode = story.nodes.find(
-        (node) => isRetryable(node.status) && node.retryable
+        (node) => retryTargetForNode(node) !== null
       );
       if (retryableNode) {
         selectStory(story);
         selectNode(retryableNode);
-        openRetry({
-          attempts: retryableNode.attempts ?? 1,
-          id: retryableNode.id,
-          kind: "timeline",
-          maxAttempts: retryableNode.maxAttempts ?? 3,
-          name: retryableNode.name,
-          status: retryableNode.status,
-        });
+        const retryTarget = retryTargetForNode(retryableNode);
+        if (retryTarget) {
+          openRetry(retryTarget);
+        }
       }
     },
     selectedIndex: selectedStoryIndex,

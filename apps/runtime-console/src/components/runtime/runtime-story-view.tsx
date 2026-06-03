@@ -13,6 +13,7 @@ import {
 import type { ComponentType } from "react";
 
 import type { RuntimeStory, ExecutionNode } from "../../data/mock-runtime";
+import { retryTargetForNode } from "../../data/mock-runtime";
 import { cn } from "../../lib/cn";
 import { formatRuntimeDuration } from "../../lib/runtime-style";
 import {
@@ -86,7 +87,7 @@ function GraphNode({
   const status = statusStyle[runtimeStatusIntent(node.status)];
   const Icon = type.icon;
   const StatusIcon = status.icon;
-  const retryable = node.status === "failed" || node.status === "dead";
+  const retryable = retryTargetForNode(node.node) !== null;
 
   return (
     <div className="grid min-w-0 grid-cols-[40px_minmax(0,1fr)] gap-3">

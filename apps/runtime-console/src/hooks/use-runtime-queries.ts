@@ -239,10 +239,7 @@ export function useExecutionPayload(
 export function useRetryRuntimeWork() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (_input: {
-      kind: "event" | "function" | "timeline";
-      id: string;
-    }) => {
+    mutationFn: async (_input: { kind: "event" | "function"; id: string }) => {
       if (isApiMode()) {
         await retryRuntimeWork(_input);
         return { ok: true };
@@ -506,7 +503,7 @@ async function fetchExecutionLogs(
 }
 
 async function retryRuntimeWork(input: {
-  kind: "event" | "function" | "timeline";
+  kind: "event" | "function";
   id: string;
 }) {
   const route =
