@@ -61,6 +61,9 @@ console:
 console-api:
     VITE_RUNTIME_CONSOLE_MODE=api VITE_API_BASE_URL=http://localhost:3000 pnpm --dir={{runtime_console_dir}} run dev
 
+embedded-admin-demo:
+    sh scripts/embedded-admin-demo.sh
+
 console-preview:
     pnpm --dir={{runtime_console_dir}} run preview
 

@@ -44,3 +44,9 @@ REMOTE_MODULES=remote-crm=http://127.0.0.1:4100/lenso/module/v1,remote-crm-embed
 The embedded manifest points at the example's `/embedded/admin` page with an
 origin allowlist for the current request host, so the Runtime Console can render
 it in a sandboxed iframe without a host bridge.
+
+For a one-command local Console demo from the repo root:
+
+```sh
+just embedded-admin-demo
+```

@@ -85,6 +85,20 @@ Runtime Console pointed at the local API:
 just console-api
 ```
 
+Embedded remote admin iframe demo:
+
+```sh
+just db-up
+just migrate
+just embedded-admin-demo
+```
+
+This starts the remote module example, the API with both `remote-crm` and
+`remote-crm-embedded` configured, and the Runtime Console in API mode. Open the
+Data page and select `remote-crm-embedded` to see the sandboxed iframe surface.
+If the default ports are busy, override them with `REMOTE_MODULE_ADDR`,
+`HTTP_PORT`, or `CONSOLE_PORT`.
+
 OpenTelemetry collector for local span export:
 
 ```sh
