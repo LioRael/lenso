@@ -8,6 +8,12 @@ It exposes a read-only CRM-style Contacts module:
 - `GET /lenso/module/v1/admin/contacts?limit=50&cursor=...`
 - `GET /lenso/module/v1/admin/contacts/{id}`
 
+It also exposes a second embedded-admin module base for testing
+`AdminSurface::EmbeddedCustom`:
+
+- `GET /lenso/module/v1/embedded/manifest`
+- `GET /lenso/module/v1/embedded/admin`
+
 Run it locally:
 
 ```sh
@@ -28,3 +34,13 @@ REMOTE_MODULES=remote-crm=http://127.0.0.1:4100/lenso/module/v1 just api
 
 The API loads the module manifest at startup and serves its schema-admin data
 through the normal `/admin/data/*` backend.
+
+To load both the schema-admin module and the embedded iframe module:
+
+```sh
+REMOTE_MODULES=remote-crm=http://127.0.0.1:4100/lenso/module/v1,remote-crm-embedded=http://127.0.0.1:4100/lenso/module/v1/embedded just api
+```
+
+The embedded manifest points at the example's `/embedded/admin` page with an
+origin allowlist for the current request host, so the Runtime Console can render
+it in a sandboxed iframe without a host bridge.

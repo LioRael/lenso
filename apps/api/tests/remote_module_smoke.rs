@@ -1,7 +1,7 @@
 use app_api::build_router;
+use axum::Router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
-use axum::{Json, Router};
 use platform_admin_data::{install_admin_module_metadata, install_admin_modules};
 use platform_core::{
     AppConfig, AppContext, AuthConfig, DatabaseConfig, DbPool, HttpConfig, LoggingEventPublisher,
@@ -81,38 +81,6 @@ async fn json_body(response: axum::response::Response) -> Value {
         .await
         .expect("body");
     serde_json::from_slice(&bytes).expect("json body")
-}
-
-async fn embedded_manifest() -> Json<Value> {
-    Json(serde_json::json!({
-        "name": "remote-crm-embedded",
-        "story_display": [],
-        "admin": {
-            "kind": "embedded_custom",
-            "runtime": "iframe",
-            "entry": {
-                "kind": "url",
-                "url": "https://remote-crm.example.test/admin",
-                "allowed_origins": ["https://remote-crm.example.test"]
-            },
-            "sandbox": {
-                "allow_scripts": true,
-                "allow_forms": false,
-                "allow_popups": false,
-                "allow_same_origin": false
-            },
-            "permissions": [],
-            "fallback_schema": {
-                "entities": [{
-                    "name": "contacts",
-                    "label": "Contacts",
-                    "fields": [],
-                    "read_capability": "remote_crm.contacts.read"
-                }]
-            }
-        },
-        "capabilities": ["remote_crm.contacts.read"]
-    }))
 }
 
 #[tokio::test]
@@ -229,11 +197,8 @@ async fn failed_remote_module_load_is_reported_in_schema() {
 #[tokio::test]
 async fn embedded_custom_remote_module_is_visible_through_metadata_api() {
     let _guard = REMOTE_SMOKE_TEST_LOCK.lock().await;
-    let base_url = spawn_remote_module(Router::new().route(
-        "/lenso/module/v1/manifest",
-        axum::routing::get(embedded_manifest),
-    ))
-    .await;
+    let fixture_base = spawn_remote_module(remote_module_example::router()).await;
+    let iframe_origin = fixture_base.trim_end_matches("/lenso/module/v1").to_owned();
     let app = app_with_remote_modules(vec![
         RemoteModuleSourceConfig {
             name: "remote-crm".to_owned(),
@@ -243,7 +208,7 @@ async fn embedded_custom_remote_module_is_visible_through_metadata_api() {
         },
         RemoteModuleSourceConfig {
             name: "remote-crm-embedded".to_owned(),
-            base_url,
+            base_url: format!("{fixture_base}/embedded"),
             auth_token_env: None,
             timeout_ms: 5_000,
         },
@@ -267,6 +232,14 @@ async fn embedded_custom_remote_module_is_visible_through_metadata_api() {
     assert_eq!(remote_module["status"], "loaded");
     assert_eq!(remote_module["admin"]["kind"], "embedded_custom");
     assert_eq!(remote_module["admin"]["runtime"], "iframe");
+    assert_eq!(
+        remote_module["admin"]["entry"]["url"],
+        format!("{fixture_base}/embedded/admin")
+    );
+    assert_eq!(
+        remote_module["admin"]["entry"]["allowed_origins"],
+        serde_json::json!([iframe_origin])
+    );
     assert_eq!(
         remote_module["admin"]["fallback_schema"]["entities"][0]["name"],
         "contacts"

@@ -35,7 +35,8 @@ async fn embedded_manifest_matches_remote_module_protocol() {
     let response = remote_module_example::router()
         .oneshot(
             http::Request::builder()
-                .uri("/lenso/module/v1/embedded-manifest")
+                .uri("/lenso/module/v1/embedded/manifest")
+                .header("host", "127.0.0.1:4100")
                 .body(axum::body::Body::empty())
                 .unwrap(),
         )
@@ -54,13 +55,39 @@ async fn embedded_manifest_matches_remote_module_protocol() {
     assert_eq!(manifest["admin"]["runtime"], "iframe");
     assert_eq!(manifest["admin"]["entry"]["kind"], "url");
     assert_eq!(
+        manifest["admin"]["entry"]["url"],
+        "http://127.0.0.1:4100/lenso/module/v1/embedded/admin"
+    );
+    assert_eq!(
         manifest["admin"]["entry"]["allowed_origins"],
-        json!(["https://remote-crm.example.test"])
+        json!(["http://127.0.0.1:4100"])
     );
     assert_eq!(
         manifest["admin"]["fallback_schema"]["entities"][0]["name"],
         "contacts"
     );
+}
+
+#[tokio::test]
+async fn embedded_admin_page_is_served_for_iframe_rendering() {
+    let response = remote_module_example::router()
+        .oneshot(
+            http::Request::builder()
+                .uri("/lenso/module/v1/embedded/admin")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let html = String::from_utf8(body.to_vec()).unwrap();
+    assert!(html.contains("Remote CRM Embedded Admin"));
+    assert!(html.contains("iframe / no bridge"));
 }
 
 #[tokio::test]
