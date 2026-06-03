@@ -63,9 +63,11 @@ pub fn event_handlers(modules: &[Module]) -> EventHandlerRegistry {
 /// Domain route builders are context-free, so this assembles the HTTP surface
 /// without constructing the full module set (which requires an [`AppContext`])
 /// — usable both for serving and for standalone `OpenAPI` document assembly.
-/// This is the single source for the API's domain routes; kept in sync with
+/// This is the single source for the API's routes; kept in sync with
 /// [`modules`] manually (it still hardcodes `identity::routes::router()` — HTTP
-/// is deferred).
+/// is deferred). The `domain` in the name is retained until HTTP joins the
+/// [`platform_module::ModuleBinding`] seam; every other path here is unified on
+/// "module".
 pub fn merge_domain_http(base: ApiOpenApiRouter) -> ApiOpenApiRouter {
     base.merge(identity::routes::router())
 }
