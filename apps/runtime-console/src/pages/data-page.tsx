@@ -1,34 +1,36 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, RefreshCw } from "lucide-react";
+import { AlertTriangle, Code2, RefreshCw } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "../components/ui/button";
 import { cn } from "../lib/cn";
 import { httpClient, isApiMode } from "../lib/http-client";
 import {
+  type AdminModuleMetadata,
   type AdminRecord,
+  adminSurfaceLabel,
+  adminSurfaceMetadataRows,
   detailRows,
   type EntitySchema,
   moduleErrorMessage,
   moduleIsLoaded,
   moduleNavItems,
   moduleStatusLabel,
-  type ModuleSchema,
   recordId,
   renderRow,
 } from "./data-render-model";
 
-type SchemaResponse = { modules: ModuleSchema[] };
+type ModulesResponse = { modules: AdminModuleMetadata[] };
 type ListResponse = {
   data: AdminRecord[];
   page: { limit: number; next_cursor: string | null };
 };
 type DetailResponse = { data: AdminRecord };
 
-type Selection = { module: ModuleSchema; entity: EntitySchema | null };
+type Selection = { module: AdminModuleMetadata; entity: EntitySchema | null };
 
 const dataKeys = {
-  schema: ["admin-data", "schema"] as const,
+  modules: ["admin-data", "modules"] as const,
   list: (m: string, e: string) => ["admin-data", "list", m, e] as const,
   detail: (m: string, e: string, id: string) =>
     ["admin-data", "detail", m, e, id] as const,
@@ -39,9 +41,9 @@ export function DataPage() {
   const [selected, setSelected] = useState<Selection | null>(null);
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
 
-  const schemaQuery = useQuery({
-    queryKey: dataKeys.schema,
-    queryFn: () => httpClient.get("admin/data/schema").json<SchemaResponse>(),
+  const modulesQuery = useQuery({
+    queryKey: dataKeys.modules,
+    queryFn: () => httpClient.get("admin/data/modules").json<ModulesResponse>(),
     enabled: isApiMode(),
   });
 
@@ -98,11 +100,11 @@ export function DataPage() {
 
   const refreshMutation = useMutation({
     mutationFn: () =>
-      httpClient.post("admin/data/schema/refresh").json<SchemaResponse>(),
-    onSuccess: async (data) => {
+      httpClient.post("admin/data/schema/refresh").json<unknown>(),
+    onSuccess: async () => {
       setSelected(null);
       setSelectedRecordId(null);
-      queryClient.setQueryData(dataKeys.schema, data);
+      await queryClient.invalidateQueries({ queryKey: dataKeys.modules });
       await queryClient.invalidateQueries({ queryKey: ["admin-data", "list"] });
       await queryClient.invalidateQueries({
         queryKey: ["admin-data", "detail"],
@@ -136,12 +138,12 @@ export function DataPage() {
       </header>
       <div className="grid min-h-0 grid-cols-[220px_minmax(0,1fr)_320px]">
         <nav className="overflow-auto border-r border-(--border-subtle) p-2 font-mono text-[12px]">
-          {schemaQuery.isError ? (
-            <p className="px-2 py-1 text-(--muted)">Failed to load schema.</p>
-          ) : schemaQuery.isPending ? (
+          {modulesQuery.isError ? (
+            <p className="px-2 py-1 text-(--muted)">Failed to load modules.</p>
+          ) : modulesQuery.isPending ? (
             <p className="px-2 py-1 text-(--muted)">Loading…</p>
-          ) : schemaQuery.data ? (
-            moduleNavItems(schemaQuery.data.modules).map((item) => {
+          ) : modulesQuery.data ? (
+            moduleNavItems(modulesQuery.data.modules).map((item) => {
               const isSelected =
                 selected !== null &&
                 selected.module.module_name === item.module.module_name &&
@@ -205,8 +207,10 @@ export function DataPage() {
                 setSelectedRecordId={setSelectedRecordId}
               />
             ) : null
+          ) : selected ? (
+            <ModuleSurfacePanel module={selected.module} />
           ) : (
-            <p className="text-(--muted)">Select an entity.</p>
+            <p className="text-(--muted)">Select a module or entity.</p>
           )}
         </div>
         <aside className="min-w-0 overflow-auto border-l border-(--border-subtle) bg-(--surface) font-mono text-[12px]">
@@ -217,7 +221,9 @@ export function DataPage() {
                 ? `${selected.module.module_name}/${selected.entity.name}/${selectedRecordId}`
                 : selected && !moduleIsLoaded(selected.module)
                   ? `${selected.module.module_name} unavailable`
-                  : "select a row"}
+                  : selected
+                    ? `${selected.module.module_name} surface`
+                    : "select a row"}
             </p>
           </div>
           <div className="p-3">
@@ -246,6 +252,8 @@ export function DataPage() {
                   )}
                 </dl>
               ) : null
+            ) : selected ? (
+              <ModuleSurfacePanel compact module={selected.module} />
             ) : (
               <p className="text-(--muted)">No record selected.</p>
             )}
@@ -264,7 +272,7 @@ function RecordsTable({
   setSelectedRecordId,
 }: {
   entity: EntitySchema;
-  module: ModuleSchema;
+  module: AdminModuleMetadata;
   records: AdminRecord[];
   selectedRecordId: string | null;
   setSelectedRecordId: (id: string | null) => void;
@@ -330,7 +338,7 @@ function ModuleErrorPanel({
   module,
 }: {
   compact?: boolean;
-  module: ModuleSchema;
+  module: AdminModuleMetadata;
 }) {
   return (
     <div
@@ -349,6 +357,50 @@ function ModuleErrorPanel({
       <p className="mt-2 break-words text-(--muted)">
         {moduleErrorMessage(module)}
       </p>
+    </div>
+  );
+}
+
+function ModuleSurfacePanel({
+  compact = false,
+  module,
+}: {
+  compact?: boolean;
+  module: AdminModuleMetadata;
+}) {
+  const rows = adminSurfaceMetadataRows(module);
+  const surfaceLabel = adminSurfaceLabel(module.admin);
+  return (
+    <div
+      className={cn(
+        "border border-(--border-subtle) bg-(--surface) p-3",
+        compact && "text-[11px]"
+      )}
+    >
+      <div className="flex items-center gap-2 font-semibold text-(--foreground)">
+        <Code2 className="text-(--info)" size={14} />
+        <span>{module.module_name}</span>
+        <span className="ml-auto border border-(--border-subtle) px-2 py-0.5 text-[10px] text-(--secondary)">
+          {surfaceLabel}
+        </span>
+      </div>
+      <p className="mt-2 text-(--muted)">
+        {module.admin?.kind === "schema"
+          ? "Schema surface has no selectable entity."
+          : "Custom admin surface is discoverable. Rendering stays disabled until the host policy is implemented."}
+      </p>
+      <dl className="mt-3 grid grid-cols-[120px_minmax(0,1fr)] border-y border-(--border-subtle)">
+        {rows.map((row) => (
+          <div className="contents" key={row.label}>
+            <dt className="border-b border-(--border-subtle) bg-(--sidebar) px-2 py-1.5 text-(--muted)">
+              {row.label}
+            </dt>
+            <dd className="min-w-0 truncate border-b border-(--border-subtle) px-2 py-1.5 text-(--secondary)">
+              {row.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
     </div>
   );
 }

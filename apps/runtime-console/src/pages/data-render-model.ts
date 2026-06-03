@@ -1,6 +1,5 @@
-// Mirrors platform-module's AdminSchema/FieldType JSON shapes. Hand-typed
-// because the records are generic (serde_json::Value) — there is no per-entity
-// generated SDK type.
+// Mirrors platform-module's admin JSON shapes. Hand-typed because the records
+// and custom surface metadata are generic across arbitrary modules.
 
 export type FieldType =
   | { kind: "string" }
@@ -26,23 +25,65 @@ export type EntitySchema = {
 export type AdminSchema = { entities: EntitySchema[] };
 
 export type ModuleSource = "linked" | "remote";
+export type ModuleStatus = "loaded" | "error";
 
-export type ModuleSchema = {
+export type SchemaAdminSurface = AdminSchema & { kind: "schema" };
+
+export type DeclarativeAdminSurface = {
+  kind: "declarative_custom";
+  pages?: unknown[];
+  actions?: unknown[];
+  fallback_schema?: AdminSchema | null;
+};
+
+export type AdminUrlEmbeddedEntry = {
+  kind: "url";
+  url?: string;
+  allowed_origins?: string[];
+};
+
+export type AdminEmbeddedEntry = AdminUrlEmbeddedEntry;
+
+export type AdminSandboxPolicy = {
+  allow_scripts?: boolean;
+  allow_forms?: boolean;
+  allow_popups?: boolean;
+  allow_same_origin?: boolean;
+};
+
+export type EmbeddedAdminSurface = {
+  kind: "embedded_custom";
+  runtime?: string;
+  entry?: AdminEmbeddedEntry;
+  sandbox?: AdminSandboxPolicy;
+  permissions?: unknown[];
+  fallback_schema?: AdminSchema | null;
+};
+
+export type AdminSurface =
+  | SchemaAdminSurface
+  | DeclarativeAdminSurface
+  | EmbeddedAdminSurface;
+
+export type AdminSurfaceKind = AdminSurface["kind"] | "unavailable";
+
+export type AdminModuleMetadata = {
   module_name: string;
   source: ModuleSource;
-  status: "loaded" | "error";
+  status: ModuleStatus;
   error: string | null;
-  schema: AdminSchema;
+  admin: AdminSurface | null;
 };
 
 export type AdminRecord = Record<string, unknown>;
 
 export type ModuleNavItem = {
   key: string;
-  module: ModuleSchema;
+  module: AdminModuleMetadata;
   entity: EntitySchema | null;
   label: string;
   sublabel: string;
+  surfaceKind: AdminSurfaceKind;
 };
 
 export type RenderedCell = {
@@ -58,44 +99,152 @@ export type DetailRow = {
   display: string;
 };
 
-export function moduleStatusLabel(module: ModuleSchema): "loaded" | "error" {
+export type MetadataRow = {
+  label: string;
+  value: string;
+};
+
+export function moduleStatusLabel(module: AdminModuleMetadata): ModuleStatus {
   return module.status;
 }
 
-export function moduleIsLoaded(module: ModuleSchema): boolean {
+export function moduleIsLoaded(module: AdminModuleMetadata): boolean {
   return module.status === "loaded";
 }
 
-export function moduleErrorMessage(module: ModuleSchema): string | null {
+export function moduleErrorMessage(module: AdminModuleMetadata): string | null {
   return module.status === "error"
     ? (module.error ?? "module failed to load")
     : null;
 }
 
-export function moduleNavItems(modules: ModuleSchema[]): ModuleNavItem[] {
+export function adminSurfaceLabel(surface: AdminSurface | null): string {
+  if (!surface) {
+    return "unavailable";
+  }
+  switch (surface.kind) {
+    case "schema": {
+      return "schema";
+    }
+    case "declarative_custom": {
+      return "declarative custom";
+    }
+    case "embedded_custom": {
+      return "embedded custom";
+    }
+    default: {
+      return "custom";
+    }
+  }
+}
+
+export function adminSurfaceKind(
+  surface: AdminSurface | null
+): AdminSurfaceKind {
+  return surface?.kind ?? "unavailable";
+}
+
+export function schemaFromModule(
+  module: AdminModuleMetadata
+): AdminSchema | null {
+  return module.admin?.kind === "schema" ? module.admin : null;
+}
+
+export function moduleNavItems(
+  modules: AdminModuleMetadata[]
+): ModuleNavItem[] {
   return modules.flatMap((module) => {
-    if (module.schema.entities.length === 0) {
+    const schema = schemaFromModule(module);
+    const surfaceKind = adminSurfaceKind(module.admin);
+    const sublabel = `${module.source} / ${adminSurfaceLabel(module.admin)} / ${moduleStatusLabel(module)}`;
+
+    if (!schema || schema.entities.length === 0) {
       return [
         {
           key: module.module_name,
           module,
           entity: null,
           label: module.module_name,
-          sublabel: `${module.source} / ${moduleStatusLabel(module)}`,
+          sublabel,
+          surfaceKind,
         },
       ] satisfies ModuleNavItem[];
     }
 
-    return module.schema.entities.map(
+    return schema.entities.map(
       (entity): ModuleNavItem => ({
         key: `${module.module_name}.${entity.name}`,
         module,
         entity,
         label: `${module.module_name} / ${entity.label}`,
-        sublabel: `${module.source} / ${moduleStatusLabel(module)}`,
+        sublabel,
+        surfaceKind,
       })
     );
   });
+}
+
+export function adminSurfaceMetadataRows(
+  module: AdminModuleMetadata
+): MetadataRow[] {
+  const surface = module.admin;
+  if (!surface) {
+    return [
+      { label: "module", value: module.module_name },
+      { label: "source", value: module.source },
+      { label: "status", value: moduleStatusLabel(module) },
+    ];
+  }
+
+  const rows: MetadataRow[] = [
+    { label: "module", value: module.module_name },
+    { label: "source", value: module.source },
+    { label: "surface", value: adminSurfaceLabel(surface) },
+    { label: "status", value: moduleStatusLabel(module) },
+  ];
+
+  if (surface.kind === "declarative_custom") {
+    rows.push(
+      { label: "pages", value: String(surface.pages?.length ?? 0) },
+      { label: "actions", value: String(surface.actions?.length ?? 0) },
+      {
+        label: "fallback entities",
+        value: String(surface.fallback_schema?.entities.length ?? 0),
+      }
+    );
+  }
+
+  if (surface.kind === "embedded_custom") {
+    rows.push(
+      { label: "runtime", value: surface.runtime ?? "unknown" },
+      { label: "entry", value: embeddedEntryLabel(surface.entry) },
+      {
+        label: "allowed origins",
+        value: String(
+          surface.entry?.kind === "url"
+            ? (surface.entry.allowed_origins?.length ?? 0)
+            : 0
+        ),
+      },
+      { label: "permissions", value: String(surface.permissions?.length ?? 0) },
+      {
+        label: "fallback entities",
+        value: String(surface.fallback_schema?.entities.length ?? 0),
+      }
+    );
+  }
+
+  return rows;
+}
+
+function embeddedEntryLabel(entry: AdminEmbeddedEntry | undefined): string {
+  if (!entry) {
+    return "unknown";
+  }
+  if (entry.kind === "url") {
+    return entry.url ?? "url";
+  }
+  return entry.kind;
 }
 
 /** Format one raw value per its field type into a display string. */

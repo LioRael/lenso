@@ -1,13 +1,15 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  adminSurfaceLabel,
+  adminSurfaceMetadataRows,
   detailRows,
+  type AdminModuleMetadata,
   type EntitySchema,
   type FieldSchema,
   moduleErrorMessage,
   moduleIsLoaded,
   moduleNavItems,
-  type ModuleSchema,
   moduleStatusLabel,
   recordId,
   renderCell,
@@ -132,12 +134,12 @@ describe("detailRows", () => {
 });
 
 describe("moduleStatusLabel", () => {
-  const moduleSchema: ModuleSchema = {
+  const moduleSchema: AdminModuleMetadata = {
     module_name: "remote-crm",
     source: "remote",
     status: "loaded",
     error: null,
-    schema: { entities: [] },
+    admin: { kind: "schema", entities: [] },
   };
 
   test("uses backend loaded status verbatim", () => {
@@ -156,19 +158,19 @@ describe("moduleStatusLabel", () => {
 });
 
 describe("module status helpers", () => {
-  const loadedModule: ModuleSchema = {
+  const loadedModule: AdminModuleMetadata = {
     module_name: "identity",
     source: "linked",
     status: "loaded",
     error: null,
-    schema: { entities: [entity] },
+    admin: { kind: "schema", entities: [entity] },
   };
-  const errorModule: ModuleSchema = {
+  const errorModule: AdminModuleMetadata = {
     module_name: "remote-crm",
     source: "remote",
     status: "error",
     error: "remote manifest request failed",
-    schema: { entities: [] },
+    admin: null,
   };
 
   test("identifies loaded modules", () => {
@@ -190,15 +192,114 @@ describe("module status helpers", () => {
         module: loadedModule,
         entity,
         label: "identity / Users",
-        sublabel: "linked / loaded",
+        sublabel: "linked / schema / loaded",
+        surfaceKind: "schema",
       },
       {
         key: "remote-crm",
         module: errorModule,
         entity: null,
         label: "remote-crm",
-        sublabel: "remote / error",
+        sublabel: "remote / unavailable / error",
+        surfaceKind: "unavailable",
       },
+    ]);
+  });
+
+  test("keeps custom surfaces visible without schema entities", () => {
+    const declarativeModule: AdminModuleMetadata = {
+      module_name: "billing",
+      source: "linked",
+      status: "loaded",
+      error: null,
+      admin: {
+        kind: "declarative_custom",
+        pages: [{ name: "overview" }],
+        actions: [],
+        fallback_schema: { entities: [] },
+      },
+    };
+    const embeddedModule: AdminModuleMetadata = {
+      module_name: "remote-crm-embedded",
+      source: "remote",
+      status: "loaded",
+      error: null,
+      admin: {
+        kind: "embedded_custom",
+        runtime: "iframe",
+        entry: {
+          kind: "url",
+          url: "https://remote-crm.example.test/admin",
+          allowed_origins: ["https://remote-crm.example.test"],
+        },
+        sandbox: { allow_scripts: true },
+        permissions: [],
+        fallback_schema: { entities: [entity] },
+      },
+    };
+
+    expect(moduleNavItems([declarativeModule, embeddedModule])).toEqual([
+      {
+        key: "billing",
+        module: declarativeModule,
+        entity: null,
+        label: "billing",
+        sublabel: "linked / declarative custom / loaded",
+        surfaceKind: "declarative_custom",
+      },
+      {
+        key: "remote-crm-embedded",
+        module: embeddedModule,
+        entity: null,
+        label: "remote-crm-embedded",
+        sublabel: "remote / embedded custom / loaded",
+        surfaceKind: "embedded_custom",
+      },
+    ]);
+  });
+});
+
+describe("admin surface metadata helpers", () => {
+  test("labels known surfaces", () => {
+    expect(adminSurfaceLabel(null)).toBe("unavailable");
+    expect(adminSurfaceLabel({ kind: "schema", entities: [] })).toBe("schema");
+    expect(adminSurfaceLabel({ kind: "declarative_custom" })).toBe(
+      "declarative custom"
+    );
+    expect(adminSurfaceLabel({ kind: "embedded_custom" })).toBe(
+      "embedded custom"
+    );
+  });
+
+  test("summarizes embedded surfaces without exposing executable code", () => {
+    const module: AdminModuleMetadata = {
+      module_name: "remote-crm-embedded",
+      source: "remote",
+      status: "loaded",
+      error: null,
+      admin: {
+        kind: "embedded_custom",
+        runtime: "iframe",
+        entry: {
+          kind: "url",
+          url: "https://remote-crm.example.test/admin",
+          allowed_origins: ["https://remote-crm.example.test"],
+        },
+        permissions: [{ kind: "read", capability: "remote_crm.contacts.read" }],
+        fallback_schema: { entities: [entity] },
+      },
+    };
+
+    expect(adminSurfaceMetadataRows(module)).toEqual([
+      { label: "module", value: "remote-crm-embedded" },
+      { label: "source", value: "remote" },
+      { label: "surface", value: "embedded custom" },
+      { label: "status", value: "loaded" },
+      { label: "runtime", value: "iframe" },
+      { label: "entry", value: "https://remote-crm.example.test/admin" },
+      { label: "allowed origins", value: "1" },
+      { label: "permissions", value: "1" },
+      { label: "fallback entities", value: "1" },
     ]);
   });
 });
