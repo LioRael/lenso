@@ -77,8 +77,13 @@ pub fn story_display_descriptors() -> impl Iterator<Item = &'static StoryDisplay
 /// `RuntimeConfigRegistry` from this list at startup.
 #[must_use]
 pub fn runtime_config_descriptors(ctx: &AppContext) -> Vec<RuntimeConfigDescriptor> {
-    domains(ctx)
+    let domain_descriptors = domains(ctx)
         .iter()
         .flat_map(|domain| domain.runtime_config.iter().cloned())
+        .collect::<Vec<_>>();
+    platform_core::worker_runtime_config::RUNTIME_CONFIG
+        .iter()
+        .cloned()
+        .chain(domain_descriptors)
         .collect()
 }

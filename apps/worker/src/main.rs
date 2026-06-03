@@ -1,7 +1,8 @@
 use anyhow::Context as _;
 use platform_core::{
     AppConfig, AppContext, EventHandlerRegistry, LoggingEventPublisher, OutboxRelay,
-    PostgresRuntimeConfigProvider, RuntimeConfigRegistry, Shutdown, connect_pool, telemetry,
+    PostgresRuntimeConfigProvider, RuntimeConfigRegistry, Shutdown, WorkerRuntimeConfig,
+    connect_pool, telemetry,
 };
 use platform_runtime::{FunctionRegistry, RuntimeWorker};
 use std::sync::Arc;
@@ -50,9 +51,15 @@ async fn run_worker_loop(
 ) {
     let shutdown = ctx.shutdown.clone();
     let mut shutdown_rx = shutdown.subscribe();
-    let relay = OutboxRelay::new(ctx.db.clone(), "worker-local", 25);
-    let runtime_worker = RuntimeWorker::new(ctx.db.clone(), registry, "worker-local", 25);
+    let relay = OutboxRelay::new(ctx.db.clone(), "worker-local");
+    let runtime_worker = RuntimeWorker::new(ctx.db.clone(), registry, "worker-local");
     loop {
+        let cfg: WorkerRuntimeConfig = ctx
+            .runtime_config
+            .snapshot()
+            .get("worker")
+            .unwrap_or_default();
+        let batch_size = cfg.batch_size as i64;
         tokio::select! {
             changed = shutdown_rx.changed() => {
                 if changed.is_ok() && *shutdown_rx.borrow() {
@@ -62,8 +69,8 @@ async fn run_worker_loop(
             () = Shutdown::wait_for_signal() => {
                 shutdown.signal();
             }
-            () = tokio::time::sleep(Duration::from_millis(500)) => {
-                match relay.relay_once(&dispatcher).await {
+            () = tokio::time::sleep(Duration::from_millis(cfg.poll_interval_ms)) => {
+                match relay.relay_once(&dispatcher, batch_size).await {
                     Ok(count) => {
                         tracing::debug!(claimed_outbox_events = count, "outbox relay tick");
                     }
@@ -71,7 +78,7 @@ async fn run_worker_loop(
                         tracing::warn!(error = ?error, "outbox relay tick failed");
                     }
                 }
-                match runtime_worker.claim_and_run_batch().await {
+                match runtime_worker.claim_and_run_batch(batch_size).await {
                     Ok(count) => {
                         tracing::debug!(claimed_function_runs = count, "runtime worker tick");
                     }

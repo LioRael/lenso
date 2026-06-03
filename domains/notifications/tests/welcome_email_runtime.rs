@@ -23,9 +23,9 @@ async fn user_registered_event_enqueues_welcome_email_function() {
     let mut registry = EventHandlerRegistry::new();
     registry.register_all(descriptor.event_handlers);
 
-    let relay = OutboxRelay::new(db.pool.clone(), "worker-a", 10);
+    let relay = OutboxRelay::new(db.pool.clone(), "worker-a");
     relay
-        .relay_once(&registry)
+        .relay_once(&registry, 10)
         .await
         .expect("outbox relay should dispatch user registered event");
 
