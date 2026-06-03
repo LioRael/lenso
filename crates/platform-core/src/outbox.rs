@@ -250,19 +250,17 @@ impl EventDispatcher for LoggingEventDispatcher {
 pub struct OutboxRelay {
     pool: DbPool,
     worker_id: String,
-    batch_size: i64,
 }
 
 impl OutboxRelay {
-    pub fn new(pool: DbPool, worker_id: impl Into<String>, batch_size: i64) -> Self {
+    pub fn new(pool: DbPool, worker_id: impl Into<String>) -> Self {
         Self {
             pool,
             worker_id: worker_id.into(),
-            batch_size,
         }
     }
 
-    pub async fn claim_batch(&self) -> AppResult<Vec<ClaimedOutboxEvent>> {
+    pub async fn claim_batch(&self, batch_size: i64) -> AppResult<Vec<ClaimedOutboxEvent>> {
         let span = tracing::info_span!(
             "outbox_claim_batch",
             worker_id = %self.worker_id,
@@ -305,7 +303,7 @@ impl OutboxRelay {
                 outbox.max_attempts
             "#,
             )
-            .bind(self.batch_size)
+            .bind(batch_size)
             .bind(&self.worker_id)
             .fetch_all(&self.pool)
             .await
@@ -332,7 +330,11 @@ impl OutboxRelay {
         .await
     }
 
-    pub async fn relay_once(&self, dispatcher: &dyn EventDispatcher) -> AppResult<usize> {
+    pub async fn relay_once(
+        &self,
+        dispatcher: &dyn EventDispatcher,
+        batch_size: i64,
+    ) -> AppResult<usize> {
         let span = tracing::info_span!(
             "outbox_relay_once",
             worker_id = %self.worker_id,
@@ -341,7 +343,7 @@ impl OutboxRelay {
         );
 
         async {
-            let events = self.claim_batch().await?;
+            let events = self.claim_batch(batch_size).await?;
             let count = events.len();
 
             for event in events {

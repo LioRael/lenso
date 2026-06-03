@@ -13,12 +13,12 @@ async fn claim_does_not_double_claim_events() {
     apply_platform_migrations(&db).await;
     insert_outbox_event(&db.pool, "evt_1", 3).await;
 
-    let first = OutboxRelay::new(db.pool.clone(), "worker-a", 10)
-        .claim_batch()
+    let first = OutboxRelay::new(db.pool.clone(), "worker-a")
+        .claim_batch(10)
         .await
         .expect("first claim should succeed");
-    let second = OutboxRelay::new(db.pool.clone(), "worker-b", 10)
-        .claim_batch()
+    let second = OutboxRelay::new(db.pool.clone(), "worker-b")
+        .claim_batch(10)
         .await
         .expect("second claim should succeed");
 
@@ -36,9 +36,9 @@ async fn relay_success_marks_event_published() {
     apply_platform_migrations(&db).await;
     insert_outbox_event(&db.pool, "evt_1", 3).await;
 
-    let relay = OutboxRelay::new(db.pool.clone(), "worker-a", 10);
+    let relay = OutboxRelay::new(db.pool.clone(), "worker-a");
     let count = relay
-        .relay_once(&AlwaysSucceeds)
+        .relay_once(&AlwaysSucceeds, 10)
         .await
         .expect("relay should succeed");
 
@@ -64,9 +64,9 @@ async fn retryable_failure_increments_attempts_and_marks_failed_for_retry() {
     apply_platform_migrations(&db).await;
     insert_outbox_event(&db.pool, "evt_1", 3).await;
 
-    let relay = OutboxRelay::new(db.pool.clone(), "worker-a", 10);
+    let relay = OutboxRelay::new(db.pool.clone(), "worker-a");
     relay
-        .relay_once(&AlwaysRetryableFailure)
+        .relay_once(&AlwaysRetryableFailure, 10)
         .await
         .expect("relay should handle dispatcher failure");
 
@@ -90,9 +90,9 @@ async fn exhausted_attempts_marks_event_dead() {
     apply_platform_migrations(&db).await;
     insert_outbox_event(&db.pool, "evt_1", 1).await;
 
-    let relay = OutboxRelay::new(db.pool.clone(), "worker-a", 10);
+    let relay = OutboxRelay::new(db.pool.clone(), "worker-a");
     relay
-        .relay_once(&AlwaysRetryableFailure)
+        .relay_once(&AlwaysRetryableFailure, 10)
         .await
         .expect("relay should handle dispatcher failure");
 
