@@ -144,6 +144,7 @@ describe("moduleStatusLabel", () => {
     source: "remote",
     status: "loaded",
     error: null,
+    http_routes: [],
     admin: { kind: "schema", entities: [] },
   };
 
@@ -168,6 +169,7 @@ describe("module status helpers", () => {
     source: "linked",
     status: "loaded",
     error: null,
+    http_routes: [],
     admin: { kind: "schema", entities: [entity] },
   };
   const errorModule: AdminModuleMetadata = {
@@ -175,6 +177,7 @@ describe("module status helpers", () => {
     source: "remote",
     status: "error",
     error: "remote manifest request failed",
+    http_routes: [],
     admin: null,
   };
 
@@ -217,6 +220,7 @@ describe("module status helpers", () => {
       source: "linked",
       status: "loaded",
       error: null,
+      http_routes: [],
       admin: {
         kind: "declarative_custom",
         pages: [{ name: "overview", label: "Overview" }],
@@ -229,6 +233,7 @@ describe("module status helpers", () => {
       source: "remote",
       status: "loaded",
       error: null,
+      http_routes: [],
       admin: {
         kind: "embedded_custom",
         runtime: "iframe",
@@ -282,6 +287,7 @@ describe("admin surface metadata helpers", () => {
       source: "remote",
       status: "loaded",
       error: null,
+      http_routes: [],
       admin: {
         kind: "embedded_custom",
         runtime: "iframe",

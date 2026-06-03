@@ -5,7 +5,9 @@
 
 use platform_core::{AppError, ErrorCode, RequestContext};
 use platform_http::{ApiErrorResponse, ApiOpenApiRouter, OpenApiRouter, routes};
-use platform_module::{AdminDataSource, AdminSchema, AdminSurface, ModuleLoadStatus, ModuleSource};
+use platform_module::{
+    AdminDataSource, AdminSchema, AdminSurface, ModuleHttpRoute, ModuleLoadStatus, ModuleSource,
+};
 use std::sync::{Arc, OnceLock, RwLock};
 
 mod dto;
@@ -46,6 +48,9 @@ pub struct AdminModuleMetadata {
     pub source: ModuleSource,
     /// Current load state.
     pub load_status: ModuleLoadStatus,
+    /// Declared module-owned HTTP routes. Metadata only; not mounted by
+    /// platform-admin-data.
+    pub http_routes: Vec<ModuleHttpRoute>,
     /// The declared admin surface. Missing for degraded failed remotes whose
     /// manifest could not be loaded.
     pub admin: Option<AdminSurface>,

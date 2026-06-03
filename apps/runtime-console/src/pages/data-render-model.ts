@@ -27,6 +27,14 @@ export type AdminSchema = { entities: EntitySchema[] };
 export type ModuleSource = "linked" | "remote";
 export type ModuleStatus = "loaded" | "error";
 
+export type ModuleHttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+
+export type ModuleHttpRoute = {
+  method: ModuleHttpMethod;
+  path: string;
+  capability?: string | null;
+};
+
 export type SchemaAdminSurface = AdminSchema & { kind: "schema" };
 
 export type DeclarativeAdminSurface = {
@@ -109,6 +117,7 @@ export type AdminModuleMetadata = {
   source: ModuleSource;
   status: ModuleStatus;
   error: string | null;
+  http_routes: ModuleHttpRoute[];
   admin: AdminSurface | null;
 };
 

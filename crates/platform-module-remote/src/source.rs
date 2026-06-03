@@ -3,8 +3,9 @@ use crate::binding::RemoteBinding;
 use crate::config::RemoteModuleConfig;
 use crate::protocol::RemoteManifestResponse;
 use crate::response::decode_json_response;
+use platform_core::error::ErrorDetail;
 use platform_core::{AppError, AppResult, ErrorCode};
-use platform_module::{AdminSurface, Module};
+use platform_module::{AdminSurface, Module, ModuleHttpRoute};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -39,6 +40,7 @@ impl RemoteModuleSource {
                 ),
             ));
         }
+        validate_remote_http_routes(&manifest.http_routes)?;
 
         let has_admin_data = match &manifest.admin {
             Some(AdminSurface::Schema(_)) => true,
@@ -73,4 +75,37 @@ impl RemoteModuleSource {
             .await?
             .ok_or_else(|| AppError::new(ErrorCode::NotFound, "remote module manifest not found"))
     }
+}
+
+fn validate_remote_http_routes(routes: &[ModuleHttpRoute]) -> AppResult<()> {
+    let mut details = Vec::new();
+    for (index, route) in routes.iter().enumerate() {
+        if !is_valid_remote_http_route_path(&route.path) {
+            details.push(ErrorDetail {
+                field: Some(format!("http_routes.{index}.path")),
+                reason: "remote HTTP route path must be module-local, start with '/', and not contain empty or '..' segments".to_owned(),
+            });
+        }
+    }
+
+    if details.is_empty() {
+        Ok(())
+    } else {
+        Err(AppError::validation(
+            "remote module manifest contains invalid HTTP route declarations",
+            details,
+        ))
+    }
+}
+
+fn is_valid_remote_http_route_path(path: &str) -> bool {
+    path.starts_with('/')
+        && !path.starts_with("//")
+        && !path.contains("://")
+        && !path.contains('?')
+        && !path.contains('#')
+        && path
+            .split('/')
+            .skip(1)
+            .all(|segment| !segment.is_empty() && segment != "." && segment != "..")
 }

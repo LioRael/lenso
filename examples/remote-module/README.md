@@ -41,6 +41,9 @@ REMOTE_MODULES=remote-crm=http://127.0.0.1:4100/lenso/module/v1 just api
 
 The API loads the module manifest at startup and serves its schema-admin data
 through the normal `/admin/data/*` backend.
+The manifest also declares module-local HTTP route metadata for `/contacts` and
+`/contacts/{id}`. The host preserves that metadata under `/admin/data/modules`;
+it does not mount or proxy those routes yet.
 
 To load both the schema-admin module and the embedded iframe module:
 

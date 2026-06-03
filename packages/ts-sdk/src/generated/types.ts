@@ -87,6 +87,7 @@ export type AdminMetricBinding = {
 export type AdminModuleMetadataDto = {
   admin?: unknown;
   error?: string | null;
+  http_routes: Array<ModuleHttpRoute>;
   module_name: string;
   source: ModuleSource;
   status: AdminModuleStatus;
@@ -481,6 +482,14 @@ export type MeResponse = {
 
 export type MeResponseEnvelope = {
   data: MeResponse;
+};
+
+export type ModuleHttpMethod = string;
+
+export type ModuleHttpRoute = {
+  capability?: string | null;
+  method: ModuleHttpMethod;
+  path: string;
 };
 
 export type ModuleSource = string;

@@ -140,11 +140,17 @@ fn admin_metadata_from_modules(modules: Vec<Module>) -> Vec<AdminModuleMetadata>
     modules
         .into_iter()
         .filter_map(|module| {
-            let ModuleManifest { name, admin, .. } = module.manifest;
+            let ModuleManifest {
+                name,
+                admin,
+                http_routes,
+                ..
+            } = module.manifest;
             admin.map(|surface| AdminModuleMetadata {
                 module_name: name,
                 source: module.source,
                 load_status: module.load_status,
+                http_routes,
                 admin: Some(surface),
             })
         })
@@ -169,6 +175,7 @@ fn failed_remote_admin_metadata(name: String, message: String) -> AdminModuleMet
         module_name: name,
         source: ModuleSource::Remote,
         load_status: ModuleLoadStatus::Error { message },
+        http_routes: Vec::new(),
         admin: None,
     }
 }

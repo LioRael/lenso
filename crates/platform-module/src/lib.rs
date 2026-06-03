@@ -13,6 +13,7 @@ mod admin;
 mod admin_data;
 mod admin_schema;
 mod binding;
+mod http;
 mod linked;
 mod manifest;
 mod module;
@@ -25,6 +26,7 @@ pub use admin::{
 pub use admin_data::{AdminDataSource, AdminListQuery, AdminPage};
 pub use admin_schema::{AdminSchema, EntitySchema, FieldSchema, FieldType};
 pub use binding::ModuleBinding;
+pub use http::{ModuleHttpMethod, ModuleHttpRoute};
 pub use linked::{LinkedBinding, LinkedBindingBuilder};
 pub use manifest::{ModuleManifest, ModuleManifestBuilder};
 pub use module::{Module, ModuleLoadStatus, ModuleSource};

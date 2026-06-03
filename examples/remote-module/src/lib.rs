@@ -8,7 +8,7 @@ use platform_module::{
     AdminDeclarativeComponent, AdminDeclarativePage, AdminDeclarativeSection,
     AdminDeclarativeSurface, AdminEmbeddedEntry, AdminEmbeddedRuntime, AdminEmbeddedSurface,
     AdminMetricBinding, AdminSandboxPolicy, AdminSchema, EntitySchema, FieldSchema, FieldType,
-    ModuleManifest,
+    ModuleHttpMethod, ModuleHttpRoute, ModuleManifest,
 };
 
 use serde::Deserialize;
@@ -111,6 +111,7 @@ async fn manifest() -> Json<ModuleManifest> {
     Json(
         ModuleManifest::builder("remote-crm")
             .admin(contacts_schema())
+            .http_routes(contact_http_routes())
             .capabilities(vec!["remote_crm.contacts.read".to_owned()])
             .build(),
     )
@@ -163,6 +164,7 @@ async fn declarative_manifest() -> Json<ModuleManifest> {
                 actions: vec![],
                 fallback_schema: Some(contacts_schema()),
             })
+            .http_routes(contact_http_routes())
             .capabilities(vec!["remote_crm.contacts.read".to_owned()])
             .build(),
     )
@@ -187,6 +189,7 @@ async fn embedded_manifest(headers: HeaderMap) -> Json<ModuleManifest> {
                 permissions: vec![],
                 fallback_schema: Some(contacts_schema()),
             })
+            .http_routes(contact_http_routes())
             .capabilities(vec!["remote_crm.contacts.read".to_owned()])
             .build(),
     )
@@ -388,6 +391,21 @@ fn contacts_schema() -> AdminSchema {
             ],
         }],
     }
+}
+
+fn contact_http_routes() -> Vec<ModuleHttpRoute> {
+    vec![
+        ModuleHttpRoute {
+            method: ModuleHttpMethod::Get,
+            path: "/contacts".to_owned(),
+            capability: Some("remote_crm.contacts.read".to_owned()),
+        },
+        ModuleHttpRoute {
+            method: ModuleHttpMethod::Get,
+            path: "/contacts/{id}".to_owned(),
+            capability: Some("remote_crm.contacts.read".to_owned()),
+        },
+    ]
 }
 
 fn remote_error(

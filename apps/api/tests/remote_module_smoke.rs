@@ -122,6 +122,12 @@ async fn remote_module_fixture_is_visible_through_admin_data_api() {
         .expect("remote-crm metadata is installed");
     assert_eq!(remote_module["source"], "remote");
     assert_eq!(remote_module["status"], "loaded");
+    assert_eq!(remote_module["http_routes"][0]["method"], "GET");
+    assert_eq!(remote_module["http_routes"][0]["path"], "/contacts");
+    assert_eq!(
+        remote_module["http_routes"][0]["capability"],
+        "remote_crm.contacts.read"
+    );
     assert_eq!(remote_module["admin"]["kind"], "schema");
 
     let list_response = app
@@ -259,6 +265,7 @@ async fn custom_remote_modules_are_visible_through_metadata_api() {
         .expect("remote-crm-declarative metadata is installed");
     assert_eq!(declarative_module["source"], "remote");
     assert_eq!(declarative_module["status"], "loaded");
+    assert_eq!(declarative_module["http_routes"][0]["path"], "/contacts");
     assert_eq!(declarative_module["admin"]["kind"], "declarative_custom");
     assert_eq!(declarative_module["admin"]["pages"][0]["name"], "overview");
     assert_eq!(

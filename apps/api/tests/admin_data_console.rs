@@ -65,6 +65,7 @@ fn app() -> axum::Router {
         module_name: "identity".to_owned(),
         source: ModuleSource::Linked,
         load_status: ModuleLoadStatus::Loaded,
+        http_routes: vec![],
         admin: Some(AdminSurface::Schema(stub_schema())),
     }]);
     let ctx = AppContext::new(
@@ -146,6 +147,7 @@ async fn modules_endpoint_lists_admin_surface_metadata() {
     assert_eq!(json["modules"][0]["source"], "linked");
     assert_eq!(json["modules"][0]["status"], "loaded");
     assert_eq!(json["modules"][0]["error"], Value::Null);
+    assert_eq!(json["modules"][0]["http_routes"], serde_json::json!([]));
     assert_eq!(json["modules"][0]["admin"]["kind"], "schema");
     assert_eq!(json["modules"][0]["admin"]["entities"][0]["name"], "users");
 }
@@ -270,6 +272,7 @@ async fn refresh_schema_replaces_installed_modules() {
                 module_name: "identity".to_owned(),
                 source: ModuleSource::Linked,
                 load_status: ModuleLoadStatus::Loaded,
+                http_routes: vec![],
                 admin: Some(AdminSurface::Schema(stub_schema())),
             },
             AdminModuleMetadata {
@@ -278,6 +281,7 @@ async fn refresh_schema_replaces_installed_modules() {
                 load_status: ModuleLoadStatus::Error {
                     message: "remote manifest request failed".to_owned(),
                 },
+                http_routes: vec![],
                 admin: None,
             },
         ])

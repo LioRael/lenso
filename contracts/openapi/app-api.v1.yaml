@@ -2197,6 +2197,7 @@ components:
       - module_name
       - source
       - status
+      - http_routes
       properties:
         admin:
           oneOf:
@@ -2206,6 +2207,10 @@ components:
           type:
           - string
           - 'null'
+        http_routes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModuleHttpRoute'
         module_name:
           type: string
         source:
@@ -3389,6 +3394,32 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/MeResponse'
+    ModuleHttpMethod:
+      type: string
+      enum:
+      - GET
+      - POST
+      - PUT
+      - PATCH
+      - DELETE
+    ModuleHttpRoute:
+      type: object
+      required:
+      - method
+      - path
+      properties:
+        capability:
+          type:
+          - string
+          - 'null'
+          description: |-
+            Optional capability required before a future host proxy exposes this
+            route. No enforcement exists until the proxy protocol is implemented.
+        method:
+          $ref: '#/components/schemas/ModuleHttpMethod'
+        path:
+          type: string
+          description: Module-local path, e.g. `/contacts` or `/contacts/{id}`.
     ModuleSource:
       type: string
       enum:

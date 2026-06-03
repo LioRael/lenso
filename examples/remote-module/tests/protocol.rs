@@ -24,6 +24,12 @@ async fn manifest_matches_remote_module_protocol() {
     assert_eq!(manifest["name"], "remote-crm");
     assert_eq!(manifest["admin"]["kind"], "schema");
     assert_eq!(manifest["admin"]["entities"][0]["name"], "contacts");
+    assert_eq!(manifest["http_routes"][0]["method"], "GET");
+    assert_eq!(manifest["http_routes"][0]["path"], "/contacts");
+    assert_eq!(
+        manifest["http_routes"][0]["capability"],
+        "remote_crm.contacts.read"
+    );
     assert_eq!(
         manifest["capabilities"],
         json!(["remote_crm.contacts.read"])
@@ -52,6 +58,7 @@ async fn embedded_manifest_matches_remote_module_protocol() {
 
     assert_eq!(manifest["name"], "remote-crm-embedded");
     assert_eq!(manifest["admin"]["kind"], "embedded_custom");
+    assert_eq!(manifest["http_routes"][0]["path"], "/contacts");
     assert_eq!(manifest["admin"]["runtime"], "iframe");
     assert_eq!(manifest["admin"]["entry"]["kind"], "url");
     assert_eq!(
@@ -89,6 +96,7 @@ async fn declarative_manifest_matches_remote_module_protocol() {
 
     assert_eq!(manifest["name"], "remote-crm-declarative");
     assert_eq!(manifest["admin"]["kind"], "declarative_custom");
+    assert_eq!(manifest["http_routes"][0]["path"], "/contacts");
     assert_eq!(manifest["admin"]["pages"][0]["name"], "overview");
     assert_eq!(
         manifest["admin"]["pages"][0]["sections"][0]["component"]["kind"],

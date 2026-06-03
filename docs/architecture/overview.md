@@ -41,7 +41,7 @@ The service kit is split into a few crates:
 
 A thin composition root, `app-bootstrap`, sits above the service kit. It is the single place that enumerates the concrete modules, and both the API and the worker derive their module set from it. It pairs manifests, bindings, runtime config descriptors, story-display metadata, and admin data sources from concrete modules. It depends on the domains, so it lives outside `platform-*` (those crates must not depend on business domains).
 
-Configured remote modules are loaded at startup through `platform-module-remote`. The first Remote slice supports manifest loading and schema-admin reads only; remote HTTP routes, runtime execution, event handling, custom admin UI, and marketplace trust are separate future specs.
+Configured remote modules are loaded at startup through `platform-module-remote`. The current Remote slices support manifest loading, declared HTTP route metadata, schema-admin reads, and admin surface metadata. Declared remote HTTP routes are not mounted or proxied yet; route proxying, runtime execution, event handling, and marketplace trust are separate future specs.
 
 The service kit should stay stable and small. It exists to remove boilerplate, not to own business behavior.
 

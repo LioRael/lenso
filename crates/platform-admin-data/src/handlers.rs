@@ -118,6 +118,7 @@ fn metadata_response_modules(modules: Vec<AdminModuleMetadata>) -> Vec<AdminModu
             source: m.source,
             status: admin_module_status(&m.load_status),
             error: load_error_message(&m.load_status),
+            http_routes: m.http_routes.clone(),
             admin: m.admin.clone(),
         })
         .collect()

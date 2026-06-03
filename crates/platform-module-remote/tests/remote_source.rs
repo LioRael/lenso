@@ -31,7 +31,28 @@ async fn manifest() -> Json<Value> {
                 "read_capability": "remote_crm.contacts.read"
             }]
         },
+        "http_routes": [{
+            "method": "GET",
+            "path": "/contacts",
+            "capability": "remote_crm.contacts.read"
+        }, {
+            "method": "GET",
+            "path": "/contacts/{id}",
+            "capability": "remote_crm.contacts.read"
+        }],
         "capabilities": ["remote_crm.contacts.read"]
+    }))
+}
+
+async fn manifest_with_invalid_http_route() -> Json<Value> {
+    Json(json!({
+        "name": "remote-crm",
+        "story_display": [],
+        "http_routes": [{
+            "method": "GET",
+            "path": "https://crm.example.test/contacts"
+        }],
+        "capabilities": []
     }))
 }
 
@@ -160,11 +181,36 @@ async fn loads_manifest_and_attaches_admin_data_source() {
         .expect("load remote module");
 
     assert_eq!(module.manifest.name, "remote-crm");
+    assert_eq!(module.manifest.http_routes.len(), 2);
+    assert_eq!(module.manifest.http_routes[0].path, "/contacts");
     assert!(matches!(
         module.manifest.admin,
         Some(AdminSurface::Schema(_))
     ));
     assert!(module.admin_data.is_some());
+}
+
+#[tokio::test]
+async fn rejects_remote_manifest_with_non_local_http_routes() {
+    let base_url =
+        spawn_server(Router::new().route("/manifest", get(manifest_with_invalid_http_route))).await;
+
+    let config = RemoteModuleConfig::new("remote-crm", base_url);
+    let error = RemoteModuleSource::new(config)
+        .expect("remote source")
+        .load()
+        .await
+        .expect_err("invalid remote route should fail manifest load");
+
+    assert_eq!(error.code, platform_core::ErrorCode::Validation);
+    assert_eq!(
+        error.public_message,
+        "remote module manifest contains invalid HTTP route declarations"
+    );
+    assert_eq!(
+        error.details[0].field.as_deref(),
+        Some("http_routes.0.path")
+    );
 }
 
 #[tokio::test]

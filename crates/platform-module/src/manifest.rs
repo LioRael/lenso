@@ -3,6 +3,7 @@
 
 use crate::admin::{AdminDeclarativeSurface, AdminEmbeddedSurface, AdminSurface};
 use crate::admin_schema::AdminSchema;
+use crate::http::ModuleHttpRoute;
 use platform_core::StoryDisplayDescriptor;
 use serde::{Deserialize, Serialize};
 
@@ -26,6 +27,11 @@ pub struct ModuleManifest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub admin: Option<AdminSurface>,
 
+    /// Declared module-owned HTTP routes. These are metadata only until a
+    /// loading-source-specific mount/proxy protocol exists.
+    #[serde(default)]
+    pub http_routes: Vec<ModuleHttpRoute>,
+
     /// RESERVED SEAM — capabilities the module declares (perms/tenancy).
     #[serde(default)]
     pub capabilities: Vec<String>,
@@ -40,6 +46,7 @@ impl ModuleManifest {
                 name: name.into(),
                 story_display: Vec::new(),
                 admin: None,
+                http_routes: Vec::new(),
                 capabilities: Vec::new(),
             },
         }
@@ -64,6 +71,13 @@ impl ModuleManifestBuilder {
     #[must_use]
     pub fn capabilities(mut self, capabilities: Vec<String>) -> Self {
         self.manifest.capabilities = capabilities;
+        self
+    }
+
+    /// Attach declared module-owned HTTP routes.
+    #[must_use]
+    pub fn http_routes(mut self, routes: Vec<ModuleHttpRoute>) -> Self {
+        self.manifest.http_routes = routes;
         self
     }
 
@@ -98,6 +112,7 @@ impl ModuleManifestBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{ModuleHttpMethod, ModuleHttpRoute};
     use platform_core::{StoryDisplayDescriptor, StoryDisplaySource};
 
     #[test]
@@ -192,5 +207,29 @@ mod tests {
             .build();
         let json = serde_json::to_string(&manifest).expect("serialize");
         assert!(json.contains(r#""kind":"embedded_custom""#), "got {json}");
+    }
+
+    #[test]
+    fn manifest_with_http_routes_round_trips_through_json() {
+        let manifest = ModuleManifest::builder("remote-crm")
+            .http_routes(vec![
+                ModuleHttpRoute {
+                    method: ModuleHttpMethod::Get,
+                    path: "/contacts".to_owned(),
+                    capability: Some("remote_crm.contacts.read".to_owned()),
+                },
+                ModuleHttpRoute {
+                    method: ModuleHttpMethod::Post,
+                    path: "/contacts".to_owned(),
+                    capability: Some("remote_crm.contacts.write".to_owned()),
+                },
+            ])
+            .build();
+
+        let json = serde_json::to_string(&manifest).expect("serialize");
+        assert!(json.contains(r#""http_routes""#), "got {json}");
+        assert!(json.contains(r#""method":"GET""#), "got {json}");
+        let back: ModuleManifest = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(manifest, back);
     }
 }
