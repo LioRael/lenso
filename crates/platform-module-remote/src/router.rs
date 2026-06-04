@@ -13,6 +13,7 @@ use serde::{Serialize, Serializer};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::sync::{Arc, OnceLock, RwLock};
+use std::time::Instant;
 use utoipa::ToSchema;
 
 static REMOTE_HTTP_PROXY_REGISTRY: OnceLock<RwLock<Arc<RemoteHttpProxyRegistry>>> = OnceLock::new();
@@ -149,6 +150,7 @@ async fn forward_get(
     headers: &HeaderMap,
     request_ctx: &platform_core::RequestContext,
 ) -> Result<Value, ApiErrorResponse> {
+    let started_at = Instant::now();
     let client = reqwest::Client::new();
     let mut request = client.get(format!(
         "{}/{}",
@@ -170,17 +172,19 @@ async fn forward_get(
         request = request.header("traceparent", format!("00-{trace_id}-{span_id}-01"));
     }
 
-    crate::response::decode_json_response_with_policy::<Value>(
-        request.send().await.map_err(|error| {
-            ApiErrorResponse::with_context(
-                AppError::new(
-                    ErrorCode::ExternalDependency,
-                    format!("remote HTTP proxy request failed: {error}"),
-                )
-                .retryable(),
-                request_ctx,
-            )
-        })?,
+    let response = request.send().await.map_err(|error| {
+        let app_error = AppError::new(
+            ErrorCode::ExternalDependency,
+            format!("remote HTTP proxy request failed: {error}"),
+        )
+        .retryable();
+        record_proxy_call(matched, request_ctx, started_at, None, Some(&app_error));
+        ApiErrorResponse::with_context(app_error, request_ctx)
+    })?;
+    let remote_status = response.status();
+
+    match crate::response::decode_json_response_with_policy::<Value>(
+        response,
         "HTTP proxy",
         false,
         ResponseBodyPolicy {
@@ -189,13 +193,33 @@ async fn forward_get(
         },
     )
     .await
-    .map_err(|error| ApiErrorResponse::with_context(error, request_ctx))?
-    .ok_or_else(|| {
-        ApiErrorResponse::with_context(
-            AppError::new(ErrorCode::NotFound, "remote HTTP route not found"),
-            request_ctx,
-        )
-    })
+    {
+        Ok(Some(data)) => {
+            record_proxy_call(matched, request_ctx, started_at, Some(remote_status), None);
+            Ok(data)
+        }
+        Ok(None) => {
+            let app_error = AppError::new(ErrorCode::NotFound, "remote HTTP route not found");
+            record_proxy_call(
+                matched,
+                request_ctx,
+                started_at,
+                Some(remote_status),
+                Some(&app_error),
+            );
+            Err(ApiErrorResponse::with_context(app_error, request_ctx))
+        }
+        Err(error) => {
+            record_proxy_call(
+                matched,
+                request_ctx,
+                started_at,
+                Some(remote_status),
+                Some(&error),
+            );
+            Err(ApiErrorResponse::with_context(error, request_ctx))
+        }
+    }
 }
 
 fn forward_header(
@@ -206,6 +230,57 @@ fn forward_header(
     match headers.get(name).and_then(|value| value.to_str().ok()) {
         Some(value) if !value.is_empty() => request.header(name, value),
         _ => request,
+    }
+}
+
+fn record_proxy_call(
+    matched: &RemoteHttpProxyMatch,
+    request_ctx: &platform_core::RequestContext,
+    started_at: Instant,
+    remote_status: Option<reqwest::StatusCode>,
+    error: Option<&AppError>,
+) {
+    let duration_ms = started_at.elapsed().as_millis().min(u64::MAX as u128) as u64;
+    match error {
+        Some(error) => {
+            tracing::warn!(
+                module_name = %matched.module_name,
+                declared_path = %matched.declared_path,
+                remote_path = %matched.remote_path,
+                http_method = %module_http_method_label(matched.method),
+                remote_status = remote_status.map_or(0, |status| status.as_u16()),
+                duration_ms,
+                error_code = error.code.as_str(),
+                retryable = error.retryable,
+                request_id = %request_ctx.request_id.0,
+                correlation_id = %request_ctx.correlation_id.0,
+                "remote HTTP proxy call failed"
+            );
+        }
+        None => {
+            tracing::info!(
+                module_name = %matched.module_name,
+                declared_path = %matched.declared_path,
+                remote_path = %matched.remote_path,
+                http_method = %module_http_method_label(matched.method),
+                remote_status = remote_status.map_or(0, |status| status.as_u16()),
+                duration_ms,
+                request_id = %request_ctx.request_id.0,
+                correlation_id = %request_ctx.correlation_id.0,
+                "remote HTTP proxy call completed"
+            );
+        }
+    }
+}
+
+fn module_http_method_label(method: ModuleHttpMethod) -> &'static str {
+    match method {
+        ModuleHttpMethod::Get => "GET",
+        ModuleHttpMethod::Post => "POST",
+        ModuleHttpMethod::Put => "PUT",
+        ModuleHttpMethod::Patch => "PATCH",
+        ModuleHttpMethod::Delete => "DELETE",
+        _ => "UNKNOWN",
     }
 }
 

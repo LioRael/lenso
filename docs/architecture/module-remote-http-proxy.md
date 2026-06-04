@@ -184,6 +184,11 @@ Each proxied call should produce host-side telemetry:
 Remote module response headers should not be used as trusted telemetry unless
 explicitly allowlisted.
 
+Current GET proxy calls emit structured host-side tracing events for completed
+and failed forwards with module name, declared path, remote path, method, remote
+status, duration, request/correlation ids, and error code/retryability when
+present. Persisted Runtime Console views for proxy calls remain deferred.
+
 ## OpenAPI Strategy
 
 Dynamic remote routes should not be added to the static committed OpenAPI
@@ -215,7 +220,8 @@ OpenAPI fragments after trust, validation, and versioning are specified.
 7. Mount the remaining declared methods: `POST`, `PUT`, `PATCH`, and `DELETE`.
 8. Normalize remote errors through the existing platform error model. Done for
    GET.
-9. Add telemetry and runtime-console visibility for proxied calls.
+9. Add telemetry and runtime-console visibility for proxied calls. Done for GET
+   tracing events; persisted Runtime Console visibility remains deferred.
 
 Do not implement per-module OpenAPI fragments, streaming, browser credentials,
 or bidirectional admin bridges in the first proxy slice.
