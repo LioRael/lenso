@@ -686,6 +686,11 @@ fn remote_proxy_related_node_id(
     spans: &[platform_core::TelemetrySpan],
     node_index: &RuntimeNodeIndex,
 ) -> Option<String> {
+    let remote_proxy_node_id = platform_core::remote_proxy_call_story_event_id(&call.id);
+    if node_index.contains(&remote_proxy_node_id) {
+        return Some(remote_proxy_node_id);
+    }
+
     if let Some(node_id) = call.span_id.as_deref().and_then(|span_id| {
         spans
             .iter()

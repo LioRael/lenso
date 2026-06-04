@@ -252,7 +252,11 @@ function rowTone(kind: ExecutionTimelineRow["kind"]) {
   if (kind === "http_request" || kind === "http") {
     return rowToneByKind.request;
   }
-  if (kind === "external_provider_call" || kind === "external") {
+  if (
+    kind === "external_provider_call" ||
+    kind === "remote_proxy_call" ||
+    kind === "external"
+  ) {
     return rowToneByKind.external;
   }
   return rowToneByKind.worker;
@@ -270,7 +274,11 @@ function rowIcon(
   if (kind === "http_request" || kind === "http") {
     return Route;
   }
-  if (kind === "external_provider_call" || kind === "external") {
+  if (
+    kind === "external_provider_call" ||
+    kind === "remote_proxy_call" ||
+    kind === "external"
+  ) {
     return Cloud;
   }
   return ServerCog;
@@ -285,6 +293,9 @@ function rowKindLabel(kind: ExecutionTimelineRow["kind"]) {
   }
   if (kind === "http_request" || kind === "http") {
     return "Request";
+  }
+  if (kind === "remote_proxy_call") {
+    return "Remote Call";
   }
   if (kind === "external_provider_call" || kind === "external") {
     return "External";

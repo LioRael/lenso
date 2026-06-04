@@ -519,6 +519,7 @@ function toExecutionNodeKind(type: string | undefined): ExecutionNode["kind"] {
       return "function";
     }
     case "external":
+    case "remote_proxy_call":
     case "external_provider_call": {
       return "external";
     }

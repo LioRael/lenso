@@ -19,7 +19,6 @@ import { RuntimeStoryVisualization } from "../components/runtime/runtime-story-v
 import { ServiceSummaryStrip } from "../components/runtime/service-summary-strip";
 import { StoryHeader } from "../components/runtime/story-header";
 import { StoryList } from "../components/runtime/story-list";
-import { StoryRemoteCallsPanel } from "../components/runtime/story-remote-calls-panel";
 import type { StoryViewMode } from "../components/runtime/story-tabs";
 import { EmptyState } from "../components/ui/empty-state";
 import {
@@ -408,8 +407,8 @@ export function RuntimeStoriesPage() {
           style={{
             gridTemplateRows: selectedStory
               ? showServicesPanel
-                ? "auto auto minmax(0,1fr) auto auto"
-                : "auto auto minmax(0,1fr)"
+                ? "auto minmax(0,1fr) auto auto"
+                : "auto minmax(0,1fr)"
               : "minmax(0,1fr)",
           }}
         >
@@ -420,7 +419,6 @@ export function RuntimeStoriesPage() {
                 onSelectNode={selectNode}
                 story={selectedStory}
               />
-              <StoryRemoteCallsPanel story={selectedStory} />
 
               <RuntimeStoryVisualization
                 mode={mode}

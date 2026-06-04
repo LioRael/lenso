@@ -644,6 +644,7 @@ pub(crate) fn timeline_item_type(item_type: &str, status: &str, attempts: i32) -
         "http" | "http_request" => "http_request",
         "event" | "outbox_event" => "outbox_event",
         "function" | "function_run" => "function_run",
+        "remote_proxy_call" => "remote_proxy_call",
         _ => "runtime",
     }
 }

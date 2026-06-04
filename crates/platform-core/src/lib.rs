@@ -43,7 +43,9 @@ pub use outbox::{
     ClaimedOutboxEvent, EventDispatcher, EventHandler, EventHandlerRegistry,
     LoggingEventDispatcher, OutboxEvent, OutboxPublisher, OutboxRelay, OutboxStatus,
 };
-pub use remote_proxy_calls::{RemoteHttpProxyCallRecord, insert_remote_http_proxy_call};
+pub use remote_proxy_calls::{
+    RemoteHttpProxyCallRecord, insert_remote_http_proxy_call, remote_proxy_call_story_event_id,
+};
 pub use runtime_config::{
     CONFIG_NOTIFY_CHANNEL, PostgresRuntimeConfigProvider, RuntimeConfigAuditEntry,
     RuntimeConfigCell, RuntimeConfigDescriptor, RuntimeConfigProvider, RuntimeConfigRegistry,

@@ -99,6 +99,83 @@ describe("runtime API model normalization", () => {
     ]);
   });
 
+  test("normalizes remote proxy calls as story graph and timeline nodes", () => {
+    const story = normalizeRuntimeStory({
+      ...normalStory,
+      nodes: [
+        ...(normalStory.nodes ?? []),
+        {
+          duration_ms: 42,
+          id: "remoteproxy_rproxy_1",
+          metadata: {
+            source_metadata: {
+              declared_path: "/contacts/{id}",
+              duration_ms: 42,
+              method: "GET",
+              module_name: "remote-crm",
+              remote_path: "/contacts/contact_1",
+              remote_status: 200,
+              request_id: "req_remote_proxy",
+            },
+          },
+          name: "remote-crm GET /contacts/{id}",
+          service: "remote-crm",
+          status: "completed",
+          timestamp: "2026-06-01T12:00:00.180Z",
+          type: "remote_proxy_call",
+        },
+      ],
+      edges: [
+        ...(normalStory.edges ?? []),
+        {
+          id: "fn_create_user:remoteproxy_rproxy_1:causation",
+          source: "fn_create_user",
+          target: "remoteproxy_rproxy_1",
+          type: "causation",
+        },
+      ],
+      timeline_items: [
+        ...(normalStory.timeline_items ?? []),
+        {
+          attempts: 1,
+          completed_at: "2026-06-01T12:00:00.222Z",
+          correlation_id: "corr_normal",
+          created_at: "2026-06-01T12:00:00.180Z",
+          id: "remoteproxy_rproxy_1",
+          max_attempts: 1,
+          name: "remote-crm GET /contacts/{id}",
+          started_at: "2026-06-01T12:00:00.180Z",
+          status: "completed",
+          type: "remote_proxy_call",
+        },
+      ],
+    });
+
+    const remoteNode = story.nodes.find(
+      (node) => node.id === "remoteproxy_rproxy_1"
+    );
+    expect(remoteNode).toMatchObject({
+      durationMs: 42,
+      kind: "external",
+      name: "remote-crm GET /contacts/{id}",
+      parentId: "fn_create_user",
+      service: "remote-crm",
+      status: "completed",
+    });
+    expect(remoteNode?.attributes.source_metadata).toMatchObject({
+      module_name: "remote-crm",
+      remote_status: 200,
+      request_id: "req_remote_proxy",
+    });
+    expect(
+      story.timelineItems?.find((item) => item.id === "remoteproxy_rproxy_1")
+    ).toMatchObject({
+      detailId: "remoteproxy_rproxy_1",
+      name: "remote-crm GET /contacts/{id}",
+      type: "remote_proxy_call",
+    });
+  });
+
   test("normalizes fan-out story edges without collapsing siblings", () => {
     const story = normalizeRuntimeStory({
       ...normalStory,

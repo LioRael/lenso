@@ -141,6 +141,65 @@ describe("runtime story data model", () => {
     expect(rows[1]?.durationMs).toBe(120);
   });
 
+  test("keeps remote proxy calls in backend timeline rows", () => {
+    const remoteStory: RuntimeStory = {
+      ...story,
+      nodes: [
+        ...story.nodes,
+        {
+          attributes: {
+            source_metadata: {
+              module_name: "remote-crm",
+              remote_status: 200,
+            },
+          },
+          context: {},
+          durationMs: 42,
+          events: [],
+          id: "remoteproxy_rproxy_1",
+          kind: "external",
+          logs: [],
+          name: "remote-crm GET /contacts/{id}",
+          parentId: "node_a",
+          service: "remote-crm",
+          startMs: 180,
+          status: "completed",
+        },
+      ],
+      timelineItems: [
+        ...(story.timelineItems ?? []),
+        {
+          attempts: 1,
+          completedAt: "2026-06-01T00:00:00.222Z",
+          correlationId: "corr_test",
+          createdAt: "2026-06-01T00:00:00.180Z",
+          detailId: "remoteproxy_rproxy_1",
+          id: "remoteproxy_rproxy_1",
+          maxAttempts: 1,
+          name: "remote-crm GET /contacts/{id}",
+          startedAt: "2026-06-01T00:00:00.180Z",
+          status: "completed",
+          type: "remote_proxy_call",
+        },
+      ],
+    };
+
+    const rows = buildExecutionTimelineRows(remoteStory);
+    const remoteRow = rows.find((row) => row.id === "remoteproxy_rproxy_1");
+
+    expect(remoteRow).toMatchObject({
+      durationMs: 42,
+      kind: "remote_proxy_call",
+      name: "remote-crm GET /contacts/{id}",
+      service: "remote-crm",
+      source: "backend",
+      status: "completed",
+    });
+    expect(findExecutionNodeForRow(remoteStory, remoteRow!)?.id).toBe(
+      "remoteproxy_rproxy_1"
+    );
+  });
+
   test("maps timeline rows back to execution nodes for shared selection", () => {
     const rows = buildExecutionTimelineRows(story);
 

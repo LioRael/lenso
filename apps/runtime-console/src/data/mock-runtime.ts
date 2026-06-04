@@ -56,6 +56,7 @@ export type TimelineItem = {
     | "command"
     | "outbox_event"
     | "function_run"
+    | "remote_proxy_call"
     | "failure"
     | "retry"
     | "flow_step"

@@ -161,6 +161,7 @@ fn error_detail_reason<'a>(body: &'a Value, field: &str) -> Option<&'a str> {
 
 #[derive(Debug)]
 struct RemoteProxyCallRow {
+    id: String,
     module_name: String,
     method: String,
     declared_path: String,
@@ -177,6 +178,7 @@ struct RemoteProxyCallRow {
 }
 
 type RemoteProxyCallTuple = (
+    String,
     String,
     String,
     String,
@@ -199,15 +201,16 @@ impl From<RemoteProxyCallTuple> for RemoteProxyCallRow {
             method: row.1,
             declared_path: row.2,
             remote_path: row.3,
-            remote_status: row.4,
-            success: row.5,
-            error_code: row.6,
-            request_id: row.7,
-            correlation_id: row.8,
-            trace_id: row.9,
-            span_id: row.10,
-            path_params: row.11,
-            error_details: row.12,
+            id: row.4,
+            remote_status: row.5,
+            success: row.6,
+            error_code: row.7,
+            request_id: row.8,
+            correlation_id: row.9,
+            trace_id: row.10,
+            span_id: row.11,
+            path_params: row.12,
+            error_details: row.13,
         }
     }
 }
@@ -455,6 +458,7 @@ async fn remote_http_proxy_persists_call_history_and_story_operations() {
             method,
             declared_path,
             remote_path,
+            id,
             remote_status,
             success,
             error_code,
@@ -563,6 +567,59 @@ async fn remote_http_proxy_persists_call_history_and_story_operations() {
         story_root["metadata"]["source_metadata"]["path"],
         "/modules/remote-crm/http/contacts/contact_1"
     );
+    let remote_success_node_id = format!("remoteproxy_{}", rows[0].id);
+    let remote_success_node = story_nodes
+        .iter()
+        .find(|node| node["id"] == remote_success_node_id)
+        .expect("successful remote proxy call should create a story node");
+    assert_eq!(remote_success_node["type"], "remote_proxy_call");
+    assert_eq!(remote_success_node["name"], "remote-crm GET /contacts/{id}");
+    assert_eq!(remote_success_node["status"], "completed");
+    assert_eq!(remote_success_node["service"], "remote-crm");
+    assert_eq!(
+        remote_success_node["metadata"]["source_metadata"]["request_id"],
+        "req_proxy_success"
+    );
+    assert_eq!(
+        remote_success_node["metadata"]["source_metadata"]["remote_status"],
+        200
+    );
+    assert_eq!(
+        remote_success_node["metadata"]["source_metadata"]["path_params"]["id"],
+        "contact_1"
+    );
+
+    let remote_failure_node_id = format!("remoteproxy_{}", rows[1].id);
+    let remote_failure_node = story_nodes
+        .iter()
+        .find(|node| node["id"] == remote_failure_node_id)
+        .expect("failed remote proxy call should create a story node");
+    assert_eq!(remote_failure_node["type"], "remote_proxy_call");
+    assert_eq!(
+        remote_failure_node["name"],
+        "remote-crm GET /proxy-fixtures/text"
+    );
+    assert_eq!(remote_failure_node["status"], "failed");
+    assert_eq!(
+        remote_failure_node["metadata"]["source_metadata"]["error_code"],
+        "external_dependency_failure"
+    );
+
+    let story_edges = story_detail["data"]["edges"]
+        .as_array()
+        .expect("story edges array");
+    assert!(story_edges.iter().any(|edge| {
+        edge["source"] == "httpreq_req_proxy_success" && edge["target"] == remote_success_node_id
+    }));
+    assert!(story_edges.iter().any(|edge| {
+        edge["source"] == "httpreq_req_proxy_failure" && edge["target"] == remote_failure_node_id
+    }));
+    let story_timeline = story_detail["data"]["timeline_items"]
+        .as_array()
+        .expect("story timeline array");
+    assert!(story_timeline.iter().any(|item| {
+        item["id"] == remote_success_node_id && item["type"] == "remote_proxy_call"
+    }));
 
     let story_ops_response = app
         .oneshot(
@@ -589,6 +646,7 @@ async fn remote_http_proxy_persists_call_history_and_story_operations() {
     assert_eq!(remote_success["story_id"], "corr_proxy_history");
     assert_eq!(remote_success["correlation_id"], "corr_proxy_history");
     assert_eq!(remote_success["category"], "external");
+    assert_eq!(remote_success["related_node_id"], remote_success_node_id);
     assert_eq!(remote_success["status"], "ok");
     assert_eq!(remote_success["attributes"]["module_name"], "remote-crm");
     assert_eq!(
@@ -607,6 +665,7 @@ async fn remote_http_proxy_persists_call_history_and_story_operations() {
     assert_eq!(remote_failure["story_id"], "corr_proxy_history");
     assert_eq!(remote_failure["correlation_id"], "corr_proxy_history");
     assert_eq!(remote_failure["category"], "external");
+    assert_eq!(remote_failure["related_node_id"], remote_failure_node_id);
     assert_eq!(remote_failure["status"], "error");
     assert_eq!(
         remote_failure["attributes"]["error_code"],
