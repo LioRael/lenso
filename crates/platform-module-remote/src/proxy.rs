@@ -221,7 +221,7 @@ mod tests {
     fn remote_module(name: &str, routes: Vec<ModuleHttpRoute>) -> Module {
         Module::remote(
             ModuleManifest::builder(name).http_routes(routes).build(),
-            std::sync::Arc::new(crate::RemoteBinding),
+            std::sync::Arc::new(crate::RemoteBinding::default()),
         )
     }
 

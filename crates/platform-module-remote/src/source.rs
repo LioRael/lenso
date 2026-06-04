@@ -41,13 +41,15 @@ impl RemoteModuleSource {
             ));
         }
         validate_remote_http_routes(&manifest.http_routes)?;
+        let binding =
+            RemoteBinding::from_runtime_surface(self.config.clone(), manifest.runtime.as_ref())?;
 
         let has_admin_data = match &manifest.admin {
             Some(AdminSurface::Schema(_)) => true,
             Some(AdminSurface::DeclarativeCustom(surface)) => surface.fallback_schema.is_some(),
             _ => false,
         };
-        let mut module = Module::remote(manifest, Arc::new(RemoteBinding));
+        let mut module = Module::remote(manifest, Arc::new(binding));
         if has_admin_data {
             module =
                 module.with_admin_data(Arc::new(RemoteAdminDataSource::new(self.config.clone())?));

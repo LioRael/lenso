@@ -97,7 +97,7 @@ impl RuntimeFunction for RemoteRuntimeFunction {
     }
 }
 
-fn validate_function_name(function_name: &str) -> AppResult<()> {
+pub(crate) fn validate_function_name(function_name: &str) -> AppResult<()> {
     let valid = !function_name.is_empty()
         && function_name.chars().all(|character| {
             character.is_ascii_alphanumeric()

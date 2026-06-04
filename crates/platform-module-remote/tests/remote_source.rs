@@ -199,6 +199,9 @@ async fn loads_manifest_and_attaches_admin_data_source() {
     assert_eq!(runtime.functions.len(), 1);
     assert_eq!(runtime.functions[0].name, "remote_crm.sync_contact.v1");
     assert_eq!(runtime.functions[0].queue, "remote-crm");
+    let mut registry = platform_runtime::FunctionRegistry::default();
+    module.binding.register_functions(&mut registry);
+    assert!(registry.get("remote_crm.sync_contact.v1").is_some());
     assert!(matches!(
         module.manifest.admin,
         Some(AdminSurface::Schema(_))
