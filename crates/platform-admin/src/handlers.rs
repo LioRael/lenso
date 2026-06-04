@@ -686,11 +686,31 @@ fn remote_proxy_related_node_id(
     spans: &[platform_core::TelemetrySpan],
     node_index: &RuntimeNodeIndex,
 ) -> Option<String> {
-    let span_id = call.span_id.as_deref()?;
+    if let Some(node_id) = call.span_id.as_deref().and_then(|span_id| {
+        spans
+            .iter()
+            .find(|span| span.id == span_id)
+            .and_then(|span| related_node_id(&span.attributes, node_index))
+    }) {
+        return Some(node_id);
+    }
+
+    let trace_id = call.trace_id.as_deref()?;
     spans
         .iter()
-        .find(|span| span.id == span_id)
-        .and_then(|span| related_node_id(&span.attributes, node_index))
+        .filter(|span| remote_proxy_span_trace_id(span) == Some(trace_id))
+        .find_map(|span| related_node_id(&span.attributes, node_index))
+}
+
+fn remote_proxy_span_trace_id(span: &platform_core::TelemetrySpan) -> Option<&str> {
+    [
+        "otel.trace_id",
+        "trace_id",
+        "lenso.trace_id",
+        "trace.trace_id",
+    ]
+    .into_iter()
+    .find_map(|key| span_attribute(&span.attributes, key))
 }
 
 fn remote_proxy_call_to_technical_operation(

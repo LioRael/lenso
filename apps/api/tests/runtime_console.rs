@@ -702,7 +702,7 @@ async fn service_actor_can_fetch_story_technical_operations() {
                 }),
             ),
             telemetry_span_at(
-                "span_remote_proxy",
+                "span_remote_proxy_trace_fallback",
                 "remote proxy remote-crm",
                 "2026-05-31T00:00:02Z",
                 "2026-05-31T00:00:03Z",
@@ -710,6 +710,7 @@ async fn service_actor_can_fetch_story_technical_operations() {
                     "lenso.correlation_id": "corr_story",
                     "lenso.story_id": "corr_story",
                     "lenso.function_run_id": "fnrun_story",
+                    "otel.trace_id": "trace_story_remote_proxy",
                     "http.request.method": "GET",
                 }),
             ),
@@ -727,6 +728,8 @@ async fn service_actor_can_fetch_story_technical_operations() {
             success: false,
             occurred_at: "2026-05-31T00:00:02Z",
             error_code: Some("external_dependency_failure"),
+            trace_id: "trace_story_remote_proxy",
+            span_id: "span_without_matching_telemetry",
         },
     )
     .await;
@@ -1657,38 +1660,38 @@ async fn service_actor_can_list_remote_proxy_calls() {
     let app = test_app(&db).await;
     insert_remote_proxy_call(
         &db.pool,
-        RemoteProxyCallFixture {
-            id: "rproxy_old_success",
-            correlation_id: "corr_remote_proxy",
-            module_name: "remote-crm",
-            success: true,
-            occurred_at: "2026-05-31T00:00:00Z",
-            error_code: None,
-        },
+        remote_proxy_fixture(
+            "rproxy_old_success",
+            "corr_remote_proxy",
+            "remote-crm",
+            true,
+            "2026-05-31T00:00:00Z",
+            None,
+        ),
     )
     .await;
     insert_remote_proxy_call(
         &db.pool,
-        RemoteProxyCallFixture {
-            id: "rproxy_recent_failure",
-            correlation_id: "corr_remote_proxy",
-            module_name: "remote-crm",
-            success: false,
-            occurred_at: "2026-05-31T00:01:00Z",
-            error_code: Some("external_dependency_failure"),
-        },
+        remote_proxy_fixture(
+            "rproxy_recent_failure",
+            "corr_remote_proxy",
+            "remote-crm",
+            false,
+            "2026-05-31T00:01:00Z",
+            Some("external_dependency_failure"),
+        ),
     )
     .await;
     insert_remote_proxy_call(
         &db.pool,
-        RemoteProxyCallFixture {
-            id: "rproxy_other_failure",
-            correlation_id: "corr_other_remote_proxy",
-            module_name: "billing-remote",
-            success: false,
-            occurred_at: "2026-05-31T00:02:00Z",
-            error_code: Some("not_found"),
-        },
+        remote_proxy_fixture(
+            "rproxy_other_failure",
+            "corr_other_remote_proxy",
+            "billing-remote",
+            false,
+            "2026-05-31T00:02:00Z",
+            Some("not_found"),
+        ),
     )
     .await;
 
@@ -2288,6 +2291,28 @@ struct RemoteProxyCallFixture {
     success: bool,
     occurred_at: &'static str,
     error_code: Option<&'static str>,
+    trace_id: &'static str,
+    span_id: &'static str,
+}
+
+fn remote_proxy_fixture(
+    id: &'static str,
+    correlation_id: &'static str,
+    module_name: &'static str,
+    success: bool,
+    occurred_at: &'static str,
+    error_code: Option<&'static str>,
+) -> RemoteProxyCallFixture {
+    RemoteProxyCallFixture {
+        id,
+        correlation_id,
+        module_name,
+        success,
+        occurred_at,
+        error_code,
+        trace_id: "trace_remote_proxy",
+        span_id: "span_remote_proxy",
+    }
 }
 
 async fn insert_remote_proxy_call(pool: &platform_core::DbPool, fixture: RemoteProxyCallFixture) {
@@ -2313,7 +2338,7 @@ async fn insert_remote_proxy_call(pool: &platform_core::DbPool, fixture: RemoteP
             error_details,
             occurred_at
         )
-        values ($1, $2, 'GET', '/contacts/{id}', '/contacts/contact_1', 'remote_crm.contacts.read', $3, 125, $4, $5, true, $6, $7, 'trace_remote_proxy', 'span_remote_proxy', $8, $9, $10)
+        values ($1, $2, 'GET', '/contacts/{id}', '/contacts/contact_1', 'remote_crm.contacts.read', $3, 125, $4, $5, true, $6, $7, $8, $9, $10, $11, $12)
         "#,
     )
     .bind(fixture.id)
@@ -2323,6 +2348,8 @@ async fn insert_remote_proxy_call(pool: &platform_core::DbPool, fixture: RemoteP
     .bind(fixture.error_code)
     .bind(format!("req_{}", fixture.id))
     .bind(fixture.correlation_id)
+    .bind(fixture.trace_id)
+    .bind(fixture.span_id)
     .bind(json!({ "id": "contact_1" }))
     .bind(if fixture.success {
         json!([])
