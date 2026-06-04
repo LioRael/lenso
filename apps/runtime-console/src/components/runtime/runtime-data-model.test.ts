@@ -149,6 +149,8 @@ describe("runtime story data model", () => {
         {
           attributes: {
             source_metadata: {
+              declared_path: "/contacts/{id}",
+              method: "GET",
               module_name: "remote-crm",
               remote_status: 200,
             },
@@ -190,6 +192,7 @@ describe("runtime story data model", () => {
     expect(remoteRow).toMatchObject({
       durationMs: 42,
       kind: "remote_proxy_call",
+      metaParts: ["ok", "remote-crm", "GET /contacts/{id}", "status 200"],
       name: "Fetch Contact",
       service: "remote-crm",
       source: "backend",
@@ -198,6 +201,108 @@ describe("runtime story data model", () => {
     expect(findExecutionNodeForRow(remoteStory, remoteRow!)?.id).toBe(
       "remoteproxy_rproxy_1"
     );
+  });
+
+  test("summarizes failed remote proxy calls distinctly in timeline rows", () => {
+    const remoteStory: RuntimeStory = {
+      ...story,
+      nodes: [
+        ...story.nodes,
+        {
+          attributes: {
+            source_metadata: {
+              declared_path: "/invoices",
+              method: "POST",
+              module_name: "remote-billing",
+              remote_status: 429,
+              retryable: true,
+            },
+          },
+          context: {},
+          durationMs: 1420,
+          events: [],
+          id: "remoteproxy_rproxy_failed",
+          kind: "external",
+          logs: ["remote module rate limited the request"],
+          name: "Create Invoice",
+          parentId: "node_a",
+          service: "remote-billing",
+          startMs: 180,
+          status: "failed",
+        },
+      ],
+      timelineItems: [
+        ...(story.timelineItems ?? []),
+        {
+          attempts: 1,
+          completedAt: "2026-06-01T00:00:01.600Z",
+          correlationId: "corr_test",
+          createdAt: "2026-06-01T00:00:00.180Z",
+          detailId: "remoteproxy_rproxy_failed",
+          id: "remoteproxy_rproxy_failed",
+          lastError: "remote module rate limited the request",
+          maxAttempts: 1,
+          name: "Create Invoice",
+          startedAt: "2026-06-01T00:00:00.180Z",
+          status: "failed",
+          type: "remote_proxy_call",
+        },
+      ],
+    };
+
+    const rows = buildExecutionTimelineRows(remoteStory);
+    const remoteRow = rows.find(
+      (row) => row.id === "remoteproxy_rproxy_failed"
+    );
+
+    expect(remoteRow).toMatchObject({
+      error: "remote module rate limited the request",
+      kind: "remote_proxy_call",
+      metaParts: [
+        "retryable",
+        "remote-billing",
+        "POST /invoices",
+        "status 429",
+      ],
+      status: "failed",
+    });
+  });
+
+  test("summarizes remote proxy nodes when backend timeline items are missing", () => {
+    const { timelineItems: _timelineItems, ...storyWithoutTimelineItems } =
+      story;
+    const rows = buildExecutionTimelineRows({
+      ...storyWithoutTimelineItems,
+      nodes: [
+        {
+          attributes: {
+            source_metadata: {
+              declared_path: "/contacts/{id}",
+              method: "GET",
+              module_name: "remote-crm",
+              remote_proxy_call_id: "rproxy_1",
+              remote_status: 502,
+            },
+          },
+          context: {},
+          durationMs: 90,
+          events: [],
+          id: "remoteproxy_rproxy_1",
+          kind: "external",
+          logs: ["external dependency failed"],
+          name: "Fetch Contact",
+          service: "remote-crm",
+          startMs: 0,
+          status: "failed",
+        },
+      ],
+    });
+
+    expect(rows[0]).toMatchObject({
+      kind: "external",
+      metaParts: ["failed", "remote-crm", "GET /contacts/{id}", "status 502"],
+      source: "node",
+    });
   });
 
   test("maps timeline rows back to execution nodes for shared selection", () => {

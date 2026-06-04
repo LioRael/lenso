@@ -170,8 +170,19 @@ function TimelineRow({
             <span className="mt-1 block truncate text-[13px] font-semibold text-(--foreground)">
               {row.name}
             </span>
-            <span className="mt-1 flex min-w-0 items-center gap-2 font-mono text-[10px] text-(--muted)">
-              <span className="truncate">{row.service}</span>
+            <span className="mt-1 flex min-w-0 items-center gap-1.5 overflow-hidden font-mono text-[10px] text-(--muted)">
+              {row.metaParts.map((part, partIndex) => (
+                <span
+                  className={cn(
+                    "min-w-0 truncate",
+                    partIndex > 0 && "before:mr-1.5 before:content-['/']",
+                    partIndex > 2 && "max-lg:hidden"
+                  )}
+                  key={`${row.id}:${partIndex}:${part}`}
+                >
+                  {part}
+                </span>
+              ))}
               <span className="ml-auto shrink-0">
                 {formatRuntimeDuration(row.durationMs)}
               </span>
