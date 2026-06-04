@@ -1603,6 +1603,101 @@ async fn service_actor_can_list_outbox() {
 }
 
 #[tokio::test]
+async fn service_actor_can_list_remote_proxy_calls() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+    insert_remote_proxy_call(
+        &db.pool,
+        RemoteProxyCallFixture {
+            id: "rproxy_old_success",
+            module_name: "remote-crm",
+            success: true,
+            occurred_at: "2026-05-31T00:00:00Z",
+            error_code: None,
+        },
+    )
+    .await;
+    insert_remote_proxy_call(
+        &db.pool,
+        RemoteProxyCallFixture {
+            id: "rproxy_recent_failure",
+            module_name: "remote-crm",
+            success: false,
+            occurred_at: "2026-05-31T00:01:00Z",
+            error_code: Some("external_dependency_failure"),
+        },
+    )
+    .await;
+    insert_remote_proxy_call(
+        &db.pool,
+        RemoteProxyCallFixture {
+            id: "rproxy_other_failure",
+            module_name: "billing-remote",
+            success: false,
+            occurred_at: "2026-05-31T00:02:00Z",
+            error_code: Some("not_found"),
+        },
+    )
+    .await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            admin_get(
+                "/admin/runtime/remote-proxy-calls?module_name=remote-crm&success=false&limit=10",
+            )
+            .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["data"].as_array().unwrap().len(), 1);
+    assert_eq!(body["data"][0]["id"], "rproxy_recent_failure");
+    assert_eq!(body["data"][0]["module_name"], "remote-crm");
+    assert_eq!(body["data"][0]["method"], "GET");
+    assert_eq!(body["data"][0]["declared_path"], "/contacts/{id}");
+    assert_eq!(body["data"][0]["remote_path"], "/contacts/contact_1");
+    assert_eq!(body["data"][0]["capability"], "remote_crm.contacts.read");
+    assert_eq!(body["data"][0]["remote_status"], 502);
+    assert_eq!(body["data"][0]["duration_ms"], 125);
+    assert_eq!(body["data"][0]["success"], false);
+    assert_eq!(body["data"][0]["error_code"], "external_dependency_failure");
+    assert_eq!(body["data"][0]["retryable"], true);
+    assert_eq!(body["data"][0]["request_id"], "req_rproxy_recent_failure");
+    assert_eq!(body["data"][0]["correlation_id"], "corr_remote_proxy");
+    assert_eq!(body["data"][0]["trace_id"], "trace_remote_proxy");
+    assert_eq!(body["data"][0]["span_id"], "span_remote_proxy");
+    assert_eq!(body["data"][0]["path_params"]["id"], "contact_1");
+    assert_eq!(
+        body["data"][0]["error_details"][0]["field"],
+        "remote_module"
+    );
+    assert_eq!(body["page"]["limit"], 10);
+    assert!(body["page"]["next_created_before"].is_string());
+
+    let paged_response = app
+        .oneshot(
+            admin_get(
+                "/admin/runtime/remote-proxy-calls?limit=10&created_before=2026-05-31T00:01:30Z",
+            )
+            .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("paged request should complete");
+    assert_eq!(paged_response.status(), StatusCode::OK);
+    let paged = json_body(paged_response).await;
+    assert_eq!(paged["data"].as_array().unwrap().len(), 2);
+    assert_eq!(paged["data"][0]["id"], "rproxy_recent_failure");
+    assert_eq!(paged["data"][1]["id"], "rproxy_old_success");
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
 async fn service_actor_can_fetch_outbox_detail() {
     let Some(db) = TestDatabase::create().await else {
         return;
@@ -1949,6 +2044,10 @@ async fn admin_runtime_openapi_contract_is_present() {
         "admin_runtime_get_function_run"
     );
     assert_eq!(
+        value["paths"]["/admin/runtime/remote-proxy-calls"]["get"]["operationId"],
+        "admin_runtime_list_remote_proxy_calls"
+    );
+    assert_eq!(
         value["paths"]["/admin/runtime/timeline/{correlation_id}"]["get"]["operationId"],
         "admin_runtime_get_timeline"
     );
@@ -1988,6 +2087,8 @@ async fn admin_runtime_openapi_contract_is_present() {
     assert!(value["components"]["schemas"]["AdminOutboxEventDetail"].is_object());
     assert!(value["components"]["schemas"]["AdminRuntimeFunctionRunItem"].is_object());
     assert!(value["components"]["schemas"]["AdminFunctionRunDetail"].is_object());
+    assert!(value["components"]["schemas"]["AdminRemoteProxyCallItem"].is_object());
+    assert!(value["components"]["schemas"]["AdminRemoteProxyCallListResponse"].is_object());
     assert!(value["components"]["schemas"]["AdminRuntimeSummaryResponse"].is_object());
     assert!(value["components"]["schemas"]["AdminRuntimeSummaryItem"].is_object());
     assert!(value["components"]["schemas"]["AdminRuntimeTimelineItem"].is_object());
@@ -2107,6 +2208,59 @@ fn telemetry_span_at(
         started_at: started_at.parse().expect("timestamp should parse"),
         status: Some("ok".to_owned()),
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct RemoteProxyCallFixture {
+    id: &'static str,
+    module_name: &'static str,
+    success: bool,
+    occurred_at: &'static str,
+    error_code: Option<&'static str>,
+}
+
+async fn insert_remote_proxy_call(pool: &platform_core::DbPool, fixture: RemoteProxyCallFixture) {
+    sqlx::query(
+        r#"
+        insert into platform.remote_http_proxy_calls (
+            id,
+            module_name,
+            method,
+            declared_path,
+            remote_path,
+            capability,
+            remote_status,
+            duration_ms,
+            success,
+            error_code,
+            retryable,
+            request_id,
+            correlation_id,
+            trace_id,
+            span_id,
+            path_params,
+            error_details,
+            occurred_at
+        )
+        values ($1, $2, 'GET', '/contacts/{id}', '/contacts/contact_1', 'remote_crm.contacts.read', $3, 125, $4, $5, true, $6, 'corr_remote_proxy', 'trace_remote_proxy', 'span_remote_proxy', $7, $8, $9)
+        "#,
+    )
+    .bind(fixture.id)
+    .bind(fixture.module_name)
+    .bind(if fixture.success { 200 } else { 502 })
+    .bind(fixture.success)
+    .bind(fixture.error_code)
+    .bind(format!("req_{}", fixture.id))
+    .bind(json!({ "id": "contact_1" }))
+    .bind(if fixture.success {
+        json!([])
+    } else {
+        json!([{ "field": "remote_module", "reason": fixture.module_name }])
+    })
+    .bind(parse_time(fixture.occurred_at))
+    .execute(pool)
+    .await
+    .expect("remote proxy call fixture should insert");
 }
 
 async fn insert_outbox_event(pool: &platform_core::DbPool) {

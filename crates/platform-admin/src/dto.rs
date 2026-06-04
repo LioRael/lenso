@@ -20,6 +20,14 @@ pub struct FunctionRunQuery {
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
+pub struct RemoteProxyCallQuery {
+    pub module_name: Option<String>,
+    pub success: Option<bool>,
+    pub limit: Option<i64>,
+    pub created_before: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Deserialize, IntoParams)]
 pub struct TimelineQuery {
     pub limit: Option<i64>,
     pub created_before: Option<DateTime<Utc>>,
@@ -75,6 +83,13 @@ pub struct AdminOutboxEventDetailResponse {
 #[schema(as = AdminFunctionRunListResponse)]
 pub struct AdminFunctionRunListResponse {
     pub data: Vec<AdminFunctionRun>,
+    pub page: PageInfo,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(as = AdminRemoteProxyCallListResponse)]
+pub struct AdminRemoteProxyCallListResponse {
+    pub data: Vec<AdminRemoteProxyCall>,
     pub page: PageInfo,
 }
 
@@ -300,6 +315,29 @@ pub struct AdminFunctionRunDetail {
     pub created_at: DateTime<Utc>,
     pub input_json: Value,
     pub actor: Value,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(as = AdminRemoteProxyCallItem)]
+pub struct AdminRemoteProxyCall {
+    pub id: String,
+    pub module_name: String,
+    pub method: String,
+    pub declared_path: String,
+    pub remote_path: String,
+    pub capability: Option<String>,
+    pub remote_status: Option<i32>,
+    pub duration_ms: i64,
+    pub success: bool,
+    pub error_code: Option<String>,
+    pub retryable: bool,
+    pub request_id: String,
+    pub correlation_id: String,
+    pub trace_id: Option<String>,
+    pub span_id: Option<String>,
+    pub path_params: Value,
+    pub error_details: Value,
+    pub occurred_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone)]

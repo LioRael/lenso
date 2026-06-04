@@ -142,6 +142,32 @@ export type AdminOutboxListResponse = {
 
 export type AdminPermission = unknown;
 
+export type AdminRemoteProxyCallItem = {
+  capability?: string | null;
+  correlation_id: string;
+  declared_path: string;
+  duration_ms: number;
+  error_code?: string | null;
+  error_details: unknown;
+  id: string;
+  method: string;
+  module_name: string;
+  occurred_at: string;
+  path_params: unknown;
+  remote_path: string;
+  remote_status?: number | null;
+  request_id: string;
+  retryable: boolean;
+  span_id?: string | null;
+  success: boolean;
+  trace_id?: string | null;
+};
+
+export type AdminRemoteProxyCallListResponse = {
+  data: Array<AdminRemoteProxyCallItem>;
+  page: PageInfo;
+};
+
 export type AdminRuntimeExecutionLog = {
   attributes: unknown;
   body: string;

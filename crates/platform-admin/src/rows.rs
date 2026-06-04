@@ -3,6 +3,7 @@ use super::*;
 use chrono::{DateTime, Utc};
 use platform_core::ExecutionLogRow;
 use serde_json::Value;
+use sqlx::Row;
 
 pub(crate) type OutboxAdminRow = (
     String,
@@ -314,6 +315,31 @@ impl From<FunctionRunAdminRow> for AdminFunctionRun {
             created_at,
         }
     }
+}
+
+pub(crate) fn remote_proxy_call_from_row(
+    row: &sqlx::postgres::PgRow,
+) -> Result<AdminRemoteProxyCall, sqlx::Error> {
+    Ok(AdminRemoteProxyCall {
+        id: row.try_get("id")?,
+        module_name: row.try_get("module_name")?,
+        method: row.try_get("method")?,
+        declared_path: row.try_get("declared_path")?,
+        remote_path: row.try_get("remote_path")?,
+        capability: row.try_get("capability")?,
+        remote_status: row.try_get("remote_status")?,
+        duration_ms: row.try_get("duration_ms")?,
+        success: row.try_get("success")?,
+        error_code: row.try_get("error_code")?,
+        retryable: row.try_get("retryable")?,
+        request_id: row.try_get("request_id")?,
+        correlation_id: row.try_get("correlation_id")?,
+        trace_id: row.try_get("trace_id")?,
+        span_id: row.try_get("span_id")?,
+        path_params: row.try_get("path_params")?,
+        error_details: row.try_get("error_details")?,
+        occurred_at: row.try_get("occurred_at")?,
+    })
 }
 
 impl From<OutboxDetailRow> for AdminOutboxEventDetail {

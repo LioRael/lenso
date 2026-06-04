@@ -981,6 +981,103 @@ pub(crate) async fn get_timeline(
 
 #[utoipa::path(
     get,
+    path = "/admin/runtime/remote-proxy-calls",
+    operation_id = "admin_runtime_list_remote_proxy_calls",
+    tag = "admin-runtime",
+    params(
+        ("authorization" = String, Header, description = "Development service bearer token, for example `Bearer dev-service:admin`"),
+        ("x-request-id" = Option<String>, Header, description = "Optional caller-provided request identifier"),
+        ("x-correlation-id" = Option<String>, Header, description = "Optional caller-provided correlation identifier"),
+        RemoteProxyCallQuery
+    ),
+    responses(
+        (
+            status = 200,
+            description = "Recent remote module HTTP proxy calls",
+            body = AdminRemoteProxyCallListResponse,
+            content_type = "application/json",
+            headers(
+                ("x-request-id" = String, description = "Request identifier for this HTTP request"),
+                ("x-correlation-id" = String, description = "Correlation identifier shared across related work")
+            )
+        ),
+        (
+            status = 401,
+            description = "Authentication is required",
+            body = ErrorResponse,
+            content_type = "application/json"
+        ),
+        (
+            status = 403,
+            description = "Service or system authentication is required",
+            body = ErrorResponse,
+            content_type = "application/json"
+        ),
+        (
+            status = 500,
+            description = "Internal server error",
+            body = ErrorResponse,
+            content_type = "application/json"
+        )
+    )
+)]
+pub(crate) async fn list_remote_proxy_calls(
+    _admin: AdminActor,
+    State(ctx): State<AppContext>,
+    HttpRequestContext(request_ctx): HttpRequestContext,
+    Query(query): Query<RemoteProxyCallQuery>,
+) -> Result<Json<AdminRemoteProxyCallListResponse>, ApiErrorResponse> {
+    let limit = normalized_limit(query.limit);
+    let rows = sqlx::query(
+        r#"
+        select
+            id,
+            module_name,
+            method,
+            declared_path,
+            remote_path,
+            capability,
+            remote_status,
+            duration_ms,
+            success,
+            error_code,
+            retryable,
+            request_id,
+            correlation_id,
+            trace_id,
+            span_id,
+            path_params,
+            error_details,
+            occurred_at
+        from platform.remote_http_proxy_calls
+        where ($1::text is null or module_name = $1)
+          and ($2::boolean is null or success = $2)
+          and ($3::timestamptz is null or occurred_at < $3)
+        order by occurred_at desc, id desc
+        limit $4
+        "#,
+    )
+    .bind(query.module_name)
+    .bind(query.success)
+    .bind(query.created_before)
+    .bind(limit)
+    .fetch_all(&ctx.db)
+    .await
+    .map_err(|source| query_error(source, &request_ctx))?;
+
+    let data = rows
+        .into_iter()
+        .map(|row| remote_proxy_call_from_row(&row))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|source| query_error(source, &request_ctx))?;
+    Ok(Json(AdminRemoteProxyCallListResponse {
+        page: page_info(limit, data.last().map(|call| call.occurred_at)),
+        data,
+    }))
+}
+
+#[utoipa::path(
+    get,
     path = "/admin/runtime/outbox",
     operation_id = "admin_runtime_list_outbox",
     tag = "admin-runtime",

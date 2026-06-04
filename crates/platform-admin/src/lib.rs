@@ -93,6 +93,7 @@ pub fn router() -> ApiOpenApiRouter {
         .routes(routes!(get_execution_technical_operations))
         .routes(routes!(get_execution_payload))
         .routes(routes!(get_execution_logs))
+        .routes(routes!(list_remote_proxy_calls))
         .routes(routes!(list_outbox))
         .routes(routes!(get_outbox_event))
         .routes(routes!(retry_outbox_event))

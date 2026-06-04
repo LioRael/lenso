@@ -1270,6 +1270,98 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /admin/runtime/remote-proxy-calls:
+    get:
+      tags:
+      - admin-runtime
+      operationId: admin_runtime_list_remote_proxy_calls
+      parameters:
+      - name: authorization
+        in: header
+        description: Development service bearer token, for example `Bearer dev-service:admin`
+        required: true
+        schema:
+          type: string
+      - name: x-request-id
+        in: header
+        description: Optional caller-provided request identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: x-correlation-id
+        in: header
+        description: Optional caller-provided correlation identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: module_name
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: success
+        in: query
+        required: false
+        schema:
+          type:
+          - boolean
+          - 'null'
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type:
+          - integer
+          - 'null'
+          format: int64
+      - name: created_before
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+          format: date-time
+      responses:
+        '200':
+          description: Recent remote module HTTP proxy calls
+          headers:
+            x-correlation-id:
+              schema:
+                type: string
+              description: Correlation identifier shared across related work
+            x-request-id:
+              schema:
+                type: string
+              description: Request identifier for this HTTP request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminRemoteProxyCallListResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/runtime/stories:
     get:
       tags:
@@ -2684,6 +2776,82 @@ components:
             type: string
             enum:
             - invoke_action
+    AdminRemoteProxyCallItem:
+      type: object
+      required:
+      - id
+      - module_name
+      - method
+      - declared_path
+      - remote_path
+      - duration_ms
+      - success
+      - retryable
+      - request_id
+      - correlation_id
+      - path_params
+      - error_details
+      - occurred_at
+      properties:
+        capability:
+          type:
+          - string
+          - 'null'
+        correlation_id:
+          type: string
+        declared_path:
+          type: string
+        duration_ms:
+          type: integer
+          format: int64
+        error_code:
+          type:
+          - string
+          - 'null'
+        error_details: {}
+        id:
+          type: string
+        method:
+          type: string
+        module_name:
+          type: string
+        occurred_at:
+          type: string
+          format: date-time
+        path_params: {}
+        remote_path:
+          type: string
+        remote_status:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        request_id:
+          type: string
+        retryable:
+          type: boolean
+        span_id:
+          type:
+          - string
+          - 'null'
+        success:
+          type: boolean
+        trace_id:
+          type:
+          - string
+          - 'null'
+    AdminRemoteProxyCallListResponse:
+      type: object
+      required:
+      - data
+      - page
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminRemoteProxyCallItem'
+        page:
+          $ref: '#/components/schemas/PageInfo'
     AdminRuntimeExecutionLog:
       type: object
       required:
