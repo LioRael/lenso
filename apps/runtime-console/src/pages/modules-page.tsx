@@ -25,6 +25,7 @@ import {
   moduleErrorMessage,
   moduleHttpRouteRows,
   moduleIsLoaded,
+  moduleRouteCheckGroups,
   moduleRegistrySummary,
   moduleRouteChecks,
   moduleRouteHealth,
@@ -163,7 +164,7 @@ function ModulesContent() {
                   </span>
                   <span className="block truncate text-[10px] text-(--muted)">
                     {module.source} / {adminSurfaceLabel(module.admin)} /{" "}
-                    {moduleStatusLabel(module)} / route{" "}
+                    {moduleStatusLabel(module)} / lint{" "}
                     {moduleRouteHealth(module)}
                   </span>
                 </button>
@@ -199,8 +200,8 @@ function ModuleRegistryControls({
         <Counter label="total" value={summary.total} />
         <Counter label="linked" value={summary.linked} />
         <Counter label="remote" value={summary.remote} />
-        <Counter label="route warn" value={summary.route_warning} />
-        <Counter label="route err" value={summary.route_error} tone="error" />
+        <Counter label="lint warn" value={summary.route_warning} />
+        <Counter label="lint err" value={summary.route_error} tone="error" />
       </div>
       <input
         aria-label="Search module registry"
@@ -236,7 +237,7 @@ function ModuleRegistryControls({
           value={filters.status}
         />
         <SegmentedFilter
-          label="route"
+          label="lint"
           onChange={(route) =>
             onChange({
               ...filters,
@@ -486,44 +487,69 @@ function ModuleRouteChecks({
 }: {
   checks: ReturnType<typeof moduleRouteChecks>;
 }) {
+  const groups = moduleRouteCheckGroups(checks);
   return (
     <section className="min-w-0 border border-(--border-subtle) bg-(--surface)">
       <header className="flex items-center gap-2 border-b border-(--border-subtle) px-3 py-2 font-semibold">
         <TriangleAlert className="text-(--warning)" size={14} />
-        <span>Route Checks</span>
+        <span>Manifest Lints</span>
         <span className="ml-auto border border-(--border-subtle) px-1.5 py-0.5 text-[10px] text-(--secondary)">
           {checks.length}
         </span>
       </header>
-      <div className="divide-y divide-(--border-subtle)">
-        {checks.map((check) => (
-          <div
-            className="grid grid-cols-[76px_minmax(0,160px)_minmax(0,1fr)] gap-x-2 gap-y-1 px-3 py-1.5 text-[11px]"
-            key={check.key}
-          >
-            <span
-              className={cn(
-                "truncate",
-                check.severity === "ok" && "text-(--success)",
-                check.severity === "warning" && "text-(--warning)",
-                check.severity === "error" && "text-(--error)"
-              )}
-            >
-              {check.severity}
-            </span>
-            <span className="truncate text-(--foreground)">
-              {check.subject}
-            </span>
-            <span className="min-w-0 truncate text-(--muted)">
-              {check.message}
-            </span>
-            <span className="col-start-3 min-w-0 truncate text-[10px] text-(--secondary)">
-              {check.suggestion}
-            </span>
-          </div>
-        ))}
-      </div>
+      {groups.length === 0 ? (
+        <p className="px-3 py-2 text-(--muted)">No manifest lints returned.</p>
+      ) : (
+        <div className="divide-y divide-(--border-subtle)">
+          {groups.map((group) => (
+            <div className="grid gap-1 px-3 py-2" key={group.severity}>
+              <div className="flex items-center gap-2 text-[10px] uppercase text-(--muted)">
+                <span
+                  className={cn(
+                    "h-1.5 w-1.5 shrink-0",
+                    group.severity === "ok" && "bg-(--success)",
+                    group.severity === "warning" && "bg-(--warning)",
+                    group.severity === "error" && "bg-(--error)"
+                  )}
+                />
+                <span>{group.severity}</span>
+                <span className="ml-auto text-(--secondary)">
+                  {group.checks.length}
+                </span>
+              </div>
+              <div className="grid gap-1">
+                {group.checks.map((check) => (
+                  <ManifestLintRow check={check} key={check.key} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </section>
+  );
+}
+
+function ManifestLintRow({
+  check,
+}: {
+  check: ReturnType<typeof moduleRouteChecks>[number];
+}) {
+  return (
+    <div className="grid min-w-0 grid-cols-[minmax(0,170px)_minmax(0,1fr)] gap-x-2 gap-y-0.5 text-[11px]">
+      <span className="truncate text-(--foreground)" title={check.subject}>
+        {check.subject}
+      </span>
+      <span className="min-w-0 truncate text-(--muted)" title={check.message}>
+        {check.message}
+      </span>
+      <span
+        className="col-start-2 min-w-0 truncate text-[10px] text-(--secondary)"
+        title={check.suggestion}
+      >
+        {check.suggestion}
+      </span>
+    </div>
   );
 }
 

@@ -227,6 +227,11 @@ export type ModuleRouteCheck = {
   suggestion: string;
 };
 
+export type ModuleRouteCheckGroup = {
+  severity: ModuleRouteCheckSeverity;
+  checks: ModuleRouteCheck[];
+};
+
 export type EmbeddedIframePolicy =
   | {
       status: "renderable";
@@ -536,6 +541,17 @@ export function moduleRouteHealth(
     return "warning";
   }
   return "ok";
+}
+
+export function moduleRouteCheckGroups(
+  checks: ModuleRouteCheck[]
+): ModuleRouteCheckGroup[] {
+  return (["error", "warning", "ok"] satisfies ModuleRouteCheckSeverity[])
+    .map((severity) => ({
+      severity,
+      checks: checks.filter((check) => check.severity === severity),
+    }))
+    .filter((group) => group.checks.length > 0);
 }
 
 export function storyDisplayRows(

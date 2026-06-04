@@ -18,6 +18,7 @@ import {
   moduleIsLoaded,
   moduleNavItems,
   moduleRegistrySummary,
+  moduleRouteCheckGroups,
   moduleRouteChecks,
   moduleRouteHealth,
   moduleStatusLabel,
@@ -66,7 +67,10 @@ function moduleMetadata(
     "capabilities" | "route_lints" | "story_display"
   > &
     Partial<
-      Pick<AdminModuleMetadata, "capabilities" | "route_lints" | "story_display">
+      Pick<
+        AdminModuleMetadata,
+        "capabilities" | "route_lints" | "story_display"
+      >
     >
 ): AdminModuleMetadata {
   return {
@@ -532,7 +536,8 @@ describe("module status helpers", () => {
             "Add story_title when this route can be a direct business entry.",
         },
         {
-          message: "Missing capability declaration for host proxy authorization.",
+          message:
+            "Missing capability declaration for host proxy authorization.",
           severity: "warning",
           subject: "GET /contacts/{id}",
           suggestion:
@@ -613,6 +618,41 @@ describe("module status helpers", () => {
         status: "all",
       }).map((module) => module.module_name)
     ).toEqual(["identity"]);
+  });
+
+  test("groups manifest lints by severity", () => {
+    expect(
+      moduleRouteCheckGroups([
+        {
+          key: "ok",
+          message: "ok",
+          severity: "ok",
+          subject: "routes",
+          suggestion: "none",
+        },
+        {
+          key: "warning",
+          message: "warning",
+          severity: "warning",
+          subject: "GET /contacts/{id}",
+          suggestion: "fix warning",
+        },
+        {
+          key: "error",
+          message: "error",
+          severity: "error",
+          subject: "GET /contacts/{id}",
+          suggestion: "fix error",
+        },
+      ]).map((group) => ({
+        severity: group.severity,
+        keys: group.checks.map((check) => check.key),
+      }))
+    ).toEqual([
+      { severity: "error", keys: ["error"] },
+      { severity: "warning", keys: ["warning"] },
+      { severity: "ok", keys: ["ok"] },
+    ]);
   });
 
   test("reports module load and empty route states", () => {
