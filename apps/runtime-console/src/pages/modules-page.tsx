@@ -212,59 +212,102 @@ function ModuleRegistryControls({
         type="search"
         value={filters.query}
       />
-      <div className="grid grid-cols-3 gap-1">
-        <select
-          aria-label="Filter modules by source"
-          className="h-7 border border-(--border-subtle) bg-(--background) px-2 text-[11px] text-(--foreground) outline-none focus:border-(--accent)"
-          onChange={(event) =>
+      <div className="grid gap-1">
+        <SegmentedFilter
+          label="source"
+          onChange={(source) =>
             onChange({
               ...filters,
-              source: event.currentTarget
-                .value as ModuleRegistryFilters["source"],
+              source: source as ModuleRegistryFilters["source"],
             })
           }
+          options={["all", "linked", "remote"]}
           value={filters.source}
-        >
-          <option value="all">all sources</option>
-          <option value="linked">linked</option>
-          <option value="remote">remote</option>
-        </select>
-        <select
-          aria-label="Filter modules by status"
-          className="h-7 border border-(--border-subtle) bg-(--background) px-2 text-[11px] text-(--foreground) outline-none focus:border-(--accent)"
-          onChange={(event) =>
+        />
+        <SegmentedFilter
+          label="status"
+          onChange={(status) =>
             onChange({
               ...filters,
-              status: event.currentTarget
-                .value as ModuleRegistryFilters["status"],
+              status: status as ModuleRegistryFilters["status"],
             })
           }
+          options={["all", "loaded", "error"]}
           value={filters.status}
-        >
-          <option value="all">all status</option>
-          <option value="loaded">loaded</option>
-          <option value="error">error</option>
-        </select>
-        <select
-          aria-label="Filter modules by route checks"
-          className="h-7 border border-(--border-subtle) bg-(--background) px-2 text-[11px] text-(--foreground) outline-none focus:border-(--accent)"
-          onChange={(event) =>
+        />
+        <SegmentedFilter
+          label="route"
+          onChange={(route) =>
             onChange({
               ...filters,
-              route: event.currentTarget
-                .value as ModuleRegistryFilters["route"],
+              route: route as ModuleRegistryFilters["route"],
             })
           }
-          value={filters.route}
-        >
-          <option value="all">all routes</option>
-          <option value="ok">route ok</option>
-          <option value="warning">route warn</option>
-          <option value="error">route error</option>
-        </select>
+          options={["all", "ok", "warn", "err"]}
+          value={routeFilterLabel(filters.route)}
+        />
       </div>
     </div>
   );
+}
+
+function SegmentedFilter({
+  label,
+  onChange,
+  options,
+  value,
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  options: string[];
+  value: string;
+}) {
+  return (
+    <div className="grid grid-cols-[44px_minmax(0,1fr)] items-center gap-1">
+      <span className="truncate text-[9px] uppercase text-(--muted)">
+        {label}
+      </span>
+      <div className="grid auto-cols-fr grid-flow-col gap-1">
+        {options.map((option) => (
+          <button
+            aria-pressed={value === option}
+            className={cn(
+              "h-6 min-w-0 truncate border border-(--border-subtle) px-1 text-[10px] text-(--muted)",
+              value === option
+                ? "bg-(--accent-soft) text-(--foreground)"
+                : "bg-(--background) hover:bg-(--sidebar)"
+            )}
+            key={option}
+            onClick={() => onChange(expandRouteFilter(option))}
+            title={`${label}: ${option}`}
+            type="button"
+          >
+            {option}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function routeFilterLabel(value: ModuleRegistryFilters["route"]): string {
+  if (value === "warning") {
+    return "warn";
+  }
+  if (value === "error") {
+    return "err";
+  }
+  return value;
+}
+
+function expandRouteFilter(value: string): string {
+  if (value === "warn") {
+    return "warning";
+  }
+  if (value === "err") {
+    return "error";
+  }
+  return value;
 }
 
 function Counter({
