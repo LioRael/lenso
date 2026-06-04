@@ -94,8 +94,18 @@ fn service_post(
     content_type: &str,
     body: impl Into<Body>,
 ) -> Request<Body> {
+    service_json_method("POST", path, token, content_type, body)
+}
+
+fn service_json_method(
+    method: &str,
+    path: &str,
+    token: &str,
+    content_type: &str,
+    body: impl Into<Body>,
+) -> Request<Body> {
     Request::builder()
-        .method("POST")
+        .method(method)
         .uri(path)
         .header("authorization", format!("Bearer {token}"))
         .header("content-type", content_type)
@@ -307,7 +317,7 @@ async fn remote_http_proxy_forwards_declared_post_routes() {
     assert_eq!(matched["capability"], "remote_crm.contacts.read");
     assert_eq!(matched["data"]["id"], "contact_new");
     assert_eq!(matched["data"]["email"], "new@example.com");
-    assert_eq!(matched["data"]["created"], true);
+    assert_eq!(matched["data"]["operation"], "created");
     assert_eq!(matched["data"]["input"]["email"], "new@example.com");
 
     let missing_route = app
@@ -360,6 +370,90 @@ async fn remote_http_proxy_forwards_declared_post_routes() {
             .expect("error message")
             .contains("request body exceeded")
     );
+}
+
+#[tokio::test]
+async fn remote_http_proxy_forwards_declared_put_and_patch_routes() {
+    let _guard = REMOTE_SMOKE_TEST_LOCK.lock().await;
+    let base_url = spawn_remote_module(remote_module_example::router()).await;
+    let app = app_with_remote_module(base_url).await;
+
+    let put_response = app
+        .clone()
+        .oneshot(service_json_method(
+            "PUT",
+            "/modules/remote-crm/http/contacts/contact_1",
+            "dev-service:admin:remote_crm.contacts.read",
+            "application/json",
+            r#"{"email":"updated@example.com"}"#,
+        ))
+        .await
+        .expect("put request completes");
+    assert_eq!(put_response.status(), StatusCode::OK);
+    let put = json_body(put_response).await;
+    assert_eq!(put["status"], "forwarded");
+    assert_eq!(put["method"], "PUT");
+    assert_eq!(put["declared_path"], "/contacts/{id}");
+    assert_eq!(put["remote_path"], "/contacts/contact_1");
+    assert_eq!(put["path_params"]["id"], "contact_1");
+    assert_eq!(put["data"]["id"], "contact_1");
+    assert_eq!(put["data"]["email"], "updated@example.com");
+    assert_eq!(put["data"]["operation"], "replaced");
+
+    let patch_response = app
+        .clone()
+        .oneshot(service_json_method(
+            "PATCH",
+            "/modules/remote-crm/http/contacts/contact_2",
+            "dev-service:admin:remote_crm.contacts.read",
+            "application/json",
+            r#"{"email":"patched@example.com"}"#,
+        ))
+        .await
+        .expect("patch request completes");
+    assert_eq!(patch_response.status(), StatusCode::OK);
+    let patch = json_body(patch_response).await;
+    assert_eq!(patch["status"], "forwarded");
+    assert_eq!(patch["method"], "PATCH");
+    assert_eq!(patch["declared_path"], "/contacts/{id}");
+    assert_eq!(patch["remote_path"], "/contacts/contact_2");
+    assert_eq!(patch["path_params"]["id"], "contact_2");
+    assert_eq!(patch["data"]["id"], "contact_2");
+    assert_eq!(patch["data"]["email"], "patched@example.com");
+    assert_eq!(patch["data"]["operation"], "patched");
+
+    let non_json = app
+        .clone()
+        .oneshot(service_json_method(
+            "PUT",
+            "/modules/remote-crm/http/contacts/contact_1",
+            "dev-service:admin:remote_crm.contacts.read",
+            "text/plain",
+            "not json",
+        ))
+        .await
+        .expect("non-json put request completes");
+    assert_eq!(non_json.status(), StatusCode::BAD_REQUEST);
+    let non_json_body = json_body(non_json).await;
+    assert_eq!(non_json_body["error"]["code"], "validation_failed");
+    assert!(
+        non_json_body["error"]["message"]
+            .as_str()
+            .expect("error message")
+            .contains("request content-type was not JSON")
+    );
+
+    let delete_response = app
+        .oneshot(service_json_method(
+            "DELETE",
+            "/modules/remote-crm/http/contacts/contact_1",
+            "dev-service:admin:remote_crm.contacts.read",
+            "application/json",
+            r#"{}"#,
+        ))
+        .await
+        .expect("delete request completes");
+    assert_eq!(delete_response.status(), StatusCode::METHOD_NOT_ALLOWED);
 }
 
 #[tokio::test]

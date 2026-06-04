@@ -5,7 +5,7 @@ use axum::response::Html;
 use axum::response::{IntoResponse, Response};
 use axum::{
     Json, Router,
-    routing::{get, post},
+    routing::{get, patch, post, put},
 };
 use platform_module::{
     AdminDeclarativeComponent, AdminDeclarativePage, AdminDeclarativeSection,
@@ -111,6 +111,8 @@ pub fn router() -> Router {
         .route("/lenso/module/v1/contacts", get(get_http_contacts))
         .route("/lenso/module/v1/contacts", post(post_http_contact))
         .route("/lenso/module/v1/contacts/{id}", get(get_http_contact))
+        .route("/lenso/module/v1/contacts/{id}", put(put_http_contact))
+        .route("/lenso/module/v1/contacts/{id}", patch(patch_http_contact))
         .route(
             "/lenso/module/v1/proxy-fixtures/text",
             get(get_proxy_fixture_text),
@@ -319,6 +321,31 @@ async fn get_http_contact(headers: HeaderMap, Path(id): Path<String>) -> Respons
 }
 
 async fn post_http_contact(headers: HeaderMap, Json(input): Json<Value>) -> Response {
+    write_http_contact(headers, "created", None, input).await
+}
+
+async fn put_http_contact(
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<Value>,
+) -> Response {
+    write_http_contact(headers, "replaced", Some(id), input).await
+}
+
+async fn patch_http_contact(
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<Value>,
+) -> Response {
+    write_http_contact(headers, "patched", Some(id), input).await
+}
+
+async fn write_http_contact(
+    headers: HeaderMap,
+    operation: &'static str,
+    id: Option<String>,
+    input: Value,
+) -> Response {
     if headers.contains_key("authorization") {
         return remote_error(
             StatusCode::BAD_REQUEST,
@@ -328,12 +355,13 @@ async fn post_http_contact(headers: HeaderMap, Json(input): Json<Value>) -> Resp
         );
     }
     Json(json!({
-        "id": input
+        "id": id.unwrap_or_else(|| input
             .get("id")
             .and_then(Value::as_str)
-            .unwrap_or("contact_created"),
+            .unwrap_or("contact_created")
+            .to_owned()),
         "email": input.get("email").and_then(Value::as_str).unwrap_or(""),
-        "created": true,
+        "operation": operation,
         "input": input,
     }))
     .into_response()
@@ -478,6 +506,16 @@ fn contact_http_routes() -> Vec<ModuleHttpRoute> {
         },
         ModuleHttpRoute {
             method: ModuleHttpMethod::Get,
+            path: "/contacts/{id}".to_owned(),
+            capability: Some("remote_crm.contacts.read".to_owned()),
+        },
+        ModuleHttpRoute {
+            method: ModuleHttpMethod::Put,
+            path: "/contacts/{id}".to_owned(),
+            capability: Some("remote_crm.contacts.read".to_owned()),
+        },
+        ModuleHttpRoute {
+            method: ModuleHttpMethod::Patch,
             path: "/contacts/{id}".to_owned(),
             capability: Some("remote_crm.contacts.read".to_owned()),
         },

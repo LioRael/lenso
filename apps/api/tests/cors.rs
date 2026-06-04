@@ -50,6 +50,38 @@ async fn preflight_allows_put_for_config_write() {
     );
 }
 
+#[tokio::test]
+async fn preflight_allows_patch_for_remote_proxy() {
+    let response = app()
+        .oneshot(
+            Request::builder()
+                .method("OPTIONS")
+                .uri("/modules/remote-crm/http/contacts/contact_1")
+                .header("origin", "http://localhost:5173")
+                .header("access-control-request-method", "PATCH")
+                .header(
+                    "access-control-request-headers",
+                    "authorization,content-type",
+                )
+                .body(Body::empty())
+                .expect("request builds"),
+        )
+        .await
+        .expect("request completes");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let allow_methods = response
+        .headers()
+        .get("access-control-allow-methods")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_ascii_uppercase();
+    assert!(
+        allow_methods.contains("PATCH"),
+        "preflight must advertise PATCH, got: {allow_methods:?}"
+    );
+}
+
 /// The config console's DELETE (reset-to-default) must likewise be preflight-allowed.
 #[tokio::test]
 async fn preflight_allows_delete_for_config_reset() {

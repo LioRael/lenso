@@ -28,6 +28,8 @@ async fn manifest_matches_remote_module_protocol() {
     assert!(has_route(routes, "GET", "/contacts"));
     assert!(has_route(routes, "POST", "/contacts"));
     assert!(has_route(routes, "GET", "/contacts/{id}"));
+    assert!(has_route(routes, "PUT", "/contacts/{id}"));
+    assert!(has_route(routes, "PATCH", "/contacts/{id}"));
     assert!(has_route(routes, "GET", "/proxy-fixtures/text"));
     assert!(has_route(routes, "GET", "/proxy-fixtures/oversized"));
     assert!(
@@ -217,8 +219,53 @@ async fn http_contacts_post_route_accepts_json() {
     let contact: Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(contact["id"], "contact_new");
     assert_eq!(contact["email"], "new@example.com");
-    assert_eq!(contact["created"], true);
+    assert_eq!(contact["operation"], "created");
     assert_eq!(contact["input"]["email"], "new@example.com");
+}
+
+#[tokio::test]
+async fn http_contacts_put_and_patch_routes_accept_json() {
+    let put = remote_module_example::router()
+        .oneshot(
+            http::Request::builder()
+                .method(http::Method::PUT)
+                .uri("/lenso/module/v1/contacts/contact_1")
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(axum::body::Body::from(r#"{"email":"updated@example.com"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(put.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(put.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let contact: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(contact["id"], "contact_1");
+    assert_eq!(contact["email"], "updated@example.com");
+    assert_eq!(contact["operation"], "replaced");
+
+    let patch = remote_module_example::router()
+        .oneshot(
+            http::Request::builder()
+                .method(http::Method::PATCH)
+                .uri("/lenso/module/v1/contacts/contact_2")
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(axum::body::Body::from(r#"{"email":"patched@example.com"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(patch.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(patch.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let contact: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(contact["id"], "contact_2");
+    assert_eq!(contact["email"], "patched@example.com");
+    assert_eq!(contact["operation"], "patched");
 }
 
 #[tokio::test]

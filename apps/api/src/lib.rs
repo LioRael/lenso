@@ -52,6 +52,7 @@ fn cors_layer(ctx: &AppContext) -> CorsLayer {
             Method::GET,
             Method::POST,
             Method::PUT,
+            Method::PATCH,
             Method::DELETE,
             Method::OPTIONS,
         ])
