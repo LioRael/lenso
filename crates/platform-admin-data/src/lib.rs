@@ -61,8 +61,15 @@ pub struct AdminModuleMetadata {
     pub admin: Option<AdminSurface>,
 }
 
+#[derive(Clone, Debug, Default)]
+struct AdminModuleMetadataSnapshot {
+    modules: Vec<AdminModuleMetadata>,
+    refreshed_at: Option<String>,
+    refresh_error: Option<String>,
+}
+
 static ADMIN_REGISTRY: OnceLock<RwLock<Vec<AdminModule>>> = OnceLock::new();
-static ADMIN_METADATA_REGISTRY: OnceLock<RwLock<Vec<AdminModuleMetadata>>> = OnceLock::new();
+static ADMIN_METADATA_REGISTRY: OnceLock<RwLock<AdminModuleMetadataSnapshot>> = OnceLock::new();
 static ADMIN_REFRESHER: OnceLock<RwLock<Option<Arc<dyn AdminModuleRefresher>>>> = OnceLock::new();
 static ADMIN_METADATA_REFRESHER: OnceLock<RwLock<Option<Arc<dyn AdminModuleMetadataRefresher>>>> =
     OnceLock::new();
@@ -116,10 +123,15 @@ pub fn install_admin_modules(modules: Vec<AdminModule>) {
 
 /// Install the metadata registry for every module.
 pub fn install_admin_module_metadata(modules: Vec<AdminModuleMetadata>) {
-    let registry = ADMIN_METADATA_REGISTRY.get_or_init(|| RwLock::new(Vec::new()));
+    let registry =
+        ADMIN_METADATA_REGISTRY.get_or_init(|| RwLock::new(AdminModuleMetadataSnapshot::default()));
     *registry
         .write()
-        .expect("admin metadata registry lock poisoned") = modules;
+        .expect("admin metadata registry lock poisoned") = AdminModuleMetadataSnapshot {
+        modules,
+        refreshed_at: Some(current_timestamp()),
+        refresh_error: None,
+    };
 }
 
 /// Install the callback used by the explicit admin refresh endpoint.
@@ -169,7 +181,7 @@ fn admin_modules() -> Vec<AdminModule> {
         .unwrap_or_default()
 }
 
-fn admin_module_metadata() -> Vec<AdminModuleMetadata> {
+fn admin_module_metadata_snapshot() -> AdminModuleMetadataSnapshot {
     ADMIN_METADATA_REGISTRY
         .get()
         .map(|registry| {
@@ -179,6 +191,21 @@ fn admin_module_metadata() -> Vec<AdminModuleMetadata> {
                 .clone()
         })
         .unwrap_or_default()
+}
+
+fn record_admin_module_metadata_refresh_error(error: String) -> AdminModuleMetadataSnapshot {
+    let registry =
+        ADMIN_METADATA_REGISTRY.get_or_init(|| RwLock::new(AdminModuleMetadataSnapshot::default()));
+    let mut snapshot = registry
+        .write()
+        .expect("admin metadata registry lock poisoned");
+    snapshot.refresh_error = Some(error);
+    snapshot.clone()
+}
+
+fn current_timestamp() -> String {
+    use platform_core::Clock;
+    platform_core::SystemClock.now().to_rfc3339()
 }
 
 fn admin_refresher() -> Option<Arc<dyn AdminModuleRefresher>> {

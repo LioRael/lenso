@@ -27,7 +27,11 @@ import {
   storyDisplayRows,
 } from "./data-render-model";
 
-type ModulesResponse = { modules: AdminModuleMetadata[] };
+type ModulesResponse = {
+  modules: AdminModuleMetadata[];
+  refreshed_at: string | null;
+  refresh_error: string | null;
+};
 
 const modulesQueryKey = ["modules", "registry"] as const;
 const emptyModules: AdminModuleMetadata[] = [];
@@ -69,7 +73,8 @@ function ModulesContent() {
           <Boxes className="text-(--accent)" size={14} />
           <h1 className="font-mono text-[13px] font-semibold">Modules</h1>
           <span className="ml-auto font-mono text-[10px] text-(--muted)">
-            {modules.length} modules / {runtimeConsoleDataSource()}
+            {modules.length} modules / {runtimeConsoleDataSource()} /{" "}
+            {registrySnapshotLabel(modulesQuery.data?.refreshed_at ?? null)}
           </span>
           <Button
             aria-label="Refresh module registry"
@@ -87,7 +92,11 @@ function ModulesContent() {
             Refresh
           </Button>
         </div>
-        {refreshMutation.isError ? (
+        {modulesQuery.data?.refresh_error ? (
+          <p className="mt-1 font-mono text-[10px] text-(--error)">
+            Registry refresh error: {modulesQuery.data.refresh_error}
+          </p>
+        ) : refreshMutation.isError ? (
           <p className="mt-1 font-mono text-[10px] text-(--error)">
             Refresh failed: {String(refreshMutation.error.message)}
           </p>
@@ -150,6 +159,17 @@ function ModulesContent() {
       </div>
     </section>
   );
+}
+
+function registrySnapshotLabel(refreshedAt: string | null): string {
+  if (!refreshedAt) {
+    return "not refreshed";
+  }
+  const timestamp = new Date(refreshedAt);
+  if (Number.isNaN(timestamp.getTime())) {
+    return refreshedAt;
+  }
+  return timestamp.toLocaleString();
 }
 
 function ModuleRegistryDetail({ module }: { module: AdminModuleMetadata }) {

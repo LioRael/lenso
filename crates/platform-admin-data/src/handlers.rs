@@ -4,9 +4,9 @@ use crate::dto::{
     AdminSchemaRefreshResponse,
 };
 use crate::{
-    AdminModule, AdminModuleMetadata, admin_metadata_refresher, admin_module_metadata,
+    AdminModule, AdminModuleMetadata, admin_metadata_refresher, admin_module_metadata_snapshot,
     admin_modules, admin_refresher, find_loaded_module, install_admin_module_metadata,
-    install_admin_modules,
+    install_admin_modules, record_admin_module_metadata_refresh_error,
 };
 use axum::Json;
 use axum::extract::{Path, Query};
@@ -40,9 +40,7 @@ pub(crate) async fn list_modules(
     _admin: AdminActor,
     HttpRequestContext(_request_ctx): HttpRequestContext,
 ) -> Result<Json<AdminModuleMetadataListResponse>, ApiErrorResponse> {
-    Ok(Json(AdminModuleMetadataListResponse {
-        modules: metadata_response_modules(admin_module_metadata()),
-    }))
+    Ok(Json(metadata_response(admin_module_metadata_snapshot())))
 }
 
 #[utoipa::path(
@@ -52,10 +50,10 @@ pub(crate) async fn list_modules(
     tag = "admin-data",
     params(("authorization" = String, Header, description = "Development service bearer token")),
     responses(
-        (status = 200, description = "Refreshed module registry metadata", body = AdminModuleMetadataListResponse, content_type = "application/json"),
+        (status = 200, description = "Module registry metadata snapshot after refresh", body = AdminModuleMetadataListResponse, content_type = "application/json"),
         (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
         (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 502, description = "Module registry refresh is unavailable or failed", body = ErrorResponse, content_type = "application/json"),
+        (status = 502, description = "Module registry refresh is unavailable", body = ErrorResponse, content_type = "application/json"),
     )
 )]
 pub(crate) async fn refresh_modules(
@@ -72,14 +70,15 @@ pub(crate) async fn refresh_modules(
             &request_ctx,
         )
     })?;
-    let metadata = refresher
-        .refresh_admin_module_metadata()
-        .await
-        .map_err(|error| ApiErrorResponse::with_context(error, &request_ctx))?;
-    install_admin_module_metadata(metadata.clone());
-    Ok(Json(AdminModuleMetadataListResponse {
-        modules: metadata_response_modules(metadata),
-    }))
+    match refresher.refresh_admin_module_metadata().await {
+        Ok(metadata) => {
+            install_admin_module_metadata(metadata);
+            Ok(Json(metadata_response(admin_module_metadata_snapshot())))
+        }
+        Err(error) => Ok(Json(metadata_response(
+            record_admin_module_metadata_refresh_error(error.public_message),
+        ))),
+    }
 }
 
 #[utoipa::path(
@@ -166,6 +165,16 @@ fn metadata_response_modules(modules: Vec<AdminModuleMetadata>) -> Vec<AdminModu
             admin: m.admin.clone(),
         })
         .collect()
+}
+
+fn metadata_response(
+    snapshot: crate::AdminModuleMetadataSnapshot,
+) -> AdminModuleMetadataListResponse {
+    AdminModuleMetadataListResponse {
+        modules: metadata_response_modules(snapshot.modules),
+        refreshed_at: snapshot.refreshed_at,
+        refresh_error: snapshot.refresh_error,
+    }
 }
 
 fn schema_response_modules(modules: Vec<AdminModule>) -> Vec<AdminModuleSchema> {

@@ -97,6 +97,8 @@ export type AdminModuleMetadataDto = {
 
 export type AdminModuleMetadataListResponse = {
   modules: Array<AdminModuleMetadataDto>;
+  refresh_error?: string | null;
+  refreshed_at?: string | null;
 };
 
 export type AdminModuleSchema = {

@@ -156,6 +156,8 @@ async fn modules_endpoint_lists_registry_metadata() {
     assert_eq!(json["modules"][0]["capabilities"], serde_json::json!([]));
     assert_eq!(json["modules"][0]["admin"]["kind"], "schema");
     assert_eq!(json["modules"][0]["admin"]["entities"][0]["name"], "users");
+    assert!(json["refreshed_at"].as_str().is_some());
+    assert_eq!(json["refresh_error"], Value::Null);
 }
 
 #[tokio::test]
@@ -518,6 +520,8 @@ async fn refresh_modules_replaces_module_registry_metadata() {
     let refresh_body = json_body(refresh_response).await;
     assert_eq!(METADATA_REFRESH_COUNT.load(Ordering::SeqCst), 1);
     assert_eq!(refresh_body["modules"][0]["module_name"], "notifications");
+    assert!(refresh_body["refreshed_at"].as_str().is_some());
+    assert_eq!(refresh_body["refresh_error"], Value::Null);
     assert_eq!(
         refresh_body["modules"][0]["capabilities"],
         serde_json::json!(["notifications.email.send"])
@@ -539,13 +543,22 @@ async fn refresh_modules_replaces_module_registry_metadata() {
             .iter()
             .any(|module| module["module_name"] == "notifications")
     );
+    assert_eq!(modules_body["refresh_error"], Value::Null);
 }
 
 #[tokio::test]
-async fn refresh_modules_returns_502_when_refresh_fails() {
+async fn refresh_modules_records_error_without_dropping_snapshot() {
     let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
     install_admin_modules(vec![]);
-    install_admin_module_metadata(vec![]);
+    install_admin_module_metadata(vec![AdminModuleMetadata {
+        module_name: "identity".to_owned(),
+        source: ModuleSource::Linked,
+        load_status: ModuleLoadStatus::Loaded,
+        http_routes: vec![],
+        story_display: vec![],
+        capabilities: vec![],
+        admin: Some(AdminSurface::Schema(stub_schema())),
+    }]);
     install_admin_module_metadata_refresh_fn(|| async {
         Err(platform_core::AppError::new(
             platform_core::ErrorCode::ExternalDependency,
@@ -564,7 +577,9 @@ async fn refresh_modules_returns_502_when_refresh_fails() {
         .oneshot(admin_post("/admin/data/modules/refresh"))
         .await
         .expect("request completes");
-    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    assert_eq!(response.status(), StatusCode::OK);
     let body = json_body(response).await;
-    assert_eq!(body["error"]["message"], "remote manifest request failed");
+    assert_eq!(body["modules"][0]["module_name"], "identity");
+    assert!(body["refreshed_at"].as_str().is_some());
+    assert_eq!(body["refresh_error"], "remote manifest request failed");
 }

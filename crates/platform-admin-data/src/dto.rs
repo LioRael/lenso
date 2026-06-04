@@ -23,6 +23,8 @@ pub struct AdminSchemaRefreshResponse {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AdminModuleMetadataListResponse {
     pub modules: Vec<AdminModuleMetadataDto>,
+    pub refreshed_at: Option<String>,
+    pub refresh_error: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
