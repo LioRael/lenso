@@ -229,9 +229,11 @@ request/correlation, trace/span, path parameter, and error detail fields.
 Runtime Console exposes persisted proxy calls through three surfaces:
 
 - `/remote-proxy-calls` is the horizontal operational view for filtering across
-  stories by module, success, error code, remote status, and correlation id.
+  stories by module, success, error code, remote status, and correlation id. A
+  selected call or correlation filter can open the matching Runtime Story.
 - Runtime Story detail includes a Remote Calls section scoped to the selected
-  story's `correlation_id`.
+  story's `correlation_id` and can open `/remote-proxy-calls` pre-filtered to
+  that story.
 - Runtime Story Technical Operations includes proxy calls as
   `source = "remote_proxy"` operations. A proxy call attaches to a story node
   when its `span_id` matches an OTEL span with `lenso.function_run_id` or

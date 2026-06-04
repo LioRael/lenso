@@ -62,10 +62,12 @@ ways:
 
 - The Remote Calls page is the horizontal operations view. It supports filtering
   by dimensions such as `module_name`, `success`, `remote_status`,
-  `error_code`, and `correlation_id`.
+  `error_code`, and `correlation_id`. When a call or correlation filter is
+  selected, it can open the matching Runtime Story.
 - Runtime Story detail shows the remote calls for that story's
   `correlation_id`, so an operator can inspect the remote module calls that
-  happened inside one business flow.
+  happened inside one business flow. Its Remote Calls section can open the
+  horizontal Remote Calls page pre-filtered by that same `correlation_id`.
 - Runtime Story Technical Operations includes those same calls as
   `source = "remote_proxy"` operations. This places remote module calls beside
   OTEL-derived database, HTTP, worker, and external operations for the selected
@@ -73,6 +75,11 @@ ways:
 
 These are not replacements for each other: Story views explain one business
 chain, while the Remote Calls page supports cross-story operational diagnosis.
+Story and Remote Calls navigation is a convenience link across those views; it
+does not change the backend matching rules. Remote Calls list/detail filtering
+uses exact `correlation_id` matches. Technical Operations first scope by
+`correlation_id`, then uses span or trace data only to place a proxy call on a
+more specific execution node when those telemetry attributes are available.
 
 ## Provider Boundary
 
