@@ -6,6 +6,7 @@ import {
   buildExecutionContext,
   buildExecutionFailures,
   buildExecutionPayload,
+  buildRemoteProxyInspectorDetail,
   defaultExecutionInspectorTab,
   executionInspectorTabs,
   getExecutionInspectorTabCounts,
@@ -168,6 +169,66 @@ describe("execution inspector model", () => {
       "last error",
       "retry history",
     ]);
+  });
+
+  test("builds remote proxy inspector details from source metadata", () => {
+    const node = {
+      ...story.nodes[1]!,
+      attributes: {
+        source_metadata: {
+          declared_path: "/contacts/{id}",
+          duration_ms: 1420,
+          error_code: "remote_http_429",
+          error_details: {
+            message: "remote module rate limited the request",
+          },
+          method: "POST",
+          module_name: "remote-crm",
+          path_params: { id: "contact_1" },
+          remote_path: "/v1/contacts/contact_1",
+          remote_proxy_call_id: "rproxy_1",
+          remote_status: 429,
+          request_id: "req_remote_proxy",
+          retryable: true,
+          span_id: "span_remote_proxy",
+          trace_id: "trace_remote_proxy",
+        },
+      },
+      durationMs: 1500,
+      kind: "external" as const,
+      service: "remote-crm",
+      status: "failed" as const,
+    };
+
+    const detail = buildRemoteProxyInspectorDetail(node);
+
+    expect(detail?.rows).toEqual([
+      ["result", "retryable failure"],
+      ["module", "remote-crm"],
+      ["declared route", "POST /contacts/{id}"],
+      ["remote path", "/v1/contacts/contact_1"],
+      ["remote status", 429],
+      ["duration", "1.42s"],
+      ["request id", "req_remote_proxy"],
+      ["trace id", "trace_remote_proxy"],
+      ["span id", "span_remote_proxy"],
+      ["error code", "remote_http_429"],
+      ["retryability", "retryable"],
+    ]);
+    expect(detail?.pathParams).toEqual({ id: "contact_1" });
+    expect(detail?.errorDetails).toEqual({
+      message: "remote module rate limited the request",
+    });
+  });
+
+  test("does not build remote proxy details for ordinary external nodes", () => {
+    expect(
+      buildRemoteProxyInspectorDetail({
+        ...story.nodes[1]!,
+        attributes: { provider: "stripe" },
+        kind: "external",
+      })
+    ).toBeUndefined();
   });
 
   test("builds context lineage with upstream and downstream executions", () => {

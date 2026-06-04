@@ -20,6 +20,7 @@ import {
   buildExecutionActivity,
   buildExecutionContext,
   buildExecutionFailures,
+  buildRemoteProxyInspectorDetail,
   executionInspectorTabs,
   getExecutionInspectorTabCounts,
   type ExecutionActivityItem,
@@ -222,6 +223,7 @@ function InspectorBody({
 
   if (activeTab === "overview") {
     const retryTarget = retryTargetForNode(node);
+    const remoteProxyDetail = buildRemoteProxyInspectorDetail(node);
     return (
       <div className="font-mono text-xs">
         <SummaryCard node={node} story={story} />
@@ -244,6 +246,9 @@ function InspectorBody({
             ["service", node.service],
           ]}
         />
+        {remoteProxyDetail ? (
+          <RemoteProxyDetail detail={remoteProxyDetail} />
+        ) : null}
         {retryTarget ? (
           <div className="border-b border-(--border-subtle) px-3 py-2">
             <button
@@ -362,6 +367,31 @@ function SummaryCard({
         </div>
       </div>
     </div>
+  );
+}
+
+function RemoteProxyDetail({
+  detail,
+}: {
+  detail: ReturnType<typeof buildRemoteProxyInspectorDetail>;
+}) {
+  if (!detail) {
+    return null;
+  }
+
+  return (
+    <section className="grid min-w-full border-b border-(--border-subtle)">
+      <div className="flex items-center gap-2 bg-(--sidebar) px-3 py-1.5 font-mono text-[11px] text-(--muted)">
+        <span>remote proxy</span>
+      </div>
+      <KeyValueTable rows={detail.rows} />
+      {hasPanelValue(detail.pathParams) ? (
+        <JsonViewer title="path params" value={detail.pathParams} />
+      ) : null}
+      {hasPanelValue(detail.errorDetails) ? (
+        <JsonViewer title="error details" value={detail.errorDetails} />
+      ) : null}
+    </section>
   );
 }
 

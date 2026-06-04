@@ -1,4 +1,5 @@
 import type { ExecutionNode, RuntimeStory } from "../../data/mock-runtime";
+import { formatRuntimeDuration } from "../../lib/runtime-style";
 
 export type ExecutionInspectorTab =
   | "overview"
@@ -34,6 +35,12 @@ export type ExecutionPayloadModel = {
   input?: unknown;
   output?: unknown;
   metadata?: unknown;
+};
+
+export type RemoteProxyInspectorDetail = {
+  rows: Array<[string, unknown]>;
+  pathParams?: unknown;
+  errorDetails?: unknown;
 };
 
 export const executionInspectorTabs = [
@@ -172,6 +179,47 @@ export function buildExecutionFailures(
   return failures;
 }
 
+export function buildRemoteProxyInspectorDetail(
+  node: ExecutionNode
+): RemoteProxyInspectorDetail | undefined {
+  const metadata = recordValue(node.attributes.source_metadata);
+  if (!isRemoteProxyMetadata(metadata)) {
+    return undefined;
+  }
+
+  const method = stringValue(metadata.method);
+  const declaredPath = stringValue(metadata.declared_path);
+  const route = [method, declaredPath]
+    .filter((part): part is string => part !== undefined)
+    .join(" ");
+  const remoteStatus = numberValue(metadata.remote_status);
+  const retryable = booleanValue(metadata.retryable);
+  const durationMs = numberValue(metadata.duration_ms) ?? node.durationMs;
+  const rows: Array<[string, unknown]> = [
+    ["result", remoteProxyResultLabel(node.status, retryable)],
+    ["module", stringValue(metadata.module_name) ?? node.service],
+    ["declared route", route || "-"],
+    ["remote path", stringValue(metadata.remote_path) ?? "-"],
+    ["remote status", remoteStatus ?? "-"],
+    ["duration", formatRuntimeDuration(durationMs)],
+    ["request id", stringValue(metadata.request_id) ?? "-"],
+    ["trace id", stringValue(metadata.trace_id) ?? "-"],
+    ["span id", stringValue(metadata.span_id) ?? "-"],
+    ["error code", stringValue(metadata.error_code) ?? "-"],
+    ["retryability", retryable ? "retryable" : "not retryable"],
+  ];
+
+  return {
+    ...(metadata.error_details === undefined
+      ? {}
+      : { errorDetails: metadata.error_details }),
+    ...(metadata.path_params === undefined
+      ? {}
+      : { pathParams: metadata.path_params }),
+    rows,
+  };
+}
+
 export function buildExecutionContext(
   story: RuntimeStory,
   node: ExecutionNode
@@ -272,6 +320,46 @@ function hasMeaningfulValue(value: unknown) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function recordValue(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? value : {};
+}
+
+function isRemoteProxyMetadata(metadata: Record<string, unknown>) {
+  if (typeof metadata.remote_proxy_call_id === "string") {
+    return true;
+  }
+
+  return (
+    typeof metadata.module_name === "string" &&
+    typeof metadata.method === "string" &&
+    typeof metadata.declared_path === "string"
+  );
+}
+
+function stringValue(value: unknown) {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function numberValue(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
+}
+
+function booleanValue(value: unknown) {
+  return typeof value === "boolean" ? value : false;
+}
+
+function remoteProxyResultLabel(status: string, retryable: boolean) {
+  if (status === "failed" || status === "dead") {
+    return retryable ? "retryable failure" : "failed";
+  }
+  if (status === "completed" || status === "published") {
+    return "ok";
+  }
+  return status;
 }
 
 function relatedNodes(
