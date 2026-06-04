@@ -38,6 +38,7 @@ const primaryNavItems = [
   { to: "/dead-letters", label: "Dead Letters", icon: TriangleAlert },
   { to: "/remote-proxy-calls", label: "Remote Calls", icon: Network },
   { to: "/queues", label: "Queues", icon: Inbox },
+  { to: "/modules", label: "Modules", icon: Boxes },
   { to: "/data", label: "Data", icon: Database },
 ] as const;
 

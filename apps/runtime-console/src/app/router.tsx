@@ -11,6 +11,7 @@ import { RuntimeConsoleShell } from "../components/runtime/runtime-console-shell
 import { ConfigPage } from "../pages/config-page";
 import { DataPage } from "../pages/data-page";
 import { DeadLettersPage } from "../pages/dead-letters-page";
+import { ModulesPage } from "../pages/modules-page";
 import { OverviewPage } from "../pages/overview-page";
 import { QueuesPage } from "../pages/queues-page";
 import { RemoteProxyCallsPage } from "../pages/remote-proxy-calls-page";
@@ -102,6 +103,12 @@ const dataRoute = createRoute({
   component: DataPage,
 });
 
+const modulesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/modules",
+  component: ModulesPage,
+});
+
 const placeholderRoute = (path: string, title: string) =>
   createRoute({
     getParentRoute: () => rootRoute,
@@ -155,6 +162,7 @@ const routeTree = rootRoute.addChildren([
     path: "/queues",
     component: QueuesPage,
   }),
+  modulesRoute,
   configRoute,
   dataRoute,
   placeholderRoute("/flows", "Flows"),
