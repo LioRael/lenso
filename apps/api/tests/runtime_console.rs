@@ -706,6 +706,18 @@ async fn service_actor_can_fetch_story_technical_operations() {
     .await;
     insert_story_outbox_event(&db.pool).await;
     insert_story_function_run(&db.pool).await;
+    insert_remote_proxy_call(
+        &db.pool,
+        RemoteProxyCallFixture {
+            id: "rproxy_story_external",
+            correlation_id: "corr_story",
+            module_name: "remote-crm",
+            success: false,
+            occurred_at: "2026-05-31T00:00:02Z",
+            error_code: Some("external_dependency_failure"),
+        },
+    )
+    .await;
 
     let response = app
         .oneshot(
@@ -718,7 +730,7 @@ async fn service_actor_can_fetch_story_technical_operations() {
     assert_eq!(response.status(), StatusCode::OK);
     let body = json_body(response).await;
     assert_eq!(body["order"], "started_at_asc");
-    assert_eq!(body["data"].as_array().unwrap().len(), 2);
+    assert_eq!(body["data"].as_array().unwrap().len(), 3);
     assert_eq!(body["data"][0]["source"], "otel");
     assert_eq!(body["data"][0]["category"], "db");
     assert_eq!(body["data"][0]["related_node_id"], "fnrun_story");
@@ -734,6 +746,16 @@ async fn service_actor_can_fetch_story_technical_operations() {
             .get("http.request.header.authorization")
             .is_none()
     );
+    assert_eq!(body["data"][2]["source"], "remote_proxy");
+    assert_eq!(body["data"][2]["category"], "external");
+    assert_eq!(body["data"][2]["status"], "error");
+    assert_eq!(body["data"][2]["name"], "remote-crm GET /contacts/{id}");
+    assert_eq!(body["data"][2]["attributes"]["module_name"], "remote-crm");
+    assert_eq!(
+        body["data"][2]["attributes"]["error_code"],
+        "external_dependency_failure"
+    );
+    assert!(body["data"][2]["related_node_id"].is_null());
 
     db.cleanup().await;
 }

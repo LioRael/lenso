@@ -152,9 +152,7 @@ describe("technical operations model", () => {
         isError: false,
         isLoading: false,
       })
-    ).toBe(
-      "No OTEL spans recorded for this execution. Configure a telemetry span provider to back this tab."
-    );
+    ).toBe("No technical operations recorded for this execution.");
     expect(
       technicalOperationsStateLabel({
         error: new Error("backend unavailable"),

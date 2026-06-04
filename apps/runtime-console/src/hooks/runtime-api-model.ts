@@ -372,7 +372,7 @@ function normalizeTechnicalOperation(
     ...(operation.related_node_id
       ? { relatedNodeId: operation.related_node_id }
       : {}),
-    source: "otel",
+    source: normalizeTechnicalOperationSource(operation.source),
     startedAt: normalizeTimestamp(operation.started_at),
     status: safeString(operation.status, "unknown"),
     storyId: safeString(operation.story_id, "unknown"),
@@ -413,6 +413,12 @@ function normalizeTechnicalOperationCategory(
       return "unknown";
     }
   }
+}
+
+function normalizeTechnicalOperationSource(
+  source: string | undefined
+): TechnicalOperation["source"] {
+  return source === "remote_proxy" ? "remote_proxy" : "otel";
 }
 
 function normalizeRuntimeHeatmapCell(

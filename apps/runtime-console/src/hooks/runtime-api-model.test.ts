@@ -6,6 +6,7 @@ import {
   normalizeRuntimeHeatmap,
   normalizeRuntimeStory,
   normalizeRuntimeStoryListItem,
+  normalizeTechnicalOperations,
   type ApiRuntimeStoryDetail,
 } from "./runtime-api-model";
 
@@ -404,6 +405,37 @@ describe("runtime API model normalization", () => {
       metadata: { function_name: "notifications.send_welcome_email.v1" },
       output: null,
       redactedFields: ["input.email"],
+    });
+  });
+
+  test("preserves remote proxy technical operation source", () => {
+    const operations = normalizeTechnicalOperations({
+      data: [
+        {
+          attributes: {
+            error_code: "external_dependency_failure",
+            module_name: "remote-crm",
+          },
+          category: "external",
+          correlation_id: "corr_1",
+          duration_ms: 125,
+          ended_at: "2026-06-01T12:00:01.125Z",
+          id: "remote_proxy:rproxy_1",
+          name: "remote-crm GET /contacts/{id}",
+          related_node_id: null,
+          source: "remote_proxy",
+          started_at: "2026-06-01T12:00:01.000Z",
+          status: "error",
+          story_id: "corr_1",
+        },
+      ],
+    });
+
+    expect(operations[0]).toMatchObject({
+      category: "external",
+      id: "remote_proxy:rproxy_1",
+      source: "remote_proxy",
+      status: "error",
     });
   });
 

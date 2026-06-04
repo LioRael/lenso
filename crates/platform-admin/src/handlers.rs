@@ -2,6 +2,7 @@
 use super::*;
 use axum::Json;
 use axum::extract::{Path, Query, State};
+use chrono::Duration;
 use platform_core::{
     AppContext, AppError, ErrorCode, ExecutionLogQuery as ProviderExecutionLogQuery,
     TelemetrySpanQuery,
@@ -614,12 +615,103 @@ pub(crate) async fn get_story_technical_operations(
         .query_spans(TelemetrySpanQuery::by_correlation_id(&correlation_id))
         .await
         .map_err(|source| ApiErrorResponse::with_context(source, &request_ctx))?;
-    let data = technical_operations_from_spans(spans, &runtime_node_index(&rows));
+    let mut data = technical_operations_from_spans(spans, &runtime_node_index(&rows));
+    data.extend(
+        remote_proxy_technical_operations(&ctx, &request_ctx, &correlation_id).await?,
+    );
+    sort_technical_operations(&mut data);
 
     Ok(Json(AdminRuntimeTechnicalOperationListResponse {
         data,
         order: "started_at_asc",
     }))
+}
+
+async fn remote_proxy_technical_operations(
+    ctx: &AppContext,
+    request_ctx: &platform_core::RequestContext,
+    correlation_id: &str,
+) -> Result<Vec<AdminRuntimeTechnicalOperation>, ApiErrorResponse> {
+    let rows = sqlx::query(
+        r#"
+        select
+            id,
+            module_name,
+            method,
+            declared_path,
+            remote_path,
+            capability,
+            remote_status,
+            duration_ms,
+            success,
+            error_code,
+            retryable,
+            request_id,
+            correlation_id,
+            trace_id,
+            span_id,
+            path_params,
+            error_details,
+            occurred_at
+        from platform.remote_http_proxy_calls
+        where correlation_id = $1
+        order by occurred_at asc, id asc
+        limit $2
+        "#,
+    )
+    .bind(correlation_id)
+    .bind(MAX_LIMIT)
+    .fetch_all(&ctx.db)
+    .await
+    .map_err(|source| query_error(source, request_ctx))?;
+
+    rows.into_iter()
+        .map(|row| remote_proxy_call_from_row(&row))
+        .map(|result| result.map(remote_proxy_call_to_technical_operation))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|source| query_error(source, request_ctx))
+}
+
+fn remote_proxy_call_to_technical_operation(
+    call: AdminRemoteProxyCall,
+) -> AdminRuntimeTechnicalOperation {
+    let ended_at = call.occurred_at + Duration::milliseconds(call.duration_ms.max(0));
+    AdminRuntimeTechnicalOperation {
+        attributes: serde_json::json!({
+            "module_name": call.module_name,
+            "method": call.method,
+            "declared_path": call.declared_path,
+            "remote_path": call.remote_path,
+            "capability": call.capability,
+            "remote_status": call.remote_status,
+            "duration_ms": call.duration_ms,
+            "success": call.success,
+            "error_code": call.error_code,
+            "retryable": call.retryable,
+            "request_id": call.request_id,
+            "trace_id": call.trace_id,
+            "span_id": call.span_id,
+        }),
+        category: "external".to_owned(),
+        correlation_id: call.correlation_id.clone(),
+        duration_ms: call.duration_ms,
+        ended_at,
+        id: format!("remote_proxy:{}", call.id),
+        name: format!("{} {} {}", call.module_name, call.method, call.declared_path),
+        related_node_id: None,
+        source: "remote_proxy".to_owned(),
+        started_at: call.occurred_at,
+        status: if call.success { "ok" } else { "error" }.to_owned(),
+        story_id: call.correlation_id,
+    }
+}
+
+fn sort_technical_operations(data: &mut [AdminRuntimeTechnicalOperation]) {
+    data.sort_by(|left, right| {
+        left.started_at
+            .cmp(&right.started_at)
+            .then_with(|| left.id.cmp(&right.id))
+    });
 }
 
 #[utoipa::path(

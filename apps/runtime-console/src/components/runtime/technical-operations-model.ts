@@ -42,7 +42,7 @@ export function technicalOperationsStateLabel(input: {
   if (input.isError) {
     return "Technical operations could not be loaded.";
   }
-  return "No OTEL spans recorded for this execution. Configure a telemetry span provider to back this tab.";
+  return "No technical operations recorded for this execution.";
 }
 
 function groupByCategory(
