@@ -224,8 +224,19 @@ tracing events for completed and failed forwards with module name, declared
 path, remote path, method, remote status, duration, request/correlation ids, and
 error code/retryability when present. Calls are also persisted to
 `platform.remote_http_proxy_calls` with module, route, status, duration,
-request/correlation, path parameter, and error detail fields. Runtime Console
-views for proxy calls remain deferred.
+request/correlation, trace/span, path parameter, and error detail fields.
+
+Runtime Console exposes persisted proxy calls through three surfaces:
+
+- `/remote-proxy-calls` is the horizontal operational view for filtering across
+  stories by module, success, error code, remote status, and correlation id.
+- Runtime Story detail includes a Remote Calls section scoped to the selected
+  story's `correlation_id`.
+- Runtime Story Technical Operations includes proxy calls as
+  `source = "remote_proxy"` operations. A proxy call attaches to a story node
+  when its `span_id` matches an OTEL span with `lenso.function_run_id` or
+  `lenso.outbox_event_id`; if the span id is unavailable, trace id attributes
+  provide a fallback. Unmatched calls remain story-level operations.
 
 ## OpenAPI Strategy
 
@@ -263,8 +274,8 @@ OpenAPI fragments after trust, validation, and versioning are specified.
 8. Normalize remote errors through the existing platform error model. Done for
    GET, POST, PUT, PATCH, and DELETE.
 9. Add telemetry and runtime-console visibility for proxied calls. Done for GET,
-   POST, PUT, PATCH, and DELETE tracing events and persisted call history;
-   Runtime Console visibility remains deferred.
+   POST, PUT, PATCH, and DELETE tracing events, persisted call history, Remote
+   Calls filtering, Story Remote Calls, and Story Technical Operations.
 
 Do not implement per-module OpenAPI fragments, streaming, browser credentials,
 or bidirectional admin bridges in the first proxy slice.

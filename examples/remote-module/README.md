@@ -41,9 +41,18 @@ REMOTE_MODULES=remote-crm=http://127.0.0.1:4100/lenso/module/v1 just api
 
 The API loads the module manifest at startup and serves its schema-admin data
 through the normal `/admin/data/*` backend.
-The manifest also declares module-local HTTP route metadata for `/contacts` and
-`/contacts/{id}`. The host preserves that metadata under `/admin/data/modules`;
-it does not mount or proxy those routes yet.
+The manifest also declares module-local HTTP route metadata for `/contacts`,
+`/contacts/{id}`, and proxy fixture routes. The host preserves that metadata
+under `/admin/data/modules` and exposes matched routes through:
+
+```text
+/modules/remote-crm/http/{*path}
+```
+
+Proxy calls are persisted in `platform.remote_http_proxy_calls` with
+request/correlation/trace/span context. Runtime Console shows them both in the
+horizontal Remote Calls page and inside a Runtime Story's Remote Calls and
+Technical Operations views.
 
 To load both the schema-admin module and the embedded iframe module:
 

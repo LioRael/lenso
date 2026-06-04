@@ -24,7 +24,11 @@ The Runtime Console product model remains:
 
 ## Telemetry Enrichment
 
-OpenTelemetry data is an enrichment layer only. Backend APIs map telemetry spans into business-friendly Technical Operations before the frontend sees them.
+OpenTelemetry data is an enrichment layer only. Backend APIs map telemetry spans
+into business-friendly Technical Operations before the frontend sees them.
+Remote HTTP proxy call records are also mapped into Technical Operations, but
+they are not OpenTelemetry spans; they are persisted host-side runtime records
+with `source = "remote_proxy"`.
 
 The frontend does not query collectors, Tempo, or any telemetry backend directly. It calls:
 
@@ -41,6 +45,34 @@ Technical Operations attach to runtime nodes using safe runtime attributes:
 - `lenso.execution.name`
 
 If an operation cannot be matched to an execution node, it remains story-level enrichment.
+
+Remote proxy Technical Operations are correlated by `correlation_id` first.
+When possible, they attach to runtime nodes by matching the proxy call's
+`span_id` to a telemetry span id and reading the span's
+`lenso.function_run_id` or `lenso.outbox_event_id`. If that exact span match is
+not available, the backend falls back to matching the proxy call `trace_id`
+against safe trace attributes such as `otel.trace_id`, `trace_id`,
+`lenso.trace_id`, or `trace.trace_id`. Calls that still cannot be matched remain
+story-level operations.
+
+## Remote Proxy Views
+
+Runtime Console intentionally exposes remote proxy calls in two complementary
+ways:
+
+- The Remote Calls page is the horizontal operations view. It supports filtering
+  by dimensions such as `module_name`, `success`, `remote_status`,
+  `error_code`, and `correlation_id`.
+- Runtime Story detail shows the remote calls for that story's
+  `correlation_id`, so an operator can inspect the remote module calls that
+  happened inside one business flow.
+- Runtime Story Technical Operations includes those same calls as
+  `source = "remote_proxy"` operations. This places remote module calls beside
+  OTEL-derived database, HTTP, worker, and external operations for the selected
+  story or execution node.
+
+These are not replacements for each other: Story views explain one business
+chain, while the Remote Calls page supports cross-story operational diagnosis.
 
 ## Provider Boundary
 
