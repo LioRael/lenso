@@ -551,6 +551,38 @@ describe("runtime API model normalization", () => {
     });
   });
 
+  test("preserves remote runtime technical operation source", () => {
+    const operations = normalizeTechnicalOperations({
+      data: [
+        {
+          attributes: {
+            function_name: "remote_crm.sync_contact.v1",
+            module_name: "remote-crm",
+          },
+          category: "external",
+          correlation_id: "corr_1",
+          duration_ms: 42,
+          ended_at: "2026-06-01T12:00:01.042Z",
+          id: "remote_runtime:elog_1",
+          name: "remote-crm remote_crm.sync_contact.v1",
+          related_node_id: "fnrun_1",
+          source: "remote_runtime",
+          started_at: "2026-06-01T12:00:01.000Z",
+          status: "ok",
+          story_id: "corr_1",
+        },
+      ],
+    });
+
+    expect(operations[0]).toMatchObject({
+      category: "external",
+      id: "remote_runtime:elog_1",
+      relatedNodeId: "fnrun_1",
+      source: "remote_runtime",
+      status: "ok",
+    });
+  });
+
   test("normalizes execution log responses", () => {
     const logs = normalizeExecutionLogs({
       data: [

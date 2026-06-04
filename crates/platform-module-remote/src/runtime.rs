@@ -2,7 +2,7 @@ use crate::config::RemoteModuleConfig;
 use crate::protocol::{RemoteFunctionInvokeRequest, RemoteFunctionInvokeResponse};
 use crate::response::{ResponseBodyPolicy, decode_json_response_with_policy};
 use platform_core::{AppError, AppResult, ErrorCode, ExecutionContext};
-use platform_runtime::RuntimeFunction;
+use platform_runtime::{FunctionHandlerObservability, RuntimeFunction};
 use serde_json::Value;
 use std::time::Duration;
 
@@ -37,6 +37,7 @@ impl RemoteRuntimeFunction {
 
     pub async fn invoke(&self, ctx: ExecutionContext, input: Value) -> AppResult<Value> {
         let request_body = RemoteFunctionInvokeRequest {
+            request_id: ctx.execution_id.0.clone(),
             function_run_id: ctx.execution_id.0,
             function_name: self.function_name.clone(),
             attempt: ctx.attempt,
@@ -94,6 +95,18 @@ impl RemoteRuntimeFunction {
 impl RuntimeFunction for RemoteRuntimeFunction {
     async fn call(&self, ctx: ExecutionContext, input: Value) -> AppResult<Value> {
         self.invoke(ctx, input).await
+    }
+
+    fn observability(&self) -> Option<FunctionHandlerObservability> {
+        Some(FunctionHandlerObservability::new(
+            "remote_runtime",
+            serde_json::json!({
+                "module_name": &self.config.name,
+                "function_name": &self.function_name,
+                "remote_path": format!("/runtime/functions/{}/invoke", self.function_name),
+                "timeout_ms": self.config.timeout_ms,
+            }),
+        ))
     }
 }
 

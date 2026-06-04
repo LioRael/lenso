@@ -733,6 +733,28 @@ async fn service_actor_can_fetch_story_technical_operations() {
         },
     )
     .await;
+    insert_execution_log(
+        &db.pool,
+        "elog_remote_runtime_story",
+        "fnrun_story",
+        "function_run",
+        "remote_crm.sync_contact.v1",
+        "2026-05-31T00:00:04Z",
+        "info",
+        "Function handler operation completed",
+        json!({
+            "source": "remote_runtime",
+            "module_name": "remote-crm",
+            "function_name": "remote_crm.sync_contact.v1",
+            "remote_path": "/runtime/functions/remote_crm.sync_contact.v1/invoke",
+            "request_id": "fnrun_story",
+            "trace_id": "trace_remote_runtime",
+            "span_id": "span_remote_runtime",
+            "duration_ms": 42,
+            "success": true
+        }),
+    )
+    .await;
 
     let response = app
         .oneshot(
@@ -746,7 +768,7 @@ async fn service_actor_can_fetch_story_technical_operations() {
     let body = json_body(response).await;
     assert_eq!(body["order"], "started_at_asc");
     let data = body["data"].as_array().unwrap();
-    assert_eq!(data.len(), 4);
+    assert_eq!(data.len(), 5);
     let function_db = data
         .iter()
         .find(|item| item["id"] == "span_story_function_db")
@@ -784,6 +806,20 @@ async fn service_actor_can_fetch_story_technical_operations() {
         "external_dependency_failure"
     );
     assert_eq!(remote_proxy["related_node_id"], "fnrun_story");
+    let remote_runtime = data
+        .iter()
+        .find(|item| item["id"] == "remote_runtime:elog_remote_runtime_story")
+        .expect("remote runtime operation should be present");
+    assert_eq!(remote_runtime["source"], "remote_runtime");
+    assert_eq!(remote_runtime["category"], "external");
+    assert_eq!(remote_runtime["status"], "ok");
+    assert_eq!(
+        remote_runtime["name"],
+        "remote-crm remote_crm.sync_contact.v1"
+    );
+    assert_eq!(remote_runtime["duration_ms"], 42);
+    assert_eq!(remote_runtime["related_node_id"], "fnrun_story");
+    assert_eq!(remote_runtime["attributes"]["request_id"], "fnrun_story");
 
     db.cleanup().await;
 }
@@ -819,6 +855,28 @@ async fn service_actor_can_fetch_execution_technical_operations() {
     .await;
     insert_story_outbox_event(&db.pool).await;
     insert_story_function_run(&db.pool).await;
+    insert_execution_log(
+        &db.pool,
+        "elog_remote_runtime_execution",
+        "fnrun_story",
+        "function_run",
+        "remote_crm.sync_contact.v1",
+        "2026-05-31T00:00:04Z",
+        "error",
+        "Function handler operation failed",
+        json!({
+            "source": "remote_runtime",
+            "module_name": "remote-crm",
+            "function_name": "remote_crm.sync_contact.v1",
+            "remote_path": "/runtime/functions/remote_crm.sync_contact.v1/invoke",
+            "request_id": "fnrun_story",
+            "duration_ms": 77,
+            "success": false,
+            "error_code": "external_dependency_failure",
+            "retryable": true
+        }),
+    )
+    .await;
 
     let response = app
         .oneshot(
@@ -830,10 +888,26 @@ async fn service_actor_can_fetch_execution_technical_operations() {
 
     assert_eq!(response.status(), StatusCode::OK);
     let body = json_body(response).await;
-    assert_eq!(body["data"].as_array().unwrap().len(), 1);
-    assert_eq!(body["data"][0]["id"], "span_execution_function");
-    assert_eq!(body["data"][0]["related_node_id"], "fnrun_story");
-    assert_eq!(body["data"][0]["category"], "runtime");
+    let data = body["data"].as_array().unwrap();
+    assert_eq!(data.len(), 2);
+    let span = data
+        .iter()
+        .find(|item| item["id"] == "span_execution_function")
+        .expect("execution span should be present");
+    assert_eq!(span["related_node_id"], "fnrun_story");
+    assert_eq!(span["category"], "runtime");
+    let remote_runtime = data
+        .iter()
+        .find(|item| item["id"] == "remote_runtime:elog_remote_runtime_execution")
+        .expect("remote runtime operation should be present");
+    assert_eq!(remote_runtime["source"], "remote_runtime");
+    assert_eq!(remote_runtime["status"], "error");
+    assert_eq!(remote_runtime["category"], "external");
+    assert_eq!(remote_runtime["duration_ms"], 77);
+    assert_eq!(
+        remote_runtime["attributes"]["error_code"],
+        "external_dependency_failure"
+    );
 
     db.cleanup().await;
 }

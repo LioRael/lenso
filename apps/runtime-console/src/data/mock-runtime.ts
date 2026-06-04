@@ -174,7 +174,7 @@ export type TechnicalOperation = {
   endedAt: string;
   durationMs: number;
   attributes: Record<string, unknown>;
-  source: "otel" | "remote_proxy";
+  source: "otel" | "remote_proxy" | "remote_runtime";
 };
 
 export type RemoteProxyCall = {

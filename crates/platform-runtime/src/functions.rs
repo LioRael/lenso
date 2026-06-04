@@ -11,7 +11,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tracing::Instrument;
 use uuid::Uuid;
 
@@ -20,9 +20,28 @@ const STALE_PROCESSING_LOCK_SECONDS: i64 = 300;
 #[async_trait]
 pub trait FunctionHandler: Debug + Send + Sync {
     async fn call(&self, ctx: ExecutionContext, input: Value) -> AppResult<Value>;
+
+    fn observability(&self) -> Option<FunctionHandlerObservability> {
+        None
+    }
 }
 
 pub use FunctionHandler as RuntimeFunction;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionHandlerObservability {
+    pub source: String,
+    pub attributes: Value,
+}
+
+impl FunctionHandlerObservability {
+    pub fn new(source: impl Into<String>, attributes: Value) -> Self {
+        Self {
+            source: source.into(),
+            attributes: normalize_log_attributes(attributes),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ExecutionLogSeverity {
@@ -394,7 +413,23 @@ impl RuntimeWorker {
                 deadline: None::<DateTime<Utc>>,
             };
 
-            match definition.handler.call(ctx, run.input_json.clone()).await {
+            let observability = definition.handler.observability();
+            let started_at = Utc::now();
+            let started = Instant::now();
+            let result = definition.handler.call(ctx, run.input_json.clone()).await;
+            let duration_ms = started.elapsed().as_millis().try_into().unwrap_or(i64::MAX);
+            if let Some(observability) = observability {
+                self.record_function_handler_operation_log(
+                    &run,
+                    observability,
+                    started_at,
+                    duration_ms,
+                    result.as_ref().err(),
+                )
+                .await;
+            }
+
+            match result {
                 Ok(_output) => self.mark_completed(&run).await,
                 Err(error) => {
                     self.mark_failed(&run, &error, definition.retry_policy.initial_delay)
@@ -544,6 +579,46 @@ impl RuntimeWorker {
             );
         }
     }
+
+    async fn record_function_handler_operation_log(
+        &self,
+        run: &ClaimedFunctionRun,
+        observability: FunctionHandlerObservability,
+        started_at: DateTime<Utc>,
+        duration_ms: i64,
+        error: Option<&AppError>,
+    ) {
+        let body = if error.is_some() {
+            "Function handler operation failed"
+        } else {
+            "Function handler operation completed"
+        };
+        let severity = if error.is_some() {
+            ExecutionLogSeverity::Error
+        } else {
+            ExecutionLogSeverity::Info
+        };
+        let attributes = function_handler_operation_attributes(
+            run,
+            &self.worker_id,
+            observability,
+            duration_ms,
+            error,
+        );
+        emit_function_lifecycle_event(run, severity, body, &attributes, Some(&self.worker_id));
+        if let Err(error) = insert_execution_log_projection(
+            &self.pool,
+            function_log_record(run, severity, body, attributes).with_occurred_at(started_at),
+        )
+        .await
+        {
+            tracing::warn!(
+                error = ?error,
+                function_run_id = %run.id,
+                "failed to write function handler operation log"
+            );
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -654,6 +729,7 @@ struct ExecutionLogProjectionRecord {
     attributes: Value,
     trace: TraceContext,
     service_name: String,
+    occurred_at: Option<DateTime<Utc>>,
 }
 
 impl ExecutionLogProjectionRecord {
@@ -678,6 +754,7 @@ impl ExecutionLogProjectionRecord {
             attributes: Value::Object(Default::default()),
             trace: TraceContext::default(),
             service_name: "lenso".to_owned(),
+            occurred_at: None,
         }
     }
 
@@ -690,6 +767,11 @@ impl ExecutionLogProjectionRecord {
         self.trace = trace;
         self
     }
+
+    fn with_occurred_at(mut self, occurred_at: DateTime<Utc>) -> Self {
+        self.occurred_at = Some(occurred_at);
+        self
+    }
 }
 
 async fn insert_execution_log_projection(
@@ -697,6 +779,7 @@ async fn insert_execution_log_projection(
     record: ExecutionLogProjectionRecord,
 ) -> AppResult<String> {
     let id = format!("elog_{}", Uuid::now_v7());
+    let occurred_at = record.occurred_at.unwrap_or_else(Utc::now);
 
     sqlx::query(
         r#"
@@ -725,7 +808,7 @@ async fn insert_execution_log_projection(
     .bind(&record.execution_id)
     .bind(&record.execution_type)
     .bind(&record.execution_name)
-    .bind(Utc::now())
+    .bind(occurred_at)
     .bind(record.severity.as_str())
     .bind(&record.body)
     .bind(normalize_log_attributes(record.attributes))
@@ -738,6 +821,47 @@ async fn insert_execution_log_projection(
     .map_err(map_runtime_error)?;
 
     Ok(id)
+}
+
+fn function_handler_operation_attributes(
+    run: &ClaimedFunctionRun,
+    worker_id: &str,
+    observability: FunctionHandlerObservability,
+    duration_ms: i64,
+    error: Option<&AppError>,
+) -> Value {
+    let mut attributes = match observability.attributes {
+        Value::Object(attributes) => attributes,
+        other => serde_json::Map::from_iter([("value".to_owned(), other)]),
+    };
+    attributes.insert("source".to_owned(), Value::String(observability.source));
+    attributes.insert("attempt".to_owned(), serde_json::json!(run.attempts + 1));
+    attributes.insert(
+        "max_attempts".to_owned(),
+        serde_json::json!(run.max_attempts),
+    );
+    attributes.insert("duration_ms".to_owned(), serde_json::json!(duration_ms));
+    attributes.insert("success".to_owned(), serde_json::json!(error.is_none()));
+    attributes.insert("worker_id".to_owned(), serde_json::json!(worker_id));
+    attributes.insert(
+        "function_name".to_owned(),
+        serde_json::json!(run.function_name),
+    );
+    attributes.insert("request_id".to_owned(), serde_json::json!(run.id));
+    attributes.insert("trace_id".to_owned(), serde_json::json!(run.trace.trace_id));
+    attributes.insert("span_id".to_owned(), serde_json::json!(run.trace.span_id));
+
+    if let Some(error) = error {
+        attributes.insert(
+            "error_code".to_owned(),
+            serde_json::json!(error.code.as_str()),
+        );
+        attributes.insert("error".to_owned(), serde_json::json!(error.public_message));
+        attributes.insert("retryable".to_owned(), serde_json::json!(error.retryable));
+        attributes.insert("error_details".to_owned(), serde_json::json!(error.details));
+    }
+
+    Value::Object(attributes)
 }
 
 fn normalize_log_attributes(attributes: Value) -> Value {

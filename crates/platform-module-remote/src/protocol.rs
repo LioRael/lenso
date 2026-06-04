@@ -49,6 +49,7 @@ pub struct RemoteGetResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemoteFunctionInvokeRequest {
+    pub request_id: String,
     pub function_run_id: String,
     pub function_name: String,
     pub attempt: u32,

@@ -10,7 +10,8 @@ pub mod triggers;
 pub use flows::{FlowDefinition, FlowRun};
 pub use functions::{
     ClaimedFunctionRun, EnqueueFunctionRequest, FunctionDefinition, FunctionHandler,
-    FunctionRegistry, FunctionRunStatus, RuntimeClient, RuntimeFunction, RuntimeWorker,
+    FunctionHandlerObservability, FunctionRegistry, FunctionRunStatus, RuntimeClient,
+    RuntimeFunction, RuntimeWorker,
 };
 pub use migrations::RUNTIME_MIGRATIONS;
 pub use queues::{Queue, QueueName};

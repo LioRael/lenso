@@ -5,10 +5,27 @@ use axum::extract::{Path, Query, State};
 use chrono::Duration;
 use platform_core::{
     AppContext, AppError, ErrorCode, ExecutionLogQuery as ProviderExecutionLogQuery,
-    TelemetrySpanQuery,
+    ExecutionLogRow, TelemetrySpanQuery,
 };
 use platform_http::responses::{DataResponse, json};
 use platform_http::{AdminActor, ApiErrorResponse, ErrorResponse, HttpRequestContext};
+
+type ExecutionLogTuple = (
+    String,
+    String,
+    String,
+    String,
+    String,
+    String,
+    chrono::DateTime<chrono::Utc>,
+    String,
+    String,
+    serde_json::Value,
+    Option<String>,
+    Option<String>,
+    String,
+    Vec<String>,
+);
 
 #[utoipa::path(
     get,
@@ -621,6 +638,15 @@ pub(crate) async fn get_story_technical_operations(
         remote_proxy_technical_operations(&ctx, &request_ctx, &correlation_id, &spans, &node_index)
             .await?,
     );
+    data.extend(
+        remote_runtime_technical_operations_by_correlation(
+            &ctx,
+            &request_ctx,
+            &correlation_id,
+            &node_index,
+        )
+        .await?,
+    );
     sort_technical_operations(&mut data);
 
     Ok(Json(AdminRuntimeTechnicalOperationListResponse {
@@ -756,6 +782,167 @@ fn remote_proxy_call_to_technical_operation(
     }
 }
 
+async fn remote_runtime_technical_operations_by_correlation(
+    ctx: &AppContext,
+    request_ctx: &platform_core::RequestContext,
+    correlation_id: &str,
+    node_index: &RuntimeNodeIndex,
+) -> Result<Vec<AdminRuntimeTechnicalOperation>, ApiErrorResponse> {
+    let rows = sqlx::query_as::<_, ExecutionLogTuple>(
+        r#"
+        select
+            id,
+            correlation_id,
+            story_id,
+            execution_id,
+            execution_type,
+            execution_name,
+            occurred_at,
+            severity,
+            body,
+            attributes,
+            trace_id,
+            span_id,
+            service_name,
+            redacted_fields
+        from platform.execution_logs
+        where correlation_id = $1
+            and attributes ->> 'source' = 'remote_runtime'
+        order by occurred_at asc, id asc
+        limit $2
+        "#,
+    )
+    .bind(correlation_id)
+    .bind(MAX_LIMIT)
+    .fetch_all(&ctx.db)
+    .await
+    .map_err(|source| query_error(source, request_ctx))?;
+
+    Ok(rows
+        .into_iter()
+        .map(execution_log_row_from_tuple)
+        .map(|log| remote_runtime_log_to_technical_operation(log, node_index))
+        .collect())
+}
+
+async fn remote_runtime_technical_operations_by_execution(
+    ctx: &AppContext,
+    request_ctx: &platform_core::RequestContext,
+    node_id: &str,
+    node_index: &RuntimeNodeIndex,
+) -> Result<Vec<AdminRuntimeTechnicalOperation>, ApiErrorResponse> {
+    let logs = ctx
+        .execution_logs
+        .query_execution_logs(ProviderExecutionLogQuery {
+            execution_id: node_id.to_owned(),
+            occurred_before: None,
+            limit: MAX_LIMIT,
+        })
+        .await
+        .map_err(|source| ApiErrorResponse::with_context(source, request_ctx))?;
+
+    Ok(logs
+        .into_iter()
+        .filter(|log| {
+            span_attribute(&log.attributes, "source") == Some("remote_runtime")
+                && log.execution_id == node_id
+        })
+        .map(|log| remote_runtime_log_to_technical_operation(log, node_index))
+        .collect())
+}
+
+fn remote_runtime_log_to_technical_operation(
+    log: ExecutionLogRow,
+    node_index: &RuntimeNodeIndex,
+) -> AdminRuntimeTechnicalOperation {
+    let duration_ms = json_i64_attribute(&log.attributes, "duration_ms").unwrap_or(0);
+    let ended_at = log.occurred_at + Duration::milliseconds(duration_ms.max(0));
+    let related_node_id = if node_index.contains(&log.execution_id) {
+        Some(log.execution_id.clone())
+    } else {
+        None
+    };
+    let module_name = span_attribute(&log.attributes, "module_name").map(ToOwned::to_owned);
+    let function_name = span_attribute(&log.attributes, "function_name")
+        .unwrap_or(log.execution_name.as_str())
+        .to_owned();
+    let status = match json_bool_attribute(&log.attributes, "success") {
+        Some(true) => "ok",
+        Some(false) => "error",
+        _ if log.severity == "error" => "error",
+        _ => "ok",
+    };
+
+    AdminRuntimeTechnicalOperation {
+        attributes: log.attributes,
+        category: "external".to_owned(),
+        correlation_id: log.correlation_id.clone(),
+        duration_ms,
+        ended_at,
+        id: format!("remote_runtime:{}", log.id),
+        name: module_name
+            .map(|module| format!("{module} {function_name}"))
+            .unwrap_or(function_name),
+        related_node_id,
+        source: "remote_runtime".to_owned(),
+        started_at: log.occurred_at,
+        status: status.to_owned(),
+        story_id: log.story_id,
+    }
+}
+
+fn execution_log_row_from_tuple(row: ExecutionLogTuple) -> ExecutionLogRow {
+    let (
+        id,
+        correlation_id,
+        story_id,
+        execution_id,
+        execution_type,
+        execution_name,
+        occurred_at,
+        severity,
+        body,
+        attributes,
+        trace_id,
+        span_id,
+        service_name,
+        redacted_fields,
+    ) = row;
+
+    ExecutionLogRow {
+        id,
+        correlation_id,
+        story_id,
+        execution_id,
+        execution_type,
+        execution_name,
+        occurred_at,
+        severity,
+        body,
+        attributes,
+        trace_id,
+        span_id,
+        service_name,
+        redacted_fields,
+    }
+}
+
+fn json_bool_attribute(attributes: &serde_json::Value, key: &str) -> Option<bool> {
+    attributes.get(key).and_then(serde_json::Value::as_bool)
+}
+
+fn json_i64_attribute(attributes: &serde_json::Value, key: &str) -> Option<i64> {
+    attributes
+        .get(key)
+        .and_then(serde_json::Value::as_i64)
+        .or_else(|| {
+            attributes
+                .get(key)
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|value| i64::try_from(value).ok())
+        })
+}
+
 fn sort_technical_operations(data: &mut [AdminRuntimeTechnicalOperation]) {
     data.sort_by(|left, right| {
         left.started_at
@@ -829,7 +1016,13 @@ pub(crate) async fn get_execution_technical_operations(
         .query_spans(query)
         .await
         .map_err(|source| ApiErrorResponse::with_context(source, &request_ctx))?;
-    let data = technical_operations_from_spans(spans, &RuntimeNodeIndex::single(node.id));
+    let node_index = RuntimeNodeIndex::single(node.id.clone());
+    let mut data = technical_operations_from_spans(spans, &node_index);
+    data.extend(
+        remote_runtime_technical_operations_by_execution(&ctx, &request_ctx, &node.id, &node_index)
+            .await?,
+    );
+    sort_technical_operations(&mut data);
 
     Ok(Json(AdminRuntimeTechnicalOperationListResponse {
         data,

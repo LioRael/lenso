@@ -418,7 +418,15 @@ function normalizeTechnicalOperationCategory(
 function normalizeTechnicalOperationSource(
   source: string | undefined
 ): TechnicalOperation["source"] {
-  return source === "remote_proxy" ? "remote_proxy" : "otel";
+  switch (source) {
+    case "remote_proxy":
+    case "remote_runtime": {
+      return source;
+    }
+    default: {
+      return "otel";
+    }
+  }
 }
 
 function normalizeRuntimeHeatmapCell(

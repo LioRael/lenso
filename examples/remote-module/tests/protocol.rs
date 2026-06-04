@@ -184,7 +184,7 @@ async fn runtime_function_invoke_returns_output_envelope() {
                 .uri("/lenso/module/v1/runtime/functions/remote_crm.sync_contact.v1/invoke")
                 .header(http::header::CONTENT_TYPE, "application/json")
                 .body(axum::body::Body::from(
-                    r#"{"function_run_id":"fnrun_1","function_name":"remote_crm.sync_contact.v1","attempt":1,"correlation_id":"corr_1","causation_id":"httpreq_1","actor":{"kind":"service","service_id":"worker","scopes":[]},"trace":{"trace_id":"trace_1","span_id":"span_1","baggage":[]},"input":{"contact_id":"contact_1"}}"#,
+                    r#"{"request_id":"fnrun_1","function_run_id":"fnrun_1","function_name":"remote_crm.sync_contact.v1","attempt":1,"correlation_id":"corr_1","causation_id":"httpreq_1","actor":{"kind":"service","service_id":"worker","scopes":[]},"trace":{"trace_id":"trace_1","span_id":"span_1","baggage":[]},"input":{"contact_id":"contact_1"}}"#,
                 ))
                 .unwrap(),
         )
@@ -200,6 +200,7 @@ async fn runtime_function_invoke_returns_output_envelope() {
 
     assert_eq!(value["output"]["synced"], true);
     assert_eq!(value["output"]["contact_id"], "contact_1");
+    assert_eq!(value["output"]["request_id"], "fnrun_1");
     assert_eq!(value["output"]["function_run_id"], "fnrun_1");
     assert_eq!(value["output"]["correlation_id"], "corr_1");
 }

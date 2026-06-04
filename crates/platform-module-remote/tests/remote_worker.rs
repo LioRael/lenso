@@ -30,7 +30,7 @@ async fn worker_completes_remote_runtime_function() {
         0,
     ));
 
-    enqueue(&db.pool, "remote_crm.sync_contact.v1", 3).await;
+    let run_id = enqueue(&db.pool, "remote_crm.sync_contact.v1", 3).await;
 
     let worker = RuntimeWorker::new(db.pool.clone(), Arc::new(registry), "worker-remote");
     let count = worker
@@ -47,6 +47,17 @@ async fn worker_completes_remote_runtime_function() {
         execution_log_bodies(&db.pool, "remote_crm.sync_contact.v1")
             .await
             .contains(&"Function run completed".to_owned())
+    );
+    let operation = remote_runtime_operation_log(&db.pool, "remote_crm.sync_contact.v1").await;
+    assert_eq!(operation["source"], "remote_runtime");
+    assert_eq!(operation["module_name"], "remote-crm");
+    assert_eq!(operation["function_name"], "remote_crm.sync_contact.v1");
+    assert_eq!(operation["request_id"], run_id);
+    assert_eq!(operation["success"], true);
+    assert!(
+        operation["duration_ms"]
+            .as_i64()
+            .is_some_and(|value| value >= 0)
     );
 
     db.cleanup().await;
@@ -302,4 +313,21 @@ async fn execution_log_bodies(pool: &platform_core::DbPool, function_name: &str)
     .fetch_all(pool)
     .await
     .expect("execution logs should query")
+}
+
+async fn remote_runtime_operation_log(pool: &platform_core::DbPool, function_name: &str) -> Value {
+    sqlx::query_scalar(
+        r#"
+        select log.attributes
+        from platform.execution_logs log
+        where log.execution_name = $1
+            and log.attributes ->> 'source' = 'remote_runtime'
+        order by log.occurred_at asc
+        limit 1
+        "#,
+    )
+    .bind(function_name)
+    .fetch_one(pool)
+    .await
+    .expect("remote runtime operation log should query")
 }

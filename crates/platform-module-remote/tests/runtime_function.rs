@@ -85,6 +85,7 @@ async fn remote_runtime_function_posts_invocation_and_returns_output() {
         Some("Bearer remote-secret")
     );
     assert_eq!(observed[0].body["function_run_id"], "fnrun_remote_1");
+    assert_eq!(observed[0].body["request_id"], "fnrun_remote_1");
     assert_eq!(
         observed[0].body["function_name"],
         "remote_crm.sync_contact.v1"

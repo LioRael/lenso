@@ -185,6 +185,34 @@ describe("technical operations model", () => {
     );
   });
 
+  test("builds compact remote runtime labels for the renderer", () => {
+    const remoteRuntime: TechnicalOperation = {
+      attributes: {
+        error_code: "external_dependency_failure",
+        function_name: "remote_crm.sync_contact.v1",
+        module_name: "remote-crm",
+        remote_path: "/runtime/functions/remote_crm.sync_contact.v1/invoke",
+        request_id: "fnrun_1",
+      },
+      category: "external",
+      correlationId: "corr_1",
+      durationMs: 42,
+      endedAt: "2026-06-01T10:00:00.342Z",
+      id: "remote_runtime:elog_1",
+      name: "remote-crm remote_crm.sync_contact.v1",
+      relatedNodeId: "fnrun_1",
+      source: "remote_runtime",
+      startedAt: "2026-06-01T10:00:00.300Z",
+      status: "error",
+      storyId: "corr_1",
+    };
+
+    expect(technicalOperationSourceLabel(remoteRuntime)).toBe("remote runtime");
+    expect(technicalOperationSummary(remoteRuntime)).toBe(
+      "remote-crm / remote_crm.sync_contact.v1 / remote /runtime/functions/remote_crm.sync_contact.v1/invoke / duration 42ms / request fnrun_1 / error external_dependency_failure"
+    );
+  });
+
   test("returns execution-specific empty and error copy", () => {
     expect(
       technicalOperationsStateLabel({

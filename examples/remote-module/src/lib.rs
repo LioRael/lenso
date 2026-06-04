@@ -48,6 +48,7 @@ struct DetailResponse {
 
 #[derive(Debug, Deserialize)]
 struct RuntimeFunctionInvokeRequest {
+    request_id: String,
     function_run_id: String,
     function_name: String,
     attempt: u32,
@@ -466,6 +467,7 @@ async fn invoke_runtime_function(
                 .get("contact_id")
                 .and_then(Value::as_str)
                 .unwrap_or(""),
+            "request_id": request.request_id,
             "function_run_id": request.function_run_id,
             "attempt": request.attempt,
             "correlation_id": request.correlation_id,
