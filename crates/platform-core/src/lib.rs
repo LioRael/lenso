@@ -10,6 +10,7 @@ pub mod health;
 pub mod ids;
 pub mod migrations;
 pub mod outbox;
+pub mod remote_proxy_calls;
 pub mod runtime_config;
 pub mod shutdown;
 pub mod story_display;
@@ -42,6 +43,7 @@ pub use outbox::{
     ClaimedOutboxEvent, EventDispatcher, EventHandler, EventHandlerRegistry,
     LoggingEventDispatcher, OutboxEvent, OutboxPublisher, OutboxRelay, OutboxStatus,
 };
+pub use remote_proxy_calls::{RemoteHttpProxyCallRecord, insert_remote_http_proxy_call};
 pub use runtime_config::{
     CONFIG_NOTIFY_CHANNEL, PostgresRuntimeConfigProvider, RuntimeConfigAuditEntry,
     RuntimeConfigCell, RuntimeConfigDescriptor, RuntimeConfigProvider, RuntimeConfigRegistry,

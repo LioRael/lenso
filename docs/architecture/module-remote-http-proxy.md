@@ -222,8 +222,10 @@ explicitly allowlisted.
 Current GET, POST, PUT, PATCH, and DELETE proxy calls emit structured host-side
 tracing events for completed and failed forwards with module name, declared
 path, remote path, method, remote status, duration, request/correlation ids, and
-error code/retryability when present. Persisted Runtime Console views for proxy
-calls remain deferred.
+error code/retryability when present. Calls are also persisted to
+`platform.remote_http_proxy_calls` with module, route, status, duration,
+request/correlation, path parameter, and error detail fields. Runtime Console
+views for proxy calls remain deferred.
 
 ## OpenAPI Strategy
 
@@ -261,8 +263,8 @@ OpenAPI fragments after trust, validation, and versioning are specified.
 8. Normalize remote errors through the existing platform error model. Done for
    GET, POST, PUT, PATCH, and DELETE.
 9. Add telemetry and runtime-console visibility for proxied calls. Done for GET,
-   POST, PUT, PATCH, and DELETE tracing events; persisted Runtime Console
-   visibility remains deferred.
+   POST, PUT, PATCH, and DELETE tracing events and persisted call history;
+   Runtime Console visibility remains deferred.
 
 Do not implement per-module OpenAPI fragments, streaming, browser credentials,
 or bidirectional admin bridges in the first proxy slice.

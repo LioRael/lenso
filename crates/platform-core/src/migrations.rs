@@ -36,6 +36,10 @@ pub const PLATFORM_MIGRATIONS: &[Migration] = &[
         name: "platform/0007_create_config_schema",
         sql: include_str!("../migrations/0007_create_config_schema.sql"),
     },
+    Migration {
+        name: "platform/0008_create_remote_http_proxy_calls",
+        sql: include_str!("../migrations/0008_create_remote_http_proxy_calls.sql"),
+    },
 ];
 
 pub async fn apply_migrations(pool: &PgPool, migrations: &[Migration]) -> AppResult<()> {

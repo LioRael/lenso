@@ -5,8 +5,10 @@ use axum::http::{Request, StatusCode};
 use platform_admin_data::{install_admin_module_metadata, install_admin_modules};
 use platform_core::{
     AppConfig, AppContext, AuthConfig, DatabaseConfig, DbPool, HttpConfig, LoggingEventPublisher,
-    ModuleSourcesConfig, RemoteModuleSourceConfig, ServiceConfig, TelemetryConfig,
+    ModuleSourcesConfig, PLATFORM_MIGRATIONS, RemoteModuleSourceConfig, ServiceConfig,
+    TelemetryConfig, apply_migrations,
 };
+use platform_testing::TestDatabase;
 use serde_json::Value;
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -39,10 +41,19 @@ async fn app_with_remote_module(base_url: String) -> axum::Router {
 }
 
 async fn app_with_remote_modules(remote: Vec<RemoteModuleSourceConfig>) -> axum::Router {
+    let db = DbPool::connect_lazy("postgres://localhost/lenso_test").expect("lazy pool");
+    app_with_remote_modules_and_db(remote, db, "postgres://localhost/lenso_test".to_owned()).await
+}
+
+async fn app_with_remote_modules_and_db(
+    remote: Vec<RemoteModuleSourceConfig>,
+    db: DbPool,
+    database_url: String,
+) -> axum::Router {
     let config = AppConfig {
         service: ServiceConfig::default(),
         database: DatabaseConfig {
-            url: "postgres://localhost/lenso_test".to_owned(),
+            url: database_url,
             max_connections: 1,
         },
         http: HttpConfig::default(),
@@ -51,11 +62,7 @@ async fn app_with_remote_modules(remote: Vec<RemoteModuleSourceConfig>) -> axum:
         module_sources: ModuleSourcesConfig { remote },
         modules: Default::default(),
     };
-    let ctx = AppContext::new(
-        config,
-        DbPool::connect_lazy("postgres://localhost/lenso_test").expect("lazy pool"),
-        Arc::new(LoggingEventPublisher),
-    );
+    let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
     let admin_modules = app_bootstrap::load_admin_modules(&ctx)
         .await
         .expect("remote admin modules load");
@@ -70,6 +77,23 @@ async fn app_with_remote_modules(remote: Vec<RemoteModuleSourceConfig>) -> axum:
     install_admin_module_metadata(admin_module_metadata);
     platform_module_remote::install_remote_http_proxy_registry(remote_http_proxy_registry);
     build_router(ctx)
+}
+
+async fn app_with_remote_module_and_test_db(base_url: String, db: &TestDatabase) -> axum::Router {
+    apply_migrations(&db.pool, PLATFORM_MIGRATIONS)
+        .await
+        .expect("platform migrations apply");
+    app_with_remote_modules_and_db(
+        vec![RemoteModuleSourceConfig {
+            name: "remote-crm".to_owned(),
+            base_url,
+            auth_token_env: None,
+            timeout_ms: 5_000,
+        }],
+        db.pool.clone(),
+        db.url.clone(),
+    )
+    .await
 }
 
 fn admin_get(path: &str) -> Request<Body> {
@@ -126,6 +150,53 @@ fn error_detail_reason<'a>(body: &'a Value, field: &str) -> Option<&'a str> {
         .iter()
         .find(|detail| detail["field"] == field)
         .and_then(|detail| detail["reason"].as_str())
+}
+
+#[derive(Debug)]
+struct RemoteProxyCallRow {
+    module_name: String,
+    method: String,
+    declared_path: String,
+    remote_path: String,
+    remote_status: Option<i32>,
+    success: bool,
+    error_code: Option<String>,
+    request_id: String,
+    correlation_id: String,
+    path_params: Value,
+    error_details: Value,
+}
+
+type RemoteProxyCallTuple = (
+    String,
+    String,
+    String,
+    String,
+    Option<i32>,
+    bool,
+    Option<String>,
+    String,
+    String,
+    Value,
+    Value,
+);
+
+impl From<RemoteProxyCallTuple> for RemoteProxyCallRow {
+    fn from(row: RemoteProxyCallTuple) -> Self {
+        Self {
+            module_name: row.0,
+            method: row.1,
+            declared_path: row.2,
+            remote_path: row.3,
+            remote_status: row.4,
+            success: row.5,
+            error_code: row.6,
+            request_id: row.7,
+            correlation_id: row.8,
+            path_params: row.9,
+            error_details: row.10,
+        }
+    }
 }
 
 #[tokio::test]
@@ -288,6 +359,112 @@ async fn remote_http_proxy_forwards_declared_get_routes() {
         error_detail_reason(&remote_missing, "remote_status"),
         Some("404")
     );
+}
+
+#[tokio::test]
+async fn remote_http_proxy_persists_call_history() {
+    let _guard = REMOTE_SMOKE_TEST_LOCK.lock().await;
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let base_url = spawn_remote_module(remote_module_example::router()).await;
+    let app = app_with_remote_module_and_test_db(base_url, &db).await;
+
+    let success_response = app
+        .clone()
+        .oneshot(
+            service_get(
+                "/modules/remote-crm/http/contacts/contact_1",
+                "dev-service:admin:remote_crm.contacts.read",
+            )
+            .with_header("x-request-id", "req_proxy_success")
+            .with_header("x-correlation-id", "corr_proxy_history"),
+        )
+        .await
+        .expect("success proxy request completes");
+    assert_eq!(success_response.status(), StatusCode::OK);
+
+    let failure_response = app
+        .oneshot(
+            service_get(
+                "/modules/remote-crm/http/proxy-fixtures/text",
+                "dev-service:admin:remote_crm.contacts.read",
+            )
+            .with_header("x-request-id", "req_proxy_failure")
+            .with_header("x-correlation-id", "corr_proxy_history"),
+        )
+        .await
+        .expect("failure proxy request completes");
+    assert_eq!(failure_response.status(), StatusCode::BAD_GATEWAY);
+
+    let rows = sqlx::query_as::<_, RemoteProxyCallTuple>(
+        r#"
+        select
+            module_name,
+            method,
+            declared_path,
+            remote_path,
+            remote_status,
+            success,
+            error_code,
+            request_id,
+            correlation_id,
+            path_params,
+            error_details
+        from platform.remote_http_proxy_calls
+        where correlation_id = $1
+        order by occurred_at, id
+        "#,
+    )
+    .bind("corr_proxy_history")
+    .fetch_all(&db.pool)
+    .await
+    .expect("proxy call history should query")
+    .into_iter()
+    .map(RemoteProxyCallRow::from)
+    .collect::<Vec<_>>();
+
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].module_name, "remote-crm");
+    assert_eq!(rows[0].method, "GET");
+    assert_eq!(rows[0].declared_path, "/contacts/{id}");
+    assert_eq!(rows[0].remote_path, "/contacts/contact_1");
+    assert_eq!(rows[0].remote_status, Some(200));
+    assert!(rows[0].success);
+    assert_eq!(rows[0].error_code, None);
+    assert_eq!(rows[0].request_id, "req_proxy_success");
+    assert_eq!(rows[0].correlation_id, "corr_proxy_history");
+    assert_eq!(rows[0].path_params["id"], "contact_1");
+    assert_eq!(
+        rows[0]
+            .error_details
+            .as_array()
+            .expect("error details array"),
+        &Vec::<Value>::new()
+    );
+
+    assert_eq!(rows[1].module_name, "remote-crm");
+    assert_eq!(rows[1].method, "GET");
+    assert_eq!(rows[1].declared_path, "/proxy-fixtures/text");
+    assert_eq!(rows[1].remote_path, "/proxy-fixtures/text");
+    assert_eq!(rows[1].remote_status, Some(200));
+    assert!(!rows[1].success);
+    assert_eq!(
+        rows[1].error_code.as_deref(),
+        Some("external_dependency_failure")
+    );
+    assert_eq!(rows[1].request_id, "req_proxy_failure");
+    assert_eq!(rows[1].correlation_id, "corr_proxy_history");
+    assert!(
+        rows[1]
+            .error_details
+            .as_array()
+            .expect("error details array")
+            .iter()
+            .any(|detail| detail["field"] == "remote_module" && detail["reason"] == "remote-crm")
+    );
+
+    db.cleanup().await;
 }
 
 #[tokio::test]
@@ -787,4 +964,16 @@ async fn custom_remote_modules_are_visible_through_metadata_api() {
             .iter()
             .any(|module| module["module_name"] == "remote-crm-declarative")
     );
+}
+
+trait RequestExt {
+    fn with_header(self, name: &'static str, value: &'static str) -> Self;
+}
+
+impl RequestExt for Request<Body> {
+    fn with_header(mut self, name: &'static str, value: &'static str) -> Self {
+        self.headers_mut()
+            .insert(name, value.parse().expect("header value"));
+        self
+    }
 }

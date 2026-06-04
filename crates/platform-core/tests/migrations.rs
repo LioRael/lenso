@@ -69,3 +69,55 @@ async fn platform_migrations_create_outbox_summary_index() {
 
     db.cleanup().await;
 }
+
+#[tokio::test]
+async fn platform_migrations_create_remote_http_proxy_calls_table() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+
+    apply_migrations(&db.pool, platform_core::PLATFORM_MIGRATIONS)
+        .await
+        .expect("platform migrations should apply");
+
+    let columns: Vec<String> = sqlx::query_scalar(
+        r#"
+        select column_name
+        from information_schema.columns
+        where table_schema = 'platform'
+            and table_name = 'remote_http_proxy_calls'
+            and column_name in (
+                'module_name',
+                'method',
+                'declared_path',
+                'remote_path',
+                'remote_status',
+                'success',
+                'error_code',
+                'request_id',
+                'correlation_id'
+            )
+        order by column_name
+        "#,
+    )
+    .fetch_all(&db.pool)
+    .await
+    .expect("remote proxy call columns should query");
+
+    assert_eq!(
+        columns,
+        [
+            "correlation_id",
+            "declared_path",
+            "error_code",
+            "method",
+            "module_name",
+            "remote_path",
+            "remote_status",
+            "request_id",
+            "success"
+        ]
+    );
+
+    db.cleanup().await;
+}

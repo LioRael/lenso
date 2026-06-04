@@ -3,17 +3,19 @@ use crate::response::ResponseBodyPolicy;
 use crate::{RemoteHttpProxyMatch, RemoteHttpProxyRegistry};
 use axum::Json;
 use axum::body::{Body, Bytes, to_bytes};
-use axum::extract::Path;
+use axum::extract::{Path, State};
 use axum::http::{HeaderMap, Request};
 use platform_core::error::ErrorDetail;
-use platform_core::{AppError, ErrorCode};
+use platform_core::{
+    AppContext, AppError, ErrorCode, RemoteHttpProxyCallRecord, insert_remote_http_proxy_call,
+};
 use platform_http::{
     AdminActor, ApiErrorResponse, ApiOpenApiRouter, ErrorResponse, HttpRequestContext,
     OpenApiRouter, routes,
 };
 use platform_module::ModuleHttpMethod;
 use serde::{Serialize, Serializer};
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::sync::{Arc, OnceLock, RwLock};
 use std::time::{Duration, Instant};
@@ -101,6 +103,7 @@ fn remote_http_proxy_registry() -> Arc<RemoteHttpProxyRegistry> {
     )
 )]
 async fn proxy_get(
+    State(ctx): State<AppContext>,
     admin: AdminActor,
     HttpRequestContext(request_ctx): HttpRequestContext,
     headers: HeaderMap,
@@ -120,7 +123,7 @@ async fn proxy_get(
         })?;
 
     ensure_capability(&admin, &matched, &request_ctx)?;
-    let data = forward_get(&matched, &headers, &request_ctx).await?;
+    let data = forward_get(&ctx, &matched, &headers, &request_ctx).await?;
     Ok(Json(RemoteHttpProxyResponse::from_match(matched, data)))
 }
 
@@ -149,6 +152,7 @@ async fn proxy_get(
     )
 )]
 async fn proxy_post(
+    State(ctx): State<AppContext>,
     admin: AdminActor,
     HttpRequestContext(request_ctx): HttpRequestContext,
     headers: HeaderMap,
@@ -157,6 +161,7 @@ async fn proxy_post(
 ) -> Result<Json<RemoteHttpProxyResponse>, ApiErrorResponse> {
     proxy_body_method(
         ModuleHttpMethod::Post,
+        ctx,
         admin,
         request_ctx,
         headers,
@@ -192,6 +197,7 @@ async fn proxy_post(
     )
 )]
 async fn proxy_put(
+    State(ctx): State<AppContext>,
     admin: AdminActor,
     HttpRequestContext(request_ctx): HttpRequestContext,
     headers: HeaderMap,
@@ -200,6 +206,7 @@ async fn proxy_put(
 ) -> Result<Json<RemoteHttpProxyResponse>, ApiErrorResponse> {
     proxy_body_method(
         ModuleHttpMethod::Put,
+        ctx,
         admin,
         request_ctx,
         headers,
@@ -235,6 +242,7 @@ async fn proxy_put(
     )
 )]
 async fn proxy_patch(
+    State(ctx): State<AppContext>,
     admin: AdminActor,
     HttpRequestContext(request_ctx): HttpRequestContext,
     headers: HeaderMap,
@@ -243,6 +251,7 @@ async fn proxy_patch(
 ) -> Result<Json<RemoteHttpProxyResponse>, ApiErrorResponse> {
     proxy_body_method(
         ModuleHttpMethod::Patch,
+        ctx,
         admin,
         request_ctx,
         headers,
@@ -273,6 +282,7 @@ async fn proxy_patch(
     )
 )]
 async fn proxy_delete(
+    State(ctx): State<AppContext>,
     admin: AdminActor,
     HttpRequestContext(request_ctx): HttpRequestContext,
     Path((module, path)): Path<(String, String)>,
@@ -314,12 +324,13 @@ async fn proxy_delete(
         })?;
 
     ensure_capability(&admin, &matched, &request_ctx)?;
-    let data = forward_delete(&matched, &parts.headers, &request_ctx).await?;
+    let data = forward_delete(&ctx, &matched, &parts.headers, &request_ctx).await?;
     Ok(Json(RemoteHttpProxyResponse::from_match(matched, data)))
 }
 
 async fn proxy_body_method(
     method: ModuleHttpMethod,
+    ctx: AppContext,
     admin: AdminActor,
     request_ctx: platform_core::RequestContext,
     headers: HeaderMap,
@@ -341,7 +352,7 @@ async fn proxy_body_method(
         })?;
 
     ensure_capability(&admin, &matched, &request_ctx)?;
-    let data = forward_body_method(method, &matched, &headers, body, &request_ctx).await?;
+    let data = forward_body_method(method, &ctx, &matched, &headers, body, &request_ctx).await?;
     Ok(Json(RemoteHttpProxyResponse::from_match(matched, data)))
 }
 
@@ -377,6 +388,7 @@ fn ensure_capability(
 
 #[derive(Debug, Clone)]
 struct ProxyForwardRequest<'a> {
+    ctx: &'a AppContext,
     matched: &'a RemoteHttpProxyMatch,
     method: ModuleHttpMethod,
     headers: &'a HeaderMap,
@@ -385,11 +397,13 @@ struct ProxyForwardRequest<'a> {
 }
 
 async fn forward_get(
+    ctx: &AppContext,
     matched: &RemoteHttpProxyMatch,
     headers: &HeaderMap,
     request_ctx: &platform_core::RequestContext,
 ) -> Result<Value, ApiErrorResponse> {
     forward_proxy_request(ProxyForwardRequest {
+        ctx,
         matched,
         method: ModuleHttpMethod::Get,
         headers,
@@ -401,12 +415,14 @@ async fn forward_get(
 
 async fn forward_body_method(
     method: ModuleHttpMethod,
+    ctx: &AppContext,
     matched: &RemoteHttpProxyMatch,
     headers: &HeaderMap,
     body: Bytes,
     request_ctx: &platform_core::RequestContext,
 ) -> Result<Value, ApiErrorResponse> {
     forward_proxy_request(ProxyForwardRequest {
+        ctx,
         matched,
         method,
         headers,
@@ -417,11 +433,13 @@ async fn forward_body_method(
 }
 
 async fn forward_delete(
+    ctx: &AppContext,
     matched: &RemoteHttpProxyMatch,
     headers: &HeaderMap,
     request_ctx: &platform_core::RequestContext,
 ) -> Result<Value, ApiErrorResponse> {
     forward_proxy_request(ProxyForwardRequest {
+        ctx,
         matched,
         method: ModuleHttpMethod::Delete,
         headers,
@@ -434,6 +452,7 @@ async fn forward_delete(
 async fn forward_proxy_request(
     request: ProxyForwardRequest<'_>,
 ) -> Result<Value, ApiErrorResponse> {
+    let ctx = request.ctx;
     let matched = request.matched;
     let request_ctx = request.request_ctx;
     let started_at = Instant::now();
@@ -460,16 +479,27 @@ async fn forward_proxy_request(
     )
     .map_err(|error| ApiErrorResponse::with_context(error, request_ctx))?;
 
-    let response = outbound.send().await.map_err(|error| {
-        let app_error = AppError::new(
-            ErrorCode::ExternalDependency,
-            format!("remote HTTP proxy request failed: {error}"),
-        )
-        .retryable();
-        let app_error = with_proxy_error_details(app_error, matched, request.method, None);
-        record_proxy_call(matched, request_ctx, started_at, None, Some(&app_error));
-        ApiErrorResponse::with_context(app_error, request_ctx)
-    })?;
+    let response = match outbound.send().await {
+        Ok(response) => response,
+        Err(error) => {
+            let app_error = AppError::new(
+                ErrorCode::ExternalDependency,
+                format!("remote HTTP proxy request failed: {error}"),
+            )
+            .retryable();
+            let app_error = with_proxy_error_details(app_error, matched, request.method, None);
+            record_proxy_call(
+                ctx,
+                matched,
+                request_ctx,
+                started_at,
+                None,
+                Some(&app_error),
+            )
+            .await;
+            return Err(ApiErrorResponse::with_context(app_error, request_ctx));
+        }
+    };
     let remote_status = response.status();
 
     match crate::response::decode_json_response_with_policy::<Value>(
@@ -485,12 +515,28 @@ async fn forward_proxy_request(
     .await
     {
         Ok(Some(data)) => {
-            record_proxy_call(matched, request_ctx, started_at, Some(remote_status), None);
+            record_proxy_call(
+                ctx,
+                matched,
+                request_ctx,
+                started_at,
+                Some(remote_status),
+                None,
+            )
+            .await;
             Ok(data)
         }
         Ok(None) => {
             if request.method == ModuleHttpMethod::Delete && remote_status.is_success() {
-                record_proxy_call(matched, request_ctx, started_at, Some(remote_status), None);
+                record_proxy_call(
+                    ctx,
+                    matched,
+                    request_ctx,
+                    started_at,
+                    Some(remote_status),
+                    None,
+                )
+                .await;
                 Ok(Value::Null)
             } else {
                 let app_error = AppError::new(ErrorCode::NotFound, "remote HTTP route not found");
@@ -501,12 +547,14 @@ async fn forward_proxy_request(
                     Some(remote_status),
                 );
                 record_proxy_call(
+                    ctx,
                     matched,
                     request_ctx,
                     started_at,
                     Some(remote_status),
                     Some(&app_error),
-                );
+                )
+                .await;
                 Err(ApiErrorResponse::with_context(app_error, request_ctx))
             }
         }
@@ -514,12 +562,14 @@ async fn forward_proxy_request(
             let error =
                 with_proxy_error_details(error, matched, request.method, Some(remote_status));
             record_proxy_call(
+                ctx,
                 matched,
                 request_ctx,
                 started_at,
                 Some(remote_status),
                 Some(&error),
-            );
+            )
+            .await;
             Err(ApiErrorResponse::with_context(error, request_ctx))
         }
     }
@@ -578,14 +628,15 @@ fn reqwest_method(method: ModuleHttpMethod) -> reqwest::Method {
     }
 }
 
-fn record_proxy_call(
+async fn record_proxy_call(
+    ctx: &AppContext,
     matched: &RemoteHttpProxyMatch,
     request_ctx: &platform_core::RequestContext,
     started_at: Instant,
     remote_status: Option<reqwest::StatusCode>,
     error: Option<&AppError>,
 ) {
-    let duration_ms = started_at.elapsed().as_millis().min(u64::MAX as u128) as u64;
+    let duration_ms = started_at.elapsed().as_millis().min(i64::MAX as u128) as i64;
     match error {
         Some(error) => {
             tracing::warn!(
@@ -615,6 +666,38 @@ fn record_proxy_call(
                 "remote HTTP proxy call completed"
             );
         }
+    }
+
+    let record = RemoteHttpProxyCallRecord {
+        module_name: matched.module_name.clone(),
+        method: module_http_method_label(matched.method).to_owned(),
+        declared_path: matched.declared_path.clone(),
+        remote_path: matched.remote_path.clone(),
+        capability: matched.capability.clone(),
+        remote_status: remote_status.map(|status| status.as_u16()),
+        duration_ms,
+        success: error.is_none(),
+        error_code: error.map(|error| error.code.as_str().to_owned()),
+        retryable: error.is_some_and(|error| error.retryable),
+        path_params: json!(matched.path_params),
+        error_details: error
+            .map(|error| json!(error.details))
+            .unwrap_or_else(|| Value::Array(Vec::new())),
+    };
+
+    if let Err(error) =
+        insert_remote_http_proxy_call(&ctx.db, ctx.ids.as_ref(), request_ctx, record).await
+    {
+        tracing::warn!(
+            error = ?error,
+            module_name = %matched.module_name,
+            declared_path = %matched.declared_path,
+            remote_path = %matched.remote_path,
+            http_method = %module_http_method_label(matched.method),
+            request_id = %request_ctx.request_id.0,
+            correlation_id = %request_ctx.correlation_id.0,
+            "failed to persist remote HTTP proxy call"
+        );
     }
 }
 
