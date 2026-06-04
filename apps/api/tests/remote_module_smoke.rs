@@ -152,6 +152,30 @@ fn error_detail_reason<'a>(body: &'a Value, field: &str) -> Option<&'a str> {
         .and_then(|detail| detail["reason"].as_str())
 }
 
+async fn wait_for_story_event(pool: &platform_core::DbPool, correlation_id: &str) {
+    for _ in 0..20 {
+        let count: i64 = sqlx::query_scalar(
+            r#"
+            select count(*)::bigint
+            from platform.story_events
+            where correlation_id = $1
+            "#,
+        )
+        .bind(correlation_id)
+        .fetch_one(pool)
+        .await
+        .expect("story event count should query");
+
+        if count > 0 {
+            return;
+        }
+
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+
+    panic!("story event for {correlation_id} was not projected");
+}
+
 #[derive(Debug)]
 struct RemoteProxyCallRow {
     module_name: String,
@@ -163,6 +187,8 @@ struct RemoteProxyCallRow {
     error_code: Option<String>,
     request_id: String,
     correlation_id: String,
+    trace_id: Option<String>,
+    span_id: Option<String>,
     path_params: Value,
     error_details: Value,
 }
@@ -177,6 +203,8 @@ type RemoteProxyCallTuple = (
     Option<String>,
     String,
     String,
+    Option<String>,
+    Option<String>,
     Value,
     Value,
 );
@@ -193,8 +221,10 @@ impl From<RemoteProxyCallTuple> for RemoteProxyCallRow {
             error_code: row.6,
             request_id: row.7,
             correlation_id: row.8,
-            path_params: row.9,
-            error_details: row.10,
+            trace_id: row.9,
+            span_id: row.10,
+            path_params: row.11,
+            error_details: row.12,
         }
     }
 }
@@ -362,7 +392,7 @@ async fn remote_http_proxy_forwards_declared_get_routes() {
 }
 
 #[tokio::test]
-async fn remote_http_proxy_persists_call_history() {
+async fn remote_http_proxy_persists_call_history_and_story_operations() {
     let _guard = REMOTE_SMOKE_TEST_LOCK.lock().await;
     let Some(db) = TestDatabase::create().await else {
         return;
@@ -378,20 +408,30 @@ async fn remote_http_proxy_persists_call_history() {
                 "dev-service:admin:remote_crm.contacts.read",
             )
             .with_header("x-request-id", "req_proxy_success")
-            .with_header("x-correlation-id", "corr_proxy_history"),
+            .with_header("x-correlation-id", "corr_proxy_history")
+            .with_header(
+                "traceparent",
+                "00-00000000000000000000000000000021-0000000000000021-01",
+            ),
         )
         .await
         .expect("success proxy request completes");
     assert_eq!(success_response.status(), StatusCode::OK);
+    wait_for_story_event(&db.pool, "corr_proxy_history").await;
 
     let failure_response = app
+        .clone()
         .oneshot(
             service_get(
                 "/modules/remote-crm/http/proxy-fixtures/text",
                 "dev-service:admin:remote_crm.contacts.read",
             )
             .with_header("x-request-id", "req_proxy_failure")
-            .with_header("x-correlation-id", "corr_proxy_history"),
+            .with_header("x-correlation-id", "corr_proxy_history")
+            .with_header(
+                "traceparent",
+                "00-00000000000000000000000000000022-0000000000000022-01",
+            ),
         )
         .await
         .expect("failure proxy request completes");
@@ -409,6 +449,8 @@ async fn remote_http_proxy_persists_call_history() {
             error_code,
             request_id,
             correlation_id,
+            trace_id,
+            span_id,
             path_params,
             error_details
         from platform.remote_http_proxy_calls
@@ -434,6 +476,11 @@ async fn remote_http_proxy_persists_call_history() {
     assert_eq!(rows[0].error_code, None);
     assert_eq!(rows[0].request_id, "req_proxy_success");
     assert_eq!(rows[0].correlation_id, "corr_proxy_history");
+    assert_eq!(
+        rows[0].trace_id.as_deref(),
+        Some("00000000000000000000000000000021")
+    );
+    assert_eq!(rows[0].span_id.as_deref(), Some("0000000000000021"));
     assert_eq!(rows[0].path_params["id"], "contact_1");
     assert_eq!(
         rows[0]
@@ -455,6 +502,11 @@ async fn remote_http_proxy_persists_call_history() {
     );
     assert_eq!(rows[1].request_id, "req_proxy_failure");
     assert_eq!(rows[1].correlation_id, "corr_proxy_history");
+    assert_eq!(
+        rows[1].trace_id.as_deref(),
+        Some("00000000000000000000000000000022")
+    );
+    assert_eq!(rows[1].span_id.as_deref(), Some("0000000000000022"));
     assert!(
         rows[1]
             .error_details
@@ -463,6 +515,55 @@ async fn remote_http_proxy_persists_call_history() {
             .iter()
             .any(|detail| detail["field"] == "remote_module" && detail["reason"] == "remote-crm")
     );
+
+    let story_ops_response = app
+        .oneshot(
+            admin_get("/admin/runtime/stories/corr_proxy_history/technical-operations")
+                .with_header("x-request-id", "req_admin_story_ops"),
+        )
+        .await
+        .expect("story technical operations request completes");
+    assert_eq!(story_ops_response.status(), StatusCode::OK);
+    let story_ops = json_body(story_ops_response).await;
+    let operations = story_ops["data"].as_array().expect("operations array");
+    let remote_success = operations
+        .iter()
+        .find(|operation| {
+            operation["source"] == "remote_proxy"
+                && operation["attributes"]["request_id"] == "req_proxy_success"
+        })
+        .expect("successful remote proxy operation should be present");
+    assert_eq!(remote_success["story_id"], "corr_proxy_history");
+    assert_eq!(remote_success["correlation_id"], "corr_proxy_history");
+    assert_eq!(remote_success["category"], "external");
+    assert_eq!(remote_success["status"], "ok");
+    assert_eq!(remote_success["attributes"]["module_name"], "remote-crm");
+    assert_eq!(
+        remote_success["attributes"]["trace_id"],
+        "00000000000000000000000000000021"
+    );
+    assert_eq!(remote_success["attributes"]["span_id"], "0000000000000021");
+
+    let remote_failure = operations
+        .iter()
+        .find(|operation| {
+            operation["source"] == "remote_proxy"
+                && operation["attributes"]["request_id"] == "req_proxy_failure"
+        })
+        .expect("failed remote proxy operation should be present");
+    assert_eq!(remote_failure["story_id"], "corr_proxy_history");
+    assert_eq!(remote_failure["correlation_id"], "corr_proxy_history");
+    assert_eq!(remote_failure["category"], "external");
+    assert_eq!(remote_failure["status"], "error");
+    assert_eq!(
+        remote_failure["attributes"]["error_code"],
+        "external_dependency_failure"
+    );
+    assert_eq!(
+        remote_failure["attributes"]["trace_id"],
+        "00000000000000000000000000000022"
+    );
+    assert_eq!(remote_failure["attributes"]["span_id"], "0000000000000022");
 
     db.cleanup().await;
 }
