@@ -1,6 +1,7 @@
 //! Generic container DTOs for schema-admin endpoints. The record shape is
 //! `serde_json::Value` because the renderer is generic across arbitrary modules.
 
+use platform_core::{StoryDisplayDescriptor, StoryDisplaySource};
 use platform_module::{AdminSchema, AdminSurface, ModuleHttpRoute, ModuleSource};
 use serde::Serialize;
 use utoipa::ToSchema;
@@ -31,7 +32,42 @@ pub struct AdminModuleMetadataDto {
     pub status: AdminModuleStatus,
     pub error: Option<String>,
     pub http_routes: Vec<ModuleHttpRoute>,
+    pub story_display: Vec<StoryDisplayDescriptorDto>,
+    pub capabilities: Vec<String>,
     pub admin: Option<AdminSurface>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct StoryDisplayDescriptorDto {
+    pub source: StoryDisplaySourceDto,
+    pub display_name: String,
+    pub story_title: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum StoryDisplaySourceDto {
+    ExecutionName { name: String },
+    HttpRequest { method: String, path: String },
+}
+
+impl From<StoryDisplayDescriptor> for StoryDisplayDescriptorDto {
+    fn from(descriptor: StoryDisplayDescriptor) -> Self {
+        Self {
+            source: descriptor.source.into(),
+            display_name: descriptor.display_name,
+            story_title: descriptor.story_title,
+        }
+    }
+}
+
+impl From<StoryDisplaySource> for StoryDisplaySourceDto {
+    fn from(source: StoryDisplaySource) -> Self {
+        match source {
+            StoryDisplaySource::ExecutionName { name } => Self::ExecutionName { name },
+            StoryDisplaySource::HttpRequest { method, path } => Self::HttpRequest { method, path },
+        }
+    }
 }
 
 #[derive(Debug, Serialize, ToSchema)]

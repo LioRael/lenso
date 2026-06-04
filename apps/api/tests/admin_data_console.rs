@@ -6,7 +6,9 @@ use platform_admin_data::{
     install_admin_module_metadata_refresh_fn, install_admin_module_refresh_fn,
     install_admin_modules,
 };
-use platform_core::{AppConfig, AppContext, LoggingEventPublisher};
+use platform_core::{
+    AppConfig, AppContext, LoggingEventPublisher, StoryDisplayDescriptor, StoryDisplaySource,
+};
 use platform_module::{
     AdminDataSource, AdminListQuery, AdminPage, AdminSchema, AdminSurface, EntitySchema,
     FieldSchema, FieldType, ModuleLoadStatus, ModuleSource,
@@ -66,6 +68,8 @@ fn app() -> axum::Router {
         source: ModuleSource::Linked,
         load_status: ModuleLoadStatus::Loaded,
         http_routes: vec![],
+        story_display: vec![],
+        capabilities: vec![],
         admin: Some(AdminSurface::Schema(stub_schema())),
     }]);
     let ctx = AppContext::new(
@@ -148,6 +152,8 @@ async fn modules_endpoint_lists_registry_metadata() {
     assert_eq!(json["modules"][0]["status"], "loaded");
     assert_eq!(json["modules"][0]["error"], Value::Null);
     assert_eq!(json["modules"][0]["http_routes"], serde_json::json!([]));
+    assert_eq!(json["modules"][0]["story_display"], serde_json::json!([]));
+    assert_eq!(json["modules"][0]["capabilities"], serde_json::json!([]));
     assert_eq!(json["modules"][0]["admin"]["kind"], "schema");
     assert_eq!(json["modules"][0]["admin"]["entities"][0]["name"], "users");
 }
@@ -231,6 +237,18 @@ async fn modules_endpoint_lists_linked_modules_without_admin_surfaces() {
     assert_eq!(notifications["status"], "loaded");
     assert_eq!(notifications["error"], Value::Null);
     assert_eq!(notifications["http_routes"], serde_json::json!([]));
+    assert_eq!(notifications["capabilities"], serde_json::json!([]));
+    assert!(
+        notifications["story_display"]
+            .as_array()
+            .expect("story display array")
+            .iter()
+            .any(|descriptor| {
+                descriptor["display_name"] == "Send Welcome Email"
+                    && descriptor["source"]["kind"] == "execution_name"
+                    && descriptor["source"]["name"] == "notifications.send_welcome_email.v1"
+            })
+    );
     assert_eq!(notifications["admin"], Value::Null);
 }
 
@@ -355,6 +373,14 @@ async fn refresh_schema_replaces_installed_modules() {
                 source: ModuleSource::Linked,
                 load_status: ModuleLoadStatus::Loaded,
                 http_routes: vec![],
+                story_display: vec![StoryDisplayDescriptor {
+                    source: StoryDisplaySource::ExecutionName {
+                        name: "identity.create_user".to_owned(),
+                    },
+                    display_name: "Create User".to_owned(),
+                    story_title: Some("User Registration".to_owned()),
+                }],
+                capabilities: vec!["identity.users.read".to_owned()],
                 admin: Some(AdminSurface::Schema(stub_schema())),
             },
             AdminModuleMetadata {
@@ -364,6 +390,8 @@ async fn refresh_schema_replaces_installed_modules() {
                     message: "remote manifest request failed".to_owned(),
                 },
                 http_routes: vec![],
+                story_display: vec![],
+                capabilities: vec![],
                 admin: None,
             },
         ])
@@ -405,6 +433,20 @@ async fn refresh_schema_replaces_installed_modules() {
         .expect("remote-crm metadata was refreshed");
     assert_eq!(refreshed_remote_metadata["status"], "error");
     assert_eq!(refreshed_remote_metadata["admin"], Value::Null);
+    let refreshed_identity_metadata = modules_body["modules"]
+        .as_array()
+        .expect("modules array")
+        .iter()
+        .find(|module| module["module_name"] == "identity")
+        .expect("identity metadata was refreshed");
+    assert_eq!(
+        refreshed_identity_metadata["capabilities"],
+        serde_json::json!(["identity.users.read"])
+    );
+    assert_eq!(
+        refreshed_identity_metadata["story_display"][0]["story_title"],
+        "User Registration"
+    );
 
     let schema_response = app
         .oneshot(admin_get("/admin/data/schema"))

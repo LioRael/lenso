@@ -3,7 +3,7 @@
 //! injected [`AdminDataSource`] registry and the manifest schema, mirroring
 //! `platform-admin`'s seam-only discipline.
 
-use platform_core::{AppError, ErrorCode, RequestContext};
+use platform_core::{AppError, ErrorCode, RequestContext, StoryDisplayDescriptor};
 use platform_http::{ApiErrorResponse, ApiOpenApiRouter, OpenApiRouter, routes};
 use platform_module::{
     AdminDataSource, AdminSchema, AdminSurface, ModuleHttpRoute, ModuleLoadStatus, ModuleSource,
@@ -51,6 +51,11 @@ pub struct AdminModuleMetadata {
     /// Declared module-owned HTTP routes. Metadata only; not mounted by
     /// platform-admin-data.
     pub http_routes: Vec<ModuleHttpRoute>,
+    /// Declared story-display mappings for runtime story titles and node
+    /// labels.
+    pub story_display: Vec<StoryDisplayDescriptor>,
+    /// Declared capability strings owned by the module.
+    pub capabilities: Vec<String>,
     /// The declared admin surface. Missing for modules with no admin surface
     /// and degraded failed remotes whose manifest could not be loaded.
     pub admin: Option<AdminSurface>,

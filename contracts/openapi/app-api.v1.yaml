@@ -2610,11 +2610,17 @@ components:
       - source
       - status
       - http_routes
+      - story_display
+      - capabilities
       properties:
         admin:
           oneOf:
           - type: 'null'
           - $ref: '#/components/schemas/AdminSurface'
+        capabilities:
+          type: array
+          items:
+            type: string
         error:
           type:
           - string
@@ -2629,6 +2635,10 @@ components:
           $ref: '#/components/schemas/ModuleSource'
         status:
           $ref: '#/components/schemas/AdminModuleStatus'
+        story_display:
+          type: array
+          items:
+            $ref: '#/components/schemas/StoryDisplayDescriptorDto'
     AdminModuleMetadataListResponse:
       type: object
       description: |-
@@ -3971,6 +3981,47 @@ components:
       type: string
       enum:
       - forwarded
+    StoryDisplayDescriptorDto:
+      type: object
+      required:
+      - source
+      - display_name
+      properties:
+        display_name:
+          type: string
+        source:
+          $ref: '#/components/schemas/StoryDisplaySourceDto'
+        story_title:
+          type:
+          - string
+          - 'null'
+    StoryDisplaySourceDto:
+      oneOf:
+      - type: object
+        required:
+        - name
+        - kind
+        properties:
+          kind:
+            type: string
+            enum:
+            - execution_name
+          name:
+            type: string
+      - type: object
+        required:
+        - method
+        - path
+        - kind
+        properties:
+          kind:
+            type: string
+            enum:
+            - http_request
+          method:
+            type: string
+          path:
+            type: string
     ValidationErrorDetail:
       type: object
       required:

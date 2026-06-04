@@ -86,11 +86,13 @@ export type AdminMetricBinding = {
 
 export type AdminModuleMetadataDto = {
   admin?: unknown;
+  capabilities: Array<string>;
   error?: string | null;
   http_routes: Array<ModuleHttpRoute>;
   module_name: string;
   source: ModuleSource;
   status: AdminModuleStatus;
+  story_display: Array<StoryDisplayDescriptorDto>;
 };
 
 export type AdminModuleMetadataListResponse = {
@@ -539,6 +541,14 @@ export type RemoteHttpProxyResponse = {
 };
 
 export type RemoteHttpProxyStatus = string;
+
+export type StoryDisplayDescriptorDto = {
+  display_name: string;
+  source: StoryDisplaySourceDto;
+  story_title?: string | null;
+};
+
+export type StoryDisplaySourceDto = unknown;
 
 export type ValidationErrorDetail = {
   field?: string | null;

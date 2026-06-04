@@ -1,5 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { Boxes, Route, TriangleAlert } from "lucide-react";
+import {
+  Boxes,
+  KeyRound,
+  Route,
+  ScrollText,
+  TriangleAlert,
+} from "lucide-react";
 import { useState } from "react";
 
 import { cn } from "../lib/cn";
@@ -16,6 +22,7 @@ import {
   moduleHttpRouteRows,
   moduleIsLoaded,
   moduleStatusLabel,
+  storyDisplayRows,
 } from "./data-render-model";
 
 type ModulesResponse = { modules: AdminModuleMetadata[] };
@@ -117,6 +124,7 @@ function ModulesContent() {
 
 function ModuleRegistryDetail({ module }: { module: AdminModuleMetadata }) {
   const routeRows = moduleHttpRouteRows(module);
+  const storyRows = storyDisplayRows(module);
   return (
     <div className="grid gap-3">
       <section className="border border-(--border-subtle) bg-(--surface)">
@@ -136,6 +144,8 @@ function ModuleRegistryDetail({ module }: { module: AdminModuleMetadata }) {
         )}
       </section>
 
+      <ModuleCapabilitiesList capabilities={module.capabilities} />
+      <ModuleStoryDisplayTable rows={storyRows} />
       <ModuleHttpRoutesTable rows={routeRows} />
     </div>
   );
@@ -155,6 +165,94 @@ function MetadataRows({ rows }: { rows: { label: string; value: string }[] }) {
         </div>
       ))}
     </dl>
+  );
+}
+
+function ModuleCapabilitiesList({ capabilities }: { capabilities: string[] }) {
+  if (capabilities.length === 0) {
+    return (
+      <section className="border border-(--border-subtle) bg-(--surface) px-3 py-2 text-(--muted)">
+        No capabilities declared.
+      </section>
+    );
+  }
+
+  return (
+    <section className="min-w-0 border border-(--border-subtle) bg-(--surface)">
+      <header className="flex items-center gap-2 border-b border-(--border-subtle) px-3 py-2 font-semibold">
+        <KeyRound className="text-(--warning)" size={14} />
+        <span>Capabilities</span>
+        <span className="ml-auto border border-(--border-subtle) px-1.5 py-0.5 text-[10px] text-(--secondary)">
+          {capabilities.length}
+        </span>
+      </header>
+      <div className="flex flex-wrap gap-1.5 p-2">
+        {capabilities.map((capability) => (
+          <span
+            className="max-w-full truncate border border-(--border-subtle) bg-(--sidebar) px-2 py-1 text-[11px] text-(--secondary)"
+            key={capability}
+            title={capability}
+          >
+            {capability}
+          </span>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ModuleStoryDisplayTable({
+  rows,
+}: {
+  rows: ReturnType<typeof storyDisplayRows>;
+}) {
+  if (rows.length === 0) {
+    return (
+      <section className="border border-(--border-subtle) bg-(--surface) px-3 py-2 text-(--muted)">
+        No story display descriptors declared.
+      </section>
+    );
+  }
+
+  return (
+    <section className="min-w-0 border border-(--border-subtle) bg-(--surface)">
+      <header className="flex items-center gap-2 border-b border-(--border-subtle) px-3 py-2 font-semibold">
+        <ScrollText className="text-(--info)" size={14} />
+        <span>Story Display</span>
+        <span className="ml-auto border border-(--border-subtle) px-1.5 py-0.5 text-[10px] text-(--secondary)">
+          {rows.length}
+        </span>
+      </header>
+      <div className="overflow-auto">
+        <table className="w-full min-w-[680px] table-fixed">
+          <thead className="bg-(--sidebar) text-[10px] uppercase tracking-wide text-(--muted)">
+            <tr>
+              <th className="px-3 py-1.5 text-left">source</th>
+              <th className="px-3 py-1.5 text-left">display</th>
+              <th className="px-3 py-1.5 text-left">story</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr
+                className="border-t border-(--border-subtle) text-[11px]"
+                key={row.key}
+              >
+                <td className="truncate px-3 py-1.5 text-(--foreground)">
+                  {row.source}
+                </td>
+                <td className="truncate px-3 py-1.5 text-(--secondary)">
+                  {row.displayName}
+                </td>
+                <td className="truncate px-3 py-1.5 text-(--muted)">
+                  {row.storyTitle}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 

@@ -37,6 +37,16 @@ export type ModuleHttpRoute = {
   story_title?: string | null;
 };
 
+export type StoryDisplaySource =
+  | { kind: "execution_name"; name: string }
+  | { kind: "http_request"; method: string; path: string };
+
+export type StoryDisplayDescriptor = {
+  source: StoryDisplaySource;
+  display_name: string;
+  story_title?: string | null;
+};
+
 export type SchemaAdminSurface = AdminSchema & { kind: "schema" };
 
 export type DeclarativeAdminSurface = {
@@ -120,6 +130,8 @@ export type AdminModuleMetadata = {
   status: ModuleStatus;
   error: string | null;
   http_routes: ModuleHttpRoute[];
+  story_display: StoryDisplayDescriptor[];
+  capabilities: string[];
   admin: AdminSurface | null;
 };
 
@@ -157,6 +169,13 @@ export type ModuleHttpRouteRow = {
   method: ModuleHttpMethod;
   path: string;
   capability: string;
+  displayName: string;
+  storyTitle: string;
+};
+
+export type StoryDisplayRow = {
+  key: string;
+  source: string;
   displayName: string;
   storyTitle: string;
 };
@@ -327,6 +346,31 @@ export function moduleHttpRouteRows(
     path: route.path,
     storyTitle: route.story_title ?? "-",
   }));
+}
+
+export function storyDisplayRows(
+  module: AdminModuleMetadata
+): StoryDisplayRow[] {
+  return module.story_display.map((descriptor, index) => ({
+    displayName: descriptor.display_name,
+    key: `${storyDisplaySourceLabel(descriptor.source)}:${index}`,
+    source: storyDisplaySourceLabel(descriptor.source),
+    storyTitle: descriptor.story_title ?? "-",
+  }));
+}
+
+export function storyDisplaySourceLabel(source: StoryDisplaySource): string {
+  switch (source.kind) {
+    case "execution_name": {
+      return source.name;
+    }
+    case "http_request": {
+      return `${source.method} ${source.path}`;
+    }
+    default: {
+      return "unknown";
+    }
+  }
 }
 
 export function embeddedIframePolicy(

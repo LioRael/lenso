@@ -20,6 +20,7 @@ import {
   recordId,
   renderCell,
   renderRow,
+  storyDisplayRows,
 } from "./data-render-model";
 
 const emailField: FieldSchema = {
@@ -53,6 +54,17 @@ const entity: EntitySchema = {
   read_capability: "identity.users.read",
   fields: [emailField, activeField, createdAtField, metaField],
 };
+
+function moduleMetadata(
+  module: Omit<AdminModuleMetadata, "capabilities" | "story_display"> &
+    Partial<Pick<AdminModuleMetadata, "capabilities" | "story_display">>
+): AdminModuleMetadata {
+  return {
+    capabilities: [],
+    story_display: [],
+    ...module,
+  };
+}
 
 describe("renderCell", () => {
   test("renders strings verbatim", () => {
@@ -140,14 +152,14 @@ describe("detailRows", () => {
 });
 
 describe("moduleStatusLabel", () => {
-  const moduleSchema: AdminModuleMetadata = {
+  const moduleSchema: AdminModuleMetadata = moduleMetadata({
     module_name: "remote-crm",
     source: "remote",
     status: "loaded",
     error: null,
     http_routes: [],
     admin: { kind: "schema", entities: [] },
-  };
+  });
 
   test("uses backend loaded status verbatim", () => {
     expect(moduleStatusLabel(moduleSchema)).toBe("loaded");
@@ -165,22 +177,22 @@ describe("moduleStatusLabel", () => {
 });
 
 describe("module status helpers", () => {
-  const loadedModule: AdminModuleMetadata = {
+  const loadedModule: AdminModuleMetadata = moduleMetadata({
     module_name: "identity",
     source: "linked",
     status: "loaded",
     error: null,
     http_routes: [],
     admin: { kind: "schema", entities: [entity] },
-  };
-  const errorModule: AdminModuleMetadata = {
+  });
+  const errorModule: AdminModuleMetadata = moduleMetadata({
     module_name: "remote-crm",
     source: "remote",
     status: "error",
     error: "remote manifest request failed",
     http_routes: [],
     admin: null,
-  };
+  });
 
   test("identifies loaded modules", () => {
     expect(moduleIsLoaded(loadedModule)).toBe(true);
@@ -220,6 +232,45 @@ describe("module status helpers", () => {
     ]);
   });
 
+  test("builds story display rows from runtime descriptor sources", () => {
+    expect(
+      storyDisplayRows({
+        ...loadedModule,
+        story_display: [
+          {
+            display_name: "Create User Request",
+            source: {
+              kind: "http_request",
+              method: "POST",
+              path: "/v1/identity/users",
+            },
+            story_title: "User Registration",
+          },
+          {
+            display_name: "Send Welcome Email",
+            source: {
+              kind: "execution_name",
+              name: "notifications.send_welcome_email.v1",
+            },
+          },
+        ],
+      })
+    ).toEqual([
+      {
+        displayName: "Create User Request",
+        key: "POST /v1/identity/users:0",
+        source: "POST /v1/identity/users",
+        storyTitle: "User Registration",
+      },
+      {
+        displayName: "Send Welcome Email",
+        key: "notifications.send_welcome_email.v1:1",
+        source: "notifications.send_welcome_email.v1",
+        storyTitle: "-",
+      },
+    ]);
+  });
+
   test("keeps failed empty-schema modules visible in nav", () => {
     expect(moduleNavItems([loadedModule, errorModule])).toEqual([
       {
@@ -242,7 +293,7 @@ describe("module status helpers", () => {
   });
 
   test("keeps custom surfaces visible without schema entities", () => {
-    const declarativeModule: AdminModuleMetadata = {
+    const declarativeModule: AdminModuleMetadata = moduleMetadata({
       module_name: "billing",
       source: "linked",
       status: "loaded",
@@ -254,8 +305,8 @@ describe("module status helpers", () => {
         actions: [],
         fallback_schema: { entities: [] },
       },
-    };
-    const embeddedModule: AdminModuleMetadata = {
+    });
+    const embeddedModule: AdminModuleMetadata = moduleMetadata({
       module_name: "remote-crm-embedded",
       source: "remote",
       status: "loaded",
@@ -273,7 +324,7 @@ describe("module status helpers", () => {
         permissions: [],
         fallback_schema: { entities: [entity] },
       },
-    };
+    });
 
     expect(moduleNavItems([declarativeModule, embeddedModule])).toEqual([
       {
@@ -309,7 +360,7 @@ describe("admin surface metadata helpers", () => {
   });
 
   test("summarizes embedded surfaces without exposing executable code", () => {
-    const module: AdminModuleMetadata = {
+    const module: AdminModuleMetadata = moduleMetadata({
       module_name: "remote-crm-embedded",
       source: "remote",
       status: "loaded",
@@ -326,7 +377,7 @@ describe("admin surface metadata helpers", () => {
         permissions: [{ kind: "read", capability: "remote_crm.contacts.read" }],
         fallback_schema: { entities: [entity] },
       },
-    };
+    });
 
     expect(adminSurfaceMetadataRows(module)).toEqual([
       { label: "module", value: "remote-crm-embedded" },
