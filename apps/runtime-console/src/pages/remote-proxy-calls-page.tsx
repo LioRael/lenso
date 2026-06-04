@@ -21,6 +21,7 @@ import {
   filterRemoteProxyCalls,
   flattenRemoteProxyCallPages,
   nextRemoteProxyCallCursor,
+  remoteProxyCallsPath,
   remoteProxyCallModules,
   remoteProxyCallResultLabel,
   summarizeRemoteProxyCalls,
@@ -95,13 +96,11 @@ export function RemoteProxyCallsPage() {
     if (typeof window === "undefined") {
       return;
     }
-    const url = new URL(window.location.href);
-    if (correlationId) {
-      url.searchParams.set("correlation_id", correlationId);
-    } else {
-      url.searchParams.delete("correlation_id");
-    }
-    window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+    window.history.replaceState(
+      null,
+      "",
+      remoteProxyCallsPath({ correlationId })
+    );
   }, [correlationId]);
 
   const selected = visible[selectedIndex] ?? null;

@@ -26,6 +26,7 @@ import {
   useRuntimeStories,
 } from "../../hooks/use-runtime-queries";
 import { isApiMode } from "../../lib/http-client";
+import { remoteProxyCallsPath } from "../../pages/remote-proxy-calls-model";
 import {
   buildRuntimeSearchResults,
   type RuntimeSearchResult,
@@ -49,6 +50,7 @@ type RuntimeConsoleContextValue = {
   focusGlobalSearch: () => void;
   openTimeline: (nextCorrelationId: string) => void;
   openStory: (storyId: string, nodeId?: string) => void;
+  openRemoteCalls: (correlationId?: string) => void;
   clearStoryTarget: () => void;
   searchRuntime: (query: string) => SearchResult[];
   selectSearchResult: (result: SearchResult) => void;
@@ -85,6 +87,18 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
     (storyId: string, nodeId?: string) => {
       setActiveStoryTarget({ storyId, ...(nodeId ? { nodeId } : {}) });
       void navigate({ to: "/runtime/stories" });
+    },
+    [navigate]
+  );
+
+  const openRemoteCalls = useCallback(
+    (nextCorrelationId?: string) => {
+      const filters = nextCorrelationId
+        ? { correlationId: nextCorrelationId }
+        : {};
+      void navigate({
+        to: remoteProxyCallsPath(filters),
+      });
     },
     [navigate]
   );
@@ -164,6 +178,7 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
       focusGlobalSearch: () => searchInputRef.current?.focus(),
       openTimeline,
       openStory,
+      openRemoteCalls,
       clearStoryTarget,
       searchRuntime,
       selectSearchResult,
@@ -175,6 +190,7 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
       commandOpen,
       drawerTarget,
       openTimeline,
+      openRemoteCalls,
       openStory,
       retryTarget,
       searchRuntime,

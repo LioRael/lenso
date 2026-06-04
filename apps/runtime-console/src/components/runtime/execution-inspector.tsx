@@ -1,4 +1,4 @@
-import { ArrowRight, Copy, RotateCcw, X } from "lucide-react";
+import { ArrowRight, Copy, Network, RotateCcw, X } from "lucide-react";
 
 import type {
   RuntimeStory,
@@ -211,7 +211,7 @@ function InspectorBody({
   node: ExecutionNode;
   activeTab: ExecutionInspectorTab;
 }) {
-  const { openRetry } = useRuntimeConsole();
+  const { openRemoteCalls, openRetry } = useRuntimeConsole();
   const payloadQuery = useExecutionPayload(
     story,
     node.id,
@@ -247,7 +247,10 @@ function InspectorBody({
           ]}
         />
         {remoteProxyDetail ? (
-          <RemoteProxyDetail detail={remoteProxyDetail} />
+          <RemoteProxyDetail
+            detail={remoteProxyDetail}
+            onOpenRemoteCalls={() => openRemoteCalls(story.correlationId)}
+          />
         ) : null}
         {retryTarget ? (
           <div className="border-b border-(--border-subtle) px-3 py-2">
@@ -372,8 +375,10 @@ function SummaryCard({
 
 function RemoteProxyDetail({
   detail,
+  onOpenRemoteCalls,
 }: {
   detail: ReturnType<typeof buildRemoteProxyInspectorDetail>;
+  onOpenRemoteCalls: () => void;
 }) {
   if (!detail) {
     return null;
@@ -383,6 +388,14 @@ function RemoteProxyDetail({
     <section className="grid min-w-full border-b border-(--border-subtle)">
       <div className="flex items-center gap-2 bg-(--sidebar) px-3 py-1.5 font-mono text-[11px] text-(--muted)">
         <span>remote proxy</span>
+        <button
+          className="ml-auto inline-flex h-5 items-center gap-1 border border-(--border-subtle) bg-(--elevated) px-1.5 text-[10px] text-(--secondary) hover:text-(--foreground)"
+          onClick={onOpenRemoteCalls}
+          type="button"
+        >
+          <Network size={11} />
+          Remote Calls
+        </button>
       </div>
       <KeyValueTable rows={detail.rows} />
       {hasPanelValue(detail.pathParams) ? (

@@ -6,6 +6,7 @@ import {
   filterRemoteProxyCalls,
   flattenRemoteProxyCallPages,
   nextRemoteProxyCallCursor,
+  remoteProxyCallsPath,
   remoteProxyCallModules,
   remoteProxyCallResultLabel,
   summarizeRemoteProxyCalls,
@@ -153,6 +154,13 @@ describe("remote proxy calls model", () => {
   test("labels retryable failures distinctly", () => {
     expect(remoteProxyCallResultLabel(calls[1]!)).toBe("retryable");
     expect(remoteProxyCallResultLabel(calls[2]!)).toBe("failed");
+  });
+
+  test("builds correlation-scoped remote calls paths", () => {
+    expect(remoteProxyCallsPath()).toBe("/remote-proxy-calls");
+    expect(remoteProxyCallsPath({ correlationId: "corr_1" })).toBe(
+      "/remote-proxy-calls?correlation_id=corr_1"
+    );
   });
 });
 

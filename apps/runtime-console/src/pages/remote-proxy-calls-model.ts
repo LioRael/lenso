@@ -22,6 +22,15 @@ export type RemoteProxyCallAggregate = {
   p95DurationMs: number;
 };
 
+export function remoteProxyCallsPath(filters: { correlationId?: string } = {}) {
+  const params = new URLSearchParams();
+  if (filters.correlationId) {
+    params.set("correlation_id", filters.correlationId);
+  }
+  const search = params.toString();
+  return search ? `/remote-proxy-calls?${search}` : "/remote-proxy-calls";
+}
+
 export function remoteProxyCallModules(calls: RuntimeRemoteProxyCall[]) {
   return Array.from(new Set(calls.map((call) => call.module_name))).sort();
 }
