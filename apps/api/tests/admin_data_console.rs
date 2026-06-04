@@ -461,3 +461,110 @@ async fn refresh_schema_replaces_installed_modules() {
             .any(|module| module["module_name"] == "remote-crm")
     );
 }
+
+#[tokio::test]
+async fn refresh_modules_replaces_module_registry_metadata() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
+    static METADATA_REFRESH_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+    install_admin_modules(vec![AdminModule {
+        module_name: "identity".to_owned(),
+        source: ModuleSource::Linked,
+        load_status: ModuleLoadStatus::Loaded,
+        schema: stub_schema(),
+        listed_in_schema: true,
+        data_source: Some(Arc::new(StubUsers)),
+    }]);
+    install_admin_module_metadata(vec![AdminModuleMetadata {
+        module_name: "identity".to_owned(),
+        source: ModuleSource::Linked,
+        load_status: ModuleLoadStatus::Loaded,
+        http_routes: vec![],
+        story_display: vec![],
+        capabilities: vec![],
+        admin: Some(AdminSurface::Schema(stub_schema())),
+    }]);
+    install_admin_module_metadata_refresh_fn(|| async {
+        METADATA_REFRESH_COUNT.fetch_add(1, Ordering::SeqCst);
+        Ok(vec![AdminModuleMetadata {
+            module_name: "notifications".to_owned(),
+            source: ModuleSource::Linked,
+            load_status: ModuleLoadStatus::Loaded,
+            http_routes: vec![],
+            story_display: vec![StoryDisplayDescriptor {
+                source: StoryDisplaySource::ExecutionName {
+                    name: "notifications.send_welcome_email.v1".to_owned(),
+                },
+                display_name: "Send Welcome Email".to_owned(),
+                story_title: None,
+            }],
+            capabilities: vec!["notifications.email.send".to_owned()],
+            admin: None,
+        }])
+    });
+    let ctx = AppContext::new(
+        AppConfig::from_env(),
+        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test").expect("lazy pool"),
+        Arc::new(LoggingEventPublisher),
+    );
+    let app = build_router(ctx);
+
+    let refresh_response = app
+        .clone()
+        .oneshot(admin_post("/admin/data/modules/refresh"))
+        .await
+        .expect("refresh request completes");
+    assert_eq!(refresh_response.status(), StatusCode::OK);
+    let refresh_body = json_body(refresh_response).await;
+    assert_eq!(METADATA_REFRESH_COUNT.load(Ordering::SeqCst), 1);
+    assert_eq!(refresh_body["modules"][0]["module_name"], "notifications");
+    assert_eq!(
+        refresh_body["modules"][0]["capabilities"],
+        serde_json::json!(["notifications.email.send"])
+    );
+    assert_eq!(
+        refresh_body["modules"][0]["story_display"][0]["display_name"],
+        "Send Welcome Email"
+    );
+
+    let modules_response = app
+        .oneshot(admin_get("/admin/data/modules"))
+        .await
+        .expect("modules request completes");
+    let modules_body = json_body(modules_response).await;
+    assert!(
+        modules_body["modules"]
+            .as_array()
+            .expect("modules array")
+            .iter()
+            .any(|module| module["module_name"] == "notifications")
+    );
+}
+
+#[tokio::test]
+async fn refresh_modules_returns_502_when_refresh_fails() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
+    install_admin_modules(vec![]);
+    install_admin_module_metadata(vec![]);
+    install_admin_module_metadata_refresh_fn(|| async {
+        Err(platform_core::AppError::new(
+            platform_core::ErrorCode::ExternalDependency,
+            "remote manifest request failed",
+        )
+        .retryable())
+    });
+    let ctx = AppContext::new(
+        AppConfig::from_env(),
+        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test").expect("lazy pool"),
+        Arc::new(LoggingEventPublisher),
+    );
+    let app = build_router(ctx);
+
+    let response = app
+        .oneshot(admin_post("/admin/data/modules/refresh"))
+        .await
+        .expect("request completes");
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    let body = json_body(response).await;
+    assert_eq!(body["error"]["message"], "remote manifest request failed");
+}

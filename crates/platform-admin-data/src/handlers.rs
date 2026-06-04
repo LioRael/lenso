@@ -46,6 +46,43 @@ pub(crate) async fn list_modules(
 }
 
 #[utoipa::path(
+    post,
+    path = "/admin/data/modules/refresh",
+    operation_id = "admin_data_refresh_modules",
+    tag = "admin-data",
+    params(("authorization" = String, Header, description = "Development service bearer token")),
+    responses(
+        (status = 200, description = "Refreshed module registry metadata", body = AdminModuleMetadataListResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 502, description = "Module registry refresh is unavailable or failed", body = ErrorResponse, content_type = "application/json"),
+    )
+)]
+pub(crate) async fn refresh_modules(
+    _admin: AdminActor,
+    HttpRequestContext(request_ctx): HttpRequestContext,
+) -> Result<Json<AdminModuleMetadataListResponse>, ApiErrorResponse> {
+    let refresher = admin_metadata_refresher().ok_or_else(|| {
+        ApiErrorResponse::with_context(
+            AppError::new(
+                ErrorCode::ExternalDependency,
+                "module registry refresh is unavailable",
+            )
+            .retryable(),
+            &request_ctx,
+        )
+    })?;
+    let metadata = refresher
+        .refresh_admin_module_metadata()
+        .await
+        .map_err(|error| ApiErrorResponse::with_context(error, &request_ctx))?;
+    install_admin_module_metadata(metadata.clone());
+    Ok(Json(AdminModuleMetadataListResponse {
+        modules: metadata_response_modules(metadata),
+    }))
+}
+
+#[utoipa::path(
     get,
     path = "/admin/data/schema",
     operation_id = "admin_data_list_schemas",

@@ -231,6 +231,7 @@ fn find_loaded_module(module: &str, ctx: &RequestContext) -> Result<AdminModule,
 pub fn router() -> ApiOpenApiRouter {
     OpenApiRouter::new()
         .routes(routes!(list_modules))
+        .routes(routes!(refresh_modules))
         .routes(routes!(list_schemas))
         .routes(routes!(refresh_schemas))
         .routes(routes!(list_records))

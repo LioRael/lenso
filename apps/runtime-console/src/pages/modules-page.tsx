@@ -1,13 +1,15 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Boxes,
   KeyRound,
+  RefreshCw,
   Route,
   ScrollText,
   TriangleAlert,
 } from "lucide-react";
 import { useState } from "react";
 
+import { Button } from "../components/ui/button";
 import { cn } from "../lib/cn";
 import {
   httpClient,
@@ -38,10 +40,18 @@ export function ModulesPage() {
 }
 
 function ModulesContent() {
+  const queryClient = useQueryClient();
   const modulesQuery = useQuery({
     enabled: isApiMode(),
     queryKey: modulesQueryKey,
     queryFn: () => httpClient.get("admin/data/modules").json<ModulesResponse>(),
+  });
+  const refreshMutation = useMutation({
+    mutationFn: () =>
+      httpClient.post("admin/data/modules/refresh").json<ModulesResponse>(),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: modulesQueryKey });
+    },
   });
   const modules = modulesQuery.data?.modules ?? emptyModules;
   const [selectedModuleName, setSelectedModuleName] = useState<string | null>(
@@ -61,7 +71,27 @@ function ModulesContent() {
           <span className="ml-auto font-mono text-[10px] text-(--muted)">
             {modules.length} modules / {runtimeConsoleDataSource()}
           </span>
+          <Button
+            aria-label="Refresh module registry"
+            className="min-h-6 px-2"
+            disabled={refreshMutation.isPending}
+            onClick={() => refreshMutation.mutate()}
+            title="Refresh module registry"
+            type="button"
+            variant="ghost"
+          >
+            <RefreshCw
+              className={cn(refreshMutation.isPending && "animate-spin")}
+              size={13}
+            />
+            Refresh
+          </Button>
         </div>
+        {refreshMutation.isError ? (
+          <p className="mt-1 font-mono text-[10px] text-(--error)">
+            Refresh failed: {String(refreshMutation.error.message)}
+          </p>
+        ) : null}
       </header>
 
       <div className="grid min-h-0 grid-cols-[260px_minmax(0,1fr)] overflow-hidden">
