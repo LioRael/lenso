@@ -484,7 +484,7 @@ function InspectorHeader({ call }: { call: RuntimeRemoteProxyCall | null }) {
 
 function RemoteCallInspector({ call }: { call: RuntimeRemoteProxyCall }) {
   return (
-    <div className="grid gap-3 p-3">
+    <div className="grid">
       <KeyValueRows
         rows={[
           ["result", remoteProxyCallResultLabel(call)],
@@ -537,14 +537,14 @@ function ResultPill({ call }: { call: RuntimeRemoteProxyCall }) {
 
 function KeyValueRows({ rows }: { rows: Array<[string, string]> }) {
   return (
-    <div className="border-y border-(--border-subtle) font-mono text-[11px]">
+    <div className="w-max min-w-full border-b border-(--border-subtle) font-mono text-xs">
       {rows.map(([key, value]) => (
         <div
-          className="grid grid-cols-[108px_minmax(0,1fr)] border-b border-(--border-subtle) last:border-b-0"
+          className="grid w-max min-w-full grid-cols-[124px_minmax(220px,max-content)] border-b border-(--border-subtle) last:border-b-0"
           key={key}
         >
           <div className="bg-(--sidebar) px-3 py-1.5 text-(--muted)">{key}</div>
-          <div className="min-w-0 break-words px-3 py-1.5 text-(--secondary)">
+          <div className="whitespace-pre-wrap px-3 py-1.5 text-(--secondary)">
             {value}
           </div>
         </div>
