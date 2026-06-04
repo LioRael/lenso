@@ -135,6 +135,14 @@ export type AdminModuleMetadata = {
   admin: AdminSurface | null;
 };
 
+export type AdminModuleSchemaMetadata = {
+  module_name: string;
+  source: ModuleSource;
+  status: ModuleStatus;
+  error: string | null;
+  schema: AdminSchema;
+};
+
 export type AdminRecord = Record<string, unknown>;
 
 export type ModuleNavItem = {
@@ -246,6 +254,21 @@ export function schemaFromModule(
   module: AdminModuleMetadata
 ): AdminSchema | null {
   return module.admin?.kind === "schema" ? module.admin : null;
+}
+
+export function schemaModulesToAdminMetadata(
+  modules: AdminModuleSchemaMetadata[]
+): AdminModuleMetadata[] {
+  return modules.map((module) => ({
+    admin: { kind: "schema", entities: module.schema.entities },
+    capabilities: [],
+    error: module.error,
+    http_routes: [],
+    module_name: module.module_name,
+    source: module.source,
+    status: module.status,
+    story_display: [],
+  }));
 }
 
 export function moduleNavItems(

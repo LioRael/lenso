@@ -6,6 +6,7 @@ import { Button } from "../components/ui/button";
 import { cn } from "../lib/cn";
 import { httpClient, isApiMode } from "../lib/http-client";
 import {
+  type AdminModuleSchemaMetadata,
   type AdminModuleMetadata,
   type AdminRecord,
   adminSurfaceLabel,
@@ -23,9 +24,10 @@ import {
   moduleStatusLabel,
   recordId,
   renderRow,
+  schemaModulesToAdminMetadata,
 } from "./data-render-model";
 
-type ModulesResponse = { modules: AdminModuleMetadata[] };
+type SchemaModulesResponse = { modules: AdminModuleSchemaMetadata[] };
 type ListResponse = {
   data: AdminRecord[];
   page: { limit: number; next_cursor: string | null };
@@ -35,7 +37,7 @@ type DetailResponse = { data: AdminRecord };
 type Selection = { module: AdminModuleMetadata; entity: EntitySchema | null };
 
 const dataKeys = {
-  modules: ["admin-data", "modules"] as const,
+  schemas: ["admin-data", "schemas"] as const,
   list: (m: string, e: string) => ["admin-data", "list", m, e] as const,
   detail: (m: string, e: string, id: string) =>
     ["admin-data", "detail", m, e, id] as const,
@@ -46,9 +48,10 @@ export function DataPage() {
   const [selected, setSelected] = useState<Selection | null>(null);
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
 
-  const modulesQuery = useQuery({
-    queryKey: dataKeys.modules,
-    queryFn: () => httpClient.get("admin/data/modules").json<ModulesResponse>(),
+  const schemasQuery = useQuery({
+    queryKey: dataKeys.schemas,
+    queryFn: () =>
+      httpClient.get("admin/data/schema").json<SchemaModulesResponse>(),
     enabled: isApiMode(),
   });
 
@@ -109,7 +112,7 @@ export function DataPage() {
     onSuccess: async () => {
       setSelected(null);
       setSelectedRecordId(null);
-      await queryClient.invalidateQueries({ queryKey: dataKeys.modules });
+      await queryClient.invalidateQueries({ queryKey: dataKeys.schemas });
       await queryClient.invalidateQueries({ queryKey: ["admin-data", "list"] });
       await queryClient.invalidateQueries({
         queryKey: ["admin-data", "detail"],
@@ -126,11 +129,11 @@ export function DataPage() {
       <header className="flex items-center border-b border-(--border-subtle) bg-(--surface) px-3 py-2">
         <h1 className="font-mono text-[13px] font-semibold">Data</h1>
         <Button
-          aria-label="Refresh admin modules"
+          aria-label="Refresh admin schemas"
           className="ml-auto min-h-6 px-2"
           disabled={refreshMutation.isPending}
           onClick={() => refreshMutation.mutate()}
-          title="Refresh admin modules"
+          title="Refresh admin schemas"
           type="button"
           variant="ghost"
         >
@@ -143,12 +146,14 @@ export function DataPage() {
       </header>
       <div className="grid min-h-0 grid-cols-[220px_minmax(0,1fr)_320px]">
         <nav className="overflow-auto border-r border-(--border-subtle) p-2 font-mono text-[12px]">
-          {modulesQuery.isError ? (
-            <p className="px-2 py-1 text-(--muted)">Failed to load modules.</p>
-          ) : modulesQuery.isPending ? (
+          {schemasQuery.isError ? (
+            <p className="px-2 py-1 text-(--muted)">Failed to load schemas.</p>
+          ) : schemasQuery.isPending ? (
             <p className="px-2 py-1 text-(--muted)">Loading…</p>
-          ) : modulesQuery.data ? (
-            moduleNavItems(modulesQuery.data.modules).map((item) => {
+          ) : schemasQuery.data ? (
+            moduleNavItems(
+              schemaModulesToAdminMetadata(schemasQuery.data.modules)
+            ).map((item) => {
               const isSelected =
                 selected !== null &&
                 selected.module.module_name === item.module.module_name &&

@@ -20,6 +20,7 @@ import {
   recordId,
   renderCell,
   renderRow,
+  schemaModulesToAdminMetadata,
   storyDisplayRows,
 } from "./data-render-model";
 
@@ -342,6 +343,31 @@ describe("module status helpers", () => {
         label: "remote-crm-embedded",
         sublabel: "remote / embedded custom / loaded",
         surfaceKind: "embedded_custom",
+      },
+    ]);
+  });
+
+  test("converts schema endpoint modules into data-page metadata", () => {
+    expect(
+      schemaModulesToAdminMetadata([
+        {
+          module_name: "identity",
+          source: "linked",
+          status: "loaded",
+          error: null,
+          schema: { entities: [entity] },
+        },
+      ])
+    ).toEqual([
+      {
+        module_name: "identity",
+        source: "linked",
+        status: "loaded",
+        error: null,
+        http_routes: [],
+        story_display: [],
+        capabilities: [],
+        admin: { kind: "schema", entities: [entity] },
       },
     ]);
   });
