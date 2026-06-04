@@ -166,7 +166,7 @@ function ModuleHttpRoutesTable({
   if (rows.length === 0) {
     return (
       <section className="border border-(--border-subtle) bg-(--surface) px-3 py-2 text-(--muted)">
-        No remote HTTP routes declared.
+        No HTTP interfaces declared.
       </section>
     );
   }

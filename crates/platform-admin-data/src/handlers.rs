@@ -31,7 +31,7 @@ pub(crate) struct DataListQuery {
     tag = "admin-data",
     params(("authorization" = String, Header, description = "Development service bearer token")),
     responses(
-        (status = 200, description = "All admin-surface module metadata", body = AdminModuleMetadataListResponse, content_type = "application/json"),
+        (status = 200, description = "All module registry metadata", body = AdminModuleMetadataListResponse, content_type = "application/json"),
         (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
         (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
     )

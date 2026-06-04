@@ -149,8 +149,9 @@ pub async fn load_admin_modules(ctx: &AppContext) -> platform_core::AppResult<Ve
     Ok(admin_modules)
 }
 
-/// Load admin-surface metadata for every module that declares an admin surface,
-/// including custom surfaces that are not consumable by schema-admin list/detail.
+/// Load registry metadata for every configured module, including modules with
+/// no admin surface and custom surfaces not consumable by schema-admin
+/// list/detail.
 pub async fn load_admin_module_metadata(
     ctx: &AppContext,
 ) -> platform_core::AppResult<Vec<AdminModuleMetadata>> {
@@ -219,20 +220,20 @@ fn admin_modules_from_modules(modules: Vec<Module>) -> Vec<AdminModule> {
 fn admin_metadata_from_modules(modules: Vec<Module>) -> Vec<AdminModuleMetadata> {
     modules
         .into_iter()
-        .filter_map(|module| {
+        .map(|module| {
             let ModuleManifest {
                 name,
                 admin,
                 http_routes,
                 ..
             } = module.manifest;
-            admin.map(|surface| AdminModuleMetadata {
+            AdminModuleMetadata {
                 module_name: name,
                 source: module.source,
                 load_status: module.load_status,
                 http_routes,
-                admin: Some(surface),
-            })
+                admin,
+            }
         })
         .collect()
 }

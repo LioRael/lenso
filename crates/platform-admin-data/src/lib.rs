@@ -38,8 +38,8 @@ pub struct AdminModule {
     pub data_source: Option<Arc<dyn AdminDataSource>>,
 }
 
-/// One module's admin-surface metadata, independent of whether schema-admin
-/// list/detail reads are available.
+/// One module's registry metadata, independent of whether schema-admin
+/// list/detail reads or an admin surface are available.
 #[derive(Clone, Debug)]
 pub struct AdminModuleMetadata {
     /// The owning module's stable name, e.g. "identity".
@@ -51,8 +51,8 @@ pub struct AdminModuleMetadata {
     /// Declared module-owned HTTP routes. Metadata only; not mounted by
     /// platform-admin-data.
     pub http_routes: Vec<ModuleHttpRoute>,
-    /// The declared admin surface. Missing for degraded failed remotes whose
-    /// manifest could not be loaded.
+    /// The declared admin surface. Missing for modules with no admin surface
+    /// and degraded failed remotes whose manifest could not be loaded.
     pub admin: Option<AdminSurface>,
 }
 
@@ -109,7 +109,7 @@ pub fn install_admin_modules(modules: Vec<AdminModule>) {
     *registry.write().expect("admin registry lock poisoned") = modules;
 }
 
-/// Install the metadata registry for every module with an admin surface.
+/// Install the metadata registry for every module.
 pub fn install_admin_module_metadata(modules: Vec<AdminModuleMetadata>) {
     let registry = ADMIN_METADATA_REGISTRY.get_or_init(|| RwLock::new(Vec::new()));
     *registry
@@ -134,7 +134,7 @@ where
     install_admin_module_refresher(Arc::new(StaticAdminModuleRefresher(refresh)));
 }
 
-/// Install the callback used to refresh admin-surface metadata.
+/// Install the callback used to refresh module registry metadata.
 pub fn install_admin_module_metadata_refresher(refresher: Arc<dyn AdminModuleMetadataRefresher>) {
     let registry = ADMIN_METADATA_REFRESHER.get_or_init(|| RwLock::new(None));
     *registry

@@ -135,7 +135,7 @@ async fn schema_endpoint_lists_installed_modules() {
 }
 
 #[tokio::test]
-async fn modules_endpoint_lists_admin_surface_metadata() {
+async fn modules_endpoint_lists_registry_metadata() {
     let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
     let response = app()
         .oneshot(admin_get("/admin/data/modules"))
@@ -197,6 +197,41 @@ async fn modules_endpoint_lists_linked_module_http_routes() {
         identity["http_routes"][1]["display_name"],
         "Fetch Current User"
     );
+}
+
+#[tokio::test]
+async fn modules_endpoint_lists_linked_modules_without_admin_surfaces() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
+    let ctx = AppContext::new(
+        AppConfig::from_env(),
+        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test").expect("lazy pool"),
+        Arc::new(LoggingEventPublisher),
+    );
+    install_admin_modules(app_bootstrap::admin_modules(&ctx));
+    install_admin_module_metadata(
+        app_bootstrap::load_admin_module_metadata(&ctx)
+            .await
+            .expect("admin module metadata loads"),
+    );
+    let app = build_router(ctx);
+
+    let response = app
+        .oneshot(admin_get("/admin/data/modules"))
+        .await
+        .expect("request completes");
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = json_body(response).await;
+    let notifications = json["modules"]
+        .as_array()
+        .expect("modules array")
+        .iter()
+        .find(|module| module["module_name"] == "notifications")
+        .expect("notifications module metadata");
+    assert_eq!(notifications["source"], "linked");
+    assert_eq!(notifications["status"], "loaded");
+    assert_eq!(notifications["error"], Value::Null);
+    assert_eq!(notifications["http_routes"], serde_json::json!([]));
+    assert_eq!(notifications["admin"], Value::Null);
 }
 
 #[tokio::test]

@@ -247,7 +247,7 @@ paths:
           type: string
       responses:
         '200':
-          description: All admin-surface module metadata
+          description: All module registry metadata
           content:
             application/json:
               schema:
@@ -2632,8 +2632,8 @@ components:
     AdminModuleMetadataListResponse:
       type: object
       description: |-
-        Response for `GET /admin/data/modules`: every admin-surface module's
-        metadata, including non-schema custom surfaces.
+        Response for `GET /admin/data/modules`: every registered module's metadata,
+        including modules without admin surfaces.
       required:
       - modules
       properties:

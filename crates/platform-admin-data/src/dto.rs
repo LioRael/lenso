@@ -17,8 +17,8 @@ pub struct AdminSchemaRefreshResponse {
     pub modules: Vec<AdminModuleSchema>,
 }
 
-/// Response for `GET /admin/data/modules`: every admin-surface module's
-/// metadata, including non-schema custom surfaces.
+/// Response for `GET /admin/data/modules`: every registered module's metadata,
+/// including modules without admin surfaces.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AdminModuleMetadataListResponse {
     pub modules: Vec<AdminModuleMetadataDto>,
