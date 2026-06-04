@@ -146,29 +146,49 @@ fn ensure_capability(
     }
 }
 
+#[derive(Debug, Clone)]
+struct ProxyForwardRequest<'a> {
+    matched: &'a RemoteHttpProxyMatch,
+    method: ModuleHttpMethod,
+    headers: &'a HeaderMap,
+    request_ctx: &'a platform_core::RequestContext,
+    body: ProxyRequestBody,
+}
+
 async fn forward_get(
     matched: &RemoteHttpProxyMatch,
     headers: &HeaderMap,
     request_ctx: &platform_core::RequestContext,
 ) -> Result<Value, ApiErrorResponse> {
-    let started_at = Instant::now();
-    let client = reqwest::Client::new();
-    let request = client.get(format!(
-        "{}/{}",
-        matched.base_url.trim_end_matches('/'),
-        matched.remote_path.trim_start_matches('/')
-    ));
-    let request = apply_proxy_request_policy(
-        request,
-        ModuleHttpMethod::Get,
+    forward_proxy_request(ProxyForwardRequest {
+        matched,
+        method: ModuleHttpMethod::Get,
         headers,
         request_ctx,
+        body: ProxyRequestBody::Empty,
+    })
+    .await
+}
+
+async fn forward_proxy_request(
+    request: ProxyForwardRequest<'_>,
+) -> Result<Value, ApiErrorResponse> {
+    let matched = request.matched;
+    let request_ctx = request.request_ctx;
+    let started_at = Instant::now();
+    let client = reqwest::Client::new();
+    let outbound = client.request(reqwest_method(request.method), remote_url(matched));
+    let outbound = apply_proxy_request_policy(
+        outbound,
+        request.method,
+        request.headers,
+        request_ctx,
         matched.auth_token.as_deref(),
-        ProxyRequestBody::Empty,
+        request.body,
     )
     .map_err(|error| ApiErrorResponse::with_context(error, request_ctx))?;
 
-    let response = request.send().await.map_err(|error| {
+    let response = outbound.send().await.map_err(|error| {
         let app_error = AppError::new(
             ErrorCode::ExternalDependency,
             format!("remote HTTP proxy request failed: {error}"),
@@ -215,6 +235,25 @@ async fn forward_get(
             );
             Err(ApiErrorResponse::with_context(error, request_ctx))
         }
+    }
+}
+
+fn remote_url(matched: &RemoteHttpProxyMatch) -> String {
+    format!(
+        "{}/{}",
+        matched.base_url.trim_end_matches('/'),
+        matched.remote_path.trim_start_matches('/')
+    )
+}
+
+fn reqwest_method(method: ModuleHttpMethod) -> reqwest::Method {
+    match method {
+        ModuleHttpMethod::Get => reqwest::Method::GET,
+        ModuleHttpMethod::Post => reqwest::Method::POST,
+        ModuleHttpMethod::Put => reqwest::Method::PUT,
+        ModuleHttpMethod::Patch => reqwest::Method::PATCH,
+        ModuleHttpMethod::Delete => reqwest::Method::DELETE,
+        _ => reqwest::Method::GET,
     }
 }
 
@@ -281,5 +320,50 @@ impl RemoteHttpProxyResponse {
             path_params: matched.path_params,
             data,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    fn matched(method: ModuleHttpMethod) -> RemoteHttpProxyMatch {
+        RemoteHttpProxyMatch {
+            module_name: "remote-crm".to_owned(),
+            base_url: "http://127.0.0.1:4100/lenso/module/v1/".to_owned(),
+            auth_token: None,
+            method,
+            declared_path: "/contacts/{id}".to_owned(),
+            remote_path: "/contacts/contact_1".to_owned(),
+            capability: Some("remote_crm.contacts.read".to_owned()),
+            path_params: BTreeMap::new(),
+        }
+    }
+
+    #[test]
+    fn remote_url_joins_base_and_remote_path_once() {
+        assert_eq!(
+            remote_url(&matched(ModuleHttpMethod::Get)),
+            "http://127.0.0.1:4100/lenso/module/v1/contacts/contact_1"
+        );
+    }
+
+    #[test]
+    fn reqwest_method_maps_declared_methods() {
+        assert_eq!(reqwest_method(ModuleHttpMethod::Get), reqwest::Method::GET);
+        assert_eq!(
+            reqwest_method(ModuleHttpMethod::Post),
+            reqwest::Method::POST
+        );
+        assert_eq!(reqwest_method(ModuleHttpMethod::Put), reqwest::Method::PUT);
+        assert_eq!(
+            reqwest_method(ModuleHttpMethod::Patch),
+            reqwest::Method::PATCH
+        );
+        assert_eq!(
+            reqwest_method(ModuleHttpMethod::Delete),
+            reqwest::Method::DELETE
+        );
     }
 }
