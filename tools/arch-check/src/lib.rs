@@ -24,7 +24,11 @@ pub fn run() -> anyhow::Result<()> {
     collect_result(
         check_crates_no_domain_deps(
             &root,
-            &["platform-admin", "platform-admin-data", "platform-module-remote"],
+            &[
+                "platform-admin",
+                "platform-admin-data",
+                "platform-module-remote",
+            ],
         ),
         "platform admin/remote domain dependency",
         &mut failures,

@@ -17,12 +17,16 @@ pub fn story_display() -> Vec<StoryDisplayDescriptor> {
             story_title: Some("User Registration".to_owned()),
         },
         StoryDisplayDescriptor {
-            source: StoryDisplaySource::ExecutionName { name: "identity.create_user".to_owned() },
+            source: StoryDisplaySource::ExecutionName {
+                name: "identity.create_user".to_owned(),
+            },
             display_name: "Create User".to_owned(),
             story_title: Some("User Registration".to_owned()),
         },
         StoryDisplayDescriptor {
-            source: StoryDisplaySource::ExecutionName { name: "identity.user_registered.v1".to_owned() },
+            source: StoryDisplaySource::ExecutionName {
+                name: "identity.user_registered.v1".to_owned(),
+            },
             display_name: "User Registered".to_owned(),
             story_title: Some("User Registration".to_owned()),
         },
@@ -36,11 +40,36 @@ pub fn user_schema() -> AdminSchema {
             label: "Users".to_owned(),
             read_capability: "identity.users.read".to_owned(),
             fields: vec![
-                FieldSchema { name: "id".into(), label: "ID".into(), field_type: FieldType::String, nullable: false },
-                FieldSchema { name: "email".into(), label: "Email".into(), field_type: FieldType::String, nullable: false },
-                FieldSchema { name: "display_name".into(), label: "Display Name".into(), field_type: FieldType::String, nullable: true },
-                FieldSchema { name: "created_at".into(), label: "Created".into(), field_type: FieldType::Timestamp, nullable: false },
-                FieldSchema { name: "updated_at".into(), label: "Updated".into(), field_type: FieldType::Timestamp, nullable: false },
+                FieldSchema {
+                    name: "id".into(),
+                    label: "ID".into(),
+                    field_type: FieldType::String,
+                    nullable: false,
+                },
+                FieldSchema {
+                    name: "email".into(),
+                    label: "Email".into(),
+                    field_type: FieldType::String,
+                    nullable: false,
+                },
+                FieldSchema {
+                    name: "display_name".into(),
+                    label: "Display Name".into(),
+                    field_type: FieldType::String,
+                    nullable: true,
+                },
+                FieldSchema {
+                    name: "created_at".into(),
+                    label: "Created".into(),
+                    field_type: FieldType::Timestamp,
+                    nullable: false,
+                },
+                FieldSchema {
+                    name: "updated_at".into(),
+                    label: "Updated".into(),
+                    field_type: FieldType::Timestamp,
+                    nullable: false,
+                },
             ],
         }],
     }

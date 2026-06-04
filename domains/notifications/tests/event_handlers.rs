@@ -11,7 +11,10 @@ async fn notifications_registers_user_registered_handler() {
 
     let mut event_registry = platform_core::EventHandlerRegistry::new();
     module.binding.register_event_handlers(&mut event_registry);
-    assert_eq!(event_registry.handler_count("identity.user_registered.v1"), 1);
+    assert_eq!(
+        event_registry.handler_count("identity.user_registered.v1"),
+        1
+    );
 
     let mut function_registry = platform_runtime::FunctionRegistry::default();
     module.binding.register_functions(&mut function_registry);

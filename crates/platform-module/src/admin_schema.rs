@@ -59,8 +59,18 @@ mod tests {
                 label: "Users".to_owned(),
                 read_capability: "identity.users.read".to_owned(),
                 fields: vec![
-                    FieldSchema { name: "email".into(), label: "Email".into(), field_type: FieldType::String, nullable: false },
-                    FieldSchema { name: "created_at".into(), label: "Created".into(), field_type: FieldType::Timestamp, nullable: false },
+                    FieldSchema {
+                        name: "email".into(),
+                        label: "Email".into(),
+                        field_type: FieldType::String,
+                        nullable: false,
+                    },
+                    FieldSchema {
+                        name: "created_at".into(),
+                        label: "Created".into(),
+                        field_type: FieldType::Timestamp,
+                        nullable: false,
+                    },
                 ],
             }],
         }

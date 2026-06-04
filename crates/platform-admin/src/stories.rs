@@ -256,10 +256,9 @@ pub(crate) fn build_story_node(
 }
 
 pub(crate) fn story_title(rows: &[StoryWorkRow]) -> String {
-    if let Some(title) = rows
-        .iter()
-        .find_map(|row| story_display_descriptor(row).and_then(|descriptor| descriptor.story_title.clone()))
-    {
+    if let Some(title) = rows.iter().find_map(|row| {
+        story_display_descriptor(row).and_then(|descriptor| descriptor.story_title.clone())
+    }) {
         return title;
     }
 

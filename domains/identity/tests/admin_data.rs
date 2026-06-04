@@ -32,7 +32,9 @@ async fn admin_data_lists_users_with_cursor_pagination() {
         .chain(identity::migrations::IDENTITY_MIGRATIONS)
         .copied()
         .collect::<Vec<_>>();
-    apply_migrations(&db.pool, &migrations).await.expect("migrations apply");
+    apply_migrations(&db.pool, &migrations)
+        .await
+        .expect("migrations apply");
 
     let repo = PostgresUserRepository::new(db.pool.clone());
     seed(&repo, "usr_a", "a@example.com").await;
@@ -41,23 +43,40 @@ async fn admin_data_lists_users_with_cursor_pagination() {
 
     let admin = IdentityAdminData::new(Arc::new(repo));
 
-    let page1 = admin.list("users", &AdminListQuery::new(2, None)).await.expect("list page 1");
+    let page1 = admin
+        .list("users", &AdminListQuery::new(2, None))
+        .await
+        .expect("list page 1");
     assert_eq!(page1.records.len(), 2);
     assert_eq!(page1.records[0]["id"], "usr_a");
     assert_eq!(page1.records[1]["id"], "usr_b");
     let cursor = page1.next_cursor.clone().expect("should have next cursor");
     assert_eq!(cursor, "usr_b");
 
-    let page2 = admin.list("users", &AdminListQuery::new(2, Some(cursor))).await.expect("list page 2");
+    let page2 = admin
+        .list("users", &AdminListQuery::new(2, Some(cursor)))
+        .await
+        .expect("list page 2");
     assert_eq!(page2.records.len(), 1);
     assert_eq!(page2.records[0]["id"], "usr_c");
     assert!(page2.next_cursor.is_none());
 
     let one = admin.get("users", "usr_a").await.expect("get");
     assert_eq!(one.expect("some")["email"], "a@example.com");
-    assert!(admin.get("users", "nope").await.expect("get none").is_none());
+    assert!(
+        admin
+            .get("users", "nope")
+            .await
+            .expect("get none")
+            .is_none()
+    );
 
-    assert!(admin.list("widgets", &AdminListQuery::new(10, None)).await.is_err());
+    assert!(
+        admin
+            .list("widgets", &AdminListQuery::new(10, None))
+            .await
+            .is_err()
+    );
 
     db.cleanup().await;
 }

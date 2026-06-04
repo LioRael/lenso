@@ -215,9 +215,8 @@ mod tests {
 
     #[test]
     fn parses_remote_module_source_entry() {
-        let config =
-            parse_remote_module_source("remote-crm=http://localhost:4100/lenso/module/v1")
-                .expect("parse remote source");
+        let config = parse_remote_module_source("remote-crm=http://localhost:4100/lenso/module/v1")
+            .expect("parse remote source");
         assert_eq!(config.name, "remote-crm");
         assert_eq!(config.base_url, "http://localhost:4100/lenso/module/v1");
         assert_eq!(

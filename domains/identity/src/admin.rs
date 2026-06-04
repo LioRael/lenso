@@ -40,7 +40,10 @@ impl AdminDataSource for IdentityAdminData {
                     None
                 };
                 let records = page_rows.iter().map(user_to_value).collect();
-                Ok(AdminPage { records, next_cursor })
+                Ok(AdminPage {
+                    records,
+                    next_cursor,
+                })
             }
             other => Err(unknown_entity(other)),
         }
@@ -60,7 +63,10 @@ impl AdminDataSource for IdentityAdminData {
 }
 
 fn unknown_entity(entity: &str) -> AppError {
-    AppError::new(ErrorCode::NotFound, format!("unknown admin entity: {entity}"))
+    AppError::new(
+        ErrorCode::NotFound,
+        format!("unknown admin entity: {entity}"),
+    )
 }
 
 /// Strong type → `Value`, ONLY at the boundary. Keys MUST match `user_schema()`.
@@ -93,6 +99,9 @@ mod tests {
         let object = value.as_object().expect("object");
         let mut keys: Vec<&String> = object.keys().collect();
         keys.sort();
-        assert_eq!(keys, vec!["created_at", "display_name", "email", "id", "updated_at"]);
+        assert_eq!(
+            keys,
+            vec!["created_at", "display_name", "email", "id", "updated_at"]
+        );
     }
 }

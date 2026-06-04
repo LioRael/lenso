@@ -1,5 +1,5 @@
-use platform_module::ModuleBinding;
 use platform_core::EventHandlerRegistry;
+use platform_module::ModuleBinding;
 use platform_runtime::FunctionRegistry;
 
 #[derive(Debug, Default)]
