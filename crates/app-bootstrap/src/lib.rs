@@ -22,20 +22,40 @@ use platform_core::{
 };
 use platform_http::ApiOpenApiRouter;
 use platform_module::{
-    AdminSchema, AdminSurface, Module, ModuleLoadStatus, ModuleManifest, ModuleSource,
+    AdminSchema, AdminSurface, LinkedBinding, Module, ModuleLoadStatus, ModuleManifest,
+    ModuleSource,
 };
 use platform_module_remote::{RemoteHttpProxyRegistry, RemoteModuleConfig, RemoteModuleSource};
 use platform_runtime::FunctionRegistry;
+
+struct LinkedModuleEntry {
+    manifest: fn() -> ModuleManifest,
+    load: fn(&AppContext) -> Module,
+    http_binding: Option<fn() -> LinkedBinding>,
+}
+
+const LINKED_MODULE_ENTRIES: &[LinkedModuleEntry] = &[
+    LinkedModuleEntry {
+        manifest: identity::module::manifest,
+        load: identity::module::module,
+        http_binding: Some(identity::module::binding),
+    },
+    LinkedModuleEntry {
+        manifest: notifications::module::manifest,
+        load: notifications::module::module,
+        http_binding: None,
+    },
+];
 
 /// The authoritative list of loaded modules (context-bound: builds bindings).
 ///
 /// The only function that enumerates concrete modules for the running apps.
 #[must_use]
 pub fn modules(ctx: &AppContext) -> Vec<Module> {
-    vec![
-        identity::module::module(ctx),
-        notifications::module::module(ctx),
-    ]
+    LINKED_MODULE_ENTRIES
+        .iter()
+        .map(|entry| (entry.load)(ctx))
+        .collect()
 }
 
 /// Load every configured module, including out-of-process remote modules.
@@ -58,10 +78,10 @@ pub async fn load_modules(ctx: &AppContext) -> platform_core::AppResult<Vec<Modu
 /// [`AppContext`]. Kept in sync with [`modules`] by listing the same modules.
 #[must_use]
 pub fn module_manifests() -> Vec<ModuleManifest> {
-    vec![
-        identity::module::manifest(),
-        notifications::module::manifest(),
-    ]
+    LINKED_MODULE_ENTRIES
+        .iter()
+        .map(|entry| (entry.manifest)())
+        .collect()
 }
 
 /// Public HTTP path ownership for linked modules.
@@ -91,10 +111,13 @@ pub fn linked_http_route_owners() -> Vec<LinkedHttpRouteOwner> {
 /// Context-free linked modules that contribute Axum/OpenAPI HTTP routers.
 #[must_use]
 pub fn linked_http_modules() -> Vec<Module> {
-    vec![Module::linked(
-        identity::module::manifest(),
-        identity::module::binding(),
-    )]
+    LINKED_MODULE_ENTRIES
+        .iter()
+        .filter_map(|entry| {
+            let http_binding = entry.http_binding?;
+            Some(Module::linked((entry.manifest)(), http_binding()))
+        })
+        .collect()
 }
 
 /// Aggregate schema-admin capable modules: those declaring an
