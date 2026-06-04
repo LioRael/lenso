@@ -1,4 +1,7 @@
-import type { RuntimeRemoteProxyCall } from "../hooks/use-runtime-queries";
+import type {
+  RuntimeRemoteProxyCall,
+  RuntimeRemoteProxyCallPage,
+} from "../hooks/use-runtime-queries";
 
 export type RemoteProxyCallResultFilter = "all" | "success" | "failed";
 
@@ -12,6 +15,18 @@ export type RemoteProxyCallSummary = {
 
 export function remoteProxyCallModules(calls: RuntimeRemoteProxyCall[]) {
   return Array.from(new Set(calls.map((call) => call.module_name))).sort();
+}
+
+export function flattenRemoteProxyCallPages(
+  pages: RuntimeRemoteProxyCallPage[] | undefined
+) {
+  return pages?.flatMap((page) => page.data) ?? [];
+}
+
+export function nextRemoteProxyCallCursor(
+  pages: RuntimeRemoteProxyCallPage[] | undefined
+) {
+  return pages?.at(-1)?.page.next_created_before ?? null;
 }
 
 export function filterRemoteProxyCalls(

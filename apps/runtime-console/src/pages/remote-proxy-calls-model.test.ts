@@ -3,6 +3,8 @@ import { describe, expect, test } from "vitest";
 import type { RuntimeRemoteProxyCall } from "../hooks/use-runtime-queries";
 import {
   filterRemoteProxyCalls,
+  flattenRemoteProxyCallPages,
+  nextRemoteProxyCallCursor,
   remoteProxyCallModules,
   remoteProxyCallResultLabel,
   summarizeRemoteProxyCalls,
@@ -68,6 +70,43 @@ describe("remote proxy calls model", () => {
       "remote-billing",
       "remote-crm",
     ]);
+  });
+
+  test("flattens loaded cursor pages", () => {
+    expect(
+      flattenRemoteProxyCallPages([
+        {
+          data: [calls[0]!],
+          page: {
+            limit: 1,
+            next_created_before: calls[0]!.occurred_at,
+          },
+        },
+        {
+          data: [calls[1]!],
+          page: {
+            limit: 1,
+            next_created_before: null,
+          },
+        },
+      ]).map((call) => call.id)
+    ).toEqual(["rpc_a", "rpc_b"]);
+  });
+
+  test("reads the next cursor from the latest loaded page", () => {
+    expect(
+      nextRemoteProxyCallCursor([
+        {
+          data: [calls[0]!],
+          page: {
+            limit: 1,
+            next_created_before: calls[0]!.occurred_at,
+          },
+        },
+      ])
+    ).toBe("2026-06-03T10:00:00.000Z");
+
+    expect(nextRemoteProxyCallCursor(undefined)).toBeNull();
   });
 
   test("labels retryable failures distinctly", () => {

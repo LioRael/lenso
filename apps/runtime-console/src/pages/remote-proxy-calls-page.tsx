@@ -16,6 +16,8 @@ import { runtimeConsoleDataSource } from "../lib/http-client";
 import {
   type RemoteProxyCallResultFilter,
   filterRemoteProxyCalls,
+  flattenRemoteProxyCallPages,
+  nextRemoteProxyCallCursor,
   remoteProxyCallModules,
   remoteProxyCallResultLabel,
   summarizeRemoteProxyCalls,
@@ -48,8 +50,11 @@ export function RemoteProxyCallsPage() {
   };
   const remoteProxyCallsQuery = useRemoteProxyCalls(remoteProxyCallFilters);
   const calls = useMemo(
-    () => remoteProxyCallsQuery.data ?? [],
+    () => flattenRemoteProxyCallPages(remoteProxyCallsQuery.data?.pages),
     [remoteProxyCallsQuery.data]
+  );
+  const nextCursor = nextRemoteProxyCallCursor(
+    remoteProxyCallsQuery.data?.pages
   );
   const visible = useMemo(
     () => filterRemoteProxyCalls(calls, { query, result }),
@@ -242,6 +247,28 @@ export function RemoteProxyCallsPage() {
               );
             })
           )}
+          {visible.length > 0 ? (
+            <div className="flex items-center gap-3 border-b border-(--border-subtle) bg-(--surface) px-3 py-2">
+              <Button
+                disabled={
+                  !remoteProxyCallsQuery.hasNextPage ||
+                  remoteProxyCallsQuery.isFetchingNextPage
+                }
+                onClick={() => remoteProxyCallsQuery.fetchNextPage()}
+                variant="ghost"
+              >
+                {remoteProxyCallsQuery.isFetchingNextPage
+                  ? "Loading"
+                  : remoteProxyCallsQuery.hasNextPage
+                    ? "Load More"
+                    : "End"}
+              </Button>
+              <span className="truncate font-mono text-[10px] text-(--muted)">
+                loaded {calls.length}
+                {nextCursor ? ` / before ${nextCursor}` : " / complete"}
+              </span>
+            </div>
+          ) : null}
         </div>
       </main>
 
@@ -262,7 +289,7 @@ export function RemoteProxyCallsPage() {
         </div>
         <div className="flex gap-2 border-t border-(--border-subtle) bg-(--surface) p-2">
           <Button
-            disabled={remoteProxyCallsQuery.isFetching}
+            disabled={remoteProxyCallsQuery.isRefetching}
             onClick={() => remoteProxyCallsQuery.refetch()}
             variant="ghost"
           >
