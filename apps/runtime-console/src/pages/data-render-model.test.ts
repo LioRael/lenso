@@ -61,11 +61,17 @@ const entity: EntitySchema = {
 };
 
 function moduleMetadata(
-  module: Omit<AdminModuleMetadata, "capabilities" | "story_display"> &
-    Partial<Pick<AdminModuleMetadata, "capabilities" | "story_display">>
+  module: Omit<
+    AdminModuleMetadata,
+    "capabilities" | "route_lints" | "story_display"
+  > &
+    Partial<
+      Pick<AdminModuleMetadata, "capabilities" | "route_lints" | "story_display">
+    >
 ): AdminModuleMetadata {
   return {
     capabilities: [],
+    route_lints: [],
     story_display: [],
     ...module,
   };
@@ -369,6 +375,7 @@ describe("module status helpers", () => {
         status: "loaded",
         error: null,
         http_routes: [],
+        route_lints: [],
         story_display: [],
         capabilities: [],
         admin: { kind: "schema", entities: [entity] },
@@ -466,11 +473,19 @@ describe("module status helpers", () => {
           story_title: "User Registration",
         },
       ],
+      route_lints: [
+        {
+          message: "Declared routes include display and story metadata.",
+          severity: "ok" as const,
+          subject: "routes",
+          suggestion: "No action needed.",
+        },
+      ],
     };
 
     expect(moduleRouteChecks(healthyModule)).toEqual([
       {
-        key: "routes-complete",
+        key: "route-lint:ok:routes:0",
         message: "Declared routes include display and story metadata.",
         severity: "ok",
         subject: "routes",
@@ -495,18 +510,61 @@ describe("module status helpers", () => {
           path: "/contacts/{id}",
         },
       ],
+      route_lints: [
+        {
+          message: "2 routes declare the same method and path.",
+          severity: "error",
+          subject: "GET /contacts/{id}",
+          suggestion: "Keep one route declaration per method and path.",
+        },
+        {
+          message: "Missing display_name for compact runtime story nodes.",
+          severity: "warning",
+          subject: "GET /contacts/{id}",
+          suggestion:
+            "Add display_name to ModuleHttpRoute for compact story timeline labels.",
+        },
+        {
+          message: "Missing story_title for direct HTTP entry stories.",
+          severity: "warning",
+          subject: "GET /contacts/{id}",
+          suggestion:
+            "Add story_title when this route can be a direct business entry.",
+        },
+        {
+          message: "Missing capability declaration for host proxy authorization.",
+          severity: "warning",
+          subject: "GET /contacts/{id}",
+          suggestion:
+            "Remote routes should declare the capability used by host proxy authorization.",
+        },
+        {
+          message: "Missing display_name for compact runtime story nodes.",
+          severity: "warning",
+          subject: "GET /contacts/{id}",
+          suggestion:
+            "Add display_name to ModuleHttpRoute for compact story timeline labels.",
+        },
+        {
+          message: "Missing story_title for direct HTTP entry stories.",
+          severity: "warning",
+          subject: "GET /contacts/{id}",
+          suggestion:
+            "Add story_title when this route can be a direct business entry.",
+        },
+      ],
     });
 
     expect(moduleRouteChecks(issueModule)).toEqual([
       {
-        key: "duplicate:GET /contacts/{id}",
+        key: "route-lint:error:GET /contacts/{id}:0",
         message: "2 routes declare the same method and path.",
         severity: "error",
         subject: "GET /contacts/{id}",
         suggestion: "Keep one route declaration per method and path.",
       },
       {
-        key: "display:GET /contacts/{id}:0",
+        key: "route-lint:warning:GET /contacts/{id}:1",
         message: "Missing display_name for compact runtime story nodes.",
         severity: "warning",
         subject: "GET /contacts/{id}",
@@ -514,7 +572,7 @@ describe("module status helpers", () => {
           "Add display_name to ModuleHttpRoute for compact story timeline labels.",
       },
       {
-        key: "story:GET /contacts/{id}:0",
+        key: "route-lint:warning:GET /contacts/{id}:2",
         message: "Missing story_title for direct HTTP entry stories.",
         severity: "warning",
         subject: "GET /contacts/{id}",
@@ -522,7 +580,7 @@ describe("module status helpers", () => {
           "Add story_title when this route can be a direct business entry.",
       },
       {
-        key: "capability:GET /contacts/{id}:0",
+        key: "route-lint:warning:GET /contacts/{id}:3",
         message: "Missing capability declaration for host proxy authorization.",
         severity: "warning",
         subject: "GET /contacts/{id}",
@@ -530,7 +588,7 @@ describe("module status helpers", () => {
           "Remote routes should declare the capability used by host proxy authorization.",
       },
       {
-        key: "display:GET /contacts/{id}:1",
+        key: "route-lint:warning:GET /contacts/{id}:4",
         message: "Missing display_name for compact runtime story nodes.",
         severity: "warning",
         subject: "GET /contacts/{id}",
@@ -538,7 +596,7 @@ describe("module status helpers", () => {
           "Add display_name to ModuleHttpRoute for compact story timeline labels.",
       },
       {
-        key: "story:GET /contacts/{id}:1",
+        key: "route-lint:warning:GET /contacts/{id}:5",
         message: "Missing story_title for direct HTTP entry stories.",
         severity: "warning",
         subject: "GET /contacts/{id}",
@@ -558,7 +616,20 @@ describe("module status helpers", () => {
   });
 
   test("reports module load and empty route states", () => {
-    expect(moduleRouteChecks(errorModule)).toEqual([
+    const module = moduleMetadata({
+      ...errorModule,
+      route_lints: [
+        {
+          message: "No HTTP interfaces are declared in this manifest.",
+          severity: "warning",
+          subject: "routes",
+          suggestion:
+            "Add ModuleHttpRoute declarations for remote HTTP interfaces that should be visible to the host.",
+        },
+      ],
+    });
+
+    expect(moduleRouteChecks(module)).toEqual([
       {
         key: "module-load-error",
         message: "remote manifest request failed",
@@ -568,7 +639,7 @@ describe("module status helpers", () => {
           "Refresh the module registry and inspect the module source configuration or manifest endpoint.",
       },
       {
-        key: "no-routes",
+        key: "route-lint:warning:routes:0",
         message: "No HTTP interfaces are declared in this manifest.",
         severity: "warning",
         subject: "routes",

@@ -12,7 +12,7 @@ use axum::Json;
 use axum::extract::{Path, Query};
 use platform_core::{AppError, ErrorCode, RequestContext};
 use platform_http::{AdminActor, ApiErrorResponse, ErrorResponse, HttpRequestContext};
-use platform_module::{AdminListQuery, ModuleLoadStatus};
+use platform_module::{AdminListQuery, ModuleLoadStatus, lint_module_http_routes};
 use serde::Deserialize;
 
 const DEFAULT_LIMIT: i64 = 50;
@@ -155,6 +155,7 @@ fn metadata_response_modules(modules: Vec<AdminModuleMetadata>) -> Vec<AdminModu
             status: admin_module_status(&m.load_status),
             error: load_error_message(&m.load_status),
             http_routes: m.http_routes.clone(),
+            route_lints: lint_module_http_routes(m.source, &m.http_routes),
             story_display: m
                 .story_display
                 .clone()
@@ -202,6 +203,37 @@ fn load_error_message(status: &ModuleLoadStatus) -> Option<String> {
     match status {
         ModuleLoadStatus::Loaded => None,
         ModuleLoadStatus::Error { message } => Some(message.clone()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use platform_module::{ModuleHttpMethod, ModuleHttpRoute, ModuleSource};
+
+    #[test]
+    fn metadata_response_includes_route_lints() {
+        let modules = metadata_response_modules(vec![AdminModuleMetadata {
+            module_name: "remote-crm".to_owned(),
+            source: ModuleSource::Remote,
+            load_status: ModuleLoadStatus::Loaded,
+            http_routes: vec![ModuleHttpRoute {
+                method: ModuleHttpMethod::Get,
+                path: "/contacts/{id}".to_owned(),
+                capability: None,
+                display_name: Some("Fetch Contact".to_owned()),
+                story_title: Some("Fetch Contact".to_owned()),
+            }],
+            story_display: Vec::new(),
+            capabilities: Vec::new(),
+            admin: None,
+        }]);
+
+        assert_eq!(modules[0].route_lints.len(), 1);
+        assert_eq!(
+            modules[0].route_lints[0].message,
+            "Missing capability declaration for host proxy authorization."
+        );
     }
 }
 

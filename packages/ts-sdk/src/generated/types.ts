@@ -90,6 +90,7 @@ export type AdminModuleMetadataDto = {
   error?: string | null;
   http_routes: Array<ModuleHttpRoute>;
   module_name: string;
+  route_lints: Array<ModuleRouteLint>;
   source: ModuleSource;
   status: AdminModuleStatus;
   story_display: Array<StoryDisplayDescriptorDto>;
@@ -523,6 +524,15 @@ export type ModuleHttpRoute = {
   path: string;
   story_title?: string | null;
 };
+
+export type ModuleRouteLint = {
+  message: string;
+  severity: ModuleRouteLintSeverity;
+  subject: string;
+  suggestion: string;
+};
+
+export type ModuleRouteLintSeverity = string;
 
 export type ModuleSource = string;
 

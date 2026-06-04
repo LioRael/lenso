@@ -130,6 +130,7 @@ export type AdminModuleMetadata = {
   status: ModuleStatus;
   error: string | null;
   http_routes: ModuleHttpRoute[];
+  route_lints: ModuleRouteLint[];
   story_display: StoryDisplayDescriptor[];
   capabilities: string[];
   admin: AdminSurface | null;
@@ -210,6 +211,13 @@ export type ModuleRegistrySummary = {
 };
 
 export type ModuleRouteCheckSeverity = "ok" | "warning" | "error";
+
+export type ModuleRouteLint = {
+  severity: ModuleRouteCheckSeverity;
+  subject: string;
+  message: string;
+  suggestion: string;
+};
 
 export type ModuleRouteCheck = {
   key: string;
@@ -295,6 +303,7 @@ export function schemaModulesToAdminMetadata(
     capabilities: [],
     error: module.error,
     http_routes: [],
+    route_lints: [],
     module_name: module.module_name,
     source: module.source,
     status: module.status,
@@ -489,102 +498,31 @@ export function moduleHttpRouteRows(
 export function moduleRouteChecks(
   module: AdminModuleMetadata
 ): ModuleRouteCheck[] {
-  const checks: ModuleRouteCheck[] = [];
-  if (!moduleIsLoaded(module)) {
-    checks.push({
-      key: "module-load-error",
-      message: moduleErrorMessage(module) ?? "module failed to load",
-      severity: "error",
-      subject: "module load",
-      suggestion:
-        "Refresh the module registry and inspect the module source configuration or manifest endpoint.",
-    });
-  }
-
-  if (module.http_routes.length === 0) {
-    checks.push({
-      key: "no-routes",
-      message: "No HTTP interfaces are declared in this manifest.",
-      severity: module.source === "remote" ? "warning" : "ok",
-      subject: "routes",
-      suggestion:
-        module.source === "remote"
-          ? "Add ModuleHttpRoute declarations for remote HTTP interfaces that should be visible to the host."
-          : "No action needed unless this linked module owns public HTTP routes.",
-    });
-    return checks;
-  }
-
-  const routeCounts = new Map<string, number>();
-  for (const route of module.http_routes) {
-    const key = routeIdentity(route);
-    routeCounts.set(key, (routeCounts.get(key) ?? 0) + 1);
-  }
-
-  const duplicateKeys = new Set<string>();
-  for (const [key, count] of routeCounts) {
-    if (count > 1) {
-      duplicateKeys.add(key);
-      checks.push({
-        key: `duplicate:${key}`,
-        message: `${count} routes declare the same method and path.`,
-        severity: "error",
-        subject: key,
-        suggestion: "Keep one route declaration per method and path.",
-      });
-    }
-  }
-
-  module.http_routes.forEach((route, index) => {
-    const identity = routeIdentity(route);
-    if (!present(route.display_name)) {
-      checks.push({
-        key: `display:${identity}:${index}`,
-        message: "Missing display_name for compact runtime story nodes.",
-        severity: "warning",
-        subject: identity,
-        suggestion:
-          "Add display_name to ModuleHttpRoute for compact story timeline labels.",
-      });
-    }
-    if (!present(route.story_title)) {
-      checks.push({
-        key: `story:${identity}:${index}`,
-        message: "Missing story_title for direct HTTP entry stories.",
-        severity: "warning",
-        subject: identity,
-        suggestion:
-          "Add story_title when this route can be a direct business entry.",
-      });
-    }
-    if (module.source === "remote" && !present(route.capability)) {
-      checks.push({
-        key: `capability:${identity}:${index}`,
-        message: "Missing capability declaration for host proxy authorization.",
-        severity: "warning",
-        subject: identity,
-        suggestion:
-          "Remote routes should declare the capability used by host proxy authorization.",
-      });
-    }
-  });
-
-  const routeIssues = checks.some(
-    (check) => check.key !== "module-load-error" && check.severity !== "ok"
+  const routeChecks = module.route_lints.map(
+    (lint, index): ModuleRouteCheck => ({
+      key: `route-lint:${lint.severity}:${lint.subject}:${index}`,
+      message: lint.message,
+      severity: lint.severity,
+      subject: lint.subject,
+      suggestion: lint.suggestion,
+    })
   );
-  if (!routeIssues && duplicateKeys.size === 0) {
-    checks.push({
-      key: "routes-complete",
-      message:
-        module.source === "remote"
-          ? "Declared routes include display, story, and capability metadata."
-          : "Declared routes include display and story metadata.",
-      severity: "ok",
-      subject: "routes",
-      suggestion: "No action needed.",
-    });
+
+  if (!moduleIsLoaded(module)) {
+    return [
+      {
+        key: "module-load-error",
+        message: moduleErrorMessage(module) ?? "module failed to load",
+        severity: "error",
+        subject: "module load",
+        suggestion:
+          "Refresh the module registry and inspect the module source configuration or manifest endpoint.",
+      },
+      ...routeChecks,
+    ];
   }
-  return checks;
+
+  return routeChecks;
 }
 
 export function moduleRouteHealth(
@@ -598,14 +536,6 @@ export function moduleRouteHealth(
     return "warning";
   }
   return "ok";
-}
-
-function routeIdentity(route: ModuleHttpRoute): string {
-  return `${route.method} ${route.path}`;
-}
-
-function present(value: string | null | undefined): boolean {
-  return typeof value === "string" && value.trim().length > 0;
 }
 
 export function storyDisplayRows(
