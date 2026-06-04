@@ -3,6 +3,8 @@ import type { TechnicalOperation } from "../../data/mock-runtime";
 export type TechnicalOperationView = TechnicalOperation & {
   relativeStartMs: number;
   safeAttributes: Record<string, unknown>;
+  sourceLabel: string;
+  summary: string | undefined;
 };
 
 export type TechnicalOperationGroup = {
@@ -101,12 +103,50 @@ function operationViews(
           ? Math.max(0, Date.parse(operation.startedAt) - storyStart)
           : 0,
       safeAttributes: safeAttributes(operation.attributes),
+      sourceLabel: technicalOperationSourceLabel(operation),
+      summary: technicalOperationSummary(operation),
     }))
     .sort(
       (left, right) =>
         left.relativeStartMs - right.relativeStartMs ||
         left.name.localeCompare(right.name)
     );
+}
+
+export function technicalOperationSourceLabel(operation: TechnicalOperation) {
+  return operation.source === "remote_proxy" ? "remote proxy" : "otel";
+}
+
+export function technicalOperationSummary(operation: TechnicalOperation) {
+  if (operation.source !== "remote_proxy") {
+    return;
+  }
+
+  const moduleName = stringAttribute(operation.attributes.module_name);
+  const method = stringAttribute(operation.attributes.method);
+  const declaredPath = stringAttribute(operation.attributes.declared_path);
+  const remotePath = stringAttribute(operation.attributes.remote_path);
+  const remoteStatus = numberAttribute(operation.attributes.remote_status);
+  const requestId = stringAttribute(operation.attributes.request_id);
+  const parts = [
+    moduleName,
+    [method, declaredPath].filter(Boolean).join(" "),
+    remotePath ? `remote ${remotePath}` : undefined,
+    typeof remoteStatus === "number" ? `status ${remoteStatus}` : undefined,
+    requestId ? `request ${requestId}` : undefined,
+  ].filter(Boolean);
+
+  return parts.length > 0 ? parts.join(" / ") : undefined;
+}
+
+function stringAttribute(value: unknown) {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function numberAttribute(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 function safeAttributes(attributes: Record<string, unknown>) {

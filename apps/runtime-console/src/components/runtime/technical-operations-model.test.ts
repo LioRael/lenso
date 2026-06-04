@@ -3,6 +3,8 @@ import { describe, expect, test } from "vitest";
 import type { TechnicalOperation } from "../../data/mock-runtime";
 import {
   buildTechnicalOperationGroups,
+  technicalOperationSourceLabel,
+  technicalOperationSummary,
   technicalOperationsStateLabel,
 } from "./technical-operations-model";
 
@@ -39,6 +41,28 @@ const operations: TechnicalOperation[] = [
     source: "otel",
     startedAt: "2026-06-01T10:00:00.200Z",
     status: "ok",
+    storyId: "corr_1",
+  },
+  {
+    attributes: {
+      declared_path: "/contacts/{id}",
+      error_code: "external_dependency_failure",
+      method: "GET",
+      module_name: "remote-crm",
+      remote_path: "/contacts/contact_1",
+      remote_status: 502,
+      request_id: "req_remote_proxy",
+    },
+    category: "external",
+    correlationId: "corr_1",
+    durationMs: 125,
+    endedAt: "2026-06-01T10:00:00.425Z",
+    id: "remote_proxy:rproxy_1",
+    name: "remote-crm GET /contacts/{id}",
+    relatedNodeId: "fnrun_1",
+    source: "remote_proxy",
+    startedAt: "2026-06-01T10:00:00.300Z",
+    status: "error",
     storyId: "corr_1",
   },
 ];
@@ -84,15 +108,23 @@ describe("technical operations model", () => {
       storyTimestamp: "2026-06-01T10:00:00.000Z",
     });
 
-    expect(groups).toHaveLength(1);
-    expect(groups[0]).toMatchObject({
+    expect(groups.map((group) => group.label)).toEqual(["db", "external"]);
+    expect(groups.find((group) => group.id === "db")).toMatchObject({
       category: "db",
-      label: "db",
     });
-    expect(groups[0]?.operations.map((operation) => operation.id)).toEqual([
-      "span_db",
-    ]);
-    expect(groups[0]?.operations[0]?.relativeStartMs).toBe(100);
+    expect(
+      groups
+        .find((group) => group.id === "db")
+        ?.operations.map((operation) => operation.id)
+    ).toEqual(["span_db"]);
+    expect(
+      groups.find((group) => group.id === "db")?.operations[0]?.relativeStartMs
+    ).toBe(100);
+    expect(
+      groups
+        .find((group) => group.id === "external")
+        ?.operations.map((operation) => operation.id)
+    ).toEqual(["remote_proxy:rproxy_1"]);
   });
 
   test("keeps unlinked operations under story-level operations", () => {
@@ -136,6 +168,21 @@ describe("technical operations model", () => {
     );
     expect(JSON.stringify(attributes)).not.toContain("Bearer secret");
     expect(JSON.stringify(attributes)).not.toContain("select * from users");
+  });
+
+  test("builds compact remote proxy labels for the renderer", () => {
+    const remoteProxy = operations.find(
+      (operation) => operation.source === "remote_proxy"
+    );
+
+    if (!remoteProxy) {
+      throw new Error("remote proxy operation should be present");
+    }
+
+    expect(technicalOperationSourceLabel(remoteProxy)).toBe("remote proxy");
+    expect(technicalOperationSummary(remoteProxy)).toBe(
+      "remote-crm / GET /contacts/{id} / remote /contacts/contact_1 / status 502 / request req_remote_proxy"
+    );
   });
 
   test("returns execution-specific empty and error copy", () => {

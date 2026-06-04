@@ -434,28 +434,45 @@ function TechnicalOperationRow({
 }) {
   return (
     <div className="border-t border-(--border-subtle) bg-(--background)">
-      <div className="grid min-w-full grid-cols-[72px_minmax(180px,1fr)_72px_64px_58px] items-center gap-2 px-3 py-2 font-mono text-xs">
+      <div className="grid min-w-full grid-cols-[72px_82px_minmax(180px,1fr)_72px_64px_58px] items-start gap-2 px-3 py-2 font-mono text-xs">
         <span className="w-fit rounded-xs border border-(--border-subtle) bg-(--elevated) px-1.5 py-0.5 text-[10px] font-semibold uppercase text-(--accent)">
           {operation.category}
         </span>
         <span
-          className="min-w-0 truncate text-(--foreground)"
-          title={operation.name}
+          className={cn(
+            "w-fit rounded-xs border px-1.5 py-0.5 text-[10px] font-semibold uppercase",
+            operation.source === "remote_proxy"
+              ? "border-[#f59e0b]/40 bg-[#f59e0b]/10 text-[#d97706]"
+              : "border-(--border-subtle) bg-(--elevated) text-(--muted)"
+          )}
         >
-          {operation.name}
+          {operation.sourceLabel}
         </span>
+        <div className="min-w-0">
+          <div className="truncate text-(--foreground)" title={operation.name}>
+            {operation.name}
+          </div>
+          {operation.summary ? (
+            <div
+              className="mt-1 truncate text-[11px] text-(--muted)"
+              title={operation.summary}
+            >
+              {operation.summary}
+            </div>
+          ) : null}
+        </div>
         <span
           className={cn(
-            "text-[11px]",
+            "text-[11px] leading-5",
             operation.status === "error" ? "text-[#ef4444]" : "text-(--muted)"
           )}
         >
           {operation.status}
         </span>
-        <span className="text-right text-[11px] text-(--muted)">
+        <span className="text-right text-[11px] leading-5 text-(--muted)">
           {formatRuntimeDuration(operation.durationMs)}
         </span>
-        <span className="text-right text-[11px] text-(--muted)">
+        <span className="text-right text-[11px] leading-5 text-(--muted)">
           +{formatRuntimeDuration(operation.relativeStartMs)}
         </span>
       </div>
