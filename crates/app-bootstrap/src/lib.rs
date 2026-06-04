@@ -8,13 +8,13 @@
 //!   and runtime config (API + worker). The authoritative module list.
 //! - [`module_manifests`]: context-free manifest data (no [`AppContext`]) for
 //!   read-only / `OpenAPI` paths.
-//! - [`merge_domain_http`]: context-free HTTP routes and their OpenAPI docs
+//! - [`merge_linked_http`]: context-free HTTP routes and their OpenAPI docs
 //!   (API only), assembled without a live [`AppContext`].
 //! - [`story_display_descriptors`]: console display metadata, sourced from the
 //!   context-free [`module_manifests`].
 //!
 //! When adding a module, register it in [`modules`] and [`module_manifests`]
-//! and — if it has them — in [`merge_domain_http`].
+//! and — if it has them — in [`merge_linked_http`].
 
 use platform_admin_data::{AdminModule, AdminModuleMetadata};
 use platform_core::{
@@ -66,7 +66,7 @@ pub fn module_manifests() -> Vec<ModuleManifest> {
 
 /// Public HTTP path ownership for linked modules.
 ///
-/// Kept beside [`merge_domain_http`] because this crate currently owns the
+/// Kept beside [`merge_linked_http`] because this crate currently owns the
 /// mapping from concrete linked modules to their Axum/OpenAPI routers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LinkedHttpRouteOwner {
@@ -268,17 +268,14 @@ pub fn event_handlers(modules: &[Module]) -> EventHandlerRegistry {
     registry
 }
 
-/// Merge every domain's HTTP routes (and their `OpenAPI` docs) onto `base`.
+/// Merge every linked module's HTTP routes (and their `OpenAPI` docs) onto `base`.
 ///
-/// Domain route builders are context-free, so this assembles the HTTP surface
+/// Linked route builders are context-free, so this assembles the HTTP surface
 /// without constructing the full module set (which requires an [`AppContext`])
 /// — usable both for serving and for standalone `OpenAPI` document assembly.
-/// This is the single source for the API's routes; kept in sync with
-/// [`modules`] manually (it still hardcodes `identity::routes::router()` — HTTP
-/// is deferred). The `domain` in the name is retained until HTTP joins the
-/// [`platform_module::ModuleBinding`] seam; every other path here is unified on
-/// "module".
-pub fn merge_domain_http(base: ApiOpenApiRouter) -> ApiOpenApiRouter {
+/// This is the single source for linked API routes until HTTP joins the
+/// [`platform_module::ModuleBinding`] seam.
+pub fn merge_linked_http(base: ApiOpenApiRouter) -> ApiOpenApiRouter {
     LINKED_HTTP_CONTRIBUTIONS
         .iter()
         .fold(base, |router, contribution| (contribution.merge)(router))

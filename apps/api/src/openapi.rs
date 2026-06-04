@@ -29,8 +29,8 @@ use utoipa::OpenApi;
 )]
 struct ApiDoc;
 
-/// Assemble the full `OpenAPI` router: base probes, every domain's routes, and the
-/// admin runtime console routes, seeded with the document-level metadata.
+/// Assemble the full `OpenAPI` router: base probes, linked module routes, and
+/// admin/runtime routers, seeded with the document-level metadata.
 ///
 /// Context-free: route registration and `OpenAPI` metadata never touch the
 /// database, so callers can either serve it (after `with_state` +
@@ -39,7 +39,7 @@ pub(crate) fn api_router() -> ApiOpenApiRouter {
     platform_admin::install_story_display(app_bootstrap::story_display_descriptors());
 
     let base = OpenApiRouter::with_openapi(ApiDoc::openapi()).merge(base_router());
-    app_bootstrap::merge_domain_http(base)
+    app_bootstrap::merge_linked_http(base)
         .merge(platform_admin::router())
         .merge(platform_admin_data::router())
         .merge(platform_module_remote::router())
