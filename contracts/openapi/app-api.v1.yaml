@@ -3903,11 +3903,21 @@ components:
           description: |-
             Optional capability required before a future host proxy exposes this
             route. No enforcement exists until the proxy protocol is implemented.
+        display_name:
+          type:
+          - string
+          - 'null'
+          description: Compact label used when this route appears as a runtime story node.
         method:
           $ref: '#/components/schemas/ModuleHttpMethod'
         path:
           type: string
           description: Module-local path, e.g. `/contacts` or `/contacts/{id}`.
+        story_title:
+          type:
+          - string
+          - 'null'
+          description: Optional story title for direct requests to this route.
     ModuleSource:
       type: string
       enum:

@@ -21,6 +21,8 @@ pub struct RemoteHttpProxyRoute {
     pub method: ModuleHttpMethod,
     pub declared_path: String,
     pub capability: Option<String>,
+    pub display_name: Option<String>,
+    pub story_title: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,6 +35,8 @@ pub struct RemoteHttpProxyMatch {
     pub declared_path: String,
     pub remote_path: String,
     pub capability: Option<String>,
+    pub display_name: Option<String>,
+    pub story_title: Option<String>,
     pub path_params: BTreeMap<String, String>,
 }
 
@@ -105,6 +109,8 @@ impl RemoteHttpProxyRegistry {
                 declared_path: route.declared_path.clone(),
                 remote_path: normalized_path.clone(),
                 capability: route.capability.clone(),
+                display_name: route.display_name.clone(),
+                story_title: route.story_title.clone(),
                 path_params,
             })
         })
@@ -118,6 +124,8 @@ impl RemoteHttpProxyRoute {
             method: route.method,
             declared_path: route.path.clone(),
             capability: route.capability.clone(),
+            display_name: route.display_name.clone(),
+            story_title: route.story_title.clone(),
         })
     }
 }
@@ -205,6 +213,8 @@ mod tests {
             method,
             path: path.to_owned(),
             capability: Some("remote_crm.contacts.read".to_owned()),
+            display_name: None,
+            story_title: None,
         }
     }
 
@@ -294,6 +304,29 @@ mod tests {
             matched.capability.as_deref(),
             Some("remote_crm.contacts.read")
         );
+        assert_eq!(matched.display_name, None);
+        assert_eq!(matched.story_title, None);
+    }
+
+    #[test]
+    fn matcher_preserves_route_display_metadata() {
+        let mut route = route(ModuleHttpMethod::Get, "/contacts/{id}");
+        route.display_name = Some("Fetch Contact".to_owned());
+        route.story_title = Some("Fetch Contact".to_owned());
+        let registry = RemoteHttpProxyRegistry::from_modules(
+            &[remote_module("remote-crm", vec![route])],
+            &[RemoteModuleConfig::new(
+                "remote-crm",
+                "http://127.0.0.1:4100/lenso/module/v1",
+            )],
+        );
+
+        let matched = registry
+            .match_route("remote-crm", ModuleHttpMethod::Get, "/contacts/contact_1")
+            .expect("route should match");
+
+        assert_eq!(matched.display_name.as_deref(), Some("Fetch Contact"));
+        assert_eq!(matched.story_title.as_deref(), Some("Fetch Contact"));
     }
 
     #[test]

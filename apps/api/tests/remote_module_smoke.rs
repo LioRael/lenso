@@ -546,6 +546,7 @@ async fn remote_http_proxy_persists_call_history_and_story_operations() {
         StatusCode::OK,
         "story detail body: {story_detail}"
     );
+    assert_eq!(story_detail["data"]["summary"]["title"], "Fetch Contact");
     let story_nodes = story_detail["data"]["nodes"]
         .as_array()
         .expect("story nodes array");
@@ -573,12 +574,17 @@ async fn remote_http_proxy_persists_call_history_and_story_operations() {
         .find(|node| node["id"] == remote_success_node_id)
         .expect("successful remote proxy call should create a story node");
     assert_eq!(remote_success_node["type"], "remote_proxy_call");
-    assert_eq!(remote_success_node["name"], "remote-crm GET /contacts/{id}");
+    assert_eq!(remote_success_node["name"], "Fetch Contact");
     assert_eq!(remote_success_node["status"], "completed");
     assert_eq!(remote_success_node["service"], "remote-crm");
+    assert_eq!(remote_success_node["display_name"], "Fetch Contact");
     assert_eq!(
         remote_success_node["metadata"]["source_metadata"]["request_id"],
         "req_proxy_success"
+    );
+    assert_eq!(
+        remote_success_node["metadata"]["source_metadata"]["story_title"],
+        "Fetch Contact"
     );
     assert_eq!(
         remote_success_node["metadata"]["source_metadata"]["remote_status"],
@@ -595,10 +601,7 @@ async fn remote_http_proxy_persists_call_history_and_story_operations() {
         .find(|node| node["id"] == remote_failure_node_id)
         .expect("failed remote proxy call should create a story node");
     assert_eq!(remote_failure_node["type"], "remote_proxy_call");
-    assert_eq!(
-        remote_failure_node["name"],
-        "remote-crm GET /proxy-fixtures/text"
-    );
+    assert_eq!(remote_failure_node["name"], "Fetch Text Fixture");
     assert_eq!(remote_failure_node["status"], "failed");
     assert_eq!(
         remote_failure_node["metadata"]["source_metadata"]["error_code"],

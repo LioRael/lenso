@@ -33,6 +33,8 @@ async fn remote_proxy_call_records_request_and_trace_context() {
         declared_path: "/contacts/{id}".to_owned(),
         remote_path: "/contacts/contact_1".to_owned(),
         capability: Some("remote_crm.contacts.read".to_owned()),
+        display_name: Some("Fetch Contact".to_owned()),
+        story_title: Some("Fetch Contact".to_owned()),
         remote_status: Some(200),
         duration_ms: 42,
         success: true,
@@ -154,7 +156,7 @@ async fn remote_proxy_call_records_request_and_trace_context() {
     );
     assert_eq!(
         story_row.try_get::<String, _>("name").expect("name"),
-        "remote-crm GET /contacts/{id}"
+        "Fetch Contact"
     );
     assert_eq!(
         story_row.try_get::<String, _>("status").expect("status"),
@@ -210,6 +212,8 @@ async fn remote_proxy_call_records_request_and_trace_context() {
     assert_eq!(metadata["module_name"], "remote-crm");
     assert_eq!(metadata["method"], "GET");
     assert_eq!(metadata["declared_path"], "/contacts/{id}");
+    assert_eq!(metadata["display_name"], "Fetch Contact");
+    assert_eq!(metadata["story_title"], "Fetch Contact");
     assert_eq!(metadata["remote_path"], "/contacts/contact_1");
     assert_eq!(metadata["remote_status"], 200);
     assert_eq!(metadata["duration_ms"], 42);

@@ -674,6 +674,8 @@ async fn record_proxy_call(
         declared_path: matched.declared_path.clone(),
         remote_path: matched.remote_path.clone(),
         capability: matched.capability.clone(),
+        display_name: matched.display_name.clone(),
+        story_title: matched.story_title.clone(),
         remote_status: remote_status.map(|status| status.as_u16()),
         duration_ms,
         success: error.is_none(),
@@ -742,6 +744,8 @@ mod tests {
             declared_path: "/contacts/{id}".to_owned(),
             remote_path: "/contacts/contact_1".to_owned(),
             capability: Some("remote_crm.contacts.read".to_owned()),
+            display_name: Some("Fetch Contact".to_owned()),
+            story_title: Some("Fetch Contact".to_owned()),
             path_params: BTreeMap::new(),
         }
     }

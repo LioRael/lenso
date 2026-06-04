@@ -118,7 +118,7 @@ describe("runtime API model normalization", () => {
               request_id: "req_remote_proxy",
             },
           },
-          name: "remote-crm GET /contacts/{id}",
+          name: "Fetch Contact",
           service: "remote-crm",
           status: "completed",
           timestamp: "2026-06-01T12:00:00.180Z",
@@ -143,7 +143,7 @@ describe("runtime API model normalization", () => {
           created_at: "2026-06-01T12:00:00.180Z",
           id: "remoteproxy_rproxy_1",
           max_attempts: 1,
-          name: "remote-crm GET /contacts/{id}",
+          name: "Fetch Contact",
           started_at: "2026-06-01T12:00:00.180Z",
           status: "completed",
           type: "remote_proxy_call",
@@ -157,7 +157,7 @@ describe("runtime API model normalization", () => {
     expect(remoteNode).toMatchObject({
       durationMs: 42,
       kind: "external",
-      name: "remote-crm GET /contacts/{id}",
+      name: "Fetch Contact",
       parentId: "fn_create_user",
       service: "remote-crm",
       status: "completed",
@@ -171,7 +171,7 @@ describe("runtime API model normalization", () => {
       story.timelineItems?.find((item) => item.id === "remoteproxy_rproxy_1")
     ).toMatchObject({
       detailId: "remoteproxy_rproxy_1",
-      name: "remote-crm GET /contacts/{id}",
+      name: "Fetch Contact",
       type: "remote_proxy_call",
     });
   });
@@ -498,7 +498,7 @@ describe("runtime API model normalization", () => {
           duration_ms: 125,
           ended_at: "2026-06-01T12:00:01.125Z",
           id: "remote_proxy:rproxy_1",
-          name: "remote-crm GET /contacts/{id}",
+          name: "Fetch Contact",
           related_node_id: null,
           source: "remote_proxy",
           started_at: "2026-06-01T12:00:01.000Z",

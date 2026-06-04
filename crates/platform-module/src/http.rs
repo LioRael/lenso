@@ -27,4 +27,10 @@ pub struct ModuleHttpRoute {
     /// route. No enforcement exists until the proxy protocol is implemented.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub capability: Option<String>,
+    /// Compact label used when this route appears as a runtime story node.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    /// Optional story title for direct requests to this route.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub story_title: Option<String>,
 }

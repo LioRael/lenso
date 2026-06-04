@@ -217,11 +217,15 @@ mod tests {
                     method: ModuleHttpMethod::Get,
                     path: "/contacts".to_owned(),
                     capability: Some("remote_crm.contacts.read".to_owned()),
+                    display_name: Some("List Contacts".to_owned()),
+                    story_title: Some("List Contacts".to_owned()),
                 },
                 ModuleHttpRoute {
                     method: ModuleHttpMethod::Post,
                     path: "/contacts".to_owned(),
                     capability: Some("remote_crm.contacts.write".to_owned()),
+                    display_name: None,
+                    story_title: None,
                 },
             ])
             .build();
@@ -229,6 +233,10 @@ mod tests {
         let json = serde_json::to_string(&manifest).expect("serialize");
         assert!(json.contains(r#""http_routes""#), "got {json}");
         assert!(json.contains(r#""method":"GET""#), "got {json}");
+        assert!(
+            json.contains(r#""display_name":"List Contacts""#),
+            "got {json}"
+        );
         let back: ModuleManifest = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(manifest, back);
     }

@@ -35,6 +35,11 @@ async fn manifest_matches_remote_module_protocol() {
     assert!(has_route(routes, "GET", "/proxy-fixtures/text"));
     assert!(has_route(routes, "GET", "/proxy-fixtures/oversized"));
     assert!(has_route(routes, "GET", "/proxy-fixtures/slow"));
+    let fetch_contact = route(routes, "GET", "/contacts/{id}").expect("fetch contact route");
+    assert_eq!(fetch_contact["display_name"], "Fetch Contact");
+    assert_eq!(fetch_contact["story_title"], "Fetch Contact");
+    let fixture_text = route(routes, "GET", "/proxy-fixtures/text").expect("text fixture route");
+    assert_eq!(fixture_text["display_name"], "Fetch Text Fixture");
     assert!(
         routes
             .iter()
@@ -395,7 +400,11 @@ async fn contact_detail_returns_one_record_or_404() {
 }
 
 fn has_route(routes: &[Value], method: &str, path: &str) -> bool {
+    route(routes, method, path).is_some()
+}
+
+fn route<'a>(routes: &'a [Value], method: &str, path: &str) -> Option<&'a Value> {
     routes
         .iter()
-        .any(|route| route["method"] == method && route["path"] == path)
+        .find(|route| route["method"] == method && route["path"] == path)
 }

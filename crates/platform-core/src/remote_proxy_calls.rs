@@ -11,6 +11,8 @@ pub struct RemoteHttpProxyCallRecord {
     pub declared_path: String,
     pub remote_path: String,
     pub capability: Option<String>,
+    pub display_name: Option<String>,
+    pub story_title: Option<String>,
     pub remote_status: Option<u16>,
     pub duration_ms: i64,
     pub success: bool,
@@ -192,6 +194,10 @@ pub fn remote_proxy_call_story_event_id(id: &str) -> String {
 }
 
 fn remote_proxy_call_story_event_name(record: &RemoteHttpProxyCallRecord) -> String {
+    if let Some(display_name) = record.display_name.as_deref() {
+        return display_name.to_owned();
+    }
+
     format!(
         "{} {} {}",
         record.module_name, record.method, record.declared_path
@@ -222,6 +228,8 @@ fn remote_proxy_call_story_event_metadata(
         "declared_path": &record.declared_path,
         "remote_path": &record.remote_path,
         "capability": &record.capability,
+        "display_name": &record.display_name,
+        "story_title": &record.story_title,
         "remote_status": record.remote_status,
         "duration_ms": record.duration_ms,
         "request_id": request_ctx.request_id.0,

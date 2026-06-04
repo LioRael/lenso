@@ -262,6 +262,10 @@ pub(crate) fn story_title(rows: &[StoryWorkRow]) -> String {
         return title;
     }
 
+    if let Some(title) = rows.iter().find_map(remote_proxy_story_title) {
+        return title;
+    }
+
     if let Some(event_title) = rows
         .iter()
         .find(|row| matches!(row.item_type.as_str(), "event" | "outbox_event"))
@@ -285,6 +289,16 @@ pub(crate) fn display_name_for_node(row: &StoryWorkRow) -> String {
     }
 
     humanize_runtime_name(&row.name)
+}
+
+pub(crate) fn remote_proxy_story_title(row: &StoryWorkRow) -> Option<String> {
+    if row.item_type != "remote_proxy_call" {
+        return None;
+    }
+
+    json_string(&row.metadata, "story_title")
+        .or_else(|| json_string(&row.metadata, "display_name"))
+        .map(str::to_owned)
 }
 
 pub(crate) fn story_display_descriptor(

@@ -514,8 +514,10 @@ export type ModuleHttpMethod = string;
 
 export type ModuleHttpRoute = {
   capability?: string | null;
+  display_name?: string | null;
   method: ModuleHttpMethod;
   path: string;
+  story_title?: string | null;
 };
 
 export type ModuleSource = string;
