@@ -2,6 +2,7 @@ use app_api::{build_router, openapi_document};
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
 use platform_core::{AppConfig, AppContext, LoggingEventPublisher};
+use platform_module::ModuleHttpMethod;
 use std::sync::Arc;
 use tower::ServiceExt;
 
@@ -44,6 +45,43 @@ fn committed_openapi_artifact_matches_rust_source() {
             .expect("committed OpenAPI artifact should parse");
 
     assert_eq!(committed, generated);
+}
+
+#[test]
+fn linked_module_http_routes_are_registered_in_openapi() {
+    let document = openapi_document();
+    let value = serde_json::to_value(&document).expect("OpenAPI document should serialize");
+    let paths = value["paths"].as_object().expect("OpenAPI paths object");
+
+    for manifest in app_bootstrap::module_manifests() {
+        for route in manifest.http_routes {
+            let path = paths.get(&route.path).unwrap_or_else(|| {
+                panic!(
+                    "linked module `{}` declares HTTP route `{}` but OpenAPI has no matching path",
+                    manifest.name, route.path
+                )
+            });
+            let method = openapi_method(route.method);
+            assert!(
+                path.get(method).is_some(),
+                "linked module `{}` declares HTTP route `{} {}` but OpenAPI has no matching operation",
+                manifest.name,
+                method.to_uppercase(),
+                route.path
+            );
+        }
+    }
+}
+
+fn openapi_method(method: ModuleHttpMethod) -> &'static str {
+    match method {
+        ModuleHttpMethod::Get => "get",
+        ModuleHttpMethod::Post => "post",
+        ModuleHttpMethod::Put => "put",
+        ModuleHttpMethod::Patch => "patch",
+        ModuleHttpMethod::Delete => "delete",
+        _ => panic!("unsupported module HTTP method in OpenAPI guard"),
+    }
 }
 
 #[tokio::test]
