@@ -88,6 +88,21 @@ fn service_get(path: &str, token: &str) -> Request<Body> {
         .expect("request builds")
 }
 
+fn service_post(
+    path: &str,
+    token: &str,
+    content_type: &str,
+    body: impl Into<Body>,
+) -> Request<Body> {
+    Request::builder()
+        .method("POST")
+        .uri(path)
+        .header("authorization", format!("Bearer {token}"))
+        .header("content-type", content_type)
+        .body(body.into())
+        .expect("request builds")
+}
+
 async fn json_body(response: axum::response::Response) -> Value {
     let bytes = to_bytes(response.into_body(), usize::MAX)
         .await
@@ -263,6 +278,87 @@ async fn remote_http_proxy_rejects_unsafe_get_responses() {
             .as_str()
             .expect("error message")
             .contains("response body exceeded")
+    );
+}
+
+#[tokio::test]
+async fn remote_http_proxy_forwards_declared_post_routes() {
+    let _guard = REMOTE_SMOKE_TEST_LOCK.lock().await;
+    let base_url = spawn_remote_module(remote_module_example::router()).await;
+    let app = app_with_remote_module(base_url).await;
+
+    let matched_response = app
+        .clone()
+        .oneshot(service_post(
+            "/modules/remote-crm/http/contacts",
+            "dev-service:admin:remote_crm.contacts.read",
+            "application/json",
+            r#"{"id":"contact_new","email":"new@example.com"}"#,
+        ))
+        .await
+        .expect("matched post request completes");
+    assert_eq!(matched_response.status(), StatusCode::OK);
+    let matched = json_body(matched_response).await;
+    assert_eq!(matched["status"], "forwarded");
+    assert_eq!(matched["module_name"], "remote-crm");
+    assert_eq!(matched["method"], "POST");
+    assert_eq!(matched["declared_path"], "/contacts");
+    assert_eq!(matched["remote_path"], "/contacts");
+    assert_eq!(matched["capability"], "remote_crm.contacts.read");
+    assert_eq!(matched["data"]["id"], "contact_new");
+    assert_eq!(matched["data"]["email"], "new@example.com");
+    assert_eq!(matched["data"]["created"], true);
+    assert_eq!(matched["data"]["input"]["email"], "new@example.com");
+
+    let missing_route = app
+        .clone()
+        .oneshot(service_post(
+            "/modules/remote-crm/http/contacts/contact_1",
+            "dev-service:admin:remote_crm.contacts.read",
+            "application/json",
+            r#"{"email":"new@example.com"}"#,
+        ))
+        .await
+        .expect("missing route request completes");
+    assert_eq!(missing_route.status(), StatusCode::NOT_FOUND);
+
+    let non_json = app
+        .clone()
+        .oneshot(service_post(
+            "/modules/remote-crm/http/contacts",
+            "dev-service:admin:remote_crm.contacts.read",
+            "text/plain",
+            "not json",
+        ))
+        .await
+        .expect("non-json request completes");
+    assert_eq!(non_json.status(), StatusCode::BAD_REQUEST);
+    let non_json_body = json_body(non_json).await;
+    assert_eq!(non_json_body["error"]["code"], "validation_failed");
+    assert!(
+        non_json_body["error"]["message"]
+            .as_str()
+            .expect("error message")
+            .contains("request content-type was not JSON")
+    );
+
+    let oversized = app
+        .oneshot(service_post(
+            "/modules/remote-crm/http/contacts",
+            "dev-service:admin:remote_crm.contacts.read",
+            "application/json",
+            format!(r#"{{"payload":"{}"}}"#, "x".repeat((1024 * 1024) + 1)),
+        ))
+        .await
+        .expect("oversized request completes");
+    assert_eq!(oversized.status(), StatusCode::BAD_REQUEST);
+    let oversized_body = json_body(oversized).await;
+    assert_eq!(oversized_body["error"]["code"], "validation_failed");
+    assert!(
+        oversized_body["error"]["message"]
+            .as_str()
+            .expect("error message")
+            .contains("request body exceeded")
     );
 }
 

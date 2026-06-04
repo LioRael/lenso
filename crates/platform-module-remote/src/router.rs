@@ -2,6 +2,7 @@ use crate::request::{ProxyRequestBody, apply_proxy_request_policy};
 use crate::response::ResponseBodyPolicy;
 use crate::{RemoteHttpProxyMatch, RemoteHttpProxyRegistry};
 use axum::Json;
+use axum::body::Bytes;
 use axum::extract::Path;
 use axum::http::HeaderMap;
 use platform_core::{AppError, ErrorCode};
@@ -51,7 +52,9 @@ impl Serialize for RemoteHttpProxyStatus {
 
 #[must_use]
 pub fn router() -> ApiOpenApiRouter {
-    OpenApiRouter::new().routes(routes!(proxy_get))
+    OpenApiRouter::new()
+        .routes(routes!(proxy_get))
+        .routes(routes!(proxy_post))
 }
 
 pub fn install_remote_http_proxy_registry(registry: RemoteHttpProxyRegistry) {
@@ -116,6 +119,55 @@ async fn proxy_get(
     Ok(Json(RemoteHttpProxyResponse::from_match(matched, data)))
 }
 
+#[utoipa::path(
+    post,
+    path = "/modules/{module}/http/{*path}",
+    operation_id = "remote_module_http_proxy_post",
+    tag = "modules",
+    request_body(
+        content = Value,
+        content_type = "application/json",
+        description = "JSON request body forwarded to the matched remote module route"
+    ),
+    params(
+        ("module" = String, Path, description = "Configured remote module name"),
+        ("path" = String, Path, description = "Module-local HTTP path matched against the remote manifest"),
+        ("authorization" = String, Header, description = "Development service bearer token")
+    ),
+    responses(
+        (status = 200, description = "Remote route forwarded through the host.", body = RemoteHttpProxyResponse, content_type = "application/json"),
+        (status = 400, description = "Request body policy rejected the request", body = ErrorResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 403, description = "Service/system authentication or declared capability is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 404, description = "No configured remote route matched", body = ErrorResponse, content_type = "application/json"),
+        (status = 502, description = "Remote module request failed", body = ErrorResponse, content_type = "application/json"),
+    )
+)]
+async fn proxy_post(
+    admin: AdminActor,
+    HttpRequestContext(request_ctx): HttpRequestContext,
+    headers: HeaderMap,
+    Path((module, path)): Path<(String, String)>,
+    body: Bytes,
+) -> Result<Json<RemoteHttpProxyResponse>, ApiErrorResponse> {
+    let request_path = format!("/{path}");
+    let matched = remote_http_proxy_registry()
+        .match_route(&module, ModuleHttpMethod::Post, &request_path)
+        .ok_or_else(|| {
+            ApiErrorResponse::with_context(
+                AppError::new(
+                    ErrorCode::NotFound,
+                    format!("remote HTTP route not found: {module}{request_path}"),
+                ),
+                &request_ctx,
+            )
+        })?;
+
+    ensure_capability(&admin, &matched, &request_ctx)?;
+    let data = forward_post(&matched, &headers, body, &request_ctx).await?;
+    Ok(Json(RemoteHttpProxyResponse::from_match(matched, data)))
+}
+
 fn ensure_capability(
     admin: &AdminActor,
     matched: &RemoteHttpProxyMatch,
@@ -166,6 +218,22 @@ async fn forward_get(
         headers,
         request_ctx,
         body: ProxyRequestBody::Empty,
+    })
+    .await
+}
+
+async fn forward_post(
+    matched: &RemoteHttpProxyMatch,
+    headers: &HeaderMap,
+    body: Bytes,
+    request_ctx: &platform_core::RequestContext,
+) -> Result<Value, ApiErrorResponse> {
+    forward_proxy_request(ProxyForwardRequest {
+        matched,
+        method: ModuleHttpMethod::Post,
+        headers,
+        request_ctx,
+        body: ProxyRequestBody::Json(body),
     })
     .await
 }

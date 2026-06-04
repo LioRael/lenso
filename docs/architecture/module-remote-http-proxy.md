@@ -2,9 +2,9 @@
 
 This note specifies the protocol boundary for exposing remote module-owned HTTP
 routes through the host API. The current implementation preserves
-`ModuleManifest::http_routes` as metadata and forwards matched GET requests
-through a host-owned route. Non-GET methods, request bodies, and streaming
-remain deferred.
+`ModuleManifest::http_routes` as metadata and forwards matched GET and POST
+requests through a host-owned route. PUT, PATCH, DELETE, and streaming remain
+deferred.
 
 ## Current State
 
@@ -32,13 +32,15 @@ with `/`, must not be absolute URLs, and must not contain empty, `.`, `..`,
 query, or fragment segments. Valid declarations are exposed as metadata through
 `/admin/data/modules`.
 
-A `GET` public API route is installed at `/modules/{module}/http/{*path}`. It
-matches the declaration, enforces service/system auth plus route capability, and
-forwards the request to the remote module without caller credentials. If the
-remote source has a configured auth token, the host uses that token for the
-remote request. Successful remote responses must be JSON
-(`application/json` or `application/*+json`) and must not exceed the current
-4 MiB proxy response limit. Non-GET host methods are not mounted yet.
+`GET` and `POST` public API routes are installed at
+`/modules/{module}/http/{*path}`. They match the declaration, enforce
+service/system auth plus route capability, and forward the request to the remote
+module without caller credentials. If the remote source has a configured auth
+token, the host uses that token for the remote request. Successful remote
+responses must be JSON (`application/json` or `application/*+json`) and must not
+exceed the current 4 MiB proxy response limit. POST request bodies must be JSON
+and must not exceed the current 1 MiB proxy request limit. PUT, PATCH, and
+DELETE host methods are not mounted yet.
 
 ## Goals
 
@@ -93,16 +95,18 @@ pattern, and duplicate parameter names should be rejected.
 
 ## Request Policy
 
-The first mounted proxy slice supports only GET requests with JSON responses.
-Request-body policy is scaffolded for future body-bearing methods, but
-`POST`, `PUT`, `PATCH`, and `DELETE` remain unmounted.
+The first mounted proxy slices support GET requests with JSON responses and
+POST requests with JSON request/response bodies. PUT, PATCH, and DELETE remain
+unmounted.
 
 Request constraints:
 
 - Maximum request body size: host-configured, default 1 MiB.
 - Maximum response body size: host-configured, default 4 MiB.
-- Methods: GET only until body-bearing methods are explicitly mounted.
-- Content types: `application/json` and empty body only.
+- Methods: GET and POST only until the remaining body-bearing methods are
+  explicitly mounted.
+- Content types: GET responses must be JSON; POST request and response bodies
+  must be JSON.
 - Timeouts: use the remote module source timeout unless a narrower proxy
   timeout is configured.
 
@@ -113,8 +117,8 @@ Headers forwarded to the remote module should be allowlisted:
 - `x-correlation-id`
 - `traceparent`
 
-Future body-bearing methods may also forward `content-type` after the JSON
-request body policy accepts the request.
+POST forwards `content-type` only after the JSON request body policy accepts the
+request. Future body-bearing methods should use the same policy.
 
 Headers not forwarded:
 
@@ -185,10 +189,11 @@ Each proxied call should produce host-side telemetry:
 Remote module response headers should not be used as trusted telemetry unless
 explicitly allowlisted.
 
-Current GET proxy calls emit structured host-side tracing events for completed
-and failed forwards with module name, declared path, remote path, method, remote
-status, duration, request/correlation ids, and error code/retryability when
-present. Persisted Runtime Console views for proxy calls remain deferred.
+Current GET and POST proxy calls emit structured host-side tracing events for
+completed and failed forwards with module name, declared path, remote path,
+method, remote status, duration, request/correlation ids, and error
+code/retryability when present. Persisted Runtime Console views for proxy calls
+remain deferred.
 
 ## OpenAPI Strategy
 
@@ -211,19 +216,21 @@ OpenAPI fragments after trust, validation, and versioning are specified.
 1. Add a host proxy registry from loaded remote module manifests. Done.
 2. Add route matching for method plus simple path patterns. Done.
 3. Add one static host proxy route under `/modules/{module}/http/{*path}`. Done
-   for GET.
-4. Enforce service/system auth and declared capabilities. Done for GET.
-5. Forward matched GET requests without caller credentials. Done; configured
-   host-to-remote bearer tokens are used when present.
+   for GET and POST.
+4. Enforce service/system auth and declared capabilities. Done for GET and
+   POST.
+5. Forward matched GET and POST requests without caller credentials. Done;
+   configured host-to-remote bearer tokens are used when present.
 6. Add request/response size limits and full header allowlists. Done for GET
-   response content-type, response size, and header allowlists. Request JSON
-   body policy is scaffolded with a 1 MiB limit, but body-bearing methods are
-   not mounted.
+   response content-type, POST request/response content-type, request/response
+   size limits, and header allowlists.
 7. Mount the remaining declared methods: `POST`, `PUT`, `PATCH`, and `DELETE`.
+   Done for POST; PUT, PATCH, and DELETE remain deferred.
 8. Normalize remote errors through the existing platform error model. Done for
-   GET.
+   GET and POST.
 9. Add telemetry and runtime-console visibility for proxied calls. Done for GET
-   tracing events; persisted Runtime Console visibility remains deferred.
+   and POST tracing events; persisted Runtime Console visibility remains
+   deferred.
 
 Do not implement per-module OpenAPI fragments, streaming, browser credentials,
 or bidirectional admin bridges in the first proxy slice.

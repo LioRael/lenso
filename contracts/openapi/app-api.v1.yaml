@@ -1812,6 +1812,72 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags:
+      - modules
+      operationId: remote_module_http_proxy_post
+      parameters:
+      - name: module
+        in: path
+        description: Configured remote module name
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Module-local HTTP path matched against the remote manifest
+        required: true
+        schema:
+          type: string
+      - name: authorization
+        in: header
+        description: Development service bearer token
+        required: true
+        schema:
+          type: string
+      requestBody:
+        description: JSON request body forwarded to the matched remote module route
+        content:
+          application/json:
+            schema: {}
+        required: true
+      responses:
+        '200':
+          description: Remote route forwarded through the host.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RemoteHttpProxyResponse'
+        '400':
+          description: Request body policy rejected the request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service/system authentication or declared capability is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: No configured remote route matched
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Remote module request failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /v1/identity/me:
     get:
       tags:

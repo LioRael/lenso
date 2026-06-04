@@ -24,16 +24,16 @@ async fn manifest_matches_remote_module_protocol() {
     assert_eq!(manifest["name"], "remote-crm");
     assert_eq!(manifest["admin"]["kind"], "schema");
     assert_eq!(manifest["admin"]["entities"][0]["name"], "contacts");
-    assert_eq!(manifest["http_routes"][0]["method"], "GET");
-    assert_eq!(manifest["http_routes"][0]["path"], "/contacts");
-    assert_eq!(manifest["http_routes"][2]["path"], "/proxy-fixtures/text");
-    assert_eq!(
-        manifest["http_routes"][3]["path"],
-        "/proxy-fixtures/oversized"
-    );
-    assert_eq!(
-        manifest["http_routes"][0]["capability"],
-        "remote_crm.contacts.read"
+    let routes = manifest["http_routes"].as_array().expect("http routes");
+    assert!(has_route(routes, "GET", "/contacts"));
+    assert!(has_route(routes, "POST", "/contacts"));
+    assert!(has_route(routes, "GET", "/contacts/{id}"));
+    assert!(has_route(routes, "GET", "/proxy-fixtures/text"));
+    assert!(has_route(routes, "GET", "/proxy-fixtures/oversized"));
+    assert!(
+        routes
+            .iter()
+            .all(|route| route["capability"] == "remote_crm.contacts.read")
     );
     assert_eq!(
         manifest["capabilities"],
@@ -194,6 +194,34 @@ async fn http_contacts_route_returns_resource_json() {
 }
 
 #[tokio::test]
+async fn http_contacts_post_route_accepts_json() {
+    let response = remote_module_example::router()
+        .oneshot(
+            http::Request::builder()
+                .method(http::Method::POST)
+                .uri("/lenso/module/v1/contacts")
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(axum::body::Body::from(
+                    r#"{"id":"contact_new","email":"new@example.com"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let contact: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(contact["id"], "contact_new");
+    assert_eq!(contact["email"], "new@example.com");
+    assert_eq!(contact["created"], true);
+    assert_eq!(contact["input"]["email"], "new@example.com");
+}
+
+#[tokio::test]
 async fn http_proxy_fixture_routes_cover_response_policy() {
     let text = remote_module_example::router()
         .oneshot(
@@ -275,4 +303,10 @@ async fn contact_detail_returns_one_record_or_404() {
     assert_eq!(error["error"]["code"], "not_found");
     assert_eq!(error["error"]["retryable"], false);
     assert_eq!(error["error"]["message"], "contact nope was not found");
+}
+
+fn has_route(routes: &[Value], method: &str, path: &str) -> bool {
+    routes
+        .iter()
+        .any(|route| route["method"] == method && route["path"] == path)
 }
