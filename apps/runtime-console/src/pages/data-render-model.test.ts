@@ -474,6 +474,7 @@ describe("module status helpers", () => {
         message: "Declared routes include display and story metadata.",
         severity: "ok",
         subject: "routes",
+        suggestion: "No action needed.",
       },
     ]);
     expect(moduleRouteHealth(healthyModule)).toBe("ok");
@@ -502,42 +503,53 @@ describe("module status helpers", () => {
         message: "2 routes declare the same method and path.",
         severity: "error",
         subject: "GET /contacts/{id}",
+        suggestion: "Keep one route declaration per method and path.",
       },
       {
         key: "display:GET /contacts/{id}:0",
         message: "Missing display_name for compact runtime story nodes.",
         severity: "warning",
         subject: "GET /contacts/{id}",
+        suggestion:
+          "Add display_name to ModuleHttpRoute for compact story timeline labels.",
       },
       {
         key: "story:GET /contacts/{id}:0",
         message: "Missing story_title for direct HTTP entry stories.",
         severity: "warning",
         subject: "GET /contacts/{id}",
+        suggestion:
+          "Add story_title when this route can be a direct business entry.",
       },
       {
         key: "capability:GET /contacts/{id}:0",
         message: "Missing capability declaration for host proxy authorization.",
         severity: "warning",
         subject: "GET /contacts/{id}",
+        suggestion:
+          "Remote routes should declare the capability used by host proxy authorization.",
       },
       {
         key: "display:GET /contacts/{id}:1",
         message: "Missing display_name for compact runtime story nodes.",
         severity: "warning",
         subject: "GET /contacts/{id}",
+        suggestion:
+          "Add display_name to ModuleHttpRoute for compact story timeline labels.",
       },
       {
         key: "story:GET /contacts/{id}:1",
         message: "Missing story_title for direct HTTP entry stories.",
         severity: "warning",
         subject: "GET /contacts/{id}",
+        suggestion:
+          "Add story_title when this route can be a direct business entry.",
       },
     ]);
     expect(moduleRouteHealth(issueModule)).toBe("error");
     expect(
       filterModuleRegistry([loadedModule, issueModule], {
-        query: "missing story",
+        query: "business entry",
         route: "error",
         source: "all",
         status: "all",
@@ -552,12 +564,16 @@ describe("module status helpers", () => {
         message: "remote manifest request failed",
         severity: "error",
         subject: "module load",
+        suggestion:
+          "Refresh the module registry and inspect the module source configuration or manifest endpoint.",
       },
       {
         key: "no-routes",
         message: "No HTTP interfaces are declared in this manifest.",
         severity: "warning",
         subject: "routes",
+        suggestion:
+          "Add ModuleHttpRoute declarations for remote HTTP interfaces that should be visible to the host.",
       },
     ]);
   });

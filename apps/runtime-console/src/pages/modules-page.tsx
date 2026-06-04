@@ -498,7 +498,7 @@ function ModuleRouteChecks({
       <div className="divide-y divide-(--border-subtle)">
         {checks.map((check) => (
           <div
-            className="grid grid-cols-[76px_minmax(0,160px)_minmax(0,1fr)] gap-2 px-3 py-1.5 text-[11px]"
+            className="grid grid-cols-[76px_minmax(0,160px)_minmax(0,1fr)] gap-x-2 gap-y-1 px-3 py-1.5 text-[11px]"
             key={check.key}
           >
             <span
@@ -516,6 +516,9 @@ function ModuleRouteChecks({
             </span>
             <span className="min-w-0 truncate text-(--muted)">
               {check.message}
+            </span>
+            <span className="col-start-3 min-w-0 truncate text-[10px] text-(--secondary)">
+              {check.suggestion}
             </span>
           </div>
         ))}

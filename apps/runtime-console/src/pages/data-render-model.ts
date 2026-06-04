@@ -216,6 +216,7 @@ export type ModuleRouteCheck = {
   severity: ModuleRouteCheckSeverity;
   subject: string;
   message: string;
+  suggestion: string;
 };
 
 export type EmbeddedIframePolicy =
@@ -413,6 +414,7 @@ function moduleRegistrySearchText(module: AdminModuleMetadata): string {
       check.severity,
       check.subject,
       check.message,
+      check.suggestion,
     ]),
   ];
   return parts.join(" ").toLowerCase();
@@ -494,6 +496,8 @@ export function moduleRouteChecks(
       message: moduleErrorMessage(module) ?? "module failed to load",
       severity: "error",
       subject: "module load",
+      suggestion:
+        "Refresh the module registry and inspect the module source configuration or manifest endpoint.",
     });
   }
 
@@ -503,6 +507,10 @@ export function moduleRouteChecks(
       message: "No HTTP interfaces are declared in this manifest.",
       severity: module.source === "remote" ? "warning" : "ok",
       subject: "routes",
+      suggestion:
+        module.source === "remote"
+          ? "Add ModuleHttpRoute declarations for remote HTTP interfaces that should be visible to the host."
+          : "No action needed unless this linked module owns public HTTP routes.",
     });
     return checks;
   }
@@ -522,6 +530,7 @@ export function moduleRouteChecks(
         message: `${count} routes declare the same method and path.`,
         severity: "error",
         subject: key,
+        suggestion: "Keep one route declaration per method and path.",
       });
     }
   }
@@ -534,6 +543,8 @@ export function moduleRouteChecks(
         message: "Missing display_name for compact runtime story nodes.",
         severity: "warning",
         subject: identity,
+        suggestion:
+          "Add display_name to ModuleHttpRoute for compact story timeline labels.",
       });
     }
     if (!present(route.story_title)) {
@@ -542,6 +553,8 @@ export function moduleRouteChecks(
         message: "Missing story_title for direct HTTP entry stories.",
         severity: "warning",
         subject: identity,
+        suggestion:
+          "Add story_title when this route can be a direct business entry.",
       });
     }
     if (module.source === "remote" && !present(route.capability)) {
@@ -550,6 +563,8 @@ export function moduleRouteChecks(
         message: "Missing capability declaration for host proxy authorization.",
         severity: "warning",
         subject: identity,
+        suggestion:
+          "Remote routes should declare the capability used by host proxy authorization.",
       });
     }
   });
@@ -566,6 +581,7 @@ export function moduleRouteChecks(
           : "Declared routes include display and story metadata.",
       severity: "ok",
       subject: "routes",
+      suggestion: "No action needed.",
     });
   }
   return checks;
