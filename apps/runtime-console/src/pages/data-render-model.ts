@@ -236,30 +236,32 @@ export function moduleNavItems(
     const schema = schemaFromModule(module);
     const surfaceKind = adminSurfaceKind(module.admin);
     const sublabel = `${module.source} / ${adminSurfaceLabel(module.admin)} / ${moduleStatusLabel(module)}`;
+    const moduleItem: ModuleNavItem = {
+      key: module.module_name,
+      module,
+      entity: null,
+      label: module.module_name,
+      sublabel,
+      surfaceKind,
+    };
 
     if (!schema || schema.entities.length === 0) {
-      return [
-        {
-          key: module.module_name,
-          module,
-          entity: null,
-          label: module.module_name,
-          sublabel,
-          surfaceKind,
-        },
-      ] satisfies ModuleNavItem[];
+      return [moduleItem] satisfies ModuleNavItem[];
     }
 
-    return schema.entities.map(
-      (entity): ModuleNavItem => ({
-        key: `${module.module_name}.${entity.name}`,
-        module,
-        entity,
-        label: `${module.module_name} / ${entity.label}`,
-        sublabel,
-        surfaceKind,
-      })
-    );
+    return [
+      moduleItem,
+      ...schema.entities.map(
+        (entity): ModuleNavItem => ({
+          key: `${module.module_name}.${entity.name}`,
+          module,
+          entity,
+          label: `${module.module_name} / ${entity.label}`,
+          sublabel,
+          surfaceKind,
+        })
+      ),
+    ];
   });
 }
 

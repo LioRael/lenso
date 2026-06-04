@@ -223,6 +223,14 @@ describe("module status helpers", () => {
   test("keeps failed empty-schema modules visible in nav", () => {
     expect(moduleNavItems([loadedModule, errorModule])).toEqual([
       {
+        key: "identity",
+        module: loadedModule,
+        entity: null,
+        label: "identity",
+        sublabel: "linked / schema / loaded",
+        surfaceKind: "schema",
+      },
+      {
         key: "identity.users",
         module: loadedModule,
         entity,

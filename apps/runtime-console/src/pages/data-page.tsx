@@ -214,7 +214,7 @@ export function DataPage() {
               />
             ) : null
           ) : selected ? (
-            <ModuleSurfacePanel module={selected.module} />
+            <ModuleOverviewPanel module={selected.module} />
           ) : (
             <p className="text-(--muted)">Select a module or entity.</p>
           )}
@@ -258,8 +258,10 @@ export function DataPage() {
                   )}
                 </dl>
               ) : null
+            ) : selected && !selected.entity ? (
+              <ModuleOverviewPanel compact module={selected.module} />
             ) : selected ? (
-              <ModuleSurfacePanel compact module={selected.module} />
+              <p className="text-(--muted)">No record selected.</p>
             ) : (
               <p className="text-(--muted)">No record selected.</p>
             )}
@@ -367,17 +369,14 @@ function ModuleErrorPanel({
   );
 }
 
-function ModuleSurfacePanel({
+function ModuleOverviewPanel({
   compact = false,
   module,
 }: {
   compact?: boolean;
   module: AdminModuleMetadata;
 }) {
-  const rows = adminSurfaceMetadataRows(module);
   const routeRows = moduleHttpRouteRows(module);
-  const surfaceLabel = adminSurfaceLabel(module.admin);
-  const iframePolicy = embeddedIframePolicy(module.admin);
   return (
     <div
       className={cn(
@@ -388,6 +387,31 @@ function ModuleSurfacePanel({
       <div className="flex items-center gap-2 font-semibold text-(--foreground)">
         <Code2 className="text-(--info)" size={14} />
         <span>{module.module_name}</span>
+        <span className="ml-auto border border-(--border-subtle) px-2 py-0.5 text-[10px] text-(--secondary)">
+          {module.source} / {moduleStatusLabel(module)}
+        </span>
+      </div>
+      <ModuleHttpRoutesTable compact={compact} rows={routeRows} />
+      <ModuleSurfacePanel compact={compact} module={module} />
+    </div>
+  );
+}
+
+function ModuleSurfacePanel({
+  compact = false,
+  module,
+}: {
+  compact?: boolean;
+  module: AdminModuleMetadata;
+}) {
+  const rows = adminSurfaceMetadataRows(module);
+  const surfaceLabel = adminSurfaceLabel(module.admin);
+  const iframePolicy = embeddedIframePolicy(module.admin);
+  return (
+    <section className={cn("grid gap-3", compact && "text-[11px]")}>
+      <div className="flex items-center gap-2 font-semibold text-(--foreground)">
+        <Code2 className="text-(--info)" size={14} />
+        <span>Admin Surface</span>
         <span className="ml-auto border border-(--border-subtle) px-2 py-0.5 text-[10px] text-(--secondary)">
           {surfaceLabel}
         </span>
@@ -419,8 +443,7 @@ function ModuleSurfacePanel({
           </div>
         ))}
       </dl>
-      <ModuleHttpRoutesTable compact={compact} rows={routeRows} />
-    </div>
+    </section>
   );
 }
 
