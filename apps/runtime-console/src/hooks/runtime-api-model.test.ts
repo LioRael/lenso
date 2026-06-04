@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vitest";
 
+import { buildRemoteProxyInspectorDetail } from "../components/runtime/execution-inspector-model";
+import { buildExecutionTimelineRows } from "../components/runtime/execution-timeline-model";
 import {
   normalizeExecutionLogs,
   normalizeExecutionPayload,
@@ -111,11 +113,18 @@ describe("runtime API model normalization", () => {
             source_metadata: {
               declared_path: "/contacts/{id}",
               duration_ms: 42,
+              error_code: null,
+              error_details: [],
               method: "GET",
               module_name: "remote-crm",
+              path_params: { id: "contact_1" },
               remote_path: "/contacts/contact_1",
+              remote_proxy_call_id: "rproxy_1",
               remote_status: 200,
               request_id: "req_remote_proxy",
+              retryable: false,
+              span_id: "span_remote_proxy",
+              trace_id: "trace_remote_proxy",
             },
           },
           name: "Fetch Contact",
@@ -163,9 +172,35 @@ describe("runtime API model normalization", () => {
       status: "completed",
     });
     expect(remoteNode?.attributes.source_metadata).toMatchObject({
+      declared_path: "/contacts/{id}",
+      duration_ms: 42,
+      error_details: [],
+      method: "GET",
       module_name: "remote-crm",
+      path_params: { id: "contact_1" },
+      remote_path: "/contacts/contact_1",
+      remote_proxy_call_id: "rproxy_1",
       remote_status: 200,
       request_id: "req_remote_proxy",
+      retryable: false,
+      span_id: "span_remote_proxy",
+      trace_id: "trace_remote_proxy",
+    });
+    expect(
+      buildExecutionTimelineRows(story).find(
+        (row) => row.id === "remoteproxy_rproxy_1"
+      )
+    ).toMatchObject({
+      metaParts: ["ok", "remote-crm", "GET /contacts/{id}", "status 200"],
+    });
+    expect(buildRemoteProxyInspectorDetail(remoteNode!)).toMatchObject({
+      errorDetails: [],
+      pathParams: { id: "contact_1" },
+      rows: expect.arrayContaining([
+        ["request id", "req_remote_proxy"],
+        ["trace id", "trace_remote_proxy"],
+        ["span id", "span_remote_proxy"],
+      ]),
     });
     expect(
       story.timelineItems?.find((item) => item.id === "remoteproxy_rproxy_1")

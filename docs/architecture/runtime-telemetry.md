@@ -68,6 +68,10 @@ ways:
   `remote_proxy_call` nodes under the story's `correlation_id`. This keeps the
   business flow readable without duplicating the same calls in a separate story
   section.
+  The node's `metadata.source_metadata` is the Story UI contract for compact
+  timeline summaries and inspector details: module, method, declared path,
+  remote path/status, duration, request/trace/span ids, path params, error
+  code, retryability, and error details.
 - Runtime Story Technical Operations includes those same calls as
   `source = "remote_proxy"` operations. This places remote module calls beside
   OTEL-derived database, HTTP, worker, and external operations for the selected

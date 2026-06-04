@@ -234,6 +234,10 @@ Runtime Console exposes persisted proxy calls through three surfaces:
 - Runtime Story graph and timeline include proxy calls as ordinary
   `remote_proxy_call` nodes scoped to the selected story's `correlation_id`.
   The Story detail should not duplicate the same facts in a separate section.
+  Story node `metadata.source_metadata` is the compact/detail UI contract and
+  carries module, method, declared path, remote path/status, duration,
+  request/trace/span ids, path params, error code, retryability, and error
+  details.
 - Runtime Story Technical Operations includes proxy calls as
   `source = "remote_proxy"` operations. A proxy call attaches to a story node
   when its `span_id` matches an OTEL span with `lenso.function_run_id` or

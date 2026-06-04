@@ -167,6 +167,7 @@ struct RemoteProxyCallRow {
     declared_path: String,
     remote_path: String,
     remote_status: Option<i32>,
+    duration_ms: i64,
     success: bool,
     error_code: Option<String>,
     request_id: String,
@@ -184,6 +185,7 @@ type RemoteProxyCallTuple = (
     String,
     String,
     Option<i32>,
+    i64,
     bool,
     Option<String>,
     String,
@@ -203,14 +205,15 @@ impl From<RemoteProxyCallTuple> for RemoteProxyCallRow {
             remote_path: row.3,
             id: row.4,
             remote_status: row.5,
-            success: row.6,
-            error_code: row.7,
-            request_id: row.8,
-            correlation_id: row.9,
-            trace_id: row.10,
-            span_id: row.11,
-            path_params: row.12,
-            error_details: row.13,
+            duration_ms: row.6,
+            success: row.7,
+            error_code: row.8,
+            request_id: row.9,
+            correlation_id: row.10,
+            trace_id: row.11,
+            span_id: row.12,
+            path_params: row.13,
+            error_details: row.14,
         }
     }
 }
@@ -468,6 +471,7 @@ async fn remote_http_proxy_persists_call_history_and_story_operations() {
             remote_path,
             id,
             remote_status,
+            duration_ms,
             success,
             error_code,
             request_id,
@@ -591,6 +595,38 @@ async fn remote_http_proxy_persists_call_history_and_story_operations() {
         "req_proxy_success"
     );
     assert_eq!(
+        remote_success_node["metadata"]["source_metadata"]["remote_proxy_call_id"],
+        rows[0].id
+    );
+    assert_eq!(
+        remote_success_node["metadata"]["source_metadata"]["module_name"],
+        "remote-crm"
+    );
+    assert_eq!(
+        remote_success_node["metadata"]["source_metadata"]["method"],
+        "GET"
+    );
+    assert_eq!(
+        remote_success_node["metadata"]["source_metadata"]["declared_path"],
+        "/contacts/{id}"
+    );
+    assert_eq!(
+        remote_success_node["metadata"]["source_metadata"]["remote_path"],
+        "/contacts/contact_1"
+    );
+    assert_eq!(
+        remote_success_node["metadata"]["source_metadata"]["duration_ms"],
+        rows[0].duration_ms
+    );
+    assert_eq!(
+        remote_success_node["metadata"]["source_metadata"]["trace_id"],
+        "00000000000000000000000000000021"
+    );
+    assert_eq!(
+        remote_success_node["metadata"]["source_metadata"]["span_id"],
+        "0000000000000021"
+    );
+    assert_eq!(
         remote_success_node["metadata"]["source_metadata"]["story_title"],
         "Fetch Contact"
     );
@@ -601,6 +637,10 @@ async fn remote_http_proxy_persists_call_history_and_story_operations() {
     assert_eq!(
         remote_success_node["metadata"]["source_metadata"]["path_params"]["id"],
         "contact_1"
+    );
+    assert_eq!(
+        remote_success_node["metadata"]["source_metadata"]["error_details"],
+        Value::Array(vec![])
     );
 
     let remote_failure_node_id = format!("remoteproxy_{}", rows[1].id);
@@ -614,6 +654,49 @@ async fn remote_http_proxy_persists_call_history_and_story_operations() {
     assert_eq!(
         remote_failure_node["metadata"]["source_metadata"]["error_code"],
         "external_dependency_failure"
+    );
+    assert_eq!(
+        remote_failure_node["metadata"]["source_metadata"]["module_name"],
+        "remote-crm"
+    );
+    assert_eq!(
+        remote_failure_node["metadata"]["source_metadata"]["method"],
+        "GET"
+    );
+    assert_eq!(
+        remote_failure_node["metadata"]["source_metadata"]["declared_path"],
+        "/proxy-fixtures/text"
+    );
+    assert_eq!(
+        remote_failure_node["metadata"]["source_metadata"]["remote_path"],
+        "/proxy-fixtures/text"
+    );
+    assert_eq!(
+        remote_failure_node["metadata"]["source_metadata"]["remote_status"],
+        200
+    );
+    assert_eq!(
+        remote_failure_node["metadata"]["source_metadata"]["duration_ms"],
+        rows[1].duration_ms
+    );
+    assert_eq!(
+        remote_failure_node["metadata"]["source_metadata"]["request_id"],
+        "req_proxy_failure"
+    );
+    assert_eq!(
+        remote_failure_node["metadata"]["source_metadata"]["trace_id"],
+        "00000000000000000000000000000022"
+    );
+    assert_eq!(
+        remote_failure_node["metadata"]["source_metadata"]["span_id"],
+        "0000000000000022"
+    );
+    assert!(
+        remote_failure_node["metadata"]["source_metadata"]["error_details"]
+            .as_array()
+            .expect("story node error details array")
+            .iter()
+            .any(|detail| detail["field"] == "remote_module" && detail["reason"] == "remote-crm")
     );
 
     let story_edges = story_detail["data"]["edges"]

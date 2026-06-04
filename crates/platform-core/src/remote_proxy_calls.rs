@@ -239,5 +239,6 @@ fn remote_proxy_call_story_event_metadata(
         "error_code": &record.error_code,
         "retryable": record.retryable,
         "path_params": path_params,
+        "error_details": &record.error_details,
     })
 }
