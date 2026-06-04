@@ -8,6 +8,7 @@ mod binding;
 mod config;
 mod protocol;
 mod proxy;
+mod request;
 mod response;
 mod router;
 mod source;

@@ -1,3 +1,4 @@
+use crate::request::{ProxyRequestBody, apply_proxy_request_policy};
 use crate::response::ResponseBodyPolicy;
 use crate::{RemoteHttpProxyMatch, RemoteHttpProxyRegistry};
 use axum::Json;
@@ -152,25 +153,20 @@ async fn forward_get(
 ) -> Result<Value, ApiErrorResponse> {
     let started_at = Instant::now();
     let client = reqwest::Client::new();
-    let mut request = client.get(format!(
+    let request = client.get(format!(
         "{}/{}",
         matched.base_url.trim_end_matches('/'),
         matched.remote_path.trim_start_matches('/')
     ));
-
-    request = forward_header(request, headers, "accept");
-    if let Some(token) = matched.auth_token.as_deref() {
-        request = request.bearer_auth(token);
-    }
-    request = request
-        .header("x-request-id", request_ctx.request_id.0.as_str())
-        .header("x-correlation-id", request_ctx.correlation_id.0.as_str());
-    if let (Some(trace_id), Some(span_id)) = (
-        request_ctx.trace.trace_id.as_deref(),
-        request_ctx.trace.span_id.as_deref(),
-    ) {
-        request = request.header("traceparent", format!("00-{trace_id}-{span_id}-01"));
-    }
+    let request = apply_proxy_request_policy(
+        request,
+        ModuleHttpMethod::Get,
+        headers,
+        request_ctx,
+        matched.auth_token.as_deref(),
+        ProxyRequestBody::Empty,
+    )
+    .map_err(|error| ApiErrorResponse::with_context(error, request_ctx))?;
 
     let response = request.send().await.map_err(|error| {
         let app_error = AppError::new(
@@ -219,17 +215,6 @@ async fn forward_get(
             );
             Err(ApiErrorResponse::with_context(error, request_ctx))
         }
-    }
-}
-
-fn forward_header(
-    request: reqwest::RequestBuilder,
-    headers: &HeaderMap,
-    name: &'static str,
-) -> reqwest::RequestBuilder {
-    match headers.get(name).and_then(|value| value.to_str().ok()) {
-        Some(value) if !value.is_empty() => request.header(name, value),
-        _ => request,
     }
 }
 

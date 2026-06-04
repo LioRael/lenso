@@ -93,14 +93,15 @@ pattern, and duplicate parameter names should be rejected.
 
 ## Request Policy
 
-The first proxy slices support only GET requests with JSON responses. Request
-bodies and write methods are deferred.
+The first mounted proxy slice supports only GET requests with JSON responses.
+Request-body policy is scaffolded for future body-bearing methods, but
+`POST`, `PUT`, `PATCH`, and `DELETE` remain unmounted.
 
 Request constraints:
 
 - Maximum request body size: host-configured, default 1 MiB.
 - Maximum response body size: host-configured, default 4 MiB.
-- Methods: GET only until request body policy is implemented.
+- Methods: GET only until body-bearing methods are explicitly mounted.
 - Content types: `application/json` and empty body only.
 - Timeouts: use the remote module source timeout unless a narrower proxy
   timeout is configured.
@@ -112,8 +113,8 @@ Headers forwarded to the remote module should be allowlisted:
 - `x-correlation-id`
 - `traceparent`
 
-Future body-bearing methods may also forward `content-type` when JSON request
-body policy is implemented.
+Future body-bearing methods may also forward `content-type` after the JSON
+request body policy accepts the request.
 
 Headers not forwarded:
 
@@ -215,8 +216,9 @@ OpenAPI fragments after trust, validation, and versioning are specified.
 5. Forward matched GET requests without caller credentials. Done; configured
    host-to-remote bearer tokens are used when present.
 6. Add request/response size limits and full header allowlists. Done for GET
-   response content-type, response size, and header allowlists; request bodies
-   remain deferred because only GET is mounted.
+   response content-type, response size, and header allowlists. Request JSON
+   body policy is scaffolded with a 1 MiB limit, but body-bearing methods are
+   not mounted.
 7. Mount the remaining declared methods: `POST`, `PUT`, `PATCH`, and `DELETE`.
 8. Normalize remote errors through the existing platform error model. Done for
    GET.
