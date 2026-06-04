@@ -8,6 +8,7 @@ use platform_core::{
     ModuleSourcesConfig, PLATFORM_MIGRATIONS, RemoteModuleSourceConfig, ServiceConfig,
     TelemetryConfig, apply_migrations,
 };
+use platform_runtime::RUNTIME_MIGRATIONS;
 use platform_testing::TestDatabase;
 use serde_json::Value;
 use std::sync::Arc;
@@ -80,9 +81,14 @@ async fn app_with_remote_modules_and_db(
 }
 
 async fn app_with_remote_module_and_test_db(base_url: String, db: &TestDatabase) -> axum::Router {
-    apply_migrations(&db.pool, PLATFORM_MIGRATIONS)
+    let migrations = PLATFORM_MIGRATIONS
+        .iter()
+        .chain(RUNTIME_MIGRATIONS)
+        .copied()
+        .collect::<Vec<_>>();
+    apply_migrations(&db.pool, &migrations)
         .await
-        .expect("platform migrations apply");
+        .expect("platform and runtime migrations apply");
     app_with_remote_modules_and_db(
         vec![RemoteModuleSourceConfig {
             name: "remote-crm".to_owned(),
@@ -554,8 +560,13 @@ async fn remote_http_proxy_persists_call_history_and_story_operations() {
         )
         .await
         .expect("story technical operations request completes");
-    assert_eq!(story_ops_response.status(), StatusCode::OK);
+    let story_ops_status = story_ops_response.status();
     let story_ops = json_body(story_ops_response).await;
+    assert_eq!(
+        story_ops_status,
+        StatusCode::OK,
+        "story technical operations body: {story_ops}"
+    );
     let operations = story_ops["data"].as_array().expect("operations array");
     let remote_success = operations
         .iter()
