@@ -313,6 +313,7 @@ impl From<FunctionRunAdminRow> for AdminFunctionRun {
             last_error,
             correlation_id,
             created_at,
+            runtime_declaration: None,
         }
     }
 }
@@ -435,6 +436,7 @@ impl From<FunctionRunDetailRow> for AdminFunctionRunDetail {
             created_at,
             input_json,
             actor,
+            runtime_declaration: None,
         }
     }
 }

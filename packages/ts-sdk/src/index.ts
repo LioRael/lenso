@@ -8,6 +8,7 @@ export type {
   AdminOutboxEventDetailResponse,
   AdminOutboxListResponse,
   AdminRuntimeFunctionRunItem,
+  AdminRuntimeFunctionDeclarationMetadata,
   AdminRuntimeFunctionSummary,
   AdminRuntimeHeatmapCell,
   AdminRuntimeHeatmapResponse,

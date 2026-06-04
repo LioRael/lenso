@@ -19,15 +19,28 @@ export function buildRuntimeQueueRows({
       dead: countStatus(events, "dead"),
       ...oldestSeconds(events, nowMs),
     },
-    {
-      name: "runtime.functions",
-      pending: countStatus(functions, "pending"),
-      running: countStatus(functions, "running"),
-      failed: countStatus(functions, "failed"),
-      dead: countStatus(functions, "dead"),
-      ...oldestSeconds(functions, nowMs),
-    },
+    ...functionQueueRows(functions, nowMs),
   ];
+}
+
+function functionQueueRows(functions: FunctionRun[], nowMs: number) {
+  const queues = new Map<string, FunctionRun[]>();
+  for (const run of functions) {
+    const queue = run.runtimeDeclaration?.queue?.trim();
+    const name = queue ? `runtime.functions:${queue}` : "runtime.functions";
+    queues.set(name, [...(queues.get(name) ?? []), run]);
+  }
+
+  return [...queues.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([name, runs]) => ({
+      name,
+      pending: countStatus(runs, "pending"),
+      running: countStatus(runs, "running"),
+      failed: countStatus(runs, "failed"),
+      dead: countStatus(runs, "dead"),
+      ...oldestSeconds(runs, nowMs),
+    }));
 }
 
 function countStatus<T extends { status: string }>(items: T[], status: string) {

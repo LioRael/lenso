@@ -4,6 +4,7 @@ import { remoteProxyCalls, runtimeStories } from "../data/mock-runtime";
 import { queryDataWithMockFallback } from "./runtime-query-data";
 import {
   filterRemoteProxyCallsForQuery,
+  normalizeFunctionRunForConsole,
   type RuntimeRemoteProxyCall,
 } from "./use-runtime-queries";
 
@@ -88,6 +89,46 @@ describe("remote proxy call query helpers", () => {
 
     expect(page.data.map((call) => call.id)).toEqual(["older"]);
     expect(page.page.next_created_before).toBeNull();
+  });
+});
+
+describe("runtime function query helpers", () => {
+  test("normalizes runtime declaration metadata from API function runs", () => {
+    expect(
+      normalizeFunctionRunForConsole({
+        attempts: 1,
+        available_at: "2026-06-03T00:00:00.000Z",
+        correlation_id: "corr_remote",
+        created_at: "2026-06-03T00:00:00.000Z",
+        function_name: "remote_crm.sync_contact.v1",
+        id: "fn_remote",
+        max_attempts: 3,
+        runtime_declaration: {
+          input_schema: "remote_crm.sync_contact.v1",
+          module_name: "remote-crm",
+          module_source: "remote",
+          name: "remote_crm.sync_contact.v1",
+          queue: "remote-crm",
+          retry_policy: {
+            initial_delay_ms: 1000,
+            max_attempts: 3,
+          },
+          version: 1,
+        },
+        status: "completed",
+      }).runtimeDeclaration
+    ).toEqual({
+      inputSchema: "remote_crm.sync_contact.v1",
+      moduleName: "remote-crm",
+      moduleSource: "remote",
+      name: "remote_crm.sync_contact.v1",
+      queue: "remote-crm",
+      retryPolicy: {
+        initialDelayMs: 1000,
+        maxAttempts: 3,
+      },
+      version: 1,
+    });
   });
 });
 

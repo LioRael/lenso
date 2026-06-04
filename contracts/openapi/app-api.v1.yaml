@@ -2604,6 +2604,10 @@ components:
         max_attempts:
           type: integer
           format: int32
+        runtime_declaration:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/AdminRuntimeFunctionDeclarationMetadata'
         started_at:
           type:
           - string
@@ -3015,6 +3019,35 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/AdminRuntimeExecutionPayload'
+    AdminRuntimeFunctionDeclarationMetadata:
+      type: object
+      required:
+      - module_name
+      - module_source
+      - name
+      - version
+      - queue
+      properties:
+        input_schema:
+          type:
+          - string
+          - 'null'
+        module_name:
+          type: string
+        module_source:
+          $ref: '#/components/schemas/ModuleSource'
+        name:
+          type: string
+        queue:
+          type: string
+        retry_policy:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/RuntimeRetryPolicyDeclaration'
+        version:
+          type: integer
+          format: int32
+          minimum: 0
     AdminRuntimeFunctionRunItem:
       type: object
       required:
@@ -3058,6 +3091,10 @@ components:
         max_attempts:
           type: integer
           format: int32
+        runtime_declaration:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/AdminRuntimeFunctionDeclarationMetadata'
         started_at:
           type:
           - string

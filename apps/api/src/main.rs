@@ -29,7 +29,7 @@ async fn main() -> anyhow::Result<()> {
     let admin_module_metadata = app_bootstrap::load_admin_module_metadata(&ctx)
         .await
         .context("failed to load admin module metadata")?;
-    platform_admin_data::install_admin_module_metadata(admin_module_metadata);
+    install_admin_module_metadata(admin_module_metadata);
     let remote_http_proxy_registry = app_bootstrap::load_remote_http_proxy_registry(&ctx)
         .await
         .context("failed to load remote HTTP proxy registry")?;
@@ -49,7 +49,11 @@ async fn main() -> anyhow::Result<()> {
     let admin_metadata_refresh_ctx = ctx.clone();
     platform_admin_data::install_admin_module_metadata_refresh_fn(move || {
         let ctx = admin_metadata_refresh_ctx.clone();
-        async move { app_bootstrap::load_admin_module_metadata(&ctx).await }
+        async move {
+            let metadata = app_bootstrap::load_admin_module_metadata(&ctx).await?;
+            install_runtime_function_declarations(&metadata);
+            Ok(metadata)
+        }
     });
 
     let app = build_router(ctx.clone());
@@ -67,4 +71,17 @@ async fn main() -> anyhow::Result<()> {
         .await?;
 
     Ok(())
+}
+
+fn install_admin_module_metadata(metadata: Vec<platform_admin_data::AdminModuleMetadata>) {
+    install_runtime_function_declarations(&metadata);
+    platform_admin_data::install_admin_module_metadata(metadata);
+}
+
+fn install_runtime_function_declarations(metadata: &[platform_admin_data::AdminModuleMetadata]) {
+    platform_admin::install_runtime_function_declarations(
+        platform_admin::runtime_function_declarations_from_modules(
+            app_bootstrap::runtime_function_declaration_sources_from_metadata(metadata),
+        ),
+    );
 }

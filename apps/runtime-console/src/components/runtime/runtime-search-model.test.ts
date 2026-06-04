@@ -67,6 +67,33 @@ const functions = [
   },
 ] satisfies FunctionRun[];
 
+const declaredFunctions = [
+  {
+    actor: { kind: "system" },
+    attempts: 2,
+    correlationId: "corr_function",
+    createdAt: "2026-06-01T00:00:00.000Z",
+    functionName: "notifications.retry_email",
+    id: "fn_retry",
+    input: {},
+    logs: [],
+    maxAttempts: 3,
+    runtimeDeclaration: {
+      inputSchema: "remote_crm.sync_contact.v1",
+      moduleName: "remote-crm",
+      moduleSource: "remote",
+      name: "remote_crm.sync_contact.v1",
+      queue: "remote-crm",
+      retryPolicy: {
+        initialDelayMs: 1000,
+        maxAttempts: 3,
+      },
+      version: 1,
+    },
+    status: "running",
+  },
+] satisfies FunctionRun[];
+
 describe("runtime search model", () => {
   test("searches query-backed stories by summary fields", () => {
     const results = buildRuntimeSearchResults({
@@ -130,5 +157,22 @@ describe("runtime search model", () => {
         expect.objectContaining({ correlationId: "corr_function" }),
       ])
     );
+  });
+
+  test("searches function declaration metadata", () => {
+    const results = buildRuntimeSearchResults({
+      events: [],
+      functions: declaredFunctions,
+      query: "remote-crm",
+      stories: [],
+    });
+
+    expect(results).toEqual([
+      expect.objectContaining({
+        kind: "function",
+        subtitle: "running · remote-crm",
+        title: "notifications.retry_email",
+      }),
+    ]);
   });
 });

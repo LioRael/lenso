@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use platform_module::{ModuleSource, RuntimeRetryPolicyDeclaration};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use utoipa::{IntoParams, ToSchema};
@@ -298,6 +299,7 @@ pub struct AdminFunctionRun {
     pub last_error: Option<String>,
     pub correlation_id: String,
     pub created_at: DateTime<Utc>,
+    pub runtime_declaration: Option<AdminRuntimeFunctionDeclarationMetadata>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -316,6 +318,18 @@ pub struct AdminFunctionRunDetail {
     pub created_at: DateTime<Utc>,
     pub input_json: Value,
     pub actor: Value,
+    pub runtime_declaration: Option<AdminRuntimeFunctionDeclarationMetadata>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct AdminRuntimeFunctionDeclarationMetadata {
+    pub module_name: String,
+    pub module_source: ModuleSource,
+    pub name: String,
+    pub version: u16,
+    pub queue: String,
+    pub input_schema: Option<String>,
+    pub retry_policy: Option<RuntimeRetryPolicyDeclaration>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

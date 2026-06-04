@@ -37,6 +37,11 @@ struct ApiDoc;
 /// `split_for_parts`) or extract the `OpenAPI` document alone.
 pub(crate) fn api_router() -> ApiOpenApiRouter {
     platform_admin::install_story_display(app_bootstrap::story_display_descriptors());
+    platform_admin::install_default_runtime_function_declarations(
+        platform_admin::runtime_function_declarations_from_modules(
+            app_bootstrap::linked_runtime_function_declaration_sources(),
+        ),
+    );
 
     let base = OpenApiRouter::with_openapi(ApiDoc::openapi()).merge(base_router());
     app_bootstrap::merge_linked_http(base)

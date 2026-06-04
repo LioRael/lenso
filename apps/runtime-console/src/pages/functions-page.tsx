@@ -37,6 +37,18 @@ export function FunctionsPage() {
       const matchesQuery =
         normalized.length === 0 ||
         run.functionName.toLowerCase().includes(normalized) ||
+        (run.runtimeDeclaration?.moduleName ?? "")
+          .toLowerCase()
+          .includes(normalized) ||
+        (run.runtimeDeclaration?.moduleSource ?? "")
+          .toLowerCase()
+          .includes(normalized) ||
+        (run.runtimeDeclaration?.queue ?? "")
+          .toLowerCase()
+          .includes(normalized) ||
+        (run.runtimeDeclaration?.inputSchema ?? "")
+          .toLowerCase()
+          .includes(normalized) ||
         run.correlationId.toLowerCase().includes(normalized) ||
         run.id.toLowerCase().includes(normalized);
       const matchesStatus = status === "all" || run.status === status;
@@ -87,7 +99,7 @@ export function FunctionsPage() {
             aria-label="Search functions"
             className="w-full bg-transparent text-[13px] text-(--foreground) outline-hidden placeholder:text-(--muted)"
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search function, id, correlation..."
+            placeholder="Search function, module, queue, schema, correlation..."
             value={query}
           />
         </label>
@@ -111,9 +123,10 @@ export function FunctionsPage() {
       </div>
 
       <Panel>
-        <div className="grid grid-cols-[110px_minmax(230px,1fr)_78px_132px_154px] border-b border-(--border-subtle) px-3.5 py-2.5 text-[11px] font-semibold uppercase tracking-[0.04em] text-(--muted) max-md:hidden">
+        <div className="grid grid-cols-[104px_minmax(220px,1.35fr)_minmax(150px,0.8fr)_72px_112px_146px] border-b border-(--border-subtle) px-3.5 py-2.5 text-[11px] font-semibold uppercase tracking-[0.04em] text-(--muted) max-md:hidden">
           <span>status</span>
           <span>function</span>
+          <span>module</span>
           <span>attempts</span>
           <span>duration</span>
           <span>correlation</span>
@@ -128,7 +141,7 @@ export function FunctionsPage() {
           ) : (
             filtered.map((run) => (
               <button
-                className={`grid w-full grid-cols-[110px_minmax(230px,1fr)_78px_132px_154px] items-center gap-2.5 border-b border-(--border-subtle) bg-transparent px-3.5 py-3 text-left text-(--foreground) last:border-b-0 hover:bg-(--hover) max-md:grid-cols-1 ${
+                className={`grid w-full grid-cols-[104px_minmax(220px,1.35fr)_minmax(150px,0.8fr)_72px_112px_146px] items-center gap-2.5 border-b border-(--border-subtle) bg-transparent px-3.5 py-3 text-left text-(--foreground) last:border-b-0 hover:bg-(--hover) max-md:grid-cols-1 ${
                   selected?.id === run.id ? "bg-(--hover)" : ""
                 }`}
                 key={run.id}
@@ -143,7 +156,25 @@ export function FunctionsPage() {
                     {run.functionName}
                   </div>
                   <div className="mono mt-0.5 truncate text-xs text-(--muted)">
-                    {run.id}
+                    {run.runtimeDeclaration?.queue ?? run.id}
+                  </div>
+                </div>
+                <div className="min-w-0 text-xs">
+                  <div className="truncate font-semibold text-(--secondary)">
+                    {run.runtimeDeclaration?.moduleName ?? "-"}
+                  </div>
+                  <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-(--muted)">
+                    <span className="truncate">
+                      {run.runtimeDeclaration?.moduleSource ?? "undeclared"}
+                    </span>
+                    {run.runtimeDeclaration?.inputSchema ? (
+                      <>
+                        <span>/</span>
+                        <span className="truncate">
+                          {run.runtimeDeclaration.inputSchema}
+                        </span>
+                      </>
+                    ) : null}
                   </div>
                 </div>
                 <span className="mono">

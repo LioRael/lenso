@@ -34,6 +34,18 @@ export type RuntimeEvent = {
 export type FunctionRun = {
   id: string;
   functionName: string;
+  runtimeDeclaration?: {
+    moduleName: string;
+    moduleSource: "linked" | "remote" | string;
+    name: string;
+    version: number;
+    queue: string;
+    inputSchema?: string;
+    retryPolicy?: {
+      maxAttempts: number;
+      initialDelayMs: number;
+    };
+  };
   status: RuntimeStatus;
   attempts: number;
   maxAttempts: number;
@@ -875,6 +887,14 @@ export const functionRuns: FunctionRun[] = [
   {
     id: "fn_01HX9A7Q_WELCOME",
     functionName: "notifications.send_welcome_email.v1",
+    runtimeDeclaration: {
+      moduleName: "notifications",
+      moduleSource: "linked",
+      name: "notifications.send_welcome_email.v1",
+      version: 1,
+      queue: "notifications",
+      inputSchema: "notifications.send_welcome_email.v1",
+    },
     status: "failed",
     attempts: 2,
     maxAttempts: 3,
@@ -899,6 +919,14 @@ export const functionRuns: FunctionRun[] = [
   {
     id: "fn_01HX9A7Q_WELCOME_DEAD",
     functionName: "notifications.send_welcome_email.v1",
+    runtimeDeclaration: {
+      moduleName: "notifications",
+      moduleSource: "linked",
+      name: "notifications.send_welcome_email.v1",
+      version: 1,
+      queue: "notifications",
+      inputSchema: "notifications.send_welcome_email.v1",
+    },
     status: "dead",
     attempts: 3,
     maxAttempts: 3,
@@ -923,6 +951,14 @@ export const functionRuns: FunctionRun[] = [
   {
     id: "fn_01HX9A9_CLEANUP",
     functionName: "identity.cleanup_expired_sessions.v1",
+    runtimeDeclaration: {
+      moduleName: "identity",
+      moduleSource: "linked",
+      name: "identity.cleanup_expired_sessions.v1",
+      version: 1,
+      queue: "identity",
+      inputSchema: "identity.cleanup_expired_sessions.v1",
+    },
     status: "completed",
     attempts: 1,
     maxAttempts: 3,
@@ -939,6 +975,14 @@ export const functionRuns: FunctionRun[] = [
   {
     id: "fn_01HX9E2_RUNNING",
     functionName: "notifications.send_welcome_email.v1",
+    runtimeDeclaration: {
+      moduleName: "notifications",
+      moduleSource: "linked",
+      name: "notifications.send_welcome_email.v1",
+      version: 1,
+      queue: "notifications",
+      inputSchema: "notifications.send_welcome_email.v1",
+    },
     status: "running",
     attempts: 1,
     maxAttempts: 3,
@@ -957,6 +1001,14 @@ export const functionRuns: FunctionRun[] = [
   {
     id: "fn_01HX9F6_DEAD",
     functionName: "notifications.send_welcome_email.v1",
+    runtimeDeclaration: {
+      moduleName: "notifications",
+      moduleSource: "linked",
+      name: "notifications.send_welcome_email.v1",
+      version: 1,
+      queue: "notifications",
+      inputSchema: "notifications.send_welcome_email.v1",
+    },
     status: "dead",
     attempts: 3,
     maxAttempts: 3,
@@ -974,6 +1026,34 @@ export const functionRuns: FunctionRun[] = [
       locale: null,
     },
     logs: ["claimed run", "template renderer rejected missing locale"],
+  },
+  {
+    id: "fn_01HX9R_REMOTE_SYNC",
+    functionName: "remote_crm.sync_contact.v1",
+    runtimeDeclaration: {
+      moduleName: "remote-crm",
+      moduleSource: "remote",
+      name: "remote_crm.sync_contact.v1",
+      version: 1,
+      queue: "remote-crm",
+      inputSchema: "remote_crm.sync_contact.v1",
+      retryPolicy: {
+        maxAttempts: 3,
+        initialDelayMs: 1000,
+      },
+    },
+    status: "completed",
+    attempts: 1,
+    maxAttempts: 3,
+    correlationId: "corr_01HX9R_REMOTE_SYNC",
+    createdAt: "2026-05-31T09:26:10.000Z",
+    startedAt: "2026-05-31T09:26:11.000Z",
+    completedAt: "2026-05-31T09:26:11.420Z",
+    lockedBy: "worker-remote-1",
+    actor: { kind: "system" },
+    input: { contact_id: "contact_1" },
+    output: { synced: true },
+    logs: ["claimed remote runtime function", "remote module returned success"],
   },
 ];
 

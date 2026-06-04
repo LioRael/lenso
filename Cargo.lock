@@ -1406,6 +1406,7 @@ dependencies = [
  "chrono",
  "platform-core",
  "platform-http",
+ "platform-module",
  "platform-testing",
  "serde",
  "serde_json",

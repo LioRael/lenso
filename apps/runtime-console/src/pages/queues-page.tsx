@@ -130,10 +130,6 @@ export function QueuesPage() {
             );
           })
         )}
-        <div className="border-b border-(--border-subtle) px-3 py-2 font-mono text-[10px] text-(--muted)">
-          TODO: add a backend per-queue pressure contract when the runtime
-          exposes queue-level lanes beyond aggregate summary counts.
-        </div>
       </div>
     </section>
   );

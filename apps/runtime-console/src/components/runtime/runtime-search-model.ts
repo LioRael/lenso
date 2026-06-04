@@ -127,6 +127,10 @@ export function buildRuntimeSearchResults({
       [
         run.id,
         run.functionName,
+        run.runtimeDeclaration?.moduleName ?? "",
+        run.runtimeDeclaration?.moduleSource ?? "",
+        run.runtimeDeclaration?.queue ?? "",
+        run.runtimeDeclaration?.inputSchema ?? "",
         run.status,
         run.correlationId,
         run.lastError ?? "",
@@ -136,7 +140,9 @@ export function buildRuntimeSearchResults({
       kind: "function",
       id: run.id,
       title: run.functionName,
-      subtitle: `${run.status} · ${run.correlationId}`,
+      subtitle: `${run.status} · ${
+        run.runtimeDeclaration?.moduleName ?? run.correlationId
+      }`,
       correlationId: run.correlationId,
       record: { kind: "function", item: run },
     }));

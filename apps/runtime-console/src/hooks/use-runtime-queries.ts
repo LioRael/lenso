@@ -9,6 +9,7 @@ import type {
   AdminFunctionRunListResponse,
   AdminRemoteProxyCallItem,
   AdminRemoteProxyCallListResponse,
+  AdminRuntimeFunctionDeclarationMetadata,
   AdminRuntimeFunctionRunItem,
   AdminRuntimeOutboxItem,
   AdminRuntimeSummaryItem as ApiRuntimeSummaryItem,
@@ -451,7 +452,7 @@ async function fetchRuntimeFunctions(): Promise<FunctionRun[]> {
   const response = await httpClient
     .get("admin/runtime/functions")
     .json<AdminFunctionRunListResponse>();
-  return response.data.map(toFunctionRun);
+  return response.data.map(normalizeFunctionRunForConsole);
 }
 
 async function fetchRuntimeTimeline(id: string): Promise<TimelineItem[]> {
@@ -699,10 +700,16 @@ function toRuntimeEvent(event: AdminRuntimeOutboxItem): RuntimeEvent {
   };
 }
 
-function toFunctionRun(run: AdminRuntimeFunctionRunItem): FunctionRun {
+export function normalizeFunctionRunForConsole(
+  run: AdminRuntimeFunctionRunItem
+): FunctionRun {
+  const runtimeDeclaration = toRuntimeFunctionDeclaration(
+    run.runtime_declaration
+  );
   return {
     id: run.id,
     functionName: run.function_name,
+    ...(runtimeDeclaration ? { runtimeDeclaration } : {}),
     status: normalizeRuntimeStatus(run.status),
     attempts: run.attempts,
     maxAttempts: run.max_attempts,
@@ -716,6 +723,55 @@ function toFunctionRun(run: AdminRuntimeFunctionRunItem): FunctionRun {
     input: {},
     logs: run.last_error ? [run.last_error] : [],
   };
+}
+
+function toRuntimeFunctionDeclaration(
+  value: AdminRuntimeFunctionRunItem["runtime_declaration"]
+): FunctionRun["runtimeDeclaration"] | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const declaration = value as Partial<AdminRuntimeFunctionDeclarationMetadata>;
+  if (
+    typeof declaration.module_name !== "string" ||
+    typeof declaration.module_source !== "string" ||
+    typeof declaration.name !== "string" ||
+    typeof declaration.version !== "number" ||
+    typeof declaration.queue !== "string"
+  ) {
+    return undefined;
+  }
+
+  const retryPolicy = toRuntimeRetryPolicy(declaration.retry_policy);
+  return {
+    moduleName: declaration.module_name,
+    moduleSource: declaration.module_source,
+    name: declaration.name,
+    version: declaration.version,
+    queue: declaration.queue,
+    ...(typeof declaration.input_schema === "string"
+      ? { inputSchema: declaration.input_schema }
+      : {}),
+    ...(retryPolicy ? { retryPolicy } : {}),
+  };
+}
+
+function toRuntimeRetryPolicy(
+  value: AdminRuntimeFunctionDeclarationMetadata["retry_policy"]
+): NonNullable<FunctionRun["runtimeDeclaration"]>["retryPolicy"] | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const policy = value as Record<string, unknown>;
+  return typeof policy.max_attempts === "number" &&
+    typeof policy.initial_delay_ms === "number"
+    ? {
+        maxAttempts: policy.max_attempts,
+        initialDelayMs: policy.initial_delay_ms,
+      }
+    : undefined;
 }
 
 function normalizeSummaryStatus(status: string): RuntimeSummaryStatus {

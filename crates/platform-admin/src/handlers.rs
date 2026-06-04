@@ -1589,7 +1589,11 @@ pub(crate) async fn list_function_runs(
         )
     })?;
 
-    let data: Vec<AdminFunctionRun> = rows.into_iter().map(Into::into).collect();
+    let data: Vec<AdminFunctionRun> = rows
+        .into_iter()
+        .map(Into::into)
+        .map(enrich_function_run)
+        .collect();
     Ok(Json(AdminFunctionRunListResponse {
         page: page_info(limit, data.last().map(|run| run.created_at)),
         data,
@@ -1757,7 +1761,7 @@ pub(crate) async fn fetch_function_run_detail(
         )
     })?;
 
-    Ok(row.into())
+    Ok(enrich_function_run_detail(row.into()))
 }
 
 pub(crate) async fn fetch_story_event_detail(
@@ -2010,5 +2014,5 @@ pub(crate) async fn retry_function_run(
         "runtime console retry requested"
     );
 
-    Ok(json(row.into()))
+    Ok(json(enrich_function_run(row.into())))
 }

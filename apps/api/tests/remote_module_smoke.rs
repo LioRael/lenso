@@ -2,7 +2,9 @@ use app_api::build_router;
 use axum::Router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
-use platform_admin_data::{install_admin_module_metadata, install_admin_modules};
+use platform_admin_data::{
+    AdminModuleMetadata, install_admin_module_metadata, install_admin_modules,
+};
 use platform_core::{
     AppConfig, AppContext, AuthConfig, DatabaseConfig, DbPool, HttpConfig, LoggingEventPublisher,
     ModuleSourcesConfig, PLATFORM_MIGRATIONS, RemoteModuleSourceConfig, ServiceConfig,
@@ -76,9 +78,18 @@ async fn app_with_remote_modules_and_db(
         .expect("remote HTTP proxy registry loads");
 
     install_admin_modules(admin_modules);
-    install_admin_module_metadata(admin_module_metadata);
+    install_module_metadata(admin_module_metadata);
     platform_module_remote::install_remote_http_proxy_registry(remote_http_proxy_registry);
     build_router(ctx)
+}
+
+fn install_module_metadata(metadata: Vec<AdminModuleMetadata>) {
+    platform_admin::install_runtime_function_declarations(
+        platform_admin::runtime_function_declarations_from_modules(
+            app_bootstrap::runtime_function_declaration_sources_from_metadata(&metadata),
+        ),
+    );
+    install_admin_module_metadata(metadata);
 }
 
 async fn app_with_remote_module_and_test_db(base_url: String, db: &TestDatabase) -> axum::Router {
@@ -336,6 +347,42 @@ async fn remote_module_fixture_is_visible_through_admin_data_api() {
     let detail = json_body(detail_response).await;
     assert_eq!(detail["data"]["id"], "contact_2");
     assert_eq!(detail["data"]["company"], "Compiler Systems");
+}
+
+#[tokio::test]
+async fn remote_runtime_function_runs_include_module_declaration() {
+    let _guard = REMOTE_SMOKE_TEST_LOCK.lock().await;
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let base_url = spawn_remote_module(remote_module_example::router()).await;
+    let app = app_with_remote_module_and_test_db(base_url, &db).await;
+    insert_remote_function_run(&db.pool).await;
+
+    let response = app
+        .oneshot(admin_get(
+            "/admin/runtime/functions?function_name=remote_crm.sync_contact.v1",
+        ))
+        .await
+        .expect("function runs request completes");
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["data"].as_array().expect("function runs").len(), 1);
+    assert_eq!(
+        body["data"][0]["function_name"],
+        "remote_crm.sync_contact.v1"
+    );
+    let declaration = &body["data"][0]["runtime_declaration"];
+    assert_eq!(declaration["module_name"], "remote-crm");
+    assert_eq!(declaration["module_source"], "remote");
+    assert_eq!(declaration["name"], "remote_crm.sync_contact.v1");
+    assert_eq!(declaration["version"], 1);
+    assert_eq!(declaration["queue"], "remote-crm");
+    assert_eq!(declaration["input_schema"], "remote_crm.sync_contact.v1");
+    assert_eq!(declaration["retry_policy"]["max_attempts"], 3);
+    assert_eq!(declaration["retry_policy"]["initial_delay_ms"], 1000);
+
+    db.cleanup().await;
 }
 
 #[tokio::test]
@@ -1292,6 +1339,31 @@ async fn custom_remote_modules_are_visible_through_metadata_api() {
             .iter()
             .any(|module| module["module_name"] == "remote-crm-declarative")
     );
+}
+
+async fn insert_remote_function_run(pool: &DbPool) {
+    sqlx::query(
+        r#"
+        insert into runtime.function_runs (
+            id,
+            function_name,
+            input_json,
+            correlation_id,
+            actor
+        )
+        values (
+            'fnrun_remote_sync',
+            'remote_crm.sync_contact.v1',
+            $1,
+            'corr_remote_sync',
+            '{"kind":"system"}'::jsonb
+        )
+        "#,
+    )
+    .bind(serde_json::json!({ "contact_id": "contact_1" }))
+    .execute(pool)
+    .await
+    .expect("remote runtime function run should insert");
 }
 
 trait RequestExt {

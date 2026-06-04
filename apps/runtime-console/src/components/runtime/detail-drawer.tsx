@@ -187,6 +187,30 @@ function FunctionBody({
           <dd>{time(run.completedAt)}</dd>
         </MetadataGrid>
       </DrawerSection>
+      {run.runtimeDeclaration ? (
+        <DrawerSection title="Declaration">
+          <MetadataGrid>
+            <dt>module</dt>
+            <dd className="mono">{run.runtimeDeclaration.moduleName}</dd>
+            <dt>source</dt>
+            <dd>{run.runtimeDeclaration.moduleSource}</dd>
+            <dt>queue</dt>
+            <dd className="mono">{run.runtimeDeclaration.queue}</dd>
+            <dt>version</dt>
+            <dd>{run.runtimeDeclaration.version}</dd>
+            <dt>input schema</dt>
+            <dd className="mono">
+              {run.runtimeDeclaration.inputSchema ?? "-"}
+            </dd>
+            <dt>retry policy</dt>
+            <dd className="mono">
+              {run.runtimeDeclaration.retryPolicy
+                ? `${run.runtimeDeclaration.retryPolicy.maxAttempts} attempts / ${run.runtimeDeclaration.retryPolicy.initialDelayMs}ms`
+                : "-"}
+            </dd>
+          </MetadataGrid>
+        </DrawerSection>
+      ) : null}
       <DrawerSection title="Context">
         <MetadataGrid>
           <dt>correlation</dt>

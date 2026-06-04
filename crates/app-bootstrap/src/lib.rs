@@ -87,6 +87,41 @@ pub fn module_manifests() -> Vec<ModuleManifest> {
         .collect()
 }
 
+/// Runtime function declaration sources for context-free linked modules.
+#[must_use]
+pub fn linked_runtime_function_declaration_sources() -> Vec<(
+    String,
+    ModuleSource,
+    Option<platform_module::RuntimeSurface>,
+)> {
+    module_manifests()
+        .into_iter()
+        .map(|manifest| (manifest.name, ModuleSource::Linked, manifest.runtime))
+        .collect()
+}
+
+/// Runtime function declaration sources from loaded module metadata, including
+/// configured remote modules.
+#[must_use]
+pub fn runtime_function_declaration_sources_from_metadata(
+    modules: &[AdminModuleMetadata],
+) -> Vec<(
+    String,
+    ModuleSource,
+    Option<platform_module::RuntimeSurface>,
+)> {
+    modules
+        .iter()
+        .map(|module| {
+            (
+                module.module_name.clone(),
+                module.source,
+                module.runtime.clone(),
+            )
+        })
+        .collect()
+}
+
 /// Public HTTP path ownership for linked modules.
 ///
 /// Projected from context-free linked modules so OpenAPI guards and router

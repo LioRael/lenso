@@ -1993,6 +1993,7 @@ async fn service_actor_can_list_function_runs() {
     assert_eq!(body["data"][0]["completed_at"], Value::Null);
     assert_eq!(body["data"][0]["last_error"], Value::Null);
     assert_eq!(body["data"][0]["correlation_id"], "corr_1");
+    assert_welcome_email_runtime_declaration(&body["data"][0]["runtime_declaration"]);
     assert!(body["data"][0].get("input_json").is_none());
     assert!(body["data"][0].get("actor").is_none());
     assert!(body["data"][0]["available_at"].is_string());
@@ -2027,6 +2028,7 @@ async fn service_actor_can_retry_dead_function_run() {
     assert_eq!(body["data"]["attempts"], 3);
     assert_eq!(body["data"]["locked_by"], Value::Null);
     assert_eq!(body["data"]["last_error"], Value::Null);
+    assert_welcome_email_runtime_declaration(&body["data"]["runtime_declaration"]);
 
     let row = function_retry_state(&db.pool, "fnrun_dead").await;
     assert_eq!(row.status, "pending");
@@ -2089,6 +2091,7 @@ async fn service_actor_can_get_function_run_by_id() {
     assert_eq!(body["data"]["correlation_id"], "corr_1");
     assert_eq!(body["data"]["attempts"], 0);
     assert_eq!(body["data"]["max_attempts"], 3);
+    assert_welcome_email_runtime_declaration(&body["data"]["runtime_declaration"]);
     assert!(body["data"]["available_at"].is_string());
     assert!(body["data"]["created_at"].is_string());
 
@@ -2277,6 +2280,7 @@ async fn test_app(db: &TestDatabase) -> axum::Router {
         max_connections: 5,
     };
     let ctx = AppContext::new(config, db.pool.clone(), Arc::new(LoggingEventPublisher));
+    install_runtime_function_declarations();
     build_router(ctx)
 }
 
@@ -2297,6 +2301,7 @@ async fn test_app_with_identity(db: &TestDatabase) -> axum::Router {
         max_connections: 5,
     };
     let ctx = AppContext::new(config, db.pool.clone(), Arc::new(LoggingEventPublisher));
+    install_runtime_function_declarations();
     build_router(ctx)
 }
 
@@ -2317,6 +2322,7 @@ async fn test_app_with_telemetry(db: &TestDatabase, spans: Vec<TelemetrySpan>) -
     };
     let ctx = AppContext::new(config, db.pool.clone(), Arc::new(LoggingEventPublisher))
         .with_telemetry_span_provider(Arc::new(InMemoryTelemetrySpanProvider::new(spans)));
+    install_runtime_function_declarations();
     build_router(ctx)
 }
 
@@ -2327,7 +2333,26 @@ fn auth_only_app() -> axum::Router {
             .expect("lazy pool should build"),
         Arc::new(LoggingEventPublisher),
     );
+    install_runtime_function_declarations();
     build_router(ctx)
+}
+
+fn install_runtime_function_declarations() {
+    platform_admin::install_runtime_function_declarations(
+        platform_admin::runtime_function_declarations_from_modules(
+            app_bootstrap::linked_runtime_function_declaration_sources(),
+        ),
+    );
+}
+
+fn assert_welcome_email_runtime_declaration(value: &Value) {
+    assert_eq!(value["module_name"], "notifications");
+    assert_eq!(value["module_source"], "linked");
+    assert_eq!(value["name"], "notifications.send_welcome_email.v1");
+    assert_eq!(value["version"], 1);
+    assert_eq!(value["queue"], "notifications");
+    assert_eq!(value["input_schema"], "notifications.send_welcome_email.v1");
+    assert_eq!(value["retry_policy"], Value::Null);
 }
 
 fn telemetry_span(id: &str, name: &str, attributes: Value) -> TelemetrySpan {

@@ -66,6 +66,7 @@ export type AdminFunctionRunDetail = {
   last_error?: string | null;
   locked_by?: string | null;
   max_attempts: number;
+  runtime_declaration?: unknown;
   started_at?: string | null;
   status: string;
 };
@@ -210,6 +211,16 @@ export type AdminRuntimeExecutionPayloadResponse = {
   data: AdminRuntimeExecutionPayload;
 };
 
+export type AdminRuntimeFunctionDeclarationMetadata = {
+  input_schema?: string | null;
+  module_name: string;
+  module_source: ModuleSource;
+  name: string;
+  queue: string;
+  retry_policy?: unknown;
+  version: number;
+};
+
 export type AdminRuntimeFunctionRunItem = {
   attempts: number;
   available_at: string;
@@ -221,6 +232,7 @@ export type AdminRuntimeFunctionRunItem = {
   last_error?: string | null;
   locked_by?: string | null;
   max_attempts: number;
+  runtime_declaration?: unknown;
   started_at?: string | null;
   status: string;
 };

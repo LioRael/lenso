@@ -18,10 +18,10 @@
 //! composition root via [`install_story_display`] rather than depended on
 //! directly — keeping this crate free of any business-domain dependency.
 
-use platform_core::RuntimeConfigRegistry;
-use platform_core::StoryDisplayDescriptor;
+use platform_core::{RuntimeConfigRegistry, StoryDisplayDescriptor};
 use platform_http::{ApiOpenApiRouter, OpenApiRouter, routes};
-use std::sync::OnceLock;
+use platform_module::ModuleSource;
+use std::sync::{OnceLock, RwLock};
 
 const DEFAULT_LIMIT: i64 = 50;
 const MAX_LIMIT: i64 = 100;
@@ -55,6 +55,9 @@ use support::*;
 
 /// Domain-provided story-display catalog, injected by the composition root.
 static STORY_DISPLAY: OnceLock<Vec<StoryDisplayDescriptor>> = OnceLock::new();
+static RUNTIME_FUNCTION_DECLARATIONS: OnceLock<
+    RwLock<Vec<AdminRuntimeFunctionDeclarationMetadata>>,
+> = OnceLock::new();
 
 /// Install the aggregated story-display descriptors from every domain.
 ///
@@ -64,6 +67,60 @@ static STORY_DISPLAY: OnceLock<Vec<StoryDisplayDescriptor>> = OnceLock::new();
 /// calls are ignored.
 pub fn install_story_display(catalog: Vec<StoryDisplayDescriptor>) {
     let _ = STORY_DISPLAY.set(catalog);
+}
+
+/// Runtime function declarations from every loaded module, injected by the
+/// composition root. Later calls replace the catalog so module refreshes and
+/// tests can update declaration metadata without restarting the process.
+pub fn install_runtime_function_declarations(
+    declarations: Vec<AdminRuntimeFunctionDeclarationMetadata>,
+) {
+    let catalog = RUNTIME_FUNCTION_DECLARATIONS.get_or_init(|| RwLock::new(Vec::new()));
+    *catalog
+        .write()
+        .expect("runtime function declaration catalog lock poisoned") = declarations;
+}
+
+/// Install declarations only when the runtime-admin catalog has not yet been
+/// initialized. Useful for context-free router/OpenAPI assembly; runtime
+/// startup should call [`install_runtime_function_declarations`] with the full
+/// linked + remote catalog.
+pub fn install_default_runtime_function_declarations(
+    declarations: Vec<AdminRuntimeFunctionDeclarationMetadata>,
+) {
+    if RUNTIME_FUNCTION_DECLARATIONS.get().is_none() {
+        install_runtime_function_declarations(declarations);
+    }
+}
+
+/// Project module manifests into the declaration catalog consumed by runtime
+/// admin handlers.
+#[must_use]
+pub fn runtime_function_declarations_from_modules(
+    modules: Vec<(
+        String,
+        ModuleSource,
+        Option<platform_module::RuntimeSurface>,
+    )>,
+) -> Vec<AdminRuntimeFunctionDeclarationMetadata> {
+    modules
+        .into_iter()
+        .flat_map(|(module_name, module_source, runtime)| {
+            runtime
+                .map(|surface| surface.functions)
+                .unwrap_or_default()
+                .into_iter()
+                .map(move |function| AdminRuntimeFunctionDeclarationMetadata {
+                    module_name: module_name.clone(),
+                    module_source,
+                    name: function.name,
+                    version: function.version,
+                    queue: function.queue,
+                    input_schema: function.input_schema,
+                    retry_policy: function.retry_policy,
+                })
+        })
+        .collect()
 }
 
 static RUNTIME_CONFIG_REGISTRY: OnceLock<RuntimeConfigRegistry> = OnceLock::new();
@@ -79,6 +136,29 @@ fn runtime_config_registry() -> &'static RuntimeConfigRegistry {
     RUNTIME_CONFIG_REGISTRY
         .get()
         .unwrap_or_else(|| EMPTY.get_or_init(RuntimeConfigRegistry::default))
+}
+
+fn runtime_function_declaration(
+    function_name: &str,
+) -> Option<AdminRuntimeFunctionDeclarationMetadata> {
+    RUNTIME_FUNCTION_DECLARATIONS.get().and_then(|catalog| {
+        catalog
+            .read()
+            .expect("runtime function declaration catalog lock poisoned")
+            .iter()
+            .find(|declaration| declaration.name == function_name)
+            .cloned()
+    })
+}
+
+fn enrich_function_run(mut run: AdminFunctionRun) -> AdminFunctionRun {
+    run.runtime_declaration = runtime_function_declaration(&run.function_name);
+    run
+}
+
+fn enrich_function_run_detail(mut run: AdminFunctionRunDetail) -> AdminFunctionRunDetail {
+    run.runtime_declaration = runtime_function_declaration(&run.function_name);
+    run
 }
 
 pub fn router() -> ApiOpenApiRouter {

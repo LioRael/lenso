@@ -40,6 +40,43 @@ describe("runtime queue model", () => {
       },
     ]);
   });
+
+  test("splits runtime function pressure by declared queue", () => {
+    expect(
+      buildRuntimeQueueRows({
+        events: [],
+        functions: [
+          {
+            ...run("fn_identity", "running", "2026-06-01T10:00:02.000Z"),
+            runtimeDeclaration: {
+              inputSchema: "identity.cleanup_expired_sessions.v1",
+              moduleName: "identity",
+              moduleSource: "linked",
+              name: "identity.cleanup_expired_sessions.v1",
+              queue: "identity",
+              version: 1,
+            },
+          },
+          {
+            ...run("fn_remote", "failed", "2026-06-01T10:00:03.000Z"),
+            runtimeDeclaration: {
+              inputSchema: "remote_crm.sync_contact.v1",
+              moduleName: "remote-crm",
+              moduleSource: "remote",
+              name: "remote_crm.sync_contact.v1",
+              queue: "remote-crm",
+              version: 1,
+            },
+          },
+        ],
+        nowMs: Date.parse("2026-06-01T10:01:00.000Z"),
+      }).map((row) => row.name)
+    ).toEqual([
+      "outbox",
+      "runtime.functions:identity",
+      "runtime.functions:remote-crm",
+    ]);
+  });
 });
 
 function event(
