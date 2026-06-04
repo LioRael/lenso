@@ -701,6 +701,18 @@ async fn service_actor_can_fetch_story_technical_operations() {
                     "http.request.header.authorization": "Bearer secret",
                 }),
             ),
+            telemetry_span_at(
+                "span_remote_proxy",
+                "remote proxy remote-crm",
+                "2026-05-31T00:00:02Z",
+                "2026-05-31T00:00:03Z",
+                json!({
+                    "lenso.correlation_id": "corr_story",
+                    "lenso.story_id": "corr_story",
+                    "lenso.function_run_id": "fnrun_story",
+                    "http.request.method": "GET",
+                }),
+            ),
         ],
     )
     .await;
@@ -730,32 +742,45 @@ async fn service_actor_can_fetch_story_technical_operations() {
     assert_eq!(response.status(), StatusCode::OK);
     let body = json_body(response).await;
     assert_eq!(body["order"], "started_at_asc");
-    assert_eq!(body["data"].as_array().unwrap().len(), 3);
-    assert_eq!(body["data"][0]["source"], "otel");
-    assert_eq!(body["data"][0]["category"], "db");
-    assert_eq!(body["data"][0]["related_node_id"], "fnrun_story");
+    let data = body["data"].as_array().unwrap();
+    assert_eq!(data.len(), 4);
+    let function_db = data
+        .iter()
+        .find(|item| item["id"] == "span_story_function_db")
+        .expect("function db span should be present");
+    assert_eq!(function_db["source"], "otel");
+    assert_eq!(function_db["category"], "db");
+    assert_eq!(function_db["related_node_id"], "fnrun_story");
     assert_eq!(
-        body["data"][0]["attributes"]["lenso.function_run_id"],
+        function_db["attributes"]["lenso.function_run_id"],
         "fnrun_story"
     );
-    assert!(body["data"][0]["attributes"].get("db.statement").is_none());
-    assert_eq!(body["data"][1]["category"], "http");
-    assert!(body["data"][1]["related_node_id"].is_null());
+    assert!(function_db["attributes"].get("db.statement").is_none());
+    let unlinked_http = data
+        .iter()
+        .find(|item| item["id"] == "span_story_unlinked_http")
+        .expect("unlinked http span should be present");
+    assert_eq!(unlinked_http["category"], "http");
+    assert!(unlinked_http["related_node_id"].is_null());
     assert!(
-        body["data"][1]["attributes"]
+        unlinked_http["attributes"]
             .get("http.request.header.authorization")
             .is_none()
     );
-    assert_eq!(body["data"][2]["source"], "remote_proxy");
-    assert_eq!(body["data"][2]["category"], "external");
-    assert_eq!(body["data"][2]["status"], "error");
-    assert_eq!(body["data"][2]["name"], "remote-crm GET /contacts/{id}");
-    assert_eq!(body["data"][2]["attributes"]["module_name"], "remote-crm");
+    let remote_proxy = data
+        .iter()
+        .find(|item| item["id"] == "remote_proxy:rproxy_story_external")
+        .expect("remote proxy operation should be present");
+    assert_eq!(remote_proxy["source"], "remote_proxy");
+    assert_eq!(remote_proxy["category"], "external");
+    assert_eq!(remote_proxy["status"], "error");
+    assert_eq!(remote_proxy["name"], "remote-crm GET /contacts/{id}");
+    assert_eq!(remote_proxy["attributes"]["module_name"], "remote-crm");
     assert_eq!(
-        body["data"][2]["attributes"]["error_code"],
+        remote_proxy["attributes"]["error_code"],
         "external_dependency_failure"
     );
-    assert!(body["data"][2]["related_node_id"].is_null());
+    assert_eq!(remote_proxy["related_node_id"], "fnrun_story");
 
     db.cleanup().await;
 }

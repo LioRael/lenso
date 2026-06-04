@@ -615,9 +615,11 @@ pub(crate) async fn get_story_technical_operations(
         .query_spans(TelemetrySpanQuery::by_correlation_id(&correlation_id))
         .await
         .map_err(|source| ApiErrorResponse::with_context(source, &request_ctx))?;
-    let mut data = technical_operations_from_spans(spans, &runtime_node_index(&rows));
+    let node_index = runtime_node_index(&rows);
+    let mut data = technical_operations_from_spans(spans.clone(), &node_index);
     data.extend(
-        remote_proxy_technical_operations(&ctx, &request_ctx, &correlation_id).await?,
+        remote_proxy_technical_operations(&ctx, &request_ctx, &correlation_id, &spans, &node_index)
+            .await?,
     );
     sort_technical_operations(&mut data);
 
@@ -631,6 +633,8 @@ async fn remote_proxy_technical_operations(
     ctx: &AppContext,
     request_ctx: &platform_core::RequestContext,
     correlation_id: &str,
+    spans: &[platform_core::TelemetrySpan],
+    node_index: &RuntimeNodeIndex,
 ) -> Result<Vec<AdminRuntimeTechnicalOperation>, ApiErrorResponse> {
     let rows = sqlx::query(
         r#"
@@ -667,13 +671,31 @@ async fn remote_proxy_technical_operations(
 
     rows.into_iter()
         .map(|row| remote_proxy_call_from_row(&row))
-        .map(|result| result.map(remote_proxy_call_to_technical_operation))
+        .map(|result| {
+            result.map(|call| {
+                let related_node_id = remote_proxy_related_node_id(&call, spans, node_index);
+                remote_proxy_call_to_technical_operation(call, related_node_id)
+            })
+        })
         .collect::<Result<Vec<_>, _>>()
         .map_err(|source| query_error(source, request_ctx))
 }
 
+fn remote_proxy_related_node_id(
+    call: &AdminRemoteProxyCall,
+    spans: &[platform_core::TelemetrySpan],
+    node_index: &RuntimeNodeIndex,
+) -> Option<String> {
+    let span_id = call.span_id.as_deref()?;
+    spans
+        .iter()
+        .find(|span| span.id == span_id)
+        .and_then(|span| related_node_id(&span.attributes, node_index))
+}
+
 fn remote_proxy_call_to_technical_operation(
     call: AdminRemoteProxyCall,
+    related_node_id: Option<String>,
 ) -> AdminRuntimeTechnicalOperation {
     let ended_at = call.occurred_at + Duration::milliseconds(call.duration_ms.max(0));
     AdminRuntimeTechnicalOperation {
@@ -697,8 +719,11 @@ fn remote_proxy_call_to_technical_operation(
         duration_ms: call.duration_ms,
         ended_at,
         id: format!("remote_proxy:{}", call.id),
-        name: format!("{} {} {}", call.module_name, call.method, call.declared_path),
-        related_node_id: None,
+        name: format!(
+            "{} {} {}",
+            call.module_name, call.method, call.declared_path
+        ),
+        related_node_id,
         source: "remote_proxy".to_owned(),
         started_at: call.occurred_at,
         status: if call.success { "ok" } else { "error" }.to_owned(),
