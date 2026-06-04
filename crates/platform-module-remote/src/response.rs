@@ -1,6 +1,7 @@
 use crate::protocol::{RemoteErrorDetail, RemoteErrorEnvelope};
 use platform_core::error::ErrorDetail;
 use platform_core::{AppError, AppResult, ErrorCode};
+use reqwest::header::CONTENT_TYPE;
 use reqwest::{Response, StatusCode};
 
 pub(crate) async fn decode_json_response<T: serde::de::DeserializeOwned>(
@@ -8,25 +9,60 @@ pub(crate) async fn decode_json_response<T: serde::de::DeserializeOwned>(
     operation: &str,
     not_found_as_none: bool,
 ) -> AppResult<Option<T>> {
+    decode_json_response_with_policy(
+        response,
+        operation,
+        not_found_as_none,
+        ResponseBodyPolicy::default(),
+    )
+    .await
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct ResponseBodyPolicy {
+    pub max_bytes: Option<u64>,
+    pub require_json_content_type: bool,
+}
+
+pub(crate) async fn decode_json_response_with_policy<T: serde::de::DeserializeOwned>(
+    response: Response,
+    operation: &str,
+    not_found_as_none: bool,
+    policy: ResponseBodyPolicy,
+) -> AppResult<Option<T>> {
     let status = response.status();
-    let body = response.text().await.map_err(|error| {
+    if status.is_success() && policy.require_json_content_type {
+        ensure_json_content_type(&response, operation)?;
+    }
+    if let Some(max_bytes) = policy.max_bytes {
+        ensure_content_length(&response, operation, max_bytes)?;
+    }
+
+    let body = response.bytes().await.map_err(|error| {
         AppError::new(
             ErrorCode::ExternalDependency,
             format!("remote {operation} response body could not be read: {error}"),
         )
         .retryable()
     })?;
-
-    if status.is_success() {
-        return serde_json::from_str::<T>(&body).map(Some).map_err(|error| {
-            AppError::new(
-                ErrorCode::ExternalDependency,
-                format!("remote {operation} response was invalid JSON: {error}"),
-            )
-        });
+    if let Some(max_bytes) = policy.max_bytes
+        && body.len() as u64 > max_bytes
+    {
+        return Err(response_too_large(operation, body.len() as u64, max_bytes));
     }
 
-    if let Ok(envelope) = serde_json::from_str::<RemoteErrorEnvelope>(&body) {
+    if status.is_success() {
+        return serde_json::from_slice::<T>(&body)
+            .map(Some)
+            .map_err(|error| {
+                AppError::new(
+                    ErrorCode::ExternalDependency,
+                    format!("remote {operation} response was invalid JSON: {error}"),
+                )
+            });
+    }
+
+    if let Ok(envelope) = serde_json::from_slice::<RemoteErrorEnvelope>(&body) {
         return Err(remote_error(status, envelope));
     }
 
@@ -35,6 +71,62 @@ pub(crate) async fn decode_json_response<T: serde::de::DeserializeOwned>(
     }
 
     Err(fallback_status_error(status, operation))
+}
+
+fn ensure_content_length(response: &Response, operation: &str, max_bytes: u64) -> AppResult<()> {
+    if let Some(content_length) = response.content_length()
+        && content_length > max_bytes
+    {
+        return Err(response_too_large(operation, content_length, max_bytes));
+    }
+    Ok(())
+}
+
+fn response_too_large(operation: &str, actual_bytes: u64, max_bytes: u64) -> AppError {
+    AppError::new(
+        ErrorCode::ExternalDependency,
+        format!(
+            "remote {operation} response body exceeded {max_bytes} bytes: {actual_bytes} bytes"
+        ),
+    )
+    .retryable()
+}
+
+fn ensure_json_content_type(response: &Response, operation: &str) -> AppResult<()> {
+    let Some(content_type) = response
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+    else {
+        return Err(invalid_content_type(operation, None));
+    };
+
+    let media_type = content_type
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    if media_type == "application/json"
+        || (media_type.starts_with("application/") && media_type.ends_with("+json"))
+    {
+        return Ok(());
+    }
+
+    Err(invalid_content_type(operation, Some(content_type)))
+}
+
+fn invalid_content_type(operation: &str, content_type: Option<&str>) -> AppError {
+    match content_type {
+        Some(content_type) => AppError::new(
+            ErrorCode::ExternalDependency,
+            format!("remote {operation} response content-type was not JSON: {content_type}"),
+        ),
+        None => AppError::new(
+            ErrorCode::ExternalDependency,
+            format!("remote {operation} response content-type was missing"),
+        ),
+    }
 }
 
 fn remote_error(status: StatusCode, envelope: RemoteErrorEnvelope) -> AppError {

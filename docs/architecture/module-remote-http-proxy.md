@@ -36,7 +36,9 @@ A `GET` public API route is installed at `/modules/{module}/http/{*path}`. It
 matches the declaration, enforces service/system auth plus route capability, and
 forwards the request to the remote module without caller credentials. If the
 remote source has a configured auth token, the host uses that token for the
-remote request. Non-GET host methods are not mounted yet.
+remote request. Successful remote responses must be JSON
+(`application/json` or `application/*+json`) and must not exceed the current
+4 MiB proxy response limit. Non-GET host methods are not mounted yet.
 
 ## Goals
 
@@ -207,7 +209,9 @@ OpenAPI fragments after trust, validation, and versioning are specified.
 4. Enforce service/system auth and declared capabilities. Done for GET.
 5. Forward matched GET requests without caller credentials. Done; configured
    host-to-remote bearer tokens are used when present.
-6. Add request/response size limits and full header allowlists.
+6. Add request/response size limits and full header allowlists. Done for GET
+   response content-type, response size, and header allowlists; request bodies
+   remain deferred because only GET is mounted.
 7. Mount the remaining declared methods: `POST`, `PUT`, `PATCH`, and `DELETE`.
 8. Normalize remote errors through the existing platform error model. Done for
    GET.

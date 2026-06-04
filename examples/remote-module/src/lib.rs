@@ -84,6 +84,8 @@ const CONTACTS: &[Contact] = &[
     },
 ];
 
+const OVERSIZED_PROXY_RESPONSE_BYTES: usize = (4 * 1024 * 1024) + 1;
+
 #[must_use]
 pub fn router() -> Router {
     Router::new()
@@ -105,6 +107,14 @@ pub fn router() -> Router {
         .route("/lenso/module/v1/embedded/admin", get(embedded_admin))
         .route("/lenso/module/v1/contacts", get(get_http_contacts))
         .route("/lenso/module/v1/contacts/{id}", get(get_http_contact))
+        .route(
+            "/lenso/module/v1/proxy-fixtures/text",
+            get(get_proxy_fixture_text),
+        )
+        .route(
+            "/lenso/module/v1/proxy-fixtures/oversized",
+            get(get_proxy_fixture_oversized),
+        )
         .route("/lenso/module/v1/admin/contacts", get(list_contacts))
         .route("/lenso/module/v1/admin/contacts/{id}", get(get_contact))
 }
@@ -304,6 +314,16 @@ async fn get_http_contact(headers: HeaderMap, Path(id): Path<String>) -> Respons
     }
 }
 
+async fn get_proxy_fixture_text() -> &'static str {
+    "not json"
+}
+
+async fn get_proxy_fixture_oversized() -> Json<Value> {
+    Json(json!({
+        "payload": "x".repeat(OVERSIZED_PROXY_RESPONSE_BYTES),
+    }))
+}
+
 async fn list_contacts(Query(query): Query<ListQuery>) -> Json<ListResponse> {
     let start = query
         .cursor
@@ -429,6 +449,16 @@ fn contact_http_routes() -> Vec<ModuleHttpRoute> {
         ModuleHttpRoute {
             method: ModuleHttpMethod::Get,
             path: "/contacts/{id}".to_owned(),
+            capability: Some("remote_crm.contacts.read".to_owned()),
+        },
+        ModuleHttpRoute {
+            method: ModuleHttpMethod::Get,
+            path: "/proxy-fixtures/text".to_owned(),
+            capability: Some("remote_crm.contacts.read".to_owned()),
+        },
+        ModuleHttpRoute {
+            method: ModuleHttpMethod::Get,
+            path: "/proxy-fixtures/oversized".to_owned(),
             capability: Some("remote_crm.contacts.read".to_owned()),
         },
     ]

@@ -222,6 +222,51 @@ async fn remote_http_proxy_forwards_declared_get_routes() {
 }
 
 #[tokio::test]
+async fn remote_http_proxy_rejects_unsafe_get_responses() {
+    let _guard = REMOTE_SMOKE_TEST_LOCK.lock().await;
+    let base_url = spawn_remote_module(remote_module_example::router()).await;
+    let app = app_with_remote_module(base_url).await;
+
+    let text_response = app
+        .clone()
+        .oneshot(service_get(
+            "/modules/remote-crm/http/proxy-fixtures/text",
+            "dev-service:admin:remote_crm.contacts.read",
+        ))
+        .await
+        .expect("text fixture request completes");
+    assert_eq!(text_response.status(), StatusCode::BAD_GATEWAY);
+    let text_error = json_body(text_response).await;
+    assert_eq!(text_error["error"]["code"], "external_dependency_failure");
+    assert!(
+        text_error["error"]["message"]
+            .as_str()
+            .expect("error message")
+            .contains("content-type was not JSON")
+    );
+
+    let oversized_response = app
+        .oneshot(service_get(
+            "/modules/remote-crm/http/proxy-fixtures/oversized",
+            "dev-service:admin:remote_crm.contacts.read",
+        ))
+        .await
+        .expect("oversized fixture request completes");
+    assert_eq!(oversized_response.status(), StatusCode::BAD_GATEWAY);
+    let oversized_error = json_body(oversized_response).await;
+    assert_eq!(
+        oversized_error["error"]["code"],
+        "external_dependency_failure"
+    );
+    assert!(
+        oversized_error["error"]["message"]
+            .as_str()
+            .expect("error message")
+            .contains("response body exceeded")
+    );
+}
+
+#[tokio::test]
 async fn failed_remote_module_load_is_reported_in_schema() {
     let _guard = REMOTE_SMOKE_TEST_LOCK.lock().await;
     let app = app_with_remote_modules(vec![RemoteModuleSourceConfig {

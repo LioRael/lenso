@@ -1,3 +1,4 @@
+use crate::response::ResponseBodyPolicy;
 use crate::{RemoteHttpProxyMatch, RemoteHttpProxyRegistry};
 use axum::Json;
 use axum::extract::Path;
@@ -15,6 +16,7 @@ use std::sync::{Arc, OnceLock, RwLock};
 use utoipa::ToSchema;
 
 static REMOTE_HTTP_PROXY_REGISTRY: OnceLock<RwLock<Arc<RemoteHttpProxyRegistry>>> = OnceLock::new();
+const MAX_PROXY_RESPONSE_BYTES: u64 = 4 * 1024 * 1024;
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct RemoteHttpProxyResponse {
@@ -168,7 +170,7 @@ async fn forward_get(
         request = request.header("traceparent", format!("00-{trace_id}-{span_id}-01"));
     }
 
-    crate::response::decode_json_response::<Value>(
+    crate::response::decode_json_response_with_policy::<Value>(
         request.send().await.map_err(|error| {
             ApiErrorResponse::with_context(
                 AppError::new(
@@ -181,6 +183,10 @@ async fn forward_get(
         })?,
         "HTTP proxy",
         false,
+        ResponseBodyPolicy {
+            max_bytes: Some(MAX_PROXY_RESPONSE_BYTES),
+            require_json_content_type: true,
+        },
     )
     .await
     .map_err(|error| ApiErrorResponse::with_context(error, request_ctx))?

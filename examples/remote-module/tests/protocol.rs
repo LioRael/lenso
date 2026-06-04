@@ -26,6 +26,11 @@ async fn manifest_matches_remote_module_protocol() {
     assert_eq!(manifest["admin"]["entities"][0]["name"], "contacts");
     assert_eq!(manifest["http_routes"][0]["method"], "GET");
     assert_eq!(manifest["http_routes"][0]["path"], "/contacts");
+    assert_eq!(manifest["http_routes"][2]["path"], "/proxy-fixtures/text");
+    assert_eq!(
+        manifest["http_routes"][3]["path"],
+        "/proxy-fixtures/oversized"
+    );
     assert_eq!(
         manifest["http_routes"][0]["capability"],
         "remote_crm.contacts.read"
@@ -186,6 +191,50 @@ async fn http_contacts_route_returns_resource_json() {
     let contact: Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(contact["id"], "contact_1");
     assert_eq!(contact["email"], "ada@example.com");
+}
+
+#[tokio::test]
+async fn http_proxy_fixture_routes_cover_response_policy() {
+    let text = remote_module_example::router()
+        .oneshot(
+            http::Request::builder()
+                .uri("/lenso/module/v1/proxy-fixtures/text")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(text.status(), StatusCode::OK);
+    assert_eq!(
+        text.headers()
+            .get(http::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok()),
+        Some("text/plain; charset=utf-8")
+    );
+
+    let oversized = remote_module_example::router()
+        .oneshot(
+            http::Request::builder()
+                .uri("/lenso/module/v1/proxy-fixtures/oversized")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(oversized.status(), StatusCode::OK);
+    assert_eq!(
+        oversized
+            .headers()
+            .get(http::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok()),
+        Some("application/json")
+    );
+    let body = axum::body::to_bytes(oversized.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert!(body.len() > 4 * 1024 * 1024);
 }
 
 #[tokio::test]
