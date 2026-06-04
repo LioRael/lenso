@@ -46,6 +46,18 @@ struct DetailResponse {
     record: Value,
 }
 
+#[derive(Debug, Deserialize)]
+struct RuntimeFunctionInvokeRequest {
+    function_run_id: String,
+    function_name: String,
+    attempt: u32,
+    correlation_id: String,
+    causation_id: Option<String>,
+    actor: Value,
+    trace: Value,
+    input: Value,
+}
+
 #[derive(Debug, serde::Serialize)]
 struct ErrorEnvelope {
     error: ErrorBody,
@@ -134,6 +146,10 @@ pub fn router() -> Router {
         .route(
             "/lenso/module/v1/proxy-fixtures/slow",
             get(get_proxy_fixture_slow),
+        )
+        .route(
+            "/lenso/module/v1/runtime/functions/{function_name}/invoke",
+            post(invoke_runtime_function),
         )
         .route("/lenso/module/v1/admin/contacts", get(list_contacts))
         .route("/lenso/module/v1/admin/contacts/{id}", get(get_contact))
@@ -425,6 +441,48 @@ async fn get_proxy_fixture_oversized() -> Json<Value> {
 async fn get_proxy_fixture_slow() -> Json<Value> {
     tokio::time::sleep(Duration::from_millis(200)).await;
     Json(json!({ "status": "eventually_ready" }))
+}
+
+async fn invoke_runtime_function(
+    Path(function_name): Path<String>,
+    Json(request): Json<RuntimeFunctionInvokeRequest>,
+) -> Response {
+    if function_name != "remote_crm.sync_contact.v1"
+        || request.function_name != "remote_crm.sync_contact.v1"
+    {
+        return remote_error(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            format!("runtime function {function_name} was not found"),
+            false,
+        );
+    }
+
+    Json(json!({
+        "output": {
+            "synced": true,
+            "contact_id": request
+                .input
+                .get("contact_id")
+                .and_then(Value::as_str)
+                .unwrap_or(""),
+            "function_run_id": request.function_run_id,
+            "attempt": request.attempt,
+            "correlation_id": request.correlation_id,
+            "causation_id": request.causation_id,
+            "actor_kind": request
+                .actor
+                .get("kind")
+                .and_then(Value::as_str)
+                .unwrap_or(""),
+            "trace_id": request
+                .trace
+                .get("trace_id")
+                .and_then(Value::as_str)
+                .unwrap_or(""),
+        }
+    }))
+    .into_response()
 }
 
 async fn list_contacts(Query(query): Query<ListQuery>) -> Json<ListResponse> {

@@ -176,6 +176,35 @@ async fn embedded_admin_page_is_served_for_iframe_rendering() {
 }
 
 #[tokio::test]
+async fn runtime_function_invoke_returns_output_envelope() {
+    let response = remote_module_example::router()
+        .oneshot(
+            http::Request::builder()
+                .method(http::Method::POST)
+                .uri("/lenso/module/v1/runtime/functions/remote_crm.sync_contact.v1/invoke")
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(axum::body::Body::from(
+                    r#"{"function_run_id":"fnrun_1","function_name":"remote_crm.sync_contact.v1","attempt":1,"correlation_id":"corr_1","causation_id":"httpreq_1","actor":{"kind":"service","service_id":"worker","scopes":[]},"trace":{"trace_id":"trace_1","span_id":"span_1","baggage":[]},"input":{"contact_id":"contact_1"}}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let value: Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(value["output"]["synced"], true);
+    assert_eq!(value["output"]["contact_id"], "contact_1");
+    assert_eq!(value["output"]["function_run_id"], "fnrun_1");
+    assert_eq!(value["output"]["correlation_id"], "corr_1");
+}
+
+#[tokio::test]
 async fn contacts_list_returns_records_and_cursor_shape() {
     let response = remote_module_example::router()
         .oneshot(
