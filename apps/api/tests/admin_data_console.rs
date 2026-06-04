@@ -153,6 +153,53 @@ async fn modules_endpoint_lists_admin_surface_metadata() {
 }
 
 #[tokio::test]
+async fn modules_endpoint_lists_linked_module_http_routes() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
+    let ctx = AppContext::new(
+        AppConfig::from_env(),
+        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test").expect("lazy pool"),
+        Arc::new(LoggingEventPublisher),
+    );
+    install_admin_modules(app_bootstrap::admin_modules(&ctx));
+    install_admin_module_metadata(
+        app_bootstrap::load_admin_module_metadata(&ctx)
+            .await
+            .expect("admin module metadata loads"),
+    );
+    let app = build_router(ctx);
+
+    let response = app
+        .oneshot(admin_get("/admin/data/modules"))
+        .await
+        .expect("request completes");
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = json_body(response).await;
+    let identity = json["modules"]
+        .as_array()
+        .expect("modules array")
+        .iter()
+        .find(|module| module["module_name"] == "identity")
+        .expect("identity module metadata");
+    assert_eq!(identity["source"], "linked");
+    assert_eq!(identity["http_routes"][0]["method"], "POST");
+    assert_eq!(identity["http_routes"][0]["path"], "/v1/identity/users");
+    assert_eq!(
+        identity["http_routes"][0]["display_name"],
+        "Create User Request"
+    );
+    assert_eq!(
+        identity["http_routes"][0]["story_title"],
+        "User Registration"
+    );
+    assert_eq!(identity["http_routes"][1]["method"], "GET");
+    assert_eq!(identity["http_routes"][1]["path"], "/v1/identity/me");
+    assert_eq!(
+        identity["http_routes"][1]["display_name"],
+        "Fetch Current User"
+    );
+}
+
+#[tokio::test]
 async fn list_records_returns_stub_data() {
     let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
     let response = app()

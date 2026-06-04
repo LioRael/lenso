@@ -2,7 +2,8 @@ use crate::admin::IdentityAdminData;
 use crate::repositories::PostgresUserRepository;
 use platform_core::{AppContext, StoryDisplayDescriptor, StoryDisplaySource};
 use platform_module::{
-    AdminSchema, EntitySchema, FieldSchema, FieldType, LinkedBinding, Module, ModuleManifest,
+    AdminSchema, EntitySchema, FieldSchema, FieldType, LinkedBinding, Module, ModuleHttpMethod,
+    ModuleHttpRoute, ModuleManifest,
 };
 use std::sync::Arc;
 
@@ -29,6 +30,25 @@ pub fn story_display() -> Vec<StoryDisplayDescriptor> {
             },
             display_name: "User Registered".to_owned(),
             story_title: Some("User Registration".to_owned()),
+        },
+    ]
+}
+
+pub fn http_routes() -> Vec<ModuleHttpRoute> {
+    vec![
+        ModuleHttpRoute {
+            method: ModuleHttpMethod::Post,
+            path: "/v1/identity/users".to_owned(),
+            capability: None,
+            display_name: Some("Create User Request".to_owned()),
+            story_title: Some("User Registration".to_owned()),
+        },
+        ModuleHttpRoute {
+            method: ModuleHttpMethod::Get,
+            path: "/v1/identity/me".to_owned(),
+            capability: None,
+            display_name: Some("Fetch Current User".to_owned()),
+            story_title: Some("Fetch Current User".to_owned()),
         },
     ]
 }
@@ -79,6 +99,7 @@ pub fn user_schema() -> AdminSchema {
 pub fn manifest() -> ModuleManifest {
     ModuleManifest::builder("identity")
         .story_display(story_display())
+        .http_routes(http_routes())
         .admin(user_schema())
         .build()
 }
@@ -92,4 +113,32 @@ pub fn module(ctx: &AppContext) -> Module {
     Module::linked(manifest(), binding)
         .with_runtime_config(crate::config::RUNTIME_CONFIG.as_slice())
         .with_admin_data(Arc::new(IdentityAdminData::new(repository)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn manifest_declares_linked_http_routes() {
+        let manifest = manifest();
+
+        assert_eq!(manifest.http_routes.len(), 2);
+        assert_eq!(manifest.http_routes[0].method, ModuleHttpMethod::Post);
+        assert_eq!(manifest.http_routes[0].path, "/v1/identity/users");
+        assert_eq!(
+            manifest.http_routes[0].display_name.as_deref(),
+            Some("Create User Request")
+        );
+        assert_eq!(
+            manifest.http_routes[0].story_title.as_deref(),
+            Some("User Registration")
+        );
+        assert_eq!(manifest.http_routes[1].method, ModuleHttpMethod::Get);
+        assert_eq!(manifest.http_routes[1].path, "/v1/identity/me");
+        assert_eq!(
+            manifest.http_routes[1].display_name.as_deref(),
+            Some("Fetch Current User")
+        );
+    }
 }
