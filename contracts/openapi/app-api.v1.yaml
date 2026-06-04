@@ -2648,7 +2648,6 @@ components:
       - status
       - http_routes
       - manifest_lints
-      - route_lints
       - story_display
       - capabilities
       properties:
@@ -2674,10 +2673,6 @@ components:
             $ref: '#/components/schemas/ModuleManifestLint'
         module_name:
           type: string
-        route_lints:
-          type: array
-          items:
-            $ref: '#/components/schemas/ModuleRouteLint'
         source:
           $ref: '#/components/schemas/ModuleSource'
         status:
@@ -4000,28 +3995,6 @@ components:
         suggestion:
           type: string
     ModuleManifestLintSeverity:
-      type: string
-      enum:
-      - ok
-      - warning
-      - error
-    ModuleRouteLint:
-      type: object
-      required:
-      - severity
-      - subject
-      - message
-      - suggestion
-      properties:
-        message:
-          type: string
-        severity:
-          $ref: '#/components/schemas/ModuleRouteLintSeverity'
-        subject:
-          type: string
-        suggestion:
-          type: string
-    ModuleRouteLintSeverity:
       type: string
       enum:
       - ok
