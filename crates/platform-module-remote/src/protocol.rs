@@ -1,3 +1,4 @@
+use platform_core::{ActorContext, TraceContext};
 use platform_module::{AdminPage, ModuleManifest};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -44,4 +45,21 @@ impl From<RemoteListResponse> for AdminPage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemoteGetResponse {
     pub record: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoteFunctionInvokeRequest {
+    pub function_run_id: String,
+    pub function_name: String,
+    pub attempt: u32,
+    pub correlation_id: String,
+    pub causation_id: Option<String>,
+    pub actor: ActorContext,
+    pub trace: TraceContext,
+    pub input: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoteFunctionInvokeResponse {
+    pub output: Value,
 }

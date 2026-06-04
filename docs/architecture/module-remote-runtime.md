@@ -190,7 +190,7 @@ This keeps transactional outbox semantics and operator visibility in the host.
 2. Extend the remote module protocol fixture and tests to expose those
    declarations. Done.
 3. Add a proxy-backed `RuntimeFunction` implementation in
-   `platform-module-remote`.
+   `platform-module-remote`. Done.
 4. Register remote function handlers into `FunctionRegistry` during module
    loading.
 5. Add worker/runtime tests proving success, retryable failure, exhausted

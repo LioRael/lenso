@@ -11,6 +11,7 @@ mod proxy;
 mod request;
 mod response;
 mod router;
+mod runtime;
 mod source;
 
 pub use admin_data::RemoteAdminDataSource;
@@ -25,4 +26,5 @@ pub use proxy::{
 pub use router::{
     RemoteHttpProxyResponse, RemoteHttpProxyStatus, install_remote_http_proxy_registry, router,
 };
+pub use runtime::RemoteRuntimeFunction;
 pub use source::RemoteModuleSource;
