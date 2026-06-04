@@ -22,6 +22,7 @@ pub(crate) async fn decode_json_response<T: serde::de::DeserializeOwned>(
 pub(crate) struct ResponseBodyPolicy {
     pub max_bytes: Option<u64>,
     pub require_json_content_type: bool,
+    pub allow_empty_success: bool,
 }
 
 pub(crate) async fn decode_json_response_with_policy<T: serde::de::DeserializeOwned>(
@@ -31,12 +32,14 @@ pub(crate) async fn decode_json_response_with_policy<T: serde::de::DeserializeOw
     policy: ResponseBodyPolicy,
 ) -> AppResult<Option<T>> {
     let status = response.status();
-    if status.is_success() && policy.require_json_content_type {
-        ensure_json_content_type(&response, operation)?;
-    }
     if let Some(max_bytes) = policy.max_bytes {
         ensure_content_length(&response, operation, max_bytes)?;
     }
+    let content_type_error = if policy.require_json_content_type && status.is_success() {
+        json_content_type_error(&response, operation)
+    } else {
+        None
+    };
 
     let body = response.bytes().await.map_err(|error| {
         AppError::new(
@@ -52,6 +55,12 @@ pub(crate) async fn decode_json_response_with_policy<T: serde::de::DeserializeOw
     }
 
     if status.is_success() {
+        if policy.allow_empty_success && status == StatusCode::NO_CONTENT && body.is_empty() {
+            return Ok(None);
+        }
+        if let Some(error) = content_type_error {
+            return Err(error);
+        }
         return serde_json::from_slice::<T>(&body)
             .map(Some)
             .map_err(|error| {
@@ -92,13 +101,13 @@ fn response_too_large(operation: &str, actual_bytes: u64, max_bytes: u64) -> App
     .retryable()
 }
 
-fn ensure_json_content_type(response: &Response, operation: &str) -> AppResult<()> {
-    let Some(content_type) = response
+fn json_content_type_error(response: &Response, operation: &str) -> Option<AppError> {
+    let content_type = response
         .headers()
         .get(CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-    else {
-        return Err(invalid_content_type(operation, None));
+        .and_then(|value| value.to_str().ok());
+    let Some(content_type) = content_type else {
+        return Some(invalid_content_type(operation, None));
     };
 
     let media_type = content_type
@@ -110,10 +119,10 @@ fn ensure_json_content_type(response: &Response, operation: &str) -> AppResult<(
     if media_type == "application/json"
         || (media_type.starts_with("application/") && media_type.ends_with("+json"))
     {
-        return Ok(());
+        return None;
     }
 
-    Err(invalid_content_type(operation, Some(content_type)))
+    Some(invalid_content_type(operation, Some(content_type)))
 }
 
 fn invalid_content_type(operation: &str, content_type: Option<&str>) -> AppError {

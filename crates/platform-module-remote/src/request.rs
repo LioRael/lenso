@@ -124,10 +124,7 @@ fn is_json_content_type(content_type: &str) -> bool {
 fn method_allows_request_body(method: ModuleHttpMethod) -> bool {
     matches!(
         method,
-        ModuleHttpMethod::Post
-            | ModuleHttpMethod::Put
-            | ModuleHttpMethod::Patch
-            | ModuleHttpMethod::Delete
+        ModuleHttpMethod::Post | ModuleHttpMethod::Put | ModuleHttpMethod::Patch
     )
 }
 

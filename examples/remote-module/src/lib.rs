@@ -5,7 +5,7 @@ use axum::response::Html;
 use axum::response::{IntoResponse, Response};
 use axum::{
     Json, Router,
-    routing::{get, patch, post, put},
+    routing::{delete, get, patch, post, put},
 };
 use platform_module::{
     AdminDeclarativeComponent, AdminDeclarativePage, AdminDeclarativeSection,
@@ -113,6 +113,14 @@ pub fn router() -> Router {
         .route("/lenso/module/v1/contacts/{id}", get(get_http_contact))
         .route("/lenso/module/v1/contacts/{id}", put(put_http_contact))
         .route("/lenso/module/v1/contacts/{id}", patch(patch_http_contact))
+        .route(
+            "/lenso/module/v1/contacts/{id}",
+            delete(delete_http_contact),
+        )
+        .route(
+            "/lenso/module/v1/contacts/{id}/purge",
+            delete(delete_http_contact_empty),
+        )
         .route(
             "/lenso/module/v1/proxy-fixtures/text",
             get(get_proxy_fixture_text),
@@ -340,6 +348,34 @@ async fn patch_http_contact(
     write_http_contact(headers, "patched", Some(id), input).await
 }
 
+async fn delete_http_contact(headers: HeaderMap, Path(id): Path<String>) -> Response {
+    if headers.contains_key("authorization") {
+        return remote_error(
+            StatusCode::BAD_REQUEST,
+            "validation_failed",
+            "caller authorization must not be forwarded".to_owned(),
+            false,
+        );
+    }
+    Json(json!({
+        "id": id,
+        "deleted": true,
+    }))
+    .into_response()
+}
+
+async fn delete_http_contact_empty(headers: HeaderMap, Path(_id): Path<String>) -> Response {
+    if headers.contains_key("authorization") {
+        return remote_error(
+            StatusCode::BAD_REQUEST,
+            "validation_failed",
+            "caller authorization must not be forwarded".to_owned(),
+            false,
+        );
+    }
+    StatusCode::NO_CONTENT.into_response()
+}
+
 async fn write_http_contact(
     headers: HeaderMap,
     operation: &'static str,
@@ -517,6 +553,16 @@ fn contact_http_routes() -> Vec<ModuleHttpRoute> {
         ModuleHttpRoute {
             method: ModuleHttpMethod::Patch,
             path: "/contacts/{id}".to_owned(),
+            capability: Some("remote_crm.contacts.read".to_owned()),
+        },
+        ModuleHttpRoute {
+            method: ModuleHttpMethod::Delete,
+            path: "/contacts/{id}".to_owned(),
+            capability: Some("remote_crm.contacts.read".to_owned()),
+        },
+        ModuleHttpRoute {
+            method: ModuleHttpMethod::Delete,
+            path: "/contacts/{id}/purge".to_owned(),
             capability: Some("remote_crm.contacts.read".to_owned()),
         },
         ModuleHttpRoute {

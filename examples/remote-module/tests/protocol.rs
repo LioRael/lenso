@@ -30,6 +30,8 @@ async fn manifest_matches_remote_module_protocol() {
     assert!(has_route(routes, "GET", "/contacts/{id}"));
     assert!(has_route(routes, "PUT", "/contacts/{id}"));
     assert!(has_route(routes, "PATCH", "/contacts/{id}"));
+    assert!(has_route(routes, "DELETE", "/contacts/{id}"));
+    assert!(has_route(routes, "DELETE", "/contacts/{id}/purge"));
     assert!(has_route(routes, "GET", "/proxy-fixtures/text"));
     assert!(has_route(routes, "GET", "/proxy-fixtures/oversized"));
     assert!(
@@ -266,6 +268,45 @@ async fn http_contacts_put_and_patch_routes_accept_json() {
     assert_eq!(contact["id"], "contact_2");
     assert_eq!(contact["email"], "patched@example.com");
     assert_eq!(contact["operation"], "patched");
+}
+
+#[tokio::test]
+async fn http_contacts_delete_routes_return_json_or_empty_success() {
+    let deleted = remote_module_example::router()
+        .oneshot(
+            http::Request::builder()
+                .method(http::Method::DELETE)
+                .uri("/lenso/module/v1/contacts/contact_1")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(deleted.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(deleted.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let contact: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(contact["id"], "contact_1");
+    assert_eq!(contact["deleted"], true);
+
+    let purged = remote_module_example::router()
+        .oneshot(
+            http::Request::builder()
+                .method(http::Method::DELETE)
+                .uri("/lenso/module/v1/contacts/contact_1/purge")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(purged.status(), StatusCode::NO_CONTENT);
+    let body = axum::body::to_bytes(purged.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert!(body.is_empty());
 }
 
 #[tokio::test]

@@ -2,9 +2,9 @@ use crate::request::{ProxyRequestBody, apply_proxy_request_policy};
 use crate::response::ResponseBodyPolicy;
 use crate::{RemoteHttpProxyMatch, RemoteHttpProxyRegistry};
 use axum::Json;
-use axum::body::Bytes;
+use axum::body::{Body, Bytes, to_bytes};
 use axum::extract::Path;
-use axum::http::HeaderMap;
+use axum::http::{HeaderMap, Request};
 use platform_core::{AppError, ErrorCode};
 use platform_http::{
     AdminActor, ApiErrorResponse, ApiOpenApiRouter, ErrorResponse, HttpRequestContext,
@@ -20,6 +20,7 @@ use utoipa::ToSchema;
 
 static REMOTE_HTTP_PROXY_REGISTRY: OnceLock<RwLock<Arc<RemoteHttpProxyRegistry>>> = OnceLock::new();
 const MAX_PROXY_RESPONSE_BYTES: u64 = 4 * 1024 * 1024;
+const MAX_PROXY_DELETE_REQUEST_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct RemoteHttpProxyResponse {
@@ -57,6 +58,7 @@ pub fn router() -> ApiOpenApiRouter {
         .routes(routes!(proxy_post))
         .routes(routes!(proxy_put))
         .routes(routes!(proxy_patch))
+        .routes(routes!(proxy_delete))
 }
 
 pub fn install_remote_http_proxy_registry(registry: RemoteHttpProxyRegistry) {
@@ -250,6 +252,71 @@ async fn proxy_patch(
     .await
 }
 
+#[utoipa::path(
+    delete,
+    path = "/modules/{module}/http/{*path}",
+    operation_id = "remote_module_http_proxy_delete",
+    tag = "modules",
+    params(
+        ("module" = String, Path, description = "Configured remote module name"),
+        ("path" = String, Path, description = "Module-local HTTP path matched against the remote manifest"),
+        ("authorization" = String, Header, description = "Development service bearer token")
+    ),
+    responses(
+        (status = 200, description = "Remote route forwarded through the host.", body = RemoteHttpProxyResponse, content_type = "application/json"),
+        (status = 400, description = "Request body policy rejected the request", body = ErrorResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 403, description = "Service/system authentication or declared capability is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 404, description = "No configured remote route matched", body = ErrorResponse, content_type = "application/json"),
+        (status = 502, description = "Remote module request failed", body = ErrorResponse, content_type = "application/json"),
+    )
+)]
+async fn proxy_delete(
+    admin: AdminActor,
+    HttpRequestContext(request_ctx): HttpRequestContext,
+    Path((module, path)): Path<(String, String)>,
+    request: Request<Body>,
+) -> Result<Json<RemoteHttpProxyResponse>, ApiErrorResponse> {
+    let (parts, body) = request.into_parts();
+    let body = to_bytes(body, MAX_PROXY_DELETE_REQUEST_BYTES)
+        .await
+        .map_err(|error| {
+            ApiErrorResponse::with_context(
+                AppError::new(
+                    ErrorCode::Validation,
+                    format!("remote HTTP proxy DELETE request body could not be read: {error}"),
+                ),
+                &request_ctx,
+            )
+        })?;
+    if !body.is_empty() {
+        return Err(ApiErrorResponse::with_context(
+            AppError::new(
+                ErrorCode::Validation,
+                "remote HTTP proxy DELETE request body must be empty",
+            ),
+            &request_ctx,
+        ));
+    }
+
+    let request_path = format!("/{path}");
+    let matched = remote_http_proxy_registry()
+        .match_route(&module, ModuleHttpMethod::Delete, &request_path)
+        .ok_or_else(|| {
+            ApiErrorResponse::with_context(
+                AppError::new(
+                    ErrorCode::NotFound,
+                    format!("remote HTTP route not found: {module}{request_path}"),
+                ),
+                &request_ctx,
+            )
+        })?;
+
+    ensure_capability(&admin, &matched, &request_ctx)?;
+    let data = forward_delete(&matched, &parts.headers, &request_ctx).await?;
+    Ok(Json(RemoteHttpProxyResponse::from_match(matched, data)))
+}
+
 async fn proxy_body_method(
     method: ModuleHttpMethod,
     admin: AdminActor,
@@ -348,6 +415,21 @@ async fn forward_body_method(
     .await
 }
 
+async fn forward_delete(
+    matched: &RemoteHttpProxyMatch,
+    headers: &HeaderMap,
+    request_ctx: &platform_core::RequestContext,
+) -> Result<Value, ApiErrorResponse> {
+    forward_proxy_request(ProxyForwardRequest {
+        matched,
+        method: ModuleHttpMethod::Delete,
+        headers,
+        request_ctx,
+        body: ProxyRequestBody::Empty,
+    })
+    .await
+}
+
 async fn forward_proxy_request(
     request: ProxyForwardRequest<'_>,
 ) -> Result<Value, ApiErrorResponse> {
@@ -384,6 +466,7 @@ async fn forward_proxy_request(
         ResponseBodyPolicy {
             max_bytes: Some(MAX_PROXY_RESPONSE_BYTES),
             require_json_content_type: true,
+            allow_empty_success: request.method == ModuleHttpMethod::Delete,
         },
     )
     .await
@@ -393,15 +476,20 @@ async fn forward_proxy_request(
             Ok(data)
         }
         Ok(None) => {
-            let app_error = AppError::new(ErrorCode::NotFound, "remote HTTP route not found");
-            record_proxy_call(
-                matched,
-                request_ctx,
-                started_at,
-                Some(remote_status),
-                Some(&app_error),
-            );
-            Err(ApiErrorResponse::with_context(app_error, request_ctx))
+            if request.method == ModuleHttpMethod::Delete && remote_status.is_success() {
+                record_proxy_call(matched, request_ctx, started_at, Some(remote_status), None);
+                Ok(Value::Null)
+            } else {
+                let app_error = AppError::new(ErrorCode::NotFound, "remote HTTP route not found");
+                record_proxy_call(
+                    matched,
+                    request_ctx,
+                    started_at,
+                    Some(remote_status),
+                    Some(&app_error),
+                );
+                Err(ApiErrorResponse::with_context(app_error, request_ctx))
+            }
         }
         Err(error) => {
             record_proxy_call(

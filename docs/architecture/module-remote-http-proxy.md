@@ -3,7 +3,7 @@
 This note specifies the protocol boundary for exposing remote module-owned HTTP
 routes through the host API. The current implementation preserves
 `ModuleManifest::http_routes` as metadata and forwards matched GET, POST, PUT,
-and PATCH requests through a host-owned route. DELETE and streaming remain
+PATCH, and DELETE requests through a host-owned route. Streaming remains
 deferred.
 
 ## Current State
@@ -32,7 +32,7 @@ with `/`, must not be absolute URLs, and must not contain empty, `.`, `..`,
 query, or fragment segments. Valid declarations are exposed as metadata through
 `/admin/data/modules`.
 
-`GET`, `POST`, `PUT`, and `PATCH` public API routes are installed at
+`GET`, `POST`, `PUT`, `PATCH`, and `DELETE` public API routes are installed at
 `/modules/{module}/http/{*path}`. They match the declaration, enforce
 service/system auth plus route capability, and forward the request to the remote
 module without caller credentials. If the remote source has a configured auth
@@ -40,7 +40,8 @@ token, the host uses that token for the remote request. Successful remote
 responses must be JSON (`application/json` or `application/*+json`) and must not
 exceed the current 4 MiB proxy response limit. POST, PUT, and PATCH request
 bodies must be JSON and must not exceed the current 1 MiB proxy request limit.
-DELETE host methods are not mounted yet.
+DELETE request bodies must be empty; DELETE `204 No Content` success responses
+are returned in the proxy envelope with `data = null`.
 
 ## Goals
 
@@ -95,18 +96,18 @@ pattern, and duplicate parameter names should be rejected.
 
 ## Request Policy
 
-The mounted proxy slices support GET requests with JSON responses and POST,
-PUT, and PATCH requests with JSON request/response bodies. DELETE remains
-unmounted.
+The mounted proxy slices support GET requests with JSON responses, POST, PUT,
+and PATCH requests with JSON request/response bodies, and DELETE requests with
+empty request bodies plus JSON or empty success responses.
 
 Request constraints:
 
 - Maximum request body size: host-configured, default 1 MiB.
 - Maximum response body size: host-configured, default 4 MiB.
-- Methods: GET, POST, PUT, and PATCH. DELETE remains deferred until empty-body
-  and status mapping rules are specified.
+- Methods: GET, POST, PUT, PATCH, and DELETE.
 - Content types: GET responses must be JSON; POST, PUT, and PATCH request and
-  response bodies must be JSON.
+  response bodies must be JSON; DELETE success responses must be JSON unless
+  the remote returns `204 No Content` with an empty body.
 - Timeouts: use the remote module source timeout unless a narrower proxy
   timeout is configured.
 
@@ -135,14 +136,13 @@ module token, but it must not forward the caller's bearer token.
 
 ## DELETE Policy
 
-DELETE is intentionally not mounted yet. When it is mounted, it should use the
-same host namespace, route matching, service/system auth, capability
-enforcement, header allowlist, tracing, and configured host-to-remote bearer
-token behavior as the other proxy methods.
+DELETE uses the same host namespace, route matching, service/system auth,
+capability enforcement, header allowlist, tracing, and configured host-to-remote
+bearer token behavior as the other proxy methods.
 
-DELETE request bodies should not be accepted in the first implementation. The
-host should forward an empty DELETE request to the remote module and reject any
-caller request with a non-empty body as `validation_failed`. This keeps DELETE
+DELETE request bodies are not accepted in the first implementation. The host
+forwards an empty DELETE request to the remote module and rejects any caller
+request with a non-empty body as `validation_failed`. This keeps DELETE
 semantics narrow and avoids introducing a second body policy for methods where
 payload support is often ambiguous across clients, caches, and intermediaries.
 
@@ -219,11 +219,11 @@ Each proxied call should produce host-side telemetry:
 Remote module response headers should not be used as trusted telemetry unless
 explicitly allowlisted.
 
-Current GET, POST, PUT, and PATCH proxy calls emit structured host-side tracing
-events for completed and failed forwards with module name, declared path, remote
-path, method, remote status, duration, request/correlation ids, and error
-code/retryability when present. Persisted Runtime Console views for proxy calls
-remain deferred.
+Current GET, POST, PUT, PATCH, and DELETE proxy calls emit structured host-side
+tracing events for completed and failed forwards with module name, declared
+path, remote path, method, remote status, duration, request/correlation ids, and
+error code/retryability when present. Persisted Runtime Console views for proxy
+calls remain deferred.
 
 ## OpenAPI Strategy
 
@@ -246,23 +246,23 @@ OpenAPI fragments after trust, validation, and versioning are specified.
 1. Add a host proxy registry from loaded remote module manifests. Done.
 2. Add route matching for method plus simple path patterns. Done.
 3. Add one static host proxy route under `/modules/{module}/http/{*path}`. Done
-   for GET, POST, PUT, and PATCH.
+   for GET, POST, PUT, PATCH, and DELETE.
 4. Enforce service/system auth and declared capabilities. Done for GET, POST,
-   PUT, and PATCH.
-5. Forward matched GET, POST, PUT, and PATCH requests without caller
+   PUT, PATCH, and DELETE.
+5. Forward matched GET, POST, PUT, PATCH, and DELETE requests without caller
    credentials. Done; configured host-to-remote bearer tokens are used when
    present.
 6. Add request/response size limits and full header allowlists. Done for GET
-   response content-type, POST/PUT/PATCH request/response content-type,
-   request/response size limits, and header allowlists.
+   response content-type, POST/PUT/PATCH request/response content-type, DELETE
+   empty request bodies and JSON or empty success responses, request/response
+   size limits, and header allowlists.
 7. Mount the remaining declared methods: `POST`, `PUT`, `PATCH`, and `DELETE`.
-   Done for POST, PUT, and PATCH; DELETE policy is specified but mounting
-   remains deferred.
+   Done.
 8. Normalize remote errors through the existing platform error model. Done for
-   GET, POST, PUT, and PATCH.
+   GET, POST, PUT, PATCH, and DELETE.
 9. Add telemetry and runtime-console visibility for proxied calls. Done for GET,
-   POST, PUT, and PATCH tracing events; persisted Runtime Console visibility
-   remains deferred.
+   POST, PUT, PATCH, and DELETE tracing events; persisted Runtime Console
+   visibility remains deferred.
 
 Do not implement per-module OpenAPI fragments, streaming, browser credentials,
 or bidirectional admin bridges in the first proxy slice.

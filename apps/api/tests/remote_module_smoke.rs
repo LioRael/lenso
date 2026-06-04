@@ -442,8 +442,56 @@ async fn remote_http_proxy_forwards_declared_put_and_patch_routes() {
             .expect("error message")
             .contains("request content-type was not JSON")
     );
+}
 
-    let delete_response = app
+#[tokio::test]
+async fn remote_http_proxy_forwards_declared_delete_routes() {
+    let _guard = REMOTE_SMOKE_TEST_LOCK.lock().await;
+    let base_url = spawn_remote_module(remote_module_example::router()).await;
+    let app = app_with_remote_module(base_url).await;
+
+    let deleted_response = app
+        .clone()
+        .oneshot(service_json_method(
+            "DELETE",
+            "/modules/remote-crm/http/contacts/contact_1",
+            "dev-service:admin:remote_crm.contacts.read",
+            "application/json",
+            Body::empty(),
+        ))
+        .await
+        .expect("delete request completes");
+    assert_eq!(deleted_response.status(), StatusCode::OK);
+    let deleted = json_body(deleted_response).await;
+    assert_eq!(deleted["status"], "forwarded");
+    assert_eq!(deleted["method"], "DELETE");
+    assert_eq!(deleted["declared_path"], "/contacts/{id}");
+    assert_eq!(deleted["remote_path"], "/contacts/contact_1");
+    assert_eq!(deleted["path_params"]["id"], "contact_1");
+    assert_eq!(deleted["data"]["id"], "contact_1");
+    assert_eq!(deleted["data"]["deleted"], true);
+
+    let purged_response = app
+        .clone()
+        .oneshot(service_json_method(
+            "DELETE",
+            "/modules/remote-crm/http/contacts/contact_1/purge",
+            "dev-service:admin:remote_crm.contacts.read",
+            "application/json",
+            Body::empty(),
+        ))
+        .await
+        .expect("delete 204 request completes");
+    assert_eq!(purged_response.status(), StatusCode::OK);
+    let purged = json_body(purged_response).await;
+    assert_eq!(purged["status"], "forwarded");
+    assert_eq!(purged["method"], "DELETE");
+    assert_eq!(purged["declared_path"], "/contacts/{id}/purge");
+    assert_eq!(purged["remote_path"], "/contacts/contact_1/purge");
+    assert_eq!(purged["path_params"]["id"], "contact_1");
+    assert_eq!(purged["data"], Value::Null);
+
+    let body_rejected = app
         .oneshot(service_json_method(
             "DELETE",
             "/modules/remote-crm/http/contacts/contact_1",
@@ -452,8 +500,16 @@ async fn remote_http_proxy_forwards_declared_put_and_patch_routes() {
             r#"{}"#,
         ))
         .await
-        .expect("delete request completes");
-    assert_eq!(delete_response.status(), StatusCode::METHOD_NOT_ALLOWED);
+        .expect("delete body request completes");
+    assert_eq!(body_rejected.status(), StatusCode::BAD_REQUEST);
+    let body_rejected = json_body(body_rejected).await;
+    assert_eq!(body_rejected["error"]["code"], "validation_failed");
+    assert!(
+        body_rejected["error"]["message"]
+            .as_str()
+            .expect("error message")
+            .contains("DELETE request body must be empty")
+    );
 }
 
 #[tokio::test]
