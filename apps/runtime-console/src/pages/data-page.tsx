@@ -17,6 +17,7 @@ import {
   embeddedIframePolicy,
   type EntitySchema,
   firstDeclarativePage,
+  moduleHttpRouteRows,
   moduleErrorMessage,
   moduleIsLoaded,
   moduleNavItems,
@@ -374,6 +375,7 @@ function ModuleSurfacePanel({
   module: AdminModuleMetadata;
 }) {
   const rows = adminSurfaceMetadataRows(module);
+  const routeRows = moduleHttpRouteRows(module);
   const surfaceLabel = adminSurfaceLabel(module.admin);
   const iframePolicy = embeddedIframePolicy(module.admin);
   return (
@@ -417,7 +419,78 @@ function ModuleSurfacePanel({
           </div>
         ))}
       </dl>
+      <ModuleHttpRoutesTable compact={compact} rows={routeRows} />
     </div>
+  );
+}
+
+function ModuleHttpRoutesTable({
+  compact,
+  rows,
+}: {
+  compact: boolean;
+  rows: ReturnType<typeof moduleHttpRouteRows>;
+}) {
+  if (rows.length === 0) {
+    return (
+      <div className="border border-(--border-subtle) bg-(--background) px-2 py-1.5 text-(--muted)">
+        No remote HTTP routes declared.
+      </div>
+    );
+  }
+
+  return (
+    <section className="min-w-0 border border-(--border-subtle) bg-(--background)">
+      <header className="flex items-center gap-2 border-b border-(--border-subtle) px-2 py-1.5 font-semibold">
+        <span>Remote HTTP Routes</span>
+        <span className="ml-auto border border-(--border-subtle) px-1.5 py-0.5 text-[10px] text-(--secondary)">
+          {rows.length}
+        </span>
+      </header>
+      <div className="overflow-auto">
+        <table className="w-full min-w-[620px] table-fixed">
+          <thead className="bg-(--sidebar) text-[10px] uppercase tracking-wide text-(--muted)">
+            <tr>
+              <th className="w-16 px-2 py-1.5 text-left">method</th>
+              <th className="px-2 py-1.5 text-left">path</th>
+              <th className="px-2 py-1.5 text-left">display</th>
+              {compact ? null : (
+                <th className="px-2 py-1.5 text-left">story</th>
+              )}
+              {compact ? null : (
+                <th className="px-2 py-1.5 text-left">capability</th>
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((route) => (
+              <tr
+                className="border-t border-(--border-subtle) text-[11px]"
+                key={route.key}
+              >
+                <td className="px-2 py-1.5 text-(--accent)">{route.method}</td>
+                <td className="truncate px-2 py-1.5 text-(--foreground)">
+                  {route.path}
+                </td>
+                <td className="truncate px-2 py-1.5 text-(--secondary)">
+                  {route.displayName}
+                </td>
+                {compact ? null : (
+                  <td className="truncate px-2 py-1.5 text-(--secondary)">
+                    {route.storyTitle}
+                  </td>
+                )}
+                {compact ? null : (
+                  <td className="truncate px-2 py-1.5 text-(--muted)">
+                    {route.capability}
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 

@@ -33,6 +33,8 @@ export type ModuleHttpRoute = {
   method: ModuleHttpMethod;
   path: string;
   capability?: string | null;
+  display_name?: string | null;
+  story_title?: string | null;
 };
 
 export type SchemaAdminSurface = AdminSchema & { kind: "schema" };
@@ -148,6 +150,15 @@ export type DetailRow = {
 export type MetadataRow = {
   label: string;
   value: string;
+};
+
+export type ModuleHttpRouteRow = {
+  key: string;
+  method: ModuleHttpMethod;
+  path: string;
+  capability: string;
+  displayName: string;
+  storyTitle: string;
 };
 
 export type EmbeddedIframePolicy =
@@ -303,6 +314,19 @@ export function adminSurfaceMetadataRows(
   }
 
   return rows;
+}
+
+export function moduleHttpRouteRows(
+  module: AdminModuleMetadata
+): ModuleHttpRouteRow[] {
+  return module.http_routes.map((route, index) => ({
+    capability: route.capability ?? "-",
+    displayName: route.display_name ?? "-",
+    key: `${route.method}:${route.path}:${index}`,
+    method: route.method,
+    path: route.path,
+    storyTitle: route.story_title ?? "-",
+  }));
 }
 
 export function embeddedIframePolicy(

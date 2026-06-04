@@ -13,6 +13,7 @@ import {
   type FieldSchema,
   firstDeclarativePage,
   moduleErrorMessage,
+  moduleHttpRouteRows,
   moduleIsLoaded,
   moduleNavItems,
   moduleStatusLabel,
@@ -191,6 +192,32 @@ describe("module status helpers", () => {
       "remote manifest request failed"
     );
     expect(moduleErrorMessage(loadedModule)).toBeNull();
+  });
+
+  test("builds remote HTTP route rows with story display metadata", () => {
+    expect(
+      moduleHttpRouteRows({
+        ...loadedModule,
+        http_routes: [
+          {
+            capability: "remote_crm.contacts.read",
+            display_name: "Fetch Contact",
+            method: "GET",
+            path: "/contacts/{id}",
+            story_title: "Fetch Contact",
+          },
+        ],
+      })
+    ).toEqual([
+      {
+        capability: "remote_crm.contacts.read",
+        displayName: "Fetch Contact",
+        key: "GET:/contacts/{id}:0",
+        method: "GET",
+        path: "/contacts/{id}",
+        storyTitle: "Fetch Contact",
+      },
+    ]);
   });
 
   test("keeps failed empty-schema modules visible in nav", () => {
