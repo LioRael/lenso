@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import type { RuntimeRemoteProxyCall } from "../hooks/use-runtime-queries";
 import {
+  aggregateRemoteProxyCalls,
   filterRemoteProxyCalls,
   flattenRemoteProxyCallPages,
   nextRemoteProxyCallCursor,
@@ -25,6 +26,7 @@ const calls = [
     id: "rpc_b",
     module_name: "remote-billing",
     occurred_at: "2026-06-03T10:05:00.000Z",
+    remote_status: 429,
     retryable: true,
     success: false,
   }),
@@ -35,6 +37,16 @@ const calls = [
     occurred_at: "2026-06-03T09:55:00.000Z",
     success: false,
   }),
+  remoteProxyCall({
+    duration_ms: 900,
+    error_code: "remote_timeout",
+    id: "rpc_d",
+    module_name: "remote-crm",
+    occurred_at: "2026-06-03T09:50:00.000Z",
+    remote_status: null,
+    retryable: true,
+    success: false,
+  }),
 ];
 
 describe("remote proxy calls model", () => {
@@ -43,7 +55,7 @@ describe("remote proxy calls model", () => {
       filterRemoteProxyCalls(calls, { query: "", result: "failed" }).map(
         (call) => call.id
       )
-    ).toEqual(["rpc_b", "rpc_c"]);
+    ).toEqual(["rpc_b", "rpc_c", "rpc_d"]);
   });
 
   test("searches operational identifiers and error fields", () => {
@@ -57,12 +69,41 @@ describe("remote proxy calls model", () => {
 
   test("summarizes result counts and average duration", () => {
     expect(summarizeRemoteProxyCalls(calls)).toEqual({
-      avgDurationMs: 300,
-      failed: 2,
-      retryable: 1,
+      avgDurationMs: 450,
+      failed: 3,
+      p95DurationMs: 900,
+      retryable: 2,
       success: 1,
-      total: 3,
+      total: 4,
     });
+  });
+
+  test("aggregates failure pressure by module", () => {
+    expect(aggregateRemoteProxyCalls(calls, "module", 2)).toEqual([
+      {
+        failed: 2,
+        failureRate: 2 / 3,
+        key: "remote-crm",
+        p95DurationMs: 900,
+        total: 3,
+      },
+      {
+        failed: 1,
+        failureRate: 1,
+        key: "remote-billing",
+        p95DurationMs: 500,
+        total: 1,
+      },
+    ]);
+  });
+
+  test("aggregates by error code and remote status", () => {
+    expect(
+      aggregateRemoteProxyCalls(calls, "error", 3).map((row) => row.key)
+    ).toEqual(["remote_timeout", "remote_http_429", "unknown_error"]);
+    expect(
+      aggregateRemoteProxyCalls(calls, "status", 4).map((row) => row.key)
+    ).toEqual(["no_status", "429", "200"]);
   });
 
   test("deduplicates module names for filter controls", () => {

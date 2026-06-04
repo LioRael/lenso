@@ -14,7 +14,9 @@ import { cn } from "../lib/cn";
 import { time } from "../lib/format";
 import { runtimeConsoleDataSource } from "../lib/http-client";
 import {
+  type RemoteProxyCallAggregate,
   type RemoteProxyCallResultFilter,
+  aggregateRemoteProxyCalls,
   filterRemoteProxyCalls,
   flattenRemoteProxyCallPages,
   nextRemoteProxyCallCursor,
@@ -62,6 +64,18 @@ export function RemoteProxyCallsPage() {
   );
   const modules = useMemo(() => remoteProxyCallModules(calls), [calls]);
   const summary = useMemo(() => summarizeRemoteProxyCalls(calls), [calls]);
+  const moduleAggregates = useMemo(
+    () => aggregateRemoteProxyCalls(calls, "module", 5),
+    [calls]
+  );
+  const errorAggregates = useMemo(
+    () => aggregateRemoteProxyCalls(calls, "error", 5),
+    [calls]
+  );
+  const statusAggregates = useMemo(
+    () => aggregateRemoteProxyCalls(calls, "status", 5),
+    [calls]
+  );
   const [selectedIndex, setSelectedIndex] = useState(0);
   useEffect(() => setSelectedIndex(0), [moduleName, query, result]);
 
@@ -92,7 +106,7 @@ export function RemoteProxyCallsPage() {
         gridTemplateColumns: `minmax(0,1fr) 1px ${remoteProxyCallsLayout.inspectorWidth}px`,
       }}
     >
-      <main className="grid min-h-0 min-w-0 grid-rows-[auto_auto_auto_minmax(0,1fr)] overflow-hidden border-r border-(--border-subtle)">
+      <main className="grid min-h-0 min-w-0 grid-rows-[auto_auto_auto_auto_minmax(0,1fr)] overflow-hidden border-r border-(--border-subtle)">
         <header className="border-b border-(--border-subtle) bg-(--surface) px-3 py-2">
           <div className="flex items-center gap-2">
             <Network className="text-(--accent)" size={14} />
@@ -105,12 +119,13 @@ export function RemoteProxyCallsPage() {
           </div>
         </header>
 
-        <div className="grid border-b border-(--border-subtle) bg-(--surface) md:grid-cols-4">
+        <div className="grid border-b border-(--border-subtle) bg-(--surface) md:grid-cols-5">
           {[
             ["total", summary.total],
             ["success", summary.success],
             ["failed", summary.failed],
             ["avg", formatDuration(summary.avgDurationMs)],
+            ["p95", formatDuration(summary.p95DurationMs)],
           ].map(([label, value]) => (
             <div
               className="grid grid-cols-[minmax(0,1fr)_auto] border-r border-(--border-subtle) px-3 py-2 font-mono text-[10px] last:border-r-0"
@@ -127,6 +142,24 @@ export function RemoteProxyCallsPage() {
               </span>
             </div>
           ))}
+        </div>
+
+        <div className="grid border-b border-(--border-subtle) bg-(--background) lg:grid-cols-3">
+          <AggregatePanel
+            onSelect={(key) => setModuleName(key)}
+            rows={moduleAggregates}
+            title="module"
+          />
+          <AggregatePanel
+            onSelect={(key) => setQuery(key === "success" ? "" : key)}
+            rows={errorAggregates}
+            title="error"
+          />
+          <AggregatePanel
+            onSelect={(key) => setQuery(key)}
+            rows={statusAggregates}
+            title="status"
+          />
         </div>
 
         <div className="flex h-9 items-center gap-2 border-b border-(--border-subtle) bg-(--background) px-3">
@@ -302,6 +335,58 @@ export function RemoteProxyCallsPage() {
   );
 }
 
+function AggregatePanel({
+  onSelect,
+  rows,
+  title,
+}: {
+  onSelect: (key: string) => void;
+  rows: RemoteProxyCallAggregate[];
+  title: string;
+}) {
+  return (
+    <section className="min-w-0 border-r border-(--border-subtle) last:border-r-0">
+      <div className="grid h-7 grid-cols-[minmax(0,1fr)_48px_56px_64px] items-center gap-2 border-b border-(--border-subtle) bg-[color-mix(in_srgb,var(--elevated)_52%,transparent)] px-3 font-mono text-[9px] uppercase tracking-[0.08em] text-(--muted)">
+        <span>{title}</span>
+        <span>fail</span>
+        <span>rate</span>
+        <span>p95</span>
+      </div>
+      <div>
+        {rows.length === 0 ? (
+          <div className="px-3 py-2 font-mono text-[10px] text-(--muted)">
+            empty
+          </div>
+        ) : (
+          rows.map((row) => (
+            <button
+              className="grid h-8 w-full grid-cols-[minmax(0,1fr)_48px_56px_64px] items-center gap-2 border-b border-(--border-subtle) px-3 text-left font-mono text-[10px] hover:bg-(--elevated)"
+              key={row.key}
+              onClick={() => onSelect(row.key)}
+              type="button"
+            >
+              <span className="min-w-0 truncate text-(--foreground)">
+                {row.key}
+              </span>
+              <span
+                className={row.failed > 0 ? "text-[#ef4444]" : "text-(--muted)"}
+              >
+                {row.failed}/{row.total}
+              </span>
+              <span className="text-(--secondary)">
+                {formatPercent(row.failureRate)}
+              </span>
+              <span className="text-(--muted)">
+                {formatDuration(row.p95DurationMs)}
+              </span>
+            </button>
+          ))
+        )}
+      </div>
+    </section>
+  );
+}
+
 function InspectorHeader({ call }: { call: RuntimeRemoteProxyCall | null }) {
   return (
     <header className="border-b border-(--border-subtle) bg-(--surface) px-3 py-2 font-mono">
@@ -431,6 +516,10 @@ function formatDuration(ms: number) {
 
 function formatRemoteStatus(status: number | null | undefined) {
   return status === null || status === undefined ? "-" : String(status);
+}
+
+function formatPercent(value: number) {
+  return `${Math.round(value * 100)}%`;
 }
 
 function errorMessage(error: unknown) {

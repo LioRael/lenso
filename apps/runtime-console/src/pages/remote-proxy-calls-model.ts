@@ -11,6 +11,15 @@ export type RemoteProxyCallSummary = {
   failed: number;
   retryable: number;
   avgDurationMs: number;
+  p95DurationMs: number;
+};
+
+export type RemoteProxyCallAggregate = {
+  key: string;
+  total: number;
+  failed: number;
+  failureRate: number;
+  p95DurationMs: number;
 };
 
 export function remoteProxyCallModules(calls: RuntimeRemoteProxyCall[]) {
@@ -82,7 +91,40 @@ export function summarizeRemoteProxyCalls(
     retryable: calls.filter((call) => call.retryable).length,
     avgDurationMs:
       calls.length === 0 ? 0 : Math.round(totalDuration / calls.length),
+    p95DurationMs: percentileDuration(calls, 0.95),
   };
+}
+
+export function aggregateRemoteProxyCalls(
+  calls: RuntimeRemoteProxyCall[],
+  groupBy: "module" | "error" | "status",
+  limit = 5
+): RemoteProxyCallAggregate[] {
+  const groups = new Map<string, RuntimeRemoteProxyCall[]>();
+  for (const call of calls) {
+    const key = aggregateKey(call, groupBy);
+    groups.set(key, [...(groups.get(key) ?? []), call]);
+  }
+
+  return Array.from(groups.entries())
+    .map(([key, items]) => {
+      const failed = items.filter((call) => !call.success).length;
+      return {
+        key,
+        total: items.length,
+        failed,
+        failureRate: items.length === 0 ? 0 : failed / items.length,
+        p95DurationMs: percentileDuration(items, 0.95),
+      };
+    })
+    .sort(
+      (a, b) =>
+        b.failed - a.failed ||
+        b.p95DurationMs - a.p95DurationMs ||
+        b.total - a.total ||
+        a.key.localeCompare(b.key)
+    )
+    .slice(0, limit);
 }
 
 export function remoteProxyCallResultLabel(call: RuntimeRemoteProxyCall) {
@@ -90,4 +132,31 @@ export function remoteProxyCallResultLabel(call: RuntimeRemoteProxyCall) {
     return "success";
   }
   return call.retryable ? "retryable" : "failed";
+}
+
+function aggregateKey(
+  call: RuntimeRemoteProxyCall,
+  groupBy: "module" | "error" | "status"
+) {
+  if (groupBy === "module") {
+    return call.module_name;
+  }
+  if (groupBy === "error") {
+    return call.error_code ?? (call.success ? "success" : "unknown_error");
+  }
+  return call.remote_status === null || call.remote_status === undefined
+    ? "no_status"
+    : String(call.remote_status);
+}
+
+function percentileDuration(
+  calls: RuntimeRemoteProxyCall[],
+  percentile: number
+) {
+  if (calls.length === 0) {
+    return 0;
+  }
+  const durations = calls.map((call) => call.duration_ms).sort((a, b) => a - b);
+  const index = Math.max(0, Math.ceil(percentile * durations.length) - 1);
+  return durations[index] ?? 0;
 }
