@@ -130,9 +130,9 @@ mod tests {
         let runtime = RuntimeDescriptor {
             module: "test",
             functions: vec![FunctionDefinition {
-                name: "test.noop",
+                name: "test.noop".to_owned(),
                 version: 1,
-                queue: "test",
+                queue: "test".to_owned(),
                 retry_policy: RetryPolicy::default(),
                 handler: Arc::new(NoopHandler),
             }],

@@ -21,6 +21,26 @@ fn can_register_function() {
     assert_eq!(registry.all().count(), 1);
 }
 
+#[test]
+fn can_register_runtime_loaded_function_names() {
+    let mut registry = FunctionRegistry::default();
+    let function_name = format!("{}.{}", "remote_crm", "sync_contact.v1");
+
+    registry.register(FunctionDefinition {
+        name: function_name.clone(),
+        version: 1,
+        queue: "remote-crm".to_owned(),
+        retry_policy: RetryPolicy::default(),
+        handler: Arc::new(Succeeds),
+    });
+
+    let definition = registry
+        .get("remote_crm.sync_contact.v1")
+        .expect("function should register");
+    assert_eq!(definition.name, function_name);
+    assert_eq!(definition.queue, "remote-crm");
+}
+
 #[tokio::test]
 async fn enqueue_creates_function_run_row() {
     let Some(db) = TestDatabase::create().await else {
@@ -283,19 +303,19 @@ impl RuntimeFunction for AlwaysRetryableFailure {
     }
 }
 
-fn test_function(name: &'static str, handler: Arc<dyn RuntimeFunction>) -> FunctionDefinition {
+fn test_function(name: &str, handler: Arc<dyn RuntimeFunction>) -> FunctionDefinition {
     test_function_with_retry_policy(name, RetryPolicy::fixed(3, Duration::ZERO), handler)
 }
 
 fn test_function_with_retry_policy(
-    name: &'static str,
+    name: &str,
     retry_policy: RetryPolicy,
     handler: Arc<dyn RuntimeFunction>,
 ) -> FunctionDefinition {
     FunctionDefinition {
-        name,
+        name: name.to_owned(),
         version: 1,
-        queue: "default",
+        queue: "default".to_owned(),
         retry_policy,
         handler,
     }

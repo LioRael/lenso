@@ -20,9 +20,9 @@ pub fn descriptor() -> RuntimeDescriptor {
         module: "identity",
         queues: vec![Queue::new("identity", 1)],
         functions: vec![FunctionDefinition {
-            name: "identity.cleanup_expired_sessions.v1",
+            name: "identity.cleanup_expired_sessions.v1".to_owned(),
             version: 1,
-            queue: "identity",
+            queue: "identity".to_owned(),
             retry_policy: RetryPolicy::default(),
             handler: Arc::new(CleanupExpiredSessions),
         }],

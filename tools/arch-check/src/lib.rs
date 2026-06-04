@@ -514,7 +514,7 @@ fn runtime_function_names_from_source(source: &str) -> BTreeSet<String> {
             let Some(raw_name) = line.trim().strip_prefix("name:") else {
                 continue;
             };
-            let raw_name = raw_name.trim().trim_end_matches(',').trim();
+            let raw_name = normalize_runtime_function_name_expr(raw_name);
             let name = first_quoted_string(raw_name).or_else(|| constants.get(raw_name).cloned());
             if let Some(name) = name.filter(|name| is_versioned_name(name)) {
                 names.insert(name);
@@ -522,6 +522,15 @@ fn runtime_function_names_from_source(source: &str) -> BTreeSet<String> {
         }
     }
     names
+}
+
+fn normalize_runtime_function_name_expr(source: &str) -> &str {
+    let source = source.trim().trim_end_matches(',').trim();
+    source
+        .strip_suffix(".to_owned()")
+        .or_else(|| source.strip_suffix(".to_string()"))
+        .unwrap_or(source)
+        .trim()
 }
 
 fn string_constants(source: &str) -> BTreeMap<String, String> {

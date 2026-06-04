@@ -31,9 +31,9 @@ pub fn descriptor() -> RuntimeDescriptor {
         module: "notifications",
         queues: vec![Queue::new("notifications", 1)],
         functions: vec![FunctionDefinition {
-            name: SEND_WELCOME_EMAIL,
+            name: SEND_WELCOME_EMAIL.to_owned(),
             version: 1,
-            queue: "notifications",
+            queue: "notifications".to_owned(),
             retry_policy: RetryPolicy::default(),
             handler: Arc::new(SendWelcomeEmail),
         }],

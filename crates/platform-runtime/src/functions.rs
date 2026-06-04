@@ -41,9 +41,9 @@ impl ExecutionLogSeverity {
 
 #[derive(Debug, Clone)]
 pub struct FunctionDefinition {
-    pub name: &'static str,
+    pub name: String,
     pub version: u16,
-    pub queue: &'static str,
+    pub queue: String,
     pub retry_policy: RetryPolicy,
     pub handler: Arc<dyn FunctionHandler>,
 }
@@ -55,7 +55,7 @@ pub struct FunctionRegistry {
 
 impl FunctionRegistry {
     pub fn register(&mut self, function: FunctionDefinition) {
-        self.functions.insert(function.name.to_owned(), function);
+        self.functions.insert(function.name.clone(), function);
     }
 
     pub fn get(&self, name: &str) -> Option<&FunctionDefinition> {
@@ -385,7 +385,7 @@ impl RuntimeWorker {
                 execution_id: ExecutionId(run.id.clone()),
                 function_name: run.function_name.clone(),
                 attempt,
-                queue: definition.queue.to_owned(),
+                queue: definition.queue.clone(),
                 correlation_id: CorrelationId::new(run.correlation_id.clone()),
                 causation_id: run.causation_id.clone(),
                 actor: run.actor.clone(),

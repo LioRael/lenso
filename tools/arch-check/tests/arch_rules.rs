@@ -13,9 +13,9 @@ fn runtime_function_without_contract_fails() {
 
         pub fn descriptor() {
             let _function = FunctionDefinition {
-                name: "identity.cleanup_expired_sessions.v1",
+                name: "identity.cleanup_expired_sessions.v1".to_owned(),
                 version: 1,
-                queue: "identity",
+                queue: "identity".to_owned(),
                 retry_policy: RetryPolicy::default(),
                 handler: Arc::new(CleanupExpiredSessions),
             };
@@ -44,9 +44,9 @@ fn runtime_function_constant_without_contract_fails() {
 
         pub fn descriptor() {
             let _function = FunctionDefinition {
-                name: SEND_WELCOME_EMAIL,
+                name: SEND_WELCOME_EMAIL.to_owned(),
                 version: 1,
-                queue: "notifications",
+                queue: "notifications".to_owned(),
                 retry_policy: RetryPolicy::default(),
                 handler: Arc::new(SendWelcomeEmail),
             };
