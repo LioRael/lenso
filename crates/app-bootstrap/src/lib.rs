@@ -29,6 +29,7 @@ use platform_module_remote::{RemoteHttpProxyRegistry, RemoteModuleConfig, Remote
 use platform_runtime::FunctionRegistry;
 
 struct LinkedModuleEntry {
+    module_name: &'static str,
     manifest: fn() -> ModuleManifest,
     load: fn(&AppContext) -> Module,
     http_binding: Option<fn() -> LinkedBinding>,
@@ -36,11 +37,13 @@ struct LinkedModuleEntry {
 
 const LINKED_MODULE_ENTRIES: &[LinkedModuleEntry] = &[
     LinkedModuleEntry {
+        module_name: "identity",
         manifest: identity::module::manifest,
         load: identity::module::module,
         http_binding: Some(identity::module::binding),
     },
     LinkedModuleEntry {
+        module_name: "notifications",
         manifest: notifications::module::manifest,
         load: notifications::module::module,
         http_binding: None,
@@ -96,12 +99,12 @@ pub struct LinkedHttpRouteOwner {
 
 #[must_use]
 pub fn linked_http_route_owners() -> Vec<LinkedHttpRouteOwner> {
-    linked_http_modules()
-        .into_iter()
-        .filter_map(|module| {
-            let http = module.linked_http?;
+    LINKED_MODULE_ENTRIES
+        .iter()
+        .filter_map(|entry| {
+            let http = entry.http_binding?().http?;
             Some(LinkedHttpRouteOwner {
-                module_name: module.manifest.name,
+                module_name: entry.module_name.to_owned(),
                 public_prefixes: http.public_prefixes,
             })
         })
@@ -336,6 +339,17 @@ pub fn runtime_config_descriptors(ctx: &AppContext) -> Vec<RuntimeConfigDescript
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn linked_module_entry_names_match_manifests() {
+        for entry in LINKED_MODULE_ENTRIES {
+            assert_eq!(
+                entry.module_name,
+                (entry.manifest)().name,
+                "linked module entry name must match ModuleManifest::name"
+            );
+        }
+    }
 
     #[test]
     fn linked_http_route_owners_are_projected_from_modules() {
