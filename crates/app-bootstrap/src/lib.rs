@@ -64,6 +64,24 @@ pub fn module_manifests() -> Vec<ModuleManifest> {
     ]
 }
 
+/// Public HTTP path ownership for linked modules.
+///
+/// Kept beside [`merge_domain_http`] because this crate currently owns the
+/// mapping from concrete linked modules to their Axum/OpenAPI routers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LinkedHttpRouteOwner {
+    pub module_name: &'static str,
+    pub public_prefixes: &'static [&'static str],
+}
+
+#[must_use]
+pub fn linked_http_route_owners() -> &'static [LinkedHttpRouteOwner] {
+    &[LinkedHttpRouteOwner {
+        module_name: "identity",
+        public_prefixes: &["/v1/identity/"],
+    }]
+}
+
 /// Aggregate schema-admin capable modules: those declaring an
 /// `AdminSurface::Schema` AND providing an `AdminDataSource`. Modules without a
 /// schema data source are filtered out — "optional capability" semantics.

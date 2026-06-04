@@ -80,10 +80,22 @@ fn linked_module_openapi_routes_are_declared_in_manifest() {
     let paths = value["paths"].as_object().expect("OpenAPI paths object");
     let manifests = app_bootstrap::module_manifests();
 
-    for manifest in &manifests {
-        let prefix = public_route_prefix(&manifest.name);
+    for owner in app_bootstrap::linked_http_route_owners() {
+        let manifest = manifests
+            .iter()
+            .find(|manifest| manifest.name == owner.module_name)
+            .unwrap_or_else(|| {
+                panic!(
+                    "linked HTTP route owner `{}` has no matching ModuleManifest",
+                    owner.module_name
+                )
+            });
         for (path, operations) in paths {
-            if !path.starts_with(&prefix) {
+            if !owner
+                .public_prefixes
+                .iter()
+                .any(|prefix| path.starts_with(prefix))
+            {
                 continue;
             }
             for method in operations
@@ -109,10 +121,6 @@ fn assert_manifest_declares_route(manifest: &ModuleManifest, path: &str, method:
         path,
         manifest.name
     );
-}
-
-fn public_route_prefix(module_name: &str) -> String {
-    format!("/v1/{module_name}/")
 }
 
 fn openapi_method(method: ModuleHttpMethod) -> &'static str {
