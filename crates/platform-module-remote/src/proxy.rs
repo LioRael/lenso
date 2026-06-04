@@ -11,6 +11,7 @@ pub struct RemoteHttpProxyRegistry {
 pub struct RemoteHttpProxyModule {
     pub module_name: String,
     pub base_url: String,
+    pub timeout_ms: u64,
     pub(crate) auth_token: Option<String>,
     pub routes: Vec<RemoteHttpProxyRoute>,
 }
@@ -26,6 +27,7 @@ pub struct RemoteHttpProxyRoute {
 pub struct RemoteHttpProxyMatch {
     pub module_name: String,
     pub base_url: String,
+    pub(crate) timeout_ms: u64,
     pub(crate) auth_token: Option<String>,
     pub method: ModuleHttpMethod,
     pub declared_path: String,
@@ -60,6 +62,7 @@ impl RemoteHttpProxyRegistry {
                     RemoteHttpProxyModule {
                         module_name: module.manifest.name.clone(),
                         base_url: config.base_url.clone(),
+                        timeout_ms: config.timeout_ms,
                         auth_token: config.auth_token.clone(),
                         routes,
                     },
@@ -96,6 +99,7 @@ impl RemoteHttpProxyRegistry {
             Some(RemoteHttpProxyMatch {
                 module_name: module.module_name.clone(),
                 base_url: module.base_url.clone(),
+                timeout_ms: module.timeout_ms,
                 auth_token: module.auth_token.clone(),
                 method: route.method,
                 declared_path: route.declared_path.clone(),
@@ -251,6 +255,7 @@ mod tests {
             )],
             &[
                 RemoteModuleConfig::new("remote-crm", "http://127.0.0.1:4100/lenso/module/v1")
+                    .with_timeout_ms(250)
                     .with_auth_token("remote-secret"),
             ],
         );
@@ -258,6 +263,7 @@ mod tests {
         let matched = registry
             .match_route("remote-crm", ModuleHttpMethod::Get, "/contacts/contact_1")
             .expect("route should match");
+        assert_eq!(matched.timeout_ms, 250);
         assert_eq!(matched.auth_token.as_deref(), Some("remote-secret"));
     }
 

@@ -34,6 +34,7 @@ async fn manifest_matches_remote_module_protocol() {
     assert!(has_route(routes, "DELETE", "/contacts/{id}/purge"));
     assert!(has_route(routes, "GET", "/proxy-fixtures/text"));
     assert!(has_route(routes, "GET", "/proxy-fixtures/oversized"));
+    assert!(has_route(routes, "GET", "/proxy-fixtures/slow"));
     assert!(
         routes
             .iter()

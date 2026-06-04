@@ -292,6 +292,36 @@ async fn remote_http_proxy_rejects_unsafe_get_responses() {
 }
 
 #[tokio::test]
+async fn remote_http_proxy_uses_configured_remote_timeout() {
+    let _guard = REMOTE_SMOKE_TEST_LOCK.lock().await;
+    let base_url = spawn_remote_module(remote_module_example::router()).await;
+    let app = app_with_remote_modules(vec![RemoteModuleSourceConfig {
+        name: "remote-crm".to_owned(),
+        base_url,
+        auth_token_env: None,
+        timeout_ms: 50,
+    }])
+    .await;
+
+    let response = app
+        .oneshot(service_get(
+            "/modules/remote-crm/http/proxy-fixtures/slow",
+            "dev-service:admin:remote_crm.contacts.read",
+        ))
+        .await
+        .expect("slow fixture request completes");
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    let body = json_body(response).await;
+    assert_eq!(body["error"]["code"], "external_dependency_failure");
+    assert!(
+        body["error"]["message"]
+            .as_str()
+            .expect("error message")
+            .contains("remote HTTP proxy request failed")
+    );
+}
+
+#[tokio::test]
 async fn remote_http_proxy_forwards_declared_post_routes() {
     let _guard = REMOTE_SMOKE_TEST_LOCK.lock().await;
     let base_url = spawn_remote_module(remote_module_example::router()).await;

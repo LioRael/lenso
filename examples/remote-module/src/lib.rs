@@ -16,6 +16,7 @@ use platform_module::{
 
 use serde::Deserialize;
 use serde_json::{Value, json};
+use std::time::Duration;
 
 #[derive(Debug, Clone)]
 struct Contact {
@@ -128,6 +129,10 @@ pub fn router() -> Router {
         .route(
             "/lenso/module/v1/proxy-fixtures/oversized",
             get(get_proxy_fixture_oversized),
+        )
+        .route(
+            "/lenso/module/v1/proxy-fixtures/slow",
+            get(get_proxy_fixture_slow),
         )
         .route("/lenso/module/v1/admin/contacts", get(list_contacts))
         .route("/lenso/module/v1/admin/contacts/{id}", get(get_contact))
@@ -413,6 +418,11 @@ async fn get_proxy_fixture_oversized() -> Json<Value> {
     }))
 }
 
+async fn get_proxy_fixture_slow() -> Json<Value> {
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    Json(json!({ "status": "eventually_ready" }))
+}
+
 async fn list_contacts(Query(query): Query<ListQuery>) -> Json<ListResponse> {
     let start = query
         .cursor
@@ -573,6 +583,11 @@ fn contact_http_routes() -> Vec<ModuleHttpRoute> {
         ModuleHttpRoute {
             method: ModuleHttpMethod::Get,
             path: "/proxy-fixtures/oversized".to_owned(),
+            capability: Some("remote_crm.contacts.read".to_owned()),
+        },
+        ModuleHttpRoute {
+            method: ModuleHttpMethod::Get,
+            path: "/proxy-fixtures/slow".to_owned(),
             capability: Some("remote_crm.contacts.read".to_owned()),
         },
     ]

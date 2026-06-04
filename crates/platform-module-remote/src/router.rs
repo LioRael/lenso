@@ -15,7 +15,7 @@ use serde::{Serialize, Serializer};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::sync::{Arc, OnceLock, RwLock};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use utoipa::ToSchema;
 
 static REMOTE_HTTP_PROXY_REGISTRY: OnceLock<RwLock<Arc<RemoteHttpProxyRegistry>>> = OnceLock::new();
@@ -436,7 +436,18 @@ async fn forward_proxy_request(
     let matched = request.matched;
     let request_ctx = request.request_ctx;
     let started_at = Instant::now();
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_millis(matched.timeout_ms))
+        .build()
+        .map_err(|error| {
+            ApiErrorResponse::with_context(
+                AppError::new(
+                    ErrorCode::Internal,
+                    format!("failed to build remote HTTP proxy client: {error}"),
+                ),
+                request_ctx,
+            )
+        })?;
     let outbound = client.request(reqwest_method(request.method), remote_url(matched));
     let outbound = apply_proxy_request_policy(
         outbound,
@@ -598,6 +609,7 @@ mod tests {
         RemoteHttpProxyMatch {
             module_name: "remote-crm".to_owned(),
             base_url: "http://127.0.0.1:4100/lenso/module/v1/".to_owned(),
+            timeout_ms: 5_000,
             auth_token: None,
             method,
             declared_path: "/contacts/{id}".to_owned(),
