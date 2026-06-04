@@ -8,6 +8,7 @@ use crate::admin::{
 use crate::admin_schema::AdminSchema;
 use crate::http::{ModuleHttpRoute, lint_module_http_routes};
 use crate::module::ModuleSource;
+use crate::runtime::RuntimeSurface;
 use platform_core::StoryDisplayDescriptor;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -38,6 +39,11 @@ pub struct ModuleManifest {
     #[serde(default)]
     pub http_routes: Vec<ModuleHttpRoute>,
 
+    /// Declared runtime behavior. These entries are manifest data only; source
+    /// bindings decide how to register executable behavior.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime: Option<RuntimeSurface>,
+
     /// RESERVED SEAM — capabilities the module declares (perms/tenancy).
     #[serde(default)]
     pub capabilities: Vec<String>,
@@ -53,6 +59,7 @@ impl ModuleManifest {
                 story_display: Vec::new(),
                 admin: None,
                 http_routes: Vec::new(),
+                runtime: None,
                 capabilities: Vec::new(),
             },
         }
@@ -330,6 +337,13 @@ impl ModuleManifestBuilder {
         self
     }
 
+    /// Attach runtime declarations.
+    #[must_use]
+    pub fn runtime(mut self, runtime: RuntimeSurface) -> Self {
+        self.manifest.runtime = Some(runtime);
+        self
+    }
+
     /// Attach a schema-driven admin surface.
     #[must_use]
     pub fn admin(mut self, schema: AdminSchema) -> Self {
@@ -369,6 +383,7 @@ mod tests {
         AdminEmbeddedEntry, AdminEmbeddedRuntime, AdminEmbeddedSurface, AdminSandboxPolicy,
     };
     use crate::{ModuleHttpMethod, ModuleHttpRoute};
+    use crate::{RuntimeFunctionDeclaration, RuntimeRetryPolicyDeclaration, RuntimeSurface};
     use platform_core::{StoryDisplayDescriptor, StoryDisplaySource};
 
     #[test]
@@ -493,6 +508,35 @@ mod tests {
             json.contains(r#""display_name":"List Contacts""#),
             "got {json}"
         );
+        let back: ModuleManifest = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(manifest, back);
+    }
+
+    #[test]
+    fn manifest_with_runtime_functions_round_trips_through_json() {
+        let manifest = ModuleManifest::builder("remote-crm")
+            .runtime(RuntimeSurface {
+                functions: vec![RuntimeFunctionDeclaration {
+                    name: "remote_crm.sync_contact.v1".to_owned(),
+                    version: 1,
+                    queue: "remote-crm".to_owned(),
+                    input_schema: Some("remote_crm.sync_contact.v1".to_owned()),
+                    retry_policy: Some(RuntimeRetryPolicyDeclaration {
+                        max_attempts: 3,
+                        initial_delay_ms: 1000,
+                    }),
+                }],
+            })
+            .build();
+
+        let json = serde_json::to_string(&manifest).expect("serialize");
+
+        assert!(json.contains(r#""runtime""#), "got {json}");
+        assert!(
+            json.contains(r#""name":"remote_crm.sync_contact.v1""#),
+            "got {json}"
+        );
+        assert!(json.contains(r#""queue":"remote-crm""#), "got {json}");
         let back: ModuleManifest = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(manifest, back);
     }

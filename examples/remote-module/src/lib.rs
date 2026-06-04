@@ -11,7 +11,8 @@ use platform_module::{
     AdminDeclarativeComponent, AdminDeclarativePage, AdminDeclarativeSection,
     AdminDeclarativeSurface, AdminEmbeddedEntry, AdminEmbeddedRuntime, AdminEmbeddedSurface,
     AdminMetricBinding, AdminSandboxPolicy, AdminSchema, EntitySchema, FieldSchema, FieldType,
-    ModuleHttpMethod, ModuleHttpRoute, ModuleManifest,
+    ModuleHttpMethod, ModuleHttpRoute, ModuleManifest, RuntimeFunctionDeclaration,
+    RuntimeRetryPolicyDeclaration, RuntimeSurface,
 };
 
 use serde::Deserialize;
@@ -143,6 +144,7 @@ async fn manifest() -> Json<ModuleManifest> {
         ModuleManifest::builder("remote-crm")
             .admin(contacts_schema())
             .http_routes(contact_http_routes())
+            .runtime(runtime_surface())
             .capabilities(vec!["remote_crm.contacts.read".to_owned()])
             .build(),
     )
@@ -196,6 +198,7 @@ async fn declarative_manifest() -> Json<ModuleManifest> {
                 fallback_schema: Some(contacts_schema()),
             })
             .http_routes(contact_http_routes())
+            .runtime(runtime_surface())
             .capabilities(vec!["remote_crm.contacts.read".to_owned()])
             .build(),
     )
@@ -221,6 +224,7 @@ async fn embedded_manifest(headers: HeaderMap) -> Json<ModuleManifest> {
                 fallback_schema: Some(contacts_schema()),
             })
             .http_routes(contact_http_routes())
+            .runtime(runtime_surface())
             .capabilities(vec!["remote_crm.contacts.read".to_owned()])
             .build(),
     )
@@ -611,6 +615,21 @@ fn contact_http_routes() -> Vec<ModuleHttpRoute> {
             story_title: Some("Fetch Slow Fixture".to_owned()),
         },
     ]
+}
+
+fn runtime_surface() -> RuntimeSurface {
+    RuntimeSurface {
+        functions: vec![RuntimeFunctionDeclaration {
+            name: "remote_crm.sync_contact.v1".to_owned(),
+            version: 1,
+            queue: "remote-crm".to_owned(),
+            input_schema: Some("remote_crm.sync_contact.v1".to_owned()),
+            retry_policy: Some(RuntimeRetryPolicyDeclaration {
+                max_attempts: 3,
+                initial_delay_ms: 1000,
+            }),
+        }],
+    }
 }
 
 fn remote_error(

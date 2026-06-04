@@ -40,6 +40,18 @@ async fn manifest() -> Json<Value> {
             "path": "/contacts/{id}",
             "capability": "remote_crm.contacts.read"
         }],
+        "runtime": {
+            "functions": [{
+                "name": "remote_crm.sync_contact.v1",
+                "version": 1,
+                "queue": "remote-crm",
+                "input_schema": "remote_crm.sync_contact.v1",
+                "retry_policy": {
+                    "max_attempts": 3,
+                    "initial_delay_ms": 1000
+                }
+            }]
+        },
         "capabilities": ["remote_crm.contacts.read"]
     }))
 }
@@ -183,6 +195,10 @@ async fn loads_manifest_and_attaches_admin_data_source() {
     assert_eq!(module.manifest.name, "remote-crm");
     assert_eq!(module.manifest.http_routes.len(), 2);
     assert_eq!(module.manifest.http_routes[0].path, "/contacts");
+    let runtime = module.manifest.runtime.as_ref().expect("runtime surface");
+    assert_eq!(runtime.functions.len(), 1);
+    assert_eq!(runtime.functions[0].name, "remote_crm.sync_contact.v1");
+    assert_eq!(runtime.functions[0].queue, "remote-crm");
     assert!(matches!(
         module.manifest.admin,
         Some(AdminSurface::Schema(_))

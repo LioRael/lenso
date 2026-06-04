@@ -17,6 +17,7 @@ mod http;
 mod linked;
 mod manifest;
 mod module;
+mod runtime;
 
 pub use admin::{
     AdminAction, AdminDeclarativeComponent, AdminDeclarativePage, AdminDeclarativeSection,
@@ -38,3 +39,4 @@ pub use manifest::{
     lint_module_manifest, lint_module_manifest_parts,
 };
 pub use module::{Module, ModuleLoadStatus, ModuleSource};
+pub use runtime::{RuntimeFunctionDeclaration, RuntimeRetryPolicyDeclaration, RuntimeSurface};

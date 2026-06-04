@@ -50,8 +50,8 @@ the host and returns one result envelope.
 
 ## Manifest Shape
 
-Function declarations should be pure manifest data. A future manifest field can
-describe functions without embedding handlers:
+Function declarations are pure manifest data. `ModuleManifest::runtime` uses a
+`RuntimeSurface` wrapper to describe functions without embedding handlers:
 
 ```json
 {
@@ -74,11 +74,10 @@ describe functions without embedding handlers:
 
 Open questions for implementation:
 
-- whether function declarations live on `ModuleManifest` directly or under a
-  narrower `RuntimeSurface` type;
 - whether `input_schema` references committed host contracts, remote-provided
   schema fragments, or both;
-- whether queue names are module-local by default and rewritten by the host.
+- whether queue names are module-local by default and rewritten by the host when
+  proxy-backed registration is added.
 
 Do not put executable behavior or transport clients into `ModuleManifest`.
 
@@ -187,9 +186,9 @@ This keeps transactional outbox semantics and operator visibility in the host.
 ## Implementation Order
 
 1. Add manifest data types for remote function declarations without registering
-   them.
+   them. Done.
 2. Extend the remote module protocol fixture and tests to expose those
-   declarations.
+   declarations. Done.
 3. Add a proxy-backed `RuntimeFunction` implementation in
    `platform-module-remote`.
 4. Register remote function handlers into `FunctionRegistry` during module

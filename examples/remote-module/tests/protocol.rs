@@ -49,6 +49,16 @@ async fn manifest_matches_remote_module_protocol() {
         manifest["capabilities"],
         json!(["remote_crm.contacts.read"])
     );
+    let functions = manifest["runtime"]["functions"]
+        .as_array()
+        .expect("runtime functions");
+    assert_eq!(functions.len(), 1);
+    assert_eq!(functions[0]["name"], "remote_crm.sync_contact.v1");
+    assert_eq!(functions[0]["version"], 1);
+    assert_eq!(functions[0]["queue"], "remote-crm");
+    assert_eq!(functions[0]["input_schema"], "remote_crm.sync_contact.v1");
+    assert_eq!(functions[0]["retry_policy"]["max_attempts"], 3);
+    assert_eq!(functions[0]["retry_policy"]["initial_delay_ms"], 1000);
 }
 
 #[tokio::test]
@@ -87,6 +97,10 @@ async fn embedded_manifest_matches_remote_module_protocol() {
     assert_eq!(
         manifest["admin"]["fallback_schema"]["entities"][0]["name"],
         "contacts"
+    );
+    assert_eq!(
+        manifest["runtime"]["functions"][0]["name"],
+        "remote_crm.sync_contact.v1"
     );
 }
 
@@ -132,6 +146,10 @@ async fn declarative_manifest_matches_remote_module_protocol() {
     assert_eq!(
         manifest["admin"]["fallback_schema"]["entities"][0]["name"],
         "contacts"
+    );
+    assert_eq!(
+        manifest["runtime"]["functions"][0]["name"],
+        "remote_crm.sync_contact.v1"
     );
 }
 
