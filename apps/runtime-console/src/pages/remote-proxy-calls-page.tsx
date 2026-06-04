@@ -1,8 +1,9 @@
-import { Network, RefreshCcw, Search, X } from "lucide-react";
+import { ExternalLink, Network, RefreshCcw, Search, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { JsonViewer } from "../components/runtime/json-viewer";
 import { ResizeHandle } from "../components/runtime/resize-handle";
+import { useRuntimeConsole } from "../components/runtime/runtime-console-context";
 import { Button } from "../components/ui/button";
 import { useListKeyboard } from "../hooks/use-list-keyboard";
 import { usePersistedLayout } from "../hooks/use-persisted-layout";
@@ -34,6 +35,7 @@ function clamp(value: number, min: number, max: number) {
 }
 
 export function RemoteProxyCallsPage() {
+  const { openStory } = useRuntimeConsole();
   const [query, setQuery] = useState("");
   const [moduleName, setModuleName] = useState("");
   const [correlationId, setCorrelationId] = useState(() =>
@@ -199,8 +201,16 @@ export function RemoteProxyCallsPage() {
               {correlationId}
             </span>
             <button
+              className="ml-auto flex h-5 items-center gap-1 border border-(--border-subtle) bg-(--elevated) px-1.5 text-(--secondary) hover:text-(--foreground)"
+              onClick={() => openStory(correlationId)}
+              type="button"
+            >
+              <ExternalLink size={11} />
+              Story
+            </button>
+            <button
               aria-label="Clear correlation filter"
-              className="ml-auto grid size-5 place-items-center border border-(--border-subtle) bg-(--elevated) text-(--muted) hover:text-(--foreground)"
+              className="grid size-5 place-items-center border border-(--border-subtle) bg-(--elevated) text-(--muted) hover:text-(--foreground)"
               onClick={() => setCorrelationId("")}
               type="button"
             >
@@ -377,6 +387,15 @@ export function RemoteProxyCallsPage() {
           )}
         </div>
         <div className="flex gap-2 border-t border-(--border-subtle) bg-(--surface) p-2">
+          {selected ? (
+            <Button
+              onClick={() => openStory(selected.correlation_id)}
+              variant="ghost"
+            >
+              <ExternalLink size={13} />
+              Story
+            </Button>
+          ) : null}
           <Button
             disabled={remoteProxyCallsQuery.isRefetching}
             onClick={() => remoteProxyCallsQuery.refetch()}
