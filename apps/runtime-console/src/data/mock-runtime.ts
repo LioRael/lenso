@@ -1058,7 +1058,7 @@ export const queueHealth = [
 export const remoteProxyCalls: RemoteProxyCall[] = [
   {
     capability: "crm.accounts.read",
-    correlation_id: "corr_remote_accounts_lookup",
+    correlation_id: "corr_resource_published_fanout",
     declared_path: "/accounts/:account_id",
     duration_ms: 86,
     error_code: null,
@@ -1080,7 +1080,7 @@ export const remoteProxyCalls: RemoteProxyCall[] = [
   },
   {
     capability: "billing.invoices.create",
-    correlation_id: "corr_remote_invoice_create",
+    correlation_id: "corr_resource_published_fanout",
     declared_path: "/invoices",
     duration_ms: 1420,
     error_code: "remote_http_429",

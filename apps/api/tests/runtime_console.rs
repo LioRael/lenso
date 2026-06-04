@@ -1612,6 +1612,7 @@ async fn service_actor_can_list_remote_proxy_calls() {
         &db.pool,
         RemoteProxyCallFixture {
             id: "rproxy_old_success",
+            correlation_id: "corr_remote_proxy",
             module_name: "remote-crm",
             success: true,
             occurred_at: "2026-05-31T00:00:00Z",
@@ -1623,6 +1624,7 @@ async fn service_actor_can_list_remote_proxy_calls() {
         &db.pool,
         RemoteProxyCallFixture {
             id: "rproxy_recent_failure",
+            correlation_id: "corr_remote_proxy",
             module_name: "remote-crm",
             success: false,
             occurred_at: "2026-05-31T00:01:00Z",
@@ -1634,6 +1636,7 @@ async fn service_actor_can_list_remote_proxy_calls() {
         &db.pool,
         RemoteProxyCallFixture {
             id: "rproxy_other_failure",
+            correlation_id: "corr_other_remote_proxy",
             module_name: "billing-remote",
             success: false,
             occurred_at: "2026-05-31T00:02:00Z",
@@ -1680,9 +1683,10 @@ async fn service_actor_can_list_remote_proxy_calls() {
     assert!(body["page"]["next_created_before"].is_string());
 
     let paged_response = app
+        .clone()
         .oneshot(
             admin_get(
-                "/admin/runtime/remote-proxy-calls?limit=10&created_before=2026-05-31T00:01:30Z",
+                "/admin/runtime/remote-proxy-calls?correlation_id=corr_remote_proxy&limit=10&created_before=2026-05-31T00:01:30Z",
             )
             .with_header("authorization", "Bearer dev-service:admin"),
         )
@@ -1693,6 +1697,25 @@ async fn service_actor_can_list_remote_proxy_calls() {
     assert_eq!(paged["data"].as_array().unwrap().len(), 2);
     assert_eq!(paged["data"][0]["id"], "rproxy_recent_failure");
     assert_eq!(paged["data"][1]["id"], "rproxy_old_success");
+
+    let story_response = app
+        .oneshot(
+            admin_get(
+                "/admin/runtime/remote-proxy-calls?correlation_id=corr_remote_proxy&limit=10",
+            )
+            .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("story-scoped request should complete");
+    assert_eq!(story_response.status(), StatusCode::OK);
+    let story_calls = json_body(story_response).await;
+    assert_eq!(story_calls["data"].as_array().unwrap().len(), 2);
+    assert_eq!(story_calls["data"][0]["id"], "rproxy_recent_failure");
+    assert_eq!(story_calls["data"][1]["id"], "rproxy_old_success");
+    assert_eq!(
+        story_calls["data"][0]["correlation_id"],
+        "corr_remote_proxy"
+    );
 
     db.cleanup().await;
 }
@@ -2213,6 +2236,7 @@ fn telemetry_span_at(
 #[derive(Debug, Clone, Copy)]
 struct RemoteProxyCallFixture {
     id: &'static str,
+    correlation_id: &'static str,
     module_name: &'static str,
     success: bool,
     occurred_at: &'static str,
@@ -2242,7 +2266,7 @@ async fn insert_remote_proxy_call(pool: &platform_core::DbPool, fixture: RemoteP
             error_details,
             occurred_at
         )
-        values ($1, $2, 'GET', '/contacts/{id}', '/contacts/contact_1', 'remote_crm.contacts.read', $3, 125, $4, $5, true, $6, 'corr_remote_proxy', 'trace_remote_proxy', 'span_remote_proxy', $7, $8, $9)
+        values ($1, $2, 'GET', '/contacts/{id}', '/contacts/contact_1', 'remote_crm.contacts.read', $3, 125, $4, $5, true, $6, $7, 'trace_remote_proxy', 'span_remote_proxy', $8, $9, $10)
         "#,
     )
     .bind(fixture.id)
@@ -2251,6 +2275,7 @@ async fn insert_remote_proxy_call(pool: &platform_core::DbPool, fixture: RemoteP
     .bind(fixture.success)
     .bind(fixture.error_code)
     .bind(format!("req_{}", fixture.id))
+    .bind(fixture.correlation_id)
     .bind(json!({ "id": "contact_1" }))
     .bind(if fixture.success {
         json!([])

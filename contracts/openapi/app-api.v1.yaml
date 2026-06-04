@@ -1305,6 +1305,13 @@ paths:
           type:
           - string
           - 'null'
+      - name: correlation_id
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
       - name: success
         in: query
         required: false

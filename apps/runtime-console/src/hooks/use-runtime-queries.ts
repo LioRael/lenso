@@ -77,6 +77,7 @@ export type RuntimeSummaryStatus = "healthy" | "degraded" | "failing";
 
 export type RemoteProxyCallFilters = {
   createdBefore?: string;
+  correlationId?: string;
   moduleName?: string;
   success?: boolean;
   limit?: number;
@@ -503,6 +504,10 @@ async function fetchRemoteProxyCalls(
   if (moduleName) {
     searchParams.module_name = moduleName;
   }
+  const filterCorrelationId = filters.correlationId?.trim();
+  if (filterCorrelationId) {
+    searchParams.correlation_id = filterCorrelationId;
+  }
   if (filters.createdBefore) {
     searchParams.created_before = filters.createdBefore;
   }
@@ -522,11 +527,22 @@ async function fetchRemoteProxyCalls(
 function filterMockRemoteProxyCalls(
   filters: RemoteProxyCallFilters
 ): RuntimeRemoteProxyCallPage {
+  return filterRemoteProxyCallsForQuery(remoteProxyCalls, filters);
+}
+
+export function filterRemoteProxyCallsForQuery(
+  calls: AdminRemoteProxyCallItem[],
+  filters: RemoteProxyCallFilters
+): RuntimeRemoteProxyCallPage {
   const moduleName = filters.moduleName?.trim().toLowerCase();
+  const filterCorrelationId = filters.correlationId?.trim();
   const limit = filters.limit ?? 100;
-  const data = remoteProxyCalls
+  const data = calls
     .filter((call) =>
       moduleName ? call.module_name.toLowerCase() === moduleName : true
+    )
+    .filter((call) =>
+      filterCorrelationId ? call.correlation_id === filterCorrelationId : true
     )
     .filter((call) =>
       filters.success === undefined ? true : call.success === filters.success

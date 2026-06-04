@@ -1,4 +1,5 @@
 import { ArrowRight, Copy, RotateCcw, X } from "lucide-react";
+import { useState } from "react";
 
 import type {
   RuntimeStory,
@@ -12,7 +13,9 @@ import {
   useExecutionLogs,
   useExecutionPayload,
   useExecutionTechnicalOperations,
+  useRemoteProxyCalls,
   useStoryTechnicalOperations,
+  type RuntimeRemoteProxyCall,
 } from "../../hooks/use-runtime-queries";
 import { cn } from "../../lib/cn";
 import { formatRuntimeDuration, serviceColor } from "../../lib/runtime-style";
@@ -225,6 +228,7 @@ function InspectorBody({
     return (
       <div className="font-mono text-xs">
         <SummaryCard node={node} story={story} />
+        <StoryRemoteCallsPanel story={story} />
         <KeyValueTable
           rows={[
             ["display name", node.name],
@@ -328,6 +332,98 @@ function InspectorBody({
       story={story}
       storyOperations={storyOperationsQuery.data ?? []}
     />
+  );
+}
+
+function StoryRemoteCallsPanel({ story }: { story: RuntimeStory }) {
+  const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
+  const remoteCallsQuery = useRemoteProxyCalls({
+    correlationId: story.correlationId,
+    limit: 8,
+  });
+  const calls = remoteCallsQuery.data?.pages.flatMap((page) => page.data) ?? [];
+  const selectedCall = calls.find((call) => call.id === selectedCallId) ?? null;
+
+  if (remoteCallsQuery.isLoading) {
+    return <EmptyRows label="Loading story remote calls..." />;
+  }
+  if (remoteCallsQuery.isError) {
+    return (
+      <EmptyRows
+        label={`Story remote calls could not be loaded. ${errorMessage(remoteCallsQuery.error)}`}
+      />
+    );
+  }
+  if (calls.length === 0) {
+    return <EmptyRows label="No remote module calls recorded for this story" />;
+  }
+
+  return (
+    <section className="border-b border-(--border-subtle)">
+      <div className="flex items-center gap-2 bg-(--sidebar) px-3 py-1.5 font-mono text-[11px] text-(--muted)">
+        <span>Remote Calls</span>
+        <span className="rounded-xs border border-(--border-subtle) bg-(--background) px-1.5 py-0.5 text-[10px] text-(--muted)">
+          {calls.length}
+        </span>
+      </div>
+      <div className="grid h-7 grid-cols-[74px_128px_minmax(180px,1fr)_56px_64px_74px] items-center gap-2 border-t border-(--border-subtle) bg-[color-mix(in_srgb,var(--elevated)_52%,transparent)] px-3 font-mono text-[9px] uppercase tracking-[0.08em] text-(--muted)">
+        <span>result</span>
+        <span>module</span>
+        <span>route</span>
+        <span>status</span>
+        <span>duration</span>
+        <span>time</span>
+      </div>
+      {calls.map((call) => (
+        <button
+          className="grid min-h-9 w-full grid-cols-[74px_128px_minmax(180px,1fr)_56px_64px_74px] items-center gap-2 border-t border-(--border-subtle) px-3 text-left font-mono text-[10px] hover:bg-(--elevated)"
+          key={call.id}
+          onClick={() =>
+            setSelectedCallId((current) =>
+              current === call.id ? null : call.id
+            )
+          }
+          type="button"
+        >
+          <span className={call.success ? "text-[#22c55e]" : "text-[#ef4444]"}>
+            {call.success ? "success" : "failed"}
+          </span>
+          <span className="truncate text-(--foreground)">
+            {call.module_name}
+          </span>
+          <span className="truncate text-(--secondary)">
+            {call.method} {call.declared_path}
+          </span>
+          <span className="text-(--muted)">{formatRemoteStatus(call)}</span>
+          <span className="text-(--muted)">
+            {formatRuntimeDuration(call.duration_ms)}
+          </span>
+          <span className="text-right text-(--muted)">
+            {formatStoryCallTime(call.occurred_at)}
+          </span>
+        </button>
+      ))}
+      {selectedCall ? <StoryRemoteCallDetail call={selectedCall} /> : null}
+    </section>
+  );
+}
+
+function StoryRemoteCallDetail({ call }: { call: RuntimeRemoteProxyCall }) {
+  return (
+    <div className="border-t border-(--border-subtle)">
+      <KeyValueTable
+        rows={[
+          ["request", call.request_id],
+          ["trace", call.trace_id ?? "-"],
+          ["span", call.span_id ?? "-"],
+          ["remote path", call.remote_path],
+          ["capability", call.capability ?? "-"],
+          ["error code", call.error_code ?? "-"],
+        ]}
+      />
+      <JsonViewer title="path params" value={call.path_params} />
+      <JsonViewer title="error details" value={call.error_details} />
+    </div>
   );
 }
 
@@ -795,6 +891,21 @@ function typeLabel(node: ExecutionNode) {
 
 function parentCount(story: RuntimeStory, node: ExecutionNode) {
   return story.nodes.filter((item) => item.id === node.parentId).length;
+}
+
+function formatRemoteStatus(call: RuntimeRemoteProxyCall) {
+  return call.remote_status === null || call.remote_status === undefined
+    ? "-"
+    : String(call.remote_status);
+}
+
+function formatStoryCallTime(value: string) {
+  return new Intl.DateTimeFormat("en", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(new Date(value));
 }
 
 function childCount(story: RuntimeStory, node: ExecutionNode) {

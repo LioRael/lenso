@@ -22,6 +22,7 @@ pub struct FunctionRunQuery {
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct RemoteProxyCallQuery {
     pub module_name: Option<String>,
+    pub correlation_id: Option<String>,
     pub success: Option<bool>,
     pub limit: Option<i64>,
     pub created_before: Option<DateTime<Utc>>,

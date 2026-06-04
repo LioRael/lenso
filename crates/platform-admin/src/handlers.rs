@@ -1052,13 +1052,15 @@ pub(crate) async fn list_remote_proxy_calls(
         from platform.remote_http_proxy_calls
         where ($1::text is null or module_name = $1)
           and ($2::boolean is null or success = $2)
-          and ($3::timestamptz is null or occurred_at < $3)
+          and ($3::text is null or correlation_id = $3)
+          and ($4::timestamptz is null or occurred_at < $4)
         order by occurred_at desc, id desc
-        limit $4
+        limit $5
         "#,
     )
     .bind(query.module_name)
     .bind(query.success)
+    .bind(query.correlation_id)
     .bind(query.created_before)
     .bind(limit)
     .fetch_all(&ctx.db)
