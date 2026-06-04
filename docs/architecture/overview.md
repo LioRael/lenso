@@ -43,6 +43,25 @@ A thin composition root, `app-bootstrap`, sits above the service kit. It is the 
 
 Configured remote modules are loaded at startup through `platform-module-remote`. The current Remote slices support manifest loading, declared HTTP route metadata, schema-admin reads, admin surface metadata, and host-owned HTTP proxying for declared GET, POST, PUT, PATCH, and DELETE routes. Route proxying is specified separately in `docs/architecture/module-remote-http-proxy.md`. Runtime execution, event handling, and marketplace trust are separate future specs.
 
+The current remote-module checkpoint is intentionally narrow but complete for
+operator-visible HTTP proxying:
+
+- Remote manifests are loaded as the same `ModuleManifest` data contract used by
+  linked modules.
+- Remote schema-admin data can be read through `/admin/data/*` when the module
+  exposes `AdminSurface::Schema` and protocol-backed records.
+- Remote admin metadata can expose schema, declarative custom, or embedded
+  custom surfaces; the Runtime Console has read-only examples for schema,
+  host-rendered declarative sections, and sandboxed iframe embedded surfaces.
+- Declared remote HTTP routes are proxied under
+  `/modules/{module}/http/{*path}` with host-owned auth, capability checks,
+  request/response limits, header policy, error normalization, persisted call
+  history, Runtime Story nodes, Technical Operations rows, and Remote Calls
+  navigation.
+- Remote runtime function execution, remote event handlers, admin actions,
+  embedded host bridges, JavaScript bundle loading, Wasm execution, streaming,
+  per-module OpenAPI fragments, and marketplace install trust remain deferred.
+
 The service kit should stay stable and small. It exists to remove boilerplate, not to own business behavior.
 
 ## Runtime
