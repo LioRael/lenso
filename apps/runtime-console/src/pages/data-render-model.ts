@@ -190,9 +190,11 @@ export type StoryDisplayRow = {
 
 export type ModuleRegistrySourceFilter = "all" | ModuleSource;
 export type ModuleRegistryStatusFilter = "all" | ModuleStatus;
+export type ModuleRegistryRouteFilter = "all" | ModuleRouteCheckSeverity;
 
 export type ModuleRegistryFilters = {
   query: string;
+  route: ModuleRegistryRouteFilter;
   source: ModuleRegistrySourceFilter;
   status: ModuleRegistryStatusFilter;
 };
@@ -203,6 +205,8 @@ export type ModuleRegistrySummary = {
   remote: number;
   loaded: number;
   error: number;
+  route_warning: number;
+  route_error: number;
 };
 
 export type ModuleRouteCheckSeverity = "ok" | "warning" | "error";
@@ -339,9 +343,24 @@ export function moduleRegistrySummary(
       summary.total += 1;
       summary[module.source] += 1;
       summary[module.status] += 1;
+      const routeSeverity = moduleRouteHealth(module);
+      if (routeSeverity === "warning") {
+        summary.route_warning += 1;
+      }
+      if (routeSeverity === "error") {
+        summary.route_error += 1;
+      }
       return summary;
     },
-    { error: 0, linked: 0, loaded: 0, remote: 0, total: 0 }
+    {
+      error: 0,
+      linked: 0,
+      loaded: 0,
+      remote: 0,
+      route_error: 0,
+      route_warning: 0,
+      total: 0,
+    }
   );
 }
 
@@ -355,6 +374,12 @@ export function filterModuleRegistry(
       return false;
     }
     if (filters.status !== "all" && module.status !== filters.status) {
+      return false;
+    }
+    if (
+      filters.route !== "all" &&
+      moduleRouteHealth(module) !== filters.route
+    ) {
       return false;
     }
     if (query.length === 0) {
@@ -383,6 +408,11 @@ function moduleRegistrySearchText(module: AdminModuleMetadata): string {
       descriptor.display_name,
       descriptor.story_title ?? "",
       storyDisplaySourceLabel(descriptor.source),
+    ]),
+    ...moduleRouteChecks(module).flatMap((check) => [
+      check.severity,
+      check.subject,
+      check.message,
     ]),
   ];
   return parts.join(" ").toLowerCase();
@@ -539,6 +569,19 @@ export function moduleRouteChecks(
     });
   }
   return checks;
+}
+
+export function moduleRouteHealth(
+  module: AdminModuleMetadata
+): ModuleRouteCheckSeverity {
+  const checks = moduleRouteChecks(module);
+  if (checks.some((check) => check.severity === "error")) {
+    return "error";
+  }
+  if (checks.some((check) => check.severity === "warning")) {
+    return "warning";
+  }
+  return "ok";
 }
 
 function routeIdentity(route: ModuleHttpRoute): string {

@@ -19,6 +19,7 @@ import {
   moduleNavItems,
   moduleRegistrySummary,
   moduleRouteChecks,
+  moduleRouteHealth,
   moduleStatusLabel,
   recordId,
   renderCell,
@@ -381,6 +382,8 @@ describe("module status helpers", () => {
       linked: 1,
       loaded: 1,
       remote: 1,
+      route_error: 1,
+      route_warning: 0,
       total: 2,
     });
   });
@@ -418,6 +421,7 @@ describe("module status helpers", () => {
     expect(
       filterModuleRegistry([loadedModule, errorModule, crmModule], {
         query: "",
+        route: "all",
         source: "remote",
         status: "loaded",
       }).map((module) => module.module_name)
@@ -426,6 +430,7 @@ describe("module status helpers", () => {
     expect(
       filterModuleRegistry([loadedModule, errorModule, crmModule], {
         query: "contacts.read",
+        route: "all",
         source: "all",
         status: "all",
       }).map((module) => module.module_name)
@@ -434,26 +439,36 @@ describe("module status helpers", () => {
     expect(
       filterModuleRegistry([loadedModule, errorModule, crmModule], {
         query: "manifest request",
+        route: "all",
         source: "all",
         status: "error",
       }).map((module) => module.module_name)
     ).toEqual(["remote-crm"]);
+
+    expect(
+      filterModuleRegistry([loadedModule, errorModule, crmModule], {
+        query: "",
+        route: "warning",
+        source: "all",
+        status: "all",
+      }).map((module) => module.module_name)
+    ).toEqual([]);
   });
 
   test("reports healthy route declarations", () => {
-    expect(
-      moduleRouteChecks({
-        ...loadedModule,
-        http_routes: [
-          {
-            display_name: "Create User Request",
-            method: "POST",
-            path: "/v1/identity/users",
-            story_title: "User Registration",
-          },
-        ],
-      })
-    ).toEqual([
+    const healthyModule = {
+      ...loadedModule,
+      http_routes: [
+        {
+          display_name: "Create User Request",
+          method: "POST" as const,
+          path: "/v1/identity/users",
+          story_title: "User Registration",
+        },
+      ],
+    };
+
+    expect(moduleRouteChecks(healthyModule)).toEqual([
       {
         key: "routes-complete",
         message: "Declared routes include display and story metadata.",
@@ -461,26 +476,27 @@ describe("module status helpers", () => {
         subject: "routes",
       },
     ]);
+    expect(moduleRouteHealth(healthyModule)).toBe("ok");
   });
 
   test("reports route declaration quality issues", () => {
-    expect(
-      moduleRouteChecks({
-        ...loadedModule,
-        source: "remote",
-        http_routes: [
-          {
-            method: "GET",
-            path: "/contacts/{id}",
-          },
-          {
-            capability: "remote_crm.contacts.read",
-            method: "GET",
-            path: "/contacts/{id}",
-          },
-        ],
-      })
-    ).toEqual([
+    const issueModule = moduleMetadata({
+      ...loadedModule,
+      source: "remote",
+      http_routes: [
+        {
+          method: "GET",
+          path: "/contacts/{id}",
+        },
+        {
+          capability: "remote_crm.contacts.read",
+          method: "GET",
+          path: "/contacts/{id}",
+        },
+      ],
+    });
+
+    expect(moduleRouteChecks(issueModule)).toEqual([
       {
         key: "duplicate:GET /contacts/{id}",
         message: "2 routes declare the same method and path.",
@@ -518,6 +534,15 @@ describe("module status helpers", () => {
         subject: "GET /contacts/{id}",
       },
     ]);
+    expect(moduleRouteHealth(issueModule)).toBe("error");
+    expect(
+      filterModuleRegistry([loadedModule, issueModule], {
+        query: "missing story",
+        route: "error",
+        source: "all",
+        status: "all",
+      }).map((module) => module.module_name)
+    ).toEqual(["identity"]);
   });
 
   test("reports module load and empty route states", () => {

@@ -27,6 +27,7 @@ import {
   moduleIsLoaded,
   moduleRegistrySummary,
   moduleRouteChecks,
+  moduleRouteHealth,
   moduleStatusLabel,
   storyDisplayRows,
 } from "./data-render-model";
@@ -67,6 +68,7 @@ function ModulesContent() {
   );
   const [filters, setFilters] = useState<ModuleRegistryFilters>({
     query: "",
+    route: "all",
     source: "all",
     status: "all",
   });
@@ -161,7 +163,8 @@ function ModulesContent() {
                   </span>
                   <span className="block truncate text-[10px] text-(--muted)">
                     {module.source} / {adminSurfaceLabel(module.admin)} /{" "}
-                    {moduleStatusLabel(module)}
+                    {moduleStatusLabel(module)} / route{" "}
+                    {moduleRouteHealth(module)}
                   </span>
                 </button>
               );
@@ -196,8 +199,8 @@ function ModuleRegistryControls({
         <Counter label="total" value={summary.total} />
         <Counter label="linked" value={summary.linked} />
         <Counter label="remote" value={summary.remote} />
-        <Counter label="loaded" value={summary.loaded} />
-        <Counter label="error" value={summary.error} tone="error" />
+        <Counter label="route warn" value={summary.route_warning} />
+        <Counter label="route err" value={summary.route_error} tone="error" />
       </div>
       <input
         aria-label="Search module registry"
@@ -209,7 +212,7 @@ function ModuleRegistryControls({
         type="search"
         value={filters.query}
       />
-      <div className="grid grid-cols-2 gap-1">
+      <div className="grid grid-cols-3 gap-1">
         <select
           aria-label="Filter modules by source"
           className="h-7 border border-(--border-subtle) bg-(--background) px-2 text-[11px] text-(--foreground) outline-none focus:border-(--accent)"
@@ -241,6 +244,23 @@ function ModuleRegistryControls({
           <option value="all">all status</option>
           <option value="loaded">loaded</option>
           <option value="error">error</option>
+        </select>
+        <select
+          aria-label="Filter modules by route checks"
+          className="h-7 border border-(--border-subtle) bg-(--background) px-2 text-[11px] text-(--foreground) outline-none focus:border-(--accent)"
+          onChange={(event) =>
+            onChange({
+              ...filters,
+              route: event.currentTarget
+                .value as ModuleRegistryFilters["route"],
+            })
+          }
+          value={filters.route}
+        >
+          <option value="all">all routes</option>
+          <option value="ok">route ok</option>
+          <option value="warning">route warn</option>
+          <option value="error">route error</option>
         </select>
       </div>
     </div>
