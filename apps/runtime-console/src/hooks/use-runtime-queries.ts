@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type {
   AdminFunctionRunListResponse,
+  AdminRemoteProxyCallItem,
+  AdminRemoteProxyCallListResponse,
   AdminRuntimeFunctionRunItem,
   AdminRuntimeOutboxItem,
   AdminRuntimeSummaryItem as ApiRuntimeSummaryItem,
@@ -17,6 +19,8 @@ import {
   functionRuns,
   queueHealth,
   type RuntimeEvent,
+  type RemoteProxyCall,
+  remoteProxyCalls,
   runtimeEvents,
   type TimelineItem,
   type TechnicalOperation,
@@ -61,9 +65,19 @@ export const runtimeQueryKeys = {
   executionLogs: (id: string) => ["runtime", "executions", id, "logs"] as const,
   stories: ["runtime", "stories"] as const,
   deadLetters: ["runtime", "dead-letters"] as const,
+  remoteProxyCalls: (filters: RemoteProxyCallFilters) =>
+    ["runtime", "remote-proxy-calls", filters] as const,
 };
 
 export type RuntimeSummaryStatus = "healthy" | "degraded" | "failing";
+
+export type RemoteProxyCallFilters = {
+  moduleName?: string;
+  success?: boolean;
+  limit?: number;
+};
+
+export type { AdminRemoteProxyCallItem as RuntimeRemoteProxyCall };
 
 export type RuntimeSummaryItem = {
   type: "outbox_event" | "function_run" | "http_request";
@@ -181,6 +195,16 @@ export function useRuntimeStories() {
   return useQuery({
     queryKey: runtimeQueryKeys.stories,
     queryFn: async () => (isApiMode() ? fetchRuntimeStories() : runtimeStories),
+  });
+}
+
+export function useRemoteProxyCalls(filters: RemoteProxyCallFilters = {}) {
+  return useQuery({
+    queryKey: runtimeQueryKeys.remoteProxyCalls(filters),
+    queryFn: async () =>
+      isApiMode()
+        ? fetchRemoteProxyCalls(filters)
+        : filterMockRemoteProxyCalls(filters),
   });
 }
 
@@ -448,6 +472,42 @@ async function fetchRuntimeStories(): Promise<RuntimeStory[]> {
   );
 
   return details;
+}
+
+async function fetchRemoteProxyCalls(
+  filters: RemoteProxyCallFilters
+): Promise<AdminRemoteProxyCallItem[]> {
+  const searchParams: Record<string, string> = {};
+  const moduleName = filters.moduleName?.trim();
+  if (moduleName) {
+    searchParams.module_name = moduleName;
+  }
+  if (filters.success !== undefined) {
+    searchParams.success = String(filters.success);
+  }
+  if (filters.limit !== undefined) {
+    searchParams.limit = String(filters.limit);
+  }
+
+  const response = await httpClient
+    .get("admin/runtime/remote-proxy-calls", { searchParams })
+    .json<AdminRemoteProxyCallListResponse>();
+  return response.data;
+}
+
+function filterMockRemoteProxyCalls(
+  filters: RemoteProxyCallFilters
+): RemoteProxyCall[] {
+  const moduleName = filters.moduleName?.trim().toLowerCase();
+  const limit = filters.limit ?? 100;
+  return remoteProxyCalls
+    .filter((call) =>
+      moduleName ? call.module_name.toLowerCase() === moduleName : true
+    )
+    .filter((call) =>
+      filters.success === undefined ? true : call.success === filters.success
+    )
+    .slice(0, limit);
 }
 
 async function fetchRuntimeStory(

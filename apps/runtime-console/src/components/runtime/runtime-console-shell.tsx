@@ -8,6 +8,7 @@ import {
   Database,
   Inbox,
   Moon,
+  Network,
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
@@ -35,6 +36,7 @@ const primaryNavItems = [
   { to: "/overview", label: "Overview", icon: Activity },
   { to: "/runtime/stories", label: "Stories", icon: Workflow },
   { to: "/dead-letters", label: "Dead Letters", icon: TriangleAlert },
+  { to: "/remote-proxy-calls", label: "Remote Calls", icon: Network },
   { to: "/queues", label: "Queues", icon: Inbox },
   { to: "/data", label: "Data", icon: Database },
 ] as const;

@@ -13,6 +13,7 @@ import { DataPage } from "../pages/data-page";
 import { DeadLettersPage } from "../pages/dead-letters-page";
 import { OverviewPage } from "../pages/overview-page";
 import { QueuesPage } from "../pages/queues-page";
+import { RemoteProxyCallsPage } from "../pages/remote-proxy-calls-page";
 import { RuntimeStoriesPage } from "../pages/runtime-stories-page";
 
 const rootRoute = createRootRoute({
@@ -83,6 +84,12 @@ const deadLettersRoute = createRoute({
   component: DeadLettersPage,
 });
 
+const remoteProxyCallsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/remote-proxy-calls",
+  component: RemoteProxyCallsPage,
+});
+
 const configRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/config",
@@ -142,6 +149,7 @@ const routeTree = rootRoute.addChildren([
   functionsRoute,
   timelineRoute,
   deadLettersRoute,
+  remoteProxyCallsRoute,
   createRoute({
     getParentRoute: () => rootRoute,
     path: "/queues",

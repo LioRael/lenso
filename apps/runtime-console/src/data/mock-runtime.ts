@@ -176,6 +176,27 @@ export type TechnicalOperation = {
   source: "otel";
 };
 
+export type RemoteProxyCall = {
+  capability?: string | null;
+  correlation_id: string;
+  declared_path: string;
+  duration_ms: number;
+  error_code?: string | null;
+  error_details: unknown;
+  id: string;
+  method: string;
+  module_name: string;
+  occurred_at: string;
+  path_params: unknown;
+  remote_path: string;
+  remote_status?: number | null;
+  request_id: string;
+  retryable: boolean;
+  span_id?: string | null;
+  success: boolean;
+  trace_id?: string | null;
+};
+
 export const correlationId = "corr_01HX9A7K2R_RUNTIME";
 
 export const runtimeStories: RuntimeStory[] = [
@@ -1031,6 +1052,102 @@ export const queueHealth = [
     failed: 1,
     dead: 1,
     oldest: "12s",
+  },
+];
+
+export const remoteProxyCalls: RemoteProxyCall[] = [
+  {
+    capability: "crm.accounts.read",
+    correlation_id: "corr_remote_accounts_lookup",
+    declared_path: "/accounts/:account_id",
+    duration_ms: 86,
+    error_code: null,
+    error_details: null,
+    id: "rpc_01J2REMOTE_OK_ACCOUNTS",
+    method: "GET",
+    module_name: "remote-crm",
+    occurred_at: "2026-06-03T10:12:04.120Z",
+    path_params: {
+      account_id: "acct_01J2A9",
+    },
+    remote_path: "/v1/accounts/acct_01J2A9",
+    remote_status: 200,
+    request_id: "req_remote_accounts_lookup",
+    retryable: false,
+    span_id: "span_remote_accounts_lookup",
+    success: true,
+    trace_id: "trace_remote_accounts_lookup",
+  },
+  {
+    capability: "billing.invoices.create",
+    correlation_id: "corr_remote_invoice_create",
+    declared_path: "/invoices",
+    duration_ms: 1420,
+    error_code: "remote_http_429",
+    error_details: {
+      message: "remote module rate limited the request",
+      retry_after_seconds: 45,
+      upstream: "billing-sandbox",
+    },
+    id: "rpc_01J2REMOTE_FAIL_BILLING",
+    method: "POST",
+    module_name: "remote-billing",
+    occurred_at: "2026-06-03T10:08:41.880Z",
+    path_params: {},
+    remote_path: "/api/invoices",
+    remote_status: 429,
+    request_id: "req_remote_invoice_create",
+    retryable: true,
+    span_id: "span_remote_invoice_create",
+    success: false,
+    trace_id: "trace_remote_invoice_create",
+  },
+  {
+    capability: "fulfillment.shipments.read",
+    correlation_id: "corr_remote_shipment_detail",
+    declared_path: "/shipments/:shipment_id",
+    duration_ms: 314,
+    error_code: null,
+    error_details: null,
+    id: "rpc_01J2REMOTE_OK_SHIPMENT",
+    method: "GET",
+    module_name: "remote-fulfillment",
+    occurred_at: "2026-06-03T09:58:15.004Z",
+    path_params: {
+      shipment_id: "shp_01J2Z8",
+    },
+    remote_path: "/v2/shipments/shp_01J2Z8",
+    remote_status: 206,
+    request_id: "req_remote_shipment_detail",
+    retryable: false,
+    span_id: null,
+    success: true,
+    trace_id: "trace_remote_shipment_detail",
+  },
+  {
+    capability: "crm.contacts.write",
+    correlation_id: "corr_remote_contact_sync",
+    declared_path: "/contacts/:contact_id",
+    duration_ms: 5012,
+    error_code: "remote_timeout",
+    error_details: {
+      message: "remote proxy timed out before headers",
+      timeout_ms: 5000,
+    },
+    id: "rpc_01J2REMOTE_TIMEOUT_CONTACT",
+    method: "PATCH",
+    module_name: "remote-crm",
+    occurred_at: "2026-06-03T09:52:32.440Z",
+    path_params: {
+      contact_id: "con_01J2C4",
+    },
+    remote_path: "/v1/contacts/con_01J2C4",
+    remote_status: null,
+    request_id: "req_remote_contact_sync",
+    retryable: true,
+    span_id: "span_remote_contact_sync",
+    success: false,
+    trace_id: "trace_remote_contact_sync",
   },
 ];
 
