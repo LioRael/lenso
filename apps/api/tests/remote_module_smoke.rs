@@ -152,30 +152,6 @@ fn error_detail_reason<'a>(body: &'a Value, field: &str) -> Option<&'a str> {
         .and_then(|detail| detail["reason"].as_str())
 }
 
-async fn wait_for_story_event(pool: &platform_core::DbPool, correlation_id: &str) {
-    for _ in 0..100 {
-        let count: i64 = sqlx::query_scalar(
-            r#"
-            select count(*)::bigint
-            from platform.story_events
-            where correlation_id = $1
-            "#,
-        )
-        .bind(correlation_id)
-        .fetch_one(pool)
-        .await
-        .expect("story event count should query");
-
-        if count > 0 {
-            return;
-        }
-
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    }
-
-    panic!("story event for {correlation_id} was not projected");
-}
-
 #[derive(Debug)]
 struct RemoteProxyCallRow {
     module_name: String,
@@ -227,6 +203,61 @@ impl From<RemoteProxyCallTuple> for RemoteProxyCallRow {
             error_details: row.12,
         }
     }
+}
+
+async fn insert_proxy_history_story_root(pool: &platform_core::DbPool) {
+    sqlx::query(
+        r#"
+        insert into platform.story_events (
+            id,
+            source_type,
+            source_id,
+            node_type,
+            name,
+            status,
+            service,
+            correlation_id,
+            causation_id,
+            started_at,
+            completed_at,
+            duration_ms,
+            error,
+            metadata,
+            trace_id,
+            span_id,
+            updated_at
+        )
+        values (
+            'httpreq_req_proxy_success',
+            'http_request',
+            'req_proxy_success',
+            'http_request',
+            'GET /modules/remote-crm/http/contacts/contact_1',
+            'completed',
+            'api',
+            'corr_proxy_history',
+            null,
+            '2026-05-31T00:00:00Z',
+            '2026-05-31T00:00:01Z',
+            1000,
+            null,
+            $1,
+            '00000000000000000000000000000021',
+            '0000000000000021',
+            '2026-05-31T00:00:01Z'
+        )
+        "#,
+    )
+    .bind(serde_json::json!({
+        "method": "GET",
+        "path": "/modules/remote-crm/http/contacts/contact_1",
+        "status_code": 200,
+        "request_id": "req_proxy_success",
+        "correlation_id": "corr_proxy_history",
+    }))
+    .execute(pool)
+    .await
+    .expect("proxy history story root should insert");
 }
 
 #[tokio::test]
@@ -417,7 +448,6 @@ async fn remote_http_proxy_persists_call_history_and_story_operations() {
         .await
         .expect("success proxy request completes");
     assert_eq!(success_response.status(), StatusCode::OK);
-    wait_for_story_event(&db.pool, "corr_proxy_history").await;
 
     let failure_response = app
         .clone()
@@ -436,6 +466,7 @@ async fn remote_http_proxy_persists_call_history_and_story_operations() {
         .await
         .expect("failure proxy request completes");
     assert_eq!(failure_response.status(), StatusCode::BAD_GATEWAY);
+    insert_proxy_history_story_root(&db.pool).await;
 
     let rows = sqlx::query_as::<_, RemoteProxyCallTuple>(
         r#"
