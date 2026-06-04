@@ -192,9 +192,9 @@ This keeps transactional outbox semantics and operator visibility in the host.
 3. Add a proxy-backed `RuntimeFunction` implementation in
    `platform-module-remote`. Done.
 4. Register remote function handlers into `FunctionRegistry` during module
-   loading.
+   loading. Done.
 5. Add worker/runtime tests proving success, retryable failure, exhausted
-   attempts, timeout, and missing remote function behavior.
+   attempts, timeout, and missing remote function behavior. Done.
 6. Add Runtime Console tests only if existing function-run views need additional
    remote invocation metadata.
 
