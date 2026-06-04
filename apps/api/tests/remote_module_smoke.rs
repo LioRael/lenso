@@ -12,6 +12,7 @@ use platform_runtime::RUNTIME_MIGRATIONS;
 use platform_testing::TestDatabase;
 use serde_json::Value;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 use tower::ServiceExt;
@@ -211,59 +212,31 @@ impl From<RemoteProxyCallTuple> for RemoteProxyCallRow {
     }
 }
 
-async fn insert_proxy_history_story_root(pool: &platform_core::DbPool) {
-    sqlx::query(
-        r#"
-        insert into platform.story_events (
-            id,
-            source_type,
-            source_id,
-            node_type,
-            name,
-            status,
-            service,
-            correlation_id,
-            causation_id,
-            started_at,
-            completed_at,
-            duration_ms,
-            error,
-            metadata,
-            trace_id,
-            span_id,
-            updated_at
+async fn wait_for_story_event(pool: &platform_core::DbPool, source_id: &str) {
+    for _ in 0..100 {
+        let exists = sqlx::query_scalar::<_, bool>(
+            r#"
+            select exists (
+                select 1
+                from platform.story_events
+                where source_type = 'http_request'
+                    and source_id = $1
+            )
+            "#,
         )
-        values (
-            'httpreq_req_proxy_success',
-            'http_request',
-            'req_proxy_success',
-            'http_request',
-            'GET /modules/remote-crm/http/contacts/contact_1',
-            'completed',
-            'api',
-            'corr_proxy_history',
-            null,
-            '2026-05-31T00:00:00Z',
-            '2026-05-31T00:00:01Z',
-            1000,
-            null,
-            $1,
-            '00000000000000000000000000000021',
-            '0000000000000021',
-            '2026-05-31T00:00:01Z'
-        )
-        "#,
-    )
-    .bind(serde_json::json!({
-        "method": "GET",
-        "path": "/modules/remote-crm/http/contacts/contact_1",
-        "status_code": 200,
-        "request_id": "req_proxy_success",
-        "correlation_id": "corr_proxy_history",
-    }))
-    .execute(pool)
-    .await
-    .expect("proxy history story root should insert");
+        .bind(source_id)
+        .fetch_one(pool)
+        .await
+        .expect("story event existence query should succeed");
+
+        if exists {
+            return;
+        }
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    panic!("story event {source_id} should be projected");
 }
 
 #[tokio::test]
@@ -472,7 +445,8 @@ async fn remote_http_proxy_persists_call_history_and_story_operations() {
         .await
         .expect("failure proxy request completes");
     assert_eq!(failure_response.status(), StatusCode::BAD_GATEWAY);
-    insert_proxy_history_story_root(&db.pool).await;
+    wait_for_story_event(&db.pool, "req_proxy_success").await;
+    wait_for_story_event(&db.pool, "req_proxy_failure").await;
 
     let rows = sqlx::query_as::<_, RemoteProxyCallTuple>(
         r#"
@@ -551,6 +525,43 @@ async fn remote_http_proxy_persists_call_history_and_story_operations() {
             .expect("error details array")
             .iter()
             .any(|detail| detail["field"] == "remote_module" && detail["reason"] == "remote-crm")
+    );
+
+    let story_detail_response = app
+        .clone()
+        .oneshot(
+            admin_get("/admin/runtime/stories/corr_proxy_history")
+                .with_header("x-request-id", "req_admin_story_detail"),
+        )
+        .await
+        .expect("story detail request completes");
+    let story_detail_status = story_detail_response.status();
+    let story_detail = json_body(story_detail_response).await;
+    assert_eq!(
+        story_detail_status,
+        StatusCode::OK,
+        "story detail body: {story_detail}"
+    );
+    let story_nodes = story_detail["data"]["nodes"]
+        .as_array()
+        .expect("story nodes array");
+    let story_root = story_nodes
+        .iter()
+        .find(|node| node["id"] == "httpreq_req_proxy_success")
+        .expect("successful remote proxy request should create a story root");
+    assert_eq!(
+        story_root["name"],
+        "GET /modules/remote-crm/http/contacts/contact_1"
+    );
+    assert_eq!(story_root["type"], "http_request");
+    assert_eq!(story_root["status"], "completed");
+    assert_eq!(
+        story_root["metadata"]["source_metadata"]["request_id"],
+        "req_proxy_success"
+    );
+    assert_eq!(
+        story_root["metadata"]["source_metadata"]["path"],
+        "/modules/remote-crm/http/contacts/contact_1"
     );
 
     let story_ops_response = app

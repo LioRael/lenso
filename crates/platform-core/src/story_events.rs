@@ -183,6 +183,9 @@ pub fn http_request_story_creation(path: &str, status_code: u16) -> HttpRequestS
     if is_console_or_internal_path(path) {
         return HttpRequestStoryCreation::Never;
     }
+    if is_remote_proxy_path(path) {
+        return HttpRequestStoryCreation::Always;
+    }
     if status_code >= 500 {
         return HttpRequestStoryCreation::Always;
     }
@@ -206,6 +209,10 @@ fn is_console_or_internal_path(path: &str) -> bool {
         || path == "/docs"
         || path == "/openapi.json"
         || path.ends_with("/health")
+}
+
+fn is_remote_proxy_path(path: &str) -> bool {
+    path.starts_with("/modules/") && path.contains("/http/")
 }
 
 fn http_request_metadata(
@@ -242,4 +249,49 @@ fn is_missing_runtime_relation(error: &sqlx::Error) -> bool {
     };
 
     matches!(database_error.code().as_deref(), Some("3F000" | "42P01"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{HttpRequestStoryCreation, http_request_story_creation};
+
+    #[test]
+    fn remote_proxy_success_creates_story_root() {
+        assert_eq!(
+            http_request_story_creation("/modules/remote-crm/http/contacts/contact_1", 200),
+            HttpRequestStoryCreation::Always
+        );
+    }
+
+    #[test]
+    fn remote_proxy_client_error_creates_story_root() {
+        assert_eq!(
+            http_request_story_creation("/modules/remote-crm/http/contacts/contact_404", 404),
+            HttpRequestStoryCreation::Always
+        );
+    }
+
+    #[test]
+    fn remote_proxy_dependency_error_creates_story_root() {
+        assert_eq!(
+            http_request_story_creation("/modules/remote-crm/http/proxy-fixtures/text", 502),
+            HttpRequestStoryCreation::Always
+        );
+    }
+
+    #[test]
+    fn admin_runtime_paths_do_not_create_story_roots() {
+        assert_eq!(
+            http_request_story_creation("/admin/runtime/stories/corr_1", 200),
+            HttpRequestStoryCreation::Never
+        );
+    }
+
+    #[test]
+    fn v1_success_still_waits_for_runtime_work() {
+        assert_eq!(
+            http_request_story_creation("/v1/identity/users", 200),
+            HttpRequestStoryCreation::WhenRuntimeWorkExists
+        );
+    }
 }
