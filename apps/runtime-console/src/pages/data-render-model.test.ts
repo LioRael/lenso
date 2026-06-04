@@ -13,6 +13,7 @@ import {
   type EntitySchema,
   type FieldSchema,
   firstDeclarativePage,
+  manifestLintCategory,
   moduleErrorMessage,
   moduleHttpRouteRows,
   moduleIsLoaded,
@@ -489,6 +490,7 @@ describe("module status helpers", () => {
 
     expect(moduleManifestChecks(healthyModule)).toEqual([
       {
+        category: "routes",
         key: "manifest-lint:ok:routes:0",
         message: "lint ok from backend",
         severity: "ok",
@@ -556,6 +558,7 @@ describe("module status helpers", () => {
 
     expect(moduleManifestChecks(issueModule)).toEqual([
       {
+        category: "routes",
         key: "manifest-lint:error:GET /contacts/{id}:0",
         message: "lint error from backend",
         severity: "error",
@@ -563,6 +566,7 @@ describe("module status helpers", () => {
         suggestion: "backend says deduplicate",
       },
       {
+        category: "routes",
         key: "manifest-lint:warning:GET /contacts/{id}:1",
         message: "lint warning display from backend",
         severity: "warning",
@@ -570,6 +574,7 @@ describe("module status helpers", () => {
         suggestion: "backend says add display",
       },
       {
+        category: "routes",
         key: "manifest-lint:warning:GET /contacts/{id}:2",
         message: "lint warning story from backend",
         severity: "warning",
@@ -577,6 +582,7 @@ describe("module status helpers", () => {
         suggestion: "backend says add story",
       },
       {
+        category: "routes",
         key: "manifest-lint:warning:GET /contacts/{id}:3",
         message: "lint warning capability from backend",
         severity: "warning",
@@ -584,6 +590,7 @@ describe("module status helpers", () => {
         suggestion: "backend says add capability",
       },
       {
+        category: "routes",
         key: "manifest-lint:warning:GET /contacts/{id}:4",
         message: "lint warning display from backend",
         severity: "warning",
@@ -591,6 +598,7 @@ describe("module status helpers", () => {
         suggestion: "backend says add display",
       },
       {
+        category: "routes",
         key: "manifest-lint:warning:GET /contacts/{id}:5",
         message: "lint warning story from backend",
         severity: "warning",
@@ -613,6 +621,7 @@ describe("module status helpers", () => {
     expect(
       moduleManifestCheckGroups([
         {
+          category: "routes",
           key: "ok",
           message: "ok",
           severity: "ok",
@@ -620,6 +629,7 @@ describe("module status helpers", () => {
           suggestion: "none",
         },
         {
+          category: "routes",
           key: "warning",
           message: "warning",
           severity: "warning",
@@ -627,6 +637,7 @@ describe("module status helpers", () => {
           suggestion: "fix warning",
         },
         {
+          category: "routes",
           key: "error",
           message: "error",
           severity: "error",
@@ -644,6 +655,48 @@ describe("module status helpers", () => {
     ]);
   });
 
+  test("searches module-level manifest lint categories", () => {
+    const module = moduleMetadata({
+      ...loadedModule,
+      manifest_lints: [
+        {
+          message: "embedded origin missing",
+          severity: "warning",
+          subject: "admin.embedded.entry.allowed_origins",
+          suggestion: "backend says configure origins",
+        },
+      ],
+    });
+
+    expect(moduleManifestChecks(module)[0]).toMatchObject({
+      category: "admin.embedded",
+      subject: "admin.embedded.entry.allowed_origins",
+    });
+    expect(
+      filterModuleRegistry([loadedModule, module], {
+        lint: "warning",
+        query: "admin.embedded",
+        source: "all",
+        status: "all",
+      }).map((entry) => entry.module_name)
+    ).toEqual(["identity"]);
+  });
+
+  test("classifies manifest lint subjects", () => {
+    expect(manifestLintCategory("routes")).toBe("routes");
+    expect(manifestLintCategory("GET /contacts/{id}")).toBe("routes");
+    expect(manifestLintCategory("capability remote_crm.contacts.read")).toBe(
+      "capability"
+    );
+    expect(manifestLintCategory("admin.declarative.section.contacts")).toBe(
+      "admin.declarative"
+    );
+    expect(manifestLintCategory("admin.embedded.entry.allowed_origins")).toBe(
+      "admin.embedded"
+    );
+    expect(manifestLintCategory("module.name")).toBe("module");
+  });
+
   test("reports module load and empty route states", () => {
     const module = moduleMetadata({
       ...errorModule,
@@ -659,6 +712,7 @@ describe("module status helpers", () => {
 
     expect(moduleManifestChecks(module)).toEqual([
       {
+        category: "module",
         key: "module-load-error",
         message: "remote manifest request failed",
         severity: "error",
@@ -667,6 +721,7 @@ describe("module status helpers", () => {
           "Refresh the module registry and inspect the module source configuration or manifest endpoint.",
       },
       {
+        category: "routes",
         key: "manifest-lint:warning:routes:0",
         message: "lint warning empty routes from backend",
         severity: "warning",

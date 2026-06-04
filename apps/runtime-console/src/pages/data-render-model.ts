@@ -221,6 +221,7 @@ export type ModuleManifestLint = {
 
 export type ModuleManifestCheck = {
   key: string;
+  category: string;
   severity: ModuleLintSeverity;
   subject: string;
   message: string;
@@ -425,6 +426,7 @@ function moduleRegistrySearchText(module: AdminModuleMetadata): string {
       storyDisplaySourceLabel(descriptor.source),
     ]),
     ...moduleManifestChecks(module).flatMap((check) => [
+      check.category,
       check.severity,
       check.subject,
       check.message,
@@ -505,6 +507,7 @@ export function moduleManifestChecks(
 ): ModuleManifestCheck[] {
   const routeChecks = module.manifest_lints.map(
     (lint, index): ModuleManifestCheck => ({
+      category: manifestLintCategory(lint.subject),
       key: `manifest-lint:${lint.severity}:${lint.subject}:${index}`,
       message: lint.message,
       severity: lint.severity,
@@ -516,6 +519,7 @@ export function moduleManifestChecks(
   if (!moduleIsLoaded(module)) {
     return [
       {
+        category: "module",
         key: "module-load-error",
         message: moduleErrorMessage(module) ?? "module failed to load",
         severity: "error",
@@ -528,6 +532,28 @@ export function moduleManifestChecks(
   }
 
   return routeChecks;
+}
+
+export function manifestLintCategory(subject: string): string {
+  if (subject.startsWith("capability ")) {
+    return "capability";
+  }
+  if (subject === "routes" || subject.includes(" ")) {
+    return "routes";
+  }
+  if (subject.startsWith("admin.embedded.")) {
+    return "admin.embedded";
+  }
+  if (subject.startsWith("admin.declarative.")) {
+    return "admin.declarative";
+  }
+  if (subject.startsWith("admin.schema")) {
+    return "admin.schema";
+  }
+  if (subject.startsWith("module.")) {
+    return "module";
+  }
+  return "manifest";
 }
 
 export function moduleManifestHealth(

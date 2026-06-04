@@ -138,16 +138,18 @@ function ModulesContent() {
             filteredModules.map((module) => {
               const selected =
                 selectedModule?.module_name === module.module_name;
+              const lintHealth = moduleManifestHealth(module);
               return (
                 <button
                   className={cn(
-                    "block w-full px-2 py-1 text-left",
+                    "block w-full border-l-2 px-2 py-1 text-left",
                     selected
                       ? "bg-(--accent-soft) shadow-[inset_2px_0_0_var(--accent)]"
                       : "hover:bg-(--sidebar)",
-                    moduleIsLoaded(module)
-                      ? null
-                      : "border-l border-[color-mix(in_srgb,var(--error)_45%,transparent)] text-(--secondary)"
+                    lintHealth === "ok" && "border-l-(--success)",
+                    lintHealth === "warning" && "border-l-(--warning)",
+                    lintHealth === "error" && "border-l-(--error)",
+                    moduleIsLoaded(module) ? null : "text-(--secondary)"
                   )}
                   key={module.module_name}
                   onClick={() => setSelectedModuleName(module.module_name)}
@@ -161,11 +163,23 @@ function ModulesContent() {
                       />
                     )}
                     <span className="truncate">{module.module_name}</span>
+                    <span
+                      className={cn(
+                        "ml-auto shrink-0 border px-1 text-[9px] uppercase",
+                        lintHealth === "ok" &&
+                          "border-[color-mix(in_srgb,var(--success)_45%,transparent)] text-(--success)",
+                        lintHealth === "warning" &&
+                          "border-[color-mix(in_srgb,var(--warning)_55%,transparent)] text-(--warning)",
+                        lintHealth === "error" &&
+                          "border-[color-mix(in_srgb,var(--error)_55%,transparent)] text-(--error)"
+                      )}
+                    >
+                      {lintHealth}
+                    </span>
                   </span>
                   <span className="block truncate text-[10px] text-(--muted)">
                     {module.source} / {adminSurfaceLabel(module.admin)} /{" "}
-                    {moduleStatusLabel(module)} / lint{" "}
-                    {moduleManifestHealth(module)}
+                    {moduleStatusLabel(module)}
                   </span>
                 </button>
               );
@@ -348,7 +362,7 @@ function registrySnapshotLabel(refreshedAt: string | null): string {
 
 function ModuleRegistryDetail({ module }: { module: AdminModuleMetadata }) {
   const routeRows = moduleHttpRouteRows(module);
-  const routeChecks = moduleManifestChecks(module);
+  const manifestChecks = moduleManifestChecks(module);
   const storyRows = storyDisplayRows(module);
   return (
     <div className="grid gap-3">
@@ -371,7 +385,7 @@ function ModuleRegistryDetail({ module }: { module: AdminModuleMetadata }) {
 
       <ModuleCapabilitiesList capabilities={module.capabilities} />
       <ModuleStoryDisplayTable rows={storyRows} />
-      <ModuleManifestChecks checks={routeChecks} />
+      <ModuleManifestChecks checks={manifestChecks} />
       <ModuleHttpRoutesTable rows={routeRows} />
     </div>
   );
@@ -536,7 +550,13 @@ function ManifestLintRow({
   check: ReturnType<typeof moduleManifestChecks>[number];
 }) {
   return (
-    <div className="grid min-w-0 grid-cols-[minmax(0,170px)_minmax(0,1fr)] gap-x-2 gap-y-0.5 text-[11px]">
+    <div className="grid min-w-0 grid-cols-[112px_minmax(0,170px)_minmax(0,1fr)] gap-x-2 gap-y-0.5 text-[11px]">
+      <span
+        className="truncate border border-(--border-subtle) bg-(--sidebar) px-1 text-[10px] text-(--secondary)"
+        title={check.category}
+      >
+        {check.category}
+      </span>
       <span className="truncate text-(--foreground)" title={check.subject}>
         {check.subject}
       </span>
@@ -544,7 +564,7 @@ function ManifestLintRow({
         {check.message}
       </span>
       <span
-        className="col-start-2 min-w-0 truncate text-[10px] text-(--secondary)"
+        className="col-start-3 min-w-0 truncate text-[10px] text-(--secondary)"
         title={check.suggestion}
       >
         {check.suggestion}
