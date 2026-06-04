@@ -1,4 +1,4 @@
-import { Network, RefreshCcw, Search } from "lucide-react";
+import { Network, RefreshCcw, Search, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { JsonViewer } from "../components/runtime/json-viewer";
@@ -36,6 +36,12 @@ function clamp(value: number, min: number, max: number) {
 export function RemoteProxyCallsPage() {
   const [query, setQuery] = useState("");
   const [moduleName, setModuleName] = useState("");
+  const [correlationId, setCorrelationId] = useState(() =>
+    typeof window === "undefined"
+      ? ""
+      : (new URLSearchParams(window.location.search).get("correlation_id") ??
+        "")
+  );
   const [result, setResult] = useState<RemoteProxyCallResultFilter>("all");
   const [layout, setLayout, resetLayout] = usePersistedLayout(
     "runtime-console:remote-proxy-calls-layout",
@@ -46,6 +52,7 @@ export function RemoteProxyCallsPage() {
     ...layout,
   };
   const remoteProxyCallFilters = {
+    correlationId,
     limit: 100,
     moduleName,
     ...(result === "all" ? {} : { success: result === "success" }),
@@ -77,7 +84,23 @@ export function RemoteProxyCallsPage() {
     [calls]
   );
   const [selectedIndex, setSelectedIndex] = useState(0);
-  useEffect(() => setSelectedIndex(0), [moduleName, query, result]);
+  useEffect(
+    () => setSelectedIndex(0),
+    [correlationId, moduleName, query, result]
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const url = new URL(window.location.href);
+    if (correlationId) {
+      url.searchParams.set("correlation_id", correlationId);
+    } else {
+      url.searchParams.delete("correlation_id");
+    }
+    window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+  }, [correlationId]);
 
   const selected = visible[selectedIndex] ?? null;
   const resizeInspector = (deltaX: number) => {
@@ -106,7 +129,14 @@ export function RemoteProxyCallsPage() {
         gridTemplateColumns: `minmax(0,1fr) 1px ${remoteProxyCallsLayout.inspectorWidth}px`,
       }}
     >
-      <main className="grid min-h-0 min-w-0 grid-rows-[auto_auto_auto_auto_minmax(0,1fr)] overflow-hidden border-r border-(--border-subtle)">
+      <main
+        className="grid min-h-0 min-w-0 overflow-hidden border-r border-(--border-subtle)"
+        style={{
+          gridTemplateRows: correlationId
+            ? "auto auto auto auto auto minmax(0,1fr)"
+            : "auto auto auto auto minmax(0,1fr)",
+        }}
+      >
         <header className="border-b border-(--border-subtle) bg-(--surface) px-3 py-2">
           <div className="flex items-center gap-2">
             <Network className="text-(--accent)" size={14} />
@@ -162,6 +192,23 @@ export function RemoteProxyCallsPage() {
           />
         </div>
 
+        {correlationId ? (
+          <div className="flex h-8 items-center gap-2 border-b border-(--border-subtle) bg-[color-mix(in_srgb,var(--accent)_6%,var(--background))] px-3 font-mono text-[10px]">
+            <span className="text-(--muted)">correlation</span>
+            <span className="min-w-0 truncate text-(--foreground)">
+              {correlationId}
+            </span>
+            <button
+              aria-label="Clear correlation filter"
+              className="ml-auto grid size-5 place-items-center border border-(--border-subtle) bg-(--elevated) text-(--muted) hover:text-(--foreground)"
+              onClick={() => setCorrelationId("")}
+              type="button"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        ) : null}
+
         <div className="flex h-9 items-center gap-2 border-b border-(--border-subtle) bg-(--background) px-3">
           {(["all", "success", "failed"] as const).map((item) => (
             <button
@@ -194,6 +241,15 @@ export function RemoteProxyCallsPage() {
                 </option>
               ))}
             </datalist>
+          </label>
+          <label className="flex h-6 min-w-[200px] items-center border border-(--border-subtle) bg-(--elevated) px-2 font-mono text-(--muted)">
+            <input
+              aria-label="Filter remote calls by correlation"
+              className="w-full bg-transparent text-[10px] text-(--foreground) outline-hidden placeholder:text-(--muted)"
+              onChange={(event) => setCorrelationId(event.target.value)}
+              placeholder="correlation"
+              value={correlationId}
+            />
           </label>
           <label className="ml-auto flex h-6 w-[min(360px,38vw)] items-center gap-2 border border-(--border-subtle) bg-(--elevated) px-2 font-mono text-(--muted)">
             <Search size={12} />

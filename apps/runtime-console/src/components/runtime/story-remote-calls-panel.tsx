@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 
 import type { RuntimeStory } from "../../data/mock-runtime";
@@ -40,6 +41,12 @@ export function StoryRemoteCallsPanel({ story }: { story: RuntimeStory }) {
         <span className="ml-auto truncate text-[10px] text-(--muted-deep)">
           {story.correlationId}
         </span>
+        <Link
+          className="shrink-0 border border-(--border-subtle) bg-(--elevated) px-1.5 py-0.5 text-[10px] text-(--secondary) hover:text-(--foreground)"
+          to={`/remote-proxy-calls?correlation_id=${encodeURIComponent(story.correlationId)}`}
+        >
+          Open
+        </Link>
       </div>
       {calls.length === 0 ? (
         <RemoteCallsMessage label="No remote module calls recorded for this story" />
