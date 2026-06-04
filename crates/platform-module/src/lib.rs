@@ -26,7 +26,10 @@ pub use admin::{
 pub use admin_data::{AdminDataSource, AdminListQuery, AdminPage};
 pub use admin_schema::{AdminSchema, EntitySchema, FieldSchema, FieldType};
 pub use binding::ModuleBinding;
-pub use http::{ModuleHttpMethod, ModuleHttpRoute};
+pub use http::{
+    ModuleHttpMethod, ModuleHttpRoute, ModuleRouteLint, ModuleRouteLintSeverity,
+    lint_module_http_routes,
+};
 pub use linked::{
     LinkedBinding, LinkedBindingBuilder, LinkedHttpContribution, LinkedHttpRouteMerger,
 };

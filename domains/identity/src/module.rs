@@ -153,4 +153,22 @@ mod tests {
             Some("Fetch Current User")
         );
     }
+
+    #[test]
+    fn linked_http_routes_pass_manifest_lint() {
+        let manifest = manifest();
+
+        assert_eq!(
+            platform_module::lint_module_http_routes(
+                platform_module::ModuleSource::Linked,
+                &manifest.http_routes,
+            ),
+            vec![platform_module::ModuleRouteLint {
+                severity: platform_module::ModuleRouteLintSeverity::Ok,
+                subject: "routes".to_owned(),
+                message: "Declared routes include display and story metadata.".to_owned(),
+                suggestion: "No action needed.".to_owned(),
+            }]
+        );
+    }
 }
