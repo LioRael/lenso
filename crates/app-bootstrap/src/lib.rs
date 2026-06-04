@@ -348,4 +348,26 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn linked_http_modules_are_registered_modules() {
+        let manifests = module_manifests();
+
+        for module in linked_http_modules() {
+            let registered_manifest = manifests
+                .iter()
+                .find(|manifest| manifest.name == module.manifest.name)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "linked HTTP module `{}` is missing from module_manifests",
+                        module.manifest.name
+                    )
+                });
+            assert_eq!(
+                registered_manifest, &module.manifest,
+                "linked HTTP module `{}` must use the registered ModuleManifest",
+                module.manifest.name
+            );
+        }
+    }
 }
