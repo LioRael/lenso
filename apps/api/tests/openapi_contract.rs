@@ -2,7 +2,7 @@ use app_api::{build_router, openapi_document};
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
 use platform_core::{AppConfig, AppContext, LoggingEventPublisher};
-use platform_module::ModuleHttpMethod;
+use platform_module::{ModuleHttpMethod, ModuleManifest};
 use std::sync::Arc;
 use tower::ServiceExt;
 
@@ -73,6 +73,48 @@ fn linked_module_http_routes_are_registered_in_openapi() {
     }
 }
 
+#[test]
+fn linked_module_openapi_routes_are_declared_in_manifest() {
+    let document = openapi_document();
+    let value = serde_json::to_value(&document).expect("OpenAPI document should serialize");
+    let paths = value["paths"].as_object().expect("OpenAPI paths object");
+    let manifests = app_bootstrap::module_manifests();
+
+    for manifest in &manifests {
+        let prefix = public_route_prefix(&manifest.name);
+        for (path, operations) in paths {
+            if !path.starts_with(&prefix) {
+                continue;
+            }
+            for method in operations
+                .as_object()
+                .expect("OpenAPI path item should be an object")
+                .keys()
+                .filter_map(|method| module_http_method(method))
+            {
+                assert_manifest_declares_route(manifest, path, method);
+            }
+        }
+    }
+}
+
+fn assert_manifest_declares_route(manifest: &ModuleManifest, path: &str, method: ModuleHttpMethod) {
+    assert!(
+        manifest
+            .http_routes
+            .iter()
+            .any(|route| route.path == path && route.method == method),
+        "OpenAPI route `{} {}` belongs to linked module `{}` but is missing from ModuleManifest::http_routes",
+        openapi_method(method).to_uppercase(),
+        path,
+        manifest.name
+    );
+}
+
+fn public_route_prefix(module_name: &str) -> String {
+    format!("/v1/{module_name}/")
+}
+
 fn openapi_method(method: ModuleHttpMethod) -> &'static str {
     match method {
         ModuleHttpMethod::Get => "get",
@@ -81,6 +123,17 @@ fn openapi_method(method: ModuleHttpMethod) -> &'static str {
         ModuleHttpMethod::Patch => "patch",
         ModuleHttpMethod::Delete => "delete",
         _ => panic!("unsupported module HTTP method in OpenAPI guard"),
+    }
+}
+
+fn module_http_method(method: &str) -> Option<ModuleHttpMethod> {
+    match method {
+        "get" => Some(ModuleHttpMethod::Get),
+        "post" => Some(ModuleHttpMethod::Post),
+        "put" => Some(ModuleHttpMethod::Put),
+        "patch" => Some(ModuleHttpMethod::Patch),
+        "delete" => Some(ModuleHttpMethod::Delete),
+        _ => None,
     }
 }
 
