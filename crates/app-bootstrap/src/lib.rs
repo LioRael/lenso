@@ -74,12 +74,28 @@ pub struct LinkedHttpRouteOwner {
     pub public_prefixes: &'static [&'static str],
 }
 
+#[derive(Debug, Clone, Copy)]
+struct LinkedHttpContribution {
+    module_name: &'static str,
+    public_prefixes: &'static [&'static str],
+    merge: fn(ApiOpenApiRouter) -> ApiOpenApiRouter,
+}
+
+const LINKED_HTTP_CONTRIBUTIONS: &[LinkedHttpContribution] = &[LinkedHttpContribution {
+    module_name: "identity",
+    public_prefixes: &["/v1/identity/"],
+    merge: merge_identity_http,
+}];
+
 #[must_use]
-pub fn linked_http_route_owners() -> &'static [LinkedHttpRouteOwner] {
-    &[LinkedHttpRouteOwner {
-        module_name: "identity",
-        public_prefixes: &["/v1/identity/"],
-    }]
+pub fn linked_http_route_owners() -> Vec<LinkedHttpRouteOwner> {
+    LINKED_HTTP_CONTRIBUTIONS
+        .iter()
+        .map(|contribution| LinkedHttpRouteOwner {
+            module_name: contribution.module_name,
+            public_prefixes: contribution.public_prefixes,
+        })
+        .collect()
 }
 
 /// Aggregate schema-admin capable modules: those declaring an
@@ -263,6 +279,12 @@ pub fn event_handlers(modules: &[Module]) -> EventHandlerRegistry {
 /// [`platform_module::ModuleBinding`] seam; every other path here is unified on
 /// "module".
 pub fn merge_domain_http(base: ApiOpenApiRouter) -> ApiOpenApiRouter {
+    LINKED_HTTP_CONTRIBUTIONS
+        .iter()
+        .fold(base, |router, contribution| (contribution.merge)(router))
+}
+
+fn merge_identity_http(base: ApiOpenApiRouter) -> ApiOpenApiRouter {
     base.merge(identity::routes::router())
 }
 
@@ -293,4 +315,20 @@ pub fn runtime_config_descriptors(ctx: &AppContext) -> Vec<RuntimeConfigDescript
         .cloned()
         .chain(module_descriptors)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn linked_http_route_owners_are_projected_from_contributions() {
+        assert_eq!(
+            linked_http_route_owners(),
+            vec![LinkedHttpRouteOwner {
+                module_name: "identity",
+                public_prefixes: &["/v1/identity/"],
+            }]
+        );
+    }
 }
