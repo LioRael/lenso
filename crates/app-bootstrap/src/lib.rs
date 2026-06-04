@@ -66,36 +66,35 @@ pub fn module_manifests() -> Vec<ModuleManifest> {
 
 /// Public HTTP path ownership for linked modules.
 ///
-/// Kept beside [`merge_linked_http`] because this crate currently owns the
-/// mapping from concrete linked modules to their Axum/OpenAPI routers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Projected from context-free linked modules so OpenAPI guards and router
+/// assembly consume the same source-specific binding data.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LinkedHttpRouteOwner {
-    pub module_name: &'static str,
+    pub module_name: String,
     pub public_prefixes: &'static [&'static str],
 }
 
-#[derive(Debug, Clone, Copy)]
-struct LinkedHttpContribution {
-    module_name: &'static str,
-    public_prefixes: &'static [&'static str],
-    merge: fn(ApiOpenApiRouter) -> ApiOpenApiRouter,
-}
-
-const LINKED_HTTP_CONTRIBUTIONS: &[LinkedHttpContribution] = &[LinkedHttpContribution {
-    module_name: "identity",
-    public_prefixes: &["/v1/identity/"],
-    merge: merge_identity_http,
-}];
-
 #[must_use]
 pub fn linked_http_route_owners() -> Vec<LinkedHttpRouteOwner> {
-    LINKED_HTTP_CONTRIBUTIONS
-        .iter()
-        .map(|contribution| LinkedHttpRouteOwner {
-            module_name: contribution.module_name,
-            public_prefixes: contribution.public_prefixes,
+    linked_http_modules()
+        .into_iter()
+        .filter_map(|module| {
+            let http = module.linked_http?;
+            Some(LinkedHttpRouteOwner {
+                module_name: module.manifest.name,
+                public_prefixes: http.public_prefixes,
+            })
         })
         .collect()
+}
+
+/// Context-free linked modules that contribute Axum/OpenAPI HTTP routers.
+#[must_use]
+pub fn linked_http_modules() -> Vec<Module> {
+    vec![Module::linked(
+        identity::module::manifest(),
+        identity::module::binding(),
+    )]
 }
 
 /// Aggregate schema-admin capable modules: those declaring an
@@ -276,13 +275,10 @@ pub fn event_handlers(modules: &[Module]) -> EventHandlerRegistry {
 /// This is the single source for linked API routes until HTTP joins the
 /// [`platform_module::ModuleBinding`] seam.
 pub fn merge_linked_http(base: ApiOpenApiRouter) -> ApiOpenApiRouter {
-    LINKED_HTTP_CONTRIBUTIONS
-        .iter()
+    linked_http_modules()
+        .into_iter()
+        .filter_map(|module| module.linked_http)
         .fold(base, |router, contribution| (contribution.merge)(router))
-}
-
-fn merge_identity_http(base: ApiOpenApiRouter) -> ApiOpenApiRouter {
-    base.merge(identity::routes::router())
 }
 
 /// Story-display descriptors for every module. Sourced from context-free
@@ -319,11 +315,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn linked_http_route_owners_are_projected_from_contributions() {
+    fn linked_http_route_owners_are_projected_from_modules() {
         assert_eq!(
             linked_http_route_owners(),
             vec![LinkedHttpRouteOwner {
-                module_name: "identity",
+                module_name: "identity".to_owned(),
                 public_prefixes: &["/v1/identity/"],
             }]
         );

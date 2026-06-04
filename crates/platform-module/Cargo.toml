@@ -8,6 +8,7 @@ rust-version.workspace = true
 
 [dependencies]
 platform-core.workspace = true
+platform-http.workspace = true
 platform-runtime.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -2,7 +2,7 @@
 
 use crate::admin_data::AdminDataSource;
 use crate::binding::ModuleBinding;
-use crate::linked::LinkedBinding;
+use crate::linked::{LinkedBinding, LinkedHttpContribution};
 use crate::manifest::ModuleManifest;
 use platform_core::RuntimeConfigDescriptor;
 use std::sync::Arc;
@@ -17,6 +17,7 @@ pub struct Module {
     pub binding: Arc<dyn ModuleBinding>,
     pub source: ModuleSource,
     pub load_status: ModuleLoadStatus,
+    pub linked_http: Option<LinkedHttpContribution>,
     pub runtime_config: &'static [RuntimeConfigDescriptor],
     /// Optional schema-admin data source. `None` for modules without an admin
     /// surface (e.g. notifications). Set via [`Module::with_admin_data`].
@@ -41,11 +42,13 @@ impl Module {
     /// Config defaults to empty; attach it with [`Module::with_runtime_config`].
     #[must_use]
     pub fn linked(manifest: ModuleManifest, binding: LinkedBinding) -> Self {
+        let linked_http = binding.http;
         Self {
             manifest,
             binding: Arc::new(binding),
             source: ModuleSource::Linked,
             load_status: ModuleLoadStatus::Loaded,
+            linked_http,
             runtime_config: &[],
             admin_data: None,
         }
@@ -60,6 +63,7 @@ impl Module {
             binding,
             source: ModuleSource::Remote,
             load_status: ModuleLoadStatus::Loaded,
+            linked_http: None,
             runtime_config: &[],
             admin_data: None,
         }

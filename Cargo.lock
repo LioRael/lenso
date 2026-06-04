@@ -1475,6 +1475,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "platform-core",
+ "platform-http",
  "platform-runtime",
  "serde",
  "serde_json",

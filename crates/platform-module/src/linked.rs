@@ -2,8 +2,17 @@
 
 use crate::binding::ModuleBinding;
 use platform_core::{EventHandler, EventHandlerRegistry};
+use platform_http::ApiOpenApiRouter;
 use platform_runtime::{FunctionRegistry, RuntimeDescriptor};
 use std::sync::Arc;
+
+pub type LinkedHttpRouteMerger = fn(ApiOpenApiRouter) -> ApiOpenApiRouter;
+
+#[derive(Debug, Clone, Copy)]
+pub struct LinkedHttpContribution {
+    pub public_prefixes: &'static [&'static str],
+    pub merge: LinkedHttpRouteMerger,
+}
 
 /// The only [`ModuleBinding`] impl in Step 1. Remote/Wasm impls arrive in their
 /// own specs without touching this one (open extension point). Only forwards to
@@ -12,6 +21,7 @@ use std::sync::Arc;
 pub struct LinkedBinding {
     pub runtime: RuntimeDescriptor,
     pub event_handlers: Vec<Arc<dyn EventHandler>>,
+    pub http: Option<LinkedHttpContribution>,
 }
 
 impl LinkedBinding {
@@ -21,6 +31,7 @@ impl LinkedBinding {
         LinkedBindingBuilder {
             runtime: RuntimeDescriptor::default(),
             event_handlers: Vec::new(),
+            http: None,
         }
     }
 }
@@ -40,6 +51,7 @@ impl ModuleBinding for LinkedBinding {
 pub struct LinkedBindingBuilder {
     runtime: RuntimeDescriptor,
     event_handlers: Vec<Arc<dyn EventHandler>>,
+    http: Option<LinkedHttpContribution>,
 }
 
 impl LinkedBindingBuilder {
@@ -57,12 +69,20 @@ impl LinkedBindingBuilder {
         self
     }
 
+    /// Set this linked module's in-process HTTP router contribution.
+    #[must_use]
+    pub fn http(mut self, contribution: LinkedHttpContribution) -> Self {
+        self.http = Some(contribution);
+        self
+    }
+
     /// Finish building.
     #[must_use]
     pub fn build(self) -> LinkedBinding {
         LinkedBinding {
             runtime: self.runtime,
             event_handlers: self.event_handlers,
+            http: self.http,
         }
     }
 }

@@ -1,9 +1,10 @@
 use crate::admin::IdentityAdminData;
 use crate::repositories::PostgresUserRepository;
 use platform_core::{AppContext, StoryDisplayDescriptor, StoryDisplaySource};
+use platform_http::ApiOpenApiRouter;
 use platform_module::{
-    AdminSchema, EntitySchema, FieldSchema, FieldType, LinkedBinding, Module, ModuleHttpMethod,
-    ModuleHttpRoute, ModuleManifest,
+    AdminSchema, EntitySchema, FieldSchema, FieldType, LinkedBinding, LinkedHttpContribution,
+    Module, ModuleHttpMethod, ModuleHttpRoute, ModuleManifest,
 };
 use std::sync::Arc;
 
@@ -104,13 +105,24 @@ pub fn manifest() -> ModuleManifest {
         .build()
 }
 
+pub fn merge_http(base: ApiOpenApiRouter) -> ApiOpenApiRouter {
+    base.merge(crate::routes::router())
+}
+
+pub fn binding() -> LinkedBinding {
+    LinkedBinding::builder()
+        .runtime(crate::runtime::descriptor())
+        .http(LinkedHttpContribution {
+            public_prefixes: &["/v1/identity/"],
+            merge: merge_http,
+        })
+        .build()
+}
+
 /// The loaded module: manifest + linked behavior + internal config.
 pub fn module(ctx: &AppContext) -> Module {
     let repository = Arc::new(PostgresUserRepository::new(ctx.db.clone()));
-    let binding = LinkedBinding::builder()
-        .runtime(crate::runtime::descriptor())
-        .build();
-    Module::linked(manifest(), binding)
+    Module::linked(manifest(), binding())
         .with_runtime_config(crate::config::RUNTIME_CONFIG.as_slice())
         .with_admin_data(Arc::new(IdentityAdminData::new(repository)))
 }
