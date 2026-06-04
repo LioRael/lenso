@@ -167,6 +167,28 @@ async fn contacts_list_returns_records_and_cursor_shape() {
 }
 
 #[tokio::test]
+async fn http_contacts_route_returns_resource_json() {
+    let response = remote_module_example::router()
+        .oneshot(
+            http::Request::builder()
+                .uri("/lenso/module/v1/contacts/contact_1")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let contact: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(contact["id"], "contact_1");
+    assert_eq!(contact["email"], "ada@example.com");
+}
+
+#[tokio::test]
 async fn contact_detail_returns_one_record_or_404() {
     let found = remote_module_example::router()
         .oneshot(

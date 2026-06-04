@@ -164,7 +164,7 @@ async fn remote_module_fixture_is_visible_through_admin_data_api() {
 }
 
 #[tokio::test]
-async fn remote_http_proxy_skeleton_matches_declared_routes() {
+async fn remote_http_proxy_forwards_declared_get_routes() {
     let _guard = REMOTE_SMOKE_TEST_LOCK.lock().await;
     let base_url = spawn_remote_module(remote_module_example::router()).await;
     let app = app_with_remote_module(base_url).await;
@@ -201,13 +201,15 @@ async fn remote_http_proxy_skeleton_matches_declared_routes() {
         .expect("matched request completes");
     assert_eq!(matched_response.status(), StatusCode::OK);
     let matched = json_body(matched_response).await;
-    assert_eq!(matched["status"], "matched");
+    assert_eq!(matched["status"], "forwarded");
     assert_eq!(matched["module_name"], "remote-crm");
     assert_eq!(matched["method"], "GET");
     assert_eq!(matched["declared_path"], "/contacts/{id}");
     assert_eq!(matched["remote_path"], "/contacts/contact_1");
     assert_eq!(matched["capability"], "remote_crm.contacts.read");
     assert_eq!(matched["path_params"]["id"], "contact_1");
+    assert_eq!(matched["data"]["id"], "contact_1");
+    assert_eq!(matched["data"]["email"], "ada@example.com");
 
     let missing_route = app
         .oneshot(service_get(

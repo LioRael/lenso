@@ -499,17 +499,18 @@ export type PageInfo = {
   next_created_before?: string | null;
 };
 
-export type RemoteHttpProxySkeletonResponse = {
+export type RemoteHttpProxyResponse = {
   capability: string;
+  data: unknown;
   declared_path: string;
   method: ModuleHttpMethod;
   module_name: string;
   path_params: Record<string, unknown>;
   remote_path: string;
-  status: RemoteHttpProxySkeletonStatus;
+  status: RemoteHttpProxyStatus;
 };
 
-export type RemoteHttpProxySkeletonStatus = string;
+export type RemoteHttpProxyStatus = string;
 
 export type ValidationErrorDetail = {
   field?: string | null;

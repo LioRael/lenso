@@ -22,7 +22,6 @@ pub use proxy::{
     RemoteHttpProxyMatch, RemoteHttpProxyModule, RemoteHttpProxyRegistry, RemoteHttpProxyRoute,
 };
 pub use router::{
-    RemoteHttpProxySkeletonResponse, RemoteHttpProxySkeletonStatus,
-    install_remote_http_proxy_registry, router,
+    RemoteHttpProxyResponse, RemoteHttpProxyStatus, install_remote_http_proxy_registry, router,
 };
 pub use source::RemoteModuleSource;

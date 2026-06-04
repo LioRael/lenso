@@ -11,6 +11,7 @@ pub struct RemoteHttpProxyRegistry {
 pub struct RemoteHttpProxyModule {
     pub module_name: String,
     pub base_url: String,
+    pub(crate) auth_token: Option<String>,
     pub routes: Vec<RemoteHttpProxyRoute>,
 }
 
@@ -25,6 +26,7 @@ pub struct RemoteHttpProxyRoute {
 pub struct RemoteHttpProxyMatch {
     pub module_name: String,
     pub base_url: String,
+    pub(crate) auth_token: Option<String>,
     pub method: ModuleHttpMethod,
     pub declared_path: String,
     pub remote_path: String,
@@ -58,6 +60,7 @@ impl RemoteHttpProxyRegistry {
                     RemoteHttpProxyModule {
                         module_name: module.manifest.name.clone(),
                         base_url: config.base_url.clone(),
+                        auth_token: config.auth_token.clone(),
                         routes,
                     },
                 ))
@@ -93,6 +96,7 @@ impl RemoteHttpProxyRegistry {
             Some(RemoteHttpProxyMatch {
                 module_name: module.module_name.clone(),
                 base_url: module.base_url.clone(),
+                auth_token: module.auth_token.clone(),
                 method: route.method,
                 declared_path: route.declared_path.clone(),
                 remote_path: normalized_path.clone(),
@@ -236,6 +240,25 @@ mod tests {
         let module = registry.modules().next().expect("remote module");
         assert_eq!(module.module_name, "remote-crm");
         assert_eq!(module.routes.len(), 2);
+    }
+
+    #[test]
+    fn registry_preserves_configured_remote_auth_token() {
+        let registry = RemoteHttpProxyRegistry::from_modules(
+            &[remote_module(
+                "remote-crm",
+                vec![route(ModuleHttpMethod::Get, "/contacts/{id}")],
+            )],
+            &[
+                RemoteModuleConfig::new("remote-crm", "http://127.0.0.1:4100/lenso/module/v1")
+                    .with_auth_token("remote-secret"),
+            ],
+        );
+
+        let matched = registry
+            .match_route("remote-crm", ModuleHttpMethod::Get, "/contacts/contact_1")
+            .expect("route should match");
+        assert_eq!(matched.auth_token.as_deref(), Some("remote-secret"));
     }
 
     #[test]

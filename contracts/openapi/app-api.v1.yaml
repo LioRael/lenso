@@ -1761,7 +1761,7 @@ paths:
     get:
       tags:
       - modules
-      operationId: remote_module_http_proxy_get_skeleton
+      operationId: remote_module_http_proxy_get
       parameters:
       - name: module
         in: path
@@ -1783,11 +1783,11 @@ paths:
           type: string
       responses:
         '200':
-          description: Remote route matched by the host skeleton. No remote request is forwarded yet.
+          description: Remote route forwarded through the host.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RemoteHttpProxySkeletonResponse'
+                $ref: '#/components/schemas/RemoteHttpProxyResponse'
         '401':
           description: Authentication is required
           content:
@@ -1802,6 +1802,12 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No configured remote route matched
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Remote module request failed
           content:
             application/json:
               schema:
@@ -3487,7 +3493,7 @@ components:
           - string
           - 'null'
           format: date-time
-    RemoteHttpProxySkeletonResponse:
+    RemoteHttpProxyResponse:
       type: object
       required:
       - status
@@ -3497,9 +3503,11 @@ components:
       - remote_path
       - capability
       - path_params
+      - data
       properties:
         capability:
           type: string
+        data: {}
         declared_path:
           type: string
         method:
@@ -3515,11 +3523,11 @@ components:
         remote_path:
           type: string
         status:
-          $ref: '#/components/schemas/RemoteHttpProxySkeletonStatus'
-    RemoteHttpProxySkeletonStatus:
+          $ref: '#/components/schemas/RemoteHttpProxyStatus'
+    RemoteHttpProxyStatus:
       type: string
       enum:
-      - matched
+      - forwarded
     ValidationErrorDetail:
       type: object
       required:

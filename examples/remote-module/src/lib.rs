@@ -103,6 +103,8 @@ pub fn router() -> Router {
         )
         .route("/lenso/module/v1/embedded/manifest", get(embedded_manifest))
         .route("/lenso/module/v1/embedded/admin", get(embedded_admin))
+        .route("/lenso/module/v1/contacts", get(get_http_contacts))
+        .route("/lenso/module/v1/contacts/{id}", get(get_http_contact))
         .route("/lenso/module/v1/admin/contacts", get(list_contacts))
         .route("/lenso/module/v1/admin/contacts/{id}", get(get_contact))
 }
@@ -276,6 +278,30 @@ async fn embedded_admin() -> Html<&'static str> {
   </body>
 </html>"#,
     )
+}
+
+async fn get_http_contacts(Query(query): Query<ListQuery>) -> Json<ListResponse> {
+    list_contacts(Query(query)).await
+}
+
+async fn get_http_contact(headers: HeaderMap, Path(id): Path<String>) -> Response {
+    if headers.contains_key("authorization") {
+        return remote_error(
+            StatusCode::BAD_REQUEST,
+            "validation_failed",
+            "caller authorization must not be forwarded".to_owned(),
+            false,
+        );
+    }
+    match CONTACTS.iter().find(|contact| contact.id == id) {
+        Some(contact) => Json(contact_to_value(contact)).into_response(),
+        None => remote_error(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            format!("contact {id} was not found"),
+            false,
+        ),
+    }
 }
 
 async fn list_contacts(Query(query): Query<ListQuery>) -> Json<ListResponse> {

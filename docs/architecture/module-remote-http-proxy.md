@@ -2,9 +2,9 @@
 
 This note specifies the protocol boundary for exposing remote module-owned HTTP
 routes through the host API. The current implementation preserves
-`ModuleManifest::http_routes` as metadata and exposes a skeleton host route that
-matches declarations and enforces capability gates, but it does not forward
-requests to remote modules.
+`ModuleManifest::http_routes` as metadata and forwards matched GET requests
+through a host-owned route. Non-GET methods, request bodies, and streaming
+remain deferred.
 
 ## Current State
 
@@ -32,10 +32,11 @@ with `/`, must not be absolute URLs, and must not contain empty, `.`, `..`,
 query, or fragment segments. Valid declarations are exposed as metadata through
 `/admin/data/modules`.
 
-A skeleton `GET` public API route is installed at
-`/modules/{module}/http/{*path}`. It returns the matched declaration and path
-parameters. No remote request is forwarded today, and non-GET host methods are
-not mounted until the forwarding slice.
+A `GET` public API route is installed at `/modules/{module}/http/{*path}`. It
+matches the declaration, enforces service/system auth plus route capability, and
+forwards the request to the remote module without caller credentials. If the
+remote source has a configured auth token, the host uses that token for the
+remote request. Non-GET host methods are not mounted yet.
 
 ## Goals
 
@@ -90,24 +91,27 @@ pattern, and duplicate parameter names should be rejected.
 
 ## Request Policy
 
-The first proxy slice should support only JSON request/response bodies.
+The first proxy slices support only GET requests with JSON responses. Request
+bodies and write methods are deferred.
 
 Request constraints:
 
 - Maximum request body size: host-configured, default 1 MiB.
 - Maximum response body size: host-configured, default 4 MiB.
-- Methods: only methods represented by `ModuleHttpMethod`.
+- Methods: GET only until request body policy is implemented.
 - Content types: `application/json` and empty body only.
 - Timeouts: use the remote module source timeout unless a narrower proxy
   timeout is configured.
 
 Headers forwarded to the remote module should be allowlisted:
 
-- `content-type`
 - `accept`
 - `x-request-id`
 - `x-correlation-id`
 - `traceparent`
+
+Future body-bearing methods may also forward `content-type` when JSON request
+body policy is implemented.
 
 Headers not forwarded:
 
@@ -196,14 +200,17 @@ OpenAPI fragments after trust, validation, and versioning are specified.
 
 ## Implementation Order
 
-1. Add a host proxy registry from loaded remote module manifests.
-2. Add route matching for method plus simple path patterns.
-3. Add one static host proxy route under `/modules/{module}/http/{*path}`.
-4. Enforce service/system auth and declared capabilities.
-5. Add request/response size limits and header allowlists.
-6. Mount the remaining declared methods: `POST`, `PUT`, `PATCH`, and `DELETE`.
-7. Forward matched JSON requests to remote modules.
-8. Normalize remote errors through the existing platform error model.
+1. Add a host proxy registry from loaded remote module manifests. Done.
+2. Add route matching for method plus simple path patterns. Done.
+3. Add one static host proxy route under `/modules/{module}/http/{*path}`. Done
+   for GET.
+4. Enforce service/system auth and declared capabilities. Done for GET.
+5. Forward matched GET requests without caller credentials. Done; configured
+   host-to-remote bearer tokens are used when present.
+6. Add request/response size limits and full header allowlists.
+7. Mount the remaining declared methods: `POST`, `PUT`, `PATCH`, and `DELETE`.
+8. Normalize remote errors through the existing platform error model. Done for
+   GET.
 9. Add telemetry and runtime-console visibility for proxied calls.
 
 Do not implement per-module OpenAPI fragments, streaming, browser credentials,
