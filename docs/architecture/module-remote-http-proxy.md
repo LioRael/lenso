@@ -133,6 +133,35 @@ Headers not forwarded:
 The host may authenticate to the remote module using the configured remote
 module token, but it must not forward the caller's bearer token.
 
+## DELETE Policy
+
+DELETE is intentionally not mounted yet. When it is mounted, it should use the
+same host namespace, route matching, service/system auth, capability
+enforcement, header allowlist, tracing, and configured host-to-remote bearer
+token behavior as the other proxy methods.
+
+DELETE request bodies should not be accepted in the first implementation. The
+host should forward an empty DELETE request to the remote module and reject any
+caller request with a non-empty body as `validation_failed`. This keeps DELETE
+semantics narrow and avoids introducing a second body policy for methods where
+payload support is often ambiguous across clients, caches, and intermediaries.
+
+DELETE responses should support both JSON and empty success responses:
+
+- `200 OK` with JSON response body: decode the JSON and return the normal
+  `RemoteHttpProxyResponse` envelope with `status = "forwarded"` and `data`
+  set to the remote JSON.
+- `202 Accepted` with JSON response body: same as `200 OK`; the remote module
+  can use the JSON body to report asynchronous deletion state.
+- `204 No Content` with an empty body: return the normal
+  `RemoteHttpProxyResponse` envelope with `status = "forwarded"` and
+  `data = null`.
+
+DELETE success responses with a non-empty non-JSON body should be rejected as
+`external_dependency_failure`, matching the existing response content-type
+policy. DELETE error responses should continue to use the standard remote error
+envelope when possible, and fallback status mapping otherwise.
+
 ## Auth And Capabilities
 
 The host owns caller authentication. Remote routes must require service/system
@@ -227,10 +256,11 @@ OpenAPI fragments after trust, validation, and versioning are specified.
    response content-type, POST/PUT/PATCH request/response content-type,
    request/response size limits, and header allowlists.
 7. Mount the remaining declared methods: `POST`, `PUT`, `PATCH`, and `DELETE`.
-   Done for POST, PUT, and PATCH; DELETE remains deferred.
+   Done for POST, PUT, and PATCH; DELETE policy is specified but mounting
+   remains deferred.
 8. Normalize remote errors through the existing platform error model. Done for
    GET, POST, PUT, and PATCH.
-9. Add telemetry and runtime-console visibility for proxied calls. Done for GET
+9. Add telemetry and runtime-console visibility for proxied calls. Done for GET,
    POST, PUT, and PATCH tracing events; persisted Runtime Console visibility
    remains deferred.
 
