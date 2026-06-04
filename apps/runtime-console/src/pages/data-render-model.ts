@@ -514,11 +514,10 @@ export function moduleRouteChecks(
         subject: identity,
       });
     }
-    if (!present(route.capability)) {
+    if (module.source === "remote" && !present(route.capability)) {
       checks.push({
         key: `capability:${identity}:${index}`,
-        message:
-          "Missing capability declaration for host authorization review.",
+        message: "Missing capability declaration for host proxy authorization.",
         severity: "warning",
         subject: identity,
       });
@@ -532,7 +531,9 @@ export function moduleRouteChecks(
     checks.push({
       key: "routes-complete",
       message:
-        "Declared routes include display, story, and capability metadata.",
+        module.source === "remote"
+          ? "Declared routes include display, story, and capability metadata."
+          : "Declared routes include display and story metadata.",
       severity: "ok",
       subject: "routes",
     });

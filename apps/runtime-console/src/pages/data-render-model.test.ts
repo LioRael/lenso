@@ -446,7 +446,6 @@ describe("module status helpers", () => {
         ...loadedModule,
         http_routes: [
           {
-            capability: "identity.users.create",
             display_name: "Create User Request",
             method: "POST",
             path: "/v1/identity/users",
@@ -457,8 +456,7 @@ describe("module status helpers", () => {
     ).toEqual([
       {
         key: "routes-complete",
-        message:
-          "Declared routes include display, story, and capability metadata.",
+        message: "Declared routes include display and story metadata.",
         severity: "ok",
         subject: "routes",
       },
@@ -503,8 +501,7 @@ describe("module status helpers", () => {
       },
       {
         key: "capability:GET /contacts/{id}:0",
-        message:
-          "Missing capability declaration for host authorization review.",
+        message: "Missing capability declaration for host proxy authorization.",
         severity: "warning",
         subject: "GET /contacts/{id}",
       },
