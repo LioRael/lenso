@@ -479,10 +479,10 @@ describe("module status helpers", () => {
       ],
       route_lints: [
         {
-          message: "Declared routes include display and story metadata.",
+          message: "lint ok from backend",
           severity: "ok" as const,
           subject: "routes",
-          suggestion: "No action needed.",
+          suggestion: "backend says no action",
         },
       ],
     };
@@ -490,10 +490,10 @@ describe("module status helpers", () => {
     expect(moduleRouteChecks(healthyModule)).toEqual([
       {
         key: "route-lint:ok:routes:0",
-        message: "Declared routes include display and story metadata.",
+        message: "lint ok from backend",
         severity: "ok",
         subject: "routes",
-        suggestion: "No action needed.",
+        suggestion: "backend says no action",
       },
     ]);
     expect(moduleRouteHealth(healthyModule)).toBe("ok");
@@ -516,46 +516,40 @@ describe("module status helpers", () => {
       ],
       route_lints: [
         {
-          message: "2 routes declare the same method and path.",
+          message: "lint error from backend",
           severity: "error",
           subject: "GET /contacts/{id}",
-          suggestion: "Keep one route declaration per method and path.",
+          suggestion: "backend says deduplicate",
         },
         {
-          message: "Missing display_name for compact runtime story nodes.",
+          message: "lint warning display from backend",
           severity: "warning",
           subject: "GET /contacts/{id}",
-          suggestion:
-            "Add display_name to ModuleHttpRoute for compact story timeline labels.",
+          suggestion: "backend says add display",
         },
         {
-          message: "Missing story_title for direct HTTP entry stories.",
+          message: "lint warning story from backend",
           severity: "warning",
           subject: "GET /contacts/{id}",
-          suggestion:
-            "Add story_title when this route can be a direct business entry.",
+          suggestion: "backend says add story",
         },
         {
-          message:
-            "Missing capability declaration for host proxy authorization.",
+          message: "lint warning capability from backend",
           severity: "warning",
           subject: "GET /contacts/{id}",
-          suggestion:
-            "Remote routes should declare the capability used by host proxy authorization.",
+          suggestion: "backend says add capability",
         },
         {
-          message: "Missing display_name for compact runtime story nodes.",
+          message: "lint warning display from backend",
           severity: "warning",
           subject: "GET /contacts/{id}",
-          suggestion:
-            "Add display_name to ModuleHttpRoute for compact story timeline labels.",
+          suggestion: "backend says add display",
         },
         {
-          message: "Missing story_title for direct HTTP entry stories.",
+          message: "lint warning story from backend",
           severity: "warning",
           subject: "GET /contacts/{id}",
-          suggestion:
-            "Add story_title when this route can be a direct business entry.",
+          suggestion: "backend says add story",
         },
       ],
     });
@@ -563,56 +557,51 @@ describe("module status helpers", () => {
     expect(moduleRouteChecks(issueModule)).toEqual([
       {
         key: "route-lint:error:GET /contacts/{id}:0",
-        message: "2 routes declare the same method and path.",
+        message: "lint error from backend",
         severity: "error",
         subject: "GET /contacts/{id}",
-        suggestion: "Keep one route declaration per method and path.",
+        suggestion: "backend says deduplicate",
       },
       {
         key: "route-lint:warning:GET /contacts/{id}:1",
-        message: "Missing display_name for compact runtime story nodes.",
+        message: "lint warning display from backend",
         severity: "warning",
         subject: "GET /contacts/{id}",
-        suggestion:
-          "Add display_name to ModuleHttpRoute for compact story timeline labels.",
+        suggestion: "backend says add display",
       },
       {
         key: "route-lint:warning:GET /contacts/{id}:2",
-        message: "Missing story_title for direct HTTP entry stories.",
+        message: "lint warning story from backend",
         severity: "warning",
         subject: "GET /contacts/{id}",
-        suggestion:
-          "Add story_title when this route can be a direct business entry.",
+        suggestion: "backend says add story",
       },
       {
         key: "route-lint:warning:GET /contacts/{id}:3",
-        message: "Missing capability declaration for host proxy authorization.",
+        message: "lint warning capability from backend",
         severity: "warning",
         subject: "GET /contacts/{id}",
-        suggestion:
-          "Remote routes should declare the capability used by host proxy authorization.",
+        suggestion: "backend says add capability",
       },
       {
         key: "route-lint:warning:GET /contacts/{id}:4",
-        message: "Missing display_name for compact runtime story nodes.",
+        message: "lint warning display from backend",
         severity: "warning",
         subject: "GET /contacts/{id}",
-        suggestion:
-          "Add display_name to ModuleHttpRoute for compact story timeline labels.",
+        suggestion: "backend says add display",
       },
       {
         key: "route-lint:warning:GET /contacts/{id}:5",
-        message: "Missing story_title for direct HTTP entry stories.",
+        message: "lint warning story from backend",
         severity: "warning",
         subject: "GET /contacts/{id}",
-        suggestion:
-          "Add story_title when this route can be a direct business entry.",
+        suggestion: "backend says add story",
       },
     ]);
     expect(moduleRouteHealth(issueModule)).toBe("error");
     expect(
       filterModuleRegistry([loadedModule, issueModule], {
-        query: "business entry",
+        query: "backend says add story",
         route: "error",
         source: "all",
         status: "all",
@@ -660,11 +649,10 @@ describe("module status helpers", () => {
       ...errorModule,
       route_lints: [
         {
-          message: "No HTTP interfaces are declared in this manifest.",
+          message: "lint warning empty routes from backend",
           severity: "warning",
           subject: "routes",
-          suggestion:
-            "Add ModuleHttpRoute declarations for remote HTTP interfaces that should be visible to the host.",
+          suggestion: "backend says add routes",
         },
       ],
     });
@@ -680,11 +668,10 @@ describe("module status helpers", () => {
       },
       {
         key: "route-lint:warning:routes:0",
-        message: "No HTTP interfaces are declared in this manifest.",
+        message: "lint warning empty routes from backend",
         severity: "warning",
         subject: "routes",
-        suggestion:
-          "Add ModuleHttpRoute declarations for remote HTTP interfaces that should be visible to the host.",
+        suggestion: "backend says add routes",
       },
     ]);
   });

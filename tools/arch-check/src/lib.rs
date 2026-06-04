@@ -5,6 +5,15 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 const FORBIDDEN_DOMAIN_DIRS: &[&str] = &["api", "application", "domain", "infrastructure"];
+const MANIFEST_LINT_MESSAGES: &[&str] = &[
+    "No HTTP interfaces are declared in this manifest.",
+    "routes declare the same method and path.",
+    "Missing display_name for compact runtime story nodes.",
+    "Missing story_title for direct HTTP entry stories.",
+    "Missing capability declaration for host proxy authorization.",
+    "Declared routes include display, story, and capability metadata.",
+    "Declared routes include display and story metadata.",
+];
 const REQUIRED_OPENAPI_ARTIFACTS: &[&str] = &["contracts/openapi/app-api.v1.yaml"];
 
 pub fn run() -> anyhow::Result<()> {
@@ -31,6 +40,11 @@ pub fn run() -> anyhow::Result<()> {
             ],
         ),
         "platform admin/remote domain dependency",
+        &mut failures,
+    );
+    collect_result(
+        check_runtime_console_does_not_duplicate_manifest_lints(&root),
+        "runtime console manifest lint ownership",
         &mut failures,
     );
     collect_result(
@@ -159,6 +173,28 @@ pub fn check_crates_no_domain_deps(root: &Path, crates: &[&str]) -> anyhow::Resu
     ensure_empty(
         violations,
         "platform admin/remote crates must not depend on any domain crate",
+    )
+}
+
+pub fn check_runtime_console_does_not_duplicate_manifest_lints(root: &Path) -> anyhow::Result<()> {
+    let mut violations = Vec::new();
+    let console_src = root.join("apps/runtime-console/src");
+    for file in typescript_files(&console_src)? {
+        let source = fs::read_to_string(&file)
+            .with_context(|| format!("failed to read {}", file.display()))?;
+        for message in MANIFEST_LINT_MESSAGES {
+            if source.contains(message) {
+                violations.push(format!(
+                    "{} duplicates backend manifest lint message `{message}`",
+                    relative(root, &file),
+                ));
+            }
+        }
+    }
+
+    ensure_empty(
+        violations,
+        "runtime console must render backend manifest lints instead of reimplementing them",
     )
 }
 
@@ -340,6 +376,13 @@ fn rust_files(root: &Path) -> anyhow::Result<Vec<PathBuf>> {
     Ok(files)
 }
 
+fn typescript_files(root: &Path) -> anyhow::Result<Vec<PathBuf>> {
+    let mut files = Vec::new();
+    collect_typescript_files(root, &mut files)?;
+    files.sort();
+    Ok(files)
+}
+
 fn contract_files(root: &Path) -> anyhow::Result<Vec<PathBuf>> {
     let mut files = Vec::new();
     collect_contract_files(&root.join("contracts"), &mut files)?;
@@ -403,6 +446,25 @@ fn collect_rust_files(root: &Path, files: &mut Vec<PathBuf>) -> anyhow::Result<(
         if entry.file_type()?.is_dir() {
             collect_rust_files(&path, files)?;
         } else if path.extension().and_then(|extension| extension.to_str()) == Some("rs") {
+            files.push(path);
+        }
+    }
+    Ok(())
+}
+
+fn collect_typescript_files(root: &Path, files: &mut Vec<PathBuf>) -> anyhow::Result<()> {
+    if !root.exists() {
+        return Ok(());
+    }
+    for entry in fs::read_dir(root).with_context(|| format!("failed to read {}", root.display()))? {
+        let entry = entry?;
+        let path = entry.path();
+        if entry.file_type()?.is_dir() {
+            collect_typescript_files(&path, files)?;
+        } else if matches!(
+            path.extension().and_then(|extension| extension.to_str()),
+            Some("ts" | "tsx")
+        ) {
             files.push(path);
         }
     }

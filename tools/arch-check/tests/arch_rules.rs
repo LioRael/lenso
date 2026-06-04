@@ -110,6 +110,29 @@ fn event_contract_name_must_match_path() {
     );
 }
 
+#[test]
+fn runtime_console_manifest_lint_duplication_fails() {
+    let root = TestRepo::new();
+    root.write(
+        "apps/runtime-console/src/pages/modules-page.tsx",
+        r#"
+        export function ModuleRouteChecks() {
+          return "Missing capability declaration for host proxy authorization.";
+        }
+        "#,
+    );
+
+    let error = arch_check::check_runtime_console_does_not_duplicate_manifest_lints(root.path())
+        .expect_err("duplicated backend manifest lint message should fail");
+
+    assert!(
+        error
+            .to_string()
+            .contains("runtime console must render backend manifest lints"),
+        "{error}",
+    );
+}
+
 struct TestRepo {
     root: std::path::PathBuf,
 }
