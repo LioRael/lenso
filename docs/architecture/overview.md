@@ -71,7 +71,7 @@ The API exposes admin runtime endpoints under `/admin/runtime/*` for summaries, 
 
 The API also exposes schema-admin endpoints under `/admin/data/*`. These are served by `platform-admin-data`, which reads module schemas and data through the injected `AdminSurface::Schema` + `AdminDataSource` registry. The first implementation is a read-only identity User slice; writes, richer RBAC, and custom module UI are later module-framework steps.
 
-The module registry endpoint under `/admin/data/modules` is also the source of truth for module manifest health. `platform-admin-data` derives manifest lint results from `platform-module` helpers, including HTTP route declaration checks, and returns those lint results with the module metadata. The Runtime Console renders these `manifest_lints` as Manifest Lints; it must not reimplement the lint rules locally.
+The module registry endpoint under `/admin/data/modules` is also the source of truth for module manifest health. `platform-admin-data` derives manifest lint results from `platform-module` helpers, including HTTP route declaration checks, and returns those lint results with the module metadata. The Runtime Console renders these `manifest_lints` as Manifest Lints; it must not reimplement the lint rules locally. See `docs/architecture/module-manifest-lints.md` for the current lint catalog and UI category contract.
 
 OpenTelemetry data is an enrichment layer for technical operations. See `docs/architecture/runtime-telemetry.md` for the boundary between runtime story semantics and telemetry span enrichment.
 

@@ -572,4 +572,116 @@ mod tests {
                 .any(|lint| lint.subject == "admin.embedded.entry.allowed_origins")
         );
     }
+
+    #[test]
+    fn manifest_lint_catalog_covers_current_subjects() {
+        let schema = AdminSchema {
+            entities: vec![crate::EntitySchema {
+                name: "contacts".to_owned(),
+                label: "Contacts".to_owned(),
+                fields: vec![],
+                read_capability: "".to_owned(),
+            }],
+        };
+        let manifest = ModuleManifest::builder("")
+            .capabilities(vec!["RemoteCRM Contacts Read".to_owned()])
+            .http_routes(vec![
+                ModuleHttpRoute {
+                    method: ModuleHttpMethod::Get,
+                    path: "/contacts/{id}".to_owned(),
+                    capability: None,
+                    display_name: None,
+                    story_title: None,
+                },
+                ModuleHttpRoute {
+                    method: ModuleHttpMethod::Get,
+                    path: "/contacts/{id}".to_owned(),
+                    capability: None,
+                    display_name: None,
+                    story_title: None,
+                },
+            ])
+            .embedded_admin(AdminEmbeddedSurface {
+                runtime: AdminEmbeddedRuntime::Wasm,
+                entry: AdminEmbeddedEntry::Url {
+                    url: "http://crm.example.test/admin".to_owned(),
+                    allowed_origins: vec![],
+                },
+                sandbox: AdminSandboxPolicy {
+                    allow_scripts: true,
+                    allow_forms: false,
+                    allow_popups: false,
+                    allow_same_origin: false,
+                },
+                permissions: vec![AdminPermission::ReadEntity {
+                    entity: "missing".to_owned(),
+                }],
+                fallback_schema: Some(schema),
+            })
+            .build();
+
+        let catalog: Vec<_> = lint_module_manifest(ModuleSource::Remote, &manifest)
+            .into_iter()
+            .map(|lint| (lint.severity, lint.subject))
+            .collect();
+
+        assert_eq!(
+            catalog,
+            vec![
+                (ModuleManifestLintSeverity::Error, "module.name".to_owned()),
+                (
+                    ModuleManifestLintSeverity::Warning,
+                    "capability RemoteCRM Contacts Read".to_owned(),
+                ),
+                (
+                    ModuleManifestLintSeverity::Error,
+                    "GET /contacts/{id}".to_owned(),
+                ),
+                (
+                    ModuleManifestLintSeverity::Warning,
+                    "GET /contacts/{id}".to_owned(),
+                ),
+                (
+                    ModuleManifestLintSeverity::Warning,
+                    "GET /contacts/{id}".to_owned(),
+                ),
+                (
+                    ModuleManifestLintSeverity::Warning,
+                    "GET /contacts/{id}".to_owned(),
+                ),
+                (
+                    ModuleManifestLintSeverity::Warning,
+                    "GET /contacts/{id}".to_owned(),
+                ),
+                (
+                    ModuleManifestLintSeverity::Warning,
+                    "GET /contacts/{id}".to_owned(),
+                ),
+                (
+                    ModuleManifestLintSeverity::Warning,
+                    "GET /contacts/{id}".to_owned(),
+                ),
+                (
+                    ModuleManifestLintSeverity::Warning,
+                    "admin.embedded.runtime".to_owned(),
+                ),
+                (
+                    ModuleManifestLintSeverity::Warning,
+                    "admin.embedded.entry.url".to_owned(),
+                ),
+                (
+                    ModuleManifestLintSeverity::Warning,
+                    "admin.embedded.entry.allowed_origins".to_owned(),
+                ),
+                (
+                    ModuleManifestLintSeverity::Warning,
+                    "admin.embedded.fallback_schema.contacts".to_owned(),
+                ),
+                (
+                    ModuleManifestLintSeverity::Warning,
+                    "admin.embedded.permission.missing".to_owned(),
+                ),
+            ],
+        );
+    }
 }
