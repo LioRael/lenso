@@ -18,11 +18,14 @@ import {
 } from "../lib/http-client";
 import {
   type AdminModuleMetadata,
+  type ModuleRegistryFilters,
   adminSurfaceLabel,
   adminSurfaceMetadataRows,
+  filterModuleRegistry,
   moduleErrorMessage,
   moduleHttpRouteRows,
   moduleIsLoaded,
+  moduleRegistrySummary,
   moduleStatusLabel,
   storyDisplayRows,
 } from "./data-render-model";
@@ -61,9 +64,18 @@ function ModulesContent() {
   const [selectedModuleName, setSelectedModuleName] = useState<string | null>(
     null
   );
+  const [filters, setFilters] = useState<ModuleRegistryFilters>({
+    query: "",
+    source: "all",
+    status: "all",
+  });
+  const summary = moduleRegistrySummary(modules);
+  const filteredModules = filterModuleRegistry(modules, filters);
   const selectedModule =
-    modules.find((module) => module.module_name === selectedModuleName) ??
-    modules[0] ??
+    filteredModules.find(
+      (module) => module.module_name === selectedModuleName
+    ) ??
+    filteredModules[0] ??
     null;
 
   return (
@@ -105,14 +117,21 @@ function ModulesContent() {
 
       <div className="grid min-h-0 grid-cols-[260px_minmax(0,1fr)] overflow-hidden">
         <nav className="min-h-0 overflow-auto border-r border-(--border-subtle) p-2 font-mono text-[12px]">
+          <ModuleRegistryControls
+            filters={filters}
+            onChange={setFilters}
+            summary={summary}
+          />
           {modulesQuery.isLoading ? (
             <p className="px-2 py-1 text-(--muted)">Loading...</p>
           ) : modulesQuery.isError ? (
             <p className="px-2 py-1 text-(--error)">Failed to load modules.</p>
           ) : modules.length === 0 ? (
             <p className="px-2 py-1 text-(--muted)">No modules registered.</p>
+          ) : filteredModules.length === 0 ? (
+            <p className="px-2 py-2 text-(--muted)">No modules match.</p>
           ) : (
-            modules.map((module) => {
+            filteredModules.map((module) => {
               const selected =
                 selectedModule?.module_name === module.module_name;
               return (
@@ -158,6 +177,96 @@ function ModulesContent() {
         </main>
       </div>
     </section>
+  );
+}
+
+function ModuleRegistryControls({
+  filters,
+  onChange,
+  summary,
+}: {
+  filters: ModuleRegistryFilters;
+  onChange: (filters: ModuleRegistryFilters) => void;
+  summary: ReturnType<typeof moduleRegistrySummary>;
+}) {
+  return (
+    <div className="mb-2 grid gap-2 border-b border-(--border-subtle) pb-2">
+      <div className="grid grid-cols-5 gap-1 text-center text-[10px]">
+        <Counter label="total" value={summary.total} />
+        <Counter label="linked" value={summary.linked} />
+        <Counter label="remote" value={summary.remote} />
+        <Counter label="loaded" value={summary.loaded} />
+        <Counter label="error" value={summary.error} tone="error" />
+      </div>
+      <input
+        aria-label="Search module registry"
+        className="h-7 w-full border border-(--border-subtle) bg-(--background) px-2 text-[11px] text-(--foreground) outline-none placeholder:text-(--muted) focus:border-(--accent)"
+        onChange={(event) =>
+          onChange({ ...filters, query: event.currentTarget.value })
+        }
+        placeholder="search modules, routes, capabilities"
+        type="search"
+        value={filters.query}
+      />
+      <div className="grid grid-cols-2 gap-1">
+        <select
+          aria-label="Filter modules by source"
+          className="h-7 border border-(--border-subtle) bg-(--background) px-2 text-[11px] text-(--foreground) outline-none focus:border-(--accent)"
+          onChange={(event) =>
+            onChange({
+              ...filters,
+              source: event.currentTarget
+                .value as ModuleRegistryFilters["source"],
+            })
+          }
+          value={filters.source}
+        >
+          <option value="all">all sources</option>
+          <option value="linked">linked</option>
+          <option value="remote">remote</option>
+        </select>
+        <select
+          aria-label="Filter modules by status"
+          className="h-7 border border-(--border-subtle) bg-(--background) px-2 text-[11px] text-(--foreground) outline-none focus:border-(--accent)"
+          onChange={(event) =>
+            onChange({
+              ...filters,
+              status: event.currentTarget
+                .value as ModuleRegistryFilters["status"],
+            })
+          }
+          value={filters.status}
+        >
+          <option value="all">all status</option>
+          <option value="loaded">loaded</option>
+          <option value="error">error</option>
+        </select>
+      </div>
+    </div>
+  );
+}
+
+function Counter({
+  label,
+  tone = "default",
+  value,
+}: {
+  label: string;
+  tone?: "default" | "error";
+  value: number;
+}) {
+  return (
+    <div className="border border-(--border-subtle) bg-(--surface) px-1 py-1">
+      <div
+        className={cn(
+          "truncate text-[11px] text-(--secondary)",
+          tone === "error" && value > 0 && "text-(--error)"
+        )}
+      >
+        {value}
+      </div>
+      <div className="truncate text-[9px] text-(--muted)">{label}</div>
+    </div>
   );
 }
 

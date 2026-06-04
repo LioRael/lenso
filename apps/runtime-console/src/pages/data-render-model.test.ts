@@ -7,6 +7,7 @@ import {
   declarativeMetricValues,
   detailRows,
   embeddedIframePolicy,
+  filterModuleRegistry,
   type AdminModuleMetadata,
   type DeclarativeAdminSurface,
   type EntitySchema,
@@ -16,6 +17,7 @@ import {
   moduleHttpRouteRows,
   moduleIsLoaded,
   moduleNavItems,
+  moduleRegistrySummary,
   moduleStatusLabel,
   recordId,
   renderCell,
@@ -370,6 +372,71 @@ describe("module status helpers", () => {
         admin: { kind: "schema", entities: [entity] },
       },
     ]);
+  });
+
+  test("summarizes module registry source and status counts", () => {
+    expect(moduleRegistrySummary([loadedModule, errorModule])).toEqual({
+      error: 1,
+      linked: 1,
+      loaded: 1,
+      remote: 1,
+      total: 2,
+    });
+  });
+
+  test("filters module registry by source, status, and search text", () => {
+    const crmModule: AdminModuleMetadata = moduleMetadata({
+      module_name: "remote-crm",
+      source: "remote",
+      status: "loaded",
+      error: null,
+      capabilities: ["remote_crm.contacts.read"],
+      http_routes: [
+        {
+          capability: "remote_crm.contacts.read",
+          display_name: "Fetch Contact",
+          method: "GET",
+          path: "/contacts/{id}",
+          story_title: "Fetch Contact",
+        },
+      ],
+      story_display: [
+        {
+          display_name: "Fetch Contact",
+          source: {
+            kind: "http_request",
+            method: "GET",
+            path: "/modules/remote-crm/http/contacts/{id}",
+          },
+          story_title: "CRM Contact Lookup",
+        },
+      ],
+      admin: null,
+    });
+
+    expect(
+      filterModuleRegistry([loadedModule, errorModule, crmModule], {
+        query: "",
+        source: "remote",
+        status: "loaded",
+      }).map((module) => module.module_name)
+    ).toEqual(["remote-crm"]);
+
+    expect(
+      filterModuleRegistry([loadedModule, errorModule, crmModule], {
+        query: "contacts.read",
+        source: "all",
+        status: "all",
+      }).map((module) => module.module_name)
+    ).toEqual(["remote-crm"]);
+
+    expect(
+      filterModuleRegistry([loadedModule, errorModule, crmModule], {
+        query: "manifest request",
+        source: "all",
+        status: "error",
+      }).map((module) => module.module_name)
+    ).toEqual(["remote-crm"]);
   });
 });
 

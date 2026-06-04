@@ -188,6 +188,23 @@ export type StoryDisplayRow = {
   storyTitle: string;
 };
 
+export type ModuleRegistrySourceFilter = "all" | ModuleSource;
+export type ModuleRegistryStatusFilter = "all" | ModuleStatus;
+
+export type ModuleRegistryFilters = {
+  query: string;
+  source: ModuleRegistrySourceFilter;
+  status: ModuleRegistryStatusFilter;
+};
+
+export type ModuleRegistrySummary = {
+  total: number;
+  linked: number;
+  remote: number;
+  loaded: number;
+  error: number;
+};
+
 export type EmbeddedIframePolicy =
   | {
       status: "renderable";
@@ -303,6 +320,63 @@ export function moduleNavItems(
       })
     );
   });
+}
+
+export function moduleRegistrySummary(
+  modules: AdminModuleMetadata[]
+): ModuleRegistrySummary {
+  return modules.reduce(
+    (summary, module) => {
+      summary.total += 1;
+      summary[module.source] += 1;
+      summary[module.status] += 1;
+      return summary;
+    },
+    { error: 0, linked: 0, loaded: 0, remote: 0, total: 0 }
+  );
+}
+
+export function filterModuleRegistry(
+  modules: AdminModuleMetadata[],
+  filters: ModuleRegistryFilters
+): AdminModuleMetadata[] {
+  const query = filters.query.trim().toLowerCase();
+  return modules.filter((module) => {
+    if (filters.source !== "all" && module.source !== filters.source) {
+      return false;
+    }
+    if (filters.status !== "all" && module.status !== filters.status) {
+      return false;
+    }
+    if (query.length === 0) {
+      return true;
+    }
+    return moduleRegistrySearchText(module).includes(query);
+  });
+}
+
+function moduleRegistrySearchText(module: AdminModuleMetadata): string {
+  const parts = [
+    module.module_name,
+    module.source,
+    module.status,
+    adminSurfaceLabel(module.admin),
+    module.error ?? "",
+    ...module.capabilities,
+    ...module.http_routes.flatMap((route) => [
+      route.method,
+      route.path,
+      route.capability ?? "",
+      route.display_name ?? "",
+      route.story_title ?? "",
+    ]),
+    ...module.story_display.flatMap((descriptor) => [
+      descriptor.display_name,
+      descriptor.story_title ?? "",
+      storyDisplaySourceLabel(descriptor.source),
+    ]),
+  ];
+  return parts.join(" ").toLowerCase();
 }
 
 export function adminSurfaceMetadataRows(
