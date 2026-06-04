@@ -2673,6 +2673,10 @@ components:
             $ref: '#/components/schemas/ModuleManifestLint'
         module_name:
           type: string
+        runtime:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/RuntimeSurface'
         source:
           $ref: '#/components/schemas/ModuleSource'
         status:
@@ -4053,6 +4057,57 @@ components:
       type: string
       enum:
       - forwarded
+    RuntimeFunctionDeclaration:
+      type: object
+      required:
+      - name
+      - version
+      - queue
+      properties:
+        input_schema:
+          type:
+          - string
+          - 'null'
+          description: Optional schema identifier for the function input payload.
+        name:
+          type: string
+          description: Stable function name used by `runtime.function_runs`.
+        queue:
+          type: string
+          description: Queue name the host should use when registering the function.
+        retry_policy:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/RuntimeRetryPolicyDeclaration'
+            description: |-
+              Optional retry policy requested by the module. The host still owns
+              enforcement and may clamp values when behavior registration is added.
+        version:
+          type: integer
+          format: int32
+          description: Version for the declared function contract.
+          minimum: 0
+    RuntimeRetryPolicyDeclaration:
+      type: object
+      required:
+      - max_attempts
+      - initial_delay_ms
+      properties:
+        initial_delay_ms:
+          type: integer
+          format: int64
+          minimum: 0
+        max_attempts:
+          type: integer
+          format: int32
+          minimum: 0
+    RuntimeSurface:
+      type: object
+      properties:
+        functions:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuntimeFunctionDeclaration'
     StoryDisplayDescriptorDto:
       type: object
       required:

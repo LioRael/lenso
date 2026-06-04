@@ -8,7 +8,7 @@ use crate::admin::{
 use crate::admin_schema::AdminSchema;
 use crate::http::{ModuleHttpRoute, lint_module_http_routes};
 use crate::module::ModuleSource;
-use crate::runtime::RuntimeSurface;
+use crate::runtime::{RuntimeFunctionDeclaration, RuntimeSurface};
 use platform_core::StoryDisplayDescriptor;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -91,6 +91,7 @@ pub fn lint_module_manifest(
         &manifest.name,
         manifest.admin.as_ref(),
         &manifest.http_routes,
+        manifest.runtime.as_ref(),
         &manifest.capabilities,
     )
 }
@@ -100,6 +101,7 @@ pub fn lint_module_manifest_parts(
     name: &str,
     admin: Option<&AdminSurface>,
     http_routes: &[ModuleHttpRoute],
+    runtime: Option<&RuntimeSurface>,
     capabilities: &[String],
 ) -> Vec<ModuleManifestLint> {
     let mut lints = Vec::new();
@@ -141,6 +143,9 @@ pub fn lint_module_manifest_parts(
     if let Some(admin) = admin {
         lint_admin_surface(admin, &mut lints);
     }
+    if let Some(runtime) = runtime {
+        lint_runtime_surface(runtime, &mut lints);
+    }
 
     if lints.is_empty() {
         lints.push(ModuleManifestLint {
@@ -152,6 +157,91 @@ pub fn lint_module_manifest_parts(
     }
 
     lints
+}
+
+fn lint_runtime_surface(runtime: &RuntimeSurface, lints: &mut Vec<ModuleManifestLint>) {
+    if runtime.functions.is_empty() {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Warning,
+            subject: "runtime.functions".to_owned(),
+            message: "Runtime surface declares no functions.".to_owned(),
+            suggestion: "Add at least one function declaration or omit the runtime surface."
+                .to_owned(),
+        });
+        return;
+    }
+
+    let mut names = HashSet::new();
+    for function in &runtime.functions {
+        lint_runtime_function(function, &mut names, lints);
+    }
+}
+
+fn lint_runtime_function(
+    function: &RuntimeFunctionDeclaration,
+    names: &mut HashSet<String>,
+    lints: &mut Vec<ModuleManifestLint>,
+) {
+    let subject = if present(&function.name) {
+        format!("runtime.function.{}", function.name)
+    } else {
+        "runtime.function".to_owned()
+    };
+
+    if !present(&function.name) {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Error,
+            subject: subject.clone(),
+            message: "Runtime function declaration is missing a name.".to_owned(),
+            suggestion: "Set a stable versioned function name such as module.action.v1.".to_owned(),
+        });
+    } else if !valid_runtime_function_name(&function.name) {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Warning,
+            subject: subject.clone(),
+            message: "Runtime function name should be a stable path-safe identifier.".to_owned(),
+            suggestion: "Use ASCII letters, digits, dot, underscore, or hyphen.".to_owned(),
+        });
+    } else if !names.insert(function.name.clone()) {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Error,
+            subject: subject.clone(),
+            message: "Duplicate runtime function declaration.".to_owned(),
+            suggestion: "Keep one declaration per runtime function name.".to_owned(),
+        });
+    }
+
+    if !present(&function.queue) {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Warning,
+            subject: subject.clone(),
+            message: "Runtime function declaration is missing a queue.".to_owned(),
+            suggestion: "Set the host queue used to claim this function.".to_owned(),
+        });
+    }
+
+    if let Some(input_schema) = &function.input_schema
+        && input_schema != &function.name
+    {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Warning,
+            subject: format!("{subject}.input_schema"),
+            message: "Runtime function input schema does not match the function name.".to_owned(),
+            suggestion: "Use the versioned function name as the input_schema contract identifier."
+                .to_owned(),
+        });
+    }
+
+    if let Some(retry_policy) = &function.retry_policy
+        && retry_policy.max_attempts == 0
+    {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Warning,
+            subject: format!("{subject}.retry_policy"),
+            message: "Runtime function retry policy declares zero attempts.".to_owned(),
+            suggestion: "Set max_attempts to at least 1 or omit the retry policy.".to_owned(),
+        });
+    }
 }
 
 fn lint_admin_surface(admin: &AdminSurface, lints: &mut Vec<ModuleManifestLint>) {
@@ -306,6 +396,16 @@ fn valid_capability(value: &str) -> bool {
                 && part.chars().all(|character| {
                     character.is_ascii_lowercase() || character == '_' || character.is_ascii_digit()
                 })
+        })
+}
+
+fn valid_runtime_function_name(value: &str) -> bool {
+    present(value)
+        && value.chars().all(|character| {
+            character.is_ascii_alphanumeric()
+                || character == '.'
+                || character == '_'
+                || character == '-'
         })
 }
 
@@ -618,6 +718,59 @@ mod tests {
     }
 
     #[test]
+    fn manifest_lint_warns_for_runtime_function_declarations() {
+        let manifest = ModuleManifest::builder("remote-crm")
+            .runtime(RuntimeSurface {
+                functions: vec![
+                    RuntimeFunctionDeclaration {
+                        name: "remote_crm/sync_contact.v1".to_owned(),
+                        version: 1,
+                        queue: "".to_owned(),
+                        input_schema: Some("remote_crm.sync_contact.v1".to_owned()),
+                        retry_policy: Some(RuntimeRetryPolicyDeclaration {
+                            max_attempts: 0,
+                            initial_delay_ms: 1000,
+                        }),
+                    },
+                    RuntimeFunctionDeclaration {
+                        name: "remote_crm.sync_contact.v1".to_owned(),
+                        version: 1,
+                        queue: "remote-crm".to_owned(),
+                        input_schema: Some("remote_crm.sync_contact.input.v1".to_owned()),
+                        retry_policy: None,
+                    },
+                    RuntimeFunctionDeclaration {
+                        name: "remote_crm.sync_contact.v1".to_owned(),
+                        version: 1,
+                        queue: "remote-crm".to_owned(),
+                        input_schema: Some("remote_crm.sync_contact.v1".to_owned()),
+                        retry_policy: None,
+                    },
+                ],
+            })
+            .build();
+
+        let lints = lint_module_manifest(ModuleSource::Remote, &manifest);
+
+        assert!(lints.iter().any(|lint| {
+            lint.subject == "runtime.function.remote_crm/sync_contact.v1"
+                && lint.severity == ModuleManifestLintSeverity::Warning
+        }));
+        assert!(lints.iter().any(|lint| {
+            lint.subject == "runtime.function.remote_crm/sync_contact.v1.retry_policy"
+                && lint.severity == ModuleManifestLintSeverity::Warning
+        }));
+        assert!(lints.iter().any(|lint| {
+            lint.subject == "runtime.function.remote_crm.sync_contact.v1.input_schema"
+                && lint.severity == ModuleManifestLintSeverity::Warning
+        }));
+        assert!(lints.iter().any(|lint| {
+            lint.subject == "runtime.function.remote_crm.sync_contact.v1"
+                && lint.severity == ModuleManifestLintSeverity::Error
+        }));
+    }
+
+    #[test]
     fn manifest_lint_catalog_covers_current_subjects() {
         let schema = AdminSchema {
             entities: vec![crate::EntitySchema {
@@ -661,6 +814,18 @@ mod tests {
                     entity: "missing".to_owned(),
                 }],
                 fallback_schema: Some(schema),
+            })
+            .runtime(RuntimeSurface {
+                functions: vec![RuntimeFunctionDeclaration {
+                    name: "remote_crm.sync_contact.v1".to_owned(),
+                    version: 1,
+                    queue: "".to_owned(),
+                    input_schema: Some("remote_crm.sync_contact.input.v1".to_owned()),
+                    retry_policy: Some(RuntimeRetryPolicyDeclaration {
+                        max_attempts: 0,
+                        initial_delay_ms: 1000,
+                    }),
+                }],
             })
             .build();
 
@@ -724,6 +889,18 @@ mod tests {
                 (
                     ModuleManifestLintSeverity::Warning,
                     "admin.embedded.permission.missing".to_owned(),
+                ),
+                (
+                    ModuleManifestLintSeverity::Warning,
+                    "runtime.function.remote_crm.sync_contact.v1".to_owned(),
+                ),
+                (
+                    ModuleManifestLintSeverity::Warning,
+                    "runtime.function.remote_crm.sync_contact.v1.input_schema".to_owned(),
+                ),
+                (
+                    ModuleManifestLintSeverity::Warning,
+                    "runtime.function.remote_crm.sync_contact.v1.retry_policy".to_owned(),
                 ),
             ],
         );

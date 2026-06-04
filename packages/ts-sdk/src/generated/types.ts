@@ -91,6 +91,7 @@ export type AdminModuleMetadataDto = {
   http_routes: Array<ModuleHttpRoute>;
   manifest_lints: Array<ModuleManifestLint>;
   module_name: string;
+  runtime?: unknown;
   source: ModuleSource;
   status: AdminModuleStatus;
   story_display: Array<StoryDisplayDescriptorDto>;
@@ -553,6 +554,23 @@ export type RemoteHttpProxyResponse = {
 };
 
 export type RemoteHttpProxyStatus = string;
+
+export type RuntimeFunctionDeclaration = {
+  input_schema?: string | null;
+  name: string;
+  queue: string;
+  retry_policy?: unknown;
+  version: number;
+};
+
+export type RuntimeRetryPolicyDeclaration = {
+  initial_delay_ms: number;
+  max_attempts: number;
+};
+
+export type RuntimeSurface = {
+  functions?: Array<RuntimeFunctionDeclaration>;
+};
 
 export type StoryDisplayDescriptorDto = {
   display_name: string;

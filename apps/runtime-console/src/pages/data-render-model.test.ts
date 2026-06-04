@@ -19,6 +19,7 @@ import {
   moduleIsLoaded,
   moduleNavItems,
   moduleRegistrySummary,
+  moduleRuntimeFunctionRows,
   moduleManifestCheckGroups,
   moduleManifestChecks,
   moduleManifestHealth,
@@ -65,18 +66,19 @@ const entity: EntitySchema = {
 function moduleMetadata(
   module: Omit<
     AdminModuleMetadata,
-    "capabilities" | "manifest_lints" | "story_display"
+    "capabilities" | "manifest_lints" | "runtime" | "story_display"
   > &
     Partial<
       Pick<
         AdminModuleMetadata,
-        "capabilities" | "manifest_lints" | "story_display"
+        "capabilities" | "manifest_lints" | "runtime" | "story_display"
       >
     >
 ): AdminModuleMetadata {
   return {
     capabilities: [],
     manifest_lints: [],
+    runtime: null,
     story_display: [],
     ...module,
   };
@@ -381,6 +383,7 @@ describe("module status helpers", () => {
         error: null,
         http_routes: [],
         manifest_lints: [],
+        runtime: null,
         story_display: [],
         capabilities: [],
         admin: { kind: "schema", entities: [entity] },
@@ -416,6 +419,20 @@ describe("module status helpers", () => {
           story_title: "Fetch Contact",
         },
       ],
+      runtime: {
+        functions: [
+          {
+            input_schema: "remote_crm.sync_contact.v1",
+            name: "remote_crm.sync_contact.v1",
+            queue: "remote-crm",
+            retry_policy: {
+              initial_delay_ms: 1000,
+              max_attempts: 3,
+            },
+            version: 1,
+          },
+        ],
+      },
       story_display: [
         {
           display_name: "Fetch Contact",
@@ -450,6 +467,15 @@ describe("module status helpers", () => {
 
     expect(
       filterModuleRegistry([loadedModule, errorModule, crmModule], {
+        query: "sync_contact",
+        lint: "all",
+        source: "all",
+        status: "all",
+      }).map((module) => module.module_name)
+    ).toEqual(["remote-crm"]);
+
+    expect(
+      filterModuleRegistry([loadedModule, errorModule, crmModule], {
         query: "manifest request",
         lint: "all",
         source: "all",
@@ -465,6 +491,42 @@ describe("module status helpers", () => {
         status: "all",
       }).map((module) => module.module_name)
     ).toEqual([]);
+  });
+
+  test("builds runtime function rows for registry detail", () => {
+    const module: AdminModuleMetadata = moduleMetadata({
+      module_name: "remote-crm",
+      source: "remote",
+      status: "loaded",
+      error: null,
+      http_routes: [],
+      runtime: {
+        functions: [
+          {
+            input_schema: "remote_crm.sync_contact.v1",
+            name: "remote_crm.sync_contact.v1",
+            queue: "remote-crm",
+            retry_policy: {
+              initial_delay_ms: 1000,
+              max_attempts: 3,
+            },
+            version: 1,
+          },
+        ],
+      },
+      admin: null,
+    });
+
+    expect(moduleRuntimeFunctionRows(module)).toEqual([
+      {
+        inputSchema: "remote_crm.sync_contact.v1",
+        key: "remote_crm.sync_contact.v1:1:0",
+        name: "remote_crm.sync_contact.v1",
+        queue: "remote-crm",
+        retryPolicy: "3 attempts / 1000ms",
+        version: "1",
+      },
+    ]);
   });
 
   test("reports healthy route declarations", () => {
@@ -693,6 +755,9 @@ describe("module status helpers", () => {
     );
     expect(manifestLintCategory("admin.embedded.entry.allowed_origins")).toBe(
       "admin.embedded"
+    );
+    expect(manifestLintCategory("runtime.function.remote_crm.sync.v1")).toBe(
+      "runtime"
     );
     expect(manifestLintCategory("module.name")).toBe("module");
   });

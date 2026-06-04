@@ -6,6 +6,7 @@ import {
   Route,
   ScrollText,
   TriangleAlert,
+  Zap,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -27,6 +28,7 @@ import {
   moduleIsLoaded,
   moduleManifestCheckGroups,
   moduleRegistrySummary,
+  moduleRuntimeFunctionRows,
   moduleManifestChecks,
   moduleManifestHealth,
   moduleStatusLabel,
@@ -362,6 +364,7 @@ function registrySnapshotLabel(refreshedAt: string | null): string {
 
 function ModuleRegistryDetail({ module }: { module: AdminModuleMetadata }) {
   const routeRows = moduleHttpRouteRows(module);
+  const runtimeRows = moduleRuntimeFunctionRows(module);
   const manifestChecks = moduleManifestChecks(module);
   const storyRows = storyDisplayRows(module);
   return (
@@ -385,6 +388,7 @@ function ModuleRegistryDetail({ module }: { module: AdminModuleMetadata }) {
 
       <ModuleCapabilitiesList capabilities={module.capabilities} />
       <ModuleStoryDisplayTable rows={storyRows} />
+      <ModuleRuntimeFunctionsTable rows={runtimeRows} />
       <ModuleManifestChecks checks={manifestChecks} />
       <ModuleHttpRoutesTable rows={routeRows} />
     </div>
@@ -486,6 +490,69 @@ function ModuleStoryDisplayTable({
                 </td>
                 <td className="truncate px-3 py-1.5 text-(--muted)">
                   {row.storyTitle}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function ModuleRuntimeFunctionsTable({
+  rows,
+}: {
+  rows: ReturnType<typeof moduleRuntimeFunctionRows>;
+}) {
+  if (rows.length === 0) {
+    return (
+      <section className="border border-(--border-subtle) bg-(--surface) px-3 py-2 text-(--muted)">
+        No runtime functions declared.
+      </section>
+    );
+  }
+
+  return (
+    <section className="min-w-0 border border-(--border-subtle) bg-(--surface)">
+      <header className="flex items-center gap-2 border-b border-(--border-subtle) px-3 py-2 font-semibold">
+        <Zap className="text-(--success)" size={14} />
+        <span>Runtime Functions</span>
+        <span className="ml-auto border border-(--border-subtle) px-1.5 py-0.5 text-[10px] text-(--secondary)">
+          {rows.length}
+        </span>
+      </header>
+      <div className="overflow-auto">
+        <table className="w-full min-w-[780px] table-fixed">
+          <thead className="bg-(--sidebar) text-[10px] uppercase tracking-wide text-(--muted)">
+            <tr>
+              <th className="px-3 py-1.5 text-left">function</th>
+              <th className="w-20 px-3 py-1.5 text-left">version</th>
+              <th className="px-3 py-1.5 text-left">queue</th>
+              <th className="px-3 py-1.5 text-left">input schema</th>
+              <th className="px-3 py-1.5 text-left">retry</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr
+                className="border-t border-(--border-subtle) text-[11px]"
+                key={row.key}
+              >
+                <td className="truncate px-3 py-1.5 text-(--foreground)">
+                  {row.name}
+                </td>
+                <td className="px-3 py-1.5 text-(--secondary)">
+                  {row.version}
+                </td>
+                <td className="truncate px-3 py-1.5 text-(--secondary)">
+                  {row.queue}
+                </td>
+                <td className="truncate px-3 py-1.5 text-(--muted)">
+                  {row.inputSchema}
+                </td>
+                <td className="truncate px-3 py-1.5 text-(--muted)">
+                  {row.retryPolicy}
                 </td>
               </tr>
             ))}

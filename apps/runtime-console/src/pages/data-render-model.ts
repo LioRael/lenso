@@ -130,6 +130,7 @@ export type AdminModuleMetadata = {
   status: ModuleStatus;
   error: string | null;
   http_routes: ModuleHttpRoute[];
+  runtime: RuntimeSurface | null;
   manifest_lints: ModuleManifestLint[];
   story_display: StoryDisplayDescriptor[];
   capabilities: string[];
@@ -180,6 +181,32 @@ export type ModuleHttpRouteRow = {
   capability: string;
   displayName: string;
   storyTitle: string;
+};
+
+export type RuntimeRetryPolicyDeclaration = {
+  max_attempts: number;
+  initial_delay_ms: number;
+};
+
+export type RuntimeFunctionDeclaration = {
+  name: string;
+  version: number;
+  queue: string;
+  input_schema?: string | null;
+  retry_policy?: RuntimeRetryPolicyDeclaration | null;
+};
+
+export type RuntimeSurface = {
+  functions: RuntimeFunctionDeclaration[];
+};
+
+export type ModuleRuntimeFunctionRow = {
+  key: string;
+  name: string;
+  version: string;
+  queue: string;
+  inputSchema: string;
+  retryPolicy: string;
 };
 
 export type StoryDisplayRow = {
@@ -311,6 +338,7 @@ export function schemaModulesToAdminMetadata(
     http_routes: [],
     manifest_lints: [],
     module_name: module.module_name,
+    runtime: null,
     source: module.source,
     status: module.status,
     story_display: [],
@@ -420,6 +448,13 @@ function moduleRegistrySearchText(module: AdminModuleMetadata): string {
       route.display_name ?? "",
       route.story_title ?? "",
     ]),
+    ...(module.runtime?.functions ?? []).flatMap((runtimeFunction) => [
+      runtimeFunction.name,
+      String(runtimeFunction.version),
+      runtimeFunction.queue,
+      runtimeFunction.input_schema ?? "",
+      retryPolicyLabel(runtimeFunction.retry_policy),
+    ]),
     ...module.story_display.flatMap((descriptor) => [
       descriptor.display_name,
       descriptor.story_title ?? "",
@@ -502,6 +537,19 @@ export function moduleHttpRouteRows(
   }));
 }
 
+export function moduleRuntimeFunctionRows(
+  module: AdminModuleMetadata
+): ModuleRuntimeFunctionRow[] {
+  return (module.runtime?.functions ?? []).map((runtimeFunction, index) => ({
+    inputSchema: runtimeFunction.input_schema ?? "-",
+    key: `${runtimeFunction.name}:${runtimeFunction.version}:${index}`,
+    name: runtimeFunction.name,
+    queue: runtimeFunction.queue,
+    retryPolicy: retryPolicyLabel(runtimeFunction.retry_policy),
+    version: String(runtimeFunction.version),
+  }));
+}
+
 export function moduleManifestChecks(
   module: AdminModuleMetadata
 ): ModuleManifestCheck[] {
@@ -550,10 +598,22 @@ export function manifestLintCategory(subject: string): string {
   if (subject.startsWith("admin.schema")) {
     return "admin.schema";
   }
+  if (subject.startsWith("runtime.")) {
+    return "runtime";
+  }
   if (subject.startsWith("module.")) {
     return "module";
   }
   return "manifest";
+}
+
+function retryPolicyLabel(
+  retryPolicy: RuntimeRetryPolicyDeclaration | null | undefined
+): string {
+  if (!retryPolicy) {
+    return "-";
+  }
+  return `${retryPolicy.max_attempts} attempts / ${retryPolicy.initial_delay_ms}ms`;
 }
 
 export function moduleManifestHealth(

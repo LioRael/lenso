@@ -68,6 +68,7 @@ fn app() -> axum::Router {
         source: ModuleSource::Linked,
         load_status: ModuleLoadStatus::Loaded,
         http_routes: vec![],
+        runtime: None,
         story_display: vec![],
         capabilities: vec![],
         admin: Some(AdminSurface::Schema(stub_schema())),
@@ -152,6 +153,7 @@ async fn modules_endpoint_lists_registry_metadata() {
     assert_eq!(json["modules"][0]["status"], "loaded");
     assert_eq!(json["modules"][0]["error"], Value::Null);
     assert_eq!(json["modules"][0]["http_routes"], serde_json::json!([]));
+    assert_eq!(json["modules"][0]["runtime"], Value::Null);
     assert_eq!(json["modules"][0]["story_display"], serde_json::json!([]));
     assert_eq!(json["modules"][0]["capabilities"], serde_json::json!([]));
     assert_eq!(json["modules"][0]["admin"]["kind"], "schema");
@@ -239,6 +241,14 @@ async fn modules_endpoint_lists_linked_modules_without_admin_surfaces() {
     assert_eq!(notifications["status"], "loaded");
     assert_eq!(notifications["error"], Value::Null);
     assert_eq!(notifications["http_routes"], serde_json::json!([]));
+    assert_eq!(
+        notifications["runtime"]["functions"][0]["name"],
+        "notifications.send_welcome_email.v1"
+    );
+    assert_eq!(
+        notifications["runtime"]["functions"][0]["queue"],
+        "notifications"
+    );
     assert_eq!(notifications["capabilities"], serde_json::json!([]));
     assert!(
         notifications["story_display"]
@@ -375,6 +385,7 @@ async fn refresh_schema_replaces_installed_modules() {
                 source: ModuleSource::Linked,
                 load_status: ModuleLoadStatus::Loaded,
                 http_routes: vec![],
+                runtime: None,
                 story_display: vec![StoryDisplayDescriptor {
                     source: StoryDisplaySource::ExecutionName {
                         name: "identity.create_user".to_owned(),
@@ -392,6 +403,7 @@ async fn refresh_schema_replaces_installed_modules() {
                     message: "remote manifest request failed".to_owned(),
                 },
                 http_routes: vec![],
+                runtime: None,
                 story_display: vec![],
                 capabilities: vec![],
                 admin: None,
@@ -482,6 +494,7 @@ async fn refresh_modules_replaces_module_registry_metadata() {
         source: ModuleSource::Linked,
         load_status: ModuleLoadStatus::Loaded,
         http_routes: vec![],
+        runtime: None,
         story_display: vec![],
         capabilities: vec![],
         admin: Some(AdminSurface::Schema(stub_schema())),
@@ -493,6 +506,7 @@ async fn refresh_modules_replaces_module_registry_metadata() {
             source: ModuleSource::Linked,
             load_status: ModuleLoadStatus::Loaded,
             http_routes: vec![],
+            runtime: None,
             story_display: vec![StoryDisplayDescriptor {
                 source: StoryDisplaySource::ExecutionName {
                     name: "notifications.send_welcome_email.v1".to_owned(),
@@ -555,6 +569,7 @@ async fn refresh_modules_records_error_without_dropping_snapshot() {
         source: ModuleSource::Linked,
         load_status: ModuleLoadStatus::Loaded,
         http_routes: vec![],
+        runtime: None,
         story_display: vec![],
         capabilities: vec![],
         admin: Some(AdminSurface::Schema(stub_schema())),

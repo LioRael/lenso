@@ -4,7 +4,8 @@ use platform_core::{AppContext, StoryDisplayDescriptor, StoryDisplaySource};
 use platform_http::ApiOpenApiRouter;
 use platform_module::{
     AdminSchema, EntitySchema, FieldSchema, FieldType, LinkedBinding, LinkedHttpContribution,
-    Module, ModuleHttpMethod, ModuleHttpRoute, ModuleManifest,
+    Module, ModuleHttpMethod, ModuleHttpRoute, ModuleManifest, RuntimeFunctionDeclaration,
+    RuntimeSurface,
 };
 use std::sync::Arc;
 
@@ -101,6 +102,15 @@ pub fn manifest() -> ModuleManifest {
     ModuleManifest::builder("identity")
         .story_display(story_display())
         .http_routes(http_routes())
+        .runtime(RuntimeSurface {
+            functions: vec![RuntimeFunctionDeclaration {
+                name: "identity.cleanup_expired_sessions.v1".to_owned(),
+                version: 1,
+                queue: "identity".to_owned(),
+                input_schema: Some("identity.cleanup_expired_sessions.v1".to_owned()),
+                retry_policy: None,
+            }],
+        })
         .admin(user_schema())
         .build()
 }
@@ -151,6 +161,23 @@ mod tests {
         assert_eq!(
             manifest.http_routes[1].display_name.as_deref(),
             Some("Fetch Current User")
+        );
+    }
+
+    #[test]
+    fn manifest_declares_runtime_functions() {
+        let manifest = manifest();
+        let runtime = manifest.runtime.expect("runtime surface");
+
+        assert_eq!(runtime.functions.len(), 1);
+        assert_eq!(
+            runtime.functions[0].name,
+            "identity.cleanup_expired_sessions.v1"
+        );
+        assert_eq!(runtime.functions[0].queue, "identity");
+        assert_eq!(
+            runtime.functions[0].input_schema.as_deref(),
+            Some("identity.cleanup_expired_sessions.v1")
         );
     }
 

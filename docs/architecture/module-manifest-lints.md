@@ -22,6 +22,7 @@ The Runtime Console derives categories from `subject`:
 | `admin.schema...` | `admin.schema` |
 | `admin.declarative...` | `admin.declarative` |
 | `admin.embedded...` | `admin.embedded` |
+| `runtime...` | `runtime` |
 | `module...` | `module` |
 | anything else | `manifest` |
 
@@ -49,4 +50,10 @@ Console category mapping and tests in the same change.
 | `warning` | `admin.embedded.fallback_schema` | Embedded fallback schema declares no entities. |
 | `warning` | `admin.embedded.fallback_schema.{entity}` | Embedded fallback entity is missing read capability. |
 | `warning` | `admin.embedded.permission.{entity}` | Embedded read permission references an entity missing from `fallback_schema`. |
+| `warning` | `runtime.functions` | Runtime surface declares no functions. |
+| `error` | `runtime.function` | Runtime function declaration is missing a name. |
+| `warning` | `runtime.function.{name}` | Runtime function name is not path-safe, queue is missing, or another declaration quality issue applies. |
+| `error` | `runtime.function.{name}` | Runtime function name is declared more than once. |
+| `warning` | `runtime.function.{name}.input_schema` | Runtime function input schema does not match the function name. |
+| `warning` | `runtime.function.{name}.retry_policy` | Runtime retry policy declares zero attempts. |
 | `ok` | `manifest` | No other lint result was produced. |

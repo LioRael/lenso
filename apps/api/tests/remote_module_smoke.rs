@@ -298,6 +298,23 @@ async fn remote_module_fixture_is_visible_through_admin_data_api() {
         remote_module["http_routes"][0]["story_title"],
         "List Contacts"
     );
+    assert_eq!(
+        remote_module["runtime"]["functions"][0]["name"],
+        "remote_crm.sync_contact.v1"
+    );
+    assert_eq!(remote_module["runtime"]["functions"][0]["version"], 1);
+    assert_eq!(
+        remote_module["runtime"]["functions"][0]["queue"],
+        "remote-crm"
+    );
+    assert_eq!(
+        remote_module["runtime"]["functions"][0]["input_schema"],
+        "remote_crm.sync_contact.v1"
+    );
+    assert_eq!(
+        remote_module["runtime"]["functions"][0]["retry_policy"]["max_attempts"],
+        3
+    );
     assert_eq!(remote_module["admin"]["kind"], "schema");
 
     let list_response = app

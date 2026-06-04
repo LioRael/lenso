@@ -225,6 +225,7 @@ fn admin_metadata_from_modules(modules: Vec<Module>) -> Vec<AdminModuleMetadata>
                 name,
                 admin,
                 http_routes,
+                runtime,
                 story_display,
                 capabilities,
                 ..
@@ -234,6 +235,7 @@ fn admin_metadata_from_modules(modules: Vec<Module>) -> Vec<AdminModuleMetadata>
                 source: module.source,
                 load_status: module.load_status,
                 http_routes,
+                runtime,
                 story_display,
                 capabilities,
                 admin,
@@ -261,6 +263,7 @@ fn failed_remote_admin_metadata(name: String, message: String) -> AdminModuleMet
         source: ModuleSource::Remote,
         load_status: ModuleLoadStatus::Error { message },
         http_routes: Vec::new(),
+        runtime: None,
         story_display: Vec::new(),
         capabilities: Vec::new(),
         admin: None,

@@ -1,5 +1,7 @@
 use platform_core::{AppContext, StoryDisplayDescriptor, StoryDisplaySource};
-use platform_module::{LinkedBinding, Module, ModuleManifest};
+use platform_module::{
+    LinkedBinding, Module, ModuleManifest, RuntimeFunctionDeclaration, RuntimeSurface,
+};
 use platform_runtime::RuntimeClient;
 use std::sync::Arc;
 
@@ -26,6 +28,15 @@ pub fn story_display() -> Vec<StoryDisplayDescriptor> {
 pub fn manifest() -> ModuleManifest {
     ModuleManifest::builder("notifications")
         .story_display(story_display())
+        .runtime(RuntimeSurface {
+            functions: vec![RuntimeFunctionDeclaration {
+                name: crate::runtime::SEND_WELCOME_EMAIL.to_owned(),
+                version: 1,
+                queue: "notifications".to_owned(),
+                input_schema: Some(crate::runtime::SEND_WELCOME_EMAIL.to_owned()),
+                retry_policy: None,
+            }],
+        })
         .build()
 }
 
@@ -39,4 +50,26 @@ pub fn module(ctx: &AppContext) -> Module {
         )])
         .build();
     Module::linked(manifest(), binding)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn manifest_declares_runtime_functions() {
+        let manifest = manifest();
+        let runtime = manifest.runtime.expect("runtime surface");
+
+        assert_eq!(runtime.functions.len(), 1);
+        assert_eq!(
+            runtime.functions[0].name,
+            "notifications.send_welcome_email.v1"
+        );
+        assert_eq!(runtime.functions[0].queue, "notifications");
+        assert_eq!(
+            runtime.functions[0].input_schema.as_deref(),
+            Some("notifications.send_welcome_email.v1")
+        );
+    }
 }

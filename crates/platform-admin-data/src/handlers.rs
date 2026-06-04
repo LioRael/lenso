@@ -155,11 +155,13 @@ fn metadata_response_modules(modules: Vec<AdminModuleMetadata>) -> Vec<AdminModu
             status: admin_module_status(&m.load_status),
             error: load_error_message(&m.load_status),
             http_routes: m.http_routes.clone(),
+            runtime: m.runtime.clone(),
             manifest_lints: lint_module_manifest_parts(
                 m.source,
                 &m.module_name,
                 m.admin.as_ref(),
                 &m.http_routes,
+                m.runtime.as_ref(),
                 &m.capabilities,
             ),
             story_display: m
@@ -230,6 +232,7 @@ mod tests {
                 display_name: Some("Fetch Contact".to_owned()),
                 story_title: Some("Fetch Contact".to_owned()),
             }],
+            runtime: None,
             story_display: Vec::new(),
             capabilities: Vec::new(),
             admin: None,
