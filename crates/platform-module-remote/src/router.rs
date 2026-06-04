@@ -5,6 +5,7 @@ use axum::Json;
 use axum::body::{Body, Bytes, to_bytes};
 use axum::extract::Path;
 use axum::http::{HeaderMap, Request};
+use platform_core::error::ErrorDetail;
 use platform_core::{AppError, ErrorCode};
 use platform_http::{
     AdminActor, ApiErrorResponse, ApiOpenApiRouter, ErrorResponse, HttpRequestContext,
@@ -465,6 +466,7 @@ async fn forward_proxy_request(
             format!("remote HTTP proxy request failed: {error}"),
         )
         .retryable();
+        let app_error = with_proxy_error_details(app_error, matched, request.method, None);
         record_proxy_call(matched, request_ctx, started_at, None, Some(&app_error));
         ApiErrorResponse::with_context(app_error, request_ctx)
     })?;
@@ -492,6 +494,12 @@ async fn forward_proxy_request(
                 Ok(Value::Null)
             } else {
                 let app_error = AppError::new(ErrorCode::NotFound, "remote HTTP route not found");
+                let app_error = with_proxy_error_details(
+                    app_error,
+                    matched,
+                    request.method,
+                    Some(remote_status),
+                );
                 record_proxy_call(
                     matched,
                     request_ctx,
@@ -503,6 +511,8 @@ async fn forward_proxy_request(
             }
         }
         Err(error) => {
+            let error =
+                with_proxy_error_details(error, matched, request.method, Some(remote_status));
             record_proxy_call(
                 matched,
                 request_ctx,
@@ -513,6 +523,40 @@ async fn forward_proxy_request(
             Err(ApiErrorResponse::with_context(error, request_ctx))
         }
     }
+}
+
+fn with_proxy_error_details(
+    mut error: AppError,
+    matched: &RemoteHttpProxyMatch,
+    method: ModuleHttpMethod,
+    remote_status: Option<reqwest::StatusCode>,
+) -> AppError {
+    push_error_detail(&mut error, "remote_module", matched.module_name.clone());
+    push_error_detail(
+        &mut error,
+        "remote_method",
+        module_http_method_label(method),
+    );
+    push_error_detail(&mut error, "declared_path", matched.declared_path.clone());
+    push_error_detail(&mut error, "remote_path", matched.remote_path.clone());
+    if let Some(status) = remote_status {
+        push_error_detail(&mut error, "remote_status", status.as_u16().to_string());
+    }
+    error
+}
+
+fn push_error_detail(error: &mut AppError, field: &'static str, reason: impl Into<String>) {
+    if error
+        .details
+        .iter()
+        .any(|detail| detail.field.as_deref() == Some(field))
+    {
+        return;
+    }
+    error.details.push(ErrorDetail {
+        field: Some(field.to_owned()),
+        reason: reason.into(),
+    });
 }
 
 fn remote_url(matched: &RemoteHttpProxyMatch) -> String {

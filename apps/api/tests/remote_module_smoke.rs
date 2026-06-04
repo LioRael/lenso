@@ -120,6 +120,14 @@ async fn json_body(response: axum::response::Response) -> Value {
     serde_json::from_slice(&bytes).expect("json body")
 }
 
+fn error_detail_reason<'a>(body: &'a Value, field: &str) -> Option<&'a str> {
+    body["error"]["details"]
+        .as_array()?
+        .iter()
+        .find(|detail| detail["field"] == field)
+        .and_then(|detail| detail["reason"].as_str())
+}
+
 #[tokio::test]
 async fn remote_module_fixture_is_visible_through_admin_data_api() {
     let _guard = REMOTE_SMOKE_TEST_LOCK.lock().await;
@@ -237,6 +245,7 @@ async fn remote_http_proxy_forwards_declared_get_routes() {
     assert_eq!(matched["data"]["email"], "ada@example.com");
 
     let missing_route = app
+        .clone()
         .oneshot(service_get(
             "/modules/remote-crm/http/accounts/account_1",
             "dev-service:admin:remote_crm.contacts.read",
@@ -244,6 +253,41 @@ async fn remote_http_proxy_forwards_declared_get_routes() {
         .await
         .expect("missing route request completes");
     assert_eq!(missing_route.status(), StatusCode::NOT_FOUND);
+
+    let remote_missing = app
+        .oneshot(service_get(
+            "/modules/remote-crm/http/contacts/contact_404",
+            "dev-service:admin:remote_crm.contacts.read",
+        ))
+        .await
+        .expect("remote missing request completes");
+    assert_eq!(remote_missing.status(), StatusCode::NOT_FOUND);
+    let remote_missing = json_body(remote_missing).await;
+    assert_eq!(remote_missing["error"]["code"], "not_found");
+    assert_eq!(
+        remote_missing["error"]["message"],
+        "contact contact_404 was not found"
+    );
+    assert_eq!(
+        error_detail_reason(&remote_missing, "remote_module"),
+        Some("remote-crm")
+    );
+    assert_eq!(
+        error_detail_reason(&remote_missing, "remote_method"),
+        Some("GET")
+    );
+    assert_eq!(
+        error_detail_reason(&remote_missing, "declared_path"),
+        Some("/contacts/{id}")
+    );
+    assert_eq!(
+        error_detail_reason(&remote_missing, "remote_path"),
+        Some("/contacts/contact_404")
+    );
+    assert_eq!(
+        error_detail_reason(&remote_missing, "remote_status"),
+        Some("404")
+    );
 }
 
 #[tokio::test]
@@ -268,6 +312,26 @@ async fn remote_http_proxy_rejects_unsafe_get_responses() {
             .as_str()
             .expect("error message")
             .contains("content-type was not JSON")
+    );
+    assert_eq!(
+        error_detail_reason(&text_error, "remote_module"),
+        Some("remote-crm")
+    );
+    assert_eq!(
+        error_detail_reason(&text_error, "remote_method"),
+        Some("GET")
+    );
+    assert_eq!(
+        error_detail_reason(&text_error, "declared_path"),
+        Some("/proxy-fixtures/text")
+    );
+    assert_eq!(
+        error_detail_reason(&text_error, "remote_path"),
+        Some("/proxy-fixtures/text")
+    );
+    assert_eq!(
+        error_detail_reason(&text_error, "remote_status"),
+        Some("200")
     );
 
     let oversized_response = app
@@ -319,6 +383,20 @@ async fn remote_http_proxy_uses_configured_remote_timeout() {
             .expect("error message")
             .contains("remote HTTP proxy request failed")
     );
+    assert_eq!(
+        error_detail_reason(&body, "remote_module"),
+        Some("remote-crm")
+    );
+    assert_eq!(error_detail_reason(&body, "remote_method"), Some("GET"));
+    assert_eq!(
+        error_detail_reason(&body, "declared_path"),
+        Some("/proxy-fixtures/slow")
+    );
+    assert_eq!(
+        error_detail_reason(&body, "remote_path"),
+        Some("/proxy-fixtures/slow")
+    );
+    assert_eq!(error_detail_reason(&body, "remote_status"), None);
 }
 
 #[tokio::test]
