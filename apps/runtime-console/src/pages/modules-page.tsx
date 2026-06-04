@@ -25,10 +25,10 @@ import {
   moduleErrorMessage,
   moduleHttpRouteRows,
   moduleIsLoaded,
-  moduleRouteCheckGroups,
+  moduleManifestCheckGroups,
   moduleRegistrySummary,
-  moduleRouteChecks,
-  moduleRouteHealth,
+  moduleManifestChecks,
+  moduleManifestHealth,
   moduleStatusLabel,
   storyDisplayRows,
 } from "./data-render-model";
@@ -69,7 +69,7 @@ function ModulesContent() {
   );
   const [filters, setFilters] = useState<ModuleRegistryFilters>({
     query: "",
-    route: "all",
+    lint: "all",
     source: "all",
     status: "all",
   });
@@ -165,7 +165,7 @@ function ModulesContent() {
                   <span className="block truncate text-[10px] text-(--muted)">
                     {module.source} / {adminSurfaceLabel(module.admin)} /{" "}
                     {moduleStatusLabel(module)} / lint{" "}
-                    {moduleRouteHealth(module)}
+                    {moduleManifestHealth(module)}
                   </span>
                 </button>
               );
@@ -200,8 +200,8 @@ function ModuleRegistryControls({
         <Counter label="total" value={summary.total} />
         <Counter label="linked" value={summary.linked} />
         <Counter label="remote" value={summary.remote} />
-        <Counter label="lint warn" value={summary.route_warning} />
-        <Counter label="lint err" value={summary.route_error} tone="error" />
+        <Counter label="lint warn" value={summary.lint_warning} />
+        <Counter label="lint err" value={summary.lint_error} tone="error" />
       </div>
       <input
         aria-label="Search module registry"
@@ -238,14 +238,14 @@ function ModuleRegistryControls({
         />
         <SegmentedFilter
           label="lint"
-          onChange={(route) =>
+          onChange={(lint) =>
             onChange({
               ...filters,
-              route: route as ModuleRegistryFilters["route"],
+              lint: lint as ModuleRegistryFilters["lint"],
             })
           }
           options={["all", "ok", "warn", "err"]}
-          value={routeFilterLabel(filters.route)}
+          value={lintFilterLabel(filters.lint)}
         />
       </div>
     </div>
@@ -279,7 +279,7 @@ function SegmentedFilter({
                 : "bg-(--background) hover:bg-(--sidebar)"
             )}
             key={option}
-            onClick={() => onChange(expandRouteFilter(option))}
+            onClick={() => onChange(expandLintFilter(option))}
             title={`${label}: ${option}`}
             type="button"
           >
@@ -291,7 +291,7 @@ function SegmentedFilter({
   );
 }
 
-function routeFilterLabel(value: ModuleRegistryFilters["route"]): string {
+function lintFilterLabel(value: ModuleRegistryFilters["lint"]): string {
   if (value === "warning") {
     return "warn";
   }
@@ -301,7 +301,7 @@ function routeFilterLabel(value: ModuleRegistryFilters["route"]): string {
   return value;
 }
 
-function expandRouteFilter(value: string): string {
+function expandLintFilter(value: string): string {
   if (value === "warn") {
     return "warning";
   }
@@ -348,7 +348,7 @@ function registrySnapshotLabel(refreshedAt: string | null): string {
 
 function ModuleRegistryDetail({ module }: { module: AdminModuleMetadata }) {
   const routeRows = moduleHttpRouteRows(module);
-  const routeChecks = moduleRouteChecks(module);
+  const routeChecks = moduleManifestChecks(module);
   const storyRows = storyDisplayRows(module);
   return (
     <div className="grid gap-3">
@@ -371,7 +371,7 @@ function ModuleRegistryDetail({ module }: { module: AdminModuleMetadata }) {
 
       <ModuleCapabilitiesList capabilities={module.capabilities} />
       <ModuleStoryDisplayTable rows={storyRows} />
-      <ModuleRouteChecks checks={routeChecks} />
+      <ModuleManifestChecks checks={routeChecks} />
       <ModuleHttpRoutesTable rows={routeRows} />
     </div>
   );
@@ -482,12 +482,12 @@ function ModuleStoryDisplayTable({
   );
 }
 
-function ModuleRouteChecks({
+function ModuleManifestChecks({
   checks,
 }: {
-  checks: ReturnType<typeof moduleRouteChecks>;
+  checks: ReturnType<typeof moduleManifestChecks>;
 }) {
-  const groups = moduleRouteCheckGroups(checks);
+  const groups = moduleManifestCheckGroups(checks);
   return (
     <section className="min-w-0 border border-(--border-subtle) bg-(--surface)">
       <header className="flex items-center gap-2 border-b border-(--border-subtle) px-3 py-2 font-semibold">
@@ -533,7 +533,7 @@ function ModuleRouteChecks({
 function ManifestLintRow({
   check,
 }: {
-  check: ReturnType<typeof moduleRouteChecks>[number];
+  check: ReturnType<typeof moduleManifestChecks>[number];
 }) {
   return (
     <div className="grid min-w-0 grid-cols-[minmax(0,170px)_minmax(0,1fr)] gap-x-2 gap-y-0.5 text-[11px]">

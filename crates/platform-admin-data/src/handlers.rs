@@ -12,7 +12,9 @@ use axum::Json;
 use axum::extract::{Path, Query};
 use platform_core::{AppError, ErrorCode, RequestContext};
 use platform_http::{AdminActor, ApiErrorResponse, ErrorResponse, HttpRequestContext};
-use platform_module::{AdminListQuery, ModuleLoadStatus, lint_module_http_routes};
+use platform_module::{
+    AdminListQuery, ModuleLoadStatus, lint_module_http_routes, lint_module_manifest_parts,
+};
 use serde::Deserialize;
 
 const DEFAULT_LIMIT: i64 = 50;
@@ -155,6 +157,13 @@ fn metadata_response_modules(modules: Vec<AdminModuleMetadata>) -> Vec<AdminModu
             status: admin_module_status(&m.load_status),
             error: load_error_message(&m.load_status),
             http_routes: m.http_routes.clone(),
+            manifest_lints: lint_module_manifest_parts(
+                m.source,
+                &m.module_name,
+                m.admin.as_ref(),
+                &m.http_routes,
+                &m.capabilities,
+            ),
             route_lints: lint_module_http_routes(m.source, &m.http_routes),
             story_display: m
                 .story_display
@@ -212,7 +221,7 @@ mod tests {
     use platform_module::{ModuleHttpMethod, ModuleHttpRoute, ModuleSource};
 
     #[test]
-    fn metadata_response_includes_route_lints() {
+    fn metadata_response_includes_manifest_and_route_lints() {
         let modules = metadata_response_modules(vec![AdminModuleMetadata {
             module_name: "remote-crm".to_owned(),
             source: ModuleSource::Remote,
@@ -229,6 +238,11 @@ mod tests {
             admin: None,
         }]);
 
+        assert_eq!(modules[0].manifest_lints.len(), 1);
+        assert_eq!(
+            modules[0].manifest_lints[0].message,
+            "Missing capability declaration for host proxy authorization."
+        );
         assert_eq!(modules[0].route_lints.len(), 1);
         assert_eq!(
             modules[0].route_lints[0].message,

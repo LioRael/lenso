@@ -33,5 +33,8 @@ pub use http::{
 pub use linked::{
     LinkedBinding, LinkedBindingBuilder, LinkedHttpContribution, LinkedHttpRouteMerger,
 };
-pub use manifest::{ModuleManifest, ModuleManifestBuilder};
+pub use manifest::{
+    ModuleManifest, ModuleManifestBuilder, ModuleManifestLint, ModuleManifestLintSeverity,
+    lint_module_manifest, lint_module_manifest_parts,
+};
 pub use module::{Module, ModuleLoadStatus, ModuleSource};

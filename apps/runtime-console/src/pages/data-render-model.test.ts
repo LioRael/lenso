@@ -18,9 +18,9 @@ import {
   moduleIsLoaded,
   moduleNavItems,
   moduleRegistrySummary,
-  moduleRouteCheckGroups,
-  moduleRouteChecks,
-  moduleRouteHealth,
+  moduleManifestCheckGroups,
+  moduleManifestChecks,
+  moduleManifestHealth,
   moduleStatusLabel,
   recordId,
   renderCell,
@@ -64,18 +64,18 @@ const entity: EntitySchema = {
 function moduleMetadata(
   module: Omit<
     AdminModuleMetadata,
-    "capabilities" | "route_lints" | "story_display"
+    "capabilities" | "manifest_lints" | "story_display"
   > &
     Partial<
       Pick<
         AdminModuleMetadata,
-        "capabilities" | "route_lints" | "story_display"
+        "capabilities" | "manifest_lints" | "story_display"
       >
     >
 ): AdminModuleMetadata {
   return {
     capabilities: [],
-    route_lints: [],
+    manifest_lints: [],
     story_display: [],
     ...module,
   };
@@ -379,7 +379,7 @@ describe("module status helpers", () => {
         status: "loaded",
         error: null,
         http_routes: [],
-        route_lints: [],
+        manifest_lints: [],
         story_display: [],
         capabilities: [],
         admin: { kind: "schema", entities: [entity] },
@@ -393,8 +393,8 @@ describe("module status helpers", () => {
       linked: 1,
       loaded: 1,
       remote: 1,
-      route_error: 1,
-      route_warning: 0,
+      lint_error: 1,
+      lint_warning: 0,
       total: 2,
     });
   });
@@ -432,7 +432,7 @@ describe("module status helpers", () => {
     expect(
       filterModuleRegistry([loadedModule, errorModule, crmModule], {
         query: "",
-        route: "all",
+        lint: "all",
         source: "remote",
         status: "loaded",
       }).map((module) => module.module_name)
@@ -441,7 +441,7 @@ describe("module status helpers", () => {
     expect(
       filterModuleRegistry([loadedModule, errorModule, crmModule], {
         query: "contacts.read",
-        route: "all",
+        lint: "all",
         source: "all",
         status: "all",
       }).map((module) => module.module_name)
@@ -450,7 +450,7 @@ describe("module status helpers", () => {
     expect(
       filterModuleRegistry([loadedModule, errorModule, crmModule], {
         query: "manifest request",
-        route: "all",
+        lint: "all",
         source: "all",
         status: "error",
       }).map((module) => module.module_name)
@@ -459,7 +459,7 @@ describe("module status helpers", () => {
     expect(
       filterModuleRegistry([loadedModule, errorModule, crmModule], {
         query: "",
-        route: "warning",
+        lint: "warning",
         source: "all",
         status: "all",
       }).map((module) => module.module_name)
@@ -477,7 +477,7 @@ describe("module status helpers", () => {
           story_title: "User Registration",
         },
       ],
-      route_lints: [
+      manifest_lints: [
         {
           message: "lint ok from backend",
           severity: "ok" as const,
@@ -487,16 +487,16 @@ describe("module status helpers", () => {
       ],
     };
 
-    expect(moduleRouteChecks(healthyModule)).toEqual([
+    expect(moduleManifestChecks(healthyModule)).toEqual([
       {
-        key: "route-lint:ok:routes:0",
+        key: "manifest-lint:ok:routes:0",
         message: "lint ok from backend",
         severity: "ok",
         subject: "routes",
         suggestion: "backend says no action",
       },
     ]);
-    expect(moduleRouteHealth(healthyModule)).toBe("ok");
+    expect(moduleManifestHealth(healthyModule)).toBe("ok");
   });
 
   test("reports route declaration quality issues", () => {
@@ -514,7 +514,7 @@ describe("module status helpers", () => {
           path: "/contacts/{id}",
         },
       ],
-      route_lints: [
+      manifest_lints: [
         {
           message: "lint error from backend",
           severity: "error",
@@ -554,55 +554,55 @@ describe("module status helpers", () => {
       ],
     });
 
-    expect(moduleRouteChecks(issueModule)).toEqual([
+    expect(moduleManifestChecks(issueModule)).toEqual([
       {
-        key: "route-lint:error:GET /contacts/{id}:0",
+        key: "manifest-lint:error:GET /contacts/{id}:0",
         message: "lint error from backend",
         severity: "error",
         subject: "GET /contacts/{id}",
         suggestion: "backend says deduplicate",
       },
       {
-        key: "route-lint:warning:GET /contacts/{id}:1",
+        key: "manifest-lint:warning:GET /contacts/{id}:1",
         message: "lint warning display from backend",
         severity: "warning",
         subject: "GET /contacts/{id}",
         suggestion: "backend says add display",
       },
       {
-        key: "route-lint:warning:GET /contacts/{id}:2",
+        key: "manifest-lint:warning:GET /contacts/{id}:2",
         message: "lint warning story from backend",
         severity: "warning",
         subject: "GET /contacts/{id}",
         suggestion: "backend says add story",
       },
       {
-        key: "route-lint:warning:GET /contacts/{id}:3",
+        key: "manifest-lint:warning:GET /contacts/{id}:3",
         message: "lint warning capability from backend",
         severity: "warning",
         subject: "GET /contacts/{id}",
         suggestion: "backend says add capability",
       },
       {
-        key: "route-lint:warning:GET /contacts/{id}:4",
+        key: "manifest-lint:warning:GET /contacts/{id}:4",
         message: "lint warning display from backend",
         severity: "warning",
         subject: "GET /contacts/{id}",
         suggestion: "backend says add display",
       },
       {
-        key: "route-lint:warning:GET /contacts/{id}:5",
+        key: "manifest-lint:warning:GET /contacts/{id}:5",
         message: "lint warning story from backend",
         severity: "warning",
         subject: "GET /contacts/{id}",
         suggestion: "backend says add story",
       },
     ]);
-    expect(moduleRouteHealth(issueModule)).toBe("error");
+    expect(moduleManifestHealth(issueModule)).toBe("error");
     expect(
       filterModuleRegistry([loadedModule, issueModule], {
         query: "backend says add story",
-        route: "error",
+        lint: "error",
         source: "all",
         status: "all",
       }).map((module) => module.module_name)
@@ -611,7 +611,7 @@ describe("module status helpers", () => {
 
   test("groups manifest lints by severity", () => {
     expect(
-      moduleRouteCheckGroups([
+      moduleManifestCheckGroups([
         {
           key: "ok",
           message: "ok",
@@ -647,7 +647,7 @@ describe("module status helpers", () => {
   test("reports module load and empty route states", () => {
     const module = moduleMetadata({
       ...errorModule,
-      route_lints: [
+      manifest_lints: [
         {
           message: "lint warning empty routes from backend",
           severity: "warning",
@@ -657,7 +657,7 @@ describe("module status helpers", () => {
       ],
     });
 
-    expect(moduleRouteChecks(module)).toEqual([
+    expect(moduleManifestChecks(module)).toEqual([
       {
         key: "module-load-error",
         message: "remote manifest request failed",
@@ -667,7 +667,7 @@ describe("module status helpers", () => {
           "Refresh the module registry and inspect the module source configuration or manifest endpoint.",
       },
       {
-        key: "route-lint:warning:routes:0",
+        key: "manifest-lint:warning:routes:0",
         message: "lint warning empty routes from backend",
         severity: "warning",
         subject: "routes",

@@ -2647,6 +2647,7 @@ components:
       - source
       - status
       - http_routes
+      - manifest_lints
       - route_lints
       - story_display
       - capabilities
@@ -2667,6 +2668,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ModuleHttpRoute'
+        manifest_lints:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModuleManifestLint'
         module_name:
           type: string
         route_lints:
@@ -3978,6 +3983,28 @@ components:
           - string
           - 'null'
           description: Optional story title for direct requests to this route.
+    ModuleManifestLint:
+      type: object
+      required:
+      - severity
+      - subject
+      - message
+      - suggestion
+      properties:
+        message:
+          type: string
+        severity:
+          $ref: '#/components/schemas/ModuleManifestLintSeverity'
+        subject:
+          type: string
+        suggestion:
+          type: string
+    ModuleManifestLintSeverity:
+      type: string
+      enum:
+      - ok
+      - warning
+      - error
     ModuleRouteLint:
       type: object
       required:

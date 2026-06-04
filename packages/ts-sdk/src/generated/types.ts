@@ -89,6 +89,7 @@ export type AdminModuleMetadataDto = {
   capabilities: Array<string>;
   error?: string | null;
   http_routes: Array<ModuleHttpRoute>;
+  manifest_lints: Array<ModuleManifestLint>;
   module_name: string;
   route_lints: Array<ModuleRouteLint>;
   source: ModuleSource;
@@ -524,6 +525,15 @@ export type ModuleHttpRoute = {
   path: string;
   story_title?: string | null;
 };
+
+export type ModuleManifestLint = {
+  message: string;
+  severity: ModuleManifestLintSeverity;
+  subject: string;
+  suggestion: string;
+};
+
+export type ModuleManifestLintSeverity = string;
 
 export type ModuleRouteLint = {
   message: string;

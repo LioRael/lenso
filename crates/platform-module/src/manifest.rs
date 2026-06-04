@@ -1,11 +1,17 @@
 //! A module's pure-data contract: serializable metadata describable without
 //! behavior. Owned + serde so every loading source produces the same shape.
 
-use crate::admin::{AdminDeclarativeSurface, AdminEmbeddedSurface, AdminSurface};
+use crate::admin::{
+    AdminDeclarativeComponent, AdminDeclarativeSurface, AdminEmbeddedEntry, AdminEmbeddedRuntime,
+    AdminEmbeddedSurface, AdminPermission, AdminSurface,
+};
 use crate::admin_schema::AdminSchema;
-use crate::http::ModuleHttpRoute;
+use crate::http::{ModuleHttpRoute, lint_module_http_routes};
+use crate::module::ModuleSource;
 use platform_core::StoryDisplayDescriptor;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use utoipa::ToSchema;
 
 /// The serializable metadata a module exposes. Runtime config is deliberately
 /// NOT here — it stays an internal `&'static` field on [`crate::Module`]
@@ -51,6 +57,249 @@ impl ModuleManifest {
             },
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleManifestLintSeverity {
+    Ok,
+    Warning,
+    Error,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct ModuleManifestLint {
+    pub severity: ModuleManifestLintSeverity,
+    pub subject: String,
+    pub message: String,
+    pub suggestion: String,
+}
+
+pub fn lint_module_manifest(
+    source: ModuleSource,
+    manifest: &ModuleManifest,
+) -> Vec<ModuleManifestLint> {
+    lint_module_manifest_parts(
+        source,
+        &manifest.name,
+        manifest.admin.as_ref(),
+        &manifest.http_routes,
+        &manifest.capabilities,
+    )
+}
+
+pub fn lint_module_manifest_parts(
+    source: ModuleSource,
+    name: &str,
+    admin: Option<&AdminSurface>,
+    http_routes: &[ModuleHttpRoute],
+    capabilities: &[String],
+) -> Vec<ModuleManifestLint> {
+    let mut lints = Vec::new();
+
+    if !present(name) {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Error,
+            subject: "module.name".to_owned(),
+            message: "Missing module manifest name.".to_owned(),
+            suggestion: "Set ModuleManifest.name to the stable module identifier.".to_owned(),
+        });
+    }
+
+    for capability in capabilities {
+        if !valid_capability(capability) {
+            lints.push(ModuleManifestLint {
+                severity: ModuleManifestLintSeverity::Warning,
+                subject: format!("capability {capability}"),
+                message: "Capability name should use dot-separated lowercase identifiers."
+                    .to_owned(),
+                suggestion: "Use a stable capability name such as module.entity.read.".to_owned(),
+            });
+        }
+    }
+
+    for route_lint in lint_module_http_routes(source, http_routes) {
+        lints.push(ModuleManifestLint {
+            severity: match route_lint.severity {
+                crate::ModuleRouteLintSeverity::Ok => ModuleManifestLintSeverity::Ok,
+                crate::ModuleRouteLintSeverity::Warning => ModuleManifestLintSeverity::Warning,
+                crate::ModuleRouteLintSeverity::Error => ModuleManifestLintSeverity::Error,
+            },
+            subject: route_lint.subject,
+            message: route_lint.message,
+            suggestion: route_lint.suggestion,
+        });
+    }
+
+    if let Some(admin) = admin {
+        lint_admin_surface(admin, &mut lints);
+    }
+
+    if lints.is_empty() {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Ok,
+            subject: "manifest".to_owned(),
+            message: "Module manifest metadata is complete.".to_owned(),
+            suggestion: "No action needed.".to_owned(),
+        });
+    }
+
+    lints
+}
+
+fn lint_admin_surface(admin: &AdminSurface, lints: &mut Vec<ModuleManifestLint>) {
+    match admin {
+        AdminSurface::Schema(schema) => lint_schema_entities("admin.schema", schema, lints),
+        AdminSurface::DeclarativeCustom(surface) => {
+            if surface.pages.is_empty() {
+                lints.push(ModuleManifestLint {
+                    severity: ModuleManifestLintSeverity::Warning,
+                    subject: "admin.declarative.pages".to_owned(),
+                    message: "Declarative admin surface declares no pages.".to_owned(),
+                    suggestion: "Add at least one page or omit the declarative admin surface."
+                        .to_owned(),
+                });
+            }
+            if let Some(schema) = &surface.fallback_schema {
+                lint_schema_entities("admin.declarative.fallback_schema", schema, lints);
+            }
+            let fallback_entities = surface
+                .fallback_schema
+                .as_ref()
+                .map(schema_entity_names)
+                .unwrap_or_default();
+            for page in &surface.pages {
+                for section in &page.sections {
+                    match &section.component {
+                        AdminDeclarativeComponent::EntityTable { entity }
+                        | AdminDeclarativeComponent::EntityDetail { entity } => {
+                            if !fallback_entities.contains(entity) {
+                                lints.push(ModuleManifestLint {
+                                    severity: ModuleManifestLintSeverity::Warning,
+                                    subject: format!("admin.declarative.section.{}", section.name),
+                                    message: format!(
+                                        "Declarative section references unknown fallback entity `{entity}`."
+                                    ),
+                                    suggestion:
+                                        "Declare the entity in fallback_schema or update the section binding."
+                                            .to_owned(),
+                                });
+                            }
+                        }
+                        AdminDeclarativeComponent::MetricStrip { .. } => {}
+                    }
+                }
+            }
+        }
+        AdminSurface::EmbeddedCustom(surface) => {
+            if surface.runtime != AdminEmbeddedRuntime::Iframe {
+                lints.push(ModuleManifestLint {
+                    severity: ModuleManifestLintSeverity::Warning,
+                    subject: "admin.embedded.runtime".to_owned(),
+                    message: "Embedded admin runtime is reserved for a future host policy."
+                        .to_owned(),
+                    suggestion: "Use iframe for the current embedded admin slice.".to_owned(),
+                });
+            }
+            match &surface.entry {
+                AdminEmbeddedEntry::Url {
+                    url,
+                    allowed_origins,
+                } => {
+                    if !url.starts_with("https://") && !url.starts_with("http://localhost") {
+                        lints.push(ModuleManifestLint {
+                            severity: ModuleManifestLintSeverity::Warning,
+                            subject: "admin.embedded.entry.url".to_owned(),
+                            message:
+                                "Embedded admin URL should use HTTPS outside local development."
+                                    .to_owned(),
+                            suggestion: "Use an HTTPS URL and list its origin in allowed_origins."
+                                .to_owned(),
+                        });
+                    }
+                    if allowed_origins.is_empty() {
+                        lints.push(ModuleManifestLint {
+                            severity: ModuleManifestLintSeverity::Warning,
+                            subject: "admin.embedded.entry.allowed_origins".to_owned(),
+                            message: "Embedded admin surface declares no allowed origins."
+                                .to_owned(),
+                            suggestion:
+                                "Declare the iframe origin allowlist before enabling the surface."
+                                    .to_owned(),
+                        });
+                    }
+                }
+            }
+            if let Some(schema) = &surface.fallback_schema {
+                lint_schema_entities("admin.embedded.fallback_schema", schema, lints);
+                let fallback_entities = schema_entity_names(schema);
+                for permission in &surface.permissions {
+                    if let AdminPermission::ReadEntity { entity } = permission
+                        && !fallback_entities.contains(entity)
+                    {
+                        lints.push(ModuleManifestLint {
+                            severity: ModuleManifestLintSeverity::Warning,
+                            subject: format!("admin.embedded.permission.{entity}"),
+                            message: format!(
+                                "Embedded admin permission references unknown fallback entity `{entity}`."
+                            ),
+                            suggestion:
+                                "Declare the entity in fallback_schema or remove the permission."
+                                    .to_owned(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn lint_schema_entities(prefix: &str, schema: &AdminSchema, lints: &mut Vec<ModuleManifestLint>) {
+    if schema.entities.is_empty() {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Warning,
+            subject: prefix.to_owned(),
+            message: "Admin schema declares no entities.".to_owned(),
+            suggestion: "Add at least one entity or omit the admin schema surface.".to_owned(),
+        });
+    }
+    for entity in &schema.entities {
+        if !present(&entity.read_capability) {
+            lints.push(ModuleManifestLint {
+                severity: ModuleManifestLintSeverity::Warning,
+                subject: format!("{prefix}.{}", entity.name),
+                message: "Admin entity is missing read capability.".to_owned(),
+                suggestion: "Declare the capability required to read this entity.".to_owned(),
+            });
+        }
+    }
+}
+
+fn schema_entity_names(schema: &AdminSchema) -> HashSet<String> {
+    schema
+        .entities
+        .iter()
+        .map(|entity| entity.name.clone())
+        .collect()
+}
+
+fn present(value: &str) -> bool {
+    !value.trim().is_empty()
+}
+
+fn valid_capability(value: &str) -> bool {
+    let mut parts = value.split('.');
+    let Some(first) = parts.next() else {
+        return false;
+    };
+    present(first)
+        && value.contains('.')
+        && std::iter::once(first).chain(parts).all(|part| {
+            present(part)
+                && part.chars().all(|character| {
+                    character.is_ascii_lowercase() || character == '_' || character.is_ascii_digit()
+                })
+        })
 }
 
 /// Fluent builder for [`ModuleManifest`]. Reusable by every loading source.
@@ -112,6 +361,13 @@ impl ModuleManifestBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::admin::{
+        AdminDeclarativeComponent, AdminDeclarativePage, AdminDeclarativeSection,
+        AdminDeclarativeSurface,
+    };
+    use crate::{
+        AdminEmbeddedEntry, AdminEmbeddedRuntime, AdminEmbeddedSurface, AdminSandboxPolicy,
+    };
     use crate::{ModuleHttpMethod, ModuleHttpRoute};
     use platform_core::{StoryDisplayDescriptor, StoryDisplaySource};
 
@@ -239,5 +495,81 @@ mod tests {
         );
         let back: ModuleManifest = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(manifest, back);
+    }
+
+    #[test]
+    fn manifest_lint_warns_for_invalid_capability_names() {
+        let manifest = ModuleManifest::builder("remote-crm")
+            .capabilities(vec!["RemoteCRM Contacts Read".to_owned()])
+            .build();
+
+        assert!(
+            lint_module_manifest(ModuleSource::Remote, &manifest)
+                .iter()
+                .any(|lint| lint.subject == "capability RemoteCRM Contacts Read"
+                    && lint.severity == ModuleManifestLintSeverity::Warning)
+        );
+    }
+
+    #[test]
+    fn manifest_lint_warns_for_unknown_declarative_fallback_entities() {
+        let manifest = ModuleManifest::builder("remote-crm")
+            .declarative_admin(AdminDeclarativeSurface {
+                pages: vec![AdminDeclarativePage {
+                    name: "dashboard".to_owned(),
+                    label: "Dashboard".to_owned(),
+                    sections: vec![AdminDeclarativeSection {
+                        name: "missing".to_owned(),
+                        label: "Missing".to_owned(),
+                        component: AdminDeclarativeComponent::EntityTable {
+                            entity: "contacts".to_owned(),
+                        },
+                    }],
+                }],
+                actions: vec![],
+                fallback_schema: None,
+            })
+            .build();
+
+        assert!(
+            lint_module_manifest(ModuleSource::Remote, &manifest)
+                .iter()
+                .any(|lint| lint.subject == "admin.declarative.section.missing"
+                    && lint.severity == ModuleManifestLintSeverity::Warning)
+        );
+    }
+
+    #[test]
+    fn manifest_lint_warns_for_embedded_origin_policy() {
+        let manifest = ModuleManifest::builder("remote-crm")
+            .embedded_admin(AdminEmbeddedSurface {
+                runtime: AdminEmbeddedRuntime::Iframe,
+                entry: AdminEmbeddedEntry::Url {
+                    url: "http://crm.example.test/admin".to_owned(),
+                    allowed_origins: vec![],
+                },
+                sandbox: AdminSandboxPolicy {
+                    allow_scripts: true,
+                    allow_forms: false,
+                    allow_popups: false,
+                    allow_same_origin: false,
+                },
+                permissions: vec![],
+                fallback_schema: None,
+            })
+            .build();
+
+        let lints = lint_module_manifest(ModuleSource::Remote, &manifest);
+
+        assert!(
+            lints
+                .iter()
+                .any(|lint| lint.subject == "admin.embedded.entry.url")
+        );
+        assert!(
+            lints
+                .iter()
+                .any(|lint| lint.subject == "admin.embedded.entry.allowed_origins")
+        );
     }
 }

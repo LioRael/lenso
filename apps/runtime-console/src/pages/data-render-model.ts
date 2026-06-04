@@ -130,7 +130,7 @@ export type AdminModuleMetadata = {
   status: ModuleStatus;
   error: string | null;
   http_routes: ModuleHttpRoute[];
-  route_lints: ModuleRouteLint[];
+  manifest_lints: ModuleManifestLint[];
   story_display: StoryDisplayDescriptor[];
   capabilities: string[];
   admin: AdminSurface | null;
@@ -191,11 +191,11 @@ export type StoryDisplayRow = {
 
 export type ModuleRegistrySourceFilter = "all" | ModuleSource;
 export type ModuleRegistryStatusFilter = "all" | ModuleStatus;
-export type ModuleRegistryRouteFilter = "all" | ModuleRouteCheckSeverity;
+export type ModuleRegistryLintFilter = "all" | ModuleLintSeverity;
 
 export type ModuleRegistryFilters = {
   query: string;
-  route: ModuleRegistryRouteFilter;
+  lint: ModuleRegistryLintFilter;
   source: ModuleRegistrySourceFilter;
   status: ModuleRegistryStatusFilter;
 };
@@ -206,30 +206,30 @@ export type ModuleRegistrySummary = {
   remote: number;
   loaded: number;
   error: number;
-  route_warning: number;
-  route_error: number;
+  lint_warning: number;
+  lint_error: number;
 };
 
-export type ModuleRouteCheckSeverity = "ok" | "warning" | "error";
+export type ModuleLintSeverity = "ok" | "warning" | "error";
 
-export type ModuleRouteLint = {
-  severity: ModuleRouteCheckSeverity;
+export type ModuleManifestLint = {
+  severity: ModuleLintSeverity;
   subject: string;
   message: string;
   suggestion: string;
 };
 
-export type ModuleRouteCheck = {
+export type ModuleManifestCheck = {
   key: string;
-  severity: ModuleRouteCheckSeverity;
+  severity: ModuleLintSeverity;
   subject: string;
   message: string;
   suggestion: string;
 };
 
-export type ModuleRouteCheckGroup = {
-  severity: ModuleRouteCheckSeverity;
-  checks: ModuleRouteCheck[];
+export type ModuleManifestCheckGroup = {
+  severity: ModuleLintSeverity;
+  checks: ModuleManifestCheck[];
 };
 
 export type EmbeddedIframePolicy =
@@ -308,7 +308,7 @@ export function schemaModulesToAdminMetadata(
     capabilities: [],
     error: module.error,
     http_routes: [],
-    route_lints: [],
+    manifest_lints: [],
     module_name: module.module_name,
     source: module.source,
     status: module.status,
@@ -358,12 +358,12 @@ export function moduleRegistrySummary(
       summary.total += 1;
       summary[module.source] += 1;
       summary[module.status] += 1;
-      const routeSeverity = moduleRouteHealth(module);
-      if (routeSeverity === "warning") {
-        summary.route_warning += 1;
+      const lintSeverity = moduleManifestHealth(module);
+      if (lintSeverity === "warning") {
+        summary.lint_warning += 1;
       }
-      if (routeSeverity === "error") {
-        summary.route_error += 1;
+      if (lintSeverity === "error") {
+        summary.lint_error += 1;
       }
       return summary;
     },
@@ -372,8 +372,8 @@ export function moduleRegistrySummary(
       linked: 0,
       loaded: 0,
       remote: 0,
-      route_error: 0,
-      route_warning: 0,
+      lint_error: 0,
+      lint_warning: 0,
       total: 0,
     }
   );
@@ -392,8 +392,8 @@ export function filterModuleRegistry(
       return false;
     }
     if (
-      filters.route !== "all" &&
-      moduleRouteHealth(module) !== filters.route
+      filters.lint !== "all" &&
+      moduleManifestHealth(module) !== filters.lint
     ) {
       return false;
     }
@@ -424,7 +424,7 @@ function moduleRegistrySearchText(module: AdminModuleMetadata): string {
       descriptor.story_title ?? "",
       storyDisplaySourceLabel(descriptor.source),
     ]),
-    ...moduleRouteChecks(module).flatMap((check) => [
+    ...moduleManifestChecks(module).flatMap((check) => [
       check.severity,
       check.subject,
       check.message,
@@ -500,12 +500,12 @@ export function moduleHttpRouteRows(
   }));
 }
 
-export function moduleRouteChecks(
+export function moduleManifestChecks(
   module: AdminModuleMetadata
-): ModuleRouteCheck[] {
-  const routeChecks = module.route_lints.map(
-    (lint, index): ModuleRouteCheck => ({
-      key: `route-lint:${lint.severity}:${lint.subject}:${index}`,
+): ModuleManifestCheck[] {
+  const routeChecks = module.manifest_lints.map(
+    (lint, index): ModuleManifestCheck => ({
+      key: `manifest-lint:${lint.severity}:${lint.subject}:${index}`,
       message: lint.message,
       severity: lint.severity,
       subject: lint.subject,
@@ -530,10 +530,10 @@ export function moduleRouteChecks(
   return routeChecks;
 }
 
-export function moduleRouteHealth(
+export function moduleManifestHealth(
   module: AdminModuleMetadata
-): ModuleRouteCheckSeverity {
-  const checks = moduleRouteChecks(module);
+): ModuleLintSeverity {
+  const checks = moduleManifestChecks(module);
   if (checks.some((check) => check.severity === "error")) {
     return "error";
   }
@@ -543,10 +543,10 @@ export function moduleRouteHealth(
   return "ok";
 }
 
-export function moduleRouteCheckGroups(
-  checks: ModuleRouteCheck[]
-): ModuleRouteCheckGroup[] {
-  return (["error", "warning", "ok"] satisfies ModuleRouteCheckSeverity[])
+export function moduleManifestCheckGroups(
+  checks: ModuleManifestCheck[]
+): ModuleManifestCheckGroup[] {
+  return (["error", "warning", "ok"] satisfies ModuleLintSeverity[])
     .map((severity) => ({
       severity,
       checks: checks.filter((check) => check.severity === severity),
