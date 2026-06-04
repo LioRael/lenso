@@ -324,4 +324,28 @@ mod tests {
             }]
         );
     }
+
+    #[test]
+    fn linked_http_bindings_are_declared_in_manifests() {
+        for module in linked_http_modules() {
+            let http = module
+                .linked_http
+                .expect("linked HTTP module should carry HTTP contribution");
+            assert!(
+                !module.manifest.http_routes.is_empty(),
+                "linked HTTP module `{}` must declare ModuleManifest::http_routes",
+                module.manifest.name
+            );
+            for route in &module.manifest.http_routes {
+                assert!(
+                    http.public_prefixes
+                        .iter()
+                        .any(|prefix| route.path.starts_with(prefix)),
+                    "linked HTTP module `{}` declares manifest route `{}` outside its public prefixes",
+                    module.manifest.name,
+                    route.path
+                );
+            }
+        }
+    }
 }
