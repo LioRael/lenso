@@ -26,6 +26,7 @@ import {
   moduleHttpRouteRows,
   moduleIsLoaded,
   moduleRegistrySummary,
+  moduleRouteChecks,
   moduleStatusLabel,
   storyDisplayRows,
 } from "./data-render-model";
@@ -283,6 +284,7 @@ function registrySnapshotLabel(refreshedAt: string | null): string {
 
 function ModuleRegistryDetail({ module }: { module: AdminModuleMetadata }) {
   const routeRows = moduleHttpRouteRows(module);
+  const routeChecks = moduleRouteChecks(module);
   const storyRows = storyDisplayRows(module);
   return (
     <div className="grid gap-3">
@@ -305,6 +307,7 @@ function ModuleRegistryDetail({ module }: { module: AdminModuleMetadata }) {
 
       <ModuleCapabilitiesList capabilities={module.capabilities} />
       <ModuleStoryDisplayTable rows={storyRows} />
+      <ModuleRouteChecks checks={routeChecks} />
       <ModuleHttpRoutesTable rows={routeRows} />
     </div>
   );
@@ -410,6 +413,49 @@ function ModuleStoryDisplayTable({
             ))}
           </tbody>
         </table>
+      </div>
+    </section>
+  );
+}
+
+function ModuleRouteChecks({
+  checks,
+}: {
+  checks: ReturnType<typeof moduleRouteChecks>;
+}) {
+  return (
+    <section className="min-w-0 border border-(--border-subtle) bg-(--surface)">
+      <header className="flex items-center gap-2 border-b border-(--border-subtle) px-3 py-2 font-semibold">
+        <TriangleAlert className="text-(--warning)" size={14} />
+        <span>Route Checks</span>
+        <span className="ml-auto border border-(--border-subtle) px-1.5 py-0.5 text-[10px] text-(--secondary)">
+          {checks.length}
+        </span>
+      </header>
+      <div className="divide-y divide-(--border-subtle)">
+        {checks.map((check) => (
+          <div
+            className="grid grid-cols-[76px_minmax(0,160px)_minmax(0,1fr)] gap-2 px-3 py-1.5 text-[11px]"
+            key={check.key}
+          >
+            <span
+              className={cn(
+                "truncate",
+                check.severity === "ok" && "text-(--success)",
+                check.severity === "warning" && "text-(--warning)",
+                check.severity === "error" && "text-(--error)"
+              )}
+            >
+              {check.severity}
+            </span>
+            <span className="truncate text-(--foreground)">
+              {check.subject}
+            </span>
+            <span className="min-w-0 truncate text-(--muted)">
+              {check.message}
+            </span>
+          </div>
+        ))}
       </div>
     </section>
   );

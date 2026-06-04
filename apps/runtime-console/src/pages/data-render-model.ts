@@ -205,6 +205,15 @@ export type ModuleRegistrySummary = {
   error: number;
 };
 
+export type ModuleRouteCheckSeverity = "ok" | "warning" | "error";
+
+export type ModuleRouteCheck = {
+  key: string;
+  severity: ModuleRouteCheckSeverity;
+  subject: string;
+  message: string;
+};
+
 export type EmbeddedIframePolicy =
   | {
       status: "renderable";
@@ -443,6 +452,100 @@ export function moduleHttpRouteRows(
     path: route.path,
     storyTitle: route.story_title ?? "-",
   }));
+}
+
+export function moduleRouteChecks(
+  module: AdminModuleMetadata
+): ModuleRouteCheck[] {
+  const checks: ModuleRouteCheck[] = [];
+  if (!moduleIsLoaded(module)) {
+    checks.push({
+      key: "module-load-error",
+      message: moduleErrorMessage(module) ?? "module failed to load",
+      severity: "error",
+      subject: "module load",
+    });
+  }
+
+  if (module.http_routes.length === 0) {
+    checks.push({
+      key: "no-routes",
+      message: "No HTTP interfaces are declared in this manifest.",
+      severity: module.source === "remote" ? "warning" : "ok",
+      subject: "routes",
+    });
+    return checks;
+  }
+
+  const routeCounts = new Map<string, number>();
+  for (const route of module.http_routes) {
+    const key = routeIdentity(route);
+    routeCounts.set(key, (routeCounts.get(key) ?? 0) + 1);
+  }
+
+  const duplicateKeys = new Set<string>();
+  for (const [key, count] of routeCounts) {
+    if (count > 1) {
+      duplicateKeys.add(key);
+      checks.push({
+        key: `duplicate:${key}`,
+        message: `${count} routes declare the same method and path.`,
+        severity: "error",
+        subject: key,
+      });
+    }
+  }
+
+  module.http_routes.forEach((route, index) => {
+    const identity = routeIdentity(route);
+    if (!present(route.display_name)) {
+      checks.push({
+        key: `display:${identity}:${index}`,
+        message: "Missing display_name for compact runtime story nodes.",
+        severity: "warning",
+        subject: identity,
+      });
+    }
+    if (!present(route.story_title)) {
+      checks.push({
+        key: `story:${identity}:${index}`,
+        message: "Missing story_title for direct HTTP entry stories.",
+        severity: "warning",
+        subject: identity,
+      });
+    }
+    if (!present(route.capability)) {
+      checks.push({
+        key: `capability:${identity}:${index}`,
+        message:
+          "Missing capability declaration for host authorization review.",
+        severity: "warning",
+        subject: identity,
+      });
+    }
+  });
+
+  const routeIssues = checks.some(
+    (check) => check.key !== "module-load-error" && check.severity !== "ok"
+  );
+  if (!routeIssues && duplicateKeys.size === 0) {
+    checks.push({
+      key: "routes-complete",
+      message:
+        "Declared routes include display, story, and capability metadata.",
+      severity: "ok",
+      subject: "routes",
+    });
+  }
+  return checks;
+}
+
+function routeIdentity(route: ModuleHttpRoute): string {
+  return `${route.method} ${route.path}`;
+}
+
+function present(value: string | null | undefined): boolean {
+  return typeof value === "string" && value.trim().length > 0;
 }
 
 export function storyDisplayRows(

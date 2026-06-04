@@ -18,6 +18,7 @@ import {
   moduleIsLoaded,
   moduleNavItems,
   moduleRegistrySummary,
+  moduleRouteChecks,
   moduleStatusLabel,
   recordId,
   renderCell,
@@ -437,6 +438,106 @@ describe("module status helpers", () => {
         status: "error",
       }).map((module) => module.module_name)
     ).toEqual(["remote-crm"]);
+  });
+
+  test("reports healthy route declarations", () => {
+    expect(
+      moduleRouteChecks({
+        ...loadedModule,
+        http_routes: [
+          {
+            capability: "identity.users.create",
+            display_name: "Create User Request",
+            method: "POST",
+            path: "/v1/identity/users",
+            story_title: "User Registration",
+          },
+        ],
+      })
+    ).toEqual([
+      {
+        key: "routes-complete",
+        message:
+          "Declared routes include display, story, and capability metadata.",
+        severity: "ok",
+        subject: "routes",
+      },
+    ]);
+  });
+
+  test("reports route declaration quality issues", () => {
+    expect(
+      moduleRouteChecks({
+        ...loadedModule,
+        source: "remote",
+        http_routes: [
+          {
+            method: "GET",
+            path: "/contacts/{id}",
+          },
+          {
+            capability: "remote_crm.contacts.read",
+            method: "GET",
+            path: "/contacts/{id}",
+          },
+        ],
+      })
+    ).toEqual([
+      {
+        key: "duplicate:GET /contacts/{id}",
+        message: "2 routes declare the same method and path.",
+        severity: "error",
+        subject: "GET /contacts/{id}",
+      },
+      {
+        key: "display:GET /contacts/{id}:0",
+        message: "Missing display_name for compact runtime story nodes.",
+        severity: "warning",
+        subject: "GET /contacts/{id}",
+      },
+      {
+        key: "story:GET /contacts/{id}:0",
+        message: "Missing story_title for direct HTTP entry stories.",
+        severity: "warning",
+        subject: "GET /contacts/{id}",
+      },
+      {
+        key: "capability:GET /contacts/{id}:0",
+        message:
+          "Missing capability declaration for host authorization review.",
+        severity: "warning",
+        subject: "GET /contacts/{id}",
+      },
+      {
+        key: "display:GET /contacts/{id}:1",
+        message: "Missing display_name for compact runtime story nodes.",
+        severity: "warning",
+        subject: "GET /contacts/{id}",
+      },
+      {
+        key: "story:GET /contacts/{id}:1",
+        message: "Missing story_title for direct HTTP entry stories.",
+        severity: "warning",
+        subject: "GET /contacts/{id}",
+      },
+    ]);
+  });
+
+  test("reports module load and empty route states", () => {
+    expect(moduleRouteChecks(errorModule)).toEqual([
+      {
+        key: "module-load-error",
+        message: "remote manifest request failed",
+        severity: "error",
+        subject: "module load",
+      },
+      {
+        key: "no-routes",
+        message: "No HTTP interfaces are declared in this manifest.",
+        severity: "warning",
+        subject: "routes",
+      },
+    ]);
   });
 });
 
