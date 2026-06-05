@@ -28,6 +28,7 @@ import { actorLabel, time } from "../lib/format";
 import { runtimeConsoleDataSource } from "../lib/http-client";
 import {
   OperationsFilterBar,
+  OperationsFilterChip,
   OperationsSearchInput,
 } from "./operations-filter";
 import {
@@ -209,33 +210,26 @@ export function DeadLettersPage() {
 
         <OperationsFilterBar>
           {(["all", "event", "function"] as const).map((item) => (
-            <button
-              className={`h-6 border px-2 font-mono text-[10px] ${
-                kind === item
-                  ? "border-[color-mix(in_srgb,var(--accent)_40%,transparent)] bg-(--accent-soft) text-(--accent)"
-                  : "border-(--border-subtle) text-(--muted) hover:text-(--foreground)"
-              }`}
+            <OperationsFilterChip
+              active={kind === item}
               key={item}
               onClick={() => {
                 pushDeadLetterUrl({ kind: item, selectedId: "" });
                 setKind(item);
               }}
-              type="button"
             >
               {deadLetterKindLabel(item)}
-            </button>
+            </OperationsFilterChip>
           ))}
-          <button
-            className="h-6 border border-(--border-subtle) px-2 font-mono text-[10px] text-(--muted) hover:text-(--foreground)"
+          <OperationsFilterChip
             onClick={() => {
               const next = !oldestFirst;
               pushDeadLetterUrl({ oldestFirst: next, selectedId: "" });
               setOldestFirst(next);
             }}
-            type="button"
           >
             {oldestFirst ? "oldest" : "newest"}
-          </button>
+          </OperationsFilterChip>
           <OperationsSearchInput
             ariaLabel="Search dead letters"
             onChange={setQuery}

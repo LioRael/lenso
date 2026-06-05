@@ -29,6 +29,7 @@ import {
 } from "./functions-model";
 import {
   OperationsFilterBar,
+  OperationsFilterChip,
   OperationsSearchInput,
 } from "./operations-filter";
 import {
@@ -262,22 +263,16 @@ export function FunctionsPage() {
 
         <OperationsFilterBar>
           {functionStatusFilters.map((item) => (
-            <button
-              className={cn(
-                "h-6 border px-2 font-mono text-[10px]",
-                status === item
-                  ? "border-[color-mix(in_srgb,var(--accent)_40%,transparent)] bg-(--accent-soft) text-(--accent)"
-                  : "border-(--border-subtle) text-(--muted) hover:text-(--foreground)"
-              )}
+            <OperationsFilterChip
+              active={status === item}
               key={item}
               onClick={() => {
                 pushFunctionUrl({ selectedId: "", status: item });
                 setStatus(item);
               }}
-              type="button"
             >
               {item}
-            </button>
+            </OperationsFilterChip>
           ))}
           <label className="flex h-6 min-w-[150px] items-center border border-(--border-subtle) bg-(--elevated) px-2 font-mono text-(--muted)">
             <input

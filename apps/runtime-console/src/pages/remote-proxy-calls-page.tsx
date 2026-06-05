@@ -17,6 +17,7 @@ import { time } from "../lib/format";
 import { runtimeConsoleDataSource } from "../lib/http-client";
 import {
   OperationsFilterBar,
+  OperationsFilterChip,
   OperationsSearchInput,
 } from "./operations-filter";
 import {
@@ -306,22 +307,16 @@ export function RemoteProxyCallsPage() {
 
         <OperationsFilterBar>
           {(["all", "success", "failed"] as const).map((item) => (
-            <button
-              className={cn(
-                "h-6 border px-2 font-mono text-[10px]",
-                result === item
-                  ? "border-[color-mix(in_srgb,var(--accent)_40%,transparent)] bg-(--accent-soft) text-(--accent)"
-                  : "border-(--border-subtle) text-(--muted) hover:text-(--foreground)"
-              )}
+            <OperationsFilterChip
+              active={result === item}
               key={item}
               onClick={() => {
                 pushRemoteCallsUrl({ result: item, selectedId: "" });
                 setResult(item);
               }}
-              type="button"
             >
               {item}
-            </button>
+            </OperationsFilterChip>
           ))}
           <label className="flex h-6 min-w-[160px] items-center border border-(--border-subtle) bg-(--elevated) px-2 font-mono text-(--muted)">
             <input

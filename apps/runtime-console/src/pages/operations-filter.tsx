@@ -11,6 +11,30 @@ export function OperationsFilterBar({ children }: PropsWithChildren) {
   );
 }
 
+export function OperationsFilterChip({
+  active = false,
+  children,
+  onClick,
+}: PropsWithChildren<{
+  active?: boolean;
+  onClick: () => void;
+}>) {
+  return (
+    <button
+      className={cn(
+        "h-6 border px-2 font-mono text-[10px]",
+        active
+          ? "border-[color-mix(in_srgb,var(--accent)_40%,transparent)] bg-(--accent-soft) text-(--accent)"
+          : "border-(--border-subtle) text-(--muted) hover:text-(--foreground)"
+      )}
+      onClick={onClick}
+      type="button"
+    >
+      {children}
+    </button>
+  );
+}
+
 export function OperationsSearchInput({
   ariaLabel,
   className,
