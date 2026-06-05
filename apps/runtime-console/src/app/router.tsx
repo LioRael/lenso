@@ -11,6 +11,7 @@ import { RuntimeConsoleShell } from "../components/runtime/runtime-console-shell
 import { ConfigPage } from "../pages/config-page";
 import { DataPage } from "../pages/data-page";
 import { DeadLettersPage } from "../pages/dead-letters-page";
+import { FunctionsPage } from "../pages/functions-page";
 import { ModulesPage } from "../pages/modules-page";
 import { OverviewPage } from "../pages/overview-page";
 import { QueuesPage } from "../pages/queues-page";
@@ -66,9 +67,7 @@ const eventsRoute = createRoute({
 const functionsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/functions",
-  beforeLoad: () => {
-    throw redirect({ to: "/runtime/stories" });
-  },
+  component: FunctionsPage,
 });
 
 const timelineRoute = createRoute({

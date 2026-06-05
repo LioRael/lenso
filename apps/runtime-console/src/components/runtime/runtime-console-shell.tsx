@@ -4,6 +4,7 @@ import gsap from "gsap";
 import {
   Activity,
   Boxes,
+  Braces,
   Command,
   Database,
   Inbox,
@@ -36,6 +37,7 @@ const primaryNavItems = [
   { to: "/overview", label: "Overview", icon: Activity },
   { to: "/runtime/stories", label: "Stories", icon: Workflow },
   { to: "/dead-letters", label: "Dead Letters", icon: TriangleAlert },
+  { to: "/functions", label: "Functions", icon: Braces },
   { to: "/remote-proxy-calls", label: "Remote Calls", icon: Network },
   { to: "/queues", label: "Queues", icon: Inbox },
   { to: "/modules", label: "Modules", icon: Boxes },

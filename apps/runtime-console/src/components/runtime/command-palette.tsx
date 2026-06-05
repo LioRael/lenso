@@ -68,6 +68,13 @@ export function CommandPalette({ theme, onToggleTheme }: CommandPaletteProps) {
         title: "Go to Dead Letters",
       },
       {
+        action: () => void navigate({ to: "/functions" }),
+        id: "functions",
+        searchText: "go to functions runtime function runs module queue",
+        subtitle: "Runtime function runs",
+        title: "Go to Functions",
+      },
+      {
         action: () => void navigate({ to: "/queues" }),
         id: "queues",
         searchText: "go to queues queue pressure",
