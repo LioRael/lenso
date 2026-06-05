@@ -42,6 +42,11 @@ import {
   OperationsMessageRow,
 } from "./operations-state";
 import {
+  OperationsAggregateRow,
+  OperationsSelectableRow,
+  OperationsTableHeader,
+} from "./operations-table";
+import {
   functionsPath,
   pushOperationsUrl,
   readOperationsParam,
@@ -322,7 +327,7 @@ export function FunctionsPage() {
         </div>
 
         <div className="min-h-0 overflow-auto">
-          <div className="grid h-7 grid-cols-[94px_minmax(240px,1.35fr)_minmax(150px,0.8fr)_minmax(132px,0.7fr)_86px_160px_88px] items-center gap-3 border-b border-(--border-subtle) bg-[color-mix(in_srgb,var(--elevated)_52%,transparent)] px-3 font-mono text-[9px] uppercase tracking-[0.08em] text-(--muted)">
+          <OperationsTableHeader className="grid-cols-[94px_minmax(240px,1.35fr)_minmax(150px,0.8fr)_minmax(132px,0.7fr)_86px_160px_88px] gap-3">
             <span>status</span>
             <span>function</span>
             <span>module</span>
@@ -330,7 +335,7 @@ export function FunctionsPage() {
             <span>attempts</span>
             <span>correlation</span>
             <span>created</span>
-          </div>
+          </OperationsTableHeader>
           {functionsQuery.isLoading ? (
             <OperationsLoadingRows />
           ) : functionsQuery.isError ? (
@@ -344,19 +349,14 @@ export function FunctionsPage() {
             visible.map((run) => {
               const isSelected = selected?.id === run.id;
               return (
-                <button
-                  className={cn(
-                    "grid min-h-14 w-full grid-cols-[94px_minmax(240px,1.35fr)_minmax(150px,0.8fr)_minmax(132px,0.7fr)_86px_160px_88px] items-center gap-3 border-b border-(--border-subtle) px-3 text-left font-mono text-[11px]",
-                    isSelected
-                      ? "bg-(--accent-soft) shadow-[inset_2px_0_0_var(--accent)]"
-                      : "hover:bg-(--elevated)"
-                  )}
+                <OperationsSelectableRow
+                  className="min-h-14 grid-cols-[94px_minmax(240px,1.35fr)_minmax(150px,0.8fr)_minmax(132px,0.7fr)_86px_160px_88px] gap-3"
+                  isSelected={isSelected}
                   key={run.id}
                   onClick={() => {
                     pushFunctionUrl({ selectedId: run.id });
                     setSelectedId(run.id);
                   }}
-                  type="button"
                 >
                   <FunctionStatusPill status={run.status} />
                   <span className="min-w-0">
@@ -392,7 +392,7 @@ export function FunctionsPage() {
                   <span className="text-right text-[10px] text-(--muted)">
                     {time(run.createdAt)}
                   </span>
-                </button>
+                </OperationsSelectableRow>
               );
             })
           )}
@@ -462,12 +462,12 @@ function AggregatePanel({
 }) {
   return (
     <section className="min-w-0 border-r border-(--border-subtle) last:border-r-0">
-      <div className="grid h-7 grid-cols-[minmax(0,1fr)_52px_52px_72px] items-center gap-2 border-b border-(--border-subtle) bg-[color-mix(in_srgb,var(--elevated)_52%,transparent)] px-3 font-mono text-[9px] uppercase tracking-[0.08em] text-(--muted)">
+      <OperationsTableHeader className="grid-cols-[minmax(0,1fr)_52px_52px_72px] gap-2">
         <span>{title}</span>
         <span>fail</span>
         <span>dead</span>
         <span>avg</span>
-      </div>
+      </OperationsTableHeader>
       <div>
         {rows.length === 0 ? (
           <div className="px-3 py-2 font-mono text-[10px] text-(--muted)">
@@ -475,11 +475,10 @@ function AggregatePanel({
           </div>
         ) : (
           rows.map((row) => (
-            <button
-              className="grid h-8 w-full grid-cols-[minmax(0,1fr)_52px_52px_72px] items-center gap-2 border-b border-(--border-subtle) px-3 text-left font-mono text-[10px] hover:bg-(--elevated)"
+            <OperationsAggregateRow
+              className="grid-cols-[minmax(0,1fr)_52px_52px_72px] gap-2"
               key={row.key}
               onClick={() => onSelect(row.key)}
-              type="button"
             >
               <span className="min-w-0 truncate text-(--foreground)">
                 {row.key}
@@ -497,7 +496,7 @@ function AggregatePanel({
               <span className="text-(--muted)">
                 {formatFunctionDuration(row.avgDurationMs)}
               </span>
-            </button>
+            </OperationsAggregateRow>
           ))
         )}
       </div>

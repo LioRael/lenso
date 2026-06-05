@@ -20,6 +20,10 @@ import {
 } from "./operations-layout";
 import { OperationsMessageRow } from "./operations-state";
 import {
+  OperationsSelectableRow,
+  OperationsTableHeader,
+} from "./operations-table";
+import {
   pushOperationsUrl,
   queuesPath,
   readOperationsParam,
@@ -189,7 +193,7 @@ export function QueuesPage() {
         </div>
 
         <div className="min-h-0 overflow-auto">
-          <div className="grid h-7 grid-cols-[minmax(180px,1fr)_72px_72px_72px_72px_92px_minmax(120px,240px)] items-center gap-2 border-b border-(--border-subtle) bg-[color-mix(in_srgb,var(--elevated)_52%,transparent)] px-3 font-mono text-[9px] uppercase tracking-[0.08em] text-(--muted)">
+          <OperationsTableHeader className="grid-cols-[minmax(180px,1fr)_72px_72px_72px_72px_92px_minmax(120px,240px)] gap-2">
             <span>queue</span>
             <span>pending</span>
             <span>running</span>
@@ -197,7 +201,7 @@ export function QueuesPage() {
             <span>dead</span>
             <span>oldest</span>
             <span>pressure</span>
-          </div>
+          </OperationsTableHeader>
           {summaryQuery.isLoading ||
           eventsQuery.isLoading ||
           functionsQuery.isLoading ? (
@@ -219,15 +223,11 @@ export function QueuesPage() {
                 queue.pending + queue.running + queue.failed + queue.dead;
               const isSelected = selected?.name === queue.name;
               return (
-                <button
-                  className={`grid min-h-11 w-full grid-cols-[minmax(180px,1fr)_72px_72px_72px_72px_92px_minmax(120px,240px)] items-center gap-2 border-b border-(--border-subtle) px-3 text-left font-mono text-[11px] ${
-                    isSelected
-                      ? "bg-(--accent-soft) shadow-[inset_2px_0_0_var(--accent)]"
-                      : "hover:bg-(--elevated)"
-                  }`}
+                <OperationsSelectableRow
+                  className="min-h-11 grid-cols-[minmax(180px,1fr)_72px_72px_72px_72px_92px_minmax(120px,240px)] gap-2"
+                  isSelected={isSelected}
                   key={queue.name}
                   onClick={() => selectQueue(queue)}
-                  type="button"
                 >
                   <span className="truncate text-(--foreground)">
                     {queue.name}
@@ -264,7 +264,7 @@ export function QueuesPage() {
                       {total}
                     </span>
                   </span>
-                </button>
+                </OperationsSelectableRow>
               );
             })
           )}

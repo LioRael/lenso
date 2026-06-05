@@ -24,6 +24,11 @@ import {
   OperationsMessageRow,
 } from "./operations-state";
 import {
+  OperationsAggregateRow,
+  OperationsSelectableRow,
+  OperationsTableHeader,
+} from "./operations-table";
+import {
   pushOperationsUrl,
   readOperationsParam,
   replaceOperationsUrl,
@@ -352,7 +357,7 @@ export function RemoteProxyCallsPage() {
         </div>
 
         <div className="min-h-0 overflow-auto">
-          <div className="grid h-7 grid-cols-[92px_148px_minmax(220px,1.2fr)_minmax(220px,1.2fr)_88px_164px_88px] items-center gap-3 border-b border-(--border-subtle) bg-[color-mix(in_srgb,var(--elevated)_52%,transparent)] px-3 font-mono text-[9px] uppercase tracking-[0.08em] text-(--muted)">
+          <OperationsTableHeader className="grid-cols-[92px_148px_minmax(220px,1.2fr)_minmax(220px,1.2fr)_88px_164px_88px] gap-3">
             <span>result</span>
             <span>module</span>
             <span>route</span>
@@ -360,7 +365,7 @@ export function RemoteProxyCallsPage() {
             <span>duration</span>
             <span>correlation</span>
             <span>occurred</span>
-          </div>
+          </OperationsTableHeader>
           {remoteProxyCallsQuery.isLoading ? (
             <OperationsLoadingRows />
           ) : remoteProxyCallsQuery.isError ? (
@@ -374,19 +379,14 @@ export function RemoteProxyCallsPage() {
             visible.map((call) => {
               const isSelected = selected?.id === call.id;
               return (
-                <button
-                  className={cn(
-                    "grid min-h-14 w-full grid-cols-[92px_148px_minmax(220px,1.2fr)_minmax(220px,1.2fr)_88px_164px_88px] items-center gap-3 border-b border-(--border-subtle) px-3 text-left font-mono text-[11px]",
-                    isSelected
-                      ? "bg-(--accent-soft) shadow-[inset_2px_0_0_var(--accent)]"
-                      : "hover:bg-(--elevated)"
-                  )}
+                <OperationsSelectableRow
+                  className="min-h-14 grid-cols-[92px_148px_minmax(220px,1.2fr)_minmax(220px,1.2fr)_88px_164px_88px] gap-3"
+                  isSelected={isSelected}
                   key={call.id}
                   onClick={() => {
                     pushRemoteCallsUrl({ selectedId: call.id });
                     setSelectedId(call.id);
                   }}
-                  type="button"
                 >
                   <ResultPill call={call} />
                   <span className="min-w-0">
@@ -423,7 +423,7 @@ export function RemoteProxyCallsPage() {
                   <span className="text-right text-[10px] text-(--muted)">
                     {time(call.occurred_at)}
                   </span>
-                </button>
+                </OperationsSelectableRow>
               );
             })
           )}
@@ -513,12 +513,12 @@ function AggregatePanel({
 }) {
   return (
     <section className="min-w-0 border-r border-(--border-subtle) last:border-r-0">
-      <div className="grid h-7 grid-cols-[minmax(0,1fr)_48px_56px_64px] items-center gap-2 border-b border-(--border-subtle) bg-[color-mix(in_srgb,var(--elevated)_52%,transparent)] px-3 font-mono text-[9px] uppercase tracking-[0.08em] text-(--muted)">
+      <OperationsTableHeader className="grid-cols-[minmax(0,1fr)_48px_56px_64px] gap-2">
         <span>{title}</span>
         <span>fail</span>
         <span>rate</span>
         <span>p95</span>
-      </div>
+      </OperationsTableHeader>
       <div>
         {rows.length === 0 ? (
           <div className="px-3 py-2 font-mono text-[10px] text-(--muted)">
@@ -526,11 +526,10 @@ function AggregatePanel({
           </div>
         ) : (
           rows.map((row) => (
-            <button
-              className="grid h-8 w-full grid-cols-[minmax(0,1fr)_48px_56px_64px] items-center gap-2 border-b border-(--border-subtle) px-3 text-left font-mono text-[10px] hover:bg-(--elevated)"
+            <OperationsAggregateRow
+              className="grid-cols-[minmax(0,1fr)_48px_56px_64px] gap-2"
               key={row.key}
               onClick={() => onSelect(row.key)}
-              type="button"
             >
               <span className="min-w-0 truncate text-(--foreground)">
                 {row.key}
@@ -546,7 +545,7 @@ function AggregatePanel({
               <span className="text-(--muted)">
                 {formatDuration(row.p95DurationMs)}
               </span>
-            </button>
+            </OperationsAggregateRow>
           ))
         )}
       </div>
