@@ -43,58 +43,10 @@ const storiesWorkbenchRoute = createRoute({
   component: RuntimeStoriesPage,
 });
 
-const legacyStoriesAliasRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/runtime/traces",
-  beforeLoad: () => {
-    throw redirect({ to: "/runtime/stories" });
-  },
-});
-
 const overviewRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/overview",
   component: OverviewPage,
-});
-
-const eventsRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/events",
-  beforeLoad: () => {
-    throw redirect({ to: "/runtime/stories" });
-  },
-});
-
-const functionsRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/functions",
-  beforeLoad: () => {
-    throw redirect({ to: "/operations/functions" });
-  },
-});
-
-const timelineRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/timeline",
-  beforeLoad: () => {
-    throw redirect({ to: "/runtime/stories" });
-  },
-});
-
-const deadLettersRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/dead-letters",
-  beforeLoad: () => {
-    throw redirect({ to: "/operations/dead-letters" });
-  },
-});
-
-const remoteProxyCallsRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/remote-proxy-calls",
-  beforeLoad: () => {
-    throw redirect({ to: "/operations/remote-calls" });
-  },
 });
 
 const operationsRoute = createRoute({
@@ -166,25 +118,12 @@ const modulesRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   indexRoute,
   storiesWorkbenchRoute,
-  legacyStoriesAliasRoute,
   overviewRoute,
-  eventsRoute,
-  functionsRoute,
-  timelineRoute,
-  deadLettersRoute,
-  remoteProxyCallsRoute,
   operationsRoute,
   operationsQueuesRoute,
   operationsDeadLettersRoute,
   operationsFunctionsRoute,
   operationsRemoteCallsRoute,
-  createRoute({
-    getParentRoute: () => rootRoute,
-    path: "/queues",
-    beforeLoad: () => {
-      throw redirect({ to: "/operations/queues" });
-    },
-  }),
   modulesRoute,
   configRoute,
   dataRoute,
