@@ -2,15 +2,16 @@ use crate::dto::{
     AdminActionInvokeRequest, AdminActionInvokeResponse, AdminCapabilityIssueDto,
     AdminCapabilitySummaryDto, AdminDataDetailResponse, AdminDataListResponse, AdminDataPageInfo,
     AdminModuleActivationState, AdminModuleGovernanceDto, AdminModuleMetadataDto,
-    AdminModuleMetadataListResponse, AdminModuleSchema, AdminModuleSourceDiagnosticsDto,
-    AdminModuleStatus, AdminRemoteModuleDiagnosticsDto, AdminSchemaListResponse,
-    AdminSchemaRefreshResponse,
+    AdminModuleMetadataListResponse, AdminModuleRefreshRecordDto, AdminModuleRefreshStatusDto,
+    AdminModuleSchema, AdminModuleSourceDiagnosticsDto, AdminModuleStatus,
+    AdminRemoteModuleDiagnosticsDto, AdminSchemaListResponse, AdminSchemaRefreshResponse,
 };
 use crate::{
-    AdminModule, AdminModuleMetadata, AdminModuleSourceDiagnostics, admin_metadata_refresher,
+    AdminModule, AdminModuleMetadata, AdminModuleMetadataRefreshRecord,
+    AdminModuleMetadataRefreshStatus, AdminModuleSourceDiagnostics, admin_metadata_refresher,
     admin_module_metadata_snapshot, admin_modules, admin_refresher, find_loaded_action_module,
     find_loaded_module, install_admin_module_metadata, install_admin_modules,
-    record_admin_module_metadata_refresh_error,
+    record_admin_module_metadata_refresh_error, record_admin_module_metadata_refresh_success,
 };
 use axum::Json;
 use axum::extract::{Path, Query};
@@ -22,6 +23,7 @@ use platform_module::{
 };
 use serde::Deserialize;
 use std::collections::HashSet;
+use std::time::Instant;
 
 const DEFAULT_LIMIT: i64 = 50;
 const MAX_LIMIT: i64 = 200;
@@ -78,13 +80,14 @@ pub(crate) async fn refresh_modules(
             &request_ctx,
         )
     })?;
+    let started_at = crate::current_timestamp();
+    let started = Instant::now();
     match refresher.refresh_admin_module_metadata().await {
-        Ok(metadata) => {
-            install_admin_module_metadata(metadata);
-            Ok(Json(metadata_response(admin_module_metadata_snapshot())))
-        }
+        Ok(metadata) => Ok(Json(metadata_response(
+            record_admin_module_metadata_refresh_success(metadata, started_at, started),
+        ))),
         Err(error) => Ok(Json(metadata_response(
-            record_admin_module_metadata_refresh_error(error.public_message),
+            record_admin_module_metadata_refresh_error(error.public_message, started_at, started),
         ))),
     }
 }
@@ -307,6 +310,26 @@ fn metadata_response(
         modules: metadata_response_modules(snapshot.modules),
         refreshed_at: snapshot.refreshed_at,
         refresh_error: snapshot.refresh_error,
+        refresh_history: snapshot
+            .refresh_history
+            .into_iter()
+            .map(refresh_record_dto)
+            .collect(),
+    }
+}
+
+fn refresh_record_dto(record: AdminModuleMetadataRefreshRecord) -> AdminModuleRefreshRecordDto {
+    AdminModuleRefreshRecordDto {
+        id: record.id,
+        status: match record.status {
+            AdminModuleMetadataRefreshStatus::Success => AdminModuleRefreshStatusDto::Success,
+            AdminModuleMetadataRefreshStatus::Error => AdminModuleRefreshStatusDto::Error,
+        },
+        started_at: record.started_at,
+        completed_at: record.completed_at,
+        duration_ms: record.duration_ms,
+        module_count: record.module_count,
+        error: record.error,
     }
 }
 

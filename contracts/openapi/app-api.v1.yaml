@@ -2758,6 +2758,7 @@ components:
         including modules without admin surfaces.
       required:
       - modules
+      - refresh_history
       properties:
         modules:
           type: array
@@ -2767,10 +2768,48 @@ components:
           type:
           - string
           - 'null'
+        refresh_history:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminModuleRefreshRecordDto'
         refreshed_at:
           type:
           - string
           - 'null'
+    AdminModuleRefreshRecordDto:
+      type: object
+      required:
+      - id
+      - status
+      - started_at
+      - completed_at
+      - duration_ms
+      - module_count
+      properties:
+        completed_at:
+          type: string
+        duration_ms:
+          type: integer
+          format: int64
+          minimum: 0
+        error:
+          type:
+          - string
+          - 'null'
+        id:
+          type: string
+        module_count:
+          type: integer
+          minimum: 0
+        started_at:
+          type: string
+        status:
+          $ref: '#/components/schemas/AdminModuleRefreshStatusDto'
+    AdminModuleRefreshStatusDto:
+      type: string
+      enum:
+      - success
+      - error
     AdminModuleSchema:
       type: object
       required:

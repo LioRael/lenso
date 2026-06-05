@@ -28,6 +28,25 @@ pub struct AdminModuleMetadataListResponse {
     pub modules: Vec<AdminModuleMetadataDto>,
     pub refreshed_at: Option<String>,
     pub refresh_error: Option<String>,
+    pub refresh_history: Vec<AdminModuleRefreshRecordDto>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminModuleRefreshRecordDto {
+    pub id: String,
+    pub status: AdminModuleRefreshStatusDto,
+    pub started_at: String,
+    pub completed_at: String,
+    pub duration_ms: u64,
+    pub module_count: usize,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AdminModuleRefreshStatusDto {
+    Success,
+    Error,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

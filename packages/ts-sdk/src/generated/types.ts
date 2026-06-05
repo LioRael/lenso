@@ -135,8 +135,21 @@ export type AdminModuleMetadataDto = {
 export type AdminModuleMetadataListResponse = {
   modules: Array<AdminModuleMetadataDto>;
   refresh_error?: string | null;
+  refresh_history: Array<AdminModuleRefreshRecordDto>;
   refreshed_at?: string | null;
 };
+
+export type AdminModuleRefreshRecordDto = {
+  completed_at: string;
+  duration_ms: number;
+  error?: string | null;
+  id: string;
+  module_count: number;
+  started_at: string;
+  status: AdminModuleRefreshStatusDto;
+};
+
+export type AdminModuleRefreshStatusDto = string;
 
 export type AdminModuleSchema = {
   error?: string | null;

@@ -10,6 +10,7 @@ use platform_module::{
     ModuleHttpRoute, ModuleLoadStatus, ModuleSource, RuntimeSurface,
 };
 use std::sync::{Arc, OnceLock, RwLock};
+use std::time::Instant;
 
 mod dto;
 mod handlers;
@@ -96,6 +97,24 @@ struct AdminModuleMetadataSnapshot {
     modules: Vec<AdminModuleMetadata>,
     refreshed_at: Option<String>,
     refresh_error: Option<String>,
+    refresh_history: Vec<AdminModuleMetadataRefreshRecord>,
+}
+
+#[derive(Clone, Debug)]
+pub struct AdminModuleMetadataRefreshRecord {
+    pub id: String,
+    pub status: AdminModuleMetadataRefreshStatus,
+    pub started_at: String,
+    pub completed_at: String,
+    pub duration_ms: u64,
+    pub module_count: usize,
+    pub error: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum AdminModuleMetadataRefreshStatus {
+    Success,
+    Error,
 }
 
 static ADMIN_REGISTRY: OnceLock<RwLock<Vec<AdminModule>>> = OnceLock::new();
@@ -161,7 +180,38 @@ pub fn install_admin_module_metadata(modules: Vec<AdminModuleMetadata>) {
         modules,
         refreshed_at: Some(current_timestamp()),
         refresh_error: None,
+        refresh_history: Vec::new(),
     };
+}
+
+pub(crate) fn record_admin_module_metadata_refresh_success(
+    modules: Vec<AdminModuleMetadata>,
+    started_at: String,
+    started: Instant,
+) -> AdminModuleMetadataSnapshot {
+    let registry =
+        ADMIN_METADATA_REGISTRY.get_or_init(|| RwLock::new(AdminModuleMetadataSnapshot::default()));
+    let mut snapshot = registry
+        .write()
+        .expect("admin metadata registry lock poisoned");
+    let completed_at = current_timestamp();
+    let record = AdminModuleMetadataRefreshRecord {
+        id: format!(
+            "module_refresh_{}",
+            completed_at.replace([':', '.', '+'], "_")
+        ),
+        status: AdminModuleMetadataRefreshStatus::Success,
+        started_at,
+        completed_at: completed_at.clone(),
+        duration_ms: duration_ms(started),
+        module_count: modules.len(),
+        error: None,
+    };
+    snapshot.modules = modules;
+    snapshot.refreshed_at = Some(completed_at);
+    snapshot.refresh_error = None;
+    push_refresh_record(&mut snapshot.refresh_history, record);
+    snapshot.clone()
 }
 
 /// Install the callback used by the explicit admin refresh endpoint.
@@ -223,19 +273,49 @@ fn admin_module_metadata_snapshot() -> AdminModuleMetadataSnapshot {
         .unwrap_or_default()
 }
 
-fn record_admin_module_metadata_refresh_error(error: String) -> AdminModuleMetadataSnapshot {
+pub(crate) fn record_admin_module_metadata_refresh_error(
+    error: String,
+    started_at: String,
+    started: Instant,
+) -> AdminModuleMetadataSnapshot {
     let registry =
         ADMIN_METADATA_REGISTRY.get_or_init(|| RwLock::new(AdminModuleMetadataSnapshot::default()));
     let mut snapshot = registry
         .write()
         .expect("admin metadata registry lock poisoned");
     snapshot.refresh_error = Some(error);
+    let completed_at = current_timestamp();
+    let record = AdminModuleMetadataRefreshRecord {
+        id: format!(
+            "module_refresh_{}",
+            completed_at.replace([':', '.', '+'], "_")
+        ),
+        status: AdminModuleMetadataRefreshStatus::Error,
+        started_at,
+        completed_at,
+        duration_ms: duration_ms(started),
+        module_count: snapshot.modules.len(),
+        error: snapshot.refresh_error.clone(),
+    };
+    push_refresh_record(&mut snapshot.refresh_history, record);
     snapshot.clone()
 }
 
-fn current_timestamp() -> String {
+pub(crate) fn current_timestamp() -> String {
     use platform_core::Clock;
     platform_core::SystemClock.now().to_rfc3339()
+}
+
+fn duration_ms(started: Instant) -> u64 {
+    u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
+}
+
+fn push_refresh_record(
+    history: &mut Vec<AdminModuleMetadataRefreshRecord>,
+    record: AdminModuleMetadataRefreshRecord,
+) {
+    history.insert(0, record);
+    history.truncate(10);
 }
 
 fn admin_refresher() -> Option<Arc<dyn AdminModuleRefresher>> {

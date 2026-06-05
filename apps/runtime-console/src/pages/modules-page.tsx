@@ -51,6 +51,17 @@ type ModulesResponse = {
   modules: AdminModuleMetadata[];
   refreshed_at: string | null;
   refresh_error: string | null;
+  refresh_history: ModuleRefreshRecord[];
+};
+
+type ModuleRefreshRecord = {
+  id: string;
+  status: "success" | "error" | string;
+  started_at: string;
+  completed_at: string;
+  duration_ms: number;
+  module_count: number;
+  error: string | null;
 };
 
 const modulesQueryKey = ["modules", "registry"] as const;
@@ -131,6 +142,9 @@ function ModulesContent() {
             Refresh failed: {String(refreshMutation.error.message)}
           </p>
         ) : null}
+        <ModuleRefreshHistory
+          history={modulesQuery.data?.refresh_history ?? []}
+        />
       </header>
 
       <div className="grid min-h-0 grid-cols-[260px_minmax(0,1fr)] overflow-hidden">
@@ -211,6 +225,33 @@ function ModulesContent() {
         </main>
       </div>
     </section>
+  );
+}
+
+function ModuleRefreshHistory({ history }: { history: ModuleRefreshRecord[] }) {
+  if (history.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-1 flex min-w-0 gap-1 overflow-hidden font-mono text-[10px]">
+      {history.slice(0, 3).map((record) => (
+        <span
+          className={cn(
+            "min-w-0 truncate border px-1.5 py-0.5",
+            record.status === "success" &&
+              "border-[color-mix(in_srgb,var(--success)_40%,transparent)] text-(--success)",
+            record.status === "error" &&
+              "border-[color-mix(in_srgb,var(--error)_45%,transparent)] text-(--error)"
+          )}
+          key={record.id}
+          title={record.error ?? record.completed_at}
+        >
+          refresh {record.status} / {record.module_count} modules /{" "}
+          {record.duration_ms}ms
+        </span>
+      ))}
+    </div>
   );
 }
 

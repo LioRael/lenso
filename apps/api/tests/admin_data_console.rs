@@ -696,6 +696,14 @@ async fn refresh_modules_replaces_module_registry_metadata() {
     assert_eq!(refresh_body["modules"][0]["module_name"], "notifications");
     assert!(refresh_body["refreshed_at"].as_str().is_some());
     assert_eq!(refresh_body["refresh_error"], Value::Null);
+    assert_eq!(refresh_body["refresh_history"][0]["status"], "success");
+    assert_eq!(refresh_body["refresh_history"][0]["module_count"], 1);
+    assert!(
+        refresh_body["refresh_history"][0]["duration_ms"]
+            .as_u64()
+            .is_some()
+    );
+    assert_eq!(refresh_body["refresh_history"][0]["error"], Value::Null);
     assert_eq!(
         refresh_body["modules"][0]["capabilities"],
         serde_json::json!(["notifications.email.send"])
@@ -759,4 +767,10 @@ async fn refresh_modules_records_error_without_dropping_snapshot() {
     assert_eq!(body["modules"][0]["module_name"], "identity");
     assert!(body["refreshed_at"].as_str().is_some());
     assert_eq!(body["refresh_error"], "remote manifest request failed");
+    assert_eq!(body["refresh_history"][0]["status"], "error");
+    assert_eq!(body["refresh_history"][0]["module_count"], 1);
+    assert_eq!(
+        body["refresh_history"][0]["error"],
+        "remote manifest request failed"
+    );
 }
