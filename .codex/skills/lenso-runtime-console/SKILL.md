@@ -1,6 +1,6 @@
 ---
 name: lenso-runtime-console
-description: Use when changing Lenso's Vite React Runtime Console under apps/runtime-console, including operator UI screens, runtime visualization components, TanStack Query or Router code, Tailwind styling, Base UI primitives, tests, linting, typechecking, or console build behavior.
+description: Use when changing Lenso's Vite React Runtime Console under apps/runtime-console, including Story/Execution screens, runtime visualization components, Data and module admin pages, Remote Calls, TanStack Query or Router code, Tailwind styling, Base UI primitives, tests, linting, typechecking, or console build behavior.
 ---
 
 # Lenso Runtime Console
@@ -26,6 +26,10 @@ Use this skill for changes under `apps/runtime-console`. Preserve the existing o
 - Do not add ESLint, Prettier, or Biome.
 - Keep operational screens information-dense and keyboard-friendly.
 - Preserve current visual language unless the user asks for a redesign.
+- Keep Story and Execution language primary in visible UI. Avoid expanding trace/span-first terminology unless the surface is explicitly Technical Operations.
+- Keep payload/business data separate from context, lineage, and technical metadata.
+- Prefer domain/module-provided display descriptors and backend metadata over hardcoded UI mappings.
+- Do not duplicate backend manifest lint rules in TypeScript; render `manifest_lints` returned by `/admin/data/modules`.
 
 ## Workflow
 
@@ -35,6 +39,15 @@ Use this skill for changes under `apps/runtime-console`. Preserve the existing o
 4. Use existing hooks under `src/hooks` for API/query integration.
 5. Update mock data in `src/data/mock-runtime.ts` only when the UI path needs representative states.
 6. Add or update Vitest coverage for behavior changes.
+
+## Current Surfaces
+
+- Runtime Stories, Waterfall, Timeline, Flame, Flow, Function Runs, Queues, Dead Letters, and Technical Operations observe `/admin/runtime/*`.
+- Data and Modules pages observe `/admin/data/*`, including schema-admin, custom admin surfaces, and manifest lint metadata.
+- Remote Calls under `/operations/remote-calls` observes persisted remote proxy calls and links back to Runtime Stories by correlation id.
+- Remote proxy calls appear as Story nodes and Technical Operations rows; do not create a parallel story model for them.
+
+When API contracts or generated SDK types change, also use `$lenso-contracts-sdk`. When remote module semantics drive the UI, also use `$lenso-remote-modules`.
 
 ## Commands
 

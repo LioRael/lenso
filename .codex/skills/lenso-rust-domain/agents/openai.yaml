@@ -1,4 +1,0 @@
-interface:
-  display_name: "Lenso Rust Domain"
-  short_description: "Rust domain workflow for Lenso modular monolith"
-  default_prompt: "Use $lenso-rust-domain to implement this Rust domain change while preserving Lenso architecture rules."

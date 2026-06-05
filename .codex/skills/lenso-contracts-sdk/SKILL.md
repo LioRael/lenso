@@ -1,6 +1,6 @@
 ---
 name: lenso-contracts-sdk
-description: Use when changing Lenso API contracts, OpenAPI schemas, JSON Schema event or error contracts, generated artifacts under contracts, or the generated TypeScript SDK in packages/ts-sdk, including any change requiring just generate, just generated-check, just sdk-check, or OpenAPI source updates.
+description: Use when changing Lenso API contracts, OpenAPI schemas, JSON Schema event/error/runtime contracts, generated artifacts under contracts, or the generated TypeScript SDK in packages/ts-sdk, including any change requiring just generate, just generated-check, just sdk-check, or OpenAPI source updates.
 ---
 
 # Lenso Contracts SDK
@@ -11,7 +11,7 @@ Use this skill for contract and generated SDK work. Rust/OpenAPI/event sources a
 
 ## Source Of Truth
 
-- API OpenAPI source: per-endpoint `#[utoipa::path]` annotations on the handlers (`domains/*/src/routes/`, `crates/platform-admin/src/handlers.rs`); document-level metadata and router assembly in `apps/api/src/openapi.rs`
+- API OpenAPI source: per-endpoint `#[utoipa::path]` annotations on real handlers in domains, platform admin backends, and mounted proxy/admin routes; document-level metadata and router assembly in `apps/api/src/openapi.rs`
 - Contract generator: `tools/generate-contracts`
 - TS SDK generator: `tools/generate-ts-sdk`
 - Committed OpenAPI artifact: `contracts/openapi/app-api.v1.yaml`
@@ -28,7 +28,9 @@ Use this skill for contract and generated SDK work. Rust/OpenAPI/event sources a
 - Change Rust OpenAPI or generator sources first, then regenerate.
 - Every HTTP API needs OpenAPI coverage via a `#[utoipa::path]` annotation on its handler. Do not add detached `#[utoipa::path]` stub functions; do not re-declare paths/schemas in `openapi.rs`.
 - Every event payload needs a JSON Schema contract under `contracts/events/`.
+- Every registered runtime function needs a JSON Schema contract under `contracts/runtime/functions/`.
 - Error responses must use the standard platform error shape.
+- Dynamic remote module routes do not become per-module committed OpenAPI paths. Document the static host proxy route shape and envelope instead.
 
 ## Workflow
 
@@ -67,6 +69,12 @@ For a new or changed HTTP endpoint:
 - Add or update the `#[utoipa::path]` annotation on the handler and register it with `routes!` in the router.
 - Regenerate with `just generate`.
 - Add or update API contract tests.
+
+For remote module proxy contracts:
+
+- Keep the committed contract focused on the host-owned `/modules/{module}/http/{*path}` proxy route.
+- Do not generate OpenAPI entries for each configured remote module route.
+- If the proxy envelope or admin runtime Remote Calls DTO changes, regenerate and update Runtime Console normalization/tests.
 
 For a new or changed event:
 
