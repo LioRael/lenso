@@ -5,7 +5,6 @@ import { JsonViewer } from "../components/runtime/json-viewer";
 import { ResizeHandle } from "../components/runtime/resize-handle";
 import { useRuntimeConsole } from "../components/runtime/runtime-console-context";
 import { Button } from "../components/ui/button";
-import { useBrowserUrlPopState } from "../hooks/use-browser-url-state";
 import { useListKeyboard } from "../hooks/use-list-keyboard";
 import { usePersistedLayout } from "../hooks/use-persisted-layout";
 import {
@@ -35,7 +34,11 @@ import {
   OperationsSelectableRow,
   OperationsTableHeader,
 } from "./operations-table";
-import { pushOperationsUrl, readOperationsParam } from "./operations-url-model";
+import { pushOperationsUrl } from "./operations-url-model";
+import {
+  readOperationsParamValue,
+  useOperationsUrlPopState,
+} from "./operations-url-state";
 import {
   type RemoteProxyCallAggregate,
   type RemoteProxyCallResultFilter,
@@ -55,18 +58,18 @@ const remoteProxyCallsLayoutDefaults = {
 
 export function RemoteProxyCallsPage() {
   const { openStory, openStoryTarget } = useRuntimeConsole();
-  const [query, setQuery] = useState(() => readOperationsParam("q"));
+  const [query, setQuery] = useState(() => readOperationsParamValue("q"));
   const [moduleName, setModuleName] = useState(() =>
-    readOperationsParam("module")
+    readOperationsParamValue("module")
   );
   const [correlationId, setCorrelationId] = useState(() =>
-    readOperationsParam("correlation_id")
+    readOperationsParamValue("correlation_id")
   );
   const [result, setResult] = useState<RemoteProxyCallResultFilter>(() =>
-    readRemoteProxyCallResult(readOperationsParam("result"))
+    readOperationsParamValue("result", readRemoteProxyCallResult)
   );
   const [selectedId, setSelectedId] = useState(() =>
-    readOperationsParam("selected")
+    readOperationsParamValue("selected")
   );
   const [layout, setLayout, resetLayout] = usePersistedLayout(
     "runtime-console:remote-proxy-calls-layout",
@@ -109,13 +112,13 @@ export function RemoteProxyCallsPage() {
     [calls]
   );
 
-  useBrowserUrlPopState((search) => {
-    setQuery(search.get("q") ?? "");
-    setModuleName(search.get("module") ?? "");
-    setCorrelationId(search.get("correlation_id") ?? "");
-    setResult(readRemoteProxyCallResult(search.get("result") ?? ""));
-    setSelectedId(search.get("selected") ?? "");
-  });
+  useOperationsUrlPopState([
+    { name: "q", setValue: setQuery },
+    { name: "module", setValue: setModuleName },
+    { name: "correlation_id", setValue: setCorrelationId },
+    { name: "result", parse: readRemoteProxyCallResult, setValue: setResult },
+    { name: "selected", setValue: setSelectedId },
+  ]);
 
   const remoteCallsUrl = (
     overrides: Partial<{

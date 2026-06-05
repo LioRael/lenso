@@ -6,7 +6,6 @@ import { ResizeHandle } from "../components/runtime/resize-handle";
 import { useRuntimeConsole } from "../components/runtime/runtime-console-context";
 import { Button } from "../components/ui/button";
 import { retryTargetFor, type FunctionRun } from "../data/mock-runtime";
-import { useBrowserUrlPopState } from "../hooks/use-browser-url-state";
 import { useListKeyboard } from "../hooks/use-list-keyboard";
 import { usePersistedLayout } from "../hooks/use-persisted-layout";
 import {
@@ -47,11 +46,11 @@ import {
   OperationsSelectableRow,
   OperationsTableHeader,
 } from "./operations-table";
+import { functionsPath, pushOperationsUrl } from "./operations-url-model";
 import {
-  functionsPath,
-  pushOperationsUrl,
-  readOperationsParam,
-} from "./operations-url-model";
+  readOperationsParamValue,
+  useOperationsUrlPopState,
+} from "./operations-url-state";
 
 const functionsLayoutDefaults = {
   inspectorWidth: 408,
@@ -59,16 +58,16 @@ const functionsLayoutDefaults = {
 
 export function FunctionsPage() {
   const { openRetry, openStoryTarget } = useRuntimeConsole();
-  const [query, setQuery] = useState(() => readOperationsParam("q"));
+  const [query, setQuery] = useState(() => readOperationsParamValue("q"));
   const [status, setStatus] = useState<FunctionStatusFilter>(() =>
-    readFunctionStatus(readOperationsParam("status"))
+    readOperationsParamValue("status", readFunctionStatus)
   );
   const [moduleName, setModuleName] = useState(() =>
-    readOperationsParam("module")
+    readOperationsParamValue("module")
   );
-  const [queue, setQueue] = useState(() => readOperationsParam("queue"));
+  const [queue, setQueue] = useState(() => readOperationsParamValue("queue"));
   const [selectedId, setSelectedId] = useState(() =>
-    readOperationsParam("selected")
+    readOperationsParamValue("selected")
   );
   const [layout, setLayout, resetLayout] = usePersistedLayout(
     "runtime-console:functions-layout",
@@ -100,13 +99,13 @@ export function FunctionsPage() {
     [runs]
   );
 
-  useBrowserUrlPopState((search) => {
-    setQuery(search.get("q") ?? "");
-    setStatus(readFunctionStatus(search.get("status") ?? ""));
-    setModuleName(search.get("module") ?? "");
-    setQueue(search.get("queue") ?? "");
-    setSelectedId(search.get("selected") ?? "");
-  });
+  useOperationsUrlPopState([
+    { name: "q", setValue: setQuery },
+    { name: "status", parse: readFunctionStatus, setValue: setStatus },
+    { name: "module", setValue: setModuleName },
+    { name: "queue", setValue: setQueue },
+    { name: "selected", setValue: setSelectedId },
+  ]);
 
   const functionUrl = (
     overrides: Partial<{

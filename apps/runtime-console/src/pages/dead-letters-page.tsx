@@ -16,7 +16,6 @@ import {
   type FunctionRun,
   type RuntimeEvent,
 } from "../data/mock-runtime";
-import { useBrowserUrlPopState } from "../hooks/use-browser-url-state";
 import { useListKeyboard } from "../hooks/use-list-keyboard";
 import { usePersistedLayout } from "../hooks/use-persisted-layout";
 import {
@@ -41,11 +40,11 @@ import {
   OperationsMessageRow,
 } from "./operations-state";
 import { OperationsKeyValueRows } from "./operations-table";
+import { deadLettersPath, pushOperationsUrl } from "./operations-url-model";
 import {
-  deadLettersPath,
-  pushOperationsUrl,
-  readOperationsParam,
-} from "./operations-url-model";
+  readOperationsParamValue,
+  useOperationsUrlPopState,
+} from "./operations-url-state";
 
 type DeadLetter =
   | { kind: "event"; item: RuntimeEvent }
@@ -57,15 +56,15 @@ const deadLettersLayoutDefaults = {
 
 export function DeadLettersPage() {
   const { openRetry, openStoryTarget } = useRuntimeConsole();
-  const [query, setQuery] = useState(() => readOperationsParam("q"));
+  const [query, setQuery] = useState(() => readOperationsParamValue("q"));
   const [kind, setKind] = useState<"all" | "event" | "function">(() =>
-    readDeadLetterKind(readOperationsParam("kind"))
+    readOperationsParamValue("kind", readDeadLetterKind)
   );
   const [oldestFirst, setOldestFirst] = useState(
-    () => readOperationsParam("order") !== "newest"
+    () => readOperationsParamValue("order") !== "newest"
   );
   const [selectedId, setSelectedId] = useState(() =>
-    readOperationsParam("selected")
+    readOperationsParamValue("selected")
   );
   const [layout, setLayout, resetLayout] = usePersistedLayout(
     "runtime-console:dead-letters-layout",
@@ -99,12 +98,16 @@ export function DeadLettersPage() {
     [failures, kind, oldestFirst, query]
   );
 
-  useBrowserUrlPopState((search) => {
-    setQuery(search.get("q") ?? "");
-    setKind(readDeadLetterKind(search.get("kind") ?? ""));
-    setOldestFirst((search.get("order") ?? "oldest") !== "newest");
-    setSelectedId(search.get("selected") ?? "");
-  });
+  useOperationsUrlPopState([
+    { name: "q", setValue: setQuery },
+    { name: "kind", parse: readDeadLetterKind, setValue: setKind },
+    {
+      name: "order",
+      parse: (value) => value !== "newest",
+      setValue: setOldestFirst,
+    },
+    { name: "selected", setValue: setSelectedId },
+  ]);
 
   const deadLetterUrl = (
     overrides: Partial<{

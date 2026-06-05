@@ -5,7 +5,6 @@ import { useMemo, useState } from "react";
 import { ResizeHandle } from "../components/runtime/resize-handle";
 import { Button } from "../components/ui/button";
 import { buildRuntimeQueueRows } from "../hooks/runtime-queue-model";
-import { useBrowserUrlPopState } from "../hooks/use-browser-url-state";
 import { useListKeyboard } from "../hooks/use-list-keyboard";
 import { usePersistedLayout } from "../hooks/use-persisted-layout";
 import {
@@ -29,7 +28,11 @@ import {
   OperationsSelectableRow,
   OperationsTableHeader,
 } from "./operations-table";
-import { queuesPath, readOperationsParam } from "./operations-url-model";
+import { queuesPath } from "./operations-url-model";
+import {
+  readOperationsParamValue,
+  useOperationsUrlPopState,
+} from "./operations-url-state";
 import {
   buildQueueRowsFromSummary,
   filterQueueRows,
@@ -44,9 +47,9 @@ const queuesLayoutDefaults = {
 
 export function QueuesPage() {
   const navigate = useNavigate();
-  const [query, setQuery] = useState(() => readOperationsParam("q"));
+  const [query, setQuery] = useState(() => readOperationsParamValue("q"));
   const [selectedId, setSelectedId] = useState(() =>
-    readOperationsParam("selected")
+    readOperationsParamValue("selected")
   );
   const [layout, setLayout, resetLayout] = usePersistedLayout(
     "runtime-console:queues-layout",
@@ -81,10 +84,10 @@ export function QueuesPage() {
     eventsQuery.isRefetching ||
     functionsQuery.isRefetching;
 
-  useBrowserUrlPopState((search) => {
-    setQuery(search.get("q") ?? "");
-    setSelectedId(search.get("selected") ?? "");
-  });
+  useOperationsUrlPopState([
+    { name: "q", setValue: setQuery },
+    { name: "selected", setValue: setSelectedId },
+  ]);
 
   const refreshQueues = () => {
     void Promise.all([
