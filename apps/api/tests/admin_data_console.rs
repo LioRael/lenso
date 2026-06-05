@@ -149,6 +149,16 @@ fn admin_post_json(path: &str, body: &'static str) -> Request<Body> {
         .expect("request builds")
 }
 
+fn admin_post_json_with_token(path: &str, body: &'static str, token: &str) -> Request<Body> {
+    Request::builder()
+        .method("POST")
+        .uri(path)
+        .header("authorization", format!("Bearer {token}"))
+        .header("content-type", "application/json")
+        .body(Body::from(body))
+        .expect("request builds")
+}
+
 async fn json_body(response: axum::response::Response) -> Value {
     let bytes = to_bytes(response.into_body(), usize::MAX)
         .await
@@ -364,9 +374,10 @@ async fn admin_action_invocation_calls_declared_source() {
     let app = build_router(ctx);
 
     let response = app
-        .oneshot(admin_post_json(
+        .oneshot(admin_post_json_with_token(
             "/admin/data/remote-crm/actions/sync_contacts",
             r#"{"input":{"dry_run":true}}"#,
+            "dev-service:admin:remote_crm.contacts.sync",
         ))
         .await
         .expect("request completes");
@@ -375,6 +386,49 @@ async fn admin_action_invocation_calls_declared_source() {
     let json = json_body(response).await;
     assert_eq!(json["data"]["action"], "sync_contacts");
     assert_eq!(json["data"]["input"]["dry_run"], true);
+}
+
+#[tokio::test]
+async fn admin_action_invocation_requires_declared_capability_scope() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
+    install_admin_modules(vec![AdminModule {
+        module_name: "remote-crm".to_owned(),
+        source: ModuleSource::Remote,
+        load_status: ModuleLoadStatus::Loaded,
+        schema: stub_schema(),
+        admin: Some(stub_declarative_surface()),
+        listed_in_schema: false,
+        data_source: Some(Arc::new(StubUsers)),
+        action_source: Some(Arc::new(StubActions)),
+    }]);
+    install_admin_module_metadata(vec![AdminModuleMetadata {
+        module_name: "remote-crm".to_owned(),
+        source: ModuleSource::Remote,
+        load_status: ModuleLoadStatus::Loaded,
+        http_routes: vec![],
+        runtime: None,
+        lifecycle: None,
+        story_display: vec![],
+        capabilities: vec!["remote_crm.contacts.sync".to_owned()],
+        admin: Some(stub_declarative_surface()),
+        source_diagnostics: None,
+    }]);
+    let ctx = AppContext::new(
+        AppConfig::from_env(),
+        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test").expect("lazy pool"),
+        Arc::new(LoggingEventPublisher),
+    );
+    let app = build_router(ctx);
+
+    let response = app
+        .oneshot(admin_post_json(
+            "/admin/data/remote-crm/actions/sync_contacts",
+            r#"{"input":{"dry_run":true}}"#,
+        ))
+        .await
+        .expect("request completes");
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }
 
 #[tokio::test]
