@@ -17,7 +17,6 @@ import {
   type RuntimeEvent,
 } from "../data/mock-runtime";
 import { useListKeyboard } from "../hooks/use-list-keyboard";
-import { usePersistedLayout } from "../hooks/use-persisted-layout";
 import {
   useDeadLetters,
   useRuntimeEventDetail,
@@ -30,10 +29,7 @@ import {
   OperationsFilterChip,
   OperationsSearchInput,
 } from "./operations-filter";
-import {
-  resizeOperationsInspectorWidth,
-  type OperationsInspectorLayout,
-} from "./operations-layout";
+import { useOperationsInspectorLayout } from "./operations-layout";
 import { useOperationsSelection } from "./operations-selection";
 import {
   OperationsLoadingRows,
@@ -50,10 +46,6 @@ type DeadLetter =
   | { kind: "event"; item: RuntimeEvent }
   | { kind: "function"; item: FunctionRun };
 
-const deadLettersLayoutDefaults = {
-  inspectorWidth: 376,
-} satisfies OperationsInspectorLayout;
-
 export function DeadLettersPage() {
   const { openRetry, openStoryTarget } = useRuntimeConsole();
   const [query, setQuery] = useState(() => readOperationsParamValue("q"));
@@ -66,11 +58,13 @@ export function DeadLettersPage() {
   const [selectedId, setSelectedId] = useState(() =>
     readOperationsParamValue("selected")
   );
-  const [layout, setLayout, resetLayout] = usePersistedLayout(
-    "runtime-console:dead-letters-layout",
-    deadLettersLayoutDefaults
-  );
-  const deadLettersLayout = { ...deadLettersLayoutDefaults, ...layout };
+  const { inspectorWidth, resetLayout, resizeInspector } =
+    useOperationsInspectorLayout({
+      defaultWidth: 376,
+      maxWidth: 560,
+      minWidth: 320,
+      storageKey: "runtime-console:dead-letters-layout",
+    });
   const deadLettersQuery = useDeadLetters();
   const failures = useMemo<DeadLetter[]>(
     () => deadLettersQuery.data ?? [],
@@ -149,19 +143,6 @@ export function DeadLettersPage() {
     }
   };
 
-  const resizeInspector = (deltaX: number) => {
-    setLayout((current) => ({
-      ...current,
-      inspectorWidth: resizeOperationsInspectorWidth({
-        currentWidth: current.inspectorWidth,
-        defaultWidth: deadLettersLayoutDefaults.inspectorWidth,
-        deltaX,
-        maxWidth: 560,
-        minWidth: 320,
-      }),
-    }));
-  };
-
   useListKeyboard({
     items: visible,
     selectedIndex,
@@ -174,7 +155,7 @@ export function DeadLettersPage() {
     <section
       className="grid h-full min-h-0 min-w-0 overflow-hidden bg-(--background) text-(--foreground)"
       style={{
-        gridTemplateColumns: `minmax(0,1fr) 1px ${deadLettersLayout.inspectorWidth}px`,
+        gridTemplateColumns: `minmax(0,1fr) 1px ${inspectorWidth}px`,
       }}
     >
       <main className="grid min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-(--border-subtle)">

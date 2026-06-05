@@ -6,7 +6,6 @@ import { ResizeHandle } from "../components/runtime/resize-handle";
 import { useRuntimeConsole } from "../components/runtime/runtime-console-context";
 import { Button } from "../components/ui/button";
 import { useListKeyboard } from "../hooks/use-list-keyboard";
-import { usePersistedLayout } from "../hooks/use-persisted-layout";
 import {
   type RuntimeRemoteProxyCall,
   useRemoteProxyCalls,
@@ -19,10 +18,7 @@ import {
   OperationsFilterChip,
   OperationsSearchInput,
 } from "./operations-filter";
-import {
-  resizeOperationsInspectorWidth,
-  type OperationsInspectorLayout,
-} from "./operations-layout";
+import { useOperationsInspectorLayout } from "./operations-layout";
 import { useOperationsSelection } from "./operations-selection";
 import {
   OperationsLoadingRows,
@@ -52,10 +48,6 @@ import {
   summarizeRemoteProxyCalls,
 } from "./remote-proxy-calls-model";
 
-const remoteProxyCallsLayoutDefaults = {
-  inspectorWidth: 408,
-} satisfies OperationsInspectorLayout;
-
 export function RemoteProxyCallsPage() {
   const { openStory, openStoryTarget } = useRuntimeConsole();
   const [query, setQuery] = useState(() => readOperationsParamValue("q"));
@@ -71,14 +63,13 @@ export function RemoteProxyCallsPage() {
   const [selectedId, setSelectedId] = useState(() =>
     readOperationsParamValue("selected")
   );
-  const [layout, setLayout, resetLayout] = usePersistedLayout(
-    "runtime-console:remote-proxy-calls-layout",
-    remoteProxyCallsLayoutDefaults
-  );
-  const remoteProxyCallsLayout = {
-    ...remoteProxyCallsLayoutDefaults,
-    ...layout,
-  };
+  const { inspectorWidth, resetLayout, resizeInspector } =
+    useOperationsInspectorLayout({
+      defaultWidth: 408,
+      maxWidth: 620,
+      minWidth: 340,
+      storageKey: "runtime-console:remote-proxy-calls-layout",
+    });
   const remoteProxyCallFilters = {
     correlationId,
     limit: 100,
@@ -157,19 +148,6 @@ export function RemoteProxyCallsPage() {
       selectedId,
       setSelectedId,
     });
-  const resizeInspector = (deltaX: number) => {
-    setLayout((current) => ({
-      ...current,
-      inspectorWidth: resizeOperationsInspectorWidth({
-        currentWidth: current.inspectorWidth,
-        defaultWidth: remoteProxyCallsLayoutDefaults.inspectorWidth,
-        deltaX,
-        maxWidth: 620,
-        minWidth: 340,
-      }),
-    }));
-  };
-
   useListKeyboard({
     items: visible,
     selectedIndex,
@@ -181,7 +159,7 @@ export function RemoteProxyCallsPage() {
     <section
       className="grid h-full min-h-0 min-w-0 overflow-hidden bg-(--background) text-(--foreground)"
       style={{
-        gridTemplateColumns: `minmax(0,1fr) 1px ${remoteProxyCallsLayout.inspectorWidth}px`,
+        gridTemplateColumns: `minmax(0,1fr) 1px ${inspectorWidth}px`,
       }}
     >
       <main

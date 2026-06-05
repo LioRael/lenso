@@ -7,7 +7,6 @@ import { useRuntimeConsole } from "../components/runtime/runtime-console-context
 import { Button } from "../components/ui/button";
 import { retryTargetFor, type FunctionRun } from "../data/mock-runtime";
 import { useListKeyboard } from "../hooks/use-list-keyboard";
-import { usePersistedLayout } from "../hooks/use-persisted-layout";
 import {
   useRuntimeFunctionDetail,
   useRuntimeFunctions,
@@ -31,10 +30,7 @@ import {
   OperationsFilterChip,
   OperationsSearchInput,
 } from "./operations-filter";
-import {
-  resizeOperationsInspectorWidth,
-  type OperationsInspectorLayout,
-} from "./operations-layout";
+import { useOperationsInspectorLayout } from "./operations-layout";
 import { useOperationsSelection } from "./operations-selection";
 import {
   OperationsLoadingRows,
@@ -52,10 +48,6 @@ import {
   useOperationsUrlPopState,
 } from "./operations-url-state";
 
-const functionsLayoutDefaults = {
-  inspectorWidth: 408,
-} satisfies OperationsInspectorLayout;
-
 export function FunctionsPage() {
   const { openRetry, openStoryTarget } = useRuntimeConsole();
   const [query, setQuery] = useState(() => readOperationsParamValue("q"));
@@ -69,11 +61,13 @@ export function FunctionsPage() {
   const [selectedId, setSelectedId] = useState(() =>
     readOperationsParamValue("selected")
   );
-  const [layout, setLayout, resetLayout] = usePersistedLayout(
-    "runtime-console:functions-layout",
-    functionsLayoutDefaults
-  );
-  const functionsLayout = { ...functionsLayoutDefaults, ...layout };
+  const { inspectorWidth, resetLayout, resizeInspector } =
+    useOperationsInspectorLayout({
+      defaultWidth: 408,
+      maxWidth: 620,
+      minWidth: 340,
+      storageKey: "runtime-console:functions-layout",
+    });
   const functionsQuery = useRuntimeFunctions();
   const runs = useMemo(() => functionsQuery.data ?? [], [functionsQuery.data]);
   const visible = useMemo(
@@ -143,18 +137,6 @@ export function FunctionsPage() {
       selectedId,
       setSelectedId,
     });
-  const resizeInspector = (deltaX: number) => {
-    setLayout((current) => ({
-      ...current,
-      inspectorWidth: resizeOperationsInspectorWidth({
-        currentWidth: current.inspectorWidth,
-        defaultWidth: functionsLayoutDefaults.inspectorWidth,
-        deltaX,
-        maxWidth: 620,
-        minWidth: 340,
-      }),
-    }));
-  };
   const retryRun = (run: FunctionRun) => {
     const retryTarget = retryTargetFor({ kind: "function", item: run });
     if (retryTarget) {
@@ -174,7 +156,7 @@ export function FunctionsPage() {
     <section
       className="grid h-full min-h-0 min-w-0 overflow-hidden bg-(--background) text-(--foreground)"
       style={{
-        gridTemplateColumns: `minmax(0,1fr) 1px ${functionsLayout.inspectorWidth}px`,
+        gridTemplateColumns: `minmax(0,1fr) 1px ${inspectorWidth}px`,
       }}
     >
       <main className="grid min-h-0 min-w-0 grid-rows-[auto_auto_auto_auto_minmax(0,1fr)] overflow-hidden border-r border-(--border-subtle)">

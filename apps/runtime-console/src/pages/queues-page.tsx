@@ -6,7 +6,6 @@ import { ResizeHandle } from "../components/runtime/resize-handle";
 import { Button } from "../components/ui/button";
 import { buildRuntimeQueueRows } from "../hooks/runtime-queue-model";
 import { useListKeyboard } from "../hooks/use-list-keyboard";
-import { usePersistedLayout } from "../hooks/use-persisted-layout";
 import {
   useRuntimeEvents,
   useRuntimeFunctions,
@@ -17,10 +16,7 @@ import {
   OperationsFilterBar,
   OperationsSearchInput,
 } from "./operations-filter";
-import {
-  resizeOperationsInspectorWidth,
-  type OperationsInspectorLayout,
-} from "./operations-layout";
+import { useOperationsInspectorLayout } from "./operations-layout";
 import { useOperationsSelection } from "./operations-selection";
 import { OperationsMessageRow } from "./operations-state";
 import {
@@ -41,21 +37,19 @@ import {
   type QueueRow,
 } from "./queues-model";
 
-const queuesLayoutDefaults = {
-  inspectorWidth: 376,
-} satisfies OperationsInspectorLayout;
-
 export function QueuesPage() {
   const navigate = useNavigate();
   const [query, setQuery] = useState(() => readOperationsParamValue("q"));
   const [selectedId, setSelectedId] = useState(() =>
     readOperationsParamValue("selected")
   );
-  const [layout, setLayout, resetLayout] = usePersistedLayout(
-    "runtime-console:queues-layout",
-    queuesLayoutDefaults
-  );
-  const queuesLayout = { ...queuesLayoutDefaults, ...layout };
+  const { inspectorWidth, resetLayout, resizeInspector } =
+    useOperationsInspectorLayout({
+      defaultWidth: 376,
+      maxWidth: 560,
+      minWidth: 320,
+      storageKey: "runtime-console:queues-layout",
+    });
   const summaryQuery = useRuntimeSummary();
   const eventsQuery = useRuntimeEvents();
   const functionsQuery = useRuntimeFunctions();
@@ -107,19 +101,6 @@ export function QueuesPage() {
       setSelectedId,
     });
   const selectedTarget = selected ? queueRouteTarget(selected) : null;
-  const resizeInspector = (deltaX: number) => {
-    setLayout((current) => ({
-      ...current,
-      inspectorWidth: resizeOperationsInspectorWidth({
-        currentWidth: current.inspectorWidth,
-        defaultWidth: queuesLayoutDefaults.inspectorWidth,
-        deltaX,
-        maxWidth: 560,
-        minWidth: 320,
-      }),
-    }));
-  };
-
   useListKeyboard({
     items: rows,
     onOpen: selectItem,
@@ -131,7 +112,7 @@ export function QueuesPage() {
     <section
       className="grid h-full min-h-0 min-w-0 overflow-hidden bg-(--background) text-(--foreground)"
       style={{
-        gridTemplateColumns: `minmax(0,1fr) 1px ${queuesLayout.inspectorWidth}px`,
+        gridTemplateColumns: `minmax(0,1fr) 1px ${inspectorWidth}px`,
       }}
     >
       <main className="grid min-h-0 min-w-0 grid-rows-[auto_auto_auto_minmax(0,1fr)] overflow-hidden border-r border-(--border-subtle)">
