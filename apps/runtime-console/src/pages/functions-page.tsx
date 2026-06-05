@@ -1,10 +1,4 @@
-import {
-  Braces,
-  ExternalLink,
-  RefreshCcw,
-  RotateCcw,
-  Search,
-} from "lucide-react";
+import { Braces, ExternalLink, RefreshCcw, RotateCcw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { JsonViewer } from "../components/runtime/json-viewer";
@@ -33,6 +27,10 @@ import {
   type FunctionRunAggregate,
   type FunctionStatusFilter,
 } from "./functions-model";
+import {
+  OperationsFilterBar,
+  OperationsSearchInput,
+} from "./operations-filter";
 import {
   resizeOperationsInspectorWidth,
   type OperationsInspectorLayout,
@@ -262,7 +260,7 @@ export function FunctionsPage() {
           />
         </div>
 
-        <div className="flex h-9 items-center gap-2 border-b border-(--border-subtle) bg-(--background) px-3">
+        <OperationsFilterBar>
           {functionStatusFilters.map((item) => (
             <button
               className={cn(
@@ -315,17 +313,14 @@ export function FunctionsPage() {
               ))}
             </datalist>
           </label>
-          <label className="ml-auto flex h-6 w-[min(380px,36vw)] items-center gap-2 border border-(--border-subtle) bg-(--elevated) px-2 font-mono text-(--muted)">
-            <Search size={12} />
-            <input
-              aria-label="Search functions"
-              className="w-full bg-transparent text-[10px] text-(--foreground) outline-hidden placeholder:text-(--muted)"
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="function / id / schema / correlation"
-              value={query}
-            />
-          </label>
-        </div>
+          <OperationsSearchInput
+            ariaLabel="Search functions"
+            className="w-[min(380px,36vw)]"
+            onChange={setQuery}
+            placeholder="function / id / schema / correlation"
+            value={query}
+          />
+        </OperationsFilterBar>
 
         <div className="min-h-0 overflow-auto">
           <OperationsTableHeader className="grid-cols-[94px_minmax(240px,1.35fr)_minmax(150px,0.8fr)_minmax(132px,0.7fr)_86px_160px_88px] gap-3">

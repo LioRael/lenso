@@ -2,7 +2,6 @@ import {
   ExternalLink,
   RefreshCcw,
   RotateCcw,
-  Search,
   TriangleAlert,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -27,6 +26,10 @@ import {
 } from "../hooks/use-runtime-queries";
 import { actorLabel, time } from "../lib/format";
 import { runtimeConsoleDataSource } from "../lib/http-client";
+import {
+  OperationsFilterBar,
+  OperationsSearchInput,
+} from "./operations-filter";
 import {
   resizeOperationsInspectorWidth,
   type OperationsInspectorLayout,
@@ -204,7 +207,7 @@ export function DeadLettersPage() {
           </div>
         </header>
 
-        <div className="flex h-9 items-center gap-2 border-b border-(--border-subtle) bg-(--background) px-3">
+        <OperationsFilterBar>
           {(["all", "event", "function"] as const).map((item) => (
             <button
               className={`h-6 border px-2 font-mono text-[10px] ${
@@ -233,17 +236,13 @@ export function DeadLettersPage() {
           >
             {oldestFirst ? "oldest" : "newest"}
           </button>
-          <label className="ml-auto flex h-6 w-[min(360px,45vw)] items-center gap-2 border border-(--border-subtle) bg-(--elevated) px-2 font-mono text-(--muted)">
-            <Search size={12} />
-            <input
-              aria-label="Search dead letters"
-              className="w-full bg-transparent text-[10px] text-(--foreground) outline-hidden placeholder:text-(--muted)"
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="failure / id / correlation"
-              value={query}
-            />
-          </label>
-        </div>
+          <OperationsSearchInput
+            ariaLabel="Search dead letters"
+            onChange={setQuery}
+            placeholder="failure / id / correlation"
+            value={query}
+          />
+        </OperationsFilterBar>
 
         <div className="min-h-0 overflow-auto">
           {deadLettersQuery.isLoading ? (

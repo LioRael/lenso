@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { ExternalLink, Inbox, RefreshCcw, Search } from "lucide-react";
+import { ExternalLink, Inbox, RefreshCcw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { ResizeHandle } from "../components/runtime/resize-handle";
@@ -14,6 +14,10 @@ import {
   useRuntimeSummary,
 } from "../hooks/use-runtime-queries";
 import { runtimeConsoleDataSource } from "../lib/http-client";
+import {
+  OperationsFilterBar,
+  OperationsSearchInput,
+} from "./operations-filter";
 import {
   resizeOperationsInspectorWidth,
   type OperationsInspectorLayout,
@@ -180,18 +184,14 @@ export function QueuesPage() {
           ))}
         </div>
 
-        <div className="flex h-9 items-center gap-2 border-b border-(--border-subtle) bg-(--background) px-3">
-          <label className="ml-auto flex h-6 w-[min(360px,45vw)] items-center gap-2 border border-(--border-subtle) bg-(--elevated) px-2 font-mono text-(--muted)">
-            <Search size={12} />
-            <input
-              aria-label="Search queues"
-              className="w-full bg-transparent text-[10px] text-(--foreground) outline-hidden placeholder:text-(--muted)"
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="queue / count / age"
-              value={query}
-            />
-          </label>
-        </div>
+        <OperationsFilterBar>
+          <OperationsSearchInput
+            ariaLabel="Search queues"
+            onChange={setQuery}
+            placeholder="queue / count / age"
+            value={query}
+          />
+        </OperationsFilterBar>
 
         <div className="min-h-0 overflow-auto">
           <OperationsTableHeader className="grid-cols-[minmax(180px,1fr)_72px_72px_72px_72px_92px_minmax(120px,240px)] gap-2">

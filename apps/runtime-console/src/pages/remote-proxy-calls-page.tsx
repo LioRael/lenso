@@ -1,4 +1,4 @@
-import { ExternalLink, Network, RefreshCcw, Search, X } from "lucide-react";
+import { ExternalLink, Network, RefreshCcw, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { JsonViewer } from "../components/runtime/json-viewer";
@@ -15,6 +15,10 @@ import {
 import { cn } from "../lib/cn";
 import { time } from "../lib/format";
 import { runtimeConsoleDataSource } from "../lib/http-client";
+import {
+  OperationsFilterBar,
+  OperationsSearchInput,
+} from "./operations-filter";
 import {
   resizeOperationsInspectorWidth,
   type OperationsInspectorLayout,
@@ -300,7 +304,7 @@ export function RemoteProxyCallsPage() {
           </div>
         ) : null}
 
-        <div className="flex h-9 items-center gap-2 border-b border-(--border-subtle) bg-(--background) px-3">
+        <OperationsFilterBar>
           {(["all", "success", "failed"] as const).map((item) => (
             <button
               className={cn(
@@ -345,17 +349,14 @@ export function RemoteProxyCallsPage() {
               value={correlationId}
             />
           </label>
-          <label className="ml-auto flex h-6 w-[min(360px,38vw)] items-center gap-2 border border-(--border-subtle) bg-(--elevated) px-2 font-mono text-(--muted)">
-            <Search size={12} />
-            <input
-              aria-label="Search remote calls"
-              className="w-full bg-transparent text-[10px] text-(--foreground) outline-hidden placeholder:text-(--muted)"
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="route / request / correlation"
-              value={query}
-            />
-          </label>
-        </div>
+          <OperationsSearchInput
+            ariaLabel="Search remote calls"
+            className="w-[min(360px,38vw)]"
+            onChange={setQuery}
+            placeholder="route / request / correlation"
+            value={query}
+          />
+        </OperationsFilterBar>
 
         <div className="min-h-0 overflow-auto">
           <OperationsTableHeader className="grid-cols-[92px_148px_minmax(220px,1.2fr)_minmax(220px,1.2fr)_88px_164px_88px] gap-3">
