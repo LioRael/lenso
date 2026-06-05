@@ -34,10 +34,15 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("failed to load modules")?;
     let registry = app_bootstrap::function_registry(&modules);
+    let activation_run_ids =
+        app_bootstrap::enqueue_lifecycle_activation_jobs(&ctx, &modules, &registry)
+            .await
+            .context("failed to enqueue module lifecycle activation jobs")?;
     let event_handlers = app_bootstrap::event_handlers(&modules);
 
     info!(
         functions = registry.all().count(),
+        lifecycle_activation_jobs = activation_run_ids.len(),
         user_registered_handlers = event_handlers.handler_count("identity.user_registered.v1"),
         "starting worker"
     );
