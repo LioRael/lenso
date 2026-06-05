@@ -1,3 +1,4 @@
+use crate::admin_action::RemoteAdminActionSource;
 use crate::admin_data::RemoteAdminDataSource;
 use crate::binding::RemoteBinding;
 use crate::config::RemoteModuleConfig;
@@ -49,10 +50,18 @@ impl RemoteModuleSource {
             Some(AdminSurface::DeclarativeCustom(surface)) => surface.fallback_schema.is_some(),
             _ => false,
         };
+        let has_admin_actions = matches!(
+            &manifest.admin,
+            Some(AdminSurface::DeclarativeCustom(surface)) if !surface.actions.is_empty()
+        );
         let mut module = Module::remote(manifest, Arc::new(binding));
         if has_admin_data {
             module =
                 module.with_admin_data(Arc::new(RemoteAdminDataSource::new(self.config.clone())?));
+        }
+        if has_admin_actions {
+            module = module
+                .with_admin_actions(Arc::new(RemoteAdminActionSource::new(self.config.clone())?));
         }
         Ok(module)
     }

@@ -1,10 +1,12 @@
 use axum::http::StatusCode;
-use axum::{Json, Router, routing::get};
+use axum::{Json, Router, routing::get, routing::post};
 use platform_module::{
-    AdminDataSource, AdminListQuery, AdminSurface, LifecycleActivationRunPolicy,
+    AdminActionSource, AdminDataSource, AdminListQuery, AdminSurface, LifecycleActivationRunPolicy,
     LifecycleStartupCheckKind,
 };
-use platform_module_remote::{RemoteAdminDataSource, RemoteModuleConfig, RemoteModuleSource};
+use platform_module_remote::{
+    RemoteAdminActionSource, RemoteAdminDataSource, RemoteModuleConfig, RemoteModuleSource,
+};
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
 
@@ -143,7 +145,11 @@ async fn declarative_manifest() -> Json<Value> {
                     }
                 }]
             }],
-            "actions": [],
+            "actions": [{
+                "name": "sync_contacts",
+                "label": "Sync contacts",
+                "capability": "remote_crm.contacts.sync"
+            }],
             "fallback_schema": {
                 "entities": [{
                     "name": "contacts",
@@ -153,7 +159,16 @@ async fn declarative_manifest() -> Json<Value> {
                 }]
             }
         },
-        "capabilities": ["remote_crm.contacts.read"]
+        "capabilities": ["remote_crm.contacts.read", "remote_crm.contacts.sync"]
+    }))
+}
+
+async fn sync_contacts(Json(input): Json<Value>) -> Json<Value> {
+    Json(json!({
+        "result": {
+            "synced": true,
+            "dry_run": input.get("dry_run").and_then(Value::as_bool).unwrap_or(false)
+        }
     }))
 }
 
@@ -310,6 +325,24 @@ async fn loads_declarative_custom_manifest_with_admin_data_source() {
         Some(AdminSurface::DeclarativeCustom(_))
     ));
     assert!(module.admin_data.is_some());
+    assert!(module.admin_actions.is_some());
+}
+
+#[tokio::test]
+async fn remote_admin_action_source_invokes_declared_action() {
+    let base_url =
+        spawn_server(Router::new().route("/admin/actions/sync_contacts", post(sync_contacts)))
+            .await;
+
+    let source =
+        RemoteAdminActionSource::new(RemoteModuleConfig::new("remote-crm", base_url)).unwrap();
+    let output = source
+        .invoke("sync_contacts", json!({ "dry_run": true }))
+        .await
+        .expect("invoke remote action");
+
+    assert_eq!(output["synced"], true);
+    assert_eq!(output["dry_run"], true);
 }
 
 #[tokio::test]
