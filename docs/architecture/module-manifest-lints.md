@@ -18,7 +18,7 @@ The Runtime Console derives categories from `subject`:
 | Subject pattern | Console category |
 | --- | --- |
 | `routes` or `METHOD /path` | `routes` |
-| `capability ...` | `capability` |
+| `capability ...` or `capability...` | `capability` |
 | `admin.schema...` | `admin.schema` |
 | `admin.declarative...` | `admin.declarative` |
 | `admin.embedded...` | `admin.embedded` |
@@ -36,6 +36,7 @@ Console category mapping and tests in the same change.
 | --- | --- | --- |
 | `error` | `module.name` | Manifest name is missing. |
 | `warning` | `capability {value}` | Capability name is not dot-separated lowercase. |
+| `warning` | `capability.reference.{surface}` | HTTP route, admin read, or admin action capability is referenced but not declared in the module manifest. |
 | `ok` / `warning` | `routes` | Empty route declaration state. Remote modules warn; linked modules are OK. |
 | `error` | `METHOD /path` | Duplicate HTTP route method/path. |
 | `warning` | `METHOD /path` | Route display, story title, or remote capability metadata is missing. |

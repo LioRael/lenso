@@ -26,6 +26,7 @@ export type AdminSchema = { entities: EntitySchema[] };
 
 export type ModuleSource = "linked" | "remote";
 export type ModuleStatus = "loaded" | "error";
+export type ModuleActivationState = "active" | "needs_attention" | "blocked";
 
 export type ModuleHttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -132,6 +133,7 @@ export type AdminModuleMetadata = {
   http_routes: ModuleHttpRoute[];
   runtime: RuntimeSurface | null;
   lifecycle: LifecycleSurface | null;
+  governance: ModuleGovernance;
   manifest_lints: ModuleManifestLint[];
   story_display: StoryDisplayDescriptor[];
   capabilities: string[];
@@ -173,6 +175,27 @@ export type DetailRow = {
 export type MetadataRow = {
   label: string;
   value: string;
+};
+
+export type ModuleGovernance = {
+  activation_state: ModuleActivationState;
+  activation_reasons: string[];
+  capability_summary: ModuleCapabilitySummary;
+  capability_issues: ModuleCapabilityIssue[];
+};
+
+export type ModuleCapabilitySummary = {
+  declared_count: number;
+  referenced_count: number;
+  missing_count: number;
+  unused_count: number;
+};
+
+export type ModuleCapabilityIssue = {
+  capability: string;
+  subject: string;
+  message: string;
+  suggestion: string;
 };
 
 export type ModuleHttpRouteRow = {
@@ -363,6 +386,7 @@ export function schemaModulesToAdminMetadata(
     admin: { kind: "schema", entities: module.schema.entities },
     capabilities: [],
     error: module.error,
+    governance: defaultModuleGovernance(module.status),
     http_routes: [],
     manifest_lints: [],
     module_name: module.module_name,
@@ -463,13 +487,26 @@ export function filterModuleRegistry(
 }
 
 function moduleRegistrySearchText(module: AdminModuleMetadata): string {
+  const governance = moduleGovernance(module);
   const parts = [
     module.module_name,
     module.source,
     module.status,
+    moduleActivationLabel(module),
+    ...governance.activation_reasons,
     adminSurfaceLabel(module.admin),
     module.error ?? "",
     ...module.capabilities,
+    String(governance.capability_summary.declared_count),
+    String(governance.capability_summary.referenced_count),
+    String(governance.capability_summary.missing_count),
+    String(governance.capability_summary.unused_count),
+    ...governance.capability_issues.flatMap((issue) => [
+      issue.capability,
+      issue.subject,
+      issue.message,
+      issue.suggestion,
+    ]),
     ...module.http_routes.flatMap((route) => [
       route.method,
       route.path,
@@ -498,6 +535,66 @@ function moduleRegistrySearchText(module: AdminModuleMetadata): string {
     ]),
   ];
   return parts.join(" ").toLowerCase();
+}
+
+export function moduleActivationLabel(module: AdminModuleMetadata): string {
+  switch (moduleGovernance(module).activation_state) {
+    case "active": {
+      return "active";
+    }
+    case "needs_attention": {
+      return "needs attention";
+    }
+    case "blocked": {
+      return "blocked";
+    }
+    default: {
+      return "unknown";
+    }
+  }
+}
+
+export function moduleGovernanceRows(
+  module: AdminModuleMetadata
+): MetadataRow[] {
+  const governance = moduleGovernance(module);
+  return [
+    { label: "activation", value: moduleActivationLabel(module) },
+    {
+      label: "declared capabilities",
+      value: String(governance.capability_summary.declared_count),
+    },
+    {
+      label: "referenced capabilities",
+      value: String(governance.capability_summary.referenced_count),
+    },
+    {
+      label: "missing references",
+      value: String(governance.capability_summary.missing_count),
+    },
+    {
+      label: "unused declarations",
+      value: String(governance.capability_summary.unused_count),
+    },
+  ];
+}
+
+function moduleGovernance(module: AdminModuleMetadata): ModuleGovernance {
+  return module.governance ?? defaultModuleGovernance(module.status);
+}
+
+function defaultModuleGovernance(status: ModuleStatus): ModuleGovernance {
+  return {
+    activation_state: status === "error" ? "blocked" : "active",
+    activation_reasons: [],
+    capability_summary: {
+      declared_count: 0,
+      referenced_count: 0,
+      missing_count: 0,
+      unused_count: 0,
+    },
+    capability_issues: [],
+  };
 }
 
 export function adminSurfaceMetadataRows(
@@ -612,7 +709,7 @@ export function moduleManifestChecks(
 }
 
 export function manifestLintCategory(subject: string): string {
-  if (subject.startsWith("capability ")) {
+  if (subject.startsWith("capability ") || subject.startsWith("capability.")) {
     return "capability";
   }
   if (subject === "routes" || /^[A-Z]+\s+\//u.test(subject)) {

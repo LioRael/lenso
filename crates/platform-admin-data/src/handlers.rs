@@ -1,7 +1,8 @@
 use crate::dto::{
-    AdminDataDetailResponse, AdminDataListResponse, AdminDataPageInfo, AdminModuleMetadataDto,
-    AdminModuleMetadataListResponse, AdminModuleSchema, AdminModuleStatus, AdminSchemaListResponse,
-    AdminSchemaRefreshResponse,
+    AdminCapabilityIssueDto, AdminCapabilitySummaryDto, AdminDataDetailResponse,
+    AdminDataListResponse, AdminDataPageInfo, AdminModuleActivationState, AdminModuleGovernanceDto,
+    AdminModuleMetadataDto, AdminModuleMetadataListResponse, AdminModuleSchema, AdminModuleStatus,
+    AdminSchemaListResponse, AdminSchemaRefreshResponse,
 };
 use crate::{
     AdminModule, AdminModuleMetadata, admin_metadata_refresher, admin_module_metadata_snapshot,
@@ -12,8 +13,12 @@ use axum::Json;
 use axum::extract::{Path, Query};
 use platform_core::{AppError, ErrorCode, RequestContext};
 use platform_http::{AdminActor, ApiErrorResponse, ErrorResponse, HttpRequestContext};
-use platform_module::{AdminListQuery, ModuleLoadStatus, lint_module_manifest_parts};
+use platform_module::{
+    AdminListQuery, ModuleLoadStatus, ModuleManifestLint, ModuleManifestLintSeverity,
+    lint_module_manifest_parts, module_capability_references,
+};
 use serde::Deserialize;
+use std::collections::HashSet;
 
 const DEFAULT_LIMIT: i64 = 50;
 const MAX_LIMIT: i64 = 200;
@@ -149,15 +154,8 @@ pub(crate) async fn refresh_schemas(
 fn metadata_response_modules(modules: Vec<AdminModuleMetadata>) -> Vec<AdminModuleMetadataDto> {
     modules
         .iter()
-        .map(|m| AdminModuleMetadataDto {
-            module_name: m.module_name.clone(),
-            source: m.source,
-            status: admin_module_status(&m.load_status),
-            error: load_error_message(&m.load_status),
-            http_routes: m.http_routes.clone(),
-            runtime: m.runtime.clone(),
-            lifecycle: m.lifecycle.clone(),
-            manifest_lints: lint_module_manifest_parts(
+        .map(|m| {
+            let manifest_lints = lint_module_manifest_parts(
                 m.source,
                 &m.module_name,
                 m.admin.as_ref(),
@@ -165,17 +163,120 @@ fn metadata_response_modules(modules: Vec<AdminModuleMetadata>) -> Vec<AdminModu
                 m.runtime.as_ref(),
                 m.lifecycle.as_ref(),
                 &m.capabilities,
-            ),
-            story_display: m
-                .story_display
-                .clone()
-                .into_iter()
-                .map(Into::into)
-                .collect(),
-            capabilities: m.capabilities.clone(),
-            admin: m.admin.clone(),
+            );
+            AdminModuleMetadataDto {
+                module_name: m.module_name.clone(),
+                source: m.source,
+                status: admin_module_status(&m.load_status),
+                error: load_error_message(&m.load_status),
+                http_routes: m.http_routes.clone(),
+                runtime: m.runtime.clone(),
+                lifecycle: m.lifecycle.clone(),
+                governance: module_governance(m, &manifest_lints),
+                manifest_lints,
+                story_display: m
+                    .story_display
+                    .clone()
+                    .into_iter()
+                    .map(Into::into)
+                    .collect(),
+                capabilities: m.capabilities.clone(),
+                admin: m.admin.clone(),
+            }
         })
         .collect()
+}
+
+fn module_governance(
+    module: &AdminModuleMetadata,
+    manifest_lints: &[ModuleManifestLint],
+) -> AdminModuleGovernanceDto {
+    let references = module_capability_references(
+        module.admin.as_ref(),
+        &module.http_routes,
+        module.lifecycle.as_ref(),
+    );
+    let declared = module
+        .capabilities
+        .iter()
+        .map(String::as_str)
+        .collect::<HashSet<_>>();
+    let referenced = references
+        .iter()
+        .map(|reference| reference.capability.as_str())
+        .collect::<HashSet<_>>();
+    let capability_issues = references
+        .iter()
+        .filter(|reference| !declared.contains(reference.capability.as_str()))
+        .map(|reference| AdminCapabilityIssueDto {
+            capability: reference.capability.clone(),
+            subject: format!("capability.reference.{}", reference.subject),
+            message: "Capability reference is not declared by the module.".to_owned(),
+            suggestion: format!(
+                "Add `{}` to ModuleManifest.capabilities or update the reference.",
+                reference.capability
+            ),
+        })
+        .collect::<Vec<_>>();
+    let unused_count = declared
+        .iter()
+        .filter(|capability| !referenced.contains(**capability))
+        .count();
+
+    AdminModuleGovernanceDto {
+        activation_state: module_activation_state(&module.load_status, manifest_lints),
+        activation_reasons: module_activation_reasons(&module.load_status, manifest_lints),
+        capability_summary: AdminCapabilitySummaryDto {
+            declared_count: declared.len(),
+            referenced_count: referenced.len(),
+            missing_count: capability_issues.len(),
+            unused_count,
+        },
+        capability_issues,
+    }
+}
+
+fn module_activation_state(
+    load_status: &ModuleLoadStatus,
+    manifest_lints: &[ModuleManifestLint],
+) -> AdminModuleActivationState {
+    if matches!(load_status, ModuleLoadStatus::Error { .. })
+        || manifest_lints
+            .iter()
+            .any(|lint| lint.severity == ModuleManifestLintSeverity::Error)
+    {
+        return AdminModuleActivationState::Blocked;
+    }
+    if manifest_lints
+        .iter()
+        .any(|lint| lint.severity == ModuleManifestLintSeverity::Warning)
+    {
+        return AdminModuleActivationState::NeedsAttention;
+    }
+    AdminModuleActivationState::Active
+}
+
+fn module_activation_reasons(
+    load_status: &ModuleLoadStatus,
+    manifest_lints: &[ModuleManifestLint],
+) -> Vec<String> {
+    let state = module_activation_state(load_status, manifest_lints);
+    let mut reasons = Vec::new();
+    if let ModuleLoadStatus::Error { message } = load_status {
+        reasons.push(format!("module failed to load: {message}"));
+    }
+    let severity = match state {
+        AdminModuleActivationState::Blocked => ModuleManifestLintSeverity::Error,
+        AdminModuleActivationState::NeedsAttention => ModuleManifestLintSeverity::Warning,
+        AdminModuleActivationState::Active => return reasons,
+    };
+    reasons.extend(
+        manifest_lints
+            .iter()
+            .filter(|lint| lint.severity == severity)
+            .map(|lint| format!("{}: {}", lint.subject, lint.message)),
+    );
+    reasons
 }
 
 fn metadata_response(
@@ -220,8 +321,9 @@ fn load_error_message(status: &ModuleLoadStatus) -> Option<String> {
 mod tests {
     use super::*;
     use platform_module::{
-        LifecycleActivationJobDeclaration, LifecycleActivationRunPolicy, LifecycleSurface,
-        ModuleHttpMethod, ModuleHttpRoute, ModuleSource,
+        AdminSchema, AdminSurface, EntitySchema, LifecycleActivationJobDeclaration,
+        LifecycleActivationRunPolicy, LifecycleSurface, ModuleHttpMethod, ModuleHttpRoute,
+        ModuleSource,
     };
 
     #[test]
@@ -262,6 +364,53 @@ mod tests {
         assert!(modules[0].manifest_lints.iter().any(|lint| {
             lint.message == "Missing capability declaration for host proxy authorization."
         }));
+    }
+
+    #[test]
+    fn metadata_response_includes_module_governance() {
+        let modules = metadata_response_modules(vec![AdminModuleMetadata {
+            module_name: "remote-crm".to_owned(),
+            source: ModuleSource::Remote,
+            load_status: ModuleLoadStatus::Loaded,
+            http_routes: vec![ModuleHttpRoute {
+                method: ModuleHttpMethod::Get,
+                path: "/contacts/{id}".to_owned(),
+                capability: Some("remote_crm.contacts.read".to_owned()),
+                display_name: Some("Fetch Contact".to_owned()),
+                story_title: Some("Fetch Contact".to_owned()),
+            }],
+            runtime: None,
+            lifecycle: None,
+            story_display: Vec::new(),
+            capabilities: vec!["remote_crm.contacts.write".to_owned()],
+            admin: Some(AdminSurface::Schema(AdminSchema {
+                entities: vec![EntitySchema {
+                    name: "contacts".to_owned(),
+                    label: "Contacts".to_owned(),
+                    fields: vec![],
+                    read_capability: "remote_crm.contacts.read".to_owned(),
+                }],
+            })),
+        }]);
+
+        let governance = &modules[0].governance;
+
+        assert_eq!(
+            governance.activation_state,
+            AdminModuleActivationState::NeedsAttention
+        );
+        assert_eq!(governance.capability_summary.declared_count, 1);
+        assert_eq!(governance.capability_summary.referenced_count, 1);
+        assert_eq!(governance.capability_summary.missing_count, 2);
+        assert_eq!(governance.capability_summary.unused_count, 1);
+        assert_eq!(
+            governance.capability_issues[0].capability,
+            "remote_crm.contacts.read"
+        );
+        assert_eq!(
+            governance.capability_issues[0].subject,
+            "capability.reference.http_route.GET /contacts/{id}"
+        );
     }
 }
 

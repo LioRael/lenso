@@ -39,10 +39,43 @@ pub struct AdminModuleMetadataDto {
     pub http_routes: Vec<ModuleHttpRoute>,
     pub runtime: Option<RuntimeSurface>,
     pub lifecycle: Option<LifecycleSurface>,
+    pub governance: AdminModuleGovernanceDto,
     pub manifest_lints: Vec<ModuleManifestLint>,
     pub story_display: Vec<StoryDisplayDescriptorDto>,
     pub capabilities: Vec<String>,
     pub admin: Option<AdminSurface>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminModuleGovernanceDto {
+    pub activation_state: AdminModuleActivationState,
+    pub activation_reasons: Vec<String>,
+    pub capability_summary: AdminCapabilitySummaryDto,
+    pub capability_issues: Vec<AdminCapabilityIssueDto>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AdminModuleActivationState {
+    Active,
+    NeedsAttention,
+    Blocked,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminCapabilitySummaryDto {
+    pub declared_count: usize,
+    pub referenced_count: usize,
+    pub missing_count: usize,
+    pub unused_count: usize,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminCapabilityIssueDto {
+    pub capability: String,
+    pub subject: String,
+    pub message: String,
+    pub suggestion: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

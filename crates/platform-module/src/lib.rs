@@ -40,8 +40,9 @@ pub use linked::{
     LinkedBinding, LinkedBindingBuilder, LinkedHttpContribution, LinkedHttpRouteMerger,
 };
 pub use manifest::{
-    ModuleManifest, ModuleManifestBuilder, ModuleManifestLint, ModuleManifestLintSeverity,
-    lint_module_manifest, lint_module_manifest_parts,
+    ModuleCapabilityReference, ModuleManifest, ModuleManifestBuilder, ModuleManifestLint,
+    ModuleManifestLintSeverity, lint_module_manifest, lint_module_manifest_parts,
+    module_capability_references,
 };
 pub use module::{Module, ModuleLoadStatus, ModuleSource};
 pub use runtime::{RuntimeFunctionDeclaration, RuntimeRetryPolicyDeclaration, RuntimeSurface};

@@ -2316,6 +2316,42 @@ components:
           type: string
         name:
           type: string
+    AdminCapabilityIssueDto:
+      type: object
+      required:
+      - capability
+      - subject
+      - message
+      - suggestion
+      properties:
+        capability:
+          type: string
+        message:
+          type: string
+        subject:
+          type: string
+        suggestion:
+          type: string
+    AdminCapabilitySummaryDto:
+      type: object
+      required:
+      - declared_count
+      - referenced_count
+      - missing_count
+      - unused_count
+      properties:
+        declared_count:
+          type: integer
+          minimum: 0
+        missing_count:
+          type: integer
+          minimum: 0
+        referenced_count:
+          type: integer
+          minimum: 0
+        unused_count:
+          type: integer
+          minimum: 0
     AdminDataDetailResponse:
       type: object
       description: Response for `GET /admin/data/{module}/{entity}/{id}`.
@@ -2560,6 +2596,32 @@ components:
           type: string
         value_path:
           type: string
+    AdminModuleActivationState:
+      type: string
+      enum:
+      - active
+      - needs_attention
+      - blocked
+    AdminModuleGovernanceDto:
+      type: object
+      required:
+      - activation_state
+      - activation_reasons
+      - capability_summary
+      - capability_issues
+      properties:
+        activation_reasons:
+          type: array
+          items:
+            type: string
+        activation_state:
+          $ref: '#/components/schemas/AdminModuleActivationState'
+        capability_issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminCapabilityIssueDto'
+        capability_summary:
+          $ref: '#/components/schemas/AdminCapabilitySummaryDto'
     AdminModuleMetadataDto:
       type: object
       required:
@@ -2567,6 +2629,7 @@ components:
       - source
       - status
       - http_routes
+      - governance
       - manifest_lints
       - story_display
       - capabilities
@@ -2583,6 +2646,8 @@ components:
           type:
           - string
           - 'null'
+        governance:
+          $ref: '#/components/schemas/AdminModuleGovernanceDto'
         http_routes:
           type: array
           items:

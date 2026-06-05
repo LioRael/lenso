@@ -6,7 +6,7 @@ use crate::admin::{
     AdminEmbeddedSurface, AdminPermission, AdminSurface,
 };
 use crate::admin_schema::AdminSchema;
-use crate::http::{ModuleHttpRoute, lint_module_http_routes};
+use crate::http::{ModuleHttpMethod, ModuleHttpRoute, lint_module_http_routes};
 use crate::lifecycle::{
     LifecycleActivationJobDeclaration, LifecycleStartupCheckDeclaration, LifecycleStartupCheckKind,
     LifecycleSurface,
@@ -92,6 +92,12 @@ pub struct ModuleManifestLint {
     pub suggestion: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModuleCapabilityReference {
+    pub capability: String,
+    pub subject: String,
+}
+
 pub fn lint_module_manifest(
     source: ModuleSource,
     manifest: &ModuleManifest,
@@ -151,6 +157,7 @@ pub fn lint_module_manifest_parts(
             suggestion: route_lint.suggestion,
         });
     }
+    lint_capability_references(admin, http_routes, lifecycle, capabilities, &mut lints);
 
     if let Some(admin) = admin {
         lint_admin_surface(admin, &mut lints);
@@ -174,6 +181,134 @@ pub fn lint_module_manifest_parts(
     }
 
     lints
+}
+
+pub fn module_capability_references(
+    admin: Option<&AdminSurface>,
+    http_routes: &[ModuleHttpRoute],
+    lifecycle: Option<&LifecycleSurface>,
+) -> Vec<ModuleCapabilityReference> {
+    let mut references = Vec::new();
+
+    for route in http_routes {
+        if let Some(capability) = route.capability.as_deref()
+            && present(capability)
+        {
+            references.push(ModuleCapabilityReference {
+                capability: capability.to_owned(),
+                subject: format!("http_route.{}", route_identity(route)),
+            });
+        }
+    }
+
+    if let Some(admin) = admin {
+        collect_admin_capability_references(admin, &mut references);
+    }
+
+    if let Some(lifecycle) = lifecycle {
+        for check in &lifecycle.startup_checks {
+            if let LifecycleStartupCheckKind::CapabilityDeclared { capability } = &check.check
+                && present(capability)
+            {
+                references.push(ModuleCapabilityReference {
+                    capability: capability.to_owned(),
+                    subject: format!("lifecycle.startup_check.capability.{capability}"),
+                });
+            }
+        }
+    }
+
+    references
+}
+
+fn lint_capability_references(
+    admin: Option<&AdminSurface>,
+    http_routes: &[ModuleHttpRoute],
+    lifecycle: Option<&LifecycleSurface>,
+    capabilities: &[String],
+    lints: &mut Vec<ModuleManifestLint>,
+) {
+    let declared = capabilities
+        .iter()
+        .map(String::as_str)
+        .collect::<HashSet<_>>();
+
+    for reference in module_capability_references(admin, http_routes, lifecycle) {
+        // Lifecycle startup checks already produce a lifecycle-specific lint with
+        // the check context and required/optional semantics.
+        if reference.subject.starts_with("lifecycle.") {
+            continue;
+        }
+        if declared.contains(reference.capability.as_str()) {
+            continue;
+        }
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Warning,
+            subject: format!("capability.reference.{}", reference.subject),
+            message: "Capability reference is not declared by the module.".to_owned(),
+            suggestion: format!(
+                "Add `{}` to ModuleManifest.capabilities or update the reference.",
+                reference.capability
+            ),
+        });
+    }
+}
+
+fn collect_admin_capability_references(
+    admin: &AdminSurface,
+    references: &mut Vec<ModuleCapabilityReference>,
+) {
+    match admin {
+        AdminSurface::Schema(schema) => {
+            collect_schema_capability_references("admin.schema", schema, references);
+        }
+        AdminSurface::DeclarativeCustom(surface) => {
+            for action in &surface.actions {
+                if present(&action.capability) {
+                    let action_subject = if present(&action.name) {
+                        format!("admin.declarative.action.{}", action.name)
+                    } else {
+                        "admin.declarative.action".to_owned()
+                    };
+                    references.push(ModuleCapabilityReference {
+                        capability: action.capability.clone(),
+                        subject: action_subject,
+                    });
+                }
+            }
+            if let Some(schema) = &surface.fallback_schema {
+                collect_schema_capability_references(
+                    "admin.declarative.fallback_schema",
+                    schema,
+                    references,
+                );
+            }
+        }
+        AdminSurface::EmbeddedCustom(surface) => {
+            if let Some(schema) = &surface.fallback_schema {
+                collect_schema_capability_references(
+                    "admin.embedded.fallback_schema",
+                    schema,
+                    references,
+                );
+            }
+        }
+    }
+}
+
+fn collect_schema_capability_references(
+    prefix: &str,
+    schema: &AdminSchema,
+    references: &mut Vec<ModuleCapabilityReference>,
+) {
+    for entity in &schema.entities {
+        if present(&entity.read_capability) {
+            references.push(ModuleCapabilityReference {
+                capability: entity.read_capability.clone(),
+                subject: format!("{prefix}.{}", entity.name),
+            });
+        }
+    }
 }
 
 fn lint_runtime_surface(runtime: &RuntimeSurface, lints: &mut Vec<ModuleManifestLint>) {
@@ -546,6 +681,20 @@ fn valid_runtime_function_name(value: &str) -> bool {
                 || character == '_'
                 || character == '-'
         })
+}
+
+fn route_identity(route: &ModuleHttpRoute) -> String {
+    format!("{} {}", method_label(route.method), route.path)
+}
+
+fn method_label(method: ModuleHttpMethod) -> &'static str {
+    match method {
+        ModuleHttpMethod::Get => "GET",
+        ModuleHttpMethod::Post => "POST",
+        ModuleHttpMethod::Put => "PUT",
+        ModuleHttpMethod::Patch => "PATCH",
+        ModuleHttpMethod::Delete => "DELETE",
+    }
 }
 
 /// Fluent builder for [`ModuleManifest`]. Reusable by every loading source.
@@ -1093,6 +1242,66 @@ mod tests {
             lint.subject == "lifecycle.activation_job"
                 && lint.severity == ModuleManifestLintSeverity::Error
                 && lint.message == "Lifecycle activation job is missing a function name."
+        }));
+    }
+
+    #[test]
+    fn manifest_lint_warns_for_undeclared_capability_references() {
+        use crate::admin::AdminAction;
+
+        let manifest = ModuleManifest::builder("remote-crm")
+            .capabilities(vec!["remote_crm.contacts.write".to_owned()])
+            .http_routes(vec![ModuleHttpRoute {
+                method: ModuleHttpMethod::Get,
+                path: "/contacts/{id}".to_owned(),
+                capability: Some("remote_crm.contacts.read".to_owned()),
+                display_name: Some("Fetch Contact".to_owned()),
+                story_title: Some("Fetch Contact".to_owned()),
+            }])
+            .declarative_admin(AdminDeclarativeSurface {
+                pages: vec![AdminDeclarativePage {
+                    name: "contacts".to_owned(),
+                    label: "Contacts".to_owned(),
+                    sections: vec![AdminDeclarativeSection {
+                        name: "contacts".to_owned(),
+                        label: "Contacts".to_owned(),
+                        component: AdminDeclarativeComponent::EntityTable {
+                            entity: "contacts".to_owned(),
+                        },
+                    }],
+                }],
+                actions: vec![AdminAction {
+                    name: "sync_contacts".to_owned(),
+                    label: "Sync Contacts".to_owned(),
+                    capability: "remote_crm.contacts.sync".to_owned(),
+                }],
+                fallback_schema: Some(AdminSchema {
+                    entities: vec![crate::EntitySchema {
+                        name: "contacts".to_owned(),
+                        label: "Contacts".to_owned(),
+                        fields: vec![],
+                        read_capability: "remote_crm.contacts.read".to_owned(),
+                    }],
+                }),
+            })
+            .build();
+
+        let lints = lint_module_manifest(ModuleSource::Remote, &manifest);
+
+        assert!(lints.iter().any(|lint| {
+            lint.severity == ModuleManifestLintSeverity::Warning
+                && lint.subject == "capability.reference.http_route.GET /contacts/{id}"
+                && lint.message == "Capability reference is not declared by the module."
+        }));
+        assert!(lints.iter().any(|lint| {
+            lint.severity == ModuleManifestLintSeverity::Warning
+                && lint.subject == "capability.reference.admin.declarative.action.sync_contacts"
+                && lint.message == "Capability reference is not declared by the module."
+        }));
+        assert!(lints.iter().any(|lint| {
+            lint.severity == ModuleManifestLintSeverity::Warning
+                && lint.subject == "capability.reference.admin.declarative.fallback_schema.contacts"
+                && lint.message == "Capability reference is not declared by the module."
         }));
     }
 

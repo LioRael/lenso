@@ -100,6 +100,7 @@ pub fn user_schema() -> AdminSchema {
 /// Context-free manifest: serializable metadata only (no AppContext needed).
 pub fn manifest() -> ModuleManifest {
     ModuleManifest::builder("identity")
+        .capabilities(vec!["identity.users.read".to_owned()])
         .story_display(story_display())
         .http_routes(http_routes())
         .runtime(RuntimeSurface {

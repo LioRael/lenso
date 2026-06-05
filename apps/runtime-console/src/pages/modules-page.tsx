@@ -5,6 +5,7 @@ import {
   RefreshCw,
   Route,
   ScrollText,
+  ShieldCheck,
   TriangleAlert,
   Zap,
 } from "lucide-react";
@@ -23,7 +24,9 @@ import {
   adminSurfaceLabel,
   adminSurfaceMetadataRows,
   filterModuleRegistry,
+  moduleActivationLabel,
   moduleErrorMessage,
+  moduleGovernanceRows,
   moduleHttpRouteRows,
   moduleIsLoaded,
   moduleManifestCheckGroups,
@@ -181,7 +184,8 @@ function ModulesContent() {
                   </span>
                   <span className="block truncate text-[10px] text-(--muted)">
                     {module.source} / {adminSurfaceLabel(module.admin)} /{" "}
-                    {moduleStatusLabel(module)}
+                    {moduleStatusLabel(module)} /{" "}
+                    {moduleActivationLabel(module)}
                   </span>
                 </button>
               );
@@ -374,7 +378,8 @@ function ModuleRegistryDetail({ module }: { module: AdminModuleMetadata }) {
           <Boxes className="text-(--info)" size={14} />
           <span>{module.module_name}</span>
           <span className="ml-auto border border-(--border-subtle) px-2 py-0.5 text-[10px] text-(--secondary)">
-            {module.source} / {moduleStatusLabel(module)}
+            {module.source} / {moduleStatusLabel(module)} /{" "}
+            {moduleActivationLabel(module)}
           </span>
         </header>
         {moduleIsLoaded(module) ? (
@@ -386,12 +391,55 @@ function ModuleRegistryDetail({ module }: { module: AdminModuleMetadata }) {
         )}
       </section>
 
+      <ModuleGovernancePanel module={module} />
       <ModuleCapabilitiesList capabilities={module.capabilities} />
       <ModuleStoryDisplayTable rows={storyRows} />
       <ModuleRuntimeFunctionsTable rows={runtimeRows} />
       <ModuleManifestChecks checks={manifestChecks} />
       <ModuleHttpRoutesTable rows={routeRows} />
     </div>
+  );
+}
+
+function ModuleGovernancePanel({ module }: { module: AdminModuleMetadata }) {
+  const issues = module.governance?.capability_issues ?? [];
+  return (
+    <section className="min-w-0 border border-(--border-subtle) bg-(--surface)">
+      <header className="flex items-center gap-2 border-b border-(--border-subtle) px-3 py-2 font-semibold">
+        <ShieldCheck className="text-(--accent)" size={14} />
+        <span>Governance</span>
+        <span
+          className={cn(
+            "ml-auto border px-1.5 py-0.5 text-[10px]",
+            moduleActivationLabel(module) === "active" &&
+              "border-[color-mix(in_srgb,var(--success)_45%,transparent)] text-(--success)",
+            moduleActivationLabel(module) === "needs attention" &&
+              "border-[color-mix(in_srgb,var(--warning)_55%,transparent)] text-(--warning)",
+            moduleActivationLabel(module) === "blocked" &&
+              "border-[color-mix(in_srgb,var(--error)_55%,transparent)] text-(--error)"
+          )}
+        >
+          {moduleActivationLabel(module)}
+        </span>
+      </header>
+      <MetadataRows rows={moduleGovernanceRows(module)} />
+      {issues.length > 0 ? (
+        <div className="grid gap-1 border-t border-(--border-subtle) px-3 py-2">
+          {issues.slice(0, 4).map((issue) => (
+            <div
+              className="grid min-w-0 grid-cols-[minmax(0,180px)_minmax(0,1fr)] gap-2 text-[11px]"
+              key={`${issue.subject}:${issue.capability}`}
+              title={issue.suggestion}
+            >
+              <span className="truncate text-(--warning)">
+                {issue.capability}
+              </span>
+              <span className="truncate text-(--muted)">{issue.subject}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </section>
   );
 }
 
