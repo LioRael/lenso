@@ -3,6 +3,7 @@
 //! This crate owns transport only. Core contracts stay in `platform-module`,
 //! and host integration stays in `app-bootstrap`.
 
+mod admin_action;
 mod admin_data;
 mod binding;
 mod config;
@@ -14,6 +15,7 @@ mod router;
 mod runtime;
 mod source;
 
+pub use admin_action::RemoteAdminActionSource;
 pub use admin_data::RemoteAdminDataSource;
 pub use binding::RemoteBinding;
 pub use config::RemoteModuleConfig;

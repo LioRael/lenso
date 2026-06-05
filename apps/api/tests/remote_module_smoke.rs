@@ -122,6 +122,16 @@ fn admin_get(path: &str) -> Request<Body> {
         .expect("request builds")
 }
 
+fn admin_post_json(path: &str, body: &'static str) -> Request<Body> {
+    Request::builder()
+        .method("POST")
+        .uri(path)
+        .header("authorization", "Bearer dev-service:admin")
+        .header("content-type", "application/json")
+        .body(Body::from(body))
+        .expect("request builds")
+}
+
 fn service_get(path: &str, token: &str) -> Request<Body> {
     Request::builder()
         .uri(path)
@@ -1396,6 +1406,20 @@ async fn custom_remote_modules_are_visible_through_metadata_api() {
     assert_eq!(declarative_list["data"][0]["id"], "contact_1");
     assert_eq!(declarative_list["data"][0]["email"], "ada@example.com");
     assert_eq!(declarative_list["page"]["next_cursor"], "contact_2");
+
+    let action_response = app
+        .clone()
+        .oneshot(admin_post_json(
+            "/admin/data/remote-crm-declarative/actions/sync_contacts",
+            r#"{"input":{"dry_run":true}}"#,
+        ))
+        .await
+        .expect("declarative action request completes");
+    assert_eq!(action_response.status(), StatusCode::OK);
+    let action = json_body(action_response).await;
+    assert_eq!(action["data"]["synced"], true);
+    assert_eq!(action["data"]["dry_run"], true);
+    assert_eq!(action["data"]["contacts"], 3);
 
     let schema_response = app
         .oneshot(admin_get("/admin/data/schema"))

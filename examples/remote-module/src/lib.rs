@@ -123,6 +123,10 @@ pub fn router() -> Router {
             "/lenso/module/v1/declarative/admin/contacts/{id}",
             get(get_contact),
         )
+        .route(
+            "/lenso/module/v1/declarative/admin/actions/sync_contacts",
+            post(sync_contacts_action),
+        )
         .route("/lenso/module/v1/embedded/manifest", get(embedded_manifest))
         .route("/lenso/module/v1/embedded/admin", get(embedded_admin))
         .route("/lenso/module/v1/contacts", get(get_http_contacts))
@@ -214,11 +218,18 @@ async fn declarative_manifest() -> Json<ModuleManifest> {
                         },
                     ],
                 }],
-                actions: vec![],
+                actions: vec![platform_module::AdminAction {
+                    name: "sync_contacts".to_owned(),
+                    label: "Sync contacts".to_owned(),
+                    capability: "remote_crm.contacts.sync".to_owned(),
+                }],
                 fallback_schema: Some(contacts_schema()),
             })
             .http_routes(contact_http_routes())
-            .capabilities(vec!["remote_crm.contacts.read".to_owned()])
+            .capabilities(vec![
+                "remote_crm.contacts.read".to_owned(),
+                "remote_crm.contacts.sync".to_owned(),
+            ])
             .build(),
     )
 }
@@ -486,6 +497,19 @@ async fn invoke_runtime_function(
         }
     }))
     .into_response()
+}
+
+async fn sync_contacts_action(Json(input): Json<Value>) -> Json<Value> {
+    Json(json!({
+        "result": {
+            "synced": true,
+            "dry_run": input
+                .get("dry_run")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            "contacts": CONTACTS.len(),
+        }
+    }))
 }
 
 async fn list_contacts(Query(query): Query<ListQuery>) -> Json<ListResponse> {

@@ -144,6 +144,15 @@ async fn declarative_manifest_matches_remote_module_protocol() {
         manifest["admin"]["fallback_schema"]["entities"][0]["name"],
         "contacts"
     );
+    assert_eq!(manifest["admin"]["actions"][0]["name"], "sync_contacts");
+    assert_eq!(
+        manifest["admin"]["actions"][0]["capability"],
+        "remote_crm.contacts.sync"
+    );
+    assert_eq!(
+        manifest["capabilities"],
+        json!(["remote_crm.contacts.read", "remote_crm.contacts.sync"])
+    );
     assert!(manifest["runtime"].is_null());
 }
 
@@ -197,6 +206,32 @@ async fn runtime_function_invoke_returns_output_envelope() {
     assert_eq!(value["output"]["request_id"], "fnrun_1");
     assert_eq!(value["output"]["function_run_id"], "fnrun_1");
     assert_eq!(value["output"]["correlation_id"], "corr_1");
+}
+
+#[tokio::test]
+async fn declarative_admin_action_returns_result_envelope() {
+    let response = remote_module_example::router()
+        .oneshot(
+            http::Request::builder()
+                .method(http::Method::POST)
+                .uri("/lenso/module/v1/declarative/admin/actions/sync_contacts")
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(axum::body::Body::from(r#"{"dry_run":true}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let value: Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(value["result"]["synced"], true);
+    assert_eq!(value["result"]["dry_run"], true);
+    assert_eq!(value["result"]["contacts"], 3);
 }
 
 #[tokio::test]
