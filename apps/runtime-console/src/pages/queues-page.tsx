@@ -18,6 +18,7 @@ import {
   resizeOperationsInspectorWidth,
   type OperationsInspectorLayout,
 } from "./operations-layout";
+import { OperationsMessageRow } from "./operations-state";
 import {
   pushOperationsUrl,
   queuesPath,
@@ -200,9 +201,9 @@ export function QueuesPage() {
           {summaryQuery.isLoading ||
           eventsQuery.isLoading ||
           functionsQuery.isLoading ? (
-            <QueueMessage message="Loading queue pressure..." />
+            <OperationsMessageRow message="loading queue pressure" />
           ) : summaryQuery.isError && rows.length === 0 ? (
-            <QueueMessage
+            <OperationsMessageRow
               message={
                 summaryQuery.error instanceof Error
                   ? summaryQuery.error.message
@@ -211,7 +212,7 @@ export function QueuesPage() {
               tone="error"
             />
           ) : rows.length === 0 ? (
-            <QueueMessage message="no queues matched" />
+            <OperationsMessageRow message="no queues matched" />
           ) : (
             rows.map((queue) => {
               const total =
@@ -294,7 +295,7 @@ export function QueuesPage() {
           {selected ? (
             <QueueInspector queue={selected} />
           ) : (
-            <QueueMessage message="select a queue" />
+            <OperationsMessageRow message="select a queue" />
           )}
         </div>
         <div className="flex gap-2 border-t border-(--border-subtle) bg-(--surface) p-2">
@@ -344,24 +345,6 @@ function QueueInspector({ queue }: { queue: QueueRow }) {
           <div className="px-3 py-1.5 text-(--secondary)">{value}</div>
         </div>
       ))}
-    </div>
-  );
-}
-
-function QueueMessage({
-  message,
-  tone = "muted",
-}: {
-  message: string;
-  tone?: "error" | "muted";
-}) {
-  return (
-    <div
-      className={`border-b border-(--border-subtle) px-3 py-3 font-mono text-[11px] ${
-        tone === "error" ? "text-[#ef4444]" : "text-(--muted)"
-      }`}
-    >
-      {message}
     </div>
   );
 }

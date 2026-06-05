@@ -20,6 +20,10 @@ import {
   type OperationsInspectorLayout,
 } from "./operations-layout";
 import {
+  OperationsLoadingRows,
+  OperationsMessageRow,
+} from "./operations-state";
+import {
   pushOperationsUrl,
   readOperationsParam,
   replaceOperationsUrl,
@@ -358,14 +362,14 @@ export function RemoteProxyCallsPage() {
             <span>occurred</span>
           </div>
           {remoteProxyCallsQuery.isLoading ? (
-            <LoadingRows />
+            <OperationsLoadingRows />
           ) : remoteProxyCallsQuery.isError ? (
-            <MessageRow
+            <OperationsMessageRow
               message={errorMessage(remoteProxyCallsQuery.error)}
               tone="error"
             />
           ) : visible.length === 0 ? (
-            <MessageRow message="no remote calls matched" />
+            <OperationsMessageRow message="no remote calls matched" />
           ) : (
             visible.map((call) => {
               const isSelected = selected?.id === call.id;
@@ -460,7 +464,7 @@ export function RemoteProxyCallsPage() {
           {selected ? (
             <RemoteCallInspector call={selected} />
           ) : (
-            <MessageRow message="select a remote call" />
+            <OperationsMessageRow message="select a remote call" />
           )}
         </div>
         <div className="flex gap-2 border-t border-(--border-subtle) bg-(--surface) p-2">
@@ -637,35 +641,6 @@ function KeyValueRows({ rows }: { rows: Array<[string, string]> }) {
           </div>
         </div>
       ))}
-    </div>
-  );
-}
-
-function LoadingRows() {
-  return (
-    <>
-      <div className="h-14 animate-pulse border-b border-(--border-subtle) bg-(--elevated)" />
-      <div className="h-14 animate-pulse border-b border-(--border-subtle) bg-(--elevated)" />
-      <div className="h-14 animate-pulse border-b border-(--border-subtle) bg-(--elevated)" />
-    </>
-  );
-}
-
-function MessageRow({
-  message,
-  tone = "muted",
-}: {
-  message: string;
-  tone?: "error" | "muted";
-}) {
-  return (
-    <div
-      className={cn(
-        "border-b border-(--border-subtle) px-3 py-3 font-mono text-[11px]",
-        tone === "error" ? "text-[#ef4444]" : "text-(--muted)"
-      )}
-    >
-      {message}
     </div>
   );
 }
