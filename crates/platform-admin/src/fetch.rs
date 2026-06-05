@@ -391,7 +391,12 @@ pub(crate) async fn fetch_story_rows(
             from platform.story_events
             where correlation_id in (select correlation_id from story_keys)
         ) story_rows
-        order by correlation_id asc, created_at asc, item_type asc, id asc
+        order by
+            correlation_id asc,
+            case when item_type = 'http_request' then 0 else 1 end asc,
+            created_at asc,
+            item_type asc,
+            id asc
         "#,
     )
     .bind(correlation_id)
