@@ -7,6 +7,20 @@ export type AdminAction = {
   name: string;
 };
 
+export type AdminCapabilityIssueDto = {
+  capability: string;
+  message: string;
+  subject: string;
+  suggestion: string;
+};
+
+export type AdminCapabilitySummaryDto = {
+  declared_count: number;
+  missing_count: number;
+  referenced_count: number;
+  unused_count: number;
+};
+
 export type AdminDataDetailResponse = {
   data: unknown;
 };
@@ -85,10 +99,20 @@ export type AdminMetricBinding = {
   value_path: string;
 };
 
+export type AdminModuleActivationState = string;
+
+export type AdminModuleGovernanceDto = {
+  activation_reasons: Array<string>;
+  activation_state: AdminModuleActivationState;
+  capability_issues: Array<AdminCapabilityIssueDto>;
+  capability_summary: AdminCapabilitySummaryDto;
+};
+
 export type AdminModuleMetadataDto = {
   admin?: unknown;
   capabilities: Array<string>;
   error?: string | null;
+  governance: AdminModuleGovernanceDto;
   http_routes: Array<ModuleHttpRoute>;
   lifecycle?: unknown;
   manifest_lints: Array<ModuleManifestLint>;

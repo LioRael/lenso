@@ -14,7 +14,9 @@ import {
   type FieldSchema,
   firstDeclarativePage,
   manifestLintCategory,
+  moduleActivationLabel,
   moduleErrorMessage,
+  moduleGovernanceRows,
   moduleHttpRouteRows,
   moduleIsLoaded,
   moduleNavItems,
@@ -69,6 +71,7 @@ function moduleMetadata(
     | "capabilities"
     | "lifecycle"
     | "manifest_lints"
+    | "governance"
     | "runtime"
     | "story_display"
   > &
@@ -78,6 +81,7 @@ function moduleMetadata(
         | "capabilities"
         | "lifecycle"
         | "manifest_lints"
+        | "governance"
         | "runtime"
         | "story_display"
       >
@@ -86,6 +90,17 @@ function moduleMetadata(
   return {
     capabilities: [],
     lifecycle: null,
+    governance: {
+      activation_state: "active",
+      activation_reasons: [],
+      capability_summary: {
+        declared_count: 0,
+        referenced_count: 0,
+        missing_count: 0,
+        unused_count: 0,
+      },
+      capability_issues: [],
+    },
     manifest_lints: [],
     runtime: null,
     story_display: [],
@@ -231,6 +246,96 @@ describe("module status helpers", () => {
       "remote manifest request failed"
     );
     expect(moduleErrorMessage(loadedModule)).toBeNull();
+  });
+
+  test("labels module activation state from governance metadata", () => {
+    expect(
+      moduleActivationLabel({
+        ...loadedModule,
+        governance: {
+          activation_state: "needs_attention",
+          activation_reasons: [
+            "capability.reference.http_route.GET /contacts/{id}: Capability reference is not declared by the module.",
+          ],
+          capability_summary: {
+            declared_count: 1,
+            referenced_count: 1,
+            missing_count: 1,
+            unused_count: 0,
+          },
+          capability_issues: [
+            {
+              capability: "remote_crm.contacts.read",
+              subject: "capability.reference.http_route.GET /contacts/{id}",
+              message: "Capability reference is not declared by the module.",
+              suggestion:
+                "Add `remote_crm.contacts.read` to ModuleManifest.capabilities or update the reference.",
+            },
+          ],
+        },
+      })
+    ).toBe("needs attention");
+  });
+
+  test("builds governance rows from backend metadata", () => {
+    expect(
+      moduleGovernanceRows({
+        ...loadedModule,
+        governance: {
+          activation_state: "needs_attention",
+          activation_reasons: [
+            "capability.reference.http_route.GET /contacts/{id}: Capability reference is not declared by the module.",
+          ],
+          capability_summary: {
+            declared_count: 1,
+            referenced_count: 1,
+            missing_count: 1,
+            unused_count: 0,
+          },
+          capability_issues: [],
+        },
+      })
+    ).toEqual([
+      { label: "activation", value: "needs attention" },
+      { label: "declared capabilities", value: "1" },
+      { label: "referenced capabilities", value: "1" },
+      { label: "missing references", value: "1" },
+      { label: "unused declarations", value: "0" },
+    ]);
+  });
+
+  test("search text includes governance capability issues", () => {
+    const governanceModule = {
+      ...loadedModule,
+      governance: {
+        activation_state: "needs_attention" as const,
+        activation_reasons: [],
+        capability_summary: {
+          declared_count: 1,
+          referenced_count: 1,
+          missing_count: 1,
+          unused_count: 0,
+        },
+        capability_issues: [
+          {
+            capability: "remote_crm.contacts.read",
+            subject: "capability.reference.http_route.GET /contacts/{id}",
+            message: "Capability reference is not declared by the module.",
+            suggestion:
+              "Add `remote_crm.contacts.read` to ModuleManifest.capabilities or update the reference.",
+          },
+        ],
+      },
+    };
+
+    expect(
+      filterModuleRegistry([governanceModule], {
+        query: "remote_crm.contacts.read",
+        lint: "all",
+        source: "all",
+        status: "all",
+      })
+    ).toHaveLength(1);
   });
 
   test("builds remote HTTP route rows with story display metadata", () => {
@@ -394,6 +499,17 @@ describe("module status helpers", () => {
         manifest_lints: [],
         runtime: null,
         lifecycle: null,
+        governance: {
+          activation_state: "active",
+          activation_reasons: [],
+          capability_summary: {
+            declared_count: 0,
+            referenced_count: 0,
+            missing_count: 0,
+            unused_count: 0,
+          },
+          capability_issues: [],
+        },
         story_display: [],
         capabilities: [],
         admin: { kind: "schema", entities: [entity] },
