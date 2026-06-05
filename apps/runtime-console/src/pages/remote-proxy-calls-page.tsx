@@ -25,6 +25,7 @@ import {
 } from "./operations-state";
 import {
   OperationsAggregateRow,
+  OperationsKeyValueRows,
   OperationsSelectableRow,
   OperationsTableHeader,
 } from "./operations-table";
@@ -576,7 +577,7 @@ function InspectorHeader({ call }: { call: RuntimeRemoteProxyCall | null }) {
 function RemoteCallInspector({ call }: { call: RuntimeRemoteProxyCall }) {
   return (
     <div className="grid">
-      <KeyValueRows
+      <OperationsKeyValueRows
         rows={[
           ["result", remoteProxyCallResultLabel(call)],
           ["module", call.module_name],
@@ -623,24 +624,6 @@ function ResultPill({ call }: { call: RuntimeRemoteProxyCall }) {
     >
       {label}
     </span>
-  );
-}
-
-function KeyValueRows({ rows }: { rows: Array<[string, string]> }) {
-  return (
-    <div className="w-max min-w-full border-b border-(--border-subtle) font-mono text-xs">
-      {rows.map(([key, value]) => (
-        <div
-          className="grid w-max min-w-full grid-cols-[124px_minmax(220px,max-content)] border-b border-(--border-subtle) last:border-b-0"
-          key={key}
-        >
-          <div className="bg-(--sidebar) px-3 py-1.5 text-(--muted)">{key}</div>
-          <div className="whitespace-pre-wrap px-3 py-1.5 text-(--secondary)">
-            {value}
-          </div>
-        </div>
-      ))}
-    </div>
   );
 }
 

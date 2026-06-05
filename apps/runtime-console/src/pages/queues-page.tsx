@@ -20,6 +20,7 @@ import {
 } from "./operations-layout";
 import { OperationsMessageRow } from "./operations-state";
 import {
+  OperationsKeyValueRows,
   OperationsSelectableRow,
   OperationsTableHeader,
 } from "./operations-table";
@@ -328,24 +329,18 @@ export function QueuesPage() {
 function QueueInspector({ queue }: { queue: QueueRow }) {
   const total = queue.pending + queue.running + queue.failed + queue.dead;
   return (
-    <div className="w-max min-w-full border-b border-(--border-subtle) font-mono text-xs">
-      {[
+    <OperationsKeyValueRows
+      rowClassName="grid-cols-[108px_minmax(180px,max-content)]"
+      valueClassName=""
+      rows={[
         ["pending", String(queue.pending)],
         ["running", String(queue.running)],
         ["failed", String(queue.failed)],
         ["dead", String(queue.dead)],
         ["oldest", formatOldest(queue.oldestSeconds)],
         ["pressure", String(total)],
-      ].map(([key, value]) => (
-        <div
-          className="grid w-max min-w-full grid-cols-[108px_minmax(180px,max-content)] border-b border-(--border-subtle) last:border-b-0"
-          key={key}
-        >
-          <div className="bg-(--sidebar) px-3 py-1.5 text-(--muted)">{key}</div>
-          <div className="px-3 py-1.5 text-(--secondary)">{value}</div>
-        </div>
-      ))}
-    </div>
+      ]}
+    />
   );
 }
 

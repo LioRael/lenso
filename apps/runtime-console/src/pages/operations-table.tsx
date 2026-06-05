@@ -66,3 +66,37 @@ export function OperationsAggregateRow({
     </button>
   );
 }
+
+export function OperationsKeyValueRows({
+  rowClassName,
+  rows,
+  valueClassName,
+}: {
+  rows: Array<[string, string]>;
+  rowClassName?: string;
+  valueClassName?: string;
+}) {
+  return (
+    <div className="w-max min-w-full border-b border-(--border-subtle) font-mono text-xs">
+      {rows.map(([key, value]) => (
+        <div
+          className={cn(
+            "grid w-max min-w-full border-b border-(--border-subtle) last:border-b-0",
+            rowClassName ?? "grid-cols-[124px_minmax(220px,max-content)]"
+          )}
+          key={key}
+        >
+          <div className="bg-(--sidebar) px-3 py-1.5 text-(--muted)">{key}</div>
+          <div
+            className={cn(
+              "px-3 py-1.5 text-(--secondary)",
+              valueClassName ?? "whitespace-pre-wrap"
+            )}
+          >
+            {value}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
