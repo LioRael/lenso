@@ -1432,6 +1432,7 @@ dependencies = [
  "platform-module",
  "serde",
  "serde_json",
+ "tracing",
  "utoipa",
 ]
 

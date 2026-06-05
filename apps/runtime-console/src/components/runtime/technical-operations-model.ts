@@ -121,6 +121,9 @@ export function technicalOperationSourceLabel(operation: TechnicalOperation) {
     case "remote_runtime": {
       return "remote runtime";
     }
+    case "admin_action": {
+      return "admin action";
+    }
     default: {
       return "otel";
     }
@@ -130,6 +133,10 @@ export function technicalOperationSourceLabel(operation: TechnicalOperation) {
 export function technicalOperationSummary(operation: TechnicalOperation) {
   if (operation.source === "remote_runtime") {
     return remoteRuntimeOperationSummary(operation);
+  }
+
+  if (operation.source === "admin_action") {
+    return adminActionOperationSummary(operation);
   }
 
   if (operation.source !== "remote_proxy") {
@@ -148,6 +155,23 @@ export function technicalOperationSummary(operation: TechnicalOperation) {
     remotePath ? `remote ${remotePath}` : undefined,
     typeof remoteStatus === "number" ? `status ${remoteStatus}` : undefined,
     requestId ? `request ${requestId}` : undefined,
+  ].filter(Boolean);
+
+  return parts.length > 0 ? parts.join(" / ") : undefined;
+}
+
+function adminActionOperationSummary(operation: TechnicalOperation) {
+  const moduleName = stringAttribute(operation.attributes.module_name);
+  const actionName = stringAttribute(operation.attributes.action_name);
+  const capability = stringAttribute(operation.attributes.capability);
+  const requestId = stringAttribute(operation.attributes.request_id);
+  const errorCode = stringAttribute(operation.attributes.error_code);
+  const parts = [
+    moduleName,
+    actionName,
+    capability ? `capability ${capability}` : undefined,
+    requestId ? `request ${requestId}` : undefined,
+    errorCode ? `error ${errorCode}` : undefined,
   ].filter(Boolean);
 
   return parts.length > 0 ? parts.join(" / ") : undefined;

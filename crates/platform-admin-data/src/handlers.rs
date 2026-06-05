@@ -16,8 +16,11 @@ use crate::{
     record_admin_module_metadata_refresh_error, record_admin_module_metadata_refresh_success,
 };
 use axum::Json;
-use axum::extract::{Path, Query};
-use platform_core::{AppError, ErrorCode, RequestContext};
+use axum::extract::{Path, Query, State};
+use platform_core::{
+    AdminActionStoryRecord, AppContext, AppError, ErrorCode, RequestContext,
+    insert_admin_action_story_event,
+};
 use platform_http::{AdminActor, ApiErrorResponse, ErrorResponse, HttpRequestContext};
 use platform_module::{
     AdminListQuery, AdminSurface, ModuleLoadStatus, ModuleManifestLint, ModuleManifestLintSeverity,
@@ -410,13 +413,16 @@ fn load_error_message(status: &ModuleLoadStatus) -> Option<String> {
 )]
 pub(crate) async fn invoke_action(
     admin: AdminActor,
+    State(ctx): State<AppContext>,
     HttpRequestContext(request_ctx): HttpRequestContext,
     Path((module, action)): Path<(String, String)>,
     Json(request): Json<AdminActionInvokeRequest>,
 ) -> Result<Json<AdminActionInvokeResponse>, ApiErrorResponse> {
+    let started_at = ctx.clock.now();
+    let started = Instant::now();
     let admin_module = find_loaded_action_module(&module, &request_ctx)?;
-    let capability = declared_action_capability(&admin_module, &action, &request_ctx)?;
-    ensure_action_capability(&admin, capability, &request_ctx)?;
+    let declaration = declared_action(&admin_module, &action, &request_ctx)?;
+    ensure_action_capability(&admin, &declaration.capability, &request_ctx)?;
     let action_source = admin_module.action_source.as_ref().ok_or_else(|| {
         ApiErrorResponse::with_context(
             AppError::new(
@@ -427,19 +433,68 @@ pub(crate) async fn invoke_action(
             &request_ctx,
         )
     })?;
-    let data = action_source
-        .invoke(&action, request.input)
-        .await
-        .map_err(|error| ApiErrorResponse::with_context(error, &request_ctx))?;
+    let input = request.input;
+    let result = action_source.invoke(&action, input.clone()).await;
+    match result {
+        Ok(data) => {
+            record_admin_action_story(
+                &ctx,
+                &request_ctx,
+                AdminActionStoryRecord {
+                    action_name: action,
+                    capability: declaration.capability,
+                    duration_ms: elapsed_ms(started),
+                    error_code: None,
+                    error_message: None,
+                    input,
+                    label: declaration.label,
+                    module_name: module,
+                    result: Some(data.clone()),
+                    started_at,
+                    success: true,
+                },
+            )
+            .await;
 
-    Ok(Json(AdminActionInvokeResponse { data }))
+            Ok(Json(AdminActionInvokeResponse { data }))
+        }
+        Err(error) => {
+            let error_code = error.code.as_str().to_owned();
+            let error_message = error.public_message.clone();
+            record_admin_action_story(
+                &ctx,
+                &request_ctx,
+                AdminActionStoryRecord {
+                    action_name: action,
+                    capability: declaration.capability,
+                    duration_ms: elapsed_ms(started),
+                    error_code: Some(error_code),
+                    error_message: Some(error_message),
+                    input,
+                    label: declaration.label,
+                    module_name: module,
+                    result: None,
+                    started_at,
+                    success: false,
+                },
+            )
+            .await;
+            Err(ApiErrorResponse::with_context(error, &request_ctx))
+        }
+    }
 }
 
-fn declared_action_capability<'a>(
-    module: &'a AdminModule,
+#[derive(Debug, Clone)]
+struct DeclaredAction {
+    label: String,
+    capability: String,
+}
+
+fn declared_action(
+    module: &AdminModule,
     action: &str,
     ctx: &RequestContext,
-) -> Result<&'a str, ApiErrorResponse> {
+) -> Result<DeclaredAction, ApiErrorResponse> {
     let Some(AdminSurface::DeclarativeCustom(surface)) = module.admin.as_ref() else {
         return Err(ApiErrorResponse::with_context(
             AppError::new(ErrorCode::NotFound, format!("unknown action: {action}")),
@@ -451,7 +506,10 @@ fn declared_action_capability<'a>(
         .actions
         .iter()
         .find(|declared| declared.name == action)
-        .map(|declared| declared.capability.as_str())
+        .map(|declared| DeclaredAction {
+            capability: declared.capability.clone(),
+            label: declared.label.clone(),
+        })
         .ok_or_else(|| {
             ApiErrorResponse::with_context(
                 AppError::new(ErrorCode::NotFound, format!("unknown action: {action}")),
@@ -478,6 +536,31 @@ fn ensure_action_capability(
             ctx,
         )),
     }
+}
+
+async fn record_admin_action_story(
+    ctx: &AppContext,
+    request_ctx: &RequestContext,
+    record: AdminActionStoryRecord,
+) {
+    let module_name = record.module_name.clone();
+    let action_name = record.action_name.clone();
+    let success = record.success;
+    if let Err(error) = insert_admin_action_story_event(&ctx.db, request_ctx, record).await {
+        tracing::warn!(
+            error = ?error,
+            module_name = %module_name,
+            action_name = %action_name,
+            success,
+            request_id = %request_ctx.request_id.0,
+            correlation_id = %request_ctx.correlation_id.0,
+            "failed to persist admin action story event"
+        );
+    }
+}
+
+fn elapsed_ms(started: Instant) -> i64 {
+    started.elapsed().as_millis().min(i64::MAX as u128) as i64
 }
 
 #[cfg(test)]

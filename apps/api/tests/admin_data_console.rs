@@ -7,7 +7,8 @@ use platform_admin_data::{
     install_admin_modules,
 };
 use platform_core::{
-    AppConfig, AppContext, LoggingEventPublisher, StoryDisplayDescriptor, StoryDisplaySource,
+    AppConfig, AppContext, LoggingEventPublisher, PLATFORM_MIGRATIONS, StoryDisplayDescriptor,
+    StoryDisplaySource, apply_migrations,
 };
 use platform_module::{
     AdminAction, AdminActionSource, AdminDataSource, AdminDeclarativeComponent,
@@ -15,6 +16,8 @@ use platform_module::{
     AdminPage, AdminSchema, AdminSurface, EntitySchema, FieldSchema, FieldType, ModuleLoadStatus,
     ModuleSource,
 };
+use platform_runtime::RUNTIME_MIGRATIONS;
+use platform_testing::TestDatabase;
 use serde_json::Value;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -122,6 +125,21 @@ fn app() -> axum::Router {
     build_router(ctx)
 }
 
+async fn app_with_test_db(db: &TestDatabase) -> axum::Router {
+    let migrations = PLATFORM_MIGRATIONS
+        .iter()
+        .chain(RUNTIME_MIGRATIONS)
+        .copied()
+        .collect::<Vec<_>>();
+    apply_migrations(&db.pool, &migrations)
+        .await
+        .expect("platform and runtime migrations apply");
+    let mut config = AppConfig::from_env();
+    config.database.url = db.url.clone();
+    let ctx = AppContext::new(config, db.pool.clone(), Arc::new(LoggingEventPublisher));
+    build_router(ctx)
+}
+
 fn admin_get(path: &str) -> Request<Body> {
     Request::builder()
         .uri(path)
@@ -164,6 +182,18 @@ async fn json_body(response: axum::response::Response) -> Value {
         .await
         .expect("body");
     serde_json::from_slice(&bytes).expect("json body")
+}
+
+trait RequestExt {
+    fn with_header(self, name: &'static str, value: &'static str) -> Self;
+}
+
+impl RequestExt for Request<Body> {
+    fn with_header(mut self, name: &'static str, value: &'static str) -> Self {
+        self.headers_mut()
+            .insert(name, value.parse().expect("header value"));
+        self
+    }
 }
 
 #[tokio::test]
@@ -386,6 +416,125 @@ async fn admin_action_invocation_calls_declared_source() {
     let json = json_body(response).await;
     assert_eq!(json["data"]["action"], "sync_contacts");
     assert_eq!(json["data"]["input"]["dry_run"], true);
+}
+
+#[tokio::test]
+async fn admin_action_invocation_records_story_and_technical_operation() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    install_admin_modules(vec![AdminModule {
+        module_name: "remote-crm".to_owned(),
+        source: ModuleSource::Remote,
+        load_status: ModuleLoadStatus::Loaded,
+        schema: stub_schema(),
+        admin: Some(stub_declarative_surface()),
+        listed_in_schema: false,
+        data_source: Some(Arc::new(StubUsers)),
+        action_source: Some(Arc::new(StubActions)),
+    }]);
+    install_admin_module_metadata(vec![AdminModuleMetadata {
+        module_name: "remote-crm".to_owned(),
+        source: ModuleSource::Remote,
+        load_status: ModuleLoadStatus::Loaded,
+        http_routes: vec![],
+        runtime: None,
+        lifecycle: None,
+        story_display: vec![],
+        capabilities: vec!["remote_crm.contacts.sync".to_owned()],
+        admin: Some(stub_declarative_surface()),
+        source_diagnostics: None,
+    }]);
+    let app = app_with_test_db(&db).await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            admin_post_json_with_token(
+                "/admin/data/remote-crm/actions/sync_contacts",
+                r#"{"input":{"dry_run":true}}"#,
+                "dev-service:admin:remote_crm.contacts.sync",
+            )
+            .with_header("x-request-id", "req_admin_action_story")
+            .with_header("x-correlation-id", "corr_admin_action_story")
+            .with_header(
+                "traceparent",
+                "00-00000000000000000000000000000031-0000000000000031-01",
+            ),
+        )
+        .await
+        .expect("request completes");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let story_response = app
+        .clone()
+        .oneshot(admin_get("/admin/runtime/stories/corr_admin_action_story"))
+        .await
+        .expect("story request completes");
+    assert_eq!(story_response.status(), StatusCode::OK);
+    let story = json_body(story_response).await;
+    let nodes = story["data"]["nodes"].as_array().expect("nodes array");
+    let action_node = nodes
+        .iter()
+        .find(|node| node["type"] == "admin_action")
+        .expect("admin action story node");
+    assert_eq!(action_node["id"], "adminaction_req_admin_action_story");
+    assert_eq!(action_node["name"], "Sync contacts");
+    assert_eq!(action_node["status"], "completed");
+    assert_eq!(action_node["service"], "remote-crm");
+    assert_eq!(
+        action_node["metadata"]["source_metadata"]["action_name"],
+        "sync_contacts"
+    );
+    assert_eq!(
+        action_node["metadata"]["source_metadata"]["capability"],
+        "remote_crm.contacts.sync"
+    );
+    assert_eq!(
+        action_node["metadata"]["source_metadata"]["input_summary"],
+        "dry_run: true"
+    );
+    assert_eq!(
+        action_node["metadata"]["source_metadata"]["result_summary"],
+        "action: sync_contacts / input: {...}"
+    );
+    assert_eq!(
+        action_node["metadata"]["source_metadata"]["trace_id"],
+        "00000000000000000000000000000031"
+    );
+    assert_eq!(
+        action_node["metadata"]["source_metadata"]["span_id"],
+        "0000000000000031"
+    );
+
+    let operations_response = app
+        .oneshot(admin_get(
+            "/admin/runtime/stories/corr_admin_action_story/technical-operations",
+        ))
+        .await
+        .expect("technical operations request completes");
+    assert_eq!(operations_response.status(), StatusCode::OK);
+    let operations = json_body(operations_response).await;
+    let operation = operations["data"]
+        .as_array()
+        .expect("operations array")
+        .iter()
+        .find(|operation| operation["source"] == "admin_action")
+        .expect("admin action technical operation");
+    assert_eq!(operation["category"], "admin");
+    assert_eq!(operation["status"], "ok");
+    assert_eq!(
+        operation["related_node_id"],
+        "adminaction_req_admin_action_story"
+    );
+    assert_eq!(
+        operation["attributes"]["request_id"],
+        "req_admin_action_story"
+    );
+    assert_eq!(operation["attributes"]["module_name"], "remote-crm");
+
+    db.cleanup().await;
 }
 
 #[tokio::test]

@@ -643,6 +643,8 @@ function FunctionTechnicalOperationRow({
               "border-[#f59e0b]/40 bg-[#f59e0b]/10 text-[#d97706]",
             operation.source === "remote_runtime" &&
               "border-[#14b8a6]/40 bg-[#14b8a6]/10 text-[#0f9488]",
+            operation.source === "admin_action" &&
+              "border-[#8b5cf6]/40 bg-[#8b5cf6]/10 text-[#7c3aed]",
             operation.source === "otel" &&
               "border-(--border-subtle) bg-(--elevated) text-(--muted)"
           )}

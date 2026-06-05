@@ -1,3 +1,4 @@
+pub mod admin_actions;
 pub mod clock;
 pub mod config;
 pub mod context;
@@ -20,6 +21,9 @@ pub mod telemetry_attrs;
 pub mod telemetry_query;
 pub mod worker_runtime_config;
 
+pub use admin_actions::{
+    AdminActionStoryRecord, admin_action_story_event_id, insert_admin_action_story_event,
+};
 pub use clock::{Clock, SystemClock};
 pub use config::{
     AppConfig, AuthConfig, DatabaseConfig, HttpConfig, LogFormat, ModuleConfig,
