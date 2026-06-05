@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Boxes,
   KeyRound,
+  Network,
   RefreshCw,
   Route,
   ScrollText,
@@ -12,6 +13,7 @@ import {
 import { useState } from "react";
 
 import { Button } from "../components/ui/button";
+import { useRemoteProxyCalls } from "../hooks/use-runtime-queries";
 import { cn } from "../lib/cn";
 import {
   httpClient,
@@ -34,9 +36,16 @@ import {
   moduleRuntimeFunctionRows,
   moduleManifestChecks,
   moduleManifestHealth,
+  remoteModuleReadiness,
   moduleStatusLabel,
   storyDisplayRows,
 } from "./data-render-model";
+import { pushOperationsUrl } from "./operations-url-model";
+import {
+  flattenRemoteProxyCallPages,
+  remoteProxyCallsPath,
+  summarizeRemoteProxyCalls,
+} from "./remote-proxy-calls-model";
 
 type ModulesResponse = {
   modules: AdminModuleMetadata[];
@@ -391,6 +400,9 @@ function ModuleRegistryDetail({ module }: { module: AdminModuleMetadata }) {
         )}
       </section>
 
+      {module.source === "remote" ? (
+        <RemoteModuleHealthPanel module={module} />
+      ) : null}
       <ModuleGovernancePanel module={module} />
       <ModuleCapabilitiesList capabilities={module.capabilities} />
       <ModuleStoryDisplayTable rows={storyRows} />
@@ -398,6 +410,96 @@ function ModuleRegistryDetail({ module }: { module: AdminModuleMetadata }) {
       <ModuleManifestChecks checks={manifestChecks} />
       <ModuleHttpRoutesTable rows={routeRows} />
     </div>
+  );
+}
+
+function RemoteModuleHealthPanel({ module }: { module: AdminModuleMetadata }) {
+  const callsQuery = useRemoteProxyCalls({
+    limit: 25,
+    moduleName: module.module_name,
+  });
+  const calls = flattenRemoteProxyCallPages(callsQuery.data?.pages);
+  const summary = summarizeRemoteProxyCalls(calls);
+  const readiness = remoteModuleReadiness(module, calls);
+  const { latestFailure } = readiness;
+
+  return (
+    <section className="min-w-0 border border-(--border-subtle) bg-(--surface)">
+      <header className="flex items-center gap-2 border-b border-(--border-subtle) px-3 py-2 font-semibold">
+        <Network className="text-(--accent)" size={14} />
+        <span>Remote Health</span>
+        <span
+          className={cn(
+            "ml-auto border px-1.5 py-0.5 text-[10px]",
+            readiness.status === "ready" &&
+              "border-[color-mix(in_srgb,var(--success)_45%,transparent)] text-(--success)",
+            readiness.status === "degraded" &&
+              "border-[color-mix(in_srgb,var(--warning)_55%,transparent)] text-(--warning)",
+            readiness.status === "blocked" &&
+              "border-[color-mix(in_srgb,var(--error)_55%,transparent)] text-(--error)"
+          )}
+        >
+          {readiness.status}
+        </span>
+        <button
+          className="border border-(--border-subtle) bg-(--elevated) px-1.5 py-0.5 text-[10px] text-(--secondary) hover:text-(--foreground)"
+          onClick={() =>
+            pushOperationsUrl(
+              remoteProxyCallsPath({ moduleName: module.module_name })
+            )
+          }
+          type="button"
+        >
+          Remote Calls
+        </button>
+      </header>
+      {callsQuery.isError ? (
+        <p className="border-b border-(--border-subtle) px-3 py-2 text-(--error)">
+          Failed to load recent remote calls.
+        </p>
+      ) : callsQuery.isLoading ? (
+        <p className="border-b border-(--border-subtle) px-3 py-2 text-(--muted)">
+          Loading recent remote calls...
+        </p>
+      ) : null}
+      <MetadataRows
+        rows={[
+          { label: "readiness", value: readiness.status },
+          { label: "reason", value: readiness.reasons.join(" / ") },
+          { label: "manifest", value: moduleManifestHealth(module) },
+          { label: "activation", value: moduleActivationLabel(module) },
+          { label: "http routes", value: String(module.http_routes.length) },
+          {
+            label: "runtime functions",
+            value: String(module.runtime?.functions.length ?? 0),
+          },
+          { label: "recent calls", value: String(summary.total) },
+          { label: "failed calls", value: String(summary.failed) },
+          {
+            label: "avg duration",
+            value: formatRemoteDuration(summary.avgDurationMs),
+          },
+          {
+            label: "p95 duration",
+            value: formatRemoteDuration(summary.p95DurationMs),
+          },
+          {
+            label: "latest failure",
+            value: latestFailure
+              ? [
+                  latestFailure.error_code ?? "unknown_error",
+                  latestFailure.remote_status
+                    ? `status ${latestFailure.remote_status}`
+                    : null,
+                  latestFailure.occurred_at,
+                ]
+                  .filter(Boolean)
+                  .join(" / ")
+              : "-",
+          },
+        ]}
+      />
+    </section>
   );
 }
 
@@ -747,6 +849,13 @@ function ModuleHttpRoutesTable({
       </div>
     </section>
   );
+}
+
+function formatRemoteDuration(ms: number) {
+  if (ms < 1000) {
+    return `${ms}ms`;
+  }
+  return `${(ms / 1000).toFixed(1)}s`;
 }
 
 function ModulesPlaceholder({ reason }: { reason: string }) {

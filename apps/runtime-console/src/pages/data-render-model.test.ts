@@ -25,6 +25,7 @@ import {
   moduleManifestCheckGroups,
   moduleManifestChecks,
   moduleManifestHealth,
+  remoteModuleReadiness,
   moduleStatusLabel,
   recordId,
   renderCell,
@@ -246,6 +247,54 @@ describe("module status helpers", () => {
       "remote manifest request failed"
     );
     expect(moduleErrorMessage(loadedModule)).toBeNull();
+  });
+
+  test("summarizes remote module readiness from metadata and recent calls", () => {
+    const remoteModule = moduleMetadata({
+      module_name: "remote-crm",
+      source: "remote",
+      status: "loaded",
+      error: null,
+      http_routes: [],
+      admin: null,
+    });
+
+    expect(remoteModuleReadiness(remoteModule, [])).toEqual({
+      latestFailure: null,
+      reasons: ["remote module is ready"],
+      status: "ready",
+    });
+
+    expect(
+      remoteModuleReadiness(remoteModule, [
+        {
+          error_code: "upstream_timeout",
+          occurred_at: "2026-06-03T00:00:01.000Z",
+          remote_status: 504,
+          success: false,
+        },
+        {
+          occurred_at: "2026-06-03T00:00:00.000Z",
+          remote_status: 200,
+          success: true,
+        },
+      ])
+    ).toMatchObject({
+      latestFailure: {
+        error_code: "upstream_timeout",
+        remote_status: 504,
+      },
+      reasons: ["1/2 recent calls failed"],
+      status: "degraded",
+    });
+
+    expect(remoteModuleReadiness(errorModule, [])).toMatchObject({
+      reasons: [
+        "remote manifest request failed",
+        "manifest has blocking lints",
+      ],
+      status: "blocked",
+    });
   });
 
   test("labels module activation state from governance metadata", () => {

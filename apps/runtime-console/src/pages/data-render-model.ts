@@ -207,6 +207,19 @@ export type ModuleHttpRouteRow = {
   storyTitle: string;
 };
 
+export type RemoteModuleCallObservation = {
+  success: boolean;
+  error_code?: string | null;
+  remote_status?: number | null;
+  occurred_at: string;
+};
+
+export type RemoteModuleReadiness = {
+  status: "ready" | "degraded" | "blocked";
+  reasons: string[];
+  latestFailure: RemoteModuleCallObservation | null;
+};
+
 export type RuntimeRetryPolicyDeclaration = {
   max_attempts: number;
   initial_delay_ms: number;
@@ -577,6 +590,53 @@ export function moduleGovernanceRows(
       value: String(governance.capability_summary.unused_count),
     },
   ];
+}
+
+export function remoteModuleReadiness(
+  module: AdminModuleMetadata,
+  recentCalls: RemoteModuleCallObservation[]
+): RemoteModuleReadiness {
+  const reasons: string[] = [];
+  const lintHealth = moduleManifestHealth(module);
+  const activation = moduleActivationLabel(module);
+  const latestFailure =
+    recentCalls
+      .filter((call) => !call.success)
+      .sort((a, b) => b.occurred_at.localeCompare(a.occurred_at))[0] ?? null;
+  const failedCalls = recentCalls.filter((call) => !call.success).length;
+
+  if (!moduleIsLoaded(module)) {
+    reasons.push(moduleErrorMessage(module) ?? "module failed to load");
+  }
+  if (lintHealth === "error") {
+    reasons.push("manifest has blocking lints");
+  } else if (lintHealth === "warning") {
+    reasons.push("manifest has warnings");
+  }
+  if (activation === "blocked") {
+    reasons.push("activation is blocked");
+  } else if (activation === "needs attention") {
+    reasons.push("activation needs attention");
+  }
+  if (failedCalls > 0) {
+    reasons.push(`${failedCalls}/${recentCalls.length} recent calls failed`);
+  }
+
+  if (
+    !moduleIsLoaded(module) ||
+    lintHealth === "error" ||
+    activation === "blocked"
+  ) {
+    return { latestFailure, reasons, status: "blocked" };
+  }
+  if (reasons.length > 0) {
+    return { latestFailure, reasons, status: "degraded" };
+  }
+  return {
+    latestFailure,
+    reasons: ["remote module is ready"],
+    status: "ready",
+  };
 }
 
 function moduleGovernance(module: AdminModuleMetadata): ModuleGovernance {
