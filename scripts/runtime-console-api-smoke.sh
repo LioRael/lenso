@@ -5,6 +5,7 @@ api_base="${VITE_API_BASE_URL:-${API_BASE_URL:-http://localhost:3000}}"
 token="${RUNTIME_CONSOLE_TOKEN:-dev-service:admin}"
 auth_header="Authorization: Bearer $token"
 remote_fixture_correlation_id="${RUNTIME_CONSOLE_REMOTE_FIXTURE_CORRELATION_ID:-corr_console_api_fixture}"
+remote_runtime_function_name="${RUNTIME_CONSOLE_REMOTE_FUNCTION_NAME:-remote_crm.sync_contact.v1}"
 
 require_cmd() {
     if ! command -v "$1" >/dev/null 2>&1; then
@@ -40,6 +41,26 @@ assert_jq() {
         jq . "$file" >&2 || cat "$file" >&2
         exit 1
     fi
+}
+
+wait_for_remote_runtime_function() {
+    file="$1"
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do
+        api_get "/admin/runtime/functions?function_name=$remote_runtime_function_name&limit=10" >"$file"
+        if jq -e '[.data[] | select(.status == "completed")] | length > 0' "$file" >/dev/null; then
+            return 0
+        fi
+        if jq -e '[.data[] | select(.status == "dead")] | length > 0' "$file" >/dev/null; then
+            break
+        fi
+        sleep 1
+    done
+
+    echo "Runtime Console API smoke failed: remote runtime function did not complete" >&2
+    echo "Start the worker through just console-api-demo or run app-worker with REMOTE_MODULES configured." >&2
+    echo "Response:" >&2
+    jq . "$file" >&2 || cat "$file" >&2
+    exit 1
 }
 
 tmpdir="$(mktemp -d)"
@@ -172,9 +193,72 @@ if [ "$(jq '.data | length' "$remote_calls")" -gt 0 ]; then
     assert_json "$logs" '.page.limit | type == "number"' "remote proxy logs page metadata is missing"
 fi
 
+remote_functions="$tmpdir/remote-functions.json"
+wait_for_remote_runtime_function "$remote_functions"
+assert_jq "$remote_functions" "remote runtime function list item is missing declaration metadata" \
+    --arg function_name "$remote_runtime_function_name" '
+    any(.data[];
+        .function_name == $function_name
+        and .status == "completed"
+        and .runtime_declaration.module_name == "remote-crm"
+        and .runtime_declaration.module_source == "remote"
+        and .runtime_declaration.queue == "remote-crm"
+        and .runtime_declaration.input_schema == $function_name
+    )
+'
+remote_function_id="$(jq -r --arg function_name "$remote_runtime_function_name" '[.data[] | select(.function_name == $function_name and .status == "completed")][0].id' "$remote_functions")"
+remote_function_correlation_id="$(jq -r --arg id "$remote_function_id" '.data[] | select(.id == $id) | .correlation_id' "$remote_functions")"
+
+remote_function_detail="$tmpdir/remote-function-detail.json"
+api_get "/admin/runtime/functions/$remote_function_id" >"$remote_function_detail"
+assert_jq "$remote_function_detail" "remote runtime function detail is incomplete" \
+    --arg id "$remote_function_id" \
+    --arg function_name "$remote_runtime_function_name" '
+    .data.id == $id
+    and .data.function_name == $function_name
+    and .data.status == "completed"
+    and .data.runtime_declaration.module_source == "remote"
+    and .data.input_json.reason == "worker_startup"
+'
+
+remote_function_story="$tmpdir/remote-function-story.json"
+api_get "/admin/runtime/stories/$remote_function_correlation_id" >"$remote_function_story"
+assert_jq "$remote_function_story" "remote runtime function story node is missing" \
+    --arg id "$remote_function_id" \
+    --arg function_name "$remote_runtime_function_name" '
+    any(.data.nodes[]; .id == $id and .type == "function" and .name == $function_name and .status == "completed")
+    and any(.data.timeline_items[]; .related_node_id == $id and .type == "function_run")
+'
+
+remote_function_operations="$tmpdir/remote-function-operations.json"
+api_get "/admin/runtime/executions/$remote_function_id/technical-operations" >"$remote_function_operations"
+assert_jq "$remote_function_operations" "remote runtime technical operation is missing" \
+    --arg id "$remote_function_id" \
+    --arg function_name "$remote_runtime_function_name" '
+    any(.data[];
+        .related_node_id == $id
+        and .source == "remote_runtime"
+        and .status == "ok"
+        and .attributes.function_name == $function_name
+        and .attributes.module_name == "remote-crm"
+        and .attributes.success == true
+    )
+'
+
+remote_function_logs="$tmpdir/remote-function-logs.json"
+api_get "/admin/runtime/executions/$remote_function_id/logs" >"$remote_function_logs"
+assert_jq "$remote_function_logs" "remote runtime function logs are missing lifecycle entries" \
+    --arg id "$remote_function_id" '
+    (.page.limit | type == "number")
+    and any(.data[]; .node_id == $id and .body == "Function run started")
+    and any(.data[]; .node_id == $id and .body == "Function handler operation completed" and .attributes.source == "remote_runtime")
+    and any(.data[]; .node_id == $id and .body == "Function run completed")
+'
+
 echo "Runtime Console API smoke passed."
 echo "- summary supports queue pressure inputs"
 echo "- outbox list/detail supports dead-letter inspector payload and actor"
 echo "- functions list/detail supports operation inspector metadata"
 echo "- remote calls support filters and pagination"
 echo "- remote call stories expose nodes, technical operations, payloads, and logs"
+echo "- remote runtime functions complete with story nodes, operations, and logs"

@@ -110,6 +110,8 @@ remote_modules="remote-crm=$remote_base,remote-crm-embedded=$remote_base/embedde
 start_bg env HTTP_HOST="$api_host" HTTP_PORT="$api_port" REMOTE_MODULES="$remote_modules" cargo run --locked -p app-api
 wait_for_health "$api_base/readyz" "API"
 
+start_bg env REMOTE_MODULES="$remote_modules" cargo run --locked -p app-worker
+
 start_bg env VITE_RUNTIME_CONSOLE_MODE=api VITE_API_BASE_URL="$api_base" pnpm --dir=apps/runtime-console exec vite --host 0.0.0.0 --port "$console_port" --strictPort
 wait_for_url "http://localhost:$console_port/" "Runtime Console"
 
@@ -120,8 +122,9 @@ Runtime Console API demo is running.
 Remote module:  http://$remote_addr
 API base:       $api_base
 Console page:   $console_url
+Worker:         app-worker with remote runtime functions
 
-Verify the seeded remote story path:
+Verify the seeded remote story and runtime function paths:
   just console-api-qa
 
 Open the Console and check:

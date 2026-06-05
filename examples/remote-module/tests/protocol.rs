@@ -98,10 +98,7 @@ async fn embedded_manifest_matches_remote_module_protocol() {
         manifest["admin"]["fallback_schema"]["entities"][0]["name"],
         "contacts"
     );
-    assert_eq!(
-        manifest["runtime"]["functions"][0]["name"],
-        "remote_crm.sync_contact.v1"
-    );
+    assert!(manifest["runtime"].is_null());
 }
 
 #[tokio::test]
@@ -147,10 +144,7 @@ async fn declarative_manifest_matches_remote_module_protocol() {
         manifest["admin"]["fallback_schema"]["entities"][0]["name"],
         "contacts"
     );
-    assert_eq!(
-        manifest["runtime"]["functions"][0]["name"],
-        "remote_crm.sync_contact.v1"
-    );
+    assert!(manifest["runtime"].is_null());
 }
 
 #[tokio::test]

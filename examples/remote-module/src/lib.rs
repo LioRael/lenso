@@ -218,7 +218,6 @@ async fn declarative_manifest() -> Json<ModuleManifest> {
                 fallback_schema: Some(contacts_schema()),
             })
             .http_routes(contact_http_routes())
-            .runtime(runtime_surface())
             .capabilities(vec!["remote_crm.contacts.read".to_owned()])
             .build(),
     )
@@ -244,7 +243,6 @@ async fn embedded_manifest(headers: HeaderMap) -> Json<ModuleManifest> {
                 fallback_schema: Some(contacts_schema()),
             })
             .http_routes(contact_http_routes())
-            .runtime(runtime_surface())
             .capabilities(vec!["remote_crm.contacts.read".to_owned()])
             .build(),
     )
