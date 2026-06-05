@@ -160,6 +160,34 @@ fn runtime_console_legacy_route_alias_fails() {
     );
 }
 
+#[test]
+fn removed_openapi_path_fails() {
+    let root = TestRepo::new();
+    root.write(
+        "contracts/openapi/app-api.v1.yaml",
+        r#"
+        openapi: 3.1.0
+        info:
+          title: test
+          version: 0.0.0
+        paths:
+          /admin/runtime/timeline/{correlation_id}:
+            get:
+              operationId: admin_runtime_get_timeline
+        "#,
+    );
+
+    let error = arch_check::check_openapi_omits_removed_paths(root.path())
+        .expect_err("removed OpenAPI path should fail");
+
+    assert!(
+        error
+            .to_string()
+            .contains("removed API paths must not remain"),
+        "{error}",
+    );
+}
+
 struct TestRepo {
     root: std::path::PathBuf,
 }

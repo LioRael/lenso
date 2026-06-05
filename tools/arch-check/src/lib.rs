@@ -15,6 +15,7 @@ const MANIFEST_LINT_MESSAGES: &[&str] = &[
     "Declared routes include display and story metadata.",
 ];
 const REQUIRED_OPENAPI_ARTIFACTS: &[&str] = &["contracts/openapi/app-api.v1.yaml"];
+const FORBIDDEN_OPENAPI_PATHS: &[&str] = &["/admin/runtime/timeline/{correlation_id}"];
 const FORBIDDEN_RUNTIME_CONSOLE_ROUTE_ALIASES: &[&str] = &[
     "/runtime/traces",
     "/events",
@@ -64,6 +65,11 @@ pub fn run() -> anyhow::Result<()> {
     collect_result(
         check_required_openapi_artifacts(&root),
         "required OpenAPI artifacts",
+        &mut failures,
+    );
+    collect_result(
+        check_openapi_omits_removed_paths(&root),
+        "removed OpenAPI paths",
         &mut failures,
     );
     collect_result(
@@ -243,6 +249,30 @@ pub fn check_required_openapi_artifacts(root: &Path) -> anyhow::Result<()> {
     }
 
     ensure_empty(missing, "required OpenAPI artifacts are missing")
+}
+
+pub fn check_openapi_omits_removed_paths(root: &Path) -> anyhow::Result<()> {
+    let openapi_path = root.join("contracts/openapi/app-api.v1.yaml");
+    let openapi = read_yaml(openapi_path.clone())?;
+    let paths = openapi
+        .get("paths")
+        .and_then(Value::as_object)
+        .context("OpenAPI document should contain object paths")?;
+    let mut violations = Vec::new();
+
+    for path in FORBIDDEN_OPENAPI_PATHS {
+        if paths.contains_key(*path) {
+            violations.push(format!(
+                "{} still declares removed path `{path}`",
+                relative(root, &openapi_path),
+            ));
+        }
+    }
+
+    ensure_empty(
+        violations,
+        "removed API paths must not remain in committed OpenAPI",
+    )
 }
 
 pub fn check_contract_artifacts_fresh(root: &Path) -> anyhow::Result<()> {
