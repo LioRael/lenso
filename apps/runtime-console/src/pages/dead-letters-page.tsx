@@ -1,4 +1,4 @@
-import { RotateCcw, Search } from "lucide-react";
+import { RotateCcw, Search, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { JsonViewer } from "../components/runtime/json-viewer";
@@ -107,6 +107,7 @@ export function DeadLettersPage() {
       <main className="grid min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-(--border-subtle)">
         <header className="border-b border-(--border-subtle) bg-(--surface) px-3 py-2">
           <div className="flex items-center gap-2">
+            <TriangleAlert className="text-(--accent)" size={14} />
             <h1 className="font-mono text-[13px] font-semibold">
               Dead Letters
             </h1>

@@ -10,7 +10,6 @@ import { useEffect, useMemo, useState } from "react";
 import { JsonViewer } from "../components/runtime/json-viewer";
 import { ResizeHandle } from "../components/runtime/resize-handle";
 import { useRuntimeConsole } from "../components/runtime/runtime-console-context";
-import { StatusPill } from "../components/runtime/status-pill";
 import { Button } from "../components/ui/button";
 import { retryTargetFor, type FunctionRun } from "../data/mock-runtime";
 import { useListKeyboard } from "../hooks/use-list-keyboard";
@@ -270,7 +269,7 @@ export function FunctionsPage() {
                   onClick={() => setSelectedIndex(indexOf(visible, run.id))}
                   type="button"
                 >
-                  <StatusPill status={run.status} />
+                  <FunctionStatusPill status={run.status} />
                   <span className="min-w-0">
                     <span className="block truncate text-(--foreground)">
                       {run.functionName}
@@ -428,6 +427,29 @@ function InspectorHeader({ run }: { run: FunctionRun | null }) {
         </div>
       ) : null}
     </header>
+  );
+}
+
+function FunctionStatusPill({ status }: { status: FunctionRun["status"] }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex h-5 w-[76px] items-center justify-center border px-1.5 font-mono text-[10px] font-semibold",
+        status === "completed" &&
+          "border-[color-mix(in_srgb,#22c55e_34%,transparent)] bg-[color-mix(in_srgb,#22c55e_10%,transparent)] text-[#22c55e]",
+        (status === "pending" ||
+          status === "processing" ||
+          status === "published" ||
+          status === "running") &&
+          "border-[color-mix(in_srgb,var(--accent)_34%,transparent)] bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] text-(--accent)",
+        status === "failed" &&
+          "border-[color-mix(in_srgb,#f59e0b_34%,transparent)] bg-[color-mix(in_srgb,#f59e0b_10%,transparent)] text-[#f59e0b]",
+        status === "dead" &&
+          "border-[color-mix(in_srgb,var(--error)_35%,transparent)] bg-[color-mix(in_srgb,var(--error)_10%,transparent)] text-[#ef4444]"
+      )}
+    >
+      {status}
+    </span>
   );
 }
 

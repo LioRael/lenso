@@ -33,10 +33,10 @@ export function OperationsPage({
 }) {
   return (
     <section className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-(--background) text-(--foreground)">
-      <header className="flex min-h-9 items-center gap-2 border-b border-(--border-subtle) bg-(--chrome) px-2">
+      <header className="flex min-h-9 items-center gap-2 overflow-hidden border-b border-(--border-subtle) bg-(--chrome) px-2">
         <nav
           aria-label="Operations sections"
-          className="flex min-w-0 items-center gap-1 overflow-x-auto"
+          className="flex min-w-0 flex-wrap items-center gap-1 overflow-hidden py-1"
         >
           {operationTabs.map((tab) => (
             <Link
