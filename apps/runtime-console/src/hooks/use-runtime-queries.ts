@@ -6,7 +6,9 @@ import {
 } from "@tanstack/react-query";
 
 import type {
+  AdminFunctionRunDetail,
   AdminFunctionRunListResponse,
+  AdminFunctionRunResponse,
   AdminRemoteProxyCallItem,
   AdminRemoteProxyCallListResponse,
   AdminRuntimeFunctionDeclarationMetadata,
@@ -58,6 +60,8 @@ export const runtimeQueryKeys = {
   summary: ["runtime", "summary"] as const,
   events: ["runtime", "events"] as const,
   functions: ["runtime", "functions"] as const,
+  functionDetail: (id: string) =>
+    ["runtime", "functions", id, "detail"] as const,
   heatmap: ["runtime", "heatmap"] as const,
   storyHeatmap: (id: string) => ["runtime", "stories", id, "heatmap"] as const,
   timeline: (id: string) => ["runtime", "timeline", id] as const,
@@ -151,6 +155,19 @@ export function useRuntimeFunctions() {
   return useQuery({
     queryKey: runtimeQueryKeys.functions,
     queryFn: async () => (isApiMode() ? fetchRuntimeFunctions() : functionRuns),
+  });
+}
+
+export function useRuntimeFunctionDetail(run: FunctionRun | null) {
+  return useQuery({
+    enabled: Boolean(run?.id),
+    queryKey: runtimeQueryKeys.functionDetail(run?.id ?? "-"),
+    queryFn: async () => {
+      if (!run) {
+        throw new Error("Function run detail query requires a run");
+      }
+      return isApiMode() ? fetchRuntimeFunctionDetail(run.id, run) : run;
+    },
   });
 }
 
@@ -455,6 +472,16 @@ async function fetchRuntimeFunctions(): Promise<FunctionRun[]> {
   return response.data.map(normalizeFunctionRunForConsole);
 }
 
+async function fetchRuntimeFunctionDetail(
+  id: string,
+  fallback: FunctionRun
+): Promise<FunctionRun> {
+  const response = await httpClient
+    .get(`admin/runtime/functions/${encodeURIComponent(id)}`)
+    .json<AdminFunctionRunResponse>();
+  return normalizeFunctionRunDetailForConsole(response.data, fallback);
+}
+
 async function fetchRuntimeTimeline(id: string): Promise<TimelineItem[]> {
   const response = await httpClient
     .get(`admin/runtime/timeline/${encodeURIComponent(id)}`)
@@ -703,6 +730,30 @@ function toRuntimeEvent(event: AdminRuntimeOutboxItem): RuntimeEvent {
 export function normalizeFunctionRunForConsole(
   run: AdminRuntimeFunctionRunItem
 ): FunctionRun {
+  return {
+    ...normalizeFunctionRunCore(run),
+    actor: toActor(undefined),
+    input: {},
+    logs: run.last_error ? [run.last_error] : [],
+  };
+}
+
+export function normalizeFunctionRunDetailForConsole(
+  run: AdminFunctionRunDetail,
+  fallback?: FunctionRun
+): FunctionRun {
+  return {
+    ...normalizeFunctionRunCore(run),
+    actor: toActor(run.actor),
+    input: toRecordInput(run.input_json),
+    ...(fallback?.output ? { output: fallback.output } : {}),
+    logs: run.last_error ? [run.last_error] : (fallback?.logs ?? []),
+  };
+}
+
+function normalizeFunctionRunCore(
+  run: AdminRuntimeFunctionRunItem | AdminFunctionRunDetail
+): Omit<FunctionRun, "actor" | "input" | "logs"> {
   const runtimeDeclaration = toRuntimeFunctionDeclaration(
     run.runtime_declaration
   );
@@ -719,14 +770,11 @@ export function normalizeFunctionRunForConsole(
     ...(run.completed_at ? { completedAt: run.completed_at } : {}),
     ...(run.locked_by ? { lockedBy: run.locked_by } : {}),
     ...(run.last_error ? { lastError: run.last_error } : {}),
-    actor: toActor(undefined),
-    input: {},
-    logs: run.last_error ? [run.last_error] : [],
   };
 }
 
 function toRuntimeFunctionDeclaration(
-  value: AdminRuntimeFunctionRunItem["runtime_declaration"]
+  value: unknown
 ): FunctionRun["runtimeDeclaration"] | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return undefined;
@@ -755,6 +803,16 @@ function toRuntimeFunctionDeclaration(
       : {}),
     ...(retryPolicy ? { retryPolicy } : {}),
   };
+}
+
+function toRecordInput(value: unknown): Record<string, unknown> {
+  if (!value) {
+    return {};
+  }
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return { value };
 }
 
 function toRuntimeRetryPolicy(
@@ -913,14 +971,23 @@ function toActor(value: unknown): Actor {
     return { kind: "system" };
   }
 
-  const actor = value as Partial<Actor>;
+  const actor = value as Partial<Actor> &
+    Partial<{ service_id: string; user_id: string }>;
   if (actor.kind === "anonymous" || actor.kind === "system") {
     return { kind: actor.kind };
   }
   if (actor.kind === "user" || actor.kind === "service") {
+    const id =
+      typeof actor.id === "string"
+        ? actor.id
+        : actor.kind === "user" && typeof actor.user_id === "string"
+          ? actor.user_id
+          : actor.kind === "service" && typeof actor.service_id === "string"
+            ? actor.service_id
+            : "-";
     return {
       kind: actor.kind,
-      id: "id" in actor && typeof actor.id === "string" ? actor.id : "-",
+      id,
       scopes: Array.isArray(actor.scopes) ? actor.scopes : [],
     };
   }

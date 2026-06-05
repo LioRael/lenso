@@ -8,6 +8,7 @@ import {
   type RuntimeRecord,
   type TimelineItem,
 } from "../../data/mock-runtime";
+import { useRuntimeFunctionDetail } from "../../hooks/use-runtime-queries";
 import { actorLabel, duration, time } from "../../lib/format";
 import { Button } from "../ui/button";
 import { Drawer } from "../ui/drawer";
@@ -64,7 +65,7 @@ function bodyFor(target: RuntimeRecord) {
     return <EventBody event={target.item} record={target} />;
   }
   if (target.kind === "function") {
-    return <FunctionBody record={target} run={target.item} />;
+    return <FunctionBody run={target.item} />;
   }
   return <TimelineBody item={target.item} record={target} />;
 }
@@ -158,54 +159,62 @@ function EventBody({
   );
 }
 
-function FunctionBody({
-  record,
-  run,
-}: {
-  run: FunctionRun;
-  record: RuntimeRecord;
-}) {
+function FunctionBody({ run }: { run: FunctionRun }) {
   const { openRetry, openTimeline } = useRuntimeConsole();
-  const retryTarget = retryTargetFor(record);
+  const detailQuery = useRuntimeFunctionDetail(run);
+  const displayRun = detailQuery.data ?? run;
+  const displayRecord: RuntimeRecord = {
+    kind: "function",
+    item: displayRun,
+  };
+  const retryTarget = retryTargetFor(displayRecord);
   return (
     <>
       <SummaryStrip
-        attempts={run.attempts}
-        durationValue={duration(run.startedAt, run.completedAt)}
-        maxAttempts={run.maxAttempts}
-        status={run.status}
+        attempts={displayRun.attempts}
+        durationValue={duration(displayRun.startedAt, displayRun.completedAt)}
+        maxAttempts={displayRun.maxAttempts}
+        status={displayRun.status}
       />
+      {detailQuery.isFetching ? (
+        <p className="text-xs text-(--muted)">Loading detail...</p>
+      ) : null}
+      {detailQuery.isError ? (
+        <ErrorBox>
+          Function detail unavailable: {errorMessage(detailQuery.error)}
+        </ErrorBox>
+      ) : null}
       <DrawerSection title="Metadata">
         <MetadataGrid>
           <dt>id</dt>
-          <dd className="mono">{run.id}</dd>
+          <dd className="mono">{displayRun.id}</dd>
           <dt>locked by</dt>
-          <dd className="mono">{run.lockedBy ?? "-"}</dd>
+          <dd className="mono">{displayRun.lockedBy ?? "-"}</dd>
           <dt>started</dt>
-          <dd>{time(run.startedAt)}</dd>
+          <dd>{time(displayRun.startedAt)}</dd>
           <dt>completed</dt>
-          <dd>{time(run.completedAt)}</dd>
+          <dd>{time(displayRun.completedAt)}</dd>
         </MetadataGrid>
       </DrawerSection>
-      {run.runtimeDeclaration ? (
+      {displayRun.runtimeDeclaration ? (
         <DrawerSection title="Declaration">
           <MetadataGrid>
             <dt>module</dt>
-            <dd className="mono">{run.runtimeDeclaration.moduleName}</dd>
+            <dd className="mono">{displayRun.runtimeDeclaration.moduleName}</dd>
             <dt>source</dt>
-            <dd>{run.runtimeDeclaration.moduleSource}</dd>
+            <dd>{displayRun.runtimeDeclaration.moduleSource}</dd>
             <dt>queue</dt>
-            <dd className="mono">{run.runtimeDeclaration.queue}</dd>
+            <dd className="mono">{displayRun.runtimeDeclaration.queue}</dd>
             <dt>version</dt>
-            <dd>{run.runtimeDeclaration.version}</dd>
+            <dd>{displayRun.runtimeDeclaration.version}</dd>
             <dt>input schema</dt>
             <dd className="mono">
-              {run.runtimeDeclaration.inputSchema ?? "-"}
+              {displayRun.runtimeDeclaration.inputSchema ?? "-"}
             </dd>
             <dt>retry policy</dt>
             <dd className="mono">
-              {run.runtimeDeclaration.retryPolicy
-                ? `${run.runtimeDeclaration.retryPolicy.maxAttempts} attempts / ${run.runtimeDeclaration.retryPolicy.initialDelayMs}ms`
+              {displayRun.runtimeDeclaration.retryPolicy
+                ? `${displayRun.runtimeDeclaration.retryPolicy.maxAttempts} attempts / ${displayRun.runtimeDeclaration.retryPolicy.initialDelayMs}ms`
                 : "-"}
             </dd>
           </MetadataGrid>
@@ -214,25 +223,27 @@ function FunctionBody({
       <DrawerSection title="Context">
         <MetadataGrid>
           <dt>correlation</dt>
-          <dd className="mono">{run.correlationId}</dd>
+          <dd className="mono">{displayRun.correlationId}</dd>
           <dt>actor</dt>
-          <dd className="mono">{actorLabel(run.actor)}</dd>
+          <dd className="mono">{actorLabel(displayRun.actor)}</dd>
         </MetadataGrid>
       </DrawerSection>
-      {run.lastError ? (
+      {displayRun.lastError ? (
         <DrawerSection title="Error">
-          <ErrorBox>{run.lastError}</ErrorBox>
+          <ErrorBox>{displayRun.lastError}</ErrorBox>
         </DrawerSection>
       ) : null}
-      <JsonViewer title="Input" value={run.input} />
-      {run.output ? <JsonViewer title="Output" value={run.output} /> : null}
+      <JsonViewer title="Input" value={displayRun.input} />
+      {displayRun.output ? (
+        <JsonViewer title="Output" value={displayRun.output} />
+      ) : null}
       <DrawerSection title="Logs">
         <pre className="mono overflow-auto rounded-lg border border-(--border-subtle) bg-[color-mix(in_srgb,var(--background)_20%,transparent)] p-3 text-xs leading-6 text-(--secondary)">
-          {run.logs.join("\n")}
+          {displayRun.logs.join("\n")}
         </pre>
       </DrawerSection>
       <div className="flex flex-wrap gap-2.5">
-        <Button onClick={() => openTimeline(run.correlationId)}>
+        <Button onClick={() => openTimeline(displayRun.correlationId)}>
           <Activity size={15} />
           Timeline
         </Button>
@@ -337,4 +348,8 @@ function ErrorBox({ children }: { children: ReactNode }) {
       {children}
     </div>
   );
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Runtime request failed";
 }
