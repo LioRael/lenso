@@ -131,6 +131,7 @@ export type AdminModuleMetadata = {
   error: string | null;
   http_routes: ModuleHttpRoute[];
   runtime: RuntimeSurface | null;
+  lifecycle: LifecycleSurface | null;
   manifest_lints: ModuleManifestLint[];
   story_display: StoryDisplayDescriptor[];
   capabilities: string[];
@@ -194,6 +195,33 @@ export type RuntimeFunctionDeclaration = {
   queue: string;
   input_schema?: string | null;
   retry_policy?: RuntimeRetryPolicyDeclaration | null;
+};
+
+export type LifecycleStartupCheck =
+  | {
+      kind: "function_registered";
+      name: string;
+      required?: boolean;
+      function_name: string;
+    }
+  | {
+      kind: "capability_declared";
+      name: string;
+      required?: boolean;
+      capability: string;
+    };
+
+export type LifecycleActivationJob = {
+  name: string;
+  function_name: string;
+  run_policy?: "every_startup";
+  input?: unknown;
+  required?: boolean;
+};
+
+export type LifecycleSurface = {
+  startup_checks?: LifecycleStartupCheck[];
+  activation_jobs?: LifecycleActivationJob[];
 };
 
 export type RuntimeSurface = {
@@ -339,6 +367,7 @@ export function schemaModulesToAdminMetadata(
     manifest_lints: [],
     module_name: module.module_name,
     runtime: null,
+    lifecycle: null,
     source: module.source,
     status: module.status,
     story_display: [],
@@ -586,7 +615,7 @@ export function manifestLintCategory(subject: string): string {
   if (subject.startsWith("capability ")) {
     return "capability";
   }
-  if (subject === "routes" || subject.includes(" ")) {
+  if (subject === "routes" || /^[A-Z]+\s+\//u.test(subject)) {
     return "routes";
   }
   if (subject.startsWith("admin.embedded.")) {
@@ -600,6 +629,9 @@ export function manifestLintCategory(subject: string): string {
   }
   if (subject.startsWith("runtime.")) {
     return "runtime";
+  }
+  if (subject === "lifecycle" || subject.startsWith("lifecycle.")) {
+    return "lifecycle";
   }
   if (subject.startsWith("module.")) {
     return "module";

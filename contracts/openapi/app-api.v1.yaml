@@ -2671,6 +2671,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ModuleHttpRoute'
+        lifecycle:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/LifecycleSurface'
         manifest_lints:
           type: array
           items:
@@ -3964,6 +3968,71 @@ components:
             enum:
             - json
       description: Minimal field-type vocabulary. `Json` is the catch-all so any field renders.
+    LifecycleActivationJobDeclaration:
+      type: object
+      required:
+      - name
+      - function_name
+      properties:
+        function_name:
+          type: string
+        input: {}
+        name:
+          type: string
+        required:
+          type: boolean
+        run_policy:
+          $ref: '#/components/schemas/LifecycleActivationRunPolicy'
+    LifecycleActivationRunPolicy:
+      type: string
+      enum:
+      - every_startup
+    LifecycleStartupCheckDeclaration:
+      allOf:
+      - $ref: '#/components/schemas/LifecycleStartupCheckKind'
+      - type: object
+        required:
+        - name
+        properties:
+          name:
+            type: string
+          required:
+            type: boolean
+    LifecycleStartupCheckKind:
+      oneOf:
+      - type: object
+        required:
+        - function_name
+        - kind
+        properties:
+          function_name:
+            type: string
+          kind:
+            type: string
+            enum:
+            - function_registered
+      - type: object
+        required:
+        - capability
+        - kind
+        properties:
+          capability:
+            type: string
+          kind:
+            type: string
+            enum:
+            - capability_declared
+    LifecycleSurface:
+      type: object
+      properties:
+        activation_jobs:
+          type: array
+          items:
+            $ref: '#/components/schemas/LifecycleActivationJobDeclaration'
+        startup_checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/LifecycleStartupCheckDeclaration'
     MeResponse:
       type: object
       required:

@@ -3,7 +3,8 @@
 
 use platform_core::{StoryDisplayDescriptor, StoryDisplaySource};
 use platform_module::{
-    AdminSchema, AdminSurface, ModuleHttpRoute, ModuleManifestLint, ModuleSource, RuntimeSurface,
+    AdminSchema, AdminSurface, LifecycleSurface, ModuleHttpRoute, ModuleManifestLint, ModuleSource,
+    RuntimeSurface,
 };
 use serde::Serialize;
 use utoipa::ToSchema;
@@ -37,6 +38,7 @@ pub struct AdminModuleMetadataDto {
     pub error: Option<String>,
     pub http_routes: Vec<ModuleHttpRoute>,
     pub runtime: Option<RuntimeSurface>,
+    pub lifecycle: Option<LifecycleSurface>,
     pub manifest_lints: Vec<ModuleManifestLint>,
     pub story_display: Vec<StoryDisplayDescriptorDto>,
     pub capabilities: Vec<String>,

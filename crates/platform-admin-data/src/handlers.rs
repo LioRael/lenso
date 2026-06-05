@@ -156,13 +156,14 @@ fn metadata_response_modules(modules: Vec<AdminModuleMetadata>) -> Vec<AdminModu
             error: load_error_message(&m.load_status),
             http_routes: m.http_routes.clone(),
             runtime: m.runtime.clone(),
+            lifecycle: m.lifecycle.clone(),
             manifest_lints: lint_module_manifest_parts(
                 m.source,
                 &m.module_name,
                 m.admin.as_ref(),
                 &m.http_routes,
                 m.runtime.as_ref(),
-                None,
+                m.lifecycle.as_ref(),
                 &m.capabilities,
             ),
             story_display: m
@@ -218,7 +219,10 @@ fn load_error_message(status: &ModuleLoadStatus) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use platform_module::{ModuleHttpMethod, ModuleHttpRoute, ModuleSource};
+    use platform_module::{
+        LifecycleActivationJobDeclaration, LifecycleActivationRunPolicy, LifecycleSurface,
+        ModuleHttpMethod, ModuleHttpRoute, ModuleSource,
+    };
 
     #[test]
     fn metadata_response_includes_manifest_lints() {
@@ -234,16 +238,30 @@ mod tests {
                 story_title: Some("Fetch Contact".to_owned()),
             }],
             runtime: None,
+            lifecycle: Some(LifecycleSurface {
+                startup_checks: Vec::new(),
+                activation_jobs: vec![LifecycleActivationJobDeclaration {
+                    name: "warm contact cache".to_owned(),
+                    function_name: "remote_crm.warm_contact_cache.v1".to_owned(),
+                    run_policy: LifecycleActivationRunPolicy::EveryStartup,
+                    input: serde_json::json!({}),
+                    required: true,
+                }],
+            }),
             story_display: Vec::new(),
             capabilities: Vec::new(),
             admin: None,
         }]);
 
-        assert_eq!(modules[0].manifest_lints.len(), 1);
-        assert_eq!(
-            modules[0].manifest_lints[0].message,
-            "Missing capability declaration for host proxy authorization."
-        );
+        assert!(modules[0].lifecycle.is_some());
+        assert!(modules[0].manifest_lints.iter().any(|lint| {
+            lint.subject == "lifecycle.activation_job.warm contact cache"
+                && lint.message
+                    == "Lifecycle activation job references an unknown runtime function."
+        }));
+        assert!(modules[0].manifest_lints.iter().any(|lint| {
+            lint.message == "Missing capability declaration for host proxy authorization."
+        }));
     }
 }
 
