@@ -11,7 +11,6 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
-  Sparkles,
   Sun,
   Workflow,
 } from "lucide-react";
@@ -213,18 +212,6 @@ export function RuntimeConsoleShell({ children }: PropsWithChildren) {
               <NavLink key={item.to} {...item} />
             ))}
           </div>
-          <div className="mt-3 border-t border-(--border-subtle) pt-2 max-lg:hidden">
-            <div
-              aria-hidden={sidebarCollapsed}
-              className="sidebar-copy sidebar-group-label overflow-hidden whitespace-nowrap px-2 font-mono text-[10px] uppercase tracking-[0.06em] text-(--muted-deep)"
-            >
-              Future
-            </div>
-            <div className="grid gap-px">
-              <DisabledNav label="Flows" icon={Boxes} />
-              <DisabledNav label="Agents" icon={Sparkles} />
-            </div>
-          </div>
           <div className="my-2 h-px bg-(--border-subtle) max-lg:hidden" />
           <div className="grid gap-px max-lg:hidden">
             <NavLink {...configNavItem} />
@@ -325,29 +312,5 @@ function NavLink({
         {label}
       </span>
     </Link>
-  );
-}
-
-function DisabledNav({
-  label,
-  icon: Icon,
-}: {
-  label: string;
-  icon: ComponentType<{ size?: number; strokeWidth?: number }>;
-}) {
-  return (
-    <div
-      aria-label={`${label} later`}
-      className="sidebar-nav-item flex h-7 w-full items-center gap-2 px-2 font-mono text-xs text-(--muted-deep)"
-      title={`${label} later`}
-    >
-      <Icon size={13} strokeWidth={1.5} />
-      <span className="sidebar-copy min-w-0 overflow-hidden whitespace-nowrap">
-        {label}
-      </span>
-      <span className="sidebar-copy ml-auto min-w-0 overflow-hidden whitespace-nowrap text-[10px]">
-        later
-      </span>
-    </div>
   );
 }
