@@ -1,5 +1,5 @@
 import { ExternalLink, Network, RefreshCcw, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { JsonViewer } from "../components/runtime/json-viewer";
 import { ResizeHandle } from "../components/runtime/resize-handle";
@@ -24,6 +24,7 @@ import {
   resizeOperationsInspectorWidth,
   type OperationsInspectorLayout,
 } from "./operations-layout";
+import { useOperationsSelection } from "./operations-selection";
 import {
   OperationsLoadingRows,
   OperationsMessageRow,
@@ -34,11 +35,7 @@ import {
   OperationsSelectableRow,
   OperationsTableHeader,
 } from "./operations-table";
-import {
-  pushOperationsUrl,
-  readOperationsParam,
-  replaceOperationsUrl,
-} from "./operations-url-model";
+import { pushOperationsUrl, readOperationsParam } from "./operations-url-model";
 import {
   type RemoteProxyCallAggregate,
   type RemoteProxyCallResultFilter,
@@ -141,39 +138,22 @@ export function RemoteProxyCallsPage() {
     overrides: Parameters<typeof remoteCallsUrl>[0] = {}
   ) => pushOperationsUrl(remoteCallsUrl(overrides));
 
-  useEffect(() => {
-    if (visible.length === 0) {
-      if (selectedId) {
-        setSelectedId("");
-      }
-      return;
-    }
-    if (!visible.some((call) => call.id === selectedId)) {
-      setSelectedId(visible[0]?.id ?? "");
-    }
-  }, [selectedId, visible]);
-
-  useEffect(() => {
-    replaceOperationsUrl(
-      remoteProxyCallsPath({
+  const { selected, selectedIndex, selectIndex, selectItem } =
+    useOperationsSelection({
+      currentPath: remoteProxyCallsPath({
         correlationId,
         moduleName,
         query,
         result,
         selectedId,
-      })
-    );
-  }, [correlationId, moduleName, query, result, selectedId]);
-
-  const selected = visible.find((call) => call.id === selectedId) ?? null;
-  const selectedIndex = selected ? indexOf(visible, selected.id) : 0;
-  const selectIndex = (index: number) => {
-    const call = visible[index];
-    if (call) {
-      pushRemoteCallsUrl({ selectedId: call.id });
-      setSelectedId(call.id);
-    }
-  };
+      }),
+      getId: (call) => call.id,
+      items: visible,
+      pathForSelectedId: (nextSelectedId) =>
+        remoteCallsUrl({ selectedId: nextSelectedId }),
+      selectedId,
+      setSelectedId,
+    });
   const resizeInspector = (deltaX: number) => {
     setLayout((current) => ({
       ...current,
@@ -191,10 +171,7 @@ export function RemoteProxyCallsPage() {
     items: visible,
     selectedIndex,
     setSelectedIndex: selectIndex,
-    onOpen: (call) => {
-      pushRemoteCallsUrl({ selectedId: call.id });
-      setSelectedId(call.id);
-    },
+    onOpen: selectItem,
   });
 
   return (
@@ -380,10 +357,7 @@ export function RemoteProxyCallsPage() {
                   className="min-h-14 grid-cols-[92px_148px_minmax(220px,1.2fr)_minmax(220px,1.2fr)_88px_164px_88px] gap-3"
                   isSelected={isSelected}
                   key={call.id}
-                  onClick={() => {
-                    pushRemoteCallsUrl({ selectedId: call.id });
-                    setSelectedId(call.id);
-                  }}
+                  onClick={() => selectItem(call)}
                 >
                   <ResultPill call={call} />
                   <span className="min-w-0">
@@ -640,13 +614,6 @@ function formatPercent(value: number) {
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Remote calls unavailable";
-}
-
-function indexOf(items: RuntimeRemoteProxyCall[], id: string) {
-  return Math.max(
-    0,
-    items.findIndex((item) => item.id === id)
-  );
 }
 
 function readRemoteProxyCallResult(value: string): RemoteProxyCallResultFilter {

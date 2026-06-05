@@ -4,7 +4,7 @@ import {
   RotateCcw,
   TriangleAlert,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { JsonViewer } from "../components/runtime/json-viewer";
 import { ResizeHandle } from "../components/runtime/resize-handle";
@@ -35,6 +35,7 @@ import {
   resizeOperationsInspectorWidth,
   type OperationsInspectorLayout,
 } from "./operations-layout";
+import { useOperationsSelection } from "./operations-selection";
 import {
   OperationsLoadingRows,
   OperationsMessageRow,
@@ -44,7 +45,6 @@ import {
   deadLettersPath,
   pushOperationsUrl,
   readOperationsParam,
-  replaceOperationsUrl,
 } from "./operations-url-model";
 
 type DeadLetter =
@@ -125,34 +125,16 @@ export function DeadLettersPage() {
     overrides: Parameters<typeof deadLetterUrl>[0] = {}
   ) => pushOperationsUrl(deadLetterUrl(overrides));
 
-  useEffect(() => {
-    if (visible.length === 0) {
-      if (selectedId) {
-        setSelectedId("");
-      }
-      return;
-    }
-    if (!visible.some((failure) => failure.item.id === selectedId)) {
-      setSelectedId(visible[0]?.item.id ?? "");
-    }
-  }, [selectedId, visible]);
-
-  useEffect(() => {
-    replaceOperationsUrl(
-      deadLettersPath({ kind, oldestFirst, query, selectedId })
-    );
-  }, [kind, oldestFirst, query, selectedId]);
-
-  const selected =
-    visible.find((failure) => failure.item.id === selectedId) ?? null;
-  const selectedIndex = selected ? indexOf(visible, selected.item.id) : 0;
-  const selectIndex = (index: number) => {
-    const failure = visible[index];
-    if (failure) {
-      pushDeadLetterUrl({ selectedId: failure.item.id });
-      setSelectedId(failure.item.id);
-    }
-  };
+  const { selected, selectedIndex, selectIndex, selectItem } =
+    useOperationsSelection({
+      currentPath: deadLettersPath({ kind, oldestFirst, query, selectedId }),
+      getId: (failure) => failure.item.id,
+      items: visible,
+      pathForSelectedId: (nextSelectedId) =>
+        deadLetterUrl({ selectedId: nextSelectedId }),
+      selectedId,
+      setSelectedId,
+    });
   const retryFailure = (failure: DeadLetter) => {
     const retryTarget = retryTargetFor(
       failure.kind === "event"
@@ -181,10 +163,7 @@ export function DeadLettersPage() {
     items: visible,
     selectedIndex,
     setSelectedIndex: selectIndex,
-    onOpen: (failure) => {
-      pushDeadLetterUrl({ selectedId: failure.item.id });
-      setSelectedId(failure.item.id);
-    },
+    onOpen: selectItem,
     onRetry: retryFailure,
   });
 
@@ -264,10 +243,7 @@ export function DeadLettersPage() {
                       : "hover:bg-(--elevated)"
                   }`}
                   key={item.id}
-                  onClick={() => {
-                    pushDeadLetterUrl({ selectedId: item.id });
-                    setSelectedId(item.id);
-                  }}
+                  onClick={() => selectItem(failure)}
                   type="button"
                 >
                   <StatusPill status={item.status} />
@@ -484,13 +460,6 @@ function FunctionFailureInspector({ run }: { run: FunctionRun }) {
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Runtime request failed";
-}
-
-function indexOf(items: DeadLetter[], id: string) {
-  return Math.max(
-    0,
-    items.findIndex((item) => item.item.id === id)
-  );
 }
 
 function readDeadLetterKind(value: string): "all" | "event" | "function" {

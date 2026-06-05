@@ -1,6 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { ExternalLink, Inbox, RefreshCcw } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { ResizeHandle } from "../components/runtime/resize-handle";
 import { Button } from "../components/ui/button";
@@ -22,18 +22,14 @@ import {
   resizeOperationsInspectorWidth,
   type OperationsInspectorLayout,
 } from "./operations-layout";
+import { useOperationsSelection } from "./operations-selection";
 import { OperationsMessageRow } from "./operations-state";
 import {
   OperationsKeyValueRows,
   OperationsSelectableRow,
   OperationsTableHeader,
 } from "./operations-table";
-import {
-  pushOperationsUrl,
-  queuesPath,
-  readOperationsParam,
-  replaceOperationsUrl,
-} from "./operations-url-model";
+import { queuesPath, readOperationsParam } from "./operations-url-model";
 import {
   buildQueueRowsFromSummary,
   filterQueueRows,
@@ -80,8 +76,6 @@ export function QueuesPage() {
     }),
     { dead: 0, failed: 0, pending: 0, running: 0 }
   );
-  const selected = rows.find((row) => queueRowId(row) === selectedId) ?? null;
-  const selectedTarget = selected ? queueRouteTarget(selected) : null;
   const isRefetching =
     summaryQuery.isRefetching ||
     eventsQuery.isRefetching ||
@@ -92,27 +86,6 @@ export function QueuesPage() {
     setSelectedId(search.get("selected") ?? "");
   });
 
-  useEffect(() => {
-    if (rows.length === 0) {
-      if (selectedId) {
-        setSelectedId("");
-      }
-      return;
-    }
-    if (!rows.some((row) => queueRowId(row) === selectedId)) {
-      setSelectedId(queueRowId(rows[0]!));
-    }
-  }, [rows, selectedId]);
-
-  useEffect(() => {
-    replaceOperationsUrl(queuesPath({ query, selectedId }));
-  }, [query, selectedId]);
-
-  const selectQueue = (row: QueueRow) => {
-    const nextId = queueRowId(row);
-    pushOperationsUrl(queuesPath({ query, selectedId: nextId }));
-    setSelectedId(nextId);
-  };
   const refreshQueues = () => {
     void Promise.all([
       summaryQuery.refetch(),
@@ -120,13 +93,17 @@ export function QueuesPage() {
       functionsQuery.refetch(),
     ]);
   };
-  const selectedIndex = selected ? indexOf(rows, queueRowId(selected)) : 0;
-  const selectIndex = (index: number) => {
-    const row = rows[index];
-    if (row) {
-      selectQueue(row);
-    }
-  };
+  const { selected, selectedIndex, selectIndex, selectItem } =
+    useOperationsSelection({
+      currentPath: queuesPath({ query, selectedId }),
+      getId: queueRowId,
+      items: rows,
+      pathForSelectedId: (nextSelectedId) =>
+        queuesPath({ query, selectedId: nextSelectedId }),
+      selectedId,
+      setSelectedId,
+    });
+  const selectedTarget = selected ? queueRouteTarget(selected) : null;
   const resizeInspector = (deltaX: number) => {
     setLayout((current) => ({
       ...current,
@@ -142,7 +119,7 @@ export function QueuesPage() {
 
   useListKeyboard({
     items: rows,
-    onOpen: selectQueue,
+    onOpen: selectItem,
     selectedIndex,
     setSelectedIndex: selectIndex,
   });
@@ -228,7 +205,7 @@ export function QueuesPage() {
                   className="min-h-11 grid-cols-[minmax(180px,1fr)_72px_72px_72px_72px_92px_minmax(120px,240px)] gap-2"
                   isSelected={isSelected}
                   key={queue.name}
-                  onClick={() => selectQueue(queue)}
+                  onClick={() => selectItem(queue)}
                 >
                   <span className="truncate text-(--foreground)">
                     {queue.name}
@@ -352,11 +329,4 @@ function formatOldest(seconds: number | undefined) {
     return `${seconds}s`;
   }
   return `${Math.round(seconds / 60)}m`;
-}
-
-function indexOf(items: QueueRow[], id: string) {
-  return Math.max(
-    0,
-    items.findIndex((item) => queueRowId(item) === id)
-  );
 }

@@ -1,5 +1,5 @@
 import { Braces, ExternalLink, RefreshCcw, RotateCcw } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { JsonViewer } from "../components/runtime/json-viewer";
 import { ResizeHandle } from "../components/runtime/resize-handle";
@@ -36,6 +36,7 @@ import {
   resizeOperationsInspectorWidth,
   type OperationsInspectorLayout,
 } from "./operations-layout";
+import { useOperationsSelection } from "./operations-selection";
 import {
   OperationsLoadingRows,
   OperationsMessageRow,
@@ -50,7 +51,6 @@ import {
   functionsPath,
   pushOperationsUrl,
   readOperationsParam,
-  replaceOperationsUrl,
 } from "./operations-url-model";
 
 const functionsLayoutDefaults = {
@@ -128,33 +128,22 @@ export function FunctionsPage() {
   const pushFunctionUrl = (overrides: Parameters<typeof functionUrl>[0] = {}) =>
     pushOperationsUrl(functionUrl(overrides));
 
-  useEffect(() => {
-    if (visible.length === 0) {
-      if (selectedId) {
-        setSelectedId("");
-      }
-      return;
-    }
-    if (!visible.some((run) => run.id === selectedId)) {
-      setSelectedId(visible[0]?.id ?? "");
-    }
-  }, [selectedId, visible]);
-
-  useEffect(() => {
-    replaceOperationsUrl(
-      functionsPath({ moduleName, query, queue, selectedId, status })
-    );
-  }, [moduleName, query, queue, selectedId, status]);
-
-  const selected = visible.find((run) => run.id === selectedId) ?? null;
-  const selectedIndex = selected ? indexOf(visible, selected.id) : 0;
-  const selectIndex = (index: number) => {
-    const run = visible[index];
-    if (run) {
-      pushFunctionUrl({ selectedId: run.id });
-      setSelectedId(run.id);
-    }
-  };
+  const { selected, selectedIndex, selectIndex, selectItem } =
+    useOperationsSelection({
+      currentPath: functionsPath({
+        moduleName,
+        query,
+        queue,
+        selectedId,
+        status,
+      }),
+      getId: (run) => run.id,
+      items: visible,
+      pathForSelectedId: (nextSelectedId) =>
+        functionUrl({ selectedId: nextSelectedId }),
+      selectedId,
+      setSelectedId,
+    });
   const resizeInspector = (deltaX: number) => {
     setLayout((current) => ({
       ...current,
@@ -178,10 +167,7 @@ export function FunctionsPage() {
     items: visible,
     selectedIndex,
     setSelectedIndex: selectIndex,
-    onOpen: (run) => {
-      pushFunctionUrl({ selectedId: run.id });
-      setSelectedId(run.id);
-    },
+    onOpen: selectItem,
     onRetry: retryRun,
   });
 
@@ -344,10 +330,7 @@ export function FunctionsPage() {
                   className="min-h-14 grid-cols-[94px_minmax(240px,1.35fr)_minmax(150px,0.8fr)_minmax(132px,0.7fr)_86px_160px_88px] gap-3"
                   isSelected={isSelected}
                   key={run.id}
-                  onClick={() => {
-                    pushFunctionUrl({ selectedId: run.id });
-                    setSelectedId(run.id);
-                  }}
+                  onClick={() => selectItem(run)}
                 >
                   <FunctionStatusPill status={run.status} />
                   <span className="min-w-0">
@@ -589,13 +572,6 @@ function FunctionInspector({ run }: { run: FunctionRun }) {
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Function runs unavailable";
-}
-
-function indexOf(items: FunctionRun[], id: string) {
-  return Math.max(
-    0,
-    items.findIndex((item) => item.id === id)
-  );
 }
 
 function readFunctionStatus(value: string): FunctionStatusFilter {
