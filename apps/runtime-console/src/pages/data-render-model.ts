@@ -390,6 +390,8 @@ export type DeclarativeEntitySection = {
   reason: string | null;
 };
 
+const ADMIN_ACTION_RESULT_LIMIT = 96;
+
 export function moduleStatusLabel(module: AdminModuleMetadata): ModuleStatus {
   return module.status;
 }
@@ -1002,6 +1004,35 @@ export function declarativeEntitySection(
     : { entity: null, reason: `fallback schema has no entity '${entityName}'` };
 }
 
+export function adminActionResultSummary(result: unknown): string {
+  if (result === null || result === undefined) {
+    return "no result";
+  }
+  if (
+    typeof result === "string" ||
+    typeof result === "number" ||
+    typeof result === "boolean"
+  ) {
+    return truncateActionResult(String(result));
+  }
+  if (Array.isArray(result)) {
+    return truncateActionResult(`${result.length} items`);
+  }
+  if (typeof result === "object") {
+    const entries = Object.entries(result);
+    if (entries.length === 0) {
+      return "{}";
+    }
+    return truncateActionResult(
+      entries
+        .slice(0, 4)
+        .map(([key, value]) => `${key}: ${displayDeclarativeValue(value)}`)
+        .join(" / ")
+    );
+  }
+  return truncateActionResult(String(result));
+}
+
 function embeddedEntryLabel(entry: AdminEmbeddedEntry | undefined): string {
   if (!entry) {
     return "unknown";
@@ -1092,6 +1123,12 @@ function displayDeclarativeValue(value: unknown): string {
     return String(value);
   }
   return JSON.stringify(value);
+}
+
+function truncateActionResult(value: string): string {
+  return value.length > ADMIN_ACTION_RESULT_LIMIT
+    ? `${value.slice(0, ADMIN_ACTION_RESULT_LIMIT - 1)}…`
+    : value;
 }
 
 /** Format one raw value per its field type into a display string. */

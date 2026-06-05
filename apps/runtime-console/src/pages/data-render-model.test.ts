@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  adminActionResultSummary,
   adminSurfaceLabel,
   adminSurfaceMetadataRows,
   declarativeEntitySection,
@@ -1162,6 +1163,24 @@ describe("declarative admin helpers", () => {
       entity: null,
       reason: "fallback schema has no entity 'widgets'",
     });
+  });
+
+  test("summarizes action results for operator feedback", () => {
+    expect(
+      adminActionResultSummary({
+        contacts: 3,
+        dry_run: true,
+        nested: { queued: false },
+        skipped: null,
+        synced: true,
+      })
+    ).toBe(
+      'contacts: 3 / dry_run: true / nested: {"queued":false} / skipped: —'
+    );
+    expect(adminActionResultSummary([1, 2, 3])).toBe("3 items");
+    expect(adminActionResultSummary(null)).toBe("no result");
+    expect(adminActionResultSummary("ok")).toBe("ok");
+    expect(adminActionResultSummary("x".repeat(120))).toHaveLength(96);
   });
 });
 
