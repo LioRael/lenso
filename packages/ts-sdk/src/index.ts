@@ -25,7 +25,6 @@ export type {
   AdminRuntimeTechnicalOperation,
   AdminRuntimeTechnicalOperationListResponse,
   AdminRuntimeTimelineItem,
-  AdminRuntimeTimelineResponse,
   CreateUserRequest,
   CreateUserResponse,
   CreateUserResponseEnvelope,

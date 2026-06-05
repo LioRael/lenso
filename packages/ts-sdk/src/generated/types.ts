@@ -398,12 +398,6 @@ export type AdminRuntimeTimelineItem = {
   type: string;
 };
 
-export type AdminRuntimeTimelineResponse = {
-  data: Array<AdminRuntimeTimelineItem>;
-  order: string;
-  page: PageInfo;
-};
-
 export type AdminSandboxPolicy = {
   allow_forms?: boolean;
   allow_popups?: boolean;

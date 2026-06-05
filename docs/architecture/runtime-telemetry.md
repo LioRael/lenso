@@ -123,6 +123,10 @@ Runtime Console exposes canonical product routes only:
   `/operations/dead-letters`, and `/operations/queues` are the horizontal
   operations views.
 
+Runtime Story detail is the API surface for story timeline data:
+`GET /admin/runtime/stories/{correlation_id}` returns `timeline_items`.
+There is no standalone admin runtime timeline endpoint.
+
 Legacy Runtime Console aliases such as `/runtime/traces`, `/timeline`,
 `/events`, `/functions`, `/dead-letters`, `/remote-proxy-calls`, and `/queues`
 are intentionally not preserved. Architecture checks fail if those aliases are

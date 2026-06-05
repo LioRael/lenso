@@ -12,7 +12,6 @@ import type {
   AdminRuntimeTechnicalOperation,
   AdminRuntimeTechnicalOperationListResponse,
   AdminRuntimeTimelineItem,
-  AdminRuntimeTimelineResponse,
   PageInfo as ApiPageInfo,
 } from "../../../../packages/ts-sdk/src/generated/types";
 import type {
@@ -64,7 +63,6 @@ export type ApiRuntimeStoryDetailResponse =
   DeepPartial<AdminRuntimeStoryDetailResponse>;
 export type ApiRuntimeStoryDetail = DeepPartial<AdminRuntimeStoryDetail>;
 export type ApiRuntimeStoryEdge = DeepPartial<AdminRuntimeStoryEdge>;
-export type ApiTimelineResponse = DeepPartial<AdminRuntimeTimelineResponse>;
 export type ApiTimelineItem = DeepPartial<AdminRuntimeTimelineItem>;
 export type ApiRuntimeHeatmapResponse =
   DeepPartial<AdminRuntimeHeatmapResponse>;
@@ -226,15 +224,6 @@ export function normalizeRuntimeStory(
     timelineItems,
     timestamp,
   };
-}
-
-export function normalizeTimelineItems(
-  response: ApiTimelineResponse,
-  fallbackCorrelationId: string
-): TimelineItem[] {
-  return (response.data ?? []).map((item, index) =>
-    normalizeTimelineItem(item, fallbackCorrelationId, index)
-  );
 }
 
 export function normalizeRuntimeHeatmap(

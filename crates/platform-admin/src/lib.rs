@@ -164,7 +164,6 @@ fn enrich_function_run_detail(mut run: AdminFunctionRunDetail) -> AdminFunctionR
 pub fn router() -> ApiOpenApiRouter {
     OpenApiRouter::new()
         .routes(routes!(get_summary))
-        .routes(routes!(get_timeline))
         .routes(routes!(get_heatmap))
         .routes(routes!(list_stories))
         .routes(routes!(get_story))

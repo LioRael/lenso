@@ -90,20 +90,6 @@ pub(crate) type StoryEventDetailRow = (
     Option<String>,
 );
 
-pub(crate) type TimelineRow = (
-    String,
-    String,
-    String,
-    String,
-    i32,
-    i32,
-    DateTime<Utc>,
-    Option<DateTime<Utc>>,
-    Option<DateTime<Utc>>,
-    Option<String>,
-    String,
-);
-
 pub(crate) type SummaryCountRow = (i64, i64, i64, i64, i64, Option<i64>, Option<i64>);
 
 pub(crate) type SummaryItemRow = (
@@ -475,40 +461,6 @@ impl From<StoryEventDetailRow> for StoryEventDetail {
             metadata,
             trace_id,
             span_id,
-        }
-    }
-}
-
-impl From<TimelineRow> for AdminRuntimeTimelineItem {
-    fn from(row: TimelineRow) -> Self {
-        let (
-            item_type,
-            id,
-            name,
-            status,
-            attempts,
-            max_attempts,
-            created_at,
-            started_at,
-            completed_at,
-            last_error,
-            correlation_id,
-        ) = row;
-        let related_node_id = Some(id.clone());
-
-        Self {
-            item_type,
-            id,
-            name,
-            status,
-            attempts,
-            max_attempts,
-            created_at,
-            started_at,
-            completed_at,
-            last_error,
-            correlation_id,
-            related_node_id,
         }
     }
 }

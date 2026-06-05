@@ -30,12 +30,6 @@ pub struct RemoteProxyCallQuery {
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
-pub struct TimelineQuery {
-    pub limit: Option<i64>,
-    pub created_before: Option<DateTime<Utc>>,
-}
-
-#[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct StoryQuery {
     pub limit: Option<i64>,
@@ -99,14 +93,6 @@ pub struct AdminRemoteProxyCallListResponse {
 #[schema(as = AdminFunctionRunResponse)]
 pub struct AdminFunctionRunResponse {
     pub data: AdminFunctionRunDetail,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-#[schema(as = AdminRuntimeTimelineResponse)]
-pub struct AdminRuntimeTimelineResponse {
-    pub data: Vec<AdminRuntimeTimelineItem>,
-    pub page: PageInfo,
-    pub order: &'static str,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
