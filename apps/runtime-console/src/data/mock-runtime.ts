@@ -217,6 +217,25 @@ export type RemoteProxyCall = {
   trace_id?: string | null;
 };
 
+export type AdminActionInvocation = {
+  action_name: string;
+  capability?: string | null;
+  correlation_id: string;
+  duration_ms: number;
+  error_code?: string | null;
+  error_message?: string | null;
+  id: string;
+  input_summary?: string | null;
+  label: string;
+  module_name: string;
+  occurred_at: string;
+  request_id?: string | null;
+  result_summary?: string | null;
+  span_id?: string | null;
+  success: boolean;
+  trace_id?: string | null;
+};
+
 export const correlationId = "corr_01HX9A7K2R_RUNTIME";
 
 export const runtimeStories: RuntimeStory[] = [
@@ -1230,6 +1249,63 @@ export const remoteProxyCalls: RemoteProxyCall[] = [
     span_id: "span_remote_contact_sync",
     success: false,
     trace_id: "trace_remote_contact_sync",
+  },
+];
+
+export const adminActionInvocations: AdminActionInvocation[] = [
+  {
+    action_name: "sync_contacts",
+    capability: "remote_crm.contacts.sync",
+    correlation_id: "corr_admin_action_contact_sync",
+    duration_ms: 128,
+    error_code: null,
+    error_message: null,
+    id: "adminaction_req_admin_contact_sync",
+    input_summary: "dry_run: true",
+    label: "Sync contacts",
+    module_name: "remote-crm",
+    occurred_at: "2026-06-03T10:14:22.150Z",
+    request_id: "req_admin_contact_sync",
+    result_summary: "queued contact sync",
+    span_id: "span_admin_contact_sync",
+    success: true,
+    trace_id: "trace_admin_contact_sync",
+  },
+  {
+    action_name: "rebuild_customer_index",
+    capability: "identity.users.maintain",
+    correlation_id: "corr_admin_action_reindex",
+    duration_ms: 2410,
+    error_code: "action_validation_failed",
+    error_message: "input window must be less than 24h",
+    id: "adminaction_req_admin_reindex_failed",
+    input_summary: "window: 7d",
+    label: "Rebuild customer index",
+    module_name: "identity",
+    occurred_at: "2026-06-03T10:02:09.300Z",
+    request_id: "req_admin_reindex_failed",
+    result_summary: null,
+    span_id: "span_admin_reindex_failed",
+    success: false,
+    trace_id: "trace_admin_reindex_failed",
+  },
+  {
+    action_name: "replay_invoice_export",
+    capability: "billing.invoices.export",
+    correlation_id: "corr_admin_action_invoice_export",
+    duration_ms: 860,
+    error_code: null,
+    error_message: null,
+    id: "adminaction_req_admin_invoice_export",
+    input_summary: "invoice_count: 42",
+    label: "Replay invoice export",
+    module_name: "remote-billing",
+    occurred_at: "2026-06-03T09:49:18.000Z",
+    request_id: "req_admin_invoice_export",
+    result_summary: "export replay scheduled",
+    span_id: null,
+    success: true,
+    trace_id: "trace_admin_invoice_export",
   },
 ];
 

@@ -509,6 +509,7 @@ async fn admin_action_invocation_records_story_and_technical_operation() {
     );
 
     let operations_response = app
+        .clone()
         .oneshot(admin_get(
             "/admin/runtime/stories/corr_admin_action_story/technical-operations",
         ))
@@ -533,6 +534,27 @@ async fn admin_action_invocation_records_story_and_technical_operation() {
         "req_admin_action_story"
     );
     assert_eq!(operation["attributes"]["module_name"], "remote-crm");
+
+    let list_response = app
+        .oneshot(admin_get(
+            "/admin/runtime/admin-actions?module_name=remote-crm&action_name=sync_contacts&correlation_id=corr_admin_action_story&success=true",
+        ))
+        .await
+        .expect("admin action list request completes");
+    assert_eq!(list_response.status(), StatusCode::OK);
+    let list = json_body(list_response).await;
+    assert_eq!(list["data"][0]["id"], "adminaction_req_admin_action_story");
+    assert_eq!(list["data"][0]["module_name"], "remote-crm");
+    assert_eq!(list["data"][0]["action_name"], "sync_contacts");
+    assert_eq!(list["data"][0]["label"], "Sync contacts");
+    assert_eq!(list["data"][0]["success"], true);
+    assert_eq!(list["data"][0]["capability"], "remote_crm.contacts.sync");
+    assert_eq!(list["data"][0]["request_id"], "req_admin_action_story");
+    assert_eq!(list["data"][0]["input_summary"], "dry_run: true");
+    assert_eq!(
+        list["data"][0]["result_summary"],
+        "action: sync_contacts / input: {...}"
+    );
 
     db.cleanup().await;
 }

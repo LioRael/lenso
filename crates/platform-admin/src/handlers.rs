@@ -1325,6 +1325,107 @@ pub(crate) async fn list_remote_proxy_calls(
 
 #[utoipa::path(
     get,
+    path = "/admin/runtime/admin-actions",
+    operation_id = "admin_runtime_list_admin_action_invocations",
+    tag = "admin-runtime",
+    params(
+        ("authorization" = String, Header, description = "Development service bearer token, for example `Bearer dev-service:admin`"),
+        ("x-request-id" = Option<String>, Header, description = "Optional caller-provided request identifier"),
+        ("x-correlation-id" = Option<String>, Header, description = "Optional caller-provided correlation identifier"),
+        AdminActionInvocationQuery
+    ),
+    responses(
+        (
+            status = 200,
+            description = "Recent declarative admin action invocations",
+            body = AdminActionInvocationListResponse,
+            content_type = "application/json",
+            headers(
+                ("x-request-id" = String, description = "Request identifier for this HTTP request"),
+                ("x-correlation-id" = String, description = "Correlation identifier shared across related work")
+            )
+        ),
+        (
+            status = 401,
+            description = "Authentication is required",
+            body = ErrorResponse,
+            content_type = "application/json"
+        ),
+        (
+            status = 403,
+            description = "Service or system authentication is required",
+            body = ErrorResponse,
+            content_type = "application/json"
+        ),
+        (
+            status = 500,
+            description = "Internal server error",
+            body = ErrorResponse,
+            content_type = "application/json"
+        )
+    )
+)]
+pub(crate) async fn list_admin_action_invocations(
+    _admin: AdminActor,
+    State(ctx): State<AppContext>,
+    HttpRequestContext(request_ctx): HttpRequestContext,
+    Query(query): Query<AdminActionInvocationQuery>,
+) -> Result<Json<AdminActionInvocationListResponse>, ApiErrorResponse> {
+    let limit = normalized_limit(query.limit);
+    let rows = sqlx::query_as::<_, AdminActionInvocationTuple>(
+        r#"
+        select
+            id,
+            service as module_name,
+            coalesce(metadata ->> 'action_name', name) as action_name,
+            coalesce(metadata ->> 'label', name) as label,
+            metadata ->> 'capability' as capability,
+            duration_ms,
+            status <> 'failed' as success,
+            metadata ->> 'error_code' as error_code,
+            metadata ->> 'error_message' as error_message,
+            metadata ->> 'request_id' as request_id,
+            correlation_id,
+            trace_id,
+            span_id,
+            metadata ->> 'input_summary' as input_summary,
+            metadata ->> 'result_summary' as result_summary,
+            started_at as occurred_at
+        from platform.story_events
+        where source_type = 'admin_action'
+          and ($1::text is null or service = $1)
+          and ($2::text is null or metadata ->> 'action_name' = $2)
+          and ($3::text is null or metadata ->> 'capability' = $3)
+          and ($4::text is null or correlation_id = $4)
+          and ($5::boolean is null or (status <> 'failed') = $5)
+          and ($6::timestamptz is null or started_at < $6)
+        order by started_at desc, id desc
+        limit $7
+        "#,
+    )
+    .bind(query.module_name)
+    .bind(query.action_name)
+    .bind(query.capability)
+    .bind(query.correlation_id)
+    .bind(query.success)
+    .bind(query.created_before)
+    .bind(limit)
+    .fetch_all(&ctx.db)
+    .await
+    .map_err(|source| query_error(source, &request_ctx))?;
+
+    let data = rows
+        .into_iter()
+        .map(AdminActionInvocation::from)
+        .collect::<Vec<_>>();
+    Ok(Json(AdminActionInvocationListResponse {
+        page: page_info(limit, data.last().map(|item| item.occurred_at)),
+        data,
+    }))
+}
+
+#[utoipa::path(
+    get,
     path = "/admin/runtime/outbox",
     operation_id = "admin_runtime_list_outbox",
     tag = "admin-runtime",

@@ -119,6 +119,25 @@ pub(crate) type HeatmapRow = (
 
 pub(crate) type RuntimeNodeRefTuple = (String, String, String);
 
+pub(crate) type AdminActionInvocationTuple = (
+    String,
+    String,
+    String,
+    String,
+    Option<String>,
+    i64,
+    bool,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    DateTime<Utc>,
+);
+
 #[derive(Debug, Clone)]
 pub(crate) struct RuntimeNodeRef {
     pub(crate) id: String,
@@ -540,6 +559,48 @@ impl From<RuntimeNodeRefTuple> for RuntimeNodeRef {
             id,
             item_type,
             correlation_id,
+        }
+    }
+}
+
+impl From<AdminActionInvocationTuple> for AdminActionInvocation {
+    fn from(row: AdminActionInvocationTuple) -> Self {
+        let (
+            id,
+            module_name,
+            action_name,
+            label,
+            capability,
+            duration_ms,
+            success,
+            error_code,
+            error_message,
+            request_id,
+            correlation_id,
+            trace_id,
+            span_id,
+            input_summary,
+            result_summary,
+            occurred_at,
+        ) = row;
+
+        Self {
+            id,
+            module_name,
+            action_name,
+            label,
+            capability,
+            duration_ms,
+            success,
+            error_code,
+            error_message,
+            request_id,
+            correlation_id,
+            trace_id,
+            span_id,
+            input_summary,
+            result_summary,
+            occurred_at,
         }
     }
 }

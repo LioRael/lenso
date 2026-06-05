@@ -3,7 +3,12 @@ import type { ReactNode } from "react";
 
 import { cn } from "../lib/cn";
 
-type OperationKey = "queues" | "dead-letters" | "functions" | "remote-calls";
+type OperationKey =
+  | "queues"
+  | "dead-letters"
+  | "functions"
+  | "remote-calls"
+  | "admin-actions";
 
 const operationTabs: Array<{
   key: OperationKey;
@@ -21,6 +26,11 @@ const operationTabs: Array<{
     key: "remote-calls",
     label: "Remote Calls",
     to: "/operations/remote-calls",
+  },
+  {
+    key: "admin-actions",
+    label: "Admin Actions",
+    to: "/operations/admin-actions",
   },
 ];
 

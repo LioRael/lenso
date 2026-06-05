@@ -535,6 +535,119 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /admin/runtime/admin-actions:
+    get:
+      tags:
+      - admin-runtime
+      operationId: admin_runtime_list_admin_action_invocations
+      parameters:
+      - name: authorization
+        in: header
+        description: Development service bearer token, for example `Bearer dev-service:admin`
+        required: true
+        schema:
+          type: string
+      - name: x-request-id
+        in: header
+        description: Optional caller-provided request identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: x-correlation-id
+        in: header
+        description: Optional caller-provided correlation identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: module_name
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: action_name
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: capability
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: correlation_id
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: success
+        in: query
+        required: false
+        schema:
+          type:
+          - boolean
+          - 'null'
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type:
+          - integer
+          - 'null'
+          format: int64
+      - name: created_before
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+          format: date-time
+      responses:
+        '200':
+          description: Recent declarative admin action invocations
+          headers:
+            x-correlation-id:
+              schema:
+                type: string
+              description: Correlation identifier shared across related work
+            x-request-id:
+              schema:
+                type: string
+              description: Request identifier for this HTTP request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminActionInvocationListResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/runtime/executions/{node_id}/logs:
     get:
       tags:
@@ -2377,6 +2490,80 @@ components:
           type: string
         name:
           type: string
+    AdminActionInvocationItem:
+      type: object
+      required:
+      - id
+      - module_name
+      - action_name
+      - label
+      - duration_ms
+      - success
+      - correlation_id
+      - occurred_at
+      properties:
+        action_name:
+          type: string
+        capability:
+          type:
+          - string
+          - 'null'
+        correlation_id:
+          type: string
+        duration_ms:
+          type: integer
+          format: int64
+        error_code:
+          type:
+          - string
+          - 'null'
+        error_message:
+          type:
+          - string
+          - 'null'
+        id:
+          type: string
+        input_summary:
+          type:
+          - string
+          - 'null'
+        label:
+          type: string
+        module_name:
+          type: string
+        occurred_at:
+          type: string
+          format: date-time
+        request_id:
+          type:
+          - string
+          - 'null'
+        result_summary:
+          type:
+          - string
+          - 'null'
+        span_id:
+          type:
+          - string
+          - 'null'
+        success:
+          type: boolean
+        trace_id:
+          type:
+          - string
+          - 'null'
+    AdminActionInvocationListResponse:
+      type: object
+      required:
+      - data
+      - page
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminActionInvocationItem'
+        page:
+          $ref: '#/components/schemas/PageInfo'
     AdminActionInvokeRequest:
       type: object
       description: Request body for `POST /admin/data/{module}/actions/{action}`.
