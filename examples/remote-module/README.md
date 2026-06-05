@@ -60,32 +60,84 @@ Operations.
 Use this flow when checking that the remote HTTP proxy is visible from the
 Runtime Story perspective.
 
-Start the remote module fixture:
+From the repo root, start the full local demo:
+
+```sh
+just console-api-demo
+```
+
+This starts local Postgres and migrations, launches the remote module fixture,
+starts the API with `remote-crm`, `remote-crm-embedded`, and
+`remote-crm-declarative` loaded, and opens Runtime Console in API mode.
+
+If Postgres is already running and migrated, skip the database setup:
+
+```sh
+SKIP_DB_SETUP=1 just console-api-demo
+```
+
+If the default ports are busy, override them:
+
+```sh
+REMOTE_MODULE_ADDR=127.0.0.1:4101 HTTP_PORT=3001 VITE_API_BASE_URL=http://localhost:3001 CONSOLE_PORT=5176 just console-api-demo
+```
+
+In another shell, seed and verify the remote story path:
+
+```sh
+just console-api-qa
+```
+
+`console-api-qa` creates a deterministic remote proxy call with
+`correlation_id = corr_console_api_fixture`, then verifies Remote Calls, Runtime
+Story nodes/timeline, Technical Operations, payloads, and logs.
+
+To create only the fixture without running the full QA assertions:
+
+```sh
+just console-api-fixture
+```
+
+To run only the API smoke assertions against existing data:
+
+```sh
+just console-api-smoke
+```
+
+The host path after `/modules/remote-crm/http` is matched against the module
+manifest route `/contacts/{id}`. A path such as `/contact_1` or a token missing
+`remote_crm.contacts.read` will not hit this declared route.
+
+In Runtime Console, verify:
+
+- Remote Calls contains `corr_console_api_fixture`.
+- Stories contains `corr_console_api_fixture` with a `Remote Call` timeline row.
+- The row summary shows `ok / remote-crm / GET /contacts/{id} / status 200`.
+- Selecting the remote call node shows request, trace, span, path params, and
+  route details in the Inspector.
+- Technical Operations includes a row with `source = remote_proxy`.
+
+Manual fallback:
 
 ```sh
 cargo run --locked -p remote-module-example
 ```
 
-In another shell, start local infrastructure and run migrations:
+In another shell:
 
 ```sh
 just db-up
 just migrate
-```
-
-Start the API with the remote module configured:
-
-```sh
 REMOTE_MODULES=remote-crm=http://127.0.0.1:4100/lenso/module/v1 just api
 ```
 
-Start Runtime Console against that API:
+In a third shell:
 
 ```sh
 just console-api
 ```
 
-Trigger a successful proxied contact fetch:
+Then trigger a successful proxied contact fetch:
 
 ```sh
 curl \
@@ -94,10 +146,6 @@ curl \
   -H "x-correlation-id: corr_demo_remote_story_1" \
   http://localhost:3000/modules/remote-crm/http/contacts/contact_1
 ```
-
-The host path after `/modules/remote-crm/http` is matched against the module
-manifest route `/contacts/{id}`. A path such as `/contact_1` or a token missing
-`remote_crm.contacts.read` will not hit this declared route.
 
 Trigger a failed remote response that is still recorded as a remote proxy call:
 
@@ -109,16 +157,8 @@ curl \
   http://localhost:3000/modules/remote-crm/http/proxy-fixtures/text
 ```
 
-In Runtime Console, verify:
-
-- Stories contains `corr_demo_remote_story_1` with a `Remote Call` timeline row.
-- The row summary shows `ok / remote-crm / GET /contacts/{id} / status 200`.
-- Selecting the remote call node shows a `remote proxy` block in Inspector
-  overview with request, trace, span, path params, and route details.
-- Technical Operations includes a row with `source = remote_proxy`.
-- Remote Calls can be filtered by `correlation_id = corr_demo_remote_story_1`.
-- The failure request creates a failed `remote_proxy_call` node and keeps its
-  remote error details in Inspector and Technical Operations.
+The failure request creates a failed `remote_proxy_call` node and keeps its
+remote error details in Inspector and Technical Operations.
 
 To load both the schema-admin module and the embedded iframe module:
 
@@ -139,3 +179,7 @@ For a one-command local Console demo from the repo root:
 ```sh
 just embedded-admin-demo
 ```
+
+Use `just console-api-demo` for the broader Remote Calls and Runtime Story QA
+flow. Use `just embedded-admin-demo` when the focus is specifically embedded and
+declarative admin surfaces.

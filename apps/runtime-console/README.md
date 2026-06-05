@@ -48,6 +48,44 @@ Local API calls use the development service token:
 Authorization: Bearer dev-service:admin
 ```
 
+## Remote Module API QA
+
+From the repo root, start a full remote-module Runtime Console demo:
+
+```bash
+just console-api-demo
+```
+
+Then seed and verify the remote story path:
+
+```bash
+just console-api-qa
+```
+
+Useful focused commands:
+
+```bash
+just console-api-fixture
+just console-api-smoke
+```
+
+The QA fixture creates a remote proxy call with
+`correlation_id = corr_console_api_fixture`, then verifies the Remote Calls page
+data, Runtime Story remote node/timeline shape, Technical Operations, payloads,
+and logs.
+
+If Postgres is already running and migrated:
+
+```bash
+SKIP_DB_SETUP=1 just console-api-demo
+```
+
+If default ports are busy:
+
+```bash
+REMOTE_MODULE_ADDR=127.0.0.1:4101 HTTP_PORT=3001 VITE_API_BASE_URL=http://localhost:3001 CONSOLE_PORT=5176 just console-api-demo
+```
+
 ## Architecture
 
 - `src/app`: router and root providers.
