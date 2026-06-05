@@ -24,8 +24,8 @@ use platform_core::{
 };
 use platform_http::ApiOpenApiRouter;
 use platform_module::{
-    AdminSchema, AdminSurface, LifecycleActivationRunPolicy, LinkedBinding, Module,
-    ModuleLoadStatus, ModuleManifest, ModuleSource,
+    AdminSchema, AdminSurface, LifecycleActivationRunPolicy, LifecycleStartupCheckKind,
+    LinkedBinding, Module, ModuleLoadStatus, ModuleManifest, ModuleSource,
 };
 use platform_module_remote::{RemoteHttpProxyRegistry, RemoteModuleConfig, RemoteModuleSource};
 use platform_runtime::{EnqueueFunctionRequest, FunctionRegistry, RuntimeClient};
@@ -357,6 +357,9 @@ pub async fn enqueue_lifecycle_activation_jobs(
             if job.run_policy != LifecycleActivationRunPolicy::EveryStartup {
                 continue;
             }
+            if !module_declares_runtime_function(module, &job.function_name) {
+                continue;
+            }
 
             let Some(definition) = registry.get(&job.function_name) else {
                 continue;
@@ -377,7 +380,9 @@ pub async fn enqueue_lifecycle_activation_jobs(
                             "module_lifecycle:{}:{}",
                             module.manifest.name, job.name
                         )),
-                        max_attempts: Some(definition.retry_policy.max_attempts as i32),
+                        max_attempts: Some(runtime_max_attempts_for_enqueue(
+                            definition.retry_policy.max_attempts,
+                        )),
                     })
                     .await?,
             );
@@ -396,31 +401,127 @@ fn validate_lifecycle_activation_jobs(
             continue;
         };
 
+        for check in &lifecycle.startup_checks {
+            if !check.required {
+                continue;
+            }
+
+            match &check.check {
+                LifecycleStartupCheckKind::FunctionRegistered { function_name } => {
+                    if !module_declares_runtime_function(module, function_name) {
+                        return Err(lifecycle_validation_error(
+                            &module.manifest.name,
+                            "startup_checks",
+                            &check.name,
+                            format!(
+                                "required startup check `{}` references function `{}` not declared by module `{}`",
+                                check.name, function_name, module.manifest.name
+                            ),
+                        ));
+                    }
+                    if registry.get(function_name).is_none() {
+                        return Err(lifecycle_validation_error(
+                            &module.manifest.name,
+                            "startup_checks",
+                            &check.name,
+                            format!(
+                                "required startup check `{}` references missing function `{}`",
+                                check.name, function_name
+                            ),
+                        ));
+                    }
+                }
+                LifecycleStartupCheckKind::CapabilityDeclared { capability } => {
+                    if !module.manifest.capabilities.contains(capability) {
+                        return Err(lifecycle_validation_error(
+                            &module.manifest.name,
+                            "startup_checks",
+                            &check.name,
+                            format!(
+                                "required startup check `{}` references missing capability `{}`",
+                                check.name, capability
+                            ),
+                        ));
+                    }
+                }
+                _ => {
+                    return Err(lifecycle_validation_error(
+                        &module.manifest.name,
+                        "startup_checks",
+                        &check.name,
+                        format!(
+                            "required startup check `{}` uses an unsupported lifecycle check kind",
+                            check.name
+                        ),
+                    ));
+                }
+            }
+        }
+
         for job in &lifecycle.activation_jobs {
             if job.run_policy != LifecycleActivationRunPolicy::EveryStartup {
                 continue;
             }
-            if !job.required || registry.get(&job.function_name).is_some() {
+            if !job.required {
                 continue;
             }
 
-            return Err(AppError::validation(
-                "Lifecycle activation job references an unregistered runtime function",
-                vec![ErrorDetail {
-                    field: Some(format!(
-                        "module.{}.lifecycle.activation_jobs.{}",
-                        module.manifest.name, job.name
-                    )),
-                    reason: format!(
+            if !module_declares_runtime_function(module, &job.function_name) {
+                return Err(lifecycle_validation_error(
+                    &module.manifest.name,
+                    "activation_jobs",
+                    &job.name,
+                    format!(
+                        "required activation job `{}` references function `{}` not declared by module `{}`",
+                        job.name, job.function_name, module.manifest.name
+                    ),
+                ));
+            }
+            if registry.get(&job.function_name).is_none() {
+                return Err(lifecycle_validation_error(
+                    &module.manifest.name,
+                    "activation_jobs",
+                    &job.name,
+                    format!(
                         "required activation job `{}` references missing function `{}`",
                         job.name, job.function_name
                     ),
-                }],
-            ));
+                ));
+            }
         }
     }
 
     Ok(())
+}
+
+fn module_declares_runtime_function(module: &Module, function_name: &str) -> bool {
+    module.manifest.runtime.as_ref().is_some_and(|runtime| {
+        runtime
+            .functions
+            .iter()
+            .any(|function| function.name == function_name)
+    })
+}
+
+fn lifecycle_validation_error(
+    module_name: &str,
+    collection: &str,
+    item_name: &str,
+    reason: String,
+) -> AppError {
+    AppError::validation(
+        "Module lifecycle declaration failed validation",
+        vec![ErrorDetail {
+            field: Some(format!(
+                "module.{module_name}.lifecycle.{collection}.{item_name}"
+            )),
+            reason,
+        }],
+    )
+}
+
+fn runtime_max_attempts_for_enqueue(max_attempts: u32) -> i32 {
+    i32::try_from(max_attempts).unwrap_or(i32::MAX)
 }
 
 /// Build an [`EventHandlerRegistry`] from every module's binding.
@@ -485,7 +586,10 @@ mod tests {
         LoggingEventPublisher, ModuleSourcesConfig, PLATFORM_MIGRATIONS, ServiceConfig,
         TelemetryConfig, apply_migrations,
     };
-    use platform_module::{LifecycleActivationJobDeclaration, LifecycleSurface};
+    use platform_module::{
+        LifecycleActivationJobDeclaration, LifecycleStartupCheckDeclaration, LifecycleSurface,
+        RuntimeFunctionDeclaration, RuntimeSurface,
+    };
     use platform_runtime::{FunctionDefinition, FunctionHandler, RUNTIME_MIGRATIONS, RetryPolicy};
     use platform_testing::{SequentialIdGenerator, TestDatabase};
     use serde_json::{Value, json};
@@ -574,10 +678,10 @@ mod tests {
             Arc::new(LoggingEventPublisher),
         );
         ctx.ids = Arc::new(SequentialIdGenerator::default());
-        let modules = vec![test_lifecycle_module(lifecycle_activation_job(
-            true,
-            json!({ "warm": "cache" }),
-        ))];
+        let modules = vec![
+            test_lifecycle_module(lifecycle_activation_job(true, json!({ "warm": "cache" })))
+                .into(),
+        ];
         let registry = registry_with_lifecycle_function(7);
 
         let run_ids = enqueue_lifecycle_activation_jobs(&ctx, &modules, &registry)
@@ -618,10 +722,8 @@ mod tests {
 
     #[test]
     fn lifecycle_activation_validation_rejects_required_missing_function() {
-        let modules = vec![test_lifecycle_module(lifecycle_activation_job(
-            true,
-            Value::Null,
-        ))];
+        let modules =
+            vec![test_lifecycle_module(lifecycle_activation_job(true, Value::Null)).into()];
         let registry = FunctionRegistry::default();
 
         let error = validate_lifecycle_activation_jobs(&modules, &registry)
@@ -633,8 +735,158 @@ mod tests {
             Some("module.test-module.lifecycle.activation_jobs.warm cache")
         );
         assert!(
-            error.details[0].reason.contains("test.warm_cache.v1"),
-            "validation detail should name the missing function"
+            error.details[0].reason.contains("missing function"),
+            "validation detail should name the missing registry function"
+        );
+    }
+
+    #[test]
+    fn lifecycle_activation_validation_rejects_required_startup_check_missing_function() {
+        let modules = vec![test_lifecycle_module_with_lifecycle(
+            LifecycleSurface {
+                startup_checks: vec![LifecycleStartupCheckDeclaration {
+                    name: "function registered".to_owned(),
+                    required: true,
+                    check: LifecycleStartupCheckKind::FunctionRegistered {
+                        function_name: LIFECYCLE_FUNCTION_NAME.to_owned(),
+                    },
+                }],
+                activation_jobs: Vec::new(),
+            },
+            true,
+            Vec::new(),
+        )];
+        let registry = FunctionRegistry::default();
+
+        let error = validate_lifecycle_activation_jobs(&modules, &registry)
+            .expect_err("required startup check should fail when function is missing");
+
+        assert_eq!(error.code, ErrorCode::Validation);
+        assert_eq!(
+            error.details[0].field.as_deref(),
+            Some("module.test-module.lifecycle.startup_checks.function registered")
+        );
+        assert!(
+            error.details[0].reason.contains("missing function"),
+            "validation detail should name the missing registry function"
+        );
+    }
+
+    #[test]
+    fn lifecycle_activation_validation_rejects_required_startup_check_function_not_declared() {
+        let modules = vec![test_lifecycle_module_with_lifecycle(
+            LifecycleSurface {
+                startup_checks: vec![LifecycleStartupCheckDeclaration {
+                    name: "function registered".to_owned(),
+                    required: true,
+                    check: LifecycleStartupCheckKind::FunctionRegistered {
+                        function_name: LIFECYCLE_FUNCTION_NAME.to_owned(),
+                    },
+                }],
+                activation_jobs: Vec::new(),
+            },
+            false,
+            Vec::new(),
+        )];
+        let registry = registry_with_lifecycle_function(3);
+
+        let error = validate_lifecycle_activation_jobs(&modules, &registry)
+            .expect_err("required startup check should fail when manifest does not declare it");
+
+        assert_eq!(error.code, ErrorCode::Validation);
+        assert_eq!(
+            error.details[0].field.as_deref(),
+            Some("module.test-module.lifecycle.startup_checks.function registered")
+        );
+        assert!(
+            error.details[0].reason.contains("not declared"),
+            "validation detail should name the missing module runtime declaration"
+        );
+    }
+
+    #[test]
+    fn lifecycle_activation_validation_rejects_required_startup_check_missing_capability() {
+        let modules = vec![test_lifecycle_module_with_lifecycle(
+            LifecycleSurface {
+                startup_checks: vec![LifecycleStartupCheckDeclaration {
+                    name: "capability declared".to_owned(),
+                    required: true,
+                    check: LifecycleStartupCheckKind::CapabilityDeclared {
+                        capability: "test.cache.warm".to_owned(),
+                    },
+                }],
+                activation_jobs: Vec::new(),
+            },
+            false,
+            Vec::new(),
+        )];
+        let registry = FunctionRegistry::default();
+
+        let error = validate_lifecycle_activation_jobs(&modules, &registry)
+            .expect_err("required startup check should fail when capability is missing");
+
+        assert_eq!(error.code, ErrorCode::Validation);
+        assert_eq!(
+            error.details[0].field.as_deref(),
+            Some("module.test-module.lifecycle.startup_checks.capability declared")
+        );
+        assert!(
+            error.details[0].reason.contains("missing capability"),
+            "validation detail should name the missing capability"
+        );
+    }
+
+    #[test]
+    fn lifecycle_activation_optional_startup_checks_do_not_fail_validation() {
+        let modules = vec![test_lifecycle_module_with_lifecycle(
+            LifecycleSurface {
+                startup_checks: vec![
+                    LifecycleStartupCheckDeclaration {
+                        name: "optional function".to_owned(),
+                        required: false,
+                        check: LifecycleStartupCheckKind::FunctionRegistered {
+                            function_name: LIFECYCLE_FUNCTION_NAME.to_owned(),
+                        },
+                    },
+                    LifecycleStartupCheckDeclaration {
+                        name: "optional capability".to_owned(),
+                        required: false,
+                        check: LifecycleStartupCheckKind::CapabilityDeclared {
+                            capability: "test.cache.warm".to_owned(),
+                        },
+                    },
+                ],
+                activation_jobs: Vec::new(),
+            },
+            false,
+            Vec::new(),
+        )];
+        let registry = FunctionRegistry::default();
+
+        validate_lifecycle_activation_jobs(&modules, &registry)
+            .expect("optional startup checks should not fail validation");
+    }
+
+    #[test]
+    fn lifecycle_activation_validation_rejects_required_job_not_declared_by_module() {
+        let modules = vec![
+            test_lifecycle_module(lifecycle_activation_job(true, Value::Null))
+                .without_runtime_declaration()
+                .into(),
+        ];
+        let registry = registry_with_lifecycle_function(3);
+
+        let error = validate_lifecycle_activation_jobs(&modules, &registry)
+            .expect_err("required activation job should fail when manifest does not declare it");
+
+        assert_eq!(error.code, ErrorCode::Validation);
+        assert_eq!(
+            error.details[0].field.as_deref(),
+            Some("module.test-module.lifecycle.activation_jobs.warm cache")
+        );
+        assert!(
+            error.details[0].reason.contains("not declared"),
+            "validation detail should name the missing module runtime declaration"
         );
     }
 
@@ -647,10 +899,8 @@ mod tests {
             db,
             Arc::new(LoggingEventPublisher),
         );
-        let modules = vec![test_lifecycle_module(lifecycle_activation_job(
-            false,
-            Value::Null,
-        ))];
+        let modules =
+            vec![test_lifecycle_module(lifecycle_activation_job(false, Value::Null)).into()];
         let registry = FunctionRegistry::default();
 
         let run_ids = enqueue_lifecycle_activation_jobs(&ctx, &modules, &registry)
@@ -658,6 +908,35 @@ mod tests {
             .expect("optional missing activation function should be skipped");
 
         assert!(run_ids.is_empty());
+    }
+
+    #[tokio::test]
+    async fn lifecycle_activation_optional_job_not_declared_is_skipped() {
+        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build");
+        let ctx = AppContext::new(
+            test_config_with_database_url("postgres://localhost/lenso_test"),
+            db,
+            Arc::new(LoggingEventPublisher),
+        );
+        let modules = vec![
+            test_lifecycle_module(lifecycle_activation_job(false, Value::Null))
+                .without_runtime_declaration()
+                .into(),
+        ];
+        let registry = registry_with_lifecycle_function(3);
+
+        let run_ids = enqueue_lifecycle_activation_jobs(&ctx, &modules, &registry)
+            .await
+            .expect("optional undeclared activation function should be skipped");
+
+        assert!(run_ids.is_empty());
+    }
+
+    #[test]
+    fn lifecycle_activation_max_attempts_conversion_saturates() {
+        assert_eq!(runtime_max_attempts_for_enqueue(7), 7);
+        assert_eq!(runtime_max_attempts_for_enqueue(u32::MAX), i32::MAX);
     }
 
     const LIFECYCLE_FUNCTION_NAME: &str = "test.warm_cache.v1";
@@ -686,14 +965,62 @@ mod tests {
         }
     }
 
-    fn test_lifecycle_module(job: LifecycleActivationJobDeclaration) -> Module {
-        let manifest = ModuleManifest::builder("test-module")
-            .lifecycle(LifecycleSurface {
+    struct TestLifecycleModuleBuilder {
+        lifecycle: LifecycleSurface,
+        declare_runtime_function: bool,
+        capabilities: Vec<String>,
+    }
+
+    impl TestLifecycleModuleBuilder {
+        fn without_runtime_declaration(mut self) -> Self {
+            self.declare_runtime_function = false;
+            self
+        }
+    }
+
+    impl From<TestLifecycleModuleBuilder> for Module {
+        fn from(builder: TestLifecycleModuleBuilder) -> Self {
+            let mut manifest = ModuleManifest::builder("test-module").lifecycle(builder.lifecycle);
+            if builder.declare_runtime_function {
+                manifest = manifest.runtime(RuntimeSurface {
+                    functions: vec![RuntimeFunctionDeclaration {
+                        name: LIFECYCLE_FUNCTION_NAME.to_owned(),
+                        version: 1,
+                        queue: "test".to_owned(),
+                        input_schema: None,
+                        retry_policy: None,
+                    }],
+                });
+            }
+            if !builder.capabilities.is_empty() {
+                manifest = manifest.capabilities(builder.capabilities);
+            }
+            Module::linked(manifest.build(), LinkedBinding::builder().build())
+        }
+    }
+
+    fn test_lifecycle_module(job: LifecycleActivationJobDeclaration) -> TestLifecycleModuleBuilder {
+        TestLifecycleModuleBuilder {
+            lifecycle: LifecycleSurface {
                 startup_checks: Vec::new(),
                 activation_jobs: vec![job],
-            })
-            .build();
-        Module::linked(manifest, LinkedBinding::builder().build())
+            },
+            declare_runtime_function: true,
+            capabilities: Vec::new(),
+        }
+    }
+
+    fn test_lifecycle_module_with_lifecycle(
+        lifecycle: LifecycleSurface,
+        declare_runtime_function: bool,
+        capabilities: Vec<String>,
+    ) -> Module {
+        TestLifecycleModuleBuilder {
+            lifecycle,
+            declare_runtime_function,
+            capabilities,
+        }
+        .into()
     }
 
     fn registry_with_lifecycle_function(max_attempts: u32) -> FunctionRegistry {
