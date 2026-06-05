@@ -66,17 +66,26 @@ const entity: EntitySchema = {
 function moduleMetadata(
   module: Omit<
     AdminModuleMetadata,
-    "capabilities" | "manifest_lints" | "runtime" | "story_display"
+    | "capabilities"
+    | "lifecycle"
+    | "manifest_lints"
+    | "runtime"
+    | "story_display"
   > &
     Partial<
       Pick<
         AdminModuleMetadata,
-        "capabilities" | "manifest_lints" | "runtime" | "story_display"
+        | "capabilities"
+        | "lifecycle"
+        | "manifest_lints"
+        | "runtime"
+        | "story_display"
       >
     >
 ): AdminModuleMetadata {
   return {
     capabilities: [],
+    lifecycle: null,
     manifest_lints: [],
     runtime: null,
     story_display: [],
@@ -384,6 +393,7 @@ describe("module status helpers", () => {
         http_routes: [],
         manifest_lints: [],
         runtime: null,
+        lifecycle: null,
         story_display: [],
         capabilities: [],
         admin: { kind: "schema", entities: [entity] },
@@ -759,6 +769,10 @@ describe("module status helpers", () => {
     expect(manifestLintCategory("runtime.function.remote_crm.sync.v1")).toBe(
       "runtime"
     );
+    expect(manifestLintCategory("lifecycle")).toBe("lifecycle");
+    expect(
+      manifestLintCategory("lifecycle.activation_job.warm contact cache")
+    ).toBe("lifecycle");
     expect(manifestLintCategory("module.name")).toBe("module");
   });
 

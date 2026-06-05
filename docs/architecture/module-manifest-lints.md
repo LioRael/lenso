@@ -23,6 +23,7 @@ The Runtime Console derives categories from `subject`:
 | `admin.declarative...` | `admin.declarative` |
 | `admin.embedded...` | `admin.embedded` |
 | `runtime...` | `runtime` |
+| `lifecycle...` | `lifecycle` |
 | `module...` | `module` |
 | anything else | `manifest` |
 
@@ -56,4 +57,11 @@ Console category mapping and tests in the same change.
 | `error` | `runtime.function.{name}` | Runtime function name is declared more than once. |
 | `warning` | `runtime.function.{name}.input_schema` | Runtime function input schema does not match the function name. |
 | `warning` | `runtime.function.{name}.retry_policy` | Runtime retry policy declares zero attempts. |
+| `warning` | `lifecycle` | Lifecycle surface declares no startup checks or activation jobs. |
+| `warning` | `lifecycle.startup_check` | Lifecycle startup check is missing a name. |
+| `error` | `lifecycle.startup_check.function_registered.{function}` | Lifecycle startup check references an unknown runtime function. |
+| `warning` | `lifecycle.startup_check.capability.{capability}` | Lifecycle startup check references an undeclared capability. |
+| `warning` | `lifecycle.activation_job` | Lifecycle activation job is missing a name. |
+| `error` | `lifecycle.activation_job` | Lifecycle activation job is missing a function name. |
+| `error` | `lifecycle.activation_job.{job}` | Lifecycle activation job references an unknown runtime function. |
 | `ok` | `manifest` | No other lint result was produced. |

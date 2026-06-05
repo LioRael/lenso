@@ -66,6 +66,7 @@ dependencies = [
 name = "app-bootstrap"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "identity",
  "notifications",
  "platform-admin-data",
@@ -74,6 +75,11 @@ dependencies = [
  "platform-module",
  "platform-module-remote",
  "platform-runtime",
+ "platform-testing",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

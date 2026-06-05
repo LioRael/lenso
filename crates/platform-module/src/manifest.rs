@@ -7,6 +7,10 @@ use crate::admin::{
 };
 use crate::admin_schema::AdminSchema;
 use crate::http::{ModuleHttpRoute, lint_module_http_routes};
+use crate::lifecycle::{
+    LifecycleActivationJobDeclaration, LifecycleStartupCheckDeclaration, LifecycleStartupCheckKind,
+    LifecycleSurface,
+};
 use crate::module::ModuleSource;
 use crate::runtime::{RuntimeFunctionDeclaration, RuntimeSurface};
 use platform_core::StoryDisplayDescriptor;
@@ -44,6 +48,11 @@ pub struct ModuleManifest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runtime: Option<RuntimeSurface>,
 
+    /// Declared lifecycle work. The host validates and schedules these entries;
+    /// modules do not receive arbitrary startup callbacks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lifecycle: Option<LifecycleSurface>,
+
     /// RESERVED SEAM — capabilities the module declares (perms/tenancy).
     #[serde(default)]
     pub capabilities: Vec<String>,
@@ -60,6 +69,7 @@ impl ModuleManifest {
                 admin: None,
                 http_routes: Vec::new(),
                 runtime: None,
+                lifecycle: None,
                 capabilities: Vec::new(),
             },
         }
@@ -92,6 +102,7 @@ pub fn lint_module_manifest(
         manifest.admin.as_ref(),
         &manifest.http_routes,
         manifest.runtime.as_ref(),
+        manifest.lifecycle.as_ref(),
         &manifest.capabilities,
     )
 }
@@ -102,6 +113,7 @@ pub fn lint_module_manifest_parts(
     admin: Option<&AdminSurface>,
     http_routes: &[ModuleHttpRoute],
     runtime: Option<&RuntimeSurface>,
+    lifecycle: Option<&LifecycleSurface>,
     capabilities: &[String],
 ) -> Vec<ModuleManifestLint> {
     let mut lints = Vec::new();
@@ -143,9 +155,14 @@ pub fn lint_module_manifest_parts(
     if let Some(admin) = admin {
         lint_admin_surface(admin, &mut lints);
     }
+    let mut runtime_lints = Vec::new();
     if let Some(runtime) = runtime {
-        lint_runtime_surface(runtime, &mut lints);
+        lint_runtime_surface(runtime, &mut runtime_lints);
     }
+    if let Some(lifecycle) = lifecycle {
+        lint_lifecycle_surface(lifecycle, runtime, capabilities, &mut lints);
+    }
+    lints.extend(runtime_lints);
 
     if lints.is_empty() {
         lints.push(ModuleManifestLint {
@@ -242,6 +259,128 @@ fn lint_runtime_function(
             suggestion: "Set max_attempts to at least 1 or omit the retry policy.".to_owned(),
         });
     }
+}
+
+fn lint_lifecycle_surface(
+    lifecycle: &LifecycleSurface,
+    runtime: Option<&RuntimeSurface>,
+    capabilities: &[String],
+    lints: &mut Vec<ModuleManifestLint>,
+) {
+    if lifecycle.startup_checks.is_empty() && lifecycle.activation_jobs.is_empty() {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Warning,
+            subject: "lifecycle".to_owned(),
+            message: "Lifecycle surface declares no startup checks or activation jobs.".to_owned(),
+            suggestion: "Add lifecycle entries or omit the lifecycle surface.".to_owned(),
+        });
+        return;
+    }
+
+    let runtime_functions = runtime_function_names(runtime);
+    let capability_names = capabilities.iter().cloned().collect::<HashSet<_>>();
+
+    for check in &lifecycle.startup_checks {
+        lint_lifecycle_startup_check(check, &runtime_functions, &capability_names, lints);
+    }
+
+    for job in &lifecycle.activation_jobs {
+        lint_lifecycle_activation_job(job, &runtime_functions, lints);
+    }
+}
+
+fn lint_lifecycle_startup_check(
+    check: &LifecycleStartupCheckDeclaration,
+    runtime_functions: &HashSet<String>,
+    capabilities: &HashSet<String>,
+    lints: &mut Vec<ModuleManifestLint>,
+) {
+    if !present(&check.name) {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Warning,
+            subject: "lifecycle.startup_check".to_owned(),
+            message: "Lifecycle startup check is missing a name.".to_owned(),
+            suggestion: "Set a short operator-facing check name.".to_owned(),
+        });
+    }
+
+    match &check.check {
+        LifecycleStartupCheckKind::FunctionRegistered { function_name } => {
+            if !runtime_functions.contains(function_name) {
+                lints.push(ModuleManifestLint {
+                    severity: ModuleManifestLintSeverity::Error,
+                    subject: format!(
+                        "lifecycle.startup_check.function_registered.{function_name}"
+                    ),
+                    message: "Lifecycle startup check references an unknown runtime function."
+                        .to_owned(),
+                    suggestion:
+                        "Declare the function in ModuleManifest.runtime.functions or remove the check."
+                            .to_owned(),
+                });
+            }
+        }
+        LifecycleStartupCheckKind::CapabilityDeclared { capability } => {
+            if !capabilities.contains(capability) {
+                lints.push(ModuleManifestLint {
+                    severity: ModuleManifestLintSeverity::Warning,
+                    subject: format!("lifecycle.startup_check.capability.{capability}"),
+                    message: "Lifecycle startup check references an undeclared capability."
+                        .to_owned(),
+                    suggestion:
+                        "Add the capability to ModuleManifest.capabilities or update the check."
+                            .to_owned(),
+                });
+            }
+        }
+    }
+}
+
+fn lint_lifecycle_activation_job(
+    job: &LifecycleActivationJobDeclaration,
+    runtime_functions: &HashSet<String>,
+    lints: &mut Vec<ModuleManifestLint>,
+) {
+    let subject = if present(&job.name) {
+        format!("lifecycle.activation_job.{}", job.name)
+    } else {
+        "lifecycle.activation_job".to_owned()
+    };
+
+    if !present(&job.name) {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Warning,
+            subject: subject.clone(),
+            message: "Lifecycle activation job is missing a name.".to_owned(),
+            suggestion: "Set a short operator-facing activation job name.".to_owned(),
+        });
+    }
+
+    if !present(&job.function_name) {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Error,
+            subject,
+            message: "Lifecycle activation job is missing a function name.".to_owned(),
+            suggestion: "Set function_name to a declared runtime function.".to_owned(),
+        });
+    } else if !runtime_functions.contains(&job.function_name) {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Error,
+            subject,
+            message: "Lifecycle activation job references an unknown runtime function.".to_owned(),
+            suggestion:
+                "Declare the function in ModuleManifest.runtime.functions or remove the activation job."
+                    .to_owned(),
+        });
+    }
+}
+
+fn runtime_function_names(runtime: Option<&RuntimeSurface>) -> HashSet<String> {
+    runtime
+        .into_iter()
+        .flat_map(|surface| surface.functions.iter())
+        .map(|function| function.name.clone())
+        .collect()
 }
 
 fn lint_admin_surface(admin: &AdminSurface, lints: &mut Vec<ModuleManifestLint>) {
@@ -465,6 +604,13 @@ impl ModuleManifestBuilder {
         self
     }
 
+    /// Attach lifecycle declarations.
+    #[must_use]
+    pub fn lifecycle(mut self, lifecycle: LifecycleSurface) -> Self {
+        self.manifest.lifecycle = Some(lifecycle);
+        self
+    }
+
     /// Finish building.
     #[must_use]
     pub fn build(self) -> ModuleManifest {
@@ -481,6 +627,10 @@ mod tests {
     };
     use crate::{
         AdminEmbeddedEntry, AdminEmbeddedRuntime, AdminEmbeddedSurface, AdminSandboxPolicy,
+    };
+    use crate::{
+        LifecycleActivationJobDeclaration, LifecycleActivationRunPolicy,
+        LifecycleStartupCheckDeclaration, LifecycleStartupCheckKind, LifecycleSurface,
     };
     use crate::{ModuleHttpMethod, ModuleHttpRoute};
     use crate::{RuntimeFunctionDeclaration, RuntimeRetryPolicyDeclaration, RuntimeSurface};
@@ -771,6 +921,182 @@ mod tests {
     }
 
     #[test]
+    fn manifest_with_lifecycle_round_trips_through_json() {
+        let manifest = ModuleManifest::builder("remote-crm")
+            .runtime(RuntimeSurface {
+                functions: vec![RuntimeFunctionDeclaration {
+                    name: "remote_crm.warm_contact_cache.v1".to_owned(),
+                    version: 1,
+                    queue: "remote-crm".to_owned(),
+                    input_schema: Some("remote_crm.warm_contact_cache.v1".to_owned()),
+                    retry_policy: Some(RuntimeRetryPolicyDeclaration {
+                        max_attempts: 2,
+                        initial_delay_ms: 500,
+                    }),
+                }],
+            })
+            .lifecycle(LifecycleSurface {
+                startup_checks: vec![LifecycleStartupCheckDeclaration {
+                    name: "warm cache function is registered".to_owned(),
+                    required: true,
+                    check: LifecycleStartupCheckKind::FunctionRegistered {
+                        function_name: "remote_crm.warm_contact_cache.v1".to_owned(),
+                    },
+                }],
+                activation_jobs: vec![LifecycleActivationJobDeclaration {
+                    name: "warm contact cache".to_owned(),
+                    function_name: "remote_crm.warm_contact_cache.v1".to_owned(),
+                    run_policy: LifecycleActivationRunPolicy::EveryStartup,
+                    input: serde_json::json!({ "reason": "worker_startup" }),
+                    required: true,
+                }],
+            })
+            .build();
+
+        let json = serde_json::to_string(&manifest).expect("serialize");
+
+        assert!(json.contains(r#""lifecycle""#), "got {json}");
+        assert!(
+            json.contains(r#""kind":"function_registered""#),
+            "got {json}"
+        );
+        assert!(
+            json.contains(r#""run_policy":"every_startup""#),
+            "got {json}"
+        );
+        let back: ModuleManifest = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(manifest, back);
+    }
+
+    #[test]
+    fn manifest_lint_flags_lifecycle_declarations_that_cannot_run() {
+        let manifest = ModuleManifest::builder("remote-crm")
+            .runtime(RuntimeSurface { functions: vec![] })
+            .lifecycle(LifecycleSurface {
+                startup_checks: vec![
+                    LifecycleStartupCheckDeclaration {
+                        name: "".to_owned(),
+                        required: true,
+                        check: LifecycleStartupCheckKind::FunctionRegistered {
+                            function_name: "remote_crm.missing.v1".to_owned(),
+                        },
+                    },
+                    LifecycleStartupCheckDeclaration {
+                        name: "missing capability".to_owned(),
+                        required: true,
+                        check: LifecycleStartupCheckKind::CapabilityDeclared {
+                            capability: "remote_crm.contacts.read".to_owned(),
+                        },
+                    },
+                ],
+                activation_jobs: vec![LifecycleActivationJobDeclaration {
+                    name: "warm contact cache".to_owned(),
+                    function_name: "remote_crm.warm_contact_cache.v1".to_owned(),
+                    run_policy: LifecycleActivationRunPolicy::EveryStartup,
+                    input: serde_json::json!({}),
+                    required: true,
+                }],
+            })
+            .build();
+
+        let lints = lint_module_manifest(ModuleSource::Remote, &manifest);
+
+        assert!(lints.iter().any(|lint| {
+            lint.subject == "lifecycle.startup_check"
+                && lint.severity == ModuleManifestLintSeverity::Warning
+                && lint.message == "Lifecycle startup check is missing a name."
+        }));
+        assert!(lints.iter().any(|lint| {
+            lint.subject == "lifecycle.startup_check.function_registered.remote_crm.missing.v1"
+                && lint.severity == ModuleManifestLintSeverity::Error
+        }));
+        assert!(lints.iter().any(|lint| {
+            lint.subject == "lifecycle.startup_check.capability.remote_crm.contacts.read"
+                && lint.severity == ModuleManifestLintSeverity::Warning
+        }));
+        assert!(lints.iter().any(|lint| {
+            lint.subject == "lifecycle.activation_job.warm contact cache"
+                && lint.severity == ModuleManifestLintSeverity::Error
+        }));
+    }
+
+    #[test]
+    fn manifest_lint_warns_for_empty_lifecycle_surface() {
+        let manifest = ModuleManifest::builder("remote-crm")
+            .lifecycle(LifecycleSurface {
+                startup_checks: vec![],
+                activation_jobs: vec![],
+            })
+            .build();
+
+        let lints = lint_module_manifest(ModuleSource::Remote, &manifest);
+
+        assert!(lints.iter().any(|lint| {
+            lint.subject == "lifecycle"
+                && lint.severity == ModuleManifestLintSeverity::Warning
+                && lint.message
+                    == "Lifecycle surface declares no startup checks or activation jobs."
+        }));
+    }
+
+    #[test]
+    fn manifest_lint_warns_for_activation_job_missing_name() {
+        let manifest = ModuleManifest::builder("remote-crm")
+            .runtime(RuntimeSurface {
+                functions: vec![RuntimeFunctionDeclaration {
+                    name: "remote_crm.warm_contact_cache.v1".to_owned(),
+                    version: 1,
+                    queue: "remote-crm".to_owned(),
+                    input_schema: Some("remote_crm.warm_contact_cache.v1".to_owned()),
+                    retry_policy: None,
+                }],
+            })
+            .lifecycle(LifecycleSurface {
+                startup_checks: vec![],
+                activation_jobs: vec![LifecycleActivationJobDeclaration {
+                    name: "".to_owned(),
+                    function_name: "remote_crm.warm_contact_cache.v1".to_owned(),
+                    run_policy: LifecycleActivationRunPolicy::EveryStartup,
+                    input: serde_json::json!({}),
+                    required: true,
+                }],
+            })
+            .build();
+
+        let lints = lint_module_manifest(ModuleSource::Remote, &manifest);
+
+        assert!(lints.iter().any(|lint| {
+            lint.subject == "lifecycle.activation_job"
+                && lint.severity == ModuleManifestLintSeverity::Warning
+                && lint.message == "Lifecycle activation job is missing a name."
+        }));
+    }
+
+    #[test]
+    fn manifest_lint_errors_for_activation_job_missing_function_name() {
+        let manifest = ModuleManifest::builder("remote-crm")
+            .lifecycle(LifecycleSurface {
+                startup_checks: vec![],
+                activation_jobs: vec![LifecycleActivationJobDeclaration {
+                    name: "".to_owned(),
+                    function_name: "".to_owned(),
+                    run_policy: LifecycleActivationRunPolicy::EveryStartup,
+                    input: serde_json::json!({}),
+                    required: true,
+                }],
+            })
+            .build();
+
+        let lints = lint_module_manifest(ModuleSource::Remote, &manifest);
+
+        assert!(lints.iter().any(|lint| {
+            lint.subject == "lifecycle.activation_job"
+                && lint.severity == ModuleManifestLintSeverity::Error
+                && lint.message == "Lifecycle activation job is missing a function name."
+        }));
+    }
+
+    #[test]
     fn manifest_lint_catalog_covers_current_subjects() {
         let schema = AdminSchema {
             entities: vec![crate::EntitySchema {
@@ -825,6 +1151,22 @@ mod tests {
                         max_attempts: 0,
                         initial_delay_ms: 1000,
                     }),
+                }],
+            })
+            .lifecycle(LifecycleSurface {
+                startup_checks: vec![LifecycleStartupCheckDeclaration {
+                    name: "missing function".to_owned(),
+                    required: true,
+                    check: LifecycleStartupCheckKind::FunctionRegistered {
+                        function_name: "remote_crm.missing.v1".to_owned(),
+                    },
+                }],
+                activation_jobs: vec![LifecycleActivationJobDeclaration {
+                    name: "missing activation".to_owned(),
+                    function_name: "remote_crm.missing.v1".to_owned(),
+                    run_policy: LifecycleActivationRunPolicy::EveryStartup,
+                    input: serde_json::json!({}),
+                    required: true,
                 }],
             })
             .build();
@@ -889,6 +1231,14 @@ mod tests {
                 (
                     ModuleManifestLintSeverity::Warning,
                     "admin.embedded.permission.missing".to_owned(),
+                ),
+                (
+                    ModuleManifestLintSeverity::Error,
+                    "lifecycle.startup_check.function_registered.remote_crm.missing.v1".to_owned(),
+                ),
+                (
+                    ModuleManifestLintSeverity::Error,
+                    "lifecycle.activation_job.missing activation".to_owned(),
                 ),
                 (
                     ModuleManifestLintSeverity::Warning,

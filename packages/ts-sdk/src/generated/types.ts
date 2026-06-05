@@ -90,6 +90,7 @@ export type AdminModuleMetadataDto = {
   capabilities: Array<string>;
   error?: string | null;
   http_routes: Array<ModuleHttpRoute>;
+  lifecycle?: unknown;
   manifest_lints: Array<ModuleManifestLint>;
   module_name: string;
   runtime?: unknown;
@@ -512,6 +513,25 @@ export type FieldSchema = {
 };
 
 export type FieldType = unknown;
+
+export type LifecycleActivationJobDeclaration = {
+  function_name: string;
+  input?: unknown;
+  name: string;
+  required?: boolean;
+  run_policy?: LifecycleActivationRunPolicy;
+};
+
+export type LifecycleActivationRunPolicy = string;
+
+export type LifecycleStartupCheckDeclaration = unknown;
+
+export type LifecycleStartupCheckKind = unknown;
+
+export type LifecycleSurface = {
+  activation_jobs?: Array<LifecycleActivationJobDeclaration>;
+  startup_checks?: Array<LifecycleStartupCheckDeclaration>;
+};
 
 export type MeResponse = {
   scopes: Array<string>;

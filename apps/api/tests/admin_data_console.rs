@@ -69,6 +69,7 @@ fn app() -> axum::Router {
         load_status: ModuleLoadStatus::Loaded,
         http_routes: vec![],
         runtime: None,
+        lifecycle: None,
         story_display: vec![],
         capabilities: vec![],
         admin: Some(AdminSurface::Schema(stub_schema())),
@@ -386,6 +387,7 @@ async fn refresh_schema_replaces_installed_modules() {
                 load_status: ModuleLoadStatus::Loaded,
                 http_routes: vec![],
                 runtime: None,
+                lifecycle: None,
                 story_display: vec![StoryDisplayDescriptor {
                     source: StoryDisplaySource::ExecutionName {
                         name: "identity.create_user".to_owned(),
@@ -404,6 +406,7 @@ async fn refresh_schema_replaces_installed_modules() {
                 },
                 http_routes: vec![],
                 runtime: None,
+                lifecycle: None,
                 story_display: vec![],
                 capabilities: vec![],
                 admin: None,
@@ -495,6 +498,7 @@ async fn refresh_modules_replaces_module_registry_metadata() {
         load_status: ModuleLoadStatus::Loaded,
         http_routes: vec![],
         runtime: None,
+        lifecycle: None,
         story_display: vec![],
         capabilities: vec![],
         admin: Some(AdminSurface::Schema(stub_schema())),
@@ -507,6 +511,7 @@ async fn refresh_modules_replaces_module_registry_metadata() {
             load_status: ModuleLoadStatus::Loaded,
             http_routes: vec![],
             runtime: None,
+            lifecycle: None,
             story_display: vec![StoryDisplayDescriptor {
                 source: StoryDisplaySource::ExecutionName {
                     name: "notifications.send_welcome_email.v1".to_owned(),
@@ -570,6 +575,7 @@ async fn refresh_modules_records_error_without_dropping_snapshot() {
         load_status: ModuleLoadStatus::Loaded,
         http_routes: vec![],
         runtime: None,
+        lifecycle: None,
         story_display: vec![],
         capabilities: vec![],
         admin: Some(AdminSurface::Schema(stub_schema())),

@@ -13,6 +13,13 @@ const MANIFEST_LINT_MESSAGES: &[&str] = &[
     "Missing capability declaration for host proxy authorization.",
     "Declared routes include display, story, and capability metadata.",
     "Declared routes include display and story metadata.",
+    "Lifecycle surface declares no startup checks or activation jobs.",
+    "Lifecycle startup check is missing a name.",
+    "Lifecycle startup check references an unknown runtime function.",
+    "Lifecycle startup check references an undeclared capability.",
+    "Lifecycle activation job is missing a name.",
+    "Lifecycle activation job is missing a function name.",
+    "Lifecycle activation job references an unknown runtime function.",
 ];
 const REQUIRED_OPENAPI_ARTIFACTS: &[&str] = &["contracts/openapi/app-api.v1.yaml"];
 const FORBIDDEN_OPENAPI_PATHS: &[&str] = &["/admin/runtime/timeline/{correlation_id}"];
