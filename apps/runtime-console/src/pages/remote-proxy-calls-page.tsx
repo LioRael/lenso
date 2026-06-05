@@ -15,6 +15,10 @@ import { cn } from "../lib/cn";
 import { time } from "../lib/format";
 import { runtimeConsoleDataSource } from "../lib/http-client";
 import {
+  readOperationsParam,
+  replaceOperationsUrl,
+} from "./operations-url-model";
+import {
   type RemoteProxyCallAggregate,
   type RemoteProxyCallResultFilter,
   aggregateRemoteProxyCalls,
@@ -37,15 +41,19 @@ function clamp(value: number, min: number, max: number) {
 
 export function RemoteProxyCallsPage() {
   const { openStory, openStoryTarget } = useRuntimeConsole();
-  const [query, setQuery] = useState("");
-  const [moduleName, setModuleName] = useState("");
-  const [correlationId, setCorrelationId] = useState(() =>
-    typeof window === "undefined"
-      ? ""
-      : (new URLSearchParams(window.location.search).get("correlation_id") ??
-        "")
+  const [query, setQuery] = useState(() => readOperationsParam("q"));
+  const [moduleName, setModuleName] = useState(() =>
+    readOperationsParam("module")
   );
-  const [result, setResult] = useState<RemoteProxyCallResultFilter>("all");
+  const [correlationId, setCorrelationId] = useState(() =>
+    readOperationsParam("correlation_id")
+  );
+  const [result, setResult] = useState<RemoteProxyCallResultFilter>(() =>
+    readRemoteProxyCallResult(readOperationsParam("result"))
+  );
+  const [selectedId, setSelectedId] = useState(() =>
+    readOperationsParam("selected")
+  );
   const [layout, setLayout, resetLayout] = usePersistedLayout(
     "runtime-console:remote-proxy-calls-layout",
     remoteProxyCallsLayoutDefaults
@@ -86,24 +94,38 @@ export function RemoteProxyCallsPage() {
     () => aggregateRemoteProxyCalls(calls, "status", 5),
     [calls]
   );
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  useEffect(
-    () => setSelectedIndex(0),
-    [correlationId, moduleName, query, result]
-  );
-
   useEffect(() => {
-    if (typeof window === "undefined") {
+    if (visible.length === 0) {
+      if (selectedId) {
+        setSelectedId("");
+      }
       return;
     }
-    window.history.replaceState(
-      null,
-      "",
-      remoteProxyCallsPath({ correlationId })
-    );
-  }, [correlationId]);
+    if (!visible.some((call) => call.id === selectedId)) {
+      setSelectedId(visible[0]?.id ?? "");
+    }
+  }, [selectedId, visible]);
 
-  const selected = visible[selectedIndex] ?? null;
+  useEffect(() => {
+    replaceOperationsUrl(
+      remoteProxyCallsPath({
+        correlationId,
+        moduleName,
+        query,
+        result,
+        selectedId,
+      })
+    );
+  }, [correlationId, moduleName, query, result, selectedId]);
+
+  const selected = visible.find((call) => call.id === selectedId) ?? null;
+  const selectedIndex = selected ? indexOf(visible, selected.id) : 0;
+  const selectIndex = (index: number) => {
+    const call = visible[index];
+    if (call) {
+      setSelectedId(call.id);
+    }
+  };
   const resizeInspector = (deltaX: number) => {
     setLayout((current) => ({
       ...current,
@@ -119,8 +141,8 @@ export function RemoteProxyCallsPage() {
   useListKeyboard({
     items: visible,
     selectedIndex,
-    setSelectedIndex,
-    onOpen: (call) => setSelectedIndex(indexOf(visible, call.id)),
+    setSelectedIndex: selectIndex,
+    onOpen: (call) => setSelectedId(call.id),
   });
 
   return (
@@ -303,7 +325,7 @@ export function RemoteProxyCallsPage() {
                       : "hover:bg-(--elevated)"
                   )}
                   key={call.id}
-                  onClick={() => setSelectedIndex(indexOf(visible, call.id))}
+                  onClick={() => setSelectedId(call.id)}
                   type="button"
                 >
                   <ResultPill call={call} />
@@ -616,4 +638,8 @@ function indexOf(items: RuntimeRemoteProxyCall[], id: string) {
     0,
     items.findIndex((item) => item.id === id)
   );
+}
+
+function readRemoteProxyCallResult(value: string): RemoteProxyCallResultFilter {
+  return value === "success" || value === "failed" ? value : "all";
 }

@@ -5,7 +5,10 @@ import type {
   RuntimeEvent,
   TimelineItem,
 } from "../../data/mock-runtime";
-import { resolveTimelineSourceRecord } from "./runtime-console-context";
+import {
+  remoteProxyCallSelectedId,
+  resolveTimelineSourceRecord,
+} from "./runtime-console-context";
 
 describe("runtime console context helpers", () => {
   test("resolves outbox event timeline items from detail ids", () => {
@@ -48,6 +51,23 @@ describe("runtime console context helpers", () => {
         }
       )
     ).toBeNull();
+  });
+
+  test("normalizes remote proxy timeline ids for remote call selection", () => {
+    expect(
+      remoteProxyCallSelectedId(
+        timelineItem({
+          detailId: "remoteproxy_rproxy_1",
+          type: "remote_proxy_call",
+        })
+      )
+    ).toBe("rproxy_1");
+
+    expect(
+      remoteProxyCallSelectedId(
+        timelineItem({ detailId: "rproxy_2", type: "remote_proxy_call" })
+      )
+    ).toBe("rproxy_2");
   });
 });
 

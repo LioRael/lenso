@@ -56,7 +56,7 @@ type RuntimeConsoleContextValue = {
   openTimeline: (nextCorrelationId: string) => void;
   openStory: (storyId: string, nodeId?: string) => void;
   openStoryTarget: (target: RuntimeStoryTargetInput) => void;
-  openRemoteCalls: (correlationId?: string) => void;
+  openRemoteCalls: (correlationId?: string, selectedId?: string) => void;
   openTimelineSource: (item: TimelineItem) => void;
   clearStoryTarget: () => void;
   searchRuntime: (query: string) => SearchResult[];
@@ -100,9 +100,12 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
   );
 
   const openRemoteCalls = useCallback(
-    (nextCorrelationId?: string) => {
+    (nextCorrelationId?: string, selectedId?: string) => {
       const filters = nextCorrelationId
-        ? { correlationId: nextCorrelationId }
+        ? {
+            correlationId: nextCorrelationId,
+            ...(selectedId ? { selectedId } : {}),
+          }
         : {};
       void navigate({
         to: remoteProxyCallsPath(filters),
@@ -160,7 +163,7 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
   const openTimelineSource = useCallback(
     (item: TimelineItem) => {
       if (item.type === "remote_proxy_call") {
-        openRemoteCalls(item.correlationId);
+        openRemoteCalls(item.correlationId, remoteProxyCallSelectedId(item));
         return;
       }
 
@@ -300,4 +303,11 @@ export function resolveTimelineSourceRecord(
   }
 
   return resolveTimelineSource(sourceId);
+}
+
+export function remoteProxyCallSelectedId(item: TimelineItem) {
+  const sourceId = item.detailId ?? item.id;
+  return sourceId.startsWith("remoteproxy_")
+    ? sourceId.slice("remoteproxy_".length)
+    : sourceId;
 }

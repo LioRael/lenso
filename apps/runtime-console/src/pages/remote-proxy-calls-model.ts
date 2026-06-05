@@ -2,6 +2,7 @@ import type {
   RuntimeRemoteProxyCall,
   RuntimeRemoteProxyCallPage,
 } from "../hooks/use-runtime-queries";
+import { operationsPath } from "./operations-url-model";
 
 export type RemoteProxyCallResultFilter = "all" | "success" | "failed";
 
@@ -22,15 +23,22 @@ export type RemoteProxyCallAggregate = {
   p95DurationMs: number;
 };
 
-export function remoteProxyCallsPath(filters: { correlationId?: string } = {}) {
-  const params = new URLSearchParams();
-  if (filters.correlationId) {
-    params.set("correlation_id", filters.correlationId);
-  }
-  const search = params.toString();
-  return search
-    ? `/operations/remote-calls?${search}`
-    : "/operations/remote-calls";
+export function remoteProxyCallsPath(
+  filters: {
+    correlationId?: string;
+    moduleName?: string;
+    query?: string;
+    result?: RemoteProxyCallResultFilter;
+    selectedId?: string;
+  } = {}
+) {
+  return operationsPath("/operations/remote-calls", {
+    correlation_id: filters.correlationId,
+    module: filters.moduleName,
+    q: filters.query,
+    result: filters.result === "all" ? undefined : filters.result,
+    selected: filters.selectedId,
+  });
 }
 
 export function remoteProxyCallModules(calls: RuntimeRemoteProxyCall[]) {

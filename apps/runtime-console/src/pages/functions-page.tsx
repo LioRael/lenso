@@ -32,6 +32,11 @@ import {
   type FunctionRunAggregate,
   type FunctionStatusFilter,
 } from "./functions-model";
+import {
+  functionsPath,
+  readOperationsParam,
+  replaceOperationsUrl,
+} from "./operations-url-model";
 
 const functionsLayoutDefaults = {
   inspectorWidth: 408,
@@ -43,10 +48,17 @@ function clamp(value: number, min: number, max: number) {
 
 export function FunctionsPage() {
   const { openRetry, openStoryTarget } = useRuntimeConsole();
-  const [query, setQuery] = useState("");
-  const [status, setStatus] = useState<FunctionStatusFilter>("all");
-  const [moduleName, setModuleName] = useState("");
-  const [queue, setQueue] = useState("");
+  const [query, setQuery] = useState(() => readOperationsParam("q"));
+  const [status, setStatus] = useState<FunctionStatusFilter>(() =>
+    readFunctionStatus(readOperationsParam("status"))
+  );
+  const [moduleName, setModuleName] = useState(() =>
+    readOperationsParam("module")
+  );
+  const [queue, setQueue] = useState(() => readOperationsParam("queue"));
+  const [selectedId, setSelectedId] = useState(() =>
+    readOperationsParam("selected")
+  );
   const [layout, setLayout, resetLayout] = usePersistedLayout(
     "runtime-console:functions-layout",
     functionsLayoutDefaults
@@ -76,13 +88,32 @@ export function FunctionsPage() {
     () => aggregateFunctionRuns(runs, "status", 5),
     [runs]
   );
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  useEffect(() => {
+    if (visible.length === 0) {
+      if (selectedId) {
+        setSelectedId("");
+      }
+      return;
+    }
+    if (!visible.some((run) => run.id === selectedId)) {
+      setSelectedId(visible[0]?.id ?? "");
+    }
+  }, [selectedId, visible]);
 
   useEffect(() => {
-    setSelectedIndex(0);
-  }, [moduleName, query, queue, status]);
+    replaceOperationsUrl(
+      functionsPath({ moduleName, query, queue, selectedId, status })
+    );
+  }, [moduleName, query, queue, selectedId, status]);
 
-  const selected = visible[selectedIndex] ?? null;
+  const selected = visible.find((run) => run.id === selectedId) ?? null;
+  const selectedIndex = selected ? indexOf(visible, selected.id) : 0;
+  const selectIndex = (index: number) => {
+    const run = visible[index];
+    if (run) {
+      setSelectedId(run.id);
+    }
+  };
   const resizeInspector = (deltaX: number) => {
     setLayout((current) => ({
       ...current,
@@ -104,8 +135,8 @@ export function FunctionsPage() {
   useListKeyboard({
     items: visible,
     selectedIndex,
-    setSelectedIndex,
-    onOpen: (run) => setSelectedIndex(indexOf(visible, run.id)),
+    setSelectedIndex: selectIndex,
+    onOpen: (run) => setSelectedId(run.id),
     onRetry: retryRun,
   });
 
@@ -266,7 +297,7 @@ export function FunctionsPage() {
                       : "hover:bg-(--elevated)"
                   )}
                   key={run.id}
-                  onClick={() => setSelectedIndex(indexOf(visible, run.id))}
+                  onClick={() => setSelectedId(run.id)}
                   type="button"
                 >
                   <FunctionStatusPill status={run.status} />
@@ -561,4 +592,10 @@ function indexOf(items: FunctionRun[], id: string) {
     0,
     items.findIndex((item) => item.id === id)
   );
+}
+
+function readFunctionStatus(value: string): FunctionStatusFilter {
+  return functionStatusFilters.includes(value as FunctionStatusFilter)
+    ? (value as FunctionStatusFilter)
+    : "all";
 }

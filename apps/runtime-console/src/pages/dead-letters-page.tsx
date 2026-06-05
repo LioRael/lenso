@@ -20,6 +20,11 @@ import {
 } from "../hooks/use-runtime-queries";
 import { actorLabel, time } from "../lib/format";
 import { runtimeConsoleDataSource } from "../lib/http-client";
+import {
+  deadLettersPath,
+  readOperationsParam,
+  replaceOperationsUrl,
+} from "./operations-url-model";
 
 type DeadLetter =
   | { kind: "event"; item: RuntimeEvent }
@@ -35,9 +40,16 @@ function clamp(value: number, min: number, max: number) {
 
 export function DeadLettersPage() {
   const { openRetry, openStoryTarget } = useRuntimeConsole();
-  const [query, setQuery] = useState("");
-  const [kind, setKind] = useState<"all" | "event" | "function">("all");
-  const [oldestFirst, setOldestFirst] = useState(true);
+  const [query, setQuery] = useState(() => readOperationsParam("q"));
+  const [kind, setKind] = useState<"all" | "event" | "function">(() =>
+    readDeadLetterKind(readOperationsParam("kind"))
+  );
+  const [oldestFirst, setOldestFirst] = useState(
+    () => readOperationsParam("order") !== "newest"
+  );
+  const [selectedId, setSelectedId] = useState(() =>
+    readOperationsParam("selected")
+  );
   const [layout, setLayout, resetLayout] = usePersistedLayout(
     "runtime-console:dead-letters-layout",
     deadLettersLayoutDefaults
@@ -49,27 +61,54 @@ export function DeadLettersPage() {
     [deadLettersQuery.data]
   );
 
-  const visible = failures
-    .filter((failure) => {
-      const name =
-        failure.kind === "event"
-          ? failure.item.eventName
-          : failure.item.functionName;
-      const matchesKind = kind === "all" || failure.kind === kind;
-      const text =
-        `${name} ${failure.item.id} ${failure.item.correlationId}`.toLowerCase();
-      return matchesKind && text.includes(query.trim().toLowerCase());
-    })
-    .sort((a, b) =>
-      oldestFirst
-        ? a.item.createdAt.localeCompare(b.item.createdAt)
-        : b.item.createdAt.localeCompare(a.item.createdAt)
+  const visible = useMemo(
+    () =>
+      failures
+        .filter((failure) => {
+          const name =
+            failure.kind === "event"
+              ? failure.item.eventName
+              : failure.item.functionName;
+          const matchesKind = kind === "all" || failure.kind === kind;
+          const text =
+            `${name} ${failure.item.id} ${failure.item.correlationId}`.toLowerCase();
+          return matchesKind && text.includes(query.trim().toLowerCase());
+        })
+        .sort((a, b) =>
+          oldestFirst
+            ? a.item.createdAt.localeCompare(b.item.createdAt)
+            : b.item.createdAt.localeCompare(a.item.createdAt)
+        ),
+    [failures, kind, oldestFirst, query]
+  );
+
+  useEffect(() => {
+    if (visible.length === 0) {
+      if (selectedId) {
+        setSelectedId("");
+      }
+      return;
+    }
+    if (!visible.some((failure) => failure.item.id === selectedId)) {
+      setSelectedId(visible[0]?.item.id ?? "");
+    }
+  }, [selectedId, visible]);
+
+  useEffect(() => {
+    replaceOperationsUrl(
+      deadLettersPath({ kind, oldestFirst, query, selectedId })
     );
+  }, [kind, oldestFirst, query, selectedId]);
 
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  useEffect(() => setSelectedIndex(0), [kind, oldestFirst, query]);
-
-  const selected = visible[selectedIndex] ?? null;
+  const selected =
+    visible.find((failure) => failure.item.id === selectedId) ?? null;
+  const selectedIndex = selected ? indexOf(visible, selected.item.id) : 0;
+  const selectIndex = (index: number) => {
+    const failure = visible[index];
+    if (failure) {
+      setSelectedId(failure.item.id);
+    }
+  };
   const retryFailure = (failure: DeadLetter) => {
     const retryTarget = retryTargetFor(
       failure.kind === "event"
@@ -96,8 +135,8 @@ export function DeadLettersPage() {
   useListKeyboard({
     items: visible,
     selectedIndex,
-    setSelectedIndex,
-    onOpen: (failure) => setSelectedIndex(indexOf(visible, failure.item.id)),
+    setSelectedIndex: selectIndex,
+    onOpen: (failure) => setSelectedId(failure.item.id),
     onRetry: retryFailure,
   });
 
@@ -181,7 +220,7 @@ export function DeadLettersPage() {
                       : "hover:bg-(--elevated)"
                   }`}
                   key={item.id}
-                  onClick={() => setSelectedIndex(indexOf(visible, item.id))}
+                  onClick={() => setSelectedId(item.id)}
                   type="button"
                 >
                   <StatusPill status={item.status} />
@@ -430,4 +469,8 @@ function indexOf(items: DeadLetter[], id: string) {
     0,
     items.findIndex((item) => item.item.id === id)
   );
+}
+
+function readDeadLetterKind(value: string): "all" | "event" | "function" {
+  return value === "event" || value === "function" ? value : "all";
 }

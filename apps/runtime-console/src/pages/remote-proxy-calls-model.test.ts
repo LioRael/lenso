@@ -158,8 +158,16 @@ describe("remote proxy calls model", () => {
 
   test("builds correlation-scoped remote calls paths", () => {
     expect(remoteProxyCallsPath()).toBe("/operations/remote-calls");
-    expect(remoteProxyCallsPath({ correlationId: "corr_1" })).toBe(
-      "/operations/remote-calls?correlation_id=corr_1"
+    expect(
+      remoteProxyCallsPath({
+        correlationId: "corr_1",
+        moduleName: "remote-crm",
+        query: "contact",
+        result: "failed",
+        selectedId: "rpc_1",
+      })
+    ).toBe(
+      "/operations/remote-calls?correlation_id=corr_1&module=remote-crm&q=contact&result=failed&selected=rpc_1"
     );
   });
 });
