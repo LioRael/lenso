@@ -18,7 +18,7 @@ export function buildStoryCommandItems({
   limit?: number;
 }): CommandItem[] {
   return stories.slice(0, limit).map((story) => ({
-    action: () => onOpenStory(story.id),
+    action: () => onOpenStory(story.correlationId),
     id: `story:${story.correlationId}`,
     searchText: storySearchText(story),
     subtitle: `${story.status} · ${story.correlationId}`,

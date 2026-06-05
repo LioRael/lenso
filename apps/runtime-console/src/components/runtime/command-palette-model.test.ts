@@ -60,7 +60,7 @@ describe("command palette model", () => {
     });
 
     commands[0]?.action();
-    expect(openTimeline).toHaveBeenCalledWith("story_backend_story");
+    expect(openTimeline).toHaveBeenCalledWith("corr_backend_story");
   });
 
   test("makes event and function node names searchable", () => {

@@ -27,6 +27,7 @@ import {
   useRuntimeStories,
 } from "../../hooks/use-runtime-queries";
 import { isApiMode } from "../../lib/http-client";
+import { functionsPath } from "../../pages/operations-url-model";
 import { remoteProxyCallsPath } from "../../pages/remote-proxy-calls-model";
 import { runtimeStoriesPath } from "../../pages/runtime-stories-url-model";
 import {
@@ -216,9 +217,20 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
         openStory(result.storyId, result.nodeId);
         return;
       }
-      setDrawerTarget(result.record);
+      if (result.kind === "event") {
+        openStoryTarget({
+          correlationId: result.correlationId,
+          nodeIdCandidates: [result.id],
+        });
+        return;
+      }
+      if (result.kind === "function") {
+        void navigate({
+          to: functionsPath({ selectedId: result.id }),
+        });
+      }
     },
-    [openTimeline, openStory]
+    [navigate, openTimeline, openStory, openStoryTarget]
   );
 
   const value = useMemo<RuntimeConsoleContextValue>(

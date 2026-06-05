@@ -12,6 +12,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { retryTargetFor, runtimeStories } from "../../data/mock-runtime";
 import { queryDataWithMockFallback } from "../../hooks/runtime-query-data";
+import { currentBrowserUrl } from "../../hooks/use-browser-url-state";
 import { useRuntimeStories } from "../../hooks/use-runtime-queries";
 import { isApiMode } from "../../lib/http-client";
 import { Dialog } from "../ui/dialog";
@@ -116,11 +117,11 @@ export function CommandPalette({ theme, onToggleTheme }: CommandPaletteProps) {
         title: "Search in Stories",
       },
       {
-        action: closeCommandPalette,
-        id: "copy-correlation",
-        searchText: "copy correlation id",
-        subtitle: "Copy action is not wired yet",
-        title: "Copy correlation ID",
+        action: copyCurrentLink,
+        id: "copy-current-link",
+        searchText: "copy current link url permalink deep link",
+        subtitle: "Copy the current console URL",
+        title: "Copy Current Link",
       },
       ...storyItems,
     ];
@@ -144,7 +145,6 @@ export function CommandPalette({ theme, onToggleTheme }: CommandPaletteProps) {
 
     return items;
   }, [
-    closeCommandPalette,
     drawerTarget,
     focusGlobalSearch,
     navigate,
@@ -252,6 +252,14 @@ export function CommandPalette({ theme, onToggleTheme }: CommandPaletteProps) {
       </Dialog.Portal>
     </Dialog>
   );
+}
+
+function copyCurrentLink() {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const url = new URL(currentBrowserUrl(), window.location.origin).toString();
+  void window.navigator.clipboard?.writeText(url);
 }
 
 function CommandIcon({ id }: { id: string }) {
