@@ -21,7 +21,6 @@ import type {
   AdminOutboxListResponse,
 } from "../../../../packages/ts-sdk/src/generated/types";
 import {
-  correlationId,
   type Actor,
   type ExecutionLogEntry,
   type ExecutionPayload,
@@ -31,9 +30,7 @@ import {
   type RuntimeEvent,
   remoteProxyCalls,
   runtimeEvents,
-  type TimelineItem,
   type TechnicalOperation,
-  timelineItems,
   type RuntimeStory,
   runtimeStories,
   type RuntimeStatus,
@@ -46,13 +43,11 @@ import {
   normalizeRuntimeStory,
   normalizeRuntimeStoryListResponse,
   normalizeTechnicalOperations,
-  normalizeTimelineItems,
   type ApiRuntimeHeatmapResponse,
   type ApiExecutionLogResponse,
   type ApiExecutionPayloadResponse,
   type ApiRuntimeStoryDetailResponse,
   type ApiRuntimeStoryListResponse,
-  type ApiTimelineResponse,
   type ApiTechnicalOperationResponse,
   type RuntimeHeatmap,
   type RuntimeHeatmapCell,
@@ -67,7 +62,6 @@ export const runtimeQueryKeys = {
     ["runtime", "functions", id, "detail"] as const,
   heatmap: ["runtime", "heatmap"] as const,
   storyHeatmap: (id: string) => ["runtime", "stories", id, "heatmap"] as const,
-  timeline: (id: string) => ["runtime", "timeline", id] as const,
   technicalOperationsForStory: (id: string) =>
     ["runtime", "stories", id, "technical-operations"] as const,
   technicalOperationsForExecution: (id: string) =>
@@ -183,18 +177,6 @@ export function useRuntimeFunctionDetail(run: FunctionRun | null) {
         throw new Error("Function run detail query requires a run");
       }
       return isApiMode() ? fetchRuntimeFunctionDetail(run.id, run) : run;
-    },
-  });
-}
-
-export function useRuntimeTimeline(activeCorrelationId: string) {
-  return useQuery({
-    queryKey: runtimeQueryKeys.timeline(activeCorrelationId),
-    queryFn: async () => {
-      const id = activeCorrelationId || correlationId;
-      return isApiMode()
-        ? fetchRuntimeTimeline(id)
-        : timelineItems.filter((item) => item.correlationId === id);
     },
   });
 }
@@ -506,13 +488,6 @@ async function fetchRuntimeFunctionDetail(
     .get(`admin/runtime/functions/${encodeURIComponent(id)}`)
     .json<AdminFunctionRunResponse>();
   return normalizeFunctionRunDetailForConsole(response.data, fallback);
-}
-
-async function fetchRuntimeTimeline(id: string): Promise<TimelineItem[]> {
-  const response = await httpClient
-    .get(`admin/runtime/timeline/${encodeURIComponent(id)}`)
-    .json<ApiTimelineResponse>();
-  return normalizeTimelineItems(response, id);
 }
 
 async function fetchRuntimeHeatmap(): Promise<RuntimeHeatmap> {

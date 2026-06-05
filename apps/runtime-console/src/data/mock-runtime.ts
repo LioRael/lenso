@@ -1117,12 +1117,6 @@ export const timelineItems: TimelineItem[] = [
   },
 ];
 
-export const futureTimelineSlots: Array<Pick<TimelineItem, "type" | "name">> = [
-  { type: "flow_step", name: "flow step" },
-  { type: "agent_tool_call", name: "agent tool call" },
-  { type: "external_provider_call", name: "external provider call" },
-];
-
 export const queueHealth = [
   {
     name: "outbox",
