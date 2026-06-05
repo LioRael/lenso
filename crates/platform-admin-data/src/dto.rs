@@ -36,6 +36,7 @@ pub struct AdminModuleMetadataDto {
     pub source: ModuleSource,
     pub status: AdminModuleStatus,
     pub error: Option<String>,
+    pub source_diagnostics: Option<AdminModuleSourceDiagnosticsDto>,
     pub http_routes: Vec<ModuleHttpRoute>,
     pub runtime: Option<RuntimeSurface>,
     pub lifecycle: Option<LifecycleSurface>,
@@ -44,6 +45,22 @@ pub struct AdminModuleMetadataDto {
     pub story_display: Vec<StoryDisplayDescriptorDto>,
     pub capabilities: Vec<String>,
     pub admin: Option<AdminSurface>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum AdminModuleSourceDiagnosticsDto {
+    Remote(AdminRemoteModuleDiagnosticsDto),
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminRemoteModuleDiagnosticsDto {
+    pub base_url: String,
+    pub manifest_url: String,
+    pub timeout_ms: u64,
+    pub auth_configured: bool,
+    pub last_checked_at: Option<String>,
+    pub last_load_error: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

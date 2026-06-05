@@ -112,6 +112,7 @@ fn app() -> axum::Router {
         story_display: vec![],
         capabilities: vec![],
         admin: Some(AdminSurface::Schema(stub_schema())),
+        source_diagnostics: None,
     }]);
     let ctx = AppContext::new(
         AppConfig::from_env(),
@@ -353,6 +354,7 @@ async fn admin_action_invocation_calls_declared_source() {
         story_display: vec![],
         capabilities: vec!["remote_crm.contacts.sync".to_owned()],
         admin: Some(stub_declarative_surface()),
+        source_diagnostics: None,
     }]);
     let ctx = AppContext::new(
         AppConfig::from_env(),
@@ -398,6 +400,7 @@ async fn admin_action_invocation_rejects_unknown_action() {
         story_display: vec![],
         capabilities: vec!["remote_crm.contacts.sync".to_owned()],
         admin: Some(stub_declarative_surface()),
+        source_diagnostics: None,
     }]);
     let ctx = AppContext::new(
         AppConfig::from_env(),
@@ -543,6 +546,7 @@ async fn refresh_schema_replaces_installed_modules() {
                 }],
                 capabilities: vec!["identity.users.read".to_owned()],
                 admin: Some(AdminSurface::Schema(stub_schema())),
+                source_diagnostics: None,
             },
             AdminModuleMetadata {
                 module_name: "remote-crm".to_owned(),
@@ -556,6 +560,7 @@ async fn refresh_schema_replaces_installed_modules() {
                 story_display: vec![],
                 capabilities: vec![],
                 admin: None,
+                source_diagnostics: None,
             },
         ])
     });
@@ -650,6 +655,7 @@ async fn refresh_modules_replaces_module_registry_metadata() {
         story_display: vec![],
         capabilities: vec![],
         admin: Some(AdminSurface::Schema(stub_schema())),
+        source_diagnostics: None,
     }]);
     install_admin_module_metadata_refresh_fn(|| async {
         METADATA_REFRESH_COUNT.fetch_add(1, Ordering::SeqCst);
@@ -669,6 +675,7 @@ async fn refresh_modules_replaces_module_registry_metadata() {
             }],
             capabilities: vec!["notifications.email.send".to_owned()],
             admin: None,
+            source_diagnostics: None,
         }])
     });
     let ctx = AppContext::new(
@@ -727,6 +734,7 @@ async fn refresh_modules_records_error_without_dropping_snapshot() {
         story_display: vec![],
         capabilities: vec![],
         admin: Some(AdminSurface::Schema(stub_schema())),
+        source_diagnostics: None,
     }]);
     install_admin_module_metadata_refresh_fn(|| async {
         Err(platform_core::AppError::new(

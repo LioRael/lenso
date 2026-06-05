@@ -2,13 +2,14 @@ use crate::dto::{
     AdminActionInvokeRequest, AdminActionInvokeResponse, AdminCapabilityIssueDto,
     AdminCapabilitySummaryDto, AdminDataDetailResponse, AdminDataListResponse, AdminDataPageInfo,
     AdminModuleActivationState, AdminModuleGovernanceDto, AdminModuleMetadataDto,
-    AdminModuleMetadataListResponse, AdminModuleSchema, AdminModuleStatus, AdminSchemaListResponse,
+    AdminModuleMetadataListResponse, AdminModuleSchema, AdminModuleSourceDiagnosticsDto,
+    AdminModuleStatus, AdminRemoteModuleDiagnosticsDto, AdminSchemaListResponse,
     AdminSchemaRefreshResponse,
 };
 use crate::{
-    AdminModule, AdminModuleMetadata, admin_metadata_refresher, admin_module_metadata_snapshot,
-    admin_modules, admin_refresher, find_loaded_action_module, find_loaded_module,
-    install_admin_module_metadata, install_admin_modules,
+    AdminModule, AdminModuleMetadata, AdminModuleSourceDiagnostics, admin_metadata_refresher,
+    admin_module_metadata_snapshot, admin_modules, admin_refresher, find_loaded_action_module,
+    find_loaded_module, install_admin_module_metadata, install_admin_modules,
     record_admin_module_metadata_refresh_error,
 };
 use axum::Json;
@@ -171,6 +172,7 @@ fn metadata_response_modules(modules: Vec<AdminModuleMetadata>) -> Vec<AdminModu
                 source: m.source,
                 status: admin_module_status(&m.load_status),
                 error: load_error_message(&m.load_status),
+                source_diagnostics: source_diagnostics_dto(m.source_diagnostics.clone()),
                 http_routes: m.http_routes.clone(),
                 runtime: m.runtime.clone(),
                 lifecycle: m.lifecycle.clone(),
@@ -187,6 +189,23 @@ fn metadata_response_modules(modules: Vec<AdminModuleMetadata>) -> Vec<AdminModu
             }
         })
         .collect()
+}
+
+fn source_diagnostics_dto(
+    diagnostics: Option<AdminModuleSourceDiagnostics>,
+) -> Option<AdminModuleSourceDiagnosticsDto> {
+    match diagnostics? {
+        AdminModuleSourceDiagnostics::Remote(remote) => Some(
+            AdminModuleSourceDiagnosticsDto::Remote(AdminRemoteModuleDiagnosticsDto {
+                base_url: remote.base_url,
+                manifest_url: remote.manifest_url,
+                timeout_ms: remote.timeout_ms,
+                auth_configured: remote.auth_configured,
+                last_checked_at: remote.last_checked_at,
+                last_load_error: remote.last_load_error,
+            }),
+        ),
+    }
 }
 
 fn module_governance(
@@ -419,6 +438,7 @@ mod tests {
             story_display: Vec::new(),
             capabilities: Vec::new(),
             admin: None,
+            source_diagnostics: None,
         }]);
 
         assert!(modules[0].lifecycle.is_some());
@@ -457,6 +477,7 @@ mod tests {
                     read_capability: "remote_crm.contacts.read".to_owned(),
                 }],
             })),
+            source_diagnostics: None,
         }]);
 
         let governance = &modules[0].governance;

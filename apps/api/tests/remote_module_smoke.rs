@@ -260,7 +260,7 @@ async fn wait_for_story_event(pool: &platform_core::DbPool, source_id: &str) {
 async fn remote_module_fixture_is_visible_through_admin_data_api() {
     let _guard = REMOTE_SMOKE_TEST_LOCK.lock().await;
     let base_url = spawn_remote_module(remote_module_example::router()).await;
-    let app = app_with_remote_module(base_url).await;
+    let app = app_with_remote_module(base_url.clone()).await;
 
     let schema_response = app
         .clone()
@@ -295,6 +295,26 @@ async fn remote_module_fixture_is_visible_through_admin_data_api() {
         .expect("remote-crm metadata is installed");
     assert_eq!(remote_module["source"], "remote");
     assert_eq!(remote_module["status"], "loaded");
+    assert_eq!(remote_module["source_diagnostics"]["kind"], "remote");
+    assert_eq!(remote_module["source_diagnostics"]["base_url"], base_url);
+    assert_eq!(
+        remote_module["source_diagnostics"]["manifest_url"],
+        format!("{base_url}/manifest")
+    );
+    assert_eq!(remote_module["source_diagnostics"]["timeout_ms"], 5_000);
+    assert_eq!(
+        remote_module["source_diagnostics"]["auth_configured"],
+        false
+    );
+    assert!(
+        remote_module["source_diagnostics"]["last_checked_at"]
+            .as_str()
+            .is_some()
+    );
+    assert_eq!(
+        remote_module["source_diagnostics"]["last_load_error"],
+        Value::Null
+    );
     assert_eq!(remote_module["http_routes"][0]["method"], "GET");
     assert_eq!(remote_module["http_routes"][0]["path"], "/contacts");
     assert_eq!(
@@ -1238,6 +1258,32 @@ async fn failed_remote_module_load_is_reported_in_schema() {
             .as_array()
             .expect("empty schema"),
         &Vec::<Value>::new()
+    );
+
+    let modules_response = app
+        .clone()
+        .oneshot(admin_get("/admin/data/modules"))
+        .await
+        .expect("modules request completes");
+    assert_eq!(modules_response.status(), StatusCode::OK);
+    let modules = json_body(modules_response).await;
+    let remote_module = modules["modules"]
+        .as_array()
+        .expect("modules array")
+        .iter()
+        .find(|module| module["module_name"] == "remote-crm")
+        .expect("failed remote module metadata");
+    assert_eq!(remote_module["source_diagnostics"]["kind"], "remote");
+    assert_eq!(
+        remote_module["source_diagnostics"]["base_url"],
+        "http://127.0.0.1:9/lenso/module/v1"
+    );
+    assert_eq!(remote_module["source_diagnostics"]["timeout_ms"], 50);
+    assert!(
+        remote_module["source_diagnostics"]["last_load_error"]
+            .as_str()
+            .expect("last load error")
+            .contains("remote manifest request failed")
     );
 
     let list_response = app

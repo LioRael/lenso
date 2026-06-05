@@ -422,6 +422,10 @@ function RemoteModuleHealthPanel({ module }: { module: AdminModuleMetadata }) {
   const summary = summarizeRemoteProxyCalls(calls);
   const readiness = remoteModuleReadiness(module, calls);
   const { latestFailure } = readiness;
+  const diagnostics =
+    module.source_diagnostics?.kind === "remote"
+      ? module.source_diagnostics
+      : null;
 
   return (
     <section className="min-w-0 border border-(--border-subtle) bg-(--surface)">
@@ -466,6 +470,24 @@ function RemoteModuleHealthPanel({ module }: { module: AdminModuleMetadata }) {
         rows={[
           { label: "readiness", value: readiness.status },
           { label: "reason", value: readiness.reasons.join(" / ") },
+          { label: "base url", value: diagnostics?.base_url ?? "-" },
+          { label: "manifest url", value: diagnostics?.manifest_url ?? "-" },
+          {
+            label: "timeout",
+            value: diagnostics ? `${diagnostics.timeout_ms}ms` : "-",
+          },
+          {
+            label: "auth configured",
+            value: diagnostics ? String(diagnostics.auth_configured) : "-",
+          },
+          {
+            label: "last checked",
+            value: diagnostics?.last_checked_at ?? "-",
+          },
+          {
+            label: "last load error",
+            value: diagnostics?.last_load_error ?? "-",
+          },
           { label: "manifest", value: moduleManifestHealth(module) },
           { label: "activation", value: moduleActivationLabel(module) },
           { label: "http routes", value: String(module.http_routes.length) },

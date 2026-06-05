@@ -127,6 +127,7 @@ export type AdminModuleMetadataDto = {
   module_name: string;
   runtime?: unknown;
   source: ModuleSource;
+  source_diagnostics?: unknown;
   status: AdminModuleStatus;
   story_display: Array<StoryDisplayDescriptorDto>;
 };
@@ -144,6 +145,8 @@ export type AdminModuleSchema = {
   source: ModuleSource;
   status: AdminModuleStatus;
 };
+
+export type AdminModuleSourceDiagnosticsDto = unknown;
 
 export type AdminModuleStatus = string;
 
@@ -181,6 +184,15 @@ export type AdminOutboxListResponse = {
 };
 
 export type AdminPermission = unknown;
+
+export type AdminRemoteModuleDiagnosticsDto = {
+  auth_configured: boolean;
+  base_url: string;
+  last_checked_at?: string | null;
+  last_load_error?: string | null;
+  manifest_url: string;
+  timeout_ms: number;
+};
 
 export type AdminRemoteProxyCallItem = {
   capability?: string | null;

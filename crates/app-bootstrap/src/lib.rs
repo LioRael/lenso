@@ -16,7 +16,9 @@
 //! When adding a module, register it in [`modules`] and [`module_manifests`]
 //! and — if it has them — in [`merge_linked_http`].
 
-use platform_admin_data::{AdminModule, AdminModuleMetadata};
+use platform_admin_data::{
+    AdminModule, AdminModuleMetadata, AdminModuleSourceDiagnostics, AdminRemoteModuleDiagnostics,
+};
 use platform_core::error::ErrorDetail;
 use platform_core::{
     ActorContext, AppContext, AppError, CorrelationId, EventHandlerRegistry,
@@ -196,11 +198,16 @@ pub async fn load_admin_module_metadata(
     let mut metadata = admin_metadata_from_modules(modules(ctx));
 
     for remote in &ctx.config.module_sources.remote {
-        let source = RemoteModuleSource::new(remote_module_config(remote))?;
+        let config = remote_module_config(remote);
+        let checked_at = current_timestamp();
+        let source = RemoteModuleSource::new(config.clone())?;
         match source.load().await {
-            Ok(module) => metadata.extend(admin_metadata_from_modules(vec![module])),
+            Ok(module) => metadata.extend(remote_admin_metadata_from_module(
+                module, &config, checked_at, None,
+            )),
             Err(error) => metadata.push(failed_remote_admin_metadata(
-                remote.name.clone(),
+                &config,
+                Some(checked_at),
                 error.public_message,
             )),
         }
@@ -291,6 +298,7 @@ fn admin_metadata_from_modules(modules: Vec<Module>) -> Vec<AdminModuleMetadata>
                 story_display,
                 capabilities,
                 admin,
+                source_diagnostics: None,
             }
         })
         .collect()
@@ -311,18 +319,59 @@ fn failed_remote_admin_module(name: String, message: String) -> AdminModule {
     }
 }
 
-fn failed_remote_admin_metadata(name: String, message: String) -> AdminModuleMetadata {
+fn remote_admin_metadata_from_module(
+    module: Module,
+    config: &RemoteModuleConfig,
+    checked_at: String,
+    load_error: Option<String>,
+) -> Vec<AdminModuleMetadata> {
+    admin_metadata_from_modules(vec![module])
+        .into_iter()
+        .map(|mut metadata| {
+            metadata.source_diagnostics = Some(remote_source_diagnostics(
+                config,
+                Some(checked_at.clone()),
+                load_error.clone(),
+            ));
+            metadata
+        })
+        .collect()
+}
+
+fn failed_remote_admin_metadata(
+    config: &RemoteModuleConfig,
+    checked_at: Option<String>,
+    message: String,
+) -> AdminModuleMetadata {
     AdminModuleMetadata {
-        module_name: name,
+        module_name: config.name.clone(),
         source: ModuleSource::Remote,
-        load_status: ModuleLoadStatus::Error { message },
+        load_status: ModuleLoadStatus::Error {
+            message: message.clone(),
+        },
         http_routes: Vec::new(),
         runtime: None,
         lifecycle: None,
         story_display: Vec::new(),
         capabilities: Vec::new(),
         admin: None,
+        source_diagnostics: Some(remote_source_diagnostics(config, checked_at, Some(message))),
     }
+}
+
+fn remote_source_diagnostics(
+    config: &RemoteModuleConfig,
+    checked_at: Option<String>,
+    load_error: Option<String>,
+) -> AdminModuleSourceDiagnostics {
+    AdminModuleSourceDiagnostics::Remote(AdminRemoteModuleDiagnostics {
+        base_url: config.base_url.clone(),
+        manifest_url: format!("{}/manifest", config.base_url),
+        timeout_ms: config.timeout_ms,
+        auth_configured: config.auth_token.is_some(),
+        last_checked_at: checked_at,
+        last_load_error: load_error,
+    })
 }
 
 fn remote_module_config(source: &platform_core::RemoteModuleSourceConfig) -> RemoteModuleConfig {
@@ -336,6 +385,11 @@ fn remote_module_config(source: &platform_core::RemoteModuleSourceConfig) -> Rem
     }
 
     config
+}
+
+fn current_timestamp() -> String {
+    use platform_core::Clock;
+    platform_core::SystemClock.now().to_rfc3339()
 }
 
 /// Build a [`FunctionRegistry`] from every module's binding.

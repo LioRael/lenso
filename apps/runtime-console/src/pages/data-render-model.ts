@@ -130,6 +130,7 @@ export type AdminModuleMetadata = {
   source: ModuleSource;
   status: ModuleStatus;
   error: string | null;
+  source_diagnostics?: ModuleSourceDiagnostics | null;
   http_routes: ModuleHttpRoute[];
   runtime: RuntimeSurface | null;
   lifecycle: LifecycleSurface | null;
@@ -138,6 +139,18 @@ export type AdminModuleMetadata = {
   story_display: StoryDisplayDescriptor[];
   capabilities: string[];
   admin: AdminSurface | null;
+};
+
+export type ModuleSourceDiagnostics = RemoteModuleSourceDiagnostics;
+
+export type RemoteModuleSourceDiagnostics = {
+  kind: "remote";
+  base_url: string;
+  manifest_url: string;
+  timeout_ms: number;
+  auth_configured: boolean;
+  last_checked_at?: string | null;
+  last_load_error?: string | null;
 };
 
 export type AdminModuleSchemaMetadata = {

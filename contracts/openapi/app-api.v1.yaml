@@ -2741,6 +2741,10 @@ components:
           - $ref: '#/components/schemas/RuntimeSurface'
         source:
           $ref: '#/components/schemas/ModuleSource'
+        source_diagnostics:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/AdminModuleSourceDiagnosticsDto'
         status:
           $ref: '#/components/schemas/AdminModuleStatus'
         story_display:
@@ -2787,6 +2791,18 @@ components:
           $ref: '#/components/schemas/ModuleSource'
         status:
           $ref: '#/components/schemas/AdminModuleStatus'
+    AdminModuleSourceDiagnosticsDto:
+      oneOf:
+      - allOf:
+        - $ref: '#/components/schemas/AdminRemoteModuleDiagnosticsDto'
+        - type: object
+          required:
+          - kind
+          properties:
+            kind:
+              type: string
+              enum:
+              - remote
     AdminModuleStatus:
       type: string
       enum:
@@ -2909,6 +2925,32 @@ components:
             type: string
             enum:
             - invoke_action
+    AdminRemoteModuleDiagnosticsDto:
+      type: object
+      required:
+      - base_url
+      - manifest_url
+      - timeout_ms
+      - auth_configured
+      properties:
+        auth_configured:
+          type: boolean
+        base_url:
+          type: string
+        last_checked_at:
+          type:
+          - string
+          - 'null'
+        last_load_error:
+          type:
+          - string
+          - 'null'
+        manifest_url:
+          type: string
+        timeout_ms:
+          type: integer
+          format: int64
+          minimum: 0
     AdminRemoteProxyCallItem:
       type: object
       required:

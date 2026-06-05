@@ -71,6 +71,24 @@ pub struct AdminModuleMetadata {
     /// The declared admin surface. Missing for modules with no admin surface
     /// and degraded failed remotes whose manifest could not be loaded.
     pub admin: Option<AdminSurface>,
+    /// Source-level diagnostics known to the host. Remote modules include
+    /// endpoint and load metadata; linked modules usually leave this empty.
+    pub source_diagnostics: Option<AdminModuleSourceDiagnostics>,
+}
+
+#[derive(Clone, Debug)]
+pub enum AdminModuleSourceDiagnostics {
+    Remote(AdminRemoteModuleDiagnostics),
+}
+
+#[derive(Clone, Debug)]
+pub struct AdminRemoteModuleDiagnostics {
+    pub base_url: String,
+    pub manifest_url: String,
+    pub timeout_ms: u64,
+    pub auth_configured: bool,
+    pub last_checked_at: Option<String>,
+    pub last_load_error: Option<String>,
 }
 
 #[derive(Clone, Debug, Default)]
