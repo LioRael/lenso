@@ -1,10 +1,7 @@
 import { ArrowRight, GitBranch, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import {
-  resolveTimelineSource,
-  useRuntimeConsole,
-} from "../components/runtime/runtime-console-context";
+import { useRuntimeConsole } from "../components/runtime/runtime-console-context";
 import { StatusPill } from "../components/runtime/status-pill";
 import {
   TimelineNode,
@@ -24,7 +21,7 @@ import { duration } from "../lib/format";
 import { runtimeConsoleDataSource } from "../lib/http-client";
 
 export function TimelinePage() {
-  const { activeCorrelationId, openDrawer, openRetry, openTimeline } =
+  const { activeCorrelationId, openRetry, openTimeline, openTimelineSource } =
     useRuntimeConsole();
   const [input, setInput] = useState(activeCorrelationId || correlationId);
   const timelineQuery = useRuntimeTimeline(activeCorrelationId);
@@ -150,18 +147,9 @@ export function TimelinePage() {
                 index={index}
                 item={item}
                 key={item.id}
-                onOpen={() =>
-                  openDrawer(
-                    resolveTimelineSource(item.detailId ?? item.id) ?? {
-                      item,
-                      kind: "timeline",
-                    }
-                  )
-                }
+                onOpen={() => openTimelineSource(item)}
                 onRetry={() => {
-                  const record = resolveTimelineSource(
-                    item.detailId ?? item.id
-                  ) ?? {
+                  const record = {
                     item,
                     kind: "timeline" as const,
                   };

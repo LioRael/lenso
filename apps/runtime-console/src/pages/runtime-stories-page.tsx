@@ -15,6 +15,7 @@ import {
 } from "../components/runtime/execution-inspector-model";
 import { ResizeHandle } from "../components/runtime/resize-handle";
 import { useRuntimeConsole } from "../components/runtime/runtime-console-context";
+import { findStoryByCorrelation } from "../components/runtime/runtime-story-target";
 import { RuntimeStoryVisualization } from "../components/runtime/runtime-story-visualization";
 import { ServiceSummaryStrip } from "../components/runtime/service-summary-strip";
 import { StoryHeader } from "../components/runtime/story-header";
@@ -107,7 +108,7 @@ export function RuntimeStoriesPage() {
   }, [query, stories]);
 
   const targetStory = activeStoryTarget
-    ? stories.find((story) => story.id === activeStoryTarget.storyId)
+    ? findStoryByCorrelation(stories, activeStoryTarget.storyId)
     : null;
   const selectedStory =
     targetStory ??

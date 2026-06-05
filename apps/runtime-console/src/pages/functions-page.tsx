@@ -42,7 +42,7 @@ function clamp(value: number, min: number, max: number) {
 }
 
 export function FunctionsPage() {
-  const { openRetry, openTimeline } = useRuntimeConsole();
+  const { openRetry, openStoryTarget } = useRuntimeConsole();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<FunctionStatusFilter>("all");
   const [moduleName, setModuleName] = useState("");
@@ -328,7 +328,13 @@ export function FunctionsPage() {
         <div className="flex gap-2 border-t border-(--border-subtle) bg-(--surface) p-2">
           <Button
             disabled={!selected}
-            onClick={() => selected && openTimeline(selected.correlationId)}
+            onClick={() =>
+              selected &&
+              openStoryTarget({
+                correlationId: selected.correlationId,
+                nodeIdCandidates: [selected.id],
+              })
+            }
             variant="ghost"
           >
             <ExternalLink size={13} />

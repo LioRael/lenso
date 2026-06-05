@@ -34,7 +34,7 @@ function clamp(value: number, min: number, max: number) {
 }
 
 export function DeadLettersPage() {
-  const { openRetry, openTimeline } = useRuntimeConsole();
+  const { openRetry, openStoryTarget } = useRuntimeConsole();
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState<"all" | "event" | "function">("all");
   const [oldestFirst, setOldestFirst] = useState(true);
@@ -227,7 +227,11 @@ export function DeadLettersPage() {
           <Button
             disabled={!selected}
             onClick={() =>
-              selected && openTimeline(selected.item.correlationId)
+              selected &&
+              openStoryTarget({
+                correlationId: selected.item.correlationId,
+                nodeIdCandidates: [selected.item.id],
+              })
             }
             variant="ghost"
           >

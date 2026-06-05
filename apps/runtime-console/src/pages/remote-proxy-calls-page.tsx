@@ -36,7 +36,7 @@ function clamp(value: number, min: number, max: number) {
 }
 
 export function RemoteProxyCallsPage() {
-  const { openStory } = useRuntimeConsole();
+  const { openStory, openStoryTarget } = useRuntimeConsole();
   const [query, setQuery] = useState("");
   const [moduleName, setModuleName] = useState("");
   const [correlationId, setCorrelationId] = useState(() =>
@@ -388,7 +388,18 @@ export function RemoteProxyCallsPage() {
         <div className="flex gap-2 border-t border-(--border-subtle) bg-(--surface) p-2">
           {selected ? (
             <Button
-              onClick={() => openStory(selected.correlation_id)}
+              onClick={() =>
+                openStoryTarget({
+                  correlationId: selected.correlation_id,
+                  nodeIdCandidates: [
+                    `remoteproxy_${selected.id}`,
+                    selected.id,
+                    selected.request_id,
+                  ],
+                  remoteProxyCallId: selected.id,
+                  requestId: selected.request_id,
+                })
+              }
               variant="ghost"
             >
               <ExternalLink size={13} />

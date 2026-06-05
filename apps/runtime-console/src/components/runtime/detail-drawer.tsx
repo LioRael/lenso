@@ -96,7 +96,7 @@ function SummaryStrip({
 }
 
 function EventBody({ event }: { event: RuntimeEvent }) {
-  const { openRetry, openTimeline } = useRuntimeConsole();
+  const { openRetry, openStoryTarget } = useRuntimeConsole();
   const detailQuery = useRuntimeEventDetail(event);
   const displayEvent = detailQuery.data ?? event;
   const displayRecord: RuntimeRecord = {
@@ -168,7 +168,14 @@ function EventBody({ event }: { event: RuntimeEvent }) {
         <JsonViewer title="Trace" value={displayEvent.trace} />
       ) : null}
       <div className="flex flex-wrap gap-2.5">
-        <Button onClick={() => openTimeline(displayEvent.correlationId)}>
+        <Button
+          onClick={() =>
+            openStoryTarget({
+              correlationId: displayEvent.correlationId,
+              nodeIdCandidates: [displayEvent.id],
+            })
+          }
+        >
           <ExternalLink size={15} />
           Timeline
         </Button>
@@ -188,7 +195,7 @@ function EventBody({ event }: { event: RuntimeEvent }) {
 }
 
 function FunctionBody({ run }: { run: FunctionRun }) {
-  const { openRetry, openTimeline } = useRuntimeConsole();
+  const { openRetry, openStoryTarget } = useRuntimeConsole();
   const detailQuery = useRuntimeFunctionDetail(run);
   const displayRun = detailQuery.data ?? run;
   const displayRecord: RuntimeRecord = {
@@ -271,7 +278,14 @@ function FunctionBody({ run }: { run: FunctionRun }) {
         </pre>
       </DrawerSection>
       <div className="flex flex-wrap gap-2.5">
-        <Button onClick={() => openTimeline(displayRun.correlationId)}>
+        <Button
+          onClick={() =>
+            openStoryTarget({
+              correlationId: displayRun.correlationId,
+              nodeIdCandidates: [displayRun.id],
+            })
+          }
+        >
           <Activity size={15} />
           Timeline
         </Button>
@@ -293,7 +307,7 @@ function TimelineBody({
   item: TimelineItem;
   record: RuntimeRecord;
 }) {
-  const { openRetry } = useRuntimeConsole();
+  const { openRetry, openTimelineSource } = useRuntimeConsole();
   const retryTarget = retryTargetFor(record);
   return (
     <>
@@ -332,7 +346,7 @@ function TimelineBody({
         }}
       />
       <div className="flex flex-wrap gap-2.5">
-        <Button>
+        <Button onClick={() => openTimelineSource(item)}>
           <ExternalLink size={15} />
           Open source record
         </Button>

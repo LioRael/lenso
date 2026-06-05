@@ -18,6 +18,7 @@ import {
   timelineItems,
   type RetryTarget,
   type RuntimeRecord,
+  type TimelineItem,
 } from "../../data/mock-runtime";
 import { queryDataWithMockFallback } from "../../hooks/runtime-query-data";
 import {
@@ -31,6 +32,10 @@ import {
   buildRuntimeSearchResults,
   type RuntimeSearchResult,
 } from "./runtime-search-model";
+import {
+  resolveRuntimeStoryTarget,
+  type RuntimeStoryTargetInput,
+} from "./runtime-story-target";
 
 export type SearchResult = RuntimeSearchResult;
 
@@ -50,7 +55,9 @@ type RuntimeConsoleContextValue = {
   focusGlobalSearch: () => void;
   openTimeline: (nextCorrelationId: string) => void;
   openStory: (storyId: string, nodeId?: string) => void;
+  openStoryTarget: (target: RuntimeStoryTargetInput) => void;
   openRemoteCalls: (correlationId?: string) => void;
+  openTimelineSource: (item: TimelineItem) => void;
   clearStoryTarget: () => void;
   searchRuntime: (query: string) => SearchResult[];
   selectSearchResult: (result: SearchResult) => void;
@@ -107,6 +114,64 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
     setActiveStoryTarget(null);
   }, []);
 
+  const resolvedEvents = useMemo(
+    () =>
+      queryDataWithMockFallback({
+        apiMode: isApiMode(),
+        data: eventsQuery.data,
+        fallback: runtimeEvents,
+        isError: eventsQuery.isError,
+      }),
+    [eventsQuery.data, eventsQuery.isError]
+  );
+
+  const resolvedFunctions = useMemo(
+    () =>
+      queryDataWithMockFallback({
+        apiMode: isApiMode(),
+        data: functionsQuery.data,
+        fallback: functionRuns,
+        isError: functionsQuery.isError,
+      }),
+    [functionsQuery.data, functionsQuery.isError]
+  );
+
+  const resolvedStories = useMemo(
+    () =>
+      queryDataWithMockFallback({
+        apiMode: isApiMode(),
+        data: storiesQuery.data,
+        fallback: runtimeStories,
+        isError: storiesQuery.isError,
+      }),
+    [storiesQuery.data, storiesQuery.isError]
+  );
+
+  const openStoryTarget = useCallback(
+    (target: RuntimeStoryTargetInput) => {
+      const resolvedTarget = resolveRuntimeStoryTarget(resolvedStories, target);
+      setActiveStoryTarget(resolvedTarget);
+      void navigate({ to: "/runtime/stories" });
+    },
+    [navigate, resolvedStories]
+  );
+
+  const openTimelineSource = useCallback(
+    (item: TimelineItem) => {
+      if (item.type === "remote_proxy_call") {
+        openRemoteCalls(item.correlationId);
+        return;
+      }
+
+      const record = resolveTimelineSourceRecord(item, {
+        events: resolvedEvents,
+        functions: resolvedFunctions,
+      });
+      setDrawerTarget(record ?? { kind: "timeline", item });
+    },
+    [openRemoteCalls, resolvedEvents, resolvedFunctions]
+  );
+
   const searchRuntime = useCallback(
     (query: string) => {
       const normalized = query.trim().toLowerCase();
@@ -115,35 +180,13 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
       }
 
       return buildRuntimeSearchResults({
-        events: queryDataWithMockFallback({
-          apiMode: isApiMode(),
-          data: eventsQuery.data,
-          fallback: runtimeEvents,
-          isError: eventsQuery.isError,
-        }),
-        functions: queryDataWithMockFallback({
-          apiMode: isApiMode(),
-          data: functionsQuery.data,
-          fallback: functionRuns,
-          isError: functionsQuery.isError,
-        }),
+        events: resolvedEvents,
+        functions: resolvedFunctions,
         query: normalized,
-        stories: queryDataWithMockFallback({
-          apiMode: isApiMode(),
-          data: storiesQuery.data,
-          fallback: runtimeStories,
-          isError: storiesQuery.isError,
-        }),
+        stories: resolvedStories,
       });
     },
-    [
-      eventsQuery.data,
-      eventsQuery.isError,
-      functionsQuery.data,
-      functionsQuery.isError,
-      storiesQuery.data,
-      storiesQuery.isError,
-    ]
+    [resolvedEvents, resolvedFunctions, resolvedStories]
   );
 
   const selectSearchResult = useCallback(
@@ -178,7 +221,9 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
       focusGlobalSearch: () => searchInputRef.current?.focus(),
       openTimeline,
       openStory,
+      openStoryTarget,
       openRemoteCalls,
+      openTimelineSource,
       clearStoryTarget,
       searchRuntime,
       selectSearchResult,
@@ -192,6 +237,8 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
       openTimeline,
       openRemoteCalls,
       openStory,
+      openStoryTarget,
+      openTimelineSource,
       retryTarget,
       searchRuntime,
       selectSearchResult,
@@ -228,4 +275,28 @@ export function resolveTimelineSource(itemId: string): RuntimeRecord | null {
 
   const item = timelineItems.find((timelineItem) => timelineItem.id === itemId);
   return item ? { kind: "timeline", item } : null;
+}
+
+export function resolveTimelineSourceRecord(
+  item: TimelineItem,
+  sources: {
+    events: typeof runtimeEvents;
+    functions: typeof functionRuns;
+  }
+): RuntimeRecord | null {
+  const sourceId = item.detailId ?? item.id;
+
+  if (item.type === "outbox_event" || item.type === "event") {
+    const event = sources.events.find((candidate) => candidate.id === sourceId);
+    return event ? { kind: "event", item: event } : null;
+  }
+
+  if (item.type === "function_run" || item.type === "function") {
+    const run = sources.functions.find(
+      (candidate) => candidate.id === sourceId
+    );
+    return run ? { kind: "function", item: run } : null;
+  }
+
+  return resolveTimelineSource(sourceId);
 }
