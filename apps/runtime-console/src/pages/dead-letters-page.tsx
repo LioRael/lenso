@@ -11,6 +11,7 @@ import {
   type FunctionRun,
   type RuntimeEvent,
 } from "../data/mock-runtime";
+import { useBrowserUrlPopState } from "../hooks/use-browser-url-state";
 import { useListKeyboard } from "../hooks/use-list-keyboard";
 import { usePersistedLayout } from "../hooks/use-persisted-layout";
 import {
@@ -22,6 +23,7 @@ import { actorLabel, time } from "../lib/format";
 import { runtimeConsoleDataSource } from "../lib/http-client";
 import {
   deadLettersPath,
+  pushOperationsUrl,
   readOperationsParam,
   replaceOperationsUrl,
 } from "./operations-url-model";
@@ -82,6 +84,32 @@ export function DeadLettersPage() {
     [failures, kind, oldestFirst, query]
   );
 
+  useBrowserUrlPopState((search) => {
+    setQuery(search.get("q") ?? "");
+    setKind(readDeadLetterKind(search.get("kind") ?? ""));
+    setOldestFirst((search.get("order") ?? "oldest") !== "newest");
+    setSelectedId(search.get("selected") ?? "");
+  });
+
+  const deadLetterUrl = (
+    overrides: Partial<{
+      kind: "all" | "event" | "function";
+      oldestFirst: boolean;
+      query: string;
+      selectedId: string;
+    }> = {}
+  ) =>
+    deadLettersPath({
+      kind: overrides.kind ?? kind,
+      oldestFirst: overrides.oldestFirst ?? oldestFirst,
+      query: overrides.query ?? query,
+      selectedId: overrides.selectedId ?? selectedId,
+    });
+
+  const pushDeadLetterUrl = (
+    overrides: Parameters<typeof deadLetterUrl>[0] = {}
+  ) => pushOperationsUrl(deadLetterUrl(overrides));
+
   useEffect(() => {
     if (visible.length === 0) {
       if (selectedId) {
@@ -106,6 +134,7 @@ export function DeadLettersPage() {
   const selectIndex = (index: number) => {
     const failure = visible[index];
     if (failure) {
+      pushDeadLetterUrl({ selectedId: failure.item.id });
       setSelectedId(failure.item.id);
     }
   };
@@ -136,7 +165,10 @@ export function DeadLettersPage() {
     items: visible,
     selectedIndex,
     setSelectedIndex: selectIndex,
-    onOpen: (failure) => setSelectedId(failure.item.id),
+    onOpen: (failure) => {
+      pushDeadLetterUrl({ selectedId: failure.item.id });
+      setSelectedId(failure.item.id);
+    },
     onRetry: retryFailure,
   });
 
@@ -169,7 +201,10 @@ export function DeadLettersPage() {
                   : "border-(--border-subtle) text-(--muted) hover:text-(--foreground)"
               }`}
               key={item}
-              onClick={() => setKind(item)}
+              onClick={() => {
+                pushDeadLetterUrl({ kind: item, selectedId: "" });
+                setKind(item);
+              }}
               type="button"
             >
               {item}
@@ -177,7 +212,11 @@ export function DeadLettersPage() {
           ))}
           <button
             className="h-6 border border-(--border-subtle) px-2 font-mono text-[10px] text-(--muted) hover:text-(--foreground)"
-            onClick={() => setOldestFirst((current) => !current)}
+            onClick={() => {
+              const next = !oldestFirst;
+              pushDeadLetterUrl({ oldestFirst: next, selectedId: "" });
+              setOldestFirst(next);
+            }}
             type="button"
           >
             {oldestFirst ? "oldest" : "newest"}
@@ -220,7 +259,10 @@ export function DeadLettersPage() {
                       : "hover:bg-(--elevated)"
                   }`}
                   key={item.id}
-                  onClick={() => setSelectedId(item.id)}
+                  onClick={() => {
+                    pushDeadLetterUrl({ selectedId: item.id });
+                    setSelectedId(item.id);
+                  }}
                   type="button"
                 >
                   <StatusPill status={item.status} />

@@ -12,6 +12,7 @@ import { ResizeHandle } from "../components/runtime/resize-handle";
 import { useRuntimeConsole } from "../components/runtime/runtime-console-context";
 import { Button } from "../components/ui/button";
 import { retryTargetFor, type FunctionRun } from "../data/mock-runtime";
+import { useBrowserUrlPopState } from "../hooks/use-browser-url-state";
 import { useListKeyboard } from "../hooks/use-list-keyboard";
 import { usePersistedLayout } from "../hooks/use-persisted-layout";
 import {
@@ -34,6 +35,7 @@ import {
 } from "./functions-model";
 import {
   functionsPath,
+  pushOperationsUrl,
   readOperationsParam,
   replaceOperationsUrl,
 } from "./operations-url-model";
@@ -88,6 +90,35 @@ export function FunctionsPage() {
     () => aggregateFunctionRuns(runs, "status", 5),
     [runs]
   );
+
+  useBrowserUrlPopState((search) => {
+    setQuery(search.get("q") ?? "");
+    setStatus(readFunctionStatus(search.get("status") ?? ""));
+    setModuleName(search.get("module") ?? "");
+    setQueue(search.get("queue") ?? "");
+    setSelectedId(search.get("selected") ?? "");
+  });
+
+  const functionUrl = (
+    overrides: Partial<{
+      moduleName: string;
+      query: string;
+      queue: string;
+      selectedId: string;
+      status: FunctionStatusFilter;
+    }> = {}
+  ) =>
+    functionsPath({
+      moduleName: overrides.moduleName ?? moduleName,
+      query: overrides.query ?? query,
+      queue: overrides.queue ?? queue,
+      selectedId: overrides.selectedId ?? selectedId,
+      status: overrides.status ?? status,
+    });
+
+  const pushFunctionUrl = (overrides: Parameters<typeof functionUrl>[0] = {}) =>
+    pushOperationsUrl(functionUrl(overrides));
+
   useEffect(() => {
     if (visible.length === 0) {
       if (selectedId) {
@@ -111,6 +142,7 @@ export function FunctionsPage() {
   const selectIndex = (index: number) => {
     const run = visible[index];
     if (run) {
+      pushFunctionUrl({ selectedId: run.id });
       setSelectedId(run.id);
     }
   };
@@ -136,7 +168,10 @@ export function FunctionsPage() {
     items: visible,
     selectedIndex,
     setSelectedIndex: selectIndex,
-    onOpen: (run) => setSelectedId(run.id),
+    onOpen: (run) => {
+      pushFunctionUrl({ selectedId: run.id });
+      setSelectedId(run.id);
+    },
     onRetry: retryRun,
   });
 
@@ -188,17 +223,29 @@ export function FunctionsPage() {
 
         <div className="grid border-b border-(--border-subtle) bg-(--background) lg:grid-cols-3">
           <AggregatePanel
-            onSelect={(key) => setModuleName(key === "undeclared" ? "" : key)}
+            onSelect={(key) => {
+              const next = key === "undeclared" ? "" : key;
+              pushFunctionUrl({ moduleName: next, selectedId: "" });
+              setModuleName(next);
+            }}
             rows={moduleAggregates}
             title="module"
           />
           <AggregatePanel
-            onSelect={(key) => setQueue(key === "undeclared" ? "" : key)}
+            onSelect={(key) => {
+              const next = key === "undeclared" ? "" : key;
+              pushFunctionUrl({ queue: next, selectedId: "" });
+              setQueue(next);
+            }}
             rows={queueAggregates}
             title="queue"
           />
           <AggregatePanel
-            onSelect={(key) => setStatus(key as FunctionStatusFilter)}
+            onSelect={(key) => {
+              const next = readFunctionStatus(key);
+              pushFunctionUrl({ selectedId: "", status: next });
+              setStatus(next);
+            }}
             rows={statusAggregates}
             title="status"
           />
@@ -214,7 +261,10 @@ export function FunctionsPage() {
                   : "border-(--border-subtle) text-(--muted) hover:text-(--foreground)"
               )}
               key={item}
-              onClick={() => setStatus(item)}
+              onClick={() => {
+                pushFunctionUrl({ selectedId: "", status: item });
+                setStatus(item);
+              }}
               type="button"
             >
               {item}
@@ -297,7 +347,10 @@ export function FunctionsPage() {
                       : "hover:bg-(--elevated)"
                   )}
                   key={run.id}
-                  onClick={() => setSelectedId(run.id)}
+                  onClick={() => {
+                    pushFunctionUrl({ selectedId: run.id });
+                    setSelectedId(run.id);
+                  }}
                   type="button"
                 >
                   <FunctionStatusPill status={run.status} />

@@ -27,6 +27,7 @@ import {
   type RuntimeStory,
   type ExecutionNode,
 } from "../data/mock-runtime";
+import { useBrowserUrlPopState } from "../hooks/use-browser-url-state";
 import { useListKeyboard } from "../hooks/use-list-keyboard";
 import { usePersistedLayout } from "../hooks/use-persisted-layout";
 import { useRuntimeStories } from "../hooks/use-runtime-queries";
@@ -42,6 +43,7 @@ import {
   readExecutionInspectorTab,
   readRuntimeStoriesParam,
   readStoryViewMode,
+  pushRuntimeStoriesUrl,
   replaceRuntimeStoriesUrl,
   runtimeStoriesPath,
   storyUrlId,
@@ -147,6 +149,40 @@ export function RuntimeStoriesPage() {
     ? `${listColumn} 1px minmax(0,1fr) calc(1px * var(--story-inspector-open)) minmax(0,calc(${inspectorColumn} * var(--story-inspector-open)))`
     : `${listColumn} 1px minmax(0,1fr)`;
   const showServicesPanel = mode === "waterfall" || mode === "flame";
+
+  useBrowserUrlPopState((search) => {
+    clearStoryTarget();
+    setQuery(search.get("q") ?? "");
+    setSelectedStoryId(search.get("story") || null);
+    setSelectedNodeId(search.get("node") || null);
+    setMode(readStoryViewMode(search.get("view") ?? ""));
+    setInspectorTab(readExecutionInspectorTab(search.get("tab") ?? ""));
+    setStoryDetailClosed(false);
+  });
+
+  const storyUrl = (
+    overrides: Partial<{
+      inspectorTab: ExecutionInspectorTab;
+      nodeId: string | null;
+      query: string;
+      storyId: string | null;
+      viewMode: StoryViewMode;
+    }> = {}
+  ) =>
+    runtimeStoriesPath({
+      inspectorTab: overrides.inspectorTab ?? inspectorTab,
+      nodeId: Object.hasOwn(overrides, "nodeId")
+        ? (overrides.nodeId ?? null)
+        : (selectedNode?.id ?? null),
+      query: overrides.query ?? query,
+      storyId: Object.hasOwn(overrides, "storyId")
+        ? (overrides.storyId ?? null)
+        : storyUrlId(selectedStory),
+      viewMode: overrides.viewMode ?? mode,
+    });
+
+  const pushStoryUrl = (overrides: Parameters<typeof storyUrl>[0] = {}) =>
+    pushRuntimeStoriesUrl(storyUrl(overrides));
 
   useEffect(() => {
     if (storiesQuery.isLoading) {
@@ -278,6 +314,11 @@ export function RuntimeStoriesPage() {
   const selectStory = (story: RuntimeStory) => {
     setStoryDetailClosed(false);
     clearStoryTarget();
+    pushStoryUrl({
+      inspectorTab: "overview",
+      nodeId: null,
+      storyId: storyUrlId(story),
+    });
     setSelectedStoryId(story.correlationId);
     window.localStorage.setItem(selectedStoryStorageKey, story.correlationId);
     setSelectedNodeId(null);
@@ -287,6 +328,7 @@ export function RuntimeStoriesPage() {
   const closeStoryDetail = () => {
     setStoryDetailClosed(true);
     clearStoryTarget();
+    pushStoryUrl({ inspectorTab: "overview", nodeId: null, storyId: null });
     setSelectedStoryId(null);
     window.localStorage.removeItem(selectedStoryStorageKey);
     setSelectedNodeId(null);
@@ -347,8 +389,23 @@ export function RuntimeStoriesPage() {
       window.localStorage.setItem(selectedStoryStorageKey, nextStoryId);
     }
     clearStoryTarget();
+    pushStoryUrl({
+      inspectorTab: defaultExecutionInspectorTab(node),
+      nodeId: node.id,
+      storyId: nextStoryId,
+    });
     setSelectedNodeId(node.id);
     setInspectorTab(defaultExecutionInspectorTab(node));
+  };
+
+  const setModeFromUi = (nextMode: StoryViewMode) => {
+    pushStoryUrl({ viewMode: nextMode });
+    setMode(nextMode);
+  };
+
+  const setInspectorTabFromUi = (nextTab: ExecutionInspectorTab) => {
+    pushStoryUrl({ inspectorTab: nextTab });
+    setInspectorTab(nextTab);
   };
 
   const retryNode = (node: ExecutionNode) => {
@@ -461,7 +518,7 @@ export function RuntimeStoriesPage() {
                 onRetryNode={retryNode}
                 onSelectNode={selectNode}
                 selectedNodeId={selectedNode?.id ?? null}
-                setMode={setMode}
+                setMode={setModeFromUi}
                 story={selectedStory}
               />
 
@@ -521,13 +578,14 @@ export function RuntimeStoriesPage() {
               <ExecutionInspector
                 activeTab={inspectorTab}
                 onClearSelection={() => {
+                  pushStoryUrl({ inspectorTab: "overview", nodeId: null });
                   setSelectedStoryId(storyUrlId(selectedStory));
                   clearStoryTarget();
                   setSelectedNodeId(null);
                   setInspectorTab("overview");
                 }}
                 selectedNode={displayedNode}
-                setActiveTab={setInspectorTab}
+                setActiveTab={setInspectorTabFromUi}
                 story={selectedStory}
               />
             </div>

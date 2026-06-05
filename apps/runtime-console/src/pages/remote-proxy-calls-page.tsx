@@ -5,6 +5,7 @@ import { JsonViewer } from "../components/runtime/json-viewer";
 import { ResizeHandle } from "../components/runtime/resize-handle";
 import { useRuntimeConsole } from "../components/runtime/runtime-console-context";
 import { Button } from "../components/ui/button";
+import { useBrowserUrlPopState } from "../hooks/use-browser-url-state";
 import { useListKeyboard } from "../hooks/use-list-keyboard";
 import { usePersistedLayout } from "../hooks/use-persisted-layout";
 import {
@@ -15,6 +16,7 @@ import { cn } from "../lib/cn";
 import { time } from "../lib/format";
 import { runtimeConsoleDataSource } from "../lib/http-client";
 import {
+  pushOperationsUrl,
   readOperationsParam,
   replaceOperationsUrl,
 } from "./operations-url-model";
@@ -94,6 +96,36 @@ export function RemoteProxyCallsPage() {
     () => aggregateRemoteProxyCalls(calls, "status", 5),
     [calls]
   );
+
+  useBrowserUrlPopState((search) => {
+    setQuery(search.get("q") ?? "");
+    setModuleName(search.get("module") ?? "");
+    setCorrelationId(search.get("correlation_id") ?? "");
+    setResult(readRemoteProxyCallResult(search.get("result") ?? ""));
+    setSelectedId(search.get("selected") ?? "");
+  });
+
+  const remoteCallsUrl = (
+    overrides: Partial<{
+      correlationId: string;
+      moduleName: string;
+      query: string;
+      result: RemoteProxyCallResultFilter;
+      selectedId: string;
+    }> = {}
+  ) =>
+    remoteProxyCallsPath({
+      correlationId: overrides.correlationId ?? correlationId,
+      moduleName: overrides.moduleName ?? moduleName,
+      query: overrides.query ?? query,
+      result: overrides.result ?? result,
+      selectedId: overrides.selectedId ?? selectedId,
+    });
+
+  const pushRemoteCallsUrl = (
+    overrides: Parameters<typeof remoteCallsUrl>[0] = {}
+  ) => pushOperationsUrl(remoteCallsUrl(overrides));
+
   useEffect(() => {
     if (visible.length === 0) {
       if (selectedId) {
@@ -123,6 +155,7 @@ export function RemoteProxyCallsPage() {
   const selectIndex = (index: number) => {
     const call = visible[index];
     if (call) {
+      pushRemoteCallsUrl({ selectedId: call.id });
       setSelectedId(call.id);
     }
   };
@@ -142,7 +175,10 @@ export function RemoteProxyCallsPage() {
     items: visible,
     selectedIndex,
     setSelectedIndex: selectIndex,
-    onOpen: (call) => setSelectedId(call.id),
+    onOpen: (call) => {
+      pushRemoteCallsUrl({ selectedId: call.id });
+      setSelectedId(call.id);
+    },
   });
 
   return (
@@ -199,17 +235,27 @@ export function RemoteProxyCallsPage() {
 
         <div className="grid border-b border-(--border-subtle) bg-(--background) lg:grid-cols-3">
           <AggregatePanel
-            onSelect={(key) => setModuleName(key)}
+            onSelect={(key) => {
+              pushRemoteCallsUrl({ moduleName: key, selectedId: "" });
+              setModuleName(key);
+            }}
             rows={moduleAggregates}
             title="module"
           />
           <AggregatePanel
-            onSelect={(key) => setQuery(key === "success" ? "" : key)}
+            onSelect={(key) => {
+              const next = key === "success" ? "" : key;
+              pushRemoteCallsUrl({ query: next, selectedId: "" });
+              setQuery(next);
+            }}
             rows={errorAggregates}
             title="error"
           />
           <AggregatePanel
-            onSelect={(key) => setQuery(key)}
+            onSelect={(key) => {
+              pushRemoteCallsUrl({ query: key, selectedId: "" });
+              setQuery(key);
+            }}
             rows={statusAggregates}
             title="status"
           />
@@ -232,7 +278,10 @@ export function RemoteProxyCallsPage() {
             <button
               aria-label="Clear correlation filter"
               className="grid size-5 place-items-center border border-(--border-subtle) bg-(--elevated) text-(--muted) hover:text-(--foreground)"
-              onClick={() => setCorrelationId("")}
+              onClick={() => {
+                pushRemoteCallsUrl({ correlationId: "", selectedId: "" });
+                setCorrelationId("");
+              }}
               type="button"
             >
               <X size={12} />
@@ -250,7 +299,10 @@ export function RemoteProxyCallsPage() {
                   : "border-(--border-subtle) text-(--muted) hover:text-(--foreground)"
               )}
               key={item}
-              onClick={() => setResult(item)}
+              onClick={() => {
+                pushRemoteCallsUrl({ result: item, selectedId: "" });
+                setResult(item);
+              }}
               type="button"
             >
               {item}
@@ -325,7 +377,10 @@ export function RemoteProxyCallsPage() {
                       : "hover:bg-(--elevated)"
                   )}
                   key={call.id}
-                  onClick={() => setSelectedId(call.id)}
+                  onClick={() => {
+                    pushRemoteCallsUrl({ selectedId: call.id });
+                    setSelectedId(call.id);
+                  }}
                   type="button"
                 >
                   <ResultPill call={call} />

@@ -4,6 +4,7 @@ import {
 } from "../components/runtime/execution-inspector-model";
 import type { StoryViewMode } from "../components/runtime/story-tabs";
 import type { RuntimeStory } from "../data/mock-runtime";
+import { writeBrowserUrl } from "../hooks/use-browser-url-state";
 import { operationsPath } from "./operations-url-model";
 
 const defaultStoryViewMode = "story" satisfies StoryViewMode;
@@ -41,10 +42,11 @@ export function readRuntimeStoriesParam(name: string) {
 }
 
 export function replaceRuntimeStoriesUrl(path: string) {
-  if (typeof window === "undefined") {
-    return;
-  }
-  window.history.replaceState(null, "", path);
+  writeBrowserUrl(path, "replace");
+}
+
+export function pushRuntimeStoriesUrl(path: string) {
+  writeBrowserUrl(path, "push");
 }
 
 export function readStoryViewMode(value: string): StoryViewMode {

@@ -1,3 +1,5 @@
+import { writeBrowserUrl } from "../hooks/use-browser-url-state";
+
 export type OperationsUrlParams = Record<
   string,
   boolean | number | string | null | undefined
@@ -27,10 +29,11 @@ export function readOperationsParam(name: string) {
 }
 
 export function replaceOperationsUrl(path: string) {
-  if (typeof window === "undefined") {
-    return;
-  }
-  window.history.replaceState(null, "", path);
+  writeBrowserUrl(path, "replace");
+}
+
+export function pushOperationsUrl(path: string) {
+  writeBrowserUrl(path, "push");
 }
 
 export function functionsPath(
