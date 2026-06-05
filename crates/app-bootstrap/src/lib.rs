@@ -365,27 +365,36 @@ pub async fn enqueue_lifecycle_activation_jobs(
                 continue;
             };
 
-            run_ids.push(
-                client
-                    .enqueue_function(EnqueueFunctionRequest {
-                        function_name: job.function_name.clone(),
-                        input_json: job.input.clone(),
-                        correlation_id: CorrelationId::new(ctx.ids.new_id("corr_lifecycle")),
-                        actor: ActorContext::Service {
-                            service_id: "worker".to_owned(),
-                            scopes: vec!["runtime.functions.enqueue".to_owned()],
-                        },
-                        trace: TraceContext::default(),
-                        causation_id: Some(format!(
-                            "module_lifecycle:{}:{}",
-                            module.manifest.name, job.name
-                        )),
-                        max_attempts: Some(runtime_max_attempts_for_enqueue(
-                            definition.retry_policy.max_attempts,
-                        )),
-                    })
-                    .await?,
-            );
+            let enqueue_result = client
+                .enqueue_function(EnqueueFunctionRequest {
+                    function_name: job.function_name.clone(),
+                    input_json: job.input.clone(),
+                    correlation_id: CorrelationId::new(ctx.ids.new_id("corr_lifecycle")),
+                    actor: ActorContext::Service {
+                        service_id: "worker".to_owned(),
+                        scopes: vec!["runtime.functions.enqueue".to_owned()],
+                    },
+                    trace: TraceContext::default(),
+                    causation_id: Some(format!(
+                        "module_lifecycle:{}:{}",
+                        module.manifest.name, job.name
+                    )),
+                    max_attempts: Some(runtime_max_attempts_for_enqueue(
+                        definition.retry_policy.max_attempts,
+                    )),
+                })
+                .await;
+
+            match enqueue_result {
+                Ok(run_id) => run_ids.push(run_id),
+                Err(error) if job.required => return Err(error),
+                Err(error) => warn_optional_lifecycle_enqueue_failure(
+                    &module.manifest.name,
+                    &job.name,
+                    &job.function_name,
+                    &error,
+                ),
+            }
         }
     }
 
@@ -402,57 +411,93 @@ fn validate_lifecycle_activation_jobs(
         };
 
         for check in &lifecycle.startup_checks {
-            if !check.required {
-                continue;
-            }
-
             match &check.check {
                 LifecycleStartupCheckKind::FunctionRegistered { function_name } => {
                     if !module_declares_runtime_function(module, function_name) {
+                        let reason = format!(
+                            "startup check `{}` references function `{}` not declared by module `{}`",
+                            check.name, function_name, module.manifest.name
+                        );
+                        if !check.required {
+                            warn_optional_lifecycle_skip(
+                                &module.manifest.name,
+                                "startup_checks",
+                                &check.name,
+                                &reason,
+                            );
+                            continue;
+                        }
                         return Err(lifecycle_validation_error(
                             &module.manifest.name,
                             "startup_checks",
                             &check.name,
-                            format!(
-                                "required startup check `{}` references function `{}` not declared by module `{}`",
-                                check.name, function_name, module.manifest.name
-                            ),
+                            format!("required {reason}"),
                         ));
                     }
                     if registry.get(function_name).is_none() {
+                        let reason = format!(
+                            "startup check `{}` references missing function `{}`",
+                            check.name, function_name
+                        );
+                        if !check.required {
+                            warn_optional_lifecycle_skip(
+                                &module.manifest.name,
+                                "startup_checks",
+                                &check.name,
+                                &reason,
+                            );
+                            continue;
+                        }
                         return Err(lifecycle_validation_error(
                             &module.manifest.name,
                             "startup_checks",
                             &check.name,
-                            format!(
-                                "required startup check `{}` references missing function `{}`",
-                                check.name, function_name
-                            ),
+                            format!("required {reason}"),
                         ));
                     }
                 }
                 LifecycleStartupCheckKind::CapabilityDeclared { capability } => {
                     if !module.manifest.capabilities.contains(capability) {
+                        let reason = format!(
+                            "startup check `{}` references missing capability `{}`",
+                            check.name, capability
+                        );
+                        if !check.required {
+                            warn_optional_lifecycle_skip(
+                                &module.manifest.name,
+                                "startup_checks",
+                                &check.name,
+                                &reason,
+                            );
+                            continue;
+                        }
                         return Err(lifecycle_validation_error(
                             &module.manifest.name,
                             "startup_checks",
                             &check.name,
-                            format!(
-                                "required startup check `{}` references missing capability `{}`",
-                                check.name, capability
-                            ),
+                            format!("required {reason}"),
                         ));
                     }
                 }
                 _ => {
+                    let reason = format!(
+                        "startup check `{}` uses an unsupported lifecycle check kind",
+                        check.name
+                    );
+                    if !check.required {
+                        warn_optional_lifecycle_skip(
+                            &module.manifest.name,
+                            "startup_checks",
+                            &check.name,
+                            &reason,
+                        );
+                        continue;
+                    }
                     return Err(lifecycle_validation_error(
                         &module.manifest.name,
                         "startup_checks",
                         &check.name,
-                        format!(
-                            "required startup check `{}` uses an unsupported lifecycle check kind",
-                            check.name
-                        ),
+                        format!("required {reason}"),
                     ));
                 }
             }
@@ -462,30 +507,47 @@ fn validate_lifecycle_activation_jobs(
             if job.run_policy != LifecycleActivationRunPolicy::EveryStartup {
                 continue;
             }
-            if !job.required {
-                continue;
-            }
 
             if !module_declares_runtime_function(module, &job.function_name) {
+                let reason = format!(
+                    "activation job `{}` references function `{}` not declared by module `{}`",
+                    job.name, job.function_name, module.manifest.name
+                );
+                if !job.required {
+                    warn_optional_lifecycle_skip(
+                        &module.manifest.name,
+                        "activation_jobs",
+                        &job.name,
+                        &reason,
+                    );
+                    continue;
+                }
                 return Err(lifecycle_validation_error(
                     &module.manifest.name,
                     "activation_jobs",
                     &job.name,
-                    format!(
-                        "required activation job `{}` references function `{}` not declared by module `{}`",
-                        job.name, job.function_name, module.manifest.name
-                    ),
+                    format!("required {reason}"),
                 ));
             }
             if registry.get(&job.function_name).is_none() {
+                let reason = format!(
+                    "activation job `{}` references missing function `{}`",
+                    job.name, job.function_name
+                );
+                if !job.required {
+                    warn_optional_lifecycle_skip(
+                        &module.manifest.name,
+                        "activation_jobs",
+                        &job.name,
+                        &reason,
+                    );
+                    continue;
+                }
                 return Err(lifecycle_validation_error(
                     &module.manifest.name,
                     "activation_jobs",
                     &job.name,
-                    format!(
-                        "required activation job `{}` references missing function `{}`",
-                        job.name, job.function_name
-                    ),
+                    format!("required {reason}"),
                 ));
             }
         }
@@ -518,6 +580,38 @@ fn lifecycle_validation_error(
             reason,
         }],
     )
+}
+
+fn warn_optional_lifecycle_skip(
+    module_name: &str,
+    collection: &str,
+    item_name: &str,
+    reason: &str,
+) {
+    tracing::warn!(
+        module_name = %module_name,
+        lifecycle_collection = %collection,
+        lifecycle_item = %item_name,
+        reason = %reason,
+        "optional module lifecycle declaration skipped"
+    );
+}
+
+fn warn_optional_lifecycle_enqueue_failure(
+    module_name: &str,
+    job_name: &str,
+    function_name: &str,
+    error: &AppError,
+) {
+    tracing::warn!(
+        module_name = %module_name,
+        lifecycle_collection = "activation_jobs",
+        lifecycle_item = %job_name,
+        function_name = %function_name,
+        error_code = %error.code.as_str(),
+        error_message = %error.public_message,
+        "optional module lifecycle activation enqueue failed"
+    );
 }
 
 fn runtime_max_attempts_for_enqueue(max_attempts: u32) -> i32 {
@@ -593,6 +687,7 @@ mod tests {
     use platform_runtime::{FunctionDefinition, FunctionHandler, RUNTIME_MIGRATIONS, RetryPolicy};
     use platform_testing::{SequentialIdGenerator, TestDatabase};
     use serde_json::{Value, json};
+    use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
     use std::collections::BTreeMap;
     use std::sync::Arc;
     use std::time::Duration;
@@ -929,6 +1024,34 @@ mod tests {
         let run_ids = enqueue_lifecycle_activation_jobs(&ctx, &modules, &registry)
             .await
             .expect("optional undeclared activation function should be skipped");
+
+        assert!(run_ids.is_empty());
+    }
+
+    #[tokio::test]
+    async fn lifecycle_activation_optional_enqueue_failure_is_skipped() {
+        let db = PgPoolOptions::new()
+            .max_connections(1)
+            .acquire_timeout(Duration::from_millis(50))
+            .connect_lazy_with(
+                PgConnectOptions::new()
+                    .host("127.0.0.1")
+                    .port(1)
+                    .username("postgres")
+                    .database("lenso_test"),
+            );
+        let ctx = AppContext::new(
+            test_config_with_database_url("postgres://localhost:1/lenso_test"),
+            db,
+            Arc::new(LoggingEventPublisher),
+        );
+        let modules =
+            vec![test_lifecycle_module(lifecycle_activation_job(false, Value::Null)).into()];
+        let registry = registry_with_lifecycle_function(3);
+
+        let run_ids = enqueue_lifecycle_activation_jobs(&ctx, &modules, &registry)
+            .await
+            .expect("optional enqueue failure should be skipped");
 
         assert!(run_ids.is_empty());
     }
