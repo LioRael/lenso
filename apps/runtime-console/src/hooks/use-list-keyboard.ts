@@ -8,6 +8,60 @@ type UseListKeyboardOptions<T> = {
   onRetry?: (item: T) => void;
 };
 
+export type ListKeyboardAction<T> =
+  | { kind: "open"; item: T }
+  | { index: number; kind: "select" }
+  | { kind: "retry"; item: T };
+
+export function listKeyboardAction<T>({
+  hasModifier,
+  isTyping,
+  items,
+  key,
+  retryEnabled,
+  selectedIndex,
+}: {
+  items: T[];
+  selectedIndex: number;
+  key: string;
+  isTyping: boolean;
+  hasModifier: boolean;
+  retryEnabled: boolean;
+}): ListKeyboardAction<T> | null {
+  if (isTyping || hasModifier || items.length === 0) {
+    return null;
+  }
+
+  if (key === "j") {
+    return {
+      index: Math.min(selectedIndex + 1, items.length - 1),
+      kind: "select",
+    };
+  }
+
+  if (key === "k") {
+    return {
+      index: Math.max(selectedIndex - 1, 0),
+      kind: "select",
+    };
+  }
+
+  const item = items[selectedIndex];
+  if (!item) {
+    return null;
+  }
+
+  if (key === "Enter") {
+    return { item, kind: "open" };
+  }
+
+  if (key.toLowerCase() === "r" && retryEnabled) {
+    return { item, kind: "retry" };
+  }
+
+  return null;
+}
+
 export function useListKeyboard<T>({
   items,
   selectedIndex,
@@ -25,34 +79,34 @@ export function useListKeyboard<T>({
         target?.isContentEditable;
       const hasModifier = event.metaKey || event.ctrlKey || event.altKey;
 
-      if (isTyping || hasModifier || items.length === 0) {
+      const action = listKeyboardAction({
+        hasModifier,
+        isTyping: Boolean(isTyping),
+        items,
+        key: event.key,
+        retryEnabled: Boolean(onRetry),
+        selectedIndex,
+      });
+
+      if (!action) {
         return;
       }
 
-      if (event.key === "j") {
+      if (action.kind === "select") {
         event.preventDefault();
-        setSelectedIndex(Math.min(selectedIndex + 1, items.length - 1));
+        setSelectedIndex(action.index);
+        return;
       }
 
-      if (event.key === "k") {
+      if (action.kind === "open") {
         event.preventDefault();
-        setSelectedIndex(Math.max(selectedIndex - 1, 0));
+        onOpen(action.item);
+        return;
       }
 
-      if (event.key === "Enter") {
+      if (action.kind === "retry" && onRetry) {
         event.preventDefault();
-        const item = items[selectedIndex];
-        if (item) {
-          onOpen(item);
-        }
-      }
-
-      if (event.key.toLowerCase() === "r") {
-        const item = items[selectedIndex];
-        if (item && onRetry) {
-          event.preventDefault();
-          onRetry(item);
-        }
+        onRetry(action.item);
       }
     };
 

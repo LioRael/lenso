@@ -5,7 +5,7 @@ type OperationsUrlParamSetter<T> = {
   bivarianceHack(value: T): void;
 }["bivarianceHack"];
 
-type OperationsUrlParamBinding<T> = {
+export type OperationsUrlParamBinding<T> = {
   name: string;
   parse?: (value: string) => T;
   setValue: OperationsUrlParamSetter<T>;
@@ -19,13 +19,20 @@ export function readOperationsParamValue<T = string>(
   return parse ? parse(value) : (value as T);
 }
 
+export function applyOperationsUrlBindings(
+  bindings: Array<OperationsUrlParamBinding<unknown>>,
+  search: URLSearchParams
+) {
+  for (const binding of bindings) {
+    const value = search.get(binding.name) ?? "";
+    binding.setValue(binding.parse ? binding.parse(value) : value);
+  }
+}
+
 export function useOperationsUrlPopState(
   bindings: Array<OperationsUrlParamBinding<unknown>>
 ) {
   useBrowserUrlPopState((search) => {
-    for (const binding of bindings) {
-      const value = search.get(binding.name) ?? "";
-      binding.setValue(binding.parse ? binding.parse(value) : value);
-    }
+    applyOperationsUrlBindings(bindings, search);
   });
 }

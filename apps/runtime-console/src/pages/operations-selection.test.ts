@@ -28,6 +28,12 @@ describe("operations selection", () => {
     ).toBe("a");
   });
 
+  test("keeps selected id when it is still visible", () => {
+    expect(
+      nextOperationSelectedId({ getId, items: rows, selectedId: "b" })
+    ).toBe("b");
+  });
+
   test("clears selected id when the list is empty", () => {
     expect(nextOperationSelectedId({ getId, items: [], selectedId: "a" })).toBe(
       ""

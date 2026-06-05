@@ -1,6 +1,9 @@
 import { describe, expect, test, vi } from "vitest";
 
-import { readOperationsParamValue } from "./operations-url-state";
+import {
+  applyOperationsUrlBindings,
+  readOperationsParamValue,
+} from "./operations-url-state";
 
 describe("operations url state", () => {
   test("reads string params from the current URL", () => {
@@ -26,5 +29,31 @@ describe("operations url state", () => {
     ).toBe("all");
 
     vi.unstubAllGlobals();
+  });
+
+  test("applies popstate bindings with parsers", () => {
+    const values: Record<string, unknown> = {};
+
+    applyOperationsUrlBindings(
+      [
+        { name: "q", setValue: (value) => (values.q = value) },
+        {
+          name: "status",
+          parse: (value) => (value === "failed" ? "failed" : "all"),
+          setValue: (value) => (values.status = value),
+        },
+        {
+          name: "selected",
+          setValue: (value) => (values.selected = value),
+        },
+      ],
+      new URLSearchParams("?q=remote&status=failed")
+    );
+
+    expect(values).toEqual({
+      q: "remote",
+      selected: "",
+      status: "failed",
+    });
   });
 });
