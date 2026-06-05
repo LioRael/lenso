@@ -11,6 +11,8 @@ use platform_module::{
     AdminDeclarativeComponent, AdminDeclarativePage, AdminDeclarativeSection,
     AdminDeclarativeSurface, AdminEmbeddedEntry, AdminEmbeddedRuntime, AdminEmbeddedSurface,
     AdminMetricBinding, AdminSandboxPolicy, AdminSchema, EntitySchema, FieldSchema, FieldType,
+    LifecycleActivationJobDeclaration, LifecycleActivationRunPolicy,
+    LifecycleStartupCheckDeclaration, LifecycleStartupCheckKind, LifecycleSurface,
     ModuleHttpMethod, ModuleHttpRoute, ModuleManifest, RuntimeFunctionDeclaration,
     RuntimeRetryPolicyDeclaration, RuntimeSurface,
 };
@@ -162,6 +164,7 @@ async fn manifest() -> Json<ModuleManifest> {
             .admin(contacts_schema())
             .http_routes(contact_http_routes())
             .runtime(runtime_surface())
+            .lifecycle(lifecycle_surface())
             .capabilities(vec!["remote_crm.contacts.read".to_owned()])
             .build(),
     )
@@ -688,6 +691,25 @@ fn runtime_surface() -> RuntimeSurface {
                 max_attempts: 3,
                 initial_delay_ms: 1000,
             }),
+        }],
+    }
+}
+
+fn lifecycle_surface() -> LifecycleSurface {
+    LifecycleSurface {
+        startup_checks: vec![LifecycleStartupCheckDeclaration {
+            name: "sync contact function is registered".to_owned(),
+            required: true,
+            check: LifecycleStartupCheckKind::FunctionRegistered {
+                function_name: "remote_crm.sync_contact.v1".to_owned(),
+            },
+        }],
+        activation_jobs: vec![LifecycleActivationJobDeclaration {
+            name: "sync contacts on startup".to_owned(),
+            function_name: "remote_crm.sync_contact.v1".to_owned(),
+            run_policy: LifecycleActivationRunPolicy::EveryStartup,
+            input: json!({ "reason": "worker_startup" }),
+            required: true,
         }],
     }
 }

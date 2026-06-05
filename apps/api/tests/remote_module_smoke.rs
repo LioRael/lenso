@@ -326,6 +326,38 @@ async fn remote_module_fixture_is_visible_through_admin_data_api() {
         remote_module["runtime"]["functions"][0]["retry_policy"]["max_attempts"],
         3
     );
+    assert_eq!(
+        remote_module["lifecycle"]["startup_checks"][0]["kind"],
+        "function_registered"
+    );
+    assert_eq!(
+        remote_module["lifecycle"]["startup_checks"][0]["function_name"],
+        "remote_crm.sync_contact.v1"
+    );
+    assert_eq!(
+        remote_module["lifecycle"]["startup_checks"][0]["required"],
+        true
+    );
+    assert_eq!(
+        remote_module["lifecycle"]["activation_jobs"][0]["name"],
+        "sync contacts on startup"
+    );
+    assert_eq!(
+        remote_module["lifecycle"]["activation_jobs"][0]["function_name"],
+        "remote_crm.sync_contact.v1"
+    );
+    assert_eq!(
+        remote_module["lifecycle"]["activation_jobs"][0]["run_policy"],
+        "every_startup"
+    );
+    assert_eq!(
+        remote_module["lifecycle"]["activation_jobs"][0]["input"]["reason"],
+        "worker_startup"
+    );
+    assert_eq!(
+        remote_module["lifecycle"]["activation_jobs"][0]["required"],
+        true
+    );
     assert_eq!(remote_module["admin"]["kind"], "schema");
 
     let list_response = app

@@ -1,6 +1,9 @@
 use axum::http::StatusCode;
 use axum::{Json, Router, routing::get};
-use platform_module::{AdminDataSource, AdminListQuery, AdminSurface};
+use platform_module::{
+    AdminDataSource, AdminListQuery, AdminSurface, LifecycleActivationRunPolicy,
+    LifecycleStartupCheckKind,
+};
 use platform_module_remote::{RemoteAdminDataSource, RemoteModuleConfig, RemoteModuleSource};
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
@@ -50,6 +53,21 @@ async fn manifest() -> Json<Value> {
                     "max_attempts": 3,
                     "initial_delay_ms": 1000
                 }
+            }]
+        },
+        "lifecycle": {
+            "startup_checks": [{
+                "name": "sync contact function is registered",
+                "required": true,
+                "kind": "function_registered",
+                "function_name": "remote_crm.sync_contact.v1"
+            }],
+            "activation_jobs": [{
+                "name": "sync contacts on startup",
+                "function_name": "remote_crm.sync_contact.v1",
+                "run_policy": "every_startup",
+                "input": { "reason": "worker_startup" },
+                "required": true
             }]
         },
         "capabilities": ["remote_crm.contacts.read"]
@@ -199,6 +217,30 @@ async fn loads_manifest_and_attaches_admin_data_source() {
     assert_eq!(runtime.functions.len(), 1);
     assert_eq!(runtime.functions[0].name, "remote_crm.sync_contact.v1");
     assert_eq!(runtime.functions[0].queue, "remote-crm");
+    let lifecycle = module
+        .manifest
+        .lifecycle
+        .as_ref()
+        .expect("lifecycle surface");
+    assert_eq!(lifecycle.startup_checks.len(), 1);
+    let startup_check = &lifecycle.startup_checks[0];
+    assert_eq!(startup_check.name, "sync contact function is registered");
+    assert!(startup_check.required);
+    assert!(matches!(
+        &startup_check.check,
+        LifecycleStartupCheckKind::FunctionRegistered { function_name }
+            if function_name == "remote_crm.sync_contact.v1"
+    ));
+    assert_eq!(lifecycle.activation_jobs.len(), 1);
+    let activation_job = &lifecycle.activation_jobs[0];
+    assert_eq!(activation_job.name, "sync contacts on startup");
+    assert_eq!(activation_job.function_name, "remote_crm.sync_contact.v1");
+    assert_eq!(
+        activation_job.run_policy,
+        LifecycleActivationRunPolicy::EveryStartup
+    );
+    assert_eq!(activation_job.input, json!({ "reason": "worker_startup" }));
+    assert!(activation_job.required);
     let mut registry = platform_runtime::FunctionRegistry::default();
     module.binding.register_functions(&mut registry);
     assert!(registry.get("remote_crm.sync_contact.v1").is_some());
