@@ -8,6 +8,7 @@ import { httpClient, isApiMode } from "../lib/http-client";
 import {
   type AdminModuleMetadata,
   type AdminRecord,
+  adminActionResultSummary,
   adminSurfaceLabel,
   adminSurfaceMetadataRows,
   type DeclarativeComponent,
@@ -473,10 +474,10 @@ function DeclarativeSurface({
         message: `${action.label}: ${error instanceof Error ? error.message : String(error)}`,
       });
     },
-    onSuccess: async (_response, action) => {
+    onSuccess: async (response, action) => {
       setActionStatus({
         kind: "success",
-        message: `${action.label} completed`,
+        message: `${action.label}: ${adminActionResultSummary(response.data)}`,
       });
       await queryClient.invalidateQueries({
         queryKey: ["admin-data", "list", module.module_name],

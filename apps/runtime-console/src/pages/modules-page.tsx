@@ -31,6 +31,7 @@ import {
   moduleGovernanceRows,
   moduleHttpRouteRows,
   moduleIsLoaded,
+  latestModuleRefreshResult,
   moduleManifestCheckGroups,
   moduleRegistrySummary,
   moduleRuntimeFunctionRows,
@@ -228,7 +229,10 @@ function ModulesContent() {
 
         <main className="min-h-0 overflow-auto p-3 font-mono text-[12px]">
           {selectedModule ? (
-            <ModuleRegistryDetail module={selectedModule} />
+            <ModuleRegistryDetail
+              history={modulesQuery.data?.refresh_history ?? []}
+              module={selectedModule}
+            />
           ) : (
             <p className="text-(--muted)">Select a module.</p>
           )}
@@ -450,7 +454,13 @@ function registrySnapshotLabel(refreshedAt: string | null): string {
   return timestamp.toLocaleString();
 }
 
-function ModuleRegistryDetail({ module }: { module: AdminModuleMetadata }) {
+function ModuleRegistryDetail({
+  history,
+  module,
+}: {
+  history: ModuleRefreshRecord[];
+  module: AdminModuleMetadata;
+}) {
   const routeRows = moduleHttpRouteRows(module);
   const runtimeRows = moduleRuntimeFunctionRows(module);
   const manifestChecks = moduleManifestChecks(module);
@@ -476,7 +486,7 @@ function ModuleRegistryDetail({ module }: { module: AdminModuleMetadata }) {
       </section>
 
       {module.source === "remote" ? (
-        <RemoteModuleHealthPanel module={module} />
+        <ModuleOperationsPanel history={history} module={module} />
       ) : null}
       <ModuleGovernancePanel module={module} />
       <ModuleCapabilitiesList capabilities={module.capabilities} />
@@ -488,7 +498,13 @@ function ModuleRegistryDetail({ module }: { module: AdminModuleMetadata }) {
   );
 }
 
-function RemoteModuleHealthPanel({ module }: { module: AdminModuleMetadata }) {
+function ModuleOperationsPanel({
+  history,
+  module,
+}: {
+  history: ModuleRefreshRecord[];
+  module: AdminModuleMetadata;
+}) {
   const callsQuery = useRemoteProxyCalls({
     limit: 25,
     moduleName: module.module_name,
@@ -501,12 +517,13 @@ function RemoteModuleHealthPanel({ module }: { module: AdminModuleMetadata }) {
     module.source_diagnostics?.kind === "remote"
       ? module.source_diagnostics
       : null;
+  const latestRefresh = latestModuleRefreshResult(module, history);
 
   return (
     <section className="min-w-0 border border-(--border-subtle) bg-(--surface)">
       <header className="flex items-center gap-2 border-b border-(--border-subtle) px-3 py-2 font-semibold">
         <Network className="text-(--accent)" size={14} />
-        <span>Remote Health</span>
+        <span>Operations</span>
         <span
           className={cn(
             "ml-auto border px-1.5 py-0.5 text-[10px]",
@@ -545,6 +562,28 @@ function RemoteModuleHealthPanel({ module }: { module: AdminModuleMetadata }) {
         rows={[
           { label: "readiness", value: readiness.status },
           { label: "reason", value: readiness.reasons.join(" / ") },
+          {
+            label: "latest refresh",
+            value: latestRefresh
+              ? [
+                  latestRefresh.status,
+                  latestRefresh.durationMs === null
+                    ? null
+                    : `${latestRefresh.durationMs}ms`,
+                  latestRefresh.completedAt,
+                ]
+                  .filter(Boolean)
+                  .join(" / ")
+              : "-",
+          },
+          {
+            label: "refresh endpoint",
+            value: latestRefresh?.endpoint ?? "-",
+          },
+          {
+            label: "refresh error",
+            value: latestRefresh?.error ?? "-",
+          },
           { label: "base url", value: diagnostics?.base_url ?? "-" },
           { label: "manifest url", value: diagnostics?.manifest_url ?? "-" },
           {

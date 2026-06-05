@@ -234,6 +234,36 @@ export type RemoteModuleReadiness = {
   latestFailure: RemoteModuleCallObservation | null;
 };
 
+export type ModuleRefreshModuleObservation = {
+  module_name: string;
+  source: string;
+  status: string;
+  duration_ms?: number | null;
+  endpoint?: string | null;
+  error?: string | null;
+};
+
+export type ModuleRefreshObservation = {
+  id: string;
+  status: string;
+  started_at: string;
+  completed_at: string;
+  duration_ms: number;
+  module_count: number;
+  error: string | null;
+  module_results: ModuleRefreshModuleObservation[];
+};
+
+export type ModuleRefreshResultSummary = {
+  recordId: string;
+  recordStatus: string;
+  completedAt: string;
+  status: string;
+  durationMs: number | null;
+  endpoint: string | null;
+  error: string | null;
+};
+
 export type RuntimeRetryPolicyDeclaration = {
   max_attempts: number;
   initial_delay_ms: number;
@@ -359,6 +389,8 @@ export type DeclarativeEntitySection = {
   entity: EntitySchema | null;
   reason: string | null;
 };
+
+const ADMIN_ACTION_RESULT_LIMIT = 96;
 
 export function moduleStatusLabel(module: AdminModuleMetadata): ModuleStatus {
   return module.status;
@@ -650,6 +682,32 @@ export function remoteModuleReadiness(
     latestFailure,
     reasons: ["remote module is ready"],
     status: "ready",
+  };
+}
+
+export function latestModuleRefreshResult(
+  module: AdminModuleMetadata,
+  history: ModuleRefreshObservation[]
+): ModuleRefreshResultSummary | null {
+  const results = history
+    .flatMap((record) =>
+      record.module_results
+        .filter((result) => result.module_name === module.module_name)
+        .map((result) => ({ record, result }))
+    )
+    .sort((a, b) => b.record.completed_at.localeCompare(a.record.completed_at));
+  const [latest] = results;
+  if (!latest) {
+    return null;
+  }
+  return {
+    completedAt: latest.record.completed_at,
+    durationMs: latest.result.duration_ms ?? null,
+    endpoint: latest.result.endpoint ?? null,
+    error: latest.result.error ?? latest.record.error ?? null,
+    recordId: latest.record.id,
+    recordStatus: latest.record.status,
+    status: latest.result.status,
   };
 }
 
@@ -946,6 +1004,35 @@ export function declarativeEntitySection(
     : { entity: null, reason: `fallback schema has no entity '${entityName}'` };
 }
 
+export function adminActionResultSummary(result: unknown): string {
+  if (result === null || result === undefined) {
+    return "no result";
+  }
+  if (
+    typeof result === "string" ||
+    typeof result === "number" ||
+    typeof result === "boolean"
+  ) {
+    return truncateActionResult(String(result));
+  }
+  if (Array.isArray(result)) {
+    return truncateActionResult(`${result.length} items`);
+  }
+  if (typeof result === "object") {
+    const entries = Object.entries(result);
+    if (entries.length === 0) {
+      return "{}";
+    }
+    return truncateActionResult(
+      entries
+        .slice(0, 4)
+        .map(([key, value]) => `${key}: ${displayDeclarativeValue(value)}`)
+        .join(" / ")
+    );
+  }
+  return truncateActionResult(String(result));
+}
+
 function embeddedEntryLabel(entry: AdminEmbeddedEntry | undefined): string {
   if (!entry) {
     return "unknown";
@@ -1036,6 +1123,12 @@ function displayDeclarativeValue(value: unknown): string {
     return String(value);
   }
   return JSON.stringify(value);
+}
+
+function truncateActionResult(value: string): string {
+  return value.length > ADMIN_ACTION_RESULT_LIMIT
+    ? `${value.slice(0, ADMIN_ACTION_RESULT_LIMIT - 1)}…`
+    : value;
 }
 
 /** Format one raw value per its field type into a display string. */
