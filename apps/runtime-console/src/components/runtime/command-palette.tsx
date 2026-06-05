@@ -61,6 +61,13 @@ export function CommandPalette({ theme, onToggleTheme }: CommandPaletteProps) {
         title: "Go to Stories",
       },
       {
+        action: () => void navigate({ to: "/timeline" }),
+        id: "timeline",
+        searchText: "go to timeline correlation causality execution",
+        subtitle: "Correlation causality",
+        title: "Go to Timeline",
+      },
+      {
         action: () => void navigate({ to: "/operations/dead-letters" }),
         id: "dead",
         searchText: "go to dead letters failure inbox",
@@ -111,9 +118,9 @@ export function CommandPalette({ theme, onToggleTheme }: CommandPaletteProps) {
           focusGlobalSearch();
         },
         id: "search",
-        searchText: "search in stories correlation story execution",
-        subtitle: "Correlation search now lives in Stories",
-        title: "Search in Stories",
+        searchText: "search correlation story execution timeline",
+        subtitle: "Open a correlation in Timeline",
+        title: "Search Timeline",
       },
       {
         action: closeCommandPalette,

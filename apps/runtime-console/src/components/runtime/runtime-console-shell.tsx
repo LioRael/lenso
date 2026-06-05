@@ -6,6 +6,7 @@ import {
   Boxes,
   Command,
   Database,
+  GitBranch,
   Moon,
   Network,
   PanelLeftClose,
@@ -33,6 +34,7 @@ gsap.registerPlugin(useGSAP);
 const primaryNavItems = [
   { to: "/overview", label: "Overview", icon: Activity },
   { to: "/runtime/stories", label: "Stories", icon: Workflow },
+  { to: "/timeline", label: "Timeline", icon: GitBranch },
   { to: "/operations", label: "Operations", icon: Network },
   { to: "/modules", label: "Modules", icon: Boxes },
   { to: "/data", label: "Data", icon: Database },

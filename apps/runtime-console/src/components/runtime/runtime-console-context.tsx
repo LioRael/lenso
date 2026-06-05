@@ -85,7 +85,7 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
   const openTimeline = useCallback(
     (nextCorrelationId: string) => {
       setActiveCorrelationId(nextCorrelationId);
-      void navigate({ to: "/runtime/stories" });
+      void navigate({ to: "/timeline" });
     },
     [navigate]
   );

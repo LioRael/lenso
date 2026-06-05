@@ -18,6 +18,7 @@ import { OverviewPage } from "../pages/overview-page";
 import { QueuesPage } from "../pages/queues-page";
 import { RemoteProxyCallsPage } from "../pages/remote-proxy-calls-page";
 import { RuntimeStoriesPage } from "../pages/runtime-stories-page";
+import { TimelinePage } from "../pages/timeline-page";
 
 const rootRoute = createRootRoute({
   component: () => (
@@ -76,9 +77,7 @@ const functionsRoute = createRoute({
 const timelineRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/timeline",
-  beforeLoad: () => {
-    throw redirect({ to: "/runtime/stories" });
-  },
+  component: TimelinePage,
 });
 
 const deadLettersRoute = createRoute({
