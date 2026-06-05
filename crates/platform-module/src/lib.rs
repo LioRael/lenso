@@ -8,6 +8,8 @@
 //! - [`Module`]: a loaded module bundling manifest + binding + internal config.
 //! - [`AdminDataSource`]: the schema-admin read seam — a module's read access
 //!   to its admin entities. [`AdminSchema`] is the declared admin surface data.
+//! - [`AdminActionSource`]: executable behavior for manifest-declared admin
+//!   actions.
 
 mod admin;
 mod admin_data;
@@ -25,7 +27,7 @@ pub use admin::{
     AdminDeclarativeSurface, AdminEmbeddedEntry, AdminEmbeddedRuntime, AdminEmbeddedSurface,
     AdminMetricBinding, AdminPermission, AdminSandboxPolicy, AdminSurface,
 };
-pub use admin_data::{AdminDataSource, AdminListQuery, AdminPage};
+pub use admin_data::{AdminActionSource, AdminDataSource, AdminListQuery, AdminPage};
 pub use admin_schema::{AdminSchema, EntitySchema, FieldSchema, FieldType};
 pub use binding::ModuleBinding;
 pub use http::{

@@ -6,7 +6,7 @@ use platform_module::{
     AdminSchema, AdminSurface, LifecycleSurface, ModuleHttpRoute, ModuleManifestLint, ModuleSource,
     RuntimeSurface,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 /// Response for `GET /admin/data/schema`: every admin-capable module's schema.
@@ -146,5 +146,18 @@ pub struct AdminDataPageInfo {
 /// Response for `GET /admin/data/{module}/{entity}/{id}`.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AdminDataDetailResponse {
+    pub data: serde_json::Value,
+}
+
+/// Request body for `POST /admin/data/{module}/actions/{action}`.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct AdminActionInvokeRequest {
+    #[serde(default)]
+    pub input: serde_json::Value,
+}
+
+/// Response for `POST /admin/data/{module}/actions/{action}`.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminActionInvokeResponse {
     pub data: serde_json::Value,
 }

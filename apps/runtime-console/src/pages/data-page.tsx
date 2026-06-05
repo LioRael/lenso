@@ -1,12 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Code2, RefreshCw } from "lucide-react";
+import { AlertTriangle, Code2, Play, RefreshCw } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "../components/ui/button";
 import { cn } from "../lib/cn";
 import { httpClient, isApiMode } from "../lib/http-client";
 import {
-  type AdminModuleSchemaMetadata,
   type AdminModuleMetadata,
   type AdminRecord,
   adminSurfaceLabel,
@@ -24,34 +23,53 @@ import {
   moduleStatusLabel,
   recordId,
   renderRow,
-  schemaModulesToAdminMetadata,
 } from "./data-render-model";
 
-type SchemaModulesResponse = { modules: AdminModuleSchemaMetadata[] };
+type ModulesResponse = {
+  modules: AdminModuleMetadata[];
+  refreshed_at: string | null;
+  refresh_error: string | null;
+};
 type ListResponse = {
   data: AdminRecord[];
   page: { limit: number; next_cursor: string | null };
 };
 type DetailResponse = { data: AdminRecord };
+type ActionResponse = { data: unknown };
+type ActionVariables = { label: string; name: string };
 
 type Selection = { module: AdminModuleMetadata; entity: EntitySchema | null };
 
 const dataKeys = {
-  schemas: ["admin-data", "schemas"] as const,
+  modules: ["admin-data", "modules"] as const,
   list: (m: string, e: string) => ["admin-data", "list", m, e] as const,
   detail: (m: string, e: string, id: string) =>
     ["admin-data", "detail", m, e, id] as const,
 };
+
+function invokeAdminAction(moduleName: string, actionName: string) {
+  return httpClient
+    .post(
+      `admin/data/${encodeURIComponent(moduleName)}/actions/${encodeURIComponent(actionName)}`,
+      { json: { input: {} } }
+    )
+    .json<ActionResponse>();
+}
+
+function dataSurfaceModules(modules: AdminModuleMetadata[]) {
+  return modules.filter(
+    (module) => module.admin !== null || !moduleIsLoaded(module)
+  );
+}
 
 export function DataPage() {
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<Selection | null>(null);
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
 
-  const schemasQuery = useQuery({
-    queryKey: dataKeys.schemas,
-    queryFn: () =>
-      httpClient.get("admin/data/schema").json<SchemaModulesResponse>(),
+  const modulesQuery = useQuery({
+    queryKey: dataKeys.modules,
+    queryFn: () => httpClient.get("admin/data/modules").json<ModulesResponse>(),
     enabled: isApiMode(),
   });
 
@@ -112,7 +130,7 @@ export function DataPage() {
     onSuccess: async () => {
       setSelected(null);
       setSelectedRecordId(null);
-      await queryClient.invalidateQueries({ queryKey: dataKeys.schemas });
+      await queryClient.invalidateQueries({ queryKey: dataKeys.modules });
       await queryClient.invalidateQueries({ queryKey: ["admin-data", "list"] });
       await queryClient.invalidateQueries({
         queryKey: ["admin-data", "detail"],
@@ -121,7 +139,7 @@ export function DataPage() {
   });
 
   if (!isApiMode()) {
-    return <DataPlaceholder reason="schema-admin requires API mode" />;
+    return <DataPlaceholder reason="admin data requires API mode" />;
   }
 
   return (
@@ -129,11 +147,11 @@ export function DataPage() {
       <header className="flex items-center border-b border-(--border-subtle) bg-(--surface) px-3 py-2">
         <h1 className="font-mono text-[13px] font-semibold">Data</h1>
         <Button
-          aria-label="Refresh admin schemas"
+          aria-label="Refresh admin data"
           className="ml-auto min-h-6 px-2"
           disabled={refreshMutation.isPending}
           onClick={() => refreshMutation.mutate()}
-          title="Refresh admin schemas"
+          title="Refresh admin data"
           type="button"
           variant="ghost"
         >
@@ -146,51 +164,51 @@ export function DataPage() {
       </header>
       <div className="grid min-h-0 grid-cols-[220px_minmax(0,1fr)_320px]">
         <nav className="overflow-auto border-r border-(--border-subtle) p-2 font-mono text-[12px]">
-          {schemasQuery.isError ? (
-            <p className="px-2 py-1 text-(--muted)">Failed to load schemas.</p>
-          ) : schemasQuery.isPending ? (
+          {modulesQuery.isError ? (
+            <p className="px-2 py-1 text-(--muted)">Failed to load modules.</p>
+          ) : modulesQuery.isPending ? (
             <p className="px-2 py-1 text-(--muted)">Loading…</p>
-          ) : schemasQuery.data ? (
-            moduleNavItems(
-              schemaModulesToAdminMetadata(schemasQuery.data.modules)
-            ).map((item) => {
-              const isSelected =
-                selected !== null &&
-                selected.module.module_name === item.module.module_name &&
-                selected.entity?.name === item.entity?.name;
-              return (
-                <button
-                  className={cn(
-                    "block w-full px-2 py-1 text-left disabled:cursor-default",
-                    isSelected
-                      ? "bg-(--accent-soft) shadow-[inset_2px_0_0_var(--accent)]"
-                      : "hover:bg-(--sidebar)",
-                    moduleIsLoaded(item.module)
-                      ? null
-                      : "border-l border-[color-mix(in_srgb,var(--error)_45%,transparent)] text-(--secondary)"
-                  )}
-                  key={item.key}
-                  onClick={() => {
-                    setSelected({ module: item.module, entity: item.entity });
-                    setSelectedRecordId(null);
-                  }}
-                  type="button"
-                >
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    {moduleIsLoaded(item.module) ? null : (
-                      <AlertTriangle
-                        className="shrink-0 text-(--error)"
-                        size={12}
-                      />
+          ) : modulesQuery.data ? (
+            moduleNavItems(dataSurfaceModules(modulesQuery.data.modules)).map(
+              (item) => {
+                const isSelected =
+                  selected !== null &&
+                  selected.module.module_name === item.module.module_name &&
+                  selected.entity?.name === item.entity?.name;
+                return (
+                  <button
+                    className={cn(
+                      "block w-full px-2 py-1 text-left disabled:cursor-default",
+                      isSelected
+                        ? "bg-(--accent-soft) shadow-[inset_2px_0_0_var(--accent)]"
+                        : "hover:bg-(--sidebar)",
+                      moduleIsLoaded(item.module)
+                        ? null
+                        : "border-l border-[color-mix(in_srgb,var(--error)_45%,transparent)] text-(--secondary)"
                     )}
-                    <span className="truncate">{item.label}</span>
-                  </span>
-                  <span className="block truncate text-[10px] text-(--muted)">
-                    {item.sublabel}
-                  </span>
-                </button>
-              );
-            })
+                    key={item.key}
+                    onClick={() => {
+                      setSelected({ module: item.module, entity: item.entity });
+                      setSelectedRecordId(null);
+                    }}
+                    type="button"
+                  >
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      {moduleIsLoaded(item.module) ? null : (
+                        <AlertTriangle
+                          className="shrink-0 text-(--error)"
+                          size={12}
+                        />
+                      )}
+                      <span className="truncate">{item.label}</span>
+                    </span>
+                    <span className="block truncate text-[10px] text-(--muted)">
+                      {item.sublabel}
+                    </span>
+                  </button>
+                );
+              }
+            )
           ) : null}
           {refreshMutation.isError ? (
             <p className="px-2 py-2 text-[11px] text-(--error)">
@@ -438,46 +456,123 @@ function DeclarativeSurface({
     { kind: "declarative_custom" }
   >;
 }) {
+  const queryClient = useQueryClient();
   const [selectedRecordIds, setSelectedRecordIds] = useState<
     Record<string, string | null>
   >({});
+  const [actionStatus, setActionStatus] = useState<{
+    kind: "error" | "success";
+    message: string;
+  } | null>(null);
+  const actionMutation = useMutation({
+    mutationFn: (action: ActionVariables) =>
+      invokeAdminAction(module.module_name, action.name),
+    onError: (error, action) => {
+      setActionStatus({
+        kind: "error",
+        message: `${action.label}: ${error instanceof Error ? error.message : String(error)}`,
+      });
+    },
+    onSuccess: async (_response, action) => {
+      setActionStatus({
+        kind: "success",
+        message: `${action.label} completed`,
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["admin-data", "list", module.module_name],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["admin-data", "detail", module.module_name],
+      });
+    },
+  });
   const page = firstDeclarativePage(surface);
-  if (!page) {
-    return <p className="text-(--muted)">No declarative pages declared.</p>;
-  }
+  const actions = surface.actions ?? [];
 
   return (
     <div className="grid gap-3">
-      <div className="flex items-center gap-2 text-[11px] text-(--muted)">
-        <span>{page.label}</span>
-        <span className="ml-auto border border-(--border-subtle) px-2 py-0.5 text-[10px] text-(--secondary)">
-          host rendered
-        </span>
-      </div>
-      {(page.sections ?? []).map((section) => (
-        <section
-          className="border border-(--border-subtle) bg-(--background)"
-          key={section.name}
-        >
-          <header className="border-b border-(--border-subtle) px-2 py-1.5 font-semibold">
-            {section.label}
-          </header>
-          <div className={cn("p-2", compact && "text-[11px]")}>
-            <DeclarativeComponentView
-              component={section.component}
-              module={module}
-              selectedRecordIds={selectedRecordIds}
-              setSelectedRecordId={(entity, id) => {
-                setSelectedRecordIds((current) => ({
-                  ...current,
-                  [entity]: id,
-                }));
-              }}
-              surface={surface}
-            />
+      {actions.length > 0 ? (
+        <div className="grid gap-1.5 border border-(--border-subtle) bg-(--background) p-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {actions.map((action) => {
+              const isPending =
+                actionMutation.isPending &&
+                actionMutation.variables?.name === action.name;
+              return (
+                <Button
+                  className="min-h-7 px-2 text-[11px]"
+                  disabled={actionMutation.isPending}
+                  key={action.name}
+                  onClick={() => {
+                    setActionStatus(null);
+                    actionMutation.mutate({
+                      label: action.label,
+                      name: action.name,
+                    });
+                  }}
+                  title={action.capability}
+                  type="button"
+                  variant="ghost"
+                >
+                  <Play
+                    className={cn(isPending && "animate-pulse")}
+                    size={12}
+                  />
+                  {isPending ? "Running" : action.label}
+                </Button>
+              );
+            })}
           </div>
-        </section>
-      ))}
+          {actionStatus ? (
+            <p
+              className={cn(
+                "truncate text-[11px]",
+                actionStatus.kind === "error"
+                  ? "text-(--error)"
+                  : "text-(--success)"
+              )}
+            >
+              {actionStatus.message}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+      {page ? (
+        <>
+          <div className="flex items-center gap-2 text-[11px] text-(--muted)">
+            <span>{page.label}</span>
+            <span className="ml-auto border border-(--border-subtle) px-2 py-0.5 text-[10px] text-(--secondary)">
+              host rendered
+            </span>
+          </div>
+          {(page.sections ?? []).map((section) => (
+            <section
+              className="border border-(--border-subtle) bg-(--background)"
+              key={section.name}
+            >
+              <header className="border-b border-(--border-subtle) px-2 py-1.5 font-semibold">
+                {section.label}
+              </header>
+              <div className={cn("p-2", compact && "text-[11px]")}>
+                <DeclarativeComponentView
+                  component={section.component}
+                  module={module}
+                  selectedRecordIds={selectedRecordIds}
+                  setSelectedRecordId={(entity, id) => {
+                    setSelectedRecordIds((current) => ({
+                      ...current,
+                      [entity]: id,
+                    }));
+                  }}
+                  surface={surface}
+                />
+              </div>
+            </section>
+          ))}
+        </>
+      ) : (
+        <p className="text-(--muted)">No declarative pages declared.</p>
+      )}
     </div>
   );
 }

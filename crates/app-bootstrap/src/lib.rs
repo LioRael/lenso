@@ -160,9 +160,10 @@ pub fn linked_http_modules() -> Vec<Module> {
         .collect()
 }
 
-/// Aggregate schema-admin capable modules: those declaring an
-/// `AdminSurface::Schema` AND providing an `AdminDataSource`. Modules without a
-/// schema data source are filtered out — "optional capability" semantics.
+/// Aggregate admin-capable modules: those declaring an admin surface and
+/// providing either an `AdminDataSource` or an `AdminActionSource`. Modules
+/// without an admin behavior source are filtered out — "optional capability"
+/// semantics.
 #[must_use]
 pub fn admin_modules(ctx: &AppContext) -> Vec<AdminModule> {
     admin_modules_from_modules(modules(ctx))
@@ -234,11 +235,21 @@ fn admin_modules_from_modules(modules: Vec<Module>) -> Vec<AdminModule> {
         .into_iter()
         .filter_map(|module| {
             // `modules(ctx)` yields owned Modules — move the fields out.
-            let data_source = module.admin_data?;
+            let data_source = module.admin_data;
+            let action_source = module.admin_actions;
+            if data_source.is_none() && action_source.is_none() {
+                return None;
+            }
             let ModuleManifest { name, admin, .. } = module.manifest;
-            let (schema, listed_in_schema) = match admin? {
-                AdminSurface::Schema(schema) => (schema, true),
-                AdminSurface::DeclarativeCustom(surface) => (surface.fallback_schema?, false),
+            let admin = admin?;
+            let (schema, listed_in_schema) = match &admin {
+                AdminSurface::Schema(schema) => (schema.clone(), true),
+                AdminSurface::DeclarativeCustom(surface) => (
+                    surface.fallback_schema.clone().unwrap_or(AdminSchema {
+                        entities: Vec::new(),
+                    }),
+                    false,
+                ),
                 AdminSurface::EmbeddedCustom(_) => return None,
                 _ => return None,
             };
@@ -247,8 +258,10 @@ fn admin_modules_from_modules(modules: Vec<Module>) -> Vec<AdminModule> {
                 source: module.source,
                 load_status: module.load_status,
                 schema,
+                admin: Some(admin),
                 listed_in_schema,
-                data_source: Some(data_source),
+                data_source,
+                action_source,
             })
         })
         .collect()
@@ -291,8 +304,10 @@ fn failed_remote_admin_module(name: String, message: String) -> AdminModule {
         schema: AdminSchema {
             entities: Vec::new(),
         },
+        admin: None,
         listed_in_schema: true,
         data_source: None,
+        action_source: None,
     }
 }
 

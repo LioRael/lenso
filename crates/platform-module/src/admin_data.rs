@@ -1,4 +1,5 @@
-//! Schema-admin behavior seam: a module's read access to its admin entities.
+//! Schema-admin behavior seams: a module's read access to its admin entities
+//! and host-owned invocation of declared admin actions.
 
 use async_trait::async_trait;
 use platform_core::AppResult;
@@ -14,6 +15,15 @@ pub trait AdminDataSource: std::fmt::Debug + Send + Sync {
 
     /// Fetch one record by id. `Ok(None)` if not found.
     async fn get(&self, entity: &str, id: &str) -> AppResult<Option<Value>>;
+}
+
+/// A module's executable admin actions. Action declarations stay in
+/// [`crate::AdminSurface`]; this seam only carries the behavior that varies by
+/// loading source.
+#[async_trait]
+pub trait AdminActionSource: std::fmt::Debug + Send + Sync {
+    /// Invoke a manifest-declared action by name with arbitrary JSON input.
+    async fn invoke(&self, action: &str, input: Value) -> AppResult<Value>;
 }
 
 /// Structured query — fields reserved for future filter/sort without changing

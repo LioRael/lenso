@@ -369,6 +369,67 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /admin/data/{module}/actions/{action}:
+    post:
+      tags:
+      - admin-data
+      operationId: admin_data_invoke_action
+      parameters:
+      - name: module
+        in: path
+        description: Module name, e.g. remote-crm
+        required: true
+        schema:
+          type: string
+      - name: action
+        in: path
+        description: Declared admin action name
+        required: true
+        schema:
+          type: string
+      - name: authorization
+        in: header
+        description: Development service bearer token
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminActionInvokeRequest'
+        required: true
+      responses:
+        '200':
+          description: Action result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminActionInvokeResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Unknown module or undeclared action
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Action source is unavailable or failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/data/{module}/{entity}:
     get:
       tags:
@@ -2316,6 +2377,18 @@ components:
           type: string
         name:
           type: string
+    AdminActionInvokeRequest:
+      type: object
+      description: Request body for `POST /admin/data/{module}/actions/{action}`.
+      properties:
+        input: {}
+    AdminActionInvokeResponse:
+      type: object
+      description: Response for `POST /admin/data/{module}/actions/{action}`.
+      required:
+      - data
+      properties:
+        data: {}
     AdminCapabilityIssueDto:
       type: object
       required:

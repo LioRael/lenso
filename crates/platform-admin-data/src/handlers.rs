@@ -1,20 +1,22 @@
 use crate::dto::{
-    AdminCapabilityIssueDto, AdminCapabilitySummaryDto, AdminDataDetailResponse,
-    AdminDataListResponse, AdminDataPageInfo, AdminModuleActivationState, AdminModuleGovernanceDto,
-    AdminModuleMetadataDto, AdminModuleMetadataListResponse, AdminModuleSchema, AdminModuleStatus,
-    AdminSchemaListResponse, AdminSchemaRefreshResponse,
+    AdminActionInvokeRequest, AdminActionInvokeResponse, AdminCapabilityIssueDto,
+    AdminCapabilitySummaryDto, AdminDataDetailResponse, AdminDataListResponse, AdminDataPageInfo,
+    AdminModuleActivationState, AdminModuleGovernanceDto, AdminModuleMetadataDto,
+    AdminModuleMetadataListResponse, AdminModuleSchema, AdminModuleStatus, AdminSchemaListResponse,
+    AdminSchemaRefreshResponse,
 };
 use crate::{
     AdminModule, AdminModuleMetadata, admin_metadata_refresher, admin_module_metadata_snapshot,
-    admin_modules, admin_refresher, find_loaded_module, install_admin_module_metadata,
-    install_admin_modules, record_admin_module_metadata_refresh_error,
+    admin_modules, admin_refresher, find_loaded_action_module, find_loaded_module,
+    install_admin_module_metadata, install_admin_modules,
+    record_admin_module_metadata_refresh_error,
 };
 use axum::Json;
 use axum::extract::{Path, Query};
 use platform_core::{AppError, ErrorCode, RequestContext};
 use platform_http::{AdminActor, ApiErrorResponse, ErrorResponse, HttpRequestContext};
 use platform_module::{
-    AdminListQuery, ModuleLoadStatus, ModuleManifestLint, ModuleManifestLintSeverity,
+    AdminListQuery, AdminSurface, ModuleLoadStatus, ModuleManifestLint, ModuleManifestLintSeverity,
     lint_module_manifest_parts, module_capability_references,
 };
 use serde::Deserialize;
@@ -314,6 +316,70 @@ fn load_error_message(status: &ModuleLoadStatus) -> Option<String> {
     match status {
         ModuleLoadStatus::Loaded => None,
         ModuleLoadStatus::Error { message } => Some(message.clone()),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/admin/data/{module}/actions/{action}",
+    operation_id = "admin_data_invoke_action",
+    tag = "admin-data",
+    params(
+        ("module" = String, Path, description = "Module name, e.g. remote-crm"),
+        ("action" = String, Path, description = "Declared admin action name"),
+        ("authorization" = String, Header, description = "Development service bearer token"),
+    ),
+    request_body = AdminActionInvokeRequest,
+    responses(
+        (status = 200, description = "Action result", body = AdminActionInvokeResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 404, description = "Unknown module or undeclared action", body = ErrorResponse, content_type = "application/json"),
+        (status = 502, description = "Action source is unavailable or failed", body = ErrorResponse, content_type = "application/json"),
+    )
+)]
+pub(crate) async fn invoke_action(
+    _admin: AdminActor,
+    HttpRequestContext(request_ctx): HttpRequestContext,
+    Path((module, action)): Path<(String, String)>,
+    Json(request): Json<AdminActionInvokeRequest>,
+) -> Result<Json<AdminActionInvokeResponse>, ApiErrorResponse> {
+    let admin_module = find_loaded_action_module(&module, &request_ctx)?;
+    ensure_declared_action(&admin_module, &action, &request_ctx)?;
+    let action_source = admin_module.action_source.as_ref().ok_or_else(|| {
+        ApiErrorResponse::with_context(
+            AppError::new(
+                ErrorCode::ExternalDependency,
+                format!("module {module} has no admin action source"),
+            )
+            .retryable(),
+            &request_ctx,
+        )
+    })?;
+    let data = action_source
+        .invoke(&action, request.input)
+        .await
+        .map_err(|error| ApiErrorResponse::with_context(error, &request_ctx))?;
+
+    Ok(Json(AdminActionInvokeResponse { data }))
+}
+
+fn ensure_declared_action(
+    module: &AdminModule,
+    action: &str,
+    ctx: &RequestContext,
+) -> Result<(), ApiErrorResponse> {
+    if matches!(
+        module.admin.as_ref(),
+        Some(AdminSurface::DeclarativeCustom(surface))
+            if surface.actions.iter().any(|declared| declared.name == action)
+    ) {
+        Ok(())
+    } else {
+        Err(ApiErrorResponse::with_context(
+            AppError::new(ErrorCode::NotFound, format!("unknown action: {action}")),
+            ctx,
+        ))
     }
 }
 

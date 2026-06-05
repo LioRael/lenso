@@ -7,6 +7,14 @@ export type AdminAction = {
   name: string;
 };
 
+export type AdminActionInvokeRequest = {
+  input?: unknown;
+};
+
+export type AdminActionInvokeResponse = {
+  data: unknown;
+};
+
 export type AdminCapabilityIssueDto = {
   capability: string;
   message: string;
