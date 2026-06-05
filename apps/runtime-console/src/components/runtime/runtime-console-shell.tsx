@@ -4,10 +4,8 @@ import gsap from "gsap";
 import {
   Activity,
   Boxes,
-  Braces,
   Command,
   Database,
-  Inbox,
   Moon,
   Network,
   PanelLeftClose,
@@ -15,7 +13,6 @@ import {
   Settings,
   Sparkles,
   Sun,
-  TriangleAlert,
   Workflow,
 } from "lucide-react";
 import { useCallback, useEffect, useRef } from "react";
@@ -36,10 +33,7 @@ gsap.registerPlugin(useGSAP);
 const primaryNavItems = [
   { to: "/overview", label: "Overview", icon: Activity },
   { to: "/runtime/stories", label: "Stories", icon: Workflow },
-  { to: "/dead-letters", label: "Dead Letters", icon: TriangleAlert },
-  { to: "/functions", label: "Functions", icon: Braces },
-  { to: "/remote-proxy-calls", label: "Remote Calls", icon: Network },
-  { to: "/queues", label: "Queues", icon: Inbox },
+  { to: "/operations", label: "Operations", icon: Network },
   { to: "/modules", label: "Modules", icon: Boxes },
   { to: "/data", label: "Data", icon: Database },
 ] as const;

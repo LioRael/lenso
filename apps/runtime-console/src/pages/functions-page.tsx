@@ -1,68 +1,100 @@
-import { Search } from "lucide-react";
+import {
+  Braces,
+  ExternalLink,
+  RefreshCcw,
+  RotateCcw,
+  Search,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { JsonViewer } from "../components/runtime/json-viewer";
+import { ResizeHandle } from "../components/runtime/resize-handle";
 import { useRuntimeConsole } from "../components/runtime/runtime-console-context";
 import { StatusPill } from "../components/runtime/status-pill";
 import { Button } from "../components/ui/button";
-import { EmptyState as EmptyStateView } from "../components/ui/empty-state";
-import { Panel } from "../components/ui/panel";
-import {
-  retryTargetFor,
-  type FunctionRun,
-  type RuntimeStatus,
-} from "../data/mock-runtime";
+import { retryTargetFor, type FunctionRun } from "../data/mock-runtime";
 import { useListKeyboard } from "../hooks/use-list-keyboard";
-import { useRuntimeFunctions } from "../hooks/use-runtime-queries";
-import { duration, time } from "../lib/format";
+import { usePersistedLayout } from "../hooks/use-persisted-layout";
+import {
+  useRuntimeFunctionDetail,
+  useRuntimeFunctions,
+} from "../hooks/use-runtime-queries";
+import { cn } from "../lib/cn";
+import { actorLabel, time } from "../lib/format";
+import { runtimeConsoleDataSource } from "../lib/http-client";
+import {
+  aggregateFunctionRuns,
+  distinctFunctionMetadata,
+  filterFunctionRuns,
+  formatFunctionDuration,
+  functionStatusFilters,
+  runDurationMs,
+  summarizeFunctionRuns,
+  type FunctionRunAggregate,
+  type FunctionStatusFilter,
+} from "./functions-model";
 
-const statuses: Array<RuntimeStatus | "all"> = [
-  "all",
-  "pending",
-  "running",
-  "completed",
-  "failed",
-  "dead",
-];
+const functionsLayoutDefaults = {
+  inspectorWidth: 408,
+};
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
 
 export function FunctionsPage() {
-  const { openDrawer, openRetry } = useRuntimeConsole();
+  const { openRetry, openTimeline } = useRuntimeConsole();
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState<RuntimeStatus | "all">("all");
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [status, setStatus] = useState<FunctionStatusFilter>("all");
+  const [moduleName, setModuleName] = useState("");
+  const [queue, setQueue] = useState("");
+  const [layout, setLayout, resetLayout] = usePersistedLayout(
+    "runtime-console:functions-layout",
+    functionsLayoutDefaults
+  );
+  const functionsLayout = { ...functionsLayoutDefaults, ...layout };
   const functionsQuery = useRuntimeFunctions();
-
-  const filtered = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    return (functionsQuery.data ?? []).filter((run) => {
-      const matchesQuery =
-        normalized.length === 0 ||
-        run.functionName.toLowerCase().includes(normalized) ||
-        (run.runtimeDeclaration?.moduleName ?? "")
-          .toLowerCase()
-          .includes(normalized) ||
-        (run.runtimeDeclaration?.moduleSource ?? "")
-          .toLowerCase()
-          .includes(normalized) ||
-        (run.runtimeDeclaration?.queue ?? "")
-          .toLowerCase()
-          .includes(normalized) ||
-        (run.runtimeDeclaration?.inputSchema ?? "")
-          .toLowerCase()
-          .includes(normalized) ||
-        run.correlationId.toLowerCase().includes(normalized) ||
-        run.id.toLowerCase().includes(normalized);
-      const matchesStatus = status === "all" || run.status === status;
-      return matchesQuery && matchesStatus;
-    });
-  }, [functionsQuery.data, query, status]);
+  const runs = useMemo(() => functionsQuery.data ?? [], [functionsQuery.data]);
+  const visible = useMemo(
+    () => filterFunctionRuns(runs, { moduleName, query, queue, status }),
+    [moduleName, query, queue, status, runs]
+  );
+  const modules = useMemo(
+    () => distinctFunctionMetadata(runs, "module"),
+    [runs]
+  );
+  const queues = useMemo(() => distinctFunctionMetadata(runs, "queue"), [runs]);
+  const summary = useMemo(() => summarizeFunctionRuns(runs), [runs]);
+  const moduleAggregates = useMemo(
+    () => aggregateFunctionRuns(runs, "module", 5),
+    [runs]
+  );
+  const queueAggregates = useMemo(
+    () => aggregateFunctionRuns(runs, "queue", 5),
+    [runs]
+  );
+  const statusAggregates = useMemo(
+    () => aggregateFunctionRuns(runs, "status", 5),
+    [runs]
+  );
+  const [selectedIndex, setSelectedIndex] = useState(0);
 
   useEffect(() => {
     setSelectedIndex(0);
-  }, [query, status]);
+  }, [moduleName, query, queue, status]);
 
-  const selected = filtered[selectedIndex] ?? null;
-  const openRun = (run: FunctionRun) =>
-    openDrawer({ kind: "function", item: run });
+  const selected = visible[selectedIndex] ?? null;
+  const resizeInspector = (deltaX: number) => {
+    setLayout((current) => ({
+      ...current,
+      inspectorWidth: clamp(
+        (current.inspectorWidth ?? functionsLayoutDefaults.inspectorWidth) -
+          deltaX,
+        340,
+        620
+      ),
+    }));
+  };
   const retryRun = (run: FunctionRun) => {
     const retryTarget = retryTargetFor({ kind: "function", item: run });
     if (retryTarget) {
@@ -71,129 +103,395 @@ export function FunctionsPage() {
   };
 
   useListKeyboard({
-    items: filtered,
+    items: visible,
     selectedIndex,
     setSelectedIndex,
-    onOpen: openRun,
+    onOpen: (run) => setSelectedIndex(indexOf(visible, run.id)),
     onRetry: retryRun,
   });
 
   return (
-    <section>
-      <div className="mb-5 flex items-end justify-between gap-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-(--foreground)">
-            Functions
-          </h1>
-          <p className="mt-1.5 max-w-2xl text-[13px] leading-6 text-(--secondary)">
-            Inspect runtime function runs, attempts, duration, logs, and retry
-            state.
-          </p>
-        </div>
-      </div>
+    <section
+      className="grid h-full min-h-0 min-w-0 overflow-hidden bg-(--background) text-(--foreground)"
+      style={{
+        gridTemplateColumns: `minmax(0,1fr) 1px ${functionsLayout.inspectorWidth}px`,
+      }}
+    >
+      <main className="grid min-h-0 min-w-0 grid-rows-[auto_auto_auto_auto_minmax(0,1fr)] overflow-hidden border-r border-(--border-subtle)">
+        <header className="border-b border-(--border-subtle) bg-(--surface) px-3 py-2">
+          <div className="flex items-center gap-2">
+            <Braces className="text-(--accent)" size={14} />
+            <h1 className="font-mono text-[13px] font-semibold">Functions</h1>
+            <span className="ml-auto font-mono text-[10px] text-(--muted)">
+              {visible.length} runs / {runtimeConsoleDataSource()}
+            </span>
+          </div>
+        </header>
 
-      <div className="mb-3 flex flex-wrap items-center gap-2.5">
-        <label className="flex h-9 min-w-[min(420px,100%)] items-center gap-2.5 rounded-lg border border-(--border-subtle) bg-(--elevated) px-3 text-(--secondary)">
-          <Search size={15} />
-          <input
-            aria-label="Search functions"
-            className="w-full bg-transparent text-[13px] text-(--foreground) outline-hidden placeholder:text-(--muted)"
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search function, module, queue, schema, correlation..."
-            value={query}
-          />
-        </label>
-        <select
-          aria-label="Filter function status"
-          className="h-9 rounded-lg border border-(--border-subtle) bg-(--elevated) px-3 text-[13px] text-(--foreground) outline-hidden"
-          onChange={(event) =>
-            setStatus(event.target.value as RuntimeStatus | "all")
-          }
-          value={status}
-        >
-          {statuses.map((item) => (
-            <option key={item} value={item}>
-              {item}
-            </option>
+        <div className="grid border-b border-(--border-subtle) bg-(--surface) md:grid-cols-6">
+          {[
+            ["total", summary.total],
+            ["pending", summary.pending],
+            ["running", summary.running],
+            ["completed", summary.completed],
+            ["failed", summary.failed],
+            ["dead", summary.dead],
+          ].map(([label, value]) => (
+            <div
+              className="grid grid-cols-[minmax(0,1fr)_auto] border-r border-(--border-subtle) px-3 py-2 font-mono text-[10px] last:border-r-0"
+              key={label}
+            >
+              <span className="text-(--muted)">{label}</span>
+              <span
+                className={cn(
+                  "text-[13px] font-semibold text-(--foreground)",
+                  (label === "failed" || label === "dead") &&
+                    Number(value) > 0 &&
+                    "text-[#ef4444]"
+                )}
+              >
+                {value}
+              </span>
+            </div>
           ))}
-        </select>
-        <Button onClick={() => setQuery("")} variant="ghost">
-          Reset
-        </Button>
-      </div>
-
-      <Panel>
-        <div className="grid grid-cols-[104px_minmax(220px,1.35fr)_minmax(150px,0.8fr)_72px_112px_146px] border-b border-(--border-subtle) px-3.5 py-2.5 text-[11px] font-semibold uppercase tracking-[0.04em] text-(--muted) max-md:hidden">
-          <span>status</span>
-          <span>function</span>
-          <span>module</span>
-          <span>attempts</span>
-          <span>duration</span>
-          <span>correlation</span>
         </div>
-        <div className="grid">
+
+        <div className="grid border-b border-(--border-subtle) bg-(--background) lg:grid-cols-3">
+          <AggregatePanel
+            onSelect={(key) => setModuleName(key === "undeclared" ? "" : key)}
+            rows={moduleAggregates}
+            title="module"
+          />
+          <AggregatePanel
+            onSelect={(key) => setQueue(key === "undeclared" ? "" : key)}
+            rows={queueAggregates}
+            title="queue"
+          />
+          <AggregatePanel
+            onSelect={(key) => setStatus(key as FunctionStatusFilter)}
+            rows={statusAggregates}
+            title="status"
+          />
+        </div>
+
+        <div className="flex h-9 items-center gap-2 border-b border-(--border-subtle) bg-(--background) px-3">
+          {functionStatusFilters.map((item) => (
+            <button
+              className={cn(
+                "h-6 border px-2 font-mono text-[10px]",
+                status === item
+                  ? "border-[color-mix(in_srgb,var(--accent)_40%,transparent)] bg-(--accent-soft) text-(--accent)"
+                  : "border-(--border-subtle) text-(--muted) hover:text-(--foreground)"
+              )}
+              key={item}
+              onClick={() => setStatus(item)}
+              type="button"
+            >
+              {item}
+            </button>
+          ))}
+          <label className="flex h-6 min-w-[150px] items-center border border-(--border-subtle) bg-(--elevated) px-2 font-mono text-(--muted)">
+            <input
+              aria-label="Filter functions by module"
+              className="w-full bg-transparent text-[10px] text-(--foreground) outline-hidden placeholder:text-(--muted)"
+              list="function-run-modules"
+              onChange={(event) => setModuleName(event.target.value)}
+              placeholder="module"
+              value={moduleName}
+            />
+            <datalist id="function-run-modules">
+              {modules.map((module) => (
+                <option key={module} value={module}>
+                  {module}
+                </option>
+              ))}
+            </datalist>
+          </label>
+          <label className="flex h-6 min-w-[140px] items-center border border-(--border-subtle) bg-(--elevated) px-2 font-mono text-(--muted)">
+            <input
+              aria-label="Filter functions by queue"
+              className="w-full bg-transparent text-[10px] text-(--foreground) outline-hidden placeholder:text-(--muted)"
+              list="function-run-queues"
+              onChange={(event) => setQueue(event.target.value)}
+              placeholder="queue"
+              value={queue}
+            />
+            <datalist id="function-run-queues">
+              {queues.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </datalist>
+          </label>
+          <label className="ml-auto flex h-6 w-[min(380px,36vw)] items-center gap-2 border border-(--border-subtle) bg-(--elevated) px-2 font-mono text-(--muted)">
+            <Search size={12} />
+            <input
+              aria-label="Search functions"
+              className="w-full bg-transparent text-[10px] text-(--foreground) outline-hidden placeholder:text-(--muted)"
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="function / id / schema / correlation"
+              value={query}
+            />
+          </label>
+        </div>
+
+        <div className="min-h-0 overflow-auto">
+          <div className="grid h-7 grid-cols-[94px_minmax(240px,1.35fr)_minmax(150px,0.8fr)_minmax(132px,0.7fr)_86px_160px_88px] items-center gap-3 border-b border-(--border-subtle) bg-[color-mix(in_srgb,var(--elevated)_52%,transparent)] px-3 font-mono text-[9px] uppercase tracking-[0.08em] text-(--muted)">
+            <span>status</span>
+            <span>function</span>
+            <span>module</span>
+            <span>queue</span>
+            <span>attempts</span>
+            <span>correlation</span>
+            <span>created</span>
+          </div>
           {functionsQuery.isLoading ? (
             <LoadingRows />
           ) : functionsQuery.isError ? (
-            <ErrorState message={errorMessage(functionsQuery.error)} />
-          ) : filtered.length === 0 ? (
-            <EmptyState label="No function runs matched this view" />
+            <MessageRow
+              message={errorMessage(functionsQuery.error)}
+              tone="error"
+            />
+          ) : visible.length === 0 ? (
+            <MessageRow message="no function runs matched" />
           ) : (
-            filtered.map((run) => (
-              <button
-                className={`grid w-full grid-cols-[104px_minmax(220px,1.35fr)_minmax(150px,0.8fr)_72px_112px_146px] items-center gap-2.5 border-b border-(--border-subtle) bg-transparent px-3.5 py-3 text-left text-(--foreground) last:border-b-0 hover:bg-(--hover) max-md:grid-cols-1 ${
-                  selected?.id === run.id ? "bg-(--hover)" : ""
-                }`}
-                key={run.id}
-                onClick={() => {
-                  setSelectedIndex(indexOf(filtered, run.id));
-                  openRun(run);
-                }}
-              >
-                <StatusPill status={run.status} />
-                <div className="min-w-0">
-                  <div className="truncate text-[13px] font-semibold text-(--foreground)">
-                    {run.functionName}
-                  </div>
-                  <div className="mono mt-0.5 truncate text-xs text-(--muted)">
-                    {run.runtimeDeclaration?.queue ?? run.id}
-                  </div>
-                </div>
-                <div className="min-w-0 text-xs">
-                  <div className="truncate font-semibold text-(--secondary)">
-                    {run.runtimeDeclaration?.moduleName ?? "-"}
-                  </div>
-                  <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-(--muted)">
-                    <span className="truncate">
+            visible.map((run) => {
+              const isSelected = selected?.id === run.id;
+              return (
+                <button
+                  className={cn(
+                    "grid min-h-14 w-full grid-cols-[94px_minmax(240px,1.35fr)_minmax(150px,0.8fr)_minmax(132px,0.7fr)_86px_160px_88px] items-center gap-3 border-b border-(--border-subtle) px-3 text-left font-mono text-[11px]",
+                    isSelected
+                      ? "bg-(--accent-soft) shadow-[inset_2px_0_0_var(--accent)]"
+                      : "hover:bg-(--elevated)"
+                  )}
+                  key={run.id}
+                  onClick={() => setSelectedIndex(indexOf(visible, run.id))}
+                  type="button"
+                >
+                  <StatusPill status={run.status} />
+                  <span className="min-w-0">
+                    <span className="block truncate text-(--foreground)">
+                      {run.functionName}
+                    </span>
+                    <span className="block truncate text-[10px] text-(--muted)">
+                      {run.id}
+                    </span>
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-(--foreground)">
+                      {run.runtimeDeclaration?.moduleName ?? "-"}
+                    </span>
+                    <span className="block truncate text-[10px] text-(--muted)">
                       {run.runtimeDeclaration?.moduleSource ?? "undeclared"}
                     </span>
-                    {run.runtimeDeclaration?.inputSchema ? (
-                      <>
-                        <span>/</span>
-                        <span className="truncate">
-                          {run.runtimeDeclaration.inputSchema}
-                        </span>
-                      </>
-                    ) : null}
-                  </div>
-                </div>
-                <span className="mono">
-                  {run.attempts}/{run.maxAttempts}
-                </span>
-                <span>{duration(run.startedAt, run.completedAt)}</span>
-                <span className="mono truncate text-xs text-(--muted)">
-                  {run.correlationId}
-                </span>
-              </button>
-            ))
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-(--foreground)">
+                      {run.runtimeDeclaration?.queue ?? "-"}
+                    </span>
+                    <span className="block truncate text-[10px] text-(--muted)">
+                      {run.runtimeDeclaration?.inputSchema ?? "-"}
+                    </span>
+                  </span>
+                  <span className="text-(--secondary)">
+                    {run.attempts}/{run.maxAttempts}
+                  </span>
+                  <span className="truncate text-[10px] text-(--muted)">
+                    {run.correlationId}
+                  </span>
+                  <span className="text-right text-[10px] text-(--muted)">
+                    {time(run.createdAt)}
+                  </span>
+                </button>
+              );
+            })
           )}
         </div>
-      </Panel>
+      </main>
 
-      <p className="mt-3 text-xs text-(--muted)">
-        Selected run created at {selected ? time(selected.createdAt) : "—"}.
-      </p>
+      <ResizeHandle
+        ariaLabel="Resize function inspector panel"
+        onReset={resetLayout}
+        onResize={resizeInspector}
+      />
+
+      <aside className="relative z-0 grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-(--sidebar)">
+        <InspectorHeader run={selected} />
+        <div className="min-h-0 overflow-auto">
+          {selected ? (
+            <FunctionInspector run={selected} />
+          ) : (
+            <MessageRow message="select a function run" />
+          )}
+        </div>
+        <div className="flex gap-2 border-t border-(--border-subtle) bg-(--surface) p-2">
+          <Button
+            disabled={!selected}
+            onClick={() => selected && openTimeline(selected.correlationId)}
+            variant="ghost"
+          >
+            <ExternalLink size={13} />
+            Story
+          </Button>
+          <Button
+            disabled={!selected}
+            onClick={() => selected && retryRun(selected)}
+            variant="danger"
+          >
+            <RotateCcw size={13} />
+            Retry
+          </Button>
+          <Button
+            disabled={functionsQuery.isRefetching}
+            onClick={() => functionsQuery.refetch()}
+            variant="ghost"
+          >
+            <RefreshCcw size={13} />
+            Refresh
+          </Button>
+        </div>
+      </aside>
     </section>
+  );
+}
+
+function AggregatePanel({
+  onSelect,
+  rows,
+  title,
+}: {
+  onSelect: (key: string) => void;
+  rows: FunctionRunAggregate[];
+  title: string;
+}) {
+  return (
+    <section className="min-w-0 border-r border-(--border-subtle) last:border-r-0">
+      <div className="grid h-7 grid-cols-[minmax(0,1fr)_52px_52px_72px] items-center gap-2 border-b border-(--border-subtle) bg-[color-mix(in_srgb,var(--elevated)_52%,transparent)] px-3 font-mono text-[9px] uppercase tracking-[0.08em] text-(--muted)">
+        <span>{title}</span>
+        <span>fail</span>
+        <span>dead</span>
+        <span>avg</span>
+      </div>
+      <div>
+        {rows.length === 0 ? (
+          <div className="px-3 py-2 font-mono text-[10px] text-(--muted)">
+            empty
+          </div>
+        ) : (
+          rows.map((row) => (
+            <button
+              className="grid h-8 w-full grid-cols-[minmax(0,1fr)_52px_52px_72px] items-center gap-2 border-b border-(--border-subtle) px-3 text-left font-mono text-[10px] hover:bg-(--elevated)"
+              key={row.key}
+              onClick={() => onSelect(row.key)}
+              type="button"
+            >
+              <span className="min-w-0 truncate text-(--foreground)">
+                {row.key}
+              </span>
+              <span
+                className={row.failed > 0 ? "text-[#ef4444]" : "text-(--muted)"}
+              >
+                {row.failed}/{row.total}
+              </span>
+              <span
+                className={row.dead > 0 ? "text-[#ef4444]" : "text-(--muted)"}
+              >
+                {row.dead}
+              </span>
+              <span className="text-(--muted)">
+                {formatFunctionDuration(row.avgDurationMs)}
+              </span>
+            </button>
+          ))
+        )}
+      </div>
+    </section>
+  );
+}
+
+function InspectorHeader({ run }: { run: FunctionRun | null }) {
+  return (
+    <header className="border-b border-(--border-subtle) bg-(--surface) px-3 py-2 font-mono">
+      <div className="mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-(--accent)">
+        {run?.runtimeDeclaration?.moduleName ?? "Function"}
+      </div>
+      <div className="truncate text-[13px] font-semibold text-(--foreground)">
+        {run ? run.functionName : "No run selected"}
+      </div>
+      {run ? (
+        <div className="mt-1 flex items-center gap-2 text-[10px] text-(--muted)">
+          <span className="truncate">{run.id}</span>
+          <span>{formatFunctionDuration(runDurationMs(run))}</span>
+          <span>{run.status}</span>
+        </div>
+      ) : null}
+    </header>
+  );
+}
+
+function FunctionInspector({ run }: { run: FunctionRun }) {
+  const detailQuery = useRuntimeFunctionDetail(run);
+  const displayRun = detailQuery.data ?? run;
+  return (
+    <div className="grid">
+      {detailQuery.isFetching ? (
+        <MessageRow message="loading detail" />
+      ) : detailQuery.isError ? (
+        <MessageRow message={errorMessage(detailQuery.error)} tone="error" />
+      ) : null}
+      <KeyValueRows
+        rows={[
+          ["status", displayRun.status],
+          ["function", displayRun.functionName],
+          ["id", displayRun.id],
+          ["module", displayRun.runtimeDeclaration?.moduleName ?? "-"],
+          ["source", displayRun.runtimeDeclaration?.moduleSource ?? "-"],
+          ["queue", displayRun.runtimeDeclaration?.queue ?? "-"],
+          ["schema", displayRun.runtimeDeclaration?.inputSchema ?? "-"],
+          ["version", String(displayRun.runtimeDeclaration?.version ?? "-")],
+          ["attempts", `${displayRun.attempts}/${displayRun.maxAttempts}`],
+          ["duration", formatFunctionDuration(runDurationMs(displayRun))],
+          ["locked_by", displayRun.lockedBy ?? "-"],
+          ["correlation", displayRun.correlationId],
+          ["actor", actorLabel(displayRun.actor)],
+          ["created", displayRun.createdAt],
+          ["started", displayRun.startedAt ?? "-"],
+          ["completed", displayRun.completedAt ?? "-"],
+          ["error", displayRun.lastError ?? "-"],
+        ]}
+      />
+      <JsonViewer defaultExpanded title="input" value={displayRun.input} />
+      {displayRun.output ? (
+        <JsonViewer title="output" value={displayRun.output} />
+      ) : null}
+      {displayRun.runtimeDeclaration?.retryPolicy ? (
+        <JsonViewer
+          title="retry policy"
+          value={displayRun.runtimeDeclaration.retryPolicy}
+        />
+      ) : null}
+      <JsonViewer title="logs" value={displayRun.logs} />
+    </div>
+  );
+}
+
+function KeyValueRows({ rows }: { rows: Array<[string, string]> }) {
+  return (
+    <div className="w-max min-w-full border-b border-(--border-subtle) font-mono text-xs">
+      {rows.map(([key, value]) => (
+        <div
+          className="grid w-max min-w-full grid-cols-[124px_minmax(220px,max-content)] border-b border-(--border-subtle) last:border-b-0"
+          key={key}
+        >
+          <div className="bg-(--sidebar) px-3 py-1.5 text-(--muted)">{key}</div>
+          <div className="whitespace-pre-wrap px-3 py-1.5 text-(--secondary)">
+            {value}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -202,32 +500,32 @@ function LoadingRows() {
     <>
       <div className="h-14 animate-pulse border-b border-(--border-subtle) bg-(--elevated)" />
       <div className="h-14 animate-pulse border-b border-(--border-subtle) bg-(--elevated)" />
-      <div className="h-14 animate-pulse bg-(--elevated)" />
+      <div className="h-14 animate-pulse border-b border-(--border-subtle) bg-(--elevated)" />
     </>
   );
 }
 
-function ErrorState({ message }: { message: string }) {
+function MessageRow({
+  message,
+  tone = "muted",
+}: {
+  message: string;
+  tone?: "error" | "muted";
+}) {
   return (
-    <div className="m-3 rounded-lg border border-[color-mix(in_srgb,var(--error)_30%,transparent)] bg-[color-mix(in_srgb,var(--error)_8%,transparent)] p-3 text-xs text-(--error)">
+    <div
+      className={cn(
+        "border-b border-(--border-subtle) px-3 py-3 font-mono text-[11px]",
+        tone === "error" ? "text-[#ef4444]" : "text-(--muted)"
+      )}
+    >
       {message}
     </div>
   );
 }
 
-function EmptyState({ label }: { label: string }) {
-  return (
-    <EmptyStateView>
-      <EmptyStateView.Title>{label}</EmptyStateView.Title>
-      <EmptyStateView.Description>
-        Try another status or search term.
-      </EmptyStateView.Description>
-    </EmptyStateView>
-  );
-}
-
 function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Runtime request failed";
+  return error instanceof Error ? error.message : "Function runs unavailable";
 }
 
 function indexOf(items: FunctionRun[], id: string) {

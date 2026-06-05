@@ -28,7 +28,9 @@ export function remoteProxyCallsPath(filters: { correlationId?: string } = {}) {
     params.set("correlation_id", filters.correlationId);
   }
   const search = params.toString();
-  return search ? `/remote-proxy-calls?${search}` : "/remote-proxy-calls";
+  return search
+    ? `/operations/remote-calls?${search}`
+    : "/operations/remote-calls";
 }
 
 export function remoteProxyCallModules(calls: RuntimeRemoteProxyCall[]) {

@@ -157,9 +157,9 @@ describe("remote proxy calls model", () => {
   });
 
   test("builds correlation-scoped remote calls paths", () => {
-    expect(remoteProxyCallsPath()).toBe("/remote-proxy-calls");
+    expect(remoteProxyCallsPath()).toBe("/operations/remote-calls");
     expect(remoteProxyCallsPath({ correlationId: "corr_1" })).toBe(
-      "/remote-proxy-calls?correlation_id=corr_1"
+      "/operations/remote-calls?correlation_id=corr_1"
     );
   });
 });

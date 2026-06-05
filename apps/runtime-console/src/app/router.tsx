@@ -13,6 +13,7 @@ import { DataPage } from "../pages/data-page";
 import { DeadLettersPage } from "../pages/dead-letters-page";
 import { FunctionsPage } from "../pages/functions-page";
 import { ModulesPage } from "../pages/modules-page";
+import { OperationsPage } from "../pages/operations-page";
 import { OverviewPage } from "../pages/overview-page";
 import { QueuesPage } from "../pages/queues-page";
 import { RemoteProxyCallsPage } from "../pages/remote-proxy-calls-page";
@@ -67,7 +68,9 @@ const eventsRoute = createRoute({
 const functionsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/functions",
-  component: FunctionsPage,
+  beforeLoad: () => {
+    throw redirect({ to: "/operations/functions" });
+  },
 });
 
 const timelineRoute = createRoute({
@@ -81,13 +84,65 @@ const timelineRoute = createRoute({
 const deadLettersRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/dead-letters",
-  component: DeadLettersPage,
+  beforeLoad: () => {
+    throw redirect({ to: "/operations/dead-letters" });
+  },
 });
 
 const remoteProxyCallsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/remote-proxy-calls",
-  component: RemoteProxyCallsPage,
+  beforeLoad: () => {
+    throw redirect({ to: "/operations/remote-calls" });
+  },
+});
+
+const operationsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/operations",
+  beforeLoad: () => {
+    throw redirect({ to: "/operations/queues" });
+  },
+});
+
+const operationsQueuesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/operations/queues",
+  component: () => (
+    <OperationsPage active="queues">
+      <QueuesPage />
+    </OperationsPage>
+  ),
+});
+
+const operationsDeadLettersRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/operations/dead-letters",
+  component: () => (
+    <OperationsPage active="dead-letters">
+      <DeadLettersPage />
+    </OperationsPage>
+  ),
+});
+
+const operationsFunctionsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/operations/functions",
+  component: () => (
+    <OperationsPage active="functions">
+      <FunctionsPage />
+    </OperationsPage>
+  ),
+});
+
+const operationsRemoteCallsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/operations/remote-calls",
+  component: () => (
+    <OperationsPage active="remote-calls">
+      <RemoteProxyCallsPage />
+    </OperationsPage>
+  ),
 });
 
 const configRoute = createRoute({
@@ -156,10 +211,17 @@ const routeTree = rootRoute.addChildren([
   timelineRoute,
   deadLettersRoute,
   remoteProxyCallsRoute,
+  operationsRoute,
+  operationsQueuesRoute,
+  operationsDeadLettersRoute,
+  operationsFunctionsRoute,
+  operationsRemoteCallsRoute,
   createRoute({
     getParentRoute: () => rootRoute,
     path: "/queues",
-    component: QueuesPage,
+    beforeLoad: () => {
+      throw redirect({ to: "/operations/queues" });
+    },
   }),
   modulesRoute,
   configRoute,
