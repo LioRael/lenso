@@ -409,13 +409,14 @@ fn load_error_message(status: &ModuleLoadStatus) -> Option<String> {
     )
 )]
 pub(crate) async fn invoke_action(
-    _admin: AdminActor,
+    admin: AdminActor,
     HttpRequestContext(request_ctx): HttpRequestContext,
     Path((module, action)): Path<(String, String)>,
     Json(request): Json<AdminActionInvokeRequest>,
 ) -> Result<Json<AdminActionInvokeResponse>, ApiErrorResponse> {
     let admin_module = find_loaded_action_module(&module, &request_ctx)?;
-    ensure_declared_action(&admin_module, &action, &request_ctx)?;
+    let capability = declared_action_capability(&admin_module, &action, &request_ctx)?;
+    ensure_action_capability(&admin, capability, &request_ctx)?;
     let action_source = admin_module.action_source.as_ref().ok_or_else(|| {
         ApiErrorResponse::with_context(
             AppError::new(
@@ -434,22 +435,48 @@ pub(crate) async fn invoke_action(
     Ok(Json(AdminActionInvokeResponse { data }))
 }
 
-fn ensure_declared_action(
-    module: &AdminModule,
+fn declared_action_capability<'a>(
+    module: &'a AdminModule,
     action: &str,
     ctx: &RequestContext,
-) -> Result<(), ApiErrorResponse> {
-    if matches!(
-        module.admin.as_ref(),
-        Some(AdminSurface::DeclarativeCustom(surface))
-            if surface.actions.iter().any(|declared| declared.name == action)
-    ) {
-        Ok(())
-    } else {
-        Err(ApiErrorResponse::with_context(
+) -> Result<&'a str, ApiErrorResponse> {
+    let Some(AdminSurface::DeclarativeCustom(surface)) = module.admin.as_ref() else {
+        return Err(ApiErrorResponse::with_context(
             AppError::new(ErrorCode::NotFound, format!("unknown action: {action}")),
             ctx,
-        ))
+        ));
+    };
+
+    surface
+        .actions
+        .iter()
+        .find(|declared| declared.name == action)
+        .map(|declared| declared.capability.as_str())
+        .ok_or_else(|| {
+            ApiErrorResponse::with_context(
+                AppError::new(ErrorCode::NotFound, format!("unknown action: {action}")),
+                ctx,
+            )
+        })
+}
+
+fn ensure_action_capability(
+    admin: &AdminActor,
+    capability: &str,
+    ctx: &RequestContext,
+) -> Result<(), ApiErrorResponse> {
+    match admin {
+        AdminActor::System => Ok(()),
+        AdminActor::Service { scopes, .. } if scopes.iter().any(|scope| scope == capability) => {
+            Ok(())
+        }
+        AdminActor::Service { .. } => Err(ApiErrorResponse::with_context(
+            AppError::new(
+                ErrorCode::Forbidden,
+                format!("missing admin action capability: {capability}"),
+            ),
+            ctx,
+        )),
     }
 }
 
