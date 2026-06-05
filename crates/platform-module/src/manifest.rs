@@ -1021,6 +1021,82 @@ mod tests {
     }
 
     #[test]
+    fn manifest_lint_warns_for_empty_lifecycle_surface() {
+        let manifest = ModuleManifest::builder("remote-crm")
+            .lifecycle(LifecycleSurface {
+                startup_checks: vec![],
+                activation_jobs: vec![],
+            })
+            .build();
+
+        let lints = lint_module_manifest(ModuleSource::Remote, &manifest);
+
+        assert!(lints.iter().any(|lint| {
+            lint.subject == "lifecycle"
+                && lint.severity == ModuleManifestLintSeverity::Warning
+                && lint.message
+                    == "Lifecycle surface declares no startup checks or activation jobs."
+        }));
+    }
+
+    #[test]
+    fn manifest_lint_warns_for_activation_job_missing_name() {
+        let manifest = ModuleManifest::builder("remote-crm")
+            .runtime(RuntimeSurface {
+                functions: vec![RuntimeFunctionDeclaration {
+                    name: "remote_crm.warm_contact_cache.v1".to_owned(),
+                    version: 1,
+                    queue: "remote-crm".to_owned(),
+                    input_schema: Some("remote_crm.warm_contact_cache.v1".to_owned()),
+                    retry_policy: None,
+                }],
+            })
+            .lifecycle(LifecycleSurface {
+                startup_checks: vec![],
+                activation_jobs: vec![LifecycleActivationJobDeclaration {
+                    name: "".to_owned(),
+                    function_name: "remote_crm.warm_contact_cache.v1".to_owned(),
+                    run_policy: LifecycleActivationRunPolicy::EveryStartup,
+                    input: serde_json::json!({}),
+                    required: true,
+                }],
+            })
+            .build();
+
+        let lints = lint_module_manifest(ModuleSource::Remote, &manifest);
+
+        assert!(lints.iter().any(|lint| {
+            lint.subject == "lifecycle.activation_job"
+                && lint.severity == ModuleManifestLintSeverity::Warning
+                && lint.message == "Lifecycle activation job is missing a name."
+        }));
+    }
+
+    #[test]
+    fn manifest_lint_errors_for_activation_job_missing_function_name() {
+        let manifest = ModuleManifest::builder("remote-crm")
+            .lifecycle(LifecycleSurface {
+                startup_checks: vec![],
+                activation_jobs: vec![LifecycleActivationJobDeclaration {
+                    name: "".to_owned(),
+                    function_name: "".to_owned(),
+                    run_policy: LifecycleActivationRunPolicy::EveryStartup,
+                    input: serde_json::json!({}),
+                    required: true,
+                }],
+            })
+            .build();
+
+        let lints = lint_module_manifest(ModuleSource::Remote, &manifest);
+
+        assert!(lints.iter().any(|lint| {
+            lint.subject == "lifecycle.activation_job"
+                && lint.severity == ModuleManifestLintSeverity::Error
+                && lint.message == "Lifecycle activation job is missing a function name."
+        }));
+    }
+
+    #[test]
     fn manifest_lint_catalog_covers_current_subjects() {
         let schema = AdminSchema {
             entities: vec![crate::EntitySchema {
