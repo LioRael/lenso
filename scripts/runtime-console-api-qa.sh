@@ -12,7 +12,7 @@ require_cmd() {
 
 get_api() {
     path="$1"
-    curl -fsS "$api_base$path"
+    curl --noproxy "*" -fsS "$api_base$path"
 }
 
 require_cmd curl

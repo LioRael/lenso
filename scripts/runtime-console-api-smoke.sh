@@ -14,7 +14,7 @@ require_cmd() {
 
 api_get() {
     path="$1"
-    curl -fsS -H "$auth_header" "$api_base$path"
+    curl --noproxy "*" -fsS -H "$auth_header" "$api_base$path"
 }
 
 assert_json() {
@@ -22,6 +22,18 @@ assert_json() {
     expr="$2"
     message="$3"
     if ! jq -e "$expr" "$file" >/dev/null; then
+        echo "Runtime Console API smoke failed: $message" >&2
+        echo "Response:" >&2
+        jq . "$file" >&2 || cat "$file" >&2
+        exit 1
+    fi
+}
+
+assert_jq() {
+    file="$1"
+    message="$2"
+    shift 2
+    if ! jq -e "$@" "$file" >/dev/null; then
         echo "Runtime Console API smoke failed: $message" >&2
         echo "Response:" >&2
         jq . "$file" >&2 || cat "$file" >&2
@@ -78,9 +90,11 @@ api_get "/admin/runtime/remote-proxy-calls?limit=1" >"$remote_calls"
 assert_json "$remote_calls" '.data | type == "array"' "remote call list data is missing"
 assert_json "$remote_calls" '.page.limit == 1' "remote call list did not preserve limit"
 if [ "$(jq '.data | length' "$remote_calls")" -gt 0 ]; then
+    remote_call_id="$(jq -r '.data[0].id' "$remote_calls")"
     correlation_id="$(jq -r '.data[0].correlation_id' "$remote_calls")"
     module_name="$(jq -r '.data[0].module_name' "$remote_calls")"
     success="$(jq -r '.data[0].success' "$remote_calls")"
+    remote_node_id="remoteproxy_$remote_call_id"
     filtered_remote_calls="$tmpdir/remote-calls-filtered.json"
     api_get "/admin/runtime/remote-proxy-calls?correlation_id=$correlation_id&module_name=$module_name&success=$success&limit=10" >"$filtered_remote_calls"
     assert_json "$filtered_remote_calls" '.data | type == "array"' "remote call filtered data is missing"
@@ -102,6 +116,56 @@ if [ "$(jq '.data | length' "$remote_calls")" -gt 0 ]; then
         api_get "/admin/runtime/remote-proxy-calls?created_before=$next_created_before&limit=1" >"$paged_remote_calls"
         assert_json "$paged_remote_calls" '.page.limit == 1' "remote call pagination limit is missing"
     fi
+
+    story="$tmpdir/remote-story.json"
+    api_get "/admin/runtime/stories/$correlation_id" >"$story"
+    assert_json "$story" '.data.summary.correlation_id == "'"$correlation_id"'"' "remote call story correlation mismatch"
+    assert_jq "$story" "remote proxy call story node is missing" \
+        --arg node_id "$remote_node_id" '
+        any(.data.nodes[]; .id == $node_id and .type == "remote_proxy_call")
+    '
+    assert_jq "$story" "remote proxy call story node metadata is incomplete" \
+        --arg node_id "$remote_node_id" \
+        --arg call_id "$remote_call_id" \
+        --arg module_name "$module_name" '
+        any(.data.nodes[];
+            .id == $node_id
+            and .metadata.source_metadata.remote_proxy_call_id == $call_id
+            and .metadata.source_metadata.module_name == $module_name
+        )
+    '
+    assert_jq "$story" "remote proxy call timeline item is missing" \
+        --arg node_id "$remote_node_id" '
+        any(.data.timeline_items[]; .related_node_id == $node_id and .type == "remote_proxy_call")
+    '
+
+    story_operations="$tmpdir/remote-story-operations.json"
+    api_get "/admin/runtime/stories/$correlation_id/technical-operations" >"$story_operations"
+    assert_jq "$story_operations" "remote proxy technical operation is missing" \
+        --arg node_id "$remote_node_id" \
+        --arg call_id "$remote_call_id" '
+        any(.data[];
+            .related_node_id == $node_id
+            and .source == "remote_proxy"
+            and .attributes.remote_proxy_call_id == $call_id
+        )
+    '
+
+    payload="$tmpdir/remote-payload.json"
+    api_get "/admin/runtime/executions/$remote_node_id/payload" >"$payload"
+    assert_json "$payload" '.data.node_type == "story_event"' "remote proxy payload node type is unexpected"
+    assert_jq "$payload" "remote proxy payload metadata is incomplete" \
+        --arg call_id "$remote_call_id" \
+        --arg module_name "$module_name" '
+        .data.input.remote_proxy_call_id == $call_id
+        and .data.input.module_name == $module_name
+        and .data.metadata.node_type == "remote_proxy_call"
+    '
+
+    logs="$tmpdir/remote-logs.json"
+    api_get "/admin/runtime/executions/$remote_node_id/logs" >"$logs"
+    assert_json "$logs" '.data | type == "array"' "remote proxy logs response data is missing"
+    assert_json "$logs" '.page.limit | type == "number"' "remote proxy logs page metadata is missing"
 fi
 
 echo "Runtime Console API smoke passed."
@@ -109,3 +173,4 @@ echo "- summary supports queue pressure inputs"
 echo "- outbox list/detail supports dead-letter inspector payload and actor"
 echo "- functions list/detail supports operation inspector metadata"
 echo "- remote calls support filters and pagination"
+echo "- remote call stories expose nodes, technical operations, payloads, and logs"
