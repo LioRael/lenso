@@ -47,6 +47,7 @@ EOF
     exit 1
 fi
 
+sh scripts/runtime-console-api-fixture.sh
 sh scripts/runtime-console-api-smoke.sh
 
 cat <<EOF

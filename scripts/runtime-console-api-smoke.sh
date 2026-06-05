@@ -4,6 +4,7 @@ set -eu
 api_base="${VITE_API_BASE_URL:-${API_BASE_URL:-http://localhost:3000}}"
 token="${RUNTIME_CONSOLE_TOKEN:-dev-service:admin}"
 auth_header="Authorization: Bearer $token"
+remote_fixture_correlation_id="${RUNTIME_CONSOLE_REMOTE_FIXTURE_CORRELATION_ID:-corr_console_api_fixture}"
 
 require_cmd() {
     if ! command -v "$1" >/dev/null 2>&1; then
@@ -86,7 +87,10 @@ if [ "$(jq '.data | length' "$functions")" -gt 0 ]; then
 fi
 
 remote_calls="$tmpdir/remote-calls.json"
-api_get "/admin/runtime/remote-proxy-calls?limit=1" >"$remote_calls"
+api_get "/admin/runtime/remote-proxy-calls?correlation_id=$remote_fixture_correlation_id&limit=1" >"$remote_calls"
+if [ "$(jq '.data | length' "$remote_calls")" -eq 0 ]; then
+    api_get "/admin/runtime/remote-proxy-calls?limit=1" >"$remote_calls"
+fi
 assert_json "$remote_calls" '.data | type == "array"' "remote call list data is missing"
 assert_json "$remote_calls" '.page.limit == 1' "remote call list did not preserve limit"
 if [ "$(jq '.data | length' "$remote_calls")" -gt 0 ]; then
@@ -147,7 +151,7 @@ if [ "$(jq '.data | length' "$remote_calls")" -gt 0 ]; then
         any(.data[];
             .related_node_id == $node_id
             and .source == "remote_proxy"
-            and .attributes.remote_proxy_call_id == $call_id
+            and .id == ("remote_proxy:" + $call_id)
         )
     '
 

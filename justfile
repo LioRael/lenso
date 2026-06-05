@@ -64,6 +64,9 @@ console-api:
 console-api-smoke:
     sh scripts/runtime-console-api-smoke.sh
 
+console-api-fixture:
+    sh scripts/runtime-console-api-fixture.sh
+
 console-api-qa:
     sh scripts/runtime-console-api-qa.sh
 
