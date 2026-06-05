@@ -38,6 +38,14 @@ import {
   runtimeStoriesLayoutDefaults,
 } from "./runtime-stories-layout";
 import { resolveSelectedRuntimeStory } from "./runtime-stories-selection";
+import {
+  readExecutionInspectorTab,
+  readRuntimeStoriesParam,
+  readStoryViewMode,
+  replaceRuntimeStoriesUrl,
+  runtimeStoriesPath,
+  storyUrlId,
+} from "./runtime-stories-url-model";
 
 gsap.registerPlugin(useGSAP);
 
@@ -50,23 +58,28 @@ export function RuntimeStoriesPage() {
     useRuntimeConsole();
   const storiesQuery = useRuntimeStories();
   const stories = storiesQuery.data ?? emptyStories;
-  const [query, setQuery] = useState("");
-  const [selectedStoryId, setSelectedStoryId] = useState<string | null>(() =>
-    typeof window === "undefined"
-      ? null
-      : window.localStorage.getItem(selectedStoryStorageKey)
+  const [query, setQuery] = useState(() => readRuntimeStoriesParam("q"));
+  const [selectedStoryId, setSelectedStoryId] = useState<string | null>(
+    () =>
+      readRuntimeStoriesParam("story") ||
+      (typeof window === "undefined"
+        ? null
+        : window.localStorage.getItem(selectedStoryStorageKey))
   );
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(
+    () => readRuntimeStoriesParam("node") || null
+  );
   const [displayedNode, setDisplayedNode] = useState<ExecutionNode | null>(
     null
   );
   const [storyDetailClosed, setStoryDetailClosed] = useState(false);
   const [servicesExpanded, setServicesExpanded] = useState(true);
-  const [mode, setMode] = useState<StoryViewMode>(
-    runtimeStoriesDefaultViewMode
+  const [mode, setMode] = useState<StoryViewMode>(() =>
+    readStoryViewMode(readRuntimeStoriesParam("view"))
   );
-  const [inspectorTab, setInspectorTab] =
-    useState<ExecutionInspectorTab>("overview");
+  const [inspectorTab, setInspectorTab] = useState<ExecutionInspectorTab>(() =>
+    readExecutionInspectorTab(readRuntimeStoriesParam("tab"))
+  );
   const workbenchRef = useRef<HTMLDivElement | null>(null);
   const inspectorPanelRef = useRef<HTMLDivElement | null>(null);
   const previousInspectorOpenRef = useRef(false);
@@ -134,6 +147,28 @@ export function RuntimeStoriesPage() {
     ? `${listColumn} 1px minmax(0,1fr) calc(1px * var(--story-inspector-open)) minmax(0,calc(${inspectorColumn} * var(--story-inspector-open)))`
     : `${listColumn} 1px minmax(0,1fr)`;
   const showServicesPanel = mode === "waterfall" || mode === "flame";
+
+  useEffect(() => {
+    if (storiesQuery.isLoading) {
+      return;
+    }
+    replaceRuntimeStoriesUrl(
+      runtimeStoriesPath({
+        inspectorTab: selectedNode ? inspectorTab : "overview",
+        nodeId: selectedNode?.id ?? null,
+        query,
+        storyId: storyUrlId(selectedStory),
+        viewMode: mode,
+      })
+    );
+  }, [
+    inspectorTab,
+    mode,
+    query,
+    selectedNode,
+    selectedStory,
+    storiesQuery.isLoading,
+  ]);
 
   useEffect(() => {
     if (selectedNode) {
@@ -486,7 +521,7 @@ export function RuntimeStoriesPage() {
               <ExecutionInspector
                 activeTab={inspectorTab}
                 onClearSelection={() => {
-                  setSelectedStoryId(selectedStory.id);
+                  setSelectedStoryId(storyUrlId(selectedStory));
                   clearStoryTarget();
                   setSelectedNodeId(null);
                   setInspectorTab("overview");

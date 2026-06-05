@@ -28,6 +28,7 @@ import {
 } from "../../hooks/use-runtime-queries";
 import { isApiMode } from "../../lib/http-client";
 import { remoteProxyCallsPath } from "../../pages/remote-proxy-calls-model";
+import { runtimeStoriesPath } from "../../pages/runtime-stories-url-model";
 import {
   buildRuntimeSearchResults,
   type RuntimeSearchResult,
@@ -86,7 +87,9 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
     (nextCorrelationId: string) => {
       setActiveCorrelationId(nextCorrelationId);
       setActiveStoryTarget({ storyId: nextCorrelationId });
-      void navigate({ to: "/runtime/stories" });
+      void navigate({
+        to: runtimeStoriesPath({ storyId: nextCorrelationId }),
+      });
     },
     [navigate]
   );
@@ -94,7 +97,12 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
   const openStory = useCallback(
     (storyId: string, nodeId?: string) => {
       setActiveStoryTarget({ storyId, ...(nodeId ? { nodeId } : {}) });
-      void navigate({ to: "/runtime/stories" });
+      void navigate({
+        to: runtimeStoriesPath({
+          ...(nodeId ? { nodeId } : {}),
+          storyId,
+        }),
+      });
     },
     [navigate]
   );
@@ -155,7 +163,12 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
     (target: RuntimeStoryTargetInput) => {
       const resolvedTarget = resolveRuntimeStoryTarget(resolvedStories, target);
       setActiveStoryTarget(resolvedTarget);
-      void navigate({ to: "/runtime/stories" });
+      void navigate({
+        to: runtimeStoriesPath({
+          ...(resolvedTarget.nodeId ? { nodeId: resolvedTarget.nodeId } : {}),
+          storyId: resolvedTarget.storyId,
+        }),
+      });
     },
     [navigate, resolvedStories]
   );
