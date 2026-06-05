@@ -4,16 +4,23 @@ import { useMemo, useState } from "react";
 import { JsonViewer } from "../components/runtime/json-viewer";
 import { ResizeHandle } from "../components/runtime/resize-handle";
 import { useRuntimeConsole } from "../components/runtime/runtime-console-context";
+import {
+  buildTechnicalOperationGroups,
+  technicalOperationsStateLabel,
+  type TechnicalOperationView,
+} from "../components/runtime/technical-operations-model";
 import { Button } from "../components/ui/button";
 import { retryTargetFor, type FunctionRun } from "../data/mock-runtime";
 import { useListKeyboard } from "../hooks/use-list-keyboard";
 import {
   useRuntimeFunctionDetail,
   useRuntimeFunctions,
+  useExecutionTechnicalOperations,
 } from "../hooks/use-runtime-queries";
 import { cn } from "../lib/cn";
 import { actorLabel, time } from "../lib/format";
 import { runtimeConsoleDataSource } from "../lib/http-client";
+import { formatRuntimeDuration } from "../lib/runtime-style";
 import {
   aggregateFunctionRuns,
   distinctFunctionMetadata,
@@ -503,7 +510,23 @@ function FunctionStatusPill({ status }: { status: FunctionRun["status"] }) {
 
 function FunctionInspector({ run }: { run: FunctionRun }) {
   const detailQuery = useRuntimeFunctionDetail(run);
+  const operationsQuery = useExecutionTechnicalOperations(run.id);
   const displayRun = detailQuery.data ?? run;
+  const operationGroups = useMemo(
+    () =>
+      buildTechnicalOperationGroups({
+        executionOperations: operationsQuery.data ?? [],
+        selectedNodeId: displayRun.id,
+        storyOperations: [],
+        storyTimestamp: displayRun.startedAt ?? displayRun.createdAt,
+      }),
+    [
+      displayRun.createdAt,
+      displayRun.id,
+      displayRun.startedAt,
+      operationsQuery.data,
+    ]
+  );
   return (
     <div className="grid">
       {detailQuery.isFetching ? (
@@ -535,6 +558,12 @@ function FunctionInspector({ run }: { run: FunctionRun }) {
           ["error", displayRun.lastError ?? "-"],
         ]}
       />
+      <FunctionTechnicalOperations
+        error={operationsQuery.error}
+        groups={operationGroups}
+        isError={operationsQuery.isError}
+        isLoading={operationsQuery.isLoading}
+      />
       <JsonViewer defaultExpanded title="input" value={displayRun.input} />
       {displayRun.output ? (
         <JsonViewer title="output" value={displayRun.output} />
@@ -546,6 +575,114 @@ function FunctionInspector({ run }: { run: FunctionRun }) {
         />
       ) : null}
       <JsonViewer title="logs" value={displayRun.logs} />
+    </div>
+  );
+}
+
+function FunctionTechnicalOperations({
+  error,
+  groups,
+  isError,
+  isLoading,
+}: {
+  error: unknown;
+  groups: ReturnType<typeof buildTechnicalOperationGroups>;
+  isError: boolean;
+  isLoading: boolean;
+}) {
+  if (groups.length === 0 || isLoading || isError) {
+    return (
+      <section className="border-b border-(--border-subtle)">
+        <div className="flex items-center gap-2 bg-(--sidebar) px-3 py-1.5 font-mono text-[11px] text-(--muted)">
+          <span>operations</span>
+        </div>
+        <div className="px-3 py-2 font-mono text-[10px] text-(--muted)">
+          {technicalOperationsStateLabel({ error, isError, isLoading })}
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="border-b border-(--border-subtle)">
+      <div className="flex items-center gap-2 bg-(--sidebar) px-3 py-1.5 font-mono text-[11px] text-(--muted)">
+        <span>operations</span>
+        <span className="rounded-xs border border-(--border-subtle) bg-(--background) px-1.5 py-0.5 text-[10px] text-(--muted)">
+          {groups.reduce((total, group) => total + group.operations.length, 0)}
+        </span>
+      </div>
+      {groups.map((group) => (
+        <div className="grid" key={group.id}>
+          <div className="border-t border-(--border-subtle) bg-[color-mix(in_srgb,var(--surface)_82%,var(--background))] px-3 py-1.5 font-mono text-[10px] font-semibold uppercase text-(--muted)">
+            {group.label}
+          </div>
+          {group.operations.map((operation) => (
+            <FunctionTechnicalOperationRow
+              key={operation.id}
+              operation={operation}
+            />
+          ))}
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function FunctionTechnicalOperationRow({
+  operation,
+}: {
+  operation: TechnicalOperationView;
+}) {
+  return (
+    <div className="border-t border-(--border-subtle) px-3 py-2 font-mono text-xs">
+      <div className="flex min-w-0 items-start gap-2">
+        <span
+          className={cn(
+            "shrink-0 rounded-xs border px-1.5 py-0.5 text-[10px] font-semibold uppercase",
+            operation.source === "remote_proxy" &&
+              "border-[#f59e0b]/40 bg-[#f59e0b]/10 text-[#d97706]",
+            operation.source === "remote_runtime" &&
+              "border-[#14b8a6]/40 bg-[#14b8a6]/10 text-[#0f9488]",
+            operation.source === "otel" &&
+              "border-(--border-subtle) bg-(--elevated) text-(--muted)"
+          )}
+        >
+          {operation.sourceLabel}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <span
+              className="truncate text-(--foreground)"
+              title={operation.name}
+            >
+              {operation.name}
+            </span>
+            <span
+              className={cn(
+                "shrink-0 text-[10px]",
+                operation.status === "error"
+                  ? "text-[#ef4444]"
+                  : "text-(--muted)"
+              )}
+            >
+              {operation.status}
+            </span>
+          </div>
+          {operation.summary ? (
+            <div
+              className="mt-1 truncate text-[10px] text-(--muted)"
+              title={operation.summary}
+            >
+              {operation.summary}
+            </div>
+          ) : null}
+          <div className="mt-1 flex min-w-0 gap-2 text-[10px] text-(--muted-deep)">
+            <span>{operation.category}</span>
+            <span>{formatRuntimeDuration(operation.durationMs)}</span>
+            <span>+{formatRuntimeDuration(operation.relativeStartMs)}</span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

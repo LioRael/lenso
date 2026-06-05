@@ -159,11 +159,14 @@ function remoteRuntimeOperationSummary(operation: TechnicalOperation) {
   const remotePath = stringAttribute(operation.attributes.remote_path);
   const requestId = stringAttribute(operation.attributes.request_id);
   const errorCode = stringAttribute(operation.attributes.error_code);
+  const timeoutMs = numberAttribute(operation.attributes.timeout_ms);
+  const workerId = stringAttribute(operation.attributes.worker_id);
   const parts = [
     moduleName,
     functionName,
     remotePath ? `remote ${remotePath}` : undefined,
-    `duration ${operation.durationMs}ms`,
+    typeof timeoutMs === "number" ? `timeout ${timeoutMs}ms` : undefined,
+    workerId ? `worker ${workerId}` : undefined,
     requestId ? `request ${requestId}` : undefined,
     errorCode ? `error ${errorCode}` : undefined,
   ].filter(Boolean);

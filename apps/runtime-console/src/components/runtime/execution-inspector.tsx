@@ -484,9 +484,7 @@ function TechnicalOperationRow({
         <span
           className={cn(
             "w-fit rounded-xs border px-1.5 py-0.5 text-[10px] font-semibold uppercase",
-            operation.source === "remote_proxy"
-              ? "border-[#f59e0b]/40 bg-[#f59e0b]/10 text-[#d97706]"
-              : "border-(--border-subtle) bg-(--elevated) text-(--muted)"
+            operationSourceTone(operation)
           )}
         >
           {operation.sourceLabel}
@@ -522,6 +520,16 @@ function TechnicalOperationRow({
       <JsonViewer title="safe attributes" value={operation.safeAttributes} />
     </div>
   );
+}
+
+function operationSourceTone(operation: TechnicalOperationView) {
+  if (operation.source === "remote_proxy") {
+    return "border-[#f59e0b]/40 bg-[#f59e0b]/10 text-[#d97706]";
+  }
+  if (operation.source === "remote_runtime") {
+    return "border-[#14b8a6]/40 bg-[#14b8a6]/10 text-[#0f9488]";
+  }
+  return "border-(--border-subtle) bg-(--elevated) text-(--muted)";
 }
 
 function KeyValueTable({ rows }: { rows: Array<[string, unknown]> }) {

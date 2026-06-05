@@ -193,6 +193,8 @@ describe("technical operations model", () => {
         module_name: "remote-crm",
         remote_path: "/runtime/functions/remote_crm.sync_contact.v1/invoke",
         request_id: "fnrun_1",
+        timeout_ms: 5000,
+        worker_id: "worker-remote-1",
       },
       category: "external",
       correlationId: "corr_1",
@@ -209,7 +211,7 @@ describe("technical operations model", () => {
 
     expect(technicalOperationSourceLabel(remoteRuntime)).toBe("remote runtime");
     expect(technicalOperationSummary(remoteRuntime)).toBe(
-      "remote-crm / remote_crm.sync_contact.v1 / remote /runtime/functions/remote_crm.sync_contact.v1/invoke / duration 42ms / request fnrun_1 / error external_dependency_failure"
+      "remote-crm / remote_crm.sync_contact.v1 / remote /runtime/functions/remote_crm.sync_contact.v1/invoke / timeout 5000ms / worker worker-remote-1 / request fnrun_1 / error external_dependency_failure"
     );
   });
 
