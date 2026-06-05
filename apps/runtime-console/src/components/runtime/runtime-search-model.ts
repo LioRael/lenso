@@ -1,7 +1,6 @@
 import type {
   FunctionRun,
   RuntimeEvent,
-  RuntimeRecord,
   RuntimeStory,
 } from "../../data/mock-runtime";
 
@@ -12,7 +11,6 @@ export type RuntimeSearchResult =
       title: string;
       subtitle: string;
       correlationId: string;
-      record: RuntimeRecord;
     }
   | {
       kind: "function";
@@ -20,7 +18,6 @@ export type RuntimeSearchResult =
       title: string;
       subtitle: string;
       correlationId: string;
-      record: RuntimeRecord;
     }
   | {
       kind: "story";
@@ -119,7 +116,6 @@ export function buildRuntimeSearchResults({
       title: event.eventName,
       subtitle: `${event.status} · ${event.correlationId}`,
       correlationId: event.correlationId,
-      record: { kind: "event", item: event },
     }));
 
   const functionResults: RuntimeSearchResult[] = functions
@@ -144,7 +140,6 @@ export function buildRuntimeSearchResults({
         run.runtimeDeclaration?.moduleName ?? run.correlationId
       }`,
       correlationId: run.correlationId,
-      record: { kind: "function", item: run },
     }));
 
   const correlations = Array.from(

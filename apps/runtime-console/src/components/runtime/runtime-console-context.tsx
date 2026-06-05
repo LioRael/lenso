@@ -11,14 +11,10 @@ import {
 } from "react";
 
 import {
-  correlationId,
   functionRuns,
   runtimeEvents,
   runtimeStories,
-  timelineItems,
   type RetryTarget,
-  type RuntimeRecord,
-  type TimelineItem,
 } from "../../data/mock-runtime";
 import { queryDataWithMockFallback } from "../../hooks/runtime-query-data";
 import {
@@ -42,14 +38,10 @@ import {
 export type SearchResult = RuntimeSearchResult;
 
 type RuntimeConsoleContextValue = {
-  drawerTarget: RuntimeRecord | null;
   retryTarget: RetryTarget | null;
   commandOpen: boolean;
-  activeCorrelationId: string;
   activeStoryTarget: { storyId: string; nodeId?: string } | null;
   searchInputRef: RefObject<HTMLInputElement | null>;
-  openDrawer: (target: RuntimeRecord | null) => void;
-  closeDrawer: () => void;
   openRetry: (target: RetryTarget | null) => void;
   closeRetry: () => void;
   openCommandPalette: () => void;
@@ -59,7 +51,6 @@ type RuntimeConsoleContextValue = {
   openStory: (storyId: string, nodeId?: string) => void;
   openStoryTarget: (target: RuntimeStoryTargetInput) => void;
   openRemoteCalls: (correlationId?: string, selectedId?: string) => void;
-  openTimelineSource: (item: TimelineItem) => void;
   clearStoryTarget: () => void;
   searchRuntime: (query: string) => SearchResult[];
   selectSearchResult: (result: SearchResult) => void;
@@ -75,10 +66,8 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
   const functionsQuery = useRuntimeFunctions();
   const storiesQuery = useRuntimeStories();
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const [drawerTarget, setDrawerTarget] = useState<RuntimeRecord | null>(null);
   const [retryTarget, setRetryTarget] = useState<RetryTarget | null>(null);
   const [commandOpen, setCommandOpen] = useState(false);
-  const [activeCorrelationId, setActiveCorrelationId] = useState(correlationId);
   const [activeStoryTarget, setActiveStoryTarget] = useState<{
     storyId: string;
     nodeId?: string;
@@ -86,7 +75,6 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
 
   const openTimeline = useCallback(
     (nextCorrelationId: string) => {
-      setActiveCorrelationId(nextCorrelationId);
       setActiveStoryTarget({ storyId: nextCorrelationId });
       void navigate({
         to: runtimeStoriesPath({ storyId: nextCorrelationId }),
@@ -174,22 +162,6 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
     [navigate, resolvedStories]
   );
 
-  const openTimelineSource = useCallback(
-    (item: TimelineItem) => {
-      if (item.type === "remote_proxy_call") {
-        openRemoteCalls(item.correlationId, remoteProxyCallSelectedId(item));
-        return;
-      }
-
-      const record = resolveTimelineSourceRecord(item, {
-        events: resolvedEvents,
-        functions: resolvedFunctions,
-      });
-      setDrawerTarget(record ?? { kind: "timeline", item });
-    },
-    [openRemoteCalls, resolvedEvents, resolvedFunctions]
-  );
-
   const searchRuntime = useCallback(
     (query: string) => {
       const normalized = query.trim().toLowerCase();
@@ -235,14 +207,10 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
 
   const value = useMemo<RuntimeConsoleContextValue>(
     () => ({
-      drawerTarget,
       retryTarget,
       commandOpen,
-      activeCorrelationId,
       activeStoryTarget,
       searchInputRef,
-      openDrawer: setDrawerTarget,
-      closeDrawer: () => setDrawerTarget(null),
       openRetry: setRetryTarget,
       closeRetry: () => setRetryTarget(null),
       openCommandPalette: () => setCommandOpen(true),
@@ -252,22 +220,18 @@ export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
       openStory,
       openStoryTarget,
       openRemoteCalls,
-      openTimelineSource,
       clearStoryTarget,
       searchRuntime,
       selectSearchResult,
     }),
     [
-      activeCorrelationId,
       activeStoryTarget,
       clearStoryTarget,
       commandOpen,
-      drawerTarget,
       openTimeline,
       openRemoteCalls,
       openStory,
       openStoryTarget,
-      openTimelineSource,
       retryTarget,
       searchRuntime,
       selectSearchResult,
@@ -289,50 +253,4 @@ export function useRuntimeConsole() {
     );
   }
   return context;
-}
-
-export function resolveTimelineSource(itemId: string): RuntimeRecord | null {
-  const event = runtimeEvents.find((item) => item.id === itemId);
-  if (event) {
-    return { kind: "event", item: event };
-  }
-
-  const run = functionRuns.find((item) => item.id === itemId);
-  if (run) {
-    return { kind: "function", item: run };
-  }
-
-  const item = timelineItems.find((timelineItem) => timelineItem.id === itemId);
-  return item ? { kind: "timeline", item } : null;
-}
-
-export function resolveTimelineSourceRecord(
-  item: TimelineItem,
-  sources: {
-    events: typeof runtimeEvents;
-    functions: typeof functionRuns;
-  }
-): RuntimeRecord | null {
-  const sourceId = item.detailId ?? item.id;
-
-  if (item.type === "outbox_event" || item.type === "event") {
-    const event = sources.events.find((candidate) => candidate.id === sourceId);
-    return event ? { kind: "event", item: event } : null;
-  }
-
-  if (item.type === "function_run" || item.type === "function") {
-    const run = sources.functions.find(
-      (candidate) => candidate.id === sourceId
-    );
-    return run ? { kind: "function", item: run } : null;
-  }
-
-  return resolveTimelineSource(sourceId);
-}
-
-export function remoteProxyCallSelectedId(item: TimelineItem) {
-  const sourceId = item.detailId ?? item.id;
-  return sourceId.startsWith("remoteproxy_")
-    ? sourceId.slice("remoteproxy_".length)
-    : sourceId;
 }

@@ -2,9 +2,9 @@ import { describe, expect, test } from "vitest";
 
 import {
   type ExecutionNode,
+  type RetryableRuntimeRecord,
   retryTargetFor,
   retryTargetForNode,
-  type RuntimeRecord,
   type TimelineItem,
 } from "./mock-runtime";
 
@@ -58,7 +58,9 @@ describe("retryTargetForNode", () => {
   });
 });
 
-function timelineRecord(overrides: Partial<TimelineItem>): RuntimeRecord {
+function timelineRecord(
+  overrides: Partial<TimelineItem>
+): RetryableRuntimeRecord {
   return {
     kind: "timeline",
     item: {

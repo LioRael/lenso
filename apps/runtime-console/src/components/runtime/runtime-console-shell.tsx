@@ -22,7 +22,6 @@ import { runtimeConsoleDataSource } from "../../lib/http-client";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { CommandPalette } from "./command-palette";
-import { DetailDrawer } from "./detail-drawer";
 import { RetryDialog } from "./retry-dialog";
 import { useRuntimeConsole } from "./runtime-console-context";
 import { RuntimeSearch } from "./runtime-search";
@@ -45,8 +44,7 @@ const configNavItem = {
 
 export function RuntimeConsoleShell({ children }: PropsWithChildren) {
   const shellRef = useRef<HTMLDivElement>(null);
-  const { closeDrawer, drawerTarget, focusGlobalSearch, openCommandPalette } =
-    useRuntimeConsole();
+  const { focusGlobalSearch, openCommandPalette } = useRuntimeConsole();
   const [sidebarCollapsed, setSidebarCollapsed] = usePersistedLayout(
     "runtime-console:sidebar-collapsed",
     false
@@ -95,17 +93,12 @@ export function RuntimeConsoleShell({ children }: PropsWithChildren) {
       if (event.key === "/" && !isTyping) {
         event.preventDefault();
         focusGlobalSearch();
-        return;
-      }
-
-      if (event.key === "Escape") {
-        closeDrawer();
       }
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [closeDrawer, focusGlobalSearch, openCommandPalette, toggleSidebar]);
+  }, [focusGlobalSearch, openCommandPalette, toggleSidebar]);
 
   useGSAP(
     () => {
@@ -280,7 +273,6 @@ export function RuntimeConsoleShell({ children }: PropsWithChildren) {
         </header>
         <div className="h-[calc(100vh-44px)] overflow-hidden">{children}</div>
       </main>
-      <DetailDrawer onClose={closeDrawer} target={drawerTarget} />
       <RetryDialog />
       <CommandPalette onToggleTheme={toggleTheme} theme={theme} />
     </div>

@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { retryTargetFor, runtimeStories } from "../../data/mock-runtime";
+import { runtimeStories } from "../../data/mock-runtime";
 import { queryDataWithMockFallback } from "../../hooks/runtime-query-data";
 import { currentBrowserUrl } from "../../hooks/use-browser-url-state";
 import { useRuntimeStories } from "../../hooks/use-runtime-queries";
@@ -29,14 +29,8 @@ type CommandPaletteProps = {
 
 export function CommandPalette({ theme, onToggleTheme }: CommandPaletteProps) {
   const navigate = useNavigate();
-  const {
-    closeCommandPalette,
-    commandOpen,
-    drawerTarget,
-    focusGlobalSearch,
-    openRetry,
-    openStory,
-  } = useRuntimeConsole();
+  const { closeCommandPalette, commandOpen, focusGlobalSearch, openStory } =
+    useRuntimeConsole();
   const storiesQuery = useRuntimeStories();
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
@@ -126,30 +120,11 @@ export function CommandPalette({ theme, onToggleTheme }: CommandPaletteProps) {
       ...storyItems,
     ];
 
-    if (drawerTarget) {
-      const retryTarget = retryTargetFor(drawerTarget);
-      items.push({
-        action: () => {
-          if (retryTarget) {
-            openRetry(retryTarget);
-          }
-        },
-        id: "retry-selected",
-        searchText: `retry selected item ${retryTarget?.id ?? ""}`,
-        subtitle: retryTarget
-          ? retryTarget.id
-          : "Selected item is not retryable",
-        title: "Retry selected item",
-      });
-    }
-
     return items;
   }, [
-    drawerTarget,
     focusGlobalSearch,
     navigate,
     onToggleTheme,
-    openRetry,
     openStory,
     storiesQuery.data,
     storiesQuery.isError,

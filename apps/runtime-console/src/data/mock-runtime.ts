@@ -1232,7 +1232,7 @@ export const remoteProxyCalls: RemoteProxyCall[] = [
   },
 ];
 
-export type RuntimeRecord =
+export type RetryableRuntimeRecord =
   | { kind: "event"; item: RuntimeEvent }
   | { kind: "function"; item: FunctionRun }
   | { kind: "timeline"; item: TimelineItem };
@@ -1290,7 +1290,9 @@ export function retryTargetForNode(node: ExecutionNode): RetryTarget | null {
   };
 }
 
-export function retryTargetFor(record: RuntimeRecord): RetryTarget | null {
+export function retryTargetFor(
+  record: RetryableRuntimeRecord
+): RetryTarget | null {
   if (record.kind === "event") {
     if (!isRetryable(record.item.status)) {
       return null;
