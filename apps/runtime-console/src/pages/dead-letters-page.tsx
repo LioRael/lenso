@@ -13,8 +13,12 @@ import {
 } from "../data/mock-runtime";
 import { useListKeyboard } from "../hooks/use-list-keyboard";
 import { usePersistedLayout } from "../hooks/use-persisted-layout";
-import { useDeadLetters } from "../hooks/use-runtime-queries";
-import { time } from "../lib/format";
+import {
+  useDeadLetters,
+  useRuntimeEventDetail,
+  useRuntimeFunctionDetail,
+} from "../hooks/use-runtime-queries";
+import { actorLabel, time } from "../lib/format";
 import { runtimeConsoleDataSource } from "../lib/http-client";
 
 type DeadLetter =
@@ -271,25 +275,98 @@ function InspectorHeader({ failure }: { failure: DeadLetter | null }) {
 }
 
 function FailureInspector({ failure }: { failure: DeadLetter }) {
-  const { item } = failure;
-  const detail =
-    failure.kind === "event" ? failure.item.payload : failure.item.input;
+  return failure.kind === "event" ? (
+    <EventFailureInspector event={failure.item} />
+  ) : (
+    <FunctionFailureInspector run={failure.item} />
+  );
+}
+
+function EventFailureInspector({ event }: { event: RuntimeEvent }) {
+  const detailQuery = useRuntimeEventDetail(event);
+  const displayEvent = detailQuery.data ?? event;
   return (
     <div className="grid">
+      {detailQuery.isFetching ? <MessageRow message="loading detail" /> : null}
+      {detailQuery.isError ? (
+        <MessageRow message={errorMessage(detailQuery.error)} tone="error" />
+      ) : null}
       <KeyValueRows
         rows={[
-          ["status", item.status],
-          ["attempts", `${item.attempts}/${item.maxAttempts}`],
-          ["correlation", item.correlationId],
-          ["created", item.createdAt],
-          ["last_error", item.lastError ?? "-"],
+          ["status", displayEvent.status],
+          ["event", displayEvent.eventName],
+          ["id", displayEvent.id],
+          [
+            "aggregate",
+            `${displayEvent.aggregateType}:${displayEvent.aggregateId}`,
+          ],
+          ["source", displayEvent.sourceModule ?? "-"],
+          ["version", String(displayEvent.eventVersion ?? "-")],
+          ["attempts", `${displayEvent.attempts}/${displayEvent.maxAttempts}`],
+          ["correlation", displayEvent.correlationId],
+          ["causation", displayEvent.causationId],
+          ["actor", actorLabel(displayEvent.actor)],
+          ["created", displayEvent.createdAt],
+          ["occurred", displayEvent.occurredAt ?? "-"],
+          ["published", displayEvent.publishedAt ?? "-"],
+          ["last_error", displayEvent.lastError ?? "-"],
         ]}
       />
       <JsonViewer
         defaultExpanded
-        title={failure.kind === "event" ? "event payload" : "function input"}
-        value={detail}
+        title="event payload"
+        value={displayEvent.payload}
       />
+      {displayEvent.headers ? (
+        <JsonViewer title="headers" value={displayEvent.headers} />
+      ) : null}
+      {displayEvent.trace ? (
+        <JsonViewer title="trace" value={displayEvent.trace} />
+      ) : null}
+    </div>
+  );
+}
+
+function FunctionFailureInspector({ run }: { run: FunctionRun }) {
+  const detailQuery = useRuntimeFunctionDetail(run);
+  const displayRun = detailQuery.data ?? run;
+  const declaration = displayRun.runtimeDeclaration;
+  return (
+    <div className="grid">
+      {detailQuery.isFetching ? <MessageRow message="loading detail" /> : null}
+      {detailQuery.isError ? (
+        <MessageRow message={errorMessage(detailQuery.error)} tone="error" />
+      ) : null}
+      <KeyValueRows
+        rows={[
+          ["status", displayRun.status],
+          ["function", displayRun.functionName],
+          ["id", displayRun.id],
+          ["module", declaration?.moduleName ?? "-"],
+          ["source", declaration?.moduleSource ?? "-"],
+          ["queue", declaration?.queue ?? "-"],
+          ["schema", declaration?.inputSchema ?? "-"],
+          ["attempts", `${displayRun.attempts}/${displayRun.maxAttempts}`],
+          ["correlation", displayRun.correlationId],
+          ["actor", actorLabel(displayRun.actor)],
+          ["created", displayRun.createdAt],
+          ["started", displayRun.startedAt ?? "-"],
+          ["completed", displayRun.completedAt ?? "-"],
+          ["last_error", displayRun.lastError ?? "-"],
+        ]}
+      />
+      <JsonViewer
+        defaultExpanded
+        title="function input"
+        value={displayRun.input}
+      />
+      {displayRun.output ? (
+        <JsonViewer title="function output" value={displayRun.output} />
+      ) : null}
+      {declaration?.retryPolicy ? (
+        <JsonViewer title="retry policy" value={declaration.retryPolicy} />
+      ) : null}
+      <JsonViewer title="logs" value={displayRun.logs} />
     </div>
   );
 }
