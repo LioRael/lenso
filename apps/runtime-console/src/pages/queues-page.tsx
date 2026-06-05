@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { ExternalLink, Inbox, Search } from "lucide-react";
+import { ExternalLink, Inbox, RefreshCcw, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { ResizeHandle } from "../components/runtime/resize-handle";
@@ -72,6 +72,10 @@ export function QueuesPage() {
   );
   const selected = rows.find((row) => queueRowId(row) === selectedId) ?? null;
   const selectedTarget = selected ? queueRouteTarget(selected) : null;
+  const isRefetching =
+    summaryQuery.isRefetching ||
+    eventsQuery.isRefetching ||
+    functionsQuery.isRefetching;
 
   useBrowserUrlPopState((search) => {
     setQuery(search.get("q") ?? "");
@@ -98,6 +102,13 @@ export function QueuesPage() {
     const nextId = queueRowId(row);
     pushOperationsUrl(queuesPath({ query, selectedId: nextId }));
     setSelectedId(nextId);
+  };
+  const refreshQueues = () => {
+    void Promise.all([
+      summaryQuery.refetch(),
+      eventsQuery.refetch(),
+      functionsQuery.refetch(),
+    ]);
   };
   const selectedIndex = selected ? indexOf(rows, queueRowId(selected)) : 0;
   const selectIndex = (index: number) => {
@@ -286,7 +297,7 @@ export function QueuesPage() {
             <QueueMessage message="select a queue" />
           )}
         </div>
-        <div className="border-t border-(--border-subtle) bg-(--surface) p-2">
+        <div className="flex gap-2 border-t border-(--border-subtle) bg-(--surface) p-2">
           <Button
             disabled={!selectedTarget}
             onClick={() => {
@@ -298,6 +309,14 @@ export function QueuesPage() {
           >
             <ExternalLink size={13} />
             {selectedTarget?.label ?? "Open"}
+          </Button>
+          <Button
+            disabled={isRefetching}
+            onClick={refreshQueues}
+            variant="ghost"
+          >
+            <RefreshCcw size={13} />
+            Refresh
           </Button>
         </div>
       </aside>

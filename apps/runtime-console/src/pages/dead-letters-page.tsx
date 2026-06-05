@@ -1,4 +1,10 @@
-import { RotateCcw, Search, TriangleAlert } from "lucide-react";
+import {
+  ExternalLink,
+  RefreshCcw,
+  RotateCcw,
+  Search,
+  TriangleAlert,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { JsonViewer } from "../components/runtime/json-viewer";
@@ -318,7 +324,8 @@ export function DeadLettersPage() {
             }
             variant="ghost"
           >
-            Stories
+            <ExternalLink size={13} />
+            Story
           </Button>
           <Button
             disabled={!selected}
@@ -327,6 +334,14 @@ export function DeadLettersPage() {
           >
             <RotateCcw size={13} />
             Retry
+          </Button>
+          <Button
+            disabled={deadLettersQuery.isRefetching}
+            onClick={() => deadLettersQuery.refetch()}
+            variant="ghost"
+          >
+            <RefreshCcw size={13} />
+            Refresh
           </Button>
         </div>
       </aside>

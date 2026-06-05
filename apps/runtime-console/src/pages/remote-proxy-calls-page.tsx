@@ -464,26 +464,26 @@ export function RemoteProxyCallsPage() {
           )}
         </div>
         <div className="flex gap-2 border-t border-(--border-subtle) bg-(--surface) p-2">
-          {selected ? (
-            <Button
-              onClick={() =>
-                openStoryTarget({
-                  correlationId: selected.correlation_id,
-                  nodeIdCandidates: [
-                    `remoteproxy_${selected.id}`,
-                    selected.id,
-                    selected.request_id,
-                  ],
-                  remoteProxyCallId: selected.id,
-                  requestId: selected.request_id,
-                })
-              }
-              variant="ghost"
-            >
-              <ExternalLink size={13} />
-              Story
-            </Button>
-          ) : null}
+          <Button
+            disabled={!selected}
+            onClick={() =>
+              selected &&
+              openStoryTarget({
+                correlationId: selected.correlation_id,
+                nodeIdCandidates: [
+                  `remoteproxy_${selected.id}`,
+                  selected.id,
+                  selected.request_id,
+                ],
+                remoteProxyCallId: selected.id,
+                requestId: selected.request_id,
+              })
+            }
+            variant="ghost"
+          >
+            <ExternalLink size={13} />
+            Story
+          </Button>
           <Button
             disabled={remoteProxyCallsQuery.isRefetching}
             onClick={() => remoteProxyCallsQuery.refetch()}
