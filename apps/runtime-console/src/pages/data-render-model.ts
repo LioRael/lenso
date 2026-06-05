@@ -234,6 +234,36 @@ export type RemoteModuleReadiness = {
   latestFailure: RemoteModuleCallObservation | null;
 };
 
+export type ModuleRefreshModuleObservation = {
+  module_name: string;
+  source: string;
+  status: string;
+  duration_ms?: number | null;
+  endpoint?: string | null;
+  error?: string | null;
+};
+
+export type ModuleRefreshObservation = {
+  id: string;
+  status: string;
+  started_at: string;
+  completed_at: string;
+  duration_ms: number;
+  module_count: number;
+  error: string | null;
+  module_results: ModuleRefreshModuleObservation[];
+};
+
+export type ModuleRefreshResultSummary = {
+  recordId: string;
+  recordStatus: string;
+  completedAt: string;
+  status: string;
+  durationMs: number | null;
+  endpoint: string | null;
+  error: string | null;
+};
+
 export type RuntimeRetryPolicyDeclaration = {
   max_attempts: number;
   initial_delay_ms: number;
@@ -650,6 +680,32 @@ export function remoteModuleReadiness(
     latestFailure,
     reasons: ["remote module is ready"],
     status: "ready",
+  };
+}
+
+export function latestModuleRefreshResult(
+  module: AdminModuleMetadata,
+  history: ModuleRefreshObservation[]
+): ModuleRefreshResultSummary | null {
+  const results = history
+    .flatMap((record) =>
+      record.module_results
+        .filter((result) => result.module_name === module.module_name)
+        .map((result) => ({ record, result }))
+    )
+    .sort((a, b) => b.record.completed_at.localeCompare(a.record.completed_at));
+  const [latest] = results;
+  if (!latest) {
+    return null;
+  }
+  return {
+    completedAt: latest.record.completed_at,
+    durationMs: latest.result.duration_ms ?? null,
+    endpoint: latest.result.endpoint ?? null,
+    error: latest.result.error ?? latest.record.error ?? null,
+    recordId: latest.record.id,
+    recordStatus: latest.record.status,
+    status: latest.result.status,
   };
 }
 

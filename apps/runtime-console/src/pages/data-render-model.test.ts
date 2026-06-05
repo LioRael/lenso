@@ -19,6 +19,7 @@ import {
   moduleGovernanceRows,
   moduleHttpRouteRows,
   moduleIsLoaded,
+  latestModuleRefreshResult,
   moduleNavItems,
   moduleRegistrySummary,
   moduleRuntimeFunctionRows,
@@ -702,6 +703,76 @@ describe("module status helpers", () => {
         version: "1",
       },
     ]);
+  });
+
+  test("finds the latest refresh result for a module", () => {
+    const module = moduleMetadata({
+      module_name: "remote-crm",
+      source: "remote",
+      status: "loaded",
+      error: null,
+      http_routes: [],
+      admin: null,
+    });
+
+    expect(
+      latestModuleRefreshResult(module, [
+        {
+          completed_at: "2026-06-03T12:00:00Z",
+          duration_ms: 20,
+          error: null,
+          id: "refresh-old",
+          module_count: 2,
+          module_results: [
+            {
+              duration_ms: 12,
+              endpoint: "http://localhost:4100/manifest",
+              error: null,
+              module_name: "remote-crm",
+              source: "remote",
+              status: "loaded",
+            },
+          ],
+          started_at: "2026-06-03T11:59:59Z",
+          status: "success",
+        },
+        {
+          completed_at: "2026-06-03T12:05:00Z",
+          duration_ms: 18,
+          error: null,
+          id: "refresh-new",
+          module_count: 2,
+          module_results: [
+            {
+              duration_ms: 8,
+              endpoint: "http://localhost:4100/manifest",
+              error: "manifest timeout",
+              module_name: "remote-crm",
+              source: "remote",
+              status: "error",
+            },
+            {
+              duration_ms: 3,
+              endpoint: null,
+              error: null,
+              module_name: "identity",
+              source: "linked",
+              status: "loaded",
+            },
+          ],
+          started_at: "2026-06-03T12:04:59Z",
+          status: "error",
+        },
+      ])
+    ).toEqual({
+      completedAt: "2026-06-03T12:05:00Z",
+      durationMs: 8,
+      endpoint: "http://localhost:4100/manifest",
+      error: "manifest timeout",
+      recordId: "refresh-new",
+      recordStatus: "error",
+      status: "error",
+    });
   });
 
   test("reports healthy route declarations", () => {
