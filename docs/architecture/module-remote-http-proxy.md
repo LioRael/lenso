@@ -228,9 +228,10 @@ request/correlation, trace/span, path parameter, and error detail fields.
 
 Runtime Console exposes persisted proxy calls through three surfaces:
 
-- `/remote-proxy-calls` is the horizontal operational view for filtering across
-  stories by module, success, error code, remote status, and correlation id. A
-  selected call or correlation filter can open the matching Runtime Story.
+- `/operations/remote-calls` is the horizontal operational view for filtering
+  across stories by module, success, error code, remote status, and correlation
+  id. A selected call or correlation filter can open the matching Runtime
+  Story.
 - Runtime Story graph and timeline include proxy calls as ordinary
   `remote_proxy_call` nodes scoped to the selected story's `correlation_id`.
   The Story detail should not duplicate the same facts in a separate section.

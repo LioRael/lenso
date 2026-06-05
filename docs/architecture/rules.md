@@ -88,4 +88,4 @@ Run:
 just arch-check
 ```
 
-The checker fails on forbidden domain folders, forbidden cross-domain imports inside domain source code, stale generated contracts, stale generated SDK files, missing OpenAPI artifacts, malformed contract JSON/YAML, missing event contracts referenced by source code, event contract name/path mismatches, missing runtime function contracts for registered domain runtime functions, and runtime function contract name/path mismatches.
+The checker fails on forbidden domain folders, forbidden cross-domain imports inside domain source code, stale generated contracts, stale generated SDK files, missing OpenAPI artifacts, malformed contract JSON/YAML, missing event contracts referenced by source code, event contract name/path mismatches, missing runtime function contracts for registered domain runtime functions, runtime function contract name/path mismatches, duplicated Runtime Console manifest lint ownership, and legacy Runtime Console route aliases.

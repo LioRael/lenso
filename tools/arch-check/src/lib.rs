@@ -15,6 +15,15 @@ const MANIFEST_LINT_MESSAGES: &[&str] = &[
     "Declared routes include display and story metadata.",
 ];
 const REQUIRED_OPENAPI_ARTIFACTS: &[&str] = &["contracts/openapi/app-api.v1.yaml"];
+const FORBIDDEN_RUNTIME_CONSOLE_ROUTE_ALIASES: &[&str] = &[
+    "/runtime/traces",
+    "/events",
+    "/timeline",
+    "/functions",
+    "/dead-letters",
+    "/remote-proxy-calls",
+    "/queues",
+];
 
 pub fn run() -> anyhow::Result<()> {
     let root = repo_root();
@@ -45,6 +54,11 @@ pub fn run() -> anyhow::Result<()> {
     collect_result(
         check_runtime_console_does_not_duplicate_manifest_lints(&root),
         "runtime console manifest lint ownership",
+        &mut failures,
+    );
+    collect_result(
+        check_runtime_console_uses_canonical_routes(&root),
+        "runtime console canonical routes",
         &mut failures,
     );
     collect_result(
@@ -195,6 +209,28 @@ pub fn check_runtime_console_does_not_duplicate_manifest_lints(root: &Path) -> a
     ensure_empty(
         violations,
         "runtime console must render backend manifest lints instead of reimplementing them",
+    )
+}
+
+pub fn check_runtime_console_uses_canonical_routes(root: &Path) -> anyhow::Result<()> {
+    let router = root.join("apps/runtime-console/src/app/router.tsx");
+    let source = fs::read_to_string(&router)
+        .with_context(|| format!("failed to read {}", router.display()))?;
+    let mut violations = Vec::new();
+
+    for route in FORBIDDEN_RUNTIME_CONSOLE_ROUTE_ALIASES {
+        let route_literal = format!("path: \"{route}\"");
+        if source.contains(&route_literal) {
+            violations.push(format!(
+                "{} defines legacy route alias `{route}`",
+                relative(root, &router),
+            ));
+        }
+    }
+
+    ensure_empty(
+        violations,
+        "runtime console must use canonical /runtime/stories and /operations/* routes only",
     )
 }
 

@@ -133,6 +133,33 @@ fn runtime_console_manifest_lint_duplication_fails() {
     );
 }
 
+#[test]
+fn runtime_console_legacy_route_alias_fails() {
+    let root = TestRepo::new();
+    root.write(
+        "apps/runtime-console/src/app/router.tsx",
+        r#"
+        const timelineRoute = createRoute({
+          getParentRoute: () => rootRoute,
+          path: "/timeline",
+          beforeLoad: () => {
+            throw redirect({ to: "/runtime/stories" });
+          },
+        });
+        "#,
+    );
+
+    let error = arch_check::check_runtime_console_uses_canonical_routes(root.path())
+        .expect_err("legacy runtime console route alias should fail");
+
+    assert!(
+        error
+            .to_string()
+            .contains("runtime console must use canonical"),
+        "{error}",
+    );
+}
+
 struct TestRepo {
     root: std::path::PathBuf,
 }

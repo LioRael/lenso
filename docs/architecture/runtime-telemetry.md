@@ -113,6 +113,17 @@ available.
 
 A future queryable backend should implement this provider without changing Runtime Console story semantics.
 
-## Compatibility
+## Runtime Console Routes
 
-`/runtime/traces` currently remains as a temporary redirect alias to `/runtime/stories` for old links. It should not become a product surface or navigation label.
+Runtime Console exposes canonical product routes only:
+
+- `/runtime/stories` is the Story workbench, including graph, waterfall,
+  flame, and timeline views for a selected story.
+- `/operations/remote-calls`, `/operations/functions`,
+  `/operations/dead-letters`, and `/operations/queues` are the horizontal
+  operations views.
+
+Legacy Runtime Console aliases such as `/runtime/traces`, `/timeline`,
+`/events`, `/functions`, `/dead-letters`, `/remote-proxy-calls`, and `/queues`
+are intentionally not preserved. Architecture checks fail if those aliases are
+reintroduced in the Runtime Console router.
