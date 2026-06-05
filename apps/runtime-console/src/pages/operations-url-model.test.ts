@@ -4,6 +4,7 @@ import {
   deadLettersPath,
   functionsPath,
   operationsPath,
+  queuesPath,
 } from "./operations-url-model";
 
 describe("operations url model", () => {
@@ -46,5 +47,12 @@ describe("operations url model", () => {
     );
 
     expect(deadLettersPath({ kind: "all" })).toBe("/operations/dead-letters");
+  });
+
+  test("builds queue operations paths", () => {
+    expect(queuesPath()).toBe("/operations/queues");
+    expect(queuesPath({ selectedId: "runtime.functions:remote-crm" })).toBe(
+      "/operations/queues?selected=runtime.functions%3Aremote-crm"
+    );
   });
 });

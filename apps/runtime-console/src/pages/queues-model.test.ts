@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import type { RuntimeSummary } from "../hooks/use-runtime-queries";
-import { buildQueueRowsFromSummary } from "./queues-model";
+import { buildQueueRowsFromSummary, queueRouteTarget } from "./queues-model";
 
 const summary = {
   functions: {
@@ -70,5 +70,29 @@ describe("queues model", () => {
       undefined,
       undefined,
     ]);
+  });
+
+  test("routes outbox queues to event dead letters", () => {
+    expect(queueRouteTarget(buildQueueRowsFromSummary(summary)[0]!)).toEqual({
+      label: "Open Events",
+      path: "/operations/dead-letters?kind=event&order=oldest",
+      reason: "outbox failures and dead letters",
+    });
+  });
+
+  test("routes runtime function queues to matching function filters", () => {
+    expect(
+      queueRouteTarget({
+        dead: 0,
+        failed: 4,
+        name: "runtime.functions:remote-crm",
+        pending: 0,
+        running: 0,
+      })
+    ).toEqual({
+      label: "Open Functions",
+      path: "/operations/functions?queue=remote-crm&status=failed",
+      reason: "runtime function queue remote-crm",
+    });
   });
 });

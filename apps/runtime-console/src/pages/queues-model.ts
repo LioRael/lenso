@@ -1,4 +1,5 @@
 import type { RuntimeSummary } from "../hooks/use-runtime-queries";
+import { deadLettersPath, functionsPath } from "./operations-url-model";
 
 export type QueueRow = {
   name: string;
@@ -7,6 +8,12 @@ export type QueueRow = {
   failed: number;
   dead: number;
   oldestSeconds?: number;
+};
+
+export type QueueRouteTarget = {
+  label: string;
+  path: string;
+  reason: string;
 };
 
 export function buildQueueRowsFromSummary(
@@ -40,6 +47,52 @@ export function buildQueueRowsFromSummary(
       ),
     },
   ];
+}
+
+export function queueRouteTarget(row: QueueRow): QueueRouteTarget {
+  if (row.name === "outbox") {
+    return {
+      label: "Open Events",
+      path: deadLettersPath({ kind: "event", oldestFirst: true }),
+      reason: "outbox failures and dead letters",
+    };
+  }
+
+  const queue = functionQueueName(row.name);
+  const status = queueStatusTarget(row);
+  return {
+    label: "Open Functions",
+    path: functionsPath({
+      ...(queue ? { queue } : {}),
+      status,
+    }),
+    reason: queue ? `runtime function queue ${queue}` : "runtime functions",
+  };
+}
+
+export function queueRowId(row: QueueRow) {
+  return row.name;
+}
+
+function functionQueueName(name: string) {
+  const prefix = "runtime.functions:";
+  return name.startsWith(prefix) ? name.slice(prefix.length) : "";
+}
+
+function queueStatusTarget(row: QueueRow) {
+  if (row.dead > 0) {
+    return "dead";
+  }
+  if (row.failed > 0) {
+    return "failed";
+  }
+  if (row.running > 0) {
+    return "running";
+  }
+  if (row.pending > 0) {
+    return "pending";
+  }
+  return "all";
 }
 
 function optionalOldestSeconds(value: number | undefined) {

@@ -74,3 +74,9 @@ export function deadLettersPath(
     selected: filters.selectedId,
   });
 }
+
+export function queuesPath(filters: { selectedId?: string } = {}) {
+  return operationsPath("/operations/queues", {
+    selected: filters.selectedId,
+  });
+}
