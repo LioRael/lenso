@@ -6,6 +6,7 @@ import {
   filterRemoteProxyCallsForQuery,
   normalizeFunctionRunDetailForConsole,
   normalizeFunctionRunForConsole,
+  normalizeOutboxEventDetailForConsole,
   type RuntimeRemoteProxyCall,
 } from "./use-runtime-queries";
 
@@ -179,6 +180,65 @@ describe("runtime function query helpers", () => {
         moduleName: "remote-crm",
         moduleSource: "remote",
         queue: "remote-crm",
+      },
+    });
+  });
+});
+
+describe("runtime outbox event query helpers", () => {
+  test("normalizes outbox event detail payload and actor from API shape", () => {
+    expect(
+      normalizeOutboxEventDetailForConsole({
+        actor: {
+          kind: "user",
+          scopes: ["identity.users.read"],
+          user_id: "usr_1",
+        },
+        aggregate_id: "usr_1",
+        aggregate_type: "identity.user",
+        attempts: 1,
+        available_at: "2026-06-03T00:00:00.000Z",
+        causation_id: "cmd_create_user",
+        correlation_id: "corr_user",
+        created_at: "2026-06-03T00:00:00.000Z",
+        event_name: "identity.user_registered",
+        event_version: 2,
+        headers: {
+          request_id: "req_user",
+        },
+        id: "evt_user_registered",
+        max_attempts: 3,
+        occurred_at: "2026-06-03T00:00:01.000Z",
+        payload: {
+          user_id: "usr_1",
+        },
+        published_at: "2026-06-03T00:00:02.000Z",
+        source_module: "identity",
+        status: "published",
+        trace: {
+          trace_id: "trace_user",
+        },
+      })
+    ).toMatchObject({
+      actor: {
+        id: "usr_1",
+        kind: "user",
+        scopes: ["identity.users.read"],
+      },
+      aggregateId: "usr_1",
+      aggregateType: "identity.user",
+      causationId: "cmd_create_user",
+      eventName: "identity.user_registered",
+      eventVersion: 2,
+      headers: {
+        request_id: "req_user",
+      },
+      payload: {
+        user_id: "usr_1",
+      },
+      sourceModule: "identity",
+      trace: {
+        trace_id: "trace_user",
       },
     });
   });

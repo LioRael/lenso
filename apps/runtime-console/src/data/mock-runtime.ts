@@ -16,6 +16,7 @@ export type Actor =
 export type RuntimeEvent = {
   id: string;
   eventName: string;
+  eventVersion?: number;
   status: RuntimeStatus;
   attempts: number;
   maxAttempts: number;
@@ -24,11 +25,16 @@ export type RuntimeEvent = {
   correlationId: string;
   causationId: string;
   createdAt: string;
+  occurredAt?: string;
   lockedAt?: string;
+  lockedBy?: string;
   publishedAt?: string;
   lastError?: string;
+  sourceModule?: string;
   actor: Actor;
+  headers?: Record<string, unknown>;
   payload: Record<string, unknown>;
+  trace?: Record<string, unknown>;
 };
 
 export type FunctionRun = {

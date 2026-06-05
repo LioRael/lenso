@@ -9,6 +9,8 @@ import type {
   AdminFunctionRunDetail,
   AdminFunctionRunListResponse,
   AdminFunctionRunResponse,
+  AdminOutboxEventDetail,
+  AdminOutboxEventDetailResponse,
   AdminRemoteProxyCallItem,
   AdminRemoteProxyCallListResponse,
   AdminRuntimeFunctionDeclarationMetadata,
@@ -59,6 +61,7 @@ import {
 export const runtimeQueryKeys = {
   summary: ["runtime", "summary"] as const,
   events: ["runtime", "events"] as const,
+  eventDetail: (id: string) => ["runtime", "events", id, "detail"] as const,
   functions: ["runtime", "functions"] as const,
   functionDetail: (id: string) =>
     ["runtime", "functions", id, "detail"] as const,
@@ -148,6 +151,19 @@ export function useRuntimeEvents() {
   return useQuery({
     queryKey: runtimeQueryKeys.events,
     queryFn: async () => (isApiMode() ? fetchRuntimeEvents() : runtimeEvents),
+  });
+}
+
+export function useRuntimeEventDetail(event: RuntimeEvent | null) {
+  return useQuery({
+    enabled: Boolean(event?.id),
+    queryKey: runtimeQueryKeys.eventDetail(event?.id ?? "-"),
+    queryFn: async () => {
+      if (!event) {
+        throw new Error("Outbox event detail query requires an event");
+      }
+      return isApiMode() ? fetchRuntimeEventDetail(event.id, event) : event;
+    },
   });
 }
 
@@ -462,7 +478,17 @@ async function fetchRuntimeEvents(): Promise<RuntimeEvent[]> {
   const response = await httpClient
     .get("admin/runtime/outbox")
     .json<AdminOutboxListResponse>();
-  return response.data.map(toRuntimeEvent);
+  return response.data.map(normalizeOutboxEventForConsole);
+}
+
+async function fetchRuntimeEventDetail(
+  id: string,
+  fallback: RuntimeEvent
+): Promise<RuntimeEvent> {
+  const response = await httpClient
+    .get(`admin/runtime/outbox/${encodeURIComponent(id)}`)
+    .json<AdminOutboxEventDetailResponse>();
+  return normalizeOutboxEventDetailForConsole(response.data, fallback);
 }
 
 async function fetchRuntimeFunctions(): Promise<FunctionRun[]> {
@@ -708,7 +734,9 @@ function toSummaryItem(item: ApiRuntimeSummaryItem): RuntimeSummaryItem {
   };
 }
 
-function toRuntimeEvent(event: AdminRuntimeOutboxItem): RuntimeEvent {
+export function normalizeOutboxEventForConsole(
+  event: AdminRuntimeOutboxItem
+): RuntimeEvent {
   return {
     id: event.id,
     eventName: event.event_name,
@@ -724,6 +752,34 @@ function toRuntimeEvent(event: AdminRuntimeOutboxItem): RuntimeEvent {
     ...(event.last_error ? { lastError: event.last_error } : {}),
     actor: toActor(undefined),
     payload: {},
+  };
+}
+
+export function normalizeOutboxEventDetailForConsole(
+  event: AdminOutboxEventDetail,
+  fallback?: RuntimeEvent
+): RuntimeEvent {
+  return {
+    id: event.id,
+    eventName: event.event_name,
+    eventVersion: event.event_version,
+    status: normalizeRuntimeStatus(event.status),
+    attempts: event.attempts,
+    maxAttempts: event.max_attempts,
+    aggregateId: event.aggregate_id,
+    aggregateType: event.aggregate_type,
+    correlationId: event.correlation_id,
+    causationId: event.causation_id ?? fallback?.causationId ?? "-",
+    createdAt: event.created_at,
+    occurredAt: event.occurred_at,
+    ...(event.locked_by ? { lockedBy: event.locked_by } : {}),
+    ...(event.published_at ? { publishedAt: event.published_at } : {}),
+    ...(event.last_error ? { lastError: event.last_error } : {}),
+    sourceModule: event.source_module,
+    actor: toActor(event.actor),
+    headers: toRecordInput(event.headers),
+    payload: toRecordInput(event.payload),
+    trace: toRecordInput(event.trace),
   };
 }
 

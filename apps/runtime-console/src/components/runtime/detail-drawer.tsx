@@ -8,7 +8,10 @@ import {
   type RuntimeRecord,
   type TimelineItem,
 } from "../../data/mock-runtime";
-import { useRuntimeFunctionDetail } from "../../hooks/use-runtime-queries";
+import {
+  useRuntimeEventDetail,
+  useRuntimeFunctionDetail,
+} from "../../hooks/use-runtime-queries";
 import { actorLabel, duration, time } from "../../lib/format";
 import { Button } from "../ui/button";
 import { Drawer } from "../ui/drawer";
@@ -62,7 +65,7 @@ function titleFor(target: RuntimeRecord) {
 
 function bodyFor(target: RuntimeRecord) {
   if (target.kind === "event") {
-    return <EventBody event={target.item} record={target} />;
+    return <EventBody event={target.item} />;
   }
   if (target.kind === "function") {
     return <FunctionBody run={target.item} />;
@@ -92,55 +95,80 @@ function SummaryStrip({
   );
 }
 
-function EventBody({
-  event,
-  record,
-}: {
-  event: RuntimeEvent;
-  record: RuntimeRecord;
-}) {
+function EventBody({ event }: { event: RuntimeEvent }) {
   const { openRetry, openTimeline } = useRuntimeConsole();
-  const retryTarget = retryTargetFor(record);
+  const detailQuery = useRuntimeEventDetail(event);
+  const displayEvent = detailQuery.data ?? event;
+  const displayRecord: RuntimeRecord = {
+    kind: "event",
+    item: displayEvent,
+  };
+  const retryTarget = retryTargetFor(displayRecord);
   return (
     <>
       <SummaryStrip
-        attempts={event.attempts}
-        durationValue={duration(event.lockedAt, event.publishedAt)}
-        maxAttempts={event.maxAttempts}
-        status={event.status}
+        attempts={displayEvent.attempts}
+        durationValue={duration(
+          displayEvent.lockedAt,
+          displayEvent.publishedAt
+        )}
+        maxAttempts={displayEvent.maxAttempts}
+        status={displayEvent.status}
       />
+      {detailQuery.isFetching ? (
+        <p className="text-xs text-(--muted)">Loading detail...</p>
+      ) : null}
+      {detailQuery.isError ? (
+        <ErrorBox>
+          Event detail unavailable: {errorMessage(detailQuery.error)}
+        </ErrorBox>
+      ) : null}
       <DrawerSection title="Metadata">
         <MetadataGrid>
           <dt>id</dt>
-          <dd className="mono">{event.id}</dd>
+          <dd className="mono">{displayEvent.id}</dd>
           <dt>aggregate</dt>
           <dd className="mono">
-            {event.aggregateType}:{event.aggregateId}
+            {displayEvent.aggregateType}:{displayEvent.aggregateId}
           </dd>
+          <dt>source</dt>
+          <dd className="mono">{displayEvent.sourceModule ?? "-"}</dd>
+          <dt>version</dt>
+          <dd>{displayEvent.eventVersion ?? "-"}</dd>
+          <dt>locked by</dt>
+          <dd className="mono">{displayEvent.lockedBy ?? "-"}</dd>
           <dt>created</dt>
-          <dd>{time(event.createdAt)}</dd>
+          <dd>{time(displayEvent.createdAt)}</dd>
+          <dt>occurred</dt>
+          <dd>{time(displayEvent.occurredAt)}</dd>
           <dt>published</dt>
-          <dd>{time(event.publishedAt)}</dd>
+          <dd>{time(displayEvent.publishedAt)}</dd>
         </MetadataGrid>
       </DrawerSection>
       <DrawerSection title="Context">
         <MetadataGrid>
           <dt>correlation</dt>
-          <dd className="mono">{event.correlationId}</dd>
+          <dd className="mono">{displayEvent.correlationId}</dd>
           <dt>causation</dt>
-          <dd className="mono">{event.causationId}</dd>
+          <dd className="mono">{displayEvent.causationId}</dd>
           <dt>actor</dt>
-          <dd className="mono">{actorLabel(event.actor)}</dd>
+          <dd className="mono">{actorLabel(displayEvent.actor)}</dd>
         </MetadataGrid>
       </DrawerSection>
-      {event.lastError ? (
+      {displayEvent.lastError ? (
         <DrawerSection title="Error">
-          <ErrorBox>{event.lastError}</ErrorBox>
+          <ErrorBox>{displayEvent.lastError}</ErrorBox>
         </DrawerSection>
       ) : null}
-      <JsonViewer title="Payload" value={event.payload} />
+      <JsonViewer title="Payload" value={displayEvent.payload} />
+      {displayEvent.headers ? (
+        <JsonViewer title="Headers" value={displayEvent.headers} />
+      ) : null}
+      {displayEvent.trace ? (
+        <JsonViewer title="Trace" value={displayEvent.trace} />
+      ) : null}
       <div className="flex flex-wrap gap-2.5">
-        <Button onClick={() => openTimeline(event.correlationId)}>
+        <Button onClick={() => openTimeline(displayEvent.correlationId)}>
           <ExternalLink size={15} />
           Timeline
         </Button>
