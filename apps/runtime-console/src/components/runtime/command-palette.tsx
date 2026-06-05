@@ -77,6 +77,13 @@ export function CommandPalette({ theme, onToggleTheme }: CommandPaletteProps) {
         title: "Go to Remote Calls",
       },
       {
+        action: () => void navigate({ to: "/operations/admin-actions" }),
+        id: "admin-actions",
+        searchText: "go to admin actions module action operations",
+        subtitle: "Admin action invocations",
+        title: "Go to Admin Actions",
+      },
+      {
         action: () => void navigate({ to: "/operations/queues" }),
         id: "queues",
         searchText: "go to queues queue pressure",

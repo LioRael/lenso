@@ -8,6 +8,7 @@ import {
 
 import { RuntimeConsoleProvider } from "../components/runtime/runtime-console-context";
 import { RuntimeConsoleShell } from "../components/runtime/runtime-console-shell";
+import { AdminActionsPage } from "../pages/admin-actions-page";
 import { ConfigPage } from "../pages/config-page";
 import { DataPage } from "../pages/data-page";
 import { DeadLettersPage } from "../pages/dead-letters-page";
@@ -97,6 +98,16 @@ const operationsRemoteCallsRoute = createRoute({
   ),
 });
 
+const operationsAdminActionsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/operations/admin-actions",
+  component: () => (
+    <OperationsPage active="admin-actions">
+      <AdminActionsPage />
+    </OperationsPage>
+  ),
+});
+
 const configRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/config",
@@ -124,6 +135,7 @@ const routeTree = rootRoute.addChildren([
   operationsDeadLettersRoute,
   operationsFunctionsRoute,
   operationsRemoteCallsRoute,
+  operationsAdminActionsRoute,
   modulesRoute,
   configRoute,
   dataRoute,

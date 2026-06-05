@@ -30,6 +30,17 @@ pub struct RemoteProxyCallQuery {
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
+pub struct AdminActionInvocationQuery {
+    pub module_name: Option<String>,
+    pub action_name: Option<String>,
+    pub capability: Option<String>,
+    pub correlation_id: Option<String>,
+    pub success: Option<bool>,
+    pub limit: Option<i64>,
+    pub created_before: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct StoryQuery {
     pub limit: Option<i64>,
@@ -86,6 +97,13 @@ pub struct AdminFunctionRunListResponse {
 #[schema(as = AdminRemoteProxyCallListResponse)]
 pub struct AdminRemoteProxyCallListResponse {
     pub data: Vec<AdminRemoteProxyCall>,
+    pub page: PageInfo,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(as = AdminActionInvocationListResponse)]
+pub struct AdminActionInvocationListResponse {
+    pub data: Vec<AdminActionInvocation>,
     pub page: PageInfo,
 }
 
@@ -181,6 +199,27 @@ pub struct AdminRuntimeTechnicalOperation {
     pub duration_ms: i64,
     pub attributes: Value,
     pub source: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(as = AdminActionInvocationItem)]
+pub struct AdminActionInvocation {
+    pub id: String,
+    pub module_name: String,
+    pub action_name: String,
+    pub label: String,
+    pub capability: Option<String>,
+    pub duration_ms: i64,
+    pub success: bool,
+    pub error_code: Option<String>,
+    pub error_message: Option<String>,
+    pub request_id: Option<String>,
+    pub correlation_id: String,
+    pub trace_id: Option<String>,
+    pub span_id: Option<String>,
+    pub input_summary: Option<String>,
+    pub result_summary: Option<String>,
+    pub occurred_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
