@@ -122,16 +122,6 @@ fn admin_get(path: &str) -> Request<Body> {
         .expect("request builds")
 }
 
-fn admin_post_json(path: &str, body: &'static str) -> Request<Body> {
-    Request::builder()
-        .method("POST")
-        .uri(path)
-        .header("authorization", "Bearer dev-service:admin")
-        .header("content-type", "application/json")
-        .body(Body::from(body))
-        .expect("request builds")
-}
-
 fn service_get(path: &str, token: &str) -> Request<Body> {
     Request::builder()
         .uri(path)
@@ -1419,8 +1409,10 @@ async fn custom_remote_modules_are_visible_through_metadata_api() {
 
     let action_response = app
         .clone()
-        .oneshot(admin_post_json(
+        .oneshot(service_post(
             "/admin/data/remote-crm-declarative/actions/sync_contacts",
+            "dev-service:admin:remote_crm.contacts.sync",
+            "application/json",
             r#"{"input":{"dry_run":true}}"#,
         ))
         .await

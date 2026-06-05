@@ -69,7 +69,6 @@ Deferred from the first implementation:
 - Module-authored JavaScript.
 - Unbounded layout primitives.
 - Direct module access to host tokens.
-- Declarative action execution.
 - Declarative writes.
 
 ## `EmbeddedCustom`
@@ -155,5 +154,8 @@ The loading source axis remains separate:
    `AdminDataSource` through `/admin/data/{module}/{entity}` and
    `/admin/data/{module}/{entity}/{id}` when `fallback_schema` declares the
    entity.
-5. Specify a versioned host/module message and action protocol before enabling
-   any embedded surface to call back into the host.
+5. Invoke declarative actions through host-owned admin action endpoints with
+   manifest capability checks, remote protocol support, and Runtime Story /
+   Technical Operations projection. Done for linked and remote action sources.
+6. Specify a versioned host/module message protocol before enabling any embedded
+   surface to call back into the host.

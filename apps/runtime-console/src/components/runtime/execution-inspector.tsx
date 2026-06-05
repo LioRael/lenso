@@ -529,6 +529,9 @@ function operationSourceTone(operation: TechnicalOperationView) {
   if (operation.source === "remote_runtime") {
     return "border-[#14b8a6]/40 bg-[#14b8a6]/10 text-[#0f9488]";
   }
+  if (operation.source === "admin_action") {
+    return "border-[#8b5cf6]/40 bg-[#8b5cf6]/10 text-[#7c3aed]";
+  }
   return "border-(--border-subtle) bg-(--elevated) text-(--muted)";
 }
 

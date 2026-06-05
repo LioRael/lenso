@@ -5,6 +5,9 @@ const runtimeConsoleMode = import.meta.env.VITE_RUNTIME_CONSOLE_MODE as
   | "api"
   | "mock"
   | undefined;
+const apiAuthToken =
+  (import.meta.env.VITE_API_AUTH_TOKEN as string | undefined) ??
+  "dev-service:admin:remote_crm.contacts.read,remote_crm.contacts.sync";
 
 export function isApiMode() {
   return runtimeConsoleMode === "api" && Boolean(apiBaseUrl);
@@ -20,7 +23,7 @@ export const httpClient = ky.create({
     beforeRequest: [
       ({ request }) => {
         request.headers.set("Accept", "application/json");
-        request.headers.set("Authorization", "Bearer dev-service:admin");
+        request.headers.set("Authorization", `Bearer ${apiAuthToken}`);
       },
     ],
     beforeError: [

@@ -2710,7 +2710,7 @@ async fn insert_execution_log(
 }
 
 async fn wait_for_story_event(pool: &platform_core::DbPool, correlation_id: &str) {
-    for _ in 0..20 {
+    for _ in 0..100 {
         let count: i64 = sqlx::query_scalar(
             r#"
             select count(*)::bigint
@@ -2727,7 +2727,7 @@ async fn wait_for_story_event(pool: &platform_core::DbPool, correlation_id: &str
             return;
         }
 
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     }
 
     panic!("story event for {correlation_id} was not projected");

@@ -215,6 +215,33 @@ describe("technical operations model", () => {
     );
   });
 
+  test("builds compact admin action labels for the renderer", () => {
+    const adminAction: TechnicalOperation = {
+      attributes: {
+        action_name: "sync_contacts",
+        capability: "remote_crm.contacts.sync",
+        module_name: "remote-crm",
+        request_id: "req_admin_action",
+      },
+      category: "admin",
+      correlationId: "corr_1",
+      durationMs: 18,
+      endedAt: "2026-06-01T10:00:00.318Z",
+      id: "admin_action:adminaction_req_admin_action",
+      name: "Sync contacts",
+      relatedNodeId: "adminaction_req_admin_action",
+      source: "admin_action",
+      startedAt: "2026-06-01T10:00:00.300Z",
+      status: "ok",
+      storyId: "corr_1",
+    };
+
+    expect(technicalOperationSourceLabel(adminAction)).toBe("admin action");
+    expect(technicalOperationSummary(adminAction)).toBe(
+      "remote-crm / sync_contacts / capability remote_crm.contacts.sync / request req_admin_action"
+    );
+  });
+
   test("returns execution-specific empty and error copy", () => {
     expect(
       technicalOperationsStateLabel({

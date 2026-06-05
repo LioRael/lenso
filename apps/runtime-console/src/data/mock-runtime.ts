@@ -185,6 +185,7 @@ export type TechnicalOperation = {
     | "worker"
     | "runtime"
     | "external"
+    | "admin"
     | "unknown";
   name: string;
   status: string;
@@ -192,7 +193,7 @@ export type TechnicalOperation = {
   endedAt: string;
   durationMs: number;
   attributes: Record<string, unknown>;
-  source: "otel" | "remote_proxy" | "remote_runtime";
+  source: "otel" | "remote_proxy" | "remote_runtime" | "admin_action";
 };
 
 export type RemoteProxyCall = {

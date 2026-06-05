@@ -647,12 +647,48 @@ pub(crate) async fn get_story_technical_operations(
         )
         .await?,
     );
+    data.extend(admin_action_technical_operations(&rows, &node_index));
     sort_technical_operations(&mut data);
 
     Ok(Json(AdminRuntimeTechnicalOperationListResponse {
         data,
         order: "started_at_asc",
     }))
+}
+
+fn admin_action_technical_operations(
+    rows: &[StoryWorkRow],
+    node_index: &RuntimeNodeIndex,
+) -> Vec<AdminRuntimeTechnicalOperation> {
+    rows.iter()
+        .filter(|row| row.item_type == "admin_action")
+        .map(|row| admin_action_to_technical_operation(row, node_index))
+        .collect()
+}
+
+fn admin_action_to_technical_operation(
+    row: &StoryWorkRow,
+    node_index: &RuntimeNodeIndex,
+) -> AdminRuntimeTechnicalOperation {
+    let ended_at = row.completed_at.unwrap_or(row.created_at);
+    AdminRuntimeTechnicalOperation {
+        attributes: row.metadata.clone(),
+        category: "admin".to_owned(),
+        correlation_id: row.correlation_id.clone(),
+        duration_ms: row_duration_ms(row),
+        ended_at,
+        id: format!("admin_action:{}", row.id),
+        name: row.name.clone(),
+        related_node_id: node_index.contains(&row.id).then(|| row.id.clone()),
+        source: "admin_action".to_owned(),
+        started_at: row.started_at.unwrap_or(row.created_at),
+        status: if row.status == "failed" {
+            "error".to_owned()
+        } else {
+            "ok".to_owned()
+        },
+        story_id: row.correlation_id.clone(),
+    }
 }
 
 async fn remote_proxy_technical_operations(

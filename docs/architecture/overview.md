@@ -58,9 +58,14 @@ operator-visible HTTP proxying:
   request/response limits, header policy, error normalization, persisted call
   history, Runtime Story nodes, Technical Operations rows, and Remote Calls
   navigation.
-- Remote runtime function execution, remote event handlers, admin actions,
-  embedded host bridges, JavaScript bundle loading, Wasm execution, streaming,
-  per-module OpenAPI fragments, and marketplace install trust remain deferred.
+- Remote runtime functions execute through host-owned worker queues, retry
+  policy, Runtime Story data, and Technical Operations.
+- Declarative admin actions invoke host-owned `/admin/data/{module}/actions/*`
+  endpoints with manifest capability checks. Successful and failed action
+  invocations are projected into Runtime Stories and Technical Operations.
+- Remote event handlers, embedded host bridges, JavaScript bundle loading, Wasm
+  execution, streaming, per-module OpenAPI fragments, and marketplace install
+  trust remain deferred.
 
 The service kit should stay stable and small. It exists to remove boilerplate, not to own business behavior.
 
