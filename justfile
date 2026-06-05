@@ -64,6 +64,9 @@ console-api:
 console-api-smoke:
     sh scripts/runtime-console-api-smoke.sh
 
+console-api-qa:
+    sh scripts/runtime-console-api-qa.sh
+
 embedded-admin-demo:
     sh scripts/embedded-admin-demo.sh
 
