@@ -312,6 +312,11 @@ async fn remote_module_fixture_is_visible_through_admin_data_api() {
         format!("{base_url}/manifest")
     );
     assert_eq!(remote_module["source_diagnostics"]["timeout_ms"], 5_000);
+    assert!(
+        remote_module["source_diagnostics"]["load_duration_ms"]
+            .as_u64()
+            .is_some()
+    );
     assert_eq!(
         remote_module["source_diagnostics"]["auth_configured"],
         false
@@ -1289,6 +1294,11 @@ async fn failed_remote_module_load_is_reported_in_schema() {
         "http://127.0.0.1:9/lenso/module/v1"
     );
     assert_eq!(remote_module["source_diagnostics"]["timeout_ms"], 50);
+    assert!(
+        remote_module["source_diagnostics"]["load_duration_ms"]
+            .as_u64()
+            .is_some()
+    );
     assert!(
         remote_module["source_diagnostics"]["last_load_error"]
             .as_str()

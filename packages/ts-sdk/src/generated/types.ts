@@ -139,12 +139,24 @@ export type AdminModuleMetadataListResponse = {
   refreshed_at?: string | null;
 };
 
+export type AdminModuleRefreshModuleResultDto = {
+  duration_ms?: number | null;
+  endpoint?: string | null;
+  error?: string | null;
+  module_name: string;
+  source: ModuleSource;
+  status: AdminModuleRefreshModuleStatusDto;
+};
+
+export type AdminModuleRefreshModuleStatusDto = string;
+
 export type AdminModuleRefreshRecordDto = {
   completed_at: string;
   duration_ms: number;
   error?: string | null;
   id: string;
   module_count: number;
+  module_results: Array<AdminModuleRefreshModuleResultDto>;
   started_at: string;
   status: AdminModuleRefreshStatusDto;
 };
@@ -203,6 +215,7 @@ export type AdminRemoteModuleDiagnosticsDto = {
   base_url: string;
   last_checked_at?: string | null;
   last_load_error?: string | null;
+  load_duration_ms?: number | null;
   manifest_url: string;
   timeout_ms: number;
 };

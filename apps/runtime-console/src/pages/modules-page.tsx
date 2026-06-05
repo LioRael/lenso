@@ -62,6 +62,16 @@ type ModuleRefreshRecord = {
   duration_ms: number;
   module_count: number;
   error: string | null;
+  module_results: ModuleRefreshModuleResult[];
+};
+
+type ModuleRefreshModuleResult = {
+  module_name: string;
+  source: "linked" | "remote" | string;
+  status: "loaded" | "error" | string;
+  duration_ms?: number | null;
+  endpoint?: string | null;
+  error?: string | null;
 };
 
 const modulesQueryKey = ["modules", "registry"] as const;
@@ -245,7 +255,7 @@ function ModuleRefreshHistory({ history }: { history: ModuleRefreshRecord[] }) {
               "border-[color-mix(in_srgb,var(--error)_45%,transparent)] text-(--error)"
           )}
           key={record.id}
-          title={record.error ?? record.completed_at}
+          title={refreshRecordTitle(record)}
         >
           refresh {record.status} / {record.module_count} modules /{" "}
           {record.duration_ms}ms
@@ -253,6 +263,30 @@ function ModuleRefreshHistory({ history }: { history: ModuleRefreshRecord[] }) {
       ))}
     </div>
   );
+}
+
+function refreshRecordTitle(record: ModuleRefreshRecord) {
+  if (record.error) {
+    return record.error;
+  }
+  if (record.module_results.length === 0) {
+    return record.completed_at;
+  }
+  return record.module_results
+    .slice(0, 5)
+    .map((result) =>
+      [
+        result.module_name,
+        result.status,
+        result.duration_ms === null || result.duration_ms === undefined
+          ? null
+          : `${result.duration_ms}ms`,
+        result.error,
+      ]
+        .filter(Boolean)
+        .join(" / ")
+    )
+    .join("\n");
 }
 
 function ModuleRegistryControls({
@@ -516,6 +550,14 @@ function RemoteModuleHealthPanel({ module }: { module: AdminModuleMetadata }) {
           {
             label: "timeout",
             value: diagnostics ? `${diagnostics.timeout_ms}ms` : "-",
+          },
+          {
+            label: "load duration",
+            value:
+              diagnostics?.load_duration_ms === null ||
+              diagnostics?.load_duration_ms === undefined
+                ? "-"
+                : `${diagnostics.load_duration_ms}ms`,
           },
           {
             label: "auth configured",

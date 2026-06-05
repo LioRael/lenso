@@ -31,6 +31,7 @@ use platform_module::{
 };
 use platform_module_remote::{RemoteHttpProxyRegistry, RemoteModuleConfig, RemoteModuleSource};
 use platform_runtime::{EnqueueFunctionRequest, FunctionRegistry, RuntimeClient};
+use std::time::Instant;
 
 struct LinkedModuleEntry {
     module_name: &'static str,
@@ -201,13 +202,19 @@ pub async fn load_admin_module_metadata(
         let config = remote_module_config(remote);
         let checked_at = current_timestamp();
         let source = RemoteModuleSource::new(config.clone())?;
+        let load_started = Instant::now();
         match source.load().await {
             Ok(module) => metadata.extend(remote_admin_metadata_from_module(
-                module, &config, checked_at, None,
+                module,
+                &config,
+                checked_at,
+                Some(duration_ms(load_started)),
+                None,
             )),
             Err(error) => metadata.push(failed_remote_admin_metadata(
                 &config,
                 Some(checked_at),
+                Some(duration_ms(load_started)),
                 error.public_message,
             )),
         }
@@ -323,6 +330,7 @@ fn remote_admin_metadata_from_module(
     module: Module,
     config: &RemoteModuleConfig,
     checked_at: String,
+    load_duration_ms: Option<u64>,
     load_error: Option<String>,
 ) -> Vec<AdminModuleMetadata> {
     admin_metadata_from_modules(vec![module])
@@ -331,6 +339,7 @@ fn remote_admin_metadata_from_module(
             metadata.source_diagnostics = Some(remote_source_diagnostics(
                 config,
                 Some(checked_at.clone()),
+                load_duration_ms,
                 load_error.clone(),
             ));
             metadata
@@ -341,6 +350,7 @@ fn remote_admin_metadata_from_module(
 fn failed_remote_admin_metadata(
     config: &RemoteModuleConfig,
     checked_at: Option<String>,
+    load_duration_ms: Option<u64>,
     message: String,
 ) -> AdminModuleMetadata {
     AdminModuleMetadata {
@@ -355,13 +365,19 @@ fn failed_remote_admin_metadata(
         story_display: Vec::new(),
         capabilities: Vec::new(),
         admin: None,
-        source_diagnostics: Some(remote_source_diagnostics(config, checked_at, Some(message))),
+        source_diagnostics: Some(remote_source_diagnostics(
+            config,
+            checked_at,
+            load_duration_ms,
+            Some(message),
+        )),
     }
 }
 
 fn remote_source_diagnostics(
     config: &RemoteModuleConfig,
     checked_at: Option<String>,
+    load_duration_ms: Option<u64>,
     load_error: Option<String>,
 ) -> AdminModuleSourceDiagnostics {
     AdminModuleSourceDiagnostics::Remote(AdminRemoteModuleDiagnostics {
@@ -369,6 +385,7 @@ fn remote_source_diagnostics(
         manifest_url: format!("{}/manifest", config.base_url),
         timeout_ms: config.timeout_ms,
         auth_configured: config.auth_token.is_some(),
+        load_duration_ms,
         last_checked_at: checked_at,
         last_load_error: load_error,
     })
@@ -390,6 +407,10 @@ fn remote_module_config(source: &platform_core::RemoteModuleSourceConfig) -> Rem
 fn current_timestamp() -> String {
     use platform_core::Clock;
     platform_core::SystemClock.now().to_rfc3339()
+}
+
+fn duration_ms(started: Instant) -> u64 {
+    u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
 /// Build a [`FunctionRegistry`] from every module's binding.

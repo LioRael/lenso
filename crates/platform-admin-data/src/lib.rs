@@ -88,6 +88,7 @@ pub struct AdminRemoteModuleDiagnostics {
     pub manifest_url: String,
     pub timeout_ms: u64,
     pub auth_configured: bool,
+    pub load_duration_ms: Option<u64>,
     pub last_checked_at: Option<String>,
     pub last_load_error: Option<String>,
 }
@@ -109,6 +110,23 @@ pub struct AdminModuleMetadataRefreshRecord {
     pub duration_ms: u64,
     pub module_count: usize,
     pub error: Option<String>,
+    pub module_results: Vec<AdminModuleMetadataRefreshModuleResult>,
+}
+
+#[derive(Clone, Debug)]
+pub struct AdminModuleMetadataRefreshModuleResult {
+    pub module_name: String,
+    pub source: ModuleSource,
+    pub status: AdminModuleMetadataRefreshModuleStatus,
+    pub duration_ms: Option<u64>,
+    pub endpoint: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum AdminModuleMetadataRefreshModuleStatus {
+    Loaded,
+    Error,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -206,6 +224,7 @@ pub(crate) fn record_admin_module_metadata_refresh_success(
         duration_ms: duration_ms(started),
         module_count: modules.len(),
         error: None,
+        module_results: refresh_module_results(&modules),
     };
     snapshot.modules = modules;
     snapshot.refreshed_at = Some(completed_at);
@@ -296,6 +315,7 @@ pub(crate) fn record_admin_module_metadata_refresh_error(
         duration_ms: duration_ms(started),
         module_count: snapshot.modules.len(),
         error: snapshot.refresh_error.clone(),
+        module_results: Vec::new(),
     };
     push_refresh_record(&mut snapshot.refresh_history, record);
     snapshot.clone()
@@ -316,6 +336,36 @@ fn push_refresh_record(
 ) {
     history.insert(0, record);
     history.truncate(10);
+}
+
+fn refresh_module_results(
+    modules: &[AdminModuleMetadata],
+) -> Vec<AdminModuleMetadataRefreshModuleResult> {
+    modules
+        .iter()
+        .map(|module| {
+            let remote = match &module.source_diagnostics {
+                Some(AdminModuleSourceDiagnostics::Remote(remote)) => Some(remote),
+                None => None,
+            };
+            AdminModuleMetadataRefreshModuleResult {
+                module_name: module.module_name.clone(),
+                source: module.source,
+                status: match module.load_status {
+                    ModuleLoadStatus::Loaded => AdminModuleMetadataRefreshModuleStatus::Loaded,
+                    ModuleLoadStatus::Error { .. } => AdminModuleMetadataRefreshModuleStatus::Error,
+                },
+                duration_ms: remote.and_then(|diagnostics| diagnostics.load_duration_ms),
+                endpoint: remote.map(|diagnostics| diagnostics.base_url.clone()),
+                error: match &module.load_status {
+                    ModuleLoadStatus::Loaded => {
+                        remote.and_then(|diagnostics| diagnostics.last_load_error.clone())
+                    }
+                    ModuleLoadStatus::Error { message } => Some(message.clone()),
+                },
+            }
+        })
+        .collect()
 }
 
 fn admin_refresher() -> Option<Arc<dyn AdminModuleRefresher>> {

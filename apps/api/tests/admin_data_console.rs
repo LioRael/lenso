@@ -705,6 +705,14 @@ async fn refresh_modules_replaces_module_registry_metadata() {
     );
     assert_eq!(refresh_body["refresh_history"][0]["error"], Value::Null);
     assert_eq!(
+        refresh_body["refresh_history"][0]["module_results"][0]["module_name"],
+        "notifications"
+    );
+    assert_eq!(
+        refresh_body["refresh_history"][0]["module_results"][0]["status"],
+        "loaded"
+    );
+    assert_eq!(
         refresh_body["modules"][0]["capabilities"],
         serde_json::json!(["notifications.email.send"])
     );
@@ -772,5 +780,12 @@ async fn refresh_modules_records_error_without_dropping_snapshot() {
     assert_eq!(
         body["refresh_history"][0]["error"],
         "remote manifest request failed"
+    );
+    assert_eq!(
+        body["refresh_history"][0]["module_results"]
+            .as_array()
+            .expect("top-level refresh failure has no module results")
+            .len(),
+        0
     );
 }

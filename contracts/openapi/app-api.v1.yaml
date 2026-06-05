@@ -2776,6 +2776,38 @@ components:
           type:
           - string
           - 'null'
+    AdminModuleRefreshModuleResultDto:
+      type: object
+      required:
+      - module_name
+      - source
+      - status
+      properties:
+        duration_ms:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        endpoint:
+          type:
+          - string
+          - 'null'
+        error:
+          type:
+          - string
+          - 'null'
+        module_name:
+          type: string
+        source:
+          $ref: '#/components/schemas/ModuleSource'
+        status:
+          $ref: '#/components/schemas/AdminModuleRefreshModuleStatusDto'
+    AdminModuleRefreshModuleStatusDto:
+      type: string
+      enum:
+      - loaded
+      - error
     AdminModuleRefreshRecordDto:
       type: object
       required:
@@ -2785,6 +2817,7 @@ components:
       - completed_at
       - duration_ms
       - module_count
+      - module_results
       properties:
         completed_at:
           type: string
@@ -2801,6 +2834,10 @@ components:
         module_count:
           type: integer
           minimum: 0
+        module_results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminModuleRefreshModuleResultDto'
         started_at:
           type: string
         status:
@@ -2984,6 +3021,12 @@ components:
           type:
           - string
           - 'null'
+        load_duration_ms:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
         manifest_url:
           type: string
         timeout_ms:

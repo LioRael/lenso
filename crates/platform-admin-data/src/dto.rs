@@ -40,12 +40,30 @@ pub struct AdminModuleRefreshRecordDto {
     pub duration_ms: u64,
     pub module_count: usize,
     pub error: Option<String>,
+    pub module_results: Vec<AdminModuleRefreshModuleResultDto>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AdminModuleRefreshStatusDto {
     Success,
+    Error,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminModuleRefreshModuleResultDto {
+    pub module_name: String,
+    pub source: ModuleSource,
+    pub status: AdminModuleRefreshModuleStatusDto,
+    pub duration_ms: Option<u64>,
+    pub endpoint: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AdminModuleRefreshModuleStatusDto {
+    Loaded,
     Error,
 }
 
@@ -78,6 +96,7 @@ pub struct AdminRemoteModuleDiagnosticsDto {
     pub manifest_url: String,
     pub timeout_ms: u64,
     pub auth_configured: bool,
+    pub load_duration_ms: Option<u64>,
     pub last_checked_at: Option<String>,
     pub last_load_error: Option<String>,
 }

@@ -149,6 +149,7 @@ export type RemoteModuleSourceDiagnostics = {
   manifest_url: string;
   timeout_ms: number;
   auth_configured: boolean;
+  load_duration_ms?: number | null;
   last_checked_at?: string | null;
   last_load_error?: string | null;
 };

@@ -2,12 +2,14 @@ use crate::dto::{
     AdminActionInvokeRequest, AdminActionInvokeResponse, AdminCapabilityIssueDto,
     AdminCapabilitySummaryDto, AdminDataDetailResponse, AdminDataListResponse, AdminDataPageInfo,
     AdminModuleActivationState, AdminModuleGovernanceDto, AdminModuleMetadataDto,
-    AdminModuleMetadataListResponse, AdminModuleRefreshRecordDto, AdminModuleRefreshStatusDto,
+    AdminModuleMetadataListResponse, AdminModuleRefreshModuleResultDto,
+    AdminModuleRefreshModuleStatusDto, AdminModuleRefreshRecordDto, AdminModuleRefreshStatusDto,
     AdminModuleSchema, AdminModuleSourceDiagnosticsDto, AdminModuleStatus,
     AdminRemoteModuleDiagnosticsDto, AdminSchemaListResponse, AdminSchemaRefreshResponse,
 };
 use crate::{
-    AdminModule, AdminModuleMetadata, AdminModuleMetadataRefreshRecord,
+    AdminModule, AdminModuleMetadata, AdminModuleMetadataRefreshModuleResult,
+    AdminModuleMetadataRefreshModuleStatus, AdminModuleMetadataRefreshRecord,
     AdminModuleMetadataRefreshStatus, AdminModuleSourceDiagnostics, admin_metadata_refresher,
     admin_module_metadata_snapshot, admin_modules, admin_refresher, find_loaded_action_module,
     find_loaded_module, install_admin_module_metadata, install_admin_modules,
@@ -204,6 +206,7 @@ fn source_diagnostics_dto(
                 manifest_url: remote.manifest_url,
                 timeout_ms: remote.timeout_ms,
                 auth_configured: remote.auth_configured,
+                load_duration_ms: remote.load_duration_ms,
                 last_checked_at: remote.last_checked_at,
                 last_load_error: remote.last_load_error,
             }),
@@ -330,6 +333,31 @@ fn refresh_record_dto(record: AdminModuleMetadataRefreshRecord) -> AdminModuleRe
         duration_ms: record.duration_ms,
         module_count: record.module_count,
         error: record.error,
+        module_results: record
+            .module_results
+            .into_iter()
+            .map(refresh_module_result_dto)
+            .collect(),
+    }
+}
+
+fn refresh_module_result_dto(
+    result: AdminModuleMetadataRefreshModuleResult,
+) -> AdminModuleRefreshModuleResultDto {
+    AdminModuleRefreshModuleResultDto {
+        module_name: result.module_name,
+        source: result.source,
+        status: match result.status {
+            AdminModuleMetadataRefreshModuleStatus::Loaded => {
+                AdminModuleRefreshModuleStatusDto::Loaded
+            }
+            AdminModuleMetadataRefreshModuleStatus::Error => {
+                AdminModuleRefreshModuleStatusDto::Error
+            }
+        },
+        duration_ms: result.duration_ms,
+        endpoint: result.endpoint,
+        error: result.error,
     }
 }
 
