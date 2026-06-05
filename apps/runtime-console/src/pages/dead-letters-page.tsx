@@ -29,6 +29,7 @@ import {
   OperationsFilterChip,
   OperationsSearchInput,
 } from "./operations-filter";
+import { OperationsInspectorHeader } from "./operations-inspector";
 import { useOperationsInspectorLayout } from "./operations-layout";
 import { useOperationsSelection } from "./operations-selection";
 import {
@@ -315,23 +316,21 @@ function InspectorHeader({ failure }: { failure: DeadLetter | null }) {
     : "No failure selected";
   const kind = failure ? deadLetterKindLabel(failure.kind) : "Failure";
   return (
-    <header className="border-b border-(--border-subtle) bg-(--surface) px-3 py-2 font-mono">
-      <div className="mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-(--accent)">
-        {kind}
-      </div>
-      <div className="truncate text-[13px] font-semibold text-(--foreground)">
-        {name}
-      </div>
-      {failure ? (
-        <div className="mt-1 flex items-center gap-2 text-[10px] text-(--muted)">
-          <span className="truncate">{failure.item.id}</span>
-          <span>
-            {failure.item.attempts}/{failure.item.maxAttempts}
-          </span>
-          <span>{failure.item.status}</span>
-        </div>
-      ) : null}
-    </header>
+    <OperationsInspectorHeader
+      eyebrow={kind}
+      meta={
+        failure ? (
+          <>
+            <span className="truncate">{failure.item.id}</span>
+            <span>
+              {failure.item.attempts}/{failure.item.maxAttempts}
+            </span>
+            <span>{failure.item.status}</span>
+          </>
+        ) : null
+      }
+      title={name}
+    />
   );
 }
 

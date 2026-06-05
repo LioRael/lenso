@@ -18,6 +18,7 @@ import {
   OperationsFilterChip,
   OperationsSearchInput,
 } from "./operations-filter";
+import { OperationsInspectorHeader } from "./operations-inspector";
 import { useOperationsInspectorLayout } from "./operations-layout";
 import { useOperationsSelection } from "./operations-selection";
 import {
@@ -507,21 +508,19 @@ function AggregatePanel({
 
 function InspectorHeader({ call }: { call: RuntimeRemoteProxyCall | null }) {
   return (
-    <header className="border-b border-(--border-subtle) bg-(--surface) px-3 py-2 font-mono">
-      <div className="mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-(--accent)">
-        {call ? call.module_name : "Remote"}
-      </div>
-      <div className="truncate text-[13px] font-semibold text-(--foreground)">
-        {call ? `${call.method} ${call.declared_path}` : "No call selected"}
-      </div>
-      {call ? (
-        <div className="mt-1 flex items-center gap-2 text-[10px] text-(--muted)">
-          <span className="truncate">{call.id}</span>
-          <span>{formatDuration(call.duration_ms)}</span>
-          <span>{remoteProxyCallResultLabel(call)}</span>
-        </div>
-      ) : null}
-    </header>
+    <OperationsInspectorHeader
+      eyebrow={call ? call.module_name : "Remote"}
+      meta={
+        call ? (
+          <>
+            <span className="truncate">{call.id}</span>
+            <span>{formatDuration(call.duration_ms)}</span>
+            <span>{remoteProxyCallResultLabel(call)}</span>
+          </>
+        ) : null
+      }
+      title={call ? `${call.method} ${call.declared_path}` : "No call selected"}
+    />
   );
 }
 

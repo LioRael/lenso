@@ -16,6 +16,7 @@ import {
   OperationsFilterBar,
   OperationsSearchInput,
 } from "./operations-filter";
+import { OperationsInspectorHeader } from "./operations-inspector";
 import { useOperationsInspectorLayout } from "./operations-layout";
 import { useOperationsSelection } from "./operations-selection";
 import { OperationsMessageRow } from "./operations-state";
@@ -240,19 +241,11 @@ export function QueuesPage() {
       />
 
       <aside className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-(--sidebar)">
-        <header className="border-b border-(--border-subtle) bg-(--surface) px-3 py-2 font-mono">
-          <div className="mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-(--accent)">
-            Queue
-          </div>
-          <div className="truncate text-[13px] font-semibold text-(--foreground)">
-            {selected?.name ?? "No queue selected"}
-          </div>
-          {selected ? (
-            <div className="mt-1 text-[10px] text-(--muted)">
-              {selectedTarget?.reason}
-            </div>
-          ) : null}
-        </header>
+        <OperationsInspectorHeader
+          eyebrow="Queue"
+          meta={selected ? selectedTarget?.reason : null}
+          title={selected?.name ?? "No queue selected"}
+        />
         <div className="min-h-0 overflow-auto">
           {selected ? (
             <QueueInspector queue={selected} />

@@ -30,6 +30,7 @@ import {
   OperationsFilterChip,
   OperationsSearchInput,
 } from "./operations-filter";
+import { OperationsInspectorHeader } from "./operations-inspector";
 import { useOperationsInspectorLayout } from "./operations-layout";
 import { useOperationsSelection } from "./operations-selection";
 import {
@@ -461,21 +462,19 @@ function AggregatePanel({
 
 function InspectorHeader({ run }: { run: FunctionRun | null }) {
   return (
-    <header className="border-b border-(--border-subtle) bg-(--surface) px-3 py-2 font-mono">
-      <div className="mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-(--accent)">
-        {run?.runtimeDeclaration?.moduleName ?? "Function"}
-      </div>
-      <div className="truncate text-[13px] font-semibold text-(--foreground)">
-        {run ? run.functionName : "No run selected"}
-      </div>
-      {run ? (
-        <div className="mt-1 flex items-center gap-2 text-[10px] text-(--muted)">
-          <span className="truncate">{run.id}</span>
-          <span>{formatFunctionDuration(runDurationMs(run))}</span>
-          <span>{run.status}</span>
-        </div>
-      ) : null}
-    </header>
+    <OperationsInspectorHeader
+      eyebrow={run?.runtimeDeclaration?.moduleName ?? "Function"}
+      meta={
+        run ? (
+          <>
+            <span className="truncate">{run.id}</span>
+            <span>{formatFunctionDuration(runDurationMs(run))}</span>
+            <span>{run.status}</span>
+          </>
+        ) : null
+      }
+      title={run ? run.functionName : "No run selected"}
+    />
   );
 }
 
