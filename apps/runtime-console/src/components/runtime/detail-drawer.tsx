@@ -32,7 +32,7 @@ export function DetailDrawer({ target, onClose }: DetailDrawerProps) {
           <div className="flex items-start justify-between gap-4 border-b border-(--border-subtle) p-4.5">
             <div className="min-w-0">
               <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-(--muted)">
-                {target.kind}
+                {recordKindLabel(target.kind)}
               </p>
               <Drawer.Title className="truncate text-lg font-semibold text-(--foreground)">
                 {titleFor(target)}
@@ -120,7 +120,7 @@ function EventBody({ event }: { event: RuntimeEvent }) {
       ) : null}
       {detailQuery.isError ? (
         <ErrorBox>
-          Event detail unavailable: {errorMessage(detailQuery.error)}
+          Outbox event detail unavailable: {errorMessage(detailQuery.error)}
         </ErrorBox>
       ) : null}
       <DrawerSection title="Metadata">
@@ -394,4 +394,11 @@ function ErrorBox({ children }: { children: ReactNode }) {
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Runtime request failed";
+}
+
+function recordKindLabel(kind: RuntimeRecord["kind"]) {
+  if (kind === "event") {
+    return "outbox";
+  }
+  return kind;
 }

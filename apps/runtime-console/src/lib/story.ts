@@ -119,7 +119,7 @@ export function runtimeNodeTypeLabel(type: RuntimeNodeType) {
       return "Function";
     }
     case "event": {
-      return "Event";
+      return "Outbox";
     }
     case "worker": {
       return "Worker";

@@ -801,7 +801,7 @@ function RelatedExecutionList({
             className="grid w-max min-w-full grid-cols-[124px_minmax(220px,max-content)] border-t border-(--border-subtle)"
             key={node.id}
           >
-            <div className="px-3 py-1.5 text-(--muted)">{node.kind}</div>
+            <div className="px-3 py-1.5 text-(--muted)">{typeLabel(node)}</div>
             <div className="whitespace-pre-wrap px-3 py-1.5 text-(--secondary)">
               {node.name}
             </div>
@@ -848,7 +848,7 @@ function typeLabel(node: ExecutionNode) {
     return "http";
   }
   if (node.kind === "event") {
-    return "event";
+    return "outbox";
   }
   return "node";
 }

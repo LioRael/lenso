@@ -5,6 +5,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { RuntimeStory, ExecutionNode } from "../../data/mock-runtime";
 import { cn } from "../../lib/cn";
 import { formatRuntimeDuration, serviceColor } from "../../lib/runtime-style";
+import { runtimeNodeType, runtimeNodeTypeLabel } from "../../lib/story";
 import {
   clampFlowZoom,
   flowViewDefaults,
@@ -424,7 +425,7 @@ export function FlowView({
                             : "bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] text-(--accent)"
                         )}
                       >
-                        {node.kind}
+                        {flowNodeKindLabel(node)}
                       </span>
                     </span>
                     <span className="min-w-0">
@@ -516,4 +517,9 @@ export function FlowView({
       </div>
     </div>
   );
+}
+
+function flowNodeKindLabel(node: ExecutionNode) {
+  const type = runtimeNodeType(node);
+  return type ? runtimeNodeTypeLabel(type) : "Node";
 }

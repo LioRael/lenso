@@ -30,7 +30,7 @@ export function RuntimeSearch() {
             }
           }}
           className="w-full bg-transparent text-xs text-(--foreground) outline-hidden placeholder:text-(--muted)"
-          placeholder="story / node / correlation / event / function"
+          placeholder="story / node / correlation / outbox / function"
           value={query}
         />
         <span className="border border-(--border) px-1 py-0.5 text-[11px] leading-none text-(--muted)">
@@ -56,7 +56,7 @@ export function RuntimeSearch() {
                 type="button"
               >
                 <span className="self-center text-[11px] font-bold uppercase tracking-[0.04em] text-(--muted)">
-                  {result.kind}
+                  {searchResultKindLabel(result.kind)}
                 </span>
                 <span>
                   <strong className="block truncate text-xs font-semibold">
@@ -73,4 +73,11 @@ export function RuntimeSearch() {
       ) : null}
     </div>
   );
+}
+
+function searchResultKindLabel(kind: string) {
+  if (kind === "event") {
+    return "outbox";
+  }
+  return kind;
 }

@@ -207,7 +207,7 @@ export function DeadLettersPage() {
               }}
               type="button"
             >
-              {item}
+              {deadLetterKindLabel(item)}
             </button>
           ))}
           <button
@@ -271,7 +271,8 @@ export function DeadLettersPage() {
                       {name}
                     </span>
                     <span className="block truncate text-[10px] text-(--muted)">
-                      {failure.kind} / {item.id} / {item.correlationId}
+                      {deadLetterKindLabel(failure.kind)} / {item.id} /{" "}
+                      {item.correlationId}
                     </span>
                     {item.lastError ? (
                       <span className="mt-1 block truncate text-[10px] text-[#ef4444]">
@@ -338,10 +339,11 @@ function InspectorHeader({ failure }: { failure: DeadLetter | null }) {
       ? failure.item.eventName
       : failure.item.functionName
     : "No failure selected";
+  const kind = failure ? deadLetterKindLabel(failure.kind) : "Failure";
   return (
     <header className="border-b border-(--border-subtle) bg-(--surface) px-3 py-2 font-mono">
       <div className="mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-(--accent)">
-        {failure?.kind ?? "Failure"}
+        {kind}
       </div>
       <div className="truncate text-[13px] font-semibold text-(--foreground)">
         {name}
@@ -379,7 +381,7 @@ function EventFailureInspector({ event }: { event: RuntimeEvent }) {
       <KeyValueRows
         rows={[
           ["status", displayEvent.status],
-          ["event", displayEvent.eventName],
+          ["outbox_event", displayEvent.eventName],
           ["id", displayEvent.id],
           [
             "aggregate",
@@ -399,7 +401,7 @@ function EventFailureInspector({ event }: { event: RuntimeEvent }) {
       />
       <JsonViewer
         defaultExpanded
-        title="event payload"
+        title="outbox event payload"
         value={displayEvent.payload}
       />
       {displayEvent.headers ? (
@@ -515,4 +517,14 @@ function indexOf(items: DeadLetter[], id: string) {
 
 function readDeadLetterKind(value: string): "all" | "event" | "function" {
   return value === "event" || value === "function" ? value : "all";
+}
+
+function deadLetterKindLabel(kind: DeadLetter["kind"] | "all") {
+  if (kind === "event") {
+    return "outbox";
+  }
+  if (kind === "function") {
+    return "functions";
+  }
+  return "all";
 }

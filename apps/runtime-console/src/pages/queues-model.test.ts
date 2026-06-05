@@ -72,9 +72,9 @@ describe("queues model", () => {
     ]);
   });
 
-  test("routes outbox queues to event dead letters", () => {
+  test("routes outbox queues to outbox event dead letters", () => {
     expect(queueRouteTarget(buildQueueRowsFromSummary(summary)[0]!)).toEqual({
-      label: "Open Events",
+      label: "Open Outbox Events",
       path: "/operations/dead-letters?kind=event&order=oldest",
       reason: "outbox failures and dead letters",
     });

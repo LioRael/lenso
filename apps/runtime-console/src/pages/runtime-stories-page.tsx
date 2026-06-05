@@ -553,7 +553,7 @@ export function RuntimeStoriesPage() {
                 {stories.length === 0
                   ? "The backend returned an empty runtime story list."
                   : query
-                    ? "Try a different story, service, event, function, or correlation filter."
+                    ? "Try a different story, service, outbox, function, or correlation filter."
                     : "Select a story from the explorer to inspect its execution."}
               </EmptyState.Description>
             </EmptyState>

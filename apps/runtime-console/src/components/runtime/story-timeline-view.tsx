@@ -297,7 +297,7 @@ function rowIcon(
 
 function rowKindLabel(kind: ExecutionTimelineRow["kind"]) {
   if (kind === "outbox_event" || kind === "event") {
-    return "Event";
+    return "Outbox";
   }
   if (kind === "function_run" || kind === "function" || kind === "command") {
     return "Function";

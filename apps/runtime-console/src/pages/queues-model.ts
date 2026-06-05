@@ -52,7 +52,7 @@ export function buildQueueRowsFromSummary(
 export function queueRouteTarget(row: QueueRow): QueueRouteTarget {
   if (row.name === "outbox") {
     return {
-      label: "Open Events",
+      label: "Open Outbox Events",
       path: deadLettersPath({ kind: "event", oldestFirst: true }),
       reason: "outbox failures and dead letters",
     };
