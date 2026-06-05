@@ -1,6 +1,6 @@
 //! A loaded module: serializable manifest + behavior binding + internal config.
 
-use crate::admin_data::AdminDataSource;
+use crate::admin_data::{AdminActionSource, AdminDataSource};
 use crate::binding::ModuleBinding;
 use crate::linked::{LinkedBinding, LinkedHttpContribution};
 use crate::manifest::ModuleManifest;
@@ -22,6 +22,8 @@ pub struct Module {
     /// Optional schema-admin data source. `None` for modules without an admin
     /// surface (e.g. notifications). Set via [`Module::with_admin_data`].
     pub admin_data: Option<Arc<dyn AdminDataSource>>,
+    /// Optional executable admin actions. Set via [`Module::with_admin_actions`].
+    pub admin_actions: Option<Arc<dyn AdminActionSource>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, utoipa::ToSchema)]
@@ -51,6 +53,7 @@ impl Module {
             linked_http,
             runtime_config: &[],
             admin_data: None,
+            admin_actions: None,
         }
     }
 
@@ -66,6 +69,7 @@ impl Module {
             linked_http: None,
             runtime_config: &[],
             admin_data: None,
+            admin_actions: None,
         }
     }
 
@@ -83,6 +87,13 @@ impl Module {
     #[must_use]
     pub fn with_admin_data(mut self, data: Arc<dyn AdminDataSource>) -> Self {
         self.admin_data = Some(data);
+        self
+    }
+
+    /// Attach admin action behavior for manifest-declared actions.
+    #[must_use]
+    pub fn with_admin_actions(mut self, actions: Arc<dyn AdminActionSource>) -> Self {
+        self.admin_actions = Some(actions);
         self
     }
 }
