@@ -162,6 +162,7 @@ fn metadata_response_modules(modules: Vec<AdminModuleMetadata>) -> Vec<AdminModu
                 m.admin.as_ref(),
                 &m.http_routes,
                 m.runtime.as_ref(),
+                None,
                 &m.capabilities,
             ),
             story_display: m

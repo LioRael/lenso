@@ -14,6 +14,7 @@ mod admin_data;
 mod admin_schema;
 mod binding;
 mod http;
+mod lifecycle;
 mod linked;
 mod manifest;
 mod module;
@@ -30,6 +31,10 @@ pub use binding::ModuleBinding;
 pub use http::{
     ModuleHttpMethod, ModuleHttpRoute, ModuleRouteLint, ModuleRouteLintSeverity,
     lint_module_http_routes,
+};
+pub use lifecycle::{
+    LifecycleActivationJobDeclaration, LifecycleActivationRunPolicy,
+    LifecycleStartupCheckDeclaration, LifecycleStartupCheckKind, LifecycleSurface,
 };
 pub use linked::{
     LinkedBinding, LinkedBindingBuilder, LinkedHttpContribution, LinkedHttpRouteMerger,
