@@ -1,16 +1,23 @@
 import { useNavigate } from "@tanstack/react-router";
-import { ExternalLink, Inbox } from "lucide-react";
+import { ExternalLink, Inbox, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { ResizeHandle } from "../components/runtime/resize-handle";
 import { Button } from "../components/ui/button";
 import { buildRuntimeQueueRows } from "../hooks/runtime-queue-model";
 import { useBrowserUrlPopState } from "../hooks/use-browser-url-state";
+import { useListKeyboard } from "../hooks/use-list-keyboard";
+import { usePersistedLayout } from "../hooks/use-persisted-layout";
 import {
   useRuntimeEvents,
   useRuntimeFunctions,
   useRuntimeSummary,
 } from "../hooks/use-runtime-queries";
 import { runtimeConsoleDataSource } from "../lib/http-client";
+import {
+  resizeOperationsInspectorWidth,
+  type OperationsInspectorLayout,
+} from "./operations-layout";
 import {
   pushOperationsUrl,
   queuesPath,
@@ -19,20 +26,31 @@ import {
 } from "./operations-url-model";
 import {
   buildQueueRowsFromSummary,
+  filterQueueRows,
   queueRouteTarget,
   queueRowId,
   type QueueRow,
 } from "./queues-model";
 
+const queuesLayoutDefaults = {
+  inspectorWidth: 376,
+} satisfies OperationsInspectorLayout;
+
 export function QueuesPage() {
   const navigate = useNavigate();
+  const [query, setQuery] = useState(() => readOperationsParam("q"));
   const [selectedId, setSelectedId] = useState(() =>
     readOperationsParam("selected")
   );
+  const [layout, setLayout, resetLayout] = usePersistedLayout(
+    "runtime-console:queues-layout",
+    queuesLayoutDefaults
+  );
+  const queuesLayout = { ...queuesLayoutDefaults, ...layout };
   const summaryQuery = useRuntimeSummary();
   const eventsQuery = useRuntimeEvents();
   const functionsQuery = useRuntimeFunctions();
-  const rows = useMemo(
+  const allRows = useMemo(
     () =>
       eventsQuery.data && functionsQuery.data
         ? buildRuntimeQueueRows({
@@ -42,7 +60,8 @@ export function QueuesPage() {
         : buildQueueRowsFromSummary(summaryQuery.data),
     [eventsQuery.data, functionsQuery.data, summaryQuery.data]
   );
-  const totals = rows.reduce(
+  const rows = useMemo(() => filterQueueRows(allRows, query), [allRows, query]);
+  const totals = allRows.reduce(
     (acc, queue) => ({
       dead: acc.dead + queue.dead,
       failed: acc.failed + queue.failed,
@@ -55,6 +74,7 @@ export function QueuesPage() {
   const selectedTarget = selected ? queueRouteTarget(selected) : null;
 
   useBrowserUrlPopState((search) => {
+    setQuery(search.get("q") ?? "");
     setSelectedId(search.get("selected") ?? "");
   });
 
@@ -71,24 +91,55 @@ export function QueuesPage() {
   }, [rows, selectedId]);
 
   useEffect(() => {
-    replaceOperationsUrl(queuesPath({ selectedId }));
-  }, [selectedId]);
+    replaceOperationsUrl(queuesPath({ query, selectedId }));
+  }, [query, selectedId]);
 
   const selectQueue = (row: QueueRow) => {
     const nextId = queueRowId(row);
-    pushOperationsUrl(queuesPath({ selectedId: nextId }));
+    pushOperationsUrl(queuesPath({ query, selectedId: nextId }));
     setSelectedId(nextId);
   };
+  const selectedIndex = selected ? indexOf(rows, queueRowId(selected)) : 0;
+  const selectIndex = (index: number) => {
+    const row = rows[index];
+    if (row) {
+      selectQueue(row);
+    }
+  };
+  const resizeInspector = (deltaX: number) => {
+    setLayout((current) => ({
+      ...current,
+      inspectorWidth: resizeOperationsInspectorWidth({
+        currentWidth: current.inspectorWidth,
+        defaultWidth: queuesLayoutDefaults.inspectorWidth,
+        deltaX,
+        maxWidth: 560,
+        minWidth: 320,
+      }),
+    }));
+  };
+
+  useListKeyboard({
+    items: rows,
+    onOpen: selectQueue,
+    selectedIndex,
+    setSelectedIndex: selectIndex,
+  });
 
   return (
-    <section className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_360px] overflow-hidden bg-(--background) text-(--foreground)">
-      <main className="grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-(--border-subtle)">
+    <section
+      className="grid h-full min-h-0 min-w-0 overflow-hidden bg-(--background) text-(--foreground)"
+      style={{
+        gridTemplateColumns: `minmax(0,1fr) 1px ${queuesLayout.inspectorWidth}px`,
+      }}
+    >
+      <main className="grid min-h-0 min-w-0 grid-rows-[auto_auto_auto_minmax(0,1fr)] overflow-hidden border-r border-(--border-subtle)">
         <header className="border-b border-(--border-subtle) bg-(--surface) px-3 py-2">
           <div className="flex items-center gap-2">
             <Inbox className="text-(--accent)" size={14} />
             <h1 className="font-mono text-[13px] font-semibold">Queues</h1>
             <span className="ml-auto font-mono text-[10px] text-(--muted)">
-              aggregate pressure / {runtimeConsoleDataSource()}
+              {rows.length} queues / {runtimeConsoleDataSource()}
             </span>
           </div>
         </header>
@@ -110,6 +161,19 @@ export function QueuesPage() {
               </span>
             </div>
           ))}
+        </div>
+
+        <div className="flex h-9 items-center gap-2 border-b border-(--border-subtle) bg-(--background) px-3">
+          <label className="ml-auto flex h-6 w-[min(360px,45vw)] items-center gap-2 border border-(--border-subtle) bg-(--elevated) px-2 font-mono text-(--muted)">
+            <Search size={12} />
+            <input
+              aria-label="Search queues"
+              className="w-full bg-transparent text-[10px] text-(--foreground) outline-hidden placeholder:text-(--muted)"
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="queue / count / age"
+              value={query}
+            />
+          </label>
         </div>
 
         <div className="min-h-0 overflow-auto">
@@ -135,6 +199,8 @@ export function QueuesPage() {
               }
               tone="error"
             />
+          ) : rows.length === 0 ? (
+            <QueueMessage message="no queues matched" />
           ) : (
             rows.map((queue) => {
               const total =
@@ -193,7 +259,13 @@ export function QueuesPage() {
         </div>
       </main>
 
-      <aside className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-(--sidebar)">
+      <ResizeHandle
+        ariaLabel="Resize queue inspector panel"
+        onReset={resetLayout}
+        onResize={resizeInspector}
+      />
+
+      <aside className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-(--sidebar)">
         <header className="border-b border-(--border-subtle) bg-(--surface) px-3 py-2 font-mono">
           <div className="mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-(--accent)">
             Queue
@@ -283,4 +355,11 @@ function formatOldest(seconds: number | undefined) {
     return `${seconds}s`;
   }
   return `${Math.round(seconds / 60)}m`;
+}
+
+function indexOf(items: QueueRow[], id: string) {
+  return Math.max(
+    0,
+    items.findIndex((item) => queueRowId(item) === id)
+  );
 }

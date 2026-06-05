@@ -34,6 +34,10 @@ import {
   type FunctionStatusFilter,
 } from "./functions-model";
 import {
+  resizeOperationsInspectorWidth,
+  type OperationsInspectorLayout,
+} from "./operations-layout";
+import {
   functionsPath,
   pushOperationsUrl,
   readOperationsParam,
@@ -42,11 +46,7 @@ import {
 
 const functionsLayoutDefaults = {
   inspectorWidth: 408,
-};
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
-}
+} satisfies OperationsInspectorLayout;
 
 export function FunctionsPage() {
   const { openRetry, openStoryTarget } = useRuntimeConsole();
@@ -149,12 +149,13 @@ export function FunctionsPage() {
   const resizeInspector = (deltaX: number) => {
     setLayout((current) => ({
       ...current,
-      inspectorWidth: clamp(
-        (current.inspectorWidth ?? functionsLayoutDefaults.inspectorWidth) -
-          deltaX,
-        340,
-        620
-      ),
+      inspectorWidth: resizeOperationsInspectorWidth({
+        currentWidth: current.inspectorWidth,
+        defaultWidth: functionsLayoutDefaults.inspectorWidth,
+        deltaX,
+        maxWidth: 620,
+        minWidth: 340,
+      }),
     }));
   };
   const retryRun = (run: FunctionRun) => {

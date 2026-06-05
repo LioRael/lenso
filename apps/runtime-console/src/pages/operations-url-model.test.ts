@@ -51,8 +51,13 @@ describe("operations url model", () => {
 
   test("builds queue operations paths", () => {
     expect(queuesPath()).toBe("/operations/queues");
-    expect(queuesPath({ selectedId: "runtime.functions:remote-crm" })).toBe(
-      "/operations/queues?selected=runtime.functions%3Aremote-crm"
+    expect(
+      queuesPath({
+        query: "remote",
+        selectedId: "runtime.functions:remote-crm",
+      })
+    ).toBe(
+      "/operations/queues?q=remote&selected=runtime.functions%3Aremote-crm"
     );
   });
 });

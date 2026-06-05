@@ -1,7 +1,11 @@
 import { describe, expect, test } from "vitest";
 
 import type { RuntimeSummary } from "../hooks/use-runtime-queries";
-import { buildQueueRowsFromSummary, queueRouteTarget } from "./queues-model";
+import {
+  buildQueueRowsFromSummary,
+  filterQueueRows,
+  queueRouteTarget,
+} from "./queues-model";
 
 const summary = {
   functions: {
@@ -94,5 +98,17 @@ describe("queues model", () => {
       path: "/operations/functions?queue=remote-crm&status=failed",
       reason: "runtime function queue remote-crm",
     });
+  });
+
+  test("filters queue rows by name and counts", () => {
+    const rows = buildQueueRowsFromSummary(summary);
+
+    expect(filterQueueRows(rows, "functions").map((row) => row.name)).toEqual([
+      "runtime.functions",
+    ]);
+    expect(filterQueueRows(rows, "7").map((row) => row.name)).toEqual([
+      "outbox",
+    ]);
+    expect(filterQueueRows(rows, "missing")).toEqual([]);
   });
 });

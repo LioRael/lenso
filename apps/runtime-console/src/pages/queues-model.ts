@@ -70,6 +70,23 @@ export function queueRouteTarget(row: QueueRow): QueueRouteTarget {
   };
 }
 
+export function filterQueueRows(rows: QueueRow[], query: string) {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) {
+    return rows;
+  }
+  return rows.filter((row) =>
+    [
+      row.name,
+      String(row.pending),
+      String(row.running),
+      String(row.failed),
+      String(row.dead),
+      row.oldestSeconds === undefined ? "" : String(row.oldestSeconds),
+    ].some((value) => value.toLowerCase().includes(normalized))
+  );
+}
+
 export function queueRowId(row: QueueRow) {
   return row.name;
 }

@@ -16,6 +16,10 @@ import { cn } from "../lib/cn";
 import { time } from "../lib/format";
 import { runtimeConsoleDataSource } from "../lib/http-client";
 import {
+  resizeOperationsInspectorWidth,
+  type OperationsInspectorLayout,
+} from "./operations-layout";
+import {
   pushOperationsUrl,
   readOperationsParam,
   replaceOperationsUrl,
@@ -35,11 +39,7 @@ import {
 
 const remoteProxyCallsLayoutDefaults = {
   inspectorWidth: 408,
-};
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
-}
+} satisfies OperationsInspectorLayout;
 
 export function RemoteProxyCallsPage() {
   const { openStory, openStoryTarget } = useRuntimeConsole();
@@ -162,12 +162,13 @@ export function RemoteProxyCallsPage() {
   const resizeInspector = (deltaX: number) => {
     setLayout((current) => ({
       ...current,
-      inspectorWidth: clamp(
-        (current.inspectorWidth ??
-          remoteProxyCallsLayoutDefaults.inspectorWidth) - deltaX,
-        340,
-        620
-      ),
+      inspectorWidth: resizeOperationsInspectorWidth({
+        currentWidth: current.inspectorWidth,
+        defaultWidth: remoteProxyCallsLayoutDefaults.inspectorWidth,
+        deltaX,
+        maxWidth: 620,
+        minWidth: 340,
+      }),
     }));
   };
 

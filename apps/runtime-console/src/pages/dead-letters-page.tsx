@@ -22,6 +22,10 @@ import {
 import { actorLabel, time } from "../lib/format";
 import { runtimeConsoleDataSource } from "../lib/http-client";
 import {
+  resizeOperationsInspectorWidth,
+  type OperationsInspectorLayout,
+} from "./operations-layout";
+import {
   deadLettersPath,
   pushOperationsUrl,
   readOperationsParam,
@@ -34,11 +38,7 @@ type DeadLetter =
 
 const deadLettersLayoutDefaults = {
   inspectorWidth: 376,
-};
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
-}
+} satisfies OperationsInspectorLayout;
 
 export function DeadLettersPage() {
   const { openRetry, openStoryTarget } = useRuntimeConsole();
@@ -152,12 +152,13 @@ export function DeadLettersPage() {
   const resizeInspector = (deltaX: number) => {
     setLayout((current) => ({
       ...current,
-      inspectorWidth: clamp(
-        (current.inspectorWidth ?? deadLettersLayoutDefaults.inspectorWidth) -
-          deltaX,
-        320,
-        560
-      ),
+      inspectorWidth: resizeOperationsInspectorWidth({
+        currentWidth: current.inspectorWidth,
+        defaultWidth: deadLettersLayoutDefaults.inspectorWidth,
+        deltaX,
+        maxWidth: 560,
+        minWidth: 320,
+      }),
     }));
   };
 
