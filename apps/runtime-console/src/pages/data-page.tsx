@@ -37,7 +37,15 @@ type ListResponse = {
 };
 type DetailResponse = { data: AdminRecord };
 type ActionResponse = { data: unknown };
-type ActionVariables = { label: string; name: string };
+type ActionVariables = { capability: string; label: string; name: string };
+type ActionActivityItem = {
+  id: string;
+  capability: string;
+  kind: "error" | "success";
+  label: string;
+  message: string;
+  occurredAt: string;
+};
 
 type Selection = { module: AdminModuleMetadata; entity: EntitySchema | null };
 
@@ -465,19 +473,42 @@ function DeclarativeSurface({
     kind: "error" | "success";
     message: string;
   } | null>(null);
+  const [actionActivity, setActionActivity] = useState<ActionActivityItem[]>(
+    []
+  );
+  const recordActionActivity = (item: Omit<ActionActivityItem, "id">) => {
+    const id = `${item.occurredAt}:${item.label}:${item.kind}`;
+    setActionActivity((current) => [{ ...item, id }, ...current].slice(0, 5));
+  };
   const actionMutation = useMutation({
     mutationFn: (action: ActionVariables) =>
       invokeAdminAction(module.module_name, action.name),
     onError: (error, action) => {
+      const message = error instanceof Error ? error.message : String(error);
       setActionStatus({
         kind: "error",
-        message: `${action.label}: ${error instanceof Error ? error.message : String(error)}`,
+        message: `${action.label}: ${message}`,
+      });
+      recordActionActivity({
+        capability: action.capability,
+        kind: "error",
+        label: action.label,
+        message,
+        occurredAt: new Date().toISOString(),
       });
     },
     onSuccess: async (response, action) => {
+      const message = adminActionResultSummary(response.data);
       setActionStatus({
         kind: "success",
-        message: `${action.label}: ${adminActionResultSummary(response.data)}`,
+        message: `${action.label}: ${message}`,
+      });
+      recordActionActivity({
+        capability: action.capability,
+        kind: "success",
+        label: action.label,
+        message,
+        occurredAt: new Date().toISOString(),
       });
       await queryClient.invalidateQueries({
         queryKey: ["admin-data", "list", module.module_name],
@@ -507,6 +538,7 @@ function DeclarativeSurface({
                   onClick={() => {
                     setActionStatus(null);
                     actionMutation.mutate({
+                      capability: action.capability,
                       label: action.label,
                       name: action.name,
                     });
@@ -535,6 +567,34 @@ function DeclarativeSurface({
             >
               {actionStatus.message}
             </p>
+          ) : null}
+          {actionActivity.length > 0 ? (
+            <div className="grid gap-1 border-t border-(--border-subtle) pt-1.5">
+              {actionActivity.map((item) => (
+                <div
+                  className="grid min-w-0 grid-cols-[72px_minmax(0,140px)_minmax(0,1fr)] gap-2 text-[11px]"
+                  key={item.id}
+                  title={`${item.capability} / ${item.occurredAt}`}
+                >
+                  <span
+                    className={cn(
+                      "truncate",
+                      item.kind === "error"
+                        ? "text-(--error)"
+                        : "text-(--success)"
+                    )}
+                  >
+                    {item.kind}
+                  </span>
+                  <span className="truncate text-(--foreground)">
+                    {item.label}
+                  </span>
+                  <span className="truncate text-(--muted)">
+                    {item.message}
+                  </span>
+                </div>
+              ))}
+            </div>
           ) : null}
         </div>
       ) : null}
