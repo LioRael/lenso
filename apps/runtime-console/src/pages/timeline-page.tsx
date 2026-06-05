@@ -54,7 +54,7 @@ export function TimelinePage() {
   }, [items]);
 
   return (
-    <section className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden bg-(--background) p-4 text-(--foreground)">
+    <section>
       <div className="mb-4 grid grid-cols-[minmax(0,1fr)_minmax(280px,420px)] items-end gap-4 max-lg:grid-cols-1">
         <div>
           <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-(--muted)">
@@ -100,7 +100,7 @@ export function TimelinePage() {
         </Button>
       </form>
 
-      <Panel className="min-h-0 overflow-hidden">
+      <Panel>
         <Panel.Header>
           <div className="min-w-0">
             <div className="mono truncate text-[13px] font-semibold text-(--foreground)">
@@ -141,7 +141,7 @@ export function TimelinePage() {
             </EmptyState.Description>
           </EmptyState>
         ) : (
-          <div className="h-full overflow-auto p-4.5">
+          <div className="p-4.5">
             {items.map((item, index) => (
               <TimelineNode
                 index={index}

@@ -159,7 +159,7 @@ export function buildRuntimeSearchResults({
       kind: "correlation",
       id,
       title: id,
-      subtitle: "Open correlation in Timeline",
+      subtitle: "Open correlation in Stories",
       correlationId: id,
     }));
 
