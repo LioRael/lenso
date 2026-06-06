@@ -1,9 +1,10 @@
-import { storyConsoleModule } from "../modules/story-console";
+import { storyConsoleManifest } from "../modules/story-console";
 import type {
   ConsoleModule,
   ConsoleNavigationItem,
   ConsoleRouteContribution,
 } from "./console-module-api";
+import { resolveConsoleModules } from "./console-module-resolver";
 
 export { defineConsoleModule } from "./console-module-api";
 export type {
@@ -53,7 +54,16 @@ export function buildConsoleNavigation(
   });
 }
 
-export const consoleModules = [storyConsoleModule];
+export const consoleModulePackageReferences = [
+  {
+    exportName: storyConsoleManifest.exportName,
+    packageName: storyConsoleManifest.packageName,
+  },
+];
+
+export const consoleModules = resolveConsoleModules(
+  consoleModulePackageReferences
+);
 
 export const consoleRoutes = buildConsoleRoutes(consoleModules);
 export const consoleNavigation = buildConsoleNavigation(consoleModules);

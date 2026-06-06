@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
   buildConsoleNavigation,
   buildConsoleRoutes,
+  consoleModulePackageReferences,
   consoleModules,
   defineConsoleModule,
 } from "./console-modules";
@@ -68,6 +69,12 @@ describe("console module registry", () => {
   });
 
   test("loads the Stories module through the first-party module registry", () => {
+    expect(consoleModulePackageReferences).toEqual([
+      {
+        exportName: "storyConsoleModule",
+        packageName: "@lenso/story-console",
+      },
+    ]);
     expect(consoleModules.map((module) => module.id)).toContain(
       "platform-story"
     );
