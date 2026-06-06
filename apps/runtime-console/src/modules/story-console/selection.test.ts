@@ -1,6 +1,6 @@
+import type { RuntimeStory } from "@lenso/runtime-console/console-package-api";
 import { describe, expect, test } from "vitest";
 
-import type { RuntimeStory } from "../../console-package-api";
 import { resolveSelectedRuntimeStory } from "./selection";
 
 const stories = [

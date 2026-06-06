@@ -11,6 +11,11 @@
     "forceConsistentCasingInFileNames": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "paths": {
+      "@lenso/runtime-console/console-package-api": [
+        "./src/console-package-api.ts"
+      ]
+    },
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,

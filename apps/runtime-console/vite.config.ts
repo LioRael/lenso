@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url";
+
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
@@ -28,6 +30,13 @@ export default defineConfig({
     },
   },
   plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: {
+      "@lenso/runtime-console/console-package-api": fileURLToPath(
+        new URL("src/console-package-api.ts", import.meta.url)
+      ),
+    },
+  },
   server: {
     port: 5174,
   },

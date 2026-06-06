@@ -1,4 +1,11 @@
 import { useGSAP } from "@gsap/react";
+import {
+  runtimeConsoleHostApi,
+  type ExecutionInspectorTab,
+  type ExecutionNode,
+  type RuntimeStory,
+  type StoryViewMode,
+} from "@lenso/runtime-console/console-package-api";
 import gsap from "gsap";
 import {
   useEffect,
@@ -8,13 +15,6 @@ import {
   type CSSProperties,
 } from "react";
 
-import {
-  runtimeConsoleHostApi,
-  type ExecutionInspectorTab,
-  type ExecutionNode,
-  type RuntimeStory,
-  type StoryViewMode,
-} from "../../console-package-api";
 import { shouldCloseInspectorOnEscape } from "./keyboard";
 import {
   resizeServicesPanelLayout,
