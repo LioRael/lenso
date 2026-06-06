@@ -7,7 +7,11 @@ export type ConsoleModulePackageReference = {
 };
 
 export type ConsoleModuleMetadata = {
+  module_name?: string;
   console?: {
+    name?: string;
+    label?: string;
+    route?: string;
     package?: {
       name?: string;
       export?: string;
@@ -18,6 +22,17 @@ export type ConsoleModuleMetadata = {
 
 export type ConsoleModuleSelectionOptions = {
   availableCapabilities?: readonly string[];
+};
+
+export type MissingConsolePackageReference = {
+  key: string;
+  moduleName: string;
+  surfaceName: string;
+  surfaceLabel: string;
+  route: string;
+  packageName: string;
+  exportName: string;
+  requiredCapabilities: string[];
 };
 
 const firstPartyConsoleModuleExports: Record<string, ConsoleModule> = {
@@ -79,6 +94,36 @@ export function selectConsoleModulePackageReferences(
         return [];
       }
       return [reference];
+    })
+  );
+}
+
+export function missingConsolePackageReferences(
+  modules: ConsoleModuleMetadata[]
+): MissingConsolePackageReference[] {
+  return modules.flatMap((module) =>
+    (module.console ?? []).flatMap((surface) => {
+      const packageName = surface.package?.name;
+      const exportName = surface.package?.export;
+      if (!(packageName && exportName)) {
+        return [];
+      }
+      const reference = { exportName, packageName };
+      if (consolePackageExportIsRegistered(reference)) {
+        return [];
+      }
+      return [
+        {
+          exportName,
+          key: packageExportKey(reference),
+          moduleName: module.module_name ?? "unknown",
+          packageName,
+          requiredCapabilities: [...(surface.required_capabilities ?? [])],
+          route: surface.route ?? "-",
+          surfaceLabel: surface.label ?? surface.name ?? "-",
+          surfaceName: surface.name ?? "-",
+        },
+      ];
     })
   );
 }

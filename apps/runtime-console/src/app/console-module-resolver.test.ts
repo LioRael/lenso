@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  missingConsolePackageReferences,
   resolveConsoleModule,
   resolveConsoleModules,
   selectConsoleModulePackageReferences,
@@ -101,5 +102,47 @@ describe("console module resolver", () => {
     ).toThrow(
       "Console module package export is not registered: @lenso/story-console#missingExport"
     );
+  });
+
+  test("collects unsupported package references for installation planning", () => {
+    expect(
+      missingConsolePackageReferences([
+        {
+          module_name: "remote-crm",
+          console: [
+            {
+              label: "CRM",
+              name: "crm",
+              package: {
+                export: "crmConsoleModule",
+                name: "@lenso/crm-console",
+              },
+              required_capabilities: ["remote_crm.contacts.read"],
+              route: "/data/crm",
+            },
+            {
+              label: "Stories",
+              name: "stories",
+              package: {
+                export: "storyConsoleModule",
+                name: "@lenso/story-console",
+              },
+              route: "/runtime/stories",
+            },
+          ],
+        },
+      ])
+    ).toEqual([
+      {
+        exportName: "crmConsoleModule",
+        key: "@lenso/crm-console#crmConsoleModule",
+        moduleName: "remote-crm",
+        packageName: "@lenso/crm-console",
+        requiredCapabilities: ["remote_crm.contacts.read"],
+        route: "/data/crm",
+        surfaceLabel: "CRM",
+        surfaceName: "crm",
+      },
+    ]);
   });
 });

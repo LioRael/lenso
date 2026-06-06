@@ -13,6 +13,7 @@ import {
 import { useState } from "react";
 
 import { useConsoleCapabilities } from "../app/console-capabilities";
+import { missingConsolePackagesFromMetadata } from "../app/console-module-metadata";
 import { Button } from "../components/ui/button";
 import { useRemoteProxyCalls } from "../hooks/use-runtime-queries";
 import { cn } from "../lib/cn";
@@ -470,6 +471,7 @@ function ModuleRegistryDetail({
   const consoleRows = moduleConsoleSurfaceRows(module, {
     availableCapabilities,
   });
+  const missingConsolePackages = missingConsolePackagesFromMetadata([module]);
   const storyRows = storyDisplayRows(module);
   return (
     <div className="grid gap-3">
@@ -497,11 +499,67 @@ function ModuleRegistryDetail({
       <ModuleGovernancePanel module={module} />
       <ModuleCapabilitiesList capabilities={module.capabilities} />
       <ModuleConsoleSurfacesTable rows={consoleRows} />
+      <MissingConsolePackagesTable rows={missingConsolePackages} />
       <ModuleStoryDisplayTable rows={storyRows} />
       <ModuleRuntimeFunctionsTable rows={runtimeRows} />
       <ModuleManifestChecks checks={manifestChecks} />
       <ModuleHttpRoutesTable rows={routeRows} />
     </div>
+  );
+}
+
+function MissingConsolePackagesTable({
+  rows,
+}: {
+  rows: ReturnType<typeof missingConsolePackagesFromMetadata>;
+}) {
+  if (rows.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="min-w-0 border border-(--border-subtle) bg-(--surface)">
+      <header className="flex items-center gap-2 border-b border-(--border-subtle) px-3 py-2 font-semibold">
+        <TriangleAlert className="text-(--warning)" size={14} />
+        <span>Missing Console Packages</span>
+        <span className="ml-auto border border-(--border-subtle) px-1.5 py-0.5 text-[10px] text-(--secondary)">
+          {rows.length}
+        </span>
+      </header>
+      <div className="overflow-auto">
+        <table className="w-full min-w-[820px] table-fixed">
+          <thead className="bg-(--sidebar) text-[10px] uppercase tracking-wide text-(--muted)">
+            <tr>
+              <th className="px-3 py-1.5 text-left">package</th>
+              <th className="px-3 py-1.5 text-left">surface</th>
+              <th className="px-3 py-1.5 text-left">route</th>
+              <th className="px-3 py-1.5 text-left">capabilities</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr
+                className="border-t border-(--border-subtle) text-[11px]"
+                key={row.key}
+              >
+                <td className="truncate px-3 py-1.5 text-(--foreground)">
+                  {row.packageName} / {row.exportName}
+                </td>
+                <td className="truncate px-3 py-1.5 text-(--secondary)">
+                  {row.moduleName} / {row.surfaceLabel} / {row.surfaceName}
+                </td>
+                <td className="truncate px-3 py-1.5 text-(--muted)">
+                  {row.route}
+                </td>
+                <td className="truncate px-3 py-1.5 text-(--muted)">
+                  {row.requiredCapabilities.join(", ") || "-"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 

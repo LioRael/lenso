@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   consoleModuleMetadataWithFallback,
+  missingConsolePackagesFromMetadata,
   navigationFromConsoleModuleMetadata,
 } from "./console-module-metadata";
 
@@ -53,6 +54,27 @@ describe("console module metadata", () => {
         []
       )
     ).toEqual([]);
+  });
+
+  test("reports missing console packages from metadata", () => {
+    expect(
+      missingConsolePackagesFromMetadata([
+        {
+          module_name: "remote-crm",
+          console: [
+            {
+              label: "CRM",
+              name: "crm",
+              package: {
+                export: "crmConsoleModule",
+                name: "@lenso/crm-console",
+              },
+              route: "/data/crm",
+            },
+          ],
+        },
+      ]).map((row) => row.key)
+    ).toEqual(["@lenso/crm-console#crmConsoleModule"]);
   });
 
   test("uses backend metadata when it is available", () => {

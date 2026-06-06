@@ -4,6 +4,7 @@ import { httpClient, isApiMode } from "../lib/http-client";
 import { useConsoleCapabilities } from "./console-capabilities";
 import {
   type ConsoleModuleMetadata,
+  missingConsolePackageReferences,
   resolveConsoleModules,
   selectConsoleModulePackageReferences,
 } from "./console-module-resolver";
@@ -46,6 +47,12 @@ export function navigationFromConsoleModuleMetadata(
       selectConsoleModulePackageReferences(modules, { availableCapabilities })
     )
   );
+}
+
+export function missingConsolePackagesFromMetadata(
+  modules: ConsoleModuleMetadata[]
+) {
+  return missingConsolePackageReferences(modules);
 }
 
 export function useConsoleNavigation() {
