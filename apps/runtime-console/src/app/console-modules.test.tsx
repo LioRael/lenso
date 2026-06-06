@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
   buildConsoleNavigation,
   buildConsoleRoutes,
+  consoleModuleMetadataFromManifest,
   consoleModulePackageReferences,
   consoleModules,
   defineConsoleModule,
@@ -88,5 +89,33 @@ describe("console module registry", () => {
     expect(
       buildConsoleRoutes(consoleModules).map((route) => route.path)
     ).toEqual(["/runtime/stories", "/runtime/example-console"]);
+  });
+
+  test("derives fallback metadata from a package manifest", () => {
+    expect(
+      consoleModuleMetadataFromManifest({
+        exportName: "billingConsoleModule",
+        id: "billing",
+        label: "Billing",
+        packageName: "@lenso/billing-console",
+        requiredCapabilities: ["billing.read"],
+        route: "/data/billing",
+        surfaceName: "billing",
+      })
+    ).toEqual({
+      console: [
+        {
+          label: "Billing",
+          name: "billing",
+          package: {
+            export: "billingConsoleModule",
+            name: "@lenso/billing-console",
+          },
+          required_capabilities: ["billing.read"],
+          route: "/data/billing",
+        },
+      ],
+      module_name: "billing",
+    });
   });
 });

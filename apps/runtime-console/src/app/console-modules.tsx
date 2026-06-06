@@ -6,6 +6,7 @@ import type {
   ConsoleRouteContribution,
 } from "./console-module-api";
 import {
+  type ConsoleModuleMetadata,
   resolveConsoleModules,
   selectConsoleModulePackageReferences,
 } from "./console-module-resolver";
@@ -58,38 +59,40 @@ export function buildConsoleNavigation(
   });
 }
 
+export type BuildTimeConsoleSurfaceManifest = {
+  id: string;
+  label: string;
+  packageName: string;
+  exportName: string;
+  route: string;
+  surfaceName: string;
+  requiredCapabilities: readonly string[];
+};
+
+export function consoleModuleMetadataFromManifest(
+  manifest: BuildTimeConsoleSurfaceManifest
+): ConsoleModuleMetadata {
+  return {
+    console: [
+      {
+        label: manifest.label,
+        name: manifest.surfaceName,
+        package: {
+          export: manifest.exportName,
+          name: manifest.packageName,
+        },
+        required_capabilities: manifest.requiredCapabilities,
+        route: manifest.route,
+      },
+    ],
+    module_name: manifest.id,
+  };
+}
+
 export const buildTimeConsoleModuleMetadata = [
-  {
-    console: [
-      {
-        label: storyConsoleManifest.label,
-        name: storyConsoleManifest.surfaceName,
-        package: {
-          export: storyConsoleManifest.exportName,
-          name: storyConsoleManifest.packageName,
-        },
-        required_capabilities: storyConsoleManifest.requiredCapabilities,
-        route: storyConsoleManifest.route,
-      },
-    ],
-    module_name: storyConsoleManifest.id,
-  },
-  {
-    console: [
-      {
-        label: exampleConsoleManifest.label,
-        name: exampleConsoleManifest.surfaceName,
-        package: {
-          export: exampleConsoleManifest.exportName,
-          name: exampleConsoleManifest.packageName,
-        },
-        required_capabilities: exampleConsoleManifest.requiredCapabilities,
-        route: exampleConsoleManifest.route,
-      },
-    ],
-    module_name: exampleConsoleManifest.id,
-  },
-];
+  storyConsoleManifest,
+  exampleConsoleManifest,
+].map(consoleModuleMetadataFromManifest);
 
 export const consoleModulePackageReferences =
   selectConsoleModulePackageReferences(buildTimeConsoleModuleMetadata);
