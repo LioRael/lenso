@@ -4,6 +4,13 @@ describe("console module boundaries", () => {
   test("keeps story-console internals behind the module entrypoint", () => {
     expect(findConsoleModuleBoundaryViolations()).toEqual([]);
   });
+
+  test("covers installed console packages with boundary checks", () => {
+    expect(consolePackageNames()).toEqual([
+      "identity-console",
+      "story-console",
+    ]);
+  });
 });
 
 const sourceFiles = import.meta.glob<string>("../**/*.{ts,tsx}", {
@@ -11,16 +18,8 @@ const sourceFiles = import.meta.glob<string>("../**/*.{ts,tsx}", {
   import: "default",
   query: "?raw",
 });
-const storyPackageFiles = import.meta.glob<string>(
-  "../../packages/story-console/src/**/*.{ts,tsx}",
-  {
-    eager: true,
-    import: "default",
-    query: "?raw",
-  }
-);
-const identityPackageFiles = import.meta.glob<string>(
-  "../../packages/identity-console/src/**/*.{ts,tsx}",
+const consolePackageFiles = import.meta.glob<string>(
+  "../../packages/*/src/**/*.{ts,tsx}",
   {
     eager: true,
     import: "default",
@@ -28,7 +27,8 @@ const identityPackageFiles = import.meta.glob<string>(
   }
 );
 const modulePrefix = "../modules/";
-const identityPackagePrefix = "../../packages/identity-console/src/";
+const consolePackagePrefix = "../../packages/";
+const hostApiPackagePrefix = "../../packages/console-package-api/src/";
 const storyPackagePrefix = "../../packages/story-console/src/";
 const storyModulePrefix = "../modules/story-console/";
 const importPattern =
@@ -39,14 +39,13 @@ function findConsoleModuleBoundaryViolations(): string[] {
 
   for (const [file, source] of Object.entries({
     ...sourceFiles,
-    ...identityPackageFiles,
-    ...storyPackageFiles,
+    ...consolePackageFiles,
   })) {
-    const inIdentityPackage = file.startsWith(identityPackagePrefix);
+    const inConsolePackage = file.startsWith(consolePackagePrefix);
+    const inHostApiPackage = file.startsWith(hostApiPackagePrefix);
+    const inInstalledConsolePackage = inConsolePackage && !inHostApiPackage;
     const inConsoleModule =
-      file.startsWith(modulePrefix) ||
-      file.startsWith(identityPackagePrefix) ||
-      file.startsWith(storyPackagePrefix);
+      file.startsWith(modulePrefix) || inInstalledConsolePackage;
     const inStoryModule =
       file.startsWith(storyModulePrefix) || file.startsWith(storyPackagePrefix);
 
@@ -116,15 +115,34 @@ function findConsoleModuleBoundaryViolations(): string[] {
         );
       }
 
-      if (!inIdentityPackage && target.startsWith(identityPackagePrefix)) {
+      if (
+        !inConsolePackage &&
+        target.startsWith(consolePackagePrefix) &&
+        !target.includes("/console-package-api/")
+      ) {
         violations.push(
-          `${displayPath(file)} imports identity-console internals through ${specifier}; use @lenso/identity-console`
+          `${displayPath(file)} imports console package internals through ${specifier}`
         );
       }
     }
   }
 
   return violations.sort();
+}
+
+function consolePackageNames(): string[] {
+  return [
+    ...new Set(
+      Object.keys(consolePackageFiles)
+        .flatMap((file) => {
+          const packageName = file.match(
+            /^\.\.\/\.\.\/packages\/([^/]+)\//u
+          )?.[1];
+          return packageName ? [packageName] : [];
+        })
+        .filter((name) => name !== "console-package-api")
+    ),
+  ].sort();
 }
 
 function importSpecifiers(source: string): string[] {
