@@ -97,13 +97,17 @@ REMOTE_MODULE_ADDR=127.0.0.1:4101 HTTP_PORT=3001 VITE_API_BASE_URL=http://localh
 - `src/pages`: route-level screens.
 - `packages/console-package-api`: public host API for console package authors.
 - `packages/story-console`: first-party Story workbench package.
-- `packages/identity-console`: installed business-module console package.
+- `packages/identity-console`: installed module package fixture used to exercise
+  framework wiring; it is not a product-default business module.
 
 ## Console Packages
 
 Runtime Console frontend modules are local workspace packages under `packages/*`.
 They must import host capabilities through `@lenso/runtime-console-api`, define a
 `ConsolePackageManifest`, and export a `ConsoleModule`.
+
+Lenso provides the package framework and fixtures. Product projects choose and
+own their real business modules.
 
 See `docs/console-package-template.md` before adding a package. The short path is:
 

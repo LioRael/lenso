@@ -100,7 +100,7 @@ surface fields.
 
 ## Business Module Wiring
 
-For a real module-owned frontend, declare the same package reference in the
+For a project-owned module frontend, declare the same package reference in the
 Rust `ModuleManifest.console` surface. The backend declaration is what API mode
 uses to decide whether an installed frontend package should appear in Runtime
 Console navigation.
