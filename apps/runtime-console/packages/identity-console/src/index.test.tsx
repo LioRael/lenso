@@ -10,6 +10,14 @@ describe("identity console package", () => {
   test("declares an installable identity console package export", () => {
     expect(identityConsoleManifest).toMatchObject({
       exportName: "identityConsoleModule",
+      navigation: {
+        order: 60,
+        workspace: {
+          icon: "settings",
+          id: "system",
+          label: "System",
+        },
+      },
       packageName: "@lenso/identity-console",
       requiredCapabilities: ["identity.users.read"],
       route: "/data/identity",
