@@ -229,6 +229,8 @@ grouped by source, package installation, and registry mapping, with fix
 commands next to each issue.
 `pnpm --dir apps/runtime-console demo:remote-module-install` runs the same flow
 against a temporary host fixture without mutating the working tree.
+The operator-facing walkthrough lives in
+`apps/runtime-console/docs/remote-module-install-flow.md`.
 
 The plan file is intentionally ignored by git. It is an operator/developer
 handoff artifact, not trusted marketplace state.

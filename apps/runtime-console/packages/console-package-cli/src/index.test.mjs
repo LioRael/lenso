@@ -504,6 +504,43 @@ describe("module scaffold CLI", () => {
     );
   });
 
+  test("documents the third-party remote module install flow", async () => {
+    const runtimeConsoleRoot = path.resolve(import.meta.dirname, "../../..");
+    const repoRoot = path.resolve(runtimeConsoleRoot, "../..");
+    const flowDoc = await readFile(
+      path.join(runtimeConsoleRoot, "docs/remote-module-install-flow.md"),
+      "utf-8"
+    );
+    expect(flowDoc).toContain("lenso module add");
+    expect(flowDoc).toContain("lenso console-package apply-plan");
+    expect(flowDoc).toContain("lenso module doctor");
+
+    await expect(
+      readFile(path.join(repoRoot, "apps/runtime-console/README.md"), "utf-8")
+    ).resolves.toContain("docs/remote-module-install-flow.md");
+    await expect(
+      readFile(
+        path.join(repoRoot, "docs/architecture/third-party-modules.md"),
+        "utf-8"
+      )
+    ).resolves.toContain(
+      "apps/runtime-console/docs/remote-module-install-flow.md"
+    );
+  });
+
+  test("shows the third-party remote module flow in CLI help", async () => {
+    const { stdout } = await execFileAsync(process.execPath, [
+      path.join(import.meta.dirname, "index.mjs"),
+      "module",
+      "--help",
+    ]);
+
+    expect(stdout).toContain("Third-party remote module flow");
+    expect(stdout).toContain("lenso module add <manifest-url>");
+    expect(stdout).toContain("lenso console-package apply-plan");
+    expect(stdout).toContain("lenso module doctor");
+  });
+
   test("runs the remote module install demo script", async () => {
     const runtimeConsoleRoot = path.resolve(import.meta.dirname, "../../..");
     const packageJson = JSON.parse(

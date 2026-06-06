@@ -136,7 +136,8 @@ lenso module doctor
 ```
 
 Run `pnpm demo:remote-module-install` for a temp-directory smoke demo of that
-flow.
+flow. See `docs/remote-module-install-flow.md` for the full host and module
+author workflow.
 
 See `docs/console-package-template.md` before adding a package. The short path is:
 

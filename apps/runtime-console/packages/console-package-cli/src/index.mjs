@@ -1546,7 +1546,16 @@ const createProgram = ({ defaultRuntimeConsoleRoot } = {}) => {
 
   const moduleCommand = program
     .command("module")
-    .description("create and manage Lenso modules");
+    .description("create and manage Lenso modules")
+    .addHelpText(
+      "after",
+      `
+Third-party remote module flow:
+  lenso module add <manifest-url>
+  lenso console-package apply-plan
+  lenso module doctor
+`
+    );
   addSharedCreateOptions(
     moduleCommand
       .command("create <moduleId>")
