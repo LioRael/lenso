@@ -538,6 +538,24 @@ describe("module scaffold CLI", () => {
     );
   });
 
+  test("keeps third-party module support status current", async () => {
+    const repoRoot = path.resolve(
+      path.resolve(import.meta.dirname, "../../.."),
+      "../.."
+    );
+    const architectureDoc = await readFile(
+      path.join(repoRoot, "docs/architecture/third-party-modules.md"),
+      "utf-8"
+    );
+
+    expect(architectureDoc).toContain("remote module install CLI");
+    expect(architectureDoc).toContain("console package apply-plan");
+    expect(architectureDoc).toContain("module doctor diagnostics");
+    expect(architectureDoc.match(/embedded host bridges/gu) ?? []).toHaveLength(
+      1
+    );
+  });
+
   test("shows the third-party remote module flow in CLI help", async () => {
     const { stdout } = await execFileAsync(process.execPath, [
       path.join(import.meta.dirname, "index.mjs"),

@@ -167,6 +167,9 @@ Current Runtime Console support includes:
 - workspace-installed console packages
 - package manifests derived into install metadata
 - module metadata showing missing frontend package install plans
+- remote module install CLI that writes local source configuration
+- console package apply-plan registration for requested package exports
+- module doctor diagnostics for source/package/registry mismatches
 - boundary checks that forbid package imports from host internals
 
 ## Deferred Support
