@@ -3,6 +3,8 @@ import { realpathSync } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { Command } from "commander";
+
 const readJson = async (filePath) =>
   JSON.parse(await readFile(filePath, "utf-8"));
 
@@ -148,77 +150,6 @@ const findRepoRoot = async (startPath) => {
     }
     current = parent;
   }
-};
-
-const printUsage = () => {
-  console.log(`Usage:
-  lenso module create <module-id> [options]
-  lenso console-package create <module-id> [options]
-  lenso-console-package create <module-id> [options]
-
-Options:
-  --repo-root <path>
-  --output-dir <path>
-  --runtime-console-root <path>
-  --area <data|runtime|operations|configuration>
-  --label <label>
-  --route <route>
-  --capability <capability>
-  --icon <icon>
-  --source <installed|first_party>
-  --remote
-  --with-console
-  --package-slug <name-console>
-  --package-scope <@scope>
-  --package-name <@scope/name>
-  --surface-name <name>
-  --dry-run`);
-};
-
-const parseOptions = (args) => {
-  const parsed = {
-    dryRun: false,
-    help: false,
-  };
-  const positional = [];
-
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
-    if (arg === "--") {
-      continue;
-    }
-    if (arg === "--dry-run") {
-      parsed.dryRun = true;
-      continue;
-    }
-    if (arg === "--with-console") {
-      parsed.withConsole = true;
-      continue;
-    }
-    if (arg === "--remote") {
-      parsed.remote = true;
-      continue;
-    }
-    if (arg === "--help" || arg === "-h") {
-      parsed.help = true;
-      continue;
-    }
-    if (arg.startsWith("--")) {
-      const key = camelCase(arg.slice(2));
-      const value = args[index + 1];
-      if (!value || value.startsWith("--")) {
-        throw new Error(`${arg} requires a value`);
-      }
-      parsed[key] = value;
-      index += 1;
-      continue;
-    }
-    positional.push(arg);
-  }
-
-  const [moduleId] = positional;
-  parsed.moduleId = moduleId;
-  return parsed;
 };
 
 const relativePath = (runtimeConsoleRoot, filePath) =>
@@ -1055,51 +986,93 @@ const createConsolePackage = async ({ defaultRuntimeConsoleRoot, options }) => {
   console.log("- just console-check");
 };
 
+const addSharedCreateOptions = (command) =>
+  command
+    .option("--repo-root <path>", "Lenso host repository root")
+    .option("--output-dir <path>", "directory for standalone remote packages")
+    .option("--runtime-console-root <path>", "Runtime Console app root")
+    .option("--area <name>", "console surface area")
+    .option("--label <label>", "display label")
+    .option("--route <route>", "console route")
+    .option("--capability <capability>", "required capability")
+    .option("--icon <icon>", "Lucide icon name")
+    .option("--source <source>", "console package install source")
+    .option("--remote", "create a standalone remote module package")
+    .option("--with-console", "create a matching Runtime Console package")
+    .option("--package-slug <slug>", "console package slug")
+    .option("--package-scope <scope>", "console package npm scope")
+    .option("--package-name <name>", "full console package name")
+    .option("--surface-name <name>", "console surface name")
+    .option("--package-root <name>", "remote package root directory")
+    .option("--dry-run", "print files without writing them");
+
+const createProgram = ({ defaultRuntimeConsoleRoot } = {}) => {
+  const program = new Command();
+  program
+    .name("lenso")
+    .description("Lenso module and Runtime Console package tooling")
+    .exitOverride()
+    .showHelpAfterError();
+
+  const moduleCommand = program
+    .command("module")
+    .description("create and manage Lenso modules");
+  addSharedCreateOptions(
+    moduleCommand
+      .command("create <moduleId>")
+      .description("create a linked or remote module scaffold")
+  ).action(async (moduleId, options) => {
+    await createModule({ options: { ...options, moduleId } });
+  });
+
+  const consolePackageCommand = program
+    .command("console-package")
+    .description("create Runtime Console package scaffolds");
+  addSharedCreateOptions(
+    consolePackageCommand
+      .command("create <moduleId>")
+      .description("create a Runtime Console package scaffold")
+  ).action(async (moduleId, options) => {
+    await createConsolePackage({
+      defaultRuntimeConsoleRoot,
+      options: { ...options, moduleId },
+    });
+  });
+
+  addSharedCreateOptions(
+    program
+      .command("create <moduleId>")
+      .description("create a Runtime Console package scaffold")
+  ).action(async (moduleId, options) => {
+    await createConsolePackage({
+      defaultRuntimeConsoleRoot,
+      options: { ...options, moduleId },
+    });
+  });
+
+  return program;
+};
+
 export const runConsolePackageCli = async (
   args,
   { defaultRuntimeConsoleRoot } = {}
 ) => {
-  const [command, subcommand, ...rest] = args;
-  if (command === "--help" || command === "-h" || !command) {
-    printUsage();
-    return command ? 0 : 1;
-  }
-  if (command === "module") {
-    if (subcommand !== "create") {
-      console.error(`Unknown module command: ${subcommand ?? ""}`.trim());
-      printUsage();
-      return 1;
-    }
-    const options = parseOptions(rest);
-    if (options.help || !options.moduleId) {
-      printUsage();
-      return options.help ? 0 : 1;
-    }
-    await createModule({ options });
-    return 0;
-  }
-
-  const isConsolePackageCreate =
-    command === "create" ||
-    (command === "console-package" && subcommand === "create");
-  if (!isConsolePackageCreate) {
-    console.error(`Unknown command: ${command}`);
-    printUsage();
+  const normalizedArgs = args.filter((arg) => arg !== "--");
+  const program = createProgram({ defaultRuntimeConsoleRoot });
+  if (normalizedArgs.length === 0) {
+    program.outputHelp();
     return 1;
   }
 
-  const consolePackageArgs =
-    command === "create"
-      ? [subcommand, ...rest].filter((arg) => arg !== undefined)
-      : rest;
-  const options = parseOptions(consolePackageArgs);
-  if (options.help || !options.moduleId) {
-    printUsage();
-    return options.help ? 0 : 1;
+  try {
+    await program.parseAsync(normalizedArgs, { from: "user" });
+    return 0;
+  } catch (error) {
+    if (typeof error.exitCode === "number") {
+      return error.exitCode;
+    }
+    throw error;
   }
-
-  await createConsolePackage({ defaultRuntimeConsoleRoot, options });
-  return 0;
 };
 
 const isCliEntry = () =>

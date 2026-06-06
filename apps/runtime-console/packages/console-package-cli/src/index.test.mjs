@@ -161,6 +161,40 @@ afterEach(async () => {
 });
 
 describe("module scaffold CLI", () => {
+  test("uses commander for command and option parsing", async () => {
+    const packageJson = JSON.parse(
+      await readFile(new URL("../package.json", import.meta.url), "utf-8")
+    );
+
+    expect(packageJson.dependencies).toHaveProperty("commander");
+  });
+
+  test("accepts pnpm forwarded arguments after a separator", async () => {
+    const outputRoot = await mkdtemp(
+      path.join(os.tmpdir(), "lenso-forwarded-cli-")
+    );
+    tempRoots.push(outputRoot);
+
+    await expect(
+      runConsolePackageCli([
+        "module",
+        "create",
+        "--",
+        "billing",
+        "--remote",
+        "--output-dir",
+        outputRoot,
+      ])
+    ).resolves.toBe(0);
+
+    await expect(
+      readFile(
+        path.join(outputRoot, "lenso-billing/lenso.module.json"),
+        "utf-8"
+      )
+    ).resolves.toContain('"source": "remote"');
+  });
+
   test("creates a linked Rust module and registers it in the workspace", async () => {
     const repoRoot = await createRepoFixture();
 

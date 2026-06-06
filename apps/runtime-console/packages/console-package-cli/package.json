@@ -9,5 +9,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.mjs"
+  },
+  "dependencies": {
+    "commander": "^15.0.0"
   }
 }
