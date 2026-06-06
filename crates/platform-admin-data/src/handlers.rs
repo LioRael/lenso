@@ -175,6 +175,7 @@ fn metadata_response_modules(modules: Vec<AdminModuleMetadata>) -> Vec<AdminModu
                 &m.http_routes,
                 m.runtime.as_ref(),
                 m.lifecycle.as_ref(),
+                &m.console,
                 &m.capabilities,
             );
             AdminModuleMetadataDto {
@@ -186,6 +187,7 @@ fn metadata_response_modules(modules: Vec<AdminModuleMetadata>) -> Vec<AdminModu
                 http_routes: m.http_routes.clone(),
                 runtime: m.runtime.clone(),
                 lifecycle: m.lifecycle.clone(),
+                console: m.console.clone(),
                 governance: module_governance(m, &manifest_lints),
                 manifest_lints,
                 story_display: m
@@ -227,6 +229,7 @@ fn module_governance(
         module.admin.as_ref(),
         &module.http_routes,
         module.lifecycle.as_ref(),
+        &module.console,
     );
     let declared = module
         .capabilities
@@ -701,9 +704,9 @@ fn elapsed_ms(started: Instant) -> i64 {
 mod tests {
     use super::*;
     use platform_module::{
-        AdminSchema, AdminSurface, EntitySchema, LifecycleActivationJobDeclaration,
-        LifecycleActivationRunPolicy, LifecycleSurface, ModuleHttpMethod, ModuleHttpRoute,
-        ModuleSource,
+        AdminSchema, AdminSurface, ConsoleArea, ConsolePackage, ConsoleSurface, EntitySchema,
+        LifecycleActivationJobDeclaration, LifecycleActivationRunPolicy, LifecycleSurface,
+        ModuleHttpMethod, ModuleHttpRoute, ModuleSource,
     };
 
     #[test]
@@ -730,6 +733,7 @@ mod tests {
                     required: true,
                 }],
             }),
+            console: Vec::new(),
             story_display: Vec::new(),
             capabilities: Vec::new(),
             admin: None,
@@ -762,6 +766,18 @@ mod tests {
             }],
             runtime: None,
             lifecycle: None,
+            console: vec![ConsoleSurface {
+                name: "contacts".to_owned(),
+                label: "Contacts".to_owned(),
+                area: ConsoleArea::Data,
+                route: "/data/contacts".to_owned(),
+                package: ConsolePackage {
+                    name: "@lenso/contacts-console".to_owned(),
+                    export: "contactsConsoleModule".to_owned(),
+                },
+                icon: None,
+                required_capabilities: vec!["remote_crm.contacts.read".to_owned()],
+            }],
             story_display: Vec::new(),
             capabilities: vec!["remote_crm.contacts.write".to_owned()],
             admin: Some(AdminSurface::Schema(AdminSchema {
@@ -783,7 +799,7 @@ mod tests {
         );
         assert_eq!(governance.capability_summary.declared_count, 1);
         assert_eq!(governance.capability_summary.referenced_count, 1);
-        assert_eq!(governance.capability_summary.missing_count, 2);
+        assert_eq!(governance.capability_summary.missing_count, 3);
         assert_eq!(governance.capability_summary.unused_count, 1);
         assert_eq!(
             governance.capability_issues[0].capability,
@@ -793,6 +809,13 @@ mod tests {
             governance.capability_issues[0].subject,
             "capability.reference.http_route.GET /contacts/{id}"
         );
+        assert!(
+            governance
+                .capability_issues
+                .iter()
+                .any(|issue| { issue.subject == "capability.reference.console.surface.contacts" })
+        );
+        assert_eq!(modules[0].console.len(), 1);
     }
 }
 

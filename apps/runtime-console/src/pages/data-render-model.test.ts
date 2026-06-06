@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 
+import { storyConsoleManifest } from "../modules/story-console";
 import {
   adminActionDangerLevel,
   adminActionHasInput,
@@ -21,6 +22,7 @@ import {
   firstDeclarativePage,
   manifestLintCategory,
   moduleActivationLabel,
+  moduleConsoleSurfaceRows,
   moduleErrorMessage,
   moduleGovernanceRows,
   moduleHttpRouteRows,
@@ -77,6 +79,7 @@ function moduleMetadata(
   module: Omit<
     AdminModuleMetadata,
     | "capabilities"
+    | "console"
     | "lifecycle"
     | "manifest_lints"
     | "governance"
@@ -87,6 +90,7 @@ function moduleMetadata(
       Pick<
         AdminModuleMetadata,
         | "capabilities"
+        | "console"
         | "lifecycle"
         | "manifest_lints"
         | "governance"
@@ -97,6 +101,7 @@ function moduleMetadata(
 ): AdminModuleMetadata {
   return {
     capabilities: [],
+    console: [],
     lifecycle: null,
     governance: {
       activation_state: "active",
@@ -553,6 +558,7 @@ describe("module status helpers", () => {
         error: null,
         http_routes: [],
         manifest_lints: [],
+        console: [],
         runtime: null,
         lifecycle: null,
         governance: {
@@ -707,6 +713,44 @@ describe("module status helpers", () => {
         queue: "remote-crm",
         retryPolicy: "3 attempts / 1000ms",
         version: "1",
+      },
+    ]);
+  });
+
+  test("builds console surface rows for registry detail", () => {
+    const module = moduleMetadata({
+      module_name: "platform-story",
+      source: "linked",
+      status: "loaded",
+      error: null,
+      http_routes: [],
+      console: [
+        {
+          area: storyConsoleManifest.area,
+          icon: storyConsoleManifest.icon,
+          label: storyConsoleManifest.label,
+          name: storyConsoleManifest.surfaceName,
+          package: {
+            export: storyConsoleManifest.exportName,
+            name: storyConsoleManifest.packageName,
+          },
+          required_capabilities: [...storyConsoleManifest.requiredCapabilities],
+          route: storyConsoleManifest.route,
+        },
+      ],
+      admin: null,
+    });
+
+    expect(moduleConsoleSurfaceRows(module)).toEqual([
+      {
+        area: "runtime",
+        capabilities: storyConsoleManifest.requiredCapabilities.join(", "),
+        exportName: storyConsoleManifest.exportName,
+        key: "stories:/runtime/stories:0",
+        label: storyConsoleManifest.label,
+        name: storyConsoleManifest.surfaceName,
+        packageName: storyConsoleManifest.packageName,
+        route: storyConsoleManifest.route,
       },
     ]);
   });
@@ -1015,6 +1059,9 @@ describe("module status helpers", () => {
     expect(
       manifestLintCategory("lifecycle.activation_job.warm contact cache")
     ).toBe("lifecycle");
+    expect(manifestLintCategory("console.surface.stories.route")).toBe(
+      "console"
+    );
     expect(manifestLintCategory("module.name")).toBe("module");
   });
 

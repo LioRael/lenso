@@ -5,7 +5,7 @@ import {
   readStoryViewMode,
   runtimeStoriesPath,
   storyUrlId,
-} from "./runtime-stories-url-model";
+} from "./url-model";
 
 describe("runtime stories url model", () => {
   test("builds compact story deep links", () => {

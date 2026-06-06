@@ -8,37 +8,21 @@ import {
   type CSSProperties,
 } from "react";
 
-import { ExecutionInspector } from "../components/runtime/execution-inspector";
 import {
-  defaultExecutionInspectorTab,
+  runtimeConsoleHostApi,
   type ExecutionInspectorTab,
-} from "../components/runtime/execution-inspector-model";
-import { ResizeHandle } from "../components/runtime/resize-handle";
-import { useRuntimeConsole } from "../components/runtime/runtime-console-context";
-import { findStoryByCorrelation } from "../components/runtime/runtime-story-target";
-import { RuntimeStoryVisualization } from "../components/runtime/runtime-story-visualization";
-import { ServiceSummaryStrip } from "../components/runtime/service-summary-strip";
-import { StoryHeader } from "../components/runtime/story-header";
-import { StoryList } from "../components/runtime/story-list";
-import type { StoryViewMode } from "../components/runtime/story-tabs";
-import { EmptyState } from "../components/ui/empty-state";
-import {
-  retryTargetForNode,
-  type RuntimeStory,
   type ExecutionNode,
-} from "../data/mock-runtime";
-import { useBrowserUrlPopState } from "../hooks/use-browser-url-state";
-import { useListKeyboard } from "../hooks/use-list-keyboard";
-import { usePersistedLayout } from "../hooks/use-persisted-layout";
-import { useRuntimeStories } from "../hooks/use-runtime-queries";
-import { shouldCloseInspectorOnEscape } from "./runtime-stories-keyboard";
+  type RuntimeStory,
+  type StoryViewMode,
+} from "../../app/console-host-api";
+import { shouldCloseInspectorOnEscape } from "./keyboard";
 import {
   resizeServicesPanelLayout,
   resizeExecutionInspectorLayout,
   resizeStoryListWidth,
   runtimeStoriesLayoutDefaults,
-} from "./runtime-stories-layout";
-import { resolveSelectedRuntimeStory } from "./runtime-stories-selection";
+} from "./layout";
+import { resolveSelectedRuntimeStory } from "./selection";
 import {
   readExecutionInspectorTab,
   readRuntimeStoriesParam,
@@ -47,7 +31,7 @@ import {
   replaceRuntimeStoriesUrl,
   runtimeStoriesPath,
   storyUrlId,
-} from "./runtime-stories-url-model";
+} from "./url-model";
 
 gsap.registerPlugin(useGSAP);
 
@@ -56,6 +40,25 @@ const selectedStoryStorageKey = "runtime-console:selected-story-correlation-id";
 export const runtimeStoriesDefaultViewMode = "story" satisfies StoryViewMode;
 
 export function RuntimeStoriesPage() {
+  const {
+    context: { useRuntimeConsole },
+    data: { retryTargetForNode },
+    hooks: { useBrowserUrlPopState, useListKeyboard, usePersistedLayout },
+    queries: { useRuntimeStories },
+    story: { findStoryByCorrelation },
+    ui: {
+      common: { EmptyState },
+      runtime: {
+        ExecutionInspector,
+        ResizeHandle,
+        RuntimeStoryVisualization,
+        ServiceSummaryStrip,
+        StoryHeader,
+        StoryList,
+        defaultExecutionInspectorTab,
+      },
+    },
+  } = runtimeConsoleHostApi;
   const { activeStoryTarget, clearStoryTarget, openRetry } =
     useRuntimeConsole();
   const storiesQuery = useRuntimeStories();

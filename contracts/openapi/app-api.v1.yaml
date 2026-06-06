@@ -2968,6 +2968,7 @@ components:
       - source
       - status
       - http_routes
+      - console
       - governance
       - manifest_lints
       - story_display
@@ -2981,6 +2982,10 @@ components:
           type: array
           items:
             type: string
+        console:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConsoleSurface'
         error:
           type:
           - string
@@ -4243,6 +4248,50 @@ components:
           - string
           - 'null'
         value: {}
+    ConsoleArea:
+      type: string
+      enum:
+      - runtime
+      - operations
+      - data
+      - configuration
+    ConsolePackage:
+      type: object
+      required:
+      - name
+      - export
+      properties:
+        export:
+          type: string
+        name:
+          type: string
+    ConsoleSurface:
+      type: object
+      required:
+      - name
+      - label
+      - area
+      - route
+      - package
+      properties:
+        area:
+          $ref: '#/components/schemas/ConsoleArea'
+        icon:
+          type:
+          - string
+          - 'null'
+        label:
+          type: string
+        name:
+          type: string
+        package:
+          $ref: '#/components/schemas/ConsolePackage'
+        required_capabilities:
+          type: array
+          items:
+            type: string
+        route:
+          type: string
     CreateUserRequest:
       type: object
       required:

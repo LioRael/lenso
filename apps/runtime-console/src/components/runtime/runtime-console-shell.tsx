@@ -17,6 +17,8 @@ import {
 import { useCallback, useEffect, useRef } from "react";
 import type { ComponentType, CSSProperties, PropsWithChildren } from "react";
 
+import { consoleNavigation } from "../../app/console-modules";
+import type { ConsoleSurfaceIcon } from "../../app/console-modules";
 import { usePersistedLayout } from "../../hooks/use-persisted-layout";
 import { runtimeConsoleDataSource } from "../../lib/http-client";
 import { Badge } from "../ui/badge";
@@ -28,9 +30,27 @@ import { RuntimeSearch } from "./runtime-search";
 
 gsap.registerPlugin(useGSAP);
 
+const iconRegistry = {
+  activity: Activity,
+  boxes: Boxes,
+  database: Database,
+  network: Network,
+  settings: Settings,
+  workflow: Workflow,
+} satisfies Record<
+  ConsoleSurfaceIcon,
+  ComponentType<{ size?: number; strokeWidth?: number }>
+>;
+
+const consoleNavItems = consoleNavigation.map((item) => ({
+  icon: iconRegistry[item.icon ?? "activity"],
+  label: item.label,
+  to: item.path,
+}));
+
 const primaryNavItems = [
   { to: "/overview", label: "Overview", icon: Activity },
-  { to: "/runtime/stories", label: "Stories", icon: Workflow },
+  ...consoleNavItems,
   { to: "/operations", label: "Operations", icon: Network },
   { to: "/modules", label: "Modules", icon: Boxes },
   { to: "/data", label: "Data", icon: Database },

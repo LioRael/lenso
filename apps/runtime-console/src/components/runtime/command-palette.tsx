@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { consoleNavigation } from "../../app/console-modules";
 import { runtimeStories } from "../../data/mock-runtime";
 import { queryDataWithMockFallback } from "../../hooks/runtime-query-data";
 import { currentBrowserUrl } from "../../hooks/use-browser-url-state";
@@ -47,14 +48,16 @@ export function CommandPalette({ theme, onToggleTheme }: CommandPaletteProps) {
       onOpenStory: openStory,
       stories,
     });
+    const consoleItems: CommandItem[] = consoleNavigation.map((item) => ({
+      action: () => void navigate({ to: item.path }),
+      id: `console:${item.moduleId}:${item.path}`,
+      searchText:
+        `go to ${item.label} ${item.moduleId} ${item.path}`.toLowerCase(),
+      subtitle: item.moduleId,
+      title: `Go to ${item.label}`,
+    }));
     const items: CommandItem[] = [
-      {
-        action: () => void navigate({ to: "/runtime/stories" }),
-        id: "stories",
-        searchText: "go to stories runtime execution stories",
-        subtitle: "Runtime execution stories",
-        title: "Go to Stories",
-      },
+      ...consoleItems,
       {
         action: () => void navigate({ to: "/operations/dead-letters" }),
         id: "dead",

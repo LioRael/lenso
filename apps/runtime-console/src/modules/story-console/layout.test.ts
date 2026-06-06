@@ -5,7 +5,7 @@ import {
   resizeServicesPanelHeight,
   resizeServicesPanelLayout,
   runtimeStoriesLayoutDefaults,
-} from "./runtime-stories-layout";
+} from "./layout";
 
 describe("runtime stories layout", () => {
   test("resizes the services panel by drag direction", () => {

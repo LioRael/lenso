@@ -173,6 +173,7 @@ export type AdminModuleGovernanceDto = {
 export type AdminModuleMetadataDto = {
   admin?: unknown;
   capabilities: Array<string>;
+  console: Array<ConsoleSurface>;
   error?: string | null;
   governance: AdminModuleGovernanceDto;
   http_routes: Array<ModuleHttpRoute>;
@@ -592,6 +593,23 @@ export type ConfigWriteResponse = {
   updated_at: string;
   updated_by?: string | null;
   value: unknown;
+};
+
+export type ConsoleArea = string;
+
+export type ConsolePackage = {
+  export: string;
+  name: string;
+};
+
+export type ConsoleSurface = {
+  area: ConsoleArea;
+  icon?: string | null;
+  label: string;
+  name: string;
+  package: ConsolePackage;
+  required_capabilities?: Array<string>;
+  route: string;
 };
 
 export type CreateUserRequest = {

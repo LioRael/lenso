@@ -27,6 +27,7 @@ import {
   adminSurfaceMetadataRows,
   filterModuleRegistry,
   moduleActivationLabel,
+  moduleConsoleSurfaceRows,
   moduleErrorMessage,
   moduleGovernanceRows,
   moduleHttpRouteRows,
@@ -464,6 +465,7 @@ function ModuleRegistryDetail({
   const routeRows = moduleHttpRouteRows(module);
   const runtimeRows = moduleRuntimeFunctionRows(module);
   const manifestChecks = moduleManifestChecks(module);
+  const consoleRows = moduleConsoleSurfaceRows(module);
   const storyRows = storyDisplayRows(module);
   return (
     <div className="grid gap-3">
@@ -490,6 +492,7 @@ function ModuleRegistryDetail({
       ) : null}
       <ModuleGovernancePanel module={module} />
       <ModuleCapabilitiesList capabilities={module.capabilities} />
+      <ModuleConsoleSurfacesTable rows={consoleRows} />
       <ModuleStoryDisplayTable rows={storyRows} />
       <ModuleRuntimeFunctionsTable rows={runtimeRows} />
       <ModuleManifestChecks checks={manifestChecks} />
@@ -734,6 +737,69 @@ function ModuleCapabilitiesList({ capabilities }: { capabilities: string[] }) {
             {capability}
           </span>
         ))}
+      </div>
+    </section>
+  );
+}
+
+function ModuleConsoleSurfacesTable({
+  rows,
+}: {
+  rows: ReturnType<typeof moduleConsoleSurfaceRows>;
+}) {
+  if (rows.length === 0) {
+    return (
+      <section className="border border-(--border-subtle) bg-(--surface) px-3 py-2 text-(--muted)">
+        No console surfaces declared.
+      </section>
+    );
+  }
+
+  return (
+    <section className="min-w-0 border border-(--border-subtle) bg-(--surface)">
+      <header className="flex items-center gap-2 border-b border-(--border-subtle) px-3 py-2 font-semibold">
+        <Boxes className="text-(--accent)" size={14} />
+        <span>Console Surfaces</span>
+        <span className="ml-auto border border-(--border-subtle) px-1.5 py-0.5 text-[10px] text-(--secondary)">
+          {rows.length}
+        </span>
+      </header>
+      <div className="overflow-auto">
+        <table className="w-full min-w-[860px] table-fixed">
+          <thead className="bg-(--sidebar) text-[10px] uppercase tracking-wide text-(--muted)">
+            <tr>
+              <th className="w-28 px-3 py-1.5 text-left">area</th>
+              <th className="px-3 py-1.5 text-left">surface</th>
+              <th className="px-3 py-1.5 text-left">route</th>
+              <th className="px-3 py-1.5 text-left">package</th>
+              <th className="px-3 py-1.5 text-left">capabilities</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr
+                className="border-t border-(--border-subtle) text-[11px]"
+                key={row.key}
+              >
+                <td className="truncate px-3 py-1.5 text-(--foreground)">
+                  {row.area}
+                </td>
+                <td className="truncate px-3 py-1.5 text-(--secondary)">
+                  {row.label} / {row.name}
+                </td>
+                <td className="truncate px-3 py-1.5 text-(--muted)">
+                  {row.route}
+                </td>
+                <td className="truncate px-3 py-1.5 text-(--muted)">
+                  {row.packageName} / {row.exportName}
+                </td>
+                <td className="truncate px-3 py-1.5 text-(--muted)">
+                  {row.capabilities}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </section>
   );

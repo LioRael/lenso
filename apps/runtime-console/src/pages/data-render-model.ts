@@ -48,6 +48,23 @@ export type StoryDisplayDescriptor = {
   story_title?: string | null;
 };
 
+export type ConsoleArea = "runtime" | "operations" | "data" | "configuration";
+
+export type ConsolePackage = {
+  name: string;
+  export: string;
+};
+
+export type ConsoleSurface = {
+  name: string;
+  label: string;
+  area: ConsoleArea;
+  route: string;
+  package: ConsolePackage;
+  icon?: string | null;
+  required_capabilities?: string[];
+};
+
 export type SchemaAdminSurface = AdminSchema & { kind: "schema" };
 
 export type DeclarativeAdminSurface = {
@@ -156,6 +173,7 @@ export type AdminModuleMetadata = {
   http_routes: ModuleHttpRoute[];
   runtime: RuntimeSurface | null;
   lifecycle: LifecycleSurface | null;
+  console: ConsoleSurface[];
   governance: ModuleGovernance;
   manifest_lints: ModuleManifestLint[];
   story_display: StoryDisplayDescriptor[];
@@ -339,6 +357,17 @@ export type ModuleRuntimeFunctionRow = {
   retryPolicy: string;
 };
 
+export type ModuleConsoleSurfaceRow = {
+  key: string;
+  name: string;
+  label: string;
+  area: string;
+  route: string;
+  packageName: string;
+  exportName: string;
+  capabilities: string;
+};
+
 export type StoryDisplayRow = {
   key: string;
   source: string;
@@ -479,6 +508,7 @@ export function schemaModulesToAdminMetadata(
     http_routes: [],
     manifest_lints: [],
     module_name: module.module_name,
+    console: [],
     runtime: null,
     lifecycle: null,
     source: module.source,
@@ -609,6 +639,16 @@ function moduleRegistrySearchText(module: AdminModuleMetadata): string {
       runtimeFunction.queue,
       runtimeFunction.input_schema ?? "",
       retryPolicyLabel(runtimeFunction.retry_policy),
+    ]),
+    ...module.console.flatMap((surface) => [
+      surface.name,
+      surface.label,
+      surface.area,
+      surface.route,
+      surface.package.name,
+      surface.package.export,
+      surface.icon ?? "",
+      ...(surface.required_capabilities ?? []),
     ]),
     ...module.story_display.flatMap((descriptor) => [
       descriptor.display_name,
@@ -838,6 +878,21 @@ export function moduleRuntimeFunctionRows(
   }));
 }
 
+export function moduleConsoleSurfaceRows(
+  module: AdminModuleMetadata
+): ModuleConsoleSurfaceRow[] {
+  return module.console.map((surface, index) => ({
+    area: surface.area,
+    capabilities: (surface.required_capabilities ?? []).join(", ") || "-",
+    exportName: surface.package.export,
+    key: `${surface.name}:${surface.route}:${index}`,
+    label: surface.label,
+    name: surface.name,
+    packageName: surface.package.name,
+    route: surface.route,
+  }));
+}
+
 export function moduleManifestChecks(
   module: AdminModuleMetadata
 ): ModuleManifestCheck[] {
@@ -891,6 +946,9 @@ export function manifestLintCategory(subject: string): string {
   }
   if (subject === "lifecycle" || subject.startsWith("lifecycle.")) {
     return "lifecycle";
+  }
+  if (subject === "console" || subject.startsWith("console.")) {
+    return "console";
   }
   if (subject.startsWith("module.")) {
     return "module";

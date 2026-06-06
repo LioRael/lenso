@@ -6,8 +6,8 @@
 use platform_core::{AppError, ErrorCode, RequestContext, StoryDisplayDescriptor};
 use platform_http::{ApiErrorResponse, ApiOpenApiRouter, OpenApiRouter, routes};
 use platform_module::{
-    AdminActionSource, AdminDataSource, AdminSchema, AdminSurface, LifecycleSurface,
-    ModuleHttpRoute, ModuleLoadStatus, ModuleSource, RuntimeSurface,
+    AdminActionSource, AdminDataSource, AdminSchema, AdminSurface, ConsoleSurface,
+    LifecycleSurface, ModuleHttpRoute, ModuleLoadStatus, ModuleSource, RuntimeSurface,
 };
 use std::sync::{Arc, OnceLock, RwLock};
 use std::time::Instant;
@@ -64,6 +64,8 @@ pub struct AdminModuleMetadata {
     /// Declared lifecycle checks and activation jobs. Metadata only; worker startup
     /// owns validation and enqueueing.
     pub lifecycle: Option<LifecycleSurface>,
+    /// Declared trusted Runtime Console frontend surfaces.
+    pub console: Vec<ConsoleSurface>,
     /// Declared story-display mappings for runtime story titles and node
     /// labels.
     pub story_display: Vec<StoryDisplayDescriptor>,

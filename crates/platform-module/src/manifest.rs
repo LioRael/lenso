@@ -6,6 +6,7 @@ use crate::admin::{
     AdminEmbeddedSurface, AdminPermission, AdminSurface,
 };
 use crate::admin_schema::AdminSchema;
+use crate::console::ConsoleSurface;
 use crate::http::{ModuleHttpMethod, ModuleHttpRoute, lint_module_http_routes};
 use crate::lifecycle::{
     LifecycleActivationJobDeclaration, LifecycleStartupCheckDeclaration, LifecycleStartupCheckKind,
@@ -53,6 +54,10 @@ pub struct ModuleManifest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lifecycle: Option<LifecycleSurface>,
 
+    /// Declared Runtime Console surfaces provided by trusted frontend packages.
+    #[serde(default)]
+    pub console: Vec<ConsoleSurface>,
+
     /// RESERVED SEAM — capabilities the module declares (perms/tenancy).
     #[serde(default)]
     pub capabilities: Vec<String>,
@@ -70,6 +75,7 @@ impl ModuleManifest {
                 http_routes: Vec::new(),
                 runtime: None,
                 lifecycle: None,
+                console: Vec::new(),
                 capabilities: Vec::new(),
             },
         }
@@ -109,6 +115,7 @@ pub fn lint_module_manifest(
         &manifest.http_routes,
         manifest.runtime.as_ref(),
         manifest.lifecycle.as_ref(),
+        &manifest.console,
         &manifest.capabilities,
     )
 }
@@ -120,6 +127,7 @@ pub fn lint_module_manifest_parts(
     http_routes: &[ModuleHttpRoute],
     runtime: Option<&RuntimeSurface>,
     lifecycle: Option<&LifecycleSurface>,
+    console: &[ConsoleSurface],
     capabilities: &[String],
 ) -> Vec<ModuleManifestLint> {
     let mut lints = Vec::new();
@@ -157,7 +165,14 @@ pub fn lint_module_manifest_parts(
             suggestion: route_lint.suggestion,
         });
     }
-    lint_capability_references(admin, http_routes, lifecycle, capabilities, &mut lints);
+    lint_capability_references(
+        admin,
+        http_routes,
+        lifecycle,
+        console,
+        capabilities,
+        &mut lints,
+    );
 
     if let Some(admin) = admin {
         lint_admin_surface(admin, &mut lints);
@@ -169,6 +184,7 @@ pub fn lint_module_manifest_parts(
     if let Some(lifecycle) = lifecycle {
         lint_lifecycle_surface(lifecycle, runtime, capabilities, &mut lints);
     }
+    lint_console_surfaces(console, &mut lints);
     lints.extend(runtime_lints);
 
     if lints.is_empty() {
@@ -187,6 +203,7 @@ pub fn module_capability_references(
     admin: Option<&AdminSurface>,
     http_routes: &[ModuleHttpRoute],
     lifecycle: Option<&LifecycleSurface>,
+    console: &[ConsoleSurface],
 ) -> Vec<ModuleCapabilityReference> {
     let mut references = Vec::new();
 
@@ -218,6 +235,22 @@ pub fn module_capability_references(
         }
     }
 
+    for surface in console {
+        let subject = if present(&surface.name) {
+            format!("console.surface.{}", surface.name)
+        } else {
+            "console.surface".to_owned()
+        };
+        for capability in &surface.required_capabilities {
+            if present(capability) {
+                references.push(ModuleCapabilityReference {
+                    capability: capability.clone(),
+                    subject: subject.clone(),
+                });
+            }
+        }
+    }
+
     references
 }
 
@@ -225,6 +258,7 @@ fn lint_capability_references(
     admin: Option<&AdminSurface>,
     http_routes: &[ModuleHttpRoute],
     lifecycle: Option<&LifecycleSurface>,
+    console: &[ConsoleSurface],
     capabilities: &[String],
     lints: &mut Vec<ModuleManifestLint>,
 ) {
@@ -233,7 +267,7 @@ fn lint_capability_references(
         .map(String::as_str)
         .collect::<HashSet<_>>();
 
-    for reference in module_capability_references(admin, http_routes, lifecycle) {
+    for reference in module_capability_references(admin, http_routes, lifecycle, console) {
         // Lifecycle startup checks already produce a lifecycle-specific lint with
         // the check context and required/optional semantics.
         if reference.subject.starts_with("lifecycle.") {
@@ -518,6 +552,87 @@ fn runtime_function_names(runtime: Option<&RuntimeSurface>) -> HashSet<String> {
         .collect()
 }
 
+fn lint_console_surfaces(console: &[ConsoleSurface], lints: &mut Vec<ModuleManifestLint>) {
+    let mut names = HashSet::new();
+    let mut routes = HashSet::new();
+
+    for surface in console {
+        let subject = if present(&surface.name) {
+            format!("console.surface.{}", surface.name)
+        } else {
+            "console.surface".to_owned()
+        };
+
+        if !present(&surface.name) {
+            lints.push(ModuleManifestLint {
+                severity: ModuleManifestLintSeverity::Error,
+                subject: subject.clone(),
+                message: "Console surface is missing a name.".to_owned(),
+                suggestion: "Set a stable surface name such as stories.".to_owned(),
+            });
+        } else if !valid_console_surface_name(&surface.name) {
+            lints.push(ModuleManifestLint {
+                severity: ModuleManifestLintSeverity::Warning,
+                subject: subject.clone(),
+                message: "Console surface name should be a path-safe identifier.".to_owned(),
+                suggestion: "Use ASCII letters, digits, underscore, or hyphen.".to_owned(),
+            });
+        } else if !names.insert(surface.name.clone()) {
+            lints.push(ModuleManifestLint {
+                severity: ModuleManifestLintSeverity::Error,
+                subject: subject.clone(),
+                message: "Duplicate console surface declaration.".to_owned(),
+                suggestion: "Keep one console surface per surface name.".to_owned(),
+            });
+        }
+
+        if !present(&surface.label) {
+            lints.push(ModuleManifestLint {
+                severity: ModuleManifestLintSeverity::Warning,
+                subject: format!("{subject}.label"),
+                message: "Console surface is missing an operator-facing label.".to_owned(),
+                suggestion: "Set a short navigation label such as Stories.".to_owned(),
+            });
+        }
+
+        if !surface.route.starts_with('/') || surface.route.contains('*') {
+            lints.push(ModuleManifestLint {
+                severity: ModuleManifestLintSeverity::Error,
+                subject: format!("{subject}.route"),
+                message: "Console surface route must be an absolute static route.".to_owned(),
+                suggestion: "Use a Console route such as /runtime/stories.".to_owned(),
+            });
+        } else if !routes.insert(surface.route.clone()) {
+            lints.push(ModuleManifestLint {
+                severity: ModuleManifestLintSeverity::Error,
+                subject: format!("{subject}.route"),
+                message: "Duplicate console surface route declaration.".to_owned(),
+                suggestion: "Keep one console surface per route.".to_owned(),
+            });
+        }
+
+        if !valid_console_package_name(&surface.package.name) {
+            lints.push(ModuleManifestLint {
+                severity: ModuleManifestLintSeverity::Warning,
+                subject: format!("{subject}.package"),
+                message: "Console surface package should be an npm package name.".to_owned(),
+                suggestion: "Use a build-time package name such as @lenso/story-console."
+                    .to_owned(),
+            });
+        }
+
+        if !present(&surface.package.export) {
+            lints.push(ModuleManifestLint {
+                severity: ModuleManifestLintSeverity::Warning,
+                subject: format!("{subject}.package.export"),
+                message: "Console surface package export is missing.".to_owned(),
+                suggestion: "Set the named export registered by the Runtime Console build."
+                    .to_owned(),
+            });
+        }
+    }
+}
+
 fn lint_admin_surface(admin: &AdminSurface, lints: &mut Vec<ModuleManifestLint>) {
     match admin {
         AdminSurface::Schema(schema) => lint_schema_entities("admin.schema", schema, lints),
@@ -683,6 +798,19 @@ fn valid_runtime_function_name(value: &str) -> bool {
         })
 }
 
+fn valid_console_surface_name(value: &str) -> bool {
+    present(value)
+        && value.chars().all(|character| {
+            character.is_ascii_alphanumeric() || character == '_' || character == '-'
+        })
+}
+
+fn valid_console_package_name(value: &str) -> bool {
+    present(value)
+        && !value.contains(' ')
+        && (value.starts_with('@') || value.chars().any(|character| character == '-'))
+}
+
 fn route_identity(route: &ModuleHttpRoute) -> String {
     format!("{} {}", method_label(route.method), route.path)
 }
@@ -760,6 +888,13 @@ impl ModuleManifestBuilder {
         self
     }
 
+    /// Attach trusted Runtime Console frontend surface declarations.
+    #[must_use]
+    pub fn console(mut self, console: Vec<ConsoleSurface>) -> Self {
+        self.manifest.console = console;
+        self
+    }
+
     /// Finish building.
     #[must_use]
     pub fn build(self) -> ModuleManifest {
@@ -776,6 +911,7 @@ mod tests {
     };
     use crate::{
         AdminEmbeddedEntry, AdminEmbeddedRuntime, AdminEmbeddedSurface, AdminSandboxPolicy,
+        ConsoleArea, ConsolePackage, ConsoleSurface,
     };
     use crate::{
         LifecycleActivationJobDeclaration, LifecycleActivationRunPolicy,
@@ -801,6 +937,80 @@ mod tests {
         let back: ModuleManifest = serde_json::from_str(&json).expect("deserialize");
 
         assert_eq!(manifest, back);
+    }
+
+    #[test]
+    fn manifest_with_console_surface_round_trips_through_json() {
+        let manifest = ModuleManifest::builder("platform-story")
+            .console(vec![ConsoleSurface {
+                name: "stories".to_owned(),
+                label: "Stories".to_owned(),
+                area: ConsoleArea::Runtime,
+                route: "/runtime/stories".to_owned(),
+                package: ConsolePackage {
+                    name: "@lenso/story-console".to_owned(),
+                    export: "storyConsoleModule".to_owned(),
+                },
+                icon: Some("workflow".to_owned()),
+                required_capabilities: vec!["runtime.stories.read".to_owned()],
+            }])
+            .capabilities(vec!["runtime.stories.read".to_owned()])
+            .build();
+
+        let json = serde_json::to_string(&manifest).expect("serialize");
+        assert!(json.contains(r#""console""#), "got {json}");
+        assert!(json.contains(r#""area":"runtime""#), "got {json}");
+
+        let back: ModuleManifest = serde_json::from_str(&json).expect("deserialize");
+
+        assert_eq!(manifest, back);
+    }
+
+    #[test]
+    fn lints_invalid_console_surface_declarations() {
+        let manifest = ModuleManifest::builder("platform-story")
+            .console(vec![
+                ConsoleSurface {
+                    name: "stories".to_owned(),
+                    label: "Stories".to_owned(),
+                    area: ConsoleArea::Runtime,
+                    route: "runtime/stories".to_owned(),
+                    package: ConsolePackage {
+                        name: "story console".to_owned(),
+                        export: String::new(),
+                    },
+                    icon: None,
+                    required_capabilities: vec!["runtime.stories.read".to_owned()],
+                },
+                ConsoleSurface {
+                    name: "stories".to_owned(),
+                    label: "Stories duplicate".to_owned(),
+                    area: ConsoleArea::Runtime,
+                    route: "/runtime/stories".to_owned(),
+                    package: ConsolePackage {
+                        name: "@lenso/story-console".to_owned(),
+                        export: "storyConsoleModule".to_owned(),
+                    },
+                    icon: None,
+                    required_capabilities: vec![],
+                },
+            ])
+            .build();
+
+        let lints = lint_module_manifest(ModuleSource::Linked, &manifest);
+        let subjects = lints
+            .iter()
+            .map(|lint| lint.subject.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(subjects.contains(&"console.surface.stories.route"));
+        assert!(subjects.contains(&"console.surface.stories.package"));
+        assert!(subjects.contains(&"console.surface.stories.package.export"));
+        assert!(subjects.contains(&"capability.reference.console.surface.stories"));
+        assert!(lints.iter().any(|lint| {
+            lint.subject == "console.surface.stories"
+                && lint.message == "Duplicate console surface declaration."
+        }));
     }
 
     #[test]

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 
-import type { RuntimeStory } from "../data/mock-runtime";
-import { resolveSelectedRuntimeStory } from "./runtime-stories-selection";
+import type { RuntimeStory } from "../../app/console-host-api";
+import { resolveSelectedRuntimeStory } from "./selection";
 
 const stories = [
   { correlationId: "corr_a", id: "corr_a", name: "A" },

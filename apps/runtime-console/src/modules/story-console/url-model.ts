@@ -1,11 +1,9 @@
 import {
-  executionInspectorTabs,
+  runtimeConsoleHostApi,
   type ExecutionInspectorTab,
-} from "../components/runtime/execution-inspector-model";
-import type { StoryViewMode } from "../components/runtime/story-tabs";
-import type { RuntimeStory } from "../data/mock-runtime";
-import { writeBrowserUrl } from "../hooks/use-browser-url-state";
-import { operationsPath } from "./operations-url-model";
+  type RuntimeStory,
+  type StoryViewMode,
+} from "../../app/console-host-api";
 
 const defaultStoryViewMode = "story" satisfies StoryViewMode;
 
@@ -18,7 +16,7 @@ export function runtimeStoriesPath(
     viewMode?: StoryViewMode;
   } = {}
 ) {
-  return operationsPath("/runtime/stories", {
+  return runtimeConsoleHostApi.routing.buildPath("/runtime/stories", {
     node: filters.nodeId,
     q: filters.query,
     story: filters.storyId,
@@ -42,11 +40,11 @@ export function readRuntimeStoriesParam(name: string) {
 }
 
 export function replaceRuntimeStoriesUrl(path: string) {
-  writeBrowserUrl(path, "replace");
+  runtimeConsoleHostApi.hooks.writeBrowserUrl(path, "replace");
 }
 
 export function pushRuntimeStoriesUrl(path: string) {
-  writeBrowserUrl(path, "push");
+  runtimeConsoleHostApi.hooks.writeBrowserUrl(path, "push");
 }
 
 export function readStoryViewMode(value: string): StoryViewMode {
@@ -77,5 +75,7 @@ function isStoryViewMode(value: string): value is StoryViewMode {
 function isExecutionInspectorTab(
   value: string
 ): value is ExecutionInspectorTab {
-  return executionInspectorTabs.some((tab) => tab.id === value);
+  return runtimeConsoleHostApi.story.executionInspectorTabs.some(
+    (tab) => tab.id === value
+  );
 }

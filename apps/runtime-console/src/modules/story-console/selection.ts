@@ -1,4 +1,4 @@
-import type { RuntimeStory } from "../data/mock-runtime";
+import type { RuntimeStory } from "../../app/console-host-api";
 
 export function resolveSelectedRuntimeStory(
   visibleStories: RuntimeStory[],

@@ -23,10 +23,10 @@ import {
   useRuntimeStories,
 } from "../../hooks/use-runtime-queries";
 import { isApiMode } from "../../lib/http-client";
+import { runtimeStoriesPath } from "../../modules/story-console";
 import { adminActionsPath } from "../../pages/admin-actions-model";
 import { functionsPath } from "../../pages/operations-url-model";
 import { remoteProxyCallsPath } from "../../pages/remote-proxy-calls-model";
-import { runtimeStoriesPath } from "../../pages/runtime-stories-url-model";
 import {
   buildRuntimeSearchResults,
   type RuntimeSearchResult,

@@ -1,9 +1,8 @@
 import { describe, expect, test } from "vitest";
 
-import type { StoryHeader } from "../components/runtime/story-header";
-import { runtimeStories } from "../data/mock-runtime";
-import { shouldCloseInspectorOnEscape } from "./runtime-stories-keyboard";
-import { runtimeStoriesDefaultViewMode } from "./runtime-stories-page";
+import { runtimeConsoleHostApi } from "../../app/console-host-api";
+import { shouldCloseInspectorOnEscape } from "./keyboard";
+import { runtimeStoriesDefaultViewMode } from "./page";
 
 describe("story workbench page contracts", () => {
   test("defaults to the runtime story visualization mode", () => {
@@ -13,8 +12,10 @@ describe("story workbench page contracts", () => {
   });
 
   test("keeps story header props aligned with story data", () => {
-    const story = runtimeStories[0]!;
-    const storyHeaderProps: Parameters<typeof StoryHeader>[0] = {
+    const story = runtimeConsoleHostApi.data.runtimeStories[0]!;
+    const storyHeaderProps: Parameters<
+      typeof runtimeConsoleHostApi.ui.runtime.StoryHeader
+    >[0] = {
       onClose: () => undefined,
       onSelectNode: () => undefined,
       story,

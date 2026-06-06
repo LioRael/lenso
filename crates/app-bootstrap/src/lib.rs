@@ -26,8 +26,9 @@ use platform_core::{
 };
 use platform_http::ApiOpenApiRouter;
 use platform_module::{
-    AdminSchema, AdminSurface, LifecycleActivationRunPolicy, LifecycleStartupCheckKind,
-    LinkedBinding, Module, ModuleLoadStatus, ModuleManifest, ModuleSource,
+    AdminSchema, AdminSurface, ConsoleArea, ConsolePackage, ConsoleSurface,
+    LifecycleActivationRunPolicy, LifecycleStartupCheckKind, LinkedBinding, Module,
+    ModuleLoadStatus, ModuleManifest, ModuleSource,
 };
 use platform_module_remote::{RemoteHttpProxyRegistry, RemoteModuleConfig, RemoteModuleSource};
 use platform_runtime::{EnqueueFunctionRequest, FunctionRegistry, RuntimeClient};
@@ -53,7 +54,37 @@ const LINKED_MODULE_ENTRIES: &[LinkedModuleEntry] = &[
         load: notifications::module::module,
         http_binding: None,
     },
+    LinkedModuleEntry {
+        module_name: "platform-story",
+        manifest: platform_story_manifest,
+        load: platform_story_module,
+        http_binding: None,
+    },
 ];
+
+const STORY_CONSOLE_CAPABILITY: &str = "runtime.stories.read";
+
+fn platform_story_manifest() -> ModuleManifest {
+    ModuleManifest::builder("platform-story")
+        .capabilities(vec![STORY_CONSOLE_CAPABILITY.to_owned()])
+        .console(vec![ConsoleSurface {
+            name: "stories".to_owned(),
+            label: "Stories".to_owned(),
+            area: ConsoleArea::Runtime,
+            route: "/runtime/stories".to_owned(),
+            package: ConsolePackage {
+                name: "@lenso/story-console".to_owned(),
+                export: "storyConsoleModule".to_owned(),
+            },
+            icon: Some("workflow".to_owned()),
+            required_capabilities: vec![STORY_CONSOLE_CAPABILITY.to_owned()],
+        }])
+        .build()
+}
+
+fn platform_story_module(_ctx: &AppContext) -> Module {
+    Module::linked(platform_story_manifest(), LinkedBinding::builder().build())
+}
 
 /// The authoritative list of loaded modules (context-bound: builds bindings).
 ///
@@ -291,6 +322,7 @@ fn admin_metadata_from_modules(modules: Vec<Module>) -> Vec<AdminModuleMetadata>
                 http_routes,
                 runtime,
                 lifecycle,
+                console,
                 story_display,
                 capabilities,
                 ..
@@ -302,6 +334,7 @@ fn admin_metadata_from_modules(modules: Vec<Module>) -> Vec<AdminModuleMetadata>
                 http_routes,
                 runtime,
                 lifecycle,
+                console,
                 story_display,
                 capabilities,
                 admin,
@@ -362,6 +395,7 @@ fn failed_remote_admin_metadata(
         http_routes: Vec::new(),
         runtime: None,
         lifecycle: None,
+        console: Vec::new(),
         story_display: Vec::new(),
         capabilities: Vec::new(),
         admin: None,
@@ -771,8 +805,9 @@ mod tests {
         TelemetryConfig, apply_migrations,
     };
     use platform_module::{
-        LifecycleActivationJobDeclaration, LifecycleStartupCheckDeclaration, LifecycleSurface,
-        RuntimeFunctionDeclaration, RuntimeSurface,
+        ConsoleArea, LifecycleActivationJobDeclaration, LifecycleStartupCheckDeclaration,
+        LifecycleSurface, ModuleManifestLintSeverity, RuntimeFunctionDeclaration, RuntimeSurface,
+        lint_module_manifest,
     };
     use platform_runtime::{FunctionDefinition, FunctionHandler, RUNTIME_MIGRATIONS, RetryPolicy};
     use platform_testing::{SequentialIdGenerator, TestDatabase};
@@ -848,6 +883,35 @@ mod tests {
                 module.manifest.name
             );
         }
+    }
+
+    #[test]
+    fn platform_story_manifest_declares_story_console_surface() {
+        let manifest = module_manifests()
+            .into_iter()
+            .find(|manifest| manifest.name == "platform-story")
+            .expect("platform-story manifest should be registered");
+
+        assert_eq!(manifest.admin, None);
+        assert_eq!(manifest.capabilities, vec!["runtime.stories.read"]);
+        assert_eq!(manifest.console.len(), 1);
+        let surface = &manifest.console[0];
+        assert_eq!(surface.name, "stories");
+        assert_eq!(surface.label, "Stories");
+        assert_eq!(surface.area, ConsoleArea::Runtime);
+        assert_eq!(surface.route, "/runtime/stories");
+        assert_eq!(surface.package.name, "@lenso/story-console");
+        assert_eq!(surface.package.export, "storyConsoleModule");
+        assert_eq!(surface.icon.as_deref(), Some("workflow"));
+        assert_eq!(surface.required_capabilities, vec!["runtime.stories.read"]);
+
+        let lints = lint_module_manifest(ModuleSource::Linked, &manifest);
+        assert!(
+            lints
+                .iter()
+                .all(|lint| lint.severity == ModuleManifestLintSeverity::Ok),
+            "platform-story manifest should not have warning/error lints: {lints:?}"
+        );
     }
 
     #[tokio::test]
