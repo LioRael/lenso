@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  createNoopConsolePackageInstaller,
   missingConsolePackageReferences,
   planConsolePackageInstall,
   resolveConsoleModule,
@@ -170,5 +171,25 @@ describe("console module resolver", () => {
         status: "planned",
       },
     ]);
+  });
+
+  test("noop package installer reports that installation is not configured", async () => {
+    const installer = createNoopConsolePackageInstaller();
+
+    await expect(
+      installer.install({
+        exportName: "crmConsoleModule",
+        key: "@lenso/crm-console#crmConsoleModule",
+        packageName: "@lenso/crm-console",
+        reason: "remote-crm / CRM / /data/crm",
+        status: "planned",
+      })
+    ).resolves.toEqual({
+      exportName: "crmConsoleModule",
+      key: "@lenso/crm-console#crmConsoleModule",
+      message: "console package installation is not configured",
+      packageName: "@lenso/crm-console",
+      status: "not_configured",
+    });
   });
 });

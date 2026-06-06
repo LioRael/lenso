@@ -5,6 +5,7 @@ import {
   consoleModuleMetadataWithFallback,
   missingConsolePackagesFromMetadata,
   navigationFromConsoleModuleMetadata,
+  previewConsolePackageInstallResults,
 } from "./console-module-metadata";
 
 describe("console module metadata", () => {
@@ -103,6 +104,33 @@ describe("console module metadata", () => {
         packageName: "@lenso/crm-console",
         reason: "remote-crm / CRM / /data/crm",
         status: "planned",
+      },
+    ]);
+  });
+
+  test("previews noop install results from metadata", async () => {
+    await expect(
+      previewConsolePackageInstallResults([
+        {
+          module_name: "remote-crm",
+          console: [
+            {
+              package: {
+                export: "crmConsoleModule",
+                name: "@lenso/crm-console",
+              },
+              route: "/data/crm",
+            },
+          ],
+        },
+      ])
+    ).resolves.toEqual([
+      {
+        exportName: "crmConsoleModule",
+        key: "@lenso/crm-console#crmConsoleModule",
+        message: "console package installation is not configured",
+        packageName: "@lenso/crm-console",
+        status: "not_configured",
       },
     ]);
   });

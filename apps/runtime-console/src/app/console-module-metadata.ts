@@ -4,6 +4,7 @@ import { httpClient, isApiMode } from "../lib/http-client";
 import { useConsoleCapabilities } from "./console-capabilities";
 import {
   type ConsoleModuleMetadata,
+  createNoopConsolePackageInstaller,
   missingConsolePackageReferences,
   planConsolePackageInstall,
   resolveConsoleModules,
@@ -60,6 +61,17 @@ export function consolePackageInstallPlanFromMetadata(
   modules: ConsoleModuleMetadata[]
 ) {
   return planConsolePackageInstall(missingConsolePackagesFromMetadata(modules));
+}
+
+export async function previewConsolePackageInstallResults(
+  modules: ConsoleModuleMetadata[]
+) {
+  const installer = createNoopConsolePackageInstaller();
+  return Promise.all(
+    consolePackageInstallPlanFromMetadata(modules).map((plan) =>
+      installer.install(plan)
+    )
+  );
 }
 
 export function useConsoleNavigation() {

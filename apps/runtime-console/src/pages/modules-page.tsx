@@ -533,6 +533,9 @@ function MissingConsolePackagesTable({
       <header className="flex items-center gap-2 border-b border-(--border-subtle) px-3 py-2 font-semibold">
         <TriangleAlert className="text-(--warning)" size={14} />
         <span>Missing Console Packages</span>
+        <span className="border border-[color-mix(in_srgb,var(--info)_35%,transparent)] px-1.5 py-0.5 text-[10px] text-(--info)">
+          installer not configured
+        </span>
         <span className="ml-auto border border-(--border-subtle) px-1.5 py-0.5 text-[10px] text-(--secondary)">
           {rows.length}
         </span>
@@ -566,6 +569,9 @@ function MissingConsolePackagesTable({
                     >
                       {plan?.status ?? "planned"}
                     </span>
+                    <div className="truncate pt-1 text-[9px] text-(--muted)">
+                      installer not configured
+                    </div>
                   </td>
                   <td className="truncate px-3 py-1.5 text-(--secondary)">
                     {row.moduleName} / {row.surfaceLabel} / {row.surfaceName}

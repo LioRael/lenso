@@ -43,6 +43,20 @@ export type ConsolePackageInstallPlan = {
   reason: string;
 };
 
+export type ConsolePackageInstallResult = {
+  key: string;
+  packageName: string;
+  exportName: string;
+  status: "not_configured";
+  message: string;
+};
+
+export type ConsolePackageInstaller = {
+  install(
+    plan: ConsolePackageInstallPlan
+  ): Promise<ConsolePackageInstallResult>;
+};
+
 const firstPartyConsoleModuleExports: Record<string, ConsoleModule> = {
   "@lenso/story-console#storyConsoleModule": storyConsoleModule,
 };
@@ -146,4 +160,18 @@ export function planConsolePackageInstall(
     reason: `${missingPackage.moduleName} / ${missingPackage.surfaceLabel} / ${missingPackage.route}`,
     status: "planned",
   }));
+}
+
+export function createNoopConsolePackageInstaller(): ConsolePackageInstaller {
+  return {
+    async install(plan) {
+      return {
+        exportName: plan.exportName,
+        key: plan.key,
+        message: "console package installation is not configured",
+        packageName: plan.packageName,
+        status: "not_configured",
+      };
+    },
+  };
 }
