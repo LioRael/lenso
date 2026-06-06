@@ -34,6 +34,26 @@ module-owned packages. `identity-console` is the installed package fixture.
 - `icon`: optional host-known icon id.
 - `required_capabilities`: capabilities the host should require before showing
   or mounting the surface.
+- `navigation`: optional workspace metadata. Missing metadata defaults to the
+  host `System` workspace. Modules may create their own workspace by declaring a
+  workspace id, label, and optional icon; the first slice supports one optional
+  group level inside a workspace.
+
+Example surface metadata:
+
+```json
+{
+  "name": "contacts",
+  "label": "Contacts",
+  "area": "data",
+  "route": "/crm/contacts",
+  "navigation": {
+    "workspace": { "id": "crm", "label": "CRM", "icon": "briefcase" },
+    "group": { "id": "customers", "label": "Customers", "order": 20 },
+    "order": 10
+  }
+}
+```
 
 For `platform-story`, Rust and frontend metadata intentionally match:
 

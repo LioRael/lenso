@@ -83,23 +83,55 @@ Define the package surface once in `console-surface.json`; generated packages
 then import that contract from `src/manifest.ts` and pass it through the host
 API:
 
+```json
+{
+  "area": "data",
+  "exportName": "billingConsoleModule",
+  "icon": "database",
+  "id": "billing",
+  "label": "Billing",
+  "navigation": {
+    "order": 10,
+    "workspace": {
+      "icon": "database",
+      "id": "billing",
+      "label": "Billing"
+    }
+  },
+  "packageName": "@lenso/billing-console",
+  "requiredCapabilities": ["billing.read"],
+  "route": "/data/billing",
+  "source": "installed",
+  "surfaceName": "billing",
+  "version": "workspace"
+}
+```
+
 ```ts
 import { defineConsolePackageManifest } from "@lenso/runtime-console-api";
 
 import consoleSurface from "../console-surface.json";
 
 const consoleSurfaceContract = consoleSurface as unknown as {
-  area: "data";
-  exportName: "billingConsoleModule";
-  icon: "database";
-  id: "billing";
-  label: "Billing";
-  packageName: "@lenso/billing-console";
-  requiredCapabilities: ["billing.read"];
-  route: "/data/billing";
-  source: "installed";
-  surfaceName: "billing";
-  version: "workspace";
+  readonly area: "data";
+  readonly exportName: "billingConsoleModule";
+  readonly icon: "database";
+  readonly id: "billing";
+  readonly label: "Billing";
+  readonly navigation: {
+    readonly order: 10;
+    readonly workspace: {
+      readonly icon: "database";
+      readonly id: "billing";
+      readonly label: "Billing";
+    };
+  };
+  readonly packageName: "@lenso/billing-console";
+  readonly requiredCapabilities: readonly ["billing.read"];
+  readonly route: "/data/billing";
+  readonly source: "installed";
+  readonly surfaceName: "billing";
+  readonly version: "workspace";
 };
 
 export const billingConsoleManifest = defineConsolePackageManifest(
@@ -113,9 +145,10 @@ treated as built-in. Most module packages should use `source: "installed"`.
 The host maps manifest fields to Rust `ConsoleSurface` metadata before resolving
 installed packages: `surfaceName` becomes `name`, `packageName` becomes
 `package.name`, `exportName` becomes `package.export`, and
-`requiredCapabilities` becomes `required_capabilities`. `id`, `source`, and
-`version` stay on the frontend install manifest and are not sent as console
-surface fields.
+`requiredCapabilities` becomes `required_capabilities`. `navigation` keeps the
+same workspace/group/order shape on both sides. `id`, `source`, and `version`
+stay on the frontend install manifest and are not sent as console surface
+fields.
 
 ## Business Module Wiring
 
@@ -129,7 +162,9 @@ Generated packages include `console-surface.rs` with the matching
 capabilities aligned with `required_capabilities`.
 
 ```rust
-use platform_module::{ConsoleArea, ConsolePackage, ConsoleSurface};
+use platform_module::{
+    ConsoleArea, ConsoleNavigation, ConsolePackage, ConsoleSurface, ConsoleWorkspaceRef,
+};
 
 ModuleManifest::builder("billing")
     .capabilities(vec!["billing.read".to_owned()])
@@ -144,6 +179,15 @@ ModuleManifest::builder("billing")
         },
         icon: Some("database".to_owned()),
         required_capabilities: vec!["billing.read".to_owned()],
+        navigation: Some(ConsoleNavigation {
+            workspace: ConsoleWorkspaceRef {
+                id: "billing".to_owned(),
+                label: "Billing".to_owned(),
+                icon: Some("database".to_owned()),
+            },
+            group: None,
+            order: Some(10),
+        }),
     }])
 ```
 
@@ -154,6 +198,7 @@ Keep these values aligned with the frontend manifest:
 - Rust `ConsoleSurface.package.export` = frontend `exportName`
 - Rust `ConsoleSurface.required_capabilities` = frontend `requiredCapabilities`
 - Rust `ConsoleSurface.route` = frontend `route`
+- Rust `ConsoleSurface.navigation` = frontend `navigation`
 
 Add a module test that asserts the manifest declares the surface and passes
 manifest linting. Use `modules/identity/src/module.rs` and
@@ -178,6 +223,7 @@ export const billingConsoleModule = defineConsoleModule({
       component: BillingConsolePage,
       icon: billingConsoleManifest.icon,
       label: billingConsoleManifest.label,
+      navigation: billingConsoleManifest.navigation,
       path: billingConsoleManifest.route,
     },
   ],
