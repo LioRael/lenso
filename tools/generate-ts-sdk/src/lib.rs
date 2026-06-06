@@ -115,7 +115,10 @@ fn type_from_schema(schema: &Value, required: &BTreeSet<String>) -> anyhow::Resu
     if let Some(one_of) = schema.get("oneOf").and_then(Value::as_array) {
         let parts = one_of
             .iter()
-            .map(|schema| type_from_schema(schema, &BTreeSet::new()))
+            .map(|branch| {
+                let required = required_fields(branch);
+                type_from_schema(branch, &required)
+            })
             .collect::<anyhow::Result<Vec<_>>>()?;
         return Ok(union_type(parts));
     }

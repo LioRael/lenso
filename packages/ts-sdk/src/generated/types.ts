@@ -98,11 +98,11 @@ export type AdminDataPageInfo = {
 };
 
 export type AdminDeclarativeComponent = {
-  kind?: string;
+  kind: string;
   metrics?: Array<AdminMetricBinding>;
 } | {
-  entity?: string;
-  kind?: string;
+  entity: string;
+  kind: string;
 };
 
 export type AdminDeclarativePage = {
@@ -125,8 +125,8 @@ export type AdminDeclarativeSurface = {
 
 export type AdminEmbeddedEntry = {
   allowed_origins?: Array<string>;
-  kind?: string;
-  url?: string;
+  kind: string;
+  url: string;
 };
 
 export type AdminEmbeddedRuntime = string;
@@ -274,11 +274,11 @@ export type AdminOutboxListResponse = {
 };
 
 export type AdminPermission = {
-  entity?: string;
-  kind?: string;
+  entity: string;
+  kind: string;
 } | {
-  action?: string;
-  kind?: string;
+  action: string;
+  kind: string;
 };
 
 export type AdminRemoteModuleDiagnosticsDto = {
@@ -691,7 +691,7 @@ export type FieldSchema = {
 };
 
 export type FieldType = {
-  kind?: string;
+  kind: string;
 };
 
 export type LifecycleActivationJobDeclaration = {
@@ -707,11 +707,11 @@ export type LifecycleActivationRunPolicy = string;
 export type LifecycleStartupCheckDeclaration = unknown;
 
 export type LifecycleStartupCheckKind = {
-  function_name?: string;
-  kind?: string;
+  function_name: string;
+  kind: string;
 } | {
-  capability?: string;
-  kind?: string;
+  capability: string;
+  kind: string;
 };
 
 export type LifecycleSurface = {
@@ -791,12 +791,12 @@ export type StoryDisplayDescriptorDto = {
 };
 
 export type StoryDisplaySourceDto = {
-  kind?: string;
-  name?: string;
+  kind: string;
+  name: string;
 } | {
-  kind?: string;
-  method?: string;
-  path?: string;
+  kind: string;
+  method: string;
+  path: string;
 };
 
 export type ValidationErrorDetail = {

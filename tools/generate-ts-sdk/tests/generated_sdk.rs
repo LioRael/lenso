@@ -33,6 +33,19 @@ fn nullable_ref_one_of_properties_render_concrete_union_types() {
 }
 
 #[test]
+fn object_one_of_branches_keep_their_required_fields() {
+    let source =
+        generate_ts_sdk::generated_types_source().expect("generated types source should render");
+
+    assert!(
+        source.contains(
+            "export type AdminEmbeddedEntry = {\n  allowed_origins?: Array<string>;\n  kind: string;\n  url: string;\n};\n"
+        ),
+        "object oneOf branches should render branch-local required fields as required"
+    );
+}
+
+#[test]
 fn committed_generated_files_are_fresh() {
     let committed_types = include_str!("../../../packages/ts-sdk/src/generated/types.ts");
     let committed_client = include_str!("../../../packages/ts-sdk/src/generated/client.ts");
