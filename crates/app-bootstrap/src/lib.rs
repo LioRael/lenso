@@ -891,19 +891,37 @@ mod tests {
             .into_iter()
             .find(|manifest| manifest.name == "platform-story")
             .expect("platform-story manifest should be registered");
+        let console_surface_contract: Value = serde_json::from_str(include_str!(
+            "../../../apps/runtime-console/packages/story-console/console-surface.json"
+        ))
+        .expect("story console surface contract should be valid json");
 
         assert_eq!(manifest.admin, None);
-        assert_eq!(manifest.capabilities, vec!["runtime.stories.read"]);
         assert_eq!(manifest.console.len(), 1);
         let surface = &manifest.console[0];
-        assert_eq!(surface.name, "stories");
-        assert_eq!(surface.label, "Stories");
+        let surface_json = serde_json::to_value(surface)
+            .expect("platform-story console surface should serialize");
+
+        assert_eq!(
+            manifest.capabilities,
+            required_capabilities_from_contract(&console_surface_contract)
+        );
+        assert_eq!(manifest.name, console_surface_contract["id"]);
+        assert_eq!(surface.name, console_surface_contract["surfaceName"]);
+        assert_eq!(surface.label, console_surface_contract["label"]);
         assert_eq!(surface.area, ConsoleArea::Runtime);
-        assert_eq!(surface.route, "/runtime/stories");
-        assert_eq!(surface.package.name, "@lenso/story-console");
-        assert_eq!(surface.package.export, "storyConsoleModule");
-        assert_eq!(surface.icon.as_deref(), Some("workflow"));
-        assert_eq!(surface.required_capabilities, vec!["runtime.stories.read"]);
+        assert_eq!(surface_json["area"], console_surface_contract["area"]);
+        assert_eq!(surface.route, console_surface_contract["route"]);
+        assert_eq!(surface.package.name, console_surface_contract["packageName"]);
+        assert_eq!(
+            surface.package.export,
+            console_surface_contract["exportName"]
+        );
+        assert_eq!(surface_json["icon"], console_surface_contract["icon"]);
+        assert_eq!(
+            surface.required_capabilities,
+            required_capabilities_from_contract(&console_surface_contract)
+        );
 
         let lints = lint_module_manifest(ModuleSource::Linked, &manifest);
         assert!(
@@ -912,6 +930,20 @@ mod tests {
                 .all(|lint| lint.severity == ModuleManifestLintSeverity::Ok),
             "platform-story manifest should not have warning/error lints: {lints:?}"
         );
+    }
+
+    fn required_capabilities_from_contract(contract: &Value) -> Vec<String> {
+        contract["requiredCapabilities"]
+            .as_array()
+            .expect("requiredCapabilities should be an array")
+            .iter()
+            .map(|capability| {
+                capability
+                    .as_str()
+                    .expect("requiredCapabilities should contain strings")
+                    .to_owned()
+            })
+            .collect()
     }
 
     #[tokio::test]
