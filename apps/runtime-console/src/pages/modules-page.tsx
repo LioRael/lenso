@@ -13,7 +13,10 @@ import {
 import { useState } from "react";
 
 import { useConsoleCapabilities } from "../app/console-capabilities";
-import { missingConsolePackagesFromMetadata } from "../app/console-module-metadata";
+import {
+  consolePackageInstallPlanFromMetadata,
+  missingConsolePackagesFromMetadata,
+} from "../app/console-module-metadata";
 import { Button } from "../components/ui/button";
 import { useRemoteProxyCalls } from "../hooks/use-runtime-queries";
 import { cn } from "../lib/cn";
@@ -472,6 +475,9 @@ function ModuleRegistryDetail({
     availableCapabilities,
   });
   const missingConsolePackages = missingConsolePackagesFromMetadata([module]);
+  const consolePackageInstallPlan = consolePackageInstallPlanFromMetadata([
+    module,
+  ]);
   const storyRows = storyDisplayRows(module);
   return (
     <div className="grid gap-3">
@@ -499,7 +505,10 @@ function ModuleRegistryDetail({
       <ModuleGovernancePanel module={module} />
       <ModuleCapabilitiesList capabilities={module.capabilities} />
       <ModuleConsoleSurfacesTable rows={consoleRows} />
-      <MissingConsolePackagesTable rows={missingConsolePackages} />
+      <MissingConsolePackagesTable
+        installPlan={consolePackageInstallPlan}
+        rows={missingConsolePackages}
+      />
       <ModuleStoryDisplayTable rows={storyRows} />
       <ModuleRuntimeFunctionsTable rows={runtimeRows} />
       <ModuleManifestChecks checks={manifestChecks} />
@@ -509,8 +518,10 @@ function ModuleRegistryDetail({
 }
 
 function MissingConsolePackagesTable({
+  installPlan,
   rows,
 }: {
+  installPlan: ReturnType<typeof consolePackageInstallPlanFromMetadata>;
   rows: ReturnType<typeof missingConsolePackagesFromMetadata>;
 }) {
   if (rows.length === 0) {
@@ -531,31 +542,43 @@ function MissingConsolePackagesTable({
           <thead className="bg-(--sidebar) text-[10px] uppercase tracking-wide text-(--muted)">
             <tr>
               <th className="px-3 py-1.5 text-left">package</th>
+              <th className="w-28 px-3 py-1.5 text-left">plan</th>
               <th className="px-3 py-1.5 text-left">surface</th>
               <th className="px-3 py-1.5 text-left">route</th>
               <th className="px-3 py-1.5 text-left">capabilities</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
-              <tr
-                className="border-t border-(--border-subtle) text-[11px]"
-                key={row.key}
-              >
-                <td className="truncate px-3 py-1.5 text-(--foreground)">
-                  {row.packageName} / {row.exportName}
-                </td>
-                <td className="truncate px-3 py-1.5 text-(--secondary)">
-                  {row.moduleName} / {row.surfaceLabel} / {row.surfaceName}
-                </td>
-                <td className="truncate px-3 py-1.5 text-(--muted)">
-                  {row.route}
-                </td>
-                <td className="truncate px-3 py-1.5 text-(--muted)">
-                  {row.requiredCapabilities.join(", ") || "-"}
-                </td>
-              </tr>
-            ))}
+            {rows.map((row) => {
+              const plan = installPlan.find((item) => item.key === row.key);
+              return (
+                <tr
+                  className="border-t border-(--border-subtle) text-[11px]"
+                  key={row.key}
+                >
+                  <td className="truncate px-3 py-1.5 text-(--foreground)">
+                    {row.packageName} / {row.exportName}
+                  </td>
+                  <td className="px-3 py-1.5">
+                    <span
+                      className="inline-block max-w-full truncate border border-[color-mix(in_srgb,var(--info)_45%,transparent)] px-1.5 py-0.5 text-[10px] text-(--info)"
+                      title={plan?.reason}
+                    >
+                      {plan?.status ?? "planned"}
+                    </span>
+                  </td>
+                  <td className="truncate px-3 py-1.5 text-(--secondary)">
+                    {row.moduleName} / {row.surfaceLabel} / {row.surfaceName}
+                  </td>
+                  <td className="truncate px-3 py-1.5 text-(--muted)">
+                    {row.route}
+                  </td>
+                  <td className="truncate px-3 py-1.5 text-(--muted)">
+                    {row.requiredCapabilities.join(", ") || "-"}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   missingConsolePackageReferences,
+  planConsolePackageInstall,
   resolveConsoleModule,
   resolveConsoleModules,
   selectConsoleModulePackageReferences,
@@ -142,6 +143,31 @@ describe("console module resolver", () => {
         route: "/data/crm",
         surfaceLabel: "CRM",
         surfaceName: "crm",
+      },
+    ]);
+  });
+
+  test("plans package installs from missing package references", () => {
+    expect(
+      planConsolePackageInstall([
+        {
+          exportName: "crmConsoleModule",
+          key: "@lenso/crm-console#crmConsoleModule",
+          moduleName: "remote-crm",
+          packageName: "@lenso/crm-console",
+          requiredCapabilities: ["remote_crm.contacts.read"],
+          route: "/data/crm",
+          surfaceLabel: "CRM",
+          surfaceName: "crm",
+        },
+      ])
+    ).toEqual([
+      {
+        exportName: "crmConsoleModule",
+        key: "@lenso/crm-console#crmConsoleModule",
+        packageName: "@lenso/crm-console",
+        reason: "remote-crm / CRM / /data/crm",
+        status: "planned",
       },
     ]);
   });

@@ -5,6 +5,7 @@ import { useConsoleCapabilities } from "./console-capabilities";
 import {
   type ConsoleModuleMetadata,
   missingConsolePackageReferences,
+  planConsolePackageInstall,
   resolveConsoleModules,
   selectConsoleModulePackageReferences,
 } from "./console-module-resolver";
@@ -53,6 +54,12 @@ export function missingConsolePackagesFromMetadata(
   modules: ConsoleModuleMetadata[]
 ) {
   return missingConsolePackageReferences(modules);
+}
+
+export function consolePackageInstallPlanFromMetadata(
+  modules: ConsoleModuleMetadata[]
+) {
+  return planConsolePackageInstall(missingConsolePackagesFromMetadata(modules));
 }
 
 export function useConsoleNavigation() {

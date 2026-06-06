@@ -35,6 +35,14 @@ export type MissingConsolePackageReference = {
   requiredCapabilities: string[];
 };
 
+export type ConsolePackageInstallPlan = {
+  key: string;
+  packageName: string;
+  exportName: string;
+  status: "planned";
+  reason: string;
+};
+
 const firstPartyConsoleModuleExports: Record<string, ConsoleModule> = {
   "@lenso/story-console#storyConsoleModule": storyConsoleModule,
 };
@@ -126,4 +134,16 @@ export function missingConsolePackageReferences(
       ];
     })
   );
+}
+
+export function planConsolePackageInstall(
+  missingPackages: MissingConsolePackageReference[]
+): ConsolePackageInstallPlan[] {
+  return missingPackages.map((missingPackage) => ({
+    exportName: missingPackage.exportName,
+    key: missingPackage.key,
+    packageName: missingPackage.packageName,
+    reason: `${missingPackage.moduleName} / ${missingPackage.surfaceLabel} / ${missingPackage.route}`,
+    status: "planned",
+  }));
 }
