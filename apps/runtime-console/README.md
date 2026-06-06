@@ -8,7 +8,7 @@ local backend when `VITE_RUNTIME_CONSOLE_MODE=api` and `VITE_API_BASE_URL` are s
 Local API calls use the development service token:
 
 ```text
-Authorization: Bearer dev-service:admin:remote_crm.contacts.read,remote_crm.contacts.sync
+Authorization: Bearer dev-service:admin:runtime.stories.read,remote_crm.contacts.read,remote_crm.contacts.sync
 ```
 
 ## Run
@@ -45,7 +45,7 @@ VITE_RUNTIME_CONSOLE_MODE=api VITE_API_BASE_URL=http://localhost:3000 pnpm dev
 Override the development service token when needed:
 
 ```bash
-VITE_API_AUTH_TOKEN=dev-service:admin:remote_crm.contacts.read,remote_crm.contacts.sync pnpm dev
+VITE_API_AUTH_TOKEN=dev-service:admin:runtime.stories.read,remote_crm.contacts.read,remote_crm.contacts.sync pnpm dev
 ```
 
 ## Remote Module API QA
