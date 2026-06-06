@@ -23,10 +23,12 @@ use platform_core::{
 };
 use platform_http::{AdminActor, ApiErrorResponse, ErrorResponse, HttpRequestContext};
 use platform_module::{
-    AdminActionConfirmation, AdminListQuery, AdminSurface, ModuleLoadStatus, ModuleManifestLint,
-    ModuleManifestLintSeverity, lint_module_manifest_parts, module_capability_references,
+    AdminActionConfirmation, AdminActionInputField, AdminActionInputSchema, AdminListQuery,
+    AdminSurface, FieldType, ModuleLoadStatus, ModuleManifestLint, ModuleManifestLintSeverity,
+    lint_module_manifest_parts, module_capability_references,
 };
 use serde::Deserialize;
+use serde_json::Value;
 use std::collections::HashSet;
 use std::time::Instant;
 
@@ -425,6 +427,7 @@ pub(crate) async fn invoke_action(
     let declaration = declared_action(&admin_module, &action, &request_ctx)?;
     ensure_action_capability(&admin, &declaration.capability, &request_ctx)?;
     ensure_action_confirmation(&request, &declaration, &request_ctx)?;
+    ensure_action_input(&request, &declaration, &request_ctx)?;
     let action_source = admin_module.action_source.as_ref().ok_or_else(|| {
         ApiErrorResponse::with_context(
             AppError::new(
@@ -493,6 +496,7 @@ pub(crate) async fn invoke_action(
 struct DeclaredAction {
     label: String,
     capability: String,
+    input_schema: Option<AdminActionInputSchema>,
     confirmation: Option<AdminActionConfirmation>,
 }
 
@@ -515,6 +519,7 @@ fn declared_action(
         .map(|declared| DeclaredAction {
             capability: declared.capability.clone(),
             confirmation: declared.confirmation.clone(),
+            input_schema: declared.input_schema.clone(),
             label: declared.label.clone(),
         })
         .ok_or_else(|| {
@@ -523,6 +528,78 @@ fn declared_action(
                 ctx,
             )
         })
+}
+
+fn ensure_action_input(
+    request: &AdminActionInvokeRequest,
+    declaration: &DeclaredAction,
+    ctx: &RequestContext,
+) -> Result<(), ApiErrorResponse> {
+    let Some(input_schema) = declaration.input_schema.as_ref() else {
+        return Ok(());
+    };
+    if input_schema.fields.is_empty() {
+        return Ok(());
+    }
+
+    let Some(input) = request.input.as_object() else {
+        return Err(input_validation_error(
+            "admin action input must be a JSON object",
+            ctx,
+        ));
+    };
+
+    for field in &input_schema.fields {
+        let value = input.get(&field.name);
+        if field.required && matches!(value, None | Some(Value::Null)) {
+            return Err(input_validation_error(
+                format!("admin action input field `{}` is required", field.name),
+                ctx,
+            ));
+        }
+        let Some(value) = value.filter(|value| !value.is_null()) else {
+            continue;
+        };
+        if !action_input_field_type_matches(field, value) {
+            return Err(input_validation_error(
+                format!(
+                    "admin action input field `{}` must be {}",
+                    field.name,
+                    action_input_field_type_label(&field.field_type)
+                ),
+                ctx,
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn action_input_field_type_matches(field: &AdminActionInputField, value: &Value) -> bool {
+    match &field.field_type {
+        FieldType::String | FieldType::Timestamp => value.is_string(),
+        FieldType::Integer => value
+            .as_number()
+            .is_some_and(|number| number.as_i64().is_some() || number.as_u64().is_some()),
+        FieldType::Boolean => value.is_boolean(),
+        FieldType::Json => true,
+        _ => true,
+    }
+}
+
+fn action_input_field_type_label(field_type: &FieldType) -> &'static str {
+    match field_type {
+        FieldType::String => "a string",
+        FieldType::Integer => "an integer",
+        FieldType::Boolean => "a boolean",
+        FieldType::Timestamp => "a timestamp string",
+        FieldType::Json => "valid JSON",
+        _ => "the declared type",
+    }
+}
+
+fn input_validation_error(message: impl Into<String>, ctx: &RequestContext) -> ApiErrorResponse {
+    ApiErrorResponse::with_context(AppError::new(ErrorCode::Validation, message), ctx)
 }
 
 fn action_invocation_dto(request_ctx: &RequestContext) -> AdminActionInvocationDto {

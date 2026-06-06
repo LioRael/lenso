@@ -116,6 +116,31 @@ fn stub_declarative_surface() -> AdminSurface {
                 }),
                 danger_level: AdminActionDangerLevel::High,
             },
+            AdminAction {
+                name: "validated_sync".to_owned(),
+                label: "Validated sync".to_owned(),
+                capability: "remote_crm.contacts.sync".to_owned(),
+                input_schema: Some(AdminActionInputSchema {
+                    fields: vec![
+                        AdminActionInputField {
+                            name: "limit".to_owned(),
+                            label: "Limit".to_owned(),
+                            field_type: FieldType::Integer,
+                            required: true,
+                            description: Some("Maximum contacts to sync".to_owned()),
+                        },
+                        AdminActionInputField {
+                            name: "filter".to_owned(),
+                            label: "Filter".to_owned(),
+                            field_type: FieldType::Json,
+                            required: false,
+                            description: Some("Optional JSON filter".to_owned()),
+                        },
+                    ],
+                }),
+                confirmation: None,
+                danger_level: AdminActionDangerLevel::Low,
+            },
         ],
         fallback_schema: Some(stub_schema()),
     })
@@ -499,6 +524,86 @@ async fn admin_action_invocation_requires_confirmation_phrase_when_declared() {
     assert_eq!(accepted.status(), StatusCode::OK);
     let json = json_body(accepted).await;
     assert_eq!(json["data"]["action"], "danger_sync");
+}
+
+#[tokio::test]
+async fn admin_action_invocation_validates_declared_input_schema() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
+    install_admin_modules(vec![AdminModule {
+        module_name: "remote-crm".to_owned(),
+        source: ModuleSource::Remote,
+        load_status: ModuleLoadStatus::Loaded,
+        schema: stub_schema(),
+        admin: Some(stub_declarative_surface()),
+        listed_in_schema: false,
+        data_source: Some(Arc::new(StubUsers)),
+        action_source: Some(Arc::new(StubActions)),
+    }]);
+    install_admin_module_metadata(vec![AdminModuleMetadata {
+        module_name: "remote-crm".to_owned(),
+        source: ModuleSource::Remote,
+        load_status: ModuleLoadStatus::Loaded,
+        http_routes: vec![],
+        runtime: None,
+        lifecycle: None,
+        story_display: vec![],
+        capabilities: vec!["remote_crm.contacts.sync".to_owned()],
+        admin: Some(stub_declarative_surface()),
+        source_diagnostics: None,
+    }]);
+    let ctx = AppContext::new(
+        AppConfig::from_env(),
+        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test").expect("lazy pool"),
+        Arc::new(LoggingEventPublisher),
+    );
+    let app = build_router(ctx);
+
+    let missing_required = app
+        .clone()
+        .oneshot(admin_post_json_with_token(
+            "/admin/data/remote-crm/actions/validated_sync",
+            r#"{"input":{"filter":{"active":true}}}"#,
+            "dev-service:admin:remote_crm.contacts.sync",
+        ))
+        .await
+        .expect("request completes");
+    assert_eq!(missing_required.status(), StatusCode::BAD_REQUEST);
+    let missing_body = json_body(missing_required).await;
+    assert_eq!(missing_body["error"]["code"], "validation_failed");
+    assert_eq!(
+        missing_body["error"]["message"],
+        "admin action input field `limit` is required"
+    );
+
+    let wrong_type = app
+        .clone()
+        .oneshot(admin_post_json_with_token(
+            "/admin/data/remote-crm/actions/validated_sync",
+            r#"{"input":{"limit":2.5}}"#,
+            "dev-service:admin:remote_crm.contacts.sync",
+        ))
+        .await
+        .expect("request completes");
+    assert_eq!(wrong_type.status(), StatusCode::BAD_REQUEST);
+    let wrong_type_body = json_body(wrong_type).await;
+    assert_eq!(
+        wrong_type_body["error"]["message"],
+        "admin action input field `limit` must be an integer"
+    );
+
+    let accepted = app
+        .oneshot(admin_post_json_with_token(
+            "/admin/data/remote-crm/actions/validated_sync",
+            r#"{"input":{"limit":25,"filter":{"active":true}}}"#,
+            "dev-service:admin:remote_crm.contacts.sync",
+        ))
+        .await
+        .expect("request completes");
+    assert_eq!(accepted.status(), StatusCode::OK);
+    let json = json_body(accepted).await;
+    assert_eq!(json["data"]["action"], "validated_sync");
+    assert_eq!(json["data"]["input"]["limit"], 25);
+    assert_eq!(json["data"]["input"]["filter"]["active"], true);
 }
 
 #[tokio::test]
