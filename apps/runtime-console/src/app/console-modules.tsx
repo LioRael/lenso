@@ -1,4 +1,8 @@
 import { exampleConsoleManifest } from "@lenso/example-console";
+import {
+  consoleSurfaceFromPackageManifest,
+  type ConsolePackageManifest,
+} from "@lenso/runtime-console-api";
 import { storyConsoleManifest } from "@lenso/story-console";
 
 import type {
@@ -60,32 +64,11 @@ export function buildConsoleNavigation(
   });
 }
 
-export type BuildTimeConsoleSurfaceManifest = {
-  id: string;
-  label: string;
-  packageName: string;
-  exportName: string;
-  route: string;
-  surfaceName: string;
-  requiredCapabilities: readonly string[];
-};
-
 export function consoleModuleMetadataFromManifest(
-  manifest: BuildTimeConsoleSurfaceManifest
+  manifest: ConsolePackageManifest
 ): ConsoleModuleMetadata {
   return {
-    console: [
-      {
-        label: manifest.label,
-        name: manifest.surfaceName,
-        package: {
-          export: manifest.exportName,
-          name: manifest.packageName,
-        },
-        required_capabilities: manifest.requiredCapabilities,
-        route: manifest.route,
-      },
-    ],
+    console: [consoleSurfaceFromPackageManifest(manifest)],
     module_name: manifest.id,
   };
 }

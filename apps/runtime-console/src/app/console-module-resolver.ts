@@ -1,5 +1,5 @@
 import { installedConsolePackages } from "../console-package-installs";
-import type { ConsoleModule } from "./console-module-api";
+import type { ConsoleModule, ConsoleSurfaceArea } from "./console-module-api";
 import {
   consolePackageKey,
   consolePackageRegistryByKey,
@@ -16,12 +16,14 @@ export type ConsoleModuleMetadata = {
   console?: {
     name?: string;
     label?: string;
+    area?: ConsoleSurfaceArea;
     route?: string;
     package?: {
       name?: string;
       export?: string;
     };
     required_capabilities?: readonly string[];
+    icon?: string | null;
   }[];
 };
 

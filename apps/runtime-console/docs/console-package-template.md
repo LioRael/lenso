@@ -72,6 +72,13 @@ export const billingConsoleManifest = defineConsolePackageManifest({
 Use `source: "first_party"` only for platform-owned packages that should be
 treated as built-in. Most module packages should use `source: "installed"`.
 
+The host maps manifest fields to Rust `ConsoleSurface` metadata before resolving
+installed packages: `surfaceName` becomes `name`, `packageName` becomes
+`package.name`, `exportName` becomes `package.export`, and
+`requiredCapabilities` becomes `required_capabilities`. `id`, `source`, and
+`version` stay on the frontend install manifest and are not sent as console
+surface fields.
+
 ## Module Export
 
 Export a console module from the package entrypoint:

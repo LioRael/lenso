@@ -36,8 +36,41 @@ export interface ConsolePackageManifest {
   icon?: ConsoleSurfaceIcon;
 }
 
+export interface ConsoleSurfaceManifest {
+  name: string;
+  label: string;
+  area: ConsoleSurfaceArea;
+  route: string;
+  package: {
+    name: string;
+    export: string;
+  };
+  required_capabilities: readonly string[];
+  icon?: ConsoleSurfaceIcon;
+}
+
 export const defineConsolePackageManifest = <
   Manifest extends ConsolePackageManifest,
 >(
   manifest: Manifest
 ): Manifest => manifest;
+
+export const consoleSurfaceFromPackageManifest = (
+  manifest: ConsolePackageManifest
+): ConsoleSurfaceManifest => {
+  const surface: ConsoleSurfaceManifest = {
+    area: manifest.area,
+    label: manifest.label,
+    name: manifest.surfaceName,
+    package: {
+      export: manifest.exportName,
+      name: manifest.packageName,
+    },
+    required_capabilities: manifest.requiredCapabilities,
+    route: manifest.route,
+  };
+  if (manifest.icon) {
+    surface.icon = manifest.icon;
+  }
+  return surface;
+};

@@ -94,17 +94,23 @@ describe("console module registry", () => {
   test("derives fallback metadata from a package manifest", () => {
     expect(
       consoleModuleMetadataFromManifest({
+        area: "data",
         exportName: "billingConsoleModule",
+        icon: "database",
         id: "billing",
         label: "Billing",
         packageName: "@lenso/billing-console",
         requiredCapabilities: ["billing.read"],
         route: "/data/billing",
+        source: "installed",
         surfaceName: "billing",
+        version: "workspace",
       })
     ).toEqual({
       console: [
         {
+          area: "data",
+          icon: "database",
           label: "Billing",
           name: "billing",
           package: {
