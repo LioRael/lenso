@@ -17,11 +17,11 @@ describe("console module metadata", () => {
             console: [
               {
                 navigation: {
-                  order: 20,
+                  order: 5,
                   workspace: {
-                    icon: "settings",
-                    id: "system",
-                    label: "System",
+                    icon: "radar",
+                    id: "observability",
+                    label: "Observability",
                   },
                 },
                 package: {
@@ -41,11 +41,11 @@ describe("console module metadata", () => {
         label: "Stories",
         moduleId: "platform-story",
         navigation: {
-          order: 20,
+          order: 5,
           workspace: {
-            icon: "settings",
-            id: "system",
-            label: "System",
+            icon: "radar",
+            id: "observability",
+            label: "Observability",
           },
         },
         path: "/runtime/stories",

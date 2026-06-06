@@ -1,6 +1,7 @@
 // Mirrors platform-module's admin JSON shapes. Hand-typed because the records
 // and custom surface metadata are generic across arbitrary modules.
 import { registeredConsolePackage } from "../app/console-module-resolver";
+import type { ConsoleNavigationMetadata } from "../app/console-module-api";
 
 export type FieldType =
   | { kind: "string" }
@@ -64,6 +65,7 @@ export type ConsoleSurface = {
   package: ConsolePackage;
   icon?: string | null;
   required_capabilities?: string[];
+  navigation?: ConsoleNavigationMetadata;
 };
 
 export type SchemaAdminSurface = AdminSchema & { kind: "schema" };

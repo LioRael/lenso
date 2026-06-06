@@ -150,10 +150,26 @@ describe("console module registry", () => {
     expect(consoleModulePackageReferences).toEqual([
       {
         exportName: "storyConsoleModule",
+        navigation: {
+          order: 20,
+          workspace: {
+            icon: "settings",
+            id: "system",
+            label: "System",
+          },
+        },
         packageName: "@lenso/story-console",
       },
       {
         exportName: "identityConsoleModule",
+        navigation: {
+          order: 60,
+          workspace: {
+            icon: "settings",
+            id: "system",
+            label: "System",
+          },
+        },
         packageName: "@lenso/identity-console",
       },
     ]);

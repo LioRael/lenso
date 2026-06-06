@@ -13,6 +13,7 @@ import {
 export type ConsoleModulePackageReference = {
   packageName: string;
   exportName: string;
+  navigation?: ConsoleNavigationMetadata;
 };
 
 export type ConsoleModuleMetadata = {
@@ -102,7 +103,17 @@ export function resolveConsoleModule(
   if (!registryItem) {
     throw new Error(`Console module package export is not registered: ${key}`);
   }
-  return registryItem.module;
+  const navigation = reference.navigation;
+  if (!navigation) {
+    return registryItem.module;
+  }
+  return {
+    ...registryItem.module,
+    surfaces: registryItem.module.surfaces.map((surface) => ({
+      ...surface,
+      navigation,
+    })),
+  };
 }
 
 export function resolveConsoleModules(
@@ -137,7 +148,13 @@ export function selectConsoleModulePackageReferences(
       ) {
         return [];
       }
-      const reference = { exportName, packageName };
+      const reference: ConsoleModulePackageReference = {
+        exportName,
+        packageName,
+      };
+      if (surface.navigation) {
+        reference.navigation = surface.navigation;
+      }
       if (!consolePackageExportIsRegistered(reference)) {
         return [];
       }

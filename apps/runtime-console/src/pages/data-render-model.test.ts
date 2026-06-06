@@ -734,6 +734,7 @@ describe("module status helpers", () => {
             export: storyConsoleManifest.exportName,
             name: storyConsoleManifest.packageName,
           },
+          navigation: storyConsoleManifest.navigation,
           required_capabilities: [...storyConsoleManifest.requiredCapabilities],
           route: storyConsoleManifest.route,
         },
@@ -741,6 +742,9 @@ describe("module status helpers", () => {
       admin: null,
     });
 
+    expect(module.console[0]?.navigation).toEqual(
+      storyConsoleManifest.navigation
+    );
     expect(moduleConsoleSurfaceRows(module)).toEqual([
       {
         area: "runtime",
