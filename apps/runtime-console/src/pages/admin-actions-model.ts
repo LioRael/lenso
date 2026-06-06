@@ -20,6 +20,19 @@ export type AdminActionAggregate = {
   failureRate: number;
 };
 
+export type AdminActionInspectorDetails = {
+  actionRows: Array<[string, string]>;
+  lineageRows: Array<[string, string]>;
+  summaries: {
+    input_summary: string | null;
+    result_summary: string | null;
+  };
+  failure: {
+    error_code: string | null;
+    error_message: string | null;
+  } | null;
+};
+
 export function adminActionsPath(
   filters: {
     actionName?: string;
@@ -143,6 +156,48 @@ export function aggregateAdminActionInvocations(
 
 export function adminActionResultLabel(action: RuntimeAdminActionInvocation) {
   return action.success ? "success" : "failed";
+}
+
+export function adminActionPrimarySummary(
+  action: RuntimeAdminActionInvocation
+) {
+  if (!action.success) {
+    return action.error_message ?? action.error_code ?? "failed";
+  }
+  return action.result_summary ?? action.input_summary ?? action.label;
+}
+
+export function adminActionInspectorDetails(
+  action: RuntimeAdminActionInvocation
+): AdminActionInspectorDetails {
+  return {
+    actionRows: [
+      ["result", adminActionResultLabel(action)],
+      ["module", action.module_name],
+      ["action", action.action_name],
+      ["label", action.label],
+      ["capability", action.capability ?? "-"],
+      ["duration_ms", String(action.duration_ms)],
+      ["occurred", action.occurred_at],
+    ],
+    failure: action.success
+      ? null
+      : {
+          error_code: action.error_code ?? null,
+          error_message: action.error_message ?? null,
+        },
+    lineageRows: [
+      ["story_node", action.id],
+      ["request", action.request_id ?? "-"],
+      ["correlation", action.correlation_id],
+      ["trace", action.trace_id ?? "-"],
+      ["span", action.span_id ?? "-"],
+    ],
+    summaries: {
+      input_summary: action.input_summary ?? null,
+      result_summary: action.result_summary ?? null,
+    },
+  };
 }
 
 function aggregateKey(

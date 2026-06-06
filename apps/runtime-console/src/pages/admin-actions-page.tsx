@@ -1,4 +1,11 @@
-import { ExternalLink, PlayCircle, RefreshCcw, X } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ExternalLink,
+  PlayCircle,
+  RefreshCcw,
+  X,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { JsonViewer } from "../components/runtime/json-viewer";
@@ -16,6 +23,8 @@ import { runtimeConsoleDataSource } from "../lib/http-client";
 import {
   type AdminActionAggregate,
   type AdminActionResultFilter,
+  adminActionInspectorDetails,
+  adminActionPrimarySummary,
   adminActionResultLabel,
   adminActionsPath,
   aggregateAdminActionInvocations,
@@ -366,7 +375,7 @@ export function AdminActionsPage() {
                 </span>
                 <span className="min-w-0">
                   <span className="block truncate text-(--foreground)">
-                    {action.result_summary ?? action.error_message ?? "-"}
+                    {adminActionPrimarySummary(action)}
                   </span>
                   <span className="block truncate text-[10px] text-(--muted)">
                     {action.request_id ?? action.id}
@@ -560,33 +569,67 @@ function AdminActionInspector({
 }: {
   action: RuntimeAdminActionInvocation;
 }) {
+  const details = adminActionInspectorDetails(action);
   return (
-    <div className="grid gap-3 p-3">
+    <div className="grid">
+      <ActionStatusBanner action={action} />
+      <SectionTitle>action</SectionTitle>
       <OperationsKeyValueRows
-        rows={[
-          ["id", action.id],
-          ["module", action.module_name],
-          ["action", action.action_name],
-          ["label", action.label],
-          ["capability", action.capability ?? "-"],
-          ["result", adminActionResultLabel(action)],
-          ["error code", action.error_code ?? "-"],
-          ["error message", action.error_message ?? "-"],
-          ["duration", formatDuration(action.duration_ms)],
-          ["request", action.request_id ?? "-"],
-          ["correlation", action.correlation_id],
-          ["trace", action.trace_id ?? "-"],
-          ["span", action.span_id ?? "-"],
-          ["occurred", action.occurred_at],
-        ]}
+        rows={details.actionRows.map(([key, value]) => [
+          key === "duration_ms" ? "duration" : key,
+          key === "duration_ms" ? formatDuration(action.duration_ms) : value,
+        ])}
       />
-      <JsonViewer
-        title="summaries"
-        value={{
-          input_summary: action.input_summary,
-          result_summary: action.result_summary,
-        }}
-      />
+      <SectionTitle>lineage</SectionTitle>
+      <OperationsKeyValueRows rows={details.lineageRows} />
+      <JsonViewer defaultExpanded title="summaries" value={details.summaries} />
+      {details.failure ? (
+        <JsonViewer defaultExpanded title="failure" value={details.failure} />
+      ) : null}
+    </div>
+  );
+}
+
+function ActionStatusBanner({
+  action,
+}: {
+  action: RuntimeAdminActionInvocation;
+}) {
+  return (
+    <div
+      className={cn(
+        "grid grid-cols-[auto_minmax(0,1fr)] gap-2 border-b px-3 py-2 font-mono",
+        action.success
+          ? "border-[color-mix(in_srgb,var(--success)_32%,transparent)] bg-[color-mix(in_srgb,var(--success)_8%,transparent)]"
+          : "border-[color-mix(in_srgb,var(--error)_34%,transparent)] bg-[color-mix(in_srgb,var(--error)_9%,transparent)]"
+      )}
+    >
+      {action.success ? (
+        <CheckCircle2 className="mt-0.5 text-(--success)" size={14} />
+      ) : (
+        <AlertTriangle className="mt-0.5 text-(--error)" size={14} />
+      )}
+      <div className="min-w-0">
+        <div
+          className={cn(
+            "text-[11px] font-semibold",
+            action.success ? "text-(--success)" : "text-(--error)"
+          )}
+        >
+          {adminActionResultLabel(action)}
+        </div>
+        <div className="mt-0.5 truncate text-[10px] text-(--secondary)">
+          {adminActionPrimarySummary(action)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SectionTitle({ children }: { children: string }) {
+  return (
+    <div className="border-b border-(--border-subtle) bg-[color-mix(in_srgb,var(--elevated)_52%,transparent)] px-3 py-1.5 font-mono text-[9px] font-semibold uppercase tracking-[0.08em] text-(--muted)">
+      {children}
     </div>
   );
 }

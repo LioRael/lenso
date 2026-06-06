@@ -2,6 +2,8 @@ import { describe, expect, test } from "vitest";
 
 import type { RuntimeAdminActionInvocation } from "../hooks/use-runtime-queries";
 import {
+  adminActionInspectorDetails,
+  adminActionPrimarySummary,
   adminActionResultLabel,
   adminActionsPath,
   aggregateAdminActionInvocations,
@@ -139,6 +141,41 @@ describe("admin actions model", () => {
   test("labels results", () => {
     expect(adminActionResultLabel(actions[0]!)).toBe("success");
     expect(adminActionResultLabel(actions[1]!)).toBe("failed");
+  });
+
+  test("chooses compact primary summaries for table rows and banners", () => {
+    expect(adminActionPrimarySummary(actions[0]!)).toBe("ok");
+    expect(adminActionPrimarySummary(actions[1]!)).toBe("window too wide");
+    expect(
+      adminActionPrimarySummary(
+        adminAction({
+          error_code: "permission_denied",
+          error_message: null,
+          success: false,
+        })
+      )
+    ).toBe("permission_denied");
+  });
+
+  test("builds inspector details with action context and lineage", () => {
+    const details = adminActionInspectorDetails(actions[1]!);
+
+    expect(details.actionRows).toContainEqual(["module", "identity"]);
+    expect(details.actionRows).toContainEqual(["action", "rebuild_index"]);
+    expect(details.actionRows).toContainEqual([
+      "capability",
+      "identity.users.maintain",
+    ]);
+    expect(details.lineageRows).toContainEqual(["story_node", "admin_b"]);
+    expect(details.lineageRows).toContainEqual(["correlation", "corr_admin"]);
+    expect(details.summaries).toEqual({
+      input_summary: "dry_run: true",
+      result_summary: "ok",
+    });
+    expect(details.failure).toEqual({
+      error_code: "action_validation_failed",
+      error_message: "window too wide",
+    });
   });
 
   test("builds operation paths", () => {
