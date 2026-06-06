@@ -1,5 +1,6 @@
+import { storyConsoleModule } from "@lenso/story-console";
+
 import { exampleConsoleModule } from "../modules/example-console-package";
-import { storyConsoleModule } from "../modules/story-console";
 import type { ConsoleModule } from "./console-module-api";
 
 export type ConsolePackageRegistrySource = "first_party" | "installed";

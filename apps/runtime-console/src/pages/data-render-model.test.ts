@@ -1,6 +1,6 @@
+import { storyConsoleManifest } from "@lenso/story-console";
 import { describe, expect, test } from "vitest";
 
-import { storyConsoleManifest } from "../modules/story-console";
 import {
   adminActionDangerLevel,
   adminActionHasInput,

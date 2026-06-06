@@ -7,7 +7,11 @@ export default defineConfig({
   extends: [core, react, tanstack],
   overrides: [
     {
-      files: ["src/**/*.{ts,tsx}", "vite.config.ts"],
+      files: [
+        "src/**/*.{ts,tsx}",
+        "packages/story-console/src/**/*.{ts,tsx}",
+        "vite.config.ts",
+      ],
       rules: {
         complexity: "off",
         "func-style": "off",

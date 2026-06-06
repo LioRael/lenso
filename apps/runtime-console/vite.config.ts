@@ -32,6 +32,9 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
+      "@lenso/story-console": fileURLToPath(
+        new URL("packages/story-console/src/index.tsx", import.meta.url)
+      ),
       "@lenso/runtime-console/console-package-api": fileURLToPath(
         new URL("src/console-package-api.ts", import.meta.url)
       ),

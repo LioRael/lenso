@@ -12,6 +12,7 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "paths": {
+      "@lenso/story-console": ["./packages/story-console/src/index.tsx"],
       "@lenso/runtime-console/console-package-api": [
         "./src/console-package-api.ts"
       ]
@@ -23,6 +24,6 @@
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true
   },
-  "include": ["src"],
+  "include": ["src", "packages/story-console/src"],
   "references": []
 }

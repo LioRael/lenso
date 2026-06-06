@@ -10,7 +10,7 @@
     "lint": "ultracite check --deny-warnings",
     "check": "ultracite check --deny-warnings && pnpm test && pnpm typecheck && pnpm build",
     "build": "tsc -b && vite build",
-    "test": "vitest run",
+    "test": "vitest run src packages/story-console/src",
     "typecheck": "tsc -b --pretty false",
     "preview": "vite preview --host 0.0.0.0"
   },

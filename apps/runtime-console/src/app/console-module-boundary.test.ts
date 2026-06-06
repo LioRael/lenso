@@ -11,7 +11,16 @@ const sourceFiles = import.meta.glob<string>("../**/*.{ts,tsx}", {
   import: "default",
   query: "?raw",
 });
+const storyPackageFiles = import.meta.glob<string>(
+  "../../packages/story-console/src/**/*.{ts,tsx}",
+  {
+    eager: true,
+    import: "default",
+    query: "?raw",
+  }
+);
 const modulePrefix = "../modules/";
+const storyPackagePrefix = "../../packages/story-console/src/";
 const storyModulePrefix = "../modules/story-console/";
 const importPattern =
   /\b(?:import|export)\s+(?:type\s+)?(?:[^'"]*?\s+from\s+)?["']([^"']+)["']/g;
@@ -19,9 +28,14 @@ const importPattern =
 function findConsoleModuleBoundaryViolations(): string[] {
   const violations: string[] = [];
 
-  for (const [file, source] of Object.entries(sourceFiles)) {
-    const inConsoleModule = file.startsWith(modulePrefix);
-    const inStoryModule = file.startsWith(storyModulePrefix);
+  for (const [file, source] of Object.entries({
+    ...sourceFiles,
+    ...storyPackageFiles,
+  })) {
+    const inConsoleModule =
+      file.startsWith(modulePrefix) || file.startsWith(storyPackagePrefix);
+    const inStoryModule =
+      file.startsWith(storyModulePrefix) || file.startsWith(storyPackagePrefix);
 
     for (const specifier of importSpecifiers(source)) {
       const target = resolveImport(file, specifier);
@@ -70,8 +84,10 @@ function findConsoleModuleBoundaryViolations(): string[] {
 
       if (
         !inStoryModule &&
-        target.startsWith(storyModulePrefix) &&
-        target !== "../modules/story-console"
+        (target === "@lenso/story-console" ||
+          target === "../modules/story-console" ||
+          target.startsWith(storyModulePrefix)) &&
+        target !== "@lenso/story-console"
       ) {
         violations.push(
           `${displayPath(file)} imports story-console internals through ${specifier}`

@@ -73,6 +73,21 @@ importers:
         specifier: ^4.1.7
         version: 4.1.7(vite@8.0.16(jiti@2.7.0)(yaml@2.9.0))
 
+  packages/story-console:
+    dependencies:
+      '@gsap/react':
+        specifier: ^2.1.2
+        version: 2.1.2(gsap@3.15.0)(react@19.2.6)
+      '@lenso/runtime-console':
+        specifier: workspace:*
+        version: link:../..
+      gsap:
+        specifier: ^3.15.0
+        version: 3.15.0
+      react:
+        specifier: ^19.1.0
+        version: 19.2.6
+
 packages:
 
   '@babel/runtime@7.29.7':
