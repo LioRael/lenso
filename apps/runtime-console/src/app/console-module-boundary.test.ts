@@ -6,10 +6,7 @@ describe("console module boundaries", () => {
   });
 
   test("covers installed console packages with boundary checks", () => {
-    expect(consolePackageNames()).toEqual([
-      "identity-console",
-      "story-console",
-    ]);
+    expect(consolePackageNames()).toEqual(installedConsolePackageNames());
   });
 });
 
@@ -33,6 +30,16 @@ const storyPackagePrefix = "../../packages/story-console/src/";
 const storyModulePrefix = "../modules/story-console/";
 const importPattern =
   /\b(?:import|export)\s+(?:type\s+)?(?:[^'"]*?\s+from\s+)?["']([^"']+)["']/g;
+const runtimeConsolePackageJson =
+  Object.values(
+    import.meta.glob<{ dependencies?: Record<string, string> }>(
+      "../../package.json",
+      {
+        eager: true,
+        import: "default",
+      }
+    )
+  )[0] ?? {};
 
 function findConsoleModuleBoundaryViolations(): string[] {
   const violations: string[] = [];
@@ -143,6 +150,16 @@ function consolePackageNames(): string[] {
         .filter((name) => name !== "console-package-api")
     ),
   ].sort();
+}
+
+function installedConsolePackageNames(): string[] {
+  return Object.keys(runtimeConsolePackageJson.dependencies ?? {})
+    .filter(
+      (name) =>
+        name.startsWith("@lenso/") && name !== "@lenso/runtime-console-api"
+    )
+    .map((name) => name.replace("@lenso/", ""))
+    .sort();
 }
 
 function importSpecifiers(source: string): string[] {
