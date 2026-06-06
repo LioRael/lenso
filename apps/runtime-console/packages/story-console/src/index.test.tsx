@@ -40,6 +40,7 @@ describe("story console module", () => {
           area: storyConsoleManifest.area,
           icon: storyConsoleManifest.icon,
           label: storyConsoleManifest.label,
+          navigation: storyConsoleManifest.navigation,
           path: storyConsoleManifest.route,
         },
       ],

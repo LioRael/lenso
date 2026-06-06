@@ -63,6 +63,18 @@ for (const packageName of workspacePackageNames) {
     packageSlug,
     "package.json"
   );
+  const consoleSurfacePath = path.join(
+    runtimeConsoleRoot,
+    "packages",
+    packageSlug,
+    "console-surface.json"
+  );
+  const sourceIndexPath = path.join(
+    runtimeConsoleRoot,
+    "packages",
+    packageSlug,
+    "src/index.tsx"
+  );
   const packageJson = await readJson(packageJsonPath).catch((error) => {
     errors.push(
       `Console package ${packageName} is declared as a host dependency, but ${relativePath(
@@ -75,6 +87,24 @@ for (const packageName of workspacePackageNames) {
   if (!packageJson) {
     continue;
   }
+  const consoleSurface = await readJson(consoleSurfacePath).catch((error) => {
+    errors.push(
+      `Console package ${packageName} is declared as a host dependency, but ${relativePath(
+        consoleSurfacePath
+      )} could not be read: ${error.message}`
+    );
+    return null;
+  });
+  const sourceIndexSource = await readFile(sourceIndexPath, "utf-8").catch(
+    (error) => {
+      errors.push(
+        `Console package ${packageName} is declared as a host dependency, but ${relativePath(
+          sourceIndexPath
+        )} could not be read: ${error.message}`
+      );
+      return null;
+    }
+  );
 
   if (packageJson.name !== packageName) {
     errors.push(
@@ -86,6 +116,26 @@ for (const packageName of workspacePackageNames) {
     errors.push(
       `${relativePath(packageJsonPath)} must declare @lenso/runtime-console-api as a peer dependency`
     );
+  }
+  if (consoleSurface?.navigation) {
+    if (
+      !(
+        consoleSurface.navigation.workspace?.id &&
+        consoleSurface.navigation.workspace?.label
+      )
+    ) {
+      errors.push(
+        `${relativePath(consoleSurfacePath)} navigation must include workspace id and label`
+      );
+    }
+    if (sourceIndexSource) {
+      assertContains({
+        content: sourceIndexSource,
+        filePath: sourceIndexPath,
+        message: `pass ${manifestName}.navigation to the module surface`,
+        needle: `navigation: ${manifestName}.navigation`,
+      });
+    }
   }
 
   assertContains({

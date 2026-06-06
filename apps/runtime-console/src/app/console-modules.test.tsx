@@ -162,8 +162,63 @@ describe("console module registry", () => {
     );
     expect(consoleModules.map((module) => module.id)).toContain("identity");
     expect(
-      buildConsoleRoutes(consoleModules).map((route) => route.path)
-    ).toEqual(["/runtime/stories", "/data/identity"]);
+      buildConsoleRoutes(consoleModules).map((route) => ({
+        navigation: route.navigation,
+        path: route.path,
+      }))
+    ).toEqual([
+      {
+        navigation: {
+          order: 20,
+          workspace: {
+            icon: "settings",
+            id: "system",
+            label: "System",
+          },
+        },
+        path: "/runtime/stories",
+      },
+      {
+        navigation: {
+          order: 60,
+          workspace: {
+            icon: "settings",
+            id: "system",
+            label: "System",
+          },
+        },
+        path: "/data/identity",
+      },
+    ]);
+    expect(
+      buildConsoleNavigation(consoleModules).map((item) => ({
+        navigation: item.navigation,
+        path: item.path,
+      }))
+    ).toEqual([
+      {
+        navigation: {
+          order: 20,
+          workspace: {
+            icon: "settings",
+            id: "system",
+            label: "System",
+          },
+        },
+        path: "/runtime/stories",
+      },
+      {
+        navigation: {
+          order: 60,
+          workspace: {
+            icon: "settings",
+            id: "system",
+            label: "System",
+          },
+        },
+        path: "/data/identity",
+      },
+    ]);
     expect(defaultConsoleRoute).toMatchObject({
       moduleId: "platform-story",
       path: "/runtime/stories",
@@ -178,6 +233,14 @@ describe("console module registry", () => {
         icon: "database",
         id: "billing",
         label: "Billing",
+        navigation: {
+          order: 10,
+          workspace: {
+            icon: "database",
+            id: "billing",
+            label: "Billing",
+          },
+        },
         packageName: "@lenso/billing-console",
         requiredCapabilities: ["billing.read"],
         route: "/data/billing",
@@ -192,6 +255,14 @@ describe("console module registry", () => {
           icon: "database",
           label: "Billing",
           name: "billing",
+          navigation: {
+            order: 10,
+            workspace: {
+              icon: "database",
+              id: "billing",
+              label: "Billing",
+            },
+          },
           package: {
             export: "billingConsoleModule",
             name: "@lenso/billing-console",

@@ -727,6 +727,14 @@ const remoteManifestJson = ({ packageContext }) => ({
       icon: packageContext.icon,
       label: packageContext.label,
       name: packageContext.surfaceName,
+      navigation: {
+        order: 10,
+        workspace: {
+          icon: packageContext.icon,
+          id: packageContext.moduleId,
+          label: packageContext.label,
+        },
+      },
       package: {
         export: packageContext.moduleName,
         name: packageContext.packageName,

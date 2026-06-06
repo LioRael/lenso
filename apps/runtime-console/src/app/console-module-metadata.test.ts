@@ -16,6 +16,14 @@ describe("console module metadata", () => {
           {
             console: [
               {
+                navigation: {
+                  order: 20,
+                  workspace: {
+                    icon: "settings",
+                    id: "system",
+                    label: "System",
+                  },
+                },
                 package: {
                   export: "storyConsoleModule",
                   name: "@lenso/story-console",
@@ -32,6 +40,14 @@ describe("console module metadata", () => {
         icon: "workflow",
         label: "Stories",
         moduleId: "platform-story",
+        navigation: {
+          order: 20,
+          workspace: {
+            icon: "settings",
+            id: "system",
+            label: "System",
+          },
+        },
         path: "/runtime/stories",
       },
     ]);

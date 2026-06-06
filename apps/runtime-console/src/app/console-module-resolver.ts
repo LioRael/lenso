@@ -1,5 +1,9 @@
 import { installedConsolePackages } from "../console-package-installs";
-import type { ConsoleModule, ConsoleSurfaceArea } from "./console-module-api";
+import type {
+  ConsoleModule,
+  ConsoleNavigationMetadata,
+  ConsoleSurfaceArea,
+} from "./console-module-api";
 import {
   consolePackageKey,
   consolePackageRegistryByKey,
@@ -24,6 +28,7 @@ export type ConsoleModuleMetadata = {
     };
     required_capabilities?: readonly string[];
     icon?: string | null;
+    navigation?: ConsoleNavigationMetadata;
   }[];
 };
 

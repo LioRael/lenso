@@ -310,16 +310,37 @@ describe("module scaffold CLI", () => {
     expect(moduleSource).toContain(".console(vec![ConsoleSurface {");
     expect(moduleSource).toContain('name: "@lenso/billing-console".to_owned()');
     expect(moduleSource).toContain('export: "billingConsoleModule".to_owned()');
-
-    await expect(
-      readFile(
+    const consoleSurface = JSON.parse(
+      await readFile(
         path.join(
           repoRoot,
-          "apps/runtime-console/packages/billing-console/src/index.tsx"
+          "apps/runtime-console/packages/billing-console/console-surface.json"
         ),
         "utf-8"
       )
-    ).resolves.toContain("billingConsoleModule");
+    );
+    expect(consoleSurface).toMatchObject({
+      navigation: {
+        order: 10,
+        workspace: {
+          icon: "database",
+          id: "billing",
+          label: "Billing",
+        },
+      },
+    });
+
+    const packageSource = await readFile(
+      path.join(
+        repoRoot,
+        "apps/runtime-console/packages/billing-console/src/index.tsx"
+      ),
+      "utf-8"
+    );
+    expect(packageSource).toContain("billingConsoleModule");
+    expect(packageSource).toContain(
+      "navigation: billingConsoleManifest.navigation"
+    );
     await expect(
       readFile(
         path.join(repoRoot, "apps/runtime-console/package.json"),
@@ -611,6 +632,14 @@ describe("module scaffold CLI", () => {
       capabilities: ["billing.read"],
       console: [
         {
+          navigation: {
+            order: 10,
+            workspace: {
+              icon: "database",
+              id: "billing",
+              label: "Billing",
+            },
+          },
           package: {
             export: "billingConsoleModule",
             name: "@vendor/lenso-billing-console",
@@ -622,6 +651,22 @@ describe("module scaffold CLI", () => {
       name: "billing",
       source: "remote",
       version: "0.1.0",
+    });
+    const consoleSurface = JSON.parse(
+      await readFile(
+        path.join(packageRoot, "console/console-surface.json"),
+        "utf-8"
+      )
+    );
+    expect(consoleSurface).toMatchObject({
+      navigation: {
+        order: 10,
+        workspace: {
+          icon: "database",
+          id: "billing",
+          label: "Billing",
+        },
+      },
     });
 
     await expect(
@@ -637,9 +682,14 @@ describe("module scaffold CLI", () => {
       },
       private: false,
     });
-    await expect(
-      readFile(path.join(packageRoot, "console/src/index.tsx"), "utf-8")
-    ).resolves.toContain("billingConsoleModule");
+    const consoleSource = await readFile(
+      path.join(packageRoot, "console/src/index.tsx"),
+      "utf-8"
+    );
+    expect(consoleSource).toContain("billingConsoleModule");
+    expect(consoleSource).toContain(
+      "navigation: billingConsoleManifest.navigation"
+    );
     await expect(
       readFile(path.join(packageRoot, "contracts/README.md"), "utf-8")
     ).resolves.toContain("Module-owned contracts");

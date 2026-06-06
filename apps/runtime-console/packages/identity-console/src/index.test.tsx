@@ -30,6 +30,7 @@ describe("identity console package", () => {
       surfaces: [
         {
           label: "Identity",
+          navigation: identityConsoleManifest.navigation,
           path: "/data/identity",
         },
       ],

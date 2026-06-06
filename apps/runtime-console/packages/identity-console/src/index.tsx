@@ -11,6 +11,7 @@ export const identityConsoleModule = defineConsoleModule({
       component: IdentityConsolePage,
       icon: identityConsoleManifest.icon,
       label: identityConsoleManifest.label,
+      navigation: identityConsoleManifest.navigation,
       path: identityConsoleManifest.route,
     },
   ],
