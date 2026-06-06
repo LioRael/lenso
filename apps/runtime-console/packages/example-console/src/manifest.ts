@@ -1,4 +1,6 @@
-export const exampleConsoleManifest = {
+import { defineConsolePackageManifest } from "@lenso/runtime-console-api";
+
+export const exampleConsoleManifest = defineConsolePackageManifest({
   area: "runtime",
   exportName: "exampleConsoleModule",
   icon: "activity",
@@ -8,4 +10,4 @@ export const exampleConsoleManifest = {
   requiredCapabilities: [],
   route: "/runtime/example-console",
   surfaceName: "example",
-} as const;
+} as const);

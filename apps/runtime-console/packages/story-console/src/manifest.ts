@@ -1,4 +1,6 @@
-export const storyConsoleManifest = {
+import { defineConsolePackageManifest } from "@lenso/runtime-console-api";
+
+export const storyConsoleManifest = defineConsolePackageManifest({
   area: "runtime",
   exportName: "storyConsoleModule",
   icon: "workflow",
@@ -8,4 +10,4 @@ export const storyConsoleManifest = {
   requiredCapabilities: ["runtime.stories.read"],
   route: "/runtime/stories",
   surfaceName: "stories",
-} as const;
+} as const);
