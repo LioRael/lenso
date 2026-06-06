@@ -534,7 +534,7 @@ function MissingConsolePackagesTable({
         <TriangleAlert className="text-(--warning)" size={14} />
         <span>Missing Console Packages</span>
         <span className="border border-[color-mix(in_srgb,var(--info)_35%,transparent)] px-1.5 py-0.5 text-[10px] text-(--info)">
-          installer not configured
+          manual install
         </span>
         <span className="ml-auto border border-(--border-subtle) px-1.5 py-0.5 text-[10px] text-(--secondary)">
           {rows.length}
@@ -569,8 +569,17 @@ function MissingConsolePackagesTable({
                     >
                       {plan?.status ?? "planned"}
                     </span>
-                    <div className="truncate pt-1 text-[9px] text-(--muted)">
-                      installer not configured
+                    <div
+                      className="truncate pt-1 text-[9px] text-(--muted)"
+                      title={
+                        plan
+                          ? `pnpm --dir apps/runtime-console add ${plan.packageName}`
+                          : undefined
+                      }
+                    >
+                      {plan
+                        ? `pnpm --dir apps/runtime-console add ${plan.packageName}`
+                        : "manual install required"}
                     </div>
                   </td>
                   <td className="truncate px-3 py-1.5 text-(--secondary)">

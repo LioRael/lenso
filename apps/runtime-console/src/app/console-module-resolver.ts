@@ -56,8 +56,9 @@ export type ConsolePackageInstallResult = {
   packageName: string;
   exportName: string;
   request: ConsolePackageInstallRequest;
-  status: "not_configured";
+  status: "not_configured" | "requires_manual_install";
   message: string;
+  command?: string;
 };
 
 export type ConsolePackageInstaller = {
@@ -187,6 +188,22 @@ export function createNoopConsolePackageInstaller(): ConsolePackageInstaller {
         packageName: plan.packageName,
         request: plan.request,
         status: "not_configured",
+      };
+    },
+  };
+}
+
+export function createDevManualConsolePackageInstaller(): ConsolePackageInstaller {
+  return {
+    async install(plan) {
+      return {
+        command: `pnpm --dir apps/runtime-console add ${plan.packageName}`,
+        exportName: plan.exportName,
+        key: plan.key,
+        message: "manual dev install required",
+        packageName: plan.packageName,
+        request: plan.request,
+        status: "requires_manual_install",
       };
     },
   };

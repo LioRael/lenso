@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  createDevManualConsolePackageInstaller,
   createNoopConsolePackageInstaller,
   missingConsolePackageReferences,
   planConsolePackageInstall,
@@ -208,6 +209,39 @@ describe("console module resolver", () => {
         route: "/data/crm",
       },
       status: "not_configured",
+    });
+  });
+
+  test("dev manual installer returns a command without executing it", async () => {
+    const installer = createDevManualConsolePackageInstaller();
+
+    await expect(
+      installer.install({
+        exportName: "crmConsoleModule",
+        key: "@lenso/crm-console#crmConsoleModule",
+        packageName: "@lenso/crm-console",
+        request: {
+          exportName: "crmConsoleModule",
+          packageName: "@lenso/crm-console",
+          requestedByModule: "remote-crm",
+          route: "/data/crm",
+        },
+        reason: "remote-crm / CRM / /data/crm",
+        status: "planned",
+      })
+    ).resolves.toEqual({
+      command: "pnpm --dir apps/runtime-console add @lenso/crm-console",
+      exportName: "crmConsoleModule",
+      key: "@lenso/crm-console#crmConsoleModule",
+      message: "manual dev install required",
+      packageName: "@lenso/crm-console",
+      request: {
+        exportName: "crmConsoleModule",
+        packageName: "@lenso/crm-console",
+        requestedByModule: "remote-crm",
+        route: "/data/crm",
+      },
+      status: "requires_manual_install",
     });
   });
 });

@@ -114,7 +114,7 @@ describe("console module metadata", () => {
     ]);
   });
 
-  test("previews noop install results from metadata", async () => {
+  test("previews manual install results from metadata", async () => {
     await expect(
       previewConsolePackageInstallResults([
         {
@@ -132,9 +132,10 @@ describe("console module metadata", () => {
       ])
     ).resolves.toEqual([
       {
+        command: "pnpm --dir apps/runtime-console add @lenso/crm-console",
         exportName: "crmConsoleModule",
         key: "@lenso/crm-console#crmConsoleModule",
-        message: "console package installation is not configured",
+        message: "manual dev install required",
         packageName: "@lenso/crm-console",
         request: {
           exportName: "crmConsoleModule",
@@ -142,7 +143,7 @@ describe("console module metadata", () => {
           requestedByModule: "remote-crm",
           route: "/data/crm",
         },
-        status: "not_configured",
+        status: "requires_manual_install",
       },
     ]);
   });

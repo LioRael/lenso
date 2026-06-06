@@ -4,7 +4,7 @@ import { httpClient, isApiMode } from "../lib/http-client";
 import { useConsoleCapabilities } from "./console-capabilities";
 import {
   type ConsoleModuleMetadata,
-  createNoopConsolePackageInstaller,
+  createDevManualConsolePackageInstaller,
   missingConsolePackageReferences,
   planConsolePackageInstall,
   resolveConsoleModules,
@@ -66,7 +66,7 @@ export function consolePackageInstallPlanFromMetadata(
 export async function previewConsolePackageInstallResults(
   modules: ConsoleModuleMetadata[]
 ) {
-  const installer = createNoopConsolePackageInstaller();
+  const installer = createDevManualConsolePackageInstaller();
   return Promise.all(
     consolePackageInstallPlanFromMetadata(modules).map((plan) =>
       installer.install(plan)
