@@ -199,6 +199,7 @@ Third-party scaffolding uses a separate remote-oriented lane:
 ```sh
 pnpm create:module billing --remote --output-dir ../module-packages
 lenso module add https://example.com/lenso/module/v1/manifest
+lenso console-package apply-plan
 ```
 
 If the manifest is installed from a local file or non-protocol URL, pass the
@@ -218,6 +219,9 @@ The first CLI install lane writes host-local state only:
 - `.lenso/console-package-install-plan.json`: records requested Runtime Console
   packages, exports, routes, and manual `pnpm --dir apps/runtime-console add`
   commands.
+
+`lenso console-package apply-plan` consumes that plan and updates Runtime
+Console package dependencies, manifest exports, and module export mappings.
 
 The plan file is intentionally ignored by git. It is an operator/developer
 handoff artifact, not trusted marketplace state.

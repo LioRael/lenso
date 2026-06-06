@@ -254,6 +254,17 @@ const updatePackageJson = async ({
   );
 };
 
+const updateRuntimeConsoleDependency = ({
+  dependencyVersion,
+  packageJson,
+  packageName,
+}) => {
+  packageJson.dependencies = sortObject({
+    ...packageJson.dependencies,
+    [packageName]: packageJson.dependencies?.[packageName] ?? dependencyVersion,
+  });
+};
+
 const updateTsconfig = async ({
   packageName,
   packageSlug,
@@ -347,6 +358,110 @@ const updateModuleExports = async ({
     "} satisfies ConsolePackageModuleExportsByKey;"
   );
   queueWrite(pendingWrites, paths.moduleExportsPath, fileSource);
+};
+
+const manifestNameFromModuleExport = (moduleName) =>
+  moduleName.endsWith("Module")
+    ? `${moduleName.slice(0, -"Module".length)}Manifest`
+    : `${moduleName}Manifest`;
+
+const uniqueConsolePackagePlanItems = (installPlan) => {
+  const itemsByKey = new Map();
+  for (const modulePlan of installPlan.modules ?? []) {
+    for (const consolePackage of modulePlan.consolePackages ?? []) {
+      if (!(consolePackage.packageName && consolePackage.exportName)) {
+        continue;
+      }
+      const key = consolePackageKey({
+        exportName: consolePackage.exportName,
+        packageName: consolePackage.packageName,
+      });
+      itemsByKey.set(key, consolePackage);
+    }
+  }
+  return [...itemsByKey.values()];
+};
+
+const applyConsolePackageInstallPlan = async ({ options }) => {
+  const repoRoot = options.repoRoot
+    ? path.resolve(options.repoRoot)
+    : await findRepoRoot(process.cwd());
+  const runtimeConsoleRoot = path.resolve(
+    options.runtimeConsoleRoot ?? path.join(repoRoot, "apps/runtime-console")
+  );
+  const installPlanPath = path.resolve(
+    options.installPlanFile ??
+      path.join(repoRoot, ".lenso/console-package-install-plan.json")
+  );
+  const dependencyVersion = options.dependencyVersion ?? "latest";
+  const installPlan = await readJson(installPlanPath);
+  const paths = runtimeConsolePaths(runtimeConsoleRoot);
+  const packageJson = await readJson(paths.packageJsonPath);
+  let manifestExportsSource = await readFile(
+    paths.manifestExportsPath,
+    "utf-8"
+  );
+  let moduleExportsSource = await readFile(paths.moduleExportsPath, "utf-8");
+  const pendingWrites = new Map();
+  const planItems = uniqueConsolePackagePlanItems(installPlan);
+
+  for (const planItem of planItems) {
+    const manifestName = manifestNameFromModuleExport(planItem.exportName);
+    updateRuntimeConsoleDependency({
+      dependencyVersion,
+      packageJson,
+      packageName: planItem.packageName,
+    });
+    manifestExportsSource = insertBeforeNeedle(
+      manifestExportsSource,
+      `import { ${manifestName} } from "${planItem.packageName}";
+`,
+      "export const consolePackageManifests"
+    );
+    manifestExportsSource = insertBeforeNeedle(
+      manifestExportsSource,
+      `  ${manifestName},\n`,
+      "] as const;"
+    );
+    moduleExportsSource = insertBeforeNeedle(
+      moduleExportsSource,
+      `import { ${manifestName}, ${planItem.exportName} } from "${planItem.packageName}";
+`,
+      "import {"
+    );
+    moduleExportsSource = insertBeforeNeedle(
+      moduleExportsSource,
+      `  [consolePackageKey(${manifestName})]: ${planItem.exportName},
+`,
+      "} satisfies ConsolePackageModuleExportsByKey;"
+    );
+  }
+
+  queueWrite(
+    pendingWrites,
+    paths.packageJsonPath,
+    `${JSON.stringify(packageJson, null, 2)}\n`
+  );
+  queueWrite(pendingWrites, paths.manifestExportsPath, manifestExportsSource);
+  queueWrite(pendingWrites, paths.moduleExportsPath, moduleExportsSource);
+
+  if (options.dryRun) {
+    console.log("Console package install plan dry run:");
+    for (const filePath of pendingWrites.keys()) {
+      console.log(`- ${path.relative(repoRoot, filePath)}`);
+    }
+    return;
+  }
+
+  await writePendingFiles(pendingWrites);
+
+  console.log(
+    `Applied ${planItems.length} console package install plan item(s).`
+  );
+  console.log("Next steps:");
+  console.log("- pnpm --dir apps/runtime-console install");
+  console.log("- pnpm --dir apps/runtime-console check:console-packages");
+  console.log("- just console-check");
 };
 
 const queuePackageFiles = ({
@@ -629,12 +744,14 @@ Then install it into a host project:
 
 \`\`\`sh
 lenso module add https://example.com/lenso/module/v1/manifest
+lenso console-package apply-plan
 \`\`\`
 
 If the manifest is inspected from a local file, provide the runtime base URL:
 
 \`\`\`sh
 lenso module add ./lenso.module.json --base-url https://example.com/lenso/module/v1
+lenso console-package apply-plan
 \`\`\`
 
 This scaffold lives in \`${packageRootName}\` and should stay separate from a
@@ -993,6 +1110,7 @@ const createRemoteModule = async ({ options }) => {
   console.log("- expose lenso.module.json from a stable module URL");
   console.log("- publish or install the console package");
   console.log("- lenso module add <manifest-url>");
+  console.log("- lenso console-package apply-plan");
 };
 
 const validateRemoteModuleManifest = (manifest) => {
@@ -1247,6 +1365,17 @@ const addRemoteModuleOptions = (command) =>
     .option("--base-url <url>", "remote module base URL")
     .option("--dry-run", "print install changes without writing them");
 
+const addApplyPlanOptions = (command) =>
+  command
+    .option("--repo-root <path>", "Lenso host repository root")
+    .option("--runtime-console-root <path>", "Runtime Console app root")
+    .option("--install-plan-file <path>", "console package install plan file")
+    .option(
+      "--dependency-version <version>",
+      "dependency version to write when the package is not already declared"
+    )
+    .option("--dry-run", "print install plan changes without writing them");
+
 const createProgram = ({ defaultRuntimeConsoleRoot } = {}) => {
   const program = new Command();
   program
@@ -1285,6 +1414,13 @@ const createProgram = ({ defaultRuntimeConsoleRoot } = {}) => {
       defaultRuntimeConsoleRoot,
       options: { ...options, moduleId },
     });
+  });
+  addApplyPlanOptions(
+    consolePackageCommand
+      .command("apply-plan")
+      .description("apply a console package install plan")
+  ).action(async (options) => {
+    await applyConsolePackageInstallPlan({ options });
   });
 
   addSharedCreateOptions(

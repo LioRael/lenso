@@ -1,3 +1,5 @@
+import { identityConsoleManifest } from "@lenso/identity-console";
+import { storyConsoleManifest } from "@lenso/story-console";
 import { describe, expect, test } from "vitest";
 
 import {
@@ -48,27 +50,35 @@ describe("console package installs", () => {
   });
 
   test("registers installed workspace console packages", () => {
-    expect(consolePackageInstallManifests).toHaveLength(2);
-    expect(Object.keys(consolePackageModuleExportsByKey)).toEqual([
-      "@lenso/identity-console#identityConsoleModule",
-      "@lenso/story-console#storyConsoleModule",
-    ]);
-    expect(installedConsolePackages).toMatchObject([
-      {
-        exportName: "identityConsoleModule",
-        packageName: "@lenso/identity-console",
-        source: "installed",
-        version: "workspace",
-      },
-      {
-        exportName: "storyConsoleModule",
-        packageName: "@lenso/story-console",
-        source: "first_party",
-        version: "workspace",
-      },
-    ]);
-    expect(consolePackageKey(installedConsolePackages[0]!)).toBe(
-      "@lenso/identity-console#identityConsoleModule"
+    expect(consolePackageInstallManifests.map((item) => item.manifest)).toEqual(
+      expect.arrayContaining([identityConsoleManifest, storyConsoleManifest])
+    );
+    expect(Object.keys(consolePackageModuleExportsByKey)).toEqual(
+      consolePackageInstallManifests.map((item) =>
+        consolePackageKey(item.manifest)
+      )
+    );
+    expect(Object.keys(consolePackageModuleExportsByKey)).toEqual(
+      expect.arrayContaining([
+        "@lenso/identity-console#identityConsoleModule",
+        "@lenso/story-console#storyConsoleModule",
+      ])
+    );
+    expect(installedConsolePackages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          exportName: "identityConsoleModule",
+          packageName: "@lenso/identity-console",
+          source: "installed",
+          version: "workspace",
+        }),
+        expect.objectContaining({
+          exportName: "storyConsoleModule",
+          packageName: "@lenso/story-console",
+          source: "first_party",
+          version: "workspace",
+        }),
+      ])
     );
     expect(
       consolePackageRegistryByKey(installedConsolePackages)[
@@ -95,7 +105,7 @@ describe("console package installs", () => {
       runtimeConsolePackageJson.dependencies ?? {}
     ).filter(
       (name) =>
-        name !== "@lenso/runtime-console-api" && name.startsWith("@lenso/")
+        name !== "@lenso/runtime-console-api" && name.endsWith("-console")
     );
 
     expect(consolePackageNames).toEqual(dependencyNames);

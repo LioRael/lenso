@@ -325,6 +325,83 @@ describe("module scaffold CLI", () => {
     ).resolves.toContain('"@lenso/billing-console": "workspace:*"');
   });
 
+  test("applies a console package install plan to runtime console registration", async () => {
+    const repoRoot = await createRepoFixture();
+    await createRuntimeConsoleFixture(repoRoot);
+    await writeFixture(
+      repoRoot,
+      ".lenso/console-package-install-plan.json",
+      JSON.stringify(
+        {
+          modules: [
+            {
+              consolePackages: [
+                {
+                  exportName: "billingConsoleModule",
+                  packageName: "@vendor/lenso-billing-console",
+                  requestedByModule: "billing",
+                  route: "/data/billing",
+                },
+              ],
+              moduleName: "billing",
+            },
+          ],
+          version: 1,
+        },
+        null,
+        2
+      )
+    );
+
+    for (let index = 0; index < 2; index += 1) {
+      await expect(
+        runConsolePackageCli([
+          "console-package",
+          "apply-plan",
+          "--repo-root",
+          repoRoot,
+        ])
+      ).resolves.toBe(0);
+    }
+
+    const packageJson = JSON.parse(
+      await readFile(
+        path.join(repoRoot, "apps/runtime-console/package.json"),
+        "utf-8"
+      )
+    );
+    expect(packageJson.dependencies).toMatchObject({
+      "@vendor/lenso-billing-console": "latest",
+    });
+
+    const manifestExports = await readFile(
+      path.join(
+        repoRoot,
+        "apps/runtime-console/src/console-package-manifest-exports.ts"
+      ),
+      "utf-8"
+    );
+    expect(manifestExports).toContain(
+      'import { billingConsoleManifest } from "@vendor/lenso-billing-console";'
+    );
+    expect(manifestExports.match(/billingConsoleManifest/gu)).toHaveLength(2);
+
+    const moduleExports = await readFile(
+      path.join(
+        repoRoot,
+        "apps/runtime-console/src/console-package-module-exports.ts"
+      ),
+      "utf-8"
+    );
+    expect(moduleExports).toContain(
+      'import { billingConsoleManifest, billingConsoleModule } from "@vendor/lenso-billing-console";'
+    );
+    expect(moduleExports).toContain(
+      "[consolePackageKey(billingConsoleManifest)]: billingConsoleModule"
+    );
+    expect(moduleExports.match(/billingConsoleModule/gu)).toHaveLength(2);
+  });
+
   test("creates a standalone remote module package", async () => {
     const outputRoot = await mkdtemp(
       path.join(os.tmpdir(), "lenso-remote-module-cli-")
