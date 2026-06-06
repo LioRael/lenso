@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "bin": {
+    "lenso": "./src/index.mjs",
     "lenso-console-package": "./src/index.mjs"
   },
   "type": "module",

@@ -10,9 +10,10 @@
     "lint": "ultracite check --deny-warnings",
     "check": "pnpm check:console-packages && ultracite check --deny-warnings && pnpm test && pnpm typecheck && pnpm build",
     "check:console-packages": "node scripts/check-console-packages.mjs",
+    "create:module": "lenso-console-package module create",
     "create:console-package": "lenso-console-package create",
     "build": "tsc -b && vite build",
-    "test": "vitest run src packages/story-console/src packages/identity-console/src packages/console-package-api/src",
+    "test": "vitest run src packages/story-console/src packages/identity-console/src packages/console-package-api/src packages/console-package-cli/src",
     "typecheck": "tsc -b --pretty false",
     "preview": "vite preview --host 0.0.0.0"
   },

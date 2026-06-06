@@ -21,6 +21,35 @@ const insertBeforeNeedle = (fileSource, entry, needle) => {
   return `${fileSource.slice(0, index)}${entry}${fileSource.slice(index)}`;
 };
 
+const insertBeforeFirstNeedle = (fileSource, entry, needles) => {
+  if (fileSource.includes(entry.trim())) {
+    return fileSource;
+  }
+  for (const needle of needles) {
+    if (fileSource.includes(needle)) {
+      return insertBeforeNeedle(fileSource, entry, needle);
+    }
+  }
+  return `${fileSource.trimEnd()}\n${entry}`;
+};
+
+const insertIntoLinkedModuleEntries = (fileSource, entry) => {
+  if (fileSource.includes(entry.trim())) {
+    return fileSource;
+  }
+  const entriesStart = fileSource.indexOf("const LINKED_MODULE_ENTRIES");
+  if (entriesStart === -1) {
+    throw new Error("Could not find LINKED_MODULE_ENTRIES in app-bootstrap");
+  }
+  const entriesEnd = fileSource.indexOf("];", entriesStart);
+  if (entriesEnd === -1) {
+    throw new Error("Could not find LINKED_MODULE_ENTRIES closing bracket");
+  }
+  return `${fileSource.slice(0, entriesEnd)}${entry}${fileSource.slice(
+    entriesEnd
+  )}`;
+};
+
 const appendToken = (value, token, beforeToken) => {
   const tokens = value.split(" ");
   if (tokens.includes(token)) {
@@ -49,6 +78,8 @@ const sortObject = (object) =>
 
 const camelCase = (value) =>
   value.replaceAll(/-([a-z0-9])/gu, (_match, letter) => letter.toUpperCase());
+
+const snakeCase = (value) => value.replaceAll("-", "_");
 
 const pascalCase = (value) => {
   const camel = camelCase(value);
@@ -102,11 +133,31 @@ const pathExists = async (filePath) => {
   }
 };
 
+const findRepoRoot = async (startPath) => {
+  let current = path.resolve(startPath);
+  while (true) {
+    if (
+      (await pathExists(path.join(current, "Cargo.toml"))) &&
+      (await pathExists(path.join(current, "crates/app-bootstrap")))
+    ) {
+      return current;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      return path.resolve(startPath);
+    }
+    current = parent;
+  }
+};
+
 const printUsage = () => {
   console.log(`Usage:
+  lenso module create <module-id> [options]
+  lenso console-package create <module-id> [options]
   lenso-console-package create <module-id> [options]
 
 Options:
+  --repo-root <path>
   --runtime-console-root <path>
   --area <data|runtime|operations|configuration>
   --label <label>
@@ -173,6 +224,15 @@ const runtimeConsolePaths = (runtimeConsoleRoot) => ({
   packageJsonPath: path.join(runtimeConsoleRoot, "package.json"),
   tsconfigPath: path.join(runtimeConsoleRoot, "tsconfig.json"),
   viteConfigPath: path.join(runtimeConsoleRoot, "vite.config.ts"),
+});
+
+const repoPaths = (repoRoot) => ({
+  appBootstrapCargoTomlPath: path.join(
+    repoRoot,
+    "crates/app-bootstrap/Cargo.toml"
+  ),
+  appBootstrapLibPath: path.join(repoRoot, "crates/app-bootstrap/src/lib.rs"),
+  cargoTomlPath: path.join(repoRoot, "Cargo.toml"),
 });
 
 const updatePackageJson = async ({
@@ -482,6 +542,168 @@ const writePendingFiles = async (pendingWrites) => {
   }
 };
 
+const moduleCargoToml = ({ moduleId }) => `[package]
+name = "${moduleId}"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+platform-core.workspace = true
+platform-module.workspace = true
+
+[lints]
+workspace = true
+`;
+
+const moduleLib = () => `pub mod module;
+`;
+
+const moduleManifest = ({ moduleId }) => `use platform_core::AppContext;
+use platform_module::{LinkedBinding, Module, ModuleManifest};
+
+/// Context-free manifest: serializable metadata only.
+pub fn manifest() -> ModuleManifest {
+    ModuleManifest::builder("${moduleId}").build()
+}
+
+/// The loaded module: manifest + linked behavior.
+pub fn module(_ctx: &AppContext) -> Module {
+    Module::linked(manifest(), LinkedBinding::builder().build())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn manifest_uses_module_name() {
+        assert_eq!(manifest().name, "${moduleId}");
+    }
+}
+`;
+
+const updateWorkspaceCargoToml = async ({
+  moduleCrate,
+  moduleId,
+  paths,
+  pendingWrites,
+}) => {
+  let fileSource = await readFile(paths.cargoTomlPath, "utf-8");
+  fileSource = insertBeforeFirstNeedle(
+    fileSource,
+    `    "modules/${moduleId}",\n`,
+    ['    "tools/', "]\n\n[workspace.package]"]
+  );
+  fileSource = insertBeforeFirstNeedle(
+    fileSource,
+    `${moduleCrate} = { path = "modules/${moduleId}" }\n`,
+    ["generate-contracts =", "arch-check =", "remote-module-example ="]
+  );
+  queueWrite(pendingWrites, paths.cargoTomlPath, fileSource);
+};
+
+const updateAppBootstrapCargoToml = async ({
+  moduleCrate,
+  paths,
+  pendingWrites,
+}) => {
+  const fileSource = await readFile(paths.appBootstrapCargoTomlPath, "utf-8");
+  queueWrite(
+    pendingWrites,
+    paths.appBootstrapCargoTomlPath,
+    insertBeforeFirstNeedle(fileSource, `${moduleCrate}.workspace = true\n`, [
+      "serde_json.workspace",
+      "tracing.workspace",
+      "\n[dev-dependencies]",
+    ])
+  );
+};
+
+const updateAppBootstrapLib = async ({
+  moduleCrate,
+  moduleId,
+  paths,
+  pendingWrites,
+}) => {
+  const fileSource = await readFile(paths.appBootstrapLibPath, "utf-8");
+  const entry = `    LinkedModuleEntry {
+        module_name: "${moduleId}",
+        manifest: ${moduleCrate}::module::manifest,
+        load: ${moduleCrate}::module::module,
+        http_binding: None,
+    },
+`;
+  queueWrite(
+    pendingWrites,
+    paths.appBootstrapLibPath,
+    insertIntoLinkedModuleEntries(fileSource, entry)
+  );
+};
+
+const queueModuleFiles = ({ moduleDir, moduleId, pendingWrites }) => {
+  queueWrite(
+    pendingWrites,
+    path.join(moduleDir, "Cargo.toml"),
+    moduleCargoToml({ moduleId })
+  );
+  queueWrite(pendingWrites, path.join(moduleDir, "src/lib.rs"), moduleLib());
+  queueWrite(
+    pendingWrites,
+    path.join(moduleDir, "src/module.rs"),
+    moduleManifest({ moduleId })
+  );
+};
+
+const createModule = async ({ options }) => {
+  const repoRoot = options.repoRoot
+    ? path.resolve(options.repoRoot)
+    : await findRepoRoot(process.cwd());
+  const moduleId = slugify(options.moduleId);
+  if (!moduleId) {
+    throw new Error("Module id is required");
+  }
+  const moduleCrate = snakeCase(moduleId);
+  const moduleDir = path.join(repoRoot, "modules", moduleId);
+
+  if (await pathExists(moduleDir)) {
+    throw new Error(`Module directory already exists: modules/${moduleId}`);
+  }
+
+  const paths = repoPaths(repoRoot);
+  const pendingWrites = new Map();
+  const moduleContext = {
+    moduleCrate,
+    moduleDir,
+    moduleId,
+    paths,
+    pendingWrites,
+  };
+
+  queueModuleFiles(moduleContext);
+  await updateWorkspaceCargoToml(moduleContext);
+  await updateAppBootstrapCargoToml(moduleContext);
+  await updateAppBootstrapLib(moduleContext);
+
+  if (options.dryRun) {
+    console.log("Module dry run:");
+    for (const filePath of pendingWrites.keys()) {
+      console.log(`- ${path.relative(repoRoot, filePath)}`);
+    }
+    return;
+  }
+
+  await writePendingFiles(pendingWrites);
+
+  console.log(`Created module ${moduleId}.`);
+  console.log("Next steps:");
+  console.log(`- cargo test --locked -p ${moduleCrate}`);
+  console.log("- just rust-check");
+  console.log("- just arch-check");
+};
+
 const createConsolePackage = async ({ defaultRuntimeConsoleRoot, options }) => {
   const runtimeConsoleRoot = path.resolve(
     options.runtimeConsoleRoot ?? defaultRuntimeConsoleRoot ?? process.cwd()
@@ -564,18 +786,40 @@ export const runConsolePackageCli = async (
   args,
   { defaultRuntimeConsoleRoot } = {}
 ) => {
-  const [command, ...rest] = args;
+  const [command, subcommand, ...rest] = args;
   if (command === "--help" || command === "-h" || !command) {
     printUsage();
     return command ? 0 : 1;
   }
-  if (command !== "create") {
+  if (command === "module") {
+    if (subcommand !== "create") {
+      console.error(`Unknown module command: ${subcommand ?? ""}`.trim());
+      printUsage();
+      return 1;
+    }
+    const options = parseOptions(rest);
+    if (options.help || !options.moduleId) {
+      printUsage();
+      return options.help ? 0 : 1;
+    }
+    await createModule({ options });
+    return 0;
+  }
+
+  const isConsolePackageCreate =
+    command === "create" ||
+    (command === "console-package" && subcommand === "create");
+  if (!isConsolePackageCreate) {
     console.error(`Unknown command: ${command}`);
     printUsage();
     return 1;
   }
 
-  const options = parseOptions(rest);
+  const consolePackageArgs =
+    command === "create"
+      ? [subcommand, ...rest].filter((arg) => arg !== undefined)
+      : rest;
+  const options = parseOptions(consolePackageArgs);
   if (options.help || !options.moduleId) {
     printUsage();
     return options.help ? 0 : 1;

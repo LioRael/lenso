@@ -8,14 +8,24 @@ to an external repository later if `@lenso/runtime-console-api` is published.
 
 ## Package Shape
 
-Generate the standard package skeleton and host registration first:
+When starting from a new linked Rust module, generate the module scaffold first:
+
+```sh
+pnpm create:module billing
+```
+
+That command creates `modules/billing`, adds it to the Rust workspace, and
+registers it in `crates/app-bootstrap`.
+
+Generate the standard frontend package skeleton and host registration next:
 
 ```sh
 pnpm create:console-package billing
 ```
 
-The package also exposes `pnpm exec lenso-console-package create billing` for
-CLI-style usage.
+The CLI also exposes `pnpm exec lenso-console-package module create billing`,
+`pnpm exec lenso module create billing`, and
+`pnpm exec lenso-console-package create billing` for command-style usage.
 
 Use `--dry-run` to preview file changes, and pass options such as
 `--label "Billing"` or `--route /data/billing` when defaults are not enough.

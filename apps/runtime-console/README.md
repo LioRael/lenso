@@ -109,6 +109,15 @@ They must import host capabilities through `@lenso/runtime-console-api`, define 
 Lenso provides the package framework and fixtures. Product projects choose and
 own their real business modules.
 
+Generate a linked Rust module scaffold first when starting a new project module:
+
+```bash
+pnpm create:module billing
+```
+
+This creates `modules/billing`, adds it to the Rust workspace, and registers it
+in `crates/app-bootstrap` as a linked module.
+
 See `docs/console-package-template.md` before adding a package. The short path is:
 
 1. Add `packages/<name>/package.json`.
