@@ -1,17 +1,10 @@
-import { exampleConsoleManifest } from "@lenso/example-console";
-import { storyConsoleManifest } from "@lenso/story-console";
-
 import type { ConsolePackageInstallDeclaration } from "./app/console-package-registry";
+import { consolePackageManifests } from "./console-package-manifest-exports";
 
-export const consolePackageInstallManifests = [
-  {
-    manifest: storyConsoleManifest,
-    source: "first_party",
-    version: "workspace",
-  },
-  {
-    manifest: exampleConsoleManifest,
-    source: "installed",
-    version: "workspace",
-  },
-] satisfies ConsolePackageInstallDeclaration[];
+export const consolePackageInstallManifests = consolePackageManifests.map(
+  (manifest) => ({
+    manifest,
+    source: manifest.source,
+    version: manifest.version,
+  })
+) satisfies ConsolePackageInstallDeclaration[];

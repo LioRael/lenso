@@ -9,5 +9,7 @@ export const exampleConsoleManifest = defineConsolePackageManifest({
   packageName: "@lenso/example-console",
   requiredCapabilities: [],
   route: "/runtime/example-console",
+  source: "installed",
   surfaceName: "example",
+  version: "workspace",
 } as const);

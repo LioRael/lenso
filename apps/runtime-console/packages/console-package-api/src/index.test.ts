@@ -13,7 +13,9 @@ describe("runtime console package API", () => {
       packageName: "@lenso/billing-console",
       requiredCapabilities: ["billing.read"],
       route: "/data/billing",
+      source: "installed",
       surfaceName: "billing",
+      version: "workspace",
     });
 
     expect(manifest).toEqual({
@@ -25,7 +27,9 @@ describe("runtime console package API", () => {
       packageName: "@lenso/billing-console",
       requiredCapabilities: ["billing.read"],
       route: "/data/billing",
+      source: "installed",
       surfaceName: "billing",
+      version: "workspace",
     });
   });
 });

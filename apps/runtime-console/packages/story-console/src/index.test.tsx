@@ -21,7 +21,9 @@ describe("story console module", () => {
       packageName: "@lenso/story-console",
       requiredCapabilities: ["runtime.stories.read"],
       route: "/runtime/stories",
+      source: "first_party",
       surfaceName: "stories",
+      version: "workspace",
     });
     expect(storyConsoleModule).toMatchObject({
       id: storyConsoleManifest.id,

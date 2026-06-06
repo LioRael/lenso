@@ -10,6 +10,6 @@ import {
 } from "./app/console-package-registry";
 
 export const consolePackageModuleExportsByKey = {
-  [consolePackageKey(storyConsoleManifest)]: storyConsoleModule,
   [consolePackageKey(exampleConsoleManifest)]: exampleConsoleModule,
+  [consolePackageKey(storyConsoleManifest)]: storyConsoleModule,
 } satisfies ConsolePackageModuleExportsByKey;

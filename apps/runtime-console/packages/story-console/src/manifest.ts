@@ -9,5 +9,7 @@ export const storyConsoleManifest = defineConsolePackageManifest({
   packageName: "@lenso/story-console",
   requiredCapabilities: ["runtime.stories.read"],
   route: "/runtime/stories",
+  source: "first_party",
   surfaceName: "stories",
+  version: "workspace",
 } as const);

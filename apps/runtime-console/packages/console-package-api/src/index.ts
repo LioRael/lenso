@@ -2,6 +2,7 @@ import type {
   ConsoleSurfaceArea,
   ConsoleSurfaceIcon,
 } from "../../../src/app/console-module-api";
+import type { ConsolePackageRegistrySource } from "../../../src/app/console-package-registry";
 
 export {
   defineConsoleModule,
@@ -30,6 +31,8 @@ export interface ConsolePackageManifest {
   area: ConsoleSurfaceArea;
   route: string;
   requiredCapabilities: readonly string[];
+  source: ConsolePackageRegistrySource;
+  version?: string;
   icon?: ConsoleSurfaceIcon;
 }
 

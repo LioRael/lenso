@@ -8,7 +8,9 @@ describe("example console package", () => {
       exportName: "exampleConsoleModule",
       packageName: "@lenso/example-console",
       route: "/runtime/example-console",
+      source: "installed",
       surfaceName: "example",
+      version: "workspace",
     });
     expect(exampleConsoleModule).toMatchObject({
       id: "example-console",
