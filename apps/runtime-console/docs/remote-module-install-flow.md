@@ -62,3 +62,50 @@ pnpm --dir apps/runtime-console run demo:remote-module-install
 
 Set `LENSO_KEEP_REMOTE_MODULE_INSTALL_DEMO=1` to keep the generated temp
 directory for inspection.
+
+Expected success output ends with:
+
+```text
+Module doctor passed.
+Remote module install demo passed
+```
+
+## Troubleshooting
+
+Run `lenso module doctor` first. It groups failures by the part of the install
+flow that needs attention and prints a `fix:` command next to each issue.
+
+### Remote source
+
+If `REMOTE_MODULES` is missing a module or points at the wrong base URL, add the
+module source again:
+
+```text
+fix: lenso module add <manifest-url> --base-url <base-url>
+```
+
+This updates `.env` and refreshes the local console package install plan.
+
+### Console package
+
+If the Runtime Console dependency is missing, install the package requested by
+the module manifest:
+
+```text
+fix: pnpm --dir apps/runtime-console add <package-name>
+```
+
+Run the host package install afterward so the lockfile matches the registered
+frontend package.
+
+### Registry mapping
+
+If manifest exports or module export mappings are missing, re-apply the install
+plan:
+
+```text
+fix: lenso console-package apply-plan
+```
+
+This updates Runtime Console package dependencies, manifest exports, and module
+export mappings from `.lenso/console-package-install-plan.json`.

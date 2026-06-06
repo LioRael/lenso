@@ -514,6 +514,16 @@ describe("module scaffold CLI", () => {
     expect(flowDoc).toContain("lenso module add");
     expect(flowDoc).toContain("lenso console-package apply-plan");
     expect(flowDoc).toContain("lenso module doctor");
+    expect(flowDoc).toContain("## Troubleshooting");
+    expect(flowDoc).toContain("Remote source");
+    expect(flowDoc).toContain("Console package");
+    expect(flowDoc).toContain("Registry mapping");
+    expect(flowDoc).toContain("fix: lenso module add <manifest-url>");
+    expect(flowDoc).toContain(
+      "fix: pnpm --dir apps/runtime-console add <package-name>"
+    );
+    expect(flowDoc).toContain("fix: lenso console-package apply-plan");
+    expect(flowDoc).toContain("Remote module install demo passed");
 
     await expect(
       readFile(path.join(repoRoot, "apps/runtime-console/README.md"), "utf-8")
