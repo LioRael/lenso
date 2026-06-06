@@ -549,6 +549,21 @@ fn ensure_action_input(
         ));
     };
 
+    let declared_fields = input_schema
+        .fields
+        .iter()
+        .map(|field| field.name.as_str())
+        .collect::<HashSet<_>>();
+    if let Some(field_name) = input
+        .keys()
+        .find(|field_name| !declared_fields.contains(field_name.as_str()))
+    {
+        return Err(input_validation_error(
+            format!("admin action input field `{field_name}` is not declared"),
+            ctx,
+        ));
+    }
+
     for field in &input_schema.fields {
         let value = input.get(&field.name);
         if field.required && matches!(value, None | Some(Value::Null)) {
