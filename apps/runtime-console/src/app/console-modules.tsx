@@ -65,6 +65,7 @@ export const buildTimeConsoleModuleMetadata = [
           export: storyConsoleManifest.exportName,
           name: storyConsoleManifest.packageName,
         },
+        required_capabilities: storyConsoleManifest.requiredCapabilities,
       },
     ],
   },

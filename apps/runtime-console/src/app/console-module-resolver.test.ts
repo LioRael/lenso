@@ -37,6 +37,7 @@ describe("console module resolver", () => {
                 export: "storyConsoleModule",
                 name: "@lenso/story-console",
               },
+              required_capabilities: ["runtime.stories.read"],
             },
           ],
         },
@@ -51,6 +52,38 @@ describe("console module resolver", () => {
           ],
         },
       ])
+    ).toEqual([
+      {
+        exportName: "storyConsoleModule",
+        packageName: "@lenso/story-console",
+      },
+    ]);
+  });
+
+  test("filters console surfaces when required capabilities are missing", () => {
+    const metadata = [
+      {
+        console: [
+          {
+            package: {
+              export: "storyConsoleModule",
+              name: "@lenso/story-console",
+            },
+            required_capabilities: ["runtime.stories.read"],
+          },
+        ],
+      },
+    ];
+
+    expect(
+      selectConsoleModulePackageReferences(metadata, {
+        availableCapabilities: [],
+      })
+    ).toEqual([]);
+    expect(
+      selectConsoleModulePackageReferences(metadata, {
+        availableCapabilities: ["runtime.stories.read"],
+      })
     ).toEqual([
       {
         exportName: "storyConsoleModule",

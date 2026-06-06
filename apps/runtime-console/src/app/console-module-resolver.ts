@@ -12,7 +12,12 @@ export type ConsoleModuleMetadata = {
       name?: string;
       export?: string;
     };
+    required_capabilities?: readonly string[];
   }[];
+};
+
+export type ConsoleModuleSelectionOptions = {
+  availableCapabilities?: readonly string[];
 };
 
 const firstPartyConsoleModuleExports: Record<string, ConsoleModule> = {
@@ -41,13 +46,26 @@ export function resolveConsoleModules(
 }
 
 export function selectConsoleModulePackageReferences(
-  modules: ConsoleModuleMetadata[]
+  modules: ConsoleModuleMetadata[],
+  options: ConsoleModuleSelectionOptions = {}
 ): ConsoleModulePackageReference[] {
+  const availableCapabilities = options.availableCapabilities
+    ? new Set(options.availableCapabilities)
+    : null;
   return modules.flatMap((module) =>
     (module.console ?? []).flatMap((surface) => {
       const packageName = surface.package?.name;
       const exportName = surface.package?.export;
       if (!(packageName && exportName)) {
+        return [];
+      }
+      const requiredCapabilities = surface.required_capabilities ?? [];
+      if (
+        availableCapabilities &&
+        !requiredCapabilities.every((capability) =>
+          availableCapabilities.has(capability)
+        )
+      ) {
         return [];
       }
       const reference = { exportName, packageName };

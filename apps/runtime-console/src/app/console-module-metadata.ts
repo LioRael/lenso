@@ -16,6 +16,7 @@ type ModulesMetadataResponse = {
 };
 
 const consoleModulesMetadataQueryKey = ["modules", "registry"] as const;
+const hostConsoleCapabilities = ["runtime.stories.read"];
 
 export function consoleModuleMetadataWithFallback({
   apiMode,
@@ -37,10 +38,13 @@ export function consoleModuleMetadataWithFallback({
 }
 
 export function navigationFromConsoleModuleMetadata(
-  modules: ConsoleModuleMetadata[]
+  modules: ConsoleModuleMetadata[],
+  availableCapabilities = hostConsoleCapabilities
 ) {
   return buildConsoleNavigation(
-    resolveConsoleModules(selectConsoleModulePackageReferences(modules))
+    resolveConsoleModules(
+      selectConsoleModulePackageReferences(modules, { availableCapabilities })
+    )
   );
 }
 
