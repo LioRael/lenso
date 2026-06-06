@@ -118,6 +118,13 @@ pnpm create:module billing
 This creates `modules/billing`, adds it to the Rust workspace, and registers it
 in `crates/app-bootstrap` as a linked module.
 
+Add `--with-console` to generate and register the matching Runtime Console
+package in the same command:
+
+```bash
+pnpm create:module billing --with-console
+```
+
 See `docs/console-package-template.md` before adding a package. The short path is:
 
 1. Add `packages/<name>/package.json`.

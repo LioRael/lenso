@@ -61,6 +61,90 @@ app-bootstrap = { path = "crates/app-bootstrap" }
   return repoRoot;
 };
 
+const createRuntimeConsoleFixture = async (repoRoot) => {
+  await writeFixture(
+    repoRoot,
+    "apps/runtime-console/package.json",
+    JSON.stringify(
+      {
+        dependencies: {
+          "@lenso/runtime-console-api": "workspace:*",
+        },
+        scripts: {
+          test: "vitest run src packages/console-package-api/src",
+        },
+      },
+      null,
+      2
+    )
+  );
+  await writeFixture(
+    repoRoot,
+    "apps/runtime-console/tsconfig.json",
+    JSON.stringify(
+      {
+        compilerOptions: {
+          paths: {
+            "@lenso/runtime-console-api": [
+              "./packages/console-package-api/src/index.ts",
+            ],
+          },
+        },
+        include: ["src", "packages/console-package-api/src"],
+      },
+      null,
+      2
+    )
+  );
+  await writeFixture(
+    repoRoot,
+    "apps/runtime-console/vite.config.ts",
+    `export default {
+  resolve: {
+    alias: {
+      "@lenso/runtime-console-api": fileURLToPath(
+        new URL("packages/console-package-api/src/index.ts", import.meta.url)
+      ),
+    },
+  },
+};
+`
+  );
+  await writeFixture(
+    repoRoot,
+    "apps/runtime-console/oxlint.config.ts",
+    `export default {
+  overrides: [
+    {
+      files: [
+        "vite.config.ts",
+      ],
+    },
+  ],
+};
+`
+  );
+  await writeFixture(
+    repoRoot,
+    "apps/runtime-console/src/console-package-manifest-exports.ts",
+    `export const consolePackageManifests = [
+] as const;
+`
+  );
+  await writeFixture(
+    repoRoot,
+    "apps/runtime-console/src/console-package-module-exports.ts",
+    `import {
+  consolePackageKey,
+  type ConsolePackageModuleExportsByKey,
+} from "./app/console-package-registry";
+
+export const consolePackageModuleExportsByKey = {
+} satisfies ConsolePackageModuleExportsByKey;
+`
+  );
+};
+
 const writeFixture = async (repoRoot, relativePath, contents) => {
   const { mkdir, writeFile } = await import("node:fs/promises");
   const filePath = path.join(repoRoot, relativePath);
@@ -132,5 +216,51 @@ describe("module scaffold CLI", () => {
     await expect(
       readFile(path.join(repoRoot, "modules/analytics/Cargo.toml"), "utf-8")
     ).resolves.toContain('name = "analytics"');
+  });
+
+  test("creates a linked module with a registered console package", async () => {
+    const repoRoot = await createRepoFixture();
+    await createRuntimeConsoleFixture(repoRoot);
+
+    await expect(
+      runConsolePackageCli([
+        "module",
+        "create",
+        "billing",
+        "--repo-root",
+        repoRoot,
+        "--with-console",
+      ])
+    ).resolves.toBe(0);
+
+    const moduleSource = await readFile(
+      path.join(repoRoot, "modules/billing/src/module.rs"),
+      "utf-8"
+    );
+    expect(moduleSource).toContain(
+      "use platform_module::{ConsoleArea, ConsolePackage, ConsoleSurface, LinkedBinding, Module, ModuleManifest};"
+    );
+    expect(moduleSource).toContain(
+      '.capabilities(vec!["billing.read".to_owned()])'
+    );
+    expect(moduleSource).toContain(".console(vec![ConsoleSurface {");
+    expect(moduleSource).toContain('name: "@lenso/billing-console".to_owned()');
+    expect(moduleSource).toContain('export: "billingConsoleModule".to_owned()');
+
+    await expect(
+      readFile(
+        path.join(
+          repoRoot,
+          "apps/runtime-console/packages/billing-console/src/index.tsx"
+        ),
+        "utf-8"
+      )
+    ).resolves.toContain("billingConsoleModule");
+    await expect(
+      readFile(
+        path.join(repoRoot, "apps/runtime-console/package.json"),
+        "utf-8"
+      )
+    ).resolves.toContain('"@lenso/billing-console": "workspace:*"');
   });
 });

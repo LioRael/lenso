@@ -186,6 +186,10 @@ const parseOptions = (args) => {
       parsed.dryRun = true;
       continue;
     }
+    if (arg === "--with-console") {
+      parsed.withConsole = true;
+      continue;
+    }
     if (arg === "--help" || arg === "-h") {
       parsed.help = true;
       continue;
@@ -535,6 +539,43 @@ describe("${packageName}", () => {
   );
 };
 
+const buildConsolePackageContext = ({ options, runtimeConsoleRoot }) => {
+  const paths = runtimeConsolePaths(runtimeConsoleRoot);
+  const moduleId = slugify(options.moduleId);
+  const packageSlug = slugify(options.packageSlug ?? `${moduleId}-console`);
+  const packageName = `@lenso/${packageSlug}`;
+  const area = options.area ?? "data";
+  const label = options.label ?? titleCase(moduleId);
+  const route = options.route ?? `/${area}/${moduleId}`;
+  const registrySource = options.source ?? "installed";
+  const icon = options.icon ?? defaultIcon(area);
+  const capability = options.capability ?? `${moduleId}.read`;
+  const surfaceName = options.surfaceName ?? moduleId;
+  const exportStem = exportStemFromPackageSlug(packageSlug);
+  const manifestName = `${exportStem}Manifest`;
+  const moduleName = `${exportStem}Module`;
+  const componentName = `${pascalCase(moduleId)}ConsolePage`;
+  const packageDir = path.join(runtimeConsoleRoot, "packages", packageSlug);
+
+  return {
+    area,
+    capability,
+    componentName,
+    icon,
+    label,
+    manifestName,
+    moduleId,
+    moduleName,
+    packageDir,
+    packageName,
+    packageSlug,
+    paths,
+    registrySource,
+    route,
+    surfaceName,
+  };
+};
+
 const writePendingFiles = async (pendingWrites) => {
   for (const [filePath, content] of pendingWrites) {
     await mkdir(path.dirname(filePath), { recursive: true });
@@ -561,12 +602,41 @@ workspace = true
 const moduleLib = () => `pub mod module;
 `;
 
-const moduleManifest = ({ moduleId }) => `use platform_core::AppContext;
-use platform_module::{LinkedBinding, Module, ModuleManifest};
+const moduleManifestImports = (consoleSurface) =>
+  consoleSurface
+    ? "use platform_module::{ConsoleArea, ConsolePackage, ConsoleSurface, LinkedBinding, Module, ModuleManifest};"
+    : "use platform_module::{LinkedBinding, Module, ModuleManifest};";
+
+const moduleManifestBuilder = ({ consoleSurface, moduleId }) => {
+  if (!consoleSurface) {
+    return `ModuleManifest::builder("${moduleId}").build()`;
+  }
+  return `ModuleManifest::builder("${moduleId}")
+        .capabilities(vec!["${consoleSurface.capability}".to_owned()])
+        .console(vec![ConsoleSurface {
+            name: "${consoleSurface.surfaceName}".to_owned(),
+            label: "${consoleSurface.label}".to_owned(),
+            area: ConsoleArea::${rustConsoleArea(consoleSurface.area)},
+            route: "${consoleSurface.route}".to_owned(),
+            package: ConsolePackage {
+                name: "${consoleSurface.packageName}".to_owned(),
+                export: "${consoleSurface.moduleName}".to_owned(),
+            },
+            icon: Some("${consoleSurface.icon}".to_owned()),
+            required_capabilities: vec!["${consoleSurface.capability}".to_owned()],
+        }])
+        .build()`;
+};
+
+const moduleManifest = ({
+  consoleSurface,
+  moduleId,
+}) => `use platform_core::AppContext;
+${moduleManifestImports(consoleSurface)}
 
 /// Context-free manifest: serializable metadata only.
 pub fn manifest() -> ModuleManifest {
-    ModuleManifest::builder("${moduleId}").build()
+    ${moduleManifestBuilder({ consoleSurface, moduleId })}
 }
 
 /// The loaded module: manifest + linked behavior.
@@ -643,7 +713,12 @@ const updateAppBootstrapLib = async ({
   );
 };
 
-const queueModuleFiles = ({ moduleDir, moduleId, pendingWrites }) => {
+const queueModuleFiles = ({
+  consoleSurface,
+  moduleDir,
+  moduleId,
+  pendingWrites,
+}) => {
   queueWrite(
     pendingWrites,
     path.join(moduleDir, "Cargo.toml"),
@@ -653,7 +728,7 @@ const queueModuleFiles = ({ moduleDir, moduleId, pendingWrites }) => {
   queueWrite(
     pendingWrites,
     path.join(moduleDir, "src/module.rs"),
-    moduleManifest({ moduleId })
+    moduleManifest({ consoleSurface, moduleId })
   );
 };
 
@@ -667,6 +742,15 @@ const createModule = async ({ options }) => {
   }
   const moduleCrate = snakeCase(moduleId);
   const moduleDir = path.join(repoRoot, "modules", moduleId);
+  const consoleRuntimeRoot = path.resolve(
+    options.runtimeConsoleRoot ?? path.join(repoRoot, "apps/runtime-console")
+  );
+  const consoleSurface = options.withConsole
+    ? buildConsolePackageContext({
+        options: { ...options, moduleId },
+        runtimeConsoleRoot: consoleRuntimeRoot,
+      })
+    : undefined;
 
   if (await pathExists(moduleDir)) {
     throw new Error(`Module directory already exists: modules/${moduleId}`);
@@ -675,6 +759,7 @@ const createModule = async ({ options }) => {
   const paths = repoPaths(repoRoot);
   const pendingWrites = new Map();
   const moduleContext = {
+    consoleSurface,
     moduleCrate,
     moduleDir,
     moduleId,
@@ -692,10 +777,22 @@ const createModule = async ({ options }) => {
     for (const filePath of pendingWrites.keys()) {
       console.log(`- ${path.relative(repoRoot, filePath)}`);
     }
+    if (options.withConsole) {
+      await createConsolePackage({
+        defaultRuntimeConsoleRoot: consoleRuntimeRoot,
+        options: { ...options, moduleId },
+      });
+    }
     return;
   }
 
   await writePendingFiles(pendingWrites);
+  if (options.withConsole) {
+    await createConsolePackage({
+      defaultRuntimeConsoleRoot: consoleRuntimeRoot,
+      options: { ...options, moduleId },
+    });
+  }
 
   console.log(`Created module ${moduleId}.`);
   console.log("Next steps:");
@@ -708,51 +805,22 @@ const createConsolePackage = async ({ defaultRuntimeConsoleRoot, options }) => {
   const runtimeConsoleRoot = path.resolve(
     options.runtimeConsoleRoot ?? defaultRuntimeConsoleRoot ?? process.cwd()
   );
-  const paths = runtimeConsolePaths(runtimeConsoleRoot);
-  const moduleId = slugify(options.moduleId);
-  const packageSlug = slugify(options.packageSlug ?? `${moduleId}-console`);
-  const packageName = `@lenso/${packageSlug}`;
-  const area = options.area ?? "data";
-  const label = options.label ?? titleCase(moduleId);
-  const route = options.route ?? `/${area}/${moduleId}`;
-  const registrySource = options.source ?? "installed";
-  const icon = options.icon ?? defaultIcon(area);
-  const capability = options.capability ?? `${moduleId}.read`;
-  const surfaceName = options.surfaceName ?? moduleId;
-  const exportStem = exportStemFromPackageSlug(packageSlug);
-  const manifestName = `${exportStem}Manifest`;
-  const moduleName = `${exportStem}Module`;
-  const componentName = `${pascalCase(moduleId)}ConsolePage`;
-  const packageDir = path.join(runtimeConsoleRoot, "packages", packageSlug);
+  const packageContext = buildConsolePackageContext({
+    options,
+    runtimeConsoleRoot,
+  });
 
-  if (await pathExists(packageDir)) {
+  if (await pathExists(packageContext.packageDir)) {
     throw new Error(
       `Console package directory already exists: ${relativePath(
         runtimeConsoleRoot,
-        packageDir
+        packageContext.packageDir
       )}`
     );
   }
 
   const pendingWrites = new Map();
-  const packageContext = {
-    area,
-    capability,
-    componentName,
-    icon,
-    label,
-    manifestName,
-    moduleId,
-    moduleName,
-    packageDir,
-    packageName,
-    packageSlug,
-    paths,
-    pendingWrites,
-    registrySource,
-    route,
-    surfaceName,
-  };
+  packageContext.pendingWrites = pendingWrites;
 
   queuePackageFiles(packageContext);
   await updatePackageJson(packageContext);
@@ -772,10 +840,10 @@ const createConsolePackage = async ({ defaultRuntimeConsoleRoot, options }) => {
 
   await writePendingFiles(pendingWrites);
 
-  console.log(`Created ${packageName}.`);
+  console.log(`Created ${packageContext.packageName}.`);
   console.log("Next steps:");
   console.log(
-    `- Copy ${packageSlug}/console-surface.rs into the Rust module manifest`
+    `- Copy ${packageContext.packageSlug}/console-surface.rs into the Rust module manifest`
   );
   console.log("- pnpm install --lockfile-only");
   console.log("- pnpm check:console-packages");
