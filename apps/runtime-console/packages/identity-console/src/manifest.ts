@@ -8,6 +8,14 @@ const consoleSurfaceContract = consoleSurface as unknown as {
   readonly icon: "database";
   readonly id: "identity";
   readonly label: "Identity";
+  readonly navigation: {
+    readonly order: 60;
+    readonly workspace: {
+      readonly icon: "settings";
+      readonly id: "system";
+      readonly label: "System";
+    };
+  };
   readonly packageName: "@lenso/identity-console";
   readonly requiredCapabilities: readonly ["identity.users.read"];
   readonly route: "/data/identity";

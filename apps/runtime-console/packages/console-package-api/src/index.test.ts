@@ -65,6 +65,61 @@ describe("runtime console package API", () => {
     });
   });
 
+  test("maps package manifest navigation to Rust console surface metadata", () => {
+    const manifest = defineConsolePackageManifest({
+      area: "data",
+      exportName: "crmConsoleModule",
+      icon: "database",
+      id: "crm",
+      label: "Contacts",
+      navigation: {
+        group: {
+          id: "customers",
+          label: "Customers",
+          order: 20,
+        },
+        order: 10,
+        workspace: {
+          icon: "briefcase",
+          id: "crm",
+          label: "CRM",
+        },
+      },
+      packageName: "@lenso/crm-console",
+      requiredCapabilities: ["crm.contacts.read"],
+      route: "/crm/contacts",
+      source: "installed",
+      surfaceName: "contacts",
+      version: "workspace",
+    } as const);
+
+    expect(consoleSurfaceFromPackageManifest(manifest)).toEqual({
+      area: "data",
+      icon: "database",
+      label: "Contacts",
+      name: "contacts",
+      navigation: {
+        group: {
+          id: "customers",
+          label: "Customers",
+          order: 20,
+        },
+        order: 10,
+        workspace: {
+          icon: "briefcase",
+          id: "crm",
+          label: "CRM",
+        },
+      },
+      package: {
+        export: "crmConsoleModule",
+        name: "@lenso/crm-console",
+      },
+      required_capabilities: ["crm.contacts.read"],
+      route: "/crm/contacts",
+    });
+  });
+
   test("omits install-only manifest fields from console surface metadata", () => {
     const manifest = defineConsolePackageManifest({
       area: "runtime",

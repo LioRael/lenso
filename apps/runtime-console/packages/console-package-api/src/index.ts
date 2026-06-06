@@ -36,6 +36,26 @@ export interface ConsolePackageManifest {
   source: ConsolePackageRegistrySource;
   version?: string;
   icon?: ConsoleSurfaceIcon;
+  navigation?: ConsolePackageNavigation;
+}
+
+export interface ConsolePackageNavigation {
+  workspace: ConsolePackageWorkspaceRef;
+  group?: ConsolePackageNavigationGroup;
+  order?: number;
+}
+
+export interface ConsolePackageWorkspaceRef {
+  id: string;
+  label: string;
+  icon?: ConsoleSurfaceIcon;
+}
+
+export interface ConsolePackageNavigationGroup {
+  id: string;
+  label: string;
+  icon?: ConsoleSurfaceIcon;
+  order?: number;
 }
 
 export interface ConsoleSurfaceManifest {
@@ -49,6 +69,7 @@ export interface ConsoleSurfaceManifest {
   };
   required_capabilities: readonly string[];
   icon?: ConsoleSurfaceIcon;
+  navigation?: ConsolePackageNavigation;
 }
 
 export const defineConsolePackageManifest = <
@@ -73,6 +94,9 @@ export const consoleSurfaceFromPackageManifest = (
   };
   if (manifest.icon) {
     surface.icon = manifest.icon;
+  }
+  if (manifest.navigation) {
+    surface.navigation = manifest.navigation;
   }
   return surface;
 };

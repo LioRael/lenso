@@ -488,6 +488,14 @@ const queuePackageFiles = ({
     icon,
     id: moduleId,
     label,
+    navigation: {
+      order: 10,
+      workspace: {
+        icon,
+        id: moduleId,
+        label,
+      },
+    },
     packageName,
     requiredCapabilities: [capability],
     route,
@@ -540,6 +548,15 @@ ConsoleSurface {
     },
     icon: Some("${icon}".to_owned()),
     required_capabilities: vec!["${capability}".to_owned()],
+    navigation: Some(platform_module::ConsoleNavigation {
+        workspace: platform_module::ConsoleWorkspaceRef {
+            id: "${moduleId}".to_owned(),
+            label: "${label}".to_owned(),
+            icon: Some("${icon}".to_owned()),
+        },
+        group: None,
+        order: Some(10),
+    }),
 }
 `
   );
@@ -557,6 +574,14 @@ const consoleSurfaceContract = consoleSurface as unknown as {
   readonly icon: "${icon}";
   readonly id: "${moduleId}";
   readonly label: "${label}";
+  readonly navigation: {
+    readonly order: 10;
+    readonly workspace: {
+      readonly icon: "${icon}";
+      readonly id: "${moduleId}";
+      readonly label: "${label}";
+    };
+  };
   readonly packageName: "${packageName}";
   readonly requiredCapabilities: readonly ["${capability}"];
   readonly route: "${route}";
@@ -605,6 +630,7 @@ export const ${moduleName} = defineConsoleModule({
       component: ${componentName},
       icon: ${manifestName}.icon,
       label: ${manifestName}.label,
+      navigation: ${manifestName}.navigation,
       path: ${manifestName}.route,
     },
   ],
@@ -877,6 +903,15 @@ const moduleManifestBuilder = ({ consoleSurface, moduleId }) => {
             },
             icon: Some("${consoleSurface.icon}".to_owned()),
             required_capabilities: vec!["${consoleSurface.capability}".to_owned()],
+            navigation: Some(platform_module::ConsoleNavigation {
+                workspace: platform_module::ConsoleWorkspaceRef {
+                    id: "${moduleId}".to_owned(),
+                    label: "${consoleSurface.label}".to_owned(),
+                    icon: Some("${consoleSurface.icon}".to_owned()),
+                },
+                group: None,
+                order: Some(10),
+            }),
         }])
         .build()`;
 };

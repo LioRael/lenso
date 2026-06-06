@@ -4,6 +4,14 @@
   "icon": "database",
   "id": "identity",
   "label": "Identity",
+  "navigation": {
+    "order": 60,
+    "workspace": {
+      "icon": "settings",
+      "id": "system",
+      "label": "System"
+    }
+  },
   "packageName": "@lenso/identity-console",
   "requiredCapabilities": ["identity.users.read"],
   "route": "/data/identity",
