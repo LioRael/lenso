@@ -197,17 +197,49 @@ mod tests {
     #[test]
     fn manifest_declares_identity_console_surface() {
         let manifest = manifest();
+        let console_surface_contract: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../apps/runtime-console/packages/identity-console/console-surface.json"
+        ))
+        .expect("identity console surface contract should be valid json");
 
+        assert_eq!(manifest.name, console_surface_contract["id"]);
+        assert_eq!(
+            manifest.capabilities,
+            required_capabilities_from_contract(&console_surface_contract)
+        );
         assert_eq!(manifest.console.len(), 1);
         let surface = &manifest.console[0];
-        assert_eq!(surface.name, "identity");
-        assert_eq!(surface.label, "Identity");
+        let surface_json =
+            serde_json::to_value(surface).expect("identity console surface should serialize");
+        assert_eq!(surface.name, console_surface_contract["surfaceName"]);
+        assert_eq!(surface.label, console_surface_contract["label"]);
         assert_eq!(surface.area, platform_module::ConsoleArea::Data);
-        assert_eq!(surface.route, "/data/identity");
-        assert_eq!(surface.package.name, "@lenso/identity-console");
-        assert_eq!(surface.package.export, "identityConsoleModule");
-        assert_eq!(surface.icon.as_deref(), Some("database"));
-        assert_eq!(surface.required_capabilities, vec!["identity.users.read"]);
+        assert_eq!(surface_json["area"], console_surface_contract["area"]);
+        assert_eq!(surface.route, console_surface_contract["route"]);
+        assert_eq!(surface.package.name, console_surface_contract["packageName"]);
+        assert_eq!(
+            surface.package.export,
+            console_surface_contract["exportName"]
+        );
+        assert_eq!(surface_json["icon"], console_surface_contract["icon"]);
+        assert_eq!(
+            surface.required_capabilities,
+            required_capabilities_from_contract(&console_surface_contract)
+        );
+    }
+
+    fn required_capabilities_from_contract(contract: &serde_json::Value) -> Vec<String> {
+        contract["requiredCapabilities"]
+            .as_array()
+            .expect("requiredCapabilities should be an array")
+            .iter()
+            .map(|capability| {
+                capability
+                    .as_str()
+                    .expect("requiredCapabilities should contain strings")
+                    .to_owned()
+            })
+            .collect()
     }
 
     #[test]
