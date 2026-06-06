@@ -14,9 +14,9 @@ importers:
       '@gsap/react':
         specifier: ^2.1.2
         version: 2.1.2(gsap@3.15.0)(react@19.2.6)
-      '@lenso/example-console':
+      '@lenso/identity-console':
         specifier: workspace:*
-        version: link:packages/example-console
+        version: link:packages/identity-console
       '@lenso/runtime-console-api':
         specifier: workspace:*
         version: link:packages/console-package-api
@@ -84,7 +84,7 @@ importers:
 
   packages/console-package-api: {}
 
-  packages/example-console:
+  packages/identity-console:
     dependencies:
       '@lenso/runtime-console-api':
         specifier: workspace:*

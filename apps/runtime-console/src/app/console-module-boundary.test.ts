@@ -19,8 +19,8 @@ const storyPackageFiles = import.meta.glob<string>(
     query: "?raw",
   }
 );
-const examplePackageFiles = import.meta.glob<string>(
-  "../../packages/example-console/src/**/*.{ts,tsx}",
+const identityPackageFiles = import.meta.glob<string>(
+  "../../packages/identity-console/src/**/*.{ts,tsx}",
   {
     eager: true,
     import: "default",
@@ -28,8 +28,7 @@ const examplePackageFiles = import.meta.glob<string>(
   }
 );
 const modulePrefix = "../modules/";
-const exampleModulePrefix = "../modules/example-console-package/";
-const examplePackagePrefix = "../../packages/example-console/src/";
+const identityPackagePrefix = "../../packages/identity-console/src/";
 const storyPackagePrefix = "../../packages/story-console/src/";
 const storyModulePrefix = "../modules/story-console/";
 const importPattern =
@@ -40,15 +39,13 @@ function findConsoleModuleBoundaryViolations(): string[] {
 
   for (const [file, source] of Object.entries({
     ...sourceFiles,
-    ...examplePackageFiles,
+    ...identityPackageFiles,
     ...storyPackageFiles,
   })) {
-    const inExampleModule =
-      file.startsWith(exampleModulePrefix) ||
-      file.startsWith(examplePackagePrefix);
+    const inIdentityPackage = file.startsWith(identityPackagePrefix);
     const inConsoleModule =
       file.startsWith(modulePrefix) ||
-      file.startsWith(examplePackagePrefix) ||
+      file.startsWith(identityPackagePrefix) ||
       file.startsWith(storyPackagePrefix);
     const inStoryModule =
       file.startsWith(storyModulePrefix) || file.startsWith(storyPackagePrefix);
@@ -119,13 +116,9 @@ function findConsoleModuleBoundaryViolations(): string[] {
         );
       }
 
-      if (
-        !inExampleModule &&
-        (target.includes("/modules/example-console-package") ||
-          specifier.includes("modules/example-console-package"))
-      ) {
+      if (!inIdentityPackage && target.startsWith(identityPackagePrefix)) {
         violations.push(
-          `${displayPath(file)} imports example-console internals through ${specifier}; use @lenso/example-console`
+          `${displayPath(file)} imports identity-console internals through ${specifier}; use @lenso/identity-console`
         );
       }
     }

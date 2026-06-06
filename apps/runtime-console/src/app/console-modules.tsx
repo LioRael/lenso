@@ -1,4 +1,4 @@
-import { exampleConsoleManifest } from "@lenso/example-console";
+import { identityConsoleManifest } from "@lenso/identity-console";
 import {
   consoleSurfaceFromPackageManifest,
   type ConsolePackageManifest,
@@ -75,7 +75,7 @@ export function consoleModuleMetadataFromManifest(
 
 export const buildTimeConsoleModuleMetadata = [
   storyConsoleManifest,
-  exampleConsoleManifest,
+  identityConsoleManifest,
 ].map(consoleModuleMetadataFromManifest);
 
 export const consoleModulePackageReferences =

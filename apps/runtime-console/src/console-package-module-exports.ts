@@ -1,7 +1,7 @@
 import {
-  exampleConsoleManifest,
-  exampleConsoleModule,
-} from "@lenso/example-console";
+  identityConsoleManifest,
+  identityConsoleModule,
+} from "@lenso/identity-console";
 import { storyConsoleManifest, storyConsoleModule } from "@lenso/story-console";
 
 import {
@@ -10,6 +10,6 @@ import {
 } from "./app/console-package-registry";
 
 export const consolePackageModuleExportsByKey = {
-  [consolePackageKey(exampleConsoleManifest)]: exampleConsoleModule,
+  [consolePackageKey(identityConsoleManifest)]: identityConsoleModule,
   [consolePackageKey(storyConsoleManifest)]: storyConsoleModule,
 } satisfies ConsolePackageModuleExportsByKey;

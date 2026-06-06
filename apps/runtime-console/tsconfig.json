@@ -12,7 +12,7 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "paths": {
-      "@lenso/example-console": ["./packages/example-console/src/index.tsx"],
+      "@lenso/identity-console": ["./packages/identity-console/src/index.tsx"],
       "@lenso/story-console": ["./packages/story-console/src/index.tsx"],
       "@lenso/runtime-console-api": [
         "./packages/console-package-api/src/index.ts"
@@ -31,7 +31,7 @@
   "include": [
     "src",
     "packages/story-console/src",
-    "packages/example-console/src",
+    "packages/identity-console/src",
     "packages/console-package-api/src"
   ],
   "references": []

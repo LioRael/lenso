@@ -76,19 +76,17 @@ describe("console module registry", () => {
         packageName: "@lenso/story-console",
       },
       {
-        exportName: "exampleConsoleModule",
-        packageName: "@lenso/example-console",
+        exportName: "identityConsoleModule",
+        packageName: "@lenso/identity-console",
       },
     ]);
     expect(consoleModules.map((module) => module.id)).toContain(
       "platform-story"
     );
-    expect(consoleModules.map((module) => module.id)).toContain(
-      "example-console"
-    );
+    expect(consoleModules.map((module) => module.id)).toContain("identity");
     expect(
       buildConsoleRoutes(consoleModules).map((route) => route.path)
-    ).toEqual(["/runtime/stories", "/runtime/example-console"]);
+    ).toEqual(["/runtime/stories", "/data/identity"]);
   });
 
   test("derives fallback metadata from a package manifest", () => {

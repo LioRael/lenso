@@ -1,6 +1,9 @@
 import { apiAuthToken, isApiMode } from "../lib/http-client";
 
-const localConsoleCapabilities = ["runtime.stories.read"] as const;
+const localConsoleCapabilities = [
+  "runtime.stories.read",
+  "identity.users.read",
+] as const;
 
 export function parseDevAuthTokenScopes(token: string): string[] {
   const normalized = token.startsWith("Bearer ")

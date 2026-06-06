@@ -19,7 +19,7 @@ const registrySource =
 describe("console package registry", () => {
   test("keeps concrete package installs outside the registry implementation", () => {
     expect(registrySource).not.toContain("@lenso/story-console");
-    expect(registrySource).not.toContain("@lenso/example-console");
+    expect(registrySource).not.toContain("@lenso/identity-console");
     expect(registrySource).not.toContain("installedConsolePackages");
   });
 

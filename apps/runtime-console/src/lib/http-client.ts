@@ -7,7 +7,7 @@ const runtimeConsoleMode = import.meta.env.VITE_RUNTIME_CONSOLE_MODE as
   | undefined;
 export const apiAuthToken =
   (import.meta.env.VITE_API_AUTH_TOKEN as string | undefined) ??
-  "dev-service:admin:runtime.stories.read,remote_crm.contacts.read,remote_crm.contacts.sync";
+  "dev-service:admin:runtime.stories.read,identity.users.read,remote_crm.contacts.read,remote_crm.contacts.sync";
 
 export function isApiMode() {
   return runtimeConsoleMode === "api" && Boolean(apiBaseUrl);

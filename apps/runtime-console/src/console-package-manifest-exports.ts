@@ -1,8 +1,8 @@
-import { exampleConsoleManifest } from "@lenso/example-console";
+import { identityConsoleManifest } from "@lenso/identity-console";
 import { storyConsoleManifest } from "@lenso/story-console";
 
 export const consolePackageManifests = [
-  exampleConsoleManifest,
+  identityConsoleManifest,
   storyConsoleManifest,
 ] as const;
 

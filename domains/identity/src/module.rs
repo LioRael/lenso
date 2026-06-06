@@ -3,9 +3,9 @@ use crate::repositories::PostgresUserRepository;
 use platform_core::{AppContext, StoryDisplayDescriptor, StoryDisplaySource};
 use platform_http::ApiOpenApiRouter;
 use platform_module::{
-    AdminSchema, EntitySchema, FieldSchema, FieldType, LinkedBinding, LinkedHttpContribution,
-    Module, ModuleHttpMethod, ModuleHttpRoute, ModuleManifest, RuntimeFunctionDeclaration,
-    RuntimeSurface,
+    AdminSchema, ConsoleArea, ConsolePackage, ConsoleSurface, EntitySchema, FieldSchema, FieldType,
+    LinkedBinding, LinkedHttpContribution, Module, ModuleHttpMethod, ModuleHttpRoute,
+    ModuleManifest, RuntimeFunctionDeclaration, RuntimeSurface,
 };
 use std::sync::Arc;
 
@@ -103,6 +103,18 @@ pub fn manifest() -> ModuleManifest {
         .capabilities(vec!["identity.users.read".to_owned()])
         .story_display(story_display())
         .http_routes(http_routes())
+        .console(vec![ConsoleSurface {
+            name: "identity".to_owned(),
+            label: "Identity".to_owned(),
+            area: ConsoleArea::Data,
+            route: "/data/identity".to_owned(),
+            package: ConsolePackage {
+                name: "@lenso/identity-console".to_owned(),
+                export: "identityConsoleModule".to_owned(),
+            },
+            icon: Some("database".to_owned()),
+            required_capabilities: vec!["identity.users.read".to_owned()],
+        }])
         .runtime(RuntimeSurface {
             functions: vec![RuntimeFunctionDeclaration {
                 name: "identity.cleanup_expired_sessions.v1".to_owned(),
@@ -180,6 +192,22 @@ mod tests {
             runtime.functions[0].input_schema.as_deref(),
             Some("identity.cleanup_expired_sessions.v1")
         );
+    }
+
+    #[test]
+    fn manifest_declares_identity_console_surface() {
+        let manifest = manifest();
+
+        assert_eq!(manifest.console.len(), 1);
+        let surface = &manifest.console[0];
+        assert_eq!(surface.name, "identity");
+        assert_eq!(surface.label, "Identity");
+        assert_eq!(surface.area, platform_module::ConsoleArea::Data);
+        assert_eq!(surface.route, "/data/identity");
+        assert_eq!(surface.package.name, "@lenso/identity-console");
+        assert_eq!(surface.package.export, "identityConsoleModule");
+        assert_eq!(surface.icon.as_deref(), Some("database"));
+        assert_eq!(surface.required_capabilities, vec!["identity.users.read"]);
     }
 
     #[test]

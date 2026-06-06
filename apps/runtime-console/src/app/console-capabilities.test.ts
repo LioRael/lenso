@@ -9,9 +9,9 @@ describe("console capabilities", () => {
   test("parses scopes from development service tokens", () => {
     expect(
       parseDevAuthTokenScopes(
-        "dev-service:admin:runtime.stories.read,remote_crm.contacts.read"
+        "dev-service:admin:runtime.stories.read,identity.users.read"
       )
-    ).toEqual(["runtime.stories.read", "remote_crm.contacts.read"]);
+    ).toEqual(["runtime.stories.read", "identity.users.read"]);
     expect(
       parseDevAuthTokenScopes("Bearer dev-service:admin:runtime.stories.read")
     ).toEqual(["runtime.stories.read"]);
@@ -21,10 +21,9 @@ describe("console capabilities", () => {
     expect(
       consoleCapabilityProvider({
         apiMode: true,
-        authToken:
-          "dev-service:admin:runtime.stories.read,remote_crm.contacts.read",
+        authToken: "dev-service:admin:runtime.stories.read,identity.users.read",
       })
-    ).toEqual(["runtime.stories.read", "remote_crm.contacts.read"]);
+    ).toEqual(["runtime.stories.read", "identity.users.read"]);
   });
 
   test("keeps local fallback capabilities outside API mode", () => {
@@ -33,6 +32,6 @@ describe("console capabilities", () => {
         apiMode: false,
         authToken: "dev-service:admin",
       })
-    ).toEqual(["runtime.stories.read"]);
+    ).toEqual(["runtime.stories.read", "identity.users.read"]);
   });
 });

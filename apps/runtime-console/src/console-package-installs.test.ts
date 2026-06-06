@@ -42,21 +42,21 @@ const runtimeConsolePackageJson =
 describe("console package installs", () => {
   test("keeps concrete package imports in install manifests and module mappings", () => {
     expect(installsSource).not.toContain("@lenso/story-console");
-    expect(installsSource).not.toContain("@lenso/example-console");
+    expect(installsSource).not.toContain("@lenso/identity-console");
     expect(installsSource).not.toContain("storyConsoleModule");
-    expect(installsSource).not.toContain("exampleConsoleModule");
+    expect(installsSource).not.toContain("identityConsoleModule");
   });
 
   test("registers installed workspace console packages", () => {
     expect(consolePackageInstallManifests).toHaveLength(2);
     expect(Object.keys(consolePackageModuleExportsByKey)).toEqual([
-      "@lenso/example-console#exampleConsoleModule",
+      "@lenso/identity-console#identityConsoleModule",
       "@lenso/story-console#storyConsoleModule",
     ]);
     expect(installedConsolePackages).toMatchObject([
       {
-        exportName: "exampleConsoleModule",
-        packageName: "@lenso/example-console",
+        exportName: "identityConsoleModule",
+        packageName: "@lenso/identity-console",
         source: "installed",
         version: "workspace",
       },
@@ -68,7 +68,7 @@ describe("console package installs", () => {
       },
     ]);
     expect(consolePackageKey(installedConsolePackages[0]!)).toBe(
-      "@lenso/example-console#exampleConsoleModule"
+      "@lenso/identity-console#identityConsoleModule"
     );
     expect(
       consolePackageRegistryByKey(installedConsolePackages)[
@@ -77,14 +77,14 @@ describe("console package installs", () => {
     ).toBe("platform-story");
     expect(
       consolePackageRegistryByKey(installedConsolePackages)[
-        "@lenso/example-console#exampleConsoleModule"
+        "@lenso/identity-console#identityConsoleModule"
       ]?.module.id
-    ).toBe("example-console");
+    ).toBe("identity");
   });
 
   test("derives install manifests from the package manifest export list", () => {
     expect(installManifestsSource).not.toContain("@lenso/story-console");
-    expect(installManifestsSource).not.toContain("@lenso/example-console");
+    expect(installManifestsSource).not.toContain("@lenso/identity-console");
     expect(consolePackageInstallManifests.map((item) => item.manifest)).toEqual(
       consolePackageManifests
     );

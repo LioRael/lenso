@@ -25,7 +25,7 @@ describe("console module metadata", () => {
             ],
           },
         ],
-        ["runtime.stories.read"]
+        ["runtime.stories.read", "identity.users.read"]
       )
     ).toEqual([
       {
@@ -170,9 +170,9 @@ describe("console module metadata", () => {
           isError: false,
           isPending: true,
         }),
-        ["runtime.stories.read"]
+        ["runtime.stories.read", "identity.users.read"]
       ).map((item) => item.path)
-    ).toEqual(["/runtime/stories", "/runtime/example-console"]);
+    ).toEqual(["/runtime/stories", "/data/identity"]);
 
     expect(
       navigationFromConsoleModuleMetadata(
@@ -182,8 +182,8 @@ describe("console module metadata", () => {
           isError: false,
           isPending: false,
         }),
-        ["runtime.stories.read"]
+        ["runtime.stories.read", "identity.users.read"]
       ).map((item) => item.path)
-    ).toEqual(["/runtime/stories", "/runtime/example-console"]);
+    ).toEqual(["/runtime/stories", "/data/identity"]);
   });
 });

@@ -10,14 +10,14 @@
     "lint": "ultracite check --deny-warnings",
     "check": "ultracite check --deny-warnings && pnpm test && pnpm typecheck && pnpm build",
     "build": "tsc -b && vite build",
-    "test": "vitest run src packages/story-console/src packages/example-console/src packages/console-package-api/src",
+    "test": "vitest run src packages/story-console/src packages/identity-console/src packages/console-package-api/src",
     "typecheck": "tsc -b --pretty false",
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
     "@gsap/react": "^2.1.2",
-    "@lenso/example-console": "workspace:*",
+    "@lenso/identity-console": "workspace:*",
     "@lenso/runtime-console-api": "workspace:*",
     "@lenso/story-console": "workspace:*",
     "@tailwindcss/vite": "^4.1.0",
