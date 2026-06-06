@@ -79,6 +79,45 @@ installed packages: `surfaceName` becomes `name`, `packageName` becomes
 `version` stay on the frontend install manifest and are not sent as console
 surface fields.
 
+## Business Module Wiring
+
+For a real module-owned frontend, declare the same package reference in the
+Rust `ModuleManifest.console` surface. The backend declaration is what API mode
+uses to decide whether an installed frontend package should appear in Runtime
+Console navigation.
+
+```rust
+use platform_module::{ConsoleArea, ConsolePackage, ConsoleSurface};
+
+ModuleManifest::builder("billing")
+    .capabilities(vec!["billing.read".to_owned()])
+    .console(vec![ConsoleSurface {
+        name: "billing".to_owned(),
+        label: "Billing".to_owned(),
+        area: ConsoleArea::Data,
+        route: "/data/billing".to_owned(),
+        package: ConsolePackage {
+            name: "@lenso/billing-console".to_owned(),
+            export: "billingConsoleModule".to_owned(),
+        },
+        icon: Some("database".to_owned()),
+        required_capabilities: vec!["billing.read".to_owned()],
+    }])
+```
+
+Keep these values aligned with the frontend manifest:
+
+- Rust `ConsoleSurface.name` = frontend `surfaceName`
+- Rust `ConsoleSurface.package.name` = frontend `packageName`
+- Rust `ConsoleSurface.package.export` = frontend `exportName`
+- Rust `ConsoleSurface.required_capabilities` = frontend `requiredCapabilities`
+- Rust `ConsoleSurface.route` = frontend `route`
+
+Add a module test that asserts the manifest declares the surface and passes
+manifest linting. Use `domains/identity/src/module.rs` and
+`apps/runtime-console/packages/identity-console` as the reference
+implementation.
+
 ## Module Export
 
 Export a console module from the package entrypoint:
@@ -131,6 +170,12 @@ Then update the lockfile:
 ```sh
 pnpm --dir apps/runtime-console install --lockfile-only
 ```
+
+The host still has to import installed packages at build time. A backend module
+can declare any package, but Runtime Console can only mount it after the package
+has been added to `package.json`, the Vite/TypeScript aliases, and
+`console-package-module-exports.ts`. Missing declarations appear on the Modules
+page as install-plan rows.
 
 ## Boundary Rules
 
