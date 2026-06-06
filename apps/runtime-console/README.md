@@ -95,6 +95,23 @@ REMOTE_MODULE_ADDR=127.0.0.1:4101 HTTP_PORT=3001 VITE_API_BASE_URL=http://localh
 - `src/hooks`: keyboard and runtime query hooks with API/mock switching.
 - `src/lib`: formatting, query client, and ky HTTP client foundation.
 - `src/pages`: route-level screens.
+- `packages/console-package-api`: public host API for console package authors.
+- `packages/story-console`: first-party Story workbench package.
+- `packages/example-console`: minimal installed package example.
+
+## Console Packages
+
+Runtime Console frontend modules are local workspace packages under `packages/*`.
+They must import host capabilities through `@lenso/runtime-console-api`, define a
+`ConsolePackageManifest`, and export a `ConsoleModule`.
+
+See `docs/console-package-template.md` before adding a package. The short path is:
+
+1. Add `packages/<name>/package.json`.
+2. Define `src/manifest.ts` with `defineConsolePackageManifest`.
+3. Export `<name>ConsoleModule` from `src/index.tsx`.
+4. Register the package in host dependencies, aliases, test includes, manifest exports, and module export mapping.
+5. Run `pnpm install --lockfile-only` and `just console-check`.
 
 ## Checks
 
