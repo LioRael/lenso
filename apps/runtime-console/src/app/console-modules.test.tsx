@@ -6,7 +6,9 @@ import {
   consoleModuleMetadataFromManifest,
   consoleModulePackageReferences,
   consoleModules,
+  defaultConsoleRoute,
   defineConsoleModule,
+  selectDefaultConsoleRoute,
 } from "./console-modules";
 
 function TestPage() {
@@ -69,6 +71,46 @@ describe("console module registry", () => {
     );
   });
 
+  test("uses the first registered route as the default console route", () => {
+    const storyModule = defineConsoleModule({
+      id: "platform-story",
+      surfaces: [
+        {
+          area: "runtime",
+          component: TestPage,
+          label: "Stories",
+          path: "/runtime/stories",
+        },
+      ],
+    });
+    const identityModule = defineConsoleModule({
+      id: "identity",
+      surfaces: [
+        {
+          area: "data",
+          component: TestPage,
+          label: "Identity",
+          path: "/data/identity",
+        },
+      ],
+    });
+
+    expect(
+      selectDefaultConsoleRoute(
+        buildConsoleRoutes([storyModule, identityModule])
+      )
+    ).toMatchObject({
+      moduleId: "platform-story",
+      path: "/runtime/stories",
+    });
+  });
+
+  test("rejects an empty default route registry", () => {
+    expect(() => selectDefaultConsoleRoute([])).toThrow(
+      "No console module routes are registered"
+    );
+  });
+
   test("loads build-time module metadata through installed package registry", () => {
     expect(consoleModulePackageReferences).toEqual([
       {
@@ -87,6 +129,10 @@ describe("console module registry", () => {
     expect(
       buildConsoleRoutes(consoleModules).map((route) => route.path)
     ).toEqual(["/runtime/stories", "/data/identity"]);
+    expect(defaultConsoleRoute).toMatchObject({
+      moduleId: "platform-story",
+      path: "/runtime/stories",
+    });
   });
 
   test("derives fallback metadata from a package manifest", () => {

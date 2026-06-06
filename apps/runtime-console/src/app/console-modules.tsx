@@ -64,6 +64,16 @@ export function buildConsoleNavigation(
   });
 }
 
+export function selectDefaultConsoleRoute(
+  routes: ConsoleRouteContribution[]
+): ConsoleRouteContribution {
+  const [route] = routes;
+  if (!route) {
+    throw new Error("No console module routes are registered");
+  }
+  return route;
+}
+
 export function consoleModuleMetadataFromManifest(
   manifest: ConsolePackageManifest
 ): ConsoleModuleMetadata {
@@ -87,4 +97,4 @@ export const consoleModules = resolveConsoleModules(
 
 export const consoleRoutes = buildConsoleRoutes(consoleModules);
 export const consoleNavigation = buildConsoleNavigation(consoleModules);
-export const [runtimeStoriesConsoleRoute] = consoleRoutes;
+export const defaultConsoleRoute = selectDefaultConsoleRoute(consoleRoutes);
