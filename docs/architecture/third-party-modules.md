@@ -224,7 +224,9 @@ The first CLI install lane writes host-local state only:
 `lenso console-package apply-plan` consumes that plan and updates Runtime
 Console package dependencies, manifest exports, and module export mappings.
 `lenso module doctor` checks that `REMOTE_MODULES`, the install plan, Runtime
-Console dependencies, and package export mappings agree.
+Console dependencies, and package export mappings agree. Failed checks are
+grouped by source, package installation, and registry mapping, with fix
+commands next to each issue.
 `pnpm --dir apps/runtime-console demo:remote-module-install` runs the same flow
 against a temporary host fixture without mutating the working tree.
 

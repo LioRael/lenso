@@ -1297,6 +1297,32 @@ const addRemoteModule = async ({ manifestReference, options }) => {
   console.log("- open Runtime Console Modules to verify the remote source");
 };
 
+const doctorIssueGroups = [
+  "Remote source",
+  "Console package",
+  "Registry mapping",
+];
+
+const addDoctorIssue = ({ fix, group, issues, message }) => {
+  issues.push({ fix, group, message });
+};
+
+const formatDoctorIssues = (issues) => {
+  const lines = [`Module doctor found ${issues.length} issue(s).`];
+  for (const group of doctorIssueGroups) {
+    const groupIssues = issues.filter((issue) => issue.group === group);
+    if (groupIssues.length === 0) {
+      continue;
+    }
+    lines.push("", `${group}:`);
+    for (const issue of groupIssues) {
+      lines.push(`- ${issue.message}`);
+      lines.push(`  fix: ${issue.fix}`);
+    }
+  }
+  return lines.join("\n");
+};
+
 const runModuleDoctor = async ({ options }) => {
   const repoRoot = options.repoRoot
     ? path.resolve(options.repoRoot)
@@ -1323,20 +1349,28 @@ const runModuleDoctor = async ({ options }) => {
     "utf-8"
   );
   const moduleExportsSource = await readFile(paths.moduleExportsPath, "utf-8");
-  const errors = [];
+  const issues = [];
 
   for (const modulePlan of installPlan.modules ?? []) {
     const { moduleName } = modulePlan;
     const remoteModule = remoteModulesByName.get(moduleName);
     if (!remoteModule) {
-      errors.push(`REMOTE_MODULES is missing module ${moduleName}`);
+      addDoctorIssue({
+        fix: `lenso module add <manifest-url> --base-url ${modulePlan.baseUrl ?? "<base-url>"}`,
+        group: "Remote source",
+        issues,
+        message: `REMOTE_MODULES is missing module ${moduleName}`,
+      });
     } else if (
       modulePlan.baseUrl &&
       remoteModule.baseUrl !== modulePlan.baseUrl
     ) {
-      errors.push(
-        `REMOTE_MODULES base URL for ${moduleName} is ${remoteModule.baseUrl}, expected ${modulePlan.baseUrl}`
-      );
+      addDoctorIssue({
+        fix: `lenso module add <manifest-url> --base-url ${modulePlan.baseUrl}`,
+        group: "Remote source",
+        issues,
+        message: `REMOTE_MODULES base URL for ${moduleName} is ${remoteModule.baseUrl}, expected ${modulePlan.baseUrl}`,
+      });
     }
 
     for (const consolePackage of modulePlan.consolePackages ?? []) {
@@ -1345,40 +1379,59 @@ const runModuleDoctor = async ({ options }) => {
       );
       const { packageName } = consolePackage;
       if (!packageJson.dependencies?.[packageName]) {
-        errors.push(`Runtime Console dependency is missing: ${packageName}`);
+        addDoctorIssue({
+          fix: `pnpm --dir apps/runtime-console add ${packageName}`,
+          group: "Console package",
+          issues,
+          message: `Runtime Console dependency is missing: ${packageName}`,
+        });
       }
       if (!manifestExportsSource.includes(packageName)) {
-        errors.push(
-          `Console package manifest import is missing: ${packageName}`
-        );
+        addDoctorIssue({
+          fix: `lenso console-package apply-plan --repo-root ${repoRoot}`,
+          group: "Registry mapping",
+          issues,
+          message: `Console package manifest import is missing: ${packageName}`,
+        });
       }
       if (!manifestExportsSource.includes(`${manifestName},`)) {
-        errors.push(
-          `Console package manifest export is missing: ${manifestName}`
-        );
+        addDoctorIssue({
+          fix: `lenso console-package apply-plan --repo-root ${repoRoot}`,
+          group: "Registry mapping",
+          issues,
+          message: `Console package manifest export is missing: ${manifestName}`,
+        });
       }
       if (!moduleExportsSource.includes(packageName)) {
-        errors.push(`Console package module import is missing: ${packageName}`);
+        addDoctorIssue({
+          fix: `lenso console-package apply-plan --repo-root ${repoRoot}`,
+          group: "Registry mapping",
+          issues,
+          message: `Console package module import is missing: ${packageName}`,
+        });
       }
       if (
         !moduleExportsSource.includes(
           `[consolePackageKey(${manifestName})]: ${consolePackage.exportName}`
         )
       ) {
-        errors.push(
-          `Console package module mapping is missing: ${consolePackageKey({
-            exportName: consolePackage.exportName,
-            packageName,
-          })}`
-        );
+        addDoctorIssue({
+          fix: `lenso console-package apply-plan --repo-root ${repoRoot}`,
+          group: "Registry mapping",
+          issues,
+          message: `Console package module mapping is missing: ${consolePackageKey(
+            {
+              exportName: consolePackage.exportName,
+              packageName,
+            }
+          )}`,
+        });
       }
     }
   }
 
-  if (errors.length > 0) {
-    throw new Error(
-      `Module doctor found ${errors.length} issue(s):\n- ${errors.join("\n- ")}`
-    );
+  if (issues.length > 0) {
+    throw new Error(formatDoctorIssues(issues));
   }
 
   console.log("Module doctor passed.");

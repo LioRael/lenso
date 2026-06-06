@@ -450,6 +450,60 @@ describe("module scaffold CLI", () => {
     ).resolves.toBe(0);
   });
 
+  test("groups module doctor issues with fix commands", async () => {
+    const repoRoot = await createRepoFixture();
+    await createRuntimeConsoleFixture(repoRoot);
+    await writeFixture(
+      repoRoot,
+      ".lenso/console-package-install-plan.json",
+      JSON.stringify(
+        {
+          modules: [
+            {
+              baseUrl: "http://127.0.0.1:4200/lenso/module/v1",
+              consolePackages: [
+                {
+                  exportName: "billingConsoleModule",
+                  packageName: "@vendor/lenso-billing-console",
+                  requestedByModule: "billing",
+                  route: "/data/billing",
+                },
+              ],
+              moduleName: "billing",
+            },
+          ],
+          version: 1,
+        },
+        null,
+        2
+      )
+    );
+
+    let message = "";
+    try {
+      await runConsolePackageCli(["module", "doctor", "--repo-root", repoRoot]);
+    } catch (error) {
+      ({ message } = error);
+    }
+
+    expect(message).toContain("Remote source");
+    expect(message).toContain("REMOTE_MODULES is missing module billing");
+    expect(message).toContain(
+      "fix: lenso module add <manifest-url> --base-url http://127.0.0.1:4200/lenso/module/v1"
+    );
+    expect(message).toContain("Console package");
+    expect(message).toContain(
+      "Runtime Console dependency is missing: @vendor/lenso-billing-console"
+    );
+    expect(message).toContain(
+      "fix: pnpm --dir apps/runtime-console add @vendor/lenso-billing-console"
+    );
+    expect(message).toContain("Registry mapping");
+    expect(message).toContain(
+      "fix: lenso console-package apply-plan --repo-root"
+    );
+  });
+
   test("runs the remote module install demo script", async () => {
     const runtimeConsoleRoot = path.resolve(import.meta.dirname, "../../..");
     const packageJson = JSON.parse(
