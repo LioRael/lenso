@@ -1,4 +1,4 @@
-import { runtimeConsoleHostApi } from "@lenso/runtime-console/console-package-api";
+import { runtimeConsoleHostApi } from "@lenso/runtime-console-api";
 import { describe, expect, test } from "vitest";
 
 import { shouldCloseInspectorOnEscape } from "./keyboard";

@@ -1,4 +1,4 @@
-import type { RuntimeStory } from "@lenso/runtime-console/console-package-api";
+import type { RuntimeStory } from "@lenso/runtime-console-api";
 import { describe, expect, test } from "vitest";
 
 import { resolveSelectedRuntimeStory } from "./selection";

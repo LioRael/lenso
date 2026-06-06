@@ -1,4 +1,3 @@
-import { runtimeStoriesPath } from "@lenso/story-console";
 import { useNavigate } from "@tanstack/react-router";
 import {
   createContext,
@@ -25,7 +24,10 @@ import {
 } from "../../hooks/use-runtime-queries";
 import { isApiMode } from "../../lib/http-client";
 import { adminActionsPath } from "../../pages/admin-actions-model";
-import { functionsPath } from "../../pages/operations-url-model";
+import {
+  functionsPath,
+  operationsPath,
+} from "../../pages/operations-url-model";
 import { remoteProxyCallsPath } from "../../pages/remote-proxy-calls-model";
 import {
   buildRuntimeSearchResults,
@@ -61,6 +63,16 @@ type RuntimeConsoleContextValue = {
 const RuntimeConsoleContext = createContext<RuntimeConsoleContextValue | null>(
   null
 );
+
+function runtimeStoriesPath(filters: {
+  nodeId?: string | null;
+  storyId?: string | null;
+}) {
+  return operationsPath("/runtime/stories", {
+    node: filters.nodeId,
+    story: filters.storyId,
+  });
+}
 
 export function RuntimeConsoleProvider({ children }: PropsWithChildren) {
   const navigate = useNavigate();

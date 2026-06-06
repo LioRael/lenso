@@ -35,6 +35,9 @@ export default defineConfig({
       "@lenso/story-console": fileURLToPath(
         new URL("packages/story-console/src/index.tsx", import.meta.url)
       ),
+      "@lenso/runtime-console-api": fileURLToPath(
+        new URL("packages/console-package-api/src/index.ts", import.meta.url)
+      ),
       "@lenso/runtime-console/console-package-api": fileURLToPath(
         new URL("src/console-package-api.ts", import.meta.url)
       ),

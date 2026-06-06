@@ -13,6 +13,9 @@
     "moduleResolution": "Bundler",
     "paths": {
       "@lenso/story-console": ["./packages/story-console/src/index.tsx"],
+      "@lenso/runtime-console-api": [
+        "./packages/console-package-api/src/index.ts"
+      ],
       "@lenso/runtime-console/console-package-api": [
         "./src/console-package-api.ts"
       ]
@@ -24,6 +27,10 @@
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true
   },
-  "include": ["src", "packages/story-console/src"],
+  "include": [
+    "src",
+    "packages/story-console/src",
+    "packages/console-package-api/src"
+  ],
   "references": []
 }

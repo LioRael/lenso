@@ -46,6 +46,15 @@ function findConsoleModuleBoundaryViolations(): string[] {
         );
       }
 
+      if (
+        inConsoleModule &&
+        target === "@lenso/runtime-console/console-package-api"
+      ) {
+        violations.push(
+          `${displayPath(file)} imports host API through ${specifier}; use @lenso/runtime-console-api`
+        );
+      }
+
       if (inStoryModule && target.includes("/pages/")) {
         violations.push(
           `${displayPath(file)} imports host pages through ${specifier}`
