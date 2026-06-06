@@ -10,6 +10,7 @@
     "lint": "ultracite check --deny-warnings",
     "check": "pnpm check:console-packages && ultracite check --deny-warnings && pnpm test && pnpm typecheck && pnpm build",
     "check:console-packages": "node scripts/check-console-packages.mjs",
+    "create:console-package": "node scripts/create-console-package.mjs",
     "build": "tsc -b && vite build",
     "test": "vitest run src packages/story-console/src packages/identity-console/src packages/console-package-api/src",
     "typecheck": "tsc -b --pretty false",

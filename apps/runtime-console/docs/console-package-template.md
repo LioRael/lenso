@@ -8,6 +8,15 @@ to an external repository later if `@lenso/runtime-console-api` is published.
 
 ## Package Shape
 
+Generate the standard package skeleton and host registration first:
+
+```sh
+pnpm create:console-package billing
+```
+
+Use `--dry-run` to preview file changes, and pass options such as
+`--label "Billing"` or `--route /data/billing` when defaults are not enough.
+
 Create a package under:
 
 ```text

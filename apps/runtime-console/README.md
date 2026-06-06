@@ -113,6 +113,13 @@ See `docs/console-package-template.md` before adding a package. The short path i
 4. Register the package in host dependencies, aliases, test includes, manifest exports, and module export mapping.
 5. Run `pnpm check:console-packages`, `pnpm install --lockfile-only`, and `just console-check`.
 
+For the standard workspace package shape, generate the frontend skeleton and host
+registration with:
+
+```bash
+pnpm create:console-package billing
+```
+
 ## Checks
 
 The console uses Ultracite with the Oxlint/Oxfmt provider:
