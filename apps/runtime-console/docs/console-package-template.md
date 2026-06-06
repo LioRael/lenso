@@ -27,6 +27,8 @@ Minimal files:
 
 ```text
 packages/<package-name>/
+  console-surface.json
+  console-surface.rs
   package.json
   src/
     index.tsx
@@ -58,24 +60,32 @@ directly.
 
 ## Manifest
 
-Define the manifest through the host API:
+Define the package surface once in `console-surface.json`; generated packages
+then import that contract from `src/manifest.ts` and pass it through the host
+API:
 
 ```ts
 import { defineConsolePackageManifest } from "@lenso/runtime-console-api";
 
-export const billingConsoleManifest = defineConsolePackageManifest({
-  area: "data",
-  exportName: "billingConsoleModule",
-  icon: "database",
-  id: "billing",
-  label: "Billing",
-  packageName: "@lenso/billing-console",
-  requiredCapabilities: ["billing.read"],
-  route: "/data/billing",
-  source: "installed",
-  surfaceName: "billing",
-  version: "workspace",
-} as const);
+import consoleSurface from "../console-surface.json";
+
+const consoleSurfaceContract = consoleSurface as unknown as {
+  area: "data";
+  exportName: "billingConsoleModule";
+  icon: "database";
+  id: "billing";
+  label: "Billing";
+  packageName: "@lenso/billing-console";
+  requiredCapabilities: ["billing.read"];
+  route: "/data/billing";
+  source: "installed";
+  surfaceName: "billing";
+  version: "workspace";
+};
+
+export const billingConsoleManifest = defineConsolePackageManifest(
+  consoleSurfaceContract
+);
 ```
 
 Use `source: "first_party"` only for platform-owned packages that should be
@@ -94,6 +104,10 @@ For a real module-owned frontend, declare the same package reference in the
 Rust `ModuleManifest.console` surface. The backend declaration is what API mode
 uses to decide whether an installed frontend package should appear in Runtime
 Console navigation.
+
+Generated packages include `console-surface.rs` with the matching
+`ConsoleSurface` snippet. Copy it into the module manifest and keep the module's
+capabilities aligned with `required_capabilities`.
 
 ```rust
 use platform_module::{ConsoleArea, ConsolePackage, ConsoleSurface};

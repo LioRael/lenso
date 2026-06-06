@@ -74,6 +74,20 @@ const exportStemFromPackageSlug = (packageSlugValue) => {
   return `${camelCase(normalized)}Console`;
 };
 
+const rustConsoleArea = (areaName) => {
+  const areaByName = {
+    configuration: "Configuration",
+    data: "Data",
+    operations: "Operations",
+    runtime: "Runtime",
+  };
+  const rustArea = areaByName[areaName];
+  if (!rustArea) {
+    throw new Error(`Unsupported console surface area: ${areaName}`);
+  }
+  return rustArea;
+};
+
 const titleCase = (value) =>
   value
     .split("-")
@@ -281,6 +295,20 @@ const queuePackageFiles = ({
   registrySource,
   surfaceName,
 }) => {
+  const consoleSurfaceContract = {
+    area,
+    exportName: moduleName,
+    icon,
+    id: moduleId,
+    label,
+    packageName,
+    requiredCapabilities: [capability],
+    route,
+    source: registrySource,
+    surfaceName,
+    version: "workspace",
+  };
+
   queueWrite(
     pendingWrites,
     path.join(packageDir, "package.json"),
@@ -305,22 +333,54 @@ const queuePackageFiles = ({
 
   queueWrite(
     pendingWrites,
+    path.join(packageDir, "console-surface.json"),
+    `${JSON.stringify(consoleSurfaceContract, null, 2)}\n`
+  );
+
+  queueWrite(
+    pendingWrites,
+    path.join(packageDir, "console-surface.rs"),
+    `use platform_module::{ConsoleArea, ConsolePackage, ConsoleSurface};
+
+ConsoleSurface {
+    name: "${surfaceName}".to_owned(),
+    label: "${label}".to_owned(),
+    area: ConsoleArea::${rustConsoleArea(area)},
+    route: "${route}".to_owned(),
+    package: ConsolePackage {
+        name: "${packageName}".to_owned(),
+        export: "${moduleName}".to_owned(),
+    },
+    icon: Some("${icon}".to_owned()),
+    required_capabilities: vec!["${capability}".to_owned()],
+}
+`
+  );
+
+  queueWrite(
+    pendingWrites,
     path.join(packageDir, "src/manifest.ts"),
     `import { defineConsolePackageManifest } from "@lenso/runtime-console-api";
 
-export const ${manifestName} = defineConsolePackageManifest({
-  area: "${area}",
-  exportName: "${moduleName}",
-  icon: "${icon}",
-  id: "${moduleId}",
-  label: "${label}",
-  packageName: "${packageName}",
-  requiredCapabilities: ["${capability}"],
-  route: "${route}",
-  source: "${registrySource}",
-  surfaceName: "${surfaceName}",
-  version: "workspace",
-} as const);
+import consoleSurface from "../console-surface.json";
+
+const consoleSurfaceContract = consoleSurface as unknown as {
+  readonly area: "${area}";
+  readonly exportName: "${moduleName}";
+  readonly icon: "${icon}";
+  readonly id: "${moduleId}";
+  readonly label: "${label}";
+  readonly packageName: "${packageName}";
+  readonly requiredCapabilities: readonly ["${capability}"];
+  readonly route: "${route}";
+  readonly source: "${registrySource}";
+  readonly surfaceName: "${surfaceName}";
+  readonly version: "workspace";
+};
+
+export const ${manifestName} = defineConsolePackageManifest(
+  consoleSurfaceContract
+);
 `
   );
 
@@ -478,6 +538,9 @@ const main = async () => {
 
   console.log(`Created ${packageName}.`);
   console.log("Next steps:");
+  console.log(
+    `- Copy ${packageSlug}/console-surface.rs into the Rust module manifest`
+  );
   console.log("- pnpm install --lockfile-only");
   console.log("- pnpm check:console-packages");
   console.log("- just console-check");

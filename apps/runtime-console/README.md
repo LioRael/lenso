@@ -120,6 +120,10 @@ registration with:
 pnpm create:console-package billing
 ```
 
+The generator also writes `console-surface.json` and `console-surface.rs` so the
+frontend manifest and Rust `ModuleManifest.console` declaration can share the
+same package/export/route/capability values.
+
 ## Checks
 
 The console uses Ultracite with the Oxlint/Oxfmt provider:
