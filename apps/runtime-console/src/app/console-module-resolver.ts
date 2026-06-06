@@ -103,7 +103,7 @@ export function resolveConsoleModule(
   if (!registryItem) {
     throw new Error(`Console module package export is not registered: ${key}`);
   }
-  const navigation = reference.navigation;
+  const { navigation } = reference;
   if (!navigation) {
     return registryItem.module;
   }

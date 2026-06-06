@@ -72,9 +72,7 @@ describe("console module registry", () => {
 
     expect(module.surfaces[0]?.navigation).toEqual(navigation);
     expect(buildConsoleRoutes([module])[0]?.navigation).toEqual(navigation);
-    expect(buildConsoleNavigation([module])[0]?.navigation).toEqual(
-      navigation
-    );
+    expect(buildConsoleNavigation([module])[0]?.navigation).toEqual(navigation);
   });
 
   test("rejects duplicate contribution paths before router creation", () => {
