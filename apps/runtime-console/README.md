@@ -111,7 +111,7 @@ See `docs/console-package-template.md` before adding a package. The short path i
 2. Define `src/manifest.ts` with `defineConsolePackageManifest`.
 3. Export `<name>ConsoleModule` from `src/index.tsx`.
 4. Register the package in host dependencies, aliases, test includes, manifest exports, and module export mapping.
-5. Run `pnpm install --lockfile-only` and `just console-check`.
+5. Run `pnpm check:console-packages`, `pnpm install --lockfile-only`, and `just console-check`.
 
 ## Checks
 
@@ -125,6 +125,7 @@ The console uses Ultracite with the Oxlint/Oxfmt provider:
 pnpm format
 pnpm format:check
 pnpm lint
+pnpm check:console-packages
 pnpm typecheck
 pnpm build
 pnpm check
