@@ -117,7 +117,8 @@ pub struct ConsoleNavigationGroup {
 ```
 
 `navigation` is optional for backward compatibility. Missing navigation metadata
-defaults to the host `system` workspace and uses the existing `area` ordering.
+defaults to the host `system` workspace. Modules should omit navigation instead
+of explicitly declaring `workspace.id = "system"`.
 
 Example module-owned workspace:
 
@@ -155,9 +156,8 @@ ConsoleSurface {
 The first slice should use simple, host-verifiable rules:
 
 - `system` is reserved for the host.
-- A module may attach surfaces to `system` only when the host marks the package
-  as first-party or the surface is already explicitly trusted by the installed
-  package registry.
+- A module surface belongs to `system` by omitting navigation and letting the
+  host apply its default System workspace.
 - A module may create workspace IDs derived from its module name or declared
   package identity.
 - A module may attach multiple surfaces to its own workspace.

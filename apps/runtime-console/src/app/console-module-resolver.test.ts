@@ -92,6 +92,7 @@ describe("console module resolver", () => {
     ).toEqual([
       {
         exportName: "storyConsoleModule",
+        navigation: null,
         packageName: "@lenso/story-console",
       },
     ]);
@@ -124,8 +125,119 @@ describe("console module resolver", () => {
     ).toEqual([
       {
         exportName: "storyConsoleModule",
+        navigation: null,
         packageName: "@lenso/story-console",
       },
+    ]);
+  });
+
+  test("clears package navigation when backend metadata omits navigation", () => {
+    const module = resolveConsoleModule(
+      {
+        exportName: "crmConsoleModule",
+        label: "Contacts",
+        navigation: null,
+        packageName: "@lenso/crm-console",
+        route: "/crm/contacts",
+        surfaceName: "contacts",
+      },
+      [
+        {
+          exportName: "crmConsoleModule",
+          module: defineConsoleModule({
+            id: "crm",
+            surfaces: [
+              {
+                area: "data",
+                component: () => null,
+                label: "Contacts",
+                navigation: {
+                  order: 10,
+                  workspace: {
+                    id: "package-crm",
+                    label: "Package CRM",
+                  },
+                },
+                path: "/crm/contacts",
+              },
+            ],
+          }),
+          packageName: "@lenso/crm-console",
+          source: "installed",
+        },
+      ]
+    );
+
+    expect(module.surfaces).toHaveLength(1);
+    expect(module.surfaces[0]?.navigation).toBeUndefined();
+  });
+
+  test("overlays backend metadata only on the matching package surface", () => {
+    const module = resolveConsoleModule(
+      {
+        area: "operations",
+        exportName: "crmConsoleModule",
+        icon: "network",
+        label: "CRM Jobs",
+        navigation: {
+          order: 30,
+          workspace: {
+            id: "crm",
+            label: "CRM",
+          },
+        },
+        packageName: "@lenso/crm-console",
+        route: "/crm/jobs",
+        surfaceName: "jobs",
+      },
+      [
+        {
+          exportName: "crmConsoleModule",
+          module: defineConsoleModule({
+            id: "crm",
+            surfaces: [
+              {
+                area: "data",
+                component: () => null,
+                label: "Contacts",
+                navigation: {
+                  order: 10,
+                  workspace: {
+                    id: "package-crm",
+                    label: "Package CRM",
+                  },
+                },
+                path: "/crm/contacts",
+              },
+              {
+                area: "data",
+                component: () => null,
+                icon: "database",
+                label: "Package Jobs",
+                path: "/crm/jobs",
+              },
+            ],
+          }),
+          packageName: "@lenso/crm-console",
+          source: "installed",
+        },
+      ]
+    );
+
+    expect(module.surfaces).toEqual([
+      expect.objectContaining({
+        area: "operations",
+        icon: "network",
+        label: "CRM Jobs",
+        navigation: {
+          order: 30,
+          workspace: {
+            id: "crm",
+            label: "CRM",
+          },
+        },
+        path: "/crm/jobs",
+      }),
     ]);
   });
 

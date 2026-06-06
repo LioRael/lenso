@@ -37,6 +37,9 @@ export function buildConsoleRoutes(
 
   for (const module of modules) {
     for (const surface of module.surfaces) {
+      if (isReservedHostConsoleRoute(surface.path)) {
+        throw new Error(`Reserved host console route: ${surface.path}`);
+      }
       if (seenPaths.has(surface.path)) {
         throw new Error(`Duplicate console module route: ${surface.path}`);
       }
@@ -78,6 +81,23 @@ export function selectDefaultConsoleRoute(
     throw new Error("No console module routes are registered");
   }
   return route;
+}
+
+const RESERVED_HOST_CONSOLE_ROUTE_PATHS = new Set([
+  "/overview",
+  "/operations",
+  "/operations/queues",
+  "/operations/dead-letters",
+  "/operations/functions",
+  "/operations/remote-calls",
+  "/operations/admin-actions",
+  "/modules",
+  "/config",
+  "/data",
+]);
+
+function isReservedHostConsoleRoute(path: string): boolean {
+  return RESERVED_HOST_CONSOLE_ROUTE_PATHS.has(path);
 }
 
 export function consoleModuleMetadataFromManifest(

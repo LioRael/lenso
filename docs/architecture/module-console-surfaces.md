@@ -37,7 +37,8 @@ module-owned packages. `identity-console` is the installed package fixture.
 - `navigation`: optional workspace metadata. Missing metadata defaults to the
   host `System` workspace. Modules may create their own workspace by declaring a
   workspace id, label, and optional icon; the first slice supports one optional
-  group level inside a workspace.
+  group level inside a workspace. The `system` workspace id is reserved for the
+  host; module surfaces should omit `navigation` when they belong in System.
 
 Example surface metadata:
 

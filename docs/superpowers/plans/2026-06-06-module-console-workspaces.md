@@ -26,7 +26,7 @@
 - `apps/runtime-console/src/components/runtime/runtime-console-shell.tsx`: renders the workspace switcher and workspace-local menu.
 - `apps/runtime-console/src/components/runtime/command-palette.tsx`: keeps global navigation commands and uses workspace-aware subtitles/search text.
 - `apps/runtime-console/packages/story-console/console-surface.json`: marks Stories as `system`.
-- `apps/runtime-console/packages/identity-console/console-surface.json`: fixture can create an `identity` workspace or explicitly stay in `system`; use `system` for this first system-fixture slice.
+- `apps/runtime-console/packages/identity-console/console-surface.json`: fixture can keep build-time fallback navigation, while backend manifests should omit `navigation` when they belong in host System.
 - `apps/runtime-console/packages/console-package-cli/src/index.mjs`: generated console packages include `navigation` in JSON, TS manifest casts, and Rust snippets.
 - `docs/architecture/module-console-surfaces.md`: documents workspace navigation as part of the console surface contract.
 - `docs/superpowers/specs/2026-06-06-module-console-workspaces-design.md`: remains the approved design reference.
@@ -464,7 +464,7 @@ Update `consoleSurfaceFromPackageManifest`:
   }
 ```
 
-- [ ] **Step 4: Add `system` navigation to first-party fixture manifests**
+- [ ] **Step 4: Add build-time fallback navigation to fixture package manifests**
 
 Update `apps/runtime-console/packages/story-console/console-surface.json`:
 
@@ -1238,25 +1238,9 @@ git commit -m "feat(console): add workspace switcher"
 
 - [ ] **Step 1: Update identity Rust manifest**
 
-In `modules/identity/src/module.rs`, import navigation types:
-
-```rust
-    ConsoleNavigation, ConsoleWorkspaceRef,
-```
-
-Set identity's fixture navigation to the host workspace:
-
-```rust
-            navigation: Some(ConsoleNavigation {
-                workspace: ConsoleWorkspaceRef {
-                    id: "system".to_owned(),
-                    label: "System".to_owned(),
-                    icon: Some("settings".to_owned()),
-                },
-                group: None,
-                order: Some(60),
-            }),
-```
+In `modules/identity/src/module.rs`, keep `navigation: None` when the fixture
+belongs in the host System workspace. The host applies System as the default for
+surfaces without navigation.
 
 - [ ] **Step 2: Add or update identity manifest test**
 
@@ -1264,14 +1248,11 @@ In the existing `#[cfg(test)]` module in `modules/identity/src/module.rs`, add:
 
 ```rust
 #[test]
-fn manifest_declares_console_workspace_navigation() {
+fn manifest_leaves_system_workspace_navigation_to_host_default() {
     let manifest = manifest();
     let surface = manifest.console.first().expect("identity console surface");
-    let navigation = surface.navigation.as_ref().expect("navigation metadata");
 
-    assert_eq!(navigation.workspace.id, "system");
-    assert_eq!(navigation.workspace.label, "System");
-    assert_eq!(navigation.order, Some(60));
+    assert!(surface.navigation.is_none());
 }
 ```
 
@@ -1280,7 +1261,7 @@ fn manifest_declares_console_workspace_navigation() {
 Run:
 
 ```bash
-cargo test --locked -p identity manifest_declares_console_workspace_navigation
+cargo test --locked -p identity manifest_leaves_system_workspace_navigation_to_host_default
 cargo check --locked --workspace --all-targets
 ```
 
@@ -1294,7 +1275,8 @@ In `docs/architecture/module-console-surfaces.md`, update the Manifest Contract 
 - `navigation`: optional workspace metadata. Missing metadata defaults to the
   host `System` workspace. Modules may create their own workspace by declaring a
   workspace id, label, and optional icon; the first slice supports one optional
-  group level inside a workspace.
+  group level inside a workspace. The `system` workspace id is reserved for the
+  host; module surfaces should omit `navigation` when they belong in System.
 ```
 
 Add a short example:

@@ -637,6 +637,8 @@ fn lint_console_surfaces(console: &[ConsoleSurface], lints: &mut Vec<ModuleManif
     }
 }
 
+const HOST_SYSTEM_CONSOLE_WORKSPACE_ID: &str = "system";
+
 fn lint_console_navigation(
     subject: &str,
     navigation: &crate::ConsoleNavigation,
@@ -649,6 +651,15 @@ fn lint_console_navigation(
             subject: format!("{workspace_subject}.id"),
             message: "Console workspace id should be a path-safe identifier.".to_owned(),
             suggestion: "Use ASCII letters, digits, underscore, or hyphen.".to_owned(),
+        });
+    } else if navigation.workspace.id == HOST_SYSTEM_CONSOLE_WORKSPACE_ID {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Warning,
+            subject: format!("{workspace_subject}.id"),
+            message: "Console workspace id system is reserved for host-owned surfaces.".to_owned(),
+            suggestion:
+                "Omit navigation to use the host System workspace, or use a module-owned workspace id."
+                    .to_owned(),
         });
     }
     if !present(&navigation.workspace.label) {
@@ -1088,6 +1099,43 @@ mod tests {
         assert!(
             subjects.contains(&"console.surface.contacts.navigation.workspace.label".to_owned())
         );
+    }
+
+    #[test]
+    fn console_navigation_lints_reserved_system_workspace() {
+        let manifest = ModuleManifest::builder("crm")
+            .capabilities(vec!["crm.contacts.read".to_owned()])
+            .console(vec![ConsoleSurface {
+                name: "contacts".to_owned(),
+                label: "Contacts".to_owned(),
+                area: ConsoleArea::Data,
+                route: "/crm/contacts".to_owned(),
+                package: crate::ConsolePackage {
+                    name: "@lenso/crm-console".to_owned(),
+                    export: "crmConsoleModule".to_owned(),
+                },
+                icon: None,
+                required_capabilities: vec!["crm.contacts.read".to_owned()],
+                navigation: Some(crate::ConsoleNavigation {
+                    workspace: crate::ConsoleWorkspaceRef {
+                        id: "system".to_owned(),
+                        label: "System".to_owned(),
+                        icon: Some("settings".to_owned()),
+                    },
+                    group: None,
+                    order: Some(10),
+                }),
+            }])
+            .build();
+
+        let lints = lint_module_manifest(ModuleSource::Remote, &manifest);
+
+        assert!(lints.iter().any(|lint| {
+            lint.subject == "console.surface.contacts.navigation.workspace.id"
+                && lint.severity == ModuleManifestLintSeverity::Warning
+                && lint.message
+                    == "Console workspace id system is reserved for host-owned surfaces."
+        }));
     }
 
     #[test]
@@ -1717,6 +1765,27 @@ mod tests {
                     required: true,
                 }],
             })
+            .console(vec![ConsoleSurface {
+                name: "contacts".to_owned(),
+                label: "Contacts".to_owned(),
+                area: ConsoleArea::Data,
+                route: "/remote-crm/contacts".to_owned(),
+                package: ConsolePackage {
+                    name: "@lenso/remote-crm-console".to_owned(),
+                    export: "remoteCrmConsoleModule".to_owned(),
+                },
+                icon: None,
+                required_capabilities: Vec::new(),
+                navigation: Some(crate::ConsoleNavigation {
+                    workspace: crate::ConsoleWorkspaceRef {
+                        id: "system".to_owned(),
+                        label: "System".to_owned(),
+                        icon: None,
+                    },
+                    group: None,
+                    order: None,
+                }),
+            }])
             .build();
 
         let catalog: Vec<_> = lint_module_manifest(ModuleSource::Remote, &manifest)
@@ -1787,6 +1856,10 @@ mod tests {
                 (
                     ModuleManifestLintSeverity::Error,
                     "lifecycle.activation_job.missing activation".to_owned(),
+                ),
+                (
+                    ModuleManifestLintSeverity::Warning,
+                    "console.surface.contacts.navigation.workspace.id".to_owned(),
                 ),
                 (
                     ModuleManifestLintSeverity::Warning,

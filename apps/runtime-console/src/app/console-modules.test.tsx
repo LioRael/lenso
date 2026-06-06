@@ -104,6 +104,24 @@ describe("console module registry", () => {
     );
   });
 
+  test("rejects module routes that collide with host routes", () => {
+    const module = defineConsoleModule({
+      id: "module-registry",
+      surfaces: [
+        {
+          area: "data",
+          component: TestPage,
+          label: "Module Registry",
+          path: "/modules",
+        },
+      ],
+    });
+
+    expect(() => buildConsoleRoutes([module])).toThrow(
+      "Reserved host console route: /modules"
+    );
+  });
+
   test("uses the first registered route as the default console route", () => {
     const storyModule = defineConsoleModule({
       id: "platform-story",
@@ -147,7 +165,11 @@ describe("console module registry", () => {
   test("loads build-time module metadata through installed package registry", () => {
     expect(consoleModulePackageReferences).toEqual([
       {
+        area: "runtime",
         exportName: "storyConsoleModule",
+        icon: "workflow",
+        label: "Stories",
+        moduleName: "platform-story",
         navigation: {
           order: 20,
           workspace: {
@@ -157,9 +179,15 @@ describe("console module registry", () => {
           },
         },
         packageName: "@lenso/story-console",
+        route: "/runtime/stories",
+        surfaceName: "stories",
       },
       {
+        area: "data",
         exportName: "identityConsoleModule",
+        icon: "database",
+        label: "Identity",
+        moduleName: "identity",
         navigation: {
           order: 60,
           workspace: {
@@ -169,6 +197,8 @@ describe("console module registry", () => {
           },
         },
         packageName: "@lenso/identity-console",
+        route: "/data/identity",
+        surfaceName: "identity",
       },
     ]);
     expect(consoleModules.map((module) => module.id)).toContain(

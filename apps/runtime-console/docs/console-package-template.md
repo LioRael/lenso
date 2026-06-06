@@ -146,9 +146,10 @@ The host maps manifest fields to Rust `ConsoleSurface` metadata before resolving
 installed packages: `surfaceName` becomes `name`, `packageName` becomes
 `package.name`, `exportName` becomes `package.export`, and
 `requiredCapabilities` becomes `required_capabilities`. `navigation` keeps the
-same workspace/group/order shape on both sides. `id`, `source`, and `version`
-stay on the frontend install manifest and are not sent as console surface
-fields.
+same workspace/group/order shape on both sides for module-owned workspaces.
+Omit Rust `navigation` when a surface belongs in the host-owned System
+workspace. `id`, `source`, and `version` stay on the frontend install manifest
+and are not sent as console surface fields.
 
 ## Business Module Wiring
 
@@ -199,7 +200,8 @@ Keep these values aligned with the frontend manifest:
 - Rust `ConsoleSurface.package.export` = frontend `exportName`
 - Rust `ConsoleSurface.required_capabilities` = frontend `requiredCapabilities`
 - Rust `ConsoleSurface.route` = frontend `route`
-- Rust `ConsoleSurface.navigation` = frontend `navigation`
+- Rust `ConsoleSurface.navigation` = frontend `navigation` for module-owned
+  workspaces; omit it for host System fallback.
 
 Add a module test that asserts the manifest declares the surface and passes
 manifest linting. Use `modules/identity/src/module.rs` and

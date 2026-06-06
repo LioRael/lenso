@@ -3,6 +3,7 @@ import type {
   ConsoleModule,
   ConsoleNavigationMetadata,
   ConsoleSurfaceArea,
+  ConsoleSurfaceIcon,
 } from "./console-module-api";
 import {
   consolePackageKey,
@@ -13,7 +14,13 @@ import {
 export type ConsoleModulePackageReference = {
   packageName: string;
   exportName: string;
-  navigation?: ConsoleNavigationMetadata;
+  moduleName?: string;
+  surfaceName?: string;
+  label?: string;
+  area?: ConsoleSurfaceArea;
+  route?: string;
+  icon?: string | null;
+  navigation?: ConsoleNavigationMetadata | null;
 };
 
 export type ConsoleModuleMetadata = {
@@ -103,16 +110,22 @@ export function resolveConsoleModule(
   if (!registryItem) {
     throw new Error(`Console module package export is not registered: ${key}`);
   }
-  const { navigation } = reference;
-  if (!navigation) {
+  if (!referenceHasBackendSurface(reference)) {
     return registryItem.module;
+  }
+  const matchedSurface = matchedConsolePackageSurface(
+    registryItem.module,
+    reference
+  );
+  if (!matchedSurface) {
+    throw new Error(
+      `Console module package export does not include requested surface: ${key} (${surfaceReferenceLabel(reference)})`
+    );
   }
   return {
     ...registryItem.module,
-    surfaces: registryItem.module.surfaces.map((surface) => ({
-      ...surface,
-      navigation,
-    })),
+    id: reference.moduleName ?? registryItem.module.id,
+    surfaces: [consoleSurfaceFromBackendReference(matchedSurface, reference)],
   };
 }
 
@@ -152,15 +165,103 @@ export function selectConsoleModulePackageReferences(
         exportName,
         packageName,
       };
-      if (surface.navigation) {
-        reference.navigation = surface.navigation;
+      if (module.module_name) {
+        reference.moduleName = module.module_name;
       }
+      if (surface.name) {
+        reference.surfaceName = surface.name;
+      }
+      if (surface.label) {
+        reference.label = surface.label;
+      }
+      if (surface.area) {
+        reference.area = surface.area;
+      }
+      if (surface.route) {
+        reference.route = surface.route;
+      }
+      if (isConsoleSurfaceIcon(surface.icon)) {
+        reference.icon = surface.icon;
+      }
+      reference.navigation = surface.navigation ?? null;
       if (!consolePackageExportIsRegistered(reference)) {
         return [];
       }
       return [reference];
     })
   );
+}
+
+function referenceHasBackendSurface(
+  reference: ConsoleModulePackageReference
+): boolean {
+  return (
+    reference.moduleName !== undefined ||
+    reference.surfaceName !== undefined ||
+    reference.label !== undefined ||
+    reference.area !== undefined ||
+    reference.route !== undefined ||
+    reference.icon !== undefined ||
+    "navigation" in reference
+  );
+}
+
+function matchedConsolePackageSurface(
+  module: ConsoleModule,
+  reference: ConsoleModulePackageReference
+): ConsoleModule["surfaces"][number] | undefined {
+  if (reference.route !== undefined) {
+    return module.surfaces.find((surface) => surface.path === reference.route);
+  }
+  return module.surfaces.length === 1 ? module.surfaces[0] : undefined;
+}
+
+function consoleSurfaceFromBackendReference(
+  surface: ConsoleModule["surfaces"][number],
+  reference: ConsoleModulePackageReference
+): ConsoleModule["surfaces"][number] {
+  const resolvedSurface = { ...surface };
+  if (reference.label !== undefined) {
+    resolvedSurface.label = reference.label;
+  }
+  if (reference.area !== undefined) {
+    resolvedSurface.area = reference.area;
+  }
+  if (reference.route !== undefined) {
+    resolvedSurface.path = reference.route;
+  }
+  if (isConsoleSurfaceIcon(reference.icon)) {
+    resolvedSurface.icon = reference.icon;
+  } else if (reference.icon === null) {
+    delete resolvedSurface.icon;
+  }
+  if ("navigation" in reference) {
+    if (reference.navigation === null || reference.navigation === undefined) {
+      delete resolvedSurface.navigation;
+    } else {
+      resolvedSurface.navigation = reference.navigation;
+    }
+  }
+  return resolvedSurface;
+}
+
+function isConsoleSurfaceIcon(
+  icon: string | null | undefined
+): icon is ConsoleSurfaceIcon {
+  return (
+    icon === "activity" ||
+    icon === "boxes" ||
+    icon === "database" ||
+    icon === "network" ||
+    icon === "settings" ||
+    icon === "workflow"
+  );
+}
+
+function surfaceReferenceLabel(
+  reference: ConsoleModulePackageReference
+): string {
+  return reference.route ?? reference.surfaceName ?? "unknown surface";
 }
 
 export function missingConsolePackageReferences(

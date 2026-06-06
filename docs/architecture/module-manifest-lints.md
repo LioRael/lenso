@@ -24,6 +24,7 @@ The Runtime Console derives categories from `subject`:
 | `admin.embedded...` | `admin.embedded` |
 | `runtime...` | `runtime` |
 | `lifecycle...` | `lifecycle` |
+| `console...` | `console` |
 | `module...` | `module` |
 | anything else | `manifest` |
 
@@ -52,6 +53,15 @@ Console category mapping and tests in the same change.
 | `warning` | `admin.embedded.fallback_schema` | Embedded fallback schema declares no entities. |
 | `warning` | `admin.embedded.fallback_schema.{entity}` | Embedded fallback entity is missing read capability. |
 | `warning` | `admin.embedded.permission.{entity}` | Embedded read permission references an entity missing from `fallback_schema`. |
+| `error` | `console.surface.{surface}` | Console surface is missing a name or duplicates another surface name. |
+| `error` | `console.surface.{surface}.route` | Console surface route is invalid or duplicates another route. |
+| `warning` | `console.surface.{surface}.label` | Console surface is missing an operator-facing label. |
+| `warning` | `console.surface.{surface}.package` | Console surface package name is not shaped like an npm package. |
+| `warning` | `console.surface.{surface}.package.export` | Console surface package export is missing. |
+| `warning` | `console.surface.{surface}.navigation.workspace.id` | Console workspace id is invalid or uses the host-reserved `system` id. |
+| `warning` | `console.surface.{surface}.navigation.workspace.label` | Console workspace is missing an operator-facing label. |
+| `warning` | `console.surface.{surface}.navigation.group.id` | Console navigation group id is invalid. |
+| `warning` | `console.surface.{surface}.navigation.group.label` | Console navigation group is missing an operator-facing label. |
 | `warning` | `runtime.functions` | Runtime surface declares no functions. |
 | `error` | `runtime.function` | Runtime function declaration is missing a name. |
 | `warning` | `runtime.function.{name}` | Runtime function name is not path-safe, queue is missing, or another declaration quality issue applies. |
