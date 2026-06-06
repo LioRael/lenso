@@ -6,6 +6,15 @@ export type ConsoleModulePackageReference = {
   exportName: string;
 };
 
+export type ConsoleModuleMetadata = {
+  console?: {
+    package?: {
+      name?: string;
+      export?: string;
+    };
+  }[];
+};
+
 const firstPartyConsoleModuleExports: Record<string, ConsoleModule> = {
   "@lenso/story-console#storyConsoleModule": storyConsoleModule,
 };
@@ -29,4 +38,23 @@ export function resolveConsoleModules(
   references: ConsoleModulePackageReference[]
 ): ConsoleModule[] {
   return references.map(resolveConsoleModule);
+}
+
+export function selectConsoleModulePackageReferences(
+  modules: ConsoleModuleMetadata[]
+): ConsoleModulePackageReference[] {
+  return modules.flatMap((module) =>
+    (module.console ?? []).flatMap((surface) => {
+      const packageName = surface.package?.name;
+      const exportName = surface.package?.export;
+      if (!(packageName && exportName)) {
+        return [];
+      }
+      const reference = { exportName, packageName };
+      if (!firstPartyConsoleModuleExports[packageExportKey(reference)]) {
+        return [];
+      }
+      return [reference];
+    })
+  );
 }

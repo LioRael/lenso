@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
   resolveConsoleModule,
   resolveConsoleModules,
+  selectConsoleModulePackageReferences,
 } from "./console-module-resolver";
 
 describe("console module resolver", () => {
@@ -24,6 +25,38 @@ describe("console module resolver", () => {
     ]);
 
     expect(modules.map((module) => module.id)).toEqual(["platform-story"]);
+  });
+
+  test("selects package references from backend module metadata", () => {
+    expect(
+      selectConsoleModulePackageReferences([
+        {
+          console: [
+            {
+              package: {
+                export: "storyConsoleModule",
+                name: "@lenso/story-console",
+              },
+            },
+          ],
+        },
+        {
+          console: [
+            {
+              package: {
+                export: "unknownModule",
+                name: "@lenso/unknown-console",
+              },
+            },
+          ],
+        },
+      ])
+    ).toEqual([
+      {
+        exportName: "storyConsoleModule",
+        packageName: "@lenso/story-console",
+      },
+    ]);
   });
 
   test("reports missing package exports with the package reference", () => {
