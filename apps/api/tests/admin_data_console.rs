@@ -591,6 +591,22 @@ async fn admin_action_invocation_validates_declared_input_schema() {
         "admin action input field `limit` must be an integer"
     );
 
+    let undeclared_field = app
+        .clone()
+        .oneshot(admin_post_json_with_token(
+            "/admin/data/remote-crm/actions/validated_sync",
+            r#"{"input":{"limit":25,"unexpected":true}}"#,
+            "dev-service:admin:remote_crm.contacts.sync",
+        ))
+        .await
+        .expect("request completes");
+    assert_eq!(undeclared_field.status(), StatusCode::BAD_REQUEST);
+    let undeclared_field_body = json_body(undeclared_field).await;
+    assert_eq!(
+        undeclared_field_body["error"]["message"],
+        "admin action input field `unexpected` is not declared"
+    );
+
     let accepted = app
         .oneshot(admin_post_json_with_token(
             "/admin/data/remote-crm/actions/validated_sync",
