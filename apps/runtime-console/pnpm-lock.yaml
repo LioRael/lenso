@@ -14,6 +14,9 @@ importers:
       '@gsap/react':
         specifier: ^2.1.2
         version: 2.1.2(gsap@3.15.0)(react@19.2.6)
+      '@lenso/story-console':
+        specifier: workspace:*
+        version: link:packages/story-console
       '@tailwindcss/vite':
         specifier: ^4.1.0
         version: 4.3.0(vite@8.0.16(jiti@2.7.0)(yaml@2.9.0))
@@ -78,9 +81,6 @@ importers:
       '@gsap/react':
         specifier: ^2.1.2
         version: 2.1.2(gsap@3.15.0)(react@19.2.6)
-      '@lenso/runtime-console':
-        specifier: workspace:*
-        version: link:../..
       gsap:
         specifier: ^3.15.0
         version: 3.15.0
