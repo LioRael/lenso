@@ -112,6 +112,14 @@ fn type_from_schema(schema: &Value, required: &BTreeSet<String>) -> anyhow::Resu
         return Ok(type_name_from_ref(reference).to_owned());
     }
 
+    if let Some(one_of) = schema.get("oneOf").and_then(Value::as_array) {
+        let parts = one_of
+            .iter()
+            .map(|schema| type_from_schema(schema, &BTreeSet::new()))
+            .collect::<anyhow::Result<Vec<_>>>()?;
+        return Ok(union_type(parts));
+    }
+
     match schema.get("type") {
         Some(Value::String(schema_type)) => match schema_type.as_str() {
             "object" => object_type(schema, required),
@@ -140,9 +148,35 @@ fn type_from_schema(schema: &Value, required: &BTreeSet<String>) -> anyhow::Resu
                     &BTreeSet::new(),
                 )?);
             }
-            Ok(parts.join(" | "))
+            Ok(union_type(parts))
         }
         _ => Ok("unknown".to_owned()),
+    }
+}
+
+fn union_type(parts: Vec<String>) -> String {
+    let mut seen = BTreeSet::new();
+    let mut rendered = Vec::new();
+    let mut includes_null = false;
+
+    for part in parts {
+        if part == "null" {
+            includes_null = true;
+            continue;
+        }
+        if seen.insert(part.clone()) {
+            rendered.push(part);
+        }
+    }
+
+    if includes_null {
+        rendered.push("null".to_owned());
+    }
+
+    if rendered.is_empty() {
+        "unknown".to_owned()
+    } else {
+        rendered.join(" | ")
     }
 }
 

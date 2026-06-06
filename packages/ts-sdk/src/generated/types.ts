@@ -3,9 +3,9 @@
 
 export type AdminAction = {
   capability: string;
-  confirmation?: unknown;
+  confirmation?: AdminActionConfirmation | null;
   danger_level?: AdminActionDangerLevel;
-  input_schema?: unknown;
+  input_schema?: AdminActionInputSchema | null;
   label: string;
   name: string;
 };
@@ -97,7 +97,13 @@ export type AdminDataPageInfo = {
   next_cursor?: string | null;
 };
 
-export type AdminDeclarativeComponent = unknown;
+export type AdminDeclarativeComponent = {
+  kind?: string;
+  metrics?: Array<AdminMetricBinding>;
+} | {
+  entity?: string;
+  kind?: string;
+};
 
 export type AdminDeclarativePage = {
   label: string;
@@ -113,17 +119,21 @@ export type AdminDeclarativeSection = {
 
 export type AdminDeclarativeSurface = {
   actions?: Array<AdminAction>;
-  fallback_schema?: unknown;
+  fallback_schema?: AdminSchema | null;
   pages?: Array<AdminDeclarativePage>;
 };
 
-export type AdminEmbeddedEntry = unknown;
+export type AdminEmbeddedEntry = {
+  allowed_origins?: Array<string>;
+  kind?: string;
+  url?: string;
+};
 
 export type AdminEmbeddedRuntime = string;
 
 export type AdminEmbeddedSurface = {
   entry: AdminEmbeddedEntry;
-  fallback_schema?: unknown;
+  fallback_schema?: AdminSchema | null;
   permissions?: Array<AdminPermission>;
   runtime: AdminEmbeddedRuntime;
   sandbox: AdminSandboxPolicy;
@@ -142,7 +152,7 @@ export type AdminFunctionRunDetail = {
   last_error?: string | null;
   locked_by?: string | null;
   max_attempts: number;
-  runtime_declaration?: unknown;
+  runtime_declaration?: AdminRuntimeFunctionDeclarationMetadata | null;
   started_at?: string | null;
   status: string;
 };
@@ -171,18 +181,18 @@ export type AdminModuleGovernanceDto = {
 };
 
 export type AdminModuleMetadataDto = {
-  admin?: unknown;
+  admin?: AdminSurface | null;
   capabilities: Array<string>;
   console: Array<ConsoleSurface>;
   error?: string | null;
   governance: AdminModuleGovernanceDto;
   http_routes: Array<ModuleHttpRoute>;
-  lifecycle?: unknown;
+  lifecycle?: LifecycleSurface | null;
   manifest_lints: Array<ModuleManifestLint>;
   module_name: string;
-  runtime?: unknown;
+  runtime?: RuntimeSurface | null;
   source: ModuleSource;
-  source_diagnostics?: unknown;
+  source_diagnostics?: AdminModuleSourceDiagnosticsDto | null;
   status: AdminModuleStatus;
   story_display: Array<StoryDisplayDescriptorDto>;
 };
@@ -263,7 +273,13 @@ export type AdminOutboxListResponse = {
   page: PageInfo;
 };
 
-export type AdminPermission = unknown;
+export type AdminPermission = {
+  entity?: string;
+  kind?: string;
+} | {
+  action?: string;
+  kind?: string;
+};
 
 export type AdminRemoteModuleDiagnosticsDto = {
   auth_configured: boolean;
@@ -343,7 +359,7 @@ export type AdminRuntimeFunctionDeclarationMetadata = {
   module_source: ModuleSource;
   name: string;
   queue: string;
-  retry_policy?: unknown;
+  retry_policy?: RuntimeRetryPolicyDeclaration | null;
   version: number;
 };
 
@@ -358,7 +374,7 @@ export type AdminRuntimeFunctionRunItem = {
   last_error?: string | null;
   locked_by?: string | null;
   max_attempts: number;
-  runtime_declaration?: unknown;
+  runtime_declaration?: AdminRuntimeFunctionDeclarationMetadata | null;
   started_at?: string | null;
   status: string;
 };
@@ -598,7 +614,7 @@ export type ConfigWriteResponse = {
 export type ConsoleArea = string;
 
 export type ConsoleNavigation = {
-  group?: unknown;
+  group?: ConsoleNavigationGroup | null;
   order?: number | null;
   workspace: ConsoleWorkspaceRef;
 };
@@ -620,7 +636,7 @@ export type ConsoleSurface = {
   icon?: string | null;
   label: string;
   name: string;
-  navigation?: unknown;
+  navigation?: ConsoleNavigation | null;
   package: ConsolePackage;
   required_capabilities?: Array<string>;
   route: string;
@@ -674,7 +690,9 @@ export type FieldSchema = {
   nullable?: boolean;
 };
 
-export type FieldType = unknown;
+export type FieldType = {
+  kind?: string;
+};
 
 export type LifecycleActivationJobDeclaration = {
   function_name: string;
@@ -688,7 +706,13 @@ export type LifecycleActivationRunPolicy = string;
 
 export type LifecycleStartupCheckDeclaration = unknown;
 
-export type LifecycleStartupCheckKind = unknown;
+export type LifecycleStartupCheckKind = {
+  function_name?: string;
+  kind?: string;
+} | {
+  capability?: string;
+  kind?: string;
+};
 
 export type LifecycleSurface = {
   activation_jobs?: Array<LifecycleActivationJobDeclaration>;
@@ -747,7 +771,7 @@ export type RuntimeFunctionDeclaration = {
   input_schema?: string | null;
   name: string;
   queue: string;
-  retry_policy?: unknown;
+  retry_policy?: RuntimeRetryPolicyDeclaration | null;
   version: number;
 };
 
@@ -766,7 +790,14 @@ export type StoryDisplayDescriptorDto = {
   story_title?: string | null;
 };
 
-export type StoryDisplaySourceDto = unknown;
+export type StoryDisplaySourceDto = {
+  kind?: string;
+  name?: string;
+} | {
+  kind?: string;
+  method?: string;
+  path?: string;
+};
 
 export type ValidationErrorDetail = {
   field?: string | null;

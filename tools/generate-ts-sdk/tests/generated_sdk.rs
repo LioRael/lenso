@@ -18,6 +18,21 @@ fn generated_types_include_all_openapi_component_schemas() {
 }
 
 #[test]
+fn nullable_ref_one_of_properties_render_concrete_union_types() {
+    let source =
+        generate_ts_sdk::generated_types_source().expect("generated types source should render");
+
+    assert!(
+        source.contains("  group?: ConsoleNavigationGroup | null;\n"),
+        "nullable ref property should keep its referenced schema type"
+    );
+    assert!(
+        source.contains("  navigation?: ConsoleNavigation | null;\n"),
+        "nullable ref property should keep its referenced schema type"
+    );
+}
+
+#[test]
 fn committed_generated_files_are_fresh() {
     let committed_types = include_str!("../../../packages/ts-sdk/src/generated/types.ts");
     let committed_client = include_str!("../../../packages/ts-sdk/src/generated/client.ts");
