@@ -14,6 +14,9 @@ Generate the standard package skeleton and host registration first:
 pnpm create:console-package billing
 ```
 
+The package also exposes `pnpm exec lenso-console-package create billing` for
+CLI-style usage.
+
 Use `--dry-run` to preview file changes, and pass options such as
 `--label "Billing"` or `--route /data/billing` when defaults are not enough.
 

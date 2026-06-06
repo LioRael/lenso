@@ -172,8 +172,9 @@ trusts and registers them.
 
 The local developer workflow is supported by:
 
-- `pnpm create:console-package <module>`: creates a workspace package skeleton,
-  host registration entries, `console-surface.json`, and a Rust
+- `pnpm exec lenso-console-package create <module>` (or the local
+  `pnpm create:console-package <module>` alias): creates a workspace package
+  skeleton, host registration entries, `console-surface.json`, and a Rust
   `console-surface.rs` snippet.
 - `pnpm check:console-packages`: verifies package dependencies, manifest
   exports, module export mappings, and package peer dependencies.
