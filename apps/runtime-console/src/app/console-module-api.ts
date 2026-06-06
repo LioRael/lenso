@@ -14,12 +14,32 @@ export type ConsoleSurfaceIcon =
   | "settings"
   | "workflow";
 
+export type ConsoleNavigationMetadata = {
+  workspace: ConsoleWorkspaceRef;
+  group?: ConsoleNavigationGroup;
+  order?: number;
+};
+
+export type ConsoleWorkspaceRef = {
+  id: string;
+  label: string;
+  icon?: string;
+};
+
+export type ConsoleNavigationGroup = {
+  id: string;
+  label: string;
+  icon?: string;
+  order?: number;
+};
+
 export type ConsoleModuleSurface = {
   path: string;
   label: string;
   area: ConsoleSurfaceArea;
   component: () => ReactNode;
   icon?: ConsoleSurfaceIcon;
+  navigation?: ConsoleNavigationMetadata;
 };
 
 export type ConsoleModule = {
@@ -36,6 +56,7 @@ export type ConsoleNavigationItem = {
   label: string;
   moduleId: string;
   icon?: ConsoleSurfaceIcon;
+  navigation?: ConsoleNavigationMetadata;
 };
 
 export function defineConsoleModule(module: ConsoleModule): ConsoleModule {

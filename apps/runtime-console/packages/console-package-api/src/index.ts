@@ -1,4 +1,5 @@
 import type {
+  ConsoleNavigationMetadata,
   ConsoleSurfaceArea,
   ConsoleSurfaceIcon,
 } from "../../../src/app/console-module-api";
@@ -8,10 +9,13 @@ export {
   defineConsoleModule,
   type ConsoleModule,
   type ConsoleModuleSurface,
+  type ConsoleNavigationGroup,
   type ConsoleNavigationItem,
+  type ConsoleNavigationMetadata,
   type ConsoleRouteContribution,
   type ConsoleSurfaceArea,
   type ConsoleSurfaceIcon,
+  type ConsoleWorkspaceRef,
 } from "../../../src/app/console-module-api";
 export {
   runtimeConsoleHostApi,
@@ -36,26 +40,7 @@ export interface ConsolePackageManifest {
   source: ConsolePackageRegistrySource;
   version?: string;
   icon?: ConsoleSurfaceIcon;
-  navigation?: ConsolePackageNavigation;
-}
-
-export interface ConsolePackageNavigation {
-  workspace: ConsolePackageWorkspaceRef;
-  group?: ConsolePackageNavigationGroup;
-  order?: number;
-}
-
-export interface ConsolePackageWorkspaceRef {
-  id: string;
-  label: string;
-  icon?: ConsoleSurfaceIcon;
-}
-
-export interface ConsolePackageNavigationGroup {
-  id: string;
-  label: string;
-  icon?: ConsoleSurfaceIcon;
-  order?: number;
+  navigation?: ConsoleNavigationMetadata;
 }
 
 export interface ConsoleSurfaceManifest {
@@ -69,7 +54,7 @@ export interface ConsoleSurfaceManifest {
   };
   required_capabilities: readonly string[];
   icon?: ConsoleSurfaceIcon;
-  navigation?: ConsolePackageNavigation;
+  navigation?: ConsoleNavigationMetadata;
 }
 
 export const defineConsolePackageManifest = <

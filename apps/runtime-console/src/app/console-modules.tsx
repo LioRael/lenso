@@ -20,9 +20,12 @@ export { defineConsoleModule } from "./console-module-api";
 export type {
   ConsoleModule,
   ConsoleNavigationItem,
+  ConsoleNavigationMetadata,
+  ConsoleNavigationGroup,
   ConsoleRouteContribution,
   ConsoleSurfaceArea,
   ConsoleSurfaceIcon,
+  ConsoleWorkspaceRef,
   ConsoleModuleSurface,
 } from "./console-module-api";
 
@@ -59,6 +62,9 @@ export function buildConsoleNavigation(
     };
     if (route.icon) {
       item.icon = route.icon;
+    }
+    if (route.navigation) {
+      item.navigation = route.navigation;
     }
     return item;
   });

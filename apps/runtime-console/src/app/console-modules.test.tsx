@@ -42,6 +42,41 @@ describe("console module registry", () => {
     expect(buildConsoleRoutes([module])[0]?.path).toBe("/runtime/stories");
   });
 
+  test("accepts optional workspace navigation metadata on module surfaces", () => {
+    const navigation = {
+      group: {
+        id: "customers",
+        label: "Customers",
+        order: 20,
+      },
+      order: 10,
+      workspace: {
+        icon: "briefcase",
+        id: "crm",
+        label: "CRM",
+      },
+    } as const;
+    const module = defineConsoleModule({
+      id: "crm",
+      surfaces: [
+        {
+          area: "data",
+          component: TestPage,
+          icon: "database",
+          label: "Contacts",
+          navigation,
+          path: "/crm/contacts",
+        },
+      ],
+    });
+
+    expect(module.surfaces[0]?.navigation).toEqual(navigation);
+    expect(buildConsoleRoutes([module])[0]?.navigation).toEqual(navigation);
+    expect(buildConsoleNavigation([module])[0]?.navigation).toEqual(
+      navigation
+    );
+  });
+
   test("rejects duplicate contribution paths before router creation", () => {
     const storyModule = defineConsoleModule({
       id: "platform-story",

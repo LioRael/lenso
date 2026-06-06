@@ -2,10 +2,13 @@ export {
   defineConsoleModule,
   type ConsoleModule,
   type ConsoleModuleSurface,
+  type ConsoleNavigationGroup,
   type ConsoleNavigationItem,
+  type ConsoleNavigationMetadata,
   type ConsoleRouteContribution,
   type ConsoleSurfaceArea,
   type ConsoleSurfaceIcon,
+  type ConsoleWorkspaceRef,
 } from "./app/console-module-api";
 export {
   runtimeConsoleHostApi,
