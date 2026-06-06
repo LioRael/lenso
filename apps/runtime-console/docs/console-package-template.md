@@ -164,6 +164,7 @@ capabilities aligned with `required_capabilities`.
 ```rust
 use platform_module::{
     ConsoleArea, ConsoleNavigation, ConsolePackage, ConsoleSurface, ConsoleWorkspaceRef,
+    ModuleManifest,
 };
 
 ModuleManifest::builder("billing")
