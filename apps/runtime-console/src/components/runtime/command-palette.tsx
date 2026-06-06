@@ -11,6 +11,8 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useConsoleNavigation } from "../../app/console-module-metadata";
+import type { ConsoleNavigationItem } from "../../app/console-modules";
+import { SYSTEM_WORKSPACE } from "../../app/console-workspace-navigation";
 import { runtimeStories } from "../../data/mock-runtime";
 import { queryDataWithMockFallback } from "../../hooks/runtime-query-data";
 import { currentBrowserUrl } from "../../hooks/use-browser-url-state";
@@ -27,6 +29,103 @@ type CommandPaletteProps = {
   theme: "dark" | "light";
   onToggleTheme: () => void;
 };
+
+type CommandNavigationItem = ConsoleNavigationItem & {
+  keywords?: string;
+};
+
+const systemCommandNavigationItems = [
+  {
+    keywords: "runtime health",
+    label: "Overview",
+    moduleId: "host",
+    navigation: {
+      workspace: SYSTEM_WORKSPACE,
+    },
+    path: "/overview",
+  },
+  {
+    keywords: "runtime operations",
+    label: "Operations",
+    moduleId: "host",
+    navigation: {
+      workspace: SYSTEM_WORKSPACE,
+    },
+    path: "/operations",
+  },
+  {
+    keywords: "failure inbox",
+    label: "Dead Letters",
+    moduleId: "host",
+    navigation: {
+      workspace: SYSTEM_WORKSPACE,
+    },
+    path: "/operations/dead-letters",
+  },
+  {
+    keywords: "runtime function runs module queue",
+    label: "Functions",
+    moduleId: "host",
+    navigation: {
+      workspace: SYSTEM_WORKSPACE,
+    },
+    path: "/operations/functions",
+  },
+  {
+    keywords: "proxy module remote operations",
+    label: "Remote Calls",
+    moduleId: "host",
+    navigation: {
+      workspace: SYSTEM_WORKSPACE,
+    },
+    path: "/operations/remote-calls",
+  },
+  {
+    keywords: "module action operations",
+    label: "Admin Actions",
+    moduleId: "host",
+    navigation: {
+      workspace: SYSTEM_WORKSPACE,
+    },
+    path: "/operations/admin-actions",
+  },
+  {
+    keywords: "queue pressure",
+    label: "Queues",
+    moduleId: "host",
+    navigation: {
+      workspace: SYSTEM_WORKSPACE,
+    },
+    path: "/operations/queues",
+  },
+  {
+    keywords: "module registry packages installs",
+    label: "Modules",
+    moduleId: "host",
+    navigation: {
+      workspace: SYSTEM_WORKSPACE,
+    },
+    path: "/modules",
+  },
+  {
+    keywords: "schema admin business data",
+    label: "Data",
+    moduleId: "host",
+    navigation: {
+      workspace: SYSTEM_WORKSPACE,
+    },
+    path: "/data",
+  },
+  {
+    keywords: "settings configuration",
+    label: "Configuration",
+    moduleId: "host",
+    navigation: {
+      workspace: SYSTEM_WORKSPACE,
+    },
+    path: "/config",
+  },
+] satisfies CommandNavigationItem[];
 
 export function CommandPalette({ theme, onToggleTheme }: CommandPaletteProps) {
   const navigate = useNavigate();
@@ -49,62 +148,25 @@ export function CommandPalette({ theme, onToggleTheme }: CommandPaletteProps) {
       onOpenStory: openStory,
       stories,
     });
-    const consoleItems: CommandItem[] = consoleNavigation.map((item) => {
+    const commandNavigationItems: CommandNavigationItem[] = [
+      ...systemCommandNavigationItems,
+      ...consoleNavigation,
+    ];
+    const consoleItems: CommandItem[] = commandNavigationItems.map((item) => {
       const workspaceLabel = item.navigation?.workspace.label ?? "System";
+      const keywords = item.keywords ? ` ${item.keywords}` : "";
 
       return {
         action: () => void navigate({ to: item.path }),
         id: `console:${item.moduleId}:${item.path}`,
         searchText:
-          `go to ${item.label} ${workspaceLabel} ${item.moduleId} ${item.path}`.toLowerCase(),
+          `go to ${item.label} ${workspaceLabel} ${item.moduleId} ${item.path}${keywords}`.toLowerCase(),
         subtitle: `${workspaceLabel} / ${item.moduleId}`,
         title: `Go to ${item.label}`,
       };
     });
     const items: CommandItem[] = [
       ...consoleItems,
-      {
-        action: () => void navigate({ to: "/operations/dead-letters" }),
-        id: "dead",
-        searchText: "go to dead letters failure inbox",
-        subtitle: "Failure inbox",
-        title: "Go to Dead Letters",
-      },
-      {
-        action: () => void navigate({ to: "/operations/functions" }),
-        id: "functions",
-        searchText: "go to functions runtime function runs module queue",
-        subtitle: "Runtime function runs",
-        title: "Go to Functions",
-      },
-      {
-        action: () => void navigate({ to: "/operations/remote-calls" }),
-        id: "remote-calls",
-        searchText: "go to remote calls proxy module remote operations",
-        subtitle: "Remote proxy calls",
-        title: "Go to Remote Calls",
-      },
-      {
-        action: () => void navigate({ to: "/operations/admin-actions" }),
-        id: "admin-actions",
-        searchText: "go to admin actions module action operations",
-        subtitle: "Admin action invocations",
-        title: "Go to Admin Actions",
-      },
-      {
-        action: () => void navigate({ to: "/operations/queues" }),
-        id: "queues",
-        searchText: "go to queues queue pressure",
-        subtitle: "Queue pressure",
-        title: "Go to Queues",
-      },
-      {
-        action: () => void navigate({ to: "/overview" }),
-        id: "overview",
-        searchText: "go to overview runtime health",
-        subtitle: "Runtime health",
-        title: "Go to Overview",
-      },
       {
         action: onToggleTheme,
         id: "theme-toggle",

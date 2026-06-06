@@ -73,6 +73,13 @@ export function activeWorkspaceIdForPath(
   workspaces: ConsoleWorkspaceNavigation[],
   path: string
 ): string {
+  return matchedWorkspaceIdForPath(workspaces, path) ?? SYSTEM_WORKSPACE.id;
+}
+
+export function matchedWorkspaceIdForPath(
+  workspaces: ConsoleWorkspaceNavigation[],
+  path: string
+): string | null {
   const routes = workspaceRoutes(workspaces);
   const exactMatch = routes.find((route) => route.path === path);
   if (exactMatch) {
@@ -83,7 +90,7 @@ export function activeWorkspaceIdForPath(
     .filter((route) => path.startsWith(`${route.path}/`))
     .sort((left, right) => right.path.length - left.path.length);
 
-  return childMatch?.workspaceId ?? SYSTEM_WORKSPACE.id;
+  return childMatch?.workspaceId ?? null;
 }
 
 export function selectedWorkspaceForId(

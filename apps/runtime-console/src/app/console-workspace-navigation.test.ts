@@ -4,6 +4,7 @@ import type { ConsoleNavigationItem } from "./console-module-api";
 import {
   activeWorkspaceIdForPath,
   buildWorkspaceNavigation,
+  matchedWorkspaceIdForPath,
   selectedWorkspaceForId,
   SYSTEM_WORKSPACE,
 } from "./console-workspace-navigation";
@@ -209,6 +210,14 @@ describe("console workspace navigation", () => {
 
     expect(activeWorkspaceIdForPath(workspaces, "/crm/contacts")).toBe("crm");
     expect(activeWorkspaceIdForPath(workspaces, "/unknown")).toBe("system");
+  });
+
+  test("distinguishes route matches from workspace fallback", () => {
+    const workspaces = buildWorkspaceNavigation(items);
+
+    expect(matchedWorkspaceIdForPath(workspaces, "/overview")).toBe("system");
+    expect(matchedWorkspaceIdForPath(workspaces, "/crm/contacts")).toBe("crm");
+    expect(matchedWorkspaceIdForPath(workspaces, "/unknown")).toBeNull();
   });
 
   test("falls back to system when selected workspace is unavailable", () => {

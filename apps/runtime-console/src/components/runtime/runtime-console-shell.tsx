@@ -25,9 +25,9 @@ import type {
   ConsoleSurfaceIcon,
 } from "../../app/console-modules";
 import {
-  activeWorkspaceIdForPath,
   buildWorkspaceNavigation,
   type ConsoleWorkspaceNavigation,
+  matchedWorkspaceIdForPath,
   selectedWorkspaceForId,
   SYSTEM_WORKSPACE,
 } from "../../app/console-workspace-navigation";
@@ -102,17 +102,16 @@ const hostPrimaryNavItems = [
     },
     path: "/data",
   },
-] satisfies ConsoleNavigationItem[];
-
-const configNavItem = {
-  icon: "settings",
-  label: "Configuration",
-  moduleId: "host",
-  navigation: {
-    workspace: SYSTEM_WORKSPACE,
+  {
+    icon: "settings",
+    label: "Configuration",
+    moduleId: "host",
+    navigation: {
+      workspace: SYSTEM_WORKSPACE,
+    },
+    path: "/config",
   },
-  path: "/config",
-} satisfies ConsoleNavigationItem;
+] satisfies ConsoleNavigationItem[];
 
 export function RuntimeConsoleShell({ children }: PropsWithChildren) {
   const shellRef = useRef<HTMLDivElement>(null);
@@ -130,7 +129,7 @@ export function RuntimeConsoleShell({ children }: PropsWithChildren) {
     [primaryNavItems]
   );
   const routeWorkspaceId = useMemo(
-    () => activeWorkspaceIdForPath(workspaceNavigation, currentPath),
+    () => matchedWorkspaceIdForPath(workspaceNavigation, currentPath),
     [currentPath, workspaceNavigation]
   );
   const [selectedWorkspaceId, setSelectedWorkspaceId] =
@@ -175,6 +174,9 @@ export function RuntimeConsoleShell({ children }: PropsWithChildren) {
   }, [theme]);
 
   useEffect(() => {
+    if (!routeWorkspaceId) {
+      return;
+    }
     setSelectedWorkspaceId((current) =>
       current === routeWorkspaceId ? current : routeWorkspaceId
     );
@@ -318,10 +320,6 @@ export function RuntimeConsoleShell({ children }: PropsWithChildren) {
             />
             <div className="my-2 h-px bg-(--border-subtle) max-lg:hidden" />
             <WorkspaceMenu workspace={activeWorkspace} />
-            <div className="my-2 h-px bg-(--border-subtle) max-lg:hidden" />
-            <div className="grid gap-px max-lg:hidden">
-              <NavLink item={configNavItem} />
-            </div>
           </div>
         </nav>
 
