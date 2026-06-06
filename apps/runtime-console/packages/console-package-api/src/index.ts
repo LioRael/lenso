@@ -16,6 +16,8 @@ export {
 export {
   runtimeConsoleHostApi,
   type RuntimeConsoleHostApi,
+  type ConsoleAdminListResponse,
+  type ConsoleAdminRecord,
   type ExecutionInspectorTab,
   type ExecutionNode,
   type RuntimeStory,

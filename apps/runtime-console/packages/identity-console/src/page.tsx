@@ -1,3 +1,7 @@
+import { runtimeConsoleHostApi } from "@lenso/runtime-console-api";
+
+import { identityUserRows, identityUsersSummary } from "./model";
+
 const surfaceRows = [
   ["Module", "identity"],
   ["Package", "@lenso/identity-console"],
@@ -21,6 +25,13 @@ const workflowRows = [
 ] as const;
 
 export function IdentityConsolePage() {
+  const usersQuery = runtimeConsoleHostApi.adminData.useRecords({
+    entityName: "users",
+    moduleName: "identity",
+  });
+  const userRows = identityUserRows(usersQuery.data?.data ?? []);
+  const summary = identityUsersSummary(usersQuery.data?.data ?? []);
+
   return (
     <main className="flex h-full flex-col gap-4 overflow-auto bg-background p-4">
       <header className="flex flex-wrap items-start gap-3 border-border border-b pb-3">
@@ -93,6 +104,64 @@ export function IdentityConsolePage() {
             ))}
           </dl>
         </div>
+      </section>
+
+      <section className="border border-border bg-card">
+        <div className="flex items-center gap-3 border-border border-b px-3 py-2">
+          <h2 className="font-medium text-foreground text-sm">Users</h2>
+          <span className="ml-auto border border-border px-2 py-0.5 text-muted-foreground text-xs">
+            {summary.total} records
+          </span>
+          <span className="border border-border px-2 py-0.5 text-muted-foreground text-xs">
+            latest {summary.latestCreatedAt}
+          </span>
+        </div>
+        {usersQuery.isError ? (
+          <p className="px-3 py-3 text-muted-foreground text-sm">
+            Failed to load users: {String(usersQuery.error.message)}
+          </p>
+        ) : usersQuery.isPending ? (
+          <p className="px-3 py-3 text-muted-foreground text-sm">
+            Loading users...
+          </p>
+        ) : userRows.length === 0 ? (
+          <p className="px-3 py-3 text-muted-foreground text-sm">
+            No users found.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] text-left text-sm">
+              <thead className="border-border border-b text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 font-medium">ID</th>
+                  <th className="px-3 py-2 font-medium">Email</th>
+                  <th className="px-3 py-2 font-medium">Display name</th>
+                  <th className="px-3 py-2 font-medium">Created</th>
+                  <th className="px-3 py-2 font-medium">Updated</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {userRows.map((user) => (
+                  <tr key={user.id}>
+                    <td className="px-3 py-2 font-mono text-foreground text-xs">
+                      {user.id}
+                    </td>
+                    <td className="px-3 py-2 text-foreground">{user.email}</td>
+                    <td className="px-3 py-2 text-muted-foreground">
+                      {user.displayName}
+                    </td>
+                    <td className="px-3 py-2 font-mono text-muted-foreground text-xs">
+                      {user.createdAt}
+                    </td>
+                    <td className="px-3 py-2 font-mono text-muted-foreground text-xs">
+                      {user.updatedAt}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       <section className="border border-border bg-card">

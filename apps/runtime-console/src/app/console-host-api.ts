@@ -20,8 +20,12 @@ import { useListKeyboard } from "../hooks/use-list-keyboard";
 import { usePersistedLayout } from "../hooks/use-persisted-layout";
 import { useRuntimeStories } from "../hooks/use-runtime-queries";
 import { operationsPath } from "../pages/operations-url-model";
+import { useConsoleAdminRecords } from "./console-admin-data-api";
 
 export const runtimeConsoleHostApi = {
+  adminData: {
+    useRecords: useConsoleAdminRecords,
+  },
   context: {
     useRuntimeConsole,
   },
@@ -62,6 +66,10 @@ export const runtimeConsoleHostApi = {
 };
 
 export type RuntimeConsoleHostApi = typeof runtimeConsoleHostApi;
+export type {
+  ConsoleAdminListResponse,
+  ConsoleAdminRecord,
+} from "./console-admin-data-api";
 export type { ExecutionInspectorTab } from "../components/runtime/execution-inspector-model";
 export type { StoryViewMode } from "../components/runtime/story-tabs";
 export type { ExecutionNode, RuntimeStory } from "../data/mock-runtime";

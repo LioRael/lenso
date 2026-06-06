@@ -1,6 +1,10 @@
 import { describe, expect, test } from "vitest";
 
-import { identityConsoleManifest, identityConsoleModule } from ".";
+import {
+  IdentityConsolePage,
+  identityConsoleManifest,
+  identityConsoleModule,
+} from ".";
 
 describe("identity console package", () => {
   test("declares an installable identity console package export", () => {
@@ -22,5 +26,6 @@ describe("identity console package", () => {
         },
       ],
     });
+    expect(IdentityConsolePage).toBeTypeOf("function");
   });
 });
