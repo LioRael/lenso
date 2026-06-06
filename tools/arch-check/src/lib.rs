@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const FORBIDDEN_DOMAIN_DIRS: &[&str] = &["api", "application", "domain", "infrastructure"];
+const FORBIDDEN_MODULE_DIRS: &[&str] = &["api", "application", "domain", "infrastructure"];
 const MANIFEST_LINT_MESSAGES: &[&str] = &[
     "No HTTP interfaces are declared in this manifest.",
     "routes declare the same method and path.",
@@ -38,17 +38,17 @@ pub fn run() -> anyhow::Result<()> {
     let mut failures = Vec::new();
 
     collect_result(
-        check_forbidden_domain_folders(&root),
-        "forbidden domain folders",
+        check_forbidden_module_folders(&root),
+        "forbidden module folders",
         &mut failures,
     );
     collect_result(
-        check_forbidden_cross_domain_imports(&root),
-        "forbidden cross-domain imports",
+        check_forbidden_cross_module_imports(&root),
+        "forbidden cross-module imports",
         &mut failures,
     );
     collect_result(
-        check_crates_no_domain_deps(
+        check_crates_no_module_deps(
             &root,
             &[
                 "platform-admin",
@@ -56,7 +56,7 @@ pub fn run() -> anyhow::Result<()> {
                 "platform-module-remote",
             ],
         ),
-        "platform admin/remote domain dependency",
+        "platform admin/remote module dependency",
         &mut failures,
     );
     collect_result(
@@ -117,24 +117,24 @@ pub fn run() -> anyhow::Result<()> {
     bail!("architecture check failed:\n{}", failures.join("\n"));
 }
 
-pub fn check_forbidden_domain_folders(root: &Path) -> anyhow::Result<()> {
+pub fn check_forbidden_module_folders(root: &Path) -> anyhow::Result<()> {
     let mut violations = Vec::new();
-    let domains_root = root.join("domains");
-    for entry in fs::read_dir(&domains_root)
-        .with_context(|| format!("failed to read {}", domains_root.display()))?
+    let modules_root = root.join("modules");
+    for entry in fs::read_dir(&modules_root)
+        .with_context(|| format!("failed to read {}", modules_root.display()))?
     {
         let entry = entry?;
         if !entry.file_type()?.is_dir() {
             continue;
         }
-        let domain = entry.file_name().to_string_lossy().into_owned();
-        for forbidden in FORBIDDEN_DOMAIN_DIRS {
+        let module = entry.file_name().to_string_lossy().into_owned();
+        for forbidden in FORBIDDEN_MODULE_DIRS {
             for candidate in [
                 entry.path().join(forbidden),
                 entry.path().join("src").join(forbidden),
             ] {
                 if candidate.is_dir() {
-                    violations.push(format!("{domain}: {}", relative(root, &candidate)));
+                    violations.push(format!("{module}: {}", relative(root, &candidate)));
                 }
             }
         }
@@ -142,25 +142,25 @@ pub fn check_forbidden_domain_folders(root: &Path) -> anyhow::Result<()> {
 
     ensure_empty(
         violations,
-        "domains must not contain api/application/domain/infrastructure folders",
+        "modules must not contain api/application/domain/infrastructure folders",
     )
 }
 
-pub fn check_forbidden_cross_domain_imports(root: &Path) -> anyhow::Result<()> {
+pub fn check_forbidden_cross_module_imports(root: &Path) -> anyhow::Result<()> {
     let mut violations = Vec::new();
-    let domain_names = domain_names(root)?;
-    let domains_root = root.join("domains");
+    let module_names = module_names(root)?;
+    let modules_root = root.join("modules");
 
-    for domain in &domain_names {
-        let src = domains_root.join(domain).join("src");
+    for module in &module_names {
+        let src = modules_root.join(module).join("src");
         for file in rust_files(&src)? {
             let source = fs::read_to_string(&file)
                 .with_context(|| format!("failed to read {}", file.display()))?;
-            for other_domain in domain_names.iter().filter(|name| *name != domain) {
+            for other_module in module_names.iter().filter(|name| *name != module) {
                 for pattern in [
-                    format!("use {other_domain}::"),
-                    format!("{other_domain}::"),
-                    format!("extern crate {other_domain}"),
+                    format!("use {other_module}::"),
+                    format!("{other_module}::"),
+                    format!("extern crate {other_module}"),
                 ] {
                     if source.contains(&pattern) {
                         violations.push(format!("{} imports `{pattern}`", relative(root, &file)));
@@ -172,14 +172,14 @@ pub fn check_forbidden_cross_domain_imports(root: &Path) -> anyhow::Result<()> {
 
     ensure_empty(
         violations,
-        "domains must call other domains through public interfaces or events",
+        "modules must call other modules through public interfaces or events",
     )
 }
 
-/// Platform admin/remote crates must not depend on business domains; they work
+/// Platform admin/remote crates must not depend on concrete modules; they work
 /// through composition-root injection and `platform-module` seams.
-pub fn check_crates_no_domain_deps(root: &Path, crates: &[&str]) -> anyhow::Result<()> {
-    let domain_names = domain_names(root)?;
+pub fn check_crates_no_module_deps(root: &Path, crates: &[&str]) -> anyhow::Result<()> {
+    let module_names = module_names(root)?;
     let mut violations = Vec::new();
 
     for crate_name in crates {
@@ -187,19 +187,19 @@ pub fn check_crates_no_domain_deps(root: &Path, crates: &[&str]) -> anyhow::Resu
         let source = fs::read_to_string(&manifest)
             .with_context(|| format!("failed to read {}", manifest.display()))?;
 
-        for domain in &domain_names {
-            if source.contains(&format!("{domain}.workspace"))
-                || source.contains(&format!("\"{domain}\""))
-                || source.contains(&format!("{domain} ="))
+        for module in &module_names {
+            if source.contains(&format!("{module}.workspace"))
+                || source.contains(&format!("\"{module}\""))
+                || source.contains(&format!("{module} ="))
             {
-                violations.push(format!("{crate_name} depends on domain `{domain}`"));
+                violations.push(format!("{crate_name} depends on module `{module}`"));
             }
         }
     }
 
     ensure_empty(
         violations,
-        "platform admin/remote crates must not depend on any domain crate",
+        "platform admin/remote crates must not depend on any concrete module crate",
     )
 }
 
@@ -360,7 +360,7 @@ pub fn check_event_schema_refs_exist(root: &Path) -> anyhow::Result<()> {
         }
     }
 
-    ensure_empty(missing, "domain event schema references must exist")
+    ensure_empty(missing, "module event schema references must exist")
 }
 
 pub fn check_event_contract_names_match_paths(root: &Path) -> anyhow::Result<()> {
@@ -368,15 +368,15 @@ pub fn check_event_contract_names_match_paths(root: &Path) -> anyhow::Result<()>
     for file in schema_files(&root.join("contracts/events"))? {
         let expected_name = contract_name_from_schema_path(&file)?;
         let value = read_json(file.clone())?;
-        let parent_domain = file
+        let parent_module = file
             .parent()
             .and_then(Path::file_name)
             .and_then(|name| name.to_str())
             .unwrap_or_default();
 
-        if !expected_name.starts_with(&format!("{parent_domain}.")) {
+        if !expected_name.starts_with(&format!("{parent_module}.")) {
             violations.push(format!(
-                "{} contract name should start with `{parent_domain}.`",
+                "{} contract name should start with `{parent_module}.`",
                 relative(root, &file),
             ));
         }
@@ -429,11 +429,11 @@ fn collect_result(result: anyhow::Result<()>, label: &str, failures: &mut Vec<St
     }
 }
 
-fn domain_names(root: &Path) -> anyhow::Result<BTreeSet<String>> {
+fn module_names(root: &Path) -> anyhow::Result<BTreeSet<String>> {
     let mut names = BTreeSet::new();
-    let domains_root = root.join("domains");
-    for entry in fs::read_dir(&domains_root)
-        .with_context(|| format!("failed to read {}", domains_root.display()))?
+    let modules_root = root.join("modules");
+    for entry in fs::read_dir(&modules_root)
+        .with_context(|| format!("failed to read {}", modules_root.display()))?
     {
         let entry = entry?;
         if entry.file_type()?.is_dir() {
@@ -546,7 +546,7 @@ fn collect_typescript_files(root: &Path, files: &mut Vec<PathBuf>) -> anyhow::Re
 
 fn event_schema_refs(root: &Path) -> anyhow::Result<BTreeSet<String>> {
     let mut references = BTreeSet::new();
-    for file in rust_files(&root.join("domains"))? {
+    for file in rust_files(&root.join("modules"))? {
         let source = fs::read_to_string(&file)
             .with_context(|| format!("failed to read {}", file.display()))?;
         references.extend(extract_contract_refs(
@@ -560,9 +560,9 @@ fn event_schema_refs(root: &Path) -> anyhow::Result<BTreeSet<String>> {
 
 fn runtime_function_names(root: &Path) -> anyhow::Result<BTreeSet<String>> {
     let mut names = BTreeSet::new();
-    let domains_root = root.join("domains");
-    for domain in domain_names(root)? {
-        let runtime_root = domains_root.join(domain).join("src/runtime");
+    let modules_root = root.join("modules");
+    for module in module_names(root)? {
+        let runtime_root = modules_root.join(module).join("src/runtime");
         for file in rust_files(&runtime_root)? {
             let source = fs::read_to_string(&file)
                 .with_context(|| format!("failed to read {}", file.display()))?;

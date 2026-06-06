@@ -140,7 +140,7 @@ Keep these values aligned with the frontend manifest:
 - Rust `ConsoleSurface.route` = frontend `route`
 
 Add a module test that asserts the manifest declares the surface and passes
-manifest linting. Use `domains/identity/src/module.rs` and
+manifest linting. Use `modules/identity/src/module.rs` and
 `apps/runtime-console/packages/identity-console` as the reference
 implementation.
 

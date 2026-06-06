@@ -899,8 +899,8 @@ mod tests {
         assert_eq!(manifest.admin, None);
         assert_eq!(manifest.console.len(), 1);
         let surface = &manifest.console[0];
-        let surface_json = serde_json::to_value(surface)
-            .expect("platform-story console surface should serialize");
+        let surface_json =
+            serde_json::to_value(surface).expect("platform-story console surface should serialize");
 
         assert_eq!(
             manifest.capabilities,
@@ -912,7 +912,10 @@ mod tests {
         assert_eq!(surface.area, ConsoleArea::Runtime);
         assert_eq!(surface_json["area"], console_surface_contract["area"]);
         assert_eq!(surface.route, console_surface_contract["route"]);
-        assert_eq!(surface.package.name, console_surface_contract["packageName"]);
+        assert_eq!(
+            surface.package.name,
+            console_surface_contract["packageName"]
+        );
         assert_eq!(
             surface.package.export,
             console_surface_contract["exportName"]

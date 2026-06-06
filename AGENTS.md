@@ -12,10 +12,10 @@ Lenso is a Rust-first modular monolith with a Vite/React Runtime Console and a g
 - `apps/runtime-console`: Vite/React operator console.
 - `crates/platform-*`: shared platform primitives for config, HTTP, runtime, module contracts, admin backends, testing, migrations, outbox, errors, health, and telemetry.
 - `crates/platform-module`: module framework contracts: `ModuleManifest` for serializable data, `ModuleBinding` for behavior, `LinkedBinding` for compile-time modules, and `AdminDataSource` for schema-admin reads.
-- `crates/platform-admin`: Runtime Console observability backend mounted under `/admin/runtime/*`; it observes runtime/outbox/story tables and must not depend on business domains.
-- `crates/platform-admin-data`: schema-admin backend mounted under `/admin/data/*`; it serves generic module data through `AdminSurface::Schema` and `AdminDataSource`, with no domain dependencies.
+- `crates/platform-admin`: Runtime Console observability backend mounted under `/admin/runtime/*`; it observes runtime/outbox/story tables and must not depend on concrete modules.
+- `crates/platform-admin-data`: schema-admin backend mounted under `/admin/data/*`; it serves generic module data through `AdminSurface::Schema` and `AdminDataSource`, with no concrete-module dependencies.
 - `crates/app-bootstrap`: composition root that enumerates concrete modules for the API and worker.
-- `domains/*`: business capabilities. Domains should stay modular and avoid cross-domain imports.
+- `modules/*`: product or fixture capabilities packaged as modules. Modules should stay vertical and avoid cross-module imports.
 - `contracts/*`: committed OpenAPI, JSON Schema, event, error, and runtime contracts.
 - `packages/ts-sdk`: generated TypeScript SDK from `contracts/openapi/app-api.v1.yaml`.
 - `tools/*`: generators and architecture checks.
@@ -72,10 +72,10 @@ If generated files change, include the source change and generated output togeth
 
 - Keep the workspace locked with `cargo ... --locked` for checks and tests.
 - Prefer existing platform crates over new shared abstractions.
-- Keep domain modules vertical and capability-oriented.
-- Do not introduce DDD/Clean Architecture folder names inside domains: `api`, `application`, `domain`, or `infrastructure`.
-- Do not add cross-domain imports inside domain source code.
-- Register module wiring only in `crates/app-bootstrap`; platform crates must expose seams and stay free of concrete domain dependencies.
+- Keep modules vertical and capability-oriented.
+- Do not introduce DDD/Clean Architecture folder names inside modules: `api`, `application`, `domain`, or `infrastructure`.
+- Do not add cross-module imports inside module source code.
+- Register module wiring only in `crates/app-bootstrap`; platform crates must expose seams and stay free of concrete-module dependencies.
 - Keep module data and behavior split: serializable declarations belong in `ModuleManifest`; source-specific behavior belongs behind narrow traits such as `ModuleBinding` and `AdminDataSource`.
 - Prefer explicit SQL and existing migration patterns.
 - Keep error responses aligned with the platform error model and committed schemas.
@@ -88,7 +88,7 @@ Claude Code project memory was imported into Codex on 2026-06-03. Keep these des
 - Step 1 is done: `DomainDescriptor` was split into owned, serializable `ModuleManifest` data plus narrow `ModuleBinding` behavior. Only `LinkedBinding` is implemented today; future `Remote` and `Wasm` loading sources should be added as new bindings/sources without collapsing the manifest/behavior split.
 - Step 2 schema-admin is done as a read-only vertical slice. `AdminSurface::Schema(AdminSchema)` is manifest data; `AdminDataSource` is the behavior seam returning `serde_json::Value`; identity provides the first User schema/list/detail implementation.
 - Do not re-add `#[non_exhaustive]` to producer-constructed structs `AdminSchema`, `EntitySchema`, `FieldSchema`, or `AdminPage`; it blocks struct literal construction from other crates. Keep it on consumer-matched enums such as `FieldType` and `AdminSurface`.
-- `platform-admin` is runtime observability, not business CRUD. `platform-admin-data` is schema-admin business data. Both are platform crates and must not depend on concrete domains; `app-bootstrap` injects the module/data registries.
+- `platform-admin` is runtime observability, not business CRUD. `platform-admin-data` is schema-admin business data. Both are platform crates and must not depend on concrete modules; `app-bootstrap` injects the module/data registries.
 - OpenAPI is single-source through `utoipa-axum`: put `#[utoipa::path]` on real handlers and register routes with `OpenApiRouter::routes(routes!(handler))`. `apps/api/src/openapi.rs::openapi_document()` must stay pure and context-free because generators, arch checks, and sync tests call it outside a runtime.
 
 ## Runtime Console Guidelines

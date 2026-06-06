@@ -16,7 +16,7 @@ async fn main() -> anyhow::Result<()> {
     let db = connect_pool(&config.database).await?;
     let mut ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
 
-    // Build the editable runtime-config registry from every domain and install it for
+    // Build the editable runtime-config registry from every module and install it for
     // the console handlers and the API's own reads.
     let descriptors = app_bootstrap::runtime_config_descriptors(&ctx);
     let registry = RuntimeConfigRegistry::try_new(descriptors)

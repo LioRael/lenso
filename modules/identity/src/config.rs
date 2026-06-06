@@ -3,7 +3,7 @@ use serde::Deserialize;
 use serde_json::json;
 use std::sync::LazyLock;
 
-/// Identity domain configuration, resolved from the settings snapshot under the
+/// Identity module configuration, resolved from the settings snapshot under the
 /// `identity.` key prefix.
 #[derive(Debug, Clone, Deserialize)]
 pub struct IdentityConfig {
@@ -18,7 +18,7 @@ impl Default for IdentityConfig {
     }
 }
 
-/// Editable settings owned by the identity domain.
+/// Editable settings owned by the identity module.
 pub static RUNTIME_CONFIG: LazyLock<Vec<RuntimeConfigDescriptor>> = LazyLock::new(|| {
     vec![RuntimeConfigDescriptor {
         key: "identity.password_reset_ttl_minutes",

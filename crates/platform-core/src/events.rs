@@ -52,7 +52,7 @@ impl EventPublisher for LoggingEventPublisher {
             source_module = %event.source_module,
             subject = %event.subject,
             correlation_id = %event.correlation_id.0,
-            "domain event published"
+            "module event published"
         );
         Ok(())
     }

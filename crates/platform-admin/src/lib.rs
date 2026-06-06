@@ -1,8 +1,8 @@
 //! Runtime-observability API backing the Runtime Console.
 //!
-//! This is a platform cross-cutting concern, not a business domain: it only
+//! This is a platform cross-cutting concern, not a product module: it only
 //! reads platform/runtime tables (`platform.outbox`, `platform.story_events`,
-//! `runtime.function_runs`) to observe the activity of every domain. It exposes
+//! `runtime.function_runs`) to observe the activity of every module. It exposes
 //! a single [`router`] mounted by the API app under `/admin/runtime/*`.
 //!
 //! The crate is split by responsibility:
@@ -14,9 +14,9 @@
 //! - [`spans`]: telemetry-span → technical-operation mapping and PII redaction.
 //! - [`support`]: small cross-cutting helpers (errors, pagination, limits).
 //!
-//! Story display names are domain-owned, so they are injected by the
+//! Story display names are module-owned, so they are injected by the
 //! composition root via [`install_story_display`] rather than depended on
-//! directly — keeping this crate free of any business-domain dependency.
+//! directly, keeping this crate free of any concrete-module dependency.
 
 use platform_core::{RuntimeConfigRegistry, StoryDisplayDescriptor};
 use platform_http::{ApiOpenApiRouter, OpenApiRouter, routes};
@@ -53,17 +53,17 @@ use stories::*;
 #[allow(clippy::wildcard_imports)]
 use support::*;
 
-/// Domain-provided story-display catalog, injected by the composition root.
+/// Module-provided story-display catalog, injected by the composition root.
 static STORY_DISPLAY: OnceLock<Vec<StoryDisplayDescriptor>> = OnceLock::new();
 static RUNTIME_FUNCTION_DECLARATIONS: OnceLock<
     RwLock<Vec<AdminRuntimeFunctionDeclarationMetadata>>,
 > = OnceLock::new();
 
-/// Install the aggregated story-display descriptors from every domain.
+/// Install the aggregated story-display descriptors from every module.
 ///
 /// Called once by the composition root before the router serves traffic. Story
-/// display names are domain-owned metadata; injecting them keeps this crate
-/// from depending on the domains or the composition root. Idempotent: later
+/// display names are module-owned metadata; injecting them keeps this crate
+/// from depending on concrete modules or the composition root. Idempotent: later
 /// calls are ignored.
 pub fn install_story_display(catalog: Vec<StoryDisplayDescriptor>) {
     let _ = STORY_DISPLAY.set(catalog);

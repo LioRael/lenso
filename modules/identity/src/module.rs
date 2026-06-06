@@ -216,7 +216,10 @@ mod tests {
         assert_eq!(surface.area, platform_module::ConsoleArea::Data);
         assert_eq!(surface_json["area"], console_surface_contract["area"]);
         assert_eq!(surface.route, console_surface_contract["route"]);
-        assert_eq!(surface.package.name, console_surface_contract["packageName"]);
+        assert_eq!(
+            surface.package.name,
+            console_surface_contract["packageName"]
+        );
         assert_eq!(
             surface.package.export,
             console_surface_contract["exportName"]

@@ -2,14 +2,14 @@
 
 Rust-first service-ready modular monolith scaffold with a local Runtime Console and generated TypeScript SDK.
 
-The platform starts as one deployable system with clear module boundaries. Domains own business capabilities, platform crates provide shared service-kit foundations, the runtime handles durable background work, contracts produce stable API/event/SDK artifacts, and the console gives those runtime primitives an operator-facing UI.
+The platform starts as one deployable system with clear module boundaries. Modules own product capabilities, platform crates provide shared service-kit foundations, the runtime handles durable background work, contracts produce stable API/event/SDK artifacts, and the console gives those runtime primitives an operator-facing UI.
 
 ## Architecture Overview
 
-- Modular monolith first: domains run in-process today and can later be extracted behind HTTP, gRPC, or event boundaries.
-- Rust first: API, worker, migrations, platform crates, domains, contract generators, and architecture checks are Rust workspace members.
+- Modular monolith first: modules run in-process today and can later be extracted behind HTTP, gRPC, or event boundaries.
+- Rust first: API, worker, migrations, platform crates, modules, contract generators, and architecture checks are Rust workspace members.
 - Explicit SQL and Postgres: no custom ORM, no hidden database magic.
-- Transactional outbox: domain writes and emitted events commit atomically.
+- Transactional outbox: module writes and emitted events commit atomically.
 - In-process outbox relay: worker claims outbox rows, dispatches registered handlers, and marks delivery state.
 - Contract layer: Rust-authored OpenAPI and JSON Schema artifacts feed the TypeScript SDK.
 
@@ -26,13 +26,14 @@ More detail lives in [docs/architecture/overview.md](docs/architecture/overview.
   - `platform-core`: config, errors, context, DB, migrations, events, outbox, health, telemetry primitives.
   - `platform-http`: Axum adapters, request context middleware, JSON extractor, error responses, health routes, and the `OpenApiRouter` re-exports for single-source OpenAPI.
   - `platform-runtime`: embedded runtime primitives for functions, triggers, queues, flows, retries, and store traits.
-  - `platform-domain`: the shared `DomainDescriptor` each domain exposes (runtime, event handlers, story display).
+  - `platform-module`: module framework contracts for `ModuleManifest`, `ModuleBinding`, linked/remote sources, admin surfaces, and console surfaces.
   - `platform-admin`: runtime-observability backend for the Runtime Console (`/admin/runtime/*`); reads platform/runtime tables only.
+  - `platform-admin-data`: schema-admin backend for generic module data (`/admin/data/*`).
   - `platform-testing`: shared test database helpers.
-  - `app-bootstrap`: composition root listing the concrete domains; both `api` and `worker` wire their domain set from here.
-- `domains/`
-  - `identity`: create-user vertical slice, user table, outbox event, HTTP route, repository, command tests.
-  - `notifications`: in-process handler for `identity.user_registered.v1`.
+  - `app-bootstrap`: composition root listing the concrete modules; both `api` and `worker` wire their module set from here.
+- `modules/`
+  - `identity`: framework fixture for a create-user vertical slice, user table, outbox event, HTTP route, repository, command tests.
+  - `notifications`: framework fixture for an in-process handler of `identity.user_registered.v1`.
 - `contracts/`
   - Generated and curated OpenAPI, JSON Schema, event, error, and runtime contracts.
 - `packages/`
@@ -177,8 +178,8 @@ just generate
 
 The architecture checker also fails on:
 
-- DDD/Clean Architecture folders inside domains: `api`, `application`, `domain`, `infrastructure`.
-- Cross-domain imports inside domain source code.
+- DDD/Clean Architecture folders inside modules: `api`, `application`, `domain`, `infrastructure`.
+- Cross-module imports inside module source code.
 - Missing OpenAPI artifacts.
 - Stale contract artifacts.
 - Stale generated TypeScript SDK files.

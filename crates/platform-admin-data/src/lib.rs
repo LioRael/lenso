@@ -1,6 +1,6 @@
 //! Schema-admin data API: generic endpoints that render any module's declared
 //! admin entities and invoke manifest-declared admin actions. Depends on NO
-//! business domain — it works only through injected platform-module seams,
+//! concrete module crate: it works only through injected platform-module seams,
 //! mirroring `platform-admin`'s seam-only discipline.
 
 use platform_core::{AppError, ErrorCode, RequestContext, StoryDisplayDescriptor};

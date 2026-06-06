@@ -4746,7 +4746,7 @@ components:
           type: string
 tags:
 - name: identity
-  description: Identity domain APIs
+  description: Identity module fixture APIs
 - name: admin-runtime
   description: Read-only runtime console APIs
 - name: admin-config

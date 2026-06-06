@@ -4,13 +4,13 @@ Lenso is a Rust-first service-ready modular monolith with an embedded runtime, a
 
 ## Modular Monolith
 
-The deployable shape is one API app, one worker app, and one migration app. Business capabilities live under `domains/`, and each domain is a Rust crate with its own routes, DTOs, commands, queries, models, repositories, events, jobs, runtime registrations, migrations, and tests.
+The deployable shape is one API app, one worker app, and one migration app. Product capabilities live under `modules/`, and each module is a Rust crate with its own routes, DTOs, commands, queries, models, repositories, events, jobs, runtime registrations, migrations, and tests.
 
-Domains run in-process today. Extraction later should be mechanical: preserve the public interface and contracts, move the tables, turn in-process calls into client calls, and keep event and function names stable.
+Linked modules run in-process today. Extraction later should be mechanical: preserve the public interface and contracts, move the tables, turn in-process calls into client calls, and keep event and function names stable.
 
-## Domain Boundaries
+## Module Boundaries
 
-Domains own their data and behavior. A domain may expose:
+Modules own their data and behavior. A module may expose:
 
 - HTTP routes through its `routes/` module, where each handler carries its own `#[utoipa::path]` annotation.
 - Stable in-process calls through `public.rs`.
@@ -18,14 +18,14 @@ Domains own their data and behavior. A domain may expose:
 - Runtime jobs/functions under `jobs/` and `runtime/`.
 - SQL and migrations under `repositories/` and `migrations/`.
 
-A domain exposes module metadata and behavior through `module.rs`. Pure declarations such as the module name, story-display metadata, capabilities, and schema-admin surface live in a `ModuleManifest`; source-specific behavior such as runtime function and event-handler registration lives behind `ModuleBinding`.
+A module exposes metadata and behavior through `module.rs`. Pure declarations such as the module name, story-display metadata, capabilities, and schema-admin surface live in a `ModuleManifest`; source-specific behavior such as runtime function and event-handler registration lives behind `ModuleBinding`.
 
-Domains must not query another domain's tables or import another domain's internal modules. Cross-domain async work goes through events and runtime function enqueueing.
+Modules must not query another module's tables or import another module's internal modules. Cross-module async work goes through events and runtime function enqueueing.
 
-Current domain examples:
+Current module fixtures:
 
-- `identity` owns users, exposes identity HTTP routes, emits `identity.user_registered.v1`, and registers `identity.cleanup_expired_sessions.v1`.
-- `notifications` handles identity registration events and registers `notifications.send_welcome_email.v1`.
+- `identity` exercises users, identity HTTP routes, `identity.user_registered.v1`, and `identity.cleanup_expired_sessions.v1`.
+- `notifications` exercises identity registration event handling and `notifications.send_welcome_email.v1`.
 
 ## Platform Service Kit
 
@@ -35,11 +35,11 @@ The service kit is split into a few crates:
 - `platform-http`: Axum request context middleware, auth extractors, standard JSON error responses, JSON extractor, response helpers, health routes, and the `OpenApiRouter` re-exports used for single-source OpenAPI.
 - `platform-runtime`: embedded runtime primitives for functions, triggers, queues, flows, retry policies, registry, worker execution, and store traits.
 - `platform-module`: the module framework contracts. `ModuleManifest` is owned, serializable module data; `ModuleBinding` is the narrow behavior seam; `LinkedBinding` is the current compile-time source; `AdminSurface::Schema` and `AdminDataSource` support the generic schema-admin path. Future custom admin UI is split into host-rendered `DeclarativeCustom` and sandboxed module-owned `EmbeddedCustom`; see `docs/architecture/module-custom-admin-surfaces.md`. Runtime Console frontend contributions use `ConsoleSurface`; see `docs/architecture/module-console-surfaces.md`.
-- `platform-admin`: the runtime-observability backend for the Runtime Console. It is a cross-cutting platform concern, not a business domain — it only reads platform/runtime tables (`platform.outbox`, `platform.story_events`, `runtime.function_runs`) to observe every domain's activity, and exposes one router the API app mounts under `/admin/runtime/*`.
-- `platform-admin-data`: the schema-admin backend for module business data. It exposes generic `/admin/data/*` endpoints over injected `AdminSurface::Schema` manifests and `AdminDataSource` implementations, without depending on concrete domains.
+- `platform-admin`: the runtime-observability backend for the Runtime Console. It is a cross-cutting platform concern, not a product module: it only reads platform/runtime tables (`platform.outbox`, `platform.story_events`, `runtime.function_runs`) to observe every module's activity, and exposes one router the API app mounts under `/admin/runtime/*`.
+- `platform-admin-data`: the schema-admin backend for module business data. It exposes generic `/admin/data/*` endpoints over injected `AdminSurface::Schema` manifests and `AdminDataSource` implementations, without depending on concrete modules.
 - `platform-testing`: shared test database utilities.
 
-A thin composition root, `app-bootstrap`, sits above the service kit. It is the single place that enumerates the concrete modules, and both the API and the worker derive their module set from it. It pairs manifests, bindings, runtime config descriptors, story-display metadata, and admin data sources from concrete modules. It depends on the domains, so it lives outside `platform-*` (those crates must not depend on business domains).
+A thin composition root, `app-bootstrap`, sits above the service kit. It is the single place that enumerates the concrete modules, and both the API and the worker derive their module set from it. It pairs manifests, bindings, runtime config descriptors, story-display metadata, and admin data sources from concrete modules. It depends on the module crates, so it lives outside `platform-*` (those crates must not depend on concrete modules).
 
 Configured remote modules are loaded at startup through `platform-module-remote`. The current Remote slices support manifest loading, declared HTTP route metadata, schema-admin reads, admin surface metadata, and host-owned HTTP proxying for declared GET, POST, PUT, PATCH, and DELETE routes. Route proxying is specified separately in `docs/architecture/module-remote-http-proxy.md`. Remote runtime execution is scoped in `docs/architecture/module-remote-runtime.md`. Event handling and marketplace trust are separate future specs.
 
@@ -91,7 +91,7 @@ No NATS, Kafka, service mesh, or external broker is part of the current architec
 
 The Runtime Console is a Vite/React operator UI under `apps/runtime-console`. It can run with local mock data or against the API.
 
-The API exposes admin runtime endpoints under `/admin/runtime/*` for summaries, stories, story timeline items, heatmaps, outbox events, function runs, retries, execution payloads, and technical operations. Story timeline data is returned by the Runtime Story detail endpoint rather than a standalone timeline endpoint. These are served by the `platform-admin` crate, which the API app mounts; they use the same OpenAPI contract as the public identity API. Story display names are domain-owned, so the composition root injects the aggregated catalog into `platform-admin` (via `install_story_display`) rather than having it depend on the domains.
+The API exposes admin runtime endpoints under `/admin/runtime/*` for summaries, stories, story timeline items, heatmaps, outbox events, function runs, retries, execution payloads, and technical operations. Story timeline data is returned by the Runtime Story detail endpoint rather than a standalone timeline endpoint. These are served by the `platform-admin` crate, which the API app mounts; they use the same OpenAPI contract as the public identity API. Story display names are module-owned, so the composition root injects the aggregated catalog into `platform-admin` (via `install_story_display`) rather than having it depend on concrete modules.
 
 The API also exposes schema-admin endpoints under `/admin/data/*`. These are served by `platform-admin-data`, which reads module schemas and data through the injected `AdminSurface::Schema` + `AdminDataSource` registry. The first implementation uses a read-only identity User fixture to exercise the framework; Lenso does not prescribe product-default business modules. Writes, richer RBAC, and custom module UI are later module-framework steps.
 
@@ -101,7 +101,7 @@ OpenTelemetry data is an enrichment layer for technical operations. See `docs/ar
 
 ## Contract Layer
 
-Rust is the authoring source for the OpenAPI document. Each HTTP handler carries its own `#[utoipa::path]` annotation and is registered through `utoipa-axum`'s `OpenApiRouter`, so routes and their documentation share a single source. `apps/api/src/openapi.rs` holds only the document-level metadata (title, version, tags) and assembles the per-domain and admin routers into the committed contract, including:
+Rust is the authoring source for the OpenAPI document. Each HTTP handler carries its own `#[utoipa::path]` annotation and is registered through `utoipa-axum`'s `OpenApiRouter`, so routes and their documentation share a single source. `apps/api/src/openapi.rs` holds only the document-level metadata (title, version, tags) and assembles the linked-module and admin routers into the committed contract, including:
 
 - `POST /v1/identity/users`
 - `GET /v1/identity/me`
@@ -116,7 +116,7 @@ Committed contract artifacts live under `contracts/`:
 - `contracts/openapi/app-api.v1.yaml`
 - `contracts/errors/*`
 - `contracts/schemas/common/*`
-- `contracts/events/{domain}/*.schema.json`
+- `contracts/events/{module}/*.schema.json`
 - `contracts/runtime/functions/*.schema.json`
 
 Generated contract artifacts are committed. The current generator writes the OpenAPI artifact, the standard error response schema, and the generated identity event schema:

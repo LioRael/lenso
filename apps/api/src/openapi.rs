@@ -21,7 +21,7 @@ use utoipa::OpenApi;
         description = "Rust-first modular monolith API contract"
     ),
     tags(
-        (name = "identity", description = "Identity domain APIs"),
+        (name = "identity", description = "Identity module fixture APIs"),
         (name = "admin-runtime", description = "Read-only runtime console APIs"),
         (name = "admin-config", description = "Editable configuration console APIs"),
         (name = "admin-data", description = "Schema-driven admin data console APIs")

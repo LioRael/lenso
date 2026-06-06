@@ -14,8 +14,8 @@ members = [
     "crates/platform-http",
     "crates/platform-runtime",
     "crates/platform-testing",
-    "domains/identity",
-    "domains/notifications",
+    "modules/identity",
+    "modules/notifications",
     "tools/generate-contracts",
     "tools/generate-ts-sdk",
     "tools/arch-check",
@@ -64,8 +64,8 @@ platform-runtime = { path = "crates/platform-runtime" }
 platform-testing = { path = "crates/platform-testing" }
 app-bootstrap = { path = "crates/app-bootstrap" }
 app-api = { path = "apps/api" }
-identity = { path = "domains/identity" }
-notifications = { path = "domains/notifications" }
+identity = { path = "modules/identity" }
+notifications = { path = "modules/notifications" }
 generate-contracts = { path = "tools/generate-contracts" }
 generate-ts-sdk = { path = "tools/generate-ts-sdk" }
 arch-check = { path = "tools/arch-check" }

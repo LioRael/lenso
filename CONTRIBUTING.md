@@ -64,9 +64,9 @@ Run `just` to list all recipes.
 
 The architecture checker (`just arch-check`) and CI fail on:
 
-- DDD/Clean Architecture folder names inside domains: `api`, `application`,
+- DDD/Clean Architecture folder names inside modules: `api`, `application`,
   `domain`, `infrastructure`.
-- Cross-domain imports inside domain source code.
+- Cross-module imports inside module source code.
 - Missing or stale OpenAPI / contract artifacts.
 - Stale generated TypeScript SDK files.
 - Missing event payload contracts for current events.
@@ -75,7 +75,7 @@ When working in Rust:
 
 - Keep the workspace locked with `cargo ... --locked`.
 - Prefer existing platform crates over new shared abstractions.
-- Keep domain modules vertical and capability-oriented; no cross-domain imports.
+- Keep modules vertical and capability-oriented; no cross-module imports.
 - Prefer explicit SQL and existing migration patterns.
 - Keep error responses aligned with the platform error model and committed schemas.
 

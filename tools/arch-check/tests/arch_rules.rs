@@ -7,7 +7,7 @@ fn architecture_rules_pass_for_current_workspace() {
 fn runtime_function_without_contract_fails() {
     let root = TestRepo::new();
     root.write(
-        "domains/identity/src/runtime/mod.rs",
+        "modules/identity/src/runtime/mod.rs",
         r#"
         use platform_runtime::FunctionDefinition;
 
@@ -38,7 +38,7 @@ fn runtime_function_without_contract_fails() {
 fn runtime_function_constant_without_contract_fails() {
     let root = TestRepo::new();
     root.write(
-        "domains/notifications/src/runtime/mod.rs",
+        "modules/notifications/src/runtime/mod.rs",
         r#"
         pub const SEND_WELCOME_EMAIL: &str = "notifications.send_welcome_email.v1";
 
@@ -69,7 +69,7 @@ fn runtime_function_constant_without_contract_fails() {
 fn event_schema_ref_without_contract_fails() {
     let root = TestRepo::new();
     root.write(
-        "domains/identity/src/commands/create_user.rs",
+        "modules/identity/src/commands/create_user.rs",
         r#"
         fn event() {
             let schema_ref = "contracts/events/identity/identity.user_registered.v1.schema.json";
