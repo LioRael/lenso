@@ -14,10 +14,10 @@ import {
   Sun,
   Workflow,
 } from "lucide-react";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { ComponentType, CSSProperties, PropsWithChildren } from "react";
 
-import { consoleNavigation } from "../../app/console-modules";
+import { useConsoleNavigation } from "../../app/console-module-metadata";
 import type { ConsoleSurfaceIcon } from "../../app/console-modules";
 import { usePersistedLayout } from "../../hooks/use-persisted-layout";
 import { runtimeConsoleDataSource } from "../../lib/http-client";
@@ -42,20 +42,6 @@ const iconRegistry = {
   ComponentType<{ size?: number; strokeWidth?: number }>
 >;
 
-const consoleNavItems = consoleNavigation.map((item) => ({
-  icon: iconRegistry[item.icon ?? "activity"],
-  label: item.label,
-  to: item.path,
-}));
-
-const primaryNavItems = [
-  { to: "/overview", label: "Overview", icon: Activity },
-  ...consoleNavItems,
-  { to: "/operations", label: "Operations", icon: Network },
-  { to: "/modules", label: "Modules", icon: Boxes },
-  { to: "/data", label: "Data", icon: Database },
-] as const;
-
 const configNavItem = {
   to: "/config",
   label: "Configuration",
@@ -65,6 +51,21 @@ const configNavItem = {
 export function RuntimeConsoleShell({ children }: PropsWithChildren) {
   const shellRef = useRef<HTMLDivElement>(null);
   const { focusGlobalSearch, openCommandPalette } = useRuntimeConsole();
+  const consoleNavigation = useConsoleNavigation();
+  const primaryNavItems = useMemo(() => {
+    const consoleNavItems = consoleNavigation.map((item) => ({
+      icon: iconRegistry[item.icon ?? "activity"],
+      label: item.label,
+      to: item.path,
+    }));
+    return [
+      { to: "/overview", label: "Overview", icon: Activity },
+      ...consoleNavItems,
+      { to: "/operations", label: "Operations", icon: Network },
+      { to: "/modules", label: "Modules", icon: Boxes },
+      { to: "/data", label: "Data", icon: Database },
+    ];
+  }, [consoleNavigation]);
   const [sidebarCollapsed, setSidebarCollapsed] = usePersistedLayout(
     "runtime-console:sidebar-collapsed",
     false

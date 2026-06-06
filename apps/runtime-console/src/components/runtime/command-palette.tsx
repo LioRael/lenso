@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { consoleNavigation } from "../../app/console-modules";
+import { useConsoleNavigation } from "../../app/console-module-metadata";
 import { runtimeStories } from "../../data/mock-runtime";
 import { queryDataWithMockFallback } from "../../hooks/runtime-query-data";
 import { currentBrowserUrl } from "../../hooks/use-browser-url-state";
@@ -32,6 +32,7 @@ export function CommandPalette({ theme, onToggleTheme }: CommandPaletteProps) {
   const navigate = useNavigate();
   const { closeCommandPalette, commandOpen, focusGlobalSearch, openStory } =
     useRuntimeConsole();
+  const consoleNavigation = useConsoleNavigation();
   const storiesQuery = useRuntimeStories();
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
@@ -133,6 +134,7 @@ export function CommandPalette({ theme, onToggleTheme }: CommandPaletteProps) {
     return items;
   }, [
     focusGlobalSearch,
+    consoleNavigation,
     navigate,
     onToggleTheme,
     openStory,
