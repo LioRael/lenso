@@ -130,6 +130,7 @@ workspace, use the remote scaffold:
 
 ```bash
 pnpm create:module billing --remote --output-dir ../modules
+lenso module add https://example.com/lenso/module/v1/manifest
 ```
 
 See `docs/console-package-template.md` before adding a package. The short path is:

@@ -1,12 +1,16 @@
+import { once } from "node:events";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, test } from "vitest";
 
 import { runConsolePackageCli } from "./index.mjs";
 
 const tempRoots = [];
+const tempServers = [];
 
 const createRepoFixture = async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), "lenso-module-cli-"));
@@ -154,11 +158,34 @@ const writeFixture = async (repoRoot, relativePath, contents) => {
 
 afterEach(async () => {
   await Promise.all(
+    tempServers.splice(0).map(async (server) => {
+      server.close();
+      await once(server, "close");
+    })
+  );
+  await Promise.all(
     tempRoots
       .splice(0)
       .map((root) => rm(root, { force: true, recursive: true }))
   );
 });
+
+const serveManifest = async (manifest) => {
+  const server = createServer((request, response) => {
+    if (request.url === "/lenso/module/v1/manifest") {
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify(manifest));
+      return;
+    }
+    response.statusCode = 404;
+    response.end("not found");
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  tempServers.push(server);
+  const { port } = server.address();
+  return `http://127.0.0.1:${port}/lenso/module/v1/manifest`;
+};
 
 describe("module scaffold CLI", () => {
   test("uses commander for command and option parsing", async () => {
@@ -358,5 +385,146 @@ describe("module scaffold CLI", () => {
     await expect(
       readFile(path.join(packageRoot, "README.md"), "utf-8")
     ).resolves.toContain("lenso module add");
+  });
+
+  test("adds a remote module source from a manifest to an env file", async () => {
+    const repoRoot = await createRepoFixture();
+    const manifestPath = path.join(repoRoot, "billing.module.json");
+    await writeFixture(
+      repoRoot,
+      "billing.module.json",
+      JSON.stringify(
+        {
+          capabilities: ["billing.read"],
+          console: [
+            {
+              package: {
+                export: "billingConsoleModule",
+                name: "@vendor/lenso-billing-console",
+              },
+              route: "/data/billing",
+            },
+          ],
+          name: "billing",
+          source: "remote",
+          version: "0.1.0",
+        },
+        null,
+        2
+      )
+    );
+    await writeFixture(
+      repoRoot,
+      ".env",
+      "APP_ENV=local\nREMOTE_MODULES=remote-crm=http://127.0.0.1:4100/lenso/module/v1\nRUST_LOG=info\n"
+    );
+
+    await expect(
+      runConsolePackageCli([
+        "module",
+        "add",
+        pathToFileURL(manifestPath).href,
+        "--repo-root",
+        repoRoot,
+        "--base-url",
+        "http://127.0.0.1:4200/lenso/module/v1",
+      ])
+    ).resolves.toBe(0);
+
+    const envFile = await readFile(path.join(repoRoot, ".env"), "utf-8");
+    expect(envFile).toContain(
+      "REMOTE_MODULES=remote-crm=http://127.0.0.1:4100/lenso/module/v1,billing=http://127.0.0.1:4200/lenso/module/v1"
+    );
+    expect(envFile).toContain("RUST_LOG=info");
+  });
+
+  test("derives the remote base url from protocol manifest urls", async () => {
+    const repoRoot = await createRepoFixture();
+    const manifestUrl = await serveManifest({
+      capabilities: ["billing.read"],
+      console: [],
+      name: "billing",
+      source: "remote",
+      version: "0.1.0",
+    });
+
+    await expect(
+      runConsolePackageCli([
+        "module",
+        "add",
+        manifestUrl,
+        "--repo-root",
+        repoRoot,
+      ])
+    ).resolves.toBe(0);
+
+    await expect(readFile(path.join(repoRoot, ".env"), "utf-8")).resolves.toBe(
+      `REMOTE_MODULES=billing=${manifestUrl.slice(0, -"/manifest".length)}\n`
+    );
+  });
+
+  test("keeps remote module source installation idempotent", async () => {
+    const repoRoot = await createRepoFixture();
+    await writeFixture(
+      repoRoot,
+      "billing.module.json",
+      JSON.stringify({
+        capabilities: ["billing.read"],
+        console: [{ package: { export: "billingConsoleModule" } }],
+        name: "billing",
+        source: "remote",
+        version: "0.1.0",
+      })
+    );
+    await writeFixture(
+      repoRoot,
+      ".env",
+      "REMOTE_MODULES=billing=http://127.0.0.1:4200/lenso/module/v1\n"
+    );
+
+    for (let index = 0; index < 2; index += 1) {
+      await expect(
+        runConsolePackageCli([
+          "module",
+          "add",
+          path.join(repoRoot, "billing.module.json"),
+          "--repo-root",
+          repoRoot,
+          "--base-url",
+          "http://127.0.0.1:4200/lenso/module/v1",
+        ])
+      ).resolves.toBe(0);
+    }
+
+    await expect(readFile(path.join(repoRoot, ".env"), "utf-8")).resolves.toBe(
+      "REMOTE_MODULES=billing=http://127.0.0.1:4200/lenso/module/v1\n"
+    );
+  });
+
+  test("rejects non-remote module manifests during install", async () => {
+    const repoRoot = await createRepoFixture();
+    await writeFixture(
+      repoRoot,
+      "linked.module.json",
+      JSON.stringify({
+        capabilities: [],
+        console: [],
+        name: "billing",
+        source: "linked",
+        version: "0.1.0",
+      })
+    );
+
+    await expect(
+      runConsolePackageCli([
+        "module",
+        "add",
+        path.join(repoRoot, "linked.module.json"),
+        "--repo-root",
+        repoRoot,
+        "--base-url",
+        "http://127.0.0.1:4200/lenso/module/v1",
+      ])
+    ).rejects.toThrow("Remote module manifest source must be remote");
   });
 });

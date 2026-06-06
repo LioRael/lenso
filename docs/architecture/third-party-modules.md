@@ -70,10 +70,11 @@ module protocol that `platform-module-remote` expects.
 ## Manifest Contract
 
 The module manifest is the source of truth for install-time inspection. A remote
-module should expose it at a stable URL such as:
+module should expose it through the remote module protocol at a stable base URL
+such as `https://example.com/lenso/module/v1`:
 
 ```text
-GET /.well-known/lenso/module-manifest.json
+GET /lenso/module/v1/manifest
 ```
 
 The manifest should map to the same `ModuleManifest` data model used by linked
@@ -197,7 +198,14 @@ Third-party scaffolding uses a separate remote-oriented lane:
 
 ```sh
 pnpm create:module billing --remote --output-dir ../module-packages
-lenso module add https://example.com/.well-known/lenso/module-manifest.json
+lenso module add https://example.com/lenso/module/v1/manifest
+```
+
+If the manifest is installed from a local file or non-protocol URL, pass the
+runtime module base URL explicitly:
+
+```sh
+lenso module add ./lenso.module.json --base-url https://example.com/lenso/module/v1
 ```
 
 The remote lane should generate a module package, not a host workspace member.

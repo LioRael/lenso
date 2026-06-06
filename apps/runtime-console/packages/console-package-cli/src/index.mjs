@@ -2,11 +2,28 @@
 import { realpathSync } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { Command } from "commander";
 
 const readJson = async (filePath) =>
   JSON.parse(await readFile(filePath, "utf-8"));
+
+const readJsonFromReference = async (reference) => {
+  if (reference.startsWith("file:")) {
+    return readJson(fileURLToPath(reference));
+  }
+  if (reference.startsWith("http://") || reference.startsWith("https://")) {
+    const response = await fetch(reference);
+    if (!response.ok) {
+      throw new Error(
+        `Failed to fetch module manifest: ${response.status} ${response.statusText}`
+      );
+    }
+    return response.json();
+  }
+  return readJson(path.resolve(reference));
+};
 
 const queueWrite = (pendingWrites, filePath, content) => {
   pendingWrites.set(filePath, content);
@@ -71,6 +88,23 @@ const appendToken = (value, token, beforeToken) => {
 const appendListItem = (items, item) =>
   items.includes(item) ? items : [...items, item];
 
+const parseRemoteModuleEntries = (value) =>
+  value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const [name, ...baseUrlParts] = entry.split("=");
+      return {
+        baseUrl: baseUrlParts.join("=").trim(),
+        name: name.trim(),
+      };
+    })
+    .filter((entry) => entry.name && entry.baseUrl);
+
+const formatRemoteModuleEntries = (entries) =>
+  entries.map((entry) => `${entry.name}=${entry.baseUrl}`).join(",");
+
 const sortObject = (object) =>
   Object.fromEntries(
     Object.entries(object).toSorted(([left], [right]) =>
@@ -133,6 +167,21 @@ const pathExists = async (filePath) => {
     }
     throw error;
   }
+};
+
+const readTextIfExists = async (filePath) =>
+  (await pathExists(filePath)) ? readFile(filePath, "utf-8") : "";
+
+const upsertEnvValue = (source, key, value) => {
+  const lines = source ? source.split("\n") : [];
+  const keyPrefix = `${key}=`;
+  const index = lines.findIndex((line) => line.startsWith(keyPrefix));
+  if (index === -1) {
+    const trimmed = source.trimEnd();
+    return `${trimmed ? `${trimmed}\n` : ""}${key}=${value}\n`;
+  }
+  lines[index] = `${key}=${value}`;
+  return `${lines.join("\n").replaceAll(/\n+$/gu, "")}\n`;
 };
 
 const findRepoRoot = async (startPath) => {
@@ -567,16 +616,22 @@ Remote Lenso module package scaffold.
 
 ## Install
 
-Expose \`lenso.module.json\` from a stable endpoint such as:
+Expose the remote module protocol from a stable base URL such as:
 
 \`\`\`text
-GET /.well-known/lenso/module-manifest.json
+GET https://example.com/lenso/module/v1/manifest
 \`\`\`
 
 Then install it into a host project:
 
 \`\`\`sh
-lenso module add https://example.com/.well-known/lenso/module-manifest.json
+lenso module add https://example.com/lenso/module/v1/manifest
+\`\`\`
+
+If the manifest is inspected from a local file, provide the runtime base URL:
+
+\`\`\`sh
+lenso module add ./lenso.module.json --base-url https://example.com/lenso/module/v1
 \`\`\`
 
 This scaffold lives in \`${packageRootName}\` and should stay separate from a
@@ -937,6 +992,106 @@ const createRemoteModule = async ({ options }) => {
   console.log("- lenso module add <manifest-url>");
 };
 
+const validateRemoteModuleManifest = (manifest) => {
+  if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
+    throw new Error("Remote module manifest must be a JSON object");
+  }
+  if (typeof manifest.name !== "string" || !manifest.name.trim()) {
+    throw new Error("Remote module manifest name is required");
+  }
+  if (typeof manifest.version !== "string" || !manifest.version.trim()) {
+    throw new Error("Remote module manifest version is required");
+  }
+  if (manifest.source !== "remote") {
+    throw new Error("Remote module manifest source must be remote");
+  }
+  if (!Array.isArray(manifest.capabilities)) {
+    throw new TypeError("Remote module manifest capabilities must be an array");
+  }
+  if (!Array.isArray(manifest.console)) {
+    throw new TypeError("Remote module manifest console must be an array");
+  }
+  return {
+    name: manifest.name.trim(),
+    version: manifest.version,
+  };
+};
+
+const trimTrailingSlash = (value) => value.replaceAll(/\/+$/gu, "");
+
+const deriveRemoteBaseUrl = ({ baseUrl, manifestReference }) => {
+  if (baseUrl) {
+    return trimTrailingSlash(baseUrl);
+  }
+  if (
+    manifestReference.startsWith("http://") ||
+    manifestReference.startsWith("https://")
+  ) {
+    const url = new URL(manifestReference);
+    if (url.pathname.endsWith("/manifest")) {
+      url.pathname = url.pathname.slice(0, -"/manifest".length);
+      url.search = "";
+      url.hash = "";
+      return trimTrailingSlash(url.toString());
+    }
+  }
+  throw new Error(
+    "Remote module base URL is required unless the manifest URL ends with /manifest"
+  );
+};
+
+const updateRemoteModulesEnv = async ({ envFilePath, moduleName, baseUrl }) => {
+  const source = await readTextIfExists(envFilePath);
+  const remoteModulesLine = source
+    .split("\n")
+    .find((line) => line.startsWith("REMOTE_MODULES="));
+  const currentValue = remoteModulesLine?.slice("REMOTE_MODULES=".length) ?? "";
+  const entries = parseRemoteModuleEntries(currentValue).filter(
+    (entry) => entry.name !== moduleName
+  );
+  entries.push({ baseUrl, name: moduleName });
+  return upsertEnvValue(
+    source,
+    "REMOTE_MODULES",
+    formatRemoteModuleEntries(entries)
+  );
+};
+
+const addRemoteModule = async ({ manifestReference, options }) => {
+  const repoRoot = options.repoRoot
+    ? path.resolve(options.repoRoot)
+    : await findRepoRoot(process.cwd());
+  const envFilePath = path.resolve(
+    options.envFile ?? path.join(repoRoot, ".env")
+  );
+  const manifest = await readJsonFromReference(manifestReference);
+  const remoteModule = validateRemoteModuleManifest(manifest);
+  const baseUrl = deriveRemoteBaseUrl({
+    baseUrl: options.baseUrl,
+    manifestReference,
+  });
+  const envFile = await updateRemoteModulesEnv({
+    baseUrl,
+    envFilePath,
+    moduleName: remoteModule.name,
+  });
+
+  if (options.dryRun) {
+    console.log("Remote module install dry run:");
+    console.log(`- ${path.relative(repoRoot, envFilePath)}`);
+    console.log(`- ${remoteModule.name}=${baseUrl}`);
+    return;
+  }
+
+  await mkdir(path.dirname(envFilePath), { recursive: true });
+  await writeFile(envFilePath, envFile);
+
+  console.log(`Added remote module ${remoteModule.name}.`);
+  console.log("Next steps:");
+  console.log("- restart the API and worker so REMOTE_MODULES is reloaded");
+  console.log("- open Runtime Console Modules to verify the remote source");
+};
+
 const createConsolePackage = async ({ defaultRuntimeConsoleRoot, options }) => {
   const runtimeConsoleRoot = path.resolve(
     options.runtimeConsoleRoot ?? defaultRuntimeConsoleRoot ?? process.cwd()
@@ -1006,6 +1161,13 @@ const addSharedCreateOptions = (command) =>
     .option("--package-root <name>", "remote package root directory")
     .option("--dry-run", "print files without writing them");
 
+const addRemoteModuleOptions = (command) =>
+  command
+    .option("--repo-root <path>", "Lenso host repository root")
+    .option("--env-file <path>", "env file to update")
+    .option("--base-url <url>", "remote module base URL")
+    .option("--dry-run", "print install changes without writing them");
+
 const createProgram = ({ defaultRuntimeConsoleRoot } = {}) => {
   const program = new Command();
   program
@@ -1023,6 +1185,13 @@ const createProgram = ({ defaultRuntimeConsoleRoot } = {}) => {
       .description("create a linked or remote module scaffold")
   ).action(async (moduleId, options) => {
     await createModule({ options: { ...options, moduleId } });
+  });
+  addRemoteModuleOptions(
+    moduleCommand
+      .command("add <manifestReference>")
+      .description("add a configured remote module source")
+  ).action(async (manifestReference, options) => {
+    await addRemoteModule({ manifestReference, options });
   });
 
   const consolePackageCommand = program
