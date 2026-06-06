@@ -3,36 +3,52 @@ import { describe, expect, test } from "vitest";
 import {
   consolePackageKey,
   consolePackageRegistryByKey,
-  installedConsolePackages,
+  defineInstalledConsolePackage,
 } from "./console-package-registry";
 
+const registrySource =
+  Object.values(
+    import.meta.glob<string>("./console-package-registry.ts", {
+      eager: true,
+      import: "default",
+      query: "?raw",
+    })
+  )[0] ?? "";
+
 describe("console package registry", () => {
+  test("keeps concrete package installs outside the registry implementation", () => {
+    expect(registrySource).not.toContain("@lenso/story-console");
+    expect(registrySource).not.toContain("@lenso/example-console");
+    expect(registrySource).not.toContain("installedConsolePackages");
+  });
+
   test("registers console packages by package export key", () => {
-    expect(installedConsolePackages).toMatchObject([
-      {
-        exportName: "storyConsoleModule",
-        packageName: "@lenso/story-console",
-        source: "first_party",
-        version: "workspace",
+    const installedPackage = defineInstalledConsolePackage({
+      manifest: {
+        exportName: "billingConsoleModule",
+        packageName: "@lenso/billing-console",
       },
-      {
-        exportName: "exampleConsoleModule",
-        packageName: "@lenso/example-console",
-        source: "installed",
-        version: "workspace",
+      module: {
+        id: "billing",
+        surfaces: [],
       },
-    ]);
-    expect(consolePackageKey(installedConsolePackages[0]!)).toBe(
-      "@lenso/story-console#storyConsoleModule"
+      source: "installed",
+      version: "workspace",
+    });
+
+    expect(installedPackage).toMatchObject({
+      exportName: "billingConsoleModule",
+      packageName: "@lenso/billing-console",
+      source: "installed",
+      version: "workspace",
+    });
+    expect(consolePackageKey(installedPackage)).toBe(
+      "@lenso/billing-console#billingConsoleModule"
     );
     expect(
-      consolePackageRegistryByKey()["@lenso/story-console#storyConsoleModule"]
-        ?.module.id
-    ).toBe("platform-story");
-    expect(
-      consolePackageRegistryByKey()[
-        "@lenso/example-console#exampleConsoleModule"
+      consolePackageRegistryByKey([installedPackage])[
+        "@lenso/billing-console#billingConsoleModule"
       ]?.module.id
-    ).toBe("example-console");
+    ).toBe("billing");
   });
 });

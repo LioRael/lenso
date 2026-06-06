@@ -1,9 +1,11 @@
-import { exampleConsoleModule } from "@lenso/example-console";
-import { storyConsoleModule } from "@lenso/story-console";
-
 import type { ConsoleModule } from "./console-module-api";
 
 export type ConsolePackageRegistrySource = "first_party" | "installed";
+
+export type ConsolePackageInstallManifest = {
+  packageName: string;
+  exportName: string;
+};
 
 export type InstalledConsolePackage = {
   packageName: string;
@@ -23,25 +25,31 @@ export function consolePackageKey({
   return `${packageName}#${exportName}`;
 }
 
-export const installedConsolePackages = [
-  {
-    exportName: "storyConsoleModule",
-    module: storyConsoleModule,
-    packageName: "@lenso/story-console",
-    source: "first_party",
-    version: "workspace",
-  },
-  {
-    exportName: "exampleConsoleModule",
-    module: exampleConsoleModule,
-    packageName: "@lenso/example-console",
-    source: "installed",
-    version: "workspace",
-  },
-] satisfies InstalledConsolePackage[];
+export function defineInstalledConsolePackage({
+  manifest,
+  module,
+  source,
+  version,
+}: {
+  manifest: ConsolePackageInstallManifest;
+  module: ConsoleModule;
+  source: ConsolePackageRegistrySource;
+  version?: string;
+}): InstalledConsolePackage {
+  const installedPackage: InstalledConsolePackage = {
+    exportName: manifest.exportName,
+    module,
+    packageName: manifest.packageName,
+    source,
+  };
+  if (version) {
+    installedPackage.version = version;
+  }
+  return installedPackage;
+}
 
 export function consolePackageRegistryByKey(
-  packages: readonly InstalledConsolePackage[] = installedConsolePackages
+  packages: readonly InstalledConsolePackage[]
 ): Record<string, InstalledConsolePackage> {
   return Object.fromEntries(
     packages.map((item) => [consolePackageKey(item), item])

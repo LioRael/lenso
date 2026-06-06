@@ -1,9 +1,9 @@
+import { installedConsolePackages } from "../console-package-installs";
 import type { ConsoleModule } from "./console-module-api";
 import {
   consolePackageKey,
   consolePackageRegistryByKey,
   type InstalledConsolePackage,
-  installedConsolePackages,
 } from "./console-package-registry";
 
 export type ConsoleModulePackageReference = {
