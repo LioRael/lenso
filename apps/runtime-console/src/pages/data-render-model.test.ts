@@ -753,6 +753,7 @@ describe("module status helpers", () => {
         label: storyConsoleManifest.label,
         name: storyConsoleManifest.surfaceName,
         packageName: storyConsoleManifest.packageName,
+        packageRegistration: "first_party / workspace",
         route: storyConsoleManifest.route,
       },
     ]);
@@ -781,6 +782,7 @@ describe("module status helpers", () => {
       availabilityLabel: "unsupported package",
       availabilityReason:
         "@lenso/unknown-console#unknownConsoleModule is not registered in the host",
+      packageRegistration: "not installed",
     });
   });
 

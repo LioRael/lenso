@@ -1,6 +1,6 @@
 // Mirrors platform-module's admin JSON shapes. Hand-typed because the records
 // and custom surface metadata are generic across arbitrary modules.
-import { consolePackageExportIsRegistered } from "../app/console-module-resolver";
+import { registeredConsolePackage } from "../app/console-module-resolver";
 
 export type FieldType =
   | { kind: "string" }
@@ -366,6 +366,7 @@ export type ModuleConsoleSurfaceRow = {
   route: string;
   packageName: string;
   exportName: string;
+  packageRegistration: string;
   capabilities: string;
   availability: "available" | "missing_capability" | "unsupported_package";
   availabilityLabel: string;
@@ -900,7 +901,8 @@ export function moduleConsoleSurfaceRows(
           (capability) => !availableCapabilities.has(capability)
         )
       : [];
-    const packageSupported = consolePackageExportIsRegistered(reference);
+    const registeredPackage = registeredConsolePackage(reference);
+    const packageSupported = Boolean(registeredPackage);
     const availability = packageSupported
       ? missingCapabilities.length > 0
         ? "missing_capability"
@@ -923,6 +925,11 @@ export function moduleConsoleSurfaceRows(
       label: surface.label,
       name: surface.name,
       packageName: surface.package.name,
+      packageRegistration: registeredPackage
+        ? [registeredPackage.source, registeredPackage.version ?? null]
+            .filter(Boolean)
+            .join(" / ")
+        : "not installed",
       route: surface.route,
     };
   });

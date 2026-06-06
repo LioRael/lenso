@@ -915,6 +915,9 @@ function ModuleConsoleSurfacesTable({
                 </td>
                 <td className="truncate px-3 py-1.5 text-(--muted)">
                   {row.packageName} / {row.exportName}
+                  <div className="truncate pt-1 text-[9px] text-(--muted)">
+                    {row.packageRegistration}
+                  </div>
                 </td>
                 <td className="truncate px-3 py-1.5 text-(--muted)">
                   {row.capabilities}

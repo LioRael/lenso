@@ -78,9 +78,14 @@ export function consolePackageExportIsRegistered(
   reference: ConsoleModulePackageReference,
   packages: readonly InstalledConsolePackage[] = installedConsolePackages
 ): boolean {
-  return Boolean(
-    consolePackageRegistryByKey(packages)[consolePackageKey(reference)]
-  );
+  return Boolean(registeredConsolePackage(reference, packages));
+}
+
+export function registeredConsolePackage(
+  reference: ConsoleModulePackageReference,
+  packages: readonly InstalledConsolePackage[] = installedConsolePackages
+): InstalledConsolePackage | undefined {
+  return consolePackageRegistryByKey(packages)[consolePackageKey(reference)];
 }
 
 export function resolveConsoleModule(
