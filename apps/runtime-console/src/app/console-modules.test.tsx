@@ -68,18 +68,25 @@ describe("console module registry", () => {
     );
   });
 
-  test("loads the Stories module through the first-party module registry", () => {
+  test("loads build-time module metadata through installed package registry", () => {
     expect(consoleModulePackageReferences).toEqual([
       {
         exportName: "storyConsoleModule",
         packageName: "@lenso/story-console",
       },
+      {
+        exportName: "exampleConsoleModule",
+        packageName: "@lenso/example-console",
+      },
     ]);
     expect(consoleModules.map((module) => module.id)).toContain(
       "platform-story"
     );
+    expect(consoleModules.map((module) => module.id)).toContain(
+      "example-console"
+    );
     expect(
       buildConsoleRoutes(consoleModules).map((route) => route.path)
-    ).toContain("/runtime/stories");
+    ).toEqual(["/runtime/stories", "/runtime/example-console"]);
   });
 });

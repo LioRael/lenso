@@ -18,7 +18,7 @@ import { OperationsPage } from "../pages/operations-page";
 import { OverviewPage } from "../pages/overview-page";
 import { QueuesPage } from "../pages/queues-page";
 import { RemoteProxyCallsPage } from "../pages/remote-proxy-calls-page";
-import { runtimeStoriesConsoleRoute } from "./console-modules";
+import { consoleRoutes, runtimeStoriesConsoleRoute } from "./console-modules";
 
 const rootRoute = createRootRoute({
   component: () => (
@@ -34,7 +34,7 @@ const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
   beforeLoad: () => {
-    throw redirect({ to: "/runtime/stories" });
+    throw redirect({ to: "/runtime/stories" as "." });
   },
 });
 
@@ -42,11 +42,13 @@ if (!runtimeStoriesConsoleRoute) {
   throw new Error("Runtime Stories console route is not registered");
 }
 
-const storiesWorkbenchRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: runtimeStoriesConsoleRoute.path as "/runtime/stories",
-  component: runtimeStoriesConsoleRoute.component,
-});
+const consoleRouteNodes = consoleRoutes.map((route) =>
+  createRoute({
+    component: route.component,
+    getParentRoute: () => rootRoute,
+    path: route.path,
+  })
+);
 
 const overviewRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -132,7 +134,7 @@ const modulesRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
-  storiesWorkbenchRoute,
+  ...consoleRouteNodes,
   overviewRoute,
   operationsRoute,
   operationsQueuesRoute,

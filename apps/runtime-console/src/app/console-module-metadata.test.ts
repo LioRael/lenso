@@ -172,7 +172,7 @@ describe("console module metadata", () => {
         }),
         ["runtime.stories.read"]
       ).map((item) => item.path)
-    ).toEqual(["/runtime/stories"]);
+    ).toEqual(["/runtime/stories", "/runtime/example-console"]);
 
     expect(
       navigationFromConsoleModuleMetadata(
@@ -184,6 +184,6 @@ describe("console module metadata", () => {
         }),
         ["runtime.stories.read"]
       ).map((item) => item.path)
-    ).toEqual(["/runtime/stories"]);
+    ).toEqual(["/runtime/stories", "/runtime/example-console"]);
   });
 });

@@ -1,3 +1,4 @@
+import { exampleConsoleManifest } from "../modules/example-console-package";
 import { storyConsoleManifest } from "../modules/story-console";
 import type {
   ConsoleModule,
@@ -61,13 +62,32 @@ export const buildTimeConsoleModuleMetadata = [
   {
     console: [
       {
+        label: storyConsoleManifest.label,
+        name: storyConsoleManifest.surfaceName,
         package: {
           export: storyConsoleManifest.exportName,
           name: storyConsoleManifest.packageName,
         },
         required_capabilities: storyConsoleManifest.requiredCapabilities,
+        route: storyConsoleManifest.route,
       },
     ],
+    module_name: storyConsoleManifest.id,
+  },
+  {
+    console: [
+      {
+        label: exampleConsoleManifest.label,
+        name: exampleConsoleManifest.surfaceName,
+        package: {
+          export: exampleConsoleManifest.exportName,
+          name: exampleConsoleManifest.packageName,
+        },
+        required_capabilities: exampleConsoleManifest.requiredCapabilities,
+        route: exampleConsoleManifest.route,
+      },
+    ],
+    module_name: exampleConsoleManifest.id,
   },
 ];
 

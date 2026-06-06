@@ -1,3 +1,4 @@
+import { exampleConsoleModule } from "../modules/example-console-package";
 import { storyConsoleModule } from "../modules/story-console";
 import type { ConsoleModule } from "./console-module-api";
 
@@ -27,6 +28,13 @@ export const installedConsolePackages = [
     module: storyConsoleModule,
     packageName: "@lenso/story-console",
     source: "first_party",
+    version: "workspace",
+  },
+  {
+    exportName: "exampleConsoleModule",
+    module: exampleConsoleModule,
+    packageName: "@lenso/example-console",
+    source: "installed",
     version: "workspace",
   },
 ] satisfies InstalledConsolePackage[];
