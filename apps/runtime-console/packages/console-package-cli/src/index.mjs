@@ -1178,6 +1178,15 @@ const updateRemoteModulesEnv = async ({ envFilePath, moduleName, baseUrl }) => {
   );
 };
 
+const remoteModulesFromEnvFile = async (envFilePath) => {
+  const source = await readTextIfExists(envFilePath);
+  const remoteModulesLine = source
+    .split("\n")
+    .find((line) => line.startsWith("REMOTE_MODULES="));
+  const currentValue = remoteModulesLine?.slice("REMOTE_MODULES=".length) ?? "";
+  return parseRemoteModuleEntries(currentValue);
+};
+
 const remoteModuleConsolePackagePlans = ({ manifest, moduleName }) =>
   manifest.console
     .map((surface) => ({
@@ -1288,6 +1297,97 @@ const addRemoteModule = async ({ manifestReference, options }) => {
   console.log("- open Runtime Console Modules to verify the remote source");
 };
 
+const runModuleDoctor = async ({ options }) => {
+  const repoRoot = options.repoRoot
+    ? path.resolve(options.repoRoot)
+    : await findRepoRoot(process.cwd());
+  const runtimeConsoleRoot = path.resolve(
+    options.runtimeConsoleRoot ?? path.join(repoRoot, "apps/runtime-console")
+  );
+  const envFilePath = path.resolve(
+    options.envFile ?? path.join(repoRoot, ".env")
+  );
+  const installPlanPath = path.resolve(
+    options.installPlanFile ??
+      path.join(repoRoot, ".lenso/console-package-install-plan.json")
+  );
+  const paths = runtimeConsolePaths(runtimeConsoleRoot);
+  const remoteModules = await remoteModulesFromEnvFile(envFilePath);
+  const remoteModulesByName = new Map(
+    remoteModules.map((remoteModule) => [remoteModule.name, remoteModule])
+  );
+  const installPlan = await readJson(installPlanPath);
+  const packageJson = await readJson(paths.packageJsonPath);
+  const manifestExportsSource = await readFile(
+    paths.manifestExportsPath,
+    "utf-8"
+  );
+  const moduleExportsSource = await readFile(paths.moduleExportsPath, "utf-8");
+  const errors = [];
+
+  for (const modulePlan of installPlan.modules ?? []) {
+    const { moduleName } = modulePlan;
+    const remoteModule = remoteModulesByName.get(moduleName);
+    if (!remoteModule) {
+      errors.push(`REMOTE_MODULES is missing module ${moduleName}`);
+    } else if (
+      modulePlan.baseUrl &&
+      remoteModule.baseUrl !== modulePlan.baseUrl
+    ) {
+      errors.push(
+        `REMOTE_MODULES base URL for ${moduleName} is ${remoteModule.baseUrl}, expected ${modulePlan.baseUrl}`
+      );
+    }
+
+    for (const consolePackage of modulePlan.consolePackages ?? []) {
+      const manifestName = manifestNameFromModuleExport(
+        consolePackage.exportName
+      );
+      const { packageName } = consolePackage;
+      if (!packageJson.dependencies?.[packageName]) {
+        errors.push(`Runtime Console dependency is missing: ${packageName}`);
+      }
+      if (!manifestExportsSource.includes(packageName)) {
+        errors.push(
+          `Console package manifest import is missing: ${packageName}`
+        );
+      }
+      if (!manifestExportsSource.includes(`${manifestName},`)) {
+        errors.push(
+          `Console package manifest export is missing: ${manifestName}`
+        );
+      }
+      if (!moduleExportsSource.includes(packageName)) {
+        errors.push(`Console package module import is missing: ${packageName}`);
+      }
+      if (
+        !moduleExportsSource.includes(
+          `[consolePackageKey(${manifestName})]: ${consolePackage.exportName}`
+        )
+      ) {
+        errors.push(
+          `Console package module mapping is missing: ${consolePackageKey({
+            exportName: consolePackage.exportName,
+            packageName,
+          })}`
+        );
+      }
+    }
+  }
+
+  if (errors.length > 0) {
+    throw new Error(
+      `Module doctor found ${errors.length} issue(s):\n- ${errors.join("\n- ")}`
+    );
+  }
+
+  console.log("Module doctor passed.");
+  console.log(`- remote modules: ${remoteModules.length}`);
+  console.log(
+    `- console package plan items: ${uniqueConsolePackagePlanItems(installPlan).length}`
+  );
+};
+
 const createConsolePackage = async ({ defaultRuntimeConsoleRoot, options }) => {
   const runtimeConsoleRoot = path.resolve(
     options.runtimeConsoleRoot ?? defaultRuntimeConsoleRoot ?? process.cwd()
@@ -1365,6 +1465,13 @@ const addRemoteModuleOptions = (command) =>
     .option("--base-url <url>", "remote module base URL")
     .option("--dry-run", "print install changes without writing them");
 
+const addModuleDoctorOptions = (command) =>
+  command
+    .option("--repo-root <path>", "Lenso host repository root")
+    .option("--runtime-console-root <path>", "Runtime Console app root")
+    .option("--env-file <path>", "env file to inspect")
+    .option("--install-plan-file <path>", "console package install plan file");
+
 const addApplyPlanOptions = (command) =>
   command
     .option("--repo-root <path>", "Lenso host repository root")
@@ -1400,6 +1507,13 @@ const createProgram = ({ defaultRuntimeConsoleRoot } = {}) => {
       .description("add a configured remote module source")
   ).action(async (manifestReference, options) => {
     await addRemoteModule({ manifestReference, options });
+  });
+  addModuleDoctorOptions(
+    moduleCommand
+      .command("doctor")
+      .description("check configured remote modules and console packages")
+  ).action(async (options) => {
+    await runModuleDoctor({ options });
   });
 
   const consolePackageCommand = program

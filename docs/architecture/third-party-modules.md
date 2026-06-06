@@ -200,6 +200,7 @@ Third-party scaffolding uses a separate remote-oriented lane:
 pnpm create:module billing --remote --output-dir ../module-packages
 lenso module add https://example.com/lenso/module/v1/manifest
 lenso console-package apply-plan
+lenso module doctor
 ```
 
 If the manifest is installed from a local file or non-protocol URL, pass the
@@ -222,6 +223,8 @@ The first CLI install lane writes host-local state only:
 
 `lenso console-package apply-plan` consumes that plan and updates Runtime
 Console package dependencies, manifest exports, and module export mappings.
+`lenso module doctor` checks that `REMOTE_MODULES`, the install plan, Runtime
+Console dependencies, and package export mappings agree.
 `pnpm --dir apps/runtime-console demo:remote-module-install` runs the same flow
 against a temporary host fixture without mutating the working tree.
 

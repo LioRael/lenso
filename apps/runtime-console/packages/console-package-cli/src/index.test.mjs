@@ -405,6 +405,51 @@ describe("module scaffold CLI", () => {
     expect(moduleExports.match(/billingConsoleModule/gu)).toHaveLength(2);
   });
 
+  test("passes module doctor after remote module frontend registration", async () => {
+    const repoRoot = await createRepoFixture();
+    await createRuntimeConsoleFixture(repoRoot);
+    await writeFixture(
+      repoRoot,
+      ".env",
+      "REMOTE_MODULES=billing=http://127.0.0.1:4200/lenso/module/v1\n"
+    );
+    await writeFixture(
+      repoRoot,
+      ".lenso/console-package-install-plan.json",
+      JSON.stringify(
+        {
+          modules: [
+            {
+              baseUrl: "http://127.0.0.1:4200/lenso/module/v1",
+              consolePackages: [
+                {
+                  exportName: "billingConsoleModule",
+                  packageName: "@vendor/lenso-billing-console",
+                  requestedByModule: "billing",
+                  route: "/data/billing",
+                },
+              ],
+              moduleName: "billing",
+            },
+          ],
+          version: 1,
+        },
+        null,
+        2
+      )
+    );
+    await runConsolePackageCli([
+      "console-package",
+      "apply-plan",
+      "--repo-root",
+      repoRoot,
+    ]);
+
+    await expect(
+      runConsolePackageCli(["module", "doctor", "--repo-root", repoRoot])
+    ).resolves.toBe(0);
+  });
+
   test("runs the remote module install demo script", async () => {
     const runtimeConsoleRoot = path.resolve(import.meta.dirname, "../../..");
     const packageJson = JSON.parse(
@@ -419,6 +464,7 @@ describe("module scaffold CLI", () => {
     ]);
 
     expect(stdout).toContain("Remote module install demo passed");
+    expect(stdout).toContain("Module doctor passed");
   });
 
   test("creates a standalone remote module package", async () => {

@@ -104,6 +104,7 @@ const main = async () => {
       "--repo-root",
       hostRoot,
     ]);
+    await runConsolePackageCli(["module", "doctor", "--repo-root", hostRoot]);
 
     const envFile = await readFile(path.join(hostRoot, ".env"), "utf-8");
     assertContains(
