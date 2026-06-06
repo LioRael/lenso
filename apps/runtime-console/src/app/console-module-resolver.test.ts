@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 
+import { defineConsoleModule } from "./console-module-api";
 import {
   createDevManualConsolePackageInstaller,
   createNoopConsolePackageInstaller,
@@ -29,6 +30,38 @@ describe("console module resolver", () => {
     ]);
 
     expect(modules.map((module) => module.id)).toEqual(["platform-story"]);
+  });
+
+  test("resolves modules from an installed package registry item", () => {
+    const module = defineConsoleModule({
+      id: "remote-crm",
+      surfaces: [
+        {
+          area: "data",
+          component: () => null,
+          label: "CRM",
+          path: "/data/crm",
+        },
+      ],
+    });
+
+    expect(
+      resolveConsoleModule(
+        {
+          exportName: "crmConsoleModule",
+          packageName: "@lenso/crm-console",
+        },
+        [
+          {
+            exportName: "crmConsoleModule",
+            module,
+            packageName: "@lenso/crm-console",
+            source: "installed",
+            version: "0.1.0",
+          },
+        ]
+      ).id
+    ).toBe("remote-crm");
   });
 
   test("selects package references from backend module metadata", () => {

@@ -120,6 +120,40 @@ The first implementation is a no-op installer that returns `not_configured`.
 That keeps missing package discovery and UI state testable without implying that
 the Runtime Console can mutate the workspace or install third-party code.
 
+The dev installer lane may return a manual command such as:
+
+```sh
+pnpm --dir apps/runtime-console add @lenso/crm-console
+```
+
+That command is advisory. A developer still needs to review the package and add
+an explicit registry entry before the host can import it.
+
+## Installed Package Registry
+
+The host resolves package exports through an explicit installed package
+registry, not through arbitrary runtime import strings. A registry entry binds a
+manifest-declared package/export to a trusted module object:
+
+```ts
+import { crmConsoleModule } from "@lenso/crm-console";
+
+export const installedConsolePackages = [
+  {
+    packageName: "@lenso/crm-console",
+    exportName: "crmConsoleModule",
+    module: crmConsoleModule,
+    source: "installed",
+    version: "0.1.0",
+  },
+];
+```
+
+This registry is intentionally static. It gives Vite a real import to bundle,
+lets reviewers inspect package additions in source control, and keeps unknown
+package exports visible as Missing Console Packages until the host explicitly
+trusts and registers them.
+
 Future installers can choose one of these execution lanes:
 
 - A dev-only local tool that updates the host workspace and requires an explicit

@@ -1,5 +1,10 @@
-import { storyConsoleModule } from "../modules/story-console";
 import type { ConsoleModule } from "./console-module-api";
+import {
+  consolePackageKey,
+  consolePackageRegistryByKey,
+  type InstalledConsolePackage,
+  installedConsolePackages,
+} from "./console-package-registry";
 
 export type ConsoleModulePackageReference = {
   packageName: string;
@@ -67,35 +72,34 @@ export type ConsolePackageInstaller = {
   ): Promise<ConsolePackageInstallResult>;
 };
 
-const firstPartyConsoleModuleExports: Record<string, ConsoleModule> = {
-  "@lenso/story-console#storyConsoleModule": storyConsoleModule,
-};
-
-function packageExportKey(reference: ConsoleModulePackageReference): string {
-  return `${reference.packageName}#${reference.exportName}`;
-}
-
 export function consolePackageExportIsRegistered(
-  reference: ConsoleModulePackageReference
+  reference: ConsoleModulePackageReference,
+  packages: readonly InstalledConsolePackage[] = installedConsolePackages
 ): boolean {
-  return Boolean(firstPartyConsoleModuleExports[packageExportKey(reference)]);
+  return Boolean(
+    consolePackageRegistryByKey(packages)[consolePackageKey(reference)]
+  );
 }
 
 export function resolveConsoleModule(
-  reference: ConsoleModulePackageReference
+  reference: ConsoleModulePackageReference,
+  packages: readonly InstalledConsolePackage[] = installedConsolePackages
 ): ConsoleModule {
-  const key = packageExportKey(reference);
-  const module = firstPartyConsoleModuleExports[key];
-  if (!module) {
+  const key = consolePackageKey(reference);
+  const registryItem = consolePackageRegistryByKey(packages)[key];
+  if (!registryItem) {
     throw new Error(`Console module package export is not registered: ${key}`);
   }
-  return module;
+  return registryItem.module;
 }
 
 export function resolveConsoleModules(
-  references: ConsoleModulePackageReference[]
+  references: ConsoleModulePackageReference[],
+  packages: readonly InstalledConsolePackage[] = installedConsolePackages
 ): ConsoleModule[] {
-  return references.map(resolveConsoleModule);
+  return references.map((reference) =>
+    resolveConsoleModule(reference, packages)
+  );
 }
 
 export function selectConsoleModulePackageReferences(
@@ -147,7 +151,7 @@ export function missingConsolePackageReferences(
       return [
         {
           exportName,
-          key: packageExportKey(reference),
+          key: consolePackageKey(reference),
           moduleName: module.module_name ?? "unknown",
           packageName,
           requiredCapabilities: [...(surface.required_capabilities ?? [])],
