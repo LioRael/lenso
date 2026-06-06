@@ -222,6 +222,8 @@ The first CLI install lane writes host-local state only:
 
 `lenso console-package apply-plan` consumes that plan and updates Runtime
 Console package dependencies, manifest exports, and module export mappings.
+`pnpm --dir apps/runtime-console demo:remote-module-install` runs the same flow
+against a temporary host fixture without mutating the working tree.
 
 The plan file is intentionally ignored by git. It is an operator/developer
 handoff artifact, not trusted marketplace state.

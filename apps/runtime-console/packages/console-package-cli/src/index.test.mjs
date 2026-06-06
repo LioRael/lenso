@@ -1,9 +1,11 @@
+import { execFile } from "node:child_process";
 import { once } from "node:events";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { promisify } from "node:util";
 
 import { afterEach, describe, expect, test } from "vitest";
 
@@ -11,6 +13,7 @@ import { runConsolePackageCli } from "./index.mjs";
 
 const tempRoots = [];
 const tempServers = [];
+const execFileAsync = promisify(execFile);
 
 const createRepoFixture = async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), "lenso-module-cli-"));
@@ -400,6 +403,22 @@ describe("module scaffold CLI", () => {
       "[consolePackageKey(billingConsoleManifest)]: billingConsoleModule"
     );
     expect(moduleExports.match(/billingConsoleModule/gu)).toHaveLength(2);
+  });
+
+  test("runs the remote module install demo script", async () => {
+    const runtimeConsoleRoot = path.resolve(import.meta.dirname, "../../..");
+    const packageJson = JSON.parse(
+      await readFile(path.join(runtimeConsoleRoot, "package.json"), "utf-8")
+    );
+    expect(packageJson.scripts["demo:remote-module-install"]).toBe(
+      "node scripts/remote-module-install-demo.mjs"
+    );
+
+    const { stdout } = await execFileAsync(process.execPath, [
+      path.join(runtimeConsoleRoot, "scripts/remote-module-install-demo.mjs"),
+    ]);
+
+    expect(stdout).toContain("Remote module install demo passed");
   });
 
   test("creates a standalone remote module package", async () => {
