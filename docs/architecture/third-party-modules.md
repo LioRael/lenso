@@ -211,3 +211,13 @@ lenso module add ./lenso.module.json --base-url https://example.com/lenso/module
 The remote lane should generate a module package, not a host workspace member.
 Host installation should record source configuration and surface install plans
 without compiling third-party code into the application.
+
+The first CLI install lane writes host-local state only:
+
+- `.env`: appends or replaces `REMOTE_MODULES=<name>=<base_url>`.
+- `.lenso/console-package-install-plan.json`: records requested Runtime Console
+  packages, exports, routes, and manual `pnpm --dir apps/runtime-console add`
+  commands.
+
+The plan file is intentionally ignored by git. It is an operator/developer
+handoff artifact, not trusted marketplace state.

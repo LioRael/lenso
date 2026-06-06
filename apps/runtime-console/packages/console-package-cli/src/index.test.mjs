@@ -436,6 +436,33 @@ describe("module scaffold CLI", () => {
       "REMOTE_MODULES=remote-crm=http://127.0.0.1:4100/lenso/module/v1,billing=http://127.0.0.1:4200/lenso/module/v1"
     );
     expect(envFile).toContain("RUST_LOG=info");
+
+    const installPlan = JSON.parse(
+      await readFile(
+        path.join(repoRoot, ".lenso/console-package-install-plan.json"),
+        "utf-8"
+      )
+    );
+    expect(installPlan).toMatchObject({
+      modules: [
+        {
+          baseUrl: "http://127.0.0.1:4200/lenso/module/v1",
+          consolePackages: [
+            {
+              command:
+                "pnpm --dir apps/runtime-console add @vendor/lenso-billing-console",
+              exportName: "billingConsoleModule",
+              key: "@vendor/lenso-billing-console#billingConsoleModule",
+              packageName: "@vendor/lenso-billing-console",
+              requestedByModule: "billing",
+              route: "/data/billing",
+            },
+          ],
+          moduleName: "billing",
+        },
+      ],
+      version: 1,
+    });
   });
 
   test("derives the remote base url from protocol manifest urls", async () => {
@@ -470,7 +497,15 @@ describe("module scaffold CLI", () => {
       "billing.module.json",
       JSON.stringify({
         capabilities: ["billing.read"],
-        console: [{ package: { export: "billingConsoleModule" } }],
+        console: [
+          {
+            package: {
+              export: "billingConsoleModule",
+              name: "@vendor/lenso-billing-console",
+            },
+            route: "/data/billing",
+          },
+        ],
         name: "billing",
         source: "remote",
         version: "0.1.0",
@@ -499,6 +534,15 @@ describe("module scaffold CLI", () => {
     await expect(readFile(path.join(repoRoot, ".env"), "utf-8")).resolves.toBe(
       "REMOTE_MODULES=billing=http://127.0.0.1:4200/lenso/module/v1\n"
     );
+
+    const installPlan = JSON.parse(
+      await readFile(
+        path.join(repoRoot, ".lenso/console-package-install-plan.json"),
+        "utf-8"
+      )
+    );
+    expect(installPlan.modules).toHaveLength(1);
+    expect(installPlan.modules[0].consolePackages).toHaveLength(1);
   });
 
   test("rejects non-remote module manifests during install", async () => {

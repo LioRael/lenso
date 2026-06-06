@@ -105,6 +105,9 @@ const parseRemoteModuleEntries = (value) =>
 const formatRemoteModuleEntries = (entries) =>
   entries.map((entry) => `${entry.name}=${entry.baseUrl}`).join(",");
 
+const consolePackageKey = ({ exportName, packageName }) =>
+  `${packageName}#${exportName}`;
+
 const sortObject = (object) =>
   Object.fromEntries(
     Object.entries(object).toSorted(([left], [right]) =>
@@ -1057,12 +1060,74 @@ const updateRemoteModulesEnv = async ({ envFilePath, moduleName, baseUrl }) => {
   );
 };
 
+const remoteModuleConsolePackagePlans = ({ manifest, moduleName }) =>
+  manifest.console
+    .map((surface) => ({
+      exportName: surface.package?.export,
+      packageName: surface.package?.name,
+      route: surface.route ?? "-",
+      surfaceLabel: surface.label ?? surface.name ?? "-",
+      surfaceName: surface.name ?? "-",
+    }))
+    .filter((surface) => surface.packageName && surface.exportName)
+    .map((surface) => {
+      const packageReference = {
+        exportName: surface.exportName,
+        packageName: surface.packageName,
+      };
+      return {
+        command: `pnpm --dir apps/runtime-console add ${surface.packageName}`,
+        exportName: surface.exportName,
+        key: consolePackageKey(packageReference),
+        packageName: surface.packageName,
+        reason: `${moduleName} / ${surface.surfaceLabel} / ${surface.route}`,
+        requestedByModule: moduleName,
+        route: surface.route,
+        status: "requires_manual_install",
+        surfaceLabel: surface.surfaceLabel,
+        surfaceName: surface.surfaceName,
+      };
+    });
+
+const updateConsolePackageInstallPlan = async ({
+  baseUrl,
+  installPlanPath,
+  manifest,
+  manifestReference,
+  moduleName,
+}) => {
+  const source = await readTextIfExists(installPlanPath);
+  const currentPlan = source
+    ? JSON.parse(source)
+    : {
+        modules: [],
+        version: 1,
+      };
+  const modules = (currentPlan.modules ?? []).filter(
+    (module) => module.moduleName !== moduleName
+  );
+  modules.push({
+    baseUrl,
+    consolePackages: remoteModuleConsolePackagePlans({
+      manifest,
+      moduleName,
+    }),
+    manifestReference,
+    moduleName,
+  });
+  return `${JSON.stringify({ modules, version: 1 }, null, 2)}\n`;
+};
+
 const addRemoteModule = async ({ manifestReference, options }) => {
   const repoRoot = options.repoRoot
     ? path.resolve(options.repoRoot)
     : await findRepoRoot(process.cwd());
   const envFilePath = path.resolve(
     options.envFile ?? path.join(repoRoot, ".env")
+  );
+  const installPlanPath = path.resolve(
+    options.installPlanFile ??
+      path.join(repoRoot, ".lenso/console-package-install-plan.json")
   );
   const manifest = await readJsonFromReference(manifestReference);
   const remoteModule = validateRemoteModuleManifest(manifest);
@@ -1075,19 +1140,32 @@ const addRemoteModule = async ({ manifestReference, options }) => {
     envFilePath,
     moduleName: remoteModule.name,
   });
+  const installPlan = await updateConsolePackageInstallPlan({
+    baseUrl,
+    installPlanPath,
+    manifest,
+    manifestReference,
+    moduleName: remoteModule.name,
+  });
 
   if (options.dryRun) {
     console.log("Remote module install dry run:");
     console.log(`- ${path.relative(repoRoot, envFilePath)}`);
+    console.log(`- ${path.relative(repoRoot, installPlanPath)}`);
     console.log(`- ${remoteModule.name}=${baseUrl}`);
     return;
   }
 
   await mkdir(path.dirname(envFilePath), { recursive: true });
   await writeFile(envFilePath, envFile);
+  await mkdir(path.dirname(installPlanPath), { recursive: true });
+  await writeFile(installPlanPath, installPlan);
 
   console.log(`Added remote module ${remoteModule.name}.`);
   console.log("Next steps:");
+  console.log(
+    `- review ${path.relative(repoRoot, installPlanPath)} for console package install commands`
+  );
   console.log("- restart the API and worker so REMOTE_MODULES is reloaded");
   console.log("- open Runtime Console Modules to verify the remote source");
 };
@@ -1165,6 +1243,7 @@ const addRemoteModuleOptions = (command) =>
   command
     .option("--repo-root <path>", "Lenso host repository root")
     .option("--env-file <path>", "env file to update")
+    .option("--install-plan-file <path>", "console package install plan file")
     .option("--base-url <url>", "remote module base URL")
     .option("--dry-run", "print install changes without writing them");
 
