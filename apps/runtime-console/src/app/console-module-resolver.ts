@@ -41,12 +41,21 @@ export type ConsolePackageInstallPlan = {
   exportName: string;
   status: "planned";
   reason: string;
+  request: ConsolePackageInstallRequest;
+};
+
+export type ConsolePackageInstallRequest = {
+  packageName: string;
+  exportName: string;
+  requestedByModule: string;
+  route: string;
 };
 
 export type ConsolePackageInstallResult = {
   key: string;
   packageName: string;
   exportName: string;
+  request: ConsolePackageInstallRequest;
   status: "not_configured";
   message: string;
 };
@@ -158,6 +167,12 @@ export function planConsolePackageInstall(
     key: missingPackage.key,
     packageName: missingPackage.packageName,
     reason: `${missingPackage.moduleName} / ${missingPackage.surfaceLabel} / ${missingPackage.route}`,
+    request: {
+      exportName: missingPackage.exportName,
+      packageName: missingPackage.packageName,
+      requestedByModule: missingPackage.moduleName,
+      route: missingPackage.route,
+    },
     status: "planned",
   }));
 }
@@ -170,6 +185,7 @@ export function createNoopConsolePackageInstaller(): ConsolePackageInstaller {
         key: plan.key,
         message: "console package installation is not configured",
         packageName: plan.packageName,
+        request: plan.request,
         status: "not_configured",
       };
     },

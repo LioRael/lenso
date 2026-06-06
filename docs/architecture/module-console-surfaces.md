@@ -89,6 +89,50 @@ Do not add ad hoc dynamic imports, global objects, or direct host token access a
 a shortcut. Runtime Console package loading needs a versioned host API and
 explicit trust policy before it can accept third-party code.
 
+## Installation Request Contract
+
+The Runtime Console may derive an installation plan from backend module
+metadata, but the browser must not install packages by itself. Installation is a
+host-owned operation.
+
+The frontend request shape is intentionally small:
+
+```ts
+type ConsolePackageInstallRequest = {
+  packageName: string;
+  exportName: string;
+  requestedByModule: string;
+  route: string;
+};
+```
+
+The corresponding result must report host policy, not just package-manager
+success:
+
+```ts
+type ConsolePackageInstallResult =
+  | { status: "not_configured"; message: string }
+  | { status: "rejected"; message: string }
+  | { status: "installed"; message: string };
+```
+
+The first implementation is a no-op installer that returns `not_configured`.
+That keeps missing package discovery and UI state testable without implying that
+the Runtime Console can mutate the workspace or install third-party code.
+
+Future installers can choose one of these execution lanes:
+
+- A dev-only local tool that updates the host workspace and requires an explicit
+  developer action.
+- A backend endpoint such as `/admin/data/console-packages/install`, guarded by
+  admin auth, provenance checks, lockfile policy, and audit logging.
+- A marketplace install protocol with signed packages, version compatibility,
+  and declared host API requirements.
+
+All lanes must preserve the same request/result boundary. The host decides
+whether a package is trusted, compatible, and allowed; module manifests only
+request a package/export.
+
 ## Adding A First-Party Console Module
 
 1. Add `ConsoleSurface` declarations to the module manifest.

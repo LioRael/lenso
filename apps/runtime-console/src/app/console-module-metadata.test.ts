@@ -103,6 +103,12 @@ describe("console module metadata", () => {
         key: "@lenso/crm-console#crmConsoleModule",
         packageName: "@lenso/crm-console",
         reason: "remote-crm / CRM / /data/crm",
+        request: {
+          exportName: "crmConsoleModule",
+          packageName: "@lenso/crm-console",
+          requestedByModule: "remote-crm",
+          route: "/data/crm",
+        },
         status: "planned",
       },
     ]);
@@ -130,6 +136,12 @@ describe("console module metadata", () => {
         key: "@lenso/crm-console#crmConsoleModule",
         message: "console package installation is not configured",
         packageName: "@lenso/crm-console",
+        request: {
+          exportName: "crmConsoleModule",
+          packageName: "@lenso/crm-console",
+          requestedByModule: "remote-crm",
+          route: "/data/crm",
+        },
         status: "not_configured",
       },
     ]);
