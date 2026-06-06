@@ -3,8 +3,30 @@
 
 export type AdminAction = {
   capability: string;
+  confirmation?: unknown;
+  danger_level?: AdminActionDangerLevel;
+  input_schema?: unknown;
   label: string;
   name: string;
+};
+
+export type AdminActionConfirmation = {
+  message: string;
+  required_phrase?: string | null;
+};
+
+export type AdminActionDangerLevel = string;
+
+export type AdminActionInputField = {
+  description?: string | null;
+  field_type: FieldType;
+  label: string;
+  name: string;
+  required?: boolean;
+};
+
+export type AdminActionInputSchema = {
+  fields?: Array<AdminActionInputField>;
 };
 
 export type AdminActionInvocationItem = {
@@ -32,6 +54,7 @@ export type AdminActionInvocationListResponse = {
 };
 
 export type AdminActionInvokeRequest = {
+  confirmation_phrase?: string | null;
   input?: unknown;
 };
 

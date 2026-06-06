@@ -11,7 +11,8 @@ use platform_core::{
     StoryDisplaySource, apply_migrations,
 };
 use platform_module::{
-    AdminAction, AdminActionSource, AdminDataSource, AdminDeclarativeComponent,
+    AdminAction, AdminActionConfirmation, AdminActionDangerLevel, AdminActionInputField,
+    AdminActionInputSchema, AdminActionSource, AdminDataSource, AdminDeclarativeComponent,
     AdminDeclarativePage, AdminDeclarativeSection, AdminDeclarativeSurface, AdminListQuery,
     AdminPage, AdminSchema, AdminSurface, EntitySchema, FieldSchema, FieldType, ModuleLoadStatus,
     ModuleSource,
@@ -85,11 +86,37 @@ fn stub_declarative_surface() -> AdminSurface {
                 },
             }],
         }],
-        actions: vec![AdminAction {
-            name: "sync_contacts".to_owned(),
-            label: "Sync contacts".to_owned(),
-            capability: "remote_crm.contacts.sync".to_owned(),
-        }],
+        actions: vec![
+            AdminAction {
+                name: "sync_contacts".to_owned(),
+                label: "Sync contacts".to_owned(),
+                capability: "remote_crm.contacts.sync".to_owned(),
+                input_schema: Some(AdminActionInputSchema {
+                    fields: vec![AdminActionInputField {
+                        name: "dry_run".to_owned(),
+                        label: "Dry run".to_owned(),
+                        field_type: FieldType::Boolean,
+                        required: false,
+                        description: Some(
+                            "Preview the sync without writing remote data".to_owned(),
+                        ),
+                    }],
+                }),
+                confirmation: None,
+                danger_level: AdminActionDangerLevel::Low,
+            },
+            AdminAction {
+                name: "danger_sync".to_owned(),
+                label: "Danger sync".to_owned(),
+                capability: "remote_crm.contacts.sync".to_owned(),
+                input_schema: None,
+                confirmation: Some(AdminActionConfirmation {
+                    message: "This action writes remote contact data.".to_owned(),
+                    required_phrase: Some("SYNC".to_owned()),
+                }),
+                danger_level: AdminActionDangerLevel::High,
+            },
+        ],
         fallback_schema: Some(stub_schema()),
     })
 }
@@ -416,6 +443,62 @@ async fn admin_action_invocation_calls_declared_source() {
     let json = json_body(response).await;
     assert_eq!(json["data"]["action"], "sync_contacts");
     assert_eq!(json["data"]["input"]["dry_run"], true);
+}
+
+#[tokio::test]
+async fn admin_action_invocation_requires_confirmation_phrase_when_declared() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
+    install_admin_modules(vec![AdminModule {
+        module_name: "remote-crm".to_owned(),
+        source: ModuleSource::Remote,
+        load_status: ModuleLoadStatus::Loaded,
+        schema: stub_schema(),
+        admin: Some(stub_declarative_surface()),
+        listed_in_schema: false,
+        data_source: Some(Arc::new(StubUsers)),
+        action_source: Some(Arc::new(StubActions)),
+    }]);
+    install_admin_module_metadata(vec![AdminModuleMetadata {
+        module_name: "remote-crm".to_owned(),
+        source: ModuleSource::Remote,
+        load_status: ModuleLoadStatus::Loaded,
+        http_routes: vec![],
+        runtime: None,
+        lifecycle: None,
+        story_display: vec![],
+        capabilities: vec!["remote_crm.contacts.sync".to_owned()],
+        admin: Some(stub_declarative_surface()),
+        source_diagnostics: None,
+    }]);
+    let ctx = AppContext::new(
+        AppConfig::from_env(),
+        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test").expect("lazy pool"),
+        Arc::new(LoggingEventPublisher),
+    );
+    let app = build_router(ctx);
+
+    let rejected = app
+        .clone()
+        .oneshot(admin_post_json_with_token(
+            "/admin/data/remote-crm/actions/danger_sync",
+            r#"{"input":{}}"#,
+            "dev-service:admin:remote_crm.contacts.sync",
+        ))
+        .await
+        .expect("request completes");
+    assert_eq!(rejected.status(), StatusCode::BAD_REQUEST);
+
+    let accepted = app
+        .oneshot(admin_post_json_with_token(
+            "/admin/data/remote-crm/actions/danger_sync",
+            r#"{"input":{},"confirmation_phrase":"SYNC"}"#,
+            "dev-service:admin:remote_crm.contacts.sync",
+        ))
+        .await
+        .expect("request completes");
+    assert_eq!(accepted.status(), StatusCode::OK);
+    let json = json_body(accepted).await;
+    assert_eq!(json["data"]["action"], "danger_sync");
 }
 
 #[tokio::test]

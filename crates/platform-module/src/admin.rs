@@ -1,6 +1,6 @@
 //! Contracts for a module's admin surface.
 
-use crate::admin_schema::AdminSchema;
+use crate::admin_schema::{AdminSchema, FieldType};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -72,6 +72,52 @@ pub struct AdminAction {
     pub name: String,
     pub label: String,
     pub capability: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_schema: Option<AdminActionInputSchema>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confirmation: Option<AdminActionConfirmation>,
+    #[serde(default, skip_serializing_if = "AdminActionDangerLevel::is_low")]
+    pub danger_level: AdminActionDangerLevel,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct AdminActionInputSchema {
+    #[serde(default)]
+    pub fields: Vec<AdminActionInputField>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct AdminActionInputField {
+    pub name: String,
+    pub label: String,
+    pub field_type: FieldType,
+    #[serde(default)]
+    pub required: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct AdminActionConfirmation {
+    pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required_phrase: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum AdminActionDangerLevel {
+    #[default]
+    Low,
+    Medium,
+    High,
+}
+
+impl AdminActionDangerLevel {
+    fn is_low(&self) -> bool {
+        matches!(self, Self::Low)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -159,6 +205,9 @@ mod tests {
                 name: "sync_contacts".to_owned(),
                 label: "Sync contacts".to_owned(),
                 capability: "remote_crm.contacts.sync".to_owned(),
+                input_schema: None,
+                confirmation: None,
+                danger_level: AdminActionDangerLevel::Low,
             }],
             fallback_schema: Some(fallback_schema()),
         });

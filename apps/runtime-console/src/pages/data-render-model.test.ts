@@ -1,9 +1,14 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  adminActionDangerLevel,
+  adminActionHasInput,
+  adminActionInitialInputValues,
+  adminActionRequiredConfirmationPhrase,
   adminActionResultSummary,
   adminSurfaceLabel,
   adminSurfaceMetadataRows,
+  buildAdminActionInput,
   declarativeEntitySection,
   declarativeMetricValues,
   detailRows,
@@ -1162,6 +1167,98 @@ describe("declarative admin helpers", () => {
     expect(declarativeEntitySection(surface, "widgets")).toEqual({
       entity: null,
       reason: "fallback schema has no entity 'widgets'",
+    });
+  });
+
+  test("normalizes action policy metadata", () => {
+    const action = {
+      name: "sync_contacts",
+      label: "Sync contacts",
+      capability: "remote_crm.contacts.sync",
+      confirmation: {
+        message: "Sync remote contacts now?",
+        required_phrase: " SYNC ",
+      },
+      input_schema: {
+        fields: [
+          {
+            name: "dry_run",
+            label: "Dry run",
+            field_type: { kind: "boolean" as const },
+          },
+        ],
+      },
+    };
+
+    expect(adminActionDangerLevel(action)).toBe("low");
+    expect(adminActionHasInput(action)).toBe(true);
+    expect(adminActionRequiredConfirmationPhrase(action)).toBe("SYNC");
+    expect(adminActionInitialInputValues(action)).toEqual({ dry_run: false });
+  });
+
+  test("builds typed action input payloads", () => {
+    const action = {
+      name: "sync_contacts",
+      label: "Sync contacts",
+      capability: "remote_crm.contacts.sync",
+      input_schema: {
+        fields: [
+          {
+            name: "dry_run",
+            label: "Dry run",
+            field_type: { kind: "boolean" as const },
+          },
+          {
+            name: "limit",
+            label: "Limit",
+            field_type: { kind: "integer" as const },
+            required: true,
+          },
+          {
+            name: "filter",
+            label: "Filter",
+            field_type: { kind: "json" as const },
+          },
+        ],
+      },
+    };
+
+    expect(
+      buildAdminActionInput(action, {
+        dry_run: true,
+        filter: '{"active":true}',
+        limit: "25",
+      })
+    ).toEqual({
+      error: null,
+      input: { dry_run: true, filter: { active: true }, limit: 25 },
+    });
+  });
+
+  test("returns the first action input validation error", () => {
+    const action = {
+      name: "sync_contacts",
+      label: "Sync contacts",
+      capability: "remote_crm.contacts.sync",
+      input_schema: {
+        fields: [
+          {
+            name: "limit",
+            label: "Limit",
+            field_type: { kind: "integer" as const },
+            required: true,
+          },
+        ],
+      },
+    };
+
+    expect(buildAdminActionInput(action, { limit: "" })).toEqual({
+      error: "Limit is required",
+      input: {},
+    });
+    expect(buildAdminActionInput(action, { limit: "2.5" })).toEqual({
+      error: "Limit must be an integer",
+      input: {},
     });
   });
 
