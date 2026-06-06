@@ -100,10 +100,173 @@ describe("console workspace navigation", () => {
     ]);
   });
 
+  test("defaults items without navigation to the system workspace", () => {
+    expect(
+      buildWorkspaceNavigation([
+        {
+          icon: "activity",
+          label: "Defaulted Overview",
+          moduleId: "host",
+          path: "/defaulted-overview",
+        },
+      ])
+    ).toMatchObject([
+      {
+        id: "system",
+        items: [
+          {
+            label: "Defaulted Overview",
+            path: "/defaulted-overview",
+          },
+        ],
+        label: "System",
+      },
+    ]);
+  });
+
+  test("keeps groupless module items in workspace items", () => {
+    expect(
+      buildWorkspaceNavigation([
+        {
+          icon: "database",
+          label: "CRM Home",
+          moduleId: "crm",
+          navigation: {
+            workspace: {
+              icon: "database",
+              id: "crm",
+              label: "CRM",
+            },
+          },
+          path: "/crm",
+        },
+      ])
+    ).toMatchObject([
+      {
+        groups: [],
+        id: "crm",
+        items: [
+          {
+            label: "CRM Home",
+            path: "/crm",
+          },
+        ],
+      },
+    ]);
+  });
+
+  test("sorts unordered items by missing order, label, and path", () => {
+    expect(
+      buildWorkspaceNavigation([
+        {
+          label: "Beta",
+          moduleId: "system",
+          path: "/beta",
+        },
+        {
+          label: "Alpha",
+          moduleId: "system",
+          path: "/alpha-secondary",
+        },
+        {
+          label: "Alpha",
+          moduleId: "system",
+          path: "/alpha-primary",
+        },
+      ])[0]?.items.map((item) => item.path)
+    ).toEqual(["/alpha-primary", "/alpha-secondary", "/beta"]);
+  });
+
+  test("does not mutate the input item array", () => {
+    const unorderedItems: ConsoleNavigationItem[] = [
+      {
+        label: "Beta",
+        moduleId: "system",
+        path: "/beta",
+      },
+      {
+        label: "Alpha",
+        moduleId: "system",
+        path: "/alpha",
+      },
+    ];
+    const originalOrder = unorderedItems.map((item) => item.path);
+
+    expect(buildWorkspaceNavigation(unorderedItems)[0]?.items).toMatchObject([
+      {
+        path: "/alpha",
+      },
+      {
+        path: "/beta",
+      },
+    ]);
+    expect(unorderedItems.map((item) => item.path)).toEqual(originalOrder);
+  });
+
   test("selects active workspace from route path", () => {
     const workspaces = buildWorkspaceNavigation(items);
 
     expect(activeWorkspaceIdForPath(workspaces, "/crm/contacts")).toBe("crm");
     expect(activeWorkspaceIdForPath(workspaces, "/unknown")).toBe("system");
+  });
+
+  test("selects active workspace from child route paths", () => {
+    const workspaces = buildWorkspaceNavigation(items);
+
+    expect(activeWorkspaceIdForPath(workspaces, "/crm/contacts/123")).toBe(
+      "crm"
+    );
+  });
+
+  test("does not match sibling path prefixes as child routes", () => {
+    const workspaces = buildWorkspaceNavigation([
+      {
+        label: "CRM",
+        moduleId: "crm",
+        navigation: {
+          workspace: {
+            icon: "database",
+            id: "crm",
+            label: "CRM",
+          },
+        },
+        path: "/crm",
+      },
+    ]);
+
+    expect(activeWorkspaceIdForPath(workspaces, "/crm-other")).toBe("system");
+  });
+
+  test("selects the longest matching child route prefix", () => {
+    const workspaces = buildWorkspaceNavigation([
+      {
+        label: "CRM",
+        moduleId: "crm",
+        navigation: {
+          workspace: {
+            icon: "database",
+            id: "crm",
+            label: "CRM",
+          },
+        },
+        path: "/crm",
+      },
+      {
+        label: "Contacts",
+        moduleId: "contacts",
+        navigation: {
+          workspace: {
+            icon: "database",
+            id: "contacts",
+            label: "Contacts",
+          },
+        },
+        path: "/crm/contacts",
+      },
+    ]);
+
+    expect(activeWorkspaceIdForPath(workspaces, "/crm/contacts/123")).toBe(
+      "contacts"
+    );
   });
 });
