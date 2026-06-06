@@ -1,22 +1,8 @@
-import {
-  exampleConsoleManifest,
-  exampleConsoleModule,
-} from "@lenso/example-console";
-import { storyConsoleManifest, storyConsoleModule } from "@lenso/story-console";
+import { resolveInstalledConsolePackages } from "./app/console-package-registry";
+import { consolePackageInstallManifests } from "./console-package-install-manifests";
+import { consolePackageModuleExportsByKey } from "./console-package-module-exports";
 
-import { defineInstalledConsolePackage } from "./app/console-package-registry";
-
-export const installedConsolePackages = [
-  defineInstalledConsolePackage({
-    manifest: storyConsoleManifest,
-    module: storyConsoleModule,
-    source: "first_party",
-    version: "workspace",
-  }),
-  defineInstalledConsolePackage({
-    manifest: exampleConsoleManifest,
-    module: exampleConsoleModule,
-    source: "installed",
-    version: "workspace",
-  }),
-];
+export const installedConsolePackages = resolveInstalledConsolePackages(
+  consolePackageInstallManifests,
+  consolePackageModuleExportsByKey
+);

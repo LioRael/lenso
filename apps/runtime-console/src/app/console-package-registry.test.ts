@@ -4,6 +4,7 @@ import {
   consolePackageKey,
   consolePackageRegistryByKey,
   defineInstalledConsolePackage,
+  resolveInstalledConsolePackages,
 } from "./console-package-registry";
 
 const registrySource =
@@ -50,5 +51,47 @@ describe("console package registry", () => {
         "@lenso/billing-console#billingConsoleModule"
       ]?.module.id
     ).toBe("billing");
+  });
+
+  test("resolves installed packages from declarations and module exports", () => {
+    const installedPackages = resolveInstalledConsolePackages(
+      [
+        {
+          manifest: {
+            exportName: "billingConsoleModule",
+            packageName: "@lenso/billing-console",
+          },
+          source: "installed",
+          version: "workspace",
+        },
+      ],
+      {
+        "@lenso/billing-console#billingConsoleModule": {
+          id: "billing",
+          surfaces: [],
+        },
+      }
+    );
+
+    expect(installedPackages[0]?.module.id).toBe("billing");
+  });
+
+  test("rejects install declarations without a module export", () => {
+    expect(() =>
+      resolveInstalledConsolePackages(
+        [
+          {
+            manifest: {
+              exportName: "missingConsoleModule",
+              packageName: "@lenso/missing-console",
+            },
+            source: "installed",
+          },
+        ],
+        {}
+      )
+    ).toThrow(
+      "Console package module export is not installed: @lenso/missing-console#missingConsoleModule"
+    );
   });
 });

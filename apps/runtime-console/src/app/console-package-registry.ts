@@ -15,6 +15,14 @@ export type InstalledConsolePackage = {
   version?: string;
 };
 
+export type ConsolePackageInstallDeclaration = {
+  manifest: ConsolePackageInstallManifest;
+  source: ConsolePackageRegistrySource;
+  version?: string;
+};
+
+export type ConsolePackageModuleExportsByKey = Record<string, ConsoleModule>;
+
 export function consolePackageKey({
   exportName,
   packageName,
@@ -30,11 +38,8 @@ export function defineInstalledConsolePackage({
   module,
   source,
   version,
-}: {
-  manifest: ConsolePackageInstallManifest;
+}: ConsolePackageInstallDeclaration & {
   module: ConsoleModule;
-  source: ConsolePackageRegistrySource;
-  version?: string;
 }): InstalledConsolePackage {
   const installedPackage: InstalledConsolePackage = {
     exportName: manifest.exportName,
@@ -46,6 +51,23 @@ export function defineInstalledConsolePackage({
     installedPackage.version = version;
   }
   return installedPackage;
+}
+
+export function resolveInstalledConsolePackages(
+  declarations: readonly ConsolePackageInstallDeclaration[],
+  moduleExportsByKey: ConsolePackageModuleExportsByKey
+): InstalledConsolePackage[] {
+  return declarations.map((declaration) => {
+    const key = consolePackageKey(declaration.manifest);
+    const module = moduleExportsByKey[key];
+    if (!module) {
+      throw new Error(`Console package module export is not installed: ${key}`);
+    }
+    return defineInstalledConsolePackage({
+      ...declaration,
+      module,
+    });
+  });
 }
 
 export function consolePackageRegistryByKey(
