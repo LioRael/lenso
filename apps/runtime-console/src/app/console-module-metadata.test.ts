@@ -8,18 +8,22 @@ import {
 describe("console module metadata", () => {
   test("builds navigation from backend console metadata", () => {
     expect(
-      navigationFromConsoleModuleMetadata([
-        {
-          console: [
-            {
-              package: {
-                export: "storyConsoleModule",
-                name: "@lenso/story-console",
+      navigationFromConsoleModuleMetadata(
+        [
+          {
+            console: [
+              {
+                package: {
+                  export: "storyConsoleModule",
+                  name: "@lenso/story-console",
+                },
+                required_capabilities: ["runtime.stories.read"],
               },
-            },
-          ],
-        },
-      ])
+            ],
+          },
+        ],
+        ["runtime.stories.read"]
+      )
     ).toEqual([
       {
         icon: "workflow",
@@ -28,6 +32,27 @@ describe("console module metadata", () => {
         path: "/runtime/stories",
       },
     ]);
+  });
+
+  test("omits navigation when required capabilities are unavailable", () => {
+    expect(
+      navigationFromConsoleModuleMetadata(
+        [
+          {
+            console: [
+              {
+                package: {
+                  export: "storyConsoleModule",
+                  name: "@lenso/story-console",
+                },
+                required_capabilities: ["runtime.stories.read"],
+              },
+            ],
+          },
+        ],
+        []
+      )
+    ).toEqual([]);
   });
 
   test("uses backend metadata when it is available", () => {
@@ -51,7 +76,8 @@ describe("console module metadata", () => {
           data: undefined,
           isError: false,
           isPending: true,
-        })
+        }),
+        ["runtime.stories.read"]
       ).map((item) => item.path)
     ).toEqual(["/runtime/stories"]);
 
@@ -62,7 +88,8 @@ describe("console module metadata", () => {
           data: undefined,
           isError: false,
           isPending: false,
-        })
+        }),
+        ["runtime.stories.read"]
       ).map((item) => item.path)
     ).toEqual(["/runtime/stories"]);
   });

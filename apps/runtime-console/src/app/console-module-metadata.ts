@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { httpClient, isApiMode } from "../lib/http-client";
+import { useConsoleCapabilities } from "./console-capabilities";
 import {
   type ConsoleModuleMetadata,
   resolveConsoleModules,
@@ -16,7 +17,6 @@ type ModulesMetadataResponse = {
 };
 
 const consoleModulesMetadataQueryKey = ["modules", "registry"] as const;
-const hostConsoleCapabilities = ["runtime.stories.read"];
 
 export function consoleModuleMetadataWithFallback({
   apiMode,
@@ -39,7 +39,7 @@ export function consoleModuleMetadataWithFallback({
 
 export function navigationFromConsoleModuleMetadata(
   modules: ConsoleModuleMetadata[],
-  availableCapabilities = hostConsoleCapabilities
+  availableCapabilities: readonly string[]
 ) {
   return buildConsoleNavigation(
     resolveConsoleModules(
@@ -50,6 +50,7 @@ export function navigationFromConsoleModuleMetadata(
 
 export function useConsoleNavigation() {
   const apiMode = isApiMode();
+  const availableCapabilities = useConsoleCapabilities();
   const modulesQuery = useQuery({
     enabled: apiMode,
     queryKey: consoleModulesMetadataQueryKey,
@@ -63,5 +64,5 @@ export function useConsoleNavigation() {
     isPending: modulesQuery.isPending,
   });
 
-  return navigationFromConsoleModuleMetadata(modules);
+  return navigationFromConsoleModuleMetadata(modules, availableCapabilities);
 }
