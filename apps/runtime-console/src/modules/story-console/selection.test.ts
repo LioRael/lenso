@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import type { RuntimeStory } from "../../app/console-host-api";
+import type { RuntimeStory } from "../../console-package-api";
 import { resolveSelectedRuntimeStory } from "./selection";
 
 const stories = [

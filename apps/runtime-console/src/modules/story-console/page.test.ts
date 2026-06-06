@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { runtimeConsoleHostApi } from "../../app/console-host-api";
+import { runtimeConsoleHostApi } from "../../console-package-api";
 import { shouldCloseInspectorOnEscape } from "./keyboard";
 import { runtimeStoriesDefaultViewMode } from "./page";
 

@@ -14,7 +14,7 @@ import {
   type ExecutionNode,
   type RuntimeStory,
   type StoryViewMode,
-} from "../../app/console-host-api";
+} from "../../console-package-api";
 import { shouldCloseInspectorOnEscape } from "./keyboard";
 import {
   resizeServicesPanelLayout,

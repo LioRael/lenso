@@ -3,7 +3,7 @@ import {
   type ExecutionInspectorTab,
   type RuntimeStory,
   type StoryViewMode,
-} from "../../app/console-host-api";
+} from "../../console-package-api";
 
 const defaultStoryViewMode = "story" satisfies StoryViewMode;
 

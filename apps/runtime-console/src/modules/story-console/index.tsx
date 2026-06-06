@@ -1,4 +1,4 @@
-import { defineConsoleModule } from "../../app/console-module-api";
+import { defineConsoleModule } from "../../console-package-api";
 import { storyConsoleManifest } from "./manifest";
 import { RuntimeStoriesPage } from "./page";
 

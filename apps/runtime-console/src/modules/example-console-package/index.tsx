@@ -1,4 +1,4 @@
-import { defineConsoleModule } from "../../app/console-module-api";
+import { defineConsoleModule } from "../../console-package-api";
 import { exampleConsoleManifest } from "./manifest";
 import { ExampleConsolePage } from "./page";
 

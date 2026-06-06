@@ -1,4 +1,4 @@
-import type { RuntimeStory } from "../../app/console-host-api";
+import type { RuntimeStory } from "../../console-package-api";
 
 export function resolveSelectedRuntimeStory(
   visibleStories: RuntimeStory[],

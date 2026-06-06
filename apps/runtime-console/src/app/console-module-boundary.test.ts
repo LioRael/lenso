@@ -11,6 +11,7 @@ const sourceFiles = import.meta.glob<string>("../**/*.{ts,tsx}", {
   import: "default",
   query: "?raw",
 });
+const modulePrefix = "../modules/";
 const storyModulePrefix = "../modules/story-console/";
 const importPattern =
   /\b(?:import|export)\s+(?:type\s+)?(?:[^'"]*?\s+from\s+)?["']([^"']+)["']/g;
@@ -19,10 +20,17 @@ function findConsoleModuleBoundaryViolations(): string[] {
   const violations: string[] = [];
 
   for (const [file, source] of Object.entries(sourceFiles)) {
+    const inConsoleModule = file.startsWith(modulePrefix);
     const inStoryModule = file.startsWith(storyModulePrefix);
 
     for (const specifier of importSpecifiers(source)) {
       const target = resolveImport(file, specifier);
+
+      if (inConsoleModule && target.includes("/app/")) {
+        violations.push(
+          `${displayPath(file)} imports host app internals through ${specifier}`
+        );
+      }
 
       if (inStoryModule && target.includes("/pages/")) {
         violations.push(
