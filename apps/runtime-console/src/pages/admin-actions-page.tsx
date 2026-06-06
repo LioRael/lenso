@@ -1,11 +1,4 @@
-import {
-  AlertTriangle,
-  CheckCircle2,
-  ExternalLink,
-  PlayCircle,
-  RefreshCcw,
-  X,
-} from "lucide-react";
+import { ExternalLink, PlayCircle, RefreshCcw, X } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { JsonViewer } from "../components/runtime/json-viewer";
@@ -38,7 +31,11 @@ import {
   OperationsFilterChip,
   OperationsSearchInput,
 } from "./operations-filter";
-import { OperationsInspectorHeader } from "./operations-inspector";
+import {
+  OperationsInspectorHeader,
+  OperationsSectionTitle,
+  OperationsStatusBanner,
+} from "./operations-inspector";
 import { useOperationsInspectorLayout } from "./operations-layout";
 import { useOperationsSelection } from "./operations-selection";
 import {
@@ -572,64 +569,24 @@ function AdminActionInspector({
   const details = adminActionInspectorDetails(action);
   return (
     <div className="grid">
-      <ActionStatusBanner action={action} />
-      <SectionTitle>action</SectionTitle>
+      <OperationsStatusBanner
+        label={adminActionResultLabel(action)}
+        summary={adminActionPrimarySummary(action)}
+        tone={action.success ? "success" : "error"}
+      />
+      <OperationsSectionTitle>action</OperationsSectionTitle>
       <OperationsKeyValueRows
         rows={details.actionRows.map(([key, value]) => [
           key === "duration_ms" ? "duration" : key,
           key === "duration_ms" ? formatDuration(action.duration_ms) : value,
         ])}
       />
-      <SectionTitle>lineage</SectionTitle>
+      <OperationsSectionTitle>lineage</OperationsSectionTitle>
       <OperationsKeyValueRows rows={details.lineageRows} />
       <JsonViewer defaultExpanded title="summaries" value={details.summaries} />
       {details.failure ? (
         <JsonViewer defaultExpanded title="failure" value={details.failure} />
       ) : null}
-    </div>
-  );
-}
-
-function ActionStatusBanner({
-  action,
-}: {
-  action: RuntimeAdminActionInvocation;
-}) {
-  return (
-    <div
-      className={cn(
-        "grid grid-cols-[auto_minmax(0,1fr)] gap-2 border-b px-3 py-2 font-mono",
-        action.success
-          ? "border-[color-mix(in_srgb,var(--success)_32%,transparent)] bg-[color-mix(in_srgb,var(--success)_8%,transparent)]"
-          : "border-[color-mix(in_srgb,var(--error)_34%,transparent)] bg-[color-mix(in_srgb,var(--error)_9%,transparent)]"
-      )}
-    >
-      {action.success ? (
-        <CheckCircle2 className="mt-0.5 text-(--success)" size={14} />
-      ) : (
-        <AlertTriangle className="mt-0.5 text-(--error)" size={14} />
-      )}
-      <div className="min-w-0">
-        <div
-          className={cn(
-            "text-[11px] font-semibold",
-            action.success ? "text-(--success)" : "text-(--error)"
-          )}
-        >
-          {adminActionResultLabel(action)}
-        </div>
-        <div className="mt-0.5 truncate text-[10px] text-(--secondary)">
-          {adminActionPrimarySummary(action)}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SectionTitle({ children }: { children: string }) {
-  return (
-    <div className="border-b border-(--border-subtle) bg-[color-mix(in_srgb,var(--elevated)_52%,transparent)] px-3 py-1.5 font-mono text-[9px] font-semibold uppercase tracking-[0.08em] text-(--muted)">
-      {children}
     </div>
   );
 }

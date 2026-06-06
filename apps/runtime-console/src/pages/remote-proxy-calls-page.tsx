@@ -18,7 +18,11 @@ import {
   OperationsFilterChip,
   OperationsSearchInput,
 } from "./operations-filter";
-import { OperationsInspectorHeader } from "./operations-inspector";
+import {
+  OperationsInspectorHeader,
+  OperationsSectionTitle,
+  OperationsStatusBanner,
+} from "./operations-inspector";
 import { useOperationsInspectorLayout } from "./operations-layout";
 import { useOperationsSelection } from "./operations-selection";
 import {
@@ -527,6 +531,12 @@ function InspectorHeader({ call }: { call: RuntimeRemoteProxyCall | null }) {
 function RemoteCallInspector({ call }: { call: RuntimeRemoteProxyCall }) {
   return (
     <div className="grid">
+      <OperationsStatusBanner
+        label={remoteProxyCallResultLabel(call)}
+        summary={remoteCallPrimarySummary(call)}
+        tone={call.success ? "success" : call.retryable ? "warning" : "error"}
+      />
+      <OperationsSectionTitle>routing</OperationsSectionTitle>
       <OperationsKeyValueRows
         rows={[
           ["result", remoteProxyCallResultLabel(call)],
@@ -537,13 +547,19 @@ function RemoteCallInspector({ call }: { call: RuntimeRemoteProxyCall }) {
           ["remote", call.remote_path],
           ["remote_status", formatRemoteStatus(call.remote_status)],
           ["duration", formatDuration(call.duration_ms)],
+          ["retryable", String(call.retryable)],
+          ["occurred", call.occurred_at],
+          ["error_code", call.error_code ?? "-"],
+        ]}
+      />
+      <OperationsSectionTitle>lineage</OperationsSectionTitle>
+      <OperationsKeyValueRows
+        rows={[
+          ["story_node", call.id],
           ["request", call.request_id],
           ["correlation", call.correlation_id],
           ["trace", call.trace_id ?? "-"],
           ["span", call.span_id ?? "-"],
-          ["retryable", String(call.retryable)],
-          ["occurred", call.occurred_at],
-          ["error_code", call.error_code ?? "-"],
         ]}
       />
       <JsonViewer
@@ -554,6 +570,15 @@ function RemoteCallInspector({ call }: { call: RuntimeRemoteProxyCall }) {
       <JsonViewer title="error details" value={call.error_details} />
     </div>
   );
+}
+
+function remoteCallPrimarySummary(call: RuntimeRemoteProxyCall) {
+  const status = formatRemoteStatus(call.remote_status);
+  const route = `${call.method} ${call.declared_path}`;
+  if (!call.success) {
+    return call.error_code ? `${route} / ${call.error_code}` : route;
+  }
+  return `${route} / ${status}`;
 }
 
 function ResultPill({ call }: { call: RuntimeRemoteProxyCall }) {
