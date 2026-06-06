@@ -4255,6 +4255,41 @@ components:
       - operations
       - data
       - configuration
+    ConsoleNavigation:
+      type: object
+      required:
+      - workspace
+      properties:
+        group:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ConsoleNavigationGroup'
+        order:
+          type:
+          - integer
+          - 'null'
+          format: int32
+        workspace:
+          $ref: '#/components/schemas/ConsoleWorkspaceRef'
+    ConsoleNavigationGroup:
+      type: object
+      required:
+      - id
+      - label
+      properties:
+        icon:
+          type:
+          - string
+          - 'null'
+        id:
+          type: string
+        label:
+          type: string
+        order:
+          type:
+          - integer
+          - 'null'
+          format: int32
     ConsolePackage:
       type: object
       required:
@@ -4284,6 +4319,10 @@ components:
           type: string
         name:
           type: string
+        navigation:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ConsoleNavigation'
         package:
           $ref: '#/components/schemas/ConsolePackage'
         required_capabilities:
@@ -4291,6 +4330,20 @@ components:
           items:
             type: string
         route:
+          type: string
+    ConsoleWorkspaceRef:
+      type: object
+      required:
+      - id
+      - label
+      properties:
+        icon:
+          type:
+          - string
+          - 'null'
+        id:
+          type: string
+        label:
           type: string
     CreateUserRequest:
       type: object

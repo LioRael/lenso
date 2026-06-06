@@ -597,6 +597,19 @@ export type ConfigWriteResponse = {
 
 export type ConsoleArea = string;
 
+export type ConsoleNavigation = {
+  group?: unknown;
+  order?: number | null;
+  workspace: ConsoleWorkspaceRef;
+};
+
+export type ConsoleNavigationGroup = {
+  icon?: string | null;
+  id: string;
+  label: string;
+  order?: number | null;
+};
+
 export type ConsolePackage = {
   export: string;
   name: string;
@@ -607,9 +620,16 @@ export type ConsoleSurface = {
   icon?: string | null;
   label: string;
   name: string;
+  navigation?: unknown;
   package: ConsolePackage;
   required_capabilities?: Array<string>;
   route: string;
+};
+
+export type ConsoleWorkspaceRef = {
+  icon?: string | null;
+  id: string;
+  label: string;
 };
 
 export type CreateUserRequest = {
