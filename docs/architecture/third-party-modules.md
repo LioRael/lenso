@@ -193,10 +193,10 @@ The local scaffold command is optimized for project-owned linked modules:
 pnpm create:module billing --with-console
 ```
 
-Third-party scaffolding should become a separate remote-oriented lane:
+Third-party scaffolding uses a separate remote-oriented lane:
 
 ```sh
-lenso module create billing --remote
+pnpm create:module billing --remote --output-dir ../module-packages
 lenso module add https://example.com/.well-known/lenso/module-manifest.json
 ```
 

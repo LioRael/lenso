@@ -263,4 +263,66 @@ describe("module scaffold CLI", () => {
       )
     ).resolves.toContain('"@lenso/billing-console": "workspace:*"');
   });
+
+  test("creates a standalone remote module package", async () => {
+    const outputRoot = await mkdtemp(
+      path.join(os.tmpdir(), "lenso-remote-module-cli-")
+    );
+    tempRoots.push(outputRoot);
+
+    await expect(
+      runConsolePackageCli([
+        "module",
+        "create",
+        "billing",
+        "--remote",
+        "--output-dir",
+        outputRoot,
+      ])
+    ).resolves.toBe(0);
+
+    const packageRoot = path.join(outputRoot, "lenso-billing");
+    const manifest = JSON.parse(
+      await readFile(path.join(packageRoot, "lenso.module.json"), "utf-8")
+    );
+    expect(manifest).toMatchObject({
+      capabilities: ["billing.read"],
+      console: [
+        {
+          package: {
+            export: "billingConsoleModule",
+            name: "@vendor/lenso-billing-console",
+          },
+          route: "/data/billing",
+        },
+      ],
+      http_routes: [],
+      name: "billing",
+      source: "remote",
+      version: "0.1.0",
+    });
+
+    await expect(
+      readFile(path.join(packageRoot, "backend/README.md"), "utf-8")
+    ).resolves.toContain("Remote module backend");
+    const consolePackageJson = JSON.parse(
+      await readFile(path.join(packageRoot, "console/package.json"), "utf-8")
+    );
+    expect(consolePackageJson).toMatchObject({
+      name: "@vendor/lenso-billing-console",
+      peerDependencies: {
+        "@lenso/runtime-console-api": "^0.1.0",
+      },
+      private: false,
+    });
+    await expect(
+      readFile(path.join(packageRoot, "console/src/index.tsx"), "utf-8")
+    ).resolves.toContain("billingConsoleModule");
+    await expect(
+      readFile(path.join(packageRoot, "contracts/README.md"), "utf-8")
+    ).resolves.toContain("Module-owned contracts");
+    await expect(
+      readFile(path.join(packageRoot, "README.md"), "utf-8")
+    ).resolves.toContain("lenso module add");
+  });
 });

@@ -125,6 +125,13 @@ package in the same command:
 pnpm create:module billing --with-console
 ```
 
+For a third-party remote package that should not compile into the host
+workspace, use the remote scaffold:
+
+```bash
+pnpm create:module billing --remote --output-dir ../modules
+```
+
 See `docs/console-package-template.md` before adding a package. The short path is:
 
 1. Add `packages/<name>/package.json`.

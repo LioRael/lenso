@@ -158,6 +158,7 @@ const printUsage = () => {
 
 Options:
   --repo-root <path>
+  --output-dir <path>
   --runtime-console-root <path>
   --area <data|runtime|operations|configuration>
   --label <label>
@@ -165,7 +166,11 @@ Options:
   --capability <capability>
   --icon <icon>
   --source <installed|first_party>
+  --remote
+  --with-console
   --package-slug <name-console>
+  --package-scope <@scope>
+  --package-name <@scope/name>
   --surface-name <name>
   --dry-run`);
 };
@@ -188,6 +193,10 @@ const parseOptions = (args) => {
     }
     if (arg === "--with-console") {
       parsed.withConsole = true;
+      continue;
+    }
+    if (arg === "--remote") {
+      parsed.remote = true;
       continue;
     }
     if (arg === "--help" || arg === "-h") {
@@ -368,8 +377,10 @@ const queuePackageFiles = ({
   moduleName,
   packageDir,
   packageName,
+  packagePrivate,
   pendingWrites,
   route,
+  runtimeConsoleApiVersion,
   registrySource,
   surfaceName,
 }) => {
@@ -397,10 +408,10 @@ const queuePackageFiles = ({
         },
         name: packageName,
         peerDependencies: {
-          "@lenso/runtime-console-api": "workspace:*",
+          "@lenso/runtime-console-api": runtimeConsoleApiVersion,
           react: "^19.1.0",
         },
-        private: true,
+        private: packagePrivate,
         type: "module",
         version: "0.1.0",
       },
@@ -543,7 +554,8 @@ const buildConsolePackageContext = ({ options, runtimeConsoleRoot }) => {
   const paths = runtimeConsolePaths(runtimeConsoleRoot);
   const moduleId = slugify(options.moduleId);
   const packageSlug = slugify(options.packageSlug ?? `${moduleId}-console`);
-  const packageName = `@lenso/${packageSlug}`;
+  const packageName =
+    options.packageName ?? `${options.packageScope ?? "@lenso"}/${packageSlug}`;
   const area = options.area ?? "data";
   const label = options.label ?? titleCase(moduleId);
   const route = options.route ?? `/${area}/${moduleId}`;
@@ -568,12 +580,147 @@ const buildConsolePackageContext = ({ options, runtimeConsoleRoot }) => {
     moduleName,
     packageDir,
     packageName,
+    packagePrivate: options.packagePrivate ?? true,
     packageSlug,
     paths,
     registrySource,
     route,
+    runtimeConsoleApiVersion: options.runtimeConsoleApiVersion ?? "workspace:*",
     surfaceName,
   };
+};
+
+const queueRemoteConsolePackageFiles = ({ packageContext, pendingWrites }) => {
+  queuePackageFiles({ ...packageContext, pendingWrites });
+};
+
+const remoteManifestJson = ({ packageContext }) => ({
+  admin: null,
+  capabilities: [packageContext.capability],
+  console: [
+    {
+      area: packageContext.area,
+      icon: packageContext.icon,
+      label: packageContext.label,
+      name: packageContext.surfaceName,
+      package: {
+        export: packageContext.moduleName,
+        name: packageContext.packageName,
+      },
+      required_capabilities: [packageContext.capability],
+      route: packageContext.route,
+    },
+  ],
+  http_routes: [],
+  name: packageContext.moduleId,
+  runtime: {
+    functions: [],
+  },
+  source: "remote",
+  version: "0.1.0",
+});
+
+const remotePackageReadme = ({
+  moduleId,
+  packageRootName,
+}) => `# ${titleCase(moduleId)}
+
+Remote Lenso module package scaffold.
+
+## Shape
+
+- \`lenso.module.json\`: install-time module manifest.
+- \`backend/\`: remote module backend implementation.
+- \`console/\`: optional Runtime Console package.
+- \`contracts/\`: module-owned event and runtime-function contracts.
+
+## Install
+
+Expose \`lenso.module.json\` from a stable endpoint such as:
+
+\`\`\`text
+GET /.well-known/lenso/module-manifest.json
+\`\`\`
+
+Then install it into a host project:
+
+\`\`\`sh
+lenso module add https://example.com/.well-known/lenso/module-manifest.json
+\`\`\`
+
+This scaffold lives in \`${packageRootName}\` and should stay separate from a
+host application's linked \`modules/\` workspace.
+`;
+
+const remoteBackendReadme = ({ moduleId }) => `# Remote module backend
+
+Implement the ${moduleId} backend in the language or framework you prefer.
+
+The backend should expose the remote module protocol expected by
+\`platform-module-remote\`, including a stable manifest endpoint and any
+declared schema-admin, action, HTTP proxy, or runtime-function endpoints.
+
+The host owns auth, capability enforcement, proxy policy, runtime queues,
+retries, Runtime Stories, and Technical Operations records.
+`;
+
+const remoteContractsReadme = () => `# Module-owned contracts
+
+Keep event and runtime-function JSON Schema contracts here.
+
+The host may validate these before installing or enabling a remote module.
+`;
+
+const queueRemoteModuleFiles = ({
+  packageContext,
+  packageRoot,
+  packageRootName,
+  pendingWrites,
+}) => {
+  queueWrite(
+    pendingWrites,
+    path.join(packageRoot, "lenso.module.json"),
+    `${JSON.stringify(remoteManifestJson({ packageContext }), null, 2)}\n`
+  );
+  queueWrite(
+    pendingWrites,
+    path.join(packageRoot, "README.md"),
+    remotePackageReadme({
+      moduleId: packageContext.moduleId,
+      packageRootName,
+    })
+  );
+  queueWrite(
+    pendingWrites,
+    path.join(packageRoot, "backend/README.md"),
+    remoteBackendReadme({ moduleId: packageContext.moduleId })
+  );
+  queueWrite(
+    pendingWrites,
+    path.join(packageRoot, "backend/openapi.yaml"),
+    `openapi: 3.1.0
+info:
+  title: ${packageContext.label} Remote Module
+  version: 0.1.0
+paths: {}
+`
+  );
+  queueWrite(
+    pendingWrites,
+    path.join(packageRoot, "contracts/README.md"),
+    remoteContractsReadme()
+  );
+  queueWrite(
+    pendingWrites,
+    path.join(packageRoot, "contracts/events/.gitkeep"),
+    ""
+  );
+  queueWrite(
+    pendingWrites,
+    path.join(packageRoot, "contracts/runtime-functions/.gitkeep"),
+    ""
+  );
+  queueRemoteConsolePackageFiles({ packageContext, pendingWrites });
 };
 
 const writePendingFiles = async (pendingWrites) => {
@@ -733,6 +880,11 @@ const queueModuleFiles = ({
 };
 
 const createModule = async ({ options }) => {
+  if (options.remote) {
+    await createRemoteModule({ options });
+    return;
+  }
+
   const repoRoot = options.repoRoot
     ? path.resolve(options.repoRoot)
     : await findRepoRoot(process.cwd());
@@ -799,6 +951,59 @@ const createModule = async ({ options }) => {
   console.log(`- cargo test --locked -p ${moduleCrate}`);
   console.log("- just rust-check");
   console.log("- just arch-check");
+};
+
+const createRemoteModule = async ({ options }) => {
+  const moduleId = slugify(options.moduleId);
+  if (!moduleId) {
+    throw new Error("Module id is required");
+  }
+  const outputRoot = path.resolve(options.outputDir ?? process.cwd());
+  const packageRootName = slugify(options.packageRoot ?? `lenso-${moduleId}`);
+  const packageRoot = path.join(outputRoot, packageRootName);
+  const packageContext = buildConsolePackageContext({
+    options: {
+      ...options,
+      moduleId,
+      packageName:
+        options.packageName ??
+        `${options.packageScope ?? "@vendor"}/lenso-${moduleId}-console`,
+      packagePrivate: false,
+      packageSlug: `${moduleId}-console`,
+      runtimeConsoleApiVersion: "^0.1.0",
+      source: options.source ?? "installed",
+    },
+    runtimeConsoleRoot: packageRoot,
+  });
+  packageContext.packageDir = path.join(packageRoot, "console");
+
+  if (await pathExists(packageRoot)) {
+    throw new Error(`Remote module package already exists: ${packageRoot}`);
+  }
+
+  const pendingWrites = new Map();
+  queueRemoteModuleFiles({
+    packageContext,
+    packageRoot,
+    packageRootName,
+    pendingWrites,
+  });
+
+  if (options.dryRun) {
+    console.log("Remote module dry run:");
+    for (const filePath of pendingWrites.keys()) {
+      console.log(`- ${path.relative(outputRoot, filePath)}`);
+    }
+    return;
+  }
+
+  await writePendingFiles(pendingWrites);
+
+  console.log(`Created remote module package ${packageRootName}.`);
+  console.log("Next steps:");
+  console.log("- expose lenso.module.json from a stable module URL");
+  console.log("- publish or install the console package");
+  console.log("- lenso module add <manifest-url>");
 };
 
 const createConsolePackage = async ({ defaultRuntimeConsoleRoot, options }) => {
