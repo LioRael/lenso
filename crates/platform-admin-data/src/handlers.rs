@@ -777,6 +777,7 @@ mod tests {
                 },
                 icon: None,
                 required_capabilities: vec!["remote_crm.contacts.read".to_owned()],
+                navigation: None,
             }],
             story_display: Vec::new(),
             capabilities: vec!["remote_crm.contacts.write".to_owned()],

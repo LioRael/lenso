@@ -78,6 +78,7 @@ fn platform_story_manifest() -> ModuleManifest {
             },
             icon: Some("workflow".to_owned()),
             required_capabilities: vec![STORY_CONSOLE_CAPABILITY.to_owned()],
+            navigation: None,
         }])
         .build()
 }

@@ -114,6 +114,7 @@ pub fn manifest() -> ModuleManifest {
             },
             icon: Some("database".to_owned()),
             required_capabilities: vec!["identity.users.read".to_owned()],
+            navigation: None,
         }])
         .runtime(RuntimeSurface {
             functions: vec![RuntimeFunctionDeclaration {

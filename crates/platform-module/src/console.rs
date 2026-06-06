@@ -14,6 +14,8 @@ pub struct ConsoleSurface {
     pub icon: Option<String>,
     #[serde(default)]
     pub required_capabilities: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub navigation: Option<ConsoleNavigation>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -30,4 +32,31 @@ pub enum ConsoleArea {
 pub struct ConsolePackage {
     pub name: String,
     pub export: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct ConsoleNavigation {
+    pub workspace: ConsoleWorkspaceRef,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<ConsoleNavigationGroup>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub order: Option<i32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct ConsoleWorkspaceRef {
+    pub id: String,
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct ConsoleNavigationGroup {
+    pub id: String,
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub order: Option<i32>,
 }

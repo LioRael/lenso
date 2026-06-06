@@ -630,6 +630,53 @@ fn lint_console_surfaces(console: &[ConsoleSurface], lints: &mut Vec<ModuleManif
                     .to_owned(),
             });
         }
+
+        if let Some(navigation) = &surface.navigation {
+            lint_console_navigation(&subject, navigation, lints);
+        }
+    }
+}
+
+fn lint_console_navigation(
+    subject: &str,
+    navigation: &crate::ConsoleNavigation,
+    lints: &mut Vec<ModuleManifestLint>,
+) {
+    let workspace_subject = format!("{subject}.navigation.workspace");
+    if !valid_console_navigation_id(&navigation.workspace.id) {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Warning,
+            subject: format!("{workspace_subject}.id"),
+            message: "Console workspace id should be a path-safe identifier.".to_owned(),
+            suggestion: "Use ASCII letters, digits, underscore, or hyphen.".to_owned(),
+        });
+    }
+    if !present(&navigation.workspace.label) {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Warning,
+            subject: format!("{workspace_subject}.label"),
+            message: "Console workspace is missing an operator-facing label.".to_owned(),
+            suggestion: "Set a short workspace label such as CRM.".to_owned(),
+        });
+    }
+    if let Some(group) = &navigation.group {
+        let group_subject = format!("{subject}.navigation.group");
+        if !valid_console_navigation_id(&group.id) {
+            lints.push(ModuleManifestLint {
+                severity: ModuleManifestLintSeverity::Warning,
+                subject: format!("{group_subject}.id"),
+                message: "Console navigation group id should be a path-safe identifier.".to_owned(),
+                suggestion: "Use ASCII letters, digits, underscore, or hyphen.".to_owned(),
+            });
+        }
+        if !present(&group.label) {
+            lints.push(ModuleManifestLint {
+                severity: ModuleManifestLintSeverity::Warning,
+                subject: format!("{group_subject}.label"),
+                message: "Console navigation group is missing an operator-facing label.".to_owned(),
+                suggestion: "Set a short group label such as Customers.".to_owned(),
+            });
+        }
     }
 }
 
@@ -805,6 +852,10 @@ fn valid_console_surface_name(value: &str) -> bool {
         })
 }
 
+fn valid_console_navigation_id(value: &str) -> bool {
+    valid_console_surface_name(value)
+}
+
 fn valid_console_package_name(value: &str) -> bool {
     present(value)
         && !value.contains(' ')
@@ -953,6 +1004,7 @@ mod tests {
                 },
                 icon: Some("workflow".to_owned()),
                 required_capabilities: vec!["runtime.stories.read".to_owned()],
+                navigation: None,
             }])
             .capabilities(vec!["runtime.stories.read".to_owned()])
             .build();
@@ -964,6 +1016,78 @@ mod tests {
         let back: ModuleManifest = serde_json::from_str(&json).expect("deserialize");
 
         assert_eq!(manifest, back);
+    }
+
+    #[test]
+    fn console_surface_navigation_round_trips() {
+        let surface = ConsoleSurface {
+            name: "contacts".to_owned(),
+            label: "Contacts".to_owned(),
+            area: ConsoleArea::Data,
+            route: "/crm/contacts".to_owned(),
+            package: crate::ConsolePackage {
+                name: "@lenso/crm-console".to_owned(),
+                export: "crmConsoleModule".to_owned(),
+            },
+            icon: Some("users".to_owned()),
+            required_capabilities: vec!["crm.contacts.read".to_owned()],
+            navigation: Some(crate::ConsoleNavigation {
+                workspace: crate::ConsoleWorkspaceRef {
+                    id: "crm".to_owned(),
+                    label: "CRM".to_owned(),
+                    icon: Some("briefcase".to_owned()),
+                },
+                group: Some(crate::ConsoleNavigationGroup {
+                    id: "customers".to_owned(),
+                    label: "Customers".to_owned(),
+                    icon: None,
+                    order: Some(20),
+                }),
+                order: Some(10),
+            }),
+        };
+
+        let json = serde_json::to_string(&surface).expect("serialize");
+        let back: ConsoleSurface = serde_json::from_str(&json).expect("deserialize");
+
+        assert_eq!(back, surface);
+    }
+
+    #[test]
+    fn console_navigation_lints_empty_workspace_label() {
+        let manifest = ModuleManifest::builder("crm")
+            .capabilities(vec!["crm.contacts.read".to_owned()])
+            .console(vec![ConsoleSurface {
+                name: "contacts".to_owned(),
+                label: "Contacts".to_owned(),
+                area: ConsoleArea::Data,
+                route: "/crm/contacts".to_owned(),
+                package: crate::ConsolePackage {
+                    name: "@lenso/crm-console".to_owned(),
+                    export: "crmConsoleModule".to_owned(),
+                },
+                icon: None,
+                required_capabilities: vec!["crm.contacts.read".to_owned()],
+                navigation: Some(crate::ConsoleNavigation {
+                    workspace: crate::ConsoleWorkspaceRef {
+                        id: "crm".to_owned(),
+                        label: "".to_owned(),
+                        icon: None,
+                    },
+                    group: None,
+                    order: None,
+                }),
+            }])
+            .build();
+
+        let subjects: Vec<_> = lint_module_manifest(ModuleSource::Linked, &manifest)
+            .into_iter()
+            .map(|lint| lint.subject)
+            .collect();
+
+        assert!(
+            subjects.contains(&"console.surface.contacts.navigation.workspace.label".to_owned())
+        );
     }
 
     #[test]
@@ -981,6 +1105,7 @@ mod tests {
                     },
                     icon: None,
                     required_capabilities: vec!["runtime.stories.read".to_owned()],
+                    navigation: None,
                 },
                 ConsoleSurface {
                     name: "stories".to_owned(),
@@ -993,6 +1118,7 @@ mod tests {
                     },
                     icon: None,
                     required_capabilities: vec![],
+                    navigation: None,
                 },
             ])
             .build();

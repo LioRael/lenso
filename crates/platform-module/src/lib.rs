@@ -32,7 +32,10 @@ pub use admin::{
 pub use admin_data::{AdminActionSource, AdminDataSource, AdminListQuery, AdminPage};
 pub use admin_schema::{AdminSchema, EntitySchema, FieldSchema, FieldType};
 pub use binding::ModuleBinding;
-pub use console::{ConsoleArea, ConsolePackage, ConsoleSurface};
+pub use console::{
+    ConsoleArea, ConsoleNavigation, ConsoleNavigationGroup, ConsolePackage, ConsoleSurface,
+    ConsoleWorkspaceRef,
+};
 pub use http::{
     ModuleHttpMethod, ModuleHttpRoute, ModuleRouteLint, ModuleRouteLintSeverity,
     lint_module_http_routes,
