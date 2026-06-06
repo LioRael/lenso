@@ -6,6 +6,7 @@ import { ResizeHandle } from "../components/runtime/resize-handle";
 import { useRuntimeConsole } from "../components/runtime/runtime-console-context";
 import {
   buildTechnicalOperationGroups,
+  technicalOperationOperationsTarget,
   technicalOperationsStateLabel,
   type TechnicalOperationView,
 } from "../components/runtime/technical-operations-model";
@@ -633,6 +634,8 @@ function FunctionTechnicalOperationRow({
 }: {
   operation: TechnicalOperationView;
 }) {
+  const { openAdminActions, openRemoteCalls } = useRuntimeConsole();
+  const operationsTarget = technicalOperationOperationsTarget(operation);
   return (
     <div className="border-t border-(--border-subtle) px-3 py-2 font-mono text-xs">
       <div className="flex min-w-0 items-start gap-2">
@@ -684,6 +687,29 @@ function FunctionTechnicalOperationRow({
             <span>+{formatRuntimeDuration(operation.relativeStartMs)}</span>
           </div>
         </div>
+        {operationsTarget ? (
+          <button
+            aria-label={`Open ${operation.sourceLabel} operations`}
+            className="grid size-6 shrink-0 place-items-center rounded-xs border border-(--border-subtle) bg-(--elevated) text-(--muted) hover:text-(--foreground)"
+            onClick={() => {
+              if (operationsTarget.kind === "remote_calls") {
+                openRemoteCalls(
+                  operationsTarget.correlationId,
+                  operationsTarget.selectedId
+                );
+                return;
+              }
+              openAdminActions(
+                operationsTarget.correlationId,
+                operationsTarget.selectedId
+              );
+            }}
+            title={`Open ${operation.sourceLabel} operations`}
+            type="button"
+          >
+            <ExternalLink size={12} />
+          </button>
+        ) : null}
       </div>
     </div>
   );

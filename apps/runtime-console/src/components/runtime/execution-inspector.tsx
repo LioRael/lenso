@@ -1,4 +1,11 @@
-import { ArrowRight, Copy, Network, RotateCcw, X } from "lucide-react";
+import {
+  ArrowRight,
+  Copy,
+  ExternalLink,
+  Network,
+  RotateCcw,
+  X,
+} from "lucide-react";
 
 import type {
   RuntimeStory,
@@ -35,6 +42,7 @@ import { useRuntimeConsole } from "./runtime-console-context";
 import { RuntimeStatusBadge } from "./runtime-status-badge";
 import {
   buildTechnicalOperationGroups,
+  technicalOperationOperationsTarget,
   technicalOperationsStateLabel,
   type TechnicalOperationGroup,
   type TechnicalOperationView,
@@ -475,9 +483,11 @@ function TechnicalOperationRow({
 }: {
   operation: TechnicalOperationView;
 }) {
+  const { openAdminActions, openRemoteCalls } = useRuntimeConsole();
+  const operationsTarget = technicalOperationOperationsTarget(operation);
   return (
     <div className="border-t border-(--border-subtle) bg-(--background)">
-      <div className="grid min-w-full grid-cols-[72px_82px_minmax(180px,1fr)_72px_64px_58px] items-start gap-2 px-3 py-2 font-mono text-xs">
+      <div className="grid min-w-full grid-cols-[72px_82px_minmax(180px,1fr)_72px_64px_58px_24px] items-start gap-2 px-3 py-2 font-mono text-xs">
         <span className="w-fit rounded-xs border border-(--border-subtle) bg-(--elevated) px-1.5 py-0.5 text-[10px] font-semibold uppercase text-(--accent)">
           {operation.category}
         </span>
@@ -516,6 +526,31 @@ function TechnicalOperationRow({
         <span className="text-right text-[11px] leading-5 text-(--muted)">
           +{formatRuntimeDuration(operation.relativeStartMs)}
         </span>
+        {operationsTarget ? (
+          <button
+            aria-label={`Open ${operation.sourceLabel} operations`}
+            className="grid size-5 place-items-center rounded-xs border border-(--border-subtle) bg-(--elevated) text-(--muted) hover:text-(--foreground)"
+            onClick={() => {
+              if (operationsTarget.kind === "remote_calls") {
+                openRemoteCalls(
+                  operationsTarget.correlationId,
+                  operationsTarget.selectedId
+                );
+                return;
+              }
+              openAdminActions(
+                operationsTarget.correlationId,
+                operationsTarget.selectedId
+              );
+            }}
+            title={`Open ${operation.sourceLabel} operations`}
+            type="button"
+          >
+            <ExternalLink size={11} />
+          </button>
+        ) : (
+          <span />
+        )}
       </div>
       <JsonViewer title="safe attributes" value={operation.safeAttributes} />
     </div>

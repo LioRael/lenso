@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import type { TechnicalOperation } from "../../data/mock-runtime";
 import {
   buildTechnicalOperationGroups,
+  technicalOperationOperationsTarget,
   technicalOperationSourceLabel,
   technicalOperationSummary,
   technicalOperationsStateLabel,
@@ -240,6 +241,43 @@ describe("technical operations model", () => {
     expect(technicalOperationSummary(adminAction)).toBe(
       "remote-crm / sync_contacts / capability remote_crm.contacts.sync / request req_admin_action"
     );
+  });
+
+  test("builds horizontal operations targets for remote and admin sources", () => {
+    const remoteProxy = operations.find(
+      (operation) => operation.source === "remote_proxy"
+    );
+    expect(remoteProxy).toBeDefined();
+    expect(technicalOperationOperationsTarget(remoteProxy!)).toEqual({
+      correlationId: "corr_1",
+      kind: "remote_calls",
+      selectedId: "rproxy_1",
+    });
+
+    const adminAction: TechnicalOperation = {
+      attributes: {
+        action_name: "sync_contacts",
+        module_name: "remote-crm",
+        request_id: "req_admin_action",
+      },
+      category: "admin",
+      correlationId: "corr_2",
+      durationMs: 18,
+      endedAt: "2026-06-01T10:00:00.318Z",
+      id: "admin_action:adminaction_req_admin_action",
+      name: "Sync contacts",
+      relatedNodeId: "adminaction_req_admin_action",
+      source: "admin_action",
+      startedAt: "2026-06-01T10:00:00.300Z",
+      status: "ok",
+      storyId: "corr_2",
+    };
+
+    expect(technicalOperationOperationsTarget(adminAction)).toEqual({
+      correlationId: "corr_2",
+      kind: "admin_actions",
+      selectedId: "adminaction_req_admin_action",
+    });
   });
 
   test("returns execution-specific empty and error copy", () => {

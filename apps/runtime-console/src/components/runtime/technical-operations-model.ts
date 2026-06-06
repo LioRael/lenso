@@ -14,6 +14,18 @@ export type TechnicalOperationGroup = {
   operations: TechnicalOperationView[];
 };
 
+export type TechnicalOperationOperationsTarget =
+  | {
+      kind: "remote_calls";
+      correlationId: string;
+      selectedId?: string;
+    }
+  | {
+      kind: "admin_actions";
+      correlationId: string;
+      selectedId?: string;
+    };
+
 export function buildTechnicalOperationGroups(input: {
   executionOperations: TechnicalOperation[];
   selectedNodeId: string;
@@ -160,6 +172,28 @@ export function technicalOperationSummary(operation: TechnicalOperation) {
   return parts.length > 0 ? parts.join(" / ") : undefined;
 }
 
+export function technicalOperationOperationsTarget(
+  operation: TechnicalOperation
+): TechnicalOperationOperationsTarget | null {
+  if (operation.source === "remote_proxy") {
+    return {
+      kind: "remote_calls",
+      correlationId: operation.correlationId,
+      ...optionalSelectedId(remoteProxyCallId(operation)),
+    };
+  }
+
+  if (operation.source === "admin_action") {
+    return {
+      kind: "admin_actions",
+      correlationId: operation.correlationId,
+      ...optionalSelectedId(adminActionId(operation)),
+    };
+  }
+
+  return null;
+}
+
 function adminActionOperationSummary(operation: TechnicalOperation) {
   const moduleName = stringAttribute(operation.attributes.module_name);
   const actionName = stringAttribute(operation.attributes.action_name);
@@ -175,6 +209,29 @@ function adminActionOperationSummary(operation: TechnicalOperation) {
   ].filter(Boolean);
 
   return parts.length > 0 ? parts.join(" / ") : undefined;
+}
+
+function remoteProxyCallId(operation: TechnicalOperation) {
+  return (
+    stringAttribute(operation.attributes.remote_proxy_call_id) ??
+    stripKnownPrefix(operation.id, "remote_proxy:")
+  );
+}
+
+function adminActionId(operation: TechnicalOperation) {
+  return (
+    stringAttribute(operation.attributes.admin_action_id) ??
+    operation.relatedNodeId ??
+    stripKnownPrefix(operation.id, "admin_action:")
+  );
+}
+
+function optionalSelectedId(selectedId: string | undefined) {
+  return selectedId ? { selectedId } : {};
+}
+
+function stripKnownPrefix(value: string, prefix: string) {
+  return value.startsWith(prefix) ? value.slice(prefix.length) : undefined;
 }
 
 function remoteRuntimeOperationSummary(operation: TechnicalOperation) {
