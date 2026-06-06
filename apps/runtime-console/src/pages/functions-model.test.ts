@@ -6,6 +6,9 @@ import {
   distinctFunctionMetadata,
   filterFunctionRuns,
   formatFunctionDuration,
+  functionInspectorDetails,
+  functionPrimarySummary,
+  functionStatusTone,
   runDurationMs,
   summarizeFunctionRuns,
 } from "./functions-model";
@@ -115,6 +118,35 @@ describe("functions model", () => {
     expect(runDurationMs(runs[0]!)).toBe(1200);
     expect(formatFunctionDuration(42)).toBe("42ms");
     expect(formatFunctionDuration(1200)).toBe("1.2s");
+  });
+
+  test("derives inspector status tone and primary summaries", () => {
+    expect(functionStatusTone("completed")).toBe("success");
+    expect(functionStatusTone("running")).toBe("warning");
+    expect(functionStatusTone("failed")).toBe("warning");
+    expect(functionStatusTone("dead")).toBe("error");
+    expect(functionPrimarySummary(runs[0]!)).toBe(
+      "remote_crm.sync_contact.v1 / remote-crm / 1/3"
+    );
+    expect(functionPrimarySummary(runs[1]!)).toBe("permission denied");
+  });
+
+  test("builds inspector run context and lineage rows", () => {
+    const details = functionInspectorDetails(runs[0]!, {
+      actor: "system",
+      duration: "1.2s",
+    });
+
+    expect(details.statusTone).toBe("success");
+    expect(details.runRows).toContainEqual([
+      "function",
+      "remote_crm.sync_contact.v1",
+    ]);
+    expect(details.runRows).toContainEqual(["module", "remote-crm"]);
+    expect(details.runRows).toContainEqual(["duration", "1.2s"]);
+    expect(details.lineageRows).toContainEqual(["id", "fn_remote"]);
+    expect(details.lineageRows).toContainEqual(["correlation", "corr_remote"]);
+    expect(details.lineageRows).toContainEqual(["actor", "system"]);
   });
 });
 

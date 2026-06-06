@@ -20,6 +20,13 @@ export type FunctionRunAggregate = {
   avgDurationMs: number;
 };
 
+export type FunctionInspectorDetails = {
+  statusTone: "success" | "warning" | "error";
+  primarySummary: string;
+  runRows: Array<[string, string]>;
+  lineageRows: Array<[string, string]>;
+};
+
 export const functionStatusFilters: FunctionStatusFilter[] = [
   "all",
   "pending",
@@ -146,6 +153,63 @@ export function formatFunctionDuration(ms: number) {
     return `${ms}ms`;
   }
   return `${(ms / 1000).toFixed(1)}s`;
+}
+
+export function functionStatusTone(
+  status: RuntimeStatus
+): FunctionInspectorDetails["statusTone"] {
+  if (status === "completed") {
+    return "success";
+  }
+  if (status === "dead") {
+    return "error";
+  }
+  return "warning";
+}
+
+export function functionPrimarySummary(run: FunctionRun) {
+  if (run.lastError) {
+    return run.lastError;
+  }
+  const queue = run.runtimeDeclaration?.queue;
+  const attempts = `${run.attempts}/${run.maxAttempts}`;
+  return queue
+    ? `${run.functionName} / ${queue} / ${attempts}`
+    : run.functionName;
+}
+
+export function functionInspectorDetails(
+  run: FunctionRun,
+  options: {
+    actor: string;
+    duration: string;
+  }
+): FunctionInspectorDetails {
+  return {
+    lineageRows: [
+      ["id", run.id],
+      ["correlation", run.correlationId],
+      ["actor", options.actor],
+      ["locked_by", run.lockedBy ?? "-"],
+    ],
+    primarySummary: functionPrimarySummary(run),
+    runRows: [
+      ["status", run.status],
+      ["function", run.functionName],
+      ["module", run.runtimeDeclaration?.moduleName ?? "-"],
+      ["source", run.runtimeDeclaration?.moduleSource ?? "-"],
+      ["queue", run.runtimeDeclaration?.queue ?? "-"],
+      ["schema", run.runtimeDeclaration?.inputSchema ?? "-"],
+      ["version", String(run.runtimeDeclaration?.version ?? "-")],
+      ["attempts", `${run.attempts}/${run.maxAttempts}`],
+      ["duration", options.duration],
+      ["created", run.createdAt],
+      ["started", run.startedAt ?? "-"],
+      ["completed", run.completedAt ?? "-"],
+      ["error", run.lastError ?? "-"],
+    ],
+    statusTone: functionStatusTone(run.status),
+  };
 }
 
 function aggregateKey(run: FunctionRun, groupBy: FunctionAggregateGroup) {

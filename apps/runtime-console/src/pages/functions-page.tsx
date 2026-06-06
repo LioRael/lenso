@@ -27,6 +27,7 @@ import {
   distinctFunctionMetadata,
   filterFunctionRuns,
   formatFunctionDuration,
+  functionInspectorDetails,
   functionStatusFilters,
   runDurationMs,
   summarizeFunctionRuns,
@@ -38,7 +39,11 @@ import {
   OperationsFilterChip,
   OperationsSearchInput,
 } from "./operations-filter";
-import { OperationsInspectorHeader } from "./operations-inspector";
+import {
+  OperationsInspectorHeader,
+  OperationsSectionTitle,
+  OperationsStatusBanner,
+} from "./operations-inspector";
 import { useOperationsInspectorLayout } from "./operations-layout";
 import { useOperationsSelection } from "./operations-selection";
 import {
@@ -528,6 +533,10 @@ function FunctionInspector({ run }: { run: FunctionRun }) {
       operationsQuery.data,
     ]
   );
+  const details = functionInspectorDetails(displayRun, {
+    actor: actorLabel(displayRun.actor),
+    duration: formatFunctionDuration(runDurationMs(displayRun)),
+  });
   return (
     <div className="grid">
       {detailQuery.isFetching ? (
@@ -538,33 +547,22 @@ function FunctionInspector({ run }: { run: FunctionRun }) {
           tone="error"
         />
       ) : null}
-      <OperationsKeyValueRows
-        rows={[
-          ["status", displayRun.status],
-          ["function", displayRun.functionName],
-          ["id", displayRun.id],
-          ["module", displayRun.runtimeDeclaration?.moduleName ?? "-"],
-          ["source", displayRun.runtimeDeclaration?.moduleSource ?? "-"],
-          ["queue", displayRun.runtimeDeclaration?.queue ?? "-"],
-          ["schema", displayRun.runtimeDeclaration?.inputSchema ?? "-"],
-          ["version", String(displayRun.runtimeDeclaration?.version ?? "-")],
-          ["attempts", `${displayRun.attempts}/${displayRun.maxAttempts}`],
-          ["duration", formatFunctionDuration(runDurationMs(displayRun))],
-          ["locked_by", displayRun.lockedBy ?? "-"],
-          ["correlation", displayRun.correlationId],
-          ["actor", actorLabel(displayRun.actor)],
-          ["created", displayRun.createdAt],
-          ["started", displayRun.startedAt ?? "-"],
-          ["completed", displayRun.completedAt ?? "-"],
-          ["error", displayRun.lastError ?? "-"],
-        ]}
+      <OperationsStatusBanner
+        label={displayRun.status}
+        summary={details.primarySummary}
+        tone={details.statusTone}
       />
+      <OperationsSectionTitle>run</OperationsSectionTitle>
+      <OperationsKeyValueRows rows={details.runRows} />
+      <OperationsSectionTitle>lineage</OperationsSectionTitle>
+      <OperationsKeyValueRows rows={details.lineageRows} />
       <FunctionTechnicalOperations
         error={operationsQuery.error}
         groups={operationGroups}
         isError={operationsQuery.isError}
         isLoading={operationsQuery.isLoading}
       />
+      <OperationsSectionTitle>payload</OperationsSectionTitle>
       <JsonViewer defaultExpanded title="input" value={displayRun.input} />
       {displayRun.output ? (
         <JsonViewer title="output" value={displayRun.output} />
@@ -594,9 +592,7 @@ function FunctionTechnicalOperations({
   if (groups.length === 0 || isLoading || isError) {
     return (
       <section className="border-b border-(--border-subtle)">
-        <div className="flex items-center gap-2 bg-(--sidebar) px-3 py-1.5 font-mono text-[11px] text-(--muted)">
-          <span>operations</span>
-        </div>
+        <OperationsSectionTitle>operations</OperationsSectionTitle>
         <div className="px-3 py-2 font-mono text-[10px] text-(--muted)">
           {technicalOperationsStateLabel({ error, isError, isLoading })}
         </div>
@@ -606,7 +602,7 @@ function FunctionTechnicalOperations({
 
   return (
     <section className="border-b border-(--border-subtle)">
-      <div className="flex items-center gap-2 bg-(--sidebar) px-3 py-1.5 font-mono text-[11px] text-(--muted)">
+      <div className="flex items-center gap-2 border-b border-(--border-subtle) bg-[color-mix(in_srgb,var(--elevated)_52%,transparent)] px-3 py-1.5 font-mono text-[9px] font-semibold uppercase tracking-[0.08em] text-(--muted)">
         <span>operations</span>
         <span className="rounded-xs border border-(--border-subtle) bg-(--background) px-1.5 py-0.5 text-[10px] text-(--muted)">
           {groups.reduce((total, group) => total + group.operations.length, 0)}
