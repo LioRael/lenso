@@ -217,4 +217,12 @@ pub struct AdminActionInvokeRequest {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AdminActionInvokeResponse {
     pub data: serde_json::Value,
+    pub invocation: AdminActionInvocationDto,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminActionInvocationDto {
+    pub request_id: String,
+    pub correlation_id: String,
+    pub story_node_id: String,
 }

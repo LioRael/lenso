@@ -2549,6 +2549,19 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AdminActionInputField'
+    AdminActionInvocationDto:
+      type: object
+      required:
+      - request_id
+      - correlation_id
+      - story_node_id
+      properties:
+        correlation_id:
+          type: string
+        request_id:
+          type: string
+        story_node_id:
+          type: string
     AdminActionInvocationItem:
       type: object
       required:
@@ -2637,8 +2650,11 @@ components:
       description: Response for `POST /admin/data/{module}/actions/{action}`.
       required:
       - data
+      - invocation
       properties:
         data: {}
+        invocation:
+          $ref: '#/components/schemas/AdminActionInvocationDto'
     AdminCapabilityIssueDto:
       type: object
       required:

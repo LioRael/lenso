@@ -1,8 +1,8 @@
 use crate::dto::{
-    AdminActionInvokeRequest, AdminActionInvokeResponse, AdminCapabilityIssueDto,
-    AdminCapabilitySummaryDto, AdminDataDetailResponse, AdminDataListResponse, AdminDataPageInfo,
-    AdminModuleActivationState, AdminModuleGovernanceDto, AdminModuleMetadataDto,
-    AdminModuleMetadataListResponse, AdminModuleRefreshModuleResultDto,
+    AdminActionInvocationDto, AdminActionInvokeRequest, AdminActionInvokeResponse,
+    AdminCapabilityIssueDto, AdminCapabilitySummaryDto, AdminDataDetailResponse,
+    AdminDataListResponse, AdminDataPageInfo, AdminModuleActivationState, AdminModuleGovernanceDto,
+    AdminModuleMetadataDto, AdminModuleMetadataListResponse, AdminModuleRefreshModuleResultDto,
     AdminModuleRefreshModuleStatusDto, AdminModuleRefreshRecordDto, AdminModuleRefreshStatusDto,
     AdminModuleSchema, AdminModuleSourceDiagnosticsDto, AdminModuleStatus,
     AdminRemoteModuleDiagnosticsDto, AdminSchemaListResponse, AdminSchemaRefreshResponse,
@@ -19,7 +19,7 @@ use axum::Json;
 use axum::extract::{Path, Query, State};
 use platform_core::{
     AdminActionStoryRecord, AppContext, AppError, ErrorCode, RequestContext,
-    insert_admin_action_story_event,
+    admin_action_story_event_id, insert_admin_action_story_event,
 };
 use platform_http::{AdminActor, ApiErrorResponse, ErrorResponse, HttpRequestContext};
 use platform_module::{
@@ -458,7 +458,10 @@ pub(crate) async fn invoke_action(
             )
             .await;
 
-            Ok(Json(AdminActionInvokeResponse { data }))
+            Ok(Json(AdminActionInvokeResponse {
+                data,
+                invocation: action_invocation_dto(&request_ctx),
+            }))
         }
         Err(error) => {
             let error_code = error.code.as_str().to_owned();
@@ -520,6 +523,14 @@ fn declared_action(
                 ctx,
             )
         })
+}
+
+fn action_invocation_dto(request_ctx: &RequestContext) -> AdminActionInvocationDto {
+    AdminActionInvocationDto {
+        request_id: request_ctx.request_id.0.clone(),
+        correlation_id: request_ctx.correlation_id.0.clone(),
+        story_node_id: admin_action_story_event_id(request_ctx),
+    }
 }
 
 fn ensure_action_confirmation(

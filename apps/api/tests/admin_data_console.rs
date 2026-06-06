@@ -549,6 +549,19 @@ async fn admin_action_invocation_records_story_and_technical_operation() {
         .await
         .expect("request completes");
     assert_eq!(response.status(), StatusCode::OK);
+    let response_json = json_body(response).await;
+    assert_eq!(
+        response_json["invocation"]["request_id"],
+        "req_admin_action_story"
+    );
+    assert_eq!(
+        response_json["invocation"]["correlation_id"],
+        "corr_admin_action_story"
+    );
+    assert_eq!(
+        response_json["invocation"]["story_node_id"],
+        "adminaction_req_admin_action_story"
+    );
 
     let story_response = app
         .clone()

@@ -1,10 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Code2, Play, RefreshCw } from "lucide-react";
+import {
+  AlertTriangle,
+  Code2,
+  ExternalLink,
+  Play,
+  RefreshCw,
+} from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "../components/ui/button";
 import { cn } from "../lib/cn";
 import { httpClient, isApiMode } from "../lib/http-client";
+import { adminActionsPath } from "./admin-actions-model";
 import {
   type AdminActionInputValue,
   type AdminActionInputValues,
@@ -44,7 +51,14 @@ type ListResponse = {
   page: { limit: number; next_cursor: string | null };
 };
 type DetailResponse = { data: AdminRecord };
-type ActionResponse = { data: unknown };
+type ActionResponse = {
+  data: unknown;
+  invocation?: {
+    correlation_id: string;
+    request_id: string;
+    story_node_id: string;
+  };
+};
 type ActionInputState = Record<string, AdminActionInputValues>;
 type ActionVariables = {
   capability: string;
@@ -60,6 +74,7 @@ type ActionActivityItem = {
   label: string;
   message: string;
   occurredAt: string;
+  operationsPath?: string;
 };
 
 type Selection = { module: AdminModuleMetadata; entity: EntitySchema | null };
@@ -545,6 +560,14 @@ function DeclarativeSurface({
         label: action.label,
         message,
         occurredAt: new Date().toISOString(),
+        ...(response.invocation
+          ? {
+              operationsPath: adminActionsPath({
+                correlationId: response.invocation.correlation_id,
+                selectedId: response.invocation.story_node_id,
+              }),
+            }
+          : {}),
       });
       await queryClient.invalidateQueries({
         queryKey: ["admin-data", "list", module.module_name],
@@ -639,7 +662,7 @@ function DeclarativeSurface({
             <div className="grid gap-1 border-t border-(--border-subtle) pt-1.5">
               {actionActivity.map((item) => (
                 <div
-                  className="grid min-w-0 grid-cols-[72px_minmax(0,140px)_minmax(0,1fr)] gap-2 text-[11px]"
+                  className="grid min-w-0 grid-cols-[72px_minmax(0,140px)_minmax(0,1fr)_42px] gap-2 text-[11px]"
                   key={item.id}
                   title={`${item.capability} / ${item.occurredAt}`}
                 >
@@ -659,6 +682,17 @@ function DeclarativeSurface({
                   <span className="truncate text-(--muted)">
                     {item.message}
                   </span>
+                  {item.operationsPath ? (
+                    <a
+                      className="inline-flex h-5 items-center justify-center gap-1 border border-(--border-subtle) bg-(--elevated) px-1 text-[10px] text-(--muted) hover:text-(--foreground)"
+                      href={item.operationsPath}
+                    >
+                      <ExternalLink size={10} />
+                      Open
+                    </a>
+                  ) : (
+                    <span />
+                  )}
                 </div>
               ))}
             </div>

@@ -29,6 +29,12 @@ export type AdminActionInputSchema = {
   fields?: Array<AdminActionInputField>;
 };
 
+export type AdminActionInvocationDto = {
+  correlation_id: string;
+  request_id: string;
+  story_node_id: string;
+};
+
 export type AdminActionInvocationItem = {
   action_name: string;
   capability?: string | null;
@@ -60,6 +66,7 @@ export type AdminActionInvokeRequest = {
 
 export type AdminActionInvokeResponse = {
   data: unknown;
+  invocation: AdminActionInvocationDto;
 };
 
 export type AdminCapabilityIssueDto = {
