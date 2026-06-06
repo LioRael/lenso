@@ -1,5 +1,6 @@
 // Mirrors platform-module's admin JSON shapes. Hand-typed because the records
 // and custom surface metadata are generic across arbitrary modules.
+import { consolePackageExportIsRegistered } from "../app/console-module-resolver";
 
 export type FieldType =
   | { kind: "string" }
@@ -366,6 +367,9 @@ export type ModuleConsoleSurfaceRow = {
   packageName: string;
   exportName: string;
   capabilities: string;
+  availability: "available" | "missing_capability" | "unsupported_package";
+  availabilityLabel: string;
+  availabilityReason: string;
 };
 
 export type StoryDisplayRow = {
@@ -879,18 +883,95 @@ export function moduleRuntimeFunctionRows(
 }
 
 export function moduleConsoleSurfaceRows(
-  module: AdminModuleMetadata
+  module: AdminModuleMetadata,
+  options: { availableCapabilities?: readonly string[] } = {}
 ): ModuleConsoleSurfaceRow[] {
-  return module.console.map((surface, index) => ({
-    area: surface.area,
-    capabilities: (surface.required_capabilities ?? []).join(", ") || "-",
-    exportName: surface.package.export,
-    key: `${surface.name}:${surface.route}:${index}`,
-    label: surface.label,
-    name: surface.name,
-    packageName: surface.package.name,
-    route: surface.route,
-  }));
+  const availableCapabilities = options.availableCapabilities
+    ? new Set(options.availableCapabilities)
+    : null;
+  return module.console.map((surface, index) => {
+    const reference = {
+      exportName: surface.package.export,
+      packageName: surface.package.name,
+    };
+    const requiredCapabilities = surface.required_capabilities ?? [];
+    const missingCapabilities = availableCapabilities
+      ? requiredCapabilities.filter(
+          (capability) => !availableCapabilities.has(capability)
+        )
+      : [];
+    const packageSupported = consolePackageExportIsRegistered(reference);
+    const availability = packageSupported
+      ? missingCapabilities.length > 0
+        ? "missing_capability"
+        : "available"
+      : "unsupported_package";
+
+    return {
+      area: surface.area,
+      availability,
+      availabilityLabel: consoleSurfaceAvailabilityLabel(availability),
+      availabilityReason: consoleSurfaceAvailabilityReason({
+        availability,
+        missingCapabilities,
+        packageName: surface.package.name,
+        exportName: surface.package.export,
+      }),
+      capabilities: requiredCapabilities.join(", ") || "-",
+      exportName: surface.package.export,
+      key: `${surface.name}:${surface.route}:${index}`,
+      label: surface.label,
+      name: surface.name,
+      packageName: surface.package.name,
+      route: surface.route,
+    };
+  });
+}
+
+function consoleSurfaceAvailabilityLabel(
+  availability: ModuleConsoleSurfaceRow["availability"]
+): string {
+  switch (availability) {
+    case "available": {
+      return "available";
+    }
+    case "missing_capability": {
+      return "missing capability";
+    }
+    case "unsupported_package": {
+      return "unsupported package";
+    }
+    default: {
+      return "unknown";
+    }
+  }
+}
+
+function consoleSurfaceAvailabilityReason({
+  availability,
+  missingCapabilities,
+  packageName,
+  exportName,
+}: {
+  availability: ModuleConsoleSurfaceRow["availability"];
+  missingCapabilities: string[];
+  packageName: string;
+  exportName: string;
+}): string {
+  switch (availability) {
+    case "available": {
+      return "host can render this console surface";
+    }
+    case "missing_capability": {
+      return `missing ${missingCapabilities.join(", ")}`;
+    }
+    case "unsupported_package": {
+      return `${packageName}#${exportName} is not registered in the host`;
+    }
+    default: {
+      return "unknown console surface state";
+    }
+  }
 }
 
 export function moduleManifestChecks(

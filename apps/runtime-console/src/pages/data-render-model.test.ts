@@ -744,6 +744,9 @@ describe("module status helpers", () => {
     expect(moduleConsoleSurfaceRows(module)).toEqual([
       {
         area: "runtime",
+        availability: "available",
+        availabilityLabel: "available",
+        availabilityReason: "host can render this console surface",
         capabilities: storyConsoleManifest.requiredCapabilities.join(", "),
         exportName: storyConsoleManifest.exportName,
         key: "stories:/runtime/stories:0",
@@ -753,6 +756,32 @@ describe("module status helpers", () => {
         route: storyConsoleManifest.route,
       },
     ]);
+    expect(
+      moduleConsoleSurfaceRows(module, { availableCapabilities: [] })[0]
+    ).toMatchObject({
+      availability: "missing_capability",
+      availabilityLabel: "missing capability",
+      availabilityReason: "missing runtime.stories.read",
+    });
+    expect(
+      moduleConsoleSurfaceRows({
+        ...module,
+        console: [
+          {
+            ...module.console[0]!,
+            package: {
+              export: "unknownConsoleModule",
+              name: "@lenso/unknown-console",
+            },
+          },
+        ],
+      })[0]
+    ).toMatchObject({
+      availability: "unsupported_package",
+      availabilityLabel: "unsupported package",
+      availabilityReason:
+        "@lenso/unknown-console#unknownConsoleModule is not registered in the host",
+    });
   });
 
   test("finds the latest refresh result for a module", () => {

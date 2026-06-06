@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
+import { useConsoleCapabilities } from "../app/console-capabilities";
 import { Button } from "../components/ui/button";
 import { useRemoteProxyCalls } from "../hooks/use-runtime-queries";
 import { cn } from "../lib/cn";
@@ -462,10 +463,13 @@ function ModuleRegistryDetail({
   history: ModuleRefreshRecord[];
   module: AdminModuleMetadata;
 }) {
+  const availableCapabilities = useConsoleCapabilities();
   const routeRows = moduleHttpRouteRows(module);
   const runtimeRows = moduleRuntimeFunctionRows(module);
   const manifestChecks = moduleManifestChecks(module);
-  const consoleRows = moduleConsoleSurfaceRows(module);
+  const consoleRows = moduleConsoleSurfaceRows(module, {
+    availableCapabilities,
+  });
   const storyRows = storyDisplayRows(module);
   return (
     <div className="grid gap-3">
@@ -765,10 +769,11 @@ function ModuleConsoleSurfacesTable({
         </span>
       </header>
       <div className="overflow-auto">
-        <table className="w-full min-w-[860px] table-fixed">
+        <table className="w-full min-w-[980px] table-fixed">
           <thead className="bg-(--sidebar) text-[10px] uppercase tracking-wide text-(--muted)">
             <tr>
               <th className="w-28 px-3 py-1.5 text-left">area</th>
+              <th className="w-40 px-3 py-1.5 text-left">status</th>
               <th className="px-3 py-1.5 text-left">surface</th>
               <th className="px-3 py-1.5 text-left">route</th>
               <th className="px-3 py-1.5 text-left">package</th>
@@ -783,6 +788,28 @@ function ModuleConsoleSurfacesTable({
               >
                 <td className="truncate px-3 py-1.5 text-(--foreground)">
                   {row.area}
+                </td>
+                <td className="min-w-0 px-3 py-1.5">
+                  <span
+                    className={cn(
+                      "inline-block max-w-full truncate border px-1.5 py-0.5 text-[10px]",
+                      row.availability === "available" &&
+                        "border-[color-mix(in_srgb,var(--success)_45%,transparent)] text-(--success)",
+                      row.availability === "missing_capability" &&
+                        "border-[color-mix(in_srgb,var(--warning)_55%,transparent)] text-(--warning)",
+                      row.availability === "unsupported_package" &&
+                        "border-[color-mix(in_srgb,var(--error)_55%,transparent)] text-(--error)"
+                    )}
+                    title={row.availabilityReason}
+                  >
+                    {row.availabilityLabel}
+                  </span>
+                  <div
+                    className="truncate pt-1 text-[9px] text-(--muted)"
+                    title={row.availabilityReason}
+                  >
+                    {row.availabilityReason}
+                  </div>
                 </td>
                 <td className="truncate px-3 py-1.5 text-(--secondary)">
                   {row.label} / {row.name}

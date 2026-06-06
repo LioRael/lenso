@@ -28,6 +28,12 @@ function packageExportKey(reference: ConsoleModulePackageReference): string {
   return `${reference.packageName}#${reference.exportName}`;
 }
 
+export function consolePackageExportIsRegistered(
+  reference: ConsoleModulePackageReference
+): boolean {
+  return Boolean(firstPartyConsoleModuleExports[packageExportKey(reference)]);
+}
+
 export function resolveConsoleModule(
   reference: ConsoleModulePackageReference
 ): ConsoleModule {
@@ -69,7 +75,7 @@ export function selectConsoleModulePackageReferences(
         return [];
       }
       const reference = { exportName, packageName };
-      if (!firstPartyConsoleModuleExports[packageExportKey(reference)]) {
+      if (!consolePackageExportIsRegistered(reference)) {
         return [];
       }
       return [reference];
