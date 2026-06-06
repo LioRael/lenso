@@ -10,6 +10,7 @@ export default defineConfig({
       files: [
         "src/**/*.{ts,tsx}",
         "packages/story-console/src/**/*.{ts,tsx}",
+        "packages/example-console/src/**/*.{ts,tsx}",
         "vite.config.ts",
       ],
       rules: {

@@ -1,6 +1,6 @@
+import { exampleConsoleManifest } from "@lenso/example-console";
 import { storyConsoleManifest } from "@lenso/story-console";
 
-import { exampleConsoleManifest } from "../modules/example-console-package";
 import type {
   ConsoleModule,
   ConsoleNavigationItem,

@@ -19,7 +19,17 @@ const storyPackageFiles = import.meta.glob<string>(
     query: "?raw",
   }
 );
+const examplePackageFiles = import.meta.glob<string>(
+  "../../packages/example-console/src/**/*.{ts,tsx}",
+  {
+    eager: true,
+    import: "default",
+    query: "?raw",
+  }
+);
 const modulePrefix = "../modules/";
+const exampleModulePrefix = "../modules/example-console-package/";
+const examplePackagePrefix = "../../packages/example-console/src/";
 const storyPackagePrefix = "../../packages/story-console/src/";
 const storyModulePrefix = "../modules/story-console/";
 const importPattern =
@@ -30,10 +40,16 @@ function findConsoleModuleBoundaryViolations(): string[] {
 
   for (const [file, source] of Object.entries({
     ...sourceFiles,
+    ...examplePackageFiles,
     ...storyPackageFiles,
   })) {
+    const inExampleModule =
+      file.startsWith(exampleModulePrefix) ||
+      file.startsWith(examplePackagePrefix);
     const inConsoleModule =
-      file.startsWith(modulePrefix) || file.startsWith(storyPackagePrefix);
+      file.startsWith(modulePrefix) ||
+      file.startsWith(examplePackagePrefix) ||
+      file.startsWith(storyPackagePrefix);
     const inStoryModule =
       file.startsWith(storyModulePrefix) || file.startsWith(storyPackagePrefix);
 
@@ -100,6 +116,16 @@ function findConsoleModuleBoundaryViolations(): string[] {
       ) {
         violations.push(
           `${displayPath(file)} imports story-console internals through ${specifier}`
+        );
+      }
+
+      if (
+        !inExampleModule &&
+        (target.includes("/modules/example-console-package") ||
+          specifier.includes("modules/example-console-package"))
+      ) {
+        violations.push(
+          `${displayPath(file)} imports example-console internals through ${specifier}; use @lenso/example-console`
         );
       }
     }
