@@ -1,9 +1,10 @@
 import { useGSAP } from "@gsap/react";
-import { Link } from "@tanstack/react-router";
+import { Link, useRouterState } from "@tanstack/react-router";
 import gsap from "gsap";
 import {
   Activity,
   Boxes,
+  BriefcaseBusiness,
   Command,
   Database,
   Moon,
@@ -12,13 +13,24 @@ import {
   PanelLeftOpen,
   Settings,
   Sun,
+  Users,
   Workflow,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { ComponentType, CSSProperties, PropsWithChildren } from "react";
 
 import { useConsoleNavigation } from "../../app/console-module-metadata";
-import type { ConsoleSurfaceIcon } from "../../app/console-modules";
+import type {
+  ConsoleNavigationItem,
+  ConsoleSurfaceIcon,
+} from "../../app/console-modules";
+import {
+  activeWorkspaceIdForPath,
+  buildWorkspaceNavigation,
+  type ConsoleWorkspaceNavigation,
+  selectedWorkspaceForId,
+  SYSTEM_WORKSPACE,
+} from "../../app/console-workspace-navigation";
 import { usePersistedLayout } from "../../hooks/use-persisted-layout";
 import { runtimeConsoleDataSource } from "../../lib/http-client";
 import { Badge } from "../ui/badge";
@@ -30,6 +42,8 @@ import { RuntimeSearch } from "./runtime-search";
 
 gsap.registerPlugin(useGSAP);
 
+type ShellIcon = ComponentType<{ size?: number; strokeWidth?: number }>;
+
 const iconRegistry = {
   activity: Activity,
   boxes: Boxes,
@@ -37,35 +51,97 @@ const iconRegistry = {
   network: Network,
   settings: Settings,
   workflow: Workflow,
-} satisfies Record<
-  ConsoleSurfaceIcon,
-  ComponentType<{ size?: number; strokeWidth?: number }>
->;
+} satisfies Record<ConsoleSurfaceIcon, ShellIcon>;
+
+const namedIconRegistry: Record<string, ShellIcon> = {
+  ...iconRegistry,
+  briefcase: BriefcaseBusiness,
+  "briefcase-business": BriefcaseBusiness,
+  briefcasebusiness: BriefcaseBusiness,
+  users: Users,
+};
+
+const hostPrimaryNavItems = [
+  {
+    icon: "activity",
+    label: "Overview",
+    moduleId: "host",
+    navigation: {
+      order: 0,
+      workspace: SYSTEM_WORKSPACE,
+    },
+    path: "/overview",
+  },
+  {
+    icon: "network",
+    label: "Operations",
+    moduleId: "host",
+    navigation: {
+      order: 80,
+      workspace: SYSTEM_WORKSPACE,
+    },
+    path: "/operations",
+  },
+  {
+    icon: "boxes",
+    label: "Modules",
+    moduleId: "host",
+    navigation: {
+      order: 90,
+      workspace: SYSTEM_WORKSPACE,
+    },
+    path: "/modules",
+  },
+  {
+    icon: "database",
+    label: "Data",
+    moduleId: "host",
+    navigation: {
+      order: 100,
+      workspace: SYSTEM_WORKSPACE,
+    },
+    path: "/data",
+  },
+] satisfies ConsoleNavigationItem[];
 
 const configNavItem = {
-  to: "/config",
+  icon: "settings",
   label: "Configuration",
-  icon: Settings,
-} as const;
+  moduleId: "host",
+  navigation: {
+    workspace: SYSTEM_WORKSPACE,
+  },
+  path: "/config",
+} satisfies ConsoleNavigationItem;
 
 export function RuntimeConsoleShell({ children }: PropsWithChildren) {
   const shellRef = useRef<HTMLDivElement>(null);
   const { focusGlobalSearch, openCommandPalette } = useRuntimeConsole();
   const consoleNavigation = useConsoleNavigation();
-  const primaryNavItems = useMemo(() => {
-    const consoleNavItems = consoleNavigation.map((item) => ({
-      icon: iconRegistry[item.icon ?? "activity"],
-      label: item.label,
-      to: item.path,
-    }));
-    return [
-      { to: "/overview", label: "Overview", icon: Activity },
-      ...consoleNavItems,
-      { to: "/operations", label: "Operations", icon: Network },
-      { to: "/modules", label: "Modules", icon: Boxes },
-      { to: "/data", label: "Data", icon: Database },
-    ];
-  }, [consoleNavigation]);
+  const currentPath = useRouterState({
+    select: (state) => state.location.pathname,
+  });
+  const primaryNavItems = useMemo(
+    () => [...hostPrimaryNavItems, ...consoleNavigation],
+    [consoleNavigation]
+  );
+  const workspaceNavigation = useMemo(
+    () => buildWorkspaceNavigation(primaryNavItems),
+    [primaryNavItems]
+  );
+  const routeWorkspaceId = useMemo(
+    () => activeWorkspaceIdForPath(workspaceNavigation, currentPath),
+    [currentPath, workspaceNavigation]
+  );
+  const [selectedWorkspaceId, setSelectedWorkspaceId] =
+    usePersistedLayout<string>(
+      "runtime-console:selected-workspace",
+      SYSTEM_WORKSPACE.id
+    );
+  const activeWorkspace = useMemo(
+    () => selectedWorkspaceForId(workspaceNavigation, selectedWorkspaceId),
+    [selectedWorkspaceId, workspaceNavigation]
+  );
   const [sidebarCollapsed, setSidebarCollapsed] = usePersistedLayout(
     "runtime-console:sidebar-collapsed",
     false
@@ -87,9 +163,22 @@ export function RuntimeConsoleShell({ children }: PropsWithChildren) {
     setTheme((current) => (current === "dark" ? "light" : "dark"));
   }, [setTheme]);
 
+  const selectWorkspace = useCallback(
+    (workspaceId: string) => {
+      setSelectedWorkspaceId(workspaceId);
+    },
+    [setSelectedWorkspaceId]
+  );
+
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
+
+  useEffect(() => {
+    setSelectedWorkspaceId((current) =>
+      current === routeWorkspaceId ? current : routeWorkspaceId
+    );
+  }, [routeWorkspaceId, setSelectedWorkspaceId]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -221,14 +310,18 @@ export function RuntimeConsoleShell({ children }: PropsWithChildren) {
         </div>
 
         <nav className="p-2 max-lg:overflow-x-auto">
-          <div className="grid gap-px max-lg:flex max-lg:min-w-max">
-            {primaryNavItems.map((item) => (
-              <NavLink key={item.to} {...item} />
-            ))}
-          </div>
-          <div className="my-2 h-px bg-(--border-subtle) max-lg:hidden" />
-          <div className="grid gap-px max-lg:hidden">
-            <NavLink {...configNavItem} />
+          <div className="max-lg:flex max-lg:min-w-max max-lg:items-start max-lg:gap-2">
+            <WorkspaceSwitcher
+              activeWorkspaceId={activeWorkspace.id}
+              onSelectWorkspace={selectWorkspace}
+              workspaces={workspaceNavigation}
+            />
+            <div className="my-2 h-px bg-(--border-subtle) max-lg:hidden" />
+            <WorkspaceMenu workspace={activeWorkspace} />
+            <div className="my-2 h-px bg-(--border-subtle) max-lg:hidden" />
+            <div className="grid gap-px max-lg:hidden">
+              <NavLink item={configNavItem} />
+            </div>
           </div>
         </nav>
 
@@ -300,30 +393,114 @@ export function RuntimeConsoleShell({ children }: PropsWithChildren) {
   );
 }
 
-function NavLink({
-  to,
-  label,
-  icon: Icon,
+function WorkspaceSwitcher({
+  activeWorkspaceId,
+  onSelectWorkspace,
+  workspaces,
 }: {
-  to: string;
-  label: string;
-  icon: ComponentType<{ size?: number; strokeWidth?: number }>;
+  activeWorkspaceId: string;
+  onSelectWorkspace: (workspaceId: string) => void;
+  workspaces: ConsoleWorkspaceNavigation[];
 }) {
+  return (
+    <div
+      aria-label="Console workspaces"
+      className="grid gap-px max-lg:flex max-lg:min-w-max"
+    >
+      {workspaces.map((workspace) => {
+        const Icon = iconForWorkspace(workspace);
+        const active = workspace.id === activeWorkspaceId;
+
+        return (
+          <button
+            aria-pressed={active}
+            className={`sidebar-nav-item flex h-7 w-full items-center gap-2 px-2 font-mono text-xs transition-colors max-lg:min-w-8 max-lg:justify-center max-lg:px-2 ${
+              active
+                ? "bg-(--accent-soft) text-(--foreground) shadow-[inset_16px_0_24px_color-mix(in_srgb,var(--accent)_6%,transparent)]"
+                : "text-(--secondary) hover:bg-(--hover) hover:text-(--foreground)"
+            }`}
+            key={workspace.id}
+            onClick={() => onSelectWorkspace(workspace.id)}
+            title={workspace.label}
+            type="button"
+          >
+            <Icon size={13} strokeWidth={1.5} />
+            <span className="sidebar-copy min-w-0 overflow-hidden whitespace-nowrap max-lg:hidden">
+              {workspace.label}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function WorkspaceMenu({
+  workspace,
+}: {
+  workspace: ConsoleWorkspaceNavigation;
+}) {
+  return (
+    <div className="grid gap-px max-lg:flex max-lg:min-w-max">
+      {workspace.items.map((item) => (
+        <NavLink item={item} key={item.path} />
+      ))}
+      {workspace.groups.map((group) => {
+        const GroupIcon = iconForName(group.icon);
+
+        return (
+          <div className="contents" key={group.id}>
+            <div className="sidebar-copy mt-[var(--sidebar-group-label-margin)] flex h-[var(--sidebar-group-label-height)] items-center gap-1.5 overflow-hidden whitespace-nowrap px-2 font-mono text-[10px] uppercase tracking-[0.06em] text-(--muted) max-lg:hidden">
+              {GroupIcon ? <GroupIcon size={11} strokeWidth={1.5} /> : null}
+              <span className="min-w-0 truncate">{group.label}</span>
+            </div>
+            {group.items.map((item) => (
+              <NavLink item={item} key={item.path} />
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function NavLink({ item }: { item: ConsoleNavigationItem }) {
+  const Icon = iconForName(item.icon) ?? Activity;
+
   return (
     <Link
       activeProps={{
         className:
           "bg-(--accent-soft) text-(--foreground) shadow-[inset_16px_0_24px_color-mix(in_srgb,var(--accent)_6%,transparent)]",
       }}
-      aria-label={label}
+      aria-label={item.label}
       className="sidebar-nav-item flex h-7 w-full items-center gap-2 px-2 font-mono text-xs text-(--secondary) transition-colors hover:bg-(--hover) hover:text-(--foreground) max-lg:min-w-8 max-lg:justify-center max-lg:px-2"
-      title={label}
-      to={to}
+      title={item.label}
+      to={item.path}
     >
       <Icon size={13} strokeWidth={1.5} />
       <span className="sidebar-copy min-w-0 overflow-hidden whitespace-nowrap max-lg:hidden">
-        {label}
+        {item.label}
       </span>
     </Link>
   );
+}
+
+function iconForWorkspace(workspace: ConsoleWorkspaceNavigation): ShellIcon {
+  return iconForName(workspace.icon) ?? Settings;
+}
+
+function iconForName(icon: string | undefined): ShellIcon | undefined {
+  if (!icon) {
+    return;
+  }
+  return namedIconRegistry[normalizedIconName(icon)];
+}
+
+function normalizedIconName(icon: string): string {
+  return icon
+    .trim()
+    .replaceAll(/([a-z])([A-Z])/g, "$1-$2")
+    .replaceAll(/[\s_]+/g, "-")
+    .toLowerCase();
 }

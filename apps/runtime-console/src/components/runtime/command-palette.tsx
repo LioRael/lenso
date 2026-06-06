@@ -49,14 +49,18 @@ export function CommandPalette({ theme, onToggleTheme }: CommandPaletteProps) {
       onOpenStory: openStory,
       stories,
     });
-    const consoleItems: CommandItem[] = consoleNavigation.map((item) => ({
-      action: () => void navigate({ to: item.path }),
-      id: `console:${item.moduleId}:${item.path}`,
-      searchText:
-        `go to ${item.label} ${item.moduleId} ${item.path}`.toLowerCase(),
-      subtitle: item.moduleId,
-      title: `Go to ${item.label}`,
-    }));
+    const consoleItems: CommandItem[] = consoleNavigation.map((item) => {
+      const workspaceLabel = item.navigation?.workspace.label ?? "System";
+
+      return {
+        action: () => void navigate({ to: item.path }),
+        id: `console:${item.moduleId}:${item.path}`,
+        searchText:
+          `go to ${item.label} ${workspaceLabel} ${item.moduleId} ${item.path}`.toLowerCase(),
+        subtitle: `${workspaceLabel} / ${item.moduleId}`,
+        title: `Go to ${item.label}`,
+      };
+    });
     const items: CommandItem[] = [
       ...consoleItems,
       {

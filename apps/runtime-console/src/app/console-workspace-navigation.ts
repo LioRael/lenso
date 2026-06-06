@@ -86,6 +86,20 @@ export function activeWorkspaceIdForPath(
   return childMatch?.workspaceId ?? SYSTEM_WORKSPACE.id;
 }
 
+export function selectedWorkspaceForId(
+  workspaces: ConsoleWorkspaceNavigation[],
+  selectedWorkspaceId: string
+): ConsoleWorkspaceNavigation {
+  return (
+    workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ??
+    workspaces.find((workspace) => workspace.id === SYSTEM_WORKSPACE.id) ?? {
+      ...SYSTEM_WORKSPACE,
+      groups: [],
+      items: [],
+    }
+  );
+}
+
 function workspaceForRef(
   workspacesById: Map<string, MutableWorkspaceNavigation>,
   workspaceRef: ConsoleWorkspaceRef
