@@ -8,10 +8,11 @@ use axum::{
     routing::{delete, get, patch, post, put},
 };
 use platform_module::{
-    AdminDeclarativeComponent, AdminDeclarativePage, AdminDeclarativeSection,
-    AdminDeclarativeSurface, AdminEmbeddedEntry, AdminEmbeddedRuntime, AdminEmbeddedSurface,
-    AdminMetricBinding, AdminSandboxPolicy, AdminSchema, EntitySchema, FieldSchema, FieldType,
-    LifecycleActivationJobDeclaration, LifecycleActivationRunPolicy,
+    AdminAction, AdminActionConfirmation, AdminActionDangerLevel, AdminActionInputField,
+    AdminActionInputSchema, AdminDeclarativeComponent, AdminDeclarativePage,
+    AdminDeclarativeSection, AdminDeclarativeSurface, AdminEmbeddedEntry, AdminEmbeddedRuntime,
+    AdminEmbeddedSurface, AdminMetricBinding, AdminSandboxPolicy, AdminSchema, EntitySchema,
+    FieldSchema, FieldType, LifecycleActivationJobDeclaration, LifecycleActivationRunPolicy,
     LifecycleStartupCheckDeclaration, LifecycleStartupCheckKind, LifecycleSurface,
     ModuleHttpMethod, ModuleHttpRoute, ModuleManifest, RuntimeFunctionDeclaration,
     RuntimeRetryPolicyDeclaration, RuntimeSurface,
@@ -218,10 +219,26 @@ async fn declarative_manifest() -> Json<ModuleManifest> {
                         },
                     ],
                 }],
-                actions: vec![platform_module::AdminAction {
+                actions: vec![AdminAction {
                     name: "sync_contacts".to_owned(),
                     label: "Sync contacts".to_owned(),
                     capability: "remote_crm.contacts.sync".to_owned(),
+                    input_schema: Some(AdminActionInputSchema {
+                        fields: vec![AdminActionInputField {
+                            name: "dry_run".to_owned(),
+                            label: "Dry run".to_owned(),
+                            field_type: FieldType::Boolean,
+                            required: false,
+                            description: Some(
+                                "Preview the sync without writing remote data".to_owned(),
+                            ),
+                        }],
+                    }),
+                    confirmation: Some(AdminActionConfirmation {
+                        message: "Sync remote contacts now?".to_owned(),
+                        required_phrase: Some("SYNC".to_owned()),
+                    }),
+                    danger_level: AdminActionDangerLevel::Medium,
                 }],
                 fallback_schema: Some(contacts_schema()),
             })

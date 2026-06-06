@@ -149,6 +149,19 @@ async fn declarative_manifest_matches_remote_module_protocol() {
         manifest["admin"]["actions"][0]["capability"],
         "remote_crm.contacts.sync"
     );
+    assert_eq!(manifest["admin"]["actions"][0]["danger_level"], "medium");
+    assert_eq!(
+        manifest["admin"]["actions"][0]["input_schema"]["fields"][0]["name"],
+        "dry_run"
+    );
+    assert_eq!(
+        manifest["admin"]["actions"][0]["input_schema"]["fields"][0]["field_type"]["kind"],
+        "boolean"
+    );
+    assert_eq!(
+        manifest["admin"]["actions"][0]["confirmation"]["required_phrase"],
+        "SYNC"
+    );
     assert_eq!(
         manifest["capabilities"],
         json!(["remote_crm.contacts.read", "remote_crm.contacts.sync"])

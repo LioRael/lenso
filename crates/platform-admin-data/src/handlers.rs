@@ -23,8 +23,8 @@ use platform_core::{
 };
 use platform_http::{AdminActor, ApiErrorResponse, ErrorResponse, HttpRequestContext};
 use platform_module::{
-    AdminListQuery, AdminSurface, ModuleLoadStatus, ModuleManifestLint, ModuleManifestLintSeverity,
-    lint_module_manifest_parts, module_capability_references,
+    AdminActionConfirmation, AdminListQuery, AdminSurface, ModuleLoadStatus, ModuleManifestLint,
+    ModuleManifestLintSeverity, lint_module_manifest_parts, module_capability_references,
 };
 use serde::Deserialize;
 use std::collections::HashSet;
@@ -405,6 +405,7 @@ fn load_error_message(status: &ModuleLoadStatus) -> Option<String> {
     request_body = AdminActionInvokeRequest,
     responses(
         (status = 200, description = "Action result", body = AdminActionInvokeResponse, content_type = "application/json"),
+        (status = 400, description = "Request validation failed", body = ErrorResponse, content_type = "application/json"),
         (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
         (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
         (status = 404, description = "Unknown module or undeclared action", body = ErrorResponse, content_type = "application/json"),
@@ -423,6 +424,7 @@ pub(crate) async fn invoke_action(
     let admin_module = find_loaded_action_module(&module, &request_ctx)?;
     let declaration = declared_action(&admin_module, &action, &request_ctx)?;
     ensure_action_capability(&admin, &declaration.capability, &request_ctx)?;
+    ensure_action_confirmation(&request, &declaration, &request_ctx)?;
     let action_source = admin_module.action_source.as_ref().ok_or_else(|| {
         ApiErrorResponse::with_context(
             AppError::new(
@@ -488,6 +490,7 @@ pub(crate) async fn invoke_action(
 struct DeclaredAction {
     label: String,
     capability: String,
+    confirmation: Option<AdminActionConfirmation>,
 }
 
 fn declared_action(
@@ -508,6 +511,7 @@ fn declared_action(
         .find(|declared| declared.name == action)
         .map(|declared| DeclaredAction {
             capability: declared.capability.clone(),
+            confirmation: declared.confirmation.clone(),
             label: declared.label.clone(),
         })
         .ok_or_else(|| {
@@ -516,6 +520,33 @@ fn declared_action(
                 ctx,
             )
         })
+}
+
+fn ensure_action_confirmation(
+    request: &AdminActionInvokeRequest,
+    declaration: &DeclaredAction,
+    ctx: &RequestContext,
+) -> Result<(), ApiErrorResponse> {
+    let Some(required_phrase) = declaration
+        .confirmation
+        .as_ref()
+        .and_then(|confirmation| confirmation.required_phrase.as_deref())
+        .filter(|phrase| !phrase.is_empty())
+    else {
+        return Ok(());
+    };
+
+    if request.confirmation_phrase.as_deref() == Some(required_phrase) {
+        return Ok(());
+    }
+
+    Err(ApiErrorResponse::with_context(
+        AppError::new(
+            ErrorCode::Validation,
+            "admin action confirmation phrase did not match",
+        ),
+        ctx,
+    ))
 }
 
 fn ensure_action_capability(

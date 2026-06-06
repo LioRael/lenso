@@ -1393,6 +1393,18 @@ async fn custom_remote_modules_are_visible_through_metadata_api() {
         declarative_module["admin"]["fallback_schema"]["entities"][0]["name"],
         "contacts"
     );
+    assert_eq!(
+        declarative_module["admin"]["actions"][0]["input_schema"]["fields"][0]["name"],
+        "dry_run"
+    );
+    assert_eq!(
+        declarative_module["admin"]["actions"][0]["confirmation"]["required_phrase"],
+        "SYNC"
+    );
+    assert_eq!(
+        declarative_module["admin"]["actions"][0]["danger_level"],
+        "medium"
+    );
 
     let declarative_list_response = app
         .clone()
@@ -1413,7 +1425,7 @@ async fn custom_remote_modules_are_visible_through_metadata_api() {
             "/admin/data/remote-crm-declarative/actions/sync_contacts",
             "dev-service:admin:remote_crm.contacts.sync",
             "application/json",
-            r#"{"input":{"dry_run":true}}"#,
+            r#"{"input":{"dry_run":true},"confirmation_phrase":"SYNC"}"#,
         ))
         .await
         .expect("declarative action request completes");

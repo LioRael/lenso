@@ -406,6 +406,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AdminActionInvokeResponse'
+        '400':
+          description: Request validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Authentication is required
           content:
@@ -2486,10 +2492,63 @@ components:
       properties:
         capability:
           type: string
+        confirmation:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/AdminActionConfirmation'
+        danger_level:
+          $ref: '#/components/schemas/AdminActionDangerLevel'
+        input_schema:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/AdminActionInputSchema'
         label:
           type: string
         name:
           type: string
+    AdminActionConfirmation:
+      type: object
+      required:
+      - message
+      properties:
+        message:
+          type: string
+        required_phrase:
+          type:
+          - string
+          - 'null'
+    AdminActionDangerLevel:
+      type: string
+      enum:
+      - low
+      - medium
+      - high
+    AdminActionInputField:
+      type: object
+      required:
+      - name
+      - label
+      - field_type
+      properties:
+        description:
+          type:
+          - string
+          - 'null'
+        field_type:
+          $ref: '#/components/schemas/FieldType'
+        label:
+          type: string
+        name:
+          type: string
+        required:
+          type: boolean
+    AdminActionInputSchema:
+      type: object
+      properties:
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminActionInputField'
     AdminActionInvocationItem:
       type: object
       required:
@@ -2568,6 +2627,10 @@ components:
       type: object
       description: Request body for `POST /admin/data/{module}/actions/{action}`.
       properties:
+        confirmation_phrase:
+          type:
+          - string
+          - 'null'
         input: {}
     AdminActionInvokeResponse:
       type: object

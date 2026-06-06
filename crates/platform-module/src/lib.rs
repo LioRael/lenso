@@ -23,9 +23,10 @@ mod module;
 mod runtime;
 
 pub use admin::{
-    AdminAction, AdminDeclarativeComponent, AdminDeclarativePage, AdminDeclarativeSection,
-    AdminDeclarativeSurface, AdminEmbeddedEntry, AdminEmbeddedRuntime, AdminEmbeddedSurface,
-    AdminMetricBinding, AdminPermission, AdminSandboxPolicy, AdminSurface,
+    AdminAction, AdminActionConfirmation, AdminActionDangerLevel, AdminActionInputField,
+    AdminActionInputSchema, AdminDeclarativeComponent, AdminDeclarativePage,
+    AdminDeclarativeSection, AdminDeclarativeSurface, AdminEmbeddedEntry, AdminEmbeddedRuntime,
+    AdminEmbeddedSurface, AdminMetricBinding, AdminPermission, AdminSandboxPolicy, AdminSurface,
 };
 pub use admin_data::{AdminActionSource, AdminDataSource, AdminListQuery, AdminPage};
 pub use admin_schema::{AdminSchema, EntitySchema, FieldSchema, FieldType};

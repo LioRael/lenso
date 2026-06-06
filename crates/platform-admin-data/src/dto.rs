@@ -209,6 +209,8 @@ pub struct AdminDataDetailResponse {
 pub struct AdminActionInvokeRequest {
     #[serde(default)]
     pub input: serde_json::Value,
+    #[serde(default)]
+    pub confirmation_phrase: Option<String>,
 }
 
 /// Response for `POST /admin/data/{module}/actions/{action}`.

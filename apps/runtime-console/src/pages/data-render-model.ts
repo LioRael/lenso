@@ -92,6 +92,28 @@ export type DeclarativeAction = {
   name: string;
   label: string;
   capability: string;
+  input_schema?: AdminActionInputSchema | null;
+  confirmation?: AdminActionConfirmation | null;
+  danger_level?: AdminActionDangerLevel | null;
+};
+
+export type AdminActionDangerLevel = "low" | "medium" | "high";
+
+export type AdminActionInputSchema = {
+  fields?: AdminActionInputField[];
+};
+
+export type AdminActionInputField = {
+  name: string;
+  label: string;
+  field_type: FieldType;
+  required?: boolean;
+  description?: string | null;
+};
+
+export type AdminActionConfirmation = {
+  message: string;
+  required_phrase?: string | null;
 };
 
 export type AdminUrlEmbeddedEntry = {
@@ -388,6 +410,14 @@ export type DeclarativeMetric = {
 export type DeclarativeEntitySection = {
   entity: EntitySchema | null;
   reason: string | null;
+};
+
+export type AdminActionInputValue = string | boolean;
+export type AdminActionInputValues = Record<string, AdminActionInputValue>;
+
+export type AdminActionInputBuildResult = {
+  input: Record<string, unknown>;
+  error: string | null;
 };
 
 const ADMIN_ACTION_RESULT_LIMIT = 96;
@@ -1002,6 +1032,90 @@ export function declarativeEntitySection(
   return entity
     ? { entity, reason: null }
     : { entity: null, reason: `fallback schema has no entity '${entityName}'` };
+}
+
+export function adminActionDangerLevel(
+  action: DeclarativeAction
+): AdminActionDangerLevel {
+  return action.danger_level ?? "low";
+}
+
+export function adminActionHasInput(action: DeclarativeAction): boolean {
+  return (action.input_schema?.fields ?? []).length > 0;
+}
+
+export function adminActionRequiredConfirmationPhrase(
+  action: DeclarativeAction
+): string | null {
+  const phrase = action.confirmation?.required_phrase?.trim();
+  return phrase && phrase.length > 0 ? phrase : null;
+}
+
+export function adminActionInitialInputValues(
+  action: DeclarativeAction
+): AdminActionInputValues {
+  return Object.fromEntries(
+    (action.input_schema?.fields ?? []).map((field) => [
+      field.name,
+      field.field_type.kind === "boolean" ? false : "",
+    ])
+  );
+}
+
+export function buildAdminActionInput(
+  action: DeclarativeAction,
+  values: AdminActionInputValues
+): AdminActionInputBuildResult {
+  const input: Record<string, unknown> = {};
+
+  for (const field of action.input_schema?.fields ?? []) {
+    const rawValue = values[field.name];
+    const label = field.label || field.name;
+
+    if (field.field_type.kind === "boolean") {
+      input[field.name] = rawValue === true;
+      continue;
+    }
+
+    const textValue =
+      typeof rawValue === "string" ? rawValue.trim() : String(rawValue ?? "");
+
+    if (textValue.length === 0) {
+      if (field.required) {
+        return { input, error: `${label} is required` };
+      }
+      continue;
+    }
+
+    switch (field.field_type.kind) {
+      case "integer": {
+        const parsed = Number(textValue);
+        if (!Number.isInteger(parsed)) {
+          return { input, error: `${label} must be an integer` };
+        }
+        input[field.name] = parsed;
+        break;
+      }
+      case "json": {
+        try {
+          input[field.name] = JSON.parse(textValue) as unknown;
+        } catch {
+          return { input, error: `${label} must be valid JSON` };
+        }
+        break;
+      }
+      case "string":
+      case "timestamp": {
+        input[field.name] = textValue;
+        break;
+      }
+      default: {
+        input[field.name] = textValue;
+      }
+    }
+  }
+
+  return { input, error: null };
 }
 
 export function adminActionResultSummary(result: unknown): string {

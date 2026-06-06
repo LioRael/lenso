@@ -1,8 +1,8 @@
 use axum::http::StatusCode;
 use axum::{Json, Router, routing::get, routing::post};
 use platform_module::{
-    AdminActionSource, AdminDataSource, AdminListQuery, AdminSurface, LifecycleActivationRunPolicy,
-    LifecycleStartupCheckKind,
+    AdminActionDangerLevel, AdminActionSource, AdminDataSource, AdminListQuery, AdminSurface,
+    FieldType, LifecycleActivationRunPolicy, LifecycleStartupCheckKind,
 };
 use platform_module_remote::{
     RemoteAdminActionSource, RemoteAdminDataSource, RemoteModuleConfig, RemoteModuleSource,
@@ -148,7 +148,21 @@ async fn declarative_manifest() -> Json<Value> {
             "actions": [{
                 "name": "sync_contacts",
                 "label": "Sync contacts",
-                "capability": "remote_crm.contacts.sync"
+                "capability": "remote_crm.contacts.sync",
+                "input_schema": {
+                    "fields": [{
+                        "name": "dry_run",
+                        "label": "Dry run",
+                        "field_type": { "kind": "boolean" },
+                        "required": false,
+                        "description": "Preview the sync without writing remote data"
+                    }]
+                },
+                "confirmation": {
+                    "message": "Sync remote contacts now?",
+                    "required_phrase": "SYNC"
+                },
+                "danger_level": "medium"
             }],
             "fallback_schema": {
                 "entities": [{
@@ -320,10 +334,26 @@ async fn loads_declarative_custom_manifest_with_admin_data_source() {
         .expect("load remote module");
 
     assert_eq!(module.manifest.name, "remote-crm-declarative");
-    assert!(matches!(
-        module.manifest.admin,
-        Some(AdminSurface::DeclarativeCustom(_))
-    ));
+    let Some(AdminSurface::DeclarativeCustom(surface)) = &module.manifest.admin else {
+        panic!("expected declarative custom admin surface");
+    };
+    let action = surface.actions.first().expect("action declared");
+    assert_eq!(action.name, "sync_contacts");
+    assert_eq!(action.danger_level, AdminActionDangerLevel::Medium);
+    let input_field = action
+        .input_schema
+        .as_ref()
+        .and_then(|schema| schema.fields.first())
+        .expect("action input field declared");
+    assert_eq!(input_field.name, "dry_run");
+    assert_eq!(input_field.field_type, FieldType::Boolean);
+    assert_eq!(
+        action
+            .confirmation
+            .as_ref()
+            .and_then(|confirmation| confirmation.required_phrase.as_deref()),
+        Some("SYNC")
+    );
     assert!(module.admin_data.is_some());
     assert!(module.admin_actions.is_some());
 }

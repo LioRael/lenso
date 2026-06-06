@@ -1247,7 +1247,7 @@ mod tests {
 
     #[test]
     fn manifest_lint_warns_for_undeclared_capability_references() {
-        use crate::admin::AdminAction;
+        use crate::admin::{AdminAction, AdminActionDangerLevel};
 
         let manifest = ModuleManifest::builder("remote-crm")
             .capabilities(vec!["remote_crm.contacts.write".to_owned()])
@@ -1274,6 +1274,9 @@ mod tests {
                     name: "sync_contacts".to_owned(),
                     label: "Sync Contacts".to_owned(),
                     capability: "remote_crm.contacts.sync".to_owned(),
+                    input_schema: None,
+                    confirmation: None,
+                    danger_level: AdminActionDangerLevel::Low,
                 }],
                 fallback_schema: Some(AdminSchema {
                     entities: vec![crate::EntitySchema {
