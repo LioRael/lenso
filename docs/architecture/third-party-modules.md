@@ -242,6 +242,8 @@ URL, capabilities, and console package hints:
 install path as `lenso module add`, so `.env`,
 `.lenso/console-package-install-plan.json`, `console-package apply-plan`, and
 `module doctor` remain the install contract.
+`pnpm --dir apps/runtime-console run demo:module-registry-install` exercises the
+same sequence against a temporary host fixture without mutating the working tree.
 
 If the manifest is installed from a local file or non-protocol URL, pass the
 runtime module base URL explicitly:

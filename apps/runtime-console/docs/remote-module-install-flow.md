@@ -75,16 +75,20 @@ Run the temporary-host smoke demo without mutating the working tree:
 
 ```sh
 pnpm --dir apps/runtime-console run demo:remote-module-install
+pnpm --dir apps/runtime-console run demo:module-registry-install
 ```
 
 Set `LENSO_KEEP_REMOTE_MODULE_INSTALL_DEMO=1` to keep the generated temp
 directory for inspection.
+Set `LENSO_KEEP_MODULE_REGISTRY_INSTALL_DEMO=1` to keep the registry demo
+directory.
 
 Expected success output ends with:
 
 ```text
 Module doctor passed.
 Remote module install demo passed
+Module registry install demo passed
 ```
 
 ## Troubleshooting

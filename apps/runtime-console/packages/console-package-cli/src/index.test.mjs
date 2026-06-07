@@ -817,6 +817,7 @@ describe("module scaffold CLI", () => {
     );
     expect(flowDoc).toContain("fix: lenso console-package apply-plan");
     expect(flowDoc).toContain("Remote module install demo passed");
+    expect(flowDoc).toContain("Module registry install demo passed");
 
     await expect(
       readFile(path.join(repoRoot, "apps/runtime-console/README.md"), "utf-8")
@@ -876,6 +877,9 @@ describe("module scaffold CLI", () => {
     expect(packageJson.scripts["demo:remote-module-install"]).toBe(
       "node scripts/remote-module-install-demo.mjs"
     );
+    expect(packageJson.scripts["demo:module-registry-install"]).toBe(
+      "node scripts/module-registry-install-demo.mjs"
+    );
 
     const { stdout } = await execFileAsync(process.execPath, [
       path.join(runtimeConsoleRoot, "scripts/remote-module-install-demo.mjs"),
@@ -883,6 +887,19 @@ describe("module scaffold CLI", () => {
 
     expect(stdout).toContain("Remote module install demo passed");
     expect(stdout).toContain("Module doctor passed");
+  });
+
+  test("runs the module registry install demo script", async () => {
+    const runtimeConsoleRoot = path.resolve(import.meta.dirname, "../../..");
+    const { stdout } = await execFileAsync(process.execPath, [
+      path.join(runtimeConsoleRoot, "scripts/module-registry-install-demo.mjs"),
+    ]);
+
+    expect(stdout).toContain("Module registry entries:");
+    expect(stdout).toContain("Registry module billing");
+    expect(stdout).toContain("Installed registry module billing.");
+    expect(stdout).toContain("Module doctor passed");
+    expect(stdout).toContain("Module registry install demo passed");
   });
 
   test("creates a standalone remote module package", async () => {
