@@ -31,6 +31,18 @@ lenso module registry doctor --registry-file .lenso/module-registry.json
 lenso module registry inspect billing --registry-file .lenso/module-registry.json
 ```
 
+For automation or a future Runtime Console data source, emit the same registry
+preflight as a machine-readable snapshot:
+
+```sh
+lenso module registry doctor --registry-file .lenso/module-registry.json --json
+```
+
+The JSON snapshot includes catalog metadata, per-module manifest status,
+console package hint counts, grouped issue details, and an overall
+`passed`/`failed` status. It does not install packages or mutate host
+configuration.
+
 Install from the registry when the entry looks right:
 
 ```sh

@@ -1605,8 +1605,9 @@ const compareRegistryConsolePackages = ({ entry, issues, manifest }) => {
 };
 
 const checkRegistryEntryManifest = async ({ entry, issues, options }) => {
+  let baseUrl;
   try {
-    deriveRemoteBaseUrl({
+    baseUrl = deriveRemoteBaseUrl({
       baseUrl: entry.baseUrl ?? options.baseUrl,
       manifestReference: entry.manifestReference,
     });
@@ -1629,7 +1630,13 @@ const checkRegistryEntryManifest = async ({ entry, issues, options }) => {
       issues,
       message: `${entry.name} manifest could not be read: ${error.message}`,
     });
-    return { consolePackageHints: entry.consolePackages.length };
+    return {
+      baseUrl,
+      consolePackageHints: entry.consolePackages.length,
+      manifestName: null,
+      manifestStatus: "unreadable",
+      manifestVersion: null,
+    };
   }
 
   let remoteModule;
@@ -1642,7 +1649,13 @@ const checkRegistryEntryManifest = async ({ entry, issues, options }) => {
       issues,
       message: `${entry.name} manifest is invalid: ${error.message}`,
     });
-    return { consolePackageHints: entry.consolePackages.length };
+    return {
+      baseUrl,
+      consolePackageHints: entry.consolePackages.length,
+      manifestName: null,
+      manifestStatus: "invalid",
+      manifestVersion: null,
+    };
   }
 
   if (remoteModule.name !== entry.name) {
@@ -1662,20 +1675,80 @@ const checkRegistryEntryManifest = async ({ entry, issues, options }) => {
     });
   }
   compareRegistryConsolePackages({ entry, issues, manifest });
-  return { consolePackageHints: entry.consolePackages.length };
+  return {
+    baseUrl,
+    consolePackageHints: entry.consolePackages.length,
+    manifestName: remoteModule.name,
+    manifestStatus: "ok",
+    manifestVersion: remoteModule.version,
+  };
+};
+
+const registryDoctorJsonSnapshot = ({
+  entries,
+  issues,
+  moduleChecks,
+  registryFilePath,
+}) => ({
+  catalog: {
+    modules: entries.length,
+    registryFile: registryFilePath,
+    version: 1,
+  },
+  issues,
+  modules: moduleChecks.map(({ entry, issues: entryIssues, result }) => ({
+    baseUrl: result.baseUrl ?? null,
+    catalogVersion: entry.version,
+    consolePackageHints: result.consolePackageHints,
+    manifestName: result.manifestName,
+    manifestReference: entry.manifestReference,
+    manifestStatus: result.manifestStatus,
+    manifestVersion: result.manifestVersion,
+    name: entry.name,
+    source: entry.source,
+    status: entryIssues.length === 0 ? "ready" : "needs_attention",
+  })),
+  status: issues.length === 0 ? "passed" : "failed",
+  version: 1,
+});
+
+const printRegistryDoctorJsonSnapshot = (snapshot) => {
+  console.log(JSON.stringify(snapshot, null, 2));
 };
 
 const runModuleRegistryDoctor = async ({ options }) => {
-  const { entries } = await readModuleRegistry({ options });
+  const { entries, registryFilePath } = await readModuleRegistry({ options });
   const issues = [];
+  const moduleChecks = [];
   let consolePackageHints = 0;
   for (const entry of entries) {
+    const issueStart = issues.length;
     const result = await checkRegistryEntryManifest({ entry, issues, options });
     consolePackageHints += result.consolePackageHints;
+    moduleChecks.push({
+      entry,
+      issues: issues.slice(issueStart),
+      result,
+    });
+  }
+
+  if (options.json) {
+    printRegistryDoctorJsonSnapshot(
+      registryDoctorJsonSnapshot({
+        entries,
+        issues,
+        moduleChecks,
+        registryFilePath,
+      })
+    );
   }
 
   if (issues.length > 0) {
     throw new Error(formatRegistryDoctorIssues(issues));
+  }
+
+  if (options.json) {
+    return;
   }
 
   console.log("Module registry doctor passed.");
@@ -1918,7 +1991,8 @@ const addModuleDoctorOptions = (command) =>
 const addModuleRegistryOptions = (command) =>
   command
     .option("--repo-root <path>", "Lenso host repository root")
-    .option("--registry-file <path>", "module registry catalog file");
+    .option("--registry-file <path>", "module registry catalog file")
+    .option("--json", "print machine-readable JSON output");
 
 const addModuleRegistryInstallOptions = (command) =>
   addModuleRegistryOptions(command)

@@ -170,6 +170,8 @@ Current Runtime Console support includes:
 - Module Registry v0 catalog discovery through `lenso module registry list`,
   `lenso module registry doctor`, `lenso module registry inspect`, and
   `lenso module registry install`
+- machine-readable registry preflight snapshots through
+  `lenso module registry doctor --json`
 - remote module install CLI that writes local source configuration
 - console package apply-plan registration for requested package exports
 - module doctor diagnostics for source/package/registry mismatches

@@ -72,6 +72,20 @@ const assertContains = (value, expected, label) => {
   }
 };
 
+const captureConsoleOutput = async (action) => {
+  const originalLog = console.log;
+  const logs = [];
+  console.log = (...args) => {
+    logs.push(args.join(" "));
+  };
+  try {
+    await action();
+  } finally {
+    console.log = originalLog;
+  }
+  return logs.join("\n");
+};
+
 const main = async () => {
   const demoRoot = await mkdtemp(
     path.join(os.tmpdir(), "lenso-module-registry-install-demo-")
@@ -143,6 +157,26 @@ const main = async () => {
       "--registry-file",
       registryFile,
     ]);
+    const registryDoctorSnapshot = JSON.parse(
+      await captureConsoleOutput(async () => {
+        await runConsolePackageCli([
+          "module",
+          "registry",
+          "doctor",
+          "--repo-root",
+          hostRoot,
+          "--registry-file",
+          registryFile,
+          "--json",
+        ]);
+      })
+    );
+    if (registryDoctorSnapshot.status !== "passed") {
+      throw new Error("registry doctor JSON snapshot did not pass");
+    }
+    if (registryDoctorSnapshot.modules[0]?.status !== "ready") {
+      throw new Error("registry doctor JSON module status was not ready");
+    }
     await runConsolePackageCli([
       "module",
       "registry",
