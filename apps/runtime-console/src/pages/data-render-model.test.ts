@@ -24,6 +24,8 @@ import {
   moduleActivationLabel,
   moduleActivationReasons,
   moduleConsoleSurfaceRows,
+  moduleDesiredEnabled,
+  moduleEnabledConfigKey,
   moduleErrorMessage,
   moduleGovernanceRows,
   moduleHttpRouteRows,
@@ -35,6 +37,8 @@ import {
   moduleManifestCheckGroups,
   moduleManifestChecks,
   moduleManifestHealth,
+  moduleRestartPending,
+  moduleRunningEnabled,
   remoteModuleReadiness,
   moduleStatusLabel,
   recordId,
@@ -363,6 +367,34 @@ describe("module status helpers", () => {
       "module failed to load: manifest unavailable",
       "console.surface.contacts: Console route is reserved.",
     ]);
+  });
+
+  test("compares running and desired module enabled state", () => {
+    const disabledModule = moduleMetadata({
+      admin: null,
+      error: "module disabled by configuration",
+      http_routes: [],
+      module_name: "identity",
+      source: "linked",
+      status: "error",
+    });
+    const values = [
+      {
+        key: moduleEnabledConfigKey("identity"),
+        value: true,
+      },
+    ];
+
+    expect(moduleRunningEnabled(loadedModule)).toBe(true);
+    expect(moduleDesiredEnabled(loadedModule, [])).toBe(true);
+    expect(
+      moduleRestartPending(loadedModule, [
+        { key: moduleEnabledConfigKey(loadedModule.module_name), value: false },
+      ])
+    ).toBe(true);
+    expect(moduleRunningEnabled(disabledModule)).toBe(false);
+    expect(moduleDesiredEnabled(disabledModule, values)).toBe(true);
+    expect(moduleRestartPending(disabledModule, values)).toBe(true);
   });
 
   test("builds governance rows from backend metadata", () => {

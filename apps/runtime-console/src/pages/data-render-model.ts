@@ -234,6 +234,11 @@ export type MetadataRow = {
   value: string;
 };
 
+export type ConfigValueMetadata = {
+  key: string;
+  value: unknown;
+};
+
 export type ModuleGovernance = {
   activation_state: ModuleActivationState;
   activation_reasons: string[];
@@ -470,6 +475,35 @@ export function moduleErrorMessage(module: AdminModuleMetadata): string | null {
   return module.status === "error"
     ? (module.error ?? "module failed to load")
     : null;
+}
+
+export function moduleEnabledConfigKey(moduleName: string): string {
+  return `modules.${moduleName}.enabled`;
+}
+
+export function moduleRunningEnabled(module: AdminModuleMetadata): boolean {
+  return module.source === "linked" && moduleIsLoaded(module);
+}
+
+export function moduleDesiredEnabled(
+  module: AdminModuleMetadata,
+  values: ConfigValueMetadata[]
+): boolean | null {
+  if (module.source !== "linked") {
+    return null;
+  }
+  const match = values.find(
+    (value) => value.key === moduleEnabledConfigKey(module.module_name)
+  );
+  return typeof match?.value === "boolean" ? match.value : true;
+}
+
+export function moduleRestartPending(
+  module: AdminModuleMetadata,
+  values: ConfigValueMetadata[]
+): boolean {
+  const desired = moduleDesiredEnabled(module, values);
+  return desired === null ? false : desired !== moduleRunningEnabled(module);
 }
 
 export function adminSurfaceLabel(surface: AdminSurface | null): string {

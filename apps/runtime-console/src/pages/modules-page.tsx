@@ -27,6 +27,7 @@ import {
 } from "../lib/http-client";
 import {
   type AdminModuleMetadata,
+  type ConfigValueMetadata,
   type ModuleRegistryFilters,
   adminSurfaceLabel,
   adminSurfaceMetadataRows,
@@ -34,6 +35,8 @@ import {
   moduleActivationLabel,
   moduleActivationReasons,
   moduleConsoleSurfaceRows,
+  moduleDesiredEnabled,
+  moduleEnabledConfigKey,
   moduleErrorMessage,
   moduleGovernanceRows,
   moduleHttpRouteRows,
@@ -41,6 +44,8 @@ import {
   latestModuleRefreshResult,
   moduleManifestCheckGroups,
   moduleRegistrySummary,
+  moduleRestartPending,
+  moduleRunningEnabled,
   moduleRuntimeFunctionRows,
   moduleManifestChecks,
   moduleManifestHealth,
@@ -86,12 +91,14 @@ type ConfigWriteResponse = {
   applies_on_restart: boolean;
 };
 
-const modulesQueryKey = ["modules", "registry"] as const;
-const emptyModules: AdminModuleMetadata[] = [];
+type ConfigValueListResponse = {
+  data: ConfigValueMetadata[];
+};
 
-function moduleEnabledConfigKey(moduleName: string) {
-  return `modules.${moduleName}.enabled`;
-}
+const modulesQueryKey = ["modules", "registry"] as const;
+const configValuesQueryKey = ["config", "values"] as const;
+const emptyModules: AdminModuleMetadata[] = [];
+const emptyConfigValues: ConfigValueMetadata[] = [];
 
 function configPath(service: string, key: string) {
   return `admin/config/${encodeURIComponent(service)}/${encodeURIComponent(key)}`;
@@ -111,6 +118,12 @@ function ModulesContent() {
     queryKey: modulesQueryKey,
     queryFn: () => httpClient.get("admin/data/modules").json<ModulesResponse>(),
   });
+  const configValuesQuery = useQuery({
+    enabled: isApiMode(),
+    queryKey: configValuesQueryKey,
+    queryFn: () =>
+      httpClient.get("admin/config/values").json<ConfigValueListResponse>(),
+  });
   const refreshMutation = useMutation({
     mutationFn: () =>
       httpClient.post("admin/data/modules/refresh").json<ModulesResponse>(),
@@ -119,6 +132,7 @@ function ModulesContent() {
     },
   });
   const modules = modulesQuery.data?.modules ?? emptyModules;
+  const configValues = configValuesQuery.data?.data ?? emptyConfigValues;
   const [selectedModuleName, setSelectedModuleName] = useState<string | null>(
     null
   );
@@ -249,6 +263,7 @@ function ModulesContent() {
         <main className="min-h-0 overflow-auto p-3 font-mono text-[12px]">
           {selectedModule ? (
             <ModuleRegistryDetail
+              configValues={configValues}
               history={modulesQuery.data?.refresh_history ?? []}
               module={selectedModule}
             />
@@ -474,9 +489,11 @@ function registrySnapshotLabel(refreshedAt: string | null): string {
 }
 
 function ModuleRegistryDetail({
+  configValues,
   history,
   module,
 }: {
+  configValues: ConfigValueMetadata[];
   history: ModuleRefreshRecord[];
   module: AdminModuleMetadata;
 }) {
@@ -512,9 +529,11 @@ function ModuleRegistryDetail({
         )}
       </section>
 
-      {module.source === "remote" ? (
-        <ModuleOperationsPanel history={history} module={module} />
-      ) : null}
+      <ModuleOperationsPanel
+        configValues={configValues}
+        history={history}
+        module={module}
+      />
       <ModuleGovernancePanel module={module} />
       <ModuleCapabilitiesList capabilities={module.capabilities} />
       <ModuleConsoleSurfacesTable rows={consoleRows} />
@@ -615,9 +634,11 @@ function MissingConsolePackagesTable({
 }
 
 function ModuleOperationsPanel({
+  configValues,
   history,
   module,
 }: {
+  configValues: ConfigValueMetadata[];
   history: ModuleRefreshRecord[];
   module: AdminModuleMetadata;
 }) {
@@ -633,21 +654,23 @@ function ModuleOperationsPanel({
   const summary = summarizeRemoteProxyCalls(calls);
   const readiness = remoteModuleReadiness(module, calls);
   const { latestFailure } = readiness;
+  const isRemote = module.source === "remote";
   const diagnostics =
     module.source_diagnostics?.kind === "remote"
       ? module.source_diagnostics
       : null;
   const latestRefresh = latestModuleRefreshResult(module, history);
+  const desiredEnabled = moduleDesiredEnabled(module, configValues);
+  const runningEnabled = moduleRunningEnabled(module);
+  const restartPending = moduleRestartPending(module, configValues);
   const disabledByConfig =
     module.source === "linked" &&
     moduleErrorMessage(module) === "module disabled by configuration";
   const moduleToggleTarget =
-    module.source === "linked"
-      ? disabledByConfig
-        ? true
-        : moduleIsLoaded(module)
-          ? false
-          : null
+    module.source === "linked" &&
+    (moduleIsLoaded(module) || disabledByConfig || restartPending) &&
+    desiredEnabled !== null
+      ? !desiredEnabled
       : null;
   const moduleToggleMutation = useMutation({
     mutationFn: (enabled: boolean) =>
@@ -663,9 +686,17 @@ function ModuleOperationsPanel({
         }`
       );
       await queryClient.invalidateQueries({ queryKey: modulesQueryKey });
+      await queryClient.invalidateQueries({ queryKey: configValuesQueryKey });
     },
     onError: (error: unknown) => setModuleToggleMessage(errorMessage(error)),
   });
+  const operationStatus = isRemote
+    ? readiness.status
+    : restartPending
+      ? "pending restart"
+      : moduleIsLoaded(module)
+        ? "ready"
+        : "blocked";
 
   return (
     <section className="min-w-0 border border-(--border-subtle) bg-(--surface)">
@@ -683,8 +714,13 @@ function ModuleOperationsPanel({
               "border-[color-mix(in_srgb,var(--error)_55%,transparent)] text-(--error)"
           )}
         >
-          {readiness.status}
+          {operationStatus}
         </span>
+        {restartPending ? (
+          <span className="border border-[color-mix(in_srgb,var(--warning)_55%,transparent)] px-1.5 py-0.5 text-[10px] text-(--warning)">
+            pending restart
+          </span>
+        ) : null}
         {moduleToggleTarget === null ? null : (
           <Button
             className="min-h-6 px-2"
@@ -698,36 +734,55 @@ function ModuleOperationsPanel({
             {moduleToggleTarget ? "Enable" : "Disable"}
           </Button>
         )}
-        <button
-          className="border border-(--border-subtle) bg-(--elevated) px-1.5 py-0.5 text-[10px] text-(--secondary) hover:text-(--foreground)"
-          onClick={() =>
-            pushOperationsUrl(
-              remoteProxyCallsPath({ moduleName: module.module_name })
-            )
-          }
-          type="button"
-        >
-          Remote Calls
-        </button>
+        {isRemote ? (
+          <button
+            className="border border-(--border-subtle) bg-(--elevated) px-1.5 py-0.5 text-[10px] text-(--secondary) hover:text-(--foreground)"
+            onClick={() =>
+              pushOperationsUrl(
+                remoteProxyCallsPath({ moduleName: module.module_name })
+              )
+            }
+            type="button"
+          >
+            Remote Calls
+          </button>
+        ) : null}
       </header>
       {moduleToggleMessage ? (
         <p className="border-b border-(--border-subtle) px-3 py-2 text-[11px] text-(--warning)">
           {moduleToggleMessage}
         </p>
       ) : null}
-      {callsQuery.isError ? (
+      {isRemote && callsQuery.isError ? (
         <p className="border-b border-(--border-subtle) px-3 py-2 text-(--error)">
           Failed to load recent remote calls.
         </p>
-      ) : callsQuery.isLoading ? (
+      ) : isRemote && callsQuery.isLoading ? (
         <p className="border-b border-(--border-subtle) px-3 py-2 text-(--muted)">
           Loading recent remote calls...
         </p>
       ) : null}
       <MetadataRows
         rows={[
-          { label: "readiness", value: readiness.status },
-          { label: "reason", value: readiness.reasons.join(" / ") },
+          { label: "readiness", value: operationStatus },
+          {
+            label: "running enabled",
+            value: module.source === "linked" ? String(runningEnabled) : "-",
+          },
+          {
+            label: "desired enabled",
+            value: desiredEnabled === null ? "-" : String(desiredEnabled),
+          },
+          {
+            label: "restart pending",
+            value: module.source === "linked" ? String(restartPending) : "-",
+          },
+          {
+            label: "reason",
+            value: isRemote
+              ? readiness.reasons.join(" / ")
+              : "linked module state is applied on service restart",
+          },
           {
             label: "latest refresh",
             value: latestRefresh
