@@ -19,6 +19,7 @@ import {
   missingConsolePackagesFromMetadata,
 } from "../app/console-module-metadata";
 import { Button } from "../components/ui/button";
+import { availableModuleRegistrySnapshotRows } from "../data/available-module-registry-snapshot";
 import { useRemoteProxyCalls } from "../hooks/use-runtime-queries";
 import { cn } from "../lib/cn";
 import {
@@ -26,10 +27,7 @@ import {
   isApiMode,
   runtimeConsoleDataSource,
 } from "../lib/http-client";
-import {
-  type AvailableModulePreflightStatus,
-  availableModuleRegistryRowsFromDoctorSnapshot,
-} from "./available-module-registry-model";
+import type { AvailableModulePreflightStatus } from "./available-module-registry-model";
 import {
   type AdminModuleMetadata,
   type ConfigValueMetadata,
@@ -106,50 +104,7 @@ const modulesQueryKey = ["modules", "registry"] as const;
 const configValuesQueryKey = ["config", "values"] as const;
 const emptyModules: AdminModuleMetadata[] = [];
 const emptyConfigValues: ConfigValueMetadata[] = [];
-const sampleAvailableModuleRows = availableModuleRegistryRowsFromDoctorSnapshot(
-  {
-    catalog: {
-      modules: 2,
-      registryFile: ".lenso/module-registry.json",
-      version: 1,
-    },
-    issues: [
-      {
-        fix: "add baseUrl or use a manifest URL ending with /manifest",
-        group: "Catalog",
-        message: "local-crm baseUrl is missing",
-      },
-    ],
-    modules: [
-      {
-        baseUrl: "https://example.com/lenso/module/v1",
-        catalogVersion: "0.1.0",
-        consolePackageHints: 1,
-        manifestName: "billing",
-        manifestReference: "https://example.com/lenso/module/v1/manifest",
-        manifestStatus: "ok",
-        manifestVersion: "0.1.0",
-        name: "billing",
-        source: "remote",
-        status: "ready",
-      },
-      {
-        baseUrl: null,
-        catalogVersion: "0.1.0",
-        consolePackageHints: 0,
-        manifestName: "local-crm",
-        manifestReference: "./lenso.module.json",
-        manifestStatus: "ok",
-        manifestVersion: "0.1.0",
-        name: "local-crm",
-        source: "remote",
-        status: "needs_attention",
-      },
-    ],
-    status: "failed",
-    version: 1,
-  }
-);
+const sampleAvailableModuleRows = availableModuleRegistrySnapshotRows();
 
 function configPath(service: string, key: string) {
   return `admin/config/${encodeURIComponent(service)}/${encodeURIComponent(key)}`;
