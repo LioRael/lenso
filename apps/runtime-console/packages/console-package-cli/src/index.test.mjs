@@ -7,7 +7,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { runConsolePackageCli } from "./index.mjs";
 
@@ -285,17 +285,28 @@ describe("module scaffold CLI", () => {
   test("creates a linked module with a registered console package", async () => {
     const repoRoot = await createRepoFixture();
     await createRuntimeConsoleFixture(repoRoot);
+    const logs = [];
+    const logSpy = vi.spyOn(console, "log").mockImplementation((...args) => {
+      logs.push(args.join(" "));
+    });
 
-    await expect(
-      runConsolePackageCli([
-        "module",
-        "create",
-        "billing",
-        "--repo-root",
-        repoRoot,
-        "--with-console",
-      ])
-    ).resolves.toBe(0);
+    try {
+      await expect(
+        runConsolePackageCli([
+          "module",
+          "create",
+          "billing",
+          "--repo-root",
+          repoRoot,
+          "--with-console",
+        ])
+      ).resolves.toBe(0);
+    } finally {
+      logSpy.mockRestore();
+    }
+    expect(logs.join("\n")).toContain(
+      'Keep navigation.workspace.id="billing" so the module owns its workspace'
+    );
 
     const moduleSource = await readFile(
       path.join(repoRoot, "modules/billing/src/module.rs"),

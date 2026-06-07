@@ -142,6 +142,26 @@ export const billingConsoleManifest = defineConsolePackageManifest(
 Use `source: "first_party"` only for platform-owned packages that should be
 treated as built-in. Most module packages should use `source: "installed"`.
 
+## Workspace Ownership
+
+Every module decides whether its console surface should create a module-owned
+workspace or fall back to the host `System` workspace:
+
+- Declare `navigation.workspace` when the module owns a product workspace such as
+  `Billing`, `CRM`, or `Support`.
+- Omit `navigation` when the surface is really host/platform UI and should stay
+  in `System`.
+- Do not declare `workspace.id = "system"` from a module. `system` is reserved
+  for the host fallback.
+- Keep the workspace id path-safe and stable. A good default is the module id:
+  `billing`, `crm`, or `support`.
+- Use `navigation.group` only for one level of organization inside the module's
+  workspace. The first slice intentionally avoids recursive menus.
+
+The generated `--with-console` scaffold creates a module-owned workspace by
+default so a new business module appears as its own switcher entry instead of
+being flattened into a generic Modules bucket.
+
 The host maps manifest fields to Rust `ConsoleSurface` metadata before resolving
 installed packages: `surfaceName` becomes `name`, `packageName` becomes
 `package.name`, `exportName` becomes `package.export`, and
@@ -265,8 +285,8 @@ pnpm --dir apps/runtime-console install --lockfile-only
 The host still has to import installed packages at build time. A backend module
 can declare any package, but Runtime Console can only mount it after the package
 has been added to `package.json`, the Vite/TypeScript aliases, and
-`console-package-module-exports.ts`. Missing declarations appear on the Modules
-page as install-plan rows.
+`console-package-module-exports.ts`. Missing declarations appear in the module
+registry as install-plan rows.
 
 ## Boundary Rules
 

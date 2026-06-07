@@ -1337,7 +1337,9 @@ const addRemoteModule = async ({ manifestReference, options }) => {
     `- review ${path.relative(repoRoot, installPlanPath)} for console package install commands`
   );
   console.log("- restart the API and worker so REMOTE_MODULES is reloaded");
-  console.log("- open Runtime Console Modules to verify the remote source");
+  console.log(
+    "- open the Runtime Console module registry and workspace switcher to verify the remote source"
+  );
 };
 
 const doctorIssueGroups = [
@@ -1528,6 +1530,10 @@ const createConsolePackage = async ({ defaultRuntimeConsoleRoot, options }) => {
   console.log(
     `- Copy ${packageContext.packageSlug}/console-surface.rs into the Rust module manifest`
   );
+  console.log(
+    `- Keep navigation.workspace.id="${packageContext.moduleId}" so the module owns its workspace`
+  );
+  console.log("- Omit navigation only for host System surfaces");
   console.log("- pnpm install --lockfile-only");
   console.log("- pnpm check:console-packages");
   console.log("- just console-check");

@@ -58,6 +58,18 @@ Example surface metadata:
 }
 ```
 
+Workspace ownership rules:
+
+- Host-owned platform surfaces omit `navigation` and let the shell place them in
+  `System`.
+- Business modules create their own workspace by declaring
+  `navigation.workspace`; there is no hardcoded `Modules` workspace.
+- `system` is reserved for the host and must not be claimed by module
+  manifests.
+- A module may group pages one level deep with `navigation.group`; deeper menu
+  trees and cross-module shared workspaces are deferred until ownership policy is
+  explicit.
+
 For `platform-story`, Rust and frontend package/export metadata intentionally
 match; backend navigation may still be omitted so the host applies the System
 default:
