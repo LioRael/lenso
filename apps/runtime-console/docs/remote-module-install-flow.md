@@ -27,6 +27,7 @@ entries before installing:
 
 ```sh
 lenso module registry list --registry-file .lenso/module-registry.json
+lenso module registry doctor --registry-file .lenso/module-registry.json
 lenso module registry inspect billing --registry-file .lenso/module-registry.json
 ```
 
@@ -86,6 +87,7 @@ directory.
 Expected success output ends with:
 
 ```text
+Module registry doctor passed.
 Module doctor passed.
 Remote module install demo passed
 Module registry install demo passed
@@ -93,8 +95,38 @@ Module registry install demo passed
 
 ## Troubleshooting
 
-Run `lenso module doctor` first. It groups failures by the part of the install
-flow that needs attention and prints a `fix:` command next to each issue.
+Run `lenso module registry doctor` before install and `lenso module doctor`
+after install. They group failures by the part of the flow that needs attention
+and print a `fix:` command next to each issue.
+
+### Catalog
+
+If a registry catalog entry is missing a base URL and the manifest reference is
+not an HTTP URL ending in `/manifest`, add the runtime module base URL:
+
+```text
+fix: add baseUrl or use a manifest URL ending with /manifest
+```
+
+This lets registry install write the correct `REMOTE_MODULES` source.
+
+### Manifest
+
+If a catalog entry points at the wrong module manifest or stale version, update
+the catalog or manifest before installing:
+
+```text
+fix: update catalog name/version or point the entry at the correct manifest
+```
+
+### Console package hint
+
+If catalog console package hints drift from the manifest, sync the catalog with
+the manifest `console` declarations:
+
+```text
+fix: sync consolePackages with the remote manifest console declarations
+```
 
 ### Remote source
 

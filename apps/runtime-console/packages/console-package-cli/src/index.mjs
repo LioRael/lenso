@@ -1563,6 +1563,126 @@ const installRegistryModule = async ({ moduleName, options }) => {
   console.log(`Installed registry module ${entry.name}.`);
 };
 
+const registryDoctorIssueGroups = [
+  "Catalog",
+  "Manifest",
+  "Console package hint",
+];
+
+const formatRegistryDoctorIssues = (issues) => {
+  const lines = [`Module registry doctor found ${issues.length} issue(s).`];
+  for (const group of registryDoctorIssueGroups) {
+    const groupIssues = issues.filter((issue) => issue.group === group);
+    if (groupIssues.length === 0) {
+      continue;
+    }
+    lines.push("", `${group}:`);
+    for (const issue of groupIssues) {
+      lines.push(`- ${issue.message}`);
+      lines.push(`  fix: ${issue.fix}`);
+    }
+  }
+  return lines.join("\n");
+};
+
+const addRegistryDoctorIssue = ({ fix, group, issues, message }) => {
+  issues.push({ fix, group, message });
+};
+
+const compareRegistryConsolePackages = ({ entry, issues, manifest }) => {
+  const manifestPackages = new Set(consolePackagesFromManifest(manifest));
+  const entryPackages = consolePackagesFromRegistryEntry(entry);
+  for (const packageKey of entryPackages) {
+    if (!manifestPackages.has(packageKey)) {
+      addRegistryDoctorIssue({
+        fix: `sync ${entry.name} consolePackages with the remote manifest console declarations`,
+        group: "Console package hint",
+        issues,
+        message: `${packageKey} is not declared by manifest ${manifest.name}`,
+      });
+    }
+  }
+};
+
+const checkRegistryEntryManifest = async ({ entry, issues, options }) => {
+  try {
+    deriveRemoteBaseUrl({
+      baseUrl: entry.baseUrl ?? options.baseUrl,
+      manifestReference: entry.manifestReference,
+    });
+  } catch {
+    addRegistryDoctorIssue({
+      fix: "add baseUrl or use a manifest URL ending with /manifest",
+      group: "Catalog",
+      issues,
+      message: `${entry.name} baseUrl is missing`,
+    });
+  }
+
+  let manifest;
+  try {
+    manifest = await readJsonFromReference(entry.manifestReference);
+  } catch (error) {
+    addRegistryDoctorIssue({
+      fix: `verify ${entry.name} manifestReference and network access`,
+      group: "Manifest",
+      issues,
+      message: `${entry.name} manifest could not be read: ${error.message}`,
+    });
+    return { consolePackageHints: entry.consolePackages.length };
+  }
+
+  let remoteModule;
+  try {
+    remoteModule = validateRemoteModuleManifest(manifest);
+  } catch (error) {
+    addRegistryDoctorIssue({
+      fix: `update ${entry.name} manifest so it is a valid remote module manifest`,
+      group: "Manifest",
+      issues,
+      message: `${entry.name} manifest is invalid: ${error.message}`,
+    });
+    return { consolePackageHints: entry.consolePackages.length };
+  }
+
+  if (remoteModule.name !== entry.name) {
+    addRegistryDoctorIssue({
+      fix: `update catalog name to ${remoteModule.name} or point ${entry.name} at the correct manifest`,
+      group: "Manifest",
+      issues,
+      message: `${entry.name} catalog name does not match manifest name ${remoteModule.name}`,
+    });
+  }
+  if (remoteModule.version !== entry.version) {
+    addRegistryDoctorIssue({
+      fix: `update ${entry.name} catalog version to ${remoteModule.version}`,
+      group: "Manifest",
+      issues,
+      message: `${entry.name} catalog version ${entry.version} does not match manifest version ${remoteModule.version}`,
+    });
+  }
+  compareRegistryConsolePackages({ entry, issues, manifest });
+  return { consolePackageHints: entry.consolePackages.length };
+};
+
+const runModuleRegistryDoctor = async ({ options }) => {
+  const { entries } = await readModuleRegistry({ options });
+  const issues = [];
+  let consolePackageHints = 0;
+  for (const entry of entries) {
+    const result = await checkRegistryEntryManifest({ entry, issues, options });
+    consolePackageHints += result.consolePackageHints;
+  }
+
+  if (issues.length > 0) {
+    throw new Error(formatRegistryDoctorIssues(issues));
+  }
+
+  console.log("Module registry doctor passed.");
+  console.log(`- catalog modules: ${entries.length}`);
+  console.log(`- console package hints: ${consolePackageHints}`);
+};
+
 const doctorIssueGroups = [
   "Remote source",
   "Console package",
@@ -1837,6 +1957,7 @@ const createProgram = ({ defaultRuntimeConsoleRoot } = {}) => {
       `
 Third-party remote module flow:
   lenso module registry list
+  lenso module registry doctor
   lenso module registry inspect <module>
   lenso module registry install <module>
   lenso module add <manifest-url>
@@ -1873,6 +1994,13 @@ Third-party remote module flow:
     registryCommand.command("list").description("list registry modules")
   ).action(async (options) => {
     await listModuleRegistry({ options });
+  });
+  addModuleRegistryOptions(
+    registryCommand
+      .command("doctor")
+      .description("check every registry module manifest before installation")
+  ).action(async (options) => {
+    await runModuleRegistryDoctor({ options });
   });
   addModuleRegistryOptions(
     registryCommand

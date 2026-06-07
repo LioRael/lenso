@@ -740,6 +740,146 @@ describe("module scaffold CLI", () => {
     });
   });
 
+  test("passes registry doctor for a valid catalog", async () => {
+    const repoRoot = await createRepoFixture();
+    const manifestUrl = await serveManifest({
+      capabilities: ["billing.read"],
+      console: [
+        {
+          package: {
+            export: "billingConsoleModule",
+            name: "@vendor/lenso-billing-console",
+          },
+          route: "/data/billing",
+        },
+      ],
+      name: "billing",
+      source: "remote",
+      version: "0.1.0",
+    });
+    await writeFixture(
+      repoRoot,
+      ".lenso/module-registry.json",
+      JSON.stringify(
+        {
+          modules: [
+            {
+              baseUrl: manifestUrl.slice(0, -"/manifest".length),
+              capabilities: ["billing.read"],
+              consolePackages: [
+                {
+                  exportName: "billingConsoleModule",
+                  packageName: "@vendor/lenso-billing-console",
+                  route: "/data/billing",
+                },
+              ],
+              manifestReference: manifestUrl,
+              name: "billing",
+              source: "remote",
+              version: "0.1.0",
+            },
+          ],
+          version: 1,
+        },
+        null,
+        2
+      )
+    );
+
+    const logs = await captureConsoleLogs(async () => {
+      await expect(
+        runConsolePackageCli([
+          "module",
+          "registry",
+          "doctor",
+          "--registry-file",
+          path.join(repoRoot, ".lenso/module-registry.json"),
+        ])
+      ).resolves.toBe(0);
+    });
+
+    expect(logs).toContain("Module registry doctor passed.");
+    expect(logs).toContain("catalog modules: 1");
+    expect(logs).toContain("console package hints: 1");
+  });
+
+  test("groups registry doctor issues with fix commands", async () => {
+    const repoRoot = await createRepoFixture();
+    await writeFixture(
+      repoRoot,
+      "billing-pro.module.json",
+      JSON.stringify({
+        capabilities: ["billing.read"],
+        console: [
+          {
+            package: {
+              export: "billingConsoleModule",
+              name: "@vendor/lenso-billing-console",
+            },
+            route: "/data/billing",
+          },
+        ],
+        name: "billing-pro",
+        source: "remote",
+        version: "0.2.0",
+      })
+    );
+    await writeFixture(
+      repoRoot,
+      ".lenso/module-registry.json",
+      JSON.stringify(
+        {
+          modules: [
+            {
+              consolePackages: [
+                {
+                  exportName: "missingConsoleModule",
+                  packageName: "@vendor/missing-console",
+                  route: "/data/missing",
+                },
+              ],
+              manifestReference: path.join(repoRoot, "billing-pro.module.json"),
+              name: "billing",
+              source: "remote",
+              version: "0.1.0",
+            },
+          ],
+          version: 1,
+        },
+        null,
+        2
+      )
+    );
+
+    let message = "";
+    try {
+      await runConsolePackageCli([
+        "module",
+        "registry",
+        "doctor",
+        "--registry-file",
+        path.join(repoRoot, ".lenso/module-registry.json"),
+      ]);
+    } catch (error) {
+      ({ message } = error);
+    }
+
+    expect(message).toContain("Module registry doctor found");
+    expect(message).toContain("Catalog");
+    expect(message).toContain("billing baseUrl is missing");
+    expect(message).toContain(
+      "fix: add baseUrl or use a manifest URL ending with /manifest"
+    );
+    expect(message).toContain("Manifest");
+    expect(message).toContain(
+      "billing catalog name does not match manifest name billing-pro"
+    );
+    expect(message).toContain("Console package hint");
+    expect(message).toContain(
+      "@vendor/missing-console#missingConsoleModule is not declared by manifest billing-pro"
+    );
+  });
+
   test("groups module doctor issues with fix commands", async () => {
     const repoRoot = await createRepoFixture();
     await createRuntimeConsoleFixture(repoRoot);
@@ -803,6 +943,7 @@ describe("module scaffold CLI", () => {
     );
     expect(flowDoc).toContain("lenso module add");
     expect(flowDoc).toContain("lenso module registry list");
+    expect(flowDoc).toContain("lenso module registry doctor");
     expect(flowDoc).toContain("lenso module registry inspect");
     expect(flowDoc).toContain("lenso module registry install");
     expect(flowDoc).toContain("lenso console-package apply-plan");
@@ -845,6 +986,7 @@ describe("module scaffold CLI", () => {
     expect(architectureDoc).toContain("remote module install CLI");
     expect(architectureDoc).toContain("Module Registry v0");
     expect(architectureDoc).toContain("module registry list");
+    expect(architectureDoc).toContain("module registry doctor");
     expect(architectureDoc).toContain("module registry inspect");
     expect(architectureDoc).toContain("module registry install");
     expect(architectureDoc).toContain("console package apply-plan");
@@ -864,6 +1006,7 @@ describe("module scaffold CLI", () => {
     expect(stdout).toContain("Third-party remote module flow");
     expect(stdout).toContain("lenso module add <manifest-url>");
     expect(stdout).toContain("lenso module registry list");
+    expect(stdout).toContain("lenso module registry doctor");
     expect(stdout).toContain("lenso module registry install <module>");
     expect(stdout).toContain("lenso console-package apply-plan");
     expect(stdout).toContain("lenso module doctor");
@@ -896,6 +1039,7 @@ describe("module scaffold CLI", () => {
     ]);
 
     expect(stdout).toContain("Module registry entries:");
+    expect(stdout).toContain("Module registry doctor passed.");
     expect(stdout).toContain("Registry module billing");
     expect(stdout).toContain("Installed registry module billing.");
     expect(stdout).toContain("Module doctor passed");

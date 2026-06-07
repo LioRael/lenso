@@ -137,6 +137,15 @@ const main = async () => {
     await runConsolePackageCli([
       "module",
       "registry",
+      "doctor",
+      "--repo-root",
+      hostRoot,
+      "--registry-file",
+      registryFile,
+    ]);
+    await runConsolePackageCli([
+      "module",
+      "registry",
       "inspect",
       "billing",
       "--repo-root",
