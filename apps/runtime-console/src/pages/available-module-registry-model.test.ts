@@ -1,7 +1,9 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  type AvailableModuleRegistryDoctorSnapshot,
   type AvailableModuleRegistryCatalog,
+  availableModuleRegistryRowsFromDoctorSnapshot,
   availableModuleRegistryRows,
 } from "./available-module-registry-model";
 
@@ -124,5 +126,82 @@ describe("available module registry model", () => {
       preflightLabel: "package hint mismatch",
       preflightStatus: "package_hint_mismatch",
     });
+  });
+
+  test("builds rows from registry doctor JSON snapshots", () => {
+    const snapshot: AvailableModuleRegistryDoctorSnapshot = {
+      catalog: {
+        modules: 2,
+        registryFile: ".lenso/module-registry.json",
+        version: 1,
+      },
+      issues: [
+        {
+          fix: "add baseUrl or use a manifest URL ending with /manifest",
+          group: "Catalog",
+          message: "local-crm baseUrl is missing",
+        },
+      ],
+      modules: [
+        {
+          baseUrl: "https://example.com/lenso/module/v1",
+          catalogVersion: "0.1.0",
+          consolePackageHints: 1,
+          manifestName: "billing",
+          manifestReference: "https://example.com/lenso/module/v1/manifest",
+          manifestStatus: "ok",
+          manifestVersion: "0.1.0",
+          name: "billing",
+          source: "remote",
+          status: "ready",
+        },
+        {
+          baseUrl: null,
+          catalogVersion: "0.1.0",
+          consolePackageHints: 0,
+          manifestName: "local-crm",
+          manifestReference: "./lenso.module.json",
+          manifestStatus: "ok",
+          manifestVersion: "0.1.0",
+          name: "local-crm",
+          source: "remote",
+          status: "needs_attention",
+        },
+      ],
+      status: "failed",
+      version: 1,
+    };
+
+    expect(availableModuleRegistryRowsFromDoctorSnapshot(snapshot)).toEqual([
+      {
+        baseUrl: "https://example.com/lenso/module/v1",
+        capabilityCount: 0,
+        consolePackageHintCount: 1,
+        key: "billing:0.1.0:https://example.com/lenso/module/v1/manifest",
+        manifestReference: "https://example.com/lenso/module/v1/manifest",
+        name: "billing",
+        preflightLabel: "ready",
+        preflightReason:
+          "registry doctor snapshot passed for this module manifest",
+        preflightStatus: "ready",
+        source: "remote",
+        summary: "-",
+        version: "0.1.0",
+      },
+      {
+        baseUrl: "-",
+        capabilityCount: 0,
+        consolePackageHintCount: 0,
+        key: "local-crm:0.1.0:./lenso.module.json",
+        manifestReference: "./lenso.module.json",
+        name: "local-crm",
+        preflightLabel: "needs base URL",
+        preflightReason: "local-crm baseUrl is missing",
+        preflightStatus: "needs_base_url",
+        source: "remote",
+        summary: "-",
+        version: "0.1.0",
+      },
+    ]);
   });
 });

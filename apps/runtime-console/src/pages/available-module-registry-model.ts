@@ -27,6 +27,37 @@ export type AvailableModuleManifestSnapshot = {
   consolePackages?: AvailableModuleConsolePackageHint[];
 };
 
+export type AvailableModuleRegistryDoctorSnapshot = {
+  version: number;
+  status: "passed" | "failed" | string;
+  catalog: {
+    modules: number;
+    registryFile: string;
+    version: number;
+  };
+  issues: AvailableModuleRegistryDoctorIssue[];
+  modules: AvailableModuleRegistryDoctorModule[];
+};
+
+export type AvailableModuleRegistryDoctorIssue = {
+  group: string;
+  message: string;
+  fix: string;
+};
+
+export type AvailableModuleRegistryDoctorModule = {
+  name: string;
+  source: "remote" | string;
+  catalogVersion: string;
+  manifestReference: string;
+  baseUrl: string | null;
+  consolePackageHints: number;
+  manifestName: string | null;
+  manifestStatus: "ok" | "invalid" | "unreadable" | string;
+  manifestVersion: string | null;
+  status: "ready" | "needs_attention" | string;
+};
+
 export type AvailableModulePreflightStatus =
   | "unknown"
   | "ready"
@@ -86,6 +117,31 @@ export function availableModuleRegistryRows(
   });
 }
 
+export function availableModuleRegistryRowsFromDoctorSnapshot(
+  snapshot: AvailableModuleRegistryDoctorSnapshot
+): AvailableModuleRegistryRow[] {
+  return snapshot.modules.map((module) => {
+    const preflight = availableModulePreflightFromDoctorSnapshot({
+      issues: snapshot.issues,
+      module,
+    });
+    return {
+      baseUrl: module.baseUrl ?? "-",
+      capabilityCount: 0,
+      consolePackageHintCount: module.consolePackageHints,
+      key: `${module.name}:${module.catalogVersion}:${module.manifestReference}`,
+      manifestReference: module.manifestReference,
+      name: module.name,
+      preflightLabel: statusLabel[preflight.status],
+      preflightReason: preflight.reason,
+      preflightStatus: preflight.status,
+      source: module.source,
+      summary: "-",
+      version: module.catalogVersion,
+    };
+  });
+}
+
 function availableModulePreflight(
   entry: AvailableModuleRegistryEntry,
   manifest: AvailableModuleManifestSnapshot | undefined
@@ -136,6 +192,49 @@ function availableModulePreflight(
   return {
     reason: "catalog entry matches the fetched remote manifest snapshot",
     status: "ready",
+  };
+}
+
+function availableModulePreflightFromDoctorSnapshot({
+  issues,
+  module,
+}: {
+  issues: AvailableModuleRegistryDoctorIssue[];
+  module: AvailableModuleRegistryDoctorModule;
+}): { reason: string; status: AvailableModulePreflightStatus } {
+  if (module.status === "ready") {
+    return {
+      reason: "registry doctor snapshot passed for this module manifest",
+      status: "ready",
+    };
+  }
+
+  const issue = issues.find((candidate) =>
+    candidate.message.startsWith(`${module.name} `)
+  );
+  const reason = issue?.message ?? "registry doctor snapshot needs attention";
+
+  if (!module.baseUrl) {
+    return {
+      reason,
+      status: "needs_base_url",
+    };
+  }
+
+  if (
+    module.manifestStatus !== "ok" ||
+    module.manifestName !== module.name ||
+    module.manifestVersion !== module.catalogVersion
+  ) {
+    return {
+      reason,
+      status: "manifest_mismatch",
+    };
+  }
+
+  return {
+    reason,
+    status: "package_hint_mismatch",
   };
 }
 

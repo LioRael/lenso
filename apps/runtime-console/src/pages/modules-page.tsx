@@ -28,7 +28,7 @@ import {
 } from "../lib/http-client";
 import {
   type AvailableModulePreflightStatus,
-  availableModuleRegistryRows,
+  availableModuleRegistryRowsFromDoctorSnapshot,
 } from "./available-module-registry-model";
 import {
   type AdminModuleMetadata,
@@ -106,34 +106,50 @@ const modulesQueryKey = ["modules", "registry"] as const;
 const configValuesQueryKey = ["config", "values"] as const;
 const emptyModules: AdminModuleMetadata[] = [];
 const emptyConfigValues: ConfigValueMetadata[] = [];
-const sampleAvailableModuleRows = availableModuleRegistryRows({
-  modules: [
-    {
-      baseUrl: "https://example.com/lenso/module/v1",
-      capabilities: ["billing.read", "billing.write"],
-      consolePackages: [
-        {
-          exportName: "billingConsoleModule",
-          packageName: "@vendor/lenso-billing-console",
-          route: "/data/billing",
-        },
-      ],
-      manifestReference: "https://example.com/lenso/module/v1/manifest",
-      name: "billing",
-      source: "remote",
-      summary: "Billing workspace and operations",
-      version: "0.1.0",
+const sampleAvailableModuleRows = availableModuleRegistryRowsFromDoctorSnapshot(
+  {
+    catalog: {
+      modules: 2,
+      registryFile: ".lenso/module-registry.json",
+      version: 1,
     },
-    {
-      manifestReference: "./lenso.module.json",
-      name: "local-crm",
-      source: "remote",
-      summary: "Local package manifest needs baseUrl",
-      version: "0.1.0",
-    },
-  ],
-  version: 1,
-});
+    issues: [
+      {
+        fix: "add baseUrl or use a manifest URL ending with /manifest",
+        group: "Catalog",
+        message: "local-crm baseUrl is missing",
+      },
+    ],
+    modules: [
+      {
+        baseUrl: "https://example.com/lenso/module/v1",
+        catalogVersion: "0.1.0",
+        consolePackageHints: 1,
+        manifestName: "billing",
+        manifestReference: "https://example.com/lenso/module/v1/manifest",
+        manifestStatus: "ok",
+        manifestVersion: "0.1.0",
+        name: "billing",
+        source: "remote",
+        status: "ready",
+      },
+      {
+        baseUrl: null,
+        catalogVersion: "0.1.0",
+        consolePackageHints: 0,
+        manifestName: "local-crm",
+        manifestReference: "./lenso.module.json",
+        manifestStatus: "ok",
+        manifestVersion: "0.1.0",
+        name: "local-crm",
+        source: "remote",
+        status: "needs_attention",
+      },
+    ],
+    status: "failed",
+    version: 1,
+  }
+);
 
 function configPath(service: string, key: string) {
   return `admin/config/${encodeURIComponent(service)}/${encodeURIComponent(key)}`;
@@ -330,6 +346,9 @@ function ModuleRegistryCatalogPanel({
           Registry v0
         </span>
       </header>
+      <div className="border-b border-(--border-subtle) px-2 py-1 text-[9px] text-(--muted)">
+        read-only preflight from registry doctor JSON snapshot
+      </div>
       <div className="grid gap-1 border-b border-(--border-subtle) p-2">
         {sampleAvailableModuleRows.map((row) => (
           <div
