@@ -256,6 +256,15 @@ const main = async () => {
       hostRoot,
     ]);
     await runConsolePackageCli(["module", "doctor", "--repo-root", hostRoot]);
+    await runConsolePackageCli([
+      "module",
+      "marketplace",
+      "export",
+      "--repo-root",
+      hostRoot,
+      "--registry-file",
+      registryFile,
+    ]);
 
     const envFile = await readFile(path.join(hostRoot, ".env"), "utf-8");
     assertContains(envFile, `REMOTE_MODULES=billing=${baseUrl}`, ".env");
@@ -285,6 +294,11 @@ const main = async () => {
       "[consolePackageKey(billingConsoleManifest)]: billingConsoleModule",
       "module exports"
     );
+    const marketplaceBundle = await readFile(
+      path.join(hostRoot, ".lenso/marketplace-bundle.json"),
+      "utf-8"
+    );
+    assertContains(marketplaceBundle, '"moduleName": "billing"', "bundle");
 
     console.log("Module registry install demo passed");
     if (process.env.LENSO_KEEP_MODULE_REGISTRY_INSTALL_DEMO) {

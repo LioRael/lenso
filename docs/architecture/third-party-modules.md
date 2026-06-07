@@ -175,6 +175,7 @@ Current Runtime Console support includes:
   `lenso module registry doctor`, `lenso module registry inspect`,
   `lenso module registry review`, `lenso module registry install`, and
   `lenso module registry remove`/`restore`
+- local marketplace bundle export through `lenso module marketplace export`
 - machine-readable registry preflight snapshots through
   `lenso module registry doctor --json`
 - remote module install CLI that writes local source configuration
@@ -234,6 +235,7 @@ lenso module registry review billing --registry-file .lenso/module-registry.json
 lenso module registry install billing --registry-file .lenso/module-registry.json
 lenso module registry remove billing --reason "replaced by billing-v2"
 lenso module registry restore billing --reason "billing-v2 rollback"
+lenso module marketplace export
 lenso module add https://example.com/lenso/module/v1/manifest
 lenso console-package apply-plan
 lenso module doctor

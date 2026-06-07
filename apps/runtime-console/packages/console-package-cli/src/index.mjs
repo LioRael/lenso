@@ -2497,6 +2497,69 @@ const printModuleRegistryInstallHistory = async ({ options }) => {
   }
 };
 
+const marketplaceBundleOutputPath = ({ options, repoRoot }) =>
+  path.resolve(
+    options.outputFile ?? path.join(repoRoot, ".lenso/marketplace-bundle.json")
+  );
+
+const exportModuleMarketplaceBundle = async ({ options }) => {
+  const { entries, registryFilePath, repoRoot } =
+    await readModuleRegistryForWrite({
+      options,
+    });
+  const publisherRegistry = await readModulePublishers({ options, repoRoot });
+  const historyPath = moduleRegistryInstallHistoryPath({ options, repoRoot });
+  const history = await readModuleRegistryInstallHistory(historyPath);
+  const outputFilePath = marketplaceBundleOutputPath({ options, repoRoot });
+  const bundle = {
+    exportedAt: new Date().toISOString(),
+    history: {
+      entries: history.entries,
+      historyFile: path.relative(repoRoot, historyPath),
+      version: history.version,
+    },
+    publishers: {
+      publishers: publisherRegistry.publishers,
+      publishersFile: path.relative(
+        repoRoot,
+        publisherRegistry.publishersFilePath
+      ),
+      version: publisherRegistry.version,
+    },
+    registry: {
+      modules: entries,
+      registryFile: path.relative(repoRoot, registryFilePath),
+      version: 1,
+    },
+    version: 1,
+  };
+  await mkdir(path.dirname(outputFilePath), { recursive: true });
+  await writeFile(outputFilePath, `${JSON.stringify(bundle, null, 2)}\n`);
+
+  if (options.json) {
+    console.log(
+      JSON.stringify(
+        {
+          bundleFile: outputFilePath,
+          historyEntries: history.entries.length,
+          modules: entries.length,
+          publishers: publisherRegistry.publishers.length,
+          version: bundle.version,
+        },
+        null,
+        2
+      )
+    );
+    return;
+  }
+
+  console.log("Exported marketplace bundle.");
+  console.log(`- bundle: ${path.relative(repoRoot, outputFilePath)}`);
+  console.log(`- modules: ${entries.length}`);
+  console.log(`- publishers: ${publisherRegistry.publishers.length}`);
+  console.log(`- history entries: ${history.entries.length}`);
+};
+
 const installRegistryModule = async ({ moduleName, options }) => {
   const { entries, repoRoot } = await readModuleRegistry({ options });
   const entry = findRegistryModule({ entries, moduleName });
@@ -3494,6 +3557,18 @@ const addModuleRegistryHistoryOptions = (command) =>
       "module registry install history file"
     );
 
+const addModuleMarketplaceExportOptions = (command) =>
+  command
+    .option("--repo-root <path>", "Lenso host repository root")
+    .option("--registry-file <path>", "module registry catalog file")
+    .option("--publishers-file <path>", "module publisher key registry file")
+    .option(
+      "--install-history-file <path>",
+      "module registry install history file"
+    )
+    .option("--output-file <path>", "marketplace bundle output file")
+    .option("--json", "print machine-readable JSON output");
+
 const addApplyPlanOptions = (command) =>
   command
     .option("--repo-root <path>", "Lenso host repository root")
@@ -3533,6 +3608,7 @@ Third-party remote module flow:
   lenso module registry review <module>
   lenso module registry install <module>
   lenso module registry history
+  lenso module marketplace export
   lenso module add <manifest-url>
   lenso console-package apply-plan
   lenso module doctor
@@ -3558,6 +3634,17 @@ Third-party remote module flow:
       .description("check configured remote modules and console packages")
   ).action(async (options) => {
     await runModuleDoctor({ options });
+  });
+
+  const marketplaceCommand = moduleCommand
+    .command("marketplace")
+    .description("export local module marketplace bundles");
+  addModuleMarketplaceExportOptions(
+    marketplaceCommand
+      .command("export")
+      .description("export registry, publisher, and history state")
+  ).action(async (options) => {
+    await exportModuleMarketplaceBundle({ options });
   });
 
   const publisherCommand = moduleCommand

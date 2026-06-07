@@ -80,6 +80,7 @@ lenso module registry install billing --registry-file .lenso/module-registry.jso
 lenso module registry history
 lenso module registry remove billing --reason "replaced by billing-v2"
 lenso module registry restore billing --reason "billing-v2 rollback"
+lenso module marketplace export
 ```
 
 Registry install is deliberately gated. Catalog entries default to
@@ -121,6 +122,9 @@ should be physically removed from the catalog.
 Use `lenso module registry restore <module>` to restore an archived entry for
 review; it returns the entry to `installPolicy: "review_required"` unless
 `--trusted` is passed.
+Use `lenso module marketplace export` to write
+`.lenso/marketplace-bundle.json`, a local bundle containing the registry
+catalog, publisher keys, and registry history for handoff or review.
 
 Registry install still writes the same host-local source configuration and
 console package install plan as `lenso module add`.
