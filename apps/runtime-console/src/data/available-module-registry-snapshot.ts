@@ -53,6 +53,13 @@ export const availableModuleRegistrySnapshotQueryKey = [
   "available-registry-snapshot",
 ] as const;
 
+export function moduleRefreshInvalidationQueryKeys() {
+  return [
+    ["modules", "registry"],
+    availableModuleRegistrySnapshotQueryKey,
+  ] as const;
+}
+
 type RegistrySnapshotHttpClient = {
   get: (path: string) => {
     json: () => Promise<AvailableModuleRegistryDoctorSnapshot>;

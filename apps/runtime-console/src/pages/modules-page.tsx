@@ -24,6 +24,7 @@ import {
   availableModuleRegistrySnapshotQueryKey,
   availableModuleRegistrySnapshotRows,
   fetchAvailableModuleRegistrySnapshot,
+  moduleRefreshInvalidationQueryKeys,
 } from "../data/available-module-registry-snapshot";
 import { useRemoteProxyCalls } from "../hooks/use-runtime-queries";
 import { cn } from "../lib/cn";
@@ -144,7 +145,11 @@ function ModulesContent() {
     mutationFn: () =>
       httpClient.post("admin/data/modules/refresh").json<ModulesResponse>(),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: modulesQueryKey });
+      await Promise.all(
+        moduleRefreshInvalidationQueryKeys().map((queryKey) =>
+          queryClient.invalidateQueries({ queryKey })
+        )
+      );
     },
   });
   const modules = modulesQuery.data?.modules ?? emptyModules;

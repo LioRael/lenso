@@ -4,6 +4,7 @@ import {
   availableModuleRegistrySnapshotPanelState,
   availableModuleRegistrySnapshotQueryKey,
   availableModuleRegistrySnapshotRows,
+  moduleRefreshInvalidationQueryKeys,
   fetchAvailableModuleRegistrySnapshot,
   sampleAvailableModuleRegistrySnapshot,
 } from "./available-module-registry-snapshot";
@@ -36,6 +37,13 @@ describe("available module registry snapshot provider", () => {
     expect(availableModuleRegistrySnapshotQueryKey).toEqual([
       "modules",
       "available-registry-snapshot",
+    ]);
+  });
+
+  test("includes registry snapshot in module refresh invalidation keys", () => {
+    expect(moduleRefreshInvalidationQueryKeys()).toEqual([
+      ["modules", "registry"],
+      availableModuleRegistrySnapshotQueryKey,
     ]);
   });
 
