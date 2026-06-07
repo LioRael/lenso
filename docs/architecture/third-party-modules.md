@@ -168,7 +168,8 @@ Current Runtime Console support includes:
 - package manifests derived into install metadata
 - module metadata showing missing frontend package install plans
 - host-local publisher key trust through `lenso module publisher list`,
-  `lenso module publisher trust`, and `lenso module publisher revoke`
+  `lenso module publisher doctor`, `lenso module publisher trust`, and
+  `lenso module publisher revoke`
 - Module Registry v0 catalog discovery through `lenso module registry list`,
   `lenso module registry doctor`, `lenso module registry inspect`,
   `lenso module registry review`, and `lenso module registry install`
@@ -209,6 +210,7 @@ Third-party scaffolding uses a separate remote-oriented lane:
 ```sh
 pnpm create:module billing --remote --output-dir ../module-packages
 lenso module publisher list
+lenso module publisher doctor
 lenso module publisher trust "Acme Billing" acme-ed25519-2026 --public-key-file ./acme-ed25519.pem
 lenso module registry list --registry-file .lenso/module-registry.json
 lenso module registry doctor --registry-file .lenso/module-registry.json
@@ -276,6 +278,7 @@ Publisher trust is host-local. The host stores trusted publisher keys in:
 ```sh
 lenso module publisher trust "Acme Billing" acme-ed25519-2026 --public-key-file ./acme-ed25519.pem
 lenso module publisher list
+lenso module publisher doctor
 lenso module publisher revoke "Acme Billing" acme-ed25519-2026
 ```
 

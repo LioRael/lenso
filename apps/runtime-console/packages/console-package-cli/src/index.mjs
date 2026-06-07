@@ -1776,6 +1776,113 @@ const listModulePublishers = async ({ options }) => {
   }
 };
 
+const modulePublisherDoctorIssues = ({ publishers }) => {
+  const issues = [];
+  const seenKeys = new Set();
+  for (const publisher of publishers) {
+    const key = `${publisher.publisher}:${publisher.publicKeyId}`;
+    if (seenKeys.has(key)) {
+      issues.push({
+        fix: `remove duplicate publisher key ${quoteCliArgument(
+          publisher.publisher
+        )} ${quoteCliArgument(publisher.publicKeyId)} from module-publishers.json`,
+        group: "Publisher",
+        message: `duplicate publisher key ${publisher.publisher} ${publisher.publicKeyId}`,
+      });
+    }
+    seenKeys.add(key);
+
+    if (!["trusted", "review_required", "revoked"].includes(publisher.status)) {
+      issues.push({
+        fix: `set publisher key ${quoteCliArgument(
+          publisher.publisher
+        )} ${quoteCliArgument(publisher.publicKeyId)} status to trusted, review_required, or revoked`,
+        group: "Publisher",
+        message: `${publisher.publisher} ${publisher.publicKeyId} status ${publisher.status} is unsupported`,
+      });
+    }
+
+    try {
+      createPublicKey(publisher.publicKey);
+    } catch (error) {
+      issues.push({
+        fix: `replace publisher key ${quoteCliArgument(
+          publisher.publisher
+        )} ${quoteCliArgument(publisher.publicKeyId)} with a valid PEM public key`,
+        group: "Publisher",
+        message: `${publisher.publisher} ${publisher.publicKeyId} public key is not valid PEM: ${error.message}`,
+      });
+    }
+  }
+  return issues;
+};
+
+const runModulePublisherDoctor = async ({ options }) => {
+  const repoRoot = await repoRootFromOptions(options);
+  let registry;
+  let issues = [];
+  try {
+    registry = await readModulePublishers({ options, repoRoot });
+  } catch (error) {
+    const publishersFilePath = modulePublishersPath({ options, repoRoot });
+    registry = {
+      publishers: [],
+      publishersFilePath,
+      version: 1,
+    };
+    issues = [
+      {
+        fix: `repair ${path.relative(repoRoot, publishersFilePath)} so it matches publisher registry version 1`,
+        group: "Publisher",
+        message: `publisher registry could not be read: ${error.message}`,
+      },
+    ];
+  }
+  issues.push(
+    ...modulePublisherDoctorIssues({ publishers: registry.publishers })
+  );
+
+  if (options.json) {
+    console.log(
+      JSON.stringify(
+        {
+          count: registry.publishers.length,
+          issues,
+          publishers: registry.publishers.map((publisher) => ({
+            publicKeyId: publisher.publicKeyId,
+            publisher: publisher.publisher,
+            status: publisher.status,
+          })),
+          publishersFile: registry.publishersFilePath,
+          status: issues.length === 0 ? "passed" : "failed",
+          version: registry.version,
+        },
+        null,
+        2
+      )
+    );
+    return;
+  }
+
+  if (issues.length === 0) {
+    console.log("Module publisher doctor passed.");
+    console.log(
+      `- registry: ${path.relative(repoRoot, registry.publishersFilePath)}`
+    );
+    console.log(`- publisher keys: ${registry.publishers.length}`);
+    return;
+  }
+
+  console.log(`Module publisher doctor found ${issues.length} issue(s).`);
+  console.log(
+    `- registry: ${path.relative(repoRoot, registry.publishersFilePath)}`
+  );
+  for (const issue of issues) {
+    console.log(`- ${issue.group}: ${issue.message}`);
+    console.log(`  fix: ${issue.fix}`);
+  }
+};
+
 const readPublisherPublicKey = async (options) => {
   let publicKey;
   if (typeof options.publicKey === "string" && options.publicKey.trim()) {
@@ -2998,6 +3105,7 @@ const createProgram = ({ defaultRuntimeConsoleRoot } = {}) => {
       `
 Third-party remote module flow:
   lenso module publisher list
+  lenso module publisher doctor
   lenso module publisher trust <publisher> <public-key-id>
   lenso module publisher revoke <publisher> <public-key-id>
   lenso module registry list
@@ -3040,6 +3148,13 @@ Third-party remote module flow:
     publisherCommand.command("list").description("list module publisher keys")
   ).action(async (options) => {
     await listModulePublishers({ options });
+  });
+  addModulePublisherOptions(
+    publisherCommand
+      .command("doctor")
+      .description("check module publisher key registry")
+  ).action(async (options) => {
+    await runModulePublisherDoctor({ options });
   });
   addModulePublisherTrustOptions(
     publisherCommand

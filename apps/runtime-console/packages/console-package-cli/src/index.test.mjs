@@ -691,6 +691,87 @@ describe("module scaffold CLI", () => {
     });
   });
 
+  test("checks module publisher keys", async () => {
+    const repoRoot = await createRepoFixture();
+
+    const logs = await captureConsoleLogs(async () => {
+      await expect(
+        runConsolePackageCli([
+          "module",
+          "publisher",
+          "doctor",
+          "--repo-root",
+          repoRoot,
+        ])
+      ).resolves.toBe(0);
+    });
+
+    expect(logs).toContain("Module publisher doctor passed.");
+    expect(logs).toContain("- registry: .lenso/module-publishers.json");
+    expect(logs).toContain("- publisher keys: 1");
+  });
+
+  test("prints module publisher doctor JSON for invalid keys", async () => {
+    const repoRoot = await createRepoFixture();
+    await writeFixture(
+      repoRoot,
+      ".lenso/module-publishers.json",
+      JSON.stringify(
+        {
+          publishers: [
+            {
+              publicKey: "not a pem key",
+              publicKeyId: "acme-ed25519",
+              publisher: "Acme Billing",
+              status: "unknown",
+            },
+          ],
+          version: 1,
+        },
+        null,
+        2
+      )
+    );
+
+    const logs = await captureConsoleLogs(async () => {
+      await expect(
+        runConsolePackageCli([
+          "module",
+          "publisher",
+          "doctor",
+          "--repo-root",
+          repoRoot,
+          "--json",
+        ])
+      ).resolves.toBe(0);
+    });
+
+    expect(JSON.parse(logs)).toMatchObject({
+      count: 1,
+      issues: [
+        {
+          fix: 'set publisher key "Acme Billing" "acme-ed25519" status to trusted, review_required, or revoked',
+          group: "Publisher",
+          message: "Acme Billing acme-ed25519 status unknown is unsupported",
+        },
+        {
+          fix: 'replace publisher key "Acme Billing" "acme-ed25519" with a valid PEM public key',
+          group: "Publisher",
+        },
+      ],
+      publishers: [
+        {
+          publicKeyId: "acme-ed25519",
+          publisher: "Acme Billing",
+          status: "unknown",
+        },
+      ],
+      publishersFile: path.join(repoRoot, ".lenso/module-publishers.json"),
+      status: "failed",
+      version: 1,
+    });
+  });
+
   test("trusts a module publisher key from a PEM file", async () => {
     const repoRoot = await createRepoFixture();
     await writeFixture(
@@ -2144,6 +2225,7 @@ describe("module scaffold CLI", () => {
     );
     expect(flowDoc).toContain("lenso module add");
     expect(flowDoc).toContain("lenso module publisher list");
+    expect(flowDoc).toContain("lenso module publisher doctor");
     expect(flowDoc).toContain("lenso module publisher trust");
     expect(flowDoc).toContain("lenso module publisher revoke");
     expect(flowDoc).toContain("lenso module registry list");
@@ -2196,6 +2278,7 @@ describe("module scaffold CLI", () => {
     expect(architectureDoc).toContain("remote module install CLI");
     expect(architectureDoc).toContain("Module Registry v0");
     expect(architectureDoc).toContain("module publisher list");
+    expect(architectureDoc).toContain("module publisher doctor");
     expect(architectureDoc).toContain("module publisher trust");
     expect(architectureDoc).toContain("module publisher revoke");
     expect(architectureDoc).toContain("module registry list");
@@ -2220,6 +2303,7 @@ describe("module scaffold CLI", () => {
     expect(stdout).toContain("Third-party remote module flow");
     expect(stdout).toContain("lenso module add <manifest-url>");
     expect(stdout).toContain("lenso module publisher list");
+    expect(stdout).toContain("lenso module publisher doctor");
     expect(stdout).toContain(
       "lenso module publisher trust <publisher> <public-key-id>"
     );

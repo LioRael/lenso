@@ -27,6 +27,7 @@ entries before installing:
 
 ```sh
 lenso module publisher list
+lenso module publisher doctor
 lenso module registry list --registry-file .lenso/module-registry.json
 lenso module registry doctor --registry-file .lenso/module-registry.json
 lenso module registry inspect billing --registry-file .lenso/module-registry.json
@@ -87,6 +88,7 @@ Manage the host-local publisher key registry through the CLI:
 
 ```sh
 lenso module publisher list
+lenso module publisher doctor
 lenso module publisher trust "Acme Billing" acme-ed25519-2026 --public-key-file ./acme-ed25519.pem
 lenso module publisher revoke "Acme Billing" acme-ed25519-2026
 ```
