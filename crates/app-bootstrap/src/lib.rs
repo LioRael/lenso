@@ -41,7 +41,46 @@ struct LinkedModuleEntry {
     http_binding: Option<fn() -> LinkedBinding>,
 }
 
-const LINKED_MODULE_ENTRIES: &[LinkedModuleEntry] = &[
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompositionProfile {
+    Core,
+    Demo,
+}
+
+impl CompositionProfile {
+    pub fn parse(value: &str) -> platform_core::AppResult<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "core" => Ok(Self::Core),
+            "demo" => Ok(Self::Demo),
+            other => Err(AppError::validation(
+                "Invalid Lenso composition profile",
+                vec![ErrorDetail {
+                    field: Some("module_sources.linked_profile".to_owned()),
+                    reason: format!("expected `core` or `demo`, got `{other}`"),
+                }],
+            )),
+        }
+    }
+
+    pub fn from_config(config: &platform_core::AppConfig) -> platform_core::AppResult<Self> {
+        Self::parse(&config.module_sources.linked_profile)
+    }
+}
+
+impl Default for CompositionProfile {
+    fn default() -> Self {
+        Self::Demo
+    }
+}
+
+const CORE_LINKED_MODULE_ENTRIES: &[LinkedModuleEntry] = &[LinkedModuleEntry {
+    module_name: "platform-story",
+    manifest: platform_story_manifest,
+    load: platform_story_module,
+    http_binding: None,
+}];
+
+const DEMO_LINKED_MODULE_ENTRIES: &[LinkedModuleEntry] = &[
     LinkedModuleEntry {
         module_name: "identity",
         manifest: identity::module::manifest,
@@ -61,6 +100,13 @@ const LINKED_MODULE_ENTRIES: &[LinkedModuleEntry] = &[
         http_binding: None,
     },
 ];
+
+fn linked_module_entries(profile: CompositionProfile) -> &'static [LinkedModuleEntry] {
+    match profile {
+        CompositionProfile::Core => CORE_LINKED_MODULE_ENTRIES,
+        CompositionProfile::Demo => DEMO_LINKED_MODULE_ENTRIES,
+    }
+}
 
 const STORY_CONSOLE_CAPABILITY: &str = "runtime.stories.read";
 
@@ -87,12 +133,25 @@ fn platform_story_module(_ctx: &AppContext) -> Module {
     Module::linked(platform_story_manifest(), LinkedBinding::builder().build())
 }
 
-/// The authoritative list of loaded modules (context-bound: builds bindings).
+/// Demo-default linked modules helper (context-bound: builds bindings).
 ///
-/// The only function that enumerates concrete modules for the running apps.
+/// Startup and config-aware paths should use [`modules_for_config`] or
+/// [`load_modules`] so `module_sources.linked_profile` is honored.
 #[must_use]
 pub fn modules(ctx: &AppContext) -> Vec<Module> {
-    LINKED_MODULE_ENTRIES
+    modules_for_profile(ctx, CompositionProfile::default())
+}
+
+pub fn modules_for_config(ctx: &AppContext) -> platform_core::AppResult<Vec<Module>> {
+    Ok(modules_for_profile(
+        ctx,
+        CompositionProfile::from_config(&ctx.config)?,
+    ))
+}
+
+#[must_use]
+pub fn modules_for_profile(ctx: &AppContext, profile: CompositionProfile) -> Vec<Module> {
+    linked_module_entries(profile)
         .iter()
         .map(|entry| (entry.load)(ctx))
         .collect()
@@ -104,7 +163,7 @@ pub fn modules(ctx: &AppContext) -> Vec<Module> {
 /// must stay context-local and infallible. Startup paths that can perform IO
 /// should use this async loader.
 pub async fn load_modules(ctx: &AppContext) -> platform_core::AppResult<Vec<Module>> {
-    let mut loaded = modules(ctx);
+    let mut loaded = modules_for_config(ctx)?;
 
     for remote in &ctx.config.module_sources.remote {
         let source = RemoteModuleSource::new(remote_module_config(remote))?;
@@ -118,7 +177,12 @@ pub async fn load_modules(ctx: &AppContext) -> platform_core::AppResult<Vec<Modu
 /// [`AppContext`]. Kept in sync with [`modules`] by listing the same modules.
 #[must_use]
 pub fn module_manifests() -> Vec<ModuleManifest> {
-    LINKED_MODULE_ENTRIES
+    module_manifests_for_profile(CompositionProfile::default())
+}
+
+#[must_use]
+pub fn module_manifests_for_profile(profile: CompositionProfile) -> Vec<ModuleManifest> {
+    linked_module_entries(profile)
         .iter()
         .map(|entry| (entry.manifest)())
         .collect()
@@ -131,7 +195,18 @@ pub fn linked_runtime_function_declaration_sources() -> Vec<(
     ModuleSource,
     Option<platform_module::RuntimeSurface>,
 )> {
-    module_manifests()
+    linked_runtime_function_declaration_sources_for_profile(CompositionProfile::default())
+}
+
+#[must_use]
+pub fn linked_runtime_function_declaration_sources_for_profile(
+    profile: CompositionProfile,
+) -> Vec<(
+    String,
+    ModuleSource,
+    Option<platform_module::RuntimeSurface>,
+)> {
+    module_manifests_for_profile(profile)
         .into_iter()
         .map(|manifest| (manifest.name, ModuleSource::Linked, manifest.runtime))
         .collect()
@@ -171,7 +246,14 @@ pub struct LinkedHttpRouteOwner {
 
 #[must_use]
 pub fn linked_http_route_owners() -> Vec<LinkedHttpRouteOwner> {
-    LINKED_MODULE_ENTRIES
+    linked_http_route_owners_for_profile(CompositionProfile::default())
+}
+
+#[must_use]
+pub fn linked_http_route_owners_for_profile(
+    profile: CompositionProfile,
+) -> Vec<LinkedHttpRouteOwner> {
+    linked_module_entries(profile)
         .iter()
         .filter_map(|entry| {
             let http = entry.http_binding?().http?;
@@ -186,7 +268,12 @@ pub fn linked_http_route_owners() -> Vec<LinkedHttpRouteOwner> {
 /// Context-free linked modules that contribute Axum/OpenAPI HTTP routers.
 #[must_use]
 pub fn linked_http_modules() -> Vec<Module> {
-    LINKED_MODULE_ENTRIES
+    linked_http_modules_for_profile(CompositionProfile::default())
+}
+
+#[must_use]
+pub fn linked_http_modules_for_profile(profile: CompositionProfile) -> Vec<Module> {
+    linked_module_entries(profile)
         .iter()
         .filter_map(|entry| {
             let http_binding = entry.http_binding?;
@@ -206,7 +293,7 @@ pub fn admin_modules(ctx: &AppContext) -> Vec<AdminModule> {
 
 /// Load schema-admin capable modules, including configured remotes.
 pub async fn load_admin_modules(ctx: &AppContext) -> platform_core::AppResult<Vec<AdminModule>> {
-    let mut admin_modules = admin_modules_from_modules(modules(ctx));
+    let mut admin_modules = admin_modules_from_modules(modules_for_config(ctx)?);
 
     for remote in &ctx.config.module_sources.remote {
         let source = RemoteModuleSource::new(remote_module_config(remote))?;
@@ -228,7 +315,7 @@ pub async fn load_admin_modules(ctx: &AppContext) -> platform_core::AppResult<Ve
 pub async fn load_admin_module_metadata(
     ctx: &AppContext,
 ) -> platform_core::AppResult<Vec<AdminModuleMetadata>> {
-    let mut metadata = admin_metadata_from_modules(modules(ctx));
+    let mut metadata = admin_metadata_from_modules(modules_for_config(ctx)?);
 
     for remote in &ctx.config.module_sources.remote {
         let config = remote_module_config(remote);
@@ -761,7 +848,14 @@ pub fn event_handlers(modules: &[Module]) -> EventHandlerRegistry {
 /// This is the single source for linked API routes until HTTP joins the
 /// [`platform_module::ModuleBinding`] seam.
 pub fn merge_linked_http(base: ApiOpenApiRouter) -> ApiOpenApiRouter {
-    linked_http_modules()
+    merge_linked_http_for_profile(base, CompositionProfile::default())
+}
+
+pub fn merge_linked_http_for_profile(
+    base: ApiOpenApiRouter,
+    profile: CompositionProfile,
+) -> ApiOpenApiRouter {
+    linked_http_modules_for_profile(profile)
         .into_iter()
         .filter_map(|module| module.linked_http)
         .fold(base, |router, contribution| (contribution.merge)(router))
@@ -771,7 +865,14 @@ pub fn merge_linked_http(base: ApiOpenApiRouter) -> ApiOpenApiRouter {
 /// manifests so the `OpenAPI` path stays pure (no [`AppContext`]).
 #[must_use]
 pub fn story_display_descriptors() -> Vec<StoryDisplayDescriptor> {
-    module_manifests()
+    story_display_descriptors_for_profile(CompositionProfile::default())
+}
+
+#[must_use]
+pub fn story_display_descriptors_for_profile(
+    profile: CompositionProfile,
+) -> Vec<StoryDisplayDescriptor> {
+    module_manifests_for_profile(profile)
         .into_iter()
         .flat_map(|manifest| manifest.story_display)
         .collect()
@@ -781,19 +882,20 @@ pub fn story_display_descriptors() -> Vec<StoryDisplayDescriptor> {
 ///
 /// The single source for the editable configuration registry. Apps build a
 /// `RuntimeConfigRegistry` from this list at startup.
-#[must_use]
-pub fn runtime_config_descriptors(ctx: &AppContext) -> Vec<RuntimeConfigDescriptor> {
-    let module_descriptors = modules(ctx)
+pub fn runtime_config_descriptors(
+    ctx: &AppContext,
+) -> platform_core::AppResult<Vec<RuntimeConfigDescriptor>> {
+    let module_descriptors = modules_for_config(ctx)?
         .iter()
         .flat_map(|module| module.runtime_config.iter().cloned())
         .collect::<Vec<_>>();
     // Platform-owned descriptors (e.g. worker knobs) plus every module's; keys
     // are globally unique, so chain order is presentation-only.
-    platform_core::worker_runtime_config::RUNTIME_CONFIG
+    Ok(platform_core::worker_runtime_config::RUNTIME_CONFIG
         .iter()
         .cloned()
         .chain(module_descriptors)
-        .collect()
+        .collect())
 }
 
 #[cfg(test)]
@@ -820,13 +922,107 @@ mod tests {
 
     #[test]
     fn linked_module_entry_names_match_manifests() {
-        for entry in LINKED_MODULE_ENTRIES {
-            assert_eq!(
-                entry.module_name,
-                (entry.manifest)().name,
-                "linked module entry name must match ModuleManifest::name"
+        for profile in [CompositionProfile::Core, CompositionProfile::Demo] {
+            for entry in linked_module_entries(profile) {
+                assert_eq!(
+                    entry.module_name,
+                    (entry.manifest)().name,
+                    "linked module entry name must match ModuleManifest::name"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn core_profile_excludes_demo_linked_modules() {
+        let names = module_manifests_for_profile(CompositionProfile::Core)
+            .into_iter()
+            .map(|manifest| manifest.name)
+            .collect::<Vec<_>>();
+
+        assert_eq!(names, vec!["platform-story"]);
+    }
+
+    #[test]
+    fn demo_profile_includes_fixture_linked_modules() {
+        let names = module_manifests_for_profile(CompositionProfile::Demo)
+            .into_iter()
+            .map(|manifest| manifest.name)
+            .collect::<Vec<_>>();
+
+        assert_eq!(names, vec!["identity", "notifications", "platform-story"]);
+    }
+
+    #[test]
+    fn demo_profile_includes_every_core_entry() {
+        let demo_names = linked_module_entries(CompositionProfile::Demo)
+            .iter()
+            .map(|entry| entry.module_name)
+            .collect::<Vec<_>>();
+
+        for core_entry in linked_module_entries(CompositionProfile::Core) {
+            assert!(
+                demo_names.contains(&core_entry.module_name),
+                "demo profile should include core linked module `{}`",
+                core_entry.module_name
             );
         }
+    }
+
+    #[test]
+    fn default_module_manifests_use_demo_profile() {
+        let names = module_manifests()
+            .into_iter()
+            .map(|manifest| manifest.name)
+            .collect::<Vec<_>>();
+
+        assert_eq!(names, vec!["identity", "notifications", "platform-story"]);
+    }
+
+    #[test]
+    fn linked_http_route_owners_are_profile_aware() {
+        assert_eq!(
+            linked_http_route_owners_for_profile(CompositionProfile::Core),
+            Vec::<LinkedHttpRouteOwner>::new()
+        );
+        assert_eq!(
+            linked_http_route_owners_for_profile(CompositionProfile::Demo),
+            vec![LinkedHttpRouteOwner {
+                module_name: "identity".to_owned(),
+                public_prefixes: &["/v1/identity/"],
+            }]
+        );
+    }
+
+    #[tokio::test]
+    async fn modules_for_config_uses_core_linked_profile() {
+        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build");
+        let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
+        config.module_sources.linked_profile = "core".to_owned();
+        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
+
+        let names = modules_for_config(&ctx)
+            .expect("core linked profile should parse")
+            .into_iter()
+            .map(|module| module.manifest.name)
+            .collect::<Vec<_>>();
+
+        assert_eq!(names, vec!["platform-story"]);
+    }
+
+    #[test]
+    fn composition_profile_rejects_unknown_values() {
+        let error = CompositionProfile::parse("fixture")
+            .expect_err("fixture is not a supported linked module profile");
+
+        assert_eq!(error.code, ErrorCode::Validation);
+        assert!(
+            error
+                .details
+                .iter()
+                .any(|detail| detail.field.as_deref() == Some("module_sources.linked_profile"))
+        );
     }
 
     #[test]
