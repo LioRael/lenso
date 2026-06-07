@@ -31,7 +31,6 @@ const registryPublicKeyPem = registrySigningKeyPair.publicKey
 const registryProvenance = {
   checksum: `sha256:${createHash("sha256").update(registryPackageBytes).digest("hex")}`,
   packageUrl: "https://example.com/lenso/module/v1/package.tgz",
-  publicKey: registryPublicKeyPem,
   publicKeyId: "lenso-fixtures-ed25519",
   publisher: "Lenso Fixtures",
   signatureAlgorithm: "ed25519-detached",
@@ -81,6 +80,26 @@ platform-core = { path = "crates/platform-core" }
 platform-module = { path = "crates/platform-module" }
 app-bootstrap = { path = "crates/app-bootstrap" }
 `
+  );
+  await writeFixture(
+    repoRoot,
+    ".lenso/module-publishers.json",
+    JSON.stringify(
+      {
+        publishers: [
+          {
+            notes: "Fixture publisher key",
+            publicKey: registryPublicKeyPem,
+            publicKeyId: "lenso-fixtures-ed25519",
+            publisher: "Lenso Fixtures",
+            status: "trusted",
+          },
+        ],
+        version: 1,
+      },
+      null,
+      2
+    )
   );
   await writeFixture(
     repoRoot,
@@ -961,10 +980,6 @@ describe("module scaffold CLI", () => {
         },
         {
           group: "Provenance",
-          message: "billing provenance public key is missing",
-        },
-        {
-          group: "Provenance",
           message: "billing provenance signature algorithm is missing",
         },
       ],
@@ -1052,6 +1067,25 @@ describe("module scaffold CLI", () => {
     });
     await writeFixture(
       repoRoot,
+      ".lenso/module-publishers.json",
+      JSON.stringify(
+        {
+          publishers: [
+            {
+              publicKey: wrongPublicKey,
+              publicKeyId: "lenso-fixtures-ed25519",
+              publisher: "Lenso Fixtures",
+              status: "trusted",
+            },
+          ],
+          version: 1,
+        },
+        null,
+        2
+      )
+    );
+    await writeFixture(
+      repoRoot,
       ".lenso/module-registry.json",
       JSON.stringify(
         {
@@ -1061,10 +1095,7 @@ describe("module scaffold CLI", () => {
               installPolicy: "trusted",
               manifestReference: manifestUrl,
               name: "billing",
-              provenance: {
-                ...registryProvenanceForManifestUrl(manifestUrl),
-                publicKey: wrongPublicKey,
-              },
+              provenance: registryProvenanceForManifestUrl(manifestUrl),
               source: "remote",
               version: "0.1.0",
             },
@@ -1096,6 +1127,83 @@ describe("module scaffold CLI", () => {
         {
           group: "Provenance",
           message: "billing provenance signature verification failed",
+        },
+      ],
+    });
+  });
+
+  test("blocks registry review when publisher key is not trusted", async () => {
+    const repoRoot = await createRepoFixture();
+    const manifestUrl = await serveManifest({
+      capabilities: ["billing.read"],
+      console: [],
+      name: "billing",
+      source: "remote",
+      version: "0.1.0",
+    });
+    await writeFixture(
+      repoRoot,
+      ".lenso/module-publishers.json",
+      JSON.stringify(
+        {
+          publishers: [
+            {
+              publicKey: registryPublicKeyPem,
+              publicKeyId: "lenso-fixtures-ed25519",
+              publisher: "Lenso Fixtures",
+              status: "review_required",
+            },
+          ],
+          version: 1,
+        },
+        null,
+        2
+      )
+    );
+    await writeFixture(
+      repoRoot,
+      ".lenso/module-registry.json",
+      JSON.stringify(
+        {
+          modules: [
+            {
+              baseUrl: manifestUrl.slice(0, -"/manifest".length),
+              installPolicy: "trusted",
+              manifestReference: manifestUrl,
+              name: "billing",
+              provenance: registryProvenanceForManifestUrl(manifestUrl),
+              source: "remote",
+              version: "0.1.0",
+            },
+          ],
+          version: 1,
+        },
+        null,
+        2
+      )
+    );
+
+    const logs = await captureConsoleLogs(async () => {
+      await expect(
+        runConsolePackageCli([
+          "module",
+          "registry",
+          "review",
+          "billing",
+          "--registry-file",
+          path.join(repoRoot, ".lenso/module-registry.json"),
+          "--json",
+        ])
+      ).resolves.toBe(0);
+    });
+
+    expect(JSON.parse(logs)).toMatchObject({
+      decision: "blocked",
+      issues: [
+        {
+          group: "Provenance",
+          message:
+            "billing publisher key lenso-fixtures-ed25519 status is review_required",
         },
       ],
     });
@@ -1745,6 +1853,11 @@ describe("module scaffold CLI", () => {
           manifestVersion: "0.1.0",
           name: "billing",
           provenance: registryProvenanceForManifestUrl(manifestUrl),
+          publisherKey: {
+            publicKeyId: "lenso-fixtures-ed25519",
+            publisher: "Lenso Fixtures",
+            status: "trusted",
+          },
           source: "remote",
           status: "ready",
         },

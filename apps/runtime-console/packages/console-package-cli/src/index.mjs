@@ -1609,12 +1609,18 @@ const normalizeRegistryEntry = (entry) => {
 };
 
 const readModuleRegistry = async ({ options }) => {
-  const repoRoot = options.repoRoot
+  const inferredRepoRoot = options.repoRoot
     ? path.resolve(options.repoRoot)
     : await findRepoRoot(process.cwd());
   const registryFilePath = path.resolve(
-    options.registryFile ?? path.join(repoRoot, ".lenso/module-registry.json")
+    options.registryFile ??
+      path.join(inferredRepoRoot, ".lenso/module-registry.json")
   );
+  const repoRoot =
+    options.repoRoot ||
+    path.basename(path.dirname(registryFilePath)) !== ".lenso"
+      ? inferredRepoRoot
+      : path.dirname(path.dirname(registryFilePath));
   const registry = await readJson(registryFilePath);
   if (!registry || typeof registry !== "object" || Array.isArray(registry)) {
     throw new Error("Module registry catalog must be a JSON object");
@@ -1637,6 +1643,68 @@ const readModuleRegistry = async ({ options }) => {
     entries,
     registryFilePath,
     repoRoot,
+  };
+};
+
+const normalizePublisherKeyEntry = (entry) => {
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+    throw new Error("Module publisher entries must be JSON objects");
+  }
+  const publisher = requireRegistryString({
+    field: "publisher",
+    value: entry.publisher,
+  });
+  return {
+    notes:
+      typeof entry.notes === "string" && entry.notes.trim()
+        ? entry.notes.trim()
+        : undefined,
+    publicKey: requireRegistryString({
+      field: "publicKey",
+      moduleName: publisher,
+      value: entry.publicKey,
+    }),
+    publicKeyId: requireRegistryString({
+      field: "publicKeyId",
+      moduleName: publisher,
+      value: entry.publicKeyId,
+    }),
+    publisher,
+    status:
+      typeof entry.status === "string" && entry.status.trim()
+        ? entry.status.trim()
+        : "review_required",
+  };
+};
+
+const readModulePublishers = async ({ options, repoRoot }) => {
+  const publishersFilePath = path.resolve(
+    options.publishersFile ??
+      path.join(repoRoot, ".lenso/module-publishers.json")
+  );
+  if (!(await pathExists(publishersFilePath))) {
+    return {
+      publishers: [],
+      publishersFilePath,
+      version: 1,
+    };
+  }
+  const registry = await readJson(publishersFilePath);
+  if (!registry || typeof registry !== "object" || Array.isArray(registry)) {
+    throw new Error("Module publisher registry must be a JSON object");
+  }
+  if (registry.version !== 1) {
+    throw new Error("Module publisher registry version must be 1");
+  }
+  if (!Array.isArray(registry.publishers)) {
+    throw new TypeError(
+      "Module publisher registry publishers must be an array"
+    );
+  }
+  return {
+    publishers: registry.publishers.map(normalizePublisherKeyEntry),
+    publishersFilePath,
+    version: 1,
   };
 };
 
@@ -1765,6 +1833,7 @@ const appendModuleRegistryInstallHistory = async ({
   baseUrl,
   entry,
   historyPath,
+  publisherKey,
 }) => {
   const history = await readModuleRegistryInstallHistory(historyPath);
   history.entries.push({
@@ -1777,6 +1846,13 @@ const appendModuleRegistryInstallHistory = async ({
     manifestReference: entry.manifestReference,
     moduleName: entry.name,
     provenance: entry.provenance,
+    publisherKey: publisherKey
+      ? {
+          publicKeyId: publisherKey.publicKeyId,
+          publisher: publisherKey.publisher,
+          status: publisherKey.status,
+        }
+      : null,
     source: entry.source,
   });
   await mkdir(path.dirname(historyPath), { recursive: true });
@@ -1853,6 +1929,7 @@ const installRegistryModule = async ({ moduleName, options }) => {
     baseUrl,
     entry,
     historyPath: moduleRegistryInstallHistoryPath({ options, repoRoot }),
+    publisherKey: review.module.publisherKey,
   });
   console.log(`Installed registry module ${entry.name}.`);
 };
@@ -1960,7 +2037,6 @@ const checkRegistryProvenance = ({ entry, issues }) => {
     ["checksum", "checksum"],
     ["signatureUrl", "signature URL"],
     ["publicKeyId", "public key id"],
-    ["publicKey", "public key"],
     ["signatureAlgorithm", "signature algorithm"],
   ];
   for (const [field, label] of requiredFields) {
@@ -1986,15 +2062,65 @@ const checkRegistryProvenance = ({ entry, issues }) => {
   }
 };
 
+const resolveRegistryPublisherKey = async ({
+  entry,
+  issues,
+  options,
+  repoRoot,
+}) => {
+  if (!(entry.provenance.publisher && entry.provenance.publicKeyId)) {
+    return null;
+  }
+  let publisherRegistry;
+  try {
+    publisherRegistry = await readModulePublishers({ options, repoRoot });
+  } catch (error) {
+    addRegistryDoctorIssue({
+      fix: `repair the module publisher registry before reviewing ${entry.name}`,
+      group: "Provenance",
+      issues,
+      message: `${entry.name} publisher registry could not be read: ${error.message}`,
+    });
+    return null;
+  }
+  const publisherKey = publisherRegistry.publishers.find(
+    (candidate) =>
+      candidate.publisher === entry.provenance.publisher &&
+      candidate.publicKeyId === entry.provenance.publicKeyId
+  );
+  if (!publisherKey) {
+    addRegistryDoctorIssue({
+      fix: `add ${entry.provenance.publisher} ${entry.provenance.publicKeyId} to ${path.basename(
+        publisherRegistry.publishersFilePath
+      )}`,
+      group: "Provenance",
+      issues,
+      message: `${entry.name} publisher key ${entry.provenance.publicKeyId} is not trusted for ${entry.provenance.publisher}`,
+    });
+    return null;
+  }
+  if (publisherKey.status !== "trusted") {
+    addRegistryDoctorIssue({
+      fix: `mark ${entry.provenance.publisher} ${entry.provenance.publicKeyId} trusted after operator review`,
+      group: "Provenance",
+      issues,
+      message: `${entry.name} publisher key ${entry.provenance.publicKeyId} status is ${publisherKey.status}`,
+    });
+    return null;
+  }
+  return publisherKey;
+};
+
 const verifyRegistryProvenanceSignature = async ({
   artifactBytes,
   entry,
   issues,
+  publisherKey,
 }) => {
   if (
     !(
       artifactBytes &&
-      entry.provenance.publicKey &&
+      publisherKey?.publicKey &&
       entry.provenance.signatureAlgorithm === "ed25519-detached" &&
       entry.provenance.signatureUrl
     )
@@ -2017,13 +2143,13 @@ const verifyRegistryProvenanceSignature = async ({
   }
   let publicKey;
   try {
-    publicKey = createPublicKey(entry.provenance.publicKey);
+    publicKey = createPublicKey(publisherKey.publicKey);
   } catch (error) {
     addRegistryDoctorIssue({
-      fix: `set ${entry.name} provenance.publicKey to a valid PEM public key`,
+      fix: `set publisher key ${publisherKey.publicKeyId} to a valid PEM public key`,
       group: "Provenance",
       issues,
-      message: `${entry.name} provenance public key is invalid: ${error.message}`,
+      message: `${entry.name} publisher public key is invalid: ${error.message}`,
     });
     return;
   }
@@ -2171,7 +2297,9 @@ const checkRegistryEntryManifest = async ({ entry, issues, options }) => {
 };
 
 const reviewRegistryModuleSnapshot = async ({ moduleName, options }) => {
-  const { entries, registryFilePath } = await readModuleRegistry({ options });
+  const { entries, registryFilePath, repoRoot } = await readModuleRegistry({
+    options,
+  });
   const entry = findRegistryModule({ entries, moduleName });
   const issues = [];
   if (entry.installPolicy !== "trusted") {
@@ -2184,11 +2312,22 @@ const reviewRegistryModuleSnapshot = async ({ moduleName, options }) => {
   }
   checkRegistryCompatibility({ entry, issues });
   checkRegistryProvenance({ entry, issues });
+  const publisherKey = await resolveRegistryPublisherKey({
+    entry,
+    issues,
+    options,
+    repoRoot,
+  });
   const artifactBytes = await verifyRegistryProvenanceChecksum({
     entry,
     issues,
   });
-  await verifyRegistryProvenanceSignature({ artifactBytes, entry, issues });
+  await verifyRegistryProvenanceSignature({
+    artifactBytes,
+    entry,
+    issues,
+    publisherKey,
+  });
   const result = await checkRegistryEntryManifest({ entry, issues, options });
   const decision = issues.length === 0 ? "ready_to_install" : "blocked";
   return {
@@ -2208,6 +2347,13 @@ const reviewRegistryModuleSnapshot = async ({ moduleName, options }) => {
       manifestVersion: result.manifestVersion,
       name: entry.name,
       provenance: entry.provenance,
+      publisherKey: publisherKey
+        ? {
+            publicKeyId: publisherKey.publicKeyId,
+            publisher: publisherKey.publisher,
+            status: publisherKey.status,
+          }
+        : null,
       source: entry.source,
     },
     registryFile: registryFilePath,
@@ -2264,22 +2410,31 @@ const registryDoctorJsonSnapshot = ({
     version: 1,
   },
   issues,
-  modules: moduleChecks.map(({ entry, issues: entryIssues, result }) => ({
-    baseUrl: result.baseUrl ?? null,
-    catalogVersion: entry.version,
-    compatibility: entry.compatibility,
-    consolePackageHints: result.consolePackageHints,
-    hostCompatibility: hostRegistryCompatibility,
-    installPolicy: entry.installPolicy,
-    manifestName: result.manifestName,
-    manifestReference: entry.manifestReference,
-    manifestStatus: result.manifestStatus,
-    manifestVersion: result.manifestVersion,
-    name: entry.name,
-    provenance: entry.provenance,
-    source: entry.source,
-    status: entryIssues.length === 0 ? "ready" : "needs_attention",
-  })),
+  modules: moduleChecks.map(
+    ({ entry, issues: entryIssues, publisherKey, result }) => ({
+      baseUrl: result.baseUrl ?? null,
+      catalogVersion: entry.version,
+      compatibility: entry.compatibility,
+      consolePackageHints: result.consolePackageHints,
+      hostCompatibility: hostRegistryCompatibility,
+      installPolicy: entry.installPolicy,
+      manifestName: result.manifestName,
+      manifestReference: entry.manifestReference,
+      manifestStatus: result.manifestStatus,
+      manifestVersion: result.manifestVersion,
+      name: entry.name,
+      provenance: entry.provenance,
+      publisherKey: publisherKey
+        ? {
+            publicKeyId: publisherKey.publicKeyId,
+            publisher: publisherKey.publisher,
+            status: publisherKey.status,
+          }
+        : null,
+      source: entry.source,
+      status: entryIssues.length === 0 ? "ready" : "needs_attention",
+    })
+  ),
   status: issues.length === 0 ? "passed" : "failed",
   version: 1,
 });
@@ -2289,7 +2444,9 @@ const printRegistryDoctorJsonSnapshot = (snapshot) => {
 };
 
 const runModuleRegistryDoctor = async ({ options }) => {
-  const { entries, registryFilePath } = await readModuleRegistry({ options });
+  const { entries, registryFilePath, repoRoot } = await readModuleRegistry({
+    options,
+  });
   const issues = [];
   const moduleChecks = [];
   let consolePackageHints = 0;
@@ -2305,16 +2462,28 @@ const runModuleRegistryDoctor = async ({ options }) => {
     }
     checkRegistryCompatibility({ entry, issues });
     checkRegistryProvenance({ entry, issues });
+    const publisherKey = await resolveRegistryPublisherKey({
+      entry,
+      issues,
+      options,
+      repoRoot,
+    });
     const artifactBytes = await verifyRegistryProvenanceChecksum({
       entry,
       issues,
     });
-    await verifyRegistryProvenanceSignature({ artifactBytes, entry, issues });
+    await verifyRegistryProvenanceSignature({
+      artifactBytes,
+      entry,
+      issues,
+      publisherKey,
+    });
     const result = await checkRegistryEntryManifest({ entry, issues, options });
     consolePackageHints += result.consolePackageHints;
     moduleChecks.push({
       entry,
       issues: issues.slice(issueStart),
+      publisherKey,
       result,
     });
   }
@@ -2579,6 +2748,7 @@ const addModuleRegistryOptions = (command) =>
   command
     .option("--repo-root <path>", "Lenso host repository root")
     .option("--registry-file <path>", "module registry catalog file")
+    .option("--publishers-file <path>", "module publisher key registry file")
     .option("--json", "print machine-readable JSON output");
 
 const addModuleRegistryInstallOptions = (command) =>

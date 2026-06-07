@@ -245,8 +245,7 @@ URL, capabilities, and console package hints:
         "checksum": "sha256:...",
         "signatureUrl": "https://packages.example.com/lenso-billing-0.1.0.tgz.sig",
         "signatureAlgorithm": "ed25519-detached",
-        "publicKeyId": "acme-ed25519-2026",
-        "publicKey": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----\n"
+        "publicKeyId": "acme-ed25519-2026"
       },
       "consolePackages": [
         {
@@ -268,13 +267,28 @@ Registry review also enforces compatibility before installation. Catalog
 entries can declare supported Lenso host versions and console package API
 versions through `compatibility`; incompatible modules are blocked before host
 files are written.
+Publisher trust is host-local. The host stores trusted publisher keys in:
+
+```json
+{
+  "version": 1,
+  "publishers": [
+    {
+      "publisher": "Acme Billing",
+      "publicKeyId": "acme-ed25519-2026",
+      "publicKey": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----\n",
+      "status": "trusted"
+    }
+  ]
+}
+```
+
 Registry review also requires a provenance snapshot for trusted entries:
 publisher, source repository, and checksum. When `provenance.packageUrl` and a
 `sha256:<hex>` checksum are present, review fetches the package artifact and
 blocks installation if the digest does not match. This is checksum verification,
 and the Signature Verify v0 gate verifies `ed25519-detached` signatures against
-the configured PEM `publicKey`. This keeps marketplace trust local and explicit
-until a hosted publisher key registry exists.
+the trusted publisher key selected by `publisher` and `publicKeyId`.
 `pnpm --dir apps/runtime-console run demo:module-registry-install` exercises the
 same sequence against a temporary host fixture without mutating the working tree.
 

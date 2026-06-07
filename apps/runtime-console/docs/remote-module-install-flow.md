@@ -77,11 +77,11 @@ Trusted catalog entries must include provenance metadata:
 `provenance.publisher`, `provenance.sourceRepository`, and
 `provenance.checksum`, plus signature metadata:
 `provenance.signatureUrl`, `provenance.signatureAlgorithm`, and
-`provenance.publicKeyId` with a PEM `provenance.publicKey`. Registry review
-verifies `ed25519-detached` signatures against the package artifact, records
-this snapshot in install history, and blocks entries that do not name who
-published the module, what artifact was reviewed, and which signature policy
-applies.
+`provenance.publicKeyId`. Registry review loads trusted publisher keys from
+`.lenso/module-publishers.json`, verifies `ed25519-detached` signatures against
+the package artifact, records this snapshot in install history, and blocks
+entries that do not name who published the module, what artifact was reviewed,
+and which signature policy applies.
 The install command runs the same review gate and refuses to mutate host files
 unless the review decision is `ready_to_install`.
 
