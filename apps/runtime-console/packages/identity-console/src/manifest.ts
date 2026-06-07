@@ -11,9 +11,9 @@ const consoleSurfaceContract = consoleSurface as unknown as {
   readonly navigation: {
     readonly order: 60;
     readonly workspace: {
-      readonly icon: "settings";
-      readonly id: "system";
-      readonly label: "System";
+      readonly icon: "database";
+      readonly id: "identity";
+      readonly label: "Identity";
     };
   };
   readonly packageName: "@lenso/identity-console";

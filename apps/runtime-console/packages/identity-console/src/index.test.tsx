@@ -13,9 +13,9 @@ describe("identity console package", () => {
       navigation: {
         order: 60,
         workspace: {
-          icon: "settings",
-          id: "system",
-          label: "System",
+          icon: "database",
+          id: "identity",
+          label: "Identity",
         },
       },
       packageName: "@lenso/identity-console",

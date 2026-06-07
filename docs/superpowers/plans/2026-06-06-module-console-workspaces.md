@@ -26,7 +26,7 @@
 - `apps/runtime-console/src/components/runtime/runtime-console-shell.tsx`: renders the workspace switcher and workspace-local menu.
 - `apps/runtime-console/src/components/runtime/command-palette.tsx`: keeps global navigation commands and uses workspace-aware subtitles/search text.
 - `apps/runtime-console/packages/story-console/console-surface.json`: marks Stories as `system`.
-- `apps/runtime-console/packages/identity-console/console-surface.json`: fixture can keep build-time fallback navigation, while backend manifests should omit `navigation` when they belong in host System.
+- `apps/runtime-console/packages/identity-console/console-surface.json`: fixture creates the `identity` workspace so local mock and API modes both exercise the workspace switcher.
 - `apps/runtime-console/packages/console-package-cli/src/index.mjs`: generated console packages include `navigation` in JSON, TS manifest casts, and Rust snippets.
 - `docs/architecture/module-console-surfaces.md`: documents workspace navigation as part of the console surface contract.
 - `docs/superpowers/specs/2026-06-06-module-console-workspaces-design.md`: remains the approved design reference.
@@ -504,9 +504,9 @@ Update `apps/runtime-console/packages/identity-console/console-surface.json`:
   "navigation": {
     "order": 60,
     "workspace": {
-      "icon": "settings",
-      "id": "system",
-      "label": "System"
+      "icon": "database",
+      "id": "identity",
+      "label": "Identity"
     }
   },
   "packageName": "@lenso/identity-console",
@@ -1238,9 +1238,8 @@ git commit -m "feat(console): add workspace switcher"
 
 - [ ] **Step 1: Update identity Rust manifest**
 
-In `modules/identity/src/module.rs`, keep `navigation: None` when the fixture
-belongs in the host System workspace. The host applies System as the default for
-surfaces without navigation.
+In `modules/identity/src/module.rs`, declare an `identity` workspace so the
+fixture exercises module-created workspace switching in API mode.
 
 - [ ] **Step 2: Add or update identity manifest test**
 
@@ -1248,11 +1247,15 @@ In the existing `#[cfg(test)]` module in `modules/identity/src/module.rs`, add:
 
 ```rust
 #[test]
-fn manifest_leaves_system_workspace_navigation_to_host_default() {
+fn manifest_declares_identity_console_workspace_navigation() {
     let manifest = manifest();
     let surface = manifest.console.first().expect("identity console surface");
+    let navigation = surface.navigation.as_ref().expect("navigation metadata");
 
-    assert!(surface.navigation.is_none());
+    assert_eq!(navigation.workspace.id, "identity");
+    assert_eq!(navigation.workspace.label, "Identity");
+    assert_eq!(navigation.workspace.icon.as_deref(), Some("database"));
+    assert_eq!(navigation.order, Some(60));
 }
 ```
 
@@ -1261,7 +1264,7 @@ fn manifest_leaves_system_workspace_navigation_to_host_default() {
 Run:
 
 ```bash
-cargo test --locked -p identity manifest_leaves_system_workspace_navigation_to_host_default
+cargo test --locked -p identity manifest_declares_identity_console_workspace_navigation
 cargo check --locked --workspace --all-targets
 ```
 

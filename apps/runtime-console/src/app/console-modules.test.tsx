@@ -10,6 +10,7 @@ import {
   defineConsoleModule,
   selectDefaultConsoleRoute,
 } from "./console-modules";
+import { buildWorkspaceNavigation } from "./console-workspace-navigation";
 
 function TestPage() {
   return <div>Story module</div>;
@@ -191,9 +192,9 @@ describe("console module registry", () => {
         navigation: {
           order: 60,
           workspace: {
-            icon: "settings",
-            id: "system",
-            label: "System",
+            icon: "database",
+            id: "identity",
+            label: "Identity",
           },
         },
         packageName: "@lenso/identity-console",
@@ -226,9 +227,9 @@ describe("console module registry", () => {
         navigation: {
           order: 60,
           workspace: {
-            icon: "settings",
-            id: "system",
-            label: "System",
+            icon: "database",
+            id: "identity",
+            label: "Identity",
           },
         },
         path: "/data/identity",
@@ -255,9 +256,9 @@ describe("console module registry", () => {
         navigation: {
           order: 60,
           workspace: {
-            icon: "settings",
-            id: "system",
-            label: "System",
+            icon: "database",
+            id: "identity",
+            label: "Identity",
           },
         },
         path: "/data/identity",
@@ -267,6 +268,29 @@ describe("console module registry", () => {
       moduleId: "platform-story",
       path: "/runtime/stories",
     });
+  });
+
+  test("build-time module metadata creates switchable workspaces", () => {
+    expect(
+      buildWorkspaceNavigation(buildConsoleNavigation(consoleModules)).map(
+        (workspace) => ({
+          id: workspace.id,
+          items: workspace.items.map((item) => item.path),
+          label: workspace.label,
+        })
+      )
+    ).toEqual([
+      {
+        id: "system",
+        items: ["/runtime/stories"],
+        label: "System",
+      },
+      {
+        id: "identity",
+        items: ["/data/identity"],
+        label: "Identity",
+      },
+    ]);
   });
 
   test("derives fallback metadata from a package manifest", () => {

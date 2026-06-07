@@ -3,9 +3,10 @@ use crate::repositories::PostgresUserRepository;
 use platform_core::{AppContext, StoryDisplayDescriptor, StoryDisplaySource};
 use platform_http::ApiOpenApiRouter;
 use platform_module::{
-    AdminSchema, ConsoleArea, ConsolePackage, ConsoleSurface, EntitySchema, FieldSchema, FieldType,
-    LinkedBinding, LinkedHttpContribution, Module, ModuleHttpMethod, ModuleHttpRoute,
-    ModuleManifest, RuntimeFunctionDeclaration, RuntimeSurface,
+    AdminSchema, ConsoleArea, ConsoleNavigation, ConsolePackage, ConsoleSurface,
+    ConsoleWorkspaceRef, EntitySchema, FieldSchema, FieldType, LinkedBinding,
+    LinkedHttpContribution, Module, ModuleHttpMethod, ModuleHttpRoute, ModuleManifest,
+    RuntimeFunctionDeclaration, RuntimeSurface,
 };
 use std::sync::Arc;
 
@@ -114,7 +115,15 @@ pub fn manifest() -> ModuleManifest {
             },
             icon: Some("database".to_owned()),
             required_capabilities: vec!["identity.users.read".to_owned()],
-            navigation: None,
+            navigation: Some(ConsoleNavigation {
+                workspace: ConsoleWorkspaceRef {
+                    id: "identity".to_owned(),
+                    label: "Identity".to_owned(),
+                    icon: Some("database".to_owned()),
+                },
+                group: None,
+                order: Some(60),
+            }),
         }])
         .runtime(RuntimeSurface {
             functions: vec![RuntimeFunctionDeclaration {
@@ -230,19 +239,22 @@ mod tests {
             surface.required_capabilities,
             required_capabilities_from_contract(&console_surface_contract)
         );
-        assert!(surface_json.get("navigation").is_none());
         assert_eq!(
-            console_surface_contract["navigation"]["workspace"]["id"],
-            "system"
+            surface_json["navigation"],
+            console_surface_contract["navigation"]
         );
     }
 
     #[test]
-    fn manifest_leaves_system_workspace_navigation_to_host_default() {
+    fn manifest_declares_identity_console_workspace_navigation() {
         let manifest = manifest();
         let surface = manifest.console.first().expect("identity console surface");
+        let navigation = surface.navigation.as_ref().expect("navigation metadata");
 
-        assert!(surface.navigation.is_none());
+        assert_eq!(navigation.workspace.id, "identity");
+        assert_eq!(navigation.workspace.label, "Identity");
+        assert_eq!(navigation.workspace.icon.as_deref(), Some("database"));
+        assert_eq!(navigation.order, Some(60));
     }
 
     fn required_capabilities_from_contract(contract: &serde_json::Value) -> Vec<String> {

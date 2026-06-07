@@ -56,7 +56,9 @@ Example surface metadata:
 }
 ```
 
-For `platform-story`, Rust and frontend metadata intentionally match:
+For `platform-story`, Rust and frontend package/export metadata intentionally
+match; backend navigation may still be omitted so the host applies the System
+default:
 
 ```text
 module: platform-story
