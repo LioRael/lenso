@@ -32,6 +32,7 @@ import {
   adminSurfaceMetadataRows,
   filterModuleRegistry,
   moduleActivationLabel,
+  moduleActivationReasons,
   moduleConsoleSurfaceRows,
   moduleErrorMessage,
   moduleGovernanceRows,
@@ -752,6 +753,7 @@ function ModuleOperationsPanel({
 
 function ModuleGovernancePanel({ module }: { module: AdminModuleMetadata }) {
   const issues = module.governance?.capability_issues ?? [];
+  const activationReasons = moduleActivationReasons(module);
   return (
     <section className="min-w-0 border border-(--border-subtle) bg-(--surface)">
       <header className="flex items-center gap-2 border-b border-(--border-subtle) px-3 py-2 font-semibold">
@@ -772,6 +774,19 @@ function ModuleGovernancePanel({ module }: { module: AdminModuleMetadata }) {
         </span>
       </header>
       <MetadataRows rows={moduleGovernanceRows(module)} />
+      {activationReasons.length > 0 ? (
+        <div className="grid gap-1 border-t border-(--border-subtle) px-3 py-2">
+          {activationReasons.slice(0, 4).map((reason) => (
+            <div
+              className="min-w-0 truncate text-[11px] text-(--warning)"
+              key={reason}
+              title={reason}
+            >
+              {reason}
+            </div>
+          ))}
+        </div>
+      ) : null}
       {issues.length > 0 ? (
         <div className="grid gap-1 border-t border-(--border-subtle) px-3 py-2">
           {issues.slice(0, 4).map((issue) => (

@@ -22,6 +22,7 @@ import {
   firstDeclarativePage,
   manifestLintCategory,
   moduleActivationLabel,
+  moduleActivationReasons,
   moduleConsoleSurfaceRows,
   moduleErrorMessage,
   moduleGovernanceRows,
@@ -336,6 +337,32 @@ describe("module status helpers", () => {
         },
       })
     ).toBe("needs attention");
+  });
+
+  test("returns non-empty module activation reasons from governance metadata", () => {
+    expect(
+      moduleActivationReasons({
+        ...loadedModule,
+        governance: {
+          activation_state: "blocked",
+          activation_reasons: [
+            "module failed to load: manifest unavailable",
+            " ",
+            "console.surface.contacts: Console route is reserved.",
+          ],
+          capability_summary: {
+            declared_count: 0,
+            referenced_count: 0,
+            missing_count: 0,
+            unused_count: 0,
+          },
+          capability_issues: [],
+        },
+      })
+    ).toEqual([
+      "module failed to load: manifest unavailable",
+      "console.surface.contacts: Console route is reserved.",
+    ]);
   });
 
   test("builds governance rows from backend metadata", () => {

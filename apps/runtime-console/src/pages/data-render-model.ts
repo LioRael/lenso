@@ -690,6 +690,12 @@ export function moduleActivationLabel(module: AdminModuleMetadata): string {
   }
 }
 
+export function moduleActivationReasons(module: AdminModuleMetadata): string[] {
+  return moduleGovernance(module).activation_reasons.filter(
+    (reason) => reason.trim().length > 0
+  );
+}
+
 export function moduleGovernanceRows(
   module: AdminModuleMetadata
 ): MetadataRow[] {
