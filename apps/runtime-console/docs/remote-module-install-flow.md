@@ -79,6 +79,7 @@ lenso module registry review billing --registry-file .lenso/module-registry.json
 lenso module registry install billing --registry-file .lenso/module-registry.json
 lenso module registry history
 lenso module registry remove billing --reason "replaced by billing-v2"
+lenso module registry restore billing --reason "billing-v2 rollback"
 ```
 
 Registry install is deliberately gated. Catalog entries default to
@@ -117,6 +118,9 @@ operator review.
 Use `lenso module registry remove <module>` to archive a catalog entry and
 record the action in registry history. Pass `--delete` only when the entry
 should be physically removed from the catalog.
+Use `lenso module registry restore <module>` to restore an archived entry for
+review; it returns the entry to `installPolicy: "review_required"` unless
+`--trusted` is passed.
 
 Registry install still writes the same host-local source configuration and
 console package install plan as `lenso module add`.

@@ -2269,6 +2269,74 @@ const removeModuleRegistryEntry = async ({ moduleName, options }) => {
   console.log(`- history: ${path.relative(repoRoot, historyPath)}`);
 };
 
+const restoreModuleRegistryEntry = async ({ moduleName, options }) => {
+  const { entries, registryFilePath, repoRoot } =
+    await readModuleRegistryForWrite({
+      options,
+    });
+  const entry = findRegistryModule({ entries, moduleName });
+  if (!entry.archivedAt) {
+    throw new Error(`Registry module ${entry.name} is not archived`);
+  }
+  const restoredAt = new Date().toISOString();
+  const nextEntries = entries.map((candidate) => {
+    if (candidate.name !== entry.name) {
+      return candidate;
+    }
+    const {
+      archivedAt: _archivedAt,
+      archiveReason: _archiveReason,
+      ...rest
+    } = candidate;
+    return {
+      ...rest,
+      installPolicy: options.trusted ? "trusted" : "review_required",
+    };
+  });
+  await writeModuleRegistry({ entries: nextEntries, registryFilePath });
+  const historyPath = moduleRegistryInstallHistoryPath({ options, repoRoot });
+  await appendModuleRegistryHistoryEntry({
+    entry: {
+      action: "registry.restore",
+      catalogVersion: entry.version,
+      installPolicy: options.trusted ? "trusted" : "review_required",
+      manifestReference: entry.manifestReference,
+      moduleName: entry.name,
+      reason: options.reason ?? null,
+      restoredAt,
+      source: entry.source,
+    },
+    historyPath,
+  });
+
+  if (options.json) {
+    console.log(
+      JSON.stringify(
+        {
+          action: "restored",
+          historyFile: historyPath,
+          module: {
+            installPolicy: options.trusted ? "trusted" : "review_required",
+            name: entry.name,
+            version: entry.version,
+          },
+          registryFile: registryFilePath,
+        },
+        null,
+        2
+      )
+    );
+    return;
+  }
+
+  console.log(`Restored registry module ${entry.name}.`);
+  console.log(`- catalog: ${path.relative(repoRoot, registryFilePath)}`);
+  console.log(
+    `- install policy: ${options.trusted ? "trusted" : "review_required"}`
+  );
+  console.log(`- history: ${path.relative(repoRoot, historyPath)}`);
+};
+
 const inspectRegistryModule = async ({ moduleName, options }) => {
   const { entries } = await readModuleRegistry({ options });
   const entry = findRegistryModule({ entries, moduleName });
@@ -2365,7 +2433,11 @@ const appendModuleRegistryHistoryEntry = async ({ entry, historyPath }) => {
 };
 
 const moduleRegistryHistoryEntryTimestamp = (entry) =>
-  entry.installedAt ?? entry.archivedAt ?? entry.deletedAt ?? "-";
+  entry.installedAt ??
+  entry.archivedAt ??
+  entry.deletedAt ??
+  entry.restoredAt ??
+  "-";
 
 const moduleRegistryHistoryEntryAction = (entry) =>
   entry.action ?? "registry.install";
@@ -3378,6 +3450,15 @@ const addModuleRegistryRemoveOptions = (command) =>
       "module registry install history file"
     );
 
+const addModuleRegistryRestoreOptions = (command) =>
+  addModuleRegistryOptions(command)
+    .option("--trusted", "restore the catalog entry as trusted")
+    .option("--reason <text>", "operator reason for restore")
+    .option(
+      "--install-history-file <path>",
+      "module registry install history file"
+    );
+
 const addModulePublisherOptions = (command) =>
   command
     .option("--repo-root <path>", "Lenso host repository root")
@@ -3445,6 +3526,7 @@ Third-party remote module flow:
   lenso module publisher revoke <publisher> <public-key-id>
   lenso module registry add <module>
   lenso module registry remove <module>
+  lenso module registry restore <module>
   lenso module registry list
   lenso module registry doctor
   lenso module registry inspect <module>
@@ -3529,6 +3611,13 @@ Third-party remote module flow:
       .description("archive or delete a registry catalog entry")
   ).action(async (moduleName, options) => {
     await removeModuleRegistryEntry({ moduleName, options });
+  });
+  addModuleRegistryRestoreOptions(
+    registryCommand
+      .command("restore <moduleName>")
+      .description("restore an archived registry catalog entry")
+  ).action(async (moduleName, options) => {
+    await restoreModuleRegistryEntry({ moduleName, options });
   });
   addModuleRegistryOptions(
     registryCommand
