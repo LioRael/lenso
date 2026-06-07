@@ -640,6 +640,142 @@ describe("module scaffold CLI", () => {
     );
   });
 
+  test("lists configured module publisher keys", async () => {
+    const repoRoot = await createRepoFixture();
+
+    const logs = await captureConsoleLogs(async () => {
+      await expect(
+        runConsolePackageCli([
+          "module",
+          "publisher",
+          "list",
+          "--repo-root",
+          repoRoot,
+        ])
+      ).resolves.toBe(0);
+    });
+
+    expect(logs).toContain("Module publisher keys:");
+    expect(logs).toContain("- registry: .lenso/module-publishers.json");
+    expect(logs).toContain("- Lenso Fixtures lenso-fixtures-ed25519 trusted");
+    expect(logs).toContain("notes: Fixture publisher key");
+  });
+
+  test("prints module publisher keys as JSON", async () => {
+    const repoRoot = await createRepoFixture();
+
+    const logs = await captureConsoleLogs(async () => {
+      await expect(
+        runConsolePackageCli([
+          "module",
+          "publisher",
+          "list",
+          "--repo-root",
+          repoRoot,
+          "--json",
+        ])
+      ).resolves.toBe(0);
+    });
+
+    expect(JSON.parse(logs)).toMatchObject({
+      count: 1,
+      publishers: [
+        {
+          publicKeyId: "lenso-fixtures-ed25519",
+          publisher: "Lenso Fixtures",
+          status: "trusted",
+        },
+      ],
+      publishersFile: path.join(repoRoot, ".lenso/module-publishers.json"),
+      version: 1,
+    });
+  });
+
+  test("trusts a module publisher key from a PEM file", async () => {
+    const repoRoot = await createRepoFixture();
+    await writeFixture(
+      repoRoot,
+      ".lenso/acme-public-key.pem",
+      registryPublicKeyPem
+    );
+
+    const logs = await captureConsoleLogs(async () => {
+      await expect(
+        runConsolePackageCli([
+          "module",
+          "publisher",
+          "trust",
+          "Acme Billing",
+          "acme-ed25519",
+          "--repo-root",
+          repoRoot,
+          "--public-key-file",
+          path.join(repoRoot, ".lenso/acme-public-key.pem"),
+          "--notes",
+          "Reviewed by platform ops",
+        ])
+      ).resolves.toBe(0);
+    });
+
+    expect(logs).toContain("Trusted publisher key Acme Billing acme-ed25519.");
+    const registry = JSON.parse(
+      await readFile(
+        path.join(repoRoot, ".lenso/module-publishers.json"),
+        "utf-8"
+      )
+    );
+    expect(registry).toMatchObject({
+      publishers: [
+        {
+          notes: "Reviewed by platform ops",
+          publicKey: registryPublicKeyPem,
+          publicKeyId: "acme-ed25519",
+          publisher: "Acme Billing",
+          status: "trusted",
+        },
+        {
+          publicKeyId: "lenso-fixtures-ed25519",
+          publisher: "Lenso Fixtures",
+          status: "trusted",
+        },
+      ],
+      version: 1,
+    });
+  });
+
+  test("revokes a configured module publisher key", async () => {
+    const repoRoot = await createRepoFixture();
+
+    const logs = await captureConsoleLogs(async () => {
+      await expect(
+        runConsolePackageCli([
+          "module",
+          "publisher",
+          "revoke",
+          "Lenso Fixtures",
+          "lenso-fixtures-ed25519",
+          "--repo-root",
+          repoRoot,
+        ])
+      ).resolves.toBe(0);
+    });
+
+    expect(logs).toContain(
+      "Revoked publisher key Lenso Fixtures lenso-fixtures-ed25519."
+    );
+    const registry = JSON.parse(
+      await readFile(
+        path.join(repoRoot, ".lenso/module-publishers.json"),
+        "utf-8"
+      )
+    );
+    expect(registry.publishers[0]).toMatchObject({
+      publicKeyId: "lenso-fixtures-ed25519",
+      publisher: "Lenso Fixtures",
+      status: "revoked",
+    });
+  });
+
   test("inspects a registry module against its remote manifest", async () => {
     const repoRoot = await createRepoFixture();
     const manifestUrl = await serveManifest({
@@ -2006,6 +2142,9 @@ describe("module scaffold CLI", () => {
       "utf-8"
     );
     expect(flowDoc).toContain("lenso module add");
+    expect(flowDoc).toContain("lenso module publisher list");
+    expect(flowDoc).toContain("lenso module publisher trust");
+    expect(flowDoc).toContain("lenso module publisher revoke");
     expect(flowDoc).toContain("lenso module registry list");
     expect(flowDoc).toContain("lenso module registry doctor");
     expect(flowDoc).toContain("lenso module registry doctor --registry-file");
@@ -2055,6 +2194,9 @@ describe("module scaffold CLI", () => {
 
     expect(architectureDoc).toContain("remote module install CLI");
     expect(architectureDoc).toContain("Module Registry v0");
+    expect(architectureDoc).toContain("module publisher list");
+    expect(architectureDoc).toContain("module publisher trust");
+    expect(architectureDoc).toContain("module publisher revoke");
     expect(architectureDoc).toContain("module registry list");
     expect(architectureDoc).toContain("module registry doctor");
     expect(architectureDoc).toContain("module registry inspect");
@@ -2076,6 +2218,13 @@ describe("module scaffold CLI", () => {
 
     expect(stdout).toContain("Third-party remote module flow");
     expect(stdout).toContain("lenso module add <manifest-url>");
+    expect(stdout).toContain("lenso module publisher list");
+    expect(stdout).toContain(
+      "lenso module publisher trust <publisher> <public-key-id>"
+    );
+    expect(stdout).toContain(
+      "lenso module publisher revoke <publisher> <public-key-id>"
+    );
     expect(stdout).toContain("lenso module registry list");
     expect(stdout).toContain("lenso module registry doctor");
     expect(stdout).toContain("lenso module registry install <module>");

@@ -26,6 +26,7 @@ If your host has a curated module registry catalog, inspect the available
 entries before installing:
 
 ```sh
+lenso module publisher list
 lenso module registry list --registry-file .lenso/module-registry.json
 lenso module registry doctor --registry-file .lenso/module-registry.json
 lenso module registry inspect billing --registry-file .lenso/module-registry.json
@@ -82,6 +83,14 @@ Trusted catalog entries must include provenance metadata:
 the package artifact, records this snapshot in install history, and blocks
 entries that do not name who published the module, what artifact was reviewed,
 and which signature policy applies.
+Manage the host-local publisher key registry through the CLI:
+
+```sh
+lenso module publisher list
+lenso module publisher trust "Acme Billing" acme-ed25519-2026 --public-key-file ./acme-ed25519.pem
+lenso module publisher revoke "Acme Billing" acme-ed25519-2026
+```
+
 The install command runs the same review gate and refuses to mutate host files
 unless the review decision is `ready_to_install`.
 
@@ -170,6 +179,13 @@ then explicitly mark the entry trusted:
 {
   "installPolicy": "trusted"
 }
+```
+
+If registry review cannot find a trusted publisher key, add or update the
+host-local publisher key registry:
+
+```text
+fix: lenso module publisher trust <publisher> <public-key-id> --public-key-file <pem>
 ```
 
 If a registry catalog entry is missing a base URL and the manifest reference is

@@ -1678,10 +1678,7 @@ const normalizePublisherKeyEntry = (entry) => {
 };
 
 const readModulePublishers = async ({ options, repoRoot }) => {
-  const publishersFilePath = path.resolve(
-    options.publishersFile ??
-      path.join(repoRoot, ".lenso/module-publishers.json")
-  );
+  const publishersFilePath = modulePublishersPath({ options, repoRoot });
   if (!(await pathExists(publishersFilePath))) {
     return {
       publishers: [],
@@ -1706,6 +1703,190 @@ const readModulePublishers = async ({ options, repoRoot }) => {
     publishersFilePath,
     version: 1,
   };
+};
+
+const modulePublishersPath = ({ options, repoRoot }) =>
+  path.resolve(
+    options.publishersFile ??
+      path.join(repoRoot, ".lenso/module-publishers.json")
+  );
+
+const writeModulePublishers = async ({ options, publishers, repoRoot }) => {
+  const publishersFilePath = modulePublishersPath({ options, repoRoot });
+  const sortedPublishers = publishers.toSorted((left, right) => {
+    const publisherComparison = left.publisher.localeCompare(right.publisher);
+    return publisherComparison === 0
+      ? left.publicKeyId.localeCompare(right.publicKeyId)
+      : publisherComparison;
+  });
+  await mkdir(path.dirname(publishersFilePath), { recursive: true });
+  await writeFile(
+    publishersFilePath,
+    `${JSON.stringify(
+      {
+        publishers: sortedPublishers,
+        version: 1,
+      },
+      null,
+      2
+    )}\n`
+  );
+  return publishersFilePath;
+};
+
+const repoRootFromOptions = (options) =>
+  options.repoRoot
+    ? path.resolve(options.repoRoot)
+    : findRepoRoot(process.cwd());
+
+const listModulePublishers = async ({ options }) => {
+  const repoRoot = await repoRootFromOptions(options);
+  const registry = await readModulePublishers({ options, repoRoot });
+  if (options.json) {
+    console.log(
+      JSON.stringify(
+        {
+          count: registry.publishers.length,
+          publishers: registry.publishers,
+          publishersFile: registry.publishersFilePath,
+          version: registry.version,
+        },
+        null,
+        2
+      )
+    );
+    return;
+  }
+
+  console.log("Module publisher keys:");
+  console.log(
+    `- registry: ${path.relative(repoRoot, registry.publishersFilePath)}`
+  );
+  if (registry.publishers.length === 0) {
+    console.log("- no publisher keys configured");
+    return;
+  }
+  for (const publisher of registry.publishers) {
+    console.log(
+      `- ${publisher.publisher} ${publisher.publicKeyId} ${publisher.status}`
+    );
+    if (publisher.notes) {
+      console.log(`  notes: ${publisher.notes}`);
+    }
+  }
+};
+
+const readPublisherPublicKey = async (options) => {
+  let publicKey;
+  if (typeof options.publicKey === "string" && options.publicKey.trim()) {
+    publicKey = options.publicKey.trim();
+  } else if (options.publicKeyFile) {
+    const publicKeyFile = await readFile(
+      path.resolve(options.publicKeyFile),
+      "utf-8"
+    );
+    publicKey = publicKeyFile.trim();
+  }
+  if (!publicKey) {
+    throw new Error(
+      "Publisher trust requires --public-key-file <path> or --public-key <pem>"
+    );
+  }
+  try {
+    createPublicKey(publicKey);
+  } catch (error) {
+    throw new Error(
+      `Publisher public key must be a valid PEM key: ${error.message}`,
+      { cause: error }
+    );
+  }
+  return publicKey;
+};
+
+const trustModulePublisher = async ({ publicKeyId, publisher, options }) => {
+  const repoRoot = await repoRootFromOptions(options);
+  const registry = await readModulePublishers({ options, repoRoot });
+  const publicKey = await readPublisherPublicKey(options);
+  const nextEntry = normalizePublisherKeyEntry({
+    notes: options.notes,
+    publicKey,
+    publicKeyId,
+    publisher,
+    status: "trusted",
+  });
+  const nextPublishers = registry.publishers.filter(
+    (entry) =>
+      entry.publisher !== nextEntry.publisher ||
+      entry.publicKeyId !== nextEntry.publicKeyId
+  );
+  nextPublishers.push(nextEntry);
+  const publishersFilePath = await writeModulePublishers({
+    options,
+    publishers: nextPublishers,
+    repoRoot,
+  });
+
+  if (options.json) {
+    console.log(
+      JSON.stringify(
+        {
+          publisher: nextEntry,
+          publishersFile: publishersFilePath,
+        },
+        null,
+        2
+      )
+    );
+    return;
+  }
+  console.log(
+    `Trusted publisher key ${nextEntry.publisher} ${nextEntry.publicKeyId}.`
+  );
+  console.log(`- registry: ${path.relative(repoRoot, publishersFilePath)}`);
+};
+
+const revokeModulePublisher = async ({ publicKeyId, publisher, options }) => {
+  const repoRoot = await repoRootFromOptions(options);
+  const registry = await readModulePublishers({ options, repoRoot });
+  const existing = registry.publishers.find(
+    (entry) =>
+      entry.publisher === publisher && entry.publicKeyId === publicKeyId
+  );
+  if (!existing) {
+    throw new Error(
+      `Publisher key ${publisher} ${publicKeyId} is not configured`
+    );
+  }
+  const nextEntry = {
+    ...existing,
+    status: "revoked",
+  };
+  const nextPublishers = registry.publishers.map((entry) =>
+    entry.publisher === publisher && entry.publicKeyId === publicKeyId
+      ? nextEntry
+      : entry
+  );
+  const publishersFilePath = await writeModulePublishers({
+    options,
+    publishers: nextPublishers,
+    repoRoot,
+  });
+
+  if (options.json) {
+    console.log(
+      JSON.stringify(
+        {
+          publisher: nextEntry,
+          publishersFile: publishersFilePath,
+        },
+        null,
+        2
+      )
+    );
+    return;
+  }
+  console.log(`Revoked publisher key ${publisher} ${publicKeyId}.`);
+  console.log(`- registry: ${path.relative(repoRoot, publishersFilePath)}`);
 };
 
 const findRegistryModule = ({ entries, moduleName }) => {
@@ -2751,6 +2932,18 @@ const addModuleRegistryOptions = (command) =>
     .option("--publishers-file <path>", "module publisher key registry file")
     .option("--json", "print machine-readable JSON output");
 
+const addModulePublisherOptions = (command) =>
+  command
+    .option("--repo-root <path>", "Lenso host repository root")
+    .option("--publishers-file <path>", "module publisher key registry file")
+    .option("--json", "print machine-readable JSON output");
+
+const addModulePublisherTrustOptions = (command) =>
+  addModulePublisherOptions(command)
+    .option("--public-key-file <path>", "PEM public key file to trust")
+    .option("--public-key <pem>", "PEM public key to trust")
+    .option("--notes <text>", "operator notes for the publisher key");
+
 const addModuleRegistryInstallOptions = (command) =>
   addModuleRegistryOptions(command)
     .option("--env-file <path>", "env file to update")
@@ -2800,6 +2993,9 @@ const createProgram = ({ defaultRuntimeConsoleRoot } = {}) => {
       "after",
       `
 Third-party remote module flow:
+  lenso module publisher list
+  lenso module publisher trust <publisher> <public-key-id>
+  lenso module publisher revoke <publisher> <public-key-id>
   lenso module registry list
   lenso module registry doctor
   lenso module registry inspect <module>
@@ -2831,6 +3027,29 @@ Third-party remote module flow:
       .description("check configured remote modules and console packages")
   ).action(async (options) => {
     await runModuleDoctor({ options });
+  });
+
+  const publisherCommand = moduleCommand
+    .command("publisher")
+    .description("manage trusted module publisher keys");
+  addModulePublisherOptions(
+    publisherCommand.command("list").description("list module publisher keys")
+  ).action(async (options) => {
+    await listModulePublishers({ options });
+  });
+  addModulePublisherTrustOptions(
+    publisherCommand
+      .command("trust <publisher> <publicKeyId>")
+      .description("trust a module publisher public key")
+  ).action(async (publisher, publicKeyId, options) => {
+    await trustModulePublisher({ options, publicKeyId, publisher });
+  });
+  addModulePublisherOptions(
+    publisherCommand
+      .command("revoke <publisher> <publicKeyId>")
+      .description("revoke a module publisher public key")
+  ).action(async (publisher, publicKeyId, options) => {
+    await revokeModulePublisher({ options, publicKeyId, publisher });
   });
 
   const registryCommand = moduleCommand

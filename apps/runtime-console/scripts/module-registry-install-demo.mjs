@@ -137,23 +137,22 @@ const main = async () => {
     );
     await writeFixture(
       hostRoot,
-      ".lenso/module-publishers.json",
-      JSON.stringify(
-        {
-          publishers: [
-            {
-              publicKey,
-              publicKeyId: "lenso-fixtures-ed25519",
-              publisher: "Lenso Fixtures",
-              status: "trusted",
-            },
-          ],
-          version: 1,
-        },
-        null,
-        2
-      )
+      ".lenso/lenso-fixtures-ed25519.pem",
+      publicKey
     );
+    await runConsolePackageCli([
+      "module",
+      "publisher",
+      "trust",
+      "Lenso Fixtures",
+      "lenso-fixtures-ed25519",
+      "--repo-root",
+      hostRoot,
+      "--public-key-file",
+      path.join(hostRoot, ".lenso/lenso-fixtures-ed25519.pem"),
+      "--notes",
+      "Trusted by the registry install demo",
+    ]);
     await writeFixture(
       hostRoot,
       ".lenso/module-registry.json",

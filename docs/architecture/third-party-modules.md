@@ -146,7 +146,7 @@ The host is responsible for:
 - persisted Runtime Story and Technical Operations records
 - admin action authorization and projection
 - console package installation and registry resolution
-- future signature, provenance, and marketplace trust checks
+- signature, provenance, and publisher key trust checks
 
 Remote modules must not write host runtime tables, consume host outbox rows,
 receive caller bearer tokens, or claim host-owned story/function-run records.
@@ -167,6 +167,8 @@ Current Runtime Console support includes:
 - workspace-installed console packages
 - package manifests derived into install metadata
 - module metadata showing missing frontend package install plans
+- host-local publisher key trust through `lenso module publisher list`,
+  `lenso module publisher trust`, and `lenso module publisher revoke`
 - Module Registry v0 catalog discovery through `lenso module registry list`,
   `lenso module registry doctor`, `lenso module registry inspect`,
   `lenso module registry review`, and `lenso module registry install`
@@ -181,7 +183,7 @@ Current Runtime Console support includes:
 
 The following are intentionally deferred:
 
-- marketplace install trust and signatures
+- marketplace distribution and global trust policy
 - automatic npm package installation
 - JavaScript bundle loading from module manifests
 - Wasm execution
@@ -206,6 +208,8 @@ Third-party scaffolding uses a separate remote-oriented lane:
 
 ```sh
 pnpm create:module billing --remote --output-dir ../module-packages
+lenso module publisher list
+lenso module publisher trust "Acme Billing" acme-ed25519-2026 --public-key-file ./acme-ed25519.pem
 lenso module registry list --registry-file .lenso/module-registry.json
 lenso module registry doctor --registry-file .lenso/module-registry.json
 lenso module registry inspect billing --registry-file .lenso/module-registry.json
@@ -268,6 +272,12 @@ entries can declare supported Lenso host versions and console package API
 versions through `compatibility`; incompatible modules are blocked before host
 files are written.
 Publisher trust is host-local. The host stores trusted publisher keys in:
+
+```sh
+lenso module publisher trust "Acme Billing" acme-ed25519-2026 --public-key-file ./acme-ed25519.pem
+lenso module publisher list
+lenso module publisher revoke "Acme Billing" acme-ed25519-2026
+```
 
 ```json
 {
