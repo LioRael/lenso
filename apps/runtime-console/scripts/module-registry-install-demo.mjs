@@ -121,6 +121,11 @@ const main = async () => {
       packageBytes
     );
     await writeFixture(
+      modulePackagesRoot,
+      "lenso-billing/billing-package.tgz.sig",
+      "fixture-signature"
+    );
+    await writeFixture(
       hostRoot,
       ".lenso/module-registry.json",
       JSON.stringify(
@@ -142,7 +147,10 @@ const main = async () => {
               provenance: {
                 checksum: `sha256:${createHash("sha256").update(packageBytes).digest("hex")}`,
                 packageUrl: packageArtifact,
+                publicKeyId: "lenso-fixtures-ed25519",
                 publisher: "Lenso Fixtures",
+                signatureAlgorithm: "ed25519-detached",
+                signatureUrl: `${packageArtifact}.sig`,
                 sourceRepository: "https://example.com/lenso/billing-module",
               },
               source: "remote",

@@ -11,6 +11,9 @@ const registryProvenance = {
   checksum: "sha256:fixture-billing-module",
   packageUrl: "https://example.com/lenso/module/v1/package.tgz",
   publisher: "Lenso Fixtures",
+  publicKeyId: "lenso-fixtures-ed25519",
+  signatureAlgorithm: "ed25519-detached",
+  signatureUrl: "https://example.com/lenso/module/v1/package.tgz.sig",
   sourceRepository: "https://example.com/lenso/billing-module",
 };
 

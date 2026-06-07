@@ -242,7 +242,10 @@ URL, capabilities, and console package hints:
         "publisher": "Acme Billing",
         "sourceRepository": "https://github.com/acme/lenso-billing-module",
         "packageUrl": "https://packages.example.com/lenso-billing-0.1.0.tgz",
-        "checksum": "sha256:..."
+        "checksum": "sha256:...",
+        "signatureUrl": "https://packages.example.com/lenso-billing-0.1.0.tgz.sig",
+        "signatureAlgorithm": "ed25519-detached",
+        "publicKeyId": "acme-ed25519-2026"
       },
       "consolePackages": [
         {
@@ -268,8 +271,11 @@ Registry review also requires a provenance snapshot for trusted entries:
 publisher, source repository, and checksum. When `provenance.packageUrl` and a
 `sha256:<hex>` checksum are present, review fetches the package artifact and
 blocks installation if the digest does not match. This is checksum verification,
-not package signing; future marketplace work should verify publisher signatures
-against fetched artifacts before installation.
+not package signing. Signature Gate v0 also requires `signatureUrl`,
+`signatureAlgorithm`, and `publicKeyId`, with `ed25519-detached` as the first
+supported policy. The first signature slice gates metadata shape; future
+marketplace work should verify publisher signatures against fetched artifacts
+before installation.
 `pnpm --dir apps/runtime-console run demo:module-registry-install` exercises the
 same sequence against a temporary host fixture without mutating the working tree.
 

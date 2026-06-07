@@ -19,13 +19,17 @@ const registryPackageBytes = Buffer.from("lenso fixture billing package\n");
 const registryProvenance = {
   checksum: `sha256:${createHash("sha256").update(registryPackageBytes).digest("hex")}`,
   packageUrl: "https://example.com/lenso/module/v1/package.tgz",
+  publicKeyId: "lenso-fixtures-ed25519",
   publisher: "Lenso Fixtures",
+  signatureAlgorithm: "ed25519-detached",
+  signatureUrl: "https://example.com/lenso/module/v1/package.tgz.sig",
   sourceRepository: "https://example.com/lenso/billing-module",
 };
 
 const registryProvenanceForManifestUrl = (manifestUrl) => ({
   ...registryProvenance,
   packageUrl: manifestUrl.replace(/\/manifest$/u, "/package.tgz"),
+  signatureUrl: manifestUrl.replace(/\/manifest$/u, "/package.tgz.sig"),
 });
 
 const createRepoFixture = async () => {
@@ -224,6 +228,11 @@ const serveManifest = async (manifest) => {
     if (request.url === "/lenso/module/v1/package.tgz") {
       response.setHeader("Content-Type", "application/octet-stream");
       response.end(registryPackageBytes);
+      return;
+    }
+    if (request.url === "/lenso/module/v1/package.tgz.sig") {
+      response.setHeader("Content-Type", "text/plain");
+      response.end("fixture-signature");
       return;
     }
     response.statusCode = 404;
@@ -929,12 +938,85 @@ describe("module scaffold CLI", () => {
           group: "Provenance",
           message: "billing provenance checksum is missing",
         },
+        {
+          group: "Provenance",
+          message: "billing provenance signature URL is missing",
+        },
+        {
+          group: "Provenance",
+          message: "billing provenance public key id is missing",
+        },
+        {
+          group: "Provenance",
+          message: "billing provenance signature algorithm is missing",
+        },
       ],
       module: {
         provenance: {
           publisher: "Lenso Fixtures",
         },
       },
+    });
+  });
+
+  test("blocks registry review when signature algorithm is unsupported", async () => {
+    const repoRoot = await createRepoFixture();
+    const manifestUrl = await serveManifest({
+      capabilities: ["billing.read"],
+      console: [],
+      name: "billing",
+      source: "remote",
+      version: "0.1.0",
+    });
+    await writeFixture(
+      repoRoot,
+      ".lenso/module-registry.json",
+      JSON.stringify(
+        {
+          modules: [
+            {
+              baseUrl: manifestUrl.slice(0, -"/manifest".length),
+              installPolicy: "trusted",
+              manifestReference: manifestUrl,
+              name: "billing",
+              provenance: {
+                ...registryProvenanceForManifestUrl(manifestUrl),
+                signatureAlgorithm: "rsa-pss",
+              },
+              source: "remote",
+              version: "0.1.0",
+            },
+          ],
+          version: 1,
+        },
+        null,
+        2
+      )
+    );
+
+    const logs = await captureConsoleLogs(async () => {
+      await expect(
+        runConsolePackageCli([
+          "module",
+          "registry",
+          "review",
+          "billing",
+          "--registry-file",
+          path.join(repoRoot, ".lenso/module-registry.json"),
+          "--json",
+        ])
+      ).resolves.toBe(0);
+    });
+
+    expect(JSON.parse(logs)).toMatchObject({
+      decision: "blocked",
+      issues: [
+        {
+          group: "Provenance",
+          message:
+            "billing provenance signature algorithm rsa-pss is unsupported",
+        },
+      ],
     });
   });
 

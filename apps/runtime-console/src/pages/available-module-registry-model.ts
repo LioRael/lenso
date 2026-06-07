@@ -65,6 +65,9 @@ export type AvailableModuleRegistryProvenance = {
   checksum?: string;
   packageUrl?: string;
   publisher?: string;
+  publicKeyId?: string;
+  signatureAlgorithm?: string;
+  signatureUrl?: string;
   sourceRepository?: string;
 };
 
@@ -455,6 +458,18 @@ function registryProvenanceIssue({
   }
   if (!provenance.checksum) {
     return `${moduleName} provenance checksum is missing`;
+  }
+  if (!provenance.signatureUrl) {
+    return `${moduleName} provenance signature URL is missing`;
+  }
+  if (!provenance.publicKeyId) {
+    return `${moduleName} provenance public key id is missing`;
+  }
+  if (!provenance.signatureAlgorithm) {
+    return `${moduleName} provenance signature algorithm is missing`;
+  }
+  if (provenance.signatureAlgorithm !== "ed25519-detached") {
+    return `${moduleName} provenance signature algorithm ${provenance.signatureAlgorithm} is unsupported`;
   }
   return null;
 }

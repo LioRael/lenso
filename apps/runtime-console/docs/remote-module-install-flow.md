@@ -75,9 +75,11 @@ Catalog entries may also declare `compatibility.lenso.minVersion`,
 Registry review blocks incompatible entries before installation.
 Trusted catalog entries must include provenance metadata:
 `provenance.publisher`, `provenance.sourceRepository`, and
-`provenance.checksum`. Registry review records this snapshot in install history
-and blocks entries that do not name who published the module and what artifact
-was reviewed.
+`provenance.checksum`, plus signature metadata:
+`provenance.signatureUrl`, `provenance.signatureAlgorithm`, and
+`provenance.publicKeyId`. Registry review records this snapshot in install
+history and blocks entries that do not name who published the module, what
+artifact was reviewed, and which signature policy applies.
 The install command runs the same review gate and refuses to mutate host files
 unless the review decision is `ready_to_install`.
 

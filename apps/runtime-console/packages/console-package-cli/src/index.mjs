@@ -1512,10 +1512,25 @@ const normalizeRegistryProvenance = ({ moduleName, provenance }) => {
       moduleName,
       value: provenance.packageUrl,
     }),
+    publicKeyId: optionalRegistryString({
+      field: "provenance.publicKeyId",
+      moduleName,
+      value: provenance.publicKeyId,
+    }),
     publisher: optionalRegistryString({
       field: "provenance.publisher",
       moduleName,
       value: provenance.publisher,
+    }),
+    signatureAlgorithm: optionalRegistryString({
+      field: "provenance.signatureAlgorithm",
+      moduleName,
+      value: provenance.signatureAlgorithm,
+    }),
+    signatureUrl: optionalRegistryString({
+      field: "provenance.signatureUrl",
+      moduleName,
+      value: provenance.signatureUrl,
     }),
     sourceRepository: optionalRegistryString({
       field: "provenance.sourceRepository",
@@ -1938,6 +1953,9 @@ const checkRegistryProvenance = ({ entry, issues }) => {
     ["publisher", "publisher"],
     ["sourceRepository", "source repository"],
     ["checksum", "checksum"],
+    ["signatureUrl", "signature URL"],
+    ["publicKeyId", "public key id"],
+    ["signatureAlgorithm", "signature algorithm"],
   ];
   for (const [field, label] of requiredFields) {
     if (!entry.provenance[field]) {
@@ -1948,6 +1966,17 @@ const checkRegistryProvenance = ({ entry, issues }) => {
         message: `${entry.name} provenance ${label} is missing`,
       });
     }
+  }
+  if (
+    entry.provenance.signatureAlgorithm &&
+    entry.provenance.signatureAlgorithm !== "ed25519-detached"
+  ) {
+    addRegistryDoctorIssue({
+      fix: `set ${entry.name} provenance.signatureAlgorithm to ed25519-detached or install a supported signature policy`,
+      group: "Provenance",
+      issues,
+      message: `${entry.name} provenance signature algorithm ${entry.provenance.signatureAlgorithm} is unsupported`,
+    });
   }
 };
 
