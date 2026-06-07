@@ -408,6 +408,11 @@ function ModuleRegistryCatalogPanel({
                 {row.source} / caps {row.capabilityCount} / console{" "}
                 {row.consolePackageHintCount} / policy {row.installPolicy}
               </div>
+              {row.preflightFix ? (
+                <div className="truncate text-[9px] text-(--warning)">
+                  fix: {row.preflightFix}
+                </div>
+              ) : null}
             </button>
           ))
         )}

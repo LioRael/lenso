@@ -85,6 +85,7 @@ export type AvailableModuleRegistryRow = {
   installPolicy: AvailableModuleRegistryInstallPolicy;
   preflightStatus: AvailableModulePreflightStatus;
   preflightLabel: string;
+  preflightFix?: string;
   preflightReason: string;
   summary: string;
 };
@@ -118,6 +119,7 @@ export function availableModuleRegistryRows(
       key: `${entry.name}:${entry.version}:${entry.manifestReference}`,
       manifestReference: entry.manifestReference,
       name: entry.name,
+      ...(preflight.fix ? { preflightFix: preflight.fix } : {}),
       preflightLabel: statusLabel[preflight.status],
       preflightReason: preflight.reason,
       preflightStatus: preflight.status,
@@ -144,6 +146,7 @@ export function availableModuleRegistryRowsFromDoctorSnapshot(
       key: `${module.name}:${module.catalogVersion}:${module.manifestReference}`,
       manifestReference: module.manifestReference,
       name: module.name,
+      ...(preflight.fix ? { preflightFix: preflight.fix } : {}),
       preflightLabel: statusLabel[preflight.status],
       preflightReason: preflight.reason,
       preflightStatus: preflight.status,
@@ -157,7 +160,7 @@ export function availableModuleRegistryRowsFromDoctorSnapshot(
 function availableModulePreflight(
   entry: AvailableModuleRegistryEntry,
   manifest: AvailableModuleManifestSnapshot | undefined
-): { reason: string; status: AvailableModulePreflightStatus } {
+): { fix?: string; reason: string; status: AvailableModulePreflightStatus } {
   if (normalizeInstallPolicy(entry.installPolicy) !== "trusted") {
     return {
       reason:
@@ -221,7 +224,7 @@ function availableModulePreflightFromDoctorSnapshot({
 }: {
   issues: AvailableModuleRegistryDoctorIssue[];
   module: AvailableModuleRegistryDoctorModule;
-}): { reason: string; status: AvailableModulePreflightStatus } {
+}): { fix?: string; reason: string; status: AvailableModulePreflightStatus } {
   if (normalizeInstallPolicy(module.installPolicy) !== "trusted") {
     const issue = issues.find(
       (candidate) =>
@@ -229,6 +232,7 @@ function availableModulePreflightFromDoctorSnapshot({
         candidate.message.startsWith(`${module.name} installPolicy `)
     );
     return {
+      ...(issue?.fix ? { fix: issue.fix } : {}),
       reason:
         issue?.message ??
         "registry install requires installPolicy trusted after operator review",
@@ -250,6 +254,7 @@ function availableModulePreflightFromDoctorSnapshot({
 
   if (!module.baseUrl) {
     return {
+      ...(issue?.fix ? { fix: issue.fix } : {}),
       reason,
       status: "needs_base_url",
     };
@@ -261,12 +266,14 @@ function availableModulePreflightFromDoctorSnapshot({
     module.manifestVersion !== module.catalogVersion
   ) {
     return {
+      ...(issue?.fix ? { fix: issue.fix } : {}),
       reason,
       status: "manifest_mismatch",
     };
   }
 
   return {
+    ...(issue?.fix ? { fix: issue.fix } : {}),
     reason,
     status: "package_hint_mismatch",
   };

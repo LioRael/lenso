@@ -226,6 +226,7 @@ describe("available module registry model", () => {
         name: "local-crm",
         installPolicy: "trusted",
         preflightLabel: "needs base URL",
+        preflightFix: "add baseUrl or use a manifest URL ending with /manifest",
         preflightReason: "local-crm baseUrl is missing",
         preflightStatus: "needs_base_url",
         source: "remote",
