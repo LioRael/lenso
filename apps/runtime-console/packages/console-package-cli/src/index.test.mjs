@@ -2477,6 +2477,172 @@ describe("module scaffold CLI", () => {
     );
   });
 
+  test("imports a marketplace bundle", async () => {
+    const repoRoot = await createRepoFixture();
+    const bundleFile = path.join(repoRoot, ".lenso/import-bundle.json");
+    await writeFixture(
+      repoRoot,
+      ".lenso/import-bundle.json",
+      JSON.stringify(
+        {
+          history: {
+            entries: [],
+            version: 1,
+          },
+          publishers: {
+            publishers: [
+              {
+                publicKey: registryPublicKeyPem,
+                publicKeyId: "acme-ed25519",
+                publisher: "Acme Billing",
+                status: "trusted",
+              },
+            ],
+            version: 1,
+          },
+          registry: {
+            modules: [
+              {
+                installPolicy: "review_required",
+                manifestReference: "https://example.com/lenso/acme/v1/manifest",
+                name: "acme-billing",
+                source: "remote",
+                version: "0.1.0",
+              },
+            ],
+            version: 1,
+          },
+          version: 1,
+        },
+        null,
+        2
+      )
+    );
+
+    const logs = await captureConsoleLogs(async () => {
+      await expect(
+        runConsolePackageCli([
+          "module",
+          "marketplace",
+          "import",
+          bundleFile,
+          "--repo-root",
+          repoRoot,
+          "--json",
+        ])
+      ).resolves.toBe(0);
+    });
+
+    expect(JSON.parse(logs)).toMatchObject({
+      historyEntries: 0,
+      modules: 1,
+      publishers: 1,
+      version: 1,
+    });
+    const registry = JSON.parse(
+      await readFile(
+        path.join(repoRoot, ".lenso/module-registry.json"),
+        "utf-8"
+      )
+    );
+    expect(registry.modules).toEqual([
+      {
+        capabilities: [],
+        compatibility: {},
+        consolePackages: [],
+        installPolicy: "review_required",
+        manifestReference: "https://example.com/lenso/acme/v1/manifest",
+        name: "acme-billing",
+        provenance: {},
+        source: "remote",
+        version: "0.1.0",
+      },
+    ]);
+    const publishers = JSON.parse(
+      await readFile(
+        path.join(repoRoot, ".lenso/module-publishers.json"),
+        "utf-8"
+      )
+    );
+    expect(publishers.publishers).toEqual([
+      {
+        publicKey: registryPublicKeyPem,
+        publicKeyId: "acme-ed25519",
+        publisher: "Acme Billing",
+        status: "trusted",
+      },
+      {
+        notes: "Fixture publisher key",
+        publicKey: registryPublicKeyPem,
+        publicKeyId: "lenso-fixtures-ed25519",
+        publisher: "Lenso Fixtures",
+        status: "trusted",
+      },
+    ]);
+  });
+
+  test("imports marketplace bundle history when requested", async () => {
+    const repoRoot = await createRepoFixture();
+    await writeRegistryInstallHistoryFixture(repoRoot);
+    const bundleFile = path.join(repoRoot, ".lenso/import-history-bundle.json");
+    await writeFixture(
+      repoRoot,
+      ".lenso/import-history-bundle.json",
+      JSON.stringify(
+        {
+          history: {
+            entries: [
+              {
+                action: "registry.archive",
+                archivedAt: "2026-06-07T13:00:00.000Z",
+                catalogVersion: "0.2.0",
+                manifestReference: "https://example.com/lenso/acme/v2/manifest",
+                moduleName: "acme-billing",
+                source: "remote",
+              },
+            ],
+            version: 1,
+          },
+          publishers: {
+            publishers: [],
+            version: 1,
+          },
+          registry: {
+            modules: [],
+            version: 1,
+          },
+          version: 1,
+        },
+        null,
+        2
+      )
+    );
+
+    await expect(
+      runConsolePackageCli([
+        "module",
+        "marketplace",
+        "import",
+        bundleFile,
+        "--repo-root",
+        repoRoot,
+        "--include-history",
+      ])
+    ).resolves.toBe(0);
+
+    const history = JSON.parse(
+      await readFile(
+        path.join(repoRoot, ".lenso/module-registry-install-history.json"),
+        "utf-8"
+      )
+    );
+    expect(history.entries).toHaveLength(2);
+    expect(history.entries[1]).toMatchObject({
+      action: "registry.archive",
+      moduleName: "acme-billing",
+    });
+  });
+
   test("passes registry doctor for a valid catalog", async () => {
     const repoRoot = await createRepoFixture();
     const manifestUrl = await serveManifest({
@@ -2789,6 +2955,7 @@ describe("module scaffold CLI", () => {
     expect(flowDoc).toContain("lenso module registry remove");
     expect(flowDoc).toContain("lenso module registry restore");
     expect(flowDoc).toContain("lenso module marketplace export");
+    expect(flowDoc).toContain("lenso module marketplace import");
     expect(flowDoc).toContain("lenso module registry list");
     expect(flowDoc).toContain("lenso module registry doctor");
     expect(flowDoc).toContain("lenso module registry doctor --registry-file");
@@ -2846,6 +3013,7 @@ describe("module scaffold CLI", () => {
     expect(architectureDoc).toContain("module registry remove");
     expect(architectureDoc).toContain("module registry restore");
     expect(architectureDoc).toContain("module marketplace export");
+    expect(architectureDoc).toContain("module marketplace import");
     expect(architectureDoc).toContain("module registry list");
     expect(architectureDoc).toContain("module registry doctor");
     expect(architectureDoc).toContain("module registry inspect");
@@ -2879,6 +3047,7 @@ describe("module scaffold CLI", () => {
     expect(stdout).toContain("lenso module registry remove <module>");
     expect(stdout).toContain("lenso module registry restore <module>");
     expect(stdout).toContain("lenso module marketplace export");
+    expect(stdout).toContain("lenso module marketplace import <bundle>");
     expect(stdout).toContain("lenso module registry list");
     expect(stdout).toContain("lenso module registry doctor");
     expect(stdout).toContain("lenso module registry install <module>");

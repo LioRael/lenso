@@ -81,6 +81,7 @@ lenso module registry history
 lenso module registry remove billing --reason "replaced by billing-v2"
 lenso module registry restore billing --reason "billing-v2 rollback"
 lenso module marketplace export
+lenso module marketplace import .lenso/marketplace-bundle.json
 ```
 
 Registry install is deliberately gated. Catalog entries default to
@@ -125,6 +126,9 @@ review; it returns the entry to `installPolicy: "review_required"` unless
 Use `lenso module marketplace export` to write
 `.lenso/marketplace-bundle.json`, a local bundle containing the registry
 catalog, publisher keys, and registry history for handoff or review.
+Use `lenso module marketplace import <bundle>` to merge registry entries and
+publisher keys into a host. Pass `--include-history` only when the importing
+host should also append the source registry history.
 
 Registry install still writes the same host-local source configuration and
 console package install plan as `lenso module add`.

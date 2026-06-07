@@ -2560,6 +2560,126 @@ const exportModuleMarketplaceBundle = async ({ options }) => {
   console.log(`- history entries: ${history.entries.length}`);
 };
 
+const normalizeMarketplaceBundle = (bundle) => {
+  if (!bundle || typeof bundle !== "object" || Array.isArray(bundle)) {
+    throw new Error("Marketplace bundle must be a JSON object");
+  }
+  if (bundle.version !== 1) {
+    throw new Error("Marketplace bundle version must be 1");
+  }
+  const registryModules = bundle.registry?.modules ?? [];
+  if (!Array.isArray(registryModules)) {
+    throw new TypeError("Marketplace bundle registry.modules must be an array");
+  }
+  const publishers = bundle.publishers?.publishers ?? [];
+  if (!Array.isArray(publishers)) {
+    throw new TypeError(
+      "Marketplace bundle publishers.publishers must be an array"
+    );
+  }
+  const historyEntries = bundle.history?.entries ?? [];
+  if (!Array.isArray(historyEntries)) {
+    throw new TypeError("Marketplace bundle history.entries must be an array");
+  }
+  return {
+    historyEntries,
+    modules: registryModules.map(normalizeRegistryEntry),
+    publishers: publishers.map(normalizePublisherKeyEntry),
+  };
+};
+
+const mergeRegistryEntries = ({ currentEntries, importedEntries }) => {
+  const byName = new Map(currentEntries.map((entry) => [entry.name, entry]));
+  for (const entry of importedEntries) {
+    byName.set(entry.name, entry);
+  }
+  return [...byName.values()];
+};
+
+const mergePublisherEntries = ({ currentPublishers, importedPublishers }) => {
+  const byKey = new Map(
+    currentPublishers.map((publisher) => [
+      `${publisher.publisher}:${publisher.publicKeyId}`,
+      publisher,
+    ])
+  );
+  for (const publisher of importedPublishers) {
+    byKey.set(`${publisher.publisher}:${publisher.publicKeyId}`, publisher);
+  }
+  return [...byKey.values()];
+};
+
+const importModuleMarketplaceBundle = async ({ bundleReference, options }) => {
+  const bundle = normalizeMarketplaceBundle(
+    await readJson(path.resolve(bundleReference))
+  );
+  const { entries, registryFilePath, repoRoot } =
+    await readModuleRegistryForWrite({
+      options,
+    });
+  const publisherRegistry = await readModulePublishers({ options, repoRoot });
+  const nextEntries = mergeRegistryEntries({
+    currentEntries: entries,
+    importedEntries: bundle.modules,
+  });
+  const nextPublishers = mergePublisherEntries({
+    currentPublishers: publisherRegistry.publishers,
+    importedPublishers: bundle.publishers,
+  });
+  await writeModuleRegistry({ entries: nextEntries, registryFilePath });
+  const publishersFilePath = await writeModulePublishers({
+    options,
+    publishers: nextPublishers,
+    repoRoot,
+  });
+  let importedHistoryEntries = 0;
+  const historyPath = moduleRegistryInstallHistoryPath({ options, repoRoot });
+  if (options.includeHistory) {
+    const history = await readModuleRegistryInstallHistory(historyPath);
+    importedHistoryEntries = bundle.historyEntries.length;
+    await mkdir(path.dirname(historyPath), { recursive: true });
+    await writeFile(
+      historyPath,
+      `${JSON.stringify(
+        {
+          entries: [...history.entries, ...bundle.historyEntries],
+          version: 1,
+        },
+        null,
+        2
+      )}\n`
+    );
+  }
+
+  if (options.json) {
+    console.log(
+      JSON.stringify(
+        {
+          historyEntries: importedHistoryEntries,
+          historyFile: historyPath,
+          modules: bundle.modules.length,
+          publishers: bundle.publishers.length,
+          publishersFile: publishersFilePath,
+          registryFile: registryFilePath,
+          version: 1,
+        },
+        null,
+        2
+      )
+    );
+    return;
+  }
+
+  console.log("Imported marketplace bundle.");
+  console.log(`- registry: ${path.relative(repoRoot, registryFilePath)}`);
+  console.log(`- publishers: ${path.relative(repoRoot, publishersFilePath)}`);
+  console.log(`- modules imported: ${bundle.modules.length}`);
+  console.log(`- publishers imported: ${bundle.publishers.length}`);
+  if (options.includeHistory) {
+    console.log(`- history imported: ${importedHistoryEntries}`);
+  }
+};
+
 const installRegistryModule = async ({ moduleName, options }) => {
   const { entries, repoRoot } = await readModuleRegistry({ options });
   const entry = findRegistryModule({ entries, moduleName });
@@ -3569,6 +3689,18 @@ const addModuleMarketplaceExportOptions = (command) =>
     .option("--output-file <path>", "marketplace bundle output file")
     .option("--json", "print machine-readable JSON output");
 
+const addModuleMarketplaceImportOptions = (command) =>
+  command
+    .option("--repo-root <path>", "Lenso host repository root")
+    .option("--registry-file <path>", "module registry catalog file")
+    .option("--publishers-file <path>", "module publisher key registry file")
+    .option(
+      "--install-history-file <path>",
+      "module registry install history file"
+    )
+    .option("--include-history", "import registry history entries")
+    .option("--json", "print machine-readable JSON output");
+
 const addApplyPlanOptions = (command) =>
   command
     .option("--repo-root <path>", "Lenso host repository root")
@@ -3609,6 +3741,7 @@ Third-party remote module flow:
   lenso module registry install <module>
   lenso module registry history
   lenso module marketplace export
+  lenso module marketplace import <bundle>
   lenso module add <manifest-url>
   lenso console-package apply-plan
   lenso module doctor
@@ -3645,6 +3778,13 @@ Third-party remote module flow:
       .description("export registry, publisher, and history state")
   ).action(async (options) => {
     await exportModuleMarketplaceBundle({ options });
+  });
+  addModuleMarketplaceImportOptions(
+    marketplaceCommand
+      .command("import <bundleReference>")
+      .description("import registry and publisher state from a bundle")
+  ).action(async (bundleReference, options) => {
+    await importModuleMarketplaceBundle({ bundleReference, options });
   });
 
   const publisherCommand = moduleCommand
