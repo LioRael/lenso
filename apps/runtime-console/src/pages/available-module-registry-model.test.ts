@@ -118,6 +118,33 @@ describe("available module registry model", () => {
     });
   });
 
+  test("flags incompatible catalog entries before manifest checks", () => {
+    expect(
+      availableModuleRegistryRows({
+        modules: [
+          {
+            baseUrl: "https://example.com/lenso/module/v1",
+            compatibility: {
+              lenso: {
+                minVersion: "0.2.0",
+              },
+            },
+            installPolicy: "trusted",
+            manifestReference: "https://example.com/lenso/module/v1/manifest",
+            name: "billing",
+            source: "remote",
+            version: "0.1.0",
+          },
+        ],
+        version: 1,
+      })[0]
+    ).toMatchObject({
+      preflightLabel: "incompatible",
+      preflightReason: "billing requires Lenso >= 0.2.0; host is 0.1.0",
+      preflightStatus: "compatibility_blocked",
+    });
+  });
+
   test("flags manifest identity mismatches", () => {
     expect(
       availableModuleRegistryRows(catalog, {
@@ -167,12 +194,26 @@ describe("available module registry model", () => {
           group: "Catalog",
           message: "local-crm baseUrl is missing",
         },
+        {
+          fix: "upgrade Lenso to 0.2.0 or install a compatible billing catalog entry",
+          group: "Compatibility",
+          message: "billing requires Lenso >= 0.2.0; host is 0.1.0",
+        },
       ],
       modules: [
         {
           baseUrl: "https://example.com/lenso/module/v1",
           catalogVersion: "0.1.0",
           consolePackageHints: 1,
+          compatibility: {
+            lenso: {
+              minVersion: "0.2.0",
+            },
+          },
+          hostCompatibility: {
+            consolePackageApi: "1",
+            lensoVersion: "0.1.0",
+          },
           installPolicy: "trusted",
           manifestName: "billing",
           manifestReference: "https://example.com/lenso/module/v1/manifest",
@@ -180,7 +221,7 @@ describe("available module registry model", () => {
           manifestVersion: "0.1.0",
           name: "billing",
           source: "remote",
-          status: "ready",
+          status: "needs_attention",
         },
         {
           baseUrl: null,
@@ -209,10 +250,11 @@ describe("available module registry model", () => {
         manifestReference: "https://example.com/lenso/module/v1/manifest",
         name: "billing",
         installPolicy: "trusted",
-        preflightLabel: "ready",
-        preflightReason:
-          "registry doctor snapshot passed for this module manifest",
-        preflightStatus: "ready",
+        preflightFix:
+          "upgrade Lenso to 0.2.0 or install a compatible billing catalog entry",
+        preflightLabel: "incompatible",
+        preflightReason: "billing requires Lenso >= 0.2.0; host is 0.1.0",
+        preflightStatus: "compatibility_blocked",
         source: "remote",
         summary: "-",
         version: "0.1.0",

@@ -11,6 +11,7 @@ export type AvailableModuleRegistryEntry = {
   baseUrl?: string;
   capabilities?: string[];
   consolePackages?: AvailableModuleConsolePackageHint[];
+  compatibility?: AvailableModuleRegistryCompatibility;
   installPolicy?: AvailableModuleRegistryInstallPolicy;
   summary?: string;
 };
@@ -46,6 +47,19 @@ export type AvailableModuleRegistryDoctorIssue = {
   fix: string;
 };
 
+export type AvailableModuleRegistryCompatibility = {
+  consolePackageApi?: string;
+  lenso?: {
+    maxVersion?: string;
+    minVersion?: string;
+  };
+};
+
+export type AvailableModuleRegistryHostCompatibility = {
+  consolePackageApi: string;
+  lensoVersion: string;
+};
+
 export type AvailableModuleRegistryDoctorModule = {
   name: string;
   source: "remote" | string;
@@ -53,6 +67,8 @@ export type AvailableModuleRegistryDoctorModule = {
   manifestReference: string;
   baseUrl: string | null;
   consolePackageHints: number;
+  compatibility?: AvailableModuleRegistryCompatibility;
+  hostCompatibility?: AvailableModuleRegistryHostCompatibility;
   installPolicy?: AvailableModuleRegistryInstallPolicy;
   manifestName: string | null;
   manifestStatus: "ok" | "invalid" | "unreadable" | string;
@@ -64,6 +80,7 @@ export type AvailableModulePreflightStatus =
   | "unknown"
   | "ready"
   | "review_required"
+  | "compatibility_blocked"
   | "needs_base_url"
   | "manifest_mismatch"
   | "package_hint_mismatch";
@@ -96,6 +113,7 @@ export type AvailableModuleManifestSnapshots = Record<
 >;
 
 const statusLabel: Record<AvailableModulePreflightStatus, string> = {
+  compatibility_blocked: "incompatible",
   manifest_mismatch: "manifest mismatch",
   needs_base_url: "needs base URL",
   package_hint_mismatch: "package hint mismatch",
@@ -166,6 +184,18 @@ function availableModulePreflight(
       reason:
         "registry install requires installPolicy trusted after operator review",
       status: "review_required",
+    };
+  }
+
+  const compatibilityIssue = registryCompatibilityIssue({
+    compatibility: entry.compatibility,
+    hostCompatibility: defaultHostCompatibility,
+    moduleName: entry.name,
+  });
+  if (compatibilityIssue) {
+    return {
+      reason: compatibilityIssue,
+      status: "compatibility_blocked",
     };
   }
 
@@ -240,6 +270,19 @@ function availableModulePreflightFromDoctorSnapshot({
     };
   }
 
+  const compatibilityIssue = issues.find(
+    (candidate) =>
+      candidate.group === "Compatibility" &&
+      candidate.message.startsWith(`${module.name} `)
+  );
+  if (compatibilityIssue) {
+    return {
+      ...(compatibilityIssue.fix ? { fix: compatibilityIssue.fix } : {}),
+      reason: compatibilityIssue.message,
+      status: "compatibility_blocked",
+    };
+  }
+
   if (module.status === "ready") {
     return {
       reason: "registry doctor snapshot passed for this module manifest",
@@ -287,4 +330,71 @@ function normalizeInstallPolicy(
   installPolicy: AvailableModuleRegistryInstallPolicy | undefined
 ): AvailableModuleRegistryInstallPolicy {
   return installPolicy ?? "review_required";
+}
+
+const defaultHostCompatibility: AvailableModuleRegistryHostCompatibility = {
+  consolePackageApi: "1",
+  lensoVersion: "0.1.0",
+};
+
+function parseVersion(value: string): [number, number, number] | null {
+  const match = /^(\d+)\.(\d+)\.(\d+)$/u.exec(value);
+  if (!match) {
+    return null;
+  }
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+
+function compareVersions(left: string, right: string): number | null {
+  const leftParts = parseVersion(left);
+  const rightParts = parseVersion(right);
+  if (!(leftParts && rightParts)) {
+    return null;
+  }
+  for (let index = 0; index < leftParts.length; index += 1) {
+    const leftPart = leftParts[index] ?? 0;
+    const rightPart = rightParts[index] ?? 0;
+    if (leftPart !== rightPart) {
+      return leftPart > rightPart ? 1 : -1;
+    }
+  }
+  return 0;
+}
+
+function registryCompatibilityIssue({
+  compatibility,
+  hostCompatibility,
+  moduleName,
+}: {
+  compatibility: AvailableModuleRegistryCompatibility | undefined;
+  hostCompatibility: AvailableModuleRegistryHostCompatibility;
+  moduleName: string;
+}): string | null {
+  const minVersion = compatibility?.lenso?.minVersion;
+  if (minVersion) {
+    const comparison = compareVersions(
+      hostCompatibility.lensoVersion,
+      minVersion
+    );
+    if (comparison === null || comparison < 0) {
+      return `${moduleName} requires Lenso >= ${minVersion}; host is ${hostCompatibility.lensoVersion}`;
+    }
+  }
+  const maxVersion = compatibility?.lenso?.maxVersion;
+  if (maxVersion) {
+    const comparison = compareVersions(
+      hostCompatibility.lensoVersion,
+      maxVersion
+    );
+    if (comparison === null || comparison > 0) {
+      return `${moduleName} supports Lenso <= ${maxVersion}; host is ${hostCompatibility.lensoVersion}`;
+    }
+  }
+  if (
+    compatibility?.consolePackageApi &&
+    compatibility.consolePackageApi !== hostCompatibility.consolePackageApi
+  ) {
+    return `${moduleName} requires console package API ${compatibility.consolePackageApi}; host supports ${hostCompatibility.consolePackageApi}`;
+  }
+  return null;
 }

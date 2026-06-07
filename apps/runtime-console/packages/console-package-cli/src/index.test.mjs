@@ -766,6 +766,85 @@ describe("module scaffold CLI", () => {
     });
   });
 
+  test("blocks registry review for incompatible host versions", async () => {
+    const repoRoot = await createRepoFixture();
+    const manifestUrl = await serveManifest({
+      capabilities: ["billing.read"],
+      console: [],
+      name: "billing",
+      source: "remote",
+      version: "0.1.0",
+    });
+    await writeFixture(
+      repoRoot,
+      ".lenso/module-registry.json",
+      JSON.stringify(
+        {
+          modules: [
+            {
+              baseUrl: manifestUrl.slice(0, -"/manifest".length),
+              compatibility: {
+                consolePackageApi: "2",
+                lenso: {
+                  minVersion: "0.2.0",
+                },
+              },
+              installPolicy: "trusted",
+              manifestReference: manifestUrl,
+              name: "billing",
+              source: "remote",
+              version: "0.1.0",
+            },
+          ],
+          version: 1,
+        },
+        null,
+        2
+      )
+    );
+
+    const logs = await captureConsoleLogs(async () => {
+      await expect(
+        runConsolePackageCli([
+          "module",
+          "registry",
+          "review",
+          "billing",
+          "--registry-file",
+          path.join(repoRoot, ".lenso/module-registry.json"),
+          "--json",
+        ])
+      ).resolves.toBe(0);
+    });
+
+    const snapshot = JSON.parse(logs);
+    expect(snapshot).toMatchObject({
+      decision: "blocked",
+      issues: [
+        {
+          group: "Compatibility",
+          message: "billing requires Lenso >= 0.2.0; host is 0.1.0",
+        },
+        {
+          group: "Compatibility",
+          message: "billing requires console package API 2; host supports 1",
+        },
+      ],
+      module: {
+        compatibility: {
+          consolePackageApi: "2",
+          lenso: {
+            minVersion: "0.2.0",
+          },
+        },
+        hostCompatibility: {
+          consolePackageApi: "1",
+          lensoVersion: "0.1.0",
+        },
+      },
+    });
+  });
+
   test("rejects registry entries whose manifest identity does not match", async () => {
     const repoRoot = await createRepoFixture();
     const manifestUrl = await serveManifest({
@@ -1026,6 +1105,59 @@ describe("module scaffold CLI", () => {
     ).rejects.toThrow("ENOENT");
   });
 
+  test("rejects registry installs when compatibility is blocked", async () => {
+    const repoRoot = await createRepoFixture();
+    const manifestUrl = await serveManifest({
+      capabilities: ["billing.read"],
+      console: [],
+      name: "billing",
+      source: "remote",
+      version: "0.1.0",
+    });
+    await writeFixture(
+      repoRoot,
+      ".lenso/module-registry.json",
+      JSON.stringify(
+        {
+          modules: [
+            {
+              baseUrl: manifestUrl.slice(0, -"/manifest".length),
+              compatibility: {
+                lenso: {
+                  minVersion: "0.2.0",
+                },
+              },
+              installPolicy: "trusted",
+              manifestReference: manifestUrl,
+              name: "billing",
+              source: "remote",
+              version: "0.1.0",
+            },
+          ],
+          version: 1,
+        },
+        null,
+        2
+      )
+    );
+
+    await expect(
+      runConsolePackageCli([
+        "module",
+        "registry",
+        "install",
+        "billing",
+        "--registry-file",
+        path.join(repoRoot, ".lenso/module-registry.json"),
+        "--repo-root",
+        repoRoot,
+      ])
+    ).rejects.toThrow("billing requires Lenso >= 0.2.0; host is 0.1.0");
+    await expect(
+      readFile(path.join(repoRoot, ".env"), "utf-8")
+    ).rejects.toThrow("ENOENT");
+  });
+
   test("prints registry install history entries", async () => {
     const repoRoot = await createRepoFixture();
     await writeRegistryInstallHistoryFixture(repoRoot);
@@ -1227,7 +1359,12 @@ describe("module scaffold CLI", () => {
         {
           baseUrl: manifestUrl.slice(0, -"/manifest".length),
           catalogVersion: "0.1.0",
+          compatibility: {},
           consolePackageHints: 1,
+          hostCompatibility: {
+            consolePackageApi: "1",
+            lensoVersion: "0.1.0",
+          },
           installPolicy: "trusted",
           manifestName: "billing",
           manifestReference: manifestUrl,

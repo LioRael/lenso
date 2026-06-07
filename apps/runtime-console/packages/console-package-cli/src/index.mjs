@@ -1361,6 +1361,11 @@ const consolePackagesFromManifest = (manifest) =>
     moduleName: manifest.name,
   }).map((consolePackage) => consolePackage.key);
 
+const hostRegistryCompatibility = {
+  consolePackageApi: "1",
+  lensoVersion: "0.1.0",
+};
+
 const requireRegistryString = ({ field, moduleName, value }) => {
   if (typeof value !== "string" || !value.trim()) {
     throw new Error(
@@ -1416,6 +1421,53 @@ const normalizeRegistryInstallPolicy = ({ installPolicy, moduleName }) => {
   return normalized;
 };
 
+const optionalRegistryString = ({ field, moduleName, value }) => {
+  if (value === undefined) {
+    return;
+  }
+  return requireRegistryString({ field, moduleName, value });
+};
+
+const normalizeRegistryCompatibility = ({ compatibility, moduleName }) => {
+  if (compatibility === undefined) {
+    return {};
+  }
+  if (
+    !compatibility ||
+    typeof compatibility !== "object" ||
+    Array.isArray(compatibility)
+  ) {
+    throw new TypeError(
+      `Module registry entry ${moduleName} compatibility must be a JSON object`
+    );
+  }
+  const lenso = compatibility.lenso ?? {};
+  if (!lenso || typeof lenso !== "object" || Array.isArray(lenso)) {
+    throw new TypeError(
+      `Module registry entry ${moduleName} compatibility.lenso must be a JSON object`
+    );
+  }
+  return {
+    consolePackageApi: optionalRegistryString({
+      field: "compatibility.consolePackageApi",
+      moduleName,
+      value: compatibility.consolePackageApi,
+    }),
+    lenso: {
+      maxVersion: optionalRegistryString({
+        field: "compatibility.lenso.maxVersion",
+        moduleName,
+        value: lenso.maxVersion,
+      }),
+      minVersion: optionalRegistryString({
+        field: "compatibility.lenso.minVersion",
+        moduleName,
+        value: lenso.minVersion,
+      }),
+    },
+  };
+};
+
 const normalizeRegistryEntry = (entry) => {
   if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
     throw new Error("Module registry entries must be JSON objects");
@@ -1444,6 +1496,10 @@ const normalizeRegistryEntry = (entry) => {
         ? trimTrailingSlash(entry.baseUrl.trim())
         : undefined,
     capabilities: capabilities.map(String),
+    compatibility: normalizeRegistryCompatibility({
+      compatibility: entry.compatibility,
+      moduleName: name,
+    }),
     consolePackages: normalizeRegistryConsolePackages({
       consolePackages: entry.consolePackages,
       moduleName: name,
@@ -1518,6 +1574,20 @@ const findRegistryModule = ({ entries, moduleName }) => {
 
 const formatListValue = (items) => (items.length > 0 ? items.join(", ") : "-");
 
+const formatRegistryCompatibility = (compatibility) => {
+  const parts = [];
+  if (compatibility.lenso?.minVersion) {
+    parts.push(`lenso>=${compatibility.lenso.minVersion}`);
+  }
+  if (compatibility.lenso?.maxVersion) {
+    parts.push(`lenso<=${compatibility.lenso.maxVersion}`);
+  }
+  if (compatibility.consolePackageApi) {
+    parts.push(`console-api=${compatibility.consolePackageApi}`);
+  }
+  return parts.length > 0 ? parts.join(", ") : "host default";
+};
+
 const listModuleRegistry = async ({ options }) => {
   const { entries, registryFilePath, repoRoot } = await readModuleRegistry({
     options,
@@ -1534,6 +1604,9 @@ const listModuleRegistry = async ({ options }) => {
       console.log(`  base URL: ${entry.baseUrl}`);
     }
     console.log(`  install policy: ${entry.installPolicy}`);
+    console.log(
+      `  compatibility: ${formatRegistryCompatibility(entry.compatibility)}`
+    );
     console.log(`  capabilities: ${formatListValue(entry.capabilities)}`);
     console.log(
       `  console packages: ${formatListValue(
@@ -1565,6 +1638,9 @@ const inspectRegistryModule = async ({ moduleName, options }) => {
   console.log(`- manifest: ${entry.manifestReference}`);
   console.log(`- base URL: ${baseUrl}`);
   console.log(`- install policy: ${entry.installPolicy}`);
+  console.log(
+    `- compatibility: ${formatRegistryCompatibility(entry.compatibility)}`
+  );
   console.log(`- manifest status: ok`);
   console.log(`- capabilities: ${formatListValue(manifest.capabilities)}`);
   console.log(
@@ -1691,6 +1767,7 @@ const installRegistryModule = async ({ moduleName, options }) => {
 
 const registryDoctorIssueGroups = [
   "Catalog",
+  "Compatibility",
   "Manifest",
   "Console package hint",
 ];
@@ -1713,6 +1790,74 @@ const formatRegistryDoctorIssues = (issues) => {
 
 const addRegistryDoctorIssue = ({ fix, group, issues, message }) => {
   issues.push({ fix, group, message });
+};
+
+const parseRegistryVersion = (value) => {
+  const match = /^(\d+)\.(\d+)\.(\d+)$/u.exec(value);
+  if (!match) {
+    return null;
+  }
+  return match.slice(1).map(Number);
+};
+
+const compareRegistryVersions = (left, right) => {
+  const leftParts = parseRegistryVersion(left);
+  const rightParts = parseRegistryVersion(right);
+  if (!(leftParts && rightParts)) {
+    return null;
+  }
+  for (let index = 0; index < leftParts.length; index += 1) {
+    if (leftParts[index] !== rightParts[index]) {
+      return leftParts[index] > rightParts[index] ? 1 : -1;
+    }
+  }
+  return 0;
+};
+
+const checkRegistryCompatibility = ({ entry, issues }) => {
+  const { compatibility } = entry;
+  const minVersion = compatibility.lenso?.minVersion;
+  const maxVersion = compatibility.lenso?.maxVersion;
+  if (minVersion) {
+    const comparison = compareRegistryVersions(
+      hostRegistryCompatibility.lensoVersion,
+      minVersion
+    );
+    if (comparison === null || comparison < 0) {
+      addRegistryDoctorIssue({
+        fix: `upgrade Lenso to ${minVersion} or install a compatible ${entry.name} catalog entry`,
+        group: "Compatibility",
+        issues,
+        message: `${entry.name} requires Lenso >= ${minVersion}; host is ${hostRegistryCompatibility.lensoVersion}`,
+      });
+    }
+  }
+  if (maxVersion) {
+    const comparison = compareRegistryVersions(
+      hostRegistryCompatibility.lensoVersion,
+      maxVersion
+    );
+    if (comparison === null || comparison > 0) {
+      addRegistryDoctorIssue({
+        fix: `install a ${entry.name} catalog entry compatible with Lenso ${hostRegistryCompatibility.lensoVersion}`,
+        group: "Compatibility",
+        issues,
+        message: `${entry.name} supports Lenso <= ${maxVersion}; host is ${hostRegistryCompatibility.lensoVersion}`,
+      });
+    }
+  }
+  if (
+    compatibility.consolePackageApi &&
+    compatibility.consolePackageApi !==
+      hostRegistryCompatibility.consolePackageApi
+  ) {
+    addRegistryDoctorIssue({
+      fix: `install a ${entry.name} catalog entry for console package API ${hostRegistryCompatibility.consolePackageApi}`,
+      group: "Compatibility",
+      issues,
+      message: `${entry.name} requires console package API ${compatibility.consolePackageApi}; host supports ${hostRegistryCompatibility.consolePackageApi}`,
+    });
+  }
 };
 
 const compareRegistryConsolePackages = ({ entry, issues, manifest }) => {
@@ -1822,6 +1967,7 @@ const reviewRegistryModuleSnapshot = async ({ moduleName, options }) => {
       message: `${entry.name} installPolicy is ${entry.installPolicy}`,
     });
   }
+  checkRegistryCompatibility({ entry, issues });
   const result = await checkRegistryEntryManifest({ entry, issues, options });
   const decision = issues.length === 0 ? "ready_to_install" : "blocked";
   return {
@@ -1831,7 +1977,9 @@ const reviewRegistryModuleSnapshot = async ({ moduleName, options }) => {
       baseUrl: result.baseUrl ?? null,
       capabilities: entry.capabilities,
       catalogVersion: entry.version,
+      compatibility: entry.compatibility,
       consolePackageHints: result.consolePackageHints,
+      hostCompatibility: hostRegistryCompatibility,
       installPolicy: entry.installPolicy,
       manifestName: result.manifestName,
       manifestReference: entry.manifestReference,
@@ -1860,6 +2008,12 @@ const printRegistryModuleReview = async ({ moduleName, options }) => {
   console.log(`- manifest: ${module.manifestReference}`);
   console.log(`- base URL: ${module.baseUrl ?? "-"}`);
   console.log(`- install policy: ${module.installPolicy}`);
+  console.log(
+    `- compatibility: ${formatRegistryCompatibility(module.compatibility)}`
+  );
+  console.log(
+    `- host compatibility: lenso ${module.hostCompatibility.lensoVersion}, console-api ${module.hostCompatibility.consolePackageApi}`
+  );
   console.log(`- manifest status: ${module.manifestStatus}`);
   console.log(`- capabilities: ${formatListValue(module.capabilities)}`);
   console.log(`- console package hints: ${module.consolePackageHints}`);
@@ -1890,7 +2044,9 @@ const registryDoctorJsonSnapshot = ({
   modules: moduleChecks.map(({ entry, issues: entryIssues, result }) => ({
     baseUrl: result.baseUrl ?? null,
     catalogVersion: entry.version,
+    compatibility: entry.compatibility,
     consolePackageHints: result.consolePackageHints,
+    hostCompatibility: hostRegistryCompatibility,
     installPolicy: entry.installPolicy,
     manifestName: result.manifestName,
     manifestReference: entry.manifestReference,
@@ -1923,6 +2079,7 @@ const runModuleRegistryDoctor = async ({ options }) => {
         message: `${entry.name} installPolicy is ${entry.installPolicy}`,
       });
     }
+    checkRegistryCompatibility({ entry, issues });
     const result = await checkRegistryEntryManifest({ entry, issues, options });
     consolePackageHints += result.consolePackageHints;
     moduleChecks.push({

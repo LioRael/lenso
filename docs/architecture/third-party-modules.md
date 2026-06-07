@@ -231,6 +231,13 @@ URL, capabilities, and console package hints:
       "manifestReference": "https://example.com/lenso/module/v1/manifest",
       "baseUrl": "https://example.com/lenso/module/v1",
       "capabilities": ["billing.read"],
+      "compatibility": {
+        "lenso": {
+          "minVersion": "0.1.0",
+          "maxVersion": "0.1.0"
+        },
+        "consolePackageApi": "1"
+      },
       "consolePackages": [
         {
           "packageName": "@vendor/lenso-billing-console",
@@ -247,6 +254,10 @@ URL, capabilities, and console package hints:
 install path as `lenso module add`, so `.env`,
 `.lenso/console-package-install-plan.json`, `console-package apply-plan`, and
 `module doctor` remain the install contract.
+Registry review also enforces compatibility before installation. Catalog
+entries can declare supported Lenso host versions and console package API
+versions through `compatibility`; incompatible modules are blocked before host
+files are written.
 `pnpm --dir apps/runtime-console run demo:module-registry-install` exercises the
 same sequence against a temporary host fixture without mutating the working tree.
 
