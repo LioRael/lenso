@@ -476,7 +476,7 @@ Update `apps/runtime-console/packages/story-console/console-surface.json`:
   "id": "platform-story",
   "label": "Stories",
   "navigation": {
-    "order": 20,
+    "order": -10,
     "workspace": {
       "icon": "settings",
       "id": "system",
@@ -929,9 +929,8 @@ function routeMatchesPath(route: string, path: string): boolean {
 In `apps/runtime-console/src/app/console-modules.tsx`, update `buildConsoleNavigation`:
 
 ```ts
-    if (route.navigation) {
-      item.navigation = route.navigation;
-    }
+    item.navigation =
+      route.navigation ?? defaultSystemNavigationForArea(route.area);
 ```
 
 In `apps/runtime-console/src/app/console-module-resolver.ts`, add `navigation?: ConsoleNavigationMetadata;` to backend metadata and pass it through only after package resolution. Imported type should include `ConsoleNavigationMetadata`.
@@ -942,7 +941,7 @@ Update `apps/runtime-console/src/app/console-module-metadata.test.ts` so the fir
 
 ```ts
 navigation: {
-  order: 20,
+  order: -10,
   workspace: {
     icon: "settings",
     id: "system",
@@ -1276,10 +1275,11 @@ In `docs/architecture/module-console-surfaces.md`, update the Manifest Contract 
 
 ```markdown
 - `navigation`: optional workspace metadata. Missing metadata defaults to the
-  host `System` workspace. Modules may create their own workspace by declaring a
-  workspace id, label, and optional icon; the first slice supports one optional
-  group level inside a workspace. The `system` workspace id is reserved for the
-  host; module surfaces should omit `navigation` when they belong in System.
+  host `System` workspace with host-defined area ordering. Modules may create
+  their own workspace by declaring a workspace id, label, and optional icon; the
+  first slice supports one optional group level inside a workspace. The `system`
+  workspace id is reserved for the host; module surfaces should omit
+  `navigation` when they belong in System.
 ```
 
 Add a short example:

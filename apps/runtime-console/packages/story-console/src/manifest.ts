@@ -9,7 +9,7 @@ const storyConsoleSurfaceContract = storyConsoleSurface as unknown as {
   readonly id: "platform-story";
   readonly label: "Stories";
   readonly navigation: {
-    readonly order: 20;
+    readonly order: -10;
     readonly workspace: {
       readonly icon: "settings";
       readonly id: "system";

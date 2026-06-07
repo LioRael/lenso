@@ -19,7 +19,7 @@ describe("story console module", () => {
       id: "platform-story",
       label: "Stories",
       navigation: {
-        order: 20,
+        order: -10,
         workspace: {
           icon: "settings",
           id: "system",

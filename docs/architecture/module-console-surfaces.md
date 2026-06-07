@@ -35,10 +35,12 @@ module-owned packages. `identity-console` is the installed package fixture.
 - `required_capabilities`: capabilities the host should require before showing
   or mounting the surface.
 - `navigation`: optional workspace metadata. Missing metadata defaults to the
-  host `System` workspace. Modules may create their own workspace by declaring a
-  workspace id, label, and optional icon; the first slice supports one optional
-  group level inside a workspace. The `system` workspace id is reserved for the
-  host; module surfaces should omit `navigation` when they belong in System.
+  host `System` workspace with host-defined area ordering, keeping runtime
+  surfaces such as Stories ahead of lower-priority system pages. Modules may
+  create their own workspace by declaring a workspace id, label, and optional
+  icon; the first slice supports one optional group level inside a workspace.
+  The `system` workspace id is reserved for the host; module surfaces should
+  omit `navigation` when they belong in System.
 
 Example surface metadata:
 

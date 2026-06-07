@@ -36,6 +36,14 @@ describe("console module registry", () => {
         icon: "workflow",
         label: "Stories",
         moduleId: "platform-story",
+        navigation: {
+          order: -10,
+          workspace: {
+            icon: "settings",
+            id: "system",
+            label: "System",
+          },
+        },
         path: "/runtime/stories",
       },
     ]);
@@ -172,7 +180,7 @@ describe("console module registry", () => {
         label: "Stories",
         moduleName: "platform-story",
         navigation: {
-          order: 20,
+          order: -10,
           workspace: {
             icon: "settings",
             id: "system",
@@ -214,7 +222,7 @@ describe("console module registry", () => {
     ).toEqual([
       {
         navigation: {
-          order: 20,
+          order: -10,
           workspace: {
             icon: "settings",
             id: "system",
@@ -243,7 +251,7 @@ describe("console module registry", () => {
     ).toEqual([
       {
         navigation: {
-          order: 20,
+          order: -10,
           workspace: {
             icon: "settings",
             id: "system",

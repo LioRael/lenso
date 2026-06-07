@@ -9,12 +9,14 @@ import type {
   ConsoleModule,
   ConsoleNavigationItem,
   ConsoleRouteContribution,
+  ConsoleSurfaceArea,
 } from "./console-module-api";
 import {
   type ConsoleModuleMetadata,
   resolveConsoleModules,
   selectConsoleModulePackageReferences,
 } from "./console-module-resolver";
+import { SYSTEM_WORKSPACE } from "./console-workspace-navigation";
 
 export { defineConsoleModule } from "./console-module-api";
 export type {
@@ -66,9 +68,8 @@ export function buildConsoleNavigation(
     if (route.icon) {
       item.icon = route.icon;
     }
-    if (route.navigation) {
-      item.navigation = route.navigation;
-    }
+    item.navigation =
+      route.navigation ?? defaultSystemNavigationForArea(route.area);
     return item;
   });
 }
@@ -96,8 +97,26 @@ const RESERVED_HOST_CONSOLE_ROUTE_PATHS = new Set([
   "/data",
 ]);
 
+const DEFAULT_SYSTEM_NAVIGATION_ORDER = {
+  runtime: -10,
+  operations: 80,
+  data: 100,
+  configuration: 120,
+} satisfies Record<ConsoleSurfaceArea, number>;
+
 function isReservedHostConsoleRoute(path: string): boolean {
   return RESERVED_HOST_CONSOLE_ROUTE_PATHS.has(path);
+}
+
+function defaultSystemNavigationForArea(area: ConsoleSurfaceArea) {
+  return {
+    order: defaultSystemNavigationOrder(area),
+    workspace: SYSTEM_WORKSPACE,
+  };
+}
+
+function defaultSystemNavigationOrder(area: ConsoleSurfaceArea): number {
+  return DEFAULT_SYSTEM_NAVIGATION_ORDER[area];
 }
 
 export function consoleModuleMetadataFromManifest(

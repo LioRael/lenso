@@ -117,8 +117,9 @@ pub struct ConsoleNavigationGroup {
 ```
 
 `navigation` is optional for backward compatibility. Missing navigation metadata
-defaults to the host `system` workspace. Modules should omit navigation instead
-of explicitly declaring `workspace.id = "system"`.
+defaults to the host `system` workspace with host-defined area ordering, keeping
+runtime surfaces such as Stories ahead of lower-priority system pages. Modules
+should omit navigation instead of explicitly declaring `workspace.id = "system"`.
 
 Example module-owned workspace:
 
