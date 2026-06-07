@@ -153,45 +153,43 @@ const main = async () => {
       "--notes",
       "Trusted by the registry install demo",
     ]);
-    await writeFixture(
+    await runConsolePackageCli([
+      "module",
+      "registry",
+      "add",
+      "billing",
+      "--repo-root",
       hostRoot,
-      ".lenso/module-registry.json",
-      JSON.stringify(
-        {
-          modules: [
-            {
-              baseUrl,
-              capabilities: ["billing.read"],
-              consolePackages: [
-                {
-                  exportName: "billingConsoleModule",
-                  packageName: "@vendor/lenso-billing-console",
-                  route: "/data/billing",
-                },
-              ],
-              installPolicy: "trusted",
-              manifestReference,
-              name: "billing",
-              provenance: {
-                checksum: `sha256:${createHash("sha256").update(packageBytes).digest("hex")}`,
-                packageUrl: packageArtifact,
-                publicKeyId: "lenso-fixtures-ed25519",
-                publisher: "Lenso Fixtures",
-                signatureAlgorithm: "ed25519-detached",
-                signatureUrl: `${packageArtifact}.sig`,
-                sourceRepository: "https://example.com/lenso/billing-module",
-              },
-              source: "remote",
-              summary: "Billing workspace and operations",
-              version: "0.1.0",
-            },
-          ],
-          version: 1,
-        },
-        null,
-        2
-      )
-    );
+      "--registry-file",
+      registryFile,
+      "--manifest",
+      manifestReference,
+      "--base-url",
+      baseUrl,
+      "--version",
+      "0.1.0",
+      "--summary",
+      "Billing workspace and operations",
+      "--trusted",
+      "--capability",
+      "billing.read",
+      "--console-package",
+      "@vendor/lenso-billing-console#billingConsoleModule",
+      "--route",
+      "/data/billing",
+      "--publisher",
+      "Lenso Fixtures",
+      "--source-repository",
+      "https://example.com/lenso/billing-module",
+      "--package-url",
+      packageArtifact,
+      "--checksum",
+      `sha256:${createHash("sha256").update(packageBytes).digest("hex")}`,
+      "--signature-url",
+      `${packageArtifact}.sig`,
+      "--public-key-id",
+      "lenso-fixtures-ed25519",
+    ]);
 
     await runConsolePackageCli([
       "module",

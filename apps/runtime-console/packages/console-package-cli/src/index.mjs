@@ -1608,7 +1608,7 @@ const normalizeRegistryEntry = (entry) => {
   };
 };
 
-const readModuleRegistry = async ({ options }) => {
+const moduleRegistryPathAndRoot = async ({ options }) => {
   const inferredRepoRoot = options.repoRoot
     ? path.resolve(options.repoRoot)
     : await findRepoRoot(process.cwd());
@@ -1621,6 +1621,13 @@ const readModuleRegistry = async ({ options }) => {
     path.basename(path.dirname(registryFilePath)) !== ".lenso"
       ? inferredRepoRoot
       : path.dirname(path.dirname(registryFilePath));
+  return { registryFilePath, repoRoot };
+};
+
+const readModuleRegistry = async ({ options }) => {
+  const { registryFilePath, repoRoot } = await moduleRegistryPathAndRoot({
+    options,
+  });
   const registry = await readJson(registryFilePath);
   if (!registry || typeof registry !== "object" || Array.isArray(registry)) {
     throw new Error("Module registry catalog must be a JSON object");
@@ -1644,6 +1651,38 @@ const readModuleRegistry = async ({ options }) => {
     registryFilePath,
     repoRoot,
   };
+};
+
+const readModuleRegistryForWrite = async ({ options }) => {
+  const { registryFilePath, repoRoot } = await moduleRegistryPathAndRoot({
+    options,
+  });
+  if (!(await pathExists(registryFilePath))) {
+    return {
+      entries: [],
+      registryFilePath,
+      repoRoot,
+    };
+  }
+  return readModuleRegistry({ options });
+};
+
+const writeModuleRegistry = async ({ entries, registryFilePath }) => {
+  const sortedEntries = entries.toSorted((left, right) =>
+    left.name.localeCompare(right.name)
+  );
+  await mkdir(path.dirname(registryFilePath), { recursive: true });
+  await writeFile(
+    registryFilePath,
+    `${JSON.stringify(
+      {
+        modules: sortedEntries,
+        version: 1,
+      },
+      null,
+      2
+    )}\n`
+  );
 };
 
 const normalizePublisherKeyEntry = (entry) => {
@@ -2032,6 +2071,63 @@ const formatRegistryProvenance = (provenance) =>
     ? `${provenance.publisher} ${provenance.checksum ?? "-"}`
     : "-";
 
+const collectOption = (value, previous = []) => [...previous, value];
+
+const parseRegistryConsolePackageOption = ({ route, value }) => {
+  const [packageName, exportName] = value.split("#");
+  if (!(packageName?.trim() && exportName?.trim())) {
+    throw new Error(
+      `Console package ${value} must use <package-name>#<export-name>`
+    );
+  }
+  return {
+    exportName: exportName.trim(),
+    packageName: packageName.trim(),
+    ...(route ? { route } : {}),
+  };
+};
+
+const moduleRegistryEntryFromOptions = ({ moduleName, options }) => {
+  const consolePackages = (options.consolePackage ?? []).map(
+    (consolePackage, index) =>
+      parseRegistryConsolePackageOption({
+        route: options.route?.[index],
+        value: consolePackage,
+      })
+  );
+  return normalizeRegistryEntry({
+    baseUrl: options.baseUrl,
+    capabilities: options.capability ?? [],
+    compatibility: {
+      consolePackageApi: options.consolePackageApi,
+      lenso: {
+        maxVersion: options.maxLensoVersion,
+        minVersion: options.minLensoVersion,
+      },
+    },
+    consolePackages,
+    installPolicy: options.trusted ? "trusted" : "review_required",
+    manifestReference: options.manifest,
+    name: moduleName,
+    provenance: {
+      checksum: options.checksum,
+      packageUrl: options.packageUrl,
+      publicKeyId: options.publicKeyId,
+      publisher: options.publisher,
+      signatureAlgorithm:
+        options.signatureAlgorithm ??
+        (options.signatureUrl || options.publicKeyId
+          ? "ed25519-detached"
+          : undefined),
+      signatureUrl: options.signatureUrl,
+      sourceRepository: options.sourceRepository,
+    },
+    source: "remote",
+    summary: options.summary,
+    version: options.version,
+  });
+};
+
 const listModuleRegistry = async ({ options }) => {
   const { entries, registryFilePath, repoRoot } = await readModuleRegistry({
     options,
@@ -2059,6 +2155,36 @@ const listModuleRegistry = async ({ options }) => {
       )}`
     );
   }
+};
+
+const addModuleRegistryEntry = async ({ moduleName, options }) => {
+  const { entries, registryFilePath, repoRoot } =
+    await readModuleRegistryForWrite({
+      options,
+    });
+  const nextEntry = moduleRegistryEntryFromOptions({ moduleName, options });
+  const nextEntries = entries.filter((entry) => entry.name !== nextEntry.name);
+  nextEntries.push(nextEntry);
+  await writeModuleRegistry({ entries: nextEntries, registryFilePath });
+
+  if (options.json) {
+    console.log(
+      JSON.stringify(
+        {
+          module: nextEntry,
+          registryFile: registryFilePath,
+        },
+        null,
+        2
+      )
+    );
+    return;
+  }
+
+  console.log(`Added registry module ${nextEntry.name}.`);
+  console.log(`- catalog: ${path.relative(repoRoot, registryFilePath)}`);
+  console.log(`- install policy: ${nextEntry.installPolicy}`);
+  console.log(`- next: lenso module registry review ${nextEntry.name}`);
 };
 
 const inspectRegistryModule = async ({ moduleName, options }) => {
@@ -3043,6 +3169,46 @@ const addModuleRegistryOptions = (command) =>
     .option("--publishers-file <path>", "module publisher key registry file")
     .option("--json", "print machine-readable JSON output");
 
+const addModuleRegistryAddOptions = (command) =>
+  addModuleRegistryOptions(command)
+    .requiredOption(
+      "--manifest <reference>",
+      "remote module manifest reference"
+    )
+    .requiredOption("--version <version>", "catalog module version")
+    .option("--base-url <url>", "remote module base URL")
+    .option("--summary <text>", "catalog summary")
+    .option("--trusted", "mark the catalog entry trusted after review")
+    .option("--capability <capability>", "module capability", collectOption, [])
+    .option(
+      "--console-package <package#export>",
+      "Runtime Console package hint",
+      collectOption,
+      []
+    )
+    .option(
+      "--route <route>",
+      "route for the matching console package hint",
+      collectOption,
+      []
+    )
+    .option("--publisher <name>", "provenance publisher")
+    .option("--source-repository <url>", "provenance source repository")
+    .option("--package-url <url>", "provenance package artifact URL")
+    .option("--checksum <sha256>", "provenance package checksum")
+    .option("--signature-url <url>", "provenance signature URL")
+    .option(
+      "--signature-algorithm <algorithm>",
+      "provenance signature algorithm"
+    )
+    .option("--public-key-id <id>", "provenance public key id")
+    .option("--min-lenso-version <version>", "minimum compatible Lenso version")
+    .option("--max-lenso-version <version>", "maximum compatible Lenso version")
+    .option(
+      "--console-package-api <version>",
+      "compatible console package API"
+    );
+
 const addModulePublisherOptions = (command) =>
   command
     .option("--repo-root <path>", "Lenso host repository root")
@@ -3108,6 +3274,7 @@ Third-party remote module flow:
   lenso module publisher doctor
   lenso module publisher trust <publisher> <public-key-id>
   lenso module publisher revoke <publisher> <public-key-id>
+  lenso module registry add <module>
   lenso module registry list
   lenso module registry doctor
   lenso module registry inspect <module>
@@ -3174,6 +3341,13 @@ Third-party remote module flow:
   const registryCommand = moduleCommand
     .command("registry")
     .description("discover and install remote modules from a catalog");
+  addModuleRegistryAddOptions(
+    registryCommand
+      .command("add <moduleName>")
+      .description("add or update a registry catalog entry")
+  ).action(async (moduleName, options) => {
+    await addModuleRegistryEntry({ moduleName, options });
+  });
   addModuleRegistryOptions(
     registryCommand.command("list").description("list registry modules")
   ).action(async (options) => {

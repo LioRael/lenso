@@ -28,6 +28,19 @@ entries before installing:
 ```sh
 lenso module publisher list
 lenso module publisher doctor
+lenso module registry add billing \
+  --manifest https://example.com/lenso/module/v1/manifest \
+  --base-url https://example.com/lenso/module/v1 \
+  --version 0.1.0 \
+  --capability billing.read \
+  --console-package '@vendor/lenso-billing-console#billingConsoleModule' \
+  --route /data/billing \
+  --publisher "Acme Billing" \
+  --source-repository https://github.com/acme/lenso-billing-module \
+  --package-url https://packages.example.com/lenso-billing-0.1.0.tgz \
+  --checksum sha256:<hex> \
+  --signature-url https://packages.example.com/lenso-billing-0.1.0.tgz.sig \
+  --public-key-id acme-ed25519-2026
 lenso module registry list --registry-file .lenso/module-registry.json
 lenso module registry doctor --registry-file .lenso/module-registry.json
 lenso module registry inspect billing --registry-file .lenso/module-registry.json
@@ -95,6 +108,11 @@ lenso module publisher revoke "Acme Billing" acme-ed25519-2026
 
 The install command runs the same review gate and refuses to mutate host files
 unless the review decision is `ready_to_install`.
+
+Use `lenso module registry add <module>` to create or update local catalog
+entries instead of hand-editing `.lenso/module-registry.json`. The command
+defaults to `installPolicy: "review_required"`; pass `--trusted` only after
+operator review.
 
 Registry install still writes the same host-local source configuration and
 console package install plan as `lenso module add`.

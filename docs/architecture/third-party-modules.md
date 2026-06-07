@@ -170,7 +170,8 @@ Current Runtime Console support includes:
 - host-local publisher key trust through `lenso module publisher list`,
   `lenso module publisher doctor`, `lenso module publisher trust`, and
   `lenso module publisher revoke`
-- Module Registry v0 catalog discovery through `lenso module registry list`,
+- Module Registry v0 catalog authoring and discovery through
+  `lenso module registry add`, `lenso module registry list`,
   `lenso module registry doctor`, `lenso module registry inspect`,
   `lenso module registry review`, and `lenso module registry install`
 - machine-readable registry preflight snapshots through
@@ -212,6 +213,19 @@ pnpm create:module billing --remote --output-dir ../module-packages
 lenso module publisher list
 lenso module publisher doctor
 lenso module publisher trust "Acme Billing" acme-ed25519-2026 --public-key-file ./acme-ed25519.pem
+lenso module registry add billing \
+  --manifest https://example.com/lenso/module/v1/manifest \
+  --base-url https://example.com/lenso/module/v1 \
+  --version 0.1.0 \
+  --capability billing.read \
+  --console-package '@vendor/lenso-billing-console#billingConsoleModule' \
+  --route /data/billing \
+  --publisher "Acme Billing" \
+  --source-repository https://github.com/acme/lenso-billing-module \
+  --package-url https://packages.example.com/lenso-billing-0.1.0.tgz \
+  --checksum sha256:<hex> \
+  --signature-url https://packages.example.com/lenso-billing-0.1.0.tgz.sig \
+  --public-key-id acme-ed25519-2026
 lenso module registry list --registry-file .lenso/module-registry.json
 lenso module registry doctor --registry-file .lenso/module-registry.json
 lenso module registry inspect billing --registry-file .lenso/module-registry.json
