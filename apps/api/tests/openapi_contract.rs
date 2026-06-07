@@ -2,8 +2,8 @@ use app_api::{build_router, openapi_document};
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
 use platform_core::{AppConfig, AppContext, LoggingEventPublisher};
-use platform_module::{ModuleHttpMethod, ModuleManifest};
-use std::sync::Arc;
+use platform_module::{ModuleHttpMethod, ModuleManifest, ModuleSource};
+use std::sync::{Arc, Mutex, OnceLock};
 use tower::ServiceExt;
 
 #[test]
@@ -45,6 +45,62 @@ fn committed_openapi_artifact_matches_rust_source() {
             .expect("committed OpenAPI artifact should parse");
 
     assert_eq!(committed, generated);
+}
+
+#[test]
+fn openapi_document_does_not_replace_default_admin_catalogs() {
+    let _guard = catalog_test_lock()
+        .lock()
+        .expect("catalog test lock poisoned");
+    platform_admin::reset_catalogs_for_test();
+    platform_admin::install_default_story_display(vec![story_descriptor(
+        "openapi.default.sentinel",
+        "OpenAPI Default Sentinel",
+    )]);
+    platform_admin::install_default_runtime_function_declarations(vec![runtime_declaration(
+        "openapi.default.sentinel",
+    )]);
+
+    let _ = openapi_document();
+
+    assert!(
+        platform_admin::story_display_catalog_snapshot()
+            .iter()
+            .any(|descriptor| descriptor.display_name == "OpenAPI Default Sentinel")
+    );
+    assert!(
+        platform_admin::runtime_function_declaration_catalog_snapshot()
+            .iter()
+            .any(|declaration| declaration.name == "openapi.default.sentinel")
+    );
+}
+
+#[test]
+fn openapi_document_does_not_replace_runtime_admin_catalogs() {
+    let _guard = catalog_test_lock()
+        .lock()
+        .expect("catalog test lock poisoned");
+    platform_admin::reset_catalogs_for_test();
+    platform_admin::install_story_display(vec![story_descriptor(
+        "openapi.runtime.sentinel",
+        "OpenAPI Runtime Sentinel",
+    )]);
+    platform_admin::install_runtime_function_declarations(vec![runtime_declaration(
+        "openapi.runtime.sentinel",
+    )]);
+
+    let _ = openapi_document();
+
+    assert!(
+        platform_admin::story_display_catalog_snapshot()
+            .iter()
+            .any(|descriptor| descriptor.display_name == "OpenAPI Runtime Sentinel")
+    );
+    assert!(
+        platform_admin::runtime_function_declaration_catalog_snapshot()
+            .iter()
+            .any(|declaration| declaration.name == "openapi.runtime.sentinel")
+    );
 }
 
 #[test]
@@ -110,6 +166,79 @@ fn linked_module_openapi_routes_are_declared_in_manifest() {
     }
 }
 
+#[tokio::test]
+async fn core_profile_router_does_not_mount_identity_routes() {
+    let _guard = catalog_test_lock()
+        .lock()
+        .expect("catalog test lock poisoned");
+    let _ = openapi_document();
+
+    let mut config = AppConfig::from_env();
+    config.module_sources.linked_profile = "core".to_owned();
+    let ctx = AppContext::new(
+        config,
+        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build"),
+        Arc::new(LoggingEventPublisher),
+    );
+    let app = app_api::try_build_router(ctx).expect("core profile router should build");
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/v1/identity/users")
+                .method("POST")
+                .body(Body::empty())
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn served_core_profile_openapi_omits_demo_identity_paths_after_demo_document_assembly() {
+    let _guard = catalog_test_lock()
+        .lock()
+        .expect("catalog test lock poisoned");
+    let _ = openapi_document();
+
+    let mut config = AppConfig::from_env();
+    config.module_sources.linked_profile = "core".to_owned();
+    let ctx = AppContext::new(
+        config,
+        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build"),
+        Arc::new(LoggingEventPublisher),
+    );
+    let app = app_api::try_build_router(ctx).expect("core profile router should build");
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/openapi.json")
+                .body(Body::empty())
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    let document: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("served OpenAPI should be JSON");
+    let paths = document["paths"]
+        .as_object()
+        .expect("OpenAPI paths should be an object");
+
+    assert!(!paths.contains_key("/v1/identity/users"));
+    assert!(!paths.contains_key("/v1/identity/me"));
+}
+
 fn assert_manifest_declares_route(manifest: &ModuleManifest, path: &str, method: ModuleHttpMethod) {
     assert!(
         manifest
@@ -145,8 +274,38 @@ fn module_http_method(method: &str) -> Option<ModuleHttpMethod> {
     }
 }
 
+fn story_descriptor(name: &str, display_name: &str) -> platform_core::StoryDisplayDescriptor {
+    platform_core::StoryDisplayDescriptor {
+        source: platform_core::StoryDisplaySource::ExecutionName {
+            name: name.to_owned(),
+        },
+        display_name: display_name.to_owned(),
+        story_title: None,
+    }
+}
+
+fn runtime_declaration(name: &str) -> platform_admin::AdminRuntimeFunctionDeclarationMetadata {
+    platform_admin::AdminRuntimeFunctionDeclarationMetadata {
+        module_name: "openapi-contract-test".to_owned(),
+        module_source: ModuleSource::Linked,
+        name: name.to_owned(),
+        version: 1,
+        queue: "openapi-contract-test".to_owned(),
+        input_schema: None,
+        retry_policy: None,
+    }
+}
+
+fn catalog_test_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
 #[tokio::test]
 async fn scalar_docs_route_serves_openapi_reference() {
+    let _guard = catalog_test_lock()
+        .lock()
+        .expect("catalog test lock poisoned");
     let ctx = AppContext::new(
         AppConfig::from_env(),
         platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")

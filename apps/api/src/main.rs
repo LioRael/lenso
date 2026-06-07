@@ -1,5 +1,4 @@
 use anyhow::Context as _;
-use app_api::build_router;
 use platform_core::{
     AppConfig, AppContext, LoggingEventPublisher, PostgresRuntimeConfigProvider,
     RuntimeConfigRegistry, connect_pool, telemetry,
@@ -18,7 +17,8 @@ async fn main() -> anyhow::Result<()> {
 
     // Build the editable runtime-config registry from every module and install it for
     // the console handlers and the API's own reads.
-    let descriptors = app_bootstrap::runtime_config_descriptors(&ctx);
+    let descriptors = app_bootstrap::runtime_config_descriptors(&ctx)
+        .context("failed to collect runtime-config descriptors")?;
     let registry = RuntimeConfigRegistry::try_new(descriptors)
         .context("duplicate runtime-config descriptor registered")?;
     platform_admin::install_runtime_config_registry(registry.clone());
@@ -51,12 +51,12 @@ async fn main() -> anyhow::Result<()> {
         let ctx = admin_metadata_refresh_ctx.clone();
         async move {
             let metadata = app_bootstrap::load_admin_module_metadata(&ctx).await?;
-            install_runtime_function_declarations(&metadata);
+            install_platform_admin_catalogs(&metadata);
             Ok(metadata)
         }
     });
 
-    let app = build_router(ctx.clone());
+    let app = app_api::try_build_router(ctx.clone()).context("failed to build API router")?;
     let address: SocketAddr = format!("{}:{}", ctx.config.http.host, ctx.config.http.port)
         .parse()
         .context("invalid HTTP bind address")?;
@@ -74,11 +74,17 @@ async fn main() -> anyhow::Result<()> {
 }
 
 fn install_admin_module_metadata(metadata: Vec<platform_admin_data::AdminModuleMetadata>) {
-    install_runtime_function_declarations(&metadata);
+    install_platform_admin_catalogs(&metadata);
     platform_admin_data::install_admin_module_metadata(metadata);
 }
 
-fn install_runtime_function_declarations(metadata: &[platform_admin_data::AdminModuleMetadata]) {
+fn install_platform_admin_catalogs(metadata: &[platform_admin_data::AdminModuleMetadata]) {
+    platform_admin::install_story_display(
+        metadata
+            .iter()
+            .flat_map(|module| module.story_display.clone())
+            .collect(),
+    );
     platform_admin::install_runtime_function_declarations(
         platform_admin::runtime_function_declarations_from_modules(
             app_bootstrap::runtime_function_declaration_sources_from_metadata(metadata),

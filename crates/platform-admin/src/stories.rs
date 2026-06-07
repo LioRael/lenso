@@ -256,9 +256,10 @@ pub(crate) fn build_story_node(
 }
 
 pub(crate) fn story_title(rows: &[StoryWorkRow]) -> String {
-    if let Some(title) = rows.iter().find_map(|row| {
-        story_display_descriptor(row).and_then(|descriptor| descriptor.story_title.clone())
-    }) {
+    if let Some(title) = rows
+        .iter()
+        .find_map(|row| story_display_descriptor(row).and_then(|descriptor| descriptor.story_title))
+    {
         return title;
     }
 
@@ -301,12 +302,10 @@ pub(crate) fn remote_proxy_story_title(row: &StoryWorkRow) -> Option<String> {
         .map(str::to_owned)
 }
 
-pub(crate) fn story_display_descriptor(
-    row: &StoryWorkRow,
-) -> Option<&'static StoryDisplayDescriptor> {
+pub(crate) fn story_display_descriptor(row: &StoryWorkRow) -> Option<StoryDisplayDescriptor> {
     if row.item_type == "http_request" {
         let (method, path) = row.name.split_once(' ')?;
-        return story_display_descriptors().find(|descriptor| {
+        return story_display_descriptors().into_iter().find(|descriptor| {
             matches!(
                 &descriptor.source,
                 StoryDisplaySource::HttpRequest {
@@ -317,7 +316,7 @@ pub(crate) fn story_display_descriptor(
         });
     }
 
-    story_display_descriptors().find(|descriptor| {
+    story_display_descriptors().into_iter().find(|descriptor| {
         matches!(
             &descriptor.source,
             StoryDisplaySource::ExecutionName { name } if name == row.name.as_str()
@@ -325,12 +324,8 @@ pub(crate) fn story_display_descriptor(
     })
 }
 
-pub(crate) fn story_display_descriptors() -> impl Iterator<Item = &'static StoryDisplayDescriptor> {
-    crate::STORY_DISPLAY
-        .get()
-        .map(Vec::as_slice)
-        .unwrap_or_default()
-        .iter()
+pub(crate) fn story_display_descriptors() -> Vec<StoryDisplayDescriptor> {
+    crate::story_display_catalog()
 }
 
 pub(crate) fn story_title_from_event_name(value: &str) -> String {

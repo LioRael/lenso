@@ -17,7 +17,8 @@ async fn main() -> anyhow::Result<()> {
     let db = connect_pool(&config.database).await?;
     let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
 
-    let descriptors = app_bootstrap::runtime_config_descriptors(&ctx);
+    let descriptors = app_bootstrap::runtime_config_descriptors(&ctx)
+        .context("failed to collect runtime-config descriptors")?;
     let runtime_config_registry = RuntimeConfigRegistry::try_new(descriptors)
         .context("duplicate runtime-config descriptor registered")?;
     let runtime_config = PostgresRuntimeConfigProvider::connect(

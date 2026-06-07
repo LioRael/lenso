@@ -54,19 +54,76 @@ use stories::*;
 use support::*;
 
 /// Module-provided story-display catalog, injected by the composition root.
-static STORY_DISPLAY: OnceLock<Vec<StoryDisplayDescriptor>> = OnceLock::new();
+static STORY_DISPLAY: OnceLock<RwLock<InstalledCatalog<StoryDisplayDescriptor>>> = OnceLock::new();
 static RUNTIME_FUNCTION_DECLARATIONS: OnceLock<
-    RwLock<Vec<AdminRuntimeFunctionDeclarationMetadata>>,
+    RwLock<InstalledCatalog<AdminRuntimeFunctionDeclarationMetadata>>,
 > = OnceLock::new();
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CatalogMode {
+    Default,
+    Runtime,
+}
+
+#[derive(Debug)]
+struct InstalledCatalog<T> {
+    mode: CatalogMode,
+    items: Vec<T>,
+}
+
+impl<T> Default for InstalledCatalog<T> {
+    fn default() -> Self {
+        Self {
+            mode: CatalogMode::Default,
+            items: Vec::new(),
+        }
+    }
+}
+
+fn install_catalog<T>(
+    catalog: &OnceLock<RwLock<InstalledCatalog<T>>>,
+    items: Vec<T>,
+    mode: CatalogMode,
+) {
+    let catalog = catalog.get_or_init(|| RwLock::new(InstalledCatalog::default()));
+    let mut catalog = catalog.write().expect("admin catalog lock poisoned");
+    if mode == CatalogMode::Default && catalog.mode == CatalogMode::Runtime {
+        return;
+    }
+    *catalog = InstalledCatalog { mode, items };
+}
+
+fn cloned_catalog<T: Clone>(catalog: &OnceLock<RwLock<InstalledCatalog<T>>>) -> Vec<T> {
+    catalog
+        .get()
+        .map(|catalog| {
+            catalog
+                .read()
+                .expect("admin catalog lock poisoned")
+                .items
+                .clone()
+        })
+        .unwrap_or_default()
+}
 
 /// Install the aggregated story-display descriptors from every module.
 ///
 /// Called once by the composition root before the router serves traffic. Story
 /// display names are module-owned metadata; injecting them keeps this crate
-/// from depending on concrete modules or the composition root. Idempotent: later
-/// calls are ignored.
+/// from depending on concrete modules or the composition root. Later calls
+/// replace the runtime catalog so module refreshes update display metadata
+/// without restarting the process.
 pub fn install_story_display(catalog: Vec<StoryDisplayDescriptor>) {
-    let _ = STORY_DISPLAY.set(catalog);
+    install_catalog(&STORY_DISPLAY, catalog, CatalogMode::Runtime);
+}
+
+/// Install context-free default story-display descriptors.
+///
+/// Default catalogs are used by router/OpenAPI assembly and may replace earlier
+/// defaults from a different composition profile. They do not replace the full
+/// runtime catalog installed from loaded module metadata.
+pub fn install_default_story_display(catalog: Vec<StoryDisplayDescriptor>) {
+    install_catalog(&STORY_DISPLAY, catalog, CatalogMode::Default);
 }
 
 /// Runtime function declarations from every loaded module, injected by the
@@ -75,22 +132,26 @@ pub fn install_story_display(catalog: Vec<StoryDisplayDescriptor>) {
 pub fn install_runtime_function_declarations(
     declarations: Vec<AdminRuntimeFunctionDeclarationMetadata>,
 ) {
-    let catalog = RUNTIME_FUNCTION_DECLARATIONS.get_or_init(|| RwLock::new(Vec::new()));
-    *catalog
-        .write()
-        .expect("runtime function declaration catalog lock poisoned") = declarations;
+    install_catalog(
+        &RUNTIME_FUNCTION_DECLARATIONS,
+        declarations,
+        CatalogMode::Runtime,
+    );
 }
 
-/// Install declarations only when the runtime-admin catalog has not yet been
-/// initialized. Useful for context-free router/OpenAPI assembly; runtime
-/// startup should call [`install_runtime_function_declarations`] with the full
-/// linked + remote catalog.
+/// Install context-free default runtime function declarations.
+///
+/// Default catalogs may replace earlier defaults from a different composition
+/// profile. They do not replace the full runtime catalog installed from loaded
+/// module metadata.
 pub fn install_default_runtime_function_declarations(
     declarations: Vec<AdminRuntimeFunctionDeclarationMetadata>,
 ) {
-    if RUNTIME_FUNCTION_DECLARATIONS.get().is_none() {
-        install_runtime_function_declarations(declarations);
-    }
+    install_catalog(
+        &RUNTIME_FUNCTION_DECLARATIONS,
+        declarations,
+        CatalogMode::Default,
+    );
 }
 
 /// Project module manifests into the declaration catalog consumed by runtime
@@ -144,11 +205,43 @@ fn runtime_function_declaration(
     RUNTIME_FUNCTION_DECLARATIONS.get().and_then(|catalog| {
         catalog
             .read()
-            .expect("runtime function declaration catalog lock poisoned")
+            .expect("admin catalog lock poisoned")
+            .items
             .iter()
             .find(|declaration| declaration.name == function_name)
             .cloned()
     })
+}
+
+pub(crate) fn story_display_catalog() -> Vec<StoryDisplayDescriptor> {
+    cloned_catalog(&STORY_DISPLAY)
+}
+
+#[doc(hidden)]
+#[cfg(debug_assertions)]
+pub fn story_display_catalog_snapshot() -> Vec<StoryDisplayDescriptor> {
+    story_display_catalog()
+}
+
+#[doc(hidden)]
+#[cfg(debug_assertions)]
+pub fn runtime_function_declaration_catalog_snapshot()
+-> Vec<AdminRuntimeFunctionDeclarationMetadata> {
+    cloned_catalog(&RUNTIME_FUNCTION_DECLARATIONS)
+}
+
+#[doc(hidden)]
+#[cfg(debug_assertions)]
+pub fn reset_catalogs_for_test() {
+    reset_catalog_for_test(&STORY_DISPLAY);
+    reset_catalog_for_test(&RUNTIME_FUNCTION_DECLARATIONS);
+}
+
+#[cfg(debug_assertions)]
+fn reset_catalog_for_test<T>(catalog: &OnceLock<RwLock<InstalledCatalog<T>>>) {
+    if let Some(catalog) = catalog.get() {
+        *catalog.write().expect("admin catalog lock poisoned") = InstalledCatalog::default();
+    }
 }
 
 fn enrich_function_run(mut run: AdminFunctionRun) -> AdminFunctionRun {
@@ -184,4 +277,85 @@ pub fn router() -> ApiOpenApiRouter {
         .routes(routes!(list_config_values))
         .routes(routes!(put_config_value, delete_config_value))
         .routes(routes!(get_config_audit))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use platform_core::{StoryDisplaySource, story_display::StoryDisplayDescriptor};
+
+    #[test]
+    fn default_catalogs_replace_defaults_but_do_not_clobber_runtime_catalogs() {
+        reset_catalogs_for_test();
+
+        install_default_story_display(vec![story_descriptor(
+            "profile.default.demo",
+            "Demo Profile Story",
+        )]);
+        install_default_story_display(vec![story_descriptor(
+            "profile.default.core",
+            "Core Profile Story",
+        )]);
+
+        let story_display_names = story_display_descriptors()
+            .into_iter()
+            .map(|descriptor| descriptor.display_name.clone())
+            .collect::<Vec<_>>();
+        assert!(!story_display_names.contains(&"Demo Profile Story".to_owned()));
+        assert!(story_display_names.contains(&"Core Profile Story".to_owned()));
+
+        install_story_display(vec![story_descriptor(
+            "profile.runtime.remote",
+            "Runtime Remote Story",
+        )]);
+        install_default_story_display(vec![story_descriptor(
+            "profile.default.late",
+            "Late Default Story",
+        )]);
+
+        let story_display_names = story_display_descriptors()
+            .into_iter()
+            .map(|descriptor| descriptor.display_name.clone())
+            .collect::<Vec<_>>();
+        assert!(story_display_names.contains(&"Runtime Remote Story".to_owned()));
+        assert!(!story_display_names.contains(&"Late Default Story".to_owned()));
+
+        install_default_runtime_function_declarations(vec![runtime_declaration(
+            "profile.default.demo",
+        )]);
+        install_default_runtime_function_declarations(vec![runtime_declaration(
+            "profile.default.core",
+        )]);
+        assert!(runtime_function_declaration("profile.default.demo").is_none());
+        assert!(runtime_function_declaration("profile.default.core").is_some());
+
+        install_runtime_function_declarations(vec![runtime_declaration("profile.runtime.remote")]);
+        install_default_runtime_function_declarations(vec![runtime_declaration(
+            "profile.default.late",
+        )]);
+        assert!(runtime_function_declaration("profile.runtime.remote").is_some());
+        assert!(runtime_function_declaration("profile.default.late").is_none());
+    }
+
+    fn story_descriptor(name: &str, display_name: &str) -> StoryDisplayDescriptor {
+        StoryDisplayDescriptor {
+            source: StoryDisplaySource::ExecutionName {
+                name: name.to_owned(),
+            },
+            display_name: display_name.to_owned(),
+            story_title: None,
+        }
+    }
+
+    fn runtime_declaration(name: &str) -> AdminRuntimeFunctionDeclarationMetadata {
+        AdminRuntimeFunctionDeclarationMetadata {
+            module_name: "catalog-test".to_owned(),
+            module_source: ModuleSource::Linked,
+            name: name.to_owned(),
+            version: 1,
+            queue: "catalog-test".to_owned(),
+            input_schema: None,
+            retry_policy: None,
+        }
+    }
 }

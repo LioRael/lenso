@@ -5,6 +5,7 @@
 //! there is a single source of truth per endpoint. This module only contributes
 //! the document-level metadata (info, tags) that is not tied to any one route.
 
+use app_bootstrap::CompositionProfile;
 use platform_http::{ApiOpenApiRouter, OpenApiRouter, base_router};
 use utoipa::OpenApi;
 
@@ -36,15 +37,12 @@ struct ApiDoc;
 /// database, so callers can either serve it (after `with_state` +
 /// `split_for_parts`) or extract the `OpenAPI` document alone.
 pub(crate) fn api_router() -> ApiOpenApiRouter {
-    platform_admin::install_story_display(app_bootstrap::story_display_descriptors());
-    platform_admin::install_default_runtime_function_declarations(
-        platform_admin::runtime_function_declarations_from_modules(
-            app_bootstrap::linked_runtime_function_declaration_sources(),
-        ),
-    );
+    api_router_for_profile(CompositionProfile::default())
+}
 
+pub(crate) fn api_router_for_profile(profile: CompositionProfile) -> ApiOpenApiRouter {
     let base = OpenApiRouter::with_openapi(ApiDoc::openapi()).merge(base_router());
-    app_bootstrap::merge_linked_http(base)
+    app_bootstrap::merge_linked_http_for_profile(base, profile)
         .merge(platform_admin::router())
         .merge(platform_admin_data::router())
         .merge(platform_module_remote::router())

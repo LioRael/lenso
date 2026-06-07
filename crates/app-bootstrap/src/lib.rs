@@ -5,24 +5,26 @@
 //!
 //! A module's contributions are split by how they are consumed:
 //! - [`modules`]: context-bound bindings (runtime functions + event handlers)
-//!   and runtime config (API + worker). The authoritative module list.
+//!   and runtime config (API + worker), demo-default for context-local callers.
+//! - [`modules_for_config`] / [`load_modules`]: config-aware module loaders that
+//!   honor profile entry lists and configured remote sources for runtime apps.
 //! - [`module_manifests`]: context-free manifest data (no [`AppContext`]) for
-//!   read-only / `OpenAPI` paths.
+//!   read-only / `OpenAPI` paths, with profile-aware variants for runtime use.
 //! - [`merge_linked_http`]: context-free HTTP routes and their OpenAPI docs
 //!   (API only), assembled without a live [`AppContext`].
 //! - [`story_display_descriptors`]: console display metadata, sourced from the
 //!   context-free [`module_manifests`].
 //!
-//! When adding a module, register it in [`modules`] and [`module_manifests`]
-//! and — if it has them — in [`merge_linked_http`].
+//! When adding a module, register it in the appropriate profile entry lists and
+//! expose its config-aware loader contributions from this crate.
 
 use platform_admin_data::{
     AdminModule, AdminModuleMetadata, AdminModuleSourceDiagnostics, AdminRemoteModuleDiagnostics,
 };
 use platform_core::error::ErrorDetail;
 use platform_core::{
-    ActorContext, AppContext, AppError, CorrelationId, EventHandlerRegistry,
-    RuntimeConfigDescriptor, StoryDisplayDescriptor, TraceContext,
+    ActorContext, AppContext, AppError, CorrelationId, EventHandlerRegistry, Migration,
+    PLATFORM_MIGRATIONS, RuntimeConfigDescriptor, StoryDisplayDescriptor, TraceContext,
 };
 use platform_http::ApiOpenApiRouter;
 use platform_module::{
@@ -31,7 +33,9 @@ use platform_module::{
     ModuleLoadStatus, ModuleManifest, ModuleSource,
 };
 use platform_module_remote::{RemoteHttpProxyRegistry, RemoteModuleConfig, RemoteModuleSource};
-use platform_runtime::{EnqueueFunctionRequest, FunctionRegistry, RuntimeClient};
+use platform_runtime::{
+    EnqueueFunctionRequest, FunctionRegistry, RUNTIME_MIGRATIONS, RuntimeClient,
+};
 use std::time::Instant;
 
 struct LinkedModuleEntry {
@@ -171,6 +175,34 @@ pub async fn load_modules(ctx: &AppContext) -> platform_core::AppResult<Vec<Modu
     }
 
     Ok(loaded)
+}
+
+pub fn migrations_for_config(
+    config: &platform_core::AppConfig,
+) -> platform_core::AppResult<Vec<Migration>> {
+    Ok(migrations_for_profile(CompositionProfile::from_config(
+        config,
+    )?))
+}
+
+#[must_use]
+pub fn migrations_for_profile(profile: CompositionProfile) -> Vec<Migration> {
+    let mut migrations = PLATFORM_MIGRATIONS
+        .iter()
+        .chain(RUNTIME_MIGRATIONS)
+        .copied()
+        .collect::<Vec<_>>();
+
+    if profile == CompositionProfile::Demo {
+        migrations.extend(identity::migrations::IDENTITY_MIGRATIONS.iter().copied());
+        migrations.extend(
+            notifications::migrations::NOTIFICATIONS_MIGRATIONS
+                .iter()
+                .copied(),
+        );
+    }
+
+    migrations
 }
 
 /// Context-free module manifests for read-only / OpenAPI paths that have no
@@ -951,6 +983,38 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(names, vec!["identity", "notifications", "platform-story"]);
+    }
+
+    #[test]
+    fn core_profile_migrations_exclude_demo_module_migrations() {
+        let names = migrations_for_profile(CompositionProfile::Core)
+            .into_iter()
+            .map(|migration| migration.name)
+            .collect::<Vec<_>>();
+
+        assert!(names.iter().any(|name| name.starts_with("platform/")));
+        assert!(names.iter().any(|name| name.starts_with("runtime/")));
+        assert!(!names.iter().any(|name| name.starts_with("identity/")));
+        assert!(!names.iter().any(|name| name.starts_with("notifications/")));
+    }
+
+    #[test]
+    fn demo_profile_migrations_include_fixture_module_migrations() {
+        let names = migrations_for_profile(CompositionProfile::Demo)
+            .into_iter()
+            .map(|migration| migration.name)
+            .collect::<Vec<_>>();
+
+        assert!(
+            names
+                .iter()
+                .any(|name| name == &"identity/0001_create_identity_schema")
+        );
+        assert!(
+            names
+                .iter()
+                .any(|name| name == &"notifications/0001_create_notifications_schema")
+        );
     }
 
     #[test]

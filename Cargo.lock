@@ -87,10 +87,8 @@ name = "app-migrate"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "identity",
- "notifications",
+ "app-bootstrap",
  "platform-core",
- "platform-runtime",
  "tokio",
  "tracing",
 ]

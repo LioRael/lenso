@@ -12,10 +12,16 @@ pub mod openapi;
 pub use openapi::openapi_document;
 
 pub fn build_router(ctx: AppContext) -> Router {
-    let (router, document) = openapi::api_router().split_for_parts();
+    try_build_router(ctx).expect("Runtime API router should build with a valid composition profile")
+}
+
+pub fn try_build_router(ctx: AppContext) -> platform_core::AppResult<Router> {
+    let profile = app_bootstrap::CompositionProfile::from_config(&ctx.config)?;
+    install_default_platform_admin_catalogs(profile);
+    let (router, document) = openapi::api_router_for_profile(profile).split_for_parts();
     let document = Arc::new(document);
 
-    router
+    Ok(router
         .route("/docs", axum::routing::get(scalar_docs))
         .route("/openapi.json", axum::routing::get(serve_openapi))
         .layer(axum::Extension(document))
@@ -24,7 +30,18 @@ pub fn build_router(ctx: AppContext) -> Router {
             request_context_middleware,
         ))
         .layer(cors_layer(&ctx))
-        .with_state(ctx)
+        .with_state(ctx))
+}
+
+fn install_default_platform_admin_catalogs(profile: app_bootstrap::CompositionProfile) {
+    platform_admin::install_default_story_display(
+        app_bootstrap::story_display_descriptors_for_profile(profile),
+    );
+    platform_admin::install_default_runtime_function_declarations(
+        platform_admin::runtime_function_declarations_from_modules(
+            app_bootstrap::linked_runtime_function_declaration_sources_for_profile(profile),
+        ),
+    );
 }
 
 async fn scalar_docs() -> Html<&'static str> {
