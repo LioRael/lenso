@@ -1,7 +1,9 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  availableModuleRegistrySnapshotQueryKey,
   availableModuleRegistrySnapshotRows,
+  fetchAvailableModuleRegistrySnapshot,
   sampleAvailableModuleRegistrySnapshot,
 } from "./available-module-registry-snapshot";
 
@@ -23,6 +25,16 @@ describe("available module registry snapshot provider", () => {
         preflightReason: "local-crm baseUrl is missing",
         preflightStatus: "needs_base_url",
       }),
+    ]);
+  });
+
+  test("defines a stable async fetch boundary for future registry sources", async () => {
+    await expect(fetchAvailableModuleRegistrySnapshot()).resolves.toBe(
+      sampleAvailableModuleRegistrySnapshot
+    );
+    expect(availableModuleRegistrySnapshotQueryKey).toEqual([
+      "modules",
+      "available-registry-snapshot",
     ]);
   });
 });

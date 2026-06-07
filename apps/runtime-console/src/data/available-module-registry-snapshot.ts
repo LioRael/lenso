@@ -46,6 +46,15 @@ export const sampleAvailableModuleRegistrySnapshot = {
   version: 1,
 } satisfies AvailableModuleRegistryDoctorSnapshot;
 
+export const availableModuleRegistrySnapshotQueryKey = [
+  "modules",
+  "available-registry-snapshot",
+] as const;
+
+export async function fetchAvailableModuleRegistrySnapshot(): Promise<AvailableModuleRegistryDoctorSnapshot> {
+  return sampleAvailableModuleRegistrySnapshot;
+}
+
 export function availableModuleRegistrySnapshotRows(
   snapshot: AvailableModuleRegistryDoctorSnapshot = sampleAvailableModuleRegistrySnapshot
 ) {

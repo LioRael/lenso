@@ -19,7 +19,11 @@ import {
   missingConsolePackagesFromMetadata,
 } from "../app/console-module-metadata";
 import { Button } from "../components/ui/button";
-import { availableModuleRegistrySnapshotRows } from "../data/available-module-registry-snapshot";
+import {
+  availableModuleRegistrySnapshotQueryKey,
+  availableModuleRegistrySnapshotRows,
+  fetchAvailableModuleRegistrySnapshot,
+} from "../data/available-module-registry-snapshot";
 import { useRemoteProxyCalls } from "../hooks/use-runtime-queries";
 import { cn } from "../lib/cn";
 import {
@@ -28,6 +32,7 @@ import {
   runtimeConsoleDataSource,
 } from "../lib/http-client";
 import type { AvailableModulePreflightStatus } from "./available-module-registry-model";
+import { availableModuleRegistryRowsFromDoctorSnapshot } from "./available-module-registry-model";
 import {
   type AdminModuleMetadata,
   type ConfigValueMetadata,
@@ -104,7 +109,6 @@ const modulesQueryKey = ["modules", "registry"] as const;
 const configValuesQueryKey = ["config", "values"] as const;
 const emptyModules: AdminModuleMetadata[] = [];
 const emptyConfigValues: ConfigValueMetadata[] = [];
-const sampleAvailableModuleRows = availableModuleRegistrySnapshotRows();
 
 function configPath(service: string, key: string) {
   return `admin/config/${encodeURIComponent(service)}/${encodeURIComponent(key)}`;
@@ -130,6 +134,11 @@ function ModulesContent() {
     queryFn: () =>
       httpClient.get("admin/config/values").json<ConfigValueListResponse>(),
   });
+  const availableModuleRegistryQuery = useQuery({
+    enabled: isApiMode(),
+    queryKey: availableModuleRegistrySnapshotQueryKey,
+    queryFn: fetchAvailableModuleRegistrySnapshot,
+  });
   const refreshMutation = useMutation({
     mutationFn: () =>
       httpClient.post("admin/data/modules/refresh").json<ModulesResponse>(),
@@ -139,6 +148,11 @@ function ModulesContent() {
   });
   const modules = modulesQuery.data?.modules ?? emptyModules;
   const configValues = configValuesQuery.data?.data ?? emptyConfigValues;
+  const availableModuleRows = availableModuleRegistryQuery.data
+    ? availableModuleRegistryRowsFromDoctorSnapshot(
+        availableModuleRegistryQuery.data
+      )
+    : availableModuleRegistrySnapshotRows();
   const [selectedModuleName, setSelectedModuleName] = useState<string | null>(
     null
   );
@@ -199,7 +213,10 @@ function ModulesContent() {
 
       <div className="grid min-h-0 grid-cols-[260px_minmax(0,1fr)] overflow-hidden">
         <nav className="min-h-0 overflow-auto border-r border-(--border-subtle) p-2 font-mono text-[12px]">
-          <ModuleRegistryCatalogPanel moduleName={selectedModuleName} />
+          <ModuleRegistryCatalogPanel
+            moduleName={selectedModuleName}
+            rows={availableModuleRows}
+          />
           <ModuleRegistryControls
             filters={filters}
             onChange={setFilters}
@@ -285,8 +302,10 @@ function ModulesContent() {
 
 function ModuleRegistryCatalogPanel({
   moduleName,
+  rows,
 }: {
   moduleName: string | null;
+  rows: ReturnType<typeof availableModuleRegistrySnapshotRows>;
 }) {
   const commands = moduleRegistryHandoffCommands(moduleName ?? "<module>");
 
@@ -305,7 +324,7 @@ function ModuleRegistryCatalogPanel({
         read-only preflight from registry doctor JSON snapshot
       </div>
       <div className="grid gap-1 border-b border-(--border-subtle) p-2">
-        {sampleAvailableModuleRows.map((row) => (
+        {rows.map((row) => (
           <div
             className="grid gap-1 border border-(--border-subtle) bg-(--background) px-2 py-1.5"
             key={row.key}
