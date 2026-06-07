@@ -801,6 +801,11 @@ describe("module status helpers", () => {
           "lenso module registry install billing --registry-file .lenso/module-registry.json",
       },
       {
+        key: "history",
+        label: "history",
+        command: "lenso module registry history",
+      },
+      {
         key: "apply-plan",
         label: "console",
         command: "lenso console-package apply-plan",
