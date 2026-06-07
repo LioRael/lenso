@@ -7,6 +7,7 @@ import {
   Route,
   ScrollText,
   ShieldCheck,
+  SquareTerminal,
   TriangleAlert,
   Zap,
 } from "lucide-react";
@@ -43,6 +44,7 @@ import {
   moduleHttpRouteRows,
   moduleIsLoaded,
   latestModuleRefreshResult,
+  moduleRegistryHandoffCommands,
   moduleManifestCheckGroups,
   moduleRegistrySummary,
   moduleRestartPending,
@@ -194,6 +196,7 @@ function ModulesContent() {
 
       <div className="grid min-h-0 grid-cols-[260px_minmax(0,1fr)] overflow-hidden">
         <nav className="min-h-0 overflow-auto border-r border-(--border-subtle) p-2 font-mono text-[12px]">
+          <ModuleRegistryCatalogPanel moduleName={selectedModuleName} />
           <ModuleRegistryControls
             filters={filters}
             onChange={setFilters}
@@ -272,6 +275,46 @@ function ModulesContent() {
             <p className="text-(--muted)">Select a module.</p>
           )}
         </main>
+      </div>
+    </section>
+  );
+}
+
+function ModuleRegistryCatalogPanel({
+  moduleName,
+}: {
+  moduleName: string | null;
+}) {
+  const commands = moduleRegistryHandoffCommands(moduleName ?? "<module>");
+
+  return (
+    <section className="mb-2 border border-(--border-subtle) bg-(--surface)">
+      <header className="flex items-center gap-1.5 border-b border-(--border-subtle) px-2 py-1.5">
+        <SquareTerminal className="text-(--accent)" size={13} />
+        <span className="truncate text-[10px] font-semibold uppercase text-(--secondary)">
+          Available Modules
+        </span>
+        <span className="ml-auto border border-[color-mix(in_srgb,var(--info)_35%,transparent)] px-1.5 py-0.5 text-[9px] text-(--info)">
+          Registry v0
+        </span>
+      </header>
+      <div className="grid gap-1 p-2">
+        {commands.map((item) => (
+          <div
+            className="grid grid-cols-[52px_minmax(0,1fr)] items-center gap-1"
+            key={item.key}
+          >
+            <span className="truncate text-[9px] uppercase text-(--muted)">
+              {item.label}
+            </span>
+            <code
+              className="truncate border border-(--border-subtle) bg-(--background) px-1.5 py-1 text-[9px] text-(--secondary)"
+              title={item.command}
+            >
+              {item.command}
+            </code>
+          </div>
+        ))}
       </div>
     </section>
   );

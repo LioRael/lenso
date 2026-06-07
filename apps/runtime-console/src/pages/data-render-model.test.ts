@@ -29,6 +29,7 @@ import {
   moduleEnabledConfigKey,
   moduleErrorMessage,
   moduleGovernanceRows,
+  moduleRegistryHandoffCommands,
   moduleHttpRouteRows,
   moduleIsLoaded,
   latestModuleRefreshResult,
@@ -776,6 +777,45 @@ describe("module status helpers", () => {
         status: "all",
       }).map((module) => module.module_name)
     ).toEqual([]);
+  });
+
+  test("builds module registry install handoff commands", () => {
+    expect(moduleRegistryHandoffCommands("billing")).toEqual([
+      {
+        key: "list",
+        label: "catalog",
+        command:
+          "lenso module registry list --registry-file .lenso/module-registry.json",
+      },
+      {
+        key: "inspect",
+        label: "preflight",
+        command:
+          "lenso module registry inspect billing --registry-file .lenso/module-registry.json",
+      },
+      {
+        key: "install",
+        label: "install",
+        command:
+          "lenso module registry install billing --registry-file .lenso/module-registry.json",
+      },
+      {
+        key: "apply-plan",
+        label: "console",
+        command: "lenso console-package apply-plan",
+      },
+      {
+        key: "doctor",
+        label: "verify",
+        command: "lenso module doctor",
+      },
+      {
+        key: "demo",
+        label: "smoke",
+        command:
+          "pnpm --dir apps/runtime-console run demo:module-registry-install",
+      },
+    ]);
   });
 
   test("builds runtime function rows for registry detail", () => {

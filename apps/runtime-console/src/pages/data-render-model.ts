@@ -408,6 +408,12 @@ export type ModuleRegistrySummary = {
   lint_error: number;
 };
 
+export type ModuleRegistryHandoffCommand = {
+  key: string;
+  label: string;
+  command: string;
+};
+
 export type ModuleLintSeverity = "ok" | "warning" | "error";
 
 export type ModuleManifestLint = {
@@ -654,6 +660,45 @@ export function filterModuleRegistry(
     }
     return moduleRegistrySearchText(module).includes(query);
   });
+}
+
+export function moduleRegistryHandoffCommands(
+  moduleName = "<module>"
+): ModuleRegistryHandoffCommand[] {
+  return [
+    {
+      key: "list",
+      label: "catalog",
+      command:
+        "lenso module registry list --registry-file .lenso/module-registry.json",
+    },
+    {
+      key: "inspect",
+      label: "preflight",
+      command: `lenso module registry inspect ${moduleName} --registry-file .lenso/module-registry.json`,
+    },
+    {
+      key: "install",
+      label: "install",
+      command: `lenso module registry install ${moduleName} --registry-file .lenso/module-registry.json`,
+    },
+    {
+      key: "apply-plan",
+      label: "console",
+      command: "lenso console-package apply-plan",
+    },
+    {
+      key: "doctor",
+      label: "verify",
+      command: "lenso module doctor",
+    },
+    {
+      key: "demo",
+      label: "smoke",
+      command:
+        "pnpm --dir apps/runtime-console run demo:module-registry-install",
+    },
+  ];
 }
 
 function moduleRegistrySearchText(module: AdminModuleMetadata): string {
