@@ -1625,6 +1625,22 @@ const printModuleRegistryInstallHistory = async ({ options }) => {
   const historyPath = moduleRegistryInstallHistoryPath({ options, repoRoot });
   const history = await readModuleRegistryInstallHistory(historyPath);
 
+  if (options.json) {
+    console.log(
+      JSON.stringify(
+        {
+          count: history.entries.length,
+          entries: history.entries,
+          historyFile: historyPath,
+          version: history.version,
+        },
+        null,
+        2
+      )
+    );
+    return;
+  }
+
   console.log("Module registry install history:");
   console.log(`- file: ${path.relative(repoRoot, historyPath)}`);
   if (history.entries.length === 0) {
@@ -2126,6 +2142,7 @@ const addModuleRegistryInstallOptions = (command) =>
 const addModuleRegistryHistoryOptions = (command) =>
   command
     .option("--repo-root <path>", "Lenso host repository root")
+    .option("--json", "print machine-readable JSON output")
     .option(
       "--install-history-file <path>",
       "module registry install history file"

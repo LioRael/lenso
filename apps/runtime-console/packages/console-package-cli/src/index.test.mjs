@@ -159,6 +159,33 @@ const writeFixture = async (repoRoot, relativePath, contents) => {
   await writeFile(filePath, contents);
 };
 
+const writeRegistryInstallHistoryFixture = async (repoRoot) => {
+  await writeFixture(
+    repoRoot,
+    ".lenso/module-registry-install-history.json",
+    JSON.stringify(
+      {
+        entries: [
+          {
+            action: "registry.install",
+            baseUrl: "https://example.com/lenso/module/v1",
+            catalogVersion: "0.1.0",
+            consolePackageHints: 1,
+            installPolicy: "trusted",
+            installedAt: "2026-06-07T12:00:00.000Z",
+            manifestReference: "https://example.com/lenso/module/v1/manifest",
+            moduleName: "billing",
+            source: "remote",
+          },
+        ],
+        version: 1,
+      },
+      null,
+      2
+    )
+  );
+};
+
 afterEach(async () => {
   await Promise.all(
     tempServers.splice(0).map(async (server) => {
@@ -814,30 +841,7 @@ describe("module scaffold CLI", () => {
 
   test("prints registry install history entries", async () => {
     const repoRoot = await createRepoFixture();
-    await writeFixture(
-      repoRoot,
-      ".lenso/module-registry-install-history.json",
-      JSON.stringify(
-        {
-          entries: [
-            {
-              action: "registry.install",
-              baseUrl: "https://example.com/lenso/module/v1",
-              catalogVersion: "0.1.0",
-              consolePackageHints: 1,
-              installPolicy: "trusted",
-              installedAt: "2026-06-07T12:00:00.000Z",
-              manifestReference: "https://example.com/lenso/module/v1/manifest",
-              moduleName: "billing",
-              source: "remote",
-            },
-          ],
-          version: 1,
-        },
-        null,
-        2
-      )
-    );
+    await writeRegistryInstallHistoryFixture(repoRoot);
 
     const logs = await captureConsoleLogs(async () => {
       await expect(
@@ -858,6 +862,46 @@ describe("module scaffold CLI", () => {
     expect(logs).toContain(
       "manifest: https://example.com/lenso/module/v1/manifest"
     );
+  });
+
+  test("prints registry install history as JSON", async () => {
+    const repoRoot = await createRepoFixture();
+    await writeRegistryInstallHistoryFixture(repoRoot);
+
+    const logs = await captureConsoleLogs(async () => {
+      await expect(
+        runConsolePackageCli([
+          "module",
+          "registry",
+          "history",
+          "--repo-root",
+          repoRoot,
+          "--json",
+        ])
+      ).resolves.toBe(0);
+    });
+
+    expect(JSON.parse(logs)).toEqual({
+      count: 1,
+      entries: [
+        {
+          action: "registry.install",
+          baseUrl: "https://example.com/lenso/module/v1",
+          catalogVersion: "0.1.0",
+          consolePackageHints: 1,
+          installPolicy: "trusted",
+          installedAt: "2026-06-07T12:00:00.000Z",
+          manifestReference: "https://example.com/lenso/module/v1/manifest",
+          moduleName: "billing",
+          source: "remote",
+        },
+      ],
+      historyFile: path.join(
+        repoRoot,
+        ".lenso/module-registry-install-history.json"
+      ),
+      version: 1,
+    });
   });
 
   test("passes registry doctor for a valid catalog", async () => {

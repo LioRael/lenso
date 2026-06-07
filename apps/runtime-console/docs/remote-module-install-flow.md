@@ -83,6 +83,7 @@ View it from the CLI:
 
 ```sh
 lenso module registry history
+lenso module registry history --json
 ```
 
 Add the remote module source:
