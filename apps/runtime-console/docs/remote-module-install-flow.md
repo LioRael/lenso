@@ -78,6 +78,7 @@ Install from the registry when the entry looks right:
 lenso module registry review billing --registry-file .lenso/module-registry.json
 lenso module registry install billing --registry-file .lenso/module-registry.json
 lenso module registry history
+lenso module registry remove billing --reason "replaced by billing-v2"
 ```
 
 Registry install is deliberately gated. Catalog entries default to
@@ -113,6 +114,9 @@ Use `lenso module registry add <module>` to create or update local catalog
 entries instead of hand-editing `.lenso/module-registry.json`. The command
 defaults to `installPolicy: "review_required"`; pass `--trusted` only after
 operator review.
+Use `lenso module registry remove <module>` to archive a catalog entry and
+record the action in registry history. Pass `--delete` only when the entry
+should be physically removed from the catalog.
 
 Registry install still writes the same host-local source configuration and
 console package install plan as `lenso module add`.

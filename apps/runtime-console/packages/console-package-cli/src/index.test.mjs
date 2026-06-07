@@ -797,6 +797,180 @@ describe("module scaffold CLI", () => {
     });
   });
 
+  test("archives a registry catalog entry by default", async () => {
+    const repoRoot = await createRepoFixture();
+    await writeFixture(
+      repoRoot,
+      ".lenso/module-registry.json",
+      JSON.stringify(
+        {
+          modules: [
+            {
+              installPolicy: "trusted",
+              manifestReference: "https://example.com/lenso/module/v1/manifest",
+              name: "billing",
+              source: "remote",
+              version: "0.1.0",
+            },
+          ],
+          version: 1,
+        },
+        null,
+        2
+      )
+    );
+
+    const logs = await captureConsoleLogs(async () => {
+      await expect(
+        runConsolePackageCli([
+          "module",
+          "registry",
+          "remove",
+          "billing",
+          "--repo-root",
+          repoRoot,
+          "--reason",
+          "replaced by billing-v2",
+        ])
+      ).resolves.toBe(0);
+    });
+
+    expect(logs).toContain("Archived registry module billing.");
+    const registry = JSON.parse(
+      await readFile(
+        path.join(repoRoot, ".lenso/module-registry.json"),
+        "utf-8"
+      )
+    );
+    expect(registry.modules[0]).toMatchObject({
+      archiveReason: "replaced by billing-v2",
+      installPolicy: "review_required",
+      name: "billing",
+    });
+    expect(registry.modules[0].archivedAt).toEqual(expect.any(String));
+    const history = JSON.parse(
+      await readFile(
+        path.join(repoRoot, ".lenso/module-registry-install-history.json"),
+        "utf-8"
+      )
+    );
+    expect(history.entries[0]).toMatchObject({
+      action: "registry.archive",
+      catalogVersion: "0.1.0",
+      moduleName: "billing",
+      reason: "replaced by billing-v2",
+    });
+  });
+
+  test("deletes a registry catalog entry when requested", async () => {
+    const repoRoot = await createRepoFixture();
+    await writeFixture(
+      repoRoot,
+      ".lenso/module-registry.json",
+      JSON.stringify(
+        {
+          modules: [
+            {
+              installPolicy: "review_required",
+              manifestReference: "https://example.com/lenso/module/v1/manifest",
+              name: "billing",
+              source: "remote",
+              version: "0.1.0",
+            },
+          ],
+          version: 1,
+        },
+        null,
+        2
+      )
+    );
+
+    const logs = await captureConsoleLogs(async () => {
+      await expect(
+        runConsolePackageCli([
+          "module",
+          "registry",
+          "remove",
+          "billing",
+          "--repo-root",
+          repoRoot,
+          "--delete",
+          "--json",
+        ])
+      ).resolves.toBe(0);
+    });
+
+    expect(JSON.parse(logs)).toMatchObject({
+      action: "deleted",
+      module: {
+        name: "billing",
+        version: "0.1.0",
+      },
+    });
+    const registry = JSON.parse(
+      await readFile(
+        path.join(repoRoot, ".lenso/module-registry.json"),
+        "utf-8"
+      )
+    );
+    expect(registry.modules).toEqual([]);
+  });
+
+  test("blocks registry review for archived catalog entries", async () => {
+    const repoRoot = await createRepoFixture();
+    await writeFixture(
+      repoRoot,
+      ".lenso/module-registry.json",
+      JSON.stringify(
+        {
+          modules: [
+            {
+              archiveReason: "replaced by billing-v2",
+              archivedAt: "2026-06-07T12:00:00.000Z",
+              installPolicy: "review_required",
+              manifestReference: "https://example.com/lenso/module/v1/manifest",
+              name: "billing",
+              source: "remote",
+              version: "0.1.0",
+            },
+          ],
+          version: 1,
+        },
+        null,
+        2
+      )
+    );
+
+    const logs = await captureConsoleLogs(async () => {
+      await expect(
+        runConsolePackageCli([
+          "module",
+          "registry",
+          "review",
+          "billing",
+          "--repo-root",
+          repoRoot,
+          "--json",
+        ])
+      ).resolves.toBe(0);
+    });
+
+    expect(JSON.parse(logs)).toMatchObject({
+      decision: "blocked",
+      issues: [
+        {
+          group: "Catalog",
+          message: "billing is archived",
+        },
+      ],
+      module: {
+        archiveReason: "replaced by billing-v2",
+        archivedAt: "2026-06-07T12:00:00.000Z",
+        manifestStatus: "archived",
+      },
+    });
+  });
+
   test("lists configured module publisher keys", async () => {
     const repoRoot = await createRepoFixture();
 
@@ -2028,8 +2202,9 @@ describe("module scaffold CLI", () => {
     });
 
     expect(logs).toContain("Module registry install history:");
-    expect(logs).toContain("billing 0.1.0 trusted");
-    expect(logs).toContain("installed: 2026-06-07T12:00:00.000Z");
+    expect(logs).toContain("billing 0.1.0 install");
+    expect(logs).toContain("action: registry.install");
+    expect(logs).toContain("recorded: 2026-06-07T12:00:00.000Z");
     expect(logs).toContain("base URL: https://example.com/lenso/module/v1");
     expect(logs).toContain(
       "manifest: https://example.com/lenso/module/v1/manifest"
@@ -2386,6 +2561,7 @@ describe("module scaffold CLI", () => {
     expect(flowDoc).toContain("lenso module publisher trust");
     expect(flowDoc).toContain("lenso module publisher revoke");
     expect(flowDoc).toContain("lenso module registry add");
+    expect(flowDoc).toContain("lenso module registry remove");
     expect(flowDoc).toContain("lenso module registry list");
     expect(flowDoc).toContain("lenso module registry doctor");
     expect(flowDoc).toContain("lenso module registry doctor --registry-file");
@@ -2440,6 +2616,7 @@ describe("module scaffold CLI", () => {
     expect(architectureDoc).toContain("module publisher trust");
     expect(architectureDoc).toContain("module publisher revoke");
     expect(architectureDoc).toContain("module registry add");
+    expect(architectureDoc).toContain("module registry remove");
     expect(architectureDoc).toContain("module registry list");
     expect(architectureDoc).toContain("module registry doctor");
     expect(architectureDoc).toContain("module registry inspect");
@@ -2470,6 +2647,7 @@ describe("module scaffold CLI", () => {
       "lenso module publisher revoke <publisher> <public-key-id>"
     );
     expect(stdout).toContain("lenso module registry add <module>");
+    expect(stdout).toContain("lenso module registry remove <module>");
     expect(stdout).toContain("lenso module registry list");
     expect(stdout).toContain("lenso module registry doctor");
     expect(stdout).toContain("lenso module registry install <module>");

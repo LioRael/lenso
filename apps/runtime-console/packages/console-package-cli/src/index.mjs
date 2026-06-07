@@ -1568,6 +1568,16 @@ const normalizeRegistryEntry = (entry) => {
     );
   }
   return {
+    archiveReason: optionalRegistryString({
+      field: "archiveReason",
+      moduleName: name,
+      value: entry.archiveReason,
+    }),
+    archivedAt: optionalRegistryString({
+      field: "archivedAt",
+      moduleName: name,
+      value: entry.archivedAt,
+    }),
     baseUrl:
       typeof entry.baseUrl === "string" && entry.baseUrl.trim()
         ? trimTrailingSlash(entry.baseUrl.trim())
@@ -2135,9 +2145,18 @@ const listModuleRegistry = async ({ options }) => {
   console.log("Module registry entries:");
   console.log(`- catalog: ${path.relative(repoRoot, registryFilePath)}`);
   for (const entry of entries) {
-    console.log(`- ${entry.name} ${entry.version} ${entry.source}`);
+    const archiveStatus = entry.archivedAt ? " archived" : "";
+    console.log(
+      `- ${entry.name} ${entry.version} ${entry.source}${archiveStatus}`
+    );
     if (entry.summary) {
       console.log(`  summary: ${entry.summary}`);
+    }
+    if (entry.archivedAt) {
+      console.log(`  archived: ${entry.archivedAt}`);
+      if (entry.archiveReason) {
+        console.log(`  archive reason: ${entry.archiveReason}`);
+      }
     }
     console.log(`  manifest: ${entry.manifestReference}`);
     if (entry.baseUrl) {
@@ -2185,6 +2204,69 @@ const addModuleRegistryEntry = async ({ moduleName, options }) => {
   console.log(`- catalog: ${path.relative(repoRoot, registryFilePath)}`);
   console.log(`- install policy: ${nextEntry.installPolicy}`);
   console.log(`- next: lenso module registry review ${nextEntry.name}`);
+};
+
+const removeModuleRegistryEntry = async ({ moduleName, options }) => {
+  const { entries, registryFilePath, repoRoot } =
+    await readModuleRegistryForWrite({
+      options,
+    });
+  const entry = findRegistryModule({ entries, moduleName });
+  const removedAt = new Date().toISOString();
+  const nextEntries = options.delete
+    ? entries.filter((candidate) => candidate.name !== entry.name)
+    : entries.map((candidate) =>
+        candidate.name === entry.name
+          ? {
+              ...candidate,
+              archiveReason:
+                options.reason ?? "operator archived registry entry",
+              archivedAt: removedAt,
+              installPolicy: "review_required",
+            }
+          : candidate
+      );
+  await writeModuleRegistry({ entries: nextEntries, registryFilePath });
+  const historyPath = moduleRegistryInstallHistoryPath({ options, repoRoot });
+  await appendModuleRegistryHistoryEntry({
+    entry: {
+      action: options.delete ? "registry.delete" : "registry.archive",
+      archivedAt: options.delete ? undefined : removedAt,
+      catalogVersion: entry.version,
+      deletedAt: options.delete ? removedAt : undefined,
+      installPolicy: entry.installPolicy,
+      manifestReference: entry.manifestReference,
+      moduleName: entry.name,
+      reason: options.reason ?? null,
+      source: entry.source,
+    },
+    historyPath,
+  });
+
+  if (options.json) {
+    console.log(
+      JSON.stringify(
+        {
+          action: options.delete ? "deleted" : "archived",
+          historyFile: historyPath,
+          module: {
+            name: entry.name,
+            version: entry.version,
+          },
+          registryFile: registryFilePath,
+        },
+        null,
+        2
+      )
+    );
+    return;
+  }
+
+  console.log(
+    `${options.delete ? "Deleted" : "Archived"} registry module ${entry.name}.`
+  );
+  console.log(`- catalog: ${path.relative(repoRoot, registryFilePath)}`);
+  console.log(`- history: ${path.relative(repoRoot, historyPath)}`);
 };
 
 const inspectRegistryModule = async ({ moduleName, options }) => {
@@ -2251,29 +2333,51 @@ const appendModuleRegistryInstallHistory = async ({
   historyPath,
   publisherKey,
 }) => {
-  const history = await readModuleRegistryInstallHistory(historyPath);
-  history.entries.push({
-    action: "registry.install",
-    baseUrl,
-    catalogVersion: entry.version,
-    consolePackageHints: entry.consolePackages.length,
-    installPolicy: entry.installPolicy,
-    installedAt: new Date().toISOString(),
-    manifestReference: entry.manifestReference,
-    moduleName: entry.name,
-    provenance: entry.provenance,
-    publisherKey: publisherKey
-      ? {
-          publicKeyId: publisherKey.publicKeyId,
-          publisher: publisherKey.publisher,
-          status: publisherKey.status,
-        }
-      : null,
-    source: entry.source,
+  await appendModuleRegistryHistoryEntry({
+    entry: {
+      action: "registry.install",
+      baseUrl,
+      catalogVersion: entry.version,
+      consolePackageHints: entry.consolePackages.length,
+      installPolicy: entry.installPolicy,
+      installedAt: new Date().toISOString(),
+      manifestReference: entry.manifestReference,
+      moduleName: entry.name,
+      provenance: entry.provenance,
+      publisherKey: publisherKey
+        ? {
+            publicKeyId: publisherKey.publicKeyId,
+            publisher: publisherKey.publisher,
+            status: publisherKey.status,
+          }
+        : null,
+      source: entry.source,
+    },
+    historyPath,
   });
+};
+
+const appendModuleRegistryHistoryEntry = async ({ entry, historyPath }) => {
+  const history = await readModuleRegistryInstallHistory(historyPath);
+  history.entries.push(entry);
   await mkdir(path.dirname(historyPath), { recursive: true });
   await writeFile(historyPath, `${JSON.stringify(history, null, 2)}\n`);
 };
+
+const moduleRegistryHistoryEntryTimestamp = (entry) =>
+  entry.installedAt ?? entry.archivedAt ?? entry.deletedAt ?? "-";
+
+const moduleRegistryHistoryEntryAction = (entry) =>
+  entry.action ?? "registry.install";
+
+const moduleRegistryHistoryEntryLabel = (entry) =>
+  [
+    entry.moduleName,
+    entry.catalogVersion,
+    moduleRegistryHistoryEntryAction(entry).replace("registry.", ""),
+  ]
+    .filter(Boolean)
+    .join(" ");
 
 const printModuleRegistryInstallHistory = async ({ options }) => {
   const repoRoot = options.repoRoot
@@ -2305,12 +2409,16 @@ const printModuleRegistryInstallHistory = async ({ options }) => {
     return;
   }
   for (const entry of history.entries) {
-    console.log(
-      `- ${entry.moduleName} ${entry.catalogVersion} ${entry.installPolicy}`
-    );
-    console.log(`  installed: ${entry.installedAt}`);
-    console.log(`  base URL: ${entry.baseUrl}`);
+    console.log(`- ${moduleRegistryHistoryEntryLabel(entry)}`);
+    console.log(`  action: ${moduleRegistryHistoryEntryAction(entry)}`);
+    console.log(`  recorded: ${moduleRegistryHistoryEntryTimestamp(entry)}`);
+    if (entry.baseUrl) {
+      console.log(`  base URL: ${entry.baseUrl}`);
+    }
     console.log(`  manifest: ${entry.manifestReference}`);
+    if (entry.reason) {
+      console.log(`  reason: ${entry.reason}`);
+    }
     if (entry.provenance?.publisher) {
       console.log(`  publisher: ${entry.provenance.publisher}`);
     }
@@ -2376,6 +2484,27 @@ const formatRegistryDoctorIssues = (issues) => {
 
 const addRegistryDoctorIssue = ({ fix, group, issues, message }) => {
   issues.push({ fix, group, message });
+};
+
+const archivedRegistryResult = (entry) => ({
+  baseUrl: entry.baseUrl ?? null,
+  consolePackageHints: entry.consolePackages.length,
+  manifestName: null,
+  manifestStatus: "archived",
+  manifestVersion: null,
+});
+
+const checkRegistryArchived = ({ entry, issues }) => {
+  if (!entry.archivedAt) {
+    return false;
+  }
+  addRegistryDoctorIssue({
+    fix: `restore ${entry.name} with lenso module registry add ${entry.name} before reviewing or installing it`,
+    group: "Catalog",
+    issues,
+    message: `${entry.name} is archived`,
+  });
+  return true;
 };
 
 const parseRegistryVersion = (value) => {
@@ -2720,38 +2849,46 @@ const reviewRegistryModuleSnapshot = async ({ moduleName, options }) => {
   });
   const entry = findRegistryModule({ entries, moduleName });
   const issues = [];
-  if (entry.installPolicy !== "trusted") {
-    addRegistryDoctorIssue({
-      fix: `set ${entry.name} installPolicy to trusted after reviewing the manifest, base URL, capabilities, and console package hints`,
-      group: "Catalog",
-      issues,
-      message: `${entry.name} installPolicy is ${entry.installPolicy}`,
-    });
-  }
-  checkRegistryCompatibility({ entry, issues });
-  checkRegistryProvenance({ entry, issues });
-  const publisherKey = await resolveRegistryPublisherKey({
-    entry,
-    issues,
-    options,
-    repoRoot,
-  });
-  const artifactBytes = await verifyRegistryProvenanceChecksum({
-    entry,
-    issues,
-  });
-  await verifyRegistryProvenanceSignature({
-    artifactBytes,
-    entry,
-    issues,
-    publisherKey,
-  });
-  const result = await checkRegistryEntryManifest({ entry, issues, options });
+  const archived = checkRegistryArchived({ entry, issues });
+  let publisherKey = null;
+  const result = archived
+    ? archivedRegistryResult(entry)
+    : await (async () => {
+        if (entry.installPolicy !== "trusted") {
+          addRegistryDoctorIssue({
+            fix: `set ${entry.name} installPolicy to trusted after reviewing the manifest, base URL, capabilities, and console package hints`,
+            group: "Catalog",
+            issues,
+            message: `${entry.name} installPolicy is ${entry.installPolicy}`,
+          });
+        }
+        checkRegistryCompatibility({ entry, issues });
+        checkRegistryProvenance({ entry, issues });
+        publisherKey = await resolveRegistryPublisherKey({
+          entry,
+          issues,
+          options,
+          repoRoot,
+        });
+        const artifactBytes = await verifyRegistryProvenanceChecksum({
+          entry,
+          issues,
+        });
+        await verifyRegistryProvenanceSignature({
+          artifactBytes,
+          entry,
+          issues,
+          publisherKey,
+        });
+        return checkRegistryEntryManifest({ entry, issues, options });
+      })();
   const decision = issues.length === 0 ? "ready_to_install" : "blocked";
   return {
     decision,
     issues,
     module: {
+      archiveReason: entry.archiveReason,
+      archivedAt: entry.archivedAt,
       baseUrl: result.baseUrl ?? null,
       capabilities: entry.capabilities,
       catalogVersion: entry.version,
@@ -2816,6 +2953,13 @@ const printRegistryModuleReview = async ({ moduleName, options }) => {
   }
 };
 
+const registryDoctorModuleStatus = ({ entry, issues }) => {
+  if (entry.archivedAt) {
+    return "archived";
+  }
+  return issues.length === 0 ? "ready" : "needs_attention";
+};
+
 const registryDoctorJsonSnapshot = ({
   entries,
   issues,
@@ -2830,6 +2974,8 @@ const registryDoctorJsonSnapshot = ({
   issues,
   modules: moduleChecks.map(
     ({ entry, issues: entryIssues, publisherKey, result }) => ({
+      archiveReason: entry.archiveReason,
+      archivedAt: entry.archivedAt,
       baseUrl: result.baseUrl ?? null,
       catalogVersion: entry.version,
       compatibility: entry.compatibility,
@@ -2850,7 +2996,10 @@ const registryDoctorJsonSnapshot = ({
           }
         : null,
       source: entry.source,
-      status: entryIssues.length === 0 ? "ready" : "needs_attention",
+      status: registryDoctorModuleStatus({
+        entry,
+        issues: entryIssues,
+      }),
     })
   ),
   status: issues.length === 0 ? "passed" : "failed",
@@ -2870,6 +3019,17 @@ const runModuleRegistryDoctor = async ({ options }) => {
   let consolePackageHints = 0;
   for (const entry of entries) {
     const issueStart = issues.length;
+    if (entry.archivedAt) {
+      const result = archivedRegistryResult(entry);
+      consolePackageHints += result.consolePackageHints;
+      moduleChecks.push({
+        entry,
+        issues: [],
+        publisherKey: null,
+        result,
+      });
+      continue;
+    }
     if (entry.installPolicy !== "trusted") {
       addRegistryDoctorIssue({
         fix: `set ${entry.name} installPolicy to trusted after reviewing the manifest, base URL, capabilities, and console package hints`,
@@ -3209,6 +3369,15 @@ const addModuleRegistryAddOptions = (command) =>
       "compatible console package API"
     );
 
+const addModuleRegistryRemoveOptions = (command) =>
+  addModuleRegistryOptions(command)
+    .option("--delete", "delete the catalog entry instead of archiving it")
+    .option("--reason <text>", "operator reason for archive/delete")
+    .option(
+      "--install-history-file <path>",
+      "module registry install history file"
+    );
+
 const addModulePublisherOptions = (command) =>
   command
     .option("--repo-root <path>", "Lenso host repository root")
@@ -3275,6 +3444,7 @@ Third-party remote module flow:
   lenso module publisher trust <publisher> <public-key-id>
   lenso module publisher revoke <publisher> <public-key-id>
   lenso module registry add <module>
+  lenso module registry remove <module>
   lenso module registry list
   lenso module registry doctor
   lenso module registry inspect <module>
@@ -3352,6 +3522,13 @@ Third-party remote module flow:
     registryCommand.command("list").description("list registry modules")
   ).action(async (options) => {
     await listModuleRegistry({ options });
+  });
+  addModuleRegistryRemoveOptions(
+    registryCommand
+      .command("remove <moduleName>")
+      .description("archive or delete a registry catalog entry")
+  ).action(async (moduleName, options) => {
+    await removeModuleRegistryEntry({ moduleName, options });
   });
   addModuleRegistryOptions(
     registryCommand
