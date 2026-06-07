@@ -6,7 +6,7 @@
 //! the document-level metadata (info, tags) that is not tied to any one route.
 
 use app_bootstrap::CompositionProfile;
-use platform_core::AppConfig;
+use platform_core::AppContext;
 use platform_http::{ApiOpenApiRouter, OpenApiRouter, base_router};
 use utoipa::OpenApi;
 
@@ -50,13 +50,13 @@ pub(crate) fn api_router_for_profile(profile: CompositionProfile) -> ApiOpenApiR
         .merge(platform_module_remote::router())
 }
 
-pub(crate) fn api_router_for_config(
-    config: &AppConfig,
+pub(crate) fn api_router_for_context(
+    ctx: &AppContext,
 ) -> platform_core::AppResult<ApiOpenApiRouter> {
-    let profile = CompositionProfile::from_config(config)?;
+    let profile = CompositionProfile::from_config(&ctx.config)?;
     let base =
         OpenApiRouter::with_openapi(openapi_document_for_profile(profile)).merge(base_router());
-    Ok(app_bootstrap::merge_linked_http_for_config(base, config)?
+    Ok(app_bootstrap::merge_linked_http_for_context(base, ctx)?
         .merge(platform_admin::router())
         .merge(platform_admin_data::router())
         .merge(platform_module_remote::router()))

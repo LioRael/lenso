@@ -24,7 +24,8 @@ use platform_admin_data::{
 use platform_core::error::ErrorDetail;
 use platform_core::{
     ActorContext, AppContext, AppError, CorrelationId, EventHandlerRegistry, Migration,
-    PLATFORM_MIGRATIONS, RuntimeConfigDescriptor, StoryDisplayDescriptor, TraceContext,
+    PLATFORM_MIGRATIONS, RuntimeConfigDescriptor, RuntimeConfigScope, RuntimeConfigType,
+    StoryDisplayDescriptor, TraceContext,
 };
 use platform_http::ApiOpenApiRouter;
 use platform_module::{
@@ -112,11 +113,39 @@ fn linked_module_entries(profile: CompositionProfile) -> &'static [LinkedModuleE
     }
 }
 
-fn linked_module_enabled(config: &platform_core::AppConfig, module_name: &str) -> bool {
+fn linked_module_enabled_from_config(config: &platform_core::AppConfig, module_name: &str) -> bool {
     config
         .modules
         .get(module_name)
         .is_none_or(platform_core::ModuleConfig::is_enabled)
+}
+
+fn linked_module_enabled_config_key(module_name: &str) -> &'static str {
+    match module_name {
+        "identity" => "modules.identity.enabled",
+        "notifications" => "modules.notifications.enabled",
+        "platform-story" => "modules.platform-story.enabled",
+        _ => "modules.unknown.enabled",
+    }
+}
+
+fn linked_module_enabled(ctx: &AppContext, module_name: &str) -> bool {
+    ctx.runtime_config
+        .snapshot()
+        .raw(linked_module_enabled_config_key(module_name))
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or_else(|| linked_module_enabled_from_config(&ctx.config, module_name))
+}
+
+fn linked_module_entries_for_context(
+    ctx: &AppContext,
+) -> platform_core::AppResult<Vec<&'static LinkedModuleEntry>> {
+    Ok(
+        linked_module_entries(CompositionProfile::from_config(&ctx.config)?)
+            .iter()
+            .filter(|entry| linked_module_enabled(ctx, entry.module_name))
+            .collect(),
+    )
 }
 
 fn linked_module_entries_for_config(
@@ -125,18 +154,18 @@ fn linked_module_entries_for_config(
     Ok(
         linked_module_entries(CompositionProfile::from_config(config)?)
             .iter()
-            .filter(|entry| linked_module_enabled(config, entry.module_name))
+            .filter(|entry| linked_module_enabled_from_config(config, entry.module_name))
             .collect(),
     )
 }
 
-fn disabled_linked_module_entries_for_config(
-    config: &platform_core::AppConfig,
+fn disabled_linked_module_entries_for_context(
+    ctx: &AppContext,
 ) -> platform_core::AppResult<Vec<&'static LinkedModuleEntry>> {
     Ok(
-        linked_module_entries(CompositionProfile::from_config(config)?)
+        linked_module_entries(CompositionProfile::from_config(&ctx.config)?)
             .iter()
-            .filter(|entry| !linked_module_enabled(config, entry.module_name))
+            .filter(|entry| !linked_module_enabled(ctx, entry.module_name))
             .collect(),
     )
 }
@@ -176,7 +205,7 @@ pub fn modules(ctx: &AppContext) -> Vec<Module> {
 }
 
 pub fn modules_for_config(ctx: &AppContext) -> platform_core::AppResult<Vec<Module>> {
-    Ok(linked_module_entries_for_config(&ctx.config)?
+    Ok(linked_module_entries_for_context(ctx)?
         .into_iter()
         .map(|entry| (entry.load)(ctx))
         .collect())
@@ -216,10 +245,10 @@ pub fn migrations_for_config(
         .collect::<Vec<_>>();
 
     if CompositionProfile::from_config(config)? == CompositionProfile::Demo {
-        if linked_module_enabled(config, "identity") {
+        if linked_module_enabled_from_config(config, "identity") {
             migrations.extend(identity::migrations::IDENTITY_MIGRATIONS.iter().copied());
         }
-        if linked_module_enabled(config, "notifications") {
+        if linked_module_enabled_from_config(config, "notifications") {
             migrations.extend(
                 notifications::migrations::NOTIFICATIONS_MIGRATIONS
                     .iter()
@@ -300,6 +329,24 @@ pub fn linked_runtime_function_declaration_sources_for_config(
     )>,
 > {
     Ok(linked_module_entries_for_config(config)?
+        .into_iter()
+        .map(|entry| {
+            let manifest = (entry.manifest)();
+            (manifest.name, ModuleSource::Linked, manifest.runtime)
+        })
+        .collect())
+}
+
+pub fn linked_runtime_function_declaration_sources_for_context(
+    ctx: &AppContext,
+) -> platform_core::AppResult<
+    Vec<(
+        String,
+        ModuleSource,
+        Option<platform_module::RuntimeSurface>,
+    )>,
+> {
+    Ok(linked_module_entries_for_context(ctx)?
         .into_iter()
         .map(|entry| {
             let manifest = (entry.manifest)();
@@ -390,6 +437,16 @@ pub fn linked_http_modules_for_config(
         .collect())
 }
 
+pub fn linked_http_modules_for_context(ctx: &AppContext) -> platform_core::AppResult<Vec<Module>> {
+    Ok(linked_module_entries_for_context(ctx)?
+        .into_iter()
+        .filter_map(|entry| {
+            let http_binding = entry.http_binding?;
+            Some(Module::linked((entry.manifest)(), http_binding()))
+        })
+        .collect())
+}
+
 /// Aggregate admin-capable modules: those declaring an admin surface and
 /// providing either an `AdminDataSource` or an `AdminActionSource`. Modules
 /// without an admin behavior source are filtered out — "optional capability"
@@ -424,7 +481,7 @@ pub async fn load_admin_module_metadata(
     ctx: &AppContext,
 ) -> platform_core::AppResult<Vec<AdminModuleMetadata>> {
     let mut metadata = admin_metadata_from_modules(modules_for_config(ctx)?);
-    metadata.extend(disabled_linked_admin_metadata(&ctx.config)?);
+    metadata.extend(disabled_linked_admin_metadata(ctx)?);
 
     for remote in &ctx.config.module_sources.remote {
         let config = remote_module_config(remote);
@@ -606,9 +663,9 @@ fn failed_remote_admin_metadata(
 }
 
 fn disabled_linked_admin_metadata(
-    config: &platform_core::AppConfig,
+    ctx: &AppContext,
 ) -> platform_core::AppResult<Vec<AdminModuleMetadata>> {
-    Ok(disabled_linked_module_entries_for_config(config)?
+    Ok(disabled_linked_module_entries_for_context(ctx)?
         .into_iter()
         .map(|entry| {
             let ModuleManifest {
@@ -1016,6 +1073,16 @@ pub fn merge_linked_http_for_config(
         .fold(base, |router, contribution| (contribution.merge)(router)))
 }
 
+pub fn merge_linked_http_for_context(
+    base: ApiOpenApiRouter,
+    ctx: &AppContext,
+) -> platform_core::AppResult<ApiOpenApiRouter> {
+    Ok(linked_http_modules_for_context(ctx)?
+        .into_iter()
+        .filter_map(|module| module.linked_http)
+        .fold(base, |router, contribution| (contribution.merge)(router)))
+}
+
 /// Story-display descriptors for every module. Sourced from context-free
 /// manifests so the `OpenAPI` path stays pure (no [`AppContext`]).
 #[must_use]
@@ -1042,6 +1109,15 @@ pub fn story_display_descriptors_for_config(
         .collect())
 }
 
+pub fn story_display_descriptors_for_context(
+    ctx: &AppContext,
+) -> platform_core::AppResult<Vec<StoryDisplayDescriptor>> {
+    Ok(linked_module_entries_for_context(ctx)?
+        .into_iter()
+        .flat_map(|entry| (entry.manifest)().story_display)
+        .collect())
+}
+
 /// Every module's setting descriptors.
 ///
 /// The single source for the editable configuration registry. Apps build a
@@ -1049,8 +1125,26 @@ pub fn story_display_descriptors_for_config(
 pub fn runtime_config_descriptors(
     ctx: &AppContext,
 ) -> platform_core::AppResult<Vec<RuntimeConfigDescriptor>> {
-    let module_descriptors = modules_for_config(ctx)?
+    let profile = CompositionProfile::from_config(&ctx.config)?;
+    let module_enabled_descriptors =
+        linked_module_entries(profile)
+            .iter()
+            .map(|entry| RuntimeConfigDescriptor {
+                key: linked_module_enabled_config_key(entry.module_name),
+                scope: RuntimeConfigScope::Shared,
+                value_type: RuntimeConfigType::Bool,
+                default: serde_json::json!(linked_module_enabled_from_config(
+                    &ctx.config,
+                    entry.module_name
+                )),
+                editable: true,
+                restart_only: true,
+                description: "Whether this linked module is loaded on service startup.",
+            });
+    let module_descriptors = linked_module_entries(profile)
         .iter()
+        .filter(|entry| linked_module_enabled_from_config(&ctx.config, entry.module_name))
+        .map(|entry| (entry.load)(ctx))
         .flat_map(|module| module.runtime_config.iter().cloned())
         .collect::<Vec<_>>();
     // Platform-owned descriptors (e.g. worker knobs) plus every module's; keys
@@ -1058,6 +1152,7 @@ pub fn runtime_config_descriptors(
     Ok(platform_core::worker_runtime_config::RUNTIME_CONFIG
         .iter()
         .cloned()
+        .chain(module_enabled_descriptors)
         .chain(module_descriptors)
         .collect())
 }
@@ -1069,7 +1164,8 @@ mod tests {
     use platform_core::{
         AppConfig, AuthConfig, DatabaseConfig, ErrorCode, ExecutionContext, HttpConfig,
         LoggingEventPublisher, ModuleConfig, ModuleSourcesConfig, PLATFORM_MIGRATIONS,
-        ServiceConfig, TelemetryConfig, apply_migrations,
+        RuntimeConfigProvider, RuntimeConfigRegistry, RuntimeConfigSnapshot, ServiceConfig,
+        TelemetryConfig, apply_migrations,
     };
     use platform_module::{
         ConsoleArea, LifecycleActivationJobDeclaration, LifecycleStartupCheckDeclaration,
@@ -1083,6 +1179,17 @@ mod tests {
     use std::collections::BTreeMap;
     use std::sync::Arc;
     use std::time::Duration;
+
+    #[derive(Debug)]
+    struct TestRuntimeConfigProvider {
+        snapshot: Arc<RuntimeConfigSnapshot>,
+    }
+
+    impl RuntimeConfigProvider for TestRuntimeConfigProvider {
+        fn snapshot(&self) -> Arc<RuntimeConfigSnapshot> {
+            Arc::clone(&self.snapshot)
+        }
+    }
 
     #[test]
     fn linked_module_entry_names_match_manifests() {
@@ -1228,6 +1335,60 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(names, vec!["notifications", "platform-story"]);
+    }
+
+    #[tokio::test]
+    async fn modules_for_config_uses_runtime_config_enabled_flag() {
+        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build");
+        let config = test_config_with_database_url("postgres://localhost/lenso_test");
+        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
+        let registry =
+            RuntimeConfigRegistry::try_new(runtime_config_descriptors(&ctx).expect("descriptors"))
+                .expect("registry");
+        let mut stored = BTreeMap::new();
+        stored.insert(
+            ("*".to_owned(), "modules.identity.enabled".to_owned()),
+            json!(false),
+        );
+        let snapshot = RuntimeConfigSnapshot::resolve(&registry, "api", &stored);
+        let ctx = ctx.with_runtime_config_provider(Arc::new(TestRuntimeConfigProvider {
+            snapshot: Arc::new(snapshot),
+        }));
+
+        let names = modules_for_config(&ctx)
+            .expect("demo linked profile should parse")
+            .into_iter()
+            .map(|module| module.manifest.name)
+            .collect::<Vec<_>>();
+
+        assert_eq!(names, vec!["notifications", "platform-story"]);
+        assert!(
+            linked_http_modules_for_context(&ctx)
+                .expect("linked HTTP modules should load")
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn runtime_config_descriptors_include_module_enabled_flags() {
+        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build");
+        let config = test_config_with_database_url("postgres://localhost/lenso_test");
+        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
+
+        let keys = runtime_config_descriptors(&ctx)
+            .expect("descriptors should load")
+            .into_iter()
+            .map(|descriptor| (descriptor.key, descriptor.restart_only, descriptor.default))
+            .collect::<Vec<_>>();
+
+        assert!(keys.iter().any(|(key, restart_only, default)| {
+            *key == "modules.identity.enabled" && *restart_only && default == &json!(true)
+        }));
+        assert!(keys.iter().any(|(key, restart_only, default)| {
+            *key == "modules.platform-story.enabled" && *restart_only && default == &json!(true)
+        }));
     }
 
     #[test]

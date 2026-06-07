@@ -82,8 +82,20 @@ type ModuleRefreshModuleResult = {
   error?: string | null;
 };
 
+type ConfigWriteResponse = {
+  applies_on_restart: boolean;
+};
+
 const modulesQueryKey = ["modules", "registry"] as const;
 const emptyModules: AdminModuleMetadata[] = [];
+
+function moduleEnabledConfigKey(moduleName: string) {
+  return `modules.${moduleName}.enabled`;
+}
+
+function configPath(service: string, key: string) {
+  return `admin/config/${encodeURIComponent(service)}/${encodeURIComponent(key)}`;
+}
 
 export function ModulesPage() {
   if (!isApiMode()) {
@@ -609,6 +621,10 @@ function ModuleOperationsPanel({
   history: ModuleRefreshRecord[];
   module: AdminModuleMetadata;
 }) {
+  const queryClient = useQueryClient();
+  const [moduleToggleMessage, setModuleToggleMessage] = useState<string | null>(
+    null
+  );
   const callsQuery = useRemoteProxyCalls({
     limit: 25,
     moduleName: module.module_name,
@@ -622,6 +638,34 @@ function ModuleOperationsPanel({
       ? module.source_diagnostics
       : null;
   const latestRefresh = latestModuleRefreshResult(module, history);
+  const disabledByConfig =
+    module.source === "linked" &&
+    moduleErrorMessage(module) === "module disabled by configuration";
+  const moduleToggleTarget =
+    module.source === "linked"
+      ? disabledByConfig
+        ? true
+        : moduleIsLoaded(module)
+          ? false
+          : null
+      : null;
+  const moduleToggleMutation = useMutation({
+    mutationFn: (enabled: boolean) =>
+      httpClient
+        .put(configPath("*", moduleEnabledConfigKey(module.module_name)), {
+          json: { value: enabled },
+        })
+        .json<ConfigWriteResponse>(),
+    onSuccess: async (response, enabled) => {
+      setModuleToggleMessage(
+        `${enabled ? "enable" : "disable"} saved${
+          response.applies_on_restart ? "; restart required" : ""
+        }`
+      );
+      await queryClient.invalidateQueries({ queryKey: modulesQueryKey });
+    },
+    onError: (error: unknown) => setModuleToggleMessage(errorMessage(error)),
+  });
 
   return (
     <section className="min-w-0 border border-(--border-subtle) bg-(--surface)">
@@ -641,6 +685,19 @@ function ModuleOperationsPanel({
         >
           {readiness.status}
         </span>
+        {moduleToggleTarget === null ? null : (
+          <Button
+            className="min-h-6 px-2"
+            disabled={moduleToggleMutation.isPending}
+            onClick={() => moduleToggleMutation.mutate(moduleToggleTarget)}
+            title={`${moduleToggleTarget ? "Enable" : "Disable"} ${module.module_name}`}
+            type="button"
+            variant="ghost"
+          >
+            <Zap size={12} />
+            {moduleToggleTarget ? "Enable" : "Disable"}
+          </Button>
+        )}
         <button
           className="border border-(--border-subtle) bg-(--elevated) px-1.5 py-0.5 text-[10px] text-(--secondary) hover:text-(--foreground)"
           onClick={() =>
@@ -653,6 +710,11 @@ function ModuleOperationsPanel({
           Remote Calls
         </button>
       </header>
+      {moduleToggleMessage ? (
+        <p className="border-b border-(--border-subtle) px-3 py-2 text-[11px] text-(--warning)">
+          {moduleToggleMessage}
+        </p>
+      ) : null}
       {callsQuery.isError ? (
         <p className="border-b border-(--border-subtle) px-3 py-2 text-(--error)">
           Failed to load recent remote calls.
@@ -1207,6 +1269,10 @@ function formatRemoteDuration(ms: number) {
     return `${ms}ms`;
   }
   return `${(ms / 1000).toFixed(1)}s`;
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Module operation failed";
 }
 
 function ModulesPlaceholder({ reason }: { reason: string }) {

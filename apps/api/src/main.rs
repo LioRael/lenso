@@ -22,6 +22,13 @@ async fn main() -> anyhow::Result<()> {
     let registry = RuntimeConfigRegistry::try_new(descriptors)
         .context("duplicate runtime-config descriptor registered")?;
     platform_admin::install_runtime_config_registry(registry.clone());
+    let runtime_config =
+        PostgresRuntimeConfigProvider::connect(ctx.db.clone(), Arc::new(registry), "api")
+            .await
+            .context("failed to load runtime-config snapshot")?;
+    runtime_config.spawn_listener();
+    ctx = ctx.with_runtime_config_provider(runtime_config);
+
     let admin_modules = app_bootstrap::load_admin_modules(&ctx)
         .await
         .context("failed to load admin modules")?;
@@ -35,12 +42,6 @@ async fn main() -> anyhow::Result<()> {
         .context("failed to load remote HTTP proxy registry")?;
     platform_module_remote::install_remote_http_proxy_registry(remote_http_proxy_registry);
 
-    let runtime_config =
-        PostgresRuntimeConfigProvider::connect(ctx.db.clone(), Arc::new(registry), "api")
-            .await
-            .context("failed to load runtime-config snapshot")?;
-    runtime_config.spawn_listener();
-    ctx = ctx.with_runtime_config_provider(runtime_config);
     let admin_refresh_ctx = ctx.clone();
     platform_admin_data::install_admin_module_refresh_fn(move || {
         let ctx = admin_refresh_ctx.clone();
