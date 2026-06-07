@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -24,6 +25,25 @@ const readJsonFromReference = async (reference) => {
   }
   return readJson(path.resolve(reference));
 };
+
+const readBytesFromReference = async (reference) => {
+  if (reference.startsWith("file:")) {
+    return readFile(fileURLToPath(reference));
+  }
+  if (reference.startsWith("http://") || reference.startsWith("https://")) {
+    const response = await fetch(reference);
+    if (!response.ok) {
+      throw new Error(
+        `Failed to fetch registry artifact: ${response.status} ${response.statusText}`
+      );
+    }
+    return Buffer.from(await response.arrayBuffer());
+  }
+  return readFile(path.resolve(reference));
+};
+
+const sha256Digest = (bytes) =>
+  createHash("sha256").update(bytes).digest("hex");
 
 const queueWrite = (pendingWrites, filePath, content) => {
   pendingWrites.set(filePath, content);
@@ -1931,6 +1951,43 @@ const checkRegistryProvenance = ({ entry, issues }) => {
   }
 };
 
+const verifyRegistryProvenanceChecksum = async ({ entry, issues }) => {
+  if (!(entry.provenance.checksum && entry.provenance.packageUrl)) {
+    return;
+  }
+  const [algorithm, expectedDigest] = entry.provenance.checksum.split(":");
+  if (algorithm !== "sha256" || !expectedDigest) {
+    addRegistryDoctorIssue({
+      fix: `set ${entry.name} provenance.checksum to sha256:<hex digest>`,
+      group: "Provenance",
+      issues,
+      message: `${entry.name} provenance checksum must use sha256:<hex digest>`,
+    });
+    return;
+  }
+  let bytes;
+  try {
+    bytes = await readBytesFromReference(entry.provenance.packageUrl);
+  } catch (error) {
+    addRegistryDoctorIssue({
+      fix: `verify ${entry.name} provenance.packageUrl and package artifact access`,
+      group: "Provenance",
+      issues,
+      message: `${entry.name} provenance package could not be read: ${error.message}`,
+    });
+    return;
+  }
+  const actualDigest = sha256Digest(bytes);
+  if (actualDigest !== expectedDigest.toLowerCase()) {
+    addRegistryDoctorIssue({
+      fix: `update ${entry.name} provenance.checksum to sha256:${actualDigest} after reviewing the package artifact`,
+      group: "Provenance",
+      issues,
+      message: `${entry.name} provenance checksum mismatch`,
+    });
+  }
+};
+
 const compareRegistryConsolePackages = ({ entry, issues, manifest }) => {
   const manifestPackages = new Set(consolePackagesFromManifest(manifest));
   const entryPackages = consolePackagesFromRegistryEntry(entry);
@@ -2040,6 +2097,7 @@ const reviewRegistryModuleSnapshot = async ({ moduleName, options }) => {
   }
   checkRegistryCompatibility({ entry, issues });
   checkRegistryProvenance({ entry, issues });
+  await verifyRegistryProvenanceChecksum({ entry, issues });
   const result = await checkRegistryEntryManifest({ entry, issues, options });
   const decision = issues.length === 0 ? "ready_to_install" : "blocked";
   return {
@@ -2156,6 +2214,7 @@ const runModuleRegistryDoctor = async ({ options }) => {
     }
     checkRegistryCompatibility({ entry, issues });
     checkRegistryProvenance({ entry, issues });
+    await verifyRegistryProvenanceChecksum({ entry, issues });
     const result = await checkRegistryEntryManifest({ entry, issues, options });
     consolePackageHints += result.consolePackageHints;
     moduleChecks.push({

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -95,6 +96,11 @@ const main = async () => {
     const modulePackagesRoot = path.join(demoRoot, "module-packages");
     const registryFile = path.join(hostRoot, ".lenso/module-registry.json");
     const baseUrl = "http://127.0.0.1:4200/lenso/module/v1";
+    const packageArtifact = path.join(
+      modulePackagesRoot,
+      "lenso-billing/billing-package.tgz"
+    );
+    const packageBytes = "lenso fixture billing package\n";
     await createHostFixture(hostRoot);
 
     await runConsolePackageCli([
@@ -108,6 +114,11 @@ const main = async () => {
     const manifestReference = path.join(
       modulePackagesRoot,
       "lenso-billing/lenso.module.json"
+    );
+    await writeFixture(
+      modulePackagesRoot,
+      "lenso-billing/billing-package.tgz",
+      packageBytes
     );
     await writeFixture(
       hostRoot,
@@ -129,8 +140,8 @@ const main = async () => {
               manifestReference,
               name: "billing",
               provenance: {
-                checksum: "sha256:fixture-billing-module",
-                packageUrl: "https://example.com/lenso/module/v1/package.tgz",
+                checksum: `sha256:${createHash("sha256").update(packageBytes).digest("hex")}`,
+                packageUrl: packageArtifact,
                 publisher: "Lenso Fixtures",
                 sourceRepository: "https://example.com/lenso/billing-module",
               },

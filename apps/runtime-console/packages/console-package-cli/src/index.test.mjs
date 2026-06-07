@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { once } from "node:events";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -14,12 +15,18 @@ import { runConsolePackageCli } from "./index.mjs";
 const tempRoots = [];
 const tempServers = [];
 const execFileAsync = promisify(execFile);
+const registryPackageBytes = Buffer.from("lenso fixture billing package\n");
 const registryProvenance = {
-  checksum: "sha256:fixture-billing-module",
+  checksum: `sha256:${createHash("sha256").update(registryPackageBytes).digest("hex")}`,
   packageUrl: "https://example.com/lenso/module/v1/package.tgz",
   publisher: "Lenso Fixtures",
   sourceRepository: "https://example.com/lenso/billing-module",
 };
+
+const registryProvenanceForManifestUrl = (manifestUrl) => ({
+  ...registryProvenance,
+  packageUrl: manifestUrl.replace(/\/manifest$/u, "/package.tgz"),
+});
 
 const createRepoFixture = async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), "lenso-module-cli-"));
@@ -212,6 +219,11 @@ const serveManifest = async (manifest) => {
     if (request.url === "/lenso/module/v1/manifest") {
       response.setHeader("Content-Type", "application/json");
       response.end(JSON.stringify(manifest));
+      return;
+    }
+    if (request.url === "/lenso/module/v1/package.tgz") {
+      response.setHeader("Content-Type", "application/octet-stream");
+      response.end(registryPackageBytes);
       return;
     }
     response.statusCode = 404;
@@ -615,7 +627,7 @@ describe("module scaffold CLI", () => {
               installPolicy: "trusted",
               manifestReference: manifestUrl,
               name: "billing",
-              provenance: registryProvenance,
+              provenance: registryProvenanceForManifestUrl(manifestUrl),
               source: "remote",
               version: "0.1.0",
             },
@@ -680,7 +692,7 @@ describe("module scaffold CLI", () => {
               installPolicy: "trusted",
               manifestReference: manifestUrl,
               name: "billing",
-              provenance: registryProvenance,
+              provenance: registryProvenanceForManifestUrl(manifestUrl),
               source: "remote",
               version: "0.1.0",
             },
@@ -734,7 +746,7 @@ describe("module scaffold CLI", () => {
               installPolicy: "trusted",
               manifestReference: manifestUrl,
               name: "billing",
-              provenance: registryProvenance,
+              provenance: registryProvenanceForManifestUrl(manifestUrl),
               source: "remote",
               version: "0.1.0",
             },
@@ -771,7 +783,7 @@ describe("module scaffold CLI", () => {
         manifestStatus: "ok",
         manifestVersion: "0.1.0",
         name: "billing",
-        provenance: registryProvenance,
+        provenance: registryProvenanceForManifestUrl(manifestUrl),
         source: "remote",
       },
       version: 1,
@@ -804,7 +816,7 @@ describe("module scaffold CLI", () => {
               installPolicy: "trusted",
               manifestReference: manifestUrl,
               name: "billing",
-              provenance: registryProvenance,
+              provenance: registryProvenanceForManifestUrl(manifestUrl),
               source: "remote",
               version: "0.1.0",
             },
@@ -926,6 +938,68 @@ describe("module scaffold CLI", () => {
     });
   });
 
+  test("blocks registry review when provenance checksum mismatches", async () => {
+    const repoRoot = await createRepoFixture();
+    const manifestUrl = await serveManifest({
+      capabilities: ["billing.read"],
+      console: [],
+      name: "billing",
+      source: "remote",
+      version: "0.1.0",
+    });
+    await writeFixture(
+      repoRoot,
+      ".lenso/module-registry.json",
+      JSON.stringify(
+        {
+          modules: [
+            {
+              baseUrl: manifestUrl.slice(0, -"/manifest".length),
+              installPolicy: "trusted",
+              manifestReference: manifestUrl,
+              name: "billing",
+              provenance: {
+                ...registryProvenanceForManifestUrl(manifestUrl),
+                checksum:
+                  "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+              },
+              source: "remote",
+              version: "0.1.0",
+            },
+          ],
+          version: 1,
+        },
+        null,
+        2
+      )
+    );
+
+    const logs = await captureConsoleLogs(async () => {
+      await expect(
+        runConsolePackageCli([
+          "module",
+          "registry",
+          "review",
+          "billing",
+          "--registry-file",
+          path.join(repoRoot, ".lenso/module-registry.json"),
+          "--json",
+        ])
+      ).resolves.toBe(0);
+    });
+
+    expect(JSON.parse(logs)).toMatchObject({
+      decision: "blocked",
+      issues: [
+        {
+          fix: `update billing provenance.checksum to ${registryProvenance.checksum} after reviewing the package artifact`,
+          group: "Provenance",
+          message: "billing provenance checksum mismatch",
+        },
+      ],
+    });
+  });
+
   test("rejects registry entries whose manifest identity does not match", async () => {
     const repoRoot = await createRepoFixture();
     const manifestUrl = await serveManifest({
@@ -999,7 +1073,7 @@ describe("module scaffold CLI", () => {
               installPolicy: "trusted",
               manifestReference: manifestUrl,
               name: "billing",
-              provenance: registryProvenance,
+              provenance: registryProvenanceForManifestUrl(manifestUrl),
               source: "remote",
               version: "0.1.0",
             },
@@ -1071,7 +1145,7 @@ describe("module scaffold CLI", () => {
           installPolicy: "trusted",
           manifestReference: manifestUrl,
           moduleName: "billing",
-          provenance: registryProvenance,
+          provenance: registryProvenanceForManifestUrl(manifestUrl),
           source: "remote",
         },
       ],
@@ -1393,7 +1467,7 @@ describe("module scaffold CLI", () => {
               installPolicy: "trusted",
               manifestReference: manifestUrl,
               name: "billing",
-              provenance: registryProvenance,
+              provenance: registryProvenanceForManifestUrl(manifestUrl),
               source: "remote",
               version: "0.1.0",
             },
@@ -1459,7 +1533,7 @@ describe("module scaffold CLI", () => {
               installPolicy: "trusted",
               manifestReference: manifestUrl,
               name: "billing",
-              provenance: registryProvenance,
+              provenance: registryProvenanceForManifestUrl(manifestUrl),
               source: "remote",
               version: "0.1.0",
             },
@@ -1507,7 +1581,7 @@ describe("module scaffold CLI", () => {
           manifestStatus: "ok",
           manifestVersion: "0.1.0",
           name: "billing",
-          provenance: registryProvenance,
+          provenance: registryProvenanceForManifestUrl(manifestUrl),
           source: "remote",
           status: "ready",
         },

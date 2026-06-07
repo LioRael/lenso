@@ -265,9 +265,11 @@ entries can declare supported Lenso host versions and console package API
 versions through `compatibility`; incompatible modules are blocked before host
 files are written.
 Registry review also requires a provenance snapshot for trusted entries:
-publisher, source repository, and checksum. This is v0 metadata gating, not
-cryptographic verification; future marketplace work should verify signatures or
-checksums against fetched artifacts before installation.
+publisher, source repository, and checksum. When `provenance.packageUrl` and a
+`sha256:<hex>` checksum are present, review fetches the package artifact and
+blocks installation if the digest does not match. This is checksum verification,
+not package signing; future marketplace work should verify publisher signatures
+against fetched artifacts before installation.
 `pnpm --dir apps/runtime-console run demo:module-registry-install` exercises the
 same sequence against a temporary host fixture without mutating the working tree.
 
