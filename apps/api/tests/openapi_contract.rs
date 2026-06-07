@@ -1,8 +1,9 @@
 use app_api::{build_router, openapi_document};
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
-use platform_core::{AppConfig, AppContext, LoggingEventPublisher};
+use platform_core::{AppConfig, AppContext, LoggingEventPublisher, ModuleConfig};
 use platform_module::{ModuleHttpMethod, ModuleManifest, ModuleSource};
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, OnceLock};
 use tower::ServiceExt;
 
@@ -182,6 +183,43 @@ async fn core_profile_router_does_not_mount_identity_routes() {
         Arc::new(LoggingEventPublisher),
     );
     let app = app_api::try_build_router(ctx).expect("core profile router should build");
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/v1/identity/users")
+                .method("POST")
+                .body(Body::empty())
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn disabled_linked_module_router_does_not_mount_identity_routes() {
+    let _guard = catalog_test_lock()
+        .lock()
+        .expect("catalog test lock poisoned");
+    let _ = openapi_document();
+
+    let mut config = AppConfig::from_env();
+    config.modules.insert(
+        "identity".to_owned(),
+        ModuleConfig {
+            enabled: Some(false),
+            values: BTreeMap::new(),
+        },
+    );
+    let ctx = AppContext::new(
+        config,
+        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build"),
+        Arc::new(LoggingEventPublisher),
+    );
+    let app = app_api::try_build_router(ctx).expect("demo profile router should build");
 
     let response = app
         .oneshot(

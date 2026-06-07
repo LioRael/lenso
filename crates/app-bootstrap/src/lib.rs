@@ -112,6 +112,35 @@ fn linked_module_entries(profile: CompositionProfile) -> &'static [LinkedModuleE
     }
 }
 
+fn linked_module_enabled(config: &platform_core::AppConfig, module_name: &str) -> bool {
+    config
+        .modules
+        .get(module_name)
+        .is_none_or(platform_core::ModuleConfig::is_enabled)
+}
+
+fn linked_module_entries_for_config(
+    config: &platform_core::AppConfig,
+) -> platform_core::AppResult<Vec<&'static LinkedModuleEntry>> {
+    Ok(
+        linked_module_entries(CompositionProfile::from_config(config)?)
+            .iter()
+            .filter(|entry| linked_module_enabled(config, entry.module_name))
+            .collect(),
+    )
+}
+
+fn disabled_linked_module_entries_for_config(
+    config: &platform_core::AppConfig,
+) -> platform_core::AppResult<Vec<&'static LinkedModuleEntry>> {
+    Ok(
+        linked_module_entries(CompositionProfile::from_config(config)?)
+            .iter()
+            .filter(|entry| !linked_module_enabled(config, entry.module_name))
+            .collect(),
+    )
+}
+
 const STORY_CONSOLE_CAPABILITY: &str = "runtime.stories.read";
 
 fn platform_story_manifest() -> ModuleManifest {
@@ -147,10 +176,10 @@ pub fn modules(ctx: &AppContext) -> Vec<Module> {
 }
 
 pub fn modules_for_config(ctx: &AppContext) -> platform_core::AppResult<Vec<Module>> {
-    Ok(modules_for_profile(
-        ctx,
-        CompositionProfile::from_config(&ctx.config)?,
-    ))
+    Ok(linked_module_entries_for_config(&ctx.config)?
+        .into_iter()
+        .map(|entry| (entry.load)(ctx))
+        .collect())
 }
 
 #[must_use]
@@ -180,9 +209,26 @@ pub async fn load_modules(ctx: &AppContext) -> platform_core::AppResult<Vec<Modu
 pub fn migrations_for_config(
     config: &platform_core::AppConfig,
 ) -> platform_core::AppResult<Vec<Migration>> {
-    Ok(migrations_for_profile(CompositionProfile::from_config(
-        config,
-    )?))
+    let mut migrations = PLATFORM_MIGRATIONS
+        .iter()
+        .chain(RUNTIME_MIGRATIONS)
+        .copied()
+        .collect::<Vec<_>>();
+
+    if CompositionProfile::from_config(config)? == CompositionProfile::Demo {
+        if linked_module_enabled(config, "identity") {
+            migrations.extend(identity::migrations::IDENTITY_MIGRATIONS.iter().copied());
+        }
+        if linked_module_enabled(config, "notifications") {
+            migrations.extend(
+                notifications::migrations::NOTIFICATIONS_MIGRATIONS
+                    .iter()
+                    .copied(),
+            );
+        }
+    }
+
+    Ok(migrations)
 }
 
 #[must_use]
@@ -242,6 +288,24 @@ pub fn linked_runtime_function_declaration_sources_for_profile(
         .into_iter()
         .map(|manifest| (manifest.name, ModuleSource::Linked, manifest.runtime))
         .collect()
+}
+
+pub fn linked_runtime_function_declaration_sources_for_config(
+    config: &platform_core::AppConfig,
+) -> platform_core::AppResult<
+    Vec<(
+        String,
+        ModuleSource,
+        Option<platform_module::RuntimeSurface>,
+    )>,
+> {
+    Ok(linked_module_entries_for_config(config)?
+        .into_iter()
+        .map(|entry| {
+            let manifest = (entry.manifest)();
+            (manifest.name, ModuleSource::Linked, manifest.runtime)
+        })
+        .collect())
 }
 
 /// Runtime function declaration sources from loaded module metadata, including
@@ -314,6 +378,18 @@ pub fn linked_http_modules_for_profile(profile: CompositionProfile) -> Vec<Modul
         .collect()
 }
 
+pub fn linked_http_modules_for_config(
+    config: &platform_core::AppConfig,
+) -> platform_core::AppResult<Vec<Module>> {
+    Ok(linked_module_entries_for_config(config)?
+        .into_iter()
+        .filter_map(|entry| {
+            let http_binding = entry.http_binding?;
+            Some(Module::linked((entry.manifest)(), http_binding()))
+        })
+        .collect())
+}
+
 /// Aggregate admin-capable modules: those declaring an admin surface and
 /// providing either an `AdminDataSource` or an `AdminActionSource`. Modules
 /// without an admin behavior source are filtered out — "optional capability"
@@ -348,6 +424,7 @@ pub async fn load_admin_module_metadata(
     ctx: &AppContext,
 ) -> platform_core::AppResult<Vec<AdminModuleMetadata>> {
     let mut metadata = admin_metadata_from_modules(modules_for_config(ctx)?);
+    metadata.extend(disabled_linked_admin_metadata(&ctx.config)?);
 
     for remote in &ctx.config.module_sources.remote {
         let config = remote_module_config(remote);
@@ -526,6 +603,42 @@ fn failed_remote_admin_metadata(
             Some(message),
         )),
     }
+}
+
+fn disabled_linked_admin_metadata(
+    config: &platform_core::AppConfig,
+) -> platform_core::AppResult<Vec<AdminModuleMetadata>> {
+    Ok(disabled_linked_module_entries_for_config(config)?
+        .into_iter()
+        .map(|entry| {
+            let ModuleManifest {
+                name,
+                admin,
+                http_routes,
+                runtime,
+                lifecycle,
+                console,
+                story_display,
+                capabilities,
+                ..
+            } = (entry.manifest)();
+            AdminModuleMetadata {
+                module_name: name,
+                source: ModuleSource::Linked,
+                load_status: ModuleLoadStatus::Error {
+                    message: "module disabled by configuration".to_owned(),
+                },
+                http_routes,
+                runtime,
+                lifecycle,
+                console,
+                story_display,
+                capabilities,
+                admin,
+                source_diagnostics: None,
+            }
+        })
+        .collect())
 }
 
 fn remote_source_diagnostics(
@@ -893,6 +1006,16 @@ pub fn merge_linked_http_for_profile(
         .fold(base, |router, contribution| (contribution.merge)(router))
 }
 
+pub fn merge_linked_http_for_config(
+    base: ApiOpenApiRouter,
+    config: &platform_core::AppConfig,
+) -> platform_core::AppResult<ApiOpenApiRouter> {
+    Ok(linked_http_modules_for_config(config)?
+        .into_iter()
+        .filter_map(|module| module.linked_http)
+        .fold(base, |router, contribution| (contribution.merge)(router)))
+}
+
 /// Story-display descriptors for every module. Sourced from context-free
 /// manifests so the `OpenAPI` path stays pure (no [`AppContext`]).
 #[must_use]
@@ -908,6 +1031,15 @@ pub fn story_display_descriptors_for_profile(
         .into_iter()
         .flat_map(|manifest| manifest.story_display)
         .collect()
+}
+
+pub fn story_display_descriptors_for_config(
+    config: &platform_core::AppConfig,
+) -> platform_core::AppResult<Vec<StoryDisplayDescriptor>> {
+    Ok(linked_module_entries_for_config(config)?
+        .into_iter()
+        .flat_map(|entry| (entry.manifest)().story_display)
+        .collect())
 }
 
 /// Every module's setting descriptors.
@@ -936,8 +1068,8 @@ mod tests {
     use async_trait::async_trait;
     use platform_core::{
         AppConfig, AuthConfig, DatabaseConfig, ErrorCode, ExecutionContext, HttpConfig,
-        LoggingEventPublisher, ModuleSourcesConfig, PLATFORM_MIGRATIONS, ServiceConfig,
-        TelemetryConfig, apply_migrations,
+        LoggingEventPublisher, ModuleConfig, ModuleSourcesConfig, PLATFORM_MIGRATIONS,
+        ServiceConfig, TelemetryConfig, apply_migrations,
     };
     use platform_module::{
         ConsoleArea, LifecycleActivationJobDeclaration, LifecycleStartupCheckDeclaration,
@@ -1073,6 +1205,101 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(names, vec!["platform-story"]);
+    }
+
+    #[tokio::test]
+    async fn modules_for_config_skips_disabled_linked_modules() {
+        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build");
+        let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
+        config.modules.insert(
+            "identity".to_owned(),
+            ModuleConfig {
+                enabled: Some(false),
+                values: BTreeMap::new(),
+            },
+        );
+        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
+
+        let names = modules_for_config(&ctx)
+            .expect("demo linked profile should parse")
+            .into_iter()
+            .map(|module| module.manifest.name)
+            .collect::<Vec<_>>();
+
+        assert_eq!(names, vec!["notifications", "platform-story"]);
+    }
+
+    #[test]
+    fn migrations_for_config_skip_disabled_linked_module_migrations() {
+        let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
+        config.modules.insert(
+            "identity".to_owned(),
+            ModuleConfig {
+                enabled: Some(false),
+                values: BTreeMap::new(),
+            },
+        );
+
+        let names = migrations_for_config(&config)
+            .expect("demo linked profile should parse")
+            .into_iter()
+            .map(|migration| migration.name)
+            .collect::<Vec<_>>();
+
+        assert!(!names.iter().any(|name| name.starts_with("identity/")));
+        assert!(
+            names
+                .iter()
+                .any(|name| name == &"notifications/0001_create_notifications_schema")
+        );
+    }
+
+    #[test]
+    fn linked_http_modules_for_config_skip_disabled_linked_routes() {
+        let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
+        config.modules.insert(
+            "identity".to_owned(),
+            ModuleConfig {
+                enabled: Some(false),
+                values: BTreeMap::new(),
+            },
+        );
+
+        assert!(
+            linked_http_modules_for_config(&config)
+                .expect("demo linked profile should parse")
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn module_metadata_reports_disabled_linked_modules() {
+        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build");
+        let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
+        config.modules.insert(
+            "identity".to_owned(),
+            ModuleConfig {
+                enabled: Some(false),
+                values: BTreeMap::new(),
+            },
+        );
+        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
+
+        let metadata = load_admin_module_metadata(&ctx)
+            .await
+            .expect("module metadata should load");
+        let identity = metadata
+            .iter()
+            .find(|module| module.module_name == "identity")
+            .expect("disabled module should remain visible in metadata");
+
+        assert!(matches!(
+            &identity.load_status,
+            ModuleLoadStatus::Error { message }
+                if message == "module disabled by configuration"
+        ));
     }
 
     #[test]

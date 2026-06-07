@@ -16,9 +16,8 @@ pub fn build_router(ctx: AppContext) -> Router {
 }
 
 pub fn try_build_router(ctx: AppContext) -> platform_core::AppResult<Router> {
-    let profile = app_bootstrap::CompositionProfile::from_config(&ctx.config)?;
-    install_default_platform_admin_catalogs(profile);
-    let (router, document) = openapi::api_router_for_profile(profile).split_for_parts();
+    install_default_platform_admin_catalogs(&ctx.config)?;
+    let (router, document) = openapi::api_router_for_config(&ctx.config)?.split_for_parts();
     let document = Arc::new(document);
 
     Ok(router
@@ -33,15 +32,18 @@ pub fn try_build_router(ctx: AppContext) -> platform_core::AppResult<Router> {
         .with_state(ctx))
 }
 
-fn install_default_platform_admin_catalogs(profile: app_bootstrap::CompositionProfile) {
+fn install_default_platform_admin_catalogs(
+    config: &platform_core::AppConfig,
+) -> platform_core::AppResult<()> {
     platform_admin::install_default_story_display(
-        app_bootstrap::story_display_descriptors_for_profile(profile),
+        app_bootstrap::story_display_descriptors_for_config(config)?,
     );
     platform_admin::install_default_runtime_function_declarations(
         platform_admin::runtime_function_declarations_from_modules(
-            app_bootstrap::linked_runtime_function_declaration_sources_for_profile(profile),
+            app_bootstrap::linked_runtime_function_declaration_sources_for_config(config)?,
         ),
     );
+    Ok(())
 }
 
 async fn scalar_docs() -> Html<&'static str> {

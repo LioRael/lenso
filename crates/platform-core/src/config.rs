@@ -155,8 +155,17 @@ pub struct AuthConfig {
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct ModuleConfig {
+    #[serde(default)]
+    pub enabled: Option<bool>,
     #[serde(flatten)]
     pub values: BTreeMap<String, serde_json::Value>,
+}
+
+impl ModuleConfig {
+    #[must_use]
+    pub fn is_enabled(&self) -> bool {
+        self.enabled.unwrap_or(true)
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
