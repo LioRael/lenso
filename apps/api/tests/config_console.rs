@@ -14,7 +14,7 @@ use tower::ServiceExt;
 fn registry() -> RuntimeConfigRegistry {
     RuntimeConfigRegistry::try_new(vec![
         RuntimeConfigDescriptor {
-            key: "demo.flag",
+            key: "demo.flag".to_owned(),
             scope: RuntimeConfigScope::Shared,
             value_type: RuntimeConfigType::Bool,
             default: json!(false),
@@ -23,7 +23,7 @@ fn registry() -> RuntimeConfigRegistry {
             description: "demo flag",
         },
         RuntimeConfigDescriptor {
-            key: "demo.locked",
+            key: "demo.locked".to_owned(),
             scope: RuntimeConfigScope::Shared,
             value_type: RuntimeConfigType::Bool,
             default: json!(true),

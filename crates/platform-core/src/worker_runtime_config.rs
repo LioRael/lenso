@@ -29,7 +29,7 @@ impl Default for WorkerRuntimeConfig {
 pub static RUNTIME_CONFIG: LazyLock<Vec<RuntimeConfigDescriptor>> = LazyLock::new(|| {
     vec![
         RuntimeConfigDescriptor {
-            key: "worker.poll_interval_ms",
+            key: "worker.poll_interval_ms".to_owned(),
             scope: RuntimeConfigScope::Service("worker"),
             value_type: RuntimeConfigType::Int {
                 min: Some(50),
@@ -41,7 +41,7 @@ pub static RUNTIME_CONFIG: LazyLock<Vec<RuntimeConfigDescriptor>> = LazyLock::ne
             description: "Milliseconds the worker sleeps between poll ticks.",
         },
         RuntimeConfigDescriptor {
-            key: "worker.batch_size",
+            key: "worker.batch_size".to_owned(),
             scope: RuntimeConfigScope::Service("worker"),
             value_type: RuntimeConfigType::Int {
                 min: Some(1),

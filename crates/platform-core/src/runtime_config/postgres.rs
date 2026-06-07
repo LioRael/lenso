@@ -24,8 +24,8 @@ fn freeze_restart_only(
             continue;
         }
         if let (Some(value), Some(source)) = (
-            snapshot.raw(descriptor.key),
-            snapshot.source(descriptor.key),
+            snapshot.raw(&descriptor.key),
+            snapshot.source(&descriptor.key),
         ) {
             frozen.insert(descriptor.key.to_owned(), (value.clone(), source));
         }

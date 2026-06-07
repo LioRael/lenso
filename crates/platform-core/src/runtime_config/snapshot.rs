@@ -143,7 +143,7 @@ mod tests {
     fn registry() -> RuntimeConfigRegistry {
         RuntimeConfigRegistry::try_new(vec![
             RuntimeConfigDescriptor {
-                key: "identity.password_reset_ttl_minutes",
+                key: "identity.password_reset_ttl_minutes".to_owned(),
                 scope: RuntimeConfigScope::Shared,
                 value_type: RuntimeConfigType::Int {
                     min: Some(1),
@@ -155,7 +155,7 @@ mod tests {
                 description: "ttl",
             },
             RuntimeConfigDescriptor {
-                key: "api.feature.enabled",
+                key: "api.feature.enabled".to_owned(),
                 scope: RuntimeConfigScope::Service("api"),
                 value_type: RuntimeConfigType::Bool,
                 default: json!(false),

@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 fn registry() -> RuntimeConfigRegistry {
     RuntimeConfigRegistry::try_new(vec![RuntimeConfigDescriptor {
-        key: "demo.ttl_minutes",
+        key: "demo.ttl_minutes".to_owned(),
         scope: RuntimeConfigScope::Shared,
         value_type: RuntimeConfigType::Int {
             min: Some(1),

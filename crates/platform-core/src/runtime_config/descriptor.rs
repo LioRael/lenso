@@ -58,7 +58,7 @@ impl RuntimeConfigType {
 /// A single declared, typed, editable configuration key.
 #[derive(Debug, Clone)]
 pub struct RuntimeConfigDescriptor {
-    pub key: &'static str,
+    pub key: String,
     pub scope: RuntimeConfigScope,
     pub value_type: RuntimeConfigType,
     pub default: Value,
@@ -148,7 +148,7 @@ mod tests {
 
     fn bool_descriptor() -> RuntimeConfigDescriptor {
         RuntimeConfigDescriptor {
-            key: "demo.enabled",
+            key: "demo.enabled".to_owned(),
             scope: RuntimeConfigScope::Shared,
             value_type: RuntimeConfigType::Bool,
             default: json!(true),
@@ -168,7 +168,7 @@ mod tests {
     #[test]
     fn validates_int_range() {
         let d = RuntimeConfigDescriptor {
-            key: "demo.count",
+            key: "demo.count".to_owned(),
             scope: RuntimeConfigScope::Service("api"),
             value_type: RuntimeConfigType::Int {
                 min: Some(1),
@@ -188,7 +188,7 @@ mod tests {
     #[test]
     fn validates_enum() {
         let d = RuntimeConfigDescriptor {
-            key: "demo.mode",
+            key: "demo.mode".to_owned(),
             scope: RuntimeConfigScope::Shared,
             value_type: RuntimeConfigType::Enum(&["a", "b"]),
             default: json!("a"),

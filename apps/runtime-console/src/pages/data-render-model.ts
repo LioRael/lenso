@@ -477,19 +477,23 @@ export function moduleErrorMessage(module: AdminModuleMetadata): string | null {
     : null;
 }
 
+export function moduleDisabledByConfig(module: AdminModuleMetadata): boolean {
+  return moduleErrorMessage(module) === "module disabled by configuration";
+}
+
 export function moduleEnabledConfigKey(moduleName: string): string {
   return `modules.${moduleName}.enabled`;
 }
 
 export function moduleRunningEnabled(module: AdminModuleMetadata): boolean {
-  return module.source === "linked" && moduleIsLoaded(module);
+  return moduleIsLoaded(module);
 }
 
 export function moduleDesiredEnabled(
   module: AdminModuleMetadata,
   values: ConfigValueMetadata[]
 ): boolean | null {
-  if (module.source !== "linked") {
+  if (module.source !== "linked" && module.source !== "remote") {
     return null;
   }
   const match = values.find(
@@ -503,7 +507,13 @@ export function moduleRestartPending(
   values: ConfigValueMetadata[]
 ): boolean {
   const desired = moduleDesiredEnabled(module, values);
-  return desired === null ? false : desired !== moduleRunningEnabled(module);
+  if (
+    desired === null ||
+    (!moduleIsLoaded(module) && !moduleDisabledByConfig(module))
+  ) {
+    return false;
+  }
+  return desired !== moduleRunningEnabled(module);
 }
 
 export function adminSurfaceLabel(surface: AdminSurface | null): string {

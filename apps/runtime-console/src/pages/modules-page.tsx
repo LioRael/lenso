@@ -35,6 +35,7 @@ import {
   moduleActivationLabel,
   moduleActivationReasons,
   moduleConsoleSurfaceRows,
+  moduleDisabledByConfig,
   moduleDesiredEnabled,
   moduleEnabledConfigKey,
   moduleErrorMessage,
@@ -663,12 +664,15 @@ function ModuleOperationsPanel({
   const desiredEnabled = moduleDesiredEnabled(module, configValues);
   const runningEnabled = moduleRunningEnabled(module);
   const restartPending = moduleRestartPending(module, configValues);
-  const disabledByConfig =
-    module.source === "linked" &&
-    moduleErrorMessage(module) === "module disabled by configuration";
+  const disabledByConfig = moduleDisabledByConfig(module);
+  const moduleSupportsToggle =
+    module.source === "linked" || module.source === "remote";
   const moduleToggleTarget =
-    module.source === "linked" &&
-    (moduleIsLoaded(module) || disabledByConfig || restartPending) &&
+    moduleSupportsToggle &&
+    (moduleIsLoaded(module) ||
+      disabledByConfig ||
+      restartPending ||
+      isRemote) &&
     desiredEnabled !== null
       ? !desiredEnabled
       : null;
@@ -690,10 +694,10 @@ function ModuleOperationsPanel({
     },
     onError: (error: unknown) => setModuleToggleMessage(errorMessage(error)),
   });
-  const operationStatus = isRemote
-    ? readiness.status
-    : restartPending
-      ? "pending restart"
+  const operationStatus = restartPending
+    ? "pending restart"
+    : isRemote
+      ? readiness.status
       : moduleIsLoaded(module)
         ? "ready"
         : "blocked";
@@ -711,7 +715,9 @@ function ModuleOperationsPanel({
             readiness.status === "degraded" &&
               "border-[color-mix(in_srgb,var(--warning)_55%,transparent)] text-(--warning)",
             readiness.status === "blocked" &&
-              "border-[color-mix(in_srgb,var(--error)_55%,transparent)] text-(--error)"
+              "border-[color-mix(in_srgb,var(--error)_55%,transparent)] text-(--error)",
+            restartPending &&
+              "border-[color-mix(in_srgb,var(--warning)_55%,transparent)] text-(--warning)"
           )}
         >
           {operationStatus}

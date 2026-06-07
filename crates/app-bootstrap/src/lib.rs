@@ -120,21 +120,31 @@ fn linked_module_enabled_from_config(config: &platform_core::AppConfig, module_n
         .is_none_or(platform_core::ModuleConfig::is_enabled)
 }
 
-fn linked_module_enabled_config_key(module_name: &str) -> &'static str {
-    match module_name {
-        "identity" => "modules.identity.enabled",
-        "notifications" => "modules.notifications.enabled",
-        "platform-story" => "modules.platform-story.enabled",
-        _ => "modules.unknown.enabled",
-    }
+fn module_enabled_config_key(module_name: &str) -> String {
+    format!("modules.{module_name}.enabled")
 }
 
 fn linked_module_enabled(ctx: &AppContext, module_name: &str) -> bool {
     ctx.runtime_config
         .snapshot()
-        .raw(linked_module_enabled_config_key(module_name))
+        .raw(&module_enabled_config_key(module_name))
         .and_then(serde_json::Value::as_bool)
         .unwrap_or_else(|| linked_module_enabled_from_config(&ctx.config, module_name))
+}
+
+fn remote_module_enabled_from_config(config: &platform_core::AppConfig, module_name: &str) -> bool {
+    config
+        .modules
+        .get(module_name)
+        .is_none_or(platform_core::ModuleConfig::is_enabled)
+}
+
+fn remote_module_enabled(ctx: &AppContext, module_name: &str) -> bool {
+    ctx.runtime_config
+        .snapshot()
+        .raw(&module_enabled_config_key(module_name))
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or_else(|| remote_module_enabled_from_config(&ctx.config, module_name))
 }
 
 fn linked_module_entries_for_context(
@@ -228,6 +238,9 @@ pub async fn load_modules(ctx: &AppContext) -> platform_core::AppResult<Vec<Modu
     let mut loaded = modules_for_config(ctx)?;
 
     for remote in &ctx.config.module_sources.remote {
+        if !remote_module_enabled(ctx, &remote.name) {
+            continue;
+        }
         let source = RemoteModuleSource::new(remote_module_config(remote))?;
         loaded.push(source.load().await?);
     }
@@ -367,6 +380,7 @@ pub fn runtime_function_declaration_sources_from_metadata(
 )> {
     modules
         .iter()
+        .filter(|module| matches!(module.load_status, ModuleLoadStatus::Loaded))
         .map(|module| {
             (
                 module.module_name.clone(),
@@ -461,6 +475,9 @@ pub async fn load_admin_modules(ctx: &AppContext) -> platform_core::AppResult<Ve
     let mut admin_modules = admin_modules_from_modules(modules_for_config(ctx)?);
 
     for remote in &ctx.config.module_sources.remote {
+        if !remote_module_enabled(ctx, &remote.name) {
+            continue;
+        }
         let source = RemoteModuleSource::new(remote_module_config(remote))?;
         match source.load().await {
             Ok(module) => admin_modules.extend(admin_modules_from_modules(vec![module])),
@@ -485,6 +502,10 @@ pub async fn load_admin_module_metadata(
 
     for remote in &ctx.config.module_sources.remote {
         let config = remote_module_config(remote);
+        if !remote_module_enabled(ctx, &remote.name) {
+            metadata.push(disabled_remote_admin_metadata(&config));
+            continue;
+        }
         let checked_at = current_timestamp();
         let source = RemoteModuleSource::new(config.clone())?;
         let load_started = Instant::now();
@@ -515,6 +536,9 @@ pub async fn load_remote_http_proxy_registry(
     let mut remote_configs = Vec::new();
 
     for remote in &ctx.config.module_sources.remote {
+        if !remote_module_enabled(ctx, &remote.name) {
+            continue;
+        }
         let config = remote_module_config(remote);
         let source = RemoteModuleSource::new(config.clone())?;
         if let Ok(module) = source.load().await {
@@ -659,6 +683,24 @@ fn failed_remote_admin_metadata(
             load_duration_ms,
             Some(message),
         )),
+    }
+}
+
+fn disabled_remote_admin_metadata(config: &RemoteModuleConfig) -> AdminModuleMetadata {
+    AdminModuleMetadata {
+        module_name: config.name.clone(),
+        source: ModuleSource::Remote,
+        load_status: ModuleLoadStatus::Error {
+            message: "module disabled by configuration".to_owned(),
+        },
+        http_routes: Vec::new(),
+        runtime: None,
+        lifecycle: None,
+        console: Vec::new(),
+        story_display: Vec::new(),
+        capabilities: Vec::new(),
+        admin: None,
+        source_diagnostics: Some(remote_source_diagnostics(config, None, None, None)),
     }
 }
 
@@ -1130,7 +1172,7 @@ pub fn runtime_config_descriptors(
         linked_module_entries(profile)
             .iter()
             .map(|entry| RuntimeConfigDescriptor {
-                key: linked_module_enabled_config_key(entry.module_name),
+                key: module_enabled_config_key(entry.module_name),
                 scope: RuntimeConfigScope::Shared,
                 value_type: RuntimeConfigType::Bool,
                 default: serde_json::json!(linked_module_enabled_from_config(
@@ -1140,6 +1182,23 @@ pub fn runtime_config_descriptors(
                 editable: true,
                 restart_only: true,
                 description: "Whether this linked module is loaded on service startup.",
+            });
+    let remote_module_enabled_descriptors =
+        ctx.config
+            .module_sources
+            .remote
+            .iter()
+            .map(|source| RuntimeConfigDescriptor {
+                key: module_enabled_config_key(&source.name),
+                scope: RuntimeConfigScope::Shared,
+                value_type: RuntimeConfigType::Bool,
+                default: serde_json::json!(remote_module_enabled_from_config(
+                    &ctx.config,
+                    &source.name
+                )),
+                editable: true,
+                restart_only: true,
+                description: "Whether this remote module is loaded on service startup.",
             });
     let module_descriptors = linked_module_entries(profile)
         .iter()
@@ -1153,6 +1212,7 @@ pub fn runtime_config_descriptors(
         .iter()
         .cloned()
         .chain(module_enabled_descriptors)
+        .chain(remote_module_enabled_descriptors)
         .chain(module_descriptors)
         .collect())
 }
@@ -1164,8 +1224,8 @@ mod tests {
     use platform_core::{
         AppConfig, AuthConfig, DatabaseConfig, ErrorCode, ExecutionContext, HttpConfig,
         LoggingEventPublisher, ModuleConfig, ModuleSourcesConfig, PLATFORM_MIGRATIONS,
-        RuntimeConfigProvider, RuntimeConfigRegistry, RuntimeConfigSnapshot, ServiceConfig,
-        TelemetryConfig, apply_migrations,
+        RemoteModuleSourceConfig, RuntimeConfigProvider, RuntimeConfigRegistry,
+        RuntimeConfigSnapshot, ServiceConfig, TelemetryConfig, apply_migrations,
     };
     use platform_module::{
         ConsoleArea, LifecycleActivationJobDeclaration, LifecycleStartupCheckDeclaration,
@@ -1384,11 +1444,118 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert!(keys.iter().any(|(key, restart_only, default)| {
-            *key == "modules.identity.enabled" && *restart_only && default == &json!(true)
+            key == "modules.identity.enabled" && *restart_only && default == &json!(true)
         }));
         assert!(keys.iter().any(|(key, restart_only, default)| {
-            *key == "modules.platform-story.enabled" && *restart_only && default == &json!(true)
+            key == "modules.platform-story.enabled" && *restart_only && default == &json!(true)
         }));
+    }
+
+    #[tokio::test]
+    async fn runtime_config_descriptors_include_remote_module_enabled_flags() {
+        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build");
+        let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
+        config.module_sources.remote.push(RemoteModuleSourceConfig {
+            name: "remote-crm".to_owned(),
+            base_url: "http://127.0.0.1:65535".to_owned(),
+            auth_token_env: None,
+            timeout_ms: 1,
+        });
+        config.modules.insert(
+            "remote-crm".to_owned(),
+            ModuleConfig {
+                enabled: Some(false),
+                values: BTreeMap::new(),
+            },
+        );
+        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
+
+        let keys = runtime_config_descriptors(&ctx)
+            .expect("descriptors should load")
+            .into_iter()
+            .map(|descriptor| (descriptor.key, descriptor.restart_only, descriptor.default))
+            .collect::<Vec<_>>();
+
+        assert!(keys.iter().any(|(key, restart_only, default)| {
+            key == "modules.remote-crm.enabled" && *restart_only && default == &json!(false)
+        }));
+    }
+
+    #[tokio::test]
+    async fn load_modules_skips_runtime_disabled_remote_modules() {
+        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build");
+        let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
+        config.module_sources.remote.push(RemoteModuleSourceConfig {
+            name: "remote-crm".to_owned(),
+            base_url: "http://127.0.0.1:65535".to_owned(),
+            auth_token_env: None,
+            timeout_ms: 1,
+        });
+        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
+        let registry =
+            RuntimeConfigRegistry::try_new(runtime_config_descriptors(&ctx).expect("descriptors"))
+                .expect("registry");
+        let mut stored = BTreeMap::new();
+        stored.insert(
+            ("*".to_owned(), "modules.remote-crm.enabled".to_owned()),
+            json!(false),
+        );
+        let snapshot = RuntimeConfigSnapshot::resolve(&registry, "api", &stored);
+        let ctx = ctx.with_runtime_config_provider(Arc::new(TestRuntimeConfigProvider {
+            snapshot: Arc::new(snapshot),
+        }));
+
+        let names = load_modules(&ctx)
+            .await
+            .expect("disabled remote should not be loaded")
+            .into_iter()
+            .map(|module| module.manifest.name)
+            .collect::<Vec<_>>();
+
+        assert!(!names.iter().any(|name| name == "remote-crm"));
+    }
+
+    #[tokio::test]
+    async fn module_metadata_reports_disabled_remote_modules() {
+        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build");
+        let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
+        config.module_sources.remote.push(RemoteModuleSourceConfig {
+            name: "remote-crm".to_owned(),
+            base_url: "http://127.0.0.1:65535".to_owned(),
+            auth_token_env: None,
+            timeout_ms: 1,
+        });
+        config.modules.insert(
+            "remote-crm".to_owned(),
+            ModuleConfig {
+                enabled: Some(false),
+                values: BTreeMap::new(),
+            },
+        );
+        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
+
+        let metadata = load_admin_module_metadata(&ctx)
+            .await
+            .expect("module metadata should load");
+        let remote = metadata
+            .iter()
+            .find(|module| module.module_name == "remote-crm")
+            .expect("disabled remote module should remain visible in metadata");
+
+        assert_eq!(remote.source, ModuleSource::Remote);
+        assert!(matches!(
+            &remote.load_status,
+            ModuleLoadStatus::Error { message }
+                if message == "module disabled by configuration"
+        ));
+        assert!(matches!(
+            &remote.source_diagnostics,
+            Some(AdminModuleSourceDiagnostics::Remote(diagnostics))
+                if diagnostics.base_url == "http://127.0.0.1:65535"
+        ));
     }
 
     #[test]
@@ -1461,6 +1628,32 @@ mod tests {
             ModuleLoadStatus::Error { message }
                 if message == "module disabled by configuration"
         ));
+    }
+
+    #[tokio::test]
+    async fn runtime_declaration_sources_exclude_disabled_module_metadata() {
+        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build");
+        let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
+        config.modules.insert(
+            "identity".to_owned(),
+            ModuleConfig {
+                enabled: Some(false),
+                values: BTreeMap::new(),
+            },
+        );
+        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
+
+        let metadata = load_admin_module_metadata(&ctx)
+            .await
+            .expect("module metadata should load");
+        let sources = runtime_function_declaration_sources_from_metadata(&metadata);
+
+        assert!(
+            !sources
+                .iter()
+                .any(|(name, _, runtime)| name == "identity" && runtime.is_some())
+        );
     }
 
     #[test]

@@ -21,7 +21,7 @@ impl Default for IdentityConfig {
 /// Editable settings owned by the identity module.
 pub static RUNTIME_CONFIG: LazyLock<Vec<RuntimeConfigDescriptor>> = LazyLock::new(|| {
     vec![RuntimeConfigDescriptor {
-        key: "identity.password_reset_ttl_minutes",
+        key: "identity.password_reset_ttl_minutes".to_owned(),
         scope: RuntimeConfigScope::Shared,
         value_type: RuntimeConfigType::Int {
             min: Some(5),

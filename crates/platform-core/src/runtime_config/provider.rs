@@ -82,7 +82,7 @@ mod tests {
     #[test]
     fn static_provider_serves_defaults() {
         let registry = RuntimeConfigRegistry::try_new(vec![RuntimeConfigDescriptor {
-            key: "demo.enabled",
+            key: "demo.enabled".to_owned(),
             scope: RuntimeConfigScope::Shared,
             value_type: RuntimeConfigType::Bool,
             default: json!(true),
@@ -100,7 +100,7 @@ mod tests {
         let cell = RuntimeConfigCell::new(RuntimeConfigSnapshot::default());
         assert!(cell.load().raw("x").is_none());
         let registry = RuntimeConfigRegistry::try_new(vec![RuntimeConfigDescriptor {
-            key: "x",
+            key: "x".to_owned(),
             scope: RuntimeConfigScope::Shared,
             value_type: RuntimeConfigType::Bool,
             default: json!(false),

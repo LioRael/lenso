@@ -24,6 +24,7 @@ import {
   moduleActivationLabel,
   moduleActivationReasons,
   moduleConsoleSurfaceRows,
+  moduleDisabledByConfig,
   moduleDesiredEnabled,
   moduleEnabledConfigKey,
   moduleErrorMessage,
@@ -393,8 +394,45 @@ describe("module status helpers", () => {
       ])
     ).toBe(true);
     expect(moduleRunningEnabled(disabledModule)).toBe(false);
+    expect(moduleDisabledByConfig(disabledModule)).toBe(true);
     expect(moduleDesiredEnabled(disabledModule, values)).toBe(true);
     expect(moduleRestartPending(disabledModule, values)).toBe(true);
+  });
+
+  test("compares remote module enabled state without treating load failures as restart pending", () => {
+    const disabledRemoteModule = moduleMetadata({
+      admin: null,
+      error: "module disabled by configuration",
+      http_routes: [],
+      module_name: "remote-crm",
+      source: "remote",
+      status: "error",
+    });
+    const failedRemoteModule = moduleMetadata({
+      admin: null,
+      error: "manifest unavailable",
+      http_routes: [],
+      module_name: "remote-billing",
+      source: "remote",
+      status: "error",
+    });
+
+    expect(
+      moduleDesiredEnabled(disabledRemoteModule, [
+        { key: moduleEnabledConfigKey("remote-crm"), value: true },
+      ])
+    ).toBe(true);
+    expect(
+      moduleRestartPending(disabledRemoteModule, [
+        { key: moduleEnabledConfigKey("remote-crm"), value: true },
+      ])
+    ).toBe(true);
+    expect(moduleDesiredEnabled(failedRemoteModule, [])).toBe(true);
+    expect(
+      moduleRestartPending(failedRemoteModule, [
+        { key: moduleEnabledConfigKey("remote-billing"), value: true },
+      ])
+    ).toBe(false);
   });
 
   test("builds governance rows from backend metadata", () => {
