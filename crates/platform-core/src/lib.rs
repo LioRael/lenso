@@ -26,8 +26,8 @@ pub use admin_actions::{
 };
 pub use clock::{Clock, SystemClock};
 pub use config::{
-    AppConfig, AuthConfig, DatabaseConfig, HttpConfig, LogFormat, ModuleConfig,
-    ModuleSourcesConfig, RemoteModuleSourceConfig, ServiceConfig, TelemetryConfig,
+    AppConfig, AuthConfig, DEFAULT_LINKED_MODULE_PROFILE, DatabaseConfig, HttpConfig, LogFormat,
+    ModuleConfig, ModuleSourcesConfig, RemoteModuleSourceConfig, ServiceConfig, TelemetryConfig,
     parse_cors_allowed_origins,
 };
 pub use context::{

@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+pub const DEFAULT_LINKED_MODULE_PROFILE: &str = "demo";
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AppConfig {
     pub service: ServiceConfig,
@@ -22,9 +24,7 @@ impl AppConfig {
             http: HttpConfig::default(),
             telemetry: TelemetryConfig::default(),
             auth: AuthConfig::default(),
-            module_sources: ModuleSourcesConfig {
-                remote: remote_module_sources_from_env(),
-            },
+            module_sources: ModuleSourcesConfig::from_env(),
             modules: BTreeMap::new(),
         }
     }
@@ -159,10 +159,44 @@ pub struct ModuleConfig {
     pub values: BTreeMap<String, serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ModuleSourcesConfig {
+    #[serde(default = "default_linked_module_profile")]
+    pub linked_profile: String,
     #[serde(default)]
     pub remote: Vec<RemoteModuleSourceConfig>,
+}
+
+impl ModuleSourcesConfig {
+    fn from_env() -> Self {
+        Self {
+            linked_profile: linked_module_profile_from_env_value(
+                std::env::var("LENSO_COMPOSITION_PROFILE").ok().as_deref(),
+            ),
+            remote: remote_module_sources_from_env(),
+        }
+    }
+}
+
+impl Default for ModuleSourcesConfig {
+    fn default() -> Self {
+        Self {
+            linked_profile: default_linked_module_profile(),
+            remote: Vec::new(),
+        }
+    }
+}
+
+fn default_linked_module_profile() -> String {
+    DEFAULT_LINKED_MODULE_PROFILE.to_owned()
+}
+
+fn linked_module_profile_from_env_value(value: Option<&str>) -> String {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(DEFAULT_LINKED_MODULE_PROFILE)
+        .to_owned()
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -212,6 +246,38 @@ fn parse_remote_module_source(entry: &str) -> Option<RemoteModuleSourceConfig> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn module_sources_default_to_demo_linked_profile() {
+        let config = ModuleSourcesConfig::default();
+
+        assert_eq!(config.linked_profile, DEFAULT_LINKED_MODULE_PROFILE);
+        assert!(config.remote.is_empty());
+    }
+
+    #[test]
+    fn linked_module_profile_from_env_value_trims_empty_to_default() {
+        assert_eq!(
+            linked_module_profile_from_env_value(None),
+            DEFAULT_LINKED_MODULE_PROFILE
+        );
+        assert_eq!(
+            linked_module_profile_from_env_value(Some("  ")),
+            DEFAULT_LINKED_MODULE_PROFILE
+        );
+        assert_eq!(linked_module_profile_from_env_value(Some("core")), "core");
+        assert_eq!(linked_module_profile_from_env_value(Some(" demo ")), "demo");
+    }
+
+    #[test]
+    fn module_sources_deserialize_missing_linked_profile_to_default() {
+        let config: ModuleSourcesConfig =
+            serde_json::from_value(serde_json::json!({ "remote": [] }))
+                .expect("module sources deserialize");
+
+        assert_eq!(config.linked_profile, DEFAULT_LINKED_MODULE_PROFILE);
+        assert!(config.remote.is_empty());
+    }
 
     #[test]
     fn parses_remote_module_source_entry() {

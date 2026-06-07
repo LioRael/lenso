@@ -63,7 +63,10 @@ async fn app_with_remote_modules_and_db(
         http: HttpConfig::default(),
         telemetry: TelemetryConfig::default(),
         auth: AuthConfig::default(),
-        module_sources: ModuleSourcesConfig { remote },
+        module_sources: ModuleSourcesConfig {
+            remote,
+            ..ModuleSourcesConfig::default()
+        },
         modules: Default::default(),
     };
     let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
