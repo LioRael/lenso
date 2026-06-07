@@ -20,6 +20,7 @@ import {
 } from "../app/console-module-metadata";
 import { Button } from "../components/ui/button";
 import {
+  availableModuleRegistrySnapshotPanelState,
   availableModuleRegistrySnapshotQueryKey,
   availableModuleRegistrySnapshotRows,
   fetchAvailableModuleRegistrySnapshot,
@@ -153,6 +154,11 @@ function ModulesContent() {
         availableModuleRegistryQuery.data
       )
     : availableModuleRegistrySnapshotRows();
+  const availableModulePanelState = availableModuleRegistrySnapshotPanelState({
+    isError: availableModuleRegistryQuery.isError,
+    isLoading: availableModuleRegistryQuery.isLoading,
+    rows: availableModuleRows,
+  });
   const [selectedModuleName, setSelectedModuleName] = useState<string | null>(
     null
   );
@@ -215,6 +221,7 @@ function ModulesContent() {
         <nav className="min-h-0 overflow-auto border-r border-(--border-subtle) p-2 font-mono text-[12px]">
           <ModuleRegistryCatalogPanel
             moduleName={selectedModuleName}
+            panelState={availableModulePanelState}
             rows={availableModuleRows}
           />
           <ModuleRegistryControls
@@ -302,9 +309,11 @@ function ModulesContent() {
 
 function ModuleRegistryCatalogPanel({
   moduleName,
+  panelState,
   rows,
 }: {
   moduleName: string | null;
+  panelState: ReturnType<typeof availableModuleRegistrySnapshotPanelState>;
   rows: ReturnType<typeof availableModuleRegistrySnapshotRows>;
 }) {
   const commands = moduleRegistryHandoffCommands(moduleName ?? "<module>");
@@ -320,38 +329,54 @@ function ModuleRegistryCatalogPanel({
           Registry v0
         </span>
       </header>
-      <div className="border-b border-(--border-subtle) px-2 py-1 text-[9px] text-(--muted)">
-        read-only preflight from registry doctor JSON snapshot
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 border-b border-(--border-subtle) px-2 py-1 text-[9px]">
+        <span className="truncate text-(--muted)">{panelState.message}</span>
+        <span
+          className={cn(
+            "shrink-0 border px-1 py-0.5",
+            registrySnapshotStateClass(panelState.kind)
+          )}
+        >
+          {panelState.label}
+        </span>
       </div>
       <div className="grid gap-1 border-b border-(--border-subtle) p-2">
-        {rows.map((row) => (
-          <div
-            className="grid gap-1 border border-(--border-subtle) bg-(--background) px-2 py-1.5"
-            key={row.key}
-          >
-            <div className="flex min-w-0 items-center gap-1">
-              <span className="truncate text-[11px] text-(--foreground)">
-                {row.name}
-              </span>
-              <span className="shrink-0 text-[9px] text-(--muted)">
-                {row.version}
-              </span>
-              <span
-                className={cn(
-                  "ml-auto shrink-0 border px-1 py-0.5 text-[9px]",
-                  availableModuleStatusClass(row.preflightStatus)
-                )}
-                title={row.preflightReason}
-              >
-                {row.preflightLabel}
-              </span>
-            </div>
-            <div className="truncate text-[9px] text-(--muted)">
-              {row.source} / caps {row.capabilityCount} / console{" "}
-              {row.consolePackageHintCount}
-            </div>
+        {panelState.kind === "loading" ||
+        panelState.kind === "error" ||
+        panelState.kind === "empty" ? (
+          <div className="border border-(--border-subtle) bg-(--background) px-2 py-1.5 text-[10px] text-(--muted)">
+            {panelState.message}
           </div>
-        ))}
+        ) : (
+          rows.map((row) => (
+            <div
+              className="grid gap-1 border border-(--border-subtle) bg-(--background) px-2 py-1.5"
+              key={row.key}
+            >
+              <div className="flex min-w-0 items-center gap-1">
+                <span className="truncate text-[11px] text-(--foreground)">
+                  {row.name}
+                </span>
+                <span className="shrink-0 text-[9px] text-(--muted)">
+                  {row.version}
+                </span>
+                <span
+                  className={cn(
+                    "ml-auto shrink-0 border px-1 py-0.5 text-[9px]",
+                    availableModuleStatusClass(row.preflightStatus)
+                  )}
+                  title={row.preflightReason}
+                >
+                  {row.preflightLabel}
+                </span>
+              </div>
+              <div className="truncate text-[9px] text-(--muted)">
+                {row.source} / caps {row.capabilityCount} / console{" "}
+                {row.consolePackageHintCount}
+              </div>
+            </div>
+          ))
+        )}
       </div>
       <div className="grid gap-1 p-2">
         {commands.map((item) => (
@@ -383,6 +408,21 @@ function availableModuleStatusClass(status: AvailableModulePreflightStatus) {
     return "border-[color-mix(in_srgb,var(--warning)_55%,transparent)] text-(--warning)";
   }
   if (status === "manifest_mismatch") {
+    return "border-[color-mix(in_srgb,var(--error)_55%,transparent)] text-(--error)";
+  }
+  return "border-[color-mix(in_srgb,var(--info)_35%,transparent)] text-(--info)";
+}
+
+function registrySnapshotStateClass(
+  state: ReturnType<typeof availableModuleRegistrySnapshotPanelState>["kind"]
+) {
+  if (state === "ready") {
+    return "border-[color-mix(in_srgb,var(--success)_45%,transparent)] text-(--success)";
+  }
+  if (state === "issues") {
+    return "border-[color-mix(in_srgb,var(--warning)_55%,transparent)] text-(--warning)";
+  }
+  if (state === "error") {
     return "border-[color-mix(in_srgb,var(--error)_55%,transparent)] text-(--error)";
   }
   return "border-[color-mix(in_srgb,var(--info)_35%,transparent)] text-(--info)";

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  availableModuleRegistrySnapshotPanelState,
   availableModuleRegistrySnapshotQueryKey,
   availableModuleRegistrySnapshotRows,
   fetchAvailableModuleRegistrySnapshot,
@@ -57,5 +58,71 @@ describe("available module registry snapshot provider", () => {
       fetchAvailableModuleRegistrySnapshot({ apiMode: true, client })
     ).resolves.toBe(snapshot);
     expect(getCalls).toEqual(["admin/data/module-registry/snapshot"]);
+  });
+
+  test("summarizes registry snapshot panel states", () => {
+    expect(
+      availableModuleRegistrySnapshotPanelState({
+        isError: false,
+        isLoading: true,
+        rows: [],
+      })
+    ).toEqual({
+      issueCount: 0,
+      kind: "loading",
+      label: "loading snapshot",
+      message: "Fetching registry preflight snapshot.",
+    });
+
+    expect(
+      availableModuleRegistrySnapshotPanelState({
+        isError: true,
+        isLoading: false,
+        rows: [],
+      })
+    ).toMatchObject({
+      kind: "error",
+      label: "snapshot unavailable",
+    });
+
+    expect(
+      availableModuleRegistrySnapshotPanelState({
+        isError: false,
+        isLoading: false,
+        rows: [],
+      })
+    ).toMatchObject({
+      kind: "empty",
+      label: "no remote modules",
+    });
+
+    expect(
+      availableModuleRegistrySnapshotPanelState({
+        isError: false,
+        isLoading: false,
+        rows: availableModuleRegistrySnapshotRows(),
+      })
+    ).toMatchObject({
+      issueCount: 1,
+      kind: "issues",
+      label: "1 issue",
+    });
+
+    expect(
+      availableModuleRegistrySnapshotPanelState({
+        isError: false,
+        isLoading: false,
+        rows: availableModuleRegistrySnapshotRows({
+          ...sampleAvailableModuleRegistrySnapshot,
+          issues: [],
+          modules: [sampleAvailableModuleRegistrySnapshot.modules[0]!],
+          status: "passed",
+        }),
+      })
+    ).toMatchObject({
+      issueCount: 0,
+      kind: "ready",
+      label: "ready",
+    });
   });
 });
