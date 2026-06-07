@@ -1031,6 +1031,9 @@ describe("module scaffold CLI", () => {
     expect(flowDoc).toContain("lenso module registry list");
     expect(flowDoc).toContain("lenso module registry doctor");
     expect(flowDoc).toContain("lenso module registry doctor --registry-file");
+    expect(flowDoc).toContain("/admin/data/module-registry/snapshot");
+    expect(flowDoc).toContain("Available Modules");
+    expect(flowDoc).toContain("does not install modules");
     expect(flowDoc).toContain("lenso module registry inspect");
     expect(flowDoc).toContain("lenso module registry install");
     expect(flowDoc).toContain("lenso console-package apply-plan");

@@ -43,6 +43,19 @@ console package hint counts, grouped issue details, and an overall
 `passed`/`failed` status. It does not install packages or mutate host
 configuration.
 
+When the host API is running, the Runtime Console reads the host-side snapshot
+from:
+
+```text
+GET /admin/data/module-registry/snapshot
+```
+
+The Modules page shows this snapshot in the Available Modules panel. That panel
+is a read-only operator aid: it shows loading, error, empty, ready, and issue
+states; lets the operator select a module row; and exposes copyable CLI handoff
+commands for catalog inspection, preflight, install, apply-plan, and doctor
+verification. It does not install modules or mutate host configuration.
+
 Install from the registry when the entry looks right:
 
 ```sh
