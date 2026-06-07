@@ -74,6 +74,7 @@ The CLI extends the existing module tooling:
 lenso module registry list --registry-file .lenso/module-registry.json
 lenso module registry inspect billing --registry-file .lenso/module-registry.json
 lenso module registry install billing --registry-file .lenso/module-registry.json
+lenso module registry history
 ```
 
 `install` calls the same remote module install implementation as

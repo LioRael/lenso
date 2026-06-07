@@ -1618,6 +1618,29 @@ const appendModuleRegistryInstallHistory = async ({
   await writeFile(historyPath, `${JSON.stringify(history, null, 2)}\n`);
 };
 
+const printModuleRegistryInstallHistory = async ({ options }) => {
+  const repoRoot = options.repoRoot
+    ? path.resolve(options.repoRoot)
+    : await findRepoRoot(process.cwd());
+  const historyPath = moduleRegistryInstallHistoryPath({ options, repoRoot });
+  const history = await readModuleRegistryInstallHistory(historyPath);
+
+  console.log("Module registry install history:");
+  console.log(`- file: ${path.relative(repoRoot, historyPath)}`);
+  if (history.entries.length === 0) {
+    console.log("- no registry installs recorded");
+    return;
+  }
+  for (const entry of history.entries) {
+    console.log(
+      `- ${entry.moduleName} ${entry.catalogVersion} ${entry.installPolicy}`
+    );
+    console.log(`  installed: ${entry.installedAt}`);
+    console.log(`  base URL: ${entry.baseUrl}`);
+    console.log(`  manifest: ${entry.manifestReference}`);
+  }
+};
+
 const installRegistryModule = async ({ moduleName, options }) => {
   const { entries, repoRoot } = await readModuleRegistry({ options });
   const entry = findRegistryModule({ entries, moduleName });
@@ -2100,6 +2123,14 @@ const addModuleRegistryInstallOptions = (command) =>
     )
     .option("--dry-run", "print install changes without writing them");
 
+const addModuleRegistryHistoryOptions = (command) =>
+  command
+    .option("--repo-root <path>", "Lenso host repository root")
+    .option(
+      "--install-history-file <path>",
+      "module registry install history file"
+    );
+
 const addApplyPlanOptions = (command) =>
   command
     .option("--repo-root <path>", "Lenso host repository root")
@@ -2130,6 +2161,7 @@ Third-party remote module flow:
   lenso module registry doctor
   lenso module registry inspect <module>
   lenso module registry install <module>
+  lenso module registry history
   lenso module add <manifest-url>
   lenso console-package apply-plan
   lenso module doctor
@@ -2178,6 +2210,11 @@ Third-party remote module flow:
       .description("inspect a registry module and validate its manifest")
   ).action(async (moduleName, options) => {
     await inspectRegistryModule({ moduleName, options });
+  });
+  addModuleRegistryHistoryOptions(
+    registryCommand.command("history").description("list registry installs")
+  ).action(async (options) => {
+    await printModuleRegistryInstallHistory({ options });
   });
   addModuleRegistryInstallOptions(
     registryCommand

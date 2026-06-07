@@ -60,6 +60,7 @@ Install from the registry when the entry looks right:
 
 ```sh
 lenso module registry install billing --registry-file .lenso/module-registry.json
+lenso module registry history
 ```
 
 Registry install is deliberately gated. Catalog entries default to
@@ -78,6 +79,11 @@ It also appends a local audit entry to:
 
 The history records the module name/version, manifest reference, base URL,
 install policy, console package hint count, source, action, and install time.
+View it from the CLI:
+
+```sh
+lenso module registry history
+```
 
 Add the remote module source:
 

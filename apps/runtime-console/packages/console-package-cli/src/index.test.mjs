@@ -812,6 +812,54 @@ describe("module scaffold CLI", () => {
     );
   });
 
+  test("prints registry install history entries", async () => {
+    const repoRoot = await createRepoFixture();
+    await writeFixture(
+      repoRoot,
+      ".lenso/module-registry-install-history.json",
+      JSON.stringify(
+        {
+          entries: [
+            {
+              action: "registry.install",
+              baseUrl: "https://example.com/lenso/module/v1",
+              catalogVersion: "0.1.0",
+              consolePackageHints: 1,
+              installPolicy: "trusted",
+              installedAt: "2026-06-07T12:00:00.000Z",
+              manifestReference: "https://example.com/lenso/module/v1/manifest",
+              moduleName: "billing",
+              source: "remote",
+            },
+          ],
+          version: 1,
+        },
+        null,
+        2
+      )
+    );
+
+    const logs = await captureConsoleLogs(async () => {
+      await expect(
+        runConsolePackageCli([
+          "module",
+          "registry",
+          "history",
+          "--repo-root",
+          repoRoot,
+        ])
+      ).resolves.toBe(0);
+    });
+
+    expect(logs).toContain("Module registry install history:");
+    expect(logs).toContain("billing 0.1.0 trusted");
+    expect(logs).toContain("installed: 2026-06-07T12:00:00.000Z");
+    expect(logs).toContain("base URL: https://example.com/lenso/module/v1");
+    expect(logs).toContain(
+      "manifest: https://example.com/lenso/module/v1/manifest"
+    );
+  });
+
   test("passes registry doctor for a valid catalog", async () => {
     const repoRoot = await createRepoFixture();
     const manifestUrl = await serveManifest({
@@ -1111,6 +1159,7 @@ describe("module scaffold CLI", () => {
     expect(flowDoc).toContain("does not install modules");
     expect(flowDoc).toContain("lenso module registry inspect");
     expect(flowDoc).toContain("lenso module registry install");
+    expect(flowDoc).toContain("lenso module registry history");
     expect(flowDoc).toContain("lenso console-package apply-plan");
     expect(flowDoc).toContain("lenso module doctor");
     expect(flowDoc).toContain("## Troubleshooting");
