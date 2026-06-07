@@ -27,6 +27,10 @@ import {
   runtimeConsoleDataSource,
 } from "../lib/http-client";
 import {
+  type AvailableModulePreflightStatus,
+  availableModuleRegistryRows,
+} from "./available-module-registry-model";
+import {
   type AdminModuleMetadata,
   type ConfigValueMetadata,
   type ModuleRegistryFilters,
@@ -102,6 +106,34 @@ const modulesQueryKey = ["modules", "registry"] as const;
 const configValuesQueryKey = ["config", "values"] as const;
 const emptyModules: AdminModuleMetadata[] = [];
 const emptyConfigValues: ConfigValueMetadata[] = [];
+const sampleAvailableModuleRows = availableModuleRegistryRows({
+  modules: [
+    {
+      baseUrl: "https://example.com/lenso/module/v1",
+      capabilities: ["billing.read", "billing.write"],
+      consolePackages: [
+        {
+          exportName: "billingConsoleModule",
+          packageName: "@vendor/lenso-billing-console",
+          route: "/data/billing",
+        },
+      ],
+      manifestReference: "https://example.com/lenso/module/v1/manifest",
+      name: "billing",
+      source: "remote",
+      summary: "Billing workspace and operations",
+      version: "0.1.0",
+    },
+    {
+      manifestReference: "./lenso.module.json",
+      name: "local-crm",
+      source: "remote",
+      summary: "Local package manifest needs baseUrl",
+      version: "0.1.0",
+    },
+  ],
+  version: 1,
+});
 
 function configPath(service: string, key: string) {
   return `admin/config/${encodeURIComponent(service)}/${encodeURIComponent(key)}`;
@@ -288,7 +320,7 @@ function ModuleRegistryCatalogPanel({
   const commands = moduleRegistryHandoffCommands(moduleName ?? "<module>");
 
   return (
-    <section className="mb-2 border border-(--border-subtle) bg-(--surface)">
+    <section className="mb-2 min-w-0 border border-(--border-subtle) bg-(--surface)">
       <header className="flex items-center gap-1.5 border-b border-(--border-subtle) px-2 py-1.5">
         <SquareTerminal className="text-(--accent)" size={13} />
         <span className="truncate text-[10px] font-semibold uppercase text-(--secondary)">
@@ -298,6 +330,36 @@ function ModuleRegistryCatalogPanel({
           Registry v0
         </span>
       </header>
+      <div className="grid gap-1 border-b border-(--border-subtle) p-2">
+        {sampleAvailableModuleRows.map((row) => (
+          <div
+            className="grid gap-1 border border-(--border-subtle) bg-(--background) px-2 py-1.5"
+            key={row.key}
+          >
+            <div className="flex min-w-0 items-center gap-1">
+              <span className="truncate text-[11px] text-(--foreground)">
+                {row.name}
+              </span>
+              <span className="shrink-0 text-[9px] text-(--muted)">
+                {row.version}
+              </span>
+              <span
+                className={cn(
+                  "ml-auto shrink-0 border px-1 py-0.5 text-[9px]",
+                  availableModuleStatusClass(row.preflightStatus)
+                )}
+                title={row.preflightReason}
+              >
+                {row.preflightLabel}
+              </span>
+            </div>
+            <div className="truncate text-[9px] text-(--muted)">
+              {row.source} / caps {row.capabilityCount} / console{" "}
+              {row.consolePackageHintCount}
+            </div>
+          </div>
+        ))}
+      </div>
       <div className="grid gap-1 p-2">
         {commands.map((item) => (
           <div
@@ -318,6 +380,19 @@ function ModuleRegistryCatalogPanel({
       </div>
     </section>
   );
+}
+
+function availableModuleStatusClass(status: AvailableModulePreflightStatus) {
+  if (status === "ready") {
+    return "border-[color-mix(in_srgb,var(--success)_45%,transparent)] text-(--success)";
+  }
+  if (status === "needs_base_url" || status === "package_hint_mismatch") {
+    return "border-[color-mix(in_srgb,var(--warning)_55%,transparent)] text-(--warning)";
+  }
+  if (status === "manifest_mismatch") {
+    return "border-[color-mix(in_srgb,var(--error)_55%,transparent)] text-(--error)";
+  }
+  return "border-[color-mix(in_srgb,var(--info)_35%,transparent)] text-(--info)";
 }
 
 function ModuleRefreshHistory({ history }: { history: ModuleRefreshRecord[] }) {
