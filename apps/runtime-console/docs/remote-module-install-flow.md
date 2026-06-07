@@ -22,6 +22,23 @@ to the host application.
 
 ## Host Developer
 
+If your host has a curated module registry catalog, inspect the available
+entries before installing:
+
+```sh
+lenso module registry list --registry-file .lenso/module-registry.json
+lenso module registry inspect billing --registry-file .lenso/module-registry.json
+```
+
+Install from the registry when the entry looks right:
+
+```sh
+lenso module registry install billing --registry-file .lenso/module-registry.json
+```
+
+Registry install still writes the same host-local source configuration and
+console package install plan as `lenso module add`.
+
 Add the remote module source:
 
 ```sh

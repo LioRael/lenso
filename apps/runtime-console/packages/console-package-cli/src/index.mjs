@@ -1342,6 +1342,227 @@ const addRemoteModule = async ({ manifestReference, options }) => {
   );
 };
 
+const registryConsolePackageKey = ({ exportName, packageName }) =>
+  packageName && exportName ? `${packageName}#${exportName}` : null;
+
+const consolePackagesFromRegistryEntry = (entry) =>
+  (entry.consolePackages ?? [])
+    .map((consolePackage) =>
+      registryConsolePackageKey({
+        exportName: consolePackage.exportName,
+        packageName: consolePackage.packageName,
+      })
+    )
+    .filter(Boolean);
+
+const consolePackagesFromManifest = (manifest) =>
+  remoteModuleConsolePackagePlans({
+    manifest,
+    moduleName: manifest.name,
+  }).map((consolePackage) => consolePackage.key);
+
+const requireRegistryString = ({ field, moduleName, value }) => {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(
+      moduleName
+        ? `Module registry entry ${moduleName} ${field} is required`
+        : `Module registry entry ${field} is required`
+    );
+  }
+  return value.trim();
+};
+
+const normalizeRegistryConsolePackages = ({ consolePackages, moduleName }) => {
+  if (consolePackages === undefined) {
+    return [];
+  }
+  if (!Array.isArray(consolePackages)) {
+    throw new TypeError(
+      `Module registry entry ${moduleName} consolePackages must be an array`
+    );
+  }
+  return consolePackages.map((consolePackage, index) => ({
+    exportName: requireRegistryString({
+      field: `consolePackages[${index}].exportName`,
+      moduleName,
+      value: consolePackage?.exportName,
+    }),
+    packageName: requireRegistryString({
+      field: `consolePackages[${index}].packageName`,
+      moduleName,
+      value: consolePackage?.packageName,
+    }),
+    route:
+      typeof consolePackage?.route === "string"
+        ? consolePackage.route.trim()
+        : "-",
+  }));
+};
+
+const normalizeRegistryEntry = (entry) => {
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+    throw new Error("Module registry entries must be JSON objects");
+  }
+  const name = requireRegistryString({
+    field: "name",
+    value: entry.name,
+  });
+  const source = requireRegistryString({
+    field: "source",
+    moduleName: name,
+    value: entry.source,
+  });
+  if (source !== "remote") {
+    throw new Error(`Module registry entry ${name} source must be remote`);
+  }
+  const capabilities = entry.capabilities ?? [];
+  if (!Array.isArray(capabilities)) {
+    throw new TypeError(
+      `Module registry entry ${name} capabilities must be an array`
+    );
+  }
+  return {
+    baseUrl:
+      typeof entry.baseUrl === "string" && entry.baseUrl.trim()
+        ? trimTrailingSlash(entry.baseUrl.trim())
+        : undefined,
+    capabilities: capabilities.map(String),
+    consolePackages: normalizeRegistryConsolePackages({
+      consolePackages: entry.consolePackages,
+      moduleName: name,
+    }),
+    manifestReference: requireRegistryString({
+      field: "manifestReference",
+      moduleName: name,
+      value: entry.manifestReference,
+    }),
+    name,
+    source,
+    summary:
+      typeof entry.summary === "string" && entry.summary.trim()
+        ? entry.summary.trim()
+        : undefined,
+    version: requireRegistryString({
+      field: "version",
+      moduleName: name,
+      value: entry.version,
+    }),
+  };
+};
+
+const readModuleRegistry = async ({ options }) => {
+  const repoRoot = options.repoRoot
+    ? path.resolve(options.repoRoot)
+    : await findRepoRoot(process.cwd());
+  const registryFilePath = path.resolve(
+    options.registryFile ?? path.join(repoRoot, ".lenso/module-registry.json")
+  );
+  const registry = await readJson(registryFilePath);
+  if (!registry || typeof registry !== "object" || Array.isArray(registry)) {
+    throw new Error("Module registry catalog must be a JSON object");
+  }
+  if (registry.version !== 1) {
+    throw new Error("Module registry catalog version must be 1");
+  }
+  if (!Array.isArray(registry.modules)) {
+    throw new TypeError("Module registry catalog modules must be an array");
+  }
+  const entries = registry.modules.map(normalizeRegistryEntry);
+  const seenModuleNames = new Set();
+  for (const entry of entries) {
+    if (seenModuleNames.has(entry.name)) {
+      throw new Error(`Duplicate module registry entry: ${entry.name}`);
+    }
+    seenModuleNames.add(entry.name);
+  }
+  return {
+    entries,
+    registryFilePath,
+    repoRoot,
+  };
+};
+
+const findRegistryModule = ({ entries, moduleName }) => {
+  const entry = entries.find((candidate) => candidate.name === moduleName);
+  if (!entry) {
+    const available = entries.map((candidate) => candidate.name).join(", ");
+    throw new Error(
+      `Module registry does not contain module ${moduleName}${
+        available ? `. Available modules: ${available}` : ""
+      }`
+    );
+  }
+  return entry;
+};
+
+const formatListValue = (items) => (items.length > 0 ? items.join(", ") : "-");
+
+const listModuleRegistry = async ({ options }) => {
+  const { entries, registryFilePath, repoRoot } = await readModuleRegistry({
+    options,
+  });
+  console.log("Module registry entries:");
+  console.log(`- catalog: ${path.relative(repoRoot, registryFilePath)}`);
+  for (const entry of entries) {
+    console.log(`- ${entry.name} ${entry.version} ${entry.source}`);
+    if (entry.summary) {
+      console.log(`  summary: ${entry.summary}`);
+    }
+    console.log(`  manifest: ${entry.manifestReference}`);
+    if (entry.baseUrl) {
+      console.log(`  base URL: ${entry.baseUrl}`);
+    }
+    console.log(`  capabilities: ${formatListValue(entry.capabilities)}`);
+    console.log(
+      `  console packages: ${formatListValue(
+        consolePackagesFromRegistryEntry(entry)
+      )}`
+    );
+  }
+};
+
+const inspectRegistryModule = async ({ moduleName, options }) => {
+  const { entries } = await readModuleRegistry({ options });
+  const entry = findRegistryModule({ entries, moduleName });
+  const manifest = await readJsonFromReference(entry.manifestReference);
+  const remoteModule = validateRemoteModuleManifest(manifest);
+  if (remoteModule.name !== entry.name) {
+    throw new Error(
+      `Registry entry ${entry.name} points to manifest for ${remoteModule.name}`
+    );
+  }
+  const baseUrl = deriveRemoteBaseUrl({
+    baseUrl: entry.baseUrl ?? options.baseUrl,
+    manifestReference: entry.manifestReference,
+  });
+
+  console.log(`Registry module ${entry.name}`);
+  console.log(`- catalog version: ${entry.version}`);
+  console.log(`- manifest version: ${remoteModule.version}`);
+  console.log(`- source: ${entry.source}`);
+  console.log(`- manifest: ${entry.manifestReference}`);
+  console.log(`- base URL: ${baseUrl}`);
+  console.log(`- manifest status: ok`);
+  console.log(`- capabilities: ${formatListValue(manifest.capabilities)}`);
+  console.log(
+    `- console packages: ${formatListValue(consolePackagesFromManifest(manifest))}`
+  );
+};
+
+const installRegistryModule = async ({ moduleName, options }) => {
+  const { entries } = await readModuleRegistry({ options });
+  const entry = findRegistryModule({ entries, moduleName });
+  await inspectRegistryModule({ moduleName, options });
+  await addRemoteModule({
+    manifestReference: entry.manifestReference,
+    options: {
+      ...options,
+      baseUrl: entry.baseUrl ?? options.baseUrl,
+    },
+  });
+  console.log(`Installed registry module ${entry.name}.`);
+};
+
 const doctorIssueGroups = [
   "Remote source",
   "Console package",
@@ -1574,6 +1795,21 @@ const addModuleDoctorOptions = (command) =>
     .option("--env-file <path>", "env file to inspect")
     .option("--install-plan-file <path>", "console package install plan file");
 
+const addModuleRegistryOptions = (command) =>
+  command
+    .option("--repo-root <path>", "Lenso host repository root")
+    .option("--registry-file <path>", "module registry catalog file");
+
+const addModuleRegistryInstallOptions = (command) =>
+  addModuleRegistryOptions(command)
+    .option("--env-file <path>", "env file to update")
+    .option("--install-plan-file <path>", "console package install plan file")
+    .option(
+      "--base-url <url>",
+      "override the remote module base URL from the registry"
+    )
+    .option("--dry-run", "print install changes without writing them");
+
 const addApplyPlanOptions = (command) =>
   command
     .option("--repo-root <path>", "Lenso host repository root")
@@ -1600,6 +1836,9 @@ const createProgram = ({ defaultRuntimeConsoleRoot } = {}) => {
       "after",
       `
 Third-party remote module flow:
+  lenso module registry list
+  lenso module registry inspect <module>
+  lenso module registry install <module>
   lenso module add <manifest-url>
   lenso console-package apply-plan
   lenso module doctor
@@ -1625,6 +1864,29 @@ Third-party remote module flow:
       .description("check configured remote modules and console packages")
   ).action(async (options) => {
     await runModuleDoctor({ options });
+  });
+
+  const registryCommand = moduleCommand
+    .command("registry")
+    .description("discover and install remote modules from a catalog");
+  addModuleRegistryOptions(
+    registryCommand.command("list").description("list registry modules")
+  ).action(async (options) => {
+    await listModuleRegistry({ options });
+  });
+  addModuleRegistryOptions(
+    registryCommand
+      .command("inspect <moduleName>")
+      .description("inspect a registry module and validate its manifest")
+  ).action(async (moduleName, options) => {
+    await inspectRegistryModule({ moduleName, options });
+  });
+  addModuleRegistryInstallOptions(
+    registryCommand
+      .command("install <moduleName>")
+      .description("install a registry module through the remote install flow")
+  ).action(async (moduleName, options) => {
+    await installRegistryModule({ moduleName, options });
   });
 
   const consolePackageCommand = program

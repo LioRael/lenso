@@ -167,6 +167,8 @@ Current Runtime Console support includes:
 - workspace-installed console packages
 - package manifests derived into install metadata
 - module metadata showing missing frontend package install plans
+- Module Registry v0 catalog discovery through `lenso module registry list`,
+  `lenso module registry inspect`, and `lenso module registry install`
 - remote module install CLI that writes local source configuration
 - console package apply-plan registration for requested package exports
 - module doctor diagnostics for source/package/registry mismatches
@@ -201,10 +203,45 @@ Third-party scaffolding uses a separate remote-oriented lane:
 
 ```sh
 pnpm create:module billing --remote --output-dir ../module-packages
+lenso module registry list --registry-file .lenso/module-registry.json
+lenso module registry inspect billing --registry-file .lenso/module-registry.json
+lenso module registry install billing --registry-file .lenso/module-registry.json
 lenso module add https://example.com/lenso/module/v1/manifest
 lenso console-package apply-plan
 lenso module doctor
 ```
+
+Module Registry v0 is a local catalog and preflight layer, not a marketplace.
+The catalog maps a module name to a remote manifest reference, optional base
+URL, capabilities, and console package hints:
+
+```json
+{
+  "version": 1,
+  "modules": [
+    {
+      "name": "billing",
+      "version": "0.1.0",
+      "source": "remote",
+      "manifestReference": "https://example.com/lenso/module/v1/manifest",
+      "baseUrl": "https://example.com/lenso/module/v1",
+      "capabilities": ["billing.read"],
+      "consolePackages": [
+        {
+          "packageName": "@vendor/lenso-billing-console",
+          "exportName": "billingConsoleModule",
+          "route": "/data/billing"
+        }
+      ]
+    }
+  ]
+}
+```
+
+`lenso module registry install <module>` delegates to the same host-local
+install path as `lenso module add`, so `.env`,
+`.lenso/console-package-install-plan.json`, `console-package apply-plan`, and
+`module doctor` remain the install contract.
 
 If the manifest is installed from a local file or non-protocol URL, pass the
 runtime module base URL explicitly:
