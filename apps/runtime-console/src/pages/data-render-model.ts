@@ -701,6 +701,13 @@ export function moduleRegistryHandoffCommands(
   ];
 }
 
+export function moduleRegistryHandoffCopyLabel(
+  copiedKey: string | null,
+  commandKey: string
+) {
+  return copiedKey === commandKey ? "copied" : "copy";
+}
+
 function moduleRegistrySearchText(module: AdminModuleMetadata): string {
   const governance = moduleGovernance(module);
   const parts = [

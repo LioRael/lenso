@@ -30,6 +30,7 @@ import {
   moduleErrorMessage,
   moduleGovernanceRows,
   moduleRegistryHandoffCommands,
+  moduleRegistryHandoffCopyLabel,
   moduleHttpRouteRows,
   moduleIsLoaded,
   latestModuleRefreshResult,
@@ -816,6 +817,11 @@ describe("module status helpers", () => {
           "pnpm --dir apps/runtime-console run demo:module-registry-install",
       },
     ]);
+  });
+
+  test("labels copied module registry commands", () => {
+    expect(moduleRegistryHandoffCopyLabel("inspect", "inspect")).toBe("copied");
+    expect(moduleRegistryHandoffCopyLabel("install", "inspect")).toBe("copy");
   });
 
   test("builds runtime function rows for registry detail", () => {

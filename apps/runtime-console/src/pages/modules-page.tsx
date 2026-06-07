@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Boxes,
+  Check,
+  Copy,
   KeyRound,
   Network,
   RefreshCw,
@@ -55,6 +57,7 @@ import {
   moduleIsLoaded,
   latestModuleRefreshResult,
   moduleRegistryHandoffCommands,
+  moduleRegistryHandoffCopyLabel,
   moduleManifestCheckGroups,
   moduleRegistrySummary,
   moduleRestartPending,
@@ -336,6 +339,12 @@ function ModuleRegistryCatalogPanel({
       selectedAvailableModuleName,
     })
   );
+  const [copiedCommandKey, setCopiedCommandKey] = useState<string | null>(null);
+  const copyCommand = (key: string, command: string) => {
+    void window.navigator.clipboard?.writeText(command);
+    setCopiedCommandKey(key);
+    window.setTimeout(() => setCopiedCommandKey(null), 1200);
+  };
 
   return (
     <section className="mb-2 min-w-0 border border-(--border-subtle) bg-(--surface)">
@@ -406,7 +415,7 @@ function ModuleRegistryCatalogPanel({
       <div className="grid gap-1 p-2">
         {commands.map((item) => (
           <div
-            className="grid grid-cols-[52px_minmax(0,1fr)] items-center gap-1"
+            className="grid grid-cols-[52px_minmax(0,1fr)_24px] items-center gap-1"
             key={item.key}
           >
             <span className="truncate text-[9px] uppercase text-(--muted)">
@@ -418,6 +427,19 @@ function ModuleRegistryCatalogPanel({
             >
               {item.command}
             </code>
+            <button
+              aria-label={`${moduleRegistryHandoffCopyLabel(copiedCommandKey, item.key)} ${item.label} command`}
+              className="grid size-6 place-items-center border border-(--border-subtle) bg-(--background) text-(--muted) hover:bg-(--sidebar) hover:text-(--foreground)"
+              onClick={() => copyCommand(item.key, item.command)}
+              title={moduleRegistryHandoffCopyLabel(copiedCommandKey, item.key)}
+              type="button"
+            >
+              {copiedCommandKey === item.key ? (
+                <Check size={11} />
+              ) : (
+                <Copy size={11} />
+              )}
+            </button>
           </div>
         ))}
       </div>
