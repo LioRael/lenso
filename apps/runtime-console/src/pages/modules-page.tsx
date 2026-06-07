@@ -458,6 +458,7 @@ function availableModuleStatusClass(status: AvailableModulePreflightStatus) {
     return "border-[color-mix(in_srgb,var(--success)_45%,transparent)] text-(--success)";
   }
   if (
+    status === "archived" ||
     status === "needs_base_url" ||
     status === "package_hint_mismatch" ||
     status === "publisher_trust_blocked" ||

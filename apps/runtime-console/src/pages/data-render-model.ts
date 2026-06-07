@@ -694,6 +694,16 @@ export function moduleRegistryHandoffCommands(
       command: `lenso module registry install ${moduleName} --registry-file .lenso/module-registry.json`,
     },
     {
+      key: "remove",
+      label: "archive",
+      command: `lenso module registry remove ${moduleName} --registry-file .lenso/module-registry.json --reason <reason>`,
+    },
+    {
+      key: "restore",
+      label: "restore",
+      command: `lenso module registry restore ${moduleName} --registry-file .lenso/module-registry.json --reason <reason>`,
+    },
+    {
       key: "history",
       label: "history",
       command: "lenso module registry history",

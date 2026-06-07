@@ -8,6 +8,8 @@ export type AvailableModuleRegistryEntry = {
   version: string;
   source: "remote" | string;
   manifestReference: string;
+  archivedAt?: string;
+  archiveReason?: string;
   baseUrl?: string;
   capabilities?: string[];
   consolePackages?: AvailableModuleConsolePackageHint[];
@@ -77,6 +79,8 @@ export type AvailableModuleRegistryDoctorModule = {
   source: "remote" | string;
   catalogVersion: string;
   manifestReference: string;
+  archivedAt?: string;
+  archiveReason?: string;
   baseUrl: string | null;
   consolePackageHints: number;
   compatibility?: AvailableModuleRegistryCompatibility;
@@ -91,6 +95,7 @@ export type AvailableModuleRegistryDoctorModule = {
 
 export type AvailableModulePreflightStatus =
   | "unknown"
+  | "archived"
   | "ready"
   | "review_required"
   | "compatibility_blocked"
@@ -130,6 +135,7 @@ export type AvailableModuleManifestSnapshots = Record<
 >;
 
 const statusLabel: Record<AvailableModulePreflightStatus, string> = {
+  archived: "archived",
   compatibility_blocked: "incompatible",
   manifest_mismatch: "manifest mismatch",
   needs_base_url: "needs base URL",
@@ -202,6 +208,16 @@ function availableModulePreflight(
   entry: AvailableModuleRegistryEntry,
   manifest: AvailableModuleManifestSnapshot | undefined
 ): { fix?: string; reason: string; status: AvailableModulePreflightStatus } {
+  if (entry.archivedAt) {
+    return {
+      fix: registryRestoreCommand(entry.name),
+      reason: entry.archiveReason
+        ? `catalog entry archived: ${entry.archiveReason}`
+        : "catalog entry is archived",
+      status: "archived",
+    };
+  }
+
   if (normalizeInstallPolicy(entry.installPolicy) !== "trusted") {
     return {
       reason:
@@ -289,6 +305,16 @@ function availableModulePreflightFromDoctorSnapshot({
   issues: AvailableModuleRegistryDoctorIssue[];
   module: AvailableModuleRegistryDoctorModule;
 }): { fix?: string; reason: string; status: AvailableModulePreflightStatus } {
+  if (module.status === "archived" || module.archivedAt) {
+    return {
+      fix: registryRestoreCommand(module.name),
+      reason: module.archiveReason
+        ? `catalog entry archived: ${module.archiveReason}`
+        : "catalog entry is archived",
+      status: "archived",
+    };
+  }
+
   if (normalizeInstallPolicy(module.installPolicy) !== "trusted") {
     const issue = issues.find(
       (candidate) =>
@@ -400,6 +426,10 @@ function modulePublisherTrustFix({
 
 function quoteCliArgument(value: string): string {
   return `"${value.replaceAll(/["\\]/gu, "\\$&")}"`;
+}
+
+function registryRestoreCommand(moduleName: string): string {
+  return `lenso module registry restore ${quoteCliArgument(moduleName)} --reason <reason>`;
 }
 
 function consolePackageKey(hint: AvailableModuleConsolePackageHint): string {

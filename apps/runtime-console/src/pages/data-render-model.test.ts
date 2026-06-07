@@ -812,6 +812,18 @@ describe("module status helpers", () => {
           "lenso module registry install billing --registry-file .lenso/module-registry.json",
       },
       {
+        key: "remove",
+        label: "archive",
+        command:
+          "lenso module registry remove billing --registry-file .lenso/module-registry.json --reason <reason>",
+      },
+      {
+        key: "restore",
+        label: "restore",
+        command:
+          "lenso module registry restore billing --registry-file .lenso/module-registry.json --reason <reason>",
+      },
+      {
         key: "history",
         label: "history",
         command: "lenso module registry history",

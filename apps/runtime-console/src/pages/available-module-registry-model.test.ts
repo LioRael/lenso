@@ -369,4 +369,43 @@ describe("available module registry model", () => {
       preflightStatus: "publisher_trust_blocked",
     });
   });
+
+  test("marks archived registry snapshot modules with restore handoff", () => {
+    const snapshot: AvailableModuleRegistryDoctorSnapshot = {
+      catalog: {
+        modules: 1,
+        registryFile: ".lenso/module-registry.json",
+        version: 1,
+      },
+      issues: [],
+      modules: [
+        {
+          archivedAt: "2026-06-07T12:00:00.000Z",
+          archiveReason: "replaced by billing-v2",
+          baseUrl: "https://example.com/lenso/module/v1",
+          catalogVersion: "0.1.0",
+          consolePackageHints: 1,
+          installPolicy: "review_required",
+          manifestName: null,
+          manifestReference: "https://example.com/lenso/module/v1/manifest",
+          manifestStatus: "archived",
+          manifestVersion: null,
+          name: "billing",
+          source: "remote",
+          status: "archived",
+        },
+      ],
+      status: "passed",
+      version: 1,
+    };
+
+    expect(
+      availableModuleRegistryRowsFromDoctorSnapshot(snapshot)[0]
+    ).toMatchObject({
+      preflightFix: 'lenso module registry restore "billing" --reason <reason>',
+      preflightLabel: "archived",
+      preflightReason: "catalog entry archived: replaced by billing-v2",
+      preflightStatus: "archived",
+    });
+  });
 });
