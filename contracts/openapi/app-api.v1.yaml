@@ -3165,6 +3165,11 @@ components:
           type: integer
           format: int32
           minimum: 0
+    AdminModuleRegistrySnapshotInstallPolicy:
+      type: string
+      enum:
+      - trusted
+      - review_required
     AdminModuleRegistrySnapshotIssueDto:
       type: object
       required:
@@ -3192,6 +3197,7 @@ components:
       - catalogVersion
       - manifestReference
       - consolePackageHints
+      - installPolicy
       - manifestStatus
       - status
       properties:
@@ -3204,6 +3210,8 @@ components:
         consolePackageHints:
           type: integer
           minimum: 0
+        installPolicy:
+          $ref: '#/components/schemas/AdminModuleRegistrySnapshotInstallPolicy'
         manifestName:
           type:
           - string

@@ -20,13 +20,16 @@ describe("available module registry snapshot provider", () => {
     expect(availableModuleRegistrySnapshotRows()).toEqual([
       expect.objectContaining({
         name: "billing",
+        installPolicy: "trusted",
         preflightStatus: "ready",
         source: "remote",
       }),
       expect.objectContaining({
+        installPolicy: "review_required",
         name: "local-crm",
-        preflightReason: "local-crm baseUrl is missing",
-        preflightStatus: "needs_base_url",
+        preflightReason:
+          "registry install requires installPolicy trusted after operator review",
+        preflightStatus: "review_required",
       }),
     ]);
   });

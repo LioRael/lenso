@@ -234,6 +234,8 @@ export type AdminModuleRegistrySnapshotCatalogDto = {
   version: number;
 };
 
+export type AdminModuleRegistrySnapshotInstallPolicy = string;
+
 export type AdminModuleRegistrySnapshotIssueDto = {
   fix: string;
   group: string;
@@ -246,6 +248,7 @@ export type AdminModuleRegistrySnapshotModuleDto = {
   baseUrl?: string | null;
   catalogVersion: string;
   consolePackageHints: number;
+  installPolicy: AdminModuleRegistrySnapshotInstallPolicy;
   manifestName?: string | null;
   manifestReference: string;
   manifestStatus: AdminModuleRegistrySnapshotManifestStatus;

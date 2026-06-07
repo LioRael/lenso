@@ -5,11 +5,11 @@ use crate::dto::{
     AdminModuleMetadataDto, AdminModuleMetadataListResponse, AdminModuleRefreshModuleResultDto,
     AdminModuleRefreshModuleStatusDto, AdminModuleRefreshRecordDto, AdminModuleRefreshStatusDto,
     AdminModuleRegistrySnapshotCatalogDto, AdminModuleRegistrySnapshotIssueDto,
-    AdminModuleRegistrySnapshotManifestStatus, AdminModuleRegistrySnapshotModuleDto,
-    AdminModuleRegistrySnapshotModuleStatus, AdminModuleRegistrySnapshotResponse,
-    AdminModuleRegistrySnapshotStatus, AdminModuleSchema, AdminModuleSourceDiagnosticsDto,
-    AdminModuleStatus, AdminRemoteModuleDiagnosticsDto, AdminSchemaListResponse,
-    AdminSchemaRefreshResponse,
+    AdminModuleRegistrySnapshotInstallPolicy, AdminModuleRegistrySnapshotManifestStatus,
+    AdminModuleRegistrySnapshotModuleDto, AdminModuleRegistrySnapshotModuleStatus,
+    AdminModuleRegistrySnapshotResponse, AdminModuleRegistrySnapshotStatus, AdminModuleSchema,
+    AdminModuleSourceDiagnosticsDto, AdminModuleStatus, AdminRemoteModuleDiagnosticsDto,
+    AdminSchemaListResponse, AdminSchemaRefreshResponse,
 };
 use crate::{
     AdminModule, AdminModuleMetadata, AdminModuleMetadataRefreshModuleResult,
@@ -305,6 +305,7 @@ fn module_registry_snapshot_module(
         manifest_reference,
         base_url,
         console_package_hints: module.console.len(),
+        install_policy: AdminModuleRegistrySnapshotInstallPolicy::Trusted,
         manifest_name: if has_error { None } else { Some(module_name) },
         manifest_status: if has_error {
             AdminModuleRegistrySnapshotManifestStatus::Unreadable

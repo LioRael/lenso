@@ -406,7 +406,7 @@ function ModuleRegistryCatalogPanel({
               </div>
               <div className="truncate text-[9px] text-(--muted)">
                 {row.source} / caps {row.capabilityCount} / console{" "}
-                {row.consolePackageHintCount}
+                {row.consolePackageHintCount} / policy {row.installPolicy}
               </div>
             </button>
           ))
@@ -451,7 +451,11 @@ function availableModuleStatusClass(status: AvailableModulePreflightStatus) {
   if (status === "ready") {
     return "border-[color-mix(in_srgb,var(--success)_45%,transparent)] text-(--success)";
   }
-  if (status === "needs_base_url" || status === "package_hint_mismatch") {
+  if (
+    status === "needs_base_url" ||
+    status === "package_hint_mismatch" ||
+    status === "review_required"
+  ) {
     return "border-[color-mix(in_srgb,var(--warning)_55%,transparent)] text-(--warning)";
   }
   if (status === "manifest_mismatch") {

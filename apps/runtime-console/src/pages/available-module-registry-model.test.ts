@@ -19,6 +19,7 @@ const catalog: AvailableModuleRegistryCatalog = {
           route: "/data/billing",
         },
       ],
+      installPolicy: "trusted",
       manifestReference: "https://example.com/lenso/module/v1/manifest",
       name: "billing",
       source: "remote",
@@ -38,6 +39,7 @@ describe("available module registry model", () => {
         consolePackageHintCount: 1,
         key: "billing:0.1.0:https://example.com/lenso/module/v1/manifest",
         manifestReference: "https://example.com/lenso/module/v1/manifest",
+        installPolicy: "trusted",
         name: "billing",
         preflightLabel: "unknown",
         preflightReason:
@@ -73,11 +75,35 @@ describe("available module registry model", () => {
     });
   });
 
+  test("marks untrusted catalog entries as review required", () => {
+    expect(
+      availableModuleRegistryRows({
+        modules: [
+          {
+            baseUrl: "https://example.com/lenso/module/v1",
+            manifestReference: "https://example.com/lenso/module/v1/manifest",
+            name: "billing",
+            source: "remote",
+            version: "0.1.0",
+          },
+        ],
+        version: 1,
+      })[0]
+    ).toMatchObject({
+      installPolicy: "review_required",
+      preflightLabel: "review required",
+      preflightReason:
+        "registry install requires installPolicy trusted after operator review",
+      preflightStatus: "review_required",
+    });
+  });
+
   test("flags missing base url for local manifest references", () => {
     expect(
       availableModuleRegistryRows({
         modules: [
           {
+            installPolicy: "trusted",
             manifestReference: "./lenso.module.json",
             name: "billing",
             source: "remote",
@@ -147,6 +173,7 @@ describe("available module registry model", () => {
           baseUrl: "https://example.com/lenso/module/v1",
           catalogVersion: "0.1.0",
           consolePackageHints: 1,
+          installPolicy: "trusted",
           manifestName: "billing",
           manifestReference: "https://example.com/lenso/module/v1/manifest",
           manifestStatus: "ok",
@@ -159,6 +186,7 @@ describe("available module registry model", () => {
           baseUrl: null,
           catalogVersion: "0.1.0",
           consolePackageHints: 0,
+          installPolicy: "trusted",
           manifestName: "local-crm",
           manifestReference: "./lenso.module.json",
           manifestStatus: "ok",
@@ -180,6 +208,7 @@ describe("available module registry model", () => {
         key: "billing:0.1.0:https://example.com/lenso/module/v1/manifest",
         manifestReference: "https://example.com/lenso/module/v1/manifest",
         name: "billing",
+        installPolicy: "trusted",
         preflightLabel: "ready",
         preflightReason:
           "registry doctor snapshot passed for this module manifest",
@@ -195,6 +224,7 @@ describe("available module registry model", () => {
         key: "local-crm:0.1.0:./lenso.module.json",
         manifestReference: "./lenso.module.json",
         name: "local-crm",
+        installPolicy: "trusted",
         preflightLabel: "needs base URL",
         preflightReason: "local-crm baseUrl is missing",
         preflightStatus: "needs_base_url",

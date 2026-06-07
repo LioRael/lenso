@@ -532,6 +532,7 @@ async fn module_registry_snapshot_returns_remote_preflight_rows() {
         "https://example.com/lenso/module/v1"
     );
     assert_eq!(body["modules"][0]["manifestStatus"], "ok");
+    assert_eq!(body["modules"][0]["installPolicy"], "trusted");
     assert_eq!(body["modules"][0]["status"], "ready");
 }
 

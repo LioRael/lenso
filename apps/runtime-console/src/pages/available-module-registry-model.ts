@@ -11,6 +11,7 @@ export type AvailableModuleRegistryEntry = {
   baseUrl?: string;
   capabilities?: string[];
   consolePackages?: AvailableModuleConsolePackageHint[];
+  installPolicy?: AvailableModuleRegistryInstallPolicy;
   summary?: string;
 };
 
@@ -52,6 +53,7 @@ export type AvailableModuleRegistryDoctorModule = {
   manifestReference: string;
   baseUrl: string | null;
   consolePackageHints: number;
+  installPolicy?: AvailableModuleRegistryInstallPolicy;
   manifestName: string | null;
   manifestStatus: "ok" | "invalid" | "unreadable" | string;
   manifestVersion: string | null;
@@ -61,9 +63,15 @@ export type AvailableModuleRegistryDoctorModule = {
 export type AvailableModulePreflightStatus =
   | "unknown"
   | "ready"
+  | "review_required"
   | "needs_base_url"
   | "manifest_mismatch"
   | "package_hint_mismatch";
+
+export type AvailableModuleRegistryInstallPolicy =
+  | "review_required"
+  | "trusted"
+  | string;
 
 export type AvailableModuleRegistryRow = {
   key: string;
@@ -74,6 +82,7 @@ export type AvailableModuleRegistryRow = {
   baseUrl: string;
   capabilityCount: number;
   consolePackageHintCount: number;
+  installPolicy: AvailableModuleRegistryInstallPolicy;
   preflightStatus: AvailableModulePreflightStatus;
   preflightLabel: string;
   preflightReason: string;
@@ -90,6 +99,7 @@ const statusLabel: Record<AvailableModulePreflightStatus, string> = {
   needs_base_url: "needs base URL",
   package_hint_mismatch: "package hint mismatch",
   ready: "ready",
+  review_required: "review required",
   unknown: "unknown",
 };
 
@@ -104,6 +114,7 @@ export function availableModuleRegistryRows(
       baseUrl: entry.baseUrl ?? "-",
       capabilityCount: entry.capabilities?.length ?? 0,
       consolePackageHintCount: entry.consolePackages?.length ?? 0,
+      installPolicy: normalizeInstallPolicy(entry.installPolicy),
       key: `${entry.name}:${entry.version}:${entry.manifestReference}`,
       manifestReference: entry.manifestReference,
       name: entry.name,
@@ -129,6 +140,7 @@ export function availableModuleRegistryRowsFromDoctorSnapshot(
       baseUrl: module.baseUrl ?? "-",
       capabilityCount: 0,
       consolePackageHintCount: module.consolePackageHints,
+      installPolicy: normalizeInstallPolicy(module.installPolicy),
       key: `${module.name}:${module.catalogVersion}:${module.manifestReference}`,
       manifestReference: module.manifestReference,
       name: module.name,
@@ -146,6 +158,14 @@ function availableModulePreflight(
   entry: AvailableModuleRegistryEntry,
   manifest: AvailableModuleManifestSnapshot | undefined
 ): { reason: string; status: AvailableModulePreflightStatus } {
+  if (normalizeInstallPolicy(entry.installPolicy) !== "trusted") {
+    return {
+      reason:
+        "registry install requires installPolicy trusted after operator review",
+      status: "review_required",
+    };
+  }
+
   if (
     !entry.baseUrl &&
     !/^https?:\/\/.+\/manifest$/u.test(entry.manifestReference)
@@ -202,6 +222,20 @@ function availableModulePreflightFromDoctorSnapshot({
   issues: AvailableModuleRegistryDoctorIssue[];
   module: AvailableModuleRegistryDoctorModule;
 }): { reason: string; status: AvailableModulePreflightStatus } {
+  if (normalizeInstallPolicy(module.installPolicy) !== "trusted") {
+    const issue = issues.find(
+      (candidate) =>
+        candidate.group === "Catalog" &&
+        candidate.message.startsWith(`${module.name} installPolicy `)
+    );
+    return {
+      reason:
+        issue?.message ??
+        "registry install requires installPolicy trusted after operator review",
+      status: "review_required",
+    };
+  }
+
   if (module.status === "ready") {
     return {
       reason: "registry doctor snapshot passed for this module manifest",
@@ -240,4 +274,10 @@ function availableModulePreflightFromDoctorSnapshot({
 
 function consolePackageKey(hint: AvailableModuleConsolePackageHint): string {
   return `${hint.packageName}#${hint.exportName}`;
+}
+
+function normalizeInstallPolicy(
+  installPolicy: AvailableModuleRegistryInstallPolicy | undefined
+): AvailableModuleRegistryInstallPolicy {
+  return installPolicy ?? "review_required";
 }
