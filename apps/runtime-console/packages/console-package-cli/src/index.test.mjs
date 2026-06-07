@@ -959,8 +959,71 @@ describe("module scaffold CLI", () => {
         repoRoot,
       ])
     ).rejects.toThrow(
-      "Registry module billing is not trusted for installation"
+      "Registry module billing review is blocked before installation"
     );
+  });
+
+  test("rejects registry installs when review finds catalog issues", async () => {
+    const repoRoot = await createRepoFixture();
+    const manifestUrl = await serveManifest({
+      capabilities: ["billing.read"],
+      console: [],
+      name: "billing",
+      source: "remote",
+      version: "0.1.0",
+    });
+    await writeFixture(
+      repoRoot,
+      ".lenso/module-registry.json",
+      JSON.stringify(
+        {
+          modules: [
+            {
+              baseUrl: manifestUrl.slice(0, -"/manifest".length),
+              consolePackages: [
+                {
+                  exportName: "billingConsoleModule",
+                  packageName: "@vendor/lenso-billing-console",
+                  route: "/data/billing",
+                },
+              ],
+              installPolicy: "trusted",
+              manifestReference: manifestUrl,
+              name: "billing",
+              source: "remote",
+              version: "0.1.0",
+            },
+          ],
+          version: 1,
+        },
+        null,
+        2
+      )
+    );
+
+    await expect(
+      runConsolePackageCli([
+        "module",
+        "registry",
+        "install",
+        "billing",
+        "--registry-file",
+        path.join(repoRoot, ".lenso/module-registry.json"),
+        "--repo-root",
+        repoRoot,
+      ])
+    ).rejects.toThrow(
+      "Registry module billing review is blocked before installation"
+    );
+    await expect(
+      readFile(path.join(repoRoot, ".env"), "utf-8")
+    ).rejects.toThrow("ENOENT");
+    await expect(
+      readFile(
+        path.join(repoRoot, ".lenso/module-registry-install-history.json"),
+        "utf-8"
+      )
+    ).rejects.toThrow("ENOENT");
   });
 
   test("prints registry install history entries", async () => {

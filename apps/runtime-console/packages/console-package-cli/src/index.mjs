@@ -1660,16 +1660,20 @@ const printModuleRegistryInstallHistory = async ({ options }) => {
 const installRegistryModule = async ({ moduleName, options }) => {
   const { entries, repoRoot } = await readModuleRegistry({ options });
   const entry = findRegistryModule({ entries, moduleName });
-  if (entry.installPolicy !== "trusted") {
+  const review = await reviewRegistryModuleSnapshot({ moduleName, options });
+  if (review.decision !== "ready_to_install") {
+    const [firstIssue] = review.issues;
     throw new Error(
-      `Registry module ${entry.name} is not trusted for installation. Set installPolicy to trusted after reviewing the catalog entry, manifest, base URL, capabilities, and console package hints.`
+      [
+        `Registry module ${entry.name} review is blocked before installation.`,
+        firstIssue ? `${firstIssue.group}: ${firstIssue.message}` : null,
+        firstIssue ? `fix: ${firstIssue.fix}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n")
     );
   }
-  const baseUrl = deriveRemoteBaseUrl({
-    baseUrl: entry.baseUrl ?? options.baseUrl,
-    manifestReference: entry.manifestReference,
-  });
-  await inspectRegistryModule({ moduleName, options });
+  const { baseUrl } = review.module;
   await addRemoteModule({
     manifestReference: entry.manifestReference,
     options: {

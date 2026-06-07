@@ -70,6 +70,8 @@ Registry install is deliberately gated. Catalog entries default to
 reviewing the manifest reference, base URL, capabilities, and console package
 hints. This is a curated-operator allow bit, not package signing or automatic
 trust.
+The install command runs the same review gate and refuses to mutate host files
+unless the review decision is `ready_to_install`.
 
 Registry install still writes the same host-local source configuration and
 console package install plan as `lenso module add`.
