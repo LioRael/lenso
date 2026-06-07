@@ -667,6 +667,17 @@ export function moduleRegistryHandoffCommands(
 ): ModuleRegistryHandoffCommand[] {
   return [
     {
+      key: "publishers",
+      label: "keys",
+      command: "lenso module publisher list",
+    },
+    {
+      key: "trust-publisher",
+      label: "trust",
+      command:
+        "lenso module publisher trust <publisher> <public-key-id> --public-key-file <pem>",
+    },
+    {
       key: "list",
       label: "catalog",
       command:

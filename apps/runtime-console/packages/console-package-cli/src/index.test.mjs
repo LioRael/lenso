@@ -1337,6 +1337,7 @@ describe("module scaffold CLI", () => {
       decision: "blocked",
       issues: [
         {
+          fix: 'lenso module publisher trust "Lenso Fixtures" "lenso-fixtures-ed25519" --public-key-file <pem>',
           group: "Provenance",
           message:
             "billing publisher key lenso-fixtures-ed25519 status is review_required",

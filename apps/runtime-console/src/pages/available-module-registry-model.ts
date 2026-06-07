@@ -95,6 +95,7 @@ export type AvailableModulePreflightStatus =
   | "review_required"
   | "compatibility_blocked"
   | "provenance_blocked"
+  | "publisher_trust_blocked"
   | "needs_base_url"
   | "manifest_mismatch"
   | "package_hint_mismatch";
@@ -134,6 +135,7 @@ const statusLabel: Record<AvailableModulePreflightStatus, string> = {
   needs_base_url: "needs base URL",
   package_hint_mismatch: "package hint mismatch",
   provenance_blocked: "provenance required",
+  publisher_trust_blocked: "publisher trust",
   ready: "ready",
   review_required: "review required",
   unknown: "unknown",
@@ -321,6 +323,17 @@ function availableModulePreflightFromDoctorSnapshot({
       candidate.message.startsWith(`${module.name} `)
   );
   if (provenanceIssue) {
+    const publisherTrustFix = modulePublisherTrustFix({
+      issue: provenanceIssue,
+      module,
+    });
+    if (publisherTrustFix) {
+      return {
+        fix: publisherTrustFix,
+        reason: provenanceIssue.message,
+        status: "publisher_trust_blocked",
+      };
+    }
     return {
       ...(provenanceIssue.fix ? { fix: provenanceIssue.fix } : {}),
       reason: provenanceIssue.message,
@@ -365,6 +378,28 @@ function availableModulePreflightFromDoctorSnapshot({
     reason,
     status: "package_hint_mismatch",
   };
+}
+
+function modulePublisherTrustFix({
+  issue,
+  module,
+}: {
+  issue: AvailableModuleRegistryDoctorIssue;
+  module: AvailableModuleRegistryDoctorModule;
+}): string | null {
+  if (issue.fix.startsWith("lenso module publisher ")) {
+    return issue.fix;
+  }
+  const publisher = module.provenance?.publisher;
+  const publicKeyId = module.provenance?.publicKeyId;
+  if (!(publisher && publicKeyId && issue.message.includes("publisher key"))) {
+    return null;
+  }
+  return `lenso module publisher trust ${quoteCliArgument(publisher)} ${quoteCliArgument(publicKeyId)} --public-key-file <pem>`;
+}
+
+function quoteCliArgument(value: string): string {
+  return `"${value.replaceAll(/["\\]/gu, "\\$&")}"`;
 }
 
 function consolePackageKey(hint: AvailableModuleConsolePackageHint): string {

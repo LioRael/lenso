@@ -783,6 +783,17 @@ describe("module status helpers", () => {
   test("builds module registry install handoff commands", () => {
     expect(moduleRegistryHandoffCommands("billing")).toEqual([
       {
+        key: "publishers",
+        label: "keys",
+        command: "lenso module publisher list",
+      },
+      {
+        key: "trust-publisher",
+        label: "trust",
+        command:
+          "lenso module publisher trust <publisher> <public-key-id> --public-key-file <pem>",
+      },
+      {
         key: "list",
         label: "catalog",
         command:

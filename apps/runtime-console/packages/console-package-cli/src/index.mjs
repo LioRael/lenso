@@ -1904,6 +1904,8 @@ const findRegistryModule = ({ entries, moduleName }) => {
 
 const formatListValue = (items) => (items.length > 0 ? items.join(", ") : "-");
 
+const quoteCliArgument = (value) => `"${value.replaceAll(/["\\]/gu, "\\$&")}"`;
+
 const formatRegistryCompatibility = (compatibility) => {
   const parts = [];
   if (compatibility.lenso?.minVersion) {
@@ -2271,9 +2273,9 @@ const resolveRegistryPublisherKey = async ({
   );
   if (!publisherKey) {
     addRegistryDoctorIssue({
-      fix: `add ${entry.provenance.publisher} ${entry.provenance.publicKeyId} to ${path.basename(
-        publisherRegistry.publishersFilePath
-      )}`,
+      fix: `lenso module publisher trust ${quoteCliArgument(
+        entry.provenance.publisher
+      )} ${quoteCliArgument(entry.provenance.publicKeyId)} --public-key-file <pem>`,
       group: "Provenance",
       issues,
       message: `${entry.name} publisher key ${entry.provenance.publicKeyId} is not trusted for ${entry.provenance.publisher}`,
@@ -2282,7 +2284,9 @@ const resolveRegistryPublisherKey = async ({
   }
   if (publisherKey.status !== "trusted") {
     addRegistryDoctorIssue({
-      fix: `mark ${entry.provenance.publisher} ${entry.provenance.publicKeyId} trusted after operator review`,
+      fix: `lenso module publisher trust ${quoteCliArgument(
+        entry.provenance.publisher
+      )} ${quoteCliArgument(entry.provenance.publicKeyId)} --public-key-file <pem>`,
       group: "Provenance",
       issues,
       message: `${entry.name} publisher key ${entry.provenance.publicKeyId} status is ${publisherKey.status}`,

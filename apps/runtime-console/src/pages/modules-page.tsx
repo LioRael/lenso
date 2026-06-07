@@ -460,6 +460,7 @@ function availableModuleStatusClass(status: AvailableModulePreflightStatus) {
   if (
     status === "needs_base_url" ||
     status === "package_hint_mismatch" ||
+    status === "publisher_trust_blocked" ||
     status === "review_required"
   ) {
     return "border-[color-mix(in_srgb,var(--warning)_55%,transparent)] text-(--warning)";

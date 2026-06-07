@@ -322,4 +322,51 @@ describe("available module registry model", () => {
       },
     ]);
   });
+
+  test("turns publisher trust issues into publisher CLI handoff commands", () => {
+    const snapshot: AvailableModuleRegistryDoctorSnapshot = {
+      catalog: {
+        modules: 1,
+        registryFile: ".lenso/module-registry.json",
+        version: 1,
+      },
+      issues: [
+        {
+          fix: "mark Lenso Fixtures lenso-fixtures-ed25519 trusted after operator review",
+          group: "Provenance",
+          message:
+            "billing publisher key lenso-fixtures-ed25519 status is review_required",
+        },
+      ],
+      modules: [
+        {
+          baseUrl: "https://example.com/lenso/module/v1",
+          catalogVersion: "0.1.0",
+          consolePackageHints: 1,
+          installPolicy: "trusted",
+          provenance: registryProvenance,
+          manifestName: "billing",
+          manifestReference: "https://example.com/lenso/module/v1/manifest",
+          manifestStatus: "ok",
+          manifestVersion: "0.1.0",
+          name: "billing",
+          source: "remote",
+          status: "needs_attention",
+        },
+      ],
+      status: "failed",
+      version: 1,
+    };
+
+    expect(
+      availableModuleRegistryRowsFromDoctorSnapshot(snapshot)[0]
+    ).toMatchObject({
+      preflightFix:
+        'lenso module publisher trust "Lenso Fixtures" "lenso-fixtures-ed25519" --public-key-file <pem>',
+      preflightLabel: "publisher trust",
+      preflightReason:
+        "billing publisher key lenso-fixtures-ed25519 status is review_required",
+      preflightStatus: "publisher_trust_blocked",
+    });
+  });
 });
