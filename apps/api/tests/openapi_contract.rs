@@ -234,9 +234,13 @@ async fn served_core_profile_openapi_omits_demo_identity_paths_after_demo_docume
     let paths = document["paths"]
         .as_object()
         .expect("OpenAPI paths should be an object");
+    let tags = document["tags"]
+        .as_array()
+        .expect("OpenAPI tags should be an array");
 
     assert!(!paths.contains_key("/v1/identity/users"));
     assert!(!paths.contains_key("/v1/identity/me"));
+    assert!(!tags.iter().any(|tag| tag["name"] == "identity"));
 }
 
 fn assert_manifest_declares_route(manifest: &ModuleManifest, path: &str, method: ModuleHttpMethod) {

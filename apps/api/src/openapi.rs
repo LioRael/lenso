@@ -41,11 +41,22 @@ pub(crate) fn api_router() -> ApiOpenApiRouter {
 }
 
 pub(crate) fn api_router_for_profile(profile: CompositionProfile) -> ApiOpenApiRouter {
-    let base = OpenApiRouter::with_openapi(ApiDoc::openapi()).merge(base_router());
+    let base =
+        OpenApiRouter::with_openapi(openapi_document_for_profile(profile)).merge(base_router());
     app_bootstrap::merge_linked_http_for_profile(base, profile)
         .merge(platform_admin::router())
         .merge(platform_admin_data::router())
         .merge(platform_module_remote::router())
+}
+
+fn openapi_document_for_profile(profile: CompositionProfile) -> utoipa::openapi::OpenApi {
+    let mut document = ApiDoc::openapi();
+    if profile == CompositionProfile::Core {
+        if let Some(tags) = &mut document.tags {
+            tags.retain(|tag| tag.name != "identity");
+        }
+    }
+    document
 }
 
 /// The committed `OpenAPI` document, derived from the annotated handlers.
