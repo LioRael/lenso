@@ -22,10 +22,18 @@ A module exposes metadata and behavior through `module.rs`. Pure declarations su
 
 Modules must not query another module's tables or import another module's internal modules. Cross-module async work goes through events and runtime function enqueueing.
 
-Current module fixtures:
+Current demo module fixtures:
 
-- `identity` exercises users, identity HTTP routes, `identity.user_registered.v1`, and `identity.cleanup_expired_sessions.v1`.
-- `notifications` exercises identity registration event handling and `notifications.send_welcome_email.v1`.
+- `identity` exercises users, identity HTTP routes, `identity.user_registered.v1`,
+  `identity.cleanup_expired_sessions.v1`, schema-admin reads, and a module-owned
+  Runtime Console workspace.
+- `notifications` exercises identity registration event handling and
+  `notifications.send_welcome_email.v1`.
+
+These modules are demo fixtures, not product defaults. `app-bootstrap` selects a
+linked composition profile: `core` keeps only platform-owned linked surfaces such
+as `platform-story`, while `demo` adds `identity` and `notifications` for local
+development, examples, contracts, and integration tests.
 
 ## Platform Service Kit
 
@@ -93,7 +101,7 @@ The Runtime Console is a Vite/React operator UI under `apps/runtime-console`. It
 
 The API exposes admin runtime endpoints under `/admin/runtime/*` for summaries, stories, story timeline items, heatmaps, outbox events, function runs, retries, execution payloads, and technical operations. Story timeline data is returned by the Runtime Story detail endpoint rather than a standalone timeline endpoint. These are served by the `platform-admin` crate, which the API app mounts; they use the same OpenAPI contract as the public identity API. Story display names are module-owned, so the composition root injects the aggregated catalog into `platform-admin` (via `install_story_display`) rather than having it depend on concrete modules.
 
-The API also exposes schema-admin endpoints under `/admin/data/*`. These are served by `platform-admin-data`, which reads module schemas and data through the injected `AdminSurface::Schema` + `AdminDataSource` registry. The first implementation uses a read-only identity User fixture to exercise the framework; Lenso does not prescribe product-default business modules. Writes, richer RBAC, and custom module UI are later module-framework steps.
+The API also exposes schema-admin endpoints under `/admin/data/*`. These are served by `platform-admin-data`, which reads module schemas and data through the injected `AdminSurface::Schema` + `AdminDataSource` registry. The demo profile uses a read-only identity User fixture to exercise the framework; Lenso does not prescribe product-default business modules. Writes, richer RBAC, and custom module UI are later module-framework steps.
 
 The module registry endpoint under `/admin/data/modules` is also the source of truth for module manifest health and Runtime Console frontend contributions. `platform-admin-data` derives manifest lint results from `platform-module` helpers, including HTTP route and console surface declaration checks, and returns those lint results with the module metadata. The Runtime Console renders these `manifest_lints` as Manifest Lints; it must not reimplement the lint rules locally. See `docs/architecture/module-manifest-lints.md` for the current lint catalog and UI category contract. Module-owned Runtime Console pages are declared through `ConsoleSurface` and loaded through the host's console module registry; see `docs/architecture/module-console-surfaces.md`.
 

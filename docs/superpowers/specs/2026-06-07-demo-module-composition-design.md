@@ -1,7 +1,7 @@
 # Demo Module Composition
 
 **Date:** 2026-06-07
-**Status:** Draft design, awaiting review
+**Status:** Implemented in linked composition profile slice
 **Scope:** Move `identity` and `notifications` from implicit product defaults into an explicit demo composition profile while preserving their value as framework fixtures.
 
 ---
