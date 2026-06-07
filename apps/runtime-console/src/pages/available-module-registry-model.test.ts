@@ -7,6 +7,13 @@ import {
   availableModuleRegistryRows,
 } from "./available-module-registry-model";
 
+const registryProvenance = {
+  checksum: "sha256:fixture-billing-module",
+  packageUrl: "https://example.com/lenso/module/v1/package.tgz",
+  publisher: "Lenso Fixtures",
+  sourceRepository: "https://example.com/lenso/billing-module",
+};
+
 const catalog: AvailableModuleRegistryCatalog = {
   modules: [
     {
@@ -20,6 +27,7 @@ const catalog: AvailableModuleRegistryCatalog = {
         },
       ],
       installPolicy: "trusted",
+      provenance: registryProvenance,
       manifestReference: "https://example.com/lenso/module/v1/manifest",
       name: "billing",
       source: "remote",
@@ -45,6 +53,8 @@ describe("available module registry model", () => {
         preflightReason:
           "run lenso module registry doctor to fetch and validate manifest",
         preflightStatus: "unknown",
+        provenanceChecksum: "sha256:fixture-billing-module",
+        provenancePublisher: "Lenso Fixtures",
         source: "remote",
         summary: "Billing workspace and operations",
         version: "0.1.0",
@@ -98,12 +108,35 @@ describe("available module registry model", () => {
     });
   });
 
+  test("flags trusted entries with missing provenance", () => {
+    expect(
+      availableModuleRegistryRows({
+        modules: [
+          {
+            baseUrl: "https://example.com/lenso/module/v1",
+            installPolicy: "trusted",
+            manifestReference: "https://example.com/lenso/module/v1/manifest",
+            name: "billing",
+            source: "remote",
+            version: "0.1.0",
+          },
+        ],
+        version: 1,
+      })[0]
+    ).toMatchObject({
+      preflightLabel: "provenance required",
+      preflightReason: "billing provenance publisher is missing",
+      preflightStatus: "provenance_blocked",
+    });
+  });
+
   test("flags missing base url for local manifest references", () => {
     expect(
       availableModuleRegistryRows({
         modules: [
           {
             installPolicy: "trusted",
+            provenance: registryProvenance,
             manifestReference: "./lenso.module.json",
             name: "billing",
             source: "remote",
@@ -130,6 +163,7 @@ describe("available module registry model", () => {
               },
             },
             installPolicy: "trusted",
+            provenance: registryProvenance,
             manifestReference: "https://example.com/lenso/module/v1/manifest",
             name: "billing",
             source: "remote",
@@ -215,6 +249,7 @@ describe("available module registry model", () => {
             lensoVersion: "0.1.0",
           },
           installPolicy: "trusted",
+          provenance: registryProvenance,
           manifestName: "billing",
           manifestReference: "https://example.com/lenso/module/v1/manifest",
           manifestStatus: "ok",
@@ -228,6 +263,7 @@ describe("available module registry model", () => {
           catalogVersion: "0.1.0",
           consolePackageHints: 0,
           installPolicy: "trusted",
+          provenance: registryProvenance,
           manifestName: "local-crm",
           manifestReference: "./lenso.module.json",
           manifestStatus: "ok",
@@ -255,6 +291,8 @@ describe("available module registry model", () => {
         preflightLabel: "incompatible",
         preflightReason: "billing requires Lenso >= 0.2.0; host is 0.1.0",
         preflightStatus: "compatibility_blocked",
+        provenanceChecksum: "sha256:fixture-billing-module",
+        provenancePublisher: "Lenso Fixtures",
         source: "remote",
         summary: "-",
         version: "0.1.0",
@@ -271,6 +309,8 @@ describe("available module registry model", () => {
         preflightFix: "add baseUrl or use a manifest URL ending with /manifest",
         preflightReason: "local-crm baseUrl is missing",
         preflightStatus: "needs_base_url",
+        provenanceChecksum: "sha256:fixture-billing-module",
+        provenancePublisher: "Lenso Fixtures",
         source: "remote",
         summary: "-",
         version: "0.1.0",

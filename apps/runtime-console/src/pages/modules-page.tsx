@@ -406,7 +406,8 @@ function ModuleRegistryCatalogPanel({
               </div>
               <div className="truncate text-[9px] text-(--muted)">
                 {row.source} / caps {row.capabilityCount} / console{" "}
-                {row.consolePackageHintCount} / policy {row.installPolicy}
+                {row.consolePackageHintCount} / policy {row.installPolicy} /
+                publisher {row.provenancePublisher}
               </div>
               {row.preflightFix ? (
                 <div className="truncate text-[9px] text-(--warning)">

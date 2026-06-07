@@ -1468,6 +1468,43 @@ const normalizeRegistryCompatibility = ({ compatibility, moduleName }) => {
   };
 };
 
+const normalizeRegistryProvenance = ({ moduleName, provenance }) => {
+  if (provenance === undefined) {
+    return {};
+  }
+  if (
+    !provenance ||
+    typeof provenance !== "object" ||
+    Array.isArray(provenance)
+  ) {
+    throw new TypeError(
+      `Module registry entry ${moduleName} provenance must be a JSON object`
+    );
+  }
+  return {
+    checksum: optionalRegistryString({
+      field: "provenance.checksum",
+      moduleName,
+      value: provenance.checksum,
+    }),
+    packageUrl: optionalRegistryString({
+      field: "provenance.packageUrl",
+      moduleName,
+      value: provenance.packageUrl,
+    }),
+    publisher: optionalRegistryString({
+      field: "provenance.publisher",
+      moduleName,
+      value: provenance.publisher,
+    }),
+    sourceRepository: optionalRegistryString({
+      field: "provenance.sourceRepository",
+      moduleName,
+      value: provenance.sourceRepository,
+    }),
+  };
+};
+
 const normalizeRegistryEntry = (entry) => {
   if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
     throw new Error("Module registry entries must be JSON objects");
@@ -1514,6 +1551,10 @@ const normalizeRegistryEntry = (entry) => {
       value: entry.manifestReference,
     }),
     name,
+    provenance: normalizeRegistryProvenance({
+      moduleName: name,
+      provenance: entry.provenance,
+    }),
     source,
     summary:
       typeof entry.summary === "string" && entry.summary.trim()
@@ -1588,6 +1629,11 @@ const formatRegistryCompatibility = (compatibility) => {
   return parts.length > 0 ? parts.join(", ") : "host default";
 };
 
+const formatRegistryProvenance = (provenance) =>
+  provenance.publisher
+    ? `${provenance.publisher} ${provenance.checksum ?? "-"}`
+    : "-";
+
 const listModuleRegistry = async ({ options }) => {
   const { entries, registryFilePath, repoRoot } = await readModuleRegistry({
     options,
@@ -1607,6 +1653,7 @@ const listModuleRegistry = async ({ options }) => {
     console.log(
       `  compatibility: ${formatRegistryCompatibility(entry.compatibility)}`
     );
+    console.log(`  provenance: ${formatRegistryProvenance(entry.provenance)}`);
     console.log(`  capabilities: ${formatListValue(entry.capabilities)}`);
     console.log(
       `  console packages: ${formatListValue(
@@ -1641,6 +1688,7 @@ const inspectRegistryModule = async ({ moduleName, options }) => {
   console.log(
     `- compatibility: ${formatRegistryCompatibility(entry.compatibility)}`
   );
+  console.log(`- provenance: ${formatRegistryProvenance(entry.provenance)}`);
   console.log(`- manifest status: ok`);
   console.log(`- capabilities: ${formatListValue(manifest.capabilities)}`);
   console.log(
@@ -1688,6 +1736,7 @@ const appendModuleRegistryInstallHistory = async ({
     installedAt: new Date().toISOString(),
     manifestReference: entry.manifestReference,
     moduleName: entry.name,
+    provenance: entry.provenance,
     source: entry.source,
   });
   await mkdir(path.dirname(historyPath), { recursive: true });
@@ -1730,6 +1779,9 @@ const printModuleRegistryInstallHistory = async ({ options }) => {
     console.log(`  installed: ${entry.installedAt}`);
     console.log(`  base URL: ${entry.baseUrl}`);
     console.log(`  manifest: ${entry.manifestReference}`);
+    if (entry.provenance?.publisher) {
+      console.log(`  publisher: ${entry.provenance.publisher}`);
+    }
   }
 };
 
@@ -1768,6 +1820,7 @@ const installRegistryModule = async ({ moduleName, options }) => {
 const registryDoctorIssueGroups = [
   "Catalog",
   "Compatibility",
+  "Provenance",
   "Manifest",
   "Console package hint",
 ];
@@ -1857,6 +1910,24 @@ const checkRegistryCompatibility = ({ entry, issues }) => {
       issues,
       message: `${entry.name} requires console package API ${compatibility.consolePackageApi}; host supports ${hostRegistryCompatibility.consolePackageApi}`,
     });
+  }
+};
+
+const checkRegistryProvenance = ({ entry, issues }) => {
+  const requiredFields = [
+    ["publisher", "publisher"],
+    ["sourceRepository", "source repository"],
+    ["checksum", "checksum"],
+  ];
+  for (const [field, label] of requiredFields) {
+    if (!entry.provenance[field]) {
+      addRegistryDoctorIssue({
+        fix: `add ${entry.name} provenance.${field} before marking the catalog entry trusted`,
+        group: "Provenance",
+        issues,
+        message: `${entry.name} provenance ${label} is missing`,
+      });
+    }
   }
 };
 
@@ -1968,6 +2039,7 @@ const reviewRegistryModuleSnapshot = async ({ moduleName, options }) => {
     });
   }
   checkRegistryCompatibility({ entry, issues });
+  checkRegistryProvenance({ entry, issues });
   const result = await checkRegistryEntryManifest({ entry, issues, options });
   const decision = issues.length === 0 ? "ready_to_install" : "blocked";
   return {
@@ -1986,6 +2058,7 @@ const reviewRegistryModuleSnapshot = async ({ moduleName, options }) => {
       manifestStatus: result.manifestStatus,
       manifestVersion: result.manifestVersion,
       name: entry.name,
+      provenance: entry.provenance,
       source: entry.source,
     },
     registryFile: registryFilePath,
@@ -2014,6 +2087,7 @@ const printRegistryModuleReview = async ({ moduleName, options }) => {
   console.log(
     `- host compatibility: lenso ${module.hostCompatibility.lensoVersion}, console-api ${module.hostCompatibility.consolePackageApi}`
   );
+  console.log(`- provenance: ${formatRegistryProvenance(module.provenance)}`);
   console.log(`- manifest status: ${module.manifestStatus}`);
   console.log(`- capabilities: ${formatListValue(module.capabilities)}`);
   console.log(`- console package hints: ${module.consolePackageHints}`);
@@ -2053,6 +2127,7 @@ const registryDoctorJsonSnapshot = ({
     manifestStatus: result.manifestStatus,
     manifestVersion: result.manifestVersion,
     name: entry.name,
+    provenance: entry.provenance,
     source: entry.source,
     status: entryIssues.length === 0 ? "ready" : "needs_attention",
   })),
@@ -2080,6 +2155,7 @@ const runModuleRegistryDoctor = async ({ options }) => {
       });
     }
     checkRegistryCompatibility({ entry, issues });
+    checkRegistryProvenance({ entry, issues });
     const result = await checkRegistryEntryManifest({ entry, issues, options });
     consolePackageHints += result.consolePackageHints;
     moduleChecks.push({

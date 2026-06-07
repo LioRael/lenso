@@ -13,6 +13,7 @@ export type AvailableModuleRegistryEntry = {
   consolePackages?: AvailableModuleConsolePackageHint[];
   compatibility?: AvailableModuleRegistryCompatibility;
   installPolicy?: AvailableModuleRegistryInstallPolicy;
+  provenance?: AvailableModuleRegistryProvenance;
   summary?: string;
 };
 
@@ -60,6 +61,13 @@ export type AvailableModuleRegistryHostCompatibility = {
   lensoVersion: string;
 };
 
+export type AvailableModuleRegistryProvenance = {
+  checksum?: string;
+  packageUrl?: string;
+  publisher?: string;
+  sourceRepository?: string;
+};
+
 export type AvailableModuleRegistryDoctorModule = {
   name: string;
   source: "remote" | string;
@@ -73,6 +81,7 @@ export type AvailableModuleRegistryDoctorModule = {
   manifestName: string | null;
   manifestStatus: "ok" | "invalid" | "unreadable" | string;
   manifestVersion: string | null;
+  provenance?: AvailableModuleRegistryProvenance;
   status: "ready" | "needs_attention" | string;
 };
 
@@ -81,6 +90,7 @@ export type AvailableModulePreflightStatus =
   | "ready"
   | "review_required"
   | "compatibility_blocked"
+  | "provenance_blocked"
   | "needs_base_url"
   | "manifest_mismatch"
   | "package_hint_mismatch";
@@ -104,6 +114,8 @@ export type AvailableModuleRegistryRow = {
   preflightLabel: string;
   preflightFix?: string;
   preflightReason: string;
+  provenanceChecksum: string;
+  provenancePublisher: string;
   summary: string;
 };
 
@@ -117,6 +129,7 @@ const statusLabel: Record<AvailableModulePreflightStatus, string> = {
   manifest_mismatch: "manifest mismatch",
   needs_base_url: "needs base URL",
   package_hint_mismatch: "package hint mismatch",
+  provenance_blocked: "provenance required",
   ready: "ready",
   review_required: "review required",
   unknown: "unknown",
@@ -141,6 +154,8 @@ export function availableModuleRegistryRows(
       preflightLabel: statusLabel[preflight.status],
       preflightReason: preflight.reason,
       preflightStatus: preflight.status,
+      provenanceChecksum: entry.provenance?.checksum ?? "-",
+      provenancePublisher: entry.provenance?.publisher ?? "-",
       source: entry.source,
       summary: entry.summary ?? "-",
       version: entry.version,
@@ -168,6 +183,8 @@ export function availableModuleRegistryRowsFromDoctorSnapshot(
       preflightLabel: statusLabel[preflight.status],
       preflightReason: preflight.reason,
       preflightStatus: preflight.status,
+      provenanceChecksum: module.provenance?.checksum ?? "-",
+      provenancePublisher: module.provenance?.publisher ?? "-",
       source: module.source,
       summary: "-",
       version: module.catalogVersion,
@@ -196,6 +213,17 @@ function availableModulePreflight(
     return {
       reason: compatibilityIssue,
       status: "compatibility_blocked",
+    };
+  }
+
+  const provenanceIssue = registryProvenanceIssue({
+    moduleName: entry.name,
+    provenance: entry.provenance,
+  });
+  if (provenanceIssue) {
+    return {
+      reason: provenanceIssue,
+      status: "provenance_blocked",
     };
   }
 
@@ -280,6 +308,19 @@ function availableModulePreflightFromDoctorSnapshot({
       ...(compatibilityIssue.fix ? { fix: compatibilityIssue.fix } : {}),
       reason: compatibilityIssue.message,
       status: "compatibility_blocked",
+    };
+  }
+
+  const provenanceIssue = issues.find(
+    (candidate) =>
+      candidate.group === "Provenance" &&
+      candidate.message.startsWith(`${module.name} `)
+  );
+  if (provenanceIssue) {
+    return {
+      ...(provenanceIssue.fix ? { fix: provenanceIssue.fix } : {}),
+      reason: provenanceIssue.message,
+      status: "provenance_blocked",
     };
   }
 
@@ -395,6 +436,25 @@ function registryCompatibilityIssue({
     compatibility.consolePackageApi !== hostCompatibility.consolePackageApi
   ) {
     return `${moduleName} requires console package API ${compatibility.consolePackageApi}; host supports ${hostCompatibility.consolePackageApi}`;
+  }
+  return null;
+}
+
+function registryProvenanceIssue({
+  moduleName,
+  provenance,
+}: {
+  moduleName: string;
+  provenance: AvailableModuleRegistryProvenance | undefined;
+}): string | null {
+  if (!provenance?.publisher) {
+    return `${moduleName} provenance publisher is missing`;
+  }
+  if (!provenance.sourceRepository) {
+    return `${moduleName} provenance source repository is missing`;
+  }
+  if (!provenance.checksum) {
+    return `${moduleName} provenance checksum is missing`;
   }
   return null;
 }

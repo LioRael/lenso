@@ -238,6 +238,12 @@ URL, capabilities, and console package hints:
         },
         "consolePackageApi": "1"
       },
+      "provenance": {
+        "publisher": "Acme Billing",
+        "sourceRepository": "https://github.com/acme/lenso-billing-module",
+        "packageUrl": "https://packages.example.com/lenso-billing-0.1.0.tgz",
+        "checksum": "sha256:..."
+      },
       "consolePackages": [
         {
           "packageName": "@vendor/lenso-billing-console",
@@ -258,6 +264,10 @@ Registry review also enforces compatibility before installation. Catalog
 entries can declare supported Lenso host versions and console package API
 versions through `compatibility`; incompatible modules are blocked before host
 files are written.
+Registry review also requires a provenance snapshot for trusted entries:
+publisher, source repository, and checksum. This is v0 metadata gating, not
+cryptographic verification; future marketplace work should verify signatures or
+checksums against fetched artifacts before installation.
 `pnpm --dir apps/runtime-console run demo:module-registry-install` exercises the
 same sequence against a temporary host fixture without mutating the working tree.
 

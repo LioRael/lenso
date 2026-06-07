@@ -128,6 +128,12 @@ const main = async () => {
               installPolicy: "trusted",
               manifestReference,
               name: "billing",
+              provenance: {
+                checksum: "sha256:fixture-billing-module",
+                packageUrl: "https://example.com/lenso/module/v1/package.tgz",
+                publisher: "Lenso Fixtures",
+                sourceRepository: "https://example.com/lenso/billing-module",
+              },
               source: "remote",
               summary: "Billing workspace and operations",
               version: "0.1.0",
