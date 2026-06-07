@@ -675,7 +675,7 @@ export function moduleRegistryHandoffCommands(
     {
       key: "inspect",
       label: "preflight",
-      command: `lenso module registry inspect ${moduleName} --registry-file .lenso/module-registry.json`,
+      command: `lenso module registry review ${moduleName} --registry-file .lenso/module-registry.json`,
     },
     {
       key: "install",

@@ -792,7 +792,7 @@ describe("module status helpers", () => {
         key: "inspect",
         label: "preflight",
         command:
-          "lenso module registry inspect billing --registry-file .lenso/module-registry.json",
+          "lenso module registry review billing --registry-file .lenso/module-registry.json",
       },
       {
         key: "install",

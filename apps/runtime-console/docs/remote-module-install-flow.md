@@ -29,6 +29,7 @@ entries before installing:
 lenso module registry list --registry-file .lenso/module-registry.json
 lenso module registry doctor --registry-file .lenso/module-registry.json
 lenso module registry inspect billing --registry-file .lenso/module-registry.json
+lenso module registry review billing --registry-file .lenso/module-registry.json
 ```
 
 For automation or a future Runtime Console data source, emit the same registry
@@ -59,6 +60,7 @@ verification. It does not install modules or mutate host configuration.
 Install from the registry when the entry looks right:
 
 ```sh
+lenso module registry review billing --registry-file .lenso/module-registry.json
 lenso module registry install billing --registry-file .lenso/module-registry.json
 lenso module registry history
 ```

@@ -168,8 +168,8 @@ Current Runtime Console support includes:
 - package manifests derived into install metadata
 - module metadata showing missing frontend package install plans
 - Module Registry v0 catalog discovery through `lenso module registry list`,
-  `lenso module registry doctor`, `lenso module registry inspect`, and
-  `lenso module registry install`
+  `lenso module registry doctor`, `lenso module registry inspect`,
+  `lenso module registry review`, and `lenso module registry install`
 - machine-readable registry preflight snapshots through
   `lenso module registry doctor --json`
 - remote module install CLI that writes local source configuration
@@ -209,6 +209,7 @@ pnpm create:module billing --remote --output-dir ../module-packages
 lenso module registry list --registry-file .lenso/module-registry.json
 lenso module registry doctor --registry-file .lenso/module-registry.json
 lenso module registry inspect billing --registry-file .lenso/module-registry.json
+lenso module registry review billing --registry-file .lenso/module-registry.json
 lenso module registry install billing --registry-file .lenso/module-registry.json
 lenso module add https://example.com/lenso/module/v1/manifest
 lenso console-package apply-plan

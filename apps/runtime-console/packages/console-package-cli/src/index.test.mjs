@@ -642,6 +642,130 @@ describe("module scaffold CLI", () => {
     );
   });
 
+  test("reviews a registry module before installation", async () => {
+    const repoRoot = await createRepoFixture();
+    const manifestUrl = await serveManifest({
+      capabilities: ["billing.read"],
+      console: [
+        {
+          package: {
+            export: "billingConsoleModule",
+            name: "@vendor/lenso-billing-console",
+          },
+          route: "/data/billing",
+        },
+      ],
+      name: "billing",
+      source: "remote",
+      version: "0.1.0",
+    });
+    await writeFixture(
+      repoRoot,
+      ".lenso/module-registry.json",
+      JSON.stringify(
+        {
+          modules: [
+            {
+              baseUrl: manifestUrl.slice(0, -"/manifest".length),
+              capabilities: ["billing.read"],
+              installPolicy: "trusted",
+              manifestReference: manifestUrl,
+              name: "billing",
+              source: "remote",
+              version: "0.1.0",
+            },
+          ],
+          version: 1,
+        },
+        null,
+        2
+      )
+    );
+
+    const logs = await captureConsoleLogs(async () => {
+      await expect(
+        runConsolePackageCli([
+          "module",
+          "registry",
+          "review",
+          "billing",
+          "--registry-file",
+          path.join(repoRoot, ".lenso/module-registry.json"),
+        ])
+      ).resolves.toBe(0);
+    });
+
+    expect(logs).toContain("Registry review billing");
+    expect(logs).toContain("decision: ready_to_install");
+    expect(logs).toContain("install policy: trusted");
+    expect(logs).toContain("manifest status: ok");
+    expect(logs).toContain("issues: -");
+    expect(logs).toContain("next: lenso module registry install billing");
+  });
+
+  test("prints registry module review as JSON", async () => {
+    const repoRoot = await createRepoFixture();
+    const manifestUrl = await serveManifest({
+      capabilities: ["billing.read"],
+      console: [],
+      name: "billing",
+      source: "remote",
+      version: "0.1.0",
+    });
+    await writeFixture(
+      repoRoot,
+      ".lenso/module-registry.json",
+      JSON.stringify(
+        {
+          modules: [
+            {
+              baseUrl: manifestUrl.slice(0, -"/manifest".length),
+              capabilities: ["billing.read"],
+              installPolicy: "trusted",
+              manifestReference: manifestUrl,
+              name: "billing",
+              source: "remote",
+              version: "0.1.0",
+            },
+          ],
+          version: 1,
+        },
+        null,
+        2
+      )
+    );
+
+    const logs = await captureConsoleLogs(async () => {
+      await expect(
+        runConsolePackageCli([
+          "module",
+          "registry",
+          "review",
+          "billing",
+          "--registry-file",
+          path.join(repoRoot, ".lenso/module-registry.json"),
+          "--json",
+        ])
+      ).resolves.toBe(0);
+    });
+
+    expect(JSON.parse(logs)).toMatchObject({
+      decision: "ready_to_install",
+      issues: [],
+      module: {
+        baseUrl: manifestUrl.slice(0, -"/manifest".length),
+        catalogVersion: "0.1.0",
+        installPolicy: "trusted",
+        manifestName: "billing",
+        manifestStatus: "ok",
+        manifestVersion: "0.1.0",
+        name: "billing",
+        source: "remote",
+      },
+      version: 1,
+    });
+  });
+
   test("rejects registry entries whose manifest identity does not match", async () => {
     const repoRoot = await createRepoFixture();
     const manifestUrl = await serveManifest({
@@ -1202,6 +1326,7 @@ describe("module scaffold CLI", () => {
     expect(flowDoc).toContain("Available Modules");
     expect(flowDoc).toContain("does not install modules");
     expect(flowDoc).toContain("lenso module registry inspect");
+    expect(flowDoc).toContain("lenso module registry review");
     expect(flowDoc).toContain("lenso module registry install");
     expect(flowDoc).toContain("lenso module registry history");
     expect(flowDoc).toContain("lenso console-package apply-plan");
@@ -1246,6 +1371,7 @@ describe("module scaffold CLI", () => {
     expect(architectureDoc).toContain("module registry list");
     expect(architectureDoc).toContain("module registry doctor");
     expect(architectureDoc).toContain("module registry inspect");
+    expect(architectureDoc).toContain("module registry review");
     expect(architectureDoc).toContain("module registry install");
     expect(architectureDoc).toContain("console package apply-plan");
     expect(architectureDoc).toContain("module doctor diagnostics");

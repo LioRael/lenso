@@ -1806,6 +1806,71 @@ const checkRegistryEntryManifest = async ({ entry, issues, options }) => {
   };
 };
 
+const reviewRegistryModuleSnapshot = async ({ moduleName, options }) => {
+  const { entries, registryFilePath } = await readModuleRegistry({ options });
+  const entry = findRegistryModule({ entries, moduleName });
+  const issues = [];
+  if (entry.installPolicy !== "trusted") {
+    addRegistryDoctorIssue({
+      fix: `set ${entry.name} installPolicy to trusted after reviewing the manifest, base URL, capabilities, and console package hints`,
+      group: "Catalog",
+      issues,
+      message: `${entry.name} installPolicy is ${entry.installPolicy}`,
+    });
+  }
+  const result = await checkRegistryEntryManifest({ entry, issues, options });
+  const decision = issues.length === 0 ? "ready_to_install" : "blocked";
+  return {
+    decision,
+    issues,
+    module: {
+      baseUrl: result.baseUrl ?? null,
+      capabilities: entry.capabilities,
+      catalogVersion: entry.version,
+      consolePackageHints: result.consolePackageHints,
+      installPolicy: entry.installPolicy,
+      manifestName: result.manifestName,
+      manifestReference: entry.manifestReference,
+      manifestStatus: result.manifestStatus,
+      manifestVersion: result.manifestVersion,
+      name: entry.name,
+      source: entry.source,
+    },
+    registryFile: registryFilePath,
+    version: 1,
+  };
+};
+
+const printRegistryModuleReview = async ({ moduleName, options }) => {
+  const snapshot = await reviewRegistryModuleSnapshot({ moduleName, options });
+  if (options.json) {
+    console.log(JSON.stringify(snapshot, null, 2));
+    return;
+  }
+  const { module } = snapshot;
+  console.log(`Registry review ${module.name}`);
+  console.log(`- decision: ${snapshot.decision}`);
+  console.log(`- catalog version: ${module.catalogVersion}`);
+  console.log(`- manifest version: ${module.manifestVersion ?? "-"}`);
+  console.log(`- source: ${module.source}`);
+  console.log(`- manifest: ${module.manifestReference}`);
+  console.log(`- base URL: ${module.baseUrl ?? "-"}`);
+  console.log(`- install policy: ${module.installPolicy}`);
+  console.log(`- manifest status: ${module.manifestStatus}`);
+  console.log(`- capabilities: ${formatListValue(module.capabilities)}`);
+  console.log(`- console package hints: ${module.consolePackageHints}`);
+  if (snapshot.issues.length === 0) {
+    console.log("- issues: -");
+    console.log(`- next: lenso module registry install ${module.name}`);
+    return;
+  }
+  console.log("- issues:");
+  for (const issue of snapshot.issues) {
+    console.log(`  - ${issue.group}: ${issue.message}`);
+    console.log(`    fix: ${issue.fix}`);
+  }
+};
+
 const registryDoctorJsonSnapshot = ({
   entries,
   issues,
@@ -2177,6 +2242,7 @@ Third-party remote module flow:
   lenso module registry list
   lenso module registry doctor
   lenso module registry inspect <module>
+  lenso module registry review <module>
   lenso module registry install <module>
   lenso module registry history
   lenso module add <manifest-url>
@@ -2227,6 +2293,13 @@ Third-party remote module flow:
       .description("inspect a registry module and validate its manifest")
   ).action(async (moduleName, options) => {
     await inspectRegistryModule({ moduleName, options });
+  });
+  addModuleRegistryOptions(
+    registryCommand
+      .command("review <moduleName>")
+      .description("review a registry module before installation")
+  ).action(async (moduleName, options) => {
+    await printRegistryModuleReview({ moduleName, options });
   });
   addModuleRegistryHistoryOptions(
     registryCommand.command("history").description("list registry installs")

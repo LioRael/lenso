@@ -73,6 +73,7 @@ The CLI extends the existing module tooling:
 ```sh
 lenso module registry list --registry-file .lenso/module-registry.json
 lenso module registry inspect billing --registry-file .lenso/module-registry.json
+lenso module registry review billing --registry-file .lenso/module-registry.json
 lenso module registry install billing --registry-file .lenso/module-registry.json
 lenso module registry history
 ```
