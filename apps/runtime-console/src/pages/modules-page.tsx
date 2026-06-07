@@ -23,6 +23,7 @@ import {
   availableModuleRegistrySnapshotPanelState,
   availableModuleRegistrySnapshotQueryKey,
   availableModuleRegistrySnapshotRows,
+  availableModuleRegistryTargetModuleName,
   fetchAvailableModuleRegistrySnapshot,
   moduleRefreshInvalidationQueryKeys,
 } from "../data/available-module-registry-snapshot";
@@ -167,6 +168,8 @@ function ModulesContent() {
   const [selectedModuleName, setSelectedModuleName] = useState<string | null>(
     null
   );
+  const [selectedAvailableModuleName, setSelectedAvailableModuleName] =
+    useState<string | null>(null);
   const [filters, setFilters] = useState<ModuleRegistryFilters>({
     query: "",
     lint: "all",
@@ -226,8 +229,10 @@ function ModulesContent() {
         <nav className="min-h-0 overflow-auto border-r border-(--border-subtle) p-2 font-mono text-[12px]">
           <ModuleRegistryCatalogPanel
             moduleName={selectedModuleName}
+            onSelectModule={setSelectedAvailableModuleName}
             panelState={availableModulePanelState}
             rows={availableModuleRows}
+            selectedAvailableModuleName={selectedAvailableModuleName}
           />
           <ModuleRegistryControls
             filters={filters}
@@ -314,14 +319,23 @@ function ModulesContent() {
 
 function ModuleRegistryCatalogPanel({
   moduleName,
+  onSelectModule,
   panelState,
   rows,
+  selectedAvailableModuleName,
 }: {
   moduleName: string | null;
+  onSelectModule: (moduleName: string) => void;
   panelState: ReturnType<typeof availableModuleRegistrySnapshotPanelState>;
   rows: ReturnType<typeof availableModuleRegistrySnapshotRows>;
+  selectedAvailableModuleName: string | null;
 }) {
-  const commands = moduleRegistryHandoffCommands(moduleName ?? "<module>");
+  const commands = moduleRegistryHandoffCommands(
+    availableModuleRegistryTargetModuleName({
+      currentModuleName: moduleName,
+      selectedAvailableModuleName,
+    })
+  );
 
   return (
     <section className="mb-2 min-w-0 border border-(--border-subtle) bg-(--surface)">
@@ -354,9 +368,15 @@ function ModuleRegistryCatalogPanel({
           </div>
         ) : (
           rows.map((row) => (
-            <div
-              className="grid gap-1 border border-(--border-subtle) bg-(--background) px-2 py-1.5"
+            <button
+              className={cn(
+                "grid gap-1 border border-(--border-subtle) bg-(--background) px-2 py-1.5 text-left hover:bg-(--sidebar)",
+                row.name === selectedAvailableModuleName &&
+                  "border-[color-mix(in_srgb,var(--accent)_55%,transparent)] bg-(--accent-soft)"
+              )}
               key={row.key}
+              onClick={() => onSelectModule(row.name)}
+              type="button"
             >
               <div className="flex min-w-0 items-center gap-1">
                 <span className="truncate text-[11px] text-(--foreground)">
@@ -379,7 +399,7 @@ function ModuleRegistryCatalogPanel({
                 {row.source} / caps {row.capabilityCount} / console{" "}
                 {row.consolePackageHintCount}
               </div>
-            </div>
+            </button>
           ))
         )}
       </div>

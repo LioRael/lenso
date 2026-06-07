@@ -4,6 +4,7 @@ import {
   availableModuleRegistrySnapshotPanelState,
   availableModuleRegistrySnapshotQueryKey,
   availableModuleRegistrySnapshotRows,
+  availableModuleRegistryTargetModuleName,
   moduleRefreshInvalidationQueryKeys,
   fetchAvailableModuleRegistrySnapshot,
   sampleAvailableModuleRegistrySnapshot,
@@ -132,5 +133,28 @@ describe("available module registry snapshot provider", () => {
       kind: "ready",
       label: "ready",
     });
+  });
+
+  test("uses selected available module for handoff commands", () => {
+    expect(
+      availableModuleRegistryTargetModuleName({
+        currentModuleName: "identity",
+        selectedAvailableModuleName: "billing",
+      })
+    ).toBe("billing");
+
+    expect(
+      availableModuleRegistryTargetModuleName({
+        currentModuleName: "identity",
+        selectedAvailableModuleName: null,
+      })
+    ).toBe("identity");
+
+    expect(
+      availableModuleRegistryTargetModuleName({
+        currentModuleName: null,
+        selectedAvailableModuleName: null,
+      })
+    ).toBe("<module>");
   });
 });

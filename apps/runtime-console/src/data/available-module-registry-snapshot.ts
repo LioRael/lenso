@@ -145,3 +145,13 @@ export function availableModuleRegistrySnapshotPanelState({
     message: "Registry snapshot preflight is ready.",
   };
 }
+
+export function availableModuleRegistryTargetModuleName({
+  currentModuleName,
+  selectedAvailableModuleName,
+}: {
+  currentModuleName: string | null;
+  selectedAvailableModuleName: string | null;
+}) {
+  return selectedAvailableModuleName ?? currentModuleName ?? "<module>";
+}
