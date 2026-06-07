@@ -125,6 +125,7 @@ const main = async () => {
                   route: "/data/billing",
                 },
               ],
+              installPolicy: "trusted",
               manifestReference,
               name: "billing",
               source: "remote",

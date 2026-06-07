@@ -62,6 +62,12 @@ Install from the registry when the entry looks right:
 lenso module registry install billing --registry-file .lenso/module-registry.json
 ```
 
+Registry install is deliberately gated. Catalog entries default to
+`installPolicy: "review_required"`; set `installPolicy: "trusted"` only after
+reviewing the manifest reference, base URL, capabilities, and console package
+hints. This is a curated-operator allow bit, not package signing or automatic
+trust.
+
 Registry install still writes the same host-local source configuration and
 console package install plan as `lenso module add`.
 
@@ -125,6 +131,15 @@ after install. They group failures by the part of the flow that needs attention
 and print a `fix:` command next to each issue.
 
 ### Catalog
+
+If registry install refuses an untrusted entry, review the catalog and manifest,
+then explicitly mark the entry trusted:
+
+```json
+{
+  "installPolicy": "trusted"
+}
+```
 
 If a registry catalog entry is missing a base URL and the manifest reference is
 not an HTTP URL ending in `/manifest`, add the runtime module base URL:

@@ -1399,6 +1399,23 @@ const normalizeRegistryConsolePackages = ({ consolePackages, moduleName }) => {
   }));
 };
 
+const normalizeRegistryInstallPolicy = ({ installPolicy, moduleName }) => {
+  if (installPolicy === undefined) {
+    return "review_required";
+  }
+  const normalized = requireRegistryString({
+    field: "installPolicy",
+    moduleName,
+    value: installPolicy,
+  });
+  if (!["review_required", "trusted"].includes(normalized)) {
+    throw new Error(
+      `Module registry entry ${moduleName} installPolicy must be review_required or trusted`
+    );
+  }
+  return normalized;
+};
+
 const normalizeRegistryEntry = (entry) => {
   if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
     throw new Error("Module registry entries must be JSON objects");
@@ -1429,6 +1446,10 @@ const normalizeRegistryEntry = (entry) => {
     capabilities: capabilities.map(String),
     consolePackages: normalizeRegistryConsolePackages({
       consolePackages: entry.consolePackages,
+      moduleName: name,
+    }),
+    installPolicy: normalizeRegistryInstallPolicy({
+      installPolicy: entry.installPolicy,
       moduleName: name,
     }),
     manifestReference: requireRegistryString({
@@ -1512,6 +1533,7 @@ const listModuleRegistry = async ({ options }) => {
     if (entry.baseUrl) {
       console.log(`  base URL: ${entry.baseUrl}`);
     }
+    console.log(`  install policy: ${entry.installPolicy}`);
     console.log(`  capabilities: ${formatListValue(entry.capabilities)}`);
     console.log(
       `  console packages: ${formatListValue(
@@ -1542,6 +1564,7 @@ const inspectRegistryModule = async ({ moduleName, options }) => {
   console.log(`- source: ${entry.source}`);
   console.log(`- manifest: ${entry.manifestReference}`);
   console.log(`- base URL: ${baseUrl}`);
+  console.log(`- install policy: ${entry.installPolicy}`);
   console.log(`- manifest status: ok`);
   console.log(`- capabilities: ${formatListValue(manifest.capabilities)}`);
   console.log(
@@ -1552,6 +1575,11 @@ const inspectRegistryModule = async ({ moduleName, options }) => {
 const installRegistryModule = async ({ moduleName, options }) => {
   const { entries } = await readModuleRegistry({ options });
   const entry = findRegistryModule({ entries, moduleName });
+  if (entry.installPolicy !== "trusted") {
+    throw new Error(
+      `Registry module ${entry.name} is not trusted for installation. Set installPolicy to trusted after reviewing the catalog entry, manifest, base URL, capabilities, and console package hints.`
+    );
+  }
   await inspectRegistryModule({ moduleName, options });
   await addRemoteModule({
     manifestReference: entry.manifestReference,
@@ -1700,6 +1728,7 @@ const registryDoctorJsonSnapshot = ({
     baseUrl: result.baseUrl ?? null,
     catalogVersion: entry.version,
     consolePackageHints: result.consolePackageHints,
+    installPolicy: entry.installPolicy,
     manifestName: result.manifestName,
     manifestReference: entry.manifestReference,
     manifestStatus: result.manifestStatus,
@@ -1723,6 +1752,14 @@ const runModuleRegistryDoctor = async ({ options }) => {
   let consolePackageHints = 0;
   for (const entry of entries) {
     const issueStart = issues.length;
+    if (entry.installPolicy !== "trusted") {
+      addRegistryDoctorIssue({
+        fix: `set ${entry.name} installPolicy to trusted after reviewing the manifest, base URL, capabilities, and console package hints`,
+        group: "Catalog",
+        issues,
+        message: `${entry.name} installPolicy is ${entry.installPolicy}`,
+      });
+    }
     const result = await checkRegistryEntryManifest({ entry, issues, options });
     consolePackageHints += result.consolePackageHints;
     moduleChecks.push({

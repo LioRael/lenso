@@ -512,6 +512,7 @@ describe("module scaffold CLI", () => {
                   route: "/data/billing",
                 },
               ],
+              installPolicy: "trusted",
               manifestReference: "https://example.com/lenso/module/v1/manifest",
               name: "billing",
               source: "remote",
@@ -544,6 +545,7 @@ describe("module scaffold CLI", () => {
     expect(logs).toContain(
       "manifest: https://example.com/lenso/module/v1/manifest"
     );
+    expect(logs).toContain("install policy: trusted");
     expect(logs).toContain("capabilities: billing.read");
     expect(logs).toContain(
       "console packages: @vendor/lenso-billing-console#billingConsoleModule"
@@ -575,6 +577,7 @@ describe("module scaffold CLI", () => {
           modules: [
             {
               capabilities: ["billing.read"],
+              installPolicy: "trusted",
               manifestReference: manifestUrl,
               name: "billing",
               source: "remote",
@@ -604,6 +607,7 @@ describe("module scaffold CLI", () => {
     expect(logs).toContain("Registry module billing");
     expect(logs).toContain("catalog version: 0.1.0");
     expect(logs).toContain("manifest version: 0.1.0");
+    expect(logs).toContain("install policy: trusted");
     expect(logs).toContain("manifest status: ok");
     expect(logs).toContain("capabilities: billing.read");
     expect(logs).toContain(
@@ -681,6 +685,7 @@ describe("module scaffold CLI", () => {
             {
               baseUrl,
               capabilities: ["billing.read"],
+              installPolicy: "trusted",
               manifestReference: manifestUrl,
               name: "billing",
               source: "remote",
@@ -740,6 +745,51 @@ describe("module scaffold CLI", () => {
     });
   });
 
+  test("rejects registry install entries without a trusted install policy", async () => {
+    const repoRoot = await createRepoFixture();
+    const manifestUrl = await serveManifest({
+      capabilities: ["billing.read"],
+      console: [],
+      name: "billing",
+      source: "remote",
+      version: "0.1.0",
+    });
+    await writeFixture(
+      repoRoot,
+      ".lenso/module-registry.json",
+      JSON.stringify(
+        {
+          modules: [
+            {
+              manifestReference: manifestUrl,
+              name: "billing",
+              source: "remote",
+              version: "0.1.0",
+            },
+          ],
+          version: 1,
+        },
+        null,
+        2
+      )
+    );
+
+    await expect(
+      runConsolePackageCli([
+        "module",
+        "registry",
+        "install",
+        "billing",
+        "--registry-file",
+        path.join(repoRoot, ".lenso/module-registry.json"),
+        "--repo-root",
+        repoRoot,
+      ])
+    ).rejects.toThrow(
+      "Registry module billing is not trusted for installation"
+    );
+  });
+
   test("passes registry doctor for a valid catalog", async () => {
     const repoRoot = await createRepoFixture();
     const manifestUrl = await serveManifest({
@@ -773,6 +823,7 @@ describe("module scaffold CLI", () => {
                   route: "/data/billing",
                 },
               ],
+              installPolicy: "trusted",
               manifestReference: manifestUrl,
               name: "billing",
               source: "remote",
@@ -837,6 +888,7 @@ describe("module scaffold CLI", () => {
                   route: "/data/billing",
                 },
               ],
+              installPolicy: "trusted",
               manifestReference: manifestUrl,
               name: "billing",
               source: "remote",
@@ -875,6 +927,7 @@ describe("module scaffold CLI", () => {
           baseUrl: manifestUrl.slice(0, -"/manifest".length),
           catalogVersion: "0.1.0",
           consolePackageHints: 1,
+          installPolicy: "trusted",
           manifestName: "billing",
           manifestReference: manifestUrl,
           manifestStatus: "ok",

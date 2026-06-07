@@ -40,6 +40,7 @@ The catalog is a JSON object:
       "source": "remote",
       "manifestReference": "https://example.com/lenso/module/v1/manifest",
       "baseUrl": "https://example.com/lenso/module/v1",
+      "installPolicy": "trusted",
       "summary": "Billing workspace and operations",
       "capabilities": ["billing.read"],
       "consolePackages": [
@@ -58,6 +59,12 @@ Only `version`, `modules`, `name`, `version`, `source`, and
 `manifestReference` are required. `source` must be `remote` for v0. `baseUrl`
 is optional when the manifest URL ends with `/manifest`, matching the existing
 remote install behavior.
+
+`installPolicy` defaults to `review_required`. `registry install` only proceeds
+when a curated catalog entry sets `installPolicy` to `trusted`, after the host
+developer has reviewed the manifest reference, base URL, capabilities, and
+console package hints. This is a local operator gate, not cryptographic
+provenance or automatic package trust.
 
 ## CLI
 
