@@ -70,6 +70,14 @@ trust.
 
 Registry install still writes the same host-local source configuration and
 console package install plan as `lenso module add`.
+It also appends a local audit entry to:
+
+```text
+.lenso/module-registry-install-history.json
+```
+
+The history records the module name/version, manifest reference, base URL,
+install policy, console package hint count, source, action, and install time.
 
 Add the remote module source:
 

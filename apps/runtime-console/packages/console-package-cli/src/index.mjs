@@ -1572,21 +1572,76 @@ const inspectRegistryModule = async ({ moduleName, options }) => {
   );
 };
 
+const moduleRegistryInstallHistoryPath = ({ options, repoRoot }) =>
+  path.resolve(
+    options.installHistoryFile ??
+      path.join(repoRoot, ".lenso/module-registry-install-history.json")
+  );
+
+const readModuleRegistryInstallHistory = async (historyPath) => {
+  if (!(await pathExists(historyPath))) {
+    return { entries: [], version: 1 };
+  }
+  const history = await readJson(historyPath);
+  if (!history || typeof history !== "object" || Array.isArray(history)) {
+    throw new Error("Module registry install history must be a JSON object");
+  }
+  if (history.version !== 1) {
+    throw new Error("Module registry install history version must be 1");
+  }
+  if (!Array.isArray(history.entries)) {
+    throw new TypeError(
+      "Module registry install history entries must be an array"
+    );
+  }
+  return history;
+};
+
+const appendModuleRegistryInstallHistory = async ({
+  baseUrl,
+  entry,
+  historyPath,
+}) => {
+  const history = await readModuleRegistryInstallHistory(historyPath);
+  history.entries.push({
+    action: "registry.install",
+    baseUrl,
+    catalogVersion: entry.version,
+    consolePackageHints: entry.consolePackages.length,
+    installPolicy: entry.installPolicy,
+    installedAt: new Date().toISOString(),
+    manifestReference: entry.manifestReference,
+    moduleName: entry.name,
+    source: entry.source,
+  });
+  await mkdir(path.dirname(historyPath), { recursive: true });
+  await writeFile(historyPath, `${JSON.stringify(history, null, 2)}\n`);
+};
+
 const installRegistryModule = async ({ moduleName, options }) => {
-  const { entries } = await readModuleRegistry({ options });
+  const { entries, repoRoot } = await readModuleRegistry({ options });
   const entry = findRegistryModule({ entries, moduleName });
   if (entry.installPolicy !== "trusted") {
     throw new Error(
       `Registry module ${entry.name} is not trusted for installation. Set installPolicy to trusted after reviewing the catalog entry, manifest, base URL, capabilities, and console package hints.`
     );
   }
+  const baseUrl = deriveRemoteBaseUrl({
+    baseUrl: entry.baseUrl ?? options.baseUrl,
+    manifestReference: entry.manifestReference,
+  });
   await inspectRegistryModule({ moduleName, options });
   await addRemoteModule({
     manifestReference: entry.manifestReference,
     options: {
       ...options,
-      baseUrl: entry.baseUrl ?? options.baseUrl,
+      baseUrl,
     },
+  });
+  await appendModuleRegistryInstallHistory({
+    baseUrl,
+    entry,
+    historyPath: moduleRegistryInstallHistoryPath({ options, repoRoot }),
   });
   console.log(`Installed registry module ${entry.name}.`);
 };
@@ -2035,6 +2090,10 @@ const addModuleRegistryInstallOptions = (command) =>
   addModuleRegistryOptions(command)
     .option("--env-file <path>", "env file to update")
     .option("--install-plan-file <path>", "console package install plan file")
+    .option(
+      "--install-history-file <path>",
+      "module registry install history file"
+    )
     .option(
       "--base-url <url>",
       "override the remote module base URL from the registry"

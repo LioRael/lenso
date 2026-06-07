@@ -743,6 +743,28 @@ describe("module scaffold CLI", () => {
       ],
       version: 1,
     });
+    const installHistory = JSON.parse(
+      await readFile(
+        path.join(repoRoot, ".lenso/module-registry-install-history.json"),
+        "utf-8"
+      )
+    );
+    expect(installHistory).toMatchObject({
+      entries: [
+        {
+          action: "registry.install",
+          baseUrl,
+          catalogVersion: "0.1.0",
+          consolePackageHints: 0,
+          installPolicy: "trusted",
+          manifestReference: manifestUrl,
+          moduleName: "billing",
+          source: "remote",
+        },
+      ],
+      version: 1,
+    });
+    expect(installHistory.entries[0].installedAt).toEqual(expect.any(String));
   });
 
   test("rejects registry install entries without a trusted install policy", async () => {
