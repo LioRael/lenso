@@ -65,6 +65,7 @@ export type AvailableModuleRegistryProvenance = {
   checksum?: string;
   packageUrl?: string;
   publisher?: string;
+  publicKey?: string;
   publicKeyId?: string;
   signatureAlgorithm?: string;
   signatureUrl?: string;
@@ -464,6 +465,9 @@ function registryProvenanceIssue({
   }
   if (!provenance.publicKeyId) {
     return `${moduleName} provenance public key id is missing`;
+  }
+  if (!provenance.publicKey) {
+    return `${moduleName} provenance public key is missing`;
   }
   if (!provenance.signatureAlgorithm) {
     return `${moduleName} provenance signature algorithm is missing`;

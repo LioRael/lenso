@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { createHash } from "node:crypto";
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -101,6 +101,16 @@ const main = async () => {
       "lenso-billing/billing-package.tgz"
     );
     const packageBytes = "lenso fixture billing package\n";
+    const signingKeyPair = generateKeyPairSync("ed25519");
+    const signatureBytes = sign(
+      null,
+      Buffer.from(packageBytes),
+      signingKeyPair.privateKey
+    );
+    const publicKey = signingKeyPair.publicKey.export({
+      format: "pem",
+      type: "spki",
+    });
     await createHostFixture(hostRoot);
 
     await runConsolePackageCli([
@@ -123,7 +133,7 @@ const main = async () => {
     await writeFixture(
       modulePackagesRoot,
       "lenso-billing/billing-package.tgz.sig",
-      "fixture-signature"
+      signatureBytes
     );
     await writeFixture(
       hostRoot,
@@ -147,6 +157,7 @@ const main = async () => {
               provenance: {
                 checksum: `sha256:${createHash("sha256").update(packageBytes).digest("hex")}`,
                 packageUrl: packageArtifact,
+                publicKey,
                 publicKeyId: "lenso-fixtures-ed25519",
                 publisher: "Lenso Fixtures",
                 signatureAlgorithm: "ed25519-detached",

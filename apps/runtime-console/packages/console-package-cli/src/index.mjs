@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { createHash } from "node:crypto";
+import { createHash, createPublicKey, verify } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -1512,6 +1512,11 @@ const normalizeRegistryProvenance = ({ moduleName, provenance }) => {
       moduleName,
       value: provenance.packageUrl,
     }),
+    publicKey: optionalRegistryString({
+      field: "provenance.publicKey",
+      moduleName,
+      value: provenance.publicKey,
+    }),
     publicKeyId: optionalRegistryString({
       field: "provenance.publicKeyId",
       moduleName,
@@ -1955,6 +1960,7 @@ const checkRegistryProvenance = ({ entry, issues }) => {
     ["checksum", "checksum"],
     ["signatureUrl", "signature URL"],
     ["publicKeyId", "public key id"],
+    ["publicKey", "public key"],
     ["signatureAlgorithm", "signature algorithm"],
   ];
   for (const [field, label] of requiredFields) {
@@ -1980,9 +1986,60 @@ const checkRegistryProvenance = ({ entry, issues }) => {
   }
 };
 
+const verifyRegistryProvenanceSignature = async ({
+  artifactBytes,
+  entry,
+  issues,
+}) => {
+  if (
+    !(
+      artifactBytes &&
+      entry.provenance.publicKey &&
+      entry.provenance.signatureAlgorithm === "ed25519-detached" &&
+      entry.provenance.signatureUrl
+    )
+  ) {
+    return;
+  }
+  let signatureBytes;
+  try {
+    signatureBytes = await readBytesFromReference(
+      entry.provenance.signatureUrl
+    );
+  } catch (error) {
+    addRegistryDoctorIssue({
+      fix: `verify ${entry.name} provenance.signatureUrl and signature artifact access`,
+      group: "Provenance",
+      issues,
+      message: `${entry.name} provenance signature could not be read: ${error.message}`,
+    });
+    return;
+  }
+  let publicKey;
+  try {
+    publicKey = createPublicKey(entry.provenance.publicKey);
+  } catch (error) {
+    addRegistryDoctorIssue({
+      fix: `set ${entry.name} provenance.publicKey to a valid PEM public key`,
+      group: "Provenance",
+      issues,
+      message: `${entry.name} provenance public key is invalid: ${error.message}`,
+    });
+    return;
+  }
+  if (!verify(null, artifactBytes, publicKey, signatureBytes)) {
+    addRegistryDoctorIssue({
+      fix: `update ${entry.name} provenance.signatureUrl after signing the reviewed package artifact`,
+      group: "Provenance",
+      issues,
+      message: `${entry.name} provenance signature verification failed`,
+    });
+  }
+};
+
 const verifyRegistryProvenanceChecksum = async ({ entry, issues }) => {
   if (!(entry.provenance.checksum && entry.provenance.packageUrl)) {
-    return;
+    return null;
   }
   const [algorithm, expectedDigest] = entry.provenance.checksum.split(":");
   if (algorithm !== "sha256" || !expectedDigest) {
@@ -1992,7 +2049,7 @@ const verifyRegistryProvenanceChecksum = async ({ entry, issues }) => {
       issues,
       message: `${entry.name} provenance checksum must use sha256:<hex digest>`,
     });
-    return;
+    return null;
   }
   let bytes;
   try {
@@ -2004,7 +2061,7 @@ const verifyRegistryProvenanceChecksum = async ({ entry, issues }) => {
       issues,
       message: `${entry.name} provenance package could not be read: ${error.message}`,
     });
-    return;
+    return null;
   }
   const actualDigest = sha256Digest(bytes);
   if (actualDigest !== expectedDigest.toLowerCase()) {
@@ -2015,6 +2072,7 @@ const verifyRegistryProvenanceChecksum = async ({ entry, issues }) => {
       message: `${entry.name} provenance checksum mismatch`,
     });
   }
+  return bytes;
 };
 
 const compareRegistryConsolePackages = ({ entry, issues, manifest }) => {
@@ -2126,7 +2184,11 @@ const reviewRegistryModuleSnapshot = async ({ moduleName, options }) => {
   }
   checkRegistryCompatibility({ entry, issues });
   checkRegistryProvenance({ entry, issues });
-  await verifyRegistryProvenanceChecksum({ entry, issues });
+  const artifactBytes = await verifyRegistryProvenanceChecksum({
+    entry,
+    issues,
+  });
+  await verifyRegistryProvenanceSignature({ artifactBytes, entry, issues });
   const result = await checkRegistryEntryManifest({ entry, issues, options });
   const decision = issues.length === 0 ? "ready_to_install" : "blocked";
   return {
@@ -2243,7 +2305,11 @@ const runModuleRegistryDoctor = async ({ options }) => {
     }
     checkRegistryCompatibility({ entry, issues });
     checkRegistryProvenance({ entry, issues });
-    await verifyRegistryProvenanceChecksum({ entry, issues });
+    const artifactBytes = await verifyRegistryProvenanceChecksum({
+      entry,
+      issues,
+    });
+    await verifyRegistryProvenanceSignature({ artifactBytes, entry, issues });
     const result = await checkRegistryEntryManifest({ entry, issues, options });
     consolePackageHints += result.consolePackageHints;
     moduleChecks.push({

@@ -245,7 +245,8 @@ URL, capabilities, and console package hints:
         "checksum": "sha256:...",
         "signatureUrl": "https://packages.example.com/lenso-billing-0.1.0.tgz.sig",
         "signatureAlgorithm": "ed25519-detached",
-        "publicKeyId": "acme-ed25519-2026"
+        "publicKeyId": "acme-ed25519-2026",
+        "publicKey": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----\n"
       },
       "consolePackages": [
         {
@@ -271,11 +272,9 @@ Registry review also requires a provenance snapshot for trusted entries:
 publisher, source repository, and checksum. When `provenance.packageUrl` and a
 `sha256:<hex>` checksum are present, review fetches the package artifact and
 blocks installation if the digest does not match. This is checksum verification,
-not package signing. Signature Gate v0 also requires `signatureUrl`,
-`signatureAlgorithm`, and `publicKeyId`, with `ed25519-detached` as the first
-supported policy. The first signature slice gates metadata shape; future
-marketplace work should verify publisher signatures against fetched artifacts
-before installation.
+and the Signature Verify v0 gate verifies `ed25519-detached` signatures against
+the configured PEM `publicKey`. This keeps marketplace trust local and explicit
+until a hosted publisher key registry exists.
 `pnpm --dir apps/runtime-console run demo:module-registry-install` exercises the
 same sequence against a temporary host fixture without mutating the working tree.
 
