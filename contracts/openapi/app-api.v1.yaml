@@ -233,6 +233,37 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /admin/data/module-registry/snapshot:
+    get:
+      tags:
+      - admin-data
+      operationId: admin_data_module_registry_snapshot
+      parameters:
+      - name: authorization
+        in: header
+        description: Development service bearer token
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Read-only module registry preflight snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminModuleRegistrySnapshotResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/data/modules:
     get:
       tags:
@@ -3118,6 +3149,117 @@ components:
       enum:
       - success
       - error
+    AdminModuleRegistrySnapshotCatalogDto:
+      type: object
+      required:
+      - modules
+      - registryFile
+      - version
+      properties:
+        modules:
+          type: integer
+          minimum: 0
+        registryFile:
+          type: string
+        version:
+          type: integer
+          format: int32
+          minimum: 0
+    AdminModuleRegistrySnapshotIssueDto:
+      type: object
+      required:
+      - group
+      - message
+      - fix
+      properties:
+        fix:
+          type: string
+        group:
+          type: string
+        message:
+          type: string
+    AdminModuleRegistrySnapshotManifestStatus:
+      type: string
+      enum:
+      - ok
+      - invalid
+      - unreadable
+    AdminModuleRegistrySnapshotModuleDto:
+      type: object
+      required:
+      - name
+      - source
+      - catalogVersion
+      - manifestReference
+      - consolePackageHints
+      - manifestStatus
+      - status
+      properties:
+        baseUrl:
+          type:
+          - string
+          - 'null'
+        catalogVersion:
+          type: string
+        consolePackageHints:
+          type: integer
+          minimum: 0
+        manifestName:
+          type:
+          - string
+          - 'null'
+        manifestReference:
+          type: string
+        manifestStatus:
+          $ref: '#/components/schemas/AdminModuleRegistrySnapshotManifestStatus'
+        manifestVersion:
+          type:
+          - string
+          - 'null'
+        name:
+          type: string
+        source:
+          $ref: '#/components/schemas/ModuleSource'
+        status:
+          $ref: '#/components/schemas/AdminModuleRegistrySnapshotModuleStatus'
+    AdminModuleRegistrySnapshotModuleStatus:
+      type: string
+      enum:
+      - ready
+      - needs_attention
+    AdminModuleRegistrySnapshotResponse:
+      type: object
+      description: |-
+        Response for `GET /admin/data/module-registry/snapshot`: a read-only
+        Runtime Console preflight view shaped like `lenso module registry doctor --json`.
+      required:
+      - version
+      - status
+      - catalog
+      - issues
+      - modules
+      properties:
+        catalog:
+          $ref: '#/components/schemas/AdminModuleRegistrySnapshotCatalogDto'
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminModuleRegistrySnapshotIssueDto'
+        modules:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminModuleRegistrySnapshotModuleDto'
+        status:
+          $ref: '#/components/schemas/AdminModuleRegistrySnapshotStatus'
+        version:
+          type: integer
+          format: int32
+          minimum: 0
+    AdminModuleRegistrySnapshotStatus:
+      type: string
+      enum:
+      - passed
+      - failed
     AdminModuleSchema:
       type: object
       required:

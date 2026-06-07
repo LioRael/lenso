@@ -2,9 +2,9 @@ use app_api::build_router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
 use platform_admin_data::{
-    AdminModule, AdminModuleMetadata, install_admin_module_metadata,
-    install_admin_module_metadata_refresh_fn, install_admin_module_refresh_fn,
-    install_admin_modules,
+    AdminModule, AdminModuleMetadata, AdminModuleSourceDiagnostics, AdminRemoteModuleDiagnostics,
+    install_admin_module_metadata, install_admin_module_metadata_refresh_fn,
+    install_admin_module_refresh_fn, install_admin_modules,
 };
 use platform_core::{
     AppConfig, AppContext, LoggingEventPublisher, PLATFORM_MIGRATIONS, StoryDisplayDescriptor,
@@ -470,6 +470,69 @@ async fn admin_action_invocation_calls_declared_source() {
     let json = json_body(response).await;
     assert_eq!(json["data"]["action"], "sync_contacts");
     assert_eq!(json["data"]["input"]["dry_run"], true);
+}
+
+#[tokio::test]
+async fn module_registry_snapshot_returns_remote_preflight_rows() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
+    install_admin_modules(vec![]);
+    install_admin_module_metadata(vec![AdminModuleMetadata {
+        module_name: "billing".to_owned(),
+        source: ModuleSource::Remote,
+        load_status: ModuleLoadStatus::Loaded,
+        http_routes: vec![],
+        runtime: None,
+        lifecycle: None,
+        console: vec![],
+        story_display: vec![],
+        capabilities: vec!["billing.read".to_owned()],
+        admin: None,
+        source_diagnostics: Some(AdminModuleSourceDiagnostics::Remote(
+            AdminRemoteModuleDiagnostics {
+                base_url: "https://example.com/lenso/module/v1".to_owned(),
+                manifest_url: "https://example.com/lenso/module/v1/manifest".to_owned(),
+                timeout_ms: 1000,
+                auth_configured: false,
+                load_duration_ms: Some(42),
+                last_checked_at: Some("2026-06-07T00:00:00Z".to_owned()),
+                last_load_error: None,
+            },
+        )),
+    }]);
+    let ctx = AppContext::new(
+        AppConfig::from_env(),
+        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test").expect("lazy pool"),
+        Arc::new(LoggingEventPublisher),
+    );
+    let app = build_router(ctx);
+
+    let response = app
+        .oneshot(admin_get("/admin/data/module-registry/snapshot"))
+        .await
+        .expect("snapshot request completes");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["version"], 1);
+    assert_eq!(body["status"], "passed");
+    assert_eq!(body["catalog"]["modules"], 1);
+    assert_eq!(
+        body["catalog"]["registryFile"],
+        "host-admin-module-metadata"
+    );
+    assert_eq!(body["modules"][0]["name"], "billing");
+    assert_eq!(body["modules"][0]["source"], "remote");
+    assert_eq!(body["modules"][0]["catalogVersion"], "unknown");
+    assert_eq!(
+        body["modules"][0]["manifestReference"],
+        "https://example.com/lenso/module/v1/manifest"
+    );
+    assert_eq!(
+        body["modules"][0]["baseUrl"],
+        "https://example.com/lenso/module/v1"
+    );
+    assert_eq!(body["modules"][0]["manifestStatus"], "ok");
+    assert_eq!(body["modules"][0]["status"], "ready");
 }
 
 #[tokio::test]

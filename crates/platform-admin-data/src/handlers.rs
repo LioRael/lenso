@@ -4,8 +4,12 @@ use crate::dto::{
     AdminDataListResponse, AdminDataPageInfo, AdminModuleActivationState, AdminModuleGovernanceDto,
     AdminModuleMetadataDto, AdminModuleMetadataListResponse, AdminModuleRefreshModuleResultDto,
     AdminModuleRefreshModuleStatusDto, AdminModuleRefreshRecordDto, AdminModuleRefreshStatusDto,
-    AdminModuleSchema, AdminModuleSourceDiagnosticsDto, AdminModuleStatus,
-    AdminRemoteModuleDiagnosticsDto, AdminSchemaListResponse, AdminSchemaRefreshResponse,
+    AdminModuleRegistrySnapshotCatalogDto, AdminModuleRegistrySnapshotIssueDto,
+    AdminModuleRegistrySnapshotManifestStatus, AdminModuleRegistrySnapshotModuleDto,
+    AdminModuleRegistrySnapshotModuleStatus, AdminModuleRegistrySnapshotResponse,
+    AdminModuleRegistrySnapshotStatus, AdminModuleSchema, AdminModuleSourceDiagnosticsDto,
+    AdminModuleStatus, AdminRemoteModuleDiagnosticsDto, AdminSchemaListResponse,
+    AdminSchemaRefreshResponse,
 };
 use crate::{
     AdminModule, AdminModuleMetadata, AdminModuleMetadataRefreshModuleResult,
@@ -25,7 +29,7 @@ use platform_http::{AdminActor, ApiErrorResponse, ErrorResponse, HttpRequestCont
 use platform_module::{
     AdminActionConfirmation, AdminActionInputField, AdminActionInputSchema, AdminListQuery,
     AdminSurface, FieldType, ModuleLoadStatus, ModuleManifestLint, ModuleManifestLintSeverity,
-    lint_module_manifest_parts, module_capability_references,
+    ModuleSource, lint_module_manifest_parts, module_capability_references,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -97,6 +101,27 @@ pub(crate) async fn refresh_modules(
             record_admin_module_metadata_refresh_error(error.public_message, started_at, started),
         ))),
     }
+}
+
+#[utoipa::path(
+    get,
+    path = "/admin/data/module-registry/snapshot",
+    operation_id = "admin_data_module_registry_snapshot",
+    tag = "admin-data",
+    params(("authorization" = String, Header, description = "Development service bearer token")),
+    responses(
+        (status = 200, description = "Read-only module registry preflight snapshot", body = AdminModuleRegistrySnapshotResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+    )
+)]
+pub(crate) async fn module_registry_snapshot(
+    _admin: AdminActor,
+    HttpRequestContext(_request_ctx): HttpRequestContext,
+) -> Result<Json<AdminModuleRegistrySnapshotResponse>, ApiErrorResponse> {
+    Ok(Json(module_registry_snapshot_response(
+        admin_module_metadata_snapshot().modules,
+    )))
 }
 
 #[utoipa::path(
@@ -201,6 +226,102 @@ fn metadata_response_modules(modules: Vec<AdminModuleMetadata>) -> Vec<AdminModu
             }
         })
         .collect()
+}
+
+fn module_registry_snapshot_response(
+    modules: Vec<AdminModuleMetadata>,
+) -> AdminModuleRegistrySnapshotResponse {
+    let modules = modules
+        .into_iter()
+        .filter(|module| matches!(module.source, ModuleSource::Remote))
+        .map(module_registry_snapshot_module)
+        .collect::<Vec<_>>();
+    let issue_count = modules
+        .iter()
+        .filter(|module| {
+            matches!(
+                module.status,
+                AdminModuleRegistrySnapshotModuleStatus::NeedsAttention
+            )
+        })
+        .count();
+    let issues = modules
+        .iter()
+        .filter(|module| {
+            matches!(
+                module.status,
+                AdminModuleRegistrySnapshotModuleStatus::NeedsAttention
+            )
+        })
+        .map(|module| AdminModuleRegistrySnapshotIssueDto {
+            group: "Manifest".to_owned(),
+            message: format!("{} remote module metadata needs attention", module.name),
+            fix: "refresh module metadata and verify remote manifest configuration".to_owned(),
+        })
+        .collect::<Vec<_>>();
+
+    AdminModuleRegistrySnapshotResponse {
+        version: 1,
+        status: if issue_count == 0 {
+            AdminModuleRegistrySnapshotStatus::Passed
+        } else {
+            AdminModuleRegistrySnapshotStatus::Failed
+        },
+        catalog: AdminModuleRegistrySnapshotCatalogDto {
+            modules: modules.len(),
+            registry_file: "host-admin-module-metadata".to_owned(),
+            version: 1,
+        },
+        issues,
+        modules,
+    }
+}
+
+fn module_registry_snapshot_module(
+    module: AdminModuleMetadata,
+) -> AdminModuleRegistrySnapshotModuleDto {
+    let module_name = module.module_name;
+    let remote = match module.source_diagnostics {
+        Some(AdminModuleSourceDiagnostics::Remote(remote)) => Some(remote),
+        None => None,
+    };
+    let manifest_reference = remote
+        .as_ref()
+        .map(|diagnostics| diagnostics.manifest_url.clone())
+        .unwrap_or_else(|| "-".to_owned());
+    let base_url = remote
+        .as_ref()
+        .map(|diagnostics| diagnostics.base_url.clone());
+    let has_error = !matches!(module.load_status, ModuleLoadStatus::Loaded)
+        || remote
+            .as_ref()
+            .and_then(|diagnostics| diagnostics.last_load_error.as_ref())
+            .is_some();
+
+    AdminModuleRegistrySnapshotModuleDto {
+        name: module_name.clone(),
+        source: module.source,
+        catalog_version: "unknown".to_owned(),
+        manifest_reference,
+        base_url,
+        console_package_hints: module.console.len(),
+        manifest_name: if has_error { None } else { Some(module_name) },
+        manifest_status: if has_error {
+            AdminModuleRegistrySnapshotManifestStatus::Unreadable
+        } else {
+            AdminModuleRegistrySnapshotManifestStatus::Ok
+        },
+        manifest_version: if has_error {
+            None
+        } else {
+            Some("unknown".to_owned())
+        },
+        status: if has_error {
+            AdminModuleRegistrySnapshotModuleStatus::NeedsAttention
+        } else {
+            AdminModuleRegistrySnapshotModuleStatus::Ready
+        },
+    }
 }
 
 fn source_diagnostics_dto(

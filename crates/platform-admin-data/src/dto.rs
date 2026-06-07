@@ -31,6 +31,69 @@ pub struct AdminModuleMetadataListResponse {
     pub refresh_history: Vec<AdminModuleRefreshRecordDto>,
 }
 
+/// Response for `GET /admin/data/module-registry/snapshot`: a read-only
+/// Runtime Console preflight view shaped like `lenso module registry doctor --json`.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminModuleRegistrySnapshotResponse {
+    pub version: u8,
+    pub status: AdminModuleRegistrySnapshotStatus,
+    pub catalog: AdminModuleRegistrySnapshotCatalogDto,
+    pub issues: Vec<AdminModuleRegistrySnapshotIssueDto>,
+    pub modules: Vec<AdminModuleRegistrySnapshotModuleDto>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AdminModuleRegistrySnapshotStatus {
+    Passed,
+    Failed,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminModuleRegistrySnapshotCatalogDto {
+    pub modules: usize,
+    pub registry_file: String,
+    pub version: u8,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminModuleRegistrySnapshotIssueDto {
+    pub group: String,
+    pub message: String,
+    pub fix: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminModuleRegistrySnapshotModuleDto {
+    pub name: String,
+    pub source: ModuleSource,
+    pub catalog_version: String,
+    pub manifest_reference: String,
+    pub base_url: Option<String>,
+    pub console_package_hints: usize,
+    pub manifest_name: Option<String>,
+    pub manifest_status: AdminModuleRegistrySnapshotManifestStatus,
+    pub manifest_version: Option<String>,
+    pub status: AdminModuleRegistrySnapshotModuleStatus,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AdminModuleRegistrySnapshotManifestStatus {
+    Ok,
+    Invalid,
+    Unreadable,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AdminModuleRegistrySnapshotModuleStatus {
+    Ready,
+    NeedsAttention,
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AdminModuleRefreshRecordDto {
     pub id: String,

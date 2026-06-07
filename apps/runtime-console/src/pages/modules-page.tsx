@@ -137,7 +137,7 @@ function ModulesContent() {
   const availableModuleRegistryQuery = useQuery({
     enabled: isApiMode(),
     queryKey: availableModuleRegistrySnapshotQueryKey,
-    queryFn: fetchAvailableModuleRegistrySnapshot,
+    queryFn: () => fetchAvailableModuleRegistrySnapshot(),
   });
   const refreshMutation = useMutation({
     mutationFn: () =>

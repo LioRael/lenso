@@ -1,3 +1,4 @@
+import { httpClient, isApiMode } from "../lib/http-client";
 import {
   type AvailableModuleRegistryDoctorSnapshot,
   availableModuleRegistryRowsFromDoctorSnapshot,
@@ -51,7 +52,22 @@ export const availableModuleRegistrySnapshotQueryKey = [
   "available-registry-snapshot",
 ] as const;
 
-export async function fetchAvailableModuleRegistrySnapshot(): Promise<AvailableModuleRegistryDoctorSnapshot> {
+type RegistrySnapshotHttpClient = {
+  get: (path: string) => {
+    json: () => Promise<AvailableModuleRegistryDoctorSnapshot>;
+  };
+};
+
+export async function fetchAvailableModuleRegistrySnapshot({
+  apiMode = isApiMode(),
+  client = httpClient,
+}: {
+  apiMode?: boolean;
+  client?: RegistrySnapshotHttpClient;
+} = {}): Promise<AvailableModuleRegistryDoctorSnapshot> {
+  if (apiMode) {
+    return client.get("admin/data/module-registry/snapshot").json();
+  }
   return sampleAvailableModuleRegistrySnapshot;
 }
 

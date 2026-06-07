@@ -37,4 +37,25 @@ describe("available module registry snapshot provider", () => {
       "available-registry-snapshot",
     ]);
   });
+
+  test("fetches the registry snapshot endpoint in API mode", async () => {
+    const getCalls: string[] = [];
+    const snapshot = {
+      ...sampleAvailableModuleRegistrySnapshot,
+      status: "passed",
+    };
+    const client = {
+      get(path: string) {
+        getCalls.push(path);
+        return {
+          json: async () => snapshot,
+        };
+      },
+    };
+
+    await expect(
+      fetchAvailableModuleRegistrySnapshot({ apiMode: true, client })
+    ).resolves.toBe(snapshot);
+    expect(getCalls).toEqual(["admin/data/module-registry/snapshot"]);
+  });
 });

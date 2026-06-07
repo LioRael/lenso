@@ -228,6 +228,45 @@ export type AdminModuleRefreshRecordDto = {
 
 export type AdminModuleRefreshStatusDto = string;
 
+export type AdminModuleRegistrySnapshotCatalogDto = {
+  modules: number;
+  registryFile: string;
+  version: number;
+};
+
+export type AdminModuleRegistrySnapshotIssueDto = {
+  fix: string;
+  group: string;
+  message: string;
+};
+
+export type AdminModuleRegistrySnapshotManifestStatus = string;
+
+export type AdminModuleRegistrySnapshotModuleDto = {
+  baseUrl?: string | null;
+  catalogVersion: string;
+  consolePackageHints: number;
+  manifestName?: string | null;
+  manifestReference: string;
+  manifestStatus: AdminModuleRegistrySnapshotManifestStatus;
+  manifestVersion?: string | null;
+  name: string;
+  source: ModuleSource;
+  status: AdminModuleRegistrySnapshotModuleStatus;
+};
+
+export type AdminModuleRegistrySnapshotModuleStatus = string;
+
+export type AdminModuleRegistrySnapshotResponse = {
+  catalog: AdminModuleRegistrySnapshotCatalogDto;
+  issues: Array<AdminModuleRegistrySnapshotIssueDto>;
+  modules: Array<AdminModuleRegistrySnapshotModuleDto>;
+  status: AdminModuleRegistrySnapshotStatus;
+  version: number;
+};
+
+export type AdminModuleRegistrySnapshotStatus = string;
+
 export type AdminModuleSchema = {
   error?: string | null;
   module_name: string;
