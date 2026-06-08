@@ -146,8 +146,6 @@ The host is responsible for:
 - persisted Runtime Story and Technical Operations records
 - admin action authorization and projection
 - console package installation and registry resolution
-- optional signature, provenance, and publisher key trust checks when a host
-  chooses a curated production policy
 
 Remote modules must not write host runtime tables, consume host outbox rows,
 receive caller bearer tokens, or claim host-owned story/function-run records.
@@ -170,21 +168,8 @@ Current Runtime Console support includes:
 - module metadata showing missing frontend package install plans
 - low-friction remote install through `lenso module add <manifest-url>` and
   `lenso module marketplace install <manifest-url>`
-- host-local publisher key trust through `lenso module publisher list`,
-  `lenso module publisher doctor`, `lenso module publisher trust`, and
-  `lenso module publisher revoke`
-- Module Registry v0 catalog authoring and discovery through
-  `lenso module registry add`, `lenso module registry list`,
-  `lenso module registry doctor`, `lenso module registry inspect`,
-  `lenso module registry review`, `lenso module registry install`, and
-  `lenso module registry remove`/`restore`
-- local marketplace bundle export/import through `lenso module marketplace export`
-  and `lenso module marketplace import`
-- machine-readable registry preflight snapshots through
-  `lenso module registry doctor --json`
 - remote module install CLI that writes local source configuration
 - console package apply-plan registration for requested package exports
-- module doctor diagnostics for source/package/registry mismatches
 - boundary checks that forbid package imports from host internals
 
 ## Deferred Support
@@ -219,102 +204,12 @@ pnpm create:module billing --remote --output-dir ../module-packages
 lenso module add https://example.com/lenso/module/v1/manifest
 lenso module marketplace install https://example.com/lenso/module/v1/manifest
 lenso console-package apply-plan
-lenso module doctor
 ```
 
 The default install path is user-driven: see a module, install from its
-manifest, apply the console package plan, restart the host, and verify. It does
-not require publisher keys, registry review, history, or bundle import/export.
-
-Module Registry v0 is an optional local catalog and preflight layer, not a
-required marketplace gate.
-The catalog maps a module name to a remote manifest reference, optional base
-URL, capabilities, and console package hints:
-
-```json
-{
-  "version": 1,
-  "modules": [
-    {
-      "name": "billing",
-      "version": "0.1.0",
-      "source": "remote",
-      "manifestReference": "https://example.com/lenso/module/v1/manifest",
-      "baseUrl": "https://example.com/lenso/module/v1",
-      "capabilities": ["billing.read"],
-      "compatibility": {
-        "lenso": {
-          "minVersion": "0.1.0",
-          "maxVersion": "0.1.0"
-        },
-        "consolePackageApi": "1"
-      },
-      "provenance": {
-        "publisher": "Acme Billing",
-        "sourceRepository": "https://github.com/acme/lenso-billing-module",
-        "packageUrl": "https://packages.example.com/lenso-billing-0.1.0.tgz",
-        "checksum": "sha256:...",
-        "signatureUrl": "https://packages.example.com/lenso-billing-0.1.0.tgz.sig",
-        "signatureAlgorithm": "ed25519-detached",
-        "publicKeyId": "acme-ed25519-2026"
-      },
-      "consolePackages": [
-        {
-          "packageName": "@vendor/lenso-billing-console",
-          "exportName": "billingConsoleModule",
-          "route": "/data/billing"
-        }
-      ]
-    }
-  ]
-}
-```
-
-`lenso module registry install <module>` delegates to the same host-local
-install path as `lenso module add`, so `.env`,
-`.lenso/console-package-install-plan.json`, `console-package apply-plan`, and
-`module doctor` remain the install contract.
-Registry review also enforces compatibility before installation. Catalog
-entries can declare supported Lenso host versions and console package API
-versions through `compatibility`; incompatible modules are blocked before host
-files are written.
-
-Publisher trust is host-local and optional. Hosts that want a curated
-production policy can store trusted publisher keys in:
-
-```sh
-lenso module publisher trust "Acme Billing" acme-ed25519-2026 --public-key-file ./acme-ed25519.pem
-lenso module publisher list
-lenso module publisher doctor
-lenso module publisher revoke "Acme Billing" acme-ed25519-2026
-```
-
-```json
-{
-  "version": 1,
-  "publishers": [
-    {
-      "publisher": "Acme Billing",
-      "publicKeyId": "acme-ed25519-2026",
-      "publicKey": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----\n",
-      "status": "trusted"
-    }
-  ]
-}
-```
-
-Registry review also requires a provenance snapshot for trusted entries:
-publisher, source repository, and checksum. When `provenance.packageUrl` and a
-`sha256:<hex>` checksum are present, review fetches the package artifact and
-blocks installation if the digest does not match. This is checksum verification,
-and the Signature Verify v0 gate verifies `ed25519-detached` signatures against
-the trusted publisher key selected by `publisher` and `publicKeyId`.
-`pnpm --dir apps/runtime-console run demo:module-registry-install` exercises the
-same sequence against a temporary host fixture without mutating the working tree.
-
-These trust, signature, provenance, history, doctor, and bundle commands are
-advanced hardening tools. They must not be presented as prerequisites for the
-normal marketplace install path.
+manifest, apply the console package plan, restart the host, and use the module.
+The manifest URL is the install boundary; local host files record the remote
+module and any console package commands that need to be run.
 
 If the manifest is installed from a local file or non-protocol URL, pass the
 runtime module base URL explicitly:
@@ -336,14 +231,10 @@ The first CLI install lane writes host-local state only:
 
 `lenso console-package apply-plan` consumes that plan and updates Runtime
 Console package dependencies, manifest exports, and module export mappings.
-`lenso module doctor` checks that `REMOTE_MODULES`, the install plan, Runtime
-Console dependencies, and package export mappings agree. Failed checks are
-grouped by source, package installation, and registry mapping, with fix
-commands next to each issue.
 `pnpm --dir apps/runtime-console demo:remote-module-install` runs the same flow
 against a temporary host fixture without mutating the working tree.
 The operator-facing walkthrough lives in
 `apps/runtime-console/docs/remote-module-install-flow.md`.
 
 The plan file is intentionally ignored by git. It is an operator/developer
-handoff artifact, not trusted marketplace state.
+handoff artifact, not marketplace trust state.

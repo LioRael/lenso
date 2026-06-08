@@ -1,8 +1,8 @@
 import { httpClient, isApiMode } from "../lib/http-client";
 import {
-  type AvailableModuleRegistryDoctorSnapshot,
+  type AvailableModuleRegistrySnapshot,
   type AvailableModuleRegistryRow,
-  availableModuleRegistryRowsFromDoctorSnapshot,
+  availableModuleRegistryRowsFromSnapshot,
 } from "../pages/available-module-registry-model";
 
 export const sampleAvailableModuleRegistrySnapshot = {
@@ -23,7 +23,6 @@ export const sampleAvailableModuleRegistrySnapshot = {
       baseUrl: "https://example.com/lenso/module/v1",
       catalogVersion: "0.1.0",
       consolePackageHints: 1,
-      installPolicy: "trusted",
       manifestName: "billing",
       manifestReference: "https://example.com/lenso/module/v1/manifest",
       manifestStatus: "ok",
@@ -36,7 +35,6 @@ export const sampleAvailableModuleRegistrySnapshot = {
       baseUrl: null,
       catalogVersion: "0.1.0",
       consolePackageHints: 0,
-      installPolicy: "review_required",
       manifestName: "local-crm",
       manifestReference: "./lenso.module.json",
       manifestStatus: "ok",
@@ -48,7 +46,7 @@ export const sampleAvailableModuleRegistrySnapshot = {
   ],
   status: "failed",
   version: 1,
-} satisfies AvailableModuleRegistryDoctorSnapshot;
+} satisfies AvailableModuleRegistrySnapshot;
 
 export const availableModuleRegistrySnapshotQueryKey = [
   "modules",
@@ -64,7 +62,7 @@ export function moduleRefreshInvalidationQueryKeys() {
 
 type RegistrySnapshotHttpClient = {
   get: (path: string) => {
-    json: () => Promise<AvailableModuleRegistryDoctorSnapshot>;
+    json: () => Promise<AvailableModuleRegistrySnapshot>;
   };
 };
 
@@ -74,7 +72,7 @@ export async function fetchAvailableModuleRegistrySnapshot({
 }: {
   apiMode?: boolean;
   client?: RegistrySnapshotHttpClient;
-} = {}): Promise<AvailableModuleRegistryDoctorSnapshot> {
+} = {}): Promise<AvailableModuleRegistrySnapshot> {
   if (apiMode) {
     return client.get("admin/data/module-registry/snapshot").json();
   }
@@ -82,9 +80,9 @@ export async function fetchAvailableModuleRegistrySnapshot({
 }
 
 export function availableModuleRegistrySnapshotRows(
-  snapshot: AvailableModuleRegistryDoctorSnapshot = sampleAvailableModuleRegistrySnapshot
+  snapshot: AvailableModuleRegistrySnapshot = sampleAvailableModuleRegistrySnapshot
 ) {
-  return availableModuleRegistryRowsFromDoctorSnapshot(snapshot);
+  return availableModuleRegistryRowsFromSnapshot(snapshot);
 }
 
 export type AvailableModuleRegistrySnapshotPanelState = {

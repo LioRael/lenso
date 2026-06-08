@@ -11,7 +11,7 @@ import {
 } from "./available-module-registry-snapshot";
 
 describe("available module registry snapshot provider", () => {
-  test("provides read-only rows derived from the registry doctor snapshot", () => {
+  test("provides read-only rows derived from the module registry snapshot", () => {
     expect(sampleAvailableModuleRegistrySnapshot.version).toBe(1);
     expect(sampleAvailableModuleRegistrySnapshot.catalog.registryFile).toBe(
       ".lenso/module-registry.json"
@@ -20,16 +20,13 @@ describe("available module registry snapshot provider", () => {
     expect(availableModuleRegistrySnapshotRows()).toEqual([
       expect.objectContaining({
         name: "billing",
-        installPolicy: "trusted",
         preflightStatus: "ready",
         source: "remote",
       }),
       expect.objectContaining({
-        installPolicy: "review_required",
         name: "local-crm",
-        preflightReason:
-          "registry install requires installPolicy trusted after operator review",
-        preflightStatus: "review_required",
+        preflightReason: "local-crm baseUrl is missing",
+        preflightStatus: "needs_base_url",
       }),
     ]);
   });

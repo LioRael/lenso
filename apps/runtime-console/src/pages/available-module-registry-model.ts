@@ -14,8 +14,6 @@ export type AvailableModuleRegistryEntry = {
   capabilities?: string[];
   consolePackages?: AvailableModuleConsolePackageHint[];
   compatibility?: AvailableModuleRegistryCompatibility;
-  installPolicy?: AvailableModuleRegistryInstallPolicy;
-  provenance?: AvailableModuleRegistryProvenance;
   summary?: string;
 };
 
@@ -32,7 +30,7 @@ export type AvailableModuleManifestSnapshot = {
   consolePackages?: AvailableModuleConsolePackageHint[];
 };
 
-export type AvailableModuleRegistryDoctorSnapshot = {
+export type AvailableModuleRegistrySnapshot = {
   version: number;
   status: "passed" | "failed" | string;
   catalog: {
@@ -40,14 +38,14 @@ export type AvailableModuleRegistryDoctorSnapshot = {
     registryFile: string;
     version: number;
   };
-  issues: AvailableModuleRegistryDoctorIssue[];
-  modules: AvailableModuleRegistryDoctorModule[];
+  issues: AvailableModuleRegistryIssue[];
+  modules: AvailableModuleRegistryModule[];
 };
 
-export type AvailableModuleRegistryDoctorIssue = {
+export type AvailableModuleRegistryIssue = {
   group: string;
   message: string;
-  fix: string;
+  fix?: string;
 };
 
 export type AvailableModuleRegistryCompatibility = {
@@ -63,18 +61,7 @@ export type AvailableModuleRegistryHostCompatibility = {
   lensoVersion: string;
 };
 
-export type AvailableModuleRegistryProvenance = {
-  checksum?: string;
-  packageUrl?: string;
-  publisher?: string;
-  publicKey?: string;
-  publicKeyId?: string;
-  signatureAlgorithm?: string;
-  signatureUrl?: string;
-  sourceRepository?: string;
-};
-
-export type AvailableModuleRegistryDoctorModule = {
+export type AvailableModuleRegistryModule = {
   name: string;
   source: "remote" | string;
   catalogVersion: string;
@@ -85,11 +72,9 @@ export type AvailableModuleRegistryDoctorModule = {
   consolePackageHints: number;
   compatibility?: AvailableModuleRegistryCompatibility;
   hostCompatibility?: AvailableModuleRegistryHostCompatibility;
-  installPolicy?: AvailableModuleRegistryInstallPolicy;
   manifestName: string | null;
   manifestStatus: "ok" | "invalid" | "unreadable" | string;
   manifestVersion: string | null;
-  provenance?: AvailableModuleRegistryProvenance;
   status: "ready" | "needs_attention" | string;
 };
 
@@ -97,18 +82,10 @@ export type AvailableModulePreflightStatus =
   | "unknown"
   | "archived"
   | "ready"
-  | "review_required"
   | "compatibility_blocked"
-  | "provenance_blocked"
-  | "publisher_trust_blocked"
   | "needs_base_url"
   | "manifest_mismatch"
   | "package_hint_mismatch";
-
-export type AvailableModuleRegistryInstallPolicy =
-  | "review_required"
-  | "trusted"
-  | string;
 
 export type AvailableModuleRegistryRow = {
   key: string;
@@ -119,13 +96,10 @@ export type AvailableModuleRegistryRow = {
   baseUrl: string;
   capabilityCount: number;
   consolePackageHintCount: number;
-  installPolicy: AvailableModuleRegistryInstallPolicy;
   preflightStatus: AvailableModulePreflightStatus;
   preflightLabel: string;
   preflightFix?: string;
   preflightReason: string;
-  provenanceChecksum: string;
-  provenancePublisher: string;
   summary: string;
 };
 
@@ -140,10 +114,7 @@ const statusLabel: Record<AvailableModulePreflightStatus, string> = {
   manifest_mismatch: "manifest mismatch",
   needs_base_url: "needs base URL",
   package_hint_mismatch: "package hint mismatch",
-  provenance_blocked: "provenance required",
-  publisher_trust_blocked: "publisher trust",
   ready: "ready",
-  review_required: "review required",
   unknown: "unknown",
 };
 
@@ -158,7 +129,6 @@ export function availableModuleRegistryRows(
       baseUrl: entry.baseUrl ?? "-",
       capabilityCount: entry.capabilities?.length ?? 0,
       consolePackageHintCount: entry.consolePackages?.length ?? 0,
-      installPolicy: normalizeInstallPolicy(entry.installPolicy),
       key: `${entry.name}:${entry.version}:${entry.manifestReference}`,
       manifestReference: entry.manifestReference,
       name: entry.name,
@@ -166,8 +136,6 @@ export function availableModuleRegistryRows(
       preflightLabel: statusLabel[preflight.status],
       preflightReason: preflight.reason,
       preflightStatus: preflight.status,
-      provenanceChecksum: entry.provenance?.checksum ?? "-",
-      provenancePublisher: entry.provenance?.publisher ?? "-",
       source: entry.source,
       summary: entry.summary ?? "-",
       version: entry.version,
@@ -175,11 +143,11 @@ export function availableModuleRegistryRows(
   });
 }
 
-export function availableModuleRegistryRowsFromDoctorSnapshot(
-  snapshot: AvailableModuleRegistryDoctorSnapshot
+export function availableModuleRegistryRowsFromSnapshot(
+  snapshot: AvailableModuleRegistrySnapshot
 ): AvailableModuleRegistryRow[] {
   return snapshot.modules.map((module) => {
-    const preflight = availableModulePreflightFromDoctorSnapshot({
+    const preflight = availableModulePreflightFromSnapshot({
       issues: snapshot.issues,
       module,
     });
@@ -187,7 +155,6 @@ export function availableModuleRegistryRowsFromDoctorSnapshot(
       baseUrl: module.baseUrl ?? "-",
       capabilityCount: 0,
       consolePackageHintCount: module.consolePackageHints,
-      installPolicy: normalizeInstallPolicy(module.installPolicy),
       key: `${module.name}:${module.catalogVersion}:${module.manifestReference}`,
       manifestReference: module.manifestReference,
       name: module.name,
@@ -195,8 +162,6 @@ export function availableModuleRegistryRowsFromDoctorSnapshot(
       preflightLabel: statusLabel[preflight.status],
       preflightReason: preflight.reason,
       preflightStatus: preflight.status,
-      provenanceChecksum: module.provenance?.checksum ?? "-",
-      provenancePublisher: module.provenance?.publisher ?? "-",
       source: module.source,
       summary: "-",
       version: module.catalogVersion,
@@ -210,19 +175,10 @@ function availableModulePreflight(
 ): { fix?: string; reason: string; status: AvailableModulePreflightStatus } {
   if (entry.archivedAt) {
     return {
-      fix: registryRestoreCommand(entry.name),
       reason: entry.archiveReason
         ? `catalog entry archived: ${entry.archiveReason}`
         : "catalog entry is archived",
       status: "archived",
-    };
-  }
-
-  if (normalizeInstallPolicy(entry.installPolicy) !== "trusted") {
-    return {
-      reason:
-        "registry install requires installPolicy trusted after operator review",
-      status: "review_required",
     };
   }
 
@@ -235,17 +191,6 @@ function availableModulePreflight(
     return {
       reason: compatibilityIssue,
       status: "compatibility_blocked",
-    };
-  }
-
-  const provenanceIssue = registryProvenanceIssue({
-    moduleName: entry.name,
-    provenance: entry.provenance,
-  });
-  if (provenanceIssue) {
-    return {
-      reason: provenanceIssue,
-      status: "provenance_blocked",
     };
   }
 
@@ -262,7 +207,7 @@ function availableModulePreflight(
 
   if (!manifest) {
     return {
-      reason: "run lenso module registry doctor to fetch and validate manifest",
+      reason: "manifest will be read from the manifest URL during install",
       status: "unknown",
     };
   }
@@ -293,40 +238,24 @@ function availableModulePreflight(
   }
 
   return {
-    reason: "catalog entry matches the fetched remote manifest snapshot",
+    reason: "module manifest is available",
     status: "ready",
   };
 }
 
-function availableModulePreflightFromDoctorSnapshot({
+function availableModulePreflightFromSnapshot({
   issues,
   module,
 }: {
-  issues: AvailableModuleRegistryDoctorIssue[];
-  module: AvailableModuleRegistryDoctorModule;
+  issues: AvailableModuleRegistryIssue[];
+  module: AvailableModuleRegistryModule;
 }): { fix?: string; reason: string; status: AvailableModulePreflightStatus } {
   if (module.status === "archived" || module.archivedAt) {
     return {
-      fix: registryRestoreCommand(module.name),
       reason: module.archiveReason
         ? `catalog entry archived: ${module.archiveReason}`
         : "catalog entry is archived",
       status: "archived",
-    };
-  }
-
-  if (normalizeInstallPolicy(module.installPolicy) !== "trusted") {
-    const issue = issues.find(
-      (candidate) =>
-        candidate.group === "Catalog" &&
-        candidate.message.startsWith(`${module.name} installPolicy `)
-    );
-    return {
-      ...(issue?.fix ? { fix: issue.fix } : {}),
-      reason:
-        issue?.message ??
-        "registry install requires installPolicy trusted after operator review",
-      status: "review_required",
     };
   }
 
@@ -343,33 +272,9 @@ function availableModulePreflightFromDoctorSnapshot({
     };
   }
 
-  const provenanceIssue = issues.find(
-    (candidate) =>
-      candidate.group === "Provenance" &&
-      candidate.message.startsWith(`${module.name} `)
-  );
-  if (provenanceIssue) {
-    const publisherTrustFix = modulePublisherTrustFix({
-      issue: provenanceIssue,
-      module,
-    });
-    if (publisherTrustFix) {
-      return {
-        fix: publisherTrustFix,
-        reason: provenanceIssue.message,
-        status: "publisher_trust_blocked",
-      };
-    }
-    return {
-      ...(provenanceIssue.fix ? { fix: provenanceIssue.fix } : {}),
-      reason: provenanceIssue.message,
-      status: "provenance_blocked",
-    };
-  }
-
   if (module.status === "ready") {
     return {
-      reason: "registry doctor snapshot passed for this module manifest",
+      reason: "module manifest is available",
       status: "ready",
     };
   }
@@ -377,7 +282,7 @@ function availableModulePreflightFromDoctorSnapshot({
   const issue = issues.find((candidate) =>
     candidate.message.startsWith(`${module.name} `)
   );
-  const reason = issue?.message ?? "registry doctor snapshot needs attention";
+  const reason = issue?.message ?? "module manifest needs attention";
 
   if (!module.baseUrl) {
     return {
@@ -406,40 +311,8 @@ function availableModulePreflightFromDoctorSnapshot({
   };
 }
 
-function modulePublisherTrustFix({
-  issue,
-  module,
-}: {
-  issue: AvailableModuleRegistryDoctorIssue;
-  module: AvailableModuleRegistryDoctorModule;
-}): string | null {
-  if (issue.fix.startsWith("lenso module publisher ")) {
-    return issue.fix;
-  }
-  const publisher = module.provenance?.publisher;
-  const publicKeyId = module.provenance?.publicKeyId;
-  if (!(publisher && publicKeyId && issue.message.includes("publisher key"))) {
-    return null;
-  }
-  return `lenso module publisher trust ${quoteCliArgument(publisher)} ${quoteCliArgument(publicKeyId)} --public-key-file <pem>`;
-}
-
-function quoteCliArgument(value: string): string {
-  return `"${value.replaceAll(/["\\]/gu, "\\$&")}"`;
-}
-
-function registryRestoreCommand(moduleName: string): string {
-  return `lenso module registry restore ${quoteCliArgument(moduleName)} --reason <reason>`;
-}
-
 function consolePackageKey(hint: AvailableModuleConsolePackageHint): string {
   return `${hint.packageName}#${hint.exportName}`;
-}
-
-function normalizeInstallPolicy(
-  installPolicy: AvailableModuleRegistryInstallPolicy | undefined
-): AvailableModuleRegistryInstallPolicy {
-  return installPolicy ?? "review_required";
 }
 
 const defaultHostCompatibility: AvailableModuleRegistryHostCompatibility = {
@@ -505,37 +378,6 @@ function registryCompatibilityIssue({
     compatibility.consolePackageApi !== hostCompatibility.consolePackageApi
   ) {
     return `${moduleName} requires console package API ${compatibility.consolePackageApi}; host supports ${hostCompatibility.consolePackageApi}`;
-  }
-  return null;
-}
-
-function registryProvenanceIssue({
-  moduleName,
-  provenance,
-}: {
-  moduleName: string;
-  provenance: AvailableModuleRegistryProvenance | undefined;
-}): string | null {
-  if (!provenance?.publisher) {
-    return `${moduleName} provenance publisher is missing`;
-  }
-  if (!provenance.sourceRepository) {
-    return `${moduleName} provenance source repository is missing`;
-  }
-  if (!provenance.checksum) {
-    return `${moduleName} provenance checksum is missing`;
-  }
-  if (!provenance.signatureUrl) {
-    return `${moduleName} provenance signature URL is missing`;
-  }
-  if (!provenance.publicKeyId) {
-    return `${moduleName} provenance public key id is missing`;
-  }
-  if (!provenance.signatureAlgorithm) {
-    return `${moduleName} provenance signature algorithm is missing`;
-  }
-  if (provenance.signatureAlgorithm !== "ed25519-detached") {
-    return `${moduleName} provenance signature algorithm ${provenance.signatureAlgorithm} is unsupported`;
   }
   return null;
 }

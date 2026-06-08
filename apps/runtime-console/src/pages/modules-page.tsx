@@ -37,7 +37,7 @@ import {
   runtimeConsoleDataSource,
 } from "../lib/http-client";
 import type { AvailableModulePreflightStatus } from "./available-module-registry-model";
-import { availableModuleRegistryRowsFromDoctorSnapshot } from "./available-module-registry-model";
+import { availableModuleRegistryRowsFromSnapshot } from "./available-module-registry-model";
 import {
   type AdminModuleMetadata,
   type ConfigValueMetadata,
@@ -159,9 +159,7 @@ function ModulesContent() {
   const modules = modulesQuery.data?.modules ?? emptyModules;
   const configValues = configValuesQuery.data?.data ?? emptyConfigValues;
   const availableModuleRows = availableModuleRegistryQuery.data
-    ? availableModuleRegistryRowsFromDoctorSnapshot(
-        availableModuleRegistryQuery.data
-      )
+    ? availableModuleRegistryRowsFromSnapshot(availableModuleRegistryQuery.data)
     : availableModuleRegistrySnapshotRows();
   const availableModulePanelState = availableModuleRegistrySnapshotPanelState({
     isError: availableModuleRegistryQuery.isError,
@@ -466,9 +464,7 @@ function availableModuleStatusClass(status: AvailableModulePreflightStatus) {
   if (
     status === "archived" ||
     status === "needs_base_url" ||
-    status === "package_hint_mismatch" ||
-    status === "publisher_trust_blocked" ||
-    status === "review_required"
+    status === "package_hint_mismatch"
   ) {
     return "border-[color-mix(in_srgb,var(--warning)_55%,transparent)] text-(--warning)";
   }

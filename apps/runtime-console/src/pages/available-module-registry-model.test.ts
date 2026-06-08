@@ -1,23 +1,11 @@
 import { describe, expect, test } from "vitest";
 
 import {
-  type AvailableModuleRegistryDoctorSnapshot,
+  type AvailableModuleRegistrySnapshot,
   type AvailableModuleRegistryCatalog,
-  availableModuleRegistryRowsFromDoctorSnapshot,
+  availableModuleRegistryRowsFromSnapshot,
   availableModuleRegistryRows,
 } from "./available-module-registry-model";
-
-const registryProvenance = {
-  checksum: "sha256:fixture-billing-module",
-  packageUrl: "https://example.com/lenso/module/v1/package.tgz",
-  publisher: "Lenso Fixtures",
-  publicKey:
-    "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAfixturekeyfixturekeyfixturekeyfi=\n-----END PUBLIC KEY-----\n",
-  publicKeyId: "lenso-fixtures-ed25519",
-  signatureAlgorithm: "ed25519-detached",
-  signatureUrl: "https://example.com/lenso/module/v1/package.tgz.sig",
-  sourceRepository: "https://example.com/lenso/billing-module",
-};
 
 const catalog: AvailableModuleRegistryCatalog = {
   modules: [
@@ -31,8 +19,6 @@ const catalog: AvailableModuleRegistryCatalog = {
           route: "/data/billing",
         },
       ],
-      installPolicy: "trusted",
-      provenance: registryProvenance,
       manifestReference: "https://example.com/lenso/module/v1/manifest",
       name: "billing",
       source: "remote",
@@ -52,14 +38,11 @@ describe("available module registry model", () => {
         consolePackageHintCount: 1,
         key: "billing:0.1.0:https://example.com/lenso/module/v1/manifest",
         manifestReference: "https://example.com/lenso/module/v1/manifest",
-        installPolicy: "trusted",
         name: "billing",
         preflightLabel: "unknown",
         preflightReason:
-          "run lenso module registry doctor to fetch and validate manifest",
+          "manifest will be read from the manifest URL during install",
         preflightStatus: "unknown",
-        provenanceChecksum: "sha256:fixture-billing-module",
-        provenancePublisher: "Lenso Fixtures",
         source: "remote",
         summary: "Billing workspace and operations",
         version: "0.1.0",
@@ -84,54 +67,8 @@ describe("available module registry model", () => {
       })[0]
     ).toMatchObject({
       preflightLabel: "ready",
-      preflightReason:
-        "catalog entry matches the fetched remote manifest snapshot",
+      preflightReason: "module manifest is available",
       preflightStatus: "ready",
-    });
-  });
-
-  test("marks untrusted catalog entries as review required", () => {
-    expect(
-      availableModuleRegistryRows({
-        modules: [
-          {
-            baseUrl: "https://example.com/lenso/module/v1",
-            manifestReference: "https://example.com/lenso/module/v1/manifest",
-            name: "billing",
-            source: "remote",
-            version: "0.1.0",
-          },
-        ],
-        version: 1,
-      })[0]
-    ).toMatchObject({
-      installPolicy: "review_required",
-      preflightLabel: "review required",
-      preflightReason:
-        "registry install requires installPolicy trusted after operator review",
-      preflightStatus: "review_required",
-    });
-  });
-
-  test("flags trusted entries with missing provenance", () => {
-    expect(
-      availableModuleRegistryRows({
-        modules: [
-          {
-            baseUrl: "https://example.com/lenso/module/v1",
-            installPolicy: "trusted",
-            manifestReference: "https://example.com/lenso/module/v1/manifest",
-            name: "billing",
-            source: "remote",
-            version: "0.1.0",
-          },
-        ],
-        version: 1,
-      })[0]
-    ).toMatchObject({
-      preflightLabel: "provenance required",
-      preflightReason: "billing provenance publisher is missing",
-      preflightStatus: "provenance_blocked",
     });
   });
 
@@ -140,8 +77,6 @@ describe("available module registry model", () => {
       availableModuleRegistryRows({
         modules: [
           {
-            installPolicy: "trusted",
-            provenance: registryProvenance,
             manifestReference: "./lenso.module.json",
             name: "billing",
             source: "remote",
@@ -167,8 +102,6 @@ describe("available module registry model", () => {
                 minVersion: "0.2.0",
               },
             },
-            installPolicy: "trusted",
-            provenance: registryProvenance,
             manifestReference: "https://example.com/lenso/module/v1/manifest",
             name: "billing",
             source: "remote",
@@ -220,8 +153,8 @@ describe("available module registry model", () => {
     });
   });
 
-  test("builds rows from registry doctor JSON snapshots", () => {
-    const snapshot: AvailableModuleRegistryDoctorSnapshot = {
+  test("builds rows from module registry snapshots", () => {
+    const snapshot: AvailableModuleRegistrySnapshot = {
       catalog: {
         modules: 2,
         registryFile: ".lenso/module-registry.json",
@@ -253,8 +186,6 @@ describe("available module registry model", () => {
             consolePackageApi: "1",
             lensoVersion: "0.1.0",
           },
-          installPolicy: "trusted",
-          provenance: registryProvenance,
           manifestName: "billing",
           manifestReference: "https://example.com/lenso/module/v1/manifest",
           manifestStatus: "ok",
@@ -267,8 +198,6 @@ describe("available module registry model", () => {
           baseUrl: null,
           catalogVersion: "0.1.0",
           consolePackageHints: 0,
-          installPolicy: "trusted",
-          provenance: registryProvenance,
           manifestName: "local-crm",
           manifestReference: "./lenso.module.json",
           manifestStatus: "ok",
@@ -282,7 +211,7 @@ describe("available module registry model", () => {
       version: 1,
     };
 
-    expect(availableModuleRegistryRowsFromDoctorSnapshot(snapshot)).toEqual([
+    expect(availableModuleRegistryRowsFromSnapshot(snapshot)).toEqual([
       {
         baseUrl: "https://example.com/lenso/module/v1",
         capabilityCount: 0,
@@ -290,14 +219,11 @@ describe("available module registry model", () => {
         key: "billing:0.1.0:https://example.com/lenso/module/v1/manifest",
         manifestReference: "https://example.com/lenso/module/v1/manifest",
         name: "billing",
-        installPolicy: "trusted",
         preflightFix:
           "upgrade Lenso to 0.2.0 or install a compatible billing catalog entry",
         preflightLabel: "incompatible",
         preflightReason: "billing requires Lenso >= 0.2.0; host is 0.1.0",
         preflightStatus: "compatibility_blocked",
-        provenanceChecksum: "sha256:fixture-billing-module",
-        provenancePublisher: "Lenso Fixtures",
         source: "remote",
         summary: "-",
         version: "0.1.0",
@@ -309,13 +235,10 @@ describe("available module registry model", () => {
         key: "local-crm:0.1.0:./lenso.module.json",
         manifestReference: "./lenso.module.json",
         name: "local-crm",
-        installPolicy: "trusted",
         preflightLabel: "needs base URL",
         preflightFix: "add baseUrl or use a manifest URL ending with /manifest",
         preflightReason: "local-crm baseUrl is missing",
         preflightStatus: "needs_base_url",
-        provenanceChecksum: "sha256:fixture-billing-module",
-        provenancePublisher: "Lenso Fixtures",
         source: "remote",
         summary: "-",
         version: "0.1.0",
@@ -323,55 +246,8 @@ describe("available module registry model", () => {
     ]);
   });
 
-  test("turns publisher trust issues into publisher CLI handoff commands", () => {
-    const snapshot: AvailableModuleRegistryDoctorSnapshot = {
-      catalog: {
-        modules: 1,
-        registryFile: ".lenso/module-registry.json",
-        version: 1,
-      },
-      issues: [
-        {
-          fix: "mark Lenso Fixtures lenso-fixtures-ed25519 trusted after operator review",
-          group: "Provenance",
-          message:
-            "billing publisher key lenso-fixtures-ed25519 status is review_required",
-        },
-      ],
-      modules: [
-        {
-          baseUrl: "https://example.com/lenso/module/v1",
-          catalogVersion: "0.1.0",
-          consolePackageHints: 1,
-          installPolicy: "trusted",
-          provenance: registryProvenance,
-          manifestName: "billing",
-          manifestReference: "https://example.com/lenso/module/v1/manifest",
-          manifestStatus: "ok",
-          manifestVersion: "0.1.0",
-          name: "billing",
-          source: "remote",
-          status: "needs_attention",
-        },
-      ],
-      status: "failed",
-      version: 1,
-    };
-
-    expect(
-      availableModuleRegistryRowsFromDoctorSnapshot(snapshot)[0]
-    ).toMatchObject({
-      preflightFix:
-        'lenso module publisher trust "Lenso Fixtures" "lenso-fixtures-ed25519" --public-key-file <pem>',
-      preflightLabel: "publisher trust",
-      preflightReason:
-        "billing publisher key lenso-fixtures-ed25519 status is review_required",
-      preflightStatus: "publisher_trust_blocked",
-    });
-  });
-
-  test("marks archived registry snapshot modules with restore handoff", () => {
-    const snapshot: AvailableModuleRegistryDoctorSnapshot = {
+  test("marks archived registry snapshot modules without restore handoff", () => {
+    const snapshot: AvailableModuleRegistrySnapshot = {
       catalog: {
         modules: 1,
         registryFile: ".lenso/module-registry.json",
@@ -385,7 +261,6 @@ describe("available module registry model", () => {
           baseUrl: "https://example.com/lenso/module/v1",
           catalogVersion: "0.1.0",
           consolePackageHints: 1,
-          installPolicy: "review_required",
           manifestName: null,
           manifestReference: "https://example.com/lenso/module/v1/manifest",
           manifestStatus: "archived",
@@ -399,10 +274,7 @@ describe("available module registry model", () => {
       version: 1,
     };
 
-    expect(
-      availableModuleRegistryRowsFromDoctorSnapshot(snapshot)[0]
-    ).toMatchObject({
-      preflightFix: 'lenso module registry restore "billing" --reason <reason>',
+    expect(availableModuleRegistryRowsFromSnapshot(snapshot)[0]).toMatchObject({
       preflightLabel: "archived",
       preflightReason: "catalog entry archived: replaced by billing-v2",
       preflightStatus: "archived",

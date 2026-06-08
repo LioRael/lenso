@@ -797,11 +797,6 @@ describe("module status helpers", () => {
         label: "console",
         command: "lenso console-package apply-plan",
       },
-      {
-        key: "doctor",
-        label: "verify",
-        command: "lenso module doctor",
-      },
     ]);
   });
 
