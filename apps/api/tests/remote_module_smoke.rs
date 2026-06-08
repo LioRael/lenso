@@ -6,11 +6,11 @@ use platform_admin_data::{
     AdminModuleMetadata, install_admin_module_metadata, install_admin_modules,
 };
 use platform_core::{
-    AppConfig, AppContext, AuthConfig, DatabaseConfig, DbPool, HttpConfig, LoggingEventPublisher,
-    ModuleSourcesConfig, PLATFORM_MIGRATIONS, RemoteModuleSourceConfig, ServiceConfig,
-    TelemetryConfig, apply_migrations,
+    ActorContext, AppConfig, AppContext, AuthConfig, CorrelationId, DatabaseConfig, DbPool,
+    HttpConfig, LoggingEventPublisher, ModuleSourcesConfig, PLATFORM_MIGRATIONS,
+    RemoteModuleSourceConfig, ServiceConfig, TelemetryConfig, TraceContext, apply_migrations,
 };
-use platform_runtime::RUNTIME_MIGRATIONS;
+use platform_runtime::{EnqueueFunctionRequest, RUNTIME_MIGRATIONS, RuntimeClient, RuntimeWorker};
 use platform_testing::TestDatabase;
 use serde_json::Value;
 use std::sync::Arc;
@@ -54,6 +54,28 @@ async fn app_with_remote_modules_and_db(
     db: DbPool,
     database_url: String,
 ) -> axum::Router {
+    let ctx = app_context_with_remote_modules_and_db(remote, db, database_url);
+    let admin_modules = app_bootstrap::load_admin_modules(&ctx)
+        .await
+        .expect("remote admin modules load");
+    let admin_module_metadata = app_bootstrap::load_admin_module_metadata(&ctx)
+        .await
+        .expect("remote admin module metadata loads");
+    let remote_http_proxy_registry = app_bootstrap::load_remote_http_proxy_registry(&ctx)
+        .await
+        .expect("remote HTTP proxy registry loads");
+
+    install_admin_modules(admin_modules);
+    install_module_metadata(admin_module_metadata);
+    platform_module_remote::install_remote_http_proxy_registry(remote_http_proxy_registry);
+    build_router(ctx)
+}
+
+fn app_context_with_remote_modules_and_db(
+    remote: Vec<RemoteModuleSourceConfig>,
+    db: DbPool,
+    database_url: String,
+) -> AppContext {
     let config = AppConfig {
         service: ServiceConfig::default(),
         database: DatabaseConfig {
@@ -69,21 +91,7 @@ async fn app_with_remote_modules_and_db(
         },
         modules: Default::default(),
     };
-    let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
-    let admin_modules = app_bootstrap::load_admin_modules(&ctx)
-        .await
-        .expect("remote admin modules load");
-    let admin_module_metadata = app_bootstrap::load_admin_module_metadata(&ctx)
-        .await
-        .expect("remote admin module metadata loads");
-    let remote_http_proxy_registry = app_bootstrap::load_remote_http_proxy_registry(&ctx)
-        .await
-        .expect("remote HTTP proxy registry loads");
-
-    install_admin_modules(admin_modules);
-    install_module_metadata(admin_module_metadata);
-    platform_module_remote::install_remote_http_proxy_registry(remote_http_proxy_registry);
-    build_router(ctx)
+    AppContext::new(config, db, Arc::new(LoggingEventPublisher))
 }
 
 fn install_module_metadata(metadata: Vec<AdminModuleMetadata>) {
@@ -537,6 +545,111 @@ async fn remote_http_proxy_forwards_declared_get_routes() {
         error_detail_reason(&remote_missing, "remote_status"),
         Some("404")
     );
+}
+
+#[tokio::test]
+async fn installed_remote_module_runs_through_api_proxy_and_worker_runtime() {
+    let _guard = REMOTE_SMOKE_TEST_LOCK.lock().await;
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let migrations = PLATFORM_MIGRATIONS
+        .iter()
+        .chain(RUNTIME_MIGRATIONS)
+        .copied()
+        .collect::<Vec<_>>();
+    apply_migrations(&db.pool, &migrations)
+        .await
+        .expect("platform and runtime migrations apply");
+
+    let base_url = spawn_remote_module(remote_module_example::router()).await;
+    let remote_sources = vec![RemoteModuleSourceConfig {
+        name: "remote-crm".to_owned(),
+        base_url: base_url.clone(),
+        auth_token_env: None,
+        timeout_ms: 5_000,
+    }];
+    let ctx = app_context_with_remote_modules_and_db(
+        remote_sources.clone(),
+        db.pool.clone(),
+        db.url.clone(),
+    );
+    let modules = app_bootstrap::load_modules(&ctx)
+        .await
+        .expect("installed remote module loads");
+    let registry = app_bootstrap::function_registry(&modules);
+    assert!(registry.get("remote_crm.sync_contact.v1").is_some());
+
+    let app = app_with_remote_modules_and_db(remote_sources, db.pool.clone(), db.url.clone()).await;
+    let proxy_response = app
+        .oneshot(service_get(
+            "/modules/remote-crm/http/contacts/contact_1",
+            "dev-service:admin:remote_crm.contacts.read",
+        ))
+        .await
+        .expect("remote proxy request completes");
+    assert_eq!(proxy_response.status(), StatusCode::OK);
+    let proxied = json_body(proxy_response).await;
+    assert_eq!(proxied["data"]["email"], "ada@example.com");
+    assert_eq!(proxied["remote_path"], "/contacts/contact_1");
+
+    RuntimeClient::new(db.pool.clone())
+        .enqueue_function(EnqueueFunctionRequest {
+            function_name: "remote_crm.sync_contact.v1".to_owned(),
+            input_json: serde_json::json!({ "contact_id": "contact_1" }),
+            correlation_id: CorrelationId::new("corr_install_to_run"),
+            actor: ActorContext::Service {
+                service_id: "worker".to_owned(),
+                scopes: vec!["runtime.functions.enqueue".to_owned()],
+            },
+            trace: TraceContext {
+                trace_id: Some("trace_install_to_run".to_owned()),
+                span_id: Some("span_install_to_run".to_owned()),
+                baggage: Vec::new(),
+            },
+            causation_id: Some("remote_module_install".to_owned()),
+            max_attempts: Some(3),
+        })
+        .await
+        .expect("remote runtime function should enqueue");
+
+    let worker = RuntimeWorker::new(db.pool.clone(), Arc::new(registry), "worker-install-run");
+    assert_eq!(
+        worker
+            .claim_and_run_batch(10)
+            .await
+            .expect("worker should run remote function"),
+        1
+    );
+    let status: String =
+        sqlx::query_scalar("select status from runtime.function_runs where function_name = $1")
+            .bind("remote_crm.sync_contact.v1")
+            .fetch_one(&db.pool)
+            .await
+            .expect("function run status should query");
+    assert_eq!(status, "completed");
+    let remote_runtime_operation: Value = sqlx::query_scalar(
+        r#"
+        select log.attributes
+        from platform.execution_logs log
+        where log.execution_name = $1
+            and log.attributes ->> 'source' = 'remote_runtime'
+        order by log.occurred_at asc
+        limit 1
+        "#,
+    )
+    .bind("remote_crm.sync_contact.v1")
+    .fetch_one(&db.pool)
+    .await
+    .expect("remote runtime operation should query");
+    assert_eq!(remote_runtime_operation["module_name"], "remote-crm");
+    assert_eq!(
+        remote_runtime_operation["remote_path"],
+        "/runtime/functions/remote_crm.sync_contact.v1/invoke"
+    );
+    assert_eq!(remote_runtime_operation["success"], true);
+
+    db.cleanup().await;
 }
 
 #[tokio::test]

@@ -278,6 +278,7 @@ const main = async () => {
     );
 
     console.log("Remote module package demo passed");
+    console.log("Remote module install-to-run demo passed");
     if (process.env.LENSO_KEEP_REMOTE_MODULE_INSTALL_DEMO) {
       console.log(`Demo root: ${demoRoot}`);
     }

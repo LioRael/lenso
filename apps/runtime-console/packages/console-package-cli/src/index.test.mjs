@@ -565,12 +565,16 @@ describe("module scaffold CLI", () => {
     expect(packageJson.scripts["demo:remote-module-package"]).toBe(
       "node scripts/remote-module-package-demo.mjs"
     );
+    expect(packageJson.scripts["demo:remote-module-run"]).toBe(
+      "node scripts/remote-module-run-demo.mjs"
+    );
 
     const { stdout } = await execFileAsync(process.execPath, [
-      path.join(runtimeConsoleRoot, "scripts/remote-module-package-demo.mjs"),
+      path.join(runtimeConsoleRoot, "scripts/remote-module-run-demo.mjs"),
     ]);
 
     expect(stdout).toContain("Remote module package demo passed");
+    expect(stdout).toContain("Remote module install-to-run demo passed");
   });
 
   test("creates a standalone remote module package", async () => {
