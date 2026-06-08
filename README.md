@@ -163,6 +163,8 @@ just generate
 - `just generated-check`: regenerate committed artifacts and fail if they differ from git.
 - `just sdk-check`: typecheck `packages/ts-sdk`.
 - `just console-check`: format-check, lint, typecheck, and build `apps/runtime-console`.
+- `just remote-module-run-demo`: run the installable remote module happy-path demo.
+- `just release-check`: run the local release gate.
 - `just ci`: run the local CI script.
 
 ## Quality Gates
@@ -186,3 +188,10 @@ The architecture checker also fails on:
 - Missing event payload contracts for current events.
 
 Generated files are source-controlled artifacts, but they are not hand-edited. Update Rust/OpenAPI sources, then regenerate.
+
+## Release Readiness
+
+Use `just release-check` before cutting a release branch or tag. It runs the
+full local quality gate plus the remote module install-to-run demo. The release
+scope and manual smoke checklist live in
+[docs/release-readiness.md](docs/release-readiness.md).

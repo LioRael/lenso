@@ -33,6 +33,10 @@ check:
     just sdk-check
     just console-check
 
+release-check:
+    just check
+    just remote-module-run-demo
+
 test:
     cargo test --locked --workspace
 
@@ -99,6 +103,9 @@ console-test:
 
 console-check:
     pnpm --dir={{runtime_console_dir}} run check
+
+remote-module-run-demo:
+    pnpm --dir={{runtime_console_dir}} run demo:remote-module-run
 
 # Local infrastructure
 db-up:

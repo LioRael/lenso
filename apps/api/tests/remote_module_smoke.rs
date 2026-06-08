@@ -614,9 +614,12 @@ async fn installed_remote_module_lifecycle_activation_runs_through_worker_runtim
             .await
             .expect("function run status should query");
     assert_eq!(status, "completed");
-    let lifecycle_run: (String, String, Value) = sqlx::query_as(
+    let lifecycle_run: (String, Option<String>, Value) = sqlx::query_as(
         r#"
-        select correlation_id, causation_id, input_json
+        select
+            correlation_id,
+            input_json #>> '{_lenso_runtime,causation_id}' as causation_id,
+            input_json
         from runtime.function_runs
         where id = $1
         "#,
@@ -627,8 +630,8 @@ async fn installed_remote_module_lifecycle_activation_runs_through_worker_runtim
     .expect("lifecycle function run should query");
     assert!(lifecycle_run.0.starts_with("corr_lifecycle_"));
     assert_eq!(
-        lifecycle_run.1,
-        "module_lifecycle:remote-crm:sync contacts on startup"
+        lifecycle_run.1.as_deref(),
+        Some("module_lifecycle:remote-crm:sync contacts on startup")
     );
     assert_eq!(lifecycle_run.2["reason"], "worker_startup");
     let remote_runtime_operation: Value = sqlx::query_scalar(
