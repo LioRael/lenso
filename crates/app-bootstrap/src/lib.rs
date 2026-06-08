@@ -1135,6 +1135,10 @@ pub fn story_display_descriptors_for_context(
 }
 
 pub fn install_default_story_display_catalog(ctx: &AppContext) -> platform_core::AppResult<()> {
+    if !linked_module_enabled(ctx, story::module::MODULE_NAME) {
+        story::backend::install_default_story_display(Vec::new());
+        return Ok(());
+    }
     story::backend::install_default_story_display(story_display_descriptors_for_context(ctx)?);
     Ok(())
 }
@@ -1430,6 +1434,49 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn story_module_runtime_config_disables_backend_metadata() {
+        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build");
+        let config = test_config_with_database_url("postgres://localhost/lenso_test");
+        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
+        let registry =
+            RuntimeConfigRegistry::try_new(runtime_config_descriptors(&ctx).expect("descriptors"))
+                .expect("registry");
+        let mut stored = BTreeMap::new();
+        stored.insert(
+            ("*".to_owned(), "modules.platform-story.enabled".to_owned()),
+            json!(false),
+        );
+        let snapshot = RuntimeConfigSnapshot::resolve(&registry, "api", &stored);
+        let ctx = ctx.with_runtime_config_provider(Arc::new(TestRuntimeConfigProvider {
+            snapshot: Arc::new(snapshot),
+        }));
+
+        let linked_http_names = linked_http_modules_for_context(&ctx)
+            .expect("linked HTTP modules should load")
+            .into_iter()
+            .map(|module| module.manifest.name)
+            .collect::<Vec<_>>();
+        assert_eq!(linked_http_names, vec!["identity"]);
+
+        let metadata = load_admin_module_metadata(&ctx)
+            .await
+            .expect("module metadata should load");
+        let story = metadata
+            .iter()
+            .find(|module| module.module_name == "platform-story")
+            .expect("disabled story module should remain visible in metadata");
+
+        assert!(matches!(
+            &story.load_status,
+            ModuleLoadStatus::Error { message }
+                if message == "module disabled by configuration"
+        ));
+        assert_eq!(story.console.len(), 1);
+        assert_eq!(story.http_routes.len(), story::module::http_routes().len());
+    }
+
+    #[tokio::test]
     async fn runtime_config_descriptors_include_module_enabled_flags() {
         let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
             .expect("lazy pool should build");
@@ -1600,6 +1647,47 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(names, vec!["platform-story"]);
+    }
+
+    #[test]
+    fn linked_http_modules_for_config_skip_disabled_story_routes() {
+        let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
+        config.modules.insert(
+            "platform-story".to_owned(),
+            ModuleConfig {
+                enabled: Some(false),
+                values: BTreeMap::new(),
+            },
+        );
+
+        let names = linked_http_modules_for_config(&config)
+            .expect("demo linked profile should parse")
+            .into_iter()
+            .map(|module| module.manifest.name)
+            .collect::<Vec<_>>();
+
+        assert_eq!(names, vec!["identity"]);
+    }
+
+    #[tokio::test]
+    async fn disabled_story_module_omits_default_story_display_catalog() {
+        story::backend::reset_catalogs_for_test();
+        let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
+        config.modules.insert(
+            "platform-story".to_owned(),
+            ModuleConfig {
+                enabled: Some(false),
+                values: BTreeMap::new(),
+            },
+        );
+        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build");
+        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
+
+        install_default_story_display_catalog(&ctx)
+            .expect("story display catalog installation should succeed");
+
+        assert!(story::backend::story_display_catalog_snapshot().is_empty());
     }
 
     #[tokio::test]

@@ -218,6 +218,93 @@ async fn disabled_linked_module_router_does_not_mount_identity_routes() {
 }
 
 #[tokio::test]
+async fn disabled_story_module_router_does_not_mount_story_routes() {
+    let _guard = catalog_test_lock()
+        .lock()
+        .expect("catalog test lock poisoned");
+    let _ = openapi_document();
+
+    let mut config = AppConfig::from_env();
+    config.modules.insert(
+        "platform-story".to_owned(),
+        ModuleConfig {
+            enabled: Some(false),
+            values: BTreeMap::new(),
+        },
+    );
+    let ctx = AppContext::new(
+        config,
+        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build"),
+        Arc::new(LoggingEventPublisher),
+    );
+    let app = app_api::try_build_router(ctx).expect("demo profile router should build");
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/admin/runtime/stories")
+                .method("GET")
+                .body(Body::empty())
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn served_openapi_omits_disabled_story_module_routes() {
+    let _guard = catalog_test_lock()
+        .lock()
+        .expect("catalog test lock poisoned");
+    let _ = openapi_document();
+
+    let mut config = AppConfig::from_env();
+    config.modules.insert(
+        "platform-story".to_owned(),
+        ModuleConfig {
+            enabled: Some(false),
+            values: BTreeMap::new(),
+        },
+    );
+    let ctx = AppContext::new(
+        config,
+        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build"),
+        Arc::new(LoggingEventPublisher),
+    );
+    let app = app_api::try_build_router(ctx).expect("demo profile router should build");
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/openapi.json")
+                .body(Body::empty())
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    let document: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("served OpenAPI should be JSON");
+    let paths = document["paths"]
+        .as_object()
+        .expect("OpenAPI paths should be an object");
+
+    assert!(!paths.contains_key("/admin/runtime/stories"));
+    assert!(!paths.contains_key("/admin/runtime/stories/{correlation_id}"));
+    assert!(!paths.contains_key("/admin/runtime/stories/{correlation_id}/heatmap"));
+    assert!(!paths.contains_key("/admin/runtime/stories/{correlation_id}/technical-operations"));
+}
+
+#[tokio::test]
 async fn served_core_profile_openapi_omits_demo_identity_paths_after_demo_document_assembly() {
     let _guard = catalog_test_lock()
         .lock()
