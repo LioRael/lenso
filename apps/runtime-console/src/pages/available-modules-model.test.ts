@@ -1,13 +1,13 @@
 import { describe, expect, test } from "vitest";
 
 import {
-  type AvailableModuleRegistrySnapshot,
-  type AvailableModuleRegistryCatalog,
-  availableModuleRegistryRowsFromSnapshot,
-  availableModuleRegistryRows,
-} from "./available-module-registry-model";
+  type AvailableModulesResponse,
+  type AvailableModulesCatalog,
+  availableModuleRowsFromResponse,
+  availableModuleRows,
+} from "./available-modules-model";
 
-const catalog: AvailableModuleRegistryCatalog = {
+const catalog: AvailableModulesCatalog = {
   modules: [
     {
       baseUrl: "https://example.com/lenso/module/v1",
@@ -29,9 +29,9 @@ const catalog: AvailableModuleRegistryCatalog = {
   version: 1,
 };
 
-describe("available module registry model", () => {
-  test("builds rows from registry catalog entries", () => {
-    expect(availableModuleRegistryRows(catalog)).toEqual([
+describe("available modules model", () => {
+  test("builds rows from available module catalog entries", () => {
+    expect(availableModuleRows(catalog)).toEqual([
       {
         baseUrl: "https://example.com/lenso/module/v1",
         capabilityCount: 2,
@@ -52,7 +52,7 @@ describe("available module registry model", () => {
 
   test("marks entries ready when the manifest snapshot matches", () => {
     expect(
-      availableModuleRegistryRows(catalog, {
+      availableModuleRows(catalog, {
         billing: {
           consolePackages: [
             {
@@ -74,7 +74,7 @@ describe("available module registry model", () => {
 
   test("flags missing base url for local manifest references", () => {
     expect(
-      availableModuleRegistryRows({
+      availableModuleRows({
         modules: [
           {
             manifestReference: "./lenso.module.json",
@@ -93,7 +93,7 @@ describe("available module registry model", () => {
 
   test("flags incompatible catalog entries before manifest checks", () => {
     expect(
-      availableModuleRegistryRows({
+      availableModuleRows({
         modules: [
           {
             baseUrl: "https://example.com/lenso/module/v1",
@@ -119,7 +119,7 @@ describe("available module registry model", () => {
 
   test("flags manifest identity mismatches", () => {
     expect(
-      availableModuleRegistryRows(catalog, {
+      availableModuleRows(catalog, {
         billing: {
           name: "billing-pro",
           source: "remote",
@@ -134,7 +134,7 @@ describe("available module registry model", () => {
 
   test("flags console package hint mismatches", () => {
     expect(
-      availableModuleRegistryRows(catalog, {
+      availableModuleRows(catalog, {
         billing: {
           consolePackages: [
             {
@@ -153,8 +153,8 @@ describe("available module registry model", () => {
     });
   });
 
-  test("builds rows from module registry snapshots", () => {
-    const snapshot: AvailableModuleRegistrySnapshot = {
+  test("builds rows from available module responses", () => {
+    const response: AvailableModulesResponse = {
       catalog: {
         modules: 2,
         registryFile: ".lenso/module-registry.json",
@@ -211,7 +211,7 @@ describe("available module registry model", () => {
       version: 1,
     };
 
-    expect(availableModuleRegistryRowsFromSnapshot(snapshot)).toEqual([
+    expect(availableModuleRowsFromResponse(response)).toEqual([
       {
         baseUrl: "https://example.com/lenso/module/v1",
         capabilityCount: 0,
@@ -246,8 +246,8 @@ describe("available module registry model", () => {
     ]);
   });
 
-  test("marks archived registry snapshot modules without restore handoff", () => {
-    const snapshot: AvailableModuleRegistrySnapshot = {
+  test("marks archived available modules without restore handoff", () => {
+    const response: AvailableModulesResponse = {
       catalog: {
         modules: 1,
         registryFile: ".lenso/module-registry.json",
@@ -274,7 +274,7 @@ describe("available module registry model", () => {
       version: 1,
     };
 
-    expect(availableModuleRegistryRowsFromSnapshot(snapshot)[0]).toMatchObject({
+    expect(availableModuleRowsFromResponse(response)[0]).toMatchObject({
       preflightLabel: "archived",
       preflightReason: "catalog entry archived: replaced by billing-v2",
       preflightStatus: "archived",

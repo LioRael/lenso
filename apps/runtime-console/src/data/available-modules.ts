@@ -1,11 +1,11 @@
 import { httpClient, isApiMode } from "../lib/http-client";
 import {
-  type AvailableModuleRegistrySnapshot,
-  type AvailableModuleRegistryRow,
-  availableModuleRegistryRowsFromSnapshot,
-} from "../pages/available-module-registry-model";
+  type AvailableModulesResponse,
+  type AvailableModuleRow,
+  availableModuleRowsFromResponse,
+} from "../pages/available-modules-model";
 
-export const sampleAvailableModuleRegistrySnapshot = {
+export const sampleAvailableModulesResponse = {
   catalog: {
     modules: 2,
     registryFile: ".lenso/module-registry.json",
@@ -46,61 +46,58 @@ export const sampleAvailableModuleRegistrySnapshot = {
   ],
   status: "failed",
   version: 1,
-} satisfies AvailableModuleRegistrySnapshot;
+} satisfies AvailableModulesResponse;
 
-export const availableModuleRegistrySnapshotQueryKey = [
+export const availableModulesQueryKey = [
   "modules",
-  "available-registry-snapshot",
+  "available-modules",
 ] as const;
 
 export function moduleRefreshInvalidationQueryKeys() {
-  return [
-    ["modules", "registry"],
-    availableModuleRegistrySnapshotQueryKey,
-  ] as const;
+  return [["modules", "registry"], availableModulesQueryKey] as const;
 }
 
-type RegistrySnapshotHttpClient = {
+type AvailableModulesHttpClient = {
   get: (path: string) => {
-    json: () => Promise<AvailableModuleRegistrySnapshot>;
+    json: () => Promise<AvailableModulesResponse>;
   };
 };
 
-export async function fetchAvailableModuleRegistrySnapshot({
+export async function fetchAvailableModules({
   apiMode = isApiMode(),
   client = httpClient,
 }: {
   apiMode?: boolean;
-  client?: RegistrySnapshotHttpClient;
-} = {}): Promise<AvailableModuleRegistrySnapshot> {
+  client?: AvailableModulesHttpClient;
+} = {}): Promise<AvailableModulesResponse> {
   if (apiMode) {
     return client.get("admin/data/module-registry/snapshot").json();
   }
-  return sampleAvailableModuleRegistrySnapshot;
+  return sampleAvailableModulesResponse;
 }
 
-export function availableModuleRegistrySnapshotRows(
-  snapshot: AvailableModuleRegistrySnapshot = sampleAvailableModuleRegistrySnapshot
+export function availableModulesRows(
+  response: AvailableModulesResponse = sampleAvailableModulesResponse
 ) {
-  return availableModuleRegistryRowsFromSnapshot(snapshot);
+  return availableModuleRowsFromResponse(response);
 }
 
-export type AvailableModuleRegistrySnapshotPanelState = {
+export type AvailableModulesPanelState = {
   kind: "loading" | "error" | "empty" | "ready";
   label: string;
   message: string;
   moduleCount: number;
 };
 
-export function availableModuleRegistrySnapshotPanelState({
+export function availableModulesPanelState({
   isError,
   isLoading,
   rows,
 }: {
   isError: boolean;
   isLoading: boolean;
-  rows: AvailableModuleRegistryRow[];
-}): AvailableModuleRegistrySnapshotPanelState {
+  rows: AvailableModuleRow[];
+}): AvailableModulesPanelState {
   if (isLoading) {
     return {
       moduleCount: 0,

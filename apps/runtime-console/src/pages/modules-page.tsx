@@ -22,12 +22,12 @@ import {
 } from "../app/console-module-metadata";
 import { Button } from "../components/ui/button";
 import {
-  availableModuleRegistrySnapshotPanelState,
-  availableModuleRegistrySnapshotQueryKey,
-  availableModuleRegistrySnapshotRows,
-  fetchAvailableModuleRegistrySnapshot,
+  availableModulesPanelState,
+  availableModulesQueryKey,
+  availableModulesRows,
+  fetchAvailableModules,
   moduleRefreshInvalidationQueryKeys,
-} from "../data/available-module-registry-snapshot";
+} from "../data/available-modules";
 import { useRemoteProxyCalls } from "../hooks/use-runtime-queries";
 import { cn } from "../lib/cn";
 import {
@@ -35,7 +35,7 @@ import {
   isApiMode,
   runtimeConsoleDataSource,
 } from "../lib/http-client";
-import { availableModuleRegistryRowsFromSnapshot } from "./available-module-registry-model";
+import { availableModuleRowsFromResponse } from "./available-modules-model";
 import {
   type AdminModuleMetadata,
   type ConfigValueMetadata,
@@ -138,10 +138,10 @@ function ModulesContent() {
     queryFn: () =>
       httpClient.get("admin/config/values").json<ConfigValueListResponse>(),
   });
-  const availableModuleRegistryQuery = useQuery({
+  const availableModulesQuery = useQuery({
     enabled: isApiMode(),
-    queryKey: availableModuleRegistrySnapshotQueryKey,
-    queryFn: () => fetchAvailableModuleRegistrySnapshot(),
+    queryKey: availableModulesQueryKey,
+    queryFn: () => fetchAvailableModules(),
   });
   const refreshMutation = useMutation({
     mutationFn: () =>
@@ -156,12 +156,12 @@ function ModulesContent() {
   });
   const modules = modulesQuery.data?.modules ?? emptyModules;
   const configValues = configValuesQuery.data?.data ?? emptyConfigValues;
-  const availableModuleRows = availableModuleRegistryQuery.data
-    ? availableModuleRegistryRowsFromSnapshot(availableModuleRegistryQuery.data)
-    : availableModuleRegistrySnapshotRows();
-  const availableModulePanelState = availableModuleRegistrySnapshotPanelState({
-    isError: availableModuleRegistryQuery.isError,
-    isLoading: availableModuleRegistryQuery.isLoading,
+  const availableModuleRows = availableModulesQuery.data
+    ? availableModuleRowsFromResponse(availableModulesQuery.data)
+    : availableModulesRows();
+  const availableModulePanelState = availableModulesPanelState({
+    isError: availableModulesQuery.isError,
+    isLoading: availableModulesQuery.isLoading,
     rows: availableModuleRows,
   });
   const [selectedModuleName, setSelectedModuleName] = useState<string | null>(
@@ -315,8 +315,8 @@ function ModuleRegistryCatalogPanel({
   panelState,
   rows,
 }: {
-  panelState: ReturnType<typeof availableModuleRegistrySnapshotPanelState>;
-  rows: ReturnType<typeof availableModuleRegistrySnapshotRows>;
+  panelState: ReturnType<typeof availableModulesPanelState>;
+  rows: ReturnType<typeof availableModulesRows>;
 }) {
   const [copiedCommandKey, setCopiedCommandKey] = useState<string | null>(null);
   const copyCommand = (key: string, command: string) => {

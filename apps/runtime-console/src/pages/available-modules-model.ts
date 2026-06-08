@@ -1,9 +1,9 @@
-export type AvailableModuleRegistryCatalog = {
+export type AvailableModulesCatalog = {
   version: number;
-  modules: AvailableModuleRegistryEntry[];
+  modules: AvailableModulesEntry[];
 };
 
-export type AvailableModuleRegistryEntry = {
+export type AvailableModulesEntry = {
   name: string;
   version: string;
   source: "remote" | string;
@@ -13,7 +13,7 @@ export type AvailableModuleRegistryEntry = {
   baseUrl?: string;
   capabilities?: string[];
   consolePackages?: AvailableModuleConsolePackageHint[];
-  compatibility?: AvailableModuleRegistryCompatibility;
+  compatibility?: AvailableModuleCompatibility;
   summary?: string;
 };
 
@@ -30,7 +30,7 @@ export type AvailableModuleManifestSnapshot = {
   consolePackages?: AvailableModuleConsolePackageHint[];
 };
 
-export type AvailableModuleRegistrySnapshot = {
+export type AvailableModulesResponse = {
   version: number;
   status: "passed" | "failed" | string;
   catalog: {
@@ -38,17 +38,17 @@ export type AvailableModuleRegistrySnapshot = {
     registryFile: string;
     version: number;
   };
-  issues: AvailableModuleRegistryIssue[];
-  modules: AvailableModuleRegistryModule[];
+  issues: AvailableModulesIssue[];
+  modules: AvailableModulesResponseModule[];
 };
 
-export type AvailableModuleRegistryIssue = {
+export type AvailableModulesIssue = {
   group: string;
   message: string;
   fix?: string;
 };
 
-export type AvailableModuleRegistryCompatibility = {
+export type AvailableModuleCompatibility = {
   consolePackageApi?: string;
   lenso?: {
     maxVersion?: string;
@@ -56,12 +56,12 @@ export type AvailableModuleRegistryCompatibility = {
   };
 };
 
-export type AvailableModuleRegistryHostCompatibility = {
+export type AvailableModuleHostCompatibility = {
   consolePackageApi: string;
   lensoVersion: string;
 };
 
-export type AvailableModuleRegistryModule = {
+export type AvailableModulesResponseModule = {
   name: string;
   source: "remote" | string;
   catalogVersion: string;
@@ -70,8 +70,8 @@ export type AvailableModuleRegistryModule = {
   archiveReason?: string;
   baseUrl: string | null;
   consolePackageHints: number;
-  compatibility?: AvailableModuleRegistryCompatibility;
-  hostCompatibility?: AvailableModuleRegistryHostCompatibility;
+  compatibility?: AvailableModuleCompatibility;
+  hostCompatibility?: AvailableModuleHostCompatibility;
   manifestName: string | null;
   manifestStatus: "ok" | "invalid" | "unreadable" | string;
   manifestVersion: string | null;
@@ -87,7 +87,7 @@ export type AvailableModulePreflightStatus =
   | "manifest_mismatch"
   | "package_hint_mismatch";
 
-export type AvailableModuleRegistryRow = {
+export type AvailableModuleRow = {
   key: string;
   name: string;
   version: string;
@@ -118,10 +118,10 @@ const statusLabel: Record<AvailableModulePreflightStatus, string> = {
   unknown: "unknown",
 };
 
-export function availableModuleRegistryRows(
-  catalog: AvailableModuleRegistryCatalog,
+export function availableModuleRows(
+  catalog: AvailableModulesCatalog,
   manifests: AvailableModuleManifestSnapshots = {}
-): AvailableModuleRegistryRow[] {
+): AvailableModuleRow[] {
   return catalog.modules.map((entry) => {
     const manifest = manifests[entry.name];
     const preflight = availableModulePreflight(entry, manifest);
@@ -143,12 +143,12 @@ export function availableModuleRegistryRows(
   });
 }
 
-export function availableModuleRegistryRowsFromSnapshot(
-  snapshot: AvailableModuleRegistrySnapshot
-): AvailableModuleRegistryRow[] {
-  return snapshot.modules.map((module) => {
-    const preflight = availableModulePreflightFromSnapshot({
-      issues: snapshot.issues,
+export function availableModuleRowsFromResponse(
+  response: AvailableModulesResponse
+): AvailableModuleRow[] {
+  return response.modules.map((module) => {
+    const preflight = availableModulePreflightFromResponse({
+      issues: response.issues,
       module,
     });
     return {
@@ -170,7 +170,7 @@ export function availableModuleRegistryRowsFromSnapshot(
 }
 
 function availableModulePreflight(
-  entry: AvailableModuleRegistryEntry,
+  entry: AvailableModulesEntry,
   manifest: AvailableModuleManifestSnapshot | undefined
 ): { fix?: string; reason: string; status: AvailableModulePreflightStatus } {
   if (entry.archivedAt) {
@@ -182,7 +182,7 @@ function availableModulePreflight(
     };
   }
 
-  const compatibilityIssue = registryCompatibilityIssue({
+  const compatibilityIssue = availableModuleCompatibilityIssue({
     compatibility: entry.compatibility,
     hostCompatibility: defaultHostCompatibility,
     moduleName: entry.name,
@@ -200,7 +200,7 @@ function availableModulePreflight(
   ) {
     return {
       reason:
-        "registry install needs baseUrl when the manifest reference is not an HTTP /manifest URL",
+        "install needs baseUrl when the manifest reference is not an HTTP /manifest URL",
       status: "needs_base_url",
     };
   }
@@ -243,12 +243,12 @@ function availableModulePreflight(
   };
 }
 
-function availableModulePreflightFromSnapshot({
+function availableModulePreflightFromResponse({
   issues,
   module,
 }: {
-  issues: AvailableModuleRegistryIssue[];
-  module: AvailableModuleRegistryModule;
+  issues: AvailableModulesIssue[];
+  module: AvailableModulesResponseModule;
 }): { fix?: string; reason: string; status: AvailableModulePreflightStatus } {
   if (module.status === "archived" || module.archivedAt) {
     return {
@@ -315,7 +315,7 @@ function consolePackageKey(hint: AvailableModuleConsolePackageHint): string {
   return `${hint.packageName}#${hint.exportName}`;
 }
 
-const defaultHostCompatibility: AvailableModuleRegistryHostCompatibility = {
+const defaultHostCompatibility: AvailableModuleHostCompatibility = {
   consolePackageApi: "1",
   lensoVersion: "0.1.0",
 };
@@ -344,13 +344,13 @@ function compareVersions(left: string, right: string): number | null {
   return 0;
 }
 
-function registryCompatibilityIssue({
+function availableModuleCompatibilityIssue({
   compatibility,
   hostCompatibility,
   moduleName,
 }: {
-  compatibility: AvailableModuleRegistryCompatibility | undefined;
-  hostCompatibility: AvailableModuleRegistryHostCompatibility;
+  compatibility: AvailableModuleCompatibility | undefined;
+  hostCompatibility: AvailableModuleHostCompatibility;
   moduleName: string;
 }): string | null {
   const minVersion = compatibility?.lenso?.minVersion;
