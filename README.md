@@ -60,6 +60,7 @@ Install frontend dependencies:
 
 ```sh
 just install
+cp .env.example .env
 ```
 
 Typical loop:

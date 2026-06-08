@@ -33,6 +33,7 @@ Use this sequence for a manual service smoke:
 
 ```sh
 just install
+cp .env.example .env
 just db-up
 just migrate
 just api
@@ -51,6 +52,23 @@ checks schema-admin, HTTP route, runtime function behavior, installs the manifes
 into a host fixture, and verifies local `REMOTE_MODULES` plus the install plan.
 
 The manual first-user flow lives in [getting-started.md](getting-started.md).
+
+## Troubleshooting
+
+Most release-smoke failures are local setup issues:
+
+- Docker is not running: start Docker, then run `just db-up` again.
+- Postgres is not ready: run `just db-up`, wait for the container to be healthy,
+  then run `just migrate`.
+- Frontend dependencies are missing or stale: run `just install`.
+- API or Console ports are busy: change `HTTP_PORT`, `CONSOLE_PORT`, or
+  `VITE_API_BASE_URL` for that shell.
+- The remote module manifest URL does not respond: start the module process and
+  open `/lenso/module/v1/manifest` in a browser or with `curl`.
+- `REMOTE_MODULES` changed but the module is not visible: restart the API,
+  worker, and Runtime Console.
+- OTLP collector is not running: unset `OTEL_EXPORTER_OTLP_ENDPOINT` for normal
+  local smoke, or start it with `just observability-up`.
 
 ## First Release Scope
 

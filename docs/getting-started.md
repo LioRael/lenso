@@ -17,6 +17,18 @@ URL, install it, restart services, and inspect the loaded module.
 just install
 ```
 
+## Configure Local Environment
+
+Start from the committed local defaults:
+
+```sh
+cp .env.example .env
+```
+
+`.env.example` contains local Postgres, API, CORS, logging, and optional OTLP
+defaults. Module installs may update `REMOTE_MODULES` in `.env`; that is local
+runtime configuration, not a registry or install-history database.
+
 ## Run The Local Services
 
 Start Postgres and apply migrations:
