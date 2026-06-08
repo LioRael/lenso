@@ -1318,6 +1318,13 @@ function ModuleRuntimeFunctionsTable({
 }: {
   rows: ReturnType<typeof moduleRuntimeFunctionRows>;
 }) {
+  const [copiedQueueKey, setCopiedQueueKey] = useState<string | null>(null);
+  const copyQueueKey = (key: string, queueKey: string) => {
+    void window.navigator.clipboard?.writeText(queueKey);
+    setCopiedQueueKey(key);
+    window.setTimeout(() => setCopiedQueueKey(null), 1200);
+  };
+
   if (rows.length === 0) {
     return (
       <section className="border border-(--border-subtle) bg-(--surface) px-3 py-2 text-(--muted)">
@@ -1335,13 +1342,18 @@ function ModuleRuntimeFunctionsTable({
           {rows.length}
         </span>
       </header>
+      <div className="border-b border-(--border-subtle) px-3 py-2 text-[11px] text-(--muted)">
+        Remote functions run through the host worker. Open the queue to inspect
+        pending and failed runs.
+      </div>
       <div className="overflow-auto">
-        <table className="w-full min-w-[780px] table-fixed">
+        <table className="w-full min-w-[980px] table-fixed">
           <thead className="bg-(--sidebar) text-[10px] uppercase tracking-wide text-(--muted)">
             <tr>
               <th className="px-3 py-1.5 text-left">function</th>
               <th className="w-20 px-3 py-1.5 text-left">version</th>
               <th className="px-3 py-1.5 text-left">queue</th>
+              <th className="px-3 py-1.5 text-left">worker queue</th>
               <th className="px-3 py-1.5 text-left">input schema</th>
               <th className="px-3 py-1.5 text-left">retry</th>
             </tr>
@@ -1360,6 +1372,43 @@ function ModuleRuntimeFunctionsTable({
                 </td>
                 <td className="truncate px-3 py-1.5 text-(--secondary)">
                   {row.queue}
+                </td>
+                <td className="px-3 py-1.5">
+                  <div className="grid grid-cols-[minmax(0,1fr)_24px_24px] items-center gap-1">
+                    <button
+                      className="min-w-0 truncate border border-(--border-subtle) bg-(--background) px-1.5 py-1 text-left font-mono text-[10px] text-(--secondary) hover:bg-(--sidebar) hover:text-(--foreground)"
+                      onClick={() => pushOperationsUrl(row.queuePath)}
+                      title={row.queueKey}
+                      type="button"
+                    >
+                      {row.queueKey}
+                    </button>
+                    <button
+                      aria-label={`${moduleRegistryHandoffCopyLabel(copiedQueueKey, row.key)} queue key`}
+                      className="grid size-6 place-items-center border border-(--border-subtle) bg-(--background) text-(--muted) hover:bg-(--sidebar) hover:text-(--foreground)"
+                      onClick={() => copyQueueKey(row.key, row.queueKey)}
+                      title={moduleRegistryHandoffCopyLabel(
+                        copiedQueueKey,
+                        row.key
+                      )}
+                      type="button"
+                    >
+                      {copiedQueueKey === row.key ? (
+                        <Check size={11} />
+                      ) : (
+                        <Copy size={11} />
+                      )}
+                    </button>
+                    <button
+                      aria-label="open queue"
+                      className="grid size-6 place-items-center border border-(--border-subtle) bg-(--background) text-(--muted) hover:bg-(--sidebar) hover:text-(--foreground)"
+                      onClick={() => pushOperationsUrl(row.queuePath)}
+                      title="open queue"
+                      type="button"
+                    >
+                      <SquareTerminal size={11} />
+                    </button>
+                  </div>
                 </td>
                 <td className="truncate px-3 py-1.5 text-(--muted)">
                   {row.inputSchema}

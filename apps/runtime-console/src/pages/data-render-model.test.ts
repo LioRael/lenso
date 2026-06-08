@@ -837,6 +837,8 @@ describe("module status helpers", () => {
         key: "remote_crm.sync_contact.v1:1:0",
         name: "remote_crm.sync_contact.v1",
         queue: "remote-crm",
+        queueKey: "runtime.functions:remote-crm",
+        queuePath: "/operations/queues?selected=runtime.functions%3Aremote-crm",
         retryPolicy: "3 attempts / 1000ms",
         version: "1",
       },

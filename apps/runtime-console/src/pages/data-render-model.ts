@@ -363,6 +363,8 @@ export type ModuleRuntimeFunctionRow = {
   name: string;
   version: string;
   queue: string;
+  queueKey: string;
+  queuePath: string;
   inputSchema: string;
   retryPolicy: string;
 };
@@ -964,14 +966,19 @@ export function moduleHttpRouteRows(
 export function moduleRuntimeFunctionRows(
   module: AdminModuleMetadata
 ): ModuleRuntimeFunctionRow[] {
-  return (module.runtime?.functions ?? []).map((runtimeFunction, index) => ({
-    inputSchema: runtimeFunction.input_schema ?? "-",
-    key: `${runtimeFunction.name}:${runtimeFunction.version}:${index}`,
-    name: runtimeFunction.name,
-    queue: runtimeFunction.queue,
-    retryPolicy: retryPolicyLabel(runtimeFunction.retry_policy),
-    version: String(runtimeFunction.version),
-  }));
+  return (module.runtime?.functions ?? []).map((runtimeFunction, index) => {
+    const queueKey = `runtime.functions:${runtimeFunction.queue}`;
+    return {
+      inputSchema: runtimeFunction.input_schema ?? "-",
+      key: `${runtimeFunction.name}:${runtimeFunction.version}:${index}`,
+      name: runtimeFunction.name,
+      queue: runtimeFunction.queue,
+      queueKey,
+      queuePath: `/operations/queues?selected=${encodeURIComponent(queueKey)}`,
+      retryPolicy: retryPolicyLabel(runtimeFunction.retry_policy),
+      version: String(runtimeFunction.version),
+    };
+  });
 }
 
 export function moduleConsoleSurfaceRows(
