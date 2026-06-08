@@ -48,9 +48,9 @@ pub(crate) fn api_router_for_profile(profile: CompositionProfile) -> ApiOpenApiR
         app_bootstrap::merge_linked_http_for_profile(base, profile),
         profile,
     )
-        .merge(platform_admin::router())
-        .merge(platform_admin_data::router())
-        .merge(platform_module_remote::router())
+    .merge(platform_admin::router())
+    .merge(platform_admin_data::router())
+    .merge(platform_module_remote::router())
 }
 
 pub(crate) fn api_router_for_context(
@@ -63,9 +63,9 @@ pub(crate) fn api_router_for_context(
         app_bootstrap::merge_linked_http_for_context(base, ctx)?,
         ctx,
     )?
-        .merge(platform_admin::router())
-        .merge(platform_admin_data::router())
-        .merge(platform_module_remote::router()))
+    .merge(platform_admin::router())
+    .merge(platform_admin_data::router())
+    .merge(platform_module_remote::router()))
 }
 
 fn openapi_document_for_profile(profile: CompositionProfile) -> utoipa::openapi::OpenApi {

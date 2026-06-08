@@ -1754,17 +1754,15 @@ mod tests {
 
     #[test]
     fn platform_runtime_admin_routes_include_story_module_routes() {
-        let document = merge_platform_runtime_admin(platform_http::OpenApiRouter::new())
-            .to_openapi();
+        let document =
+            merge_platform_runtime_admin(platform_http::OpenApiRouter::new()).to_openapi();
         let value = serde_json::to_value(document).expect("OpenAPI document should serialize");
         let paths = value["paths"].as_object().expect("OpenAPI paths object");
 
         assert!(paths.contains_key("/admin/runtime/stories"));
         assert!(paths.contains_key("/admin/runtime/stories/{correlation_id}"));
         assert!(paths.contains_key("/admin/runtime/stories/{correlation_id}/heatmap"));
-        assert!(
-            paths.contains_key("/admin/runtime/stories/{correlation_id}/technical-operations")
-        );
+        assert!(paths.contains_key("/admin/runtime/stories/{correlation_id}/technical-operations"));
     }
 
     #[test]
