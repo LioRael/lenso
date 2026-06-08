@@ -1,15 +1,51 @@
 use platform_core::AppContext;
+use platform_http::ApiOpenApiRouter;
 use platform_module::{
-    ConsoleArea, ConsolePackage, ConsoleSurface, LinkedBinding, Module, ModuleManifest,
+    ConsoleArea, ConsolePackage, ConsoleSurface, LinkedBinding, LinkedHttpContribution, Module,
+    ModuleHttpMethod, ModuleHttpRoute, ModuleManifest,
 };
 
 pub const MODULE_NAME: &str = "platform-story";
 pub const STORY_CONSOLE_CAPABILITY: &str = "runtime.stories.read";
 
+pub fn http_routes() -> Vec<ModuleHttpRoute> {
+    vec![
+        ModuleHttpRoute {
+            method: ModuleHttpMethod::Get,
+            path: "/admin/runtime/stories".to_owned(),
+            capability: Some(STORY_CONSOLE_CAPABILITY.to_owned()),
+            display_name: Some("List Runtime Stories".to_owned()),
+            story_title: Some("Runtime Stories".to_owned()),
+        },
+        ModuleHttpRoute {
+            method: ModuleHttpMethod::Get,
+            path: "/admin/runtime/stories/{correlation_id}".to_owned(),
+            capability: Some(STORY_CONSOLE_CAPABILITY.to_owned()),
+            display_name: Some("Runtime Story Detail".to_owned()),
+            story_title: Some("Runtime Story Detail".to_owned()),
+        },
+        ModuleHttpRoute {
+            method: ModuleHttpMethod::Get,
+            path: "/admin/runtime/stories/{correlation_id}/heatmap".to_owned(),
+            capability: Some(STORY_CONSOLE_CAPABILITY.to_owned()),
+            display_name: Some("Runtime Story Heatmap".to_owned()),
+            story_title: Some("Runtime Story Heatmap".to_owned()),
+        },
+        ModuleHttpRoute {
+            method: ModuleHttpMethod::Get,
+            path: "/admin/runtime/stories/{correlation_id}/technical-operations".to_owned(),
+            capability: Some(STORY_CONSOLE_CAPABILITY.to_owned()),
+            display_name: Some("Runtime Story Technical Operations".to_owned()),
+            story_title: Some("Runtime Story Technical Operations".to_owned()),
+        },
+    ]
+}
+
 /// Context-free manifest for the Runtime Story system module.
 pub fn manifest() -> ModuleManifest {
     ModuleManifest::builder(MODULE_NAME)
         .capabilities(vec![STORY_CONSOLE_CAPABILITY.to_owned()])
+        .http_routes(http_routes())
         .console(vec![ConsoleSurface {
             name: "stories".to_owned(),
             label: "Stories".to_owned(),
@@ -26,12 +62,22 @@ pub fn manifest() -> ModuleManifest {
         .build()
 }
 
+pub fn merge_http(base: ApiOpenApiRouter) -> ApiOpenApiRouter {
+    base.merge(crate::backend::router())
+}
+
+pub fn binding() -> LinkedBinding {
+    LinkedBinding::builder()
+        .http(LinkedHttpContribution {
+            public_prefixes: &["/admin/runtime/stories"],
+            merge: merge_http,
+        })
+        .build()
+}
+
 /// The loaded Story module.
-///
-/// The first extraction slice makes Story discoverable through the module
-/// framework while preserving the existing platform-admin backend routes.
 pub fn module(_ctx: &AppContext) -> Module {
-    Module::linked(manifest(), LinkedBinding::builder().build())
+    Module::linked(manifest(), binding())
 }
 
 #[cfg(test)]
@@ -50,6 +96,7 @@ mod tests {
         assert_eq!(manifest.name, console_surface_contract["id"]);
         assert_eq!(manifest.admin, None);
         assert_eq!(manifest.capabilities, vec![STORY_CONSOLE_CAPABILITY]);
+        assert_eq!(manifest.http_routes, http_routes());
         assert_eq!(manifest.console.len(), 1);
 
         let surface = &manifest.console[0];

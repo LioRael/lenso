@@ -10,9 +10,8 @@
 //!   honor profile entry lists and configured remote sources for runtime apps.
 //! - [`module_manifests`]: context-free manifest data (no [`AppContext`]) for
 //!   read-only / `OpenAPI` paths, with profile-aware variants for runtime use.
-//! - [`merge_linked_http`] and [`merge_platform_runtime_admin`]: context-free
-//!   HTTP routes and their OpenAPI docs (API only), assembled without a live
-//!   [`AppContext`].
+//! - [`merge_linked_http`]: context-free HTTP routes and their OpenAPI docs
+//!   (API only), assembled without a live [`AppContext`].
 //! - [`story_display_descriptors`]: console display metadata, sourced from the
 //!   context-free [`module_manifests`].
 //!
@@ -82,7 +81,7 @@ const CORE_LINKED_MODULE_ENTRIES: &[LinkedModuleEntry] = &[LinkedModuleEntry {
     module_name: "platform-story",
     manifest: story::module::manifest,
     load: story::module::module,
-    http_binding: None,
+    http_binding: Some(story::module::binding),
 }];
 
 const DEMO_LINKED_MODULE_ENTRIES: &[LinkedModuleEntry] = &[
@@ -102,7 +101,7 @@ const DEMO_LINKED_MODULE_ENTRIES: &[LinkedModuleEntry] = &[
         module_name: "platform-story",
         manifest: story::module::manifest,
         load: story::module::module,
-        http_binding: None,
+        http_binding: Some(story::module::binding),
     },
 ];
 
@@ -111,15 +110,6 @@ fn linked_module_entries(profile: CompositionProfile) -> &'static [LinkedModuleE
         CompositionProfile::Core => CORE_LINKED_MODULE_ENTRIES,
         CompositionProfile::Demo => DEMO_LINKED_MODULE_ENTRIES,
     }
-}
-
-fn linked_module_entry_for_profile(
-    profile: CompositionProfile,
-    module_name: &str,
-) -> Option<&'static LinkedModuleEntry> {
-    linked_module_entries(profile)
-        .iter()
-        .find(|entry| entry.module_name == module_name)
 }
 
 fn linked_module_enabled_from_config(config: &platform_core::AppConfig, module_name: &str) -> bool {
@@ -1109,33 +1099,6 @@ pub fn merge_linked_http_for_context(
         .fold(base, |router, contribution| (contribution.merge)(router)))
 }
 
-/// Merge runtime-admin routes owned by platform system modules.
-///
-/// Story is a linked system module, so its runtime story endpoints are mounted
-/// through the composition root instead of directly from the API app.
-pub fn merge_platform_runtime_admin(base: ApiOpenApiRouter) -> ApiOpenApiRouter {
-    merge_platform_runtime_admin_for_profile(base, CompositionProfile::default())
-}
-
-pub fn merge_platform_runtime_admin_for_profile(
-    base: ApiOpenApiRouter,
-    profile: CompositionProfile,
-) -> ApiOpenApiRouter {
-    if linked_module_entry_for_profile(profile, story::module::MODULE_NAME).is_some() {
-        base.merge(story::backend::router())
-    } else {
-        base
-    }
-}
-
-pub fn merge_platform_runtime_admin_for_context(
-    base: ApiOpenApiRouter,
-    ctx: &AppContext,
-) -> platform_core::AppResult<ApiOpenApiRouter> {
-    let profile = CompositionProfile::from_config(&ctx.config)?;
-    Ok(merge_platform_runtime_admin_for_profile(base, profile))
-}
-
 /// Story-display descriptors for every module. Sourced from context-free
 /// manifests so the `OpenAPI` path stays pure (no [`AppContext`]).
 #[must_use]
@@ -1371,14 +1334,23 @@ mod tests {
     fn linked_http_route_owners_are_profile_aware() {
         assert_eq!(
             linked_http_route_owners_for_profile(CompositionProfile::Core),
-            Vec::<LinkedHttpRouteOwner>::new()
+            vec![LinkedHttpRouteOwner {
+                module_name: "platform-story".to_owned(),
+                public_prefixes: &["/admin/runtime/stories"],
+            }]
         );
         assert_eq!(
             linked_http_route_owners_for_profile(CompositionProfile::Demo),
-            vec![LinkedHttpRouteOwner {
-                module_name: "identity".to_owned(),
-                public_prefixes: &["/v1/identity/"],
-            }]
+            vec![
+                LinkedHttpRouteOwner {
+                    module_name: "identity".to_owned(),
+                    public_prefixes: &["/v1/identity/"],
+                },
+                LinkedHttpRouteOwner {
+                    module_name: "platform-story".to_owned(),
+                    public_prefixes: &["/admin/runtime/stories"],
+                },
+            ]
         );
     }
 
@@ -1448,11 +1420,13 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(names, vec!["notifications", "platform-story"]);
-        assert!(
-            linked_http_modules_for_context(&ctx)
-                .expect("linked HTTP modules should load")
-                .is_empty()
-        );
+        let linked_http_names = linked_http_modules_for_context(&ctx)
+            .expect("linked HTTP modules should load")
+            .into_iter()
+            .map(|module| module.manifest.name)
+            .collect::<Vec<_>>();
+
+        assert_eq!(linked_http_names, vec!["platform-story"]);
     }
 
     #[tokio::test]
@@ -1619,11 +1593,13 @@ mod tests {
             },
         );
 
-        assert!(
-            linked_http_modules_for_config(&config)
-                .expect("demo linked profile should parse")
-                .is_empty()
-        );
+        let names = linked_http_modules_for_config(&config)
+            .expect("demo linked profile should parse")
+            .into_iter()
+            .map(|module| module.manifest.name)
+            .collect::<Vec<_>>();
+
+        assert_eq!(names, vec!["platform-story"]);
     }
 
     #[tokio::test]
@@ -1699,10 +1675,16 @@ mod tests {
     fn linked_http_route_owners_are_projected_from_modules() {
         assert_eq!(
             linked_http_route_owners(),
-            vec![LinkedHttpRouteOwner {
-                module_name: "identity".to_owned(),
-                public_prefixes: &["/v1/identity/"],
-            }]
+            vec![
+                LinkedHttpRouteOwner {
+                    module_name: "identity".to_owned(),
+                    public_prefixes: &["/v1/identity/"],
+                },
+                LinkedHttpRouteOwner {
+                    module_name: "platform-story".to_owned(),
+                    public_prefixes: &["/admin/runtime/stories"],
+                },
+            ]
         );
     }
 
@@ -1753,9 +1735,8 @@ mod tests {
     }
 
     #[test]
-    fn platform_runtime_admin_routes_include_story_module_routes() {
-        let document =
-            merge_platform_runtime_admin(platform_http::OpenApiRouter::new()).to_openapi();
+    fn linked_http_routes_include_story_module_routes() {
+        let document = merge_linked_http(platform_http::OpenApiRouter::new()).to_openapi();
         let value = serde_json::to_value(document).expect("OpenAPI document should serialize");
         let paths = value["paths"].as_object().expect("OpenAPI paths object");
 
