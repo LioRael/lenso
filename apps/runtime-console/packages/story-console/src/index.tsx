@@ -11,7 +11,6 @@ export const storyConsoleModule = defineConsoleModule({
       component: RuntimeStoriesPage,
       icon: storyConsoleManifest.icon,
       label: storyConsoleManifest.label,
-      navigation: storyConsoleManifest.navigation,
       path: storyConsoleManifest.route,
     },
   ],

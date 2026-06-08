@@ -70,6 +70,8 @@ mod tests {
             console_surface_contract["exportName"]
         );
         assert_eq!(surface_json["icon"], console_surface_contract["icon"]);
+        assert_eq!(surface.navigation, None);
+        assert!(console_surface_contract.get("navigation").is_none());
         assert_eq!(
             surface.required_capabilities,
             vec![STORY_CONSOLE_CAPABILITY]

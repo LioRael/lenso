@@ -179,14 +179,7 @@ describe("console module registry", () => {
         icon: "workflow",
         label: "Stories",
         moduleName: "platform-story",
-        navigation: {
-          order: -10,
-          workspace: {
-            icon: "settings",
-            id: "system",
-            label: "System",
-          },
-        },
+        navigation: null,
         packageName: "@lenso/story-console",
         route: "/runtime/stories",
         surfaceName: "stories",
@@ -239,14 +232,7 @@ describe("console module registry", () => {
       }))
     ).toEqual([
       {
-        navigation: {
-          order: -10,
-          workspace: {
-            icon: "settings",
-            id: "system",
-            label: "System",
-          },
-        },
+        navigation: undefined,
         path: "/runtime/stories",
       },
       {

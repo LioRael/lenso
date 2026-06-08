@@ -18,14 +18,6 @@ describe("story console module", () => {
       icon: "workflow",
       id: "platform-story",
       label: "Stories",
-      navigation: {
-        order: -10,
-        workspace: {
-          icon: "settings",
-          id: "system",
-          label: "System",
-        },
-      },
       packageName: "@lenso/story-console",
       requiredCapabilities: ["runtime.stories.read"],
       route: "/runtime/stories",
@@ -40,7 +32,6 @@ describe("story console module", () => {
           area: storyConsoleManifest.area,
           icon: storyConsoleManifest.icon,
           label: storyConsoleManifest.label,
-          navigation: storyConsoleManifest.navigation,
           path: storyConsoleManifest.route,
         },
       ],
