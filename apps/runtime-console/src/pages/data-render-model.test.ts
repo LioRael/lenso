@@ -519,6 +519,8 @@ describe("module status helpers", () => {
         key: "GET:/contacts/{id}:0",
         method: "GET",
         path: "/contacts/{id}",
+        proxyCommand: "curl -X GET /modules/identity/http/contacts/{id}",
+        proxyPath: "/modules/identity/http/contacts/{id}",
         storyTitle: "Fetch Contact",
       },
     ]);

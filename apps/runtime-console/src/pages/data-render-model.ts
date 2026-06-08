@@ -264,6 +264,8 @@ export type ModuleHttpRouteRow = {
   key: string;
   method: ModuleHttpMethod;
   path: string;
+  proxyPath: string;
+  proxyCommand: string;
   capability: string;
   displayName: string;
   storyTitle: string;
@@ -944,14 +946,19 @@ export function adminSurfaceMetadataRows(
 export function moduleHttpRouteRows(
   module: AdminModuleMetadata
 ): ModuleHttpRouteRow[] {
-  return module.http_routes.map((route, index) => ({
-    capability: route.capability ?? "-",
-    displayName: route.display_name ?? "-",
-    key: `${route.method}:${route.path}:${index}`,
-    method: route.method,
-    path: route.path,
-    storyTitle: route.story_title ?? "-",
-  }));
+  return module.http_routes.map((route, index) => {
+    const proxyPath = `/modules/${module.module_name}/http${route.path}`;
+    return {
+      capability: route.capability ?? "-",
+      displayName: route.display_name ?? "-",
+      key: `${route.method}:${route.path}:${index}`,
+      method: route.method,
+      path: route.path,
+      proxyCommand: `curl -X ${route.method} ${proxyPath}`,
+      proxyPath,
+      storyTitle: route.story_title ?? "-",
+    };
+  });
 }
 
 export function moduleRuntimeFunctionRows(

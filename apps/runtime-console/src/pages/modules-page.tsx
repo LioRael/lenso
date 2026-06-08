@@ -1445,6 +1445,13 @@ function ModuleHttpRoutesTable({
 }: {
   rows: ReturnType<typeof moduleHttpRouteRows>;
 }) {
+  const [copiedRouteKey, setCopiedRouteKey] = useState<string | null>(null);
+  const copyRouteCommand = (key: string, command: string) => {
+    void window.navigator.clipboard?.writeText(command);
+    setCopiedRouteKey(key);
+    window.setTimeout(() => setCopiedRouteKey(null), 1200);
+  };
+
   if (rows.length === 0) {
     return (
       <section className="border border-(--border-subtle) bg-(--surface) px-3 py-2 text-(--muted)">
@@ -1463,11 +1470,12 @@ function ModuleHttpRoutesTable({
         </span>
       </header>
       <div className="overflow-auto">
-        <table className="w-full min-w-[760px] table-fixed">
+        <table className="w-full min-w-[960px] table-fixed">
           <thead className="bg-(--sidebar) text-[10px] uppercase tracking-wide text-(--muted)">
             <tr>
               <th className="w-16 px-3 py-1.5 text-left">method</th>
               <th className="px-3 py-1.5 text-left">path</th>
+              <th className="px-3 py-1.5 text-left">host proxy</th>
               <th className="px-3 py-1.5 text-left">display</th>
               <th className="px-3 py-1.5 text-left">story</th>
               <th className="px-3 py-1.5 text-left">capability</th>
@@ -1482,6 +1490,34 @@ function ModuleHttpRoutesTable({
                 <td className="px-3 py-1.5 text-(--accent)">{route.method}</td>
                 <td className="truncate px-3 py-1.5 text-(--foreground)">
                   {route.path}
+                </td>
+                <td className="px-3 py-1.5">
+                  <div className="grid grid-cols-[minmax(0,1fr)_24px] items-center gap-1">
+                    <code
+                      className="truncate border border-(--border-subtle) bg-(--background) px-1.5 py-1 text-[10px] text-(--secondary)"
+                      title={route.proxyCommand}
+                    >
+                      {route.proxyPath}
+                    </code>
+                    <button
+                      aria-label={`${moduleRegistryHandoffCopyLabel(copiedRouteKey, route.key)} proxy command`}
+                      className="grid size-6 place-items-center border border-(--border-subtle) bg-(--background) text-(--muted) hover:bg-(--sidebar) hover:text-(--foreground)"
+                      onClick={() =>
+                        copyRouteCommand(route.key, route.proxyCommand)
+                      }
+                      title={moduleRegistryHandoffCopyLabel(
+                        copiedRouteKey,
+                        route.key
+                      )}
+                      type="button"
+                    >
+                      {copiedRouteKey === route.key ? (
+                        <Check size={11} />
+                      ) : (
+                        <Copy size={11} />
+                      )}
+                    </button>
+                  </div>
                 </td>
                 <td className="truncate px-3 py-1.5 text-(--secondary)">
                   {route.displayName}
