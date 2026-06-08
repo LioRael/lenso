@@ -16,20 +16,20 @@ case "$version" in
 esac
 
 out_dir="dist/release"
-package_root="$out_dir/lenso-$version"
+artifact_readme="$out_dir/lenso-$version-artifact-readme.md"
 notes_file="$out_dir/lenso-$version-release-notes.md"
 source_archive="$out_dir/lenso-$version-source.tar.gz"
 summary="${LENSO_RELEASE_NOTES_SUMMARY:-First Lenso release candidate.}"
 commit_sha="$(git rev-parse HEAD)"
 
-rm -rf "$package_root"
-mkdir -p "$package_root" "$out_dir"
+mkdir -p "$out_dir"
+rm -f "$artifact_readme" "$notes_file" "$source_archive"
 
-cp README.md "$package_root/"
-cp justfile "$package_root/"
-mkdir -p "$package_root/docs" "$package_root/examples/remote-modules"
-cp -R docs/. "$package_root/docs/"
-cp -R examples/remote-modules/. "$package_root/examples/remote-modules/"
+git archive \
+    --format=tar.gz \
+    --prefix="lenso-$version/" \
+    --output="$source_archive" \
+    HEAD
 
 cat > "$notes_file" <<EOF
 # Lenso $version
@@ -68,7 +68,37 @@ just demo-release
 - Publisher trust, registry review, install history, doctor flows, bundle import/export, provenance, and signatures are not release blockers.
 EOF
 
-tar -czf "$source_archive" -C "$out_dir" "lenso-$version"
+cat > "$artifact_readme" <<EOF
+# Lenso $version Artifacts
 
+This release workflow uploads three artifacts:
+
+- \`lenso-$version-release-notes.md\`: draft notes for the GitHub Release body.
+- \`lenso-$version-source.tar.gz\`: a source archive generated from \`git archive HEAD\`.
+- \`lenso-$version-artifact-readme.md\`: this artifact guide.
+
+The source archive contains repository source files, committed contracts,
+examples, docs, and scripts. It does not include local build output, \`.git\`,
+\`target/\`, \`node_modules/\`, or \`dist/\`.
+
+After extracting the source archive:
+
+\`\`\`sh
+cd lenso-$version
+just install
+cp .env.example .env
+just db-up
+just migrate
+just demo-release
+\`\`\`
+
+For the full release gate:
+
+\`\`\`sh
+just release-check
+\`\`\`
+EOF
+
+echo "Artifact README: $artifact_readme"
 echo "Release notes: $notes_file"
 echo "Source package: $source_archive"

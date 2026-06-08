@@ -117,3 +117,6 @@ LENSO_RELEASE_VERSION=v0.1.0 just release-package
 
 The end-to-end release branch and GitHub Actions flow lives in
 [release-process.md](release-process.md).
+
+The release workflow runs with a Postgres service because `just release-check`
+includes DB-backed Rust integration tests.

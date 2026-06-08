@@ -15,6 +15,26 @@ on:
 jobs:
   package:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: lenso
+          POSTGRES_PASSWORD: lenso
+          POSTGRES_USER: lenso
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lenso -d lenso"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      APP_ENV: local
+      DATABASE_URL: postgres://lenso:lenso@localhost:5432/lenso
+      HTTP_HOST: 0.0.0.0
+      HTTP_PORT: 3000
+      RUST_LOG: info,lenso=debug
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -50,4 +70,10 @@ jobs:
         with:
           name: lenso-${{ inputs.version }}-source
           path: dist/release/lenso-${{ inputs.version }}-source.tar.gz
+          if-no-files-found: error
+      - name: Upload artifact README
+        uses: actions/upload-artifact@v4
+        with:
+          name: lenso-${{ inputs.version }}-artifact-readme
+          path: dist/release/lenso-${{ inputs.version }}-artifact-readme.md
           if-no-files-found: error
