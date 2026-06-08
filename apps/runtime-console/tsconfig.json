@@ -11,11 +11,13 @@
     "forceConsistentCasingInFileNames": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "types": ["node"],
     "paths": {
       "@lenso/identity-console": ["./packages/identity-console/src/index.tsx"],
       "@lenso/remote-crm-console": [
         "./packages/remote-crm-console/src/index.tsx"
       ],
+      "@lenso/remote-module-kit": ["./packages/remote-module-kit/src/index.ts"],
       "@lenso/story-console": ["./packages/story-console/src/index.tsx"],
       "@lenso/runtime-console-api": [
         "./packages/console-package-api/src/index.ts"
@@ -36,7 +38,8 @@
     "packages/story-console/src",
     "packages/identity-console/src",
     "packages/remote-crm-console/src",
-    "packages/console-package-api/src"
+    "packages/console-package-api/src",
+    "packages/remote-module-kit/src"
   ],
   "references": []
 }

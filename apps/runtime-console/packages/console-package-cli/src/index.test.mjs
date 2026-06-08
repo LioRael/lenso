@@ -1,6 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -170,10 +170,11 @@ export const consolePackageModuleExportsByKey = {
 };
 
 const writeFixture = async (repoRoot, relativePath, contents) => {
-  const { mkdir, writeFile } = await import("node:fs/promises");
+  const { mkdir, writeFile: writeFixtureFile } =
+    await import("node:fs/promises");
   const filePath = path.join(repoRoot, relativePath);
   await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFile(filePath, contents);
+  await writeFixtureFile(filePath, contents);
 };
 
 afterEach(async () => {
@@ -671,6 +672,9 @@ describe("module scaffold CLI", () => {
       await readFile(path.join(packageRoot, "backend/package.json"), "utf-8")
     );
     expect(backendPackageJson).toMatchObject({
+      dependencies: {
+        "@lenso/remote-module-kit": "^0.1.0",
+      },
       name: "billing-remote-backend",
       private: true,
       scripts: {
@@ -684,11 +688,22 @@ describe("module scaffold CLI", () => {
       path.join(packageRoot, "backend/src/server.mjs"),
       "utf-8"
     );
-    expect(backendServer).toContain("/lenso/module/v1/manifest");
-    expect(backendServer).toContain("../../lenso.module.json");
+    expect(backendServer).toContain("defineRemoteModule");
+    expect(backendServer).toContain("serveRemoteModule");
     await expect(
       readFile(path.join(packageRoot, "backend/src/smoke.mjs"), "utf-8")
     ).resolves.toContain("backend smoke passed");
+    backendPackageJson.dependencies["@lenso/remote-module-kit"] =
+      `file:${path.resolve(import.meta.dirname, "../../remote-module-kit")}`;
+    await writeFile(
+      path.join(packageRoot, "backend/package.json"),
+      `${JSON.stringify(backendPackageJson, null, 2)}\n`
+    );
+    await execFileAsync("pnpm", [
+      "--dir",
+      path.join(packageRoot, "backend"),
+      "install",
+    ]);
     const backendProcess = spawn(process.execPath, ["src/server.mjs"], {
       cwd: path.join(packageRoot, "backend"),
       env: { ...process.env, PORT: "0" },
@@ -696,6 +711,7 @@ describe("module scaffold CLI", () => {
     });
     tempProcesses.push(backendProcess);
     const manifestUrl = await readManifestUrlFromProcess(backendProcess);
+    expect(manifestUrl).toContain("/lenso/module/v1/manifest");
     const servedManifest = await fetch(manifestUrl).then((response) =>
       response.json()
     );

@@ -23,6 +23,14 @@ const consolePackageFiles = import.meta.glob<string>(
     query: "?raw",
   }
 );
+const consoleSurfaceFiles = import.meta.glob<string>(
+  "../../packages/*/console-surface.json",
+  {
+    eager: true,
+    import: "default",
+    query: "?raw",
+  }
+);
 const modulePrefix = "../modules/";
 const consolePackagePrefix = "../../packages/";
 const hostApiPackagePrefix = "../../packages/console-package-api/src/";
@@ -140,14 +148,12 @@ function findConsoleModuleBoundaryViolations(): string[] {
 function consolePackageNames(): string[] {
   return [
     ...new Set(
-      Object.keys(consolePackageFiles)
-        .flatMap((file) => {
-          const packageName = file.match(
-            /^\.\.\/\.\.\/packages\/([^/]+)\//u
-          )?.[1];
-          return packageName ? [packageName] : [];
-        })
-        .filter((name) => name !== "console-package-api")
+      Object.keys(consoleSurfaceFiles).flatMap((file) => {
+        const packageName = file.match(
+          /^\.\.\/\.\.\/packages\/([^/]+)\//u
+        )?.[1];
+        return packageName ? [packageName] : [];
+      })
     ),
   ].sort();
 }

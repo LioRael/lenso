@@ -861,6 +861,9 @@ retries, Runtime Stories, and Technical Operations records.
 const remoteBackendPackageJson = ({ moduleId }) =>
   `${JSON.stringify(
     {
+      dependencies: {
+        "@lenso/remote-module-kit": "^0.1.0",
+      },
       name: `${moduleId}-remote-backend`,
       private: true,
       scripts: {
@@ -876,48 +879,44 @@ const remoteBackendPackageJson = ({ moduleId }) =>
     2
   )}\n`;
 
-const remoteBackendServer = ({
-  moduleId,
-}) => `import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+const remoteBackendServer = ({ packageContext }) => `import {
+  defineRemoteModule,
+  serveRemoteModule,
+} from "@lenso/remote-module-kit";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const manifestPath = join(__dirname, "../../lenso.module.json");
-const port = Number(process.env.PORT ?? 4100);
-
-const readManifest = async () => JSON.parse(await readFile(manifestPath, "utf8"));
-
-const sendJson = (response, statusCode, body) => {
-  response.writeHead(statusCode, {
-    "content-type": "application/json; charset=utf-8",
-  });
-  response.end(JSON.stringify(body));
-};
-
-const server = createServer(async (request, response) => {
-  if (request.method === "GET" && request.url === "/lenso/module/v1/manifest") {
-    sendJson(response, 200, await readManifest());
-    return;
-  }
-
-  sendJson(response, 404, {
-    error: {
-      code: "not_found",
-      message: "${moduleId} remote module endpoint not found",
+const module = defineRemoteModule({
+  capabilities: ["${packageContext.capability}"],
+  console: [
+    {
+      area: "${packageContext.area}",
+      icon: "${packageContext.icon}",
+      label: "${packageContext.label}",
+      name: "${packageContext.surfaceName}",
+      navigation: {
+        order: 10,
+        workspace: {
+          icon: "${packageContext.icon}",
+          id: "${packageContext.moduleId}",
+          label: "${packageContext.label}",
+        },
+      },
+      package: {
+        export: "${packageContext.moduleName}",
+        name: "${packageContext.packageName}",
+      },
+      required_capabilities: ["${packageContext.capability}"],
+      route: "${packageContext.route}",
     },
-  });
+  ],
+  name: "${packageContext.moduleId}",
+  version: "0.1.0",
 });
 
-server.listen(port, "127.0.0.1", () => {
-  const address = server.address();
-  const boundPort = typeof address === "object" && address ? address.port : port;
-  console.log(
-    "${moduleId} manifest: http://127.0.0.1:" +
-      boundPort +
-      "/lenso/module/v1/manifest"
-  );
+await serveRemoteModule(module, {
+  port: Number(process.env.PORT ?? 4100),
+  onReady: ({ manifestUrl }) => {
+    console.log("${packageContext.moduleId} manifest: " + manifestUrl);
+  },
 });
 `;
 
@@ -1023,7 +1022,7 @@ const queueRemoteModuleFiles = ({
   queueWrite(
     pendingWrites,
     path.join(packageRoot, "backend/src/server.mjs"),
-    remoteBackendServer({ moduleId: packageContext.moduleId })
+    remoteBackendServer({ packageContext })
   );
   queueWrite(
     pendingWrites,

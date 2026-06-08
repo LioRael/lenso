@@ -121,6 +121,17 @@ const main = async () => {
     ]);
 
     const packageRoot = path.join(modulePackagesRoot, "lenso-billing");
+    const backendPackagePath = path.join(packageRoot, "backend/package.json");
+    const backendPackageJson = JSON.parse(
+      await readFile(backendPackagePath, "utf-8")
+    );
+    backendPackageJson.dependencies["@lenso/remote-module-kit"] =
+      `file:${path.resolve(import.meta.dirname, "../packages/remote-module-kit")}`;
+    await writeFile(
+      backendPackagePath,
+      `${JSON.stringify(backendPackageJson, null, 2)}\n`
+    );
+
     const rootPackageJson = await readFile(
       path.join(packageRoot, "package.json"),
       "utf-8"
@@ -130,6 +141,11 @@ const main = async () => {
       '"smoke": "pnpm --dir backend smoke"',
       "package scripts"
     );
+    await execFileAsync("pnpm", [
+      "--dir",
+      path.join(packageRoot, "backend"),
+      "install",
+    ]);
     await execFileAsync("pnpm", ["--dir", packageRoot, "smoke"]);
 
     const catalogEntry = JSON.parse(
