@@ -22,6 +22,8 @@ to the host application.
 
 ## Host Developer
 
+Main path: `catalog add -> module add -> apply-plan -> install -> restart`.
+
 Add a module to the local catalog when you want it to appear in Runtime
 Console's Available Modules panel before installing it:
 

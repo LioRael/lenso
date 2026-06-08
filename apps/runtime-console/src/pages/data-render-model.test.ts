@@ -800,6 +800,11 @@ describe("module status helpers", () => {
         label: "console",
         command: "lenso console-package apply-plan",
       },
+      {
+        key: "install-packages",
+        label: "packages",
+        command: "pnpm --dir apps/runtime-console install",
+      },
     ]);
   });
 

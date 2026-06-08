@@ -330,6 +330,9 @@ function ModuleRegistryCatalogPanel({
   rows: ReturnType<typeof availableModulesRows>;
 }) {
   const [copiedCommandKey, setCopiedCommandKey] = useState<string | null>(null);
+  const packageHandoffCommands = moduleRegistryHandoffCommands().filter(
+    (command) => command.key !== "add"
+  );
   const copyCommand = (key: string, command: string) => {
     void window.navigator.clipboard?.writeText(command);
     setCopiedCommandKey(key);
@@ -374,12 +377,32 @@ function ModuleRegistryCatalogPanel({
         panelState.kind === "empty" ? (
           <div className="grid gap-1 border border-(--border-subtle) bg-(--background) px-2 py-1.5 text-[10px] text-(--muted)">
             <span>{panelState.message}</span>
-            <code
-              className="truncate border border-(--border-subtle) bg-(--surface) px-1.5 py-1 text-[9px] text-(--secondary)"
-              title={panelState.actionCommand}
-            >
-              {panelState.actionCommand}
-            </code>
+            <div className="grid grid-cols-[minmax(0,1fr)_24px] items-center gap-1">
+              <code
+                className="truncate border border-(--border-subtle) bg-(--surface) px-1.5 py-1 text-[9px] text-(--secondary)"
+                title={panelState.actionCommand}
+              >
+                {panelState.actionCommand}
+              </code>
+              <button
+                aria-label={`${moduleRegistryHandoffCopyLabel(copiedCommandKey, "catalog-add")} catalog command`}
+                className="grid size-6 place-items-center border border-(--border-subtle) bg-(--surface) text-(--muted) hover:bg-(--sidebar) hover:text-(--foreground)"
+                onClick={() =>
+                  copyCommand("catalog-add", panelState.actionCommand)
+                }
+                title={moduleRegistryHandoffCopyLabel(
+                  copiedCommandKey,
+                  "catalog-add"
+                )}
+                type="button"
+              >
+                {copiedCommandKey === "catalog-add" ? (
+                  <Check size={11} />
+                ) : (
+                  <Copy size={11} />
+                )}
+              </button>
+            </div>
           </div>
         ) : (
           rows.map((row) => {
@@ -485,35 +508,38 @@ function ModuleRegistryCatalogPanel({
         )}
       </div>
       <div className="grid gap-1 border-t border-(--border-subtle) p-2">
-        <div className="grid grid-cols-[52px_minmax(0,1fr)_24px] items-center gap-1">
-          <span className="truncate text-[9px] uppercase text-(--muted)">
-            console
-          </span>
-          <code
-            className="truncate border border-(--border-subtle) bg-(--background) px-1.5 py-1 text-[9px] text-(--secondary)"
-            title="lenso console-package apply-plan"
+        {packageHandoffCommands.map((command) => (
+          <div
+            className="grid grid-cols-[52px_minmax(0,1fr)_24px] items-center gap-1"
+            key={command.key}
           >
-            lenso console-package apply-plan
-          </code>
-          <button
-            aria-label={`${moduleRegistryHandoffCopyLabel(copiedCommandKey, "apply-plan")} console command`}
-            className="grid size-6 place-items-center border border-(--border-subtle) bg-(--background) text-(--muted) hover:bg-(--sidebar) hover:text-(--foreground)"
-            onClick={() =>
-              copyCommand("apply-plan", "lenso console-package apply-plan")
-            }
-            title={moduleRegistryHandoffCopyLabel(
-              copiedCommandKey,
-              "apply-plan"
-            )}
-            type="button"
-          >
-            {copiedCommandKey === "apply-plan" ? (
-              <Check size={11} />
-            ) : (
-              <Copy size={11} />
-            )}
-          </button>
-        </div>
+            <span className="truncate text-[9px] uppercase text-(--muted)">
+              {command.label}
+            </span>
+            <code
+              className="truncate border border-(--border-subtle) bg-(--background) px-1.5 py-1 text-[9px] text-(--secondary)"
+              title={command.command}
+            >
+              {command.command}
+            </code>
+            <button
+              aria-label={`${moduleRegistryHandoffCopyLabel(copiedCommandKey, command.key)} ${command.label} command`}
+              className="grid size-6 place-items-center border border-(--border-subtle) bg-(--background) text-(--muted) hover:bg-(--sidebar) hover:text-(--foreground)"
+              onClick={() => copyCommand(command.key, command.command)}
+              title={moduleRegistryHandoffCopyLabel(
+                copiedCommandKey,
+                command.key
+              )}
+              type="button"
+            >
+              {copiedCommandKey === command.key ? (
+                <Check size={11} />
+              ) : (
+                <Copy size={11} />
+              )}
+            </button>
+          </div>
+        ))}
       </div>
     </section>
   );
