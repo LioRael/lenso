@@ -15,6 +15,7 @@
     "demo:remote-module-install": "node scripts/remote-module-install-demo.mjs",
     "demo:remote-module-package": "node scripts/remote-module-package-demo.mjs",
     "demo:remote-module-run": "node scripts/remote-module-run-demo.mjs",
+    "demo:release": "node scripts/release-demo.mjs",
     "build": "tsc -b && vite build",
     "test": "vitest run src packages/story-console/src packages/identity-console/src packages/remote-crm-console/src packages/console-package-api/src packages/remote-module-kit/src packages/console-package-cli/src",
     "typecheck": "tsc -b --pretty false",

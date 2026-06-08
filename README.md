@@ -15,6 +15,8 @@ The platform starts as one deployable system with clear module boundaries. Modul
 
 More detail lives in [docs/architecture/overview.md](docs/architecture/overview.md). Hard rules live in [docs/architecture/rules.md](docs/architecture/rules.md).
 
+First-time local setup lives in [docs/getting-started.md](docs/getting-started.md).
+
 ## Repository Layout
 
 - `apps/`
@@ -123,6 +125,16 @@ To verify the local loop without starting the API and worker, run:
 just otel-smoke
 ```
 
+Remote module release demo:
+
+```sh
+just demo-release
+```
+
+This starts the example `hello-action` remote module, reads its manifest, checks
+its schema-admin, HTTP route, and runtime function endpoints, and verifies the
+short install path: `lenso module add <manifest-url>`.
+
 The smoke command starts the collector, emits one outbox-style span and one
 function-style span, and checks collector debug logs for
 `lenso.correlation_id`, `lenso.story_id`, `lenso.execution.kind`,
@@ -163,6 +175,7 @@ just generate
 - `just generated-check`: regenerate committed artifacts and fail if they differ from git.
 - `just sdk-check`: typecheck `packages/ts-sdk`.
 - `just console-check`: format-check, lint, typecheck, and build `apps/runtime-console`.
+- `just demo-release`: run the first-user remote module release demo.
 - `just remote-module-run-demo`: run the installable remote module happy-path demo.
 - `just release-check`: run the local release gate.
 - `just ci`: run the local CI script.

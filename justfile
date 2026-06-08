@@ -35,7 +35,7 @@ check:
 
 release-check:
     just check
-    just remote-module-run-demo
+    just demo-release
 
 test:
     cargo test --locked --workspace
@@ -106,6 +106,9 @@ console-check:
 
 remote-module-run-demo:
     pnpm --dir={{runtime_console_dir}} run demo:remote-module-run
+
+demo-release:
+    pnpm --dir={{runtime_console_dir}} run demo:release
 
 # Local infrastructure
 db-up:

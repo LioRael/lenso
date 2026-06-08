@@ -13,7 +13,7 @@ just release-check
 ```
 
 `release-check` runs the full repository quality gate and the remote module
-install-to-run demo:
+release demo:
 
 - Rust and Runtime Console formatting checks.
 - Rust workspace compile check.
@@ -22,7 +22,7 @@ install-to-run demo:
 - Architecture guardrails.
 - TypeScript SDK check.
 - Runtime Console format, lint, test, typecheck, and build.
-- Remote module package/install/run demo.
+- Remote module manifest/install/run demo through the `hello-action` example.
 
 If this command fails, treat the failure as release blocking unless it is a
 documented local infrastructure issue.
@@ -43,12 +43,14 @@ just console-api
 In a separate shell, verify the installable remote module path:
 
 ```sh
-just remote-module-run-demo
+just demo-release
 ```
 
-The remote module demo scaffolds a module package, starts its backend, installs
-the manifest into a host fixture, applies the console-package plan, and verifies
-schema-admin, HTTP route, runtime function, and install-to-run behavior.
+The release demo starts the `hello-action` example module, reads its manifest,
+checks schema-admin, HTTP route, runtime function behavior, installs the manifest
+into a host fixture, and verifies local `REMOTE_MODULES` plus the install plan.
+
+The manual first-user flow lives in [getting-started.md](getting-started.md).
 
 ## First Release Scope
 
