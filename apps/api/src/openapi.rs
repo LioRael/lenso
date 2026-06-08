@@ -45,6 +45,7 @@ pub(crate) fn api_router_for_profile(profile: CompositionProfile) -> ApiOpenApiR
     let base =
         OpenApiRouter::with_openapi(openapi_document_for_profile(profile)).merge(base_router());
     app_bootstrap::merge_linked_http_for_profile(base, profile)
+        .merge(story::backend::router())
         .merge(platform_admin::router())
         .merge(platform_admin_data::router())
         .merge(platform_module_remote::router())
@@ -57,6 +58,7 @@ pub(crate) fn api_router_for_context(
     let base =
         OpenApiRouter::with_openapi(openapi_document_for_profile(profile)).merge(base_router());
     Ok(app_bootstrap::merge_linked_http_for_context(base, ctx)?
+        .merge(story::backend::router())
         .merge(platform_admin::router())
         .merge(platform_admin_data::router())
         .merge(platform_module_remote::router()))

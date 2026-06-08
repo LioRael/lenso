@@ -80,7 +80,7 @@ fn install_admin_module_metadata(metadata: Vec<platform_admin_data::AdminModuleM
 }
 
 fn install_platform_admin_catalogs(metadata: &[platform_admin_data::AdminModuleMetadata]) {
-    platform_admin::install_story_display(
+    story::backend::install_story_display(
         metadata
             .iter()
             .flat_map(|module| module.story_display.clone())

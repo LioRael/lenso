@@ -4,4 +4,5 @@
 //! `/admin/runtime/*` backend remains mounted through `platform-admin` while
 //! the Story backend is extracted in slices.
 
+pub mod backend;
 pub mod module;

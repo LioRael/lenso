@@ -54,7 +54,8 @@ fn openapi_document_does_not_replace_default_admin_catalogs() {
         .lock()
         .expect("catalog test lock poisoned");
     platform_admin::reset_catalogs_for_test();
-    platform_admin::install_default_story_display(vec![story_descriptor(
+    story::backend::reset_catalogs_for_test();
+    story::backend::install_default_story_display(vec![story_descriptor(
         "openapi.default.sentinel",
         "OpenAPI Default Sentinel",
     )]);
@@ -65,7 +66,7 @@ fn openapi_document_does_not_replace_default_admin_catalogs() {
     let _ = openapi_document();
 
     assert!(
-        platform_admin::story_display_catalog_snapshot()
+        story::backend::story_display_catalog_snapshot()
             .iter()
             .any(|descriptor| descriptor.display_name == "OpenAPI Default Sentinel")
     );
@@ -82,7 +83,8 @@ fn openapi_document_does_not_replace_runtime_admin_catalogs() {
         .lock()
         .expect("catalog test lock poisoned");
     platform_admin::reset_catalogs_for_test();
-    platform_admin::install_story_display(vec![story_descriptor(
+    story::backend::reset_catalogs_for_test();
+    story::backend::install_story_display(vec![story_descriptor(
         "openapi.runtime.sentinel",
         "OpenAPI Runtime Sentinel",
     )]);
@@ -93,7 +95,7 @@ fn openapi_document_does_not_replace_runtime_admin_catalogs() {
     let _ = openapi_document();
 
     assert!(
-        platform_admin::story_display_catalog_snapshot()
+        story::backend::story_display_catalog_snapshot()
             .iter()
             .any(|descriptor| descriptor.display_name == "OpenAPI Runtime Sentinel")
     );

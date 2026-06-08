@@ -33,7 +33,7 @@ pub fn try_build_router(ctx: AppContext) -> platform_core::AppResult<Router> {
 }
 
 fn install_default_platform_admin_catalogs(ctx: &AppContext) -> platform_core::AppResult<()> {
-    platform_admin::install_default_story_display(
+    story::backend::install_default_story_display(
         app_bootstrap::story_display_descriptors_for_context(ctx)?,
     );
     platform_admin::install_default_runtime_function_declarations(

@@ -18,7 +18,7 @@
 //! composition root via [`install_story_display`] rather than depended on
 //! directly, keeping this crate free of any concrete-module dependency.
 
-use platform_core::{RuntimeConfigRegistry, StoryDisplayDescriptor};
+use platform_core::RuntimeConfigRegistry;
 use platform_http::{ApiOpenApiRouter, OpenApiRouter, routes};
 use platform_module::ModuleSource;
 use std::sync::{OnceLock, RwLock};
@@ -53,8 +53,6 @@ use stories::*;
 #[allow(clippy::wildcard_imports)]
 use support::*;
 
-/// Module-provided story-display catalog, injected by the composition root.
-static STORY_DISPLAY: OnceLock<RwLock<InstalledCatalog<StoryDisplayDescriptor>>> = OnceLock::new();
 static RUNTIME_FUNCTION_DECLARATIONS: OnceLock<
     RwLock<InstalledCatalog<AdminRuntimeFunctionDeclarationMetadata>>,
 > = OnceLock::new();
@@ -104,26 +102,6 @@ fn cloned_catalog<T: Clone>(catalog: &OnceLock<RwLock<InstalledCatalog<T>>>) -> 
                 .clone()
         })
         .unwrap_or_default()
-}
-
-/// Install the aggregated story-display descriptors from every module.
-///
-/// Called once by the composition root before the router serves traffic. Story
-/// display names are module-owned metadata; injecting them keeps this crate
-/// from depending on concrete modules or the composition root. Later calls
-/// replace the runtime catalog so module refreshes update display metadata
-/// without restarting the process.
-pub fn install_story_display(catalog: Vec<StoryDisplayDescriptor>) {
-    install_catalog(&STORY_DISPLAY, catalog, CatalogMode::Runtime);
-}
-
-/// Install context-free default story-display descriptors.
-///
-/// Default catalogs are used by router/OpenAPI assembly and may replace earlier
-/// defaults from a different composition profile. They do not replace the full
-/// runtime catalog installed from loaded module metadata.
-pub fn install_default_story_display(catalog: Vec<StoryDisplayDescriptor>) {
-    install_catalog(&STORY_DISPLAY, catalog, CatalogMode::Default);
 }
 
 /// Runtime function declarations from every loaded module, injected by the
@@ -213,16 +191,6 @@ fn runtime_function_declaration(
     })
 }
 
-pub(crate) fn story_display_catalog() -> Vec<StoryDisplayDescriptor> {
-    cloned_catalog(&STORY_DISPLAY)
-}
-
-#[doc(hidden)]
-#[cfg(debug_assertions)]
-pub fn story_display_catalog_snapshot() -> Vec<StoryDisplayDescriptor> {
-    story_display_catalog()
-}
-
 #[doc(hidden)]
 #[cfg(debug_assertions)]
 pub fn runtime_function_declaration_catalog_snapshot()
@@ -233,7 +201,6 @@ pub fn runtime_function_declaration_catalog_snapshot()
 #[doc(hidden)]
 #[cfg(debug_assertions)]
 pub fn reset_catalogs_for_test() {
-    reset_catalog_for_test(&STORY_DISPLAY);
     reset_catalog_for_test(&RUNTIME_FUNCTION_DECLARATIONS);
 }
 
@@ -258,8 +225,6 @@ pub fn router() -> ApiOpenApiRouter {
     OpenApiRouter::new()
         .routes(routes!(get_summary))
         .routes(routes!(get_heatmap))
-        .routes(routes!(list_stories))
-        .routes(routes!(get_story))
         .routes(routes!(get_story_heatmap))
         .routes(routes!(get_story_technical_operations))
         .routes(routes!(get_execution_technical_operations))
@@ -282,43 +247,10 @@ pub fn router() -> ApiOpenApiRouter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use platform_core::{StoryDisplaySource, story_display::StoryDisplayDescriptor};
 
     #[test]
     fn default_catalogs_replace_defaults_but_do_not_clobber_runtime_catalogs() {
         reset_catalogs_for_test();
-
-        install_default_story_display(vec![story_descriptor(
-            "profile.default.demo",
-            "Demo Profile Story",
-        )]);
-        install_default_story_display(vec![story_descriptor(
-            "profile.default.core",
-            "Core Profile Story",
-        )]);
-
-        let story_display_names = story_display_descriptors()
-            .into_iter()
-            .map(|descriptor| descriptor.display_name.clone())
-            .collect::<Vec<_>>();
-        assert!(!story_display_names.contains(&"Demo Profile Story".to_owned()));
-        assert!(story_display_names.contains(&"Core Profile Story".to_owned()));
-
-        install_story_display(vec![story_descriptor(
-            "profile.runtime.remote",
-            "Runtime Remote Story",
-        )]);
-        install_default_story_display(vec![story_descriptor(
-            "profile.default.late",
-            "Late Default Story",
-        )]);
-
-        let story_display_names = story_display_descriptors()
-            .into_iter()
-            .map(|descriptor| descriptor.display_name.clone())
-            .collect::<Vec<_>>();
-        assert!(story_display_names.contains(&"Runtime Remote Story".to_owned()));
-        assert!(!story_display_names.contains(&"Late Default Story".to_owned()));
 
         install_default_runtime_function_declarations(vec![runtime_declaration(
             "profile.default.demo",
@@ -335,16 +267,6 @@ mod tests {
         )]);
         assert!(runtime_function_declaration("profile.runtime.remote").is_some());
         assert!(runtime_function_declaration("profile.default.late").is_none());
-    }
-
-    fn story_descriptor(name: &str, display_name: &str) -> StoryDisplayDescriptor {
-        StoryDisplayDescriptor {
-            source: StoryDisplaySource::ExecutionName {
-                name: name.to_owned(),
-            },
-            display_name: display_name.to_owned(),
-            story_title: None,
-        }
     }
 
     fn runtime_declaration(name: &str) -> AdminRuntimeFunctionDeclarationMetadata {

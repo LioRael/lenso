@@ -7,9 +7,15 @@ publish.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+axum.workspace = true
+chrono.workspace = true
 platform-core.workspace = true
+platform-http.workspace = true
 platform-module.workspace = true
+serde.workspace = true
 serde_json.workspace = true
+sqlx.workspace = true
+utoipa.workspace = true
 
 [lints]
 workspace = true
