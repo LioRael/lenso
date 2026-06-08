@@ -17,6 +17,9 @@ importers:
       '@lenso/identity-console':
         specifier: workspace:*
         version: link:packages/identity-console
+      '@lenso/remote-crm-console':
+        specifier: workspace:*
+        version: link:packages/remote-crm-console
       '@lenso/runtime-console-api':
         specifier: workspace:*
         version: link:packages/console-package-api
@@ -94,6 +97,15 @@ importers:
         version: 15.0.0
 
   packages/identity-console:
+    dependencies:
+      '@lenso/runtime-console-api':
+        specifier: workspace:*
+        version: link:../console-package-api
+      react:
+        specifier: ^19.1.0
+        version: 19.2.6
+
+  packages/remote-crm-console:
     dependencies:
       '@lenso/runtime-console-api':
         specifier: workspace:*

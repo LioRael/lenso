@@ -166,6 +166,7 @@ function ModulesContent() {
   const availableModulePanelState = availableModulesPanelState({
     isError: availableModulesQuery.isError,
     isLoading: availableModulesQuery.isLoading,
+    response: availableModulesQuery.data ?? null,
     rows: availableModuleRows,
   });
   const [selectedModuleName, setSelectedModuleName] = useState<string | null>(
@@ -359,12 +360,26 @@ function ModuleRegistryCatalogPanel({
           {panelState.label}
         </span>
       </div>
+      <div className="grid gap-0.5 border-b border-(--border-subtle) px-2 py-1 text-[9px] text-(--muted)">
+        <div className="truncate" title={panelState.source}>
+          source {panelState.source}
+        </div>
+        <div className="truncate" title={panelState.detail}>
+          {panelState.detail}
+        </div>
+      </div>
       <div className="grid gap-1 p-2">
         {panelState.kind === "loading" ||
         panelState.kind === "error" ||
         panelState.kind === "empty" ? (
-          <div className="border border-(--border-subtle) bg-(--background) px-2 py-1.5 text-[10px] text-(--muted)">
-            {panelState.message}
+          <div className="grid gap-1 border border-(--border-subtle) bg-(--background) px-2 py-1.5 text-[10px] text-(--muted)">
+            <span>{panelState.message}</span>
+            <code
+              className="truncate border border-(--border-subtle) bg-(--surface) px-1.5 py-1 text-[9px] text-(--secondary)"
+              title={panelState.actionCommand}
+            >
+              {panelState.actionCommand}
+            </code>
           </div>
         ) : (
           rows.map((row) => {
@@ -410,6 +425,9 @@ function ModuleRegistryCatalogPanel({
                 <div className="truncate text-[9px] text-(--muted)">
                   caps {row.capabilityCount} / console{" "}
                   {row.consolePackageHintCount} / {row.source}
+                </div>
+                <div className="truncate text-[9px] text-(--muted)">
+                  base {row.baseUrl}
                 </div>
                 {handoff.kind === "installed" ||
                 handoff.kind === "restart_pending" ? (

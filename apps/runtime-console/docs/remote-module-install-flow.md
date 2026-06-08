@@ -33,6 +33,31 @@ lenso module catalog add https://example.com/lenso/module/v1/manifest \
 This writes `.lenso/module-catalog.json`. It is a local or team-maintained
 module list, not a publisher approval or review workflow.
 
+The catalog file is intentionally small:
+
+```json
+{
+  "version": 1,
+  "modules": [
+    {
+      "name": "billing",
+      "version": "0.1.0",
+      "source": "remote",
+      "manifestReference": "https://example.com/lenso/module/v1/manifest",
+      "baseUrl": "https://example.com/lenso/module/v1",
+      "summary": "Billing workspace and operations",
+      "consolePackages": [
+        {
+          "packageName": "@vendor/lenso-billing-console",
+          "exportName": "billingConsoleModule",
+          "route": "/data/billing"
+        }
+      ]
+    }
+  ]
+}
+```
+
 Install a remote module from the manifest URL:
 
 ```sh

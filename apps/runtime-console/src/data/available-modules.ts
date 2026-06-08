@@ -83,50 +83,69 @@ export function availableModulesRows(
 }
 
 export type AvailableModulesPanelState = {
+  actionCommand: string;
+  detail: string;
   kind: "loading" | "error" | "empty" | "ready";
   label: string;
   message: string;
   moduleCount: number;
+  source: string;
 };
 
 export function availableModulesPanelState({
   isError,
   isLoading,
+  response,
   rows,
 }: {
   isError: boolean;
   isLoading: boolean;
+  response?: AvailableModulesResponse | null;
   rows: AvailableModuleRow[];
 }): AvailableModulesPanelState {
+  const source = response?.catalog.registryFile ?? ".lenso/module-catalog.json";
+  const firstIssue = response?.issues[0];
   if (isLoading) {
     return {
+      actionCommand: "lenso module catalog add <manifest-url>",
+      detail: source,
       moduleCount: 0,
       kind: "loading",
       label: "loading",
       message: "Loading available modules.",
+      source,
     };
   }
   if (isError) {
     return {
+      actionCommand: "lenso module catalog add <manifest-url>",
+      detail: "check the API and local catalog file",
       moduleCount: 0,
       kind: "error",
       label: "unavailable",
       message: "Available modules could not be loaded.",
+      source,
     };
   }
   if (rows.length === 0) {
     return {
+      actionCommand: "lenso module catalog add <manifest-url>",
+      detail: "add a manifest URL to show modules here",
       moduleCount: 0,
       kind: "empty",
       label: "no remote modules",
-      message: "No remote modules are available.",
+      message: `No modules in ${source}.`,
+      source,
     };
   }
 
   return {
+    actionCommand: "lenso module catalog add <manifest-url>",
+    detail: firstIssue?.fix ?? "copy install commands from this catalog",
     moduleCount: rows.length,
     kind: "ready",
     label: `${rows.length} module${rows.length === 1 ? "" : "s"}`,
-    message: "Install from a manifest URL.",
+    message: `Catalog: ${source}`,
+    source,
   };
 }
