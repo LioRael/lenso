@@ -194,6 +194,59 @@ const handleHttpRouteRequest = async ({
   return null;
 };
 
+const runtimeFunctionQueue = (name) => name.split(".")[0] ?? name;
+
+const handleRuntimeFunctionRequest = async ({
+  basePath,
+  handlers,
+  request,
+}) => {
+  if (request.method !== "POST") {
+    return null;
+  }
+  const url = new URL(request.url ?? "", "http://127.0.0.1");
+  const prefix = `${basePath}/runtime/functions/`;
+  if (!(url.pathname.startsWith(prefix) && url.pathname.endsWith("/invoke"))) {
+    return null;
+  }
+  const functionName = decodeURIComponent(
+    url.pathname.slice(prefix.length, -"/invoke".length)
+  );
+  if (!functionName || functionName.includes("/")) {
+    return {
+      body: {
+        error: {
+          code: "not_found",
+          message: "runtime function endpoint not found",
+        },
+      },
+      statusCode: 404,
+    };
+  }
+  const handler = handlers[functionName];
+  if (!handler) {
+    return {
+      body: {
+        error: {
+          code: "not_found",
+          message: `${functionName} runtime function handler not found`,
+        },
+      },
+      statusCode: 404,
+    };
+  }
+  const invocation = await readBody(request);
+  const output = await handler({
+    input: invocation?.input,
+    invocation,
+    request,
+  });
+  return {
+    body: { output: output ?? null },
+    statusCode: 200,
+  };
+};
+
 export const defineRemoteModule = (definition) => {
   if (!definition.name.trim()) {
     throw new Error("Remote module name is required");
@@ -222,6 +275,14 @@ export const patchRoute = (path, options = {}) => route("PATCH", path, options);
 
 export const deleteRoute = (path, options = {}) =>
   route("DELETE", path, options);
+
+export const runtimeFunction = (name, options = {}) => ({
+  ...(options.inputSchema ? { input_schema: options.inputSchema } : {}),
+  queue: options.queue ?? runtimeFunctionQueue(name),
+  ...(options.retryPolicy ? { retry_policy: options.retryPolicy } : {}),
+  name,
+  version: options.version ?? 1,
+});
 
 export const textField = (name, options = {}) =>
   field(name, { kind: "string" }, options);
@@ -276,6 +337,15 @@ export const serveRemoteModule = async (manifest, options = {}) => {
         sendJson(response, adminResult.statusCode, adminResult.body);
         return;
       }
+    }
+    const runtimeResult = await handleRuntimeFunctionRequest({
+      basePath,
+      handlers: options.runtime ?? {},
+      request,
+    });
+    if (runtimeResult) {
+      sendJson(response, runtimeResult.statusCode, runtimeResult.body);
+      return;
     }
     const httpResult = await handleHttpRouteRequest({
       basePath,

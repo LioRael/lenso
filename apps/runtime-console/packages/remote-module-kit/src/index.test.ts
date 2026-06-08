@@ -8,6 +8,7 @@ import {
   integerField,
   jsonField,
   postRoute,
+  runtimeFunction,
   schemaAdmin,
   serveRemoteModule,
   textField,
@@ -82,6 +83,40 @@ describe("@lenso/remote-module-kit", () => {
           story_title: "Fetch Contact",
         },
       ],
+    });
+  });
+
+  test("defines runtime function declarations", () => {
+    expect(
+      defineRemoteModule({
+        name: "crm",
+        runtimeFunctions: [
+          runtimeFunction("crm.contacts.enrich.v1", {
+            inputSchema: "crm.contacts.enrich.v1",
+            queue: "crm",
+            retryPolicy: {
+              initial_delay_ms: 1000,
+              max_attempts: 3,
+            },
+            version: 1,
+          }),
+        ],
+      })
+    ).toMatchObject({
+      runtime: {
+        functions: [
+          {
+            input_schema: "crm.contacts.enrich.v1",
+            name: "crm.contacts.enrich.v1",
+            queue: "crm",
+            retry_policy: {
+              initial_delay_ms: 1000,
+              max_attempts: 3,
+            },
+            version: 1,
+          },
+        ],
+      },
     });
   });
 
@@ -229,6 +264,52 @@ describe("@lenso/remote-module-kit", () => {
       expect(createResponse.status).toBe(201);
       await expect(createResponse.json()).resolves.toEqual({
         contact: { email: "grace@example.com" },
+      });
+    } finally {
+      await served.close();
+    }
+  });
+
+  test("serves runtime function invocations", async () => {
+    const manifest = defineRemoteModule({
+      name: "crm",
+      runtimeFunctions: [runtimeFunction("crm.contacts.enrich.v1")],
+    });
+    const served = await serveRemoteModule(manifest, {
+      port: 0,
+      runtime: {
+        "crm.contacts.enrich.v1": ({ input, invocation }) => ({
+          enriched: true,
+          function_run_id: invocation.function_run_id,
+          input,
+        }),
+      },
+    });
+    try {
+      await expect(
+        fetch(
+          `${served.baseUrl}/runtime/functions/crm.contacts.enrich.v1/invoke`,
+          {
+            body: JSON.stringify({
+              actor: { id: "worker", kind: "service", scopes: [] },
+              attempt: 1,
+              correlation_id: "corr_1",
+              function_name: "crm.contacts.enrich.v1",
+              function_run_id: "fnrun_1",
+              input: { contact_id: "contact_1" },
+              request_id: "req_1",
+              trace: { span_id: "span_1", trace_id: "trace_1" },
+            }),
+            headers: { "content-type": "application/json" },
+            method: "POST",
+          }
+        ).then((response) => response.json())
+      ).resolves.toEqual({
+        output: {
+          enriched: true,
+          function_run_id: "fnrun_1",
+          input: { contact_id: "contact_1" },
+        },
       });
     } finally {
       await served.close();

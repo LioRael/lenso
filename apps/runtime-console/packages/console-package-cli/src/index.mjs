@@ -788,7 +788,18 @@ const remoteManifestJson = ({ packageContext }) => ({
   ],
   name: packageContext.moduleId,
   runtime: {
-    functions: [],
+    functions: [
+      {
+        input_schema: `${packageContext.moduleId}.contacts.enrich.v1`,
+        name: `${packageContext.moduleId}.contacts.enrich.v1`,
+        queue: packageContext.moduleId,
+        retry_policy: {
+          initial_delay_ms: 1000,
+          max_attempts: 3,
+        },
+        version: 1,
+      },
+    ],
   },
   source: "remote",
   version: "0.1.0",
@@ -920,6 +931,7 @@ const remoteBackendServer = ({ packageContext }) => `import {
   defineRemoteModule,
   defineSchemaEntity,
   getRoute,
+  runtimeFunction,
   schemaAdmin,
   serveRemoteModule,
   textField,
@@ -981,6 +993,17 @@ const module = defineRemoteModule({
     }),
   ],
   name: "${packageContext.moduleId}",
+  runtimeFunctions: [
+    runtimeFunction("${packageContext.moduleId}.contacts.enrich.v1", {
+      inputSchema: "${packageContext.moduleId}.contacts.enrich.v1",
+      queue: "${packageContext.moduleId}",
+      retryPolicy: {
+        initial_delay_ms: 1000,
+        max_attempts: 3,
+      },
+      version: 1,
+    }),
+  ],
   version: "0.1.0",
 });
 
@@ -997,6 +1020,17 @@ await serveRemoteModule(module, {
   http: {
     "GET /contacts/{id}": ({ params }) =>
       contacts.find((contact) => contact.id === params.id) ?? null,
+  },
+  runtime: {
+    "${packageContext.moduleId}.contacts.enrich.v1": ({ input }) => {
+      const contactId = input?.contact_id;
+      const contact = contacts.find((item) => item.id === contactId);
+      return {
+        contact,
+        enriched: Boolean(contact),
+        source: "${packageContext.moduleId}",
+      };
+    },
   },
   port: Number(process.env.PORT ?? 4100),
   onReady: ({ manifestUrl }) => {
@@ -1039,6 +1073,26 @@ try {
   );
   if (contact.email !== "ada@example.com") {
     throw new Error("HTTP route response did not match ${moduleId}");
+  }
+  const runtimeResult = await fetch(
+    moduleBaseUrl + "/runtime/functions/${moduleId}.contacts.enrich.v1/invoke",
+    {
+      body: JSON.stringify({
+        actor: { id: "worker", kind: "service", scopes: [] },
+        attempt: 1,
+        correlation_id: "corr_1",
+        function_name: "${moduleId}.contacts.enrich.v1",
+        function_run_id: "fnrun_1",
+        input: { contact_id: "contact_1" },
+        request_id: "req_1",
+        trace: { span_id: "span_1", trace_id: "trace_1" },
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    }
+  ).then((response) => response.json());
+  if (!runtimeResult.output?.enriched) {
+    throw new Error("runtime function response did not match ${moduleId}");
   }
 
   console.log("${moduleId} backend smoke passed");

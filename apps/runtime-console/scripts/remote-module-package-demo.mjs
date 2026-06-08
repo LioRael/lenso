@@ -185,6 +185,26 @@ const main = async () => {
     if (httpContact.email !== "ada@example.com") {
       throw new Error("HTTP route endpoint did not return contact");
     }
+    const runtimeResult = await fetch(
+      `${moduleBaseUrl}/runtime/functions/billing.contacts.enrich.v1/invoke`,
+      {
+        body: JSON.stringify({
+          actor: { id: "worker", kind: "service", scopes: [] },
+          attempt: 1,
+          correlation_id: "corr_1",
+          function_name: "billing.contacts.enrich.v1",
+          function_run_id: "fnrun_1",
+          input: { contact_id: "contact_1" },
+          request_id: "req_1",
+          trace: { span_id: "span_1", trace_id: "trace_1" },
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      }
+    ).then((response) => response.json());
+    if (!runtimeResult.output?.enriched) {
+      throw new Error("runtime function endpoint did not return output");
+    }
 
     await runConsolePackageCli([
       "module",

@@ -652,6 +652,20 @@ describe("module scaffold CLI", () => {
         },
       ],
       name: "billing",
+      runtime: {
+        functions: [
+          {
+            input_schema: "billing.contacts.enrich.v1",
+            name: "billing.contacts.enrich.v1",
+            queue: "billing",
+            retry_policy: {
+              initial_delay_ms: 1000,
+              max_attempts: 3,
+            },
+            version: 1,
+          },
+        ],
+      },
       source: "remote",
       version: "0.1.0",
     });
@@ -713,8 +727,10 @@ describe("module scaffold CLI", () => {
     expect(backendServer).toContain("defineRemoteModule");
     expect(backendServer).toContain("defineSchemaEntity");
     expect(backendServer).toContain("getRoute");
+    expect(backendServer).toContain("runtimeFunction");
     expect(backendServer).toContain("serveRemoteModule");
     expect(backendServer).toContain('"GET /contacts/{id}"');
+    expect(backendServer).toContain('"billing.contacts.enrich.v1"');
     expect(backendServer).toContain("contacts.slice(0, limit)");
     await expect(
       readFile(path.join(packageRoot, "backend/src/smoke.mjs"), "utf-8")
@@ -769,6 +785,33 @@ describe("module scaffold CLI", () => {
     ).resolves.toMatchObject({
       email: "ada@example.com",
       id: "contact_1",
+    });
+    await expect(
+      fetch(
+        `${manifestUrl.slice(0, -"/manifest".length)}/runtime/functions/billing.contacts.enrich.v1/invoke`,
+        {
+          body: JSON.stringify({
+            actor: { id: "worker", kind: "service", scopes: [] },
+            attempt: 1,
+            correlation_id: "corr_1",
+            function_name: "billing.contacts.enrich.v1",
+            function_run_id: "fnrun_1",
+            input: { contact_id: "contact_1" },
+            request_id: "req_1",
+            trace: { span_id: "span_1", trace_id: "trace_1" },
+          }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        }
+      ).then((response) => response.json())
+    ).resolves.toMatchObject({
+      output: {
+        contact: {
+          email: "ada@example.com",
+          id: "contact_1",
+        },
+        enriched: true,
+      },
     });
     const consolePackageJson = JSON.parse(
       await readFile(path.join(packageRoot, "console/package.json"), "utf-8")
