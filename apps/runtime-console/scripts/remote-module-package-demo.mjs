@@ -1,12 +1,14 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { once } from "node:events";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 
 import { runConsolePackageCli } from "@lenso/console-package-cli";
 
+const execFileAsync = promisify(execFile);
 const writeFixture = async (root, relativePath, contents) => {
   const filePath = path.join(root, relativePath);
   await mkdir(path.dirname(filePath), { recursive: true });
@@ -119,6 +121,17 @@ const main = async () => {
     ]);
 
     const packageRoot = path.join(modulePackagesRoot, "lenso-billing");
+    const rootPackageJson = await readFile(
+      path.join(packageRoot, "package.json"),
+      "utf-8"
+    );
+    assertContains(
+      rootPackageJson,
+      '"smoke": "pnpm --dir backend smoke"',
+      "package scripts"
+    );
+    await execFileAsync("pnpm", ["--dir", packageRoot, "smoke"]);
+
     backendProcess = spawn(process.execPath, ["src/server.mjs"], {
       cwd: path.join(packageRoot, "backend"),
       env: { ...process.env, PORT: "0" },

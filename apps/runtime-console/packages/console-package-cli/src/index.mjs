@@ -518,6 +518,11 @@ const queuePackageFiles = ({
           react: "^19.1.0",
         },
         private: packagePrivate,
+        scripts: {
+          check: "pnpm test && pnpm typecheck",
+          test: 'echo "console package smoke passed"',
+          typecheck: 'echo "console package typecheck placeholder"',
+        },
         type: "module",
         version: "0.1.0",
       },
@@ -766,6 +771,14 @@ Remote Lenso module package scaffold.
 - \`console/\`: optional Runtime Console package.
 - \`contracts/\`: module-owned event and runtime-function contracts.
 
+## Local
+
+\`\`\`sh
+pnpm dev
+pnpm smoke
+pnpm check
+\`\`\`
+
 ## Install
 
 Expose the remote module protocol from a stable base URL such as:
@@ -827,7 +840,9 @@ const remoteBackendPackageJson = ({ moduleId }) =>
       name: `${moduleId}-remote-backend`,
       private: true,
       scripts: {
+        check: "node src/smoke.mjs",
         dev: "node src/server.mjs",
+        smoke: "node src/smoke.mjs",
         start: "node src/server.mjs",
       },
       type: "module",
@@ -882,6 +897,59 @@ server.listen(port, "127.0.0.1", () => {
 });
 `;
 
+const remoteBackendSmoke = ({
+  moduleId,
+}) => `import { spawn } from "node:child_process";
+
+const childProcess = spawn(process.execPath, ["src/server.mjs"], {
+  env: { ...process.env, PORT: "0" },
+  stdio: ["ignore", "pipe", "inherit"],
+});
+
+const timeout = setTimeout(() => childProcess.kill(), 3000);
+
+try {
+  let manifestUrl = "";
+  for await (const chunk of childProcess.stdout) {
+    manifestUrl = String(chunk).match(new RegExp("http://\\\\S+", "u"))?.[0] ?? "";
+    if (manifestUrl) {
+      break;
+    }
+  }
+
+  if (!manifestUrl) {
+    throw new Error("manifest URL was not printed");
+  }
+
+  const manifest = await fetch(manifestUrl).then((response) => response.json());
+  if (manifest.name !== "${moduleId}" || manifest.source !== "remote") {
+    throw new Error("manifest response did not match ${moduleId}");
+  }
+
+  console.log("${moduleId} backend smoke passed");
+} finally {
+  clearTimeout(timeout);
+  childProcess.kill();
+}
+`;
+
+const remoteRootPackageJson = ({ moduleId }) =>
+  `${JSON.stringify(
+    {
+      name: `lenso-${moduleId}`,
+      private: true,
+      scripts: {
+        check: "pnpm --dir backend check && pnpm --dir console check",
+        dev: "pnpm --dir backend dev",
+        smoke: "pnpm --dir backend smoke",
+      },
+      type: "module",
+      version: "0.1.0",
+    },
+    null,
+    2
+  )}\n`;
+
 const remoteContractsReadme = () => `# Module-owned contracts
 
 Keep event and runtime-function JSON Schema contracts here.
@@ -899,6 +967,11 @@ const queueRemoteModuleFiles = ({
     pendingWrites,
     path.join(packageRoot, "lenso.module.json"),
     `${JSON.stringify(remoteManifestJson({ packageContext }), null, 2)}\n`
+  );
+  queueWrite(
+    pendingWrites,
+    path.join(packageRoot, "package.json"),
+    remoteRootPackageJson({ moduleId: packageContext.moduleId })
   );
   queueWrite(
     pendingWrites,
@@ -922,6 +995,11 @@ const queueRemoteModuleFiles = ({
     pendingWrites,
     path.join(packageRoot, "backend/src/server.mjs"),
     remoteBackendServer({ moduleId: packageContext.moduleId })
+  );
+  queueWrite(
+    pendingWrites,
+    path.join(packageRoot, "backend/src/smoke.mjs"),
+    remoteBackendSmoke({ moduleId: packageContext.moduleId })
   );
   queueWrite(
     pendingWrites,

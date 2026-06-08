@@ -593,6 +593,18 @@ describe("module scaffold CLI", () => {
     const manifest = JSON.parse(
       await readFile(path.join(packageRoot, "lenso.module.json"), "utf-8")
     );
+    const rootPackageJson = JSON.parse(
+      await readFile(path.join(packageRoot, "package.json"), "utf-8")
+    );
+    expect(rootPackageJson).toMatchObject({
+      name: "lenso-billing",
+      private: true,
+      scripts: {
+        check: "pnpm --dir backend check && pnpm --dir console check",
+        dev: "pnpm --dir backend dev",
+        smoke: "pnpm --dir backend smoke",
+      },
+    });
     expect(manifest).toMatchObject({
       capabilities: ["billing.read"],
       console: [
@@ -644,7 +656,9 @@ describe("module scaffold CLI", () => {
       name: "billing-remote-backend",
       private: true,
       scripts: {
+        check: "node src/smoke.mjs",
         dev: "node src/server.mjs",
+        smoke: "node src/smoke.mjs",
         start: "node src/server.mjs",
       },
     });
@@ -654,6 +668,9 @@ describe("module scaffold CLI", () => {
     );
     expect(backendServer).toContain("/lenso/module/v1/manifest");
     expect(backendServer).toContain("../../lenso.module.json");
+    await expect(
+      readFile(path.join(packageRoot, "backend/src/smoke.mjs"), "utf-8")
+    ).resolves.toContain("backend smoke passed");
     const backendProcess = spawn(process.execPath, ["src/server.mjs"], {
       cwd: path.join(packageRoot, "backend"),
       env: { ...process.env, PORT: "0" },
@@ -677,6 +694,10 @@ describe("module scaffold CLI", () => {
         "@lenso/runtime-console-api": "^0.1.0",
       },
       private: false,
+      scripts: {
+        check: "pnpm test && pnpm typecheck",
+        test: 'echo "console package smoke passed"',
+      },
     });
     const consoleSource = await readFile(
       path.join(packageRoot, "console/src/index.tsx"),
