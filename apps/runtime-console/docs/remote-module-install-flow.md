@@ -22,6 +22,17 @@ to the host application.
 
 ## Host Developer
 
+Add a module to the local catalog when you want it to appear in Runtime
+Console's Available Modules panel before installing it:
+
+```sh
+lenso module catalog add https://example.com/lenso/module/v1/manifest \
+  --summary "Billing workspace and operations"
+```
+
+This writes `.lenso/module-catalog.json`. It is a local or team-maintained
+module list, not a publisher approval or review workflow.
+
 Install a remote module from the manifest URL:
 
 ```sh

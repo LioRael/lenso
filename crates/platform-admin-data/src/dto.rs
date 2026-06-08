@@ -73,18 +73,10 @@ pub struct AdminModuleRegistrySnapshotModuleDto {
     pub manifest_reference: String,
     pub base_url: Option<String>,
     pub console_package_hints: usize,
-    pub install_policy: AdminModuleRegistrySnapshotInstallPolicy,
     pub manifest_name: Option<String>,
     pub manifest_status: AdminModuleRegistrySnapshotManifestStatus,
     pub manifest_version: Option<String>,
     pub status: AdminModuleRegistrySnapshotModuleStatus,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum AdminModuleRegistrySnapshotInstallPolicy {
-    Trusted,
-    ReviewRequired,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

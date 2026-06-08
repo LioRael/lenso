@@ -130,9 +130,9 @@ workspace, use the remote scaffold:
 
 ```bash
 pnpm create:module billing --remote --output-dir ../modules
+lenso module catalog add https://example.com/lenso/module/v1/manifest
 lenso module add https://example.com/lenso/module/v1/manifest
 lenso console-package apply-plan
-lenso module doctor
 ```
 
 Run `pnpm demo:remote-module-install` for a temp-directory smoke demo of that

@@ -210,7 +210,7 @@ describe("available modules model", () => {
     const response: AvailableModulesResponse = {
       catalog: {
         modules: 2,
-        registryFile: ".lenso/module-registry.json",
+        registryFile: ".lenso/module-catalog.json",
         version: 1,
       },
       issues: [
@@ -303,7 +303,7 @@ describe("available modules model", () => {
     const response: AvailableModulesResponse = {
       catalog: {
         modules: 1,
-        registryFile: ".lenso/module-registry.json",
+        registryFile: ".lenso/module-catalog.json",
         version: 1,
       },
       issues: [],

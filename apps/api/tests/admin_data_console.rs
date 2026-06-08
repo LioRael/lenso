@@ -20,12 +20,18 @@ use platform_module::{
 use platform_runtime::RUNTIME_MIGRATIONS;
 use platform_testing::TestDatabase;
 use serde_json::Value;
+use std::fs;
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::Mutex;
 use tower::ServiceExt;
 
 static ADMIN_DATA_CONSOLE_TEST_LOCK: Mutex<()> = Mutex::const_new(());
+
+fn remove_module_catalog_fixture() {
+    let _ = fs::remove_file(Path::new(".lenso/module-catalog.json"));
+}
 
 #[derive(Debug)]
 struct StubUsers;
@@ -475,6 +481,7 @@ async fn admin_action_invocation_calls_declared_source() {
 #[tokio::test]
 async fn available_modules_returns_remote_install_rows() {
     let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
+    remove_module_catalog_fixture();
     install_admin_modules(vec![]);
     install_admin_module_metadata(vec![AdminModuleMetadata {
         module_name: "billing".to_owned(),
@@ -533,7 +540,6 @@ async fn available_modules_returns_remote_install_rows() {
         "https://example.com/lenso/module/v1"
     );
     assert_eq!(body["modules"][0]["manifestStatus"], "ok");
-    assert_eq!(body["modules"][0]["installPolicy"], "trusted");
     assert_eq!(body["modules"][0]["status"], "ready");
 
     let legacy_response = app
@@ -541,6 +547,63 @@ async fn available_modules_returns_remote_install_rows() {
         .await
         .expect("legacy snapshot request completes");
     assert_eq!(legacy_response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn available_modules_reads_local_module_catalog() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
+    fs::create_dir_all(".lenso").expect("create catalog dir");
+    fs::write(
+        ".lenso/module-catalog.json",
+        serde_json::json!({
+            "version": 1,
+            "modules": [{
+                "name": "billing",
+                "version": "0.2.0",
+                "source": "remote",
+                "manifestReference": "https://example.com/billing/manifest",
+                "baseUrl": "https://example.com/billing",
+                "consolePackages": [{
+                    "packageName": "@vendor/lenso-billing-console",
+                    "exportName": "billingConsoleModule",
+                    "route": "/data/billing"
+                }]
+            }]
+        })
+        .to_string(),
+    )
+    .expect("write catalog fixture");
+    install_admin_module_metadata(vec![]);
+    let ctx = AppContext::new(
+        AppConfig::from_env(),
+        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test").expect("lazy pool"),
+        Arc::new(LoggingEventPublisher),
+    );
+    let app = build_router(ctx);
+
+    let response = app
+        .oneshot(admin_get("/admin/data/available-modules"))
+        .await
+        .expect("available modules request completes");
+
+    remove_module_catalog_fixture();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["status"], "passed");
+    assert_eq!(
+        body["catalog"]["registryFile"],
+        ".lenso/module-catalog.json"
+    );
+    assert_eq!(body["catalog"]["modules"], 1);
+    assert_eq!(body["modules"][0]["name"], "billing");
+    assert_eq!(body["modules"][0]["catalogVersion"], "0.2.0");
+    assert_eq!(
+        body["modules"][0]["manifestReference"],
+        "https://example.com/billing/manifest"
+    );
+    assert_eq!(body["modules"][0]["consolePackageHints"], 1);
+    assert!(body["modules"][0].get("installPolicy").is_none());
 }
 
 #[tokio::test]

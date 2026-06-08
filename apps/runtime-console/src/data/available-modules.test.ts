@@ -13,7 +13,7 @@ describe("available modules provider", () => {
   test("provides read-only rows derived from available module data", () => {
     expect(sampleAvailableModulesResponse.version).toBe(1);
     expect(sampleAvailableModulesResponse.catalog.registryFile).toBe(
-      ".lenso/module-registry.json"
+      ".lenso/module-catalog.json"
     );
 
     expect(availableModulesRows()).toEqual([

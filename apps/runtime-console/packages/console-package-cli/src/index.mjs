@@ -1280,6 +1280,89 @@ const updateConsolePackageInstallPlan = async ({
   return `${JSON.stringify({ modules, version: 1 }, null, 2)}\n`;
 };
 
+const readModuleCatalog = async (catalogFilePath) => {
+  const source = await readTextIfExists(catalogFilePath);
+  if (!source) {
+    return { modules: [], version: 1 };
+  }
+  const catalog = JSON.parse(source);
+  if (!catalog || typeof catalog !== "object" || Array.isArray(catalog)) {
+    throw new Error("Module catalog must be a JSON object");
+  }
+  if (!Array.isArray(catalog.modules)) {
+    throw new TypeError("Module catalog modules must be an array");
+  }
+  return {
+    modules: catalog.modules,
+    version: Number.isInteger(catalog.version) ? catalog.version : 1,
+  };
+};
+
+const moduleCatalogEntryFromManifest = ({
+  baseUrl,
+  manifest,
+  manifestReference,
+  summary,
+}) => ({
+  baseUrl,
+  consolePackages: manifest.console
+    .map((surface) => ({
+      exportName: surface.package?.export,
+      packageName: surface.package?.name,
+      route: surface.route,
+    }))
+    .filter((item) => item.packageName && item.exportName),
+  manifestReference,
+  name: manifest.name.trim(),
+  source: "remote",
+  summary: summary ?? manifest.summary ?? "-",
+  version: manifest.version.trim(),
+});
+
+const addModuleCatalogEntry = async ({ manifestReference, options }) => {
+  const repoRoot = options.repoRoot
+    ? path.resolve(options.repoRoot)
+    : await findRepoRoot(process.cwd());
+  const catalogFilePath = path.resolve(
+    options.catalogFile ?? path.join(repoRoot, ".lenso/module-catalog.json")
+  );
+  const manifest = await readJsonFromReference(manifestReference);
+  const remoteModule = validateRemoteModuleManifest(manifest);
+  const baseUrl = deriveRemoteBaseUrl({
+    baseUrl: options.baseUrl,
+    manifestReference,
+  });
+  const catalog = await readModuleCatalog(catalogFilePath);
+  const modules = catalog.modules.filter(
+    (entry) => entry.name !== remoteModule.name
+  );
+  modules.push(
+    moduleCatalogEntryFromManifest({
+      baseUrl,
+      manifest,
+      manifestReference,
+      summary: options.summary,
+    })
+  );
+  const nextCatalog = `${JSON.stringify({ modules, version: 1 }, null, 2)}\n`;
+
+  if (options.dryRun) {
+    console.log("Module catalog dry run:");
+    console.log(`- ${path.relative(repoRoot, catalogFilePath)}`);
+    console.log(`- ${remoteModule.name} ${remoteModule.version}`);
+    return;
+  }
+
+  await mkdir(path.dirname(catalogFilePath), { recursive: true });
+  await writeFile(catalogFilePath, nextCatalog);
+
+  console.log(`Added ${remoteModule.name} to module catalog.`);
+  console.log("Updated:");
+  console.log(`- ${path.relative(repoRoot, catalogFilePath)}`);
+  console.log("Install:");
+  console.log(`- lenso module add ${manifestReference}`);
+};
+
 const addRemoteModule = async ({ manifestReference, options }) => {
   const repoRoot = options.repoRoot
     ? path.resolve(options.repoRoot)
@@ -1414,6 +1497,14 @@ const addRemoteModuleOptions = (command) =>
     .option("--base-url <url>", "remote module base URL")
     .option("--dry-run", "print install changes without writing them");
 
+const addModuleCatalogOptions = (command) =>
+  command
+    .option("--repo-root <path>", "Lenso host repository root")
+    .option("--catalog-file <path>", "module catalog file to update")
+    .option("--base-url <url>", "remote module base URL")
+    .option("--summary <text>", "catalog summary text")
+    .option("--dry-run", "print catalog changes without writing them");
+
 const addApplyPlanOptions = (command) =>
   command
     .option("--repo-root <path>", "Lenso host repository root")
@@ -1458,6 +1549,16 @@ Remote module install:
       .description("add a configured remote module source")
   ).action(async (manifestReference, options) => {
     await addRemoteModule({ manifestReference, options });
+  });
+  const catalogCommand = moduleCommand
+    .command("catalog")
+    .description("manage a local module catalog");
+  addModuleCatalogOptions(
+    catalogCommand
+      .command("add <manifestReference>")
+      .description("add a remote module manifest to the local catalog")
+  ).action(async (manifestReference, options) => {
+    await addModuleCatalogEntry({ manifestReference, options });
   });
   const marketplaceCommand = moduleCommand
     .command("marketplace")

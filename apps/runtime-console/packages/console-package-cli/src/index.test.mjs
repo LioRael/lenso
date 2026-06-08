@@ -788,6 +788,76 @@ describe("module scaffold CLI", () => {
     );
   });
 
+  test("adds a remote module manifest to a local catalog", async () => {
+    const repoRoot = await createRepoFixture();
+    const manifestUrl = await serveManifest({
+      capabilities: ["billing.read"],
+      console: [
+        {
+          package: {
+            export: "billingConsoleModule",
+            name: "@vendor/lenso-billing-console",
+          },
+          route: "/data/billing",
+        },
+      ],
+      name: "billing",
+      source: "remote",
+      version: "0.1.0",
+    });
+    const logs = [];
+    const logSpy = vi.spyOn(console, "log").mockImplementation((message) => {
+      logs.push(String(message));
+    });
+    try {
+      await expect(
+        runConsolePackageCli([
+          "module",
+          "catalog",
+          "add",
+          manifestUrl,
+          "--repo-root",
+          repoRoot,
+          "--summary",
+          "Billing module",
+        ])
+      ).resolves.toBe(0);
+    } finally {
+      logSpy.mockRestore();
+    }
+
+    const catalog = JSON.parse(
+      await readFile(path.join(repoRoot, ".lenso/module-catalog.json"), "utf-8")
+    );
+    expect(catalog).toEqual({
+      modules: [
+        {
+          baseUrl: manifestUrl.slice(0, -"/manifest".length),
+          consolePackages: [
+            {
+              exportName: "billingConsoleModule",
+              packageName: "@vendor/lenso-billing-console",
+              route: "/data/billing",
+            },
+          ],
+          manifestReference: manifestUrl,
+          name: "billing",
+          source: "remote",
+          summary: "Billing module",
+          version: "0.1.0",
+        },
+      ],
+      version: 1,
+    });
+    const output = logs.join("\n");
+    expect(output).toContain("Added billing to module catalog.");
+    expect(output).toContain("- .lenso/module-catalog.json");
+    expect(output).toContain(`- lenso module add ${manifestUrl}`);
+    expect(output).not.toContain("review");
+    expect(output).not.toContain("doctor");
+    expect(output).not.toContain("publisher");
+  });
+
   test("keeps remote module source installation idempotent", async () => {
     const repoRoot = await createRepoFixture();
     await writeFixture(

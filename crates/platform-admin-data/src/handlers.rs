@@ -5,11 +5,11 @@ use crate::dto::{
     AdminModuleMetadataDto, AdminModuleMetadataListResponse, AdminModuleRefreshModuleResultDto,
     AdminModuleRefreshModuleStatusDto, AdminModuleRefreshRecordDto, AdminModuleRefreshStatusDto,
     AdminModuleRegistrySnapshotCatalogDto, AdminModuleRegistrySnapshotIssueDto,
-    AdminModuleRegistrySnapshotInstallPolicy, AdminModuleRegistrySnapshotManifestStatus,
-    AdminModuleRegistrySnapshotModuleDto, AdminModuleRegistrySnapshotModuleStatus,
-    AdminModuleRegistrySnapshotResponse, AdminModuleRegistrySnapshotStatus, AdminModuleSchema,
-    AdminModuleSourceDiagnosticsDto, AdminModuleStatus, AdminRemoteModuleDiagnosticsDto,
-    AdminSchemaListResponse, AdminSchemaRefreshResponse,
+    AdminModuleRegistrySnapshotManifestStatus, AdminModuleRegistrySnapshotModuleDto,
+    AdminModuleRegistrySnapshotModuleStatus, AdminModuleRegistrySnapshotResponse,
+    AdminModuleRegistrySnapshotStatus, AdminModuleSchema, AdminModuleSourceDiagnosticsDto,
+    AdminModuleStatus, AdminRemoteModuleDiagnosticsDto, AdminSchemaListResponse,
+    AdminSchemaRefreshResponse,
 };
 use crate::{
     AdminModule, AdminModuleMetadata, AdminModuleMetadataRefreshModuleResult,
@@ -34,6 +34,8 @@ use platform_module::{
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashSet;
+use std::fs;
+use std::path::{Path as FsPath, PathBuf};
 use std::time::Instant;
 
 const DEFAULT_LIMIT: i64 = 50;
@@ -142,7 +144,10 @@ pub(crate) async fn available_modules(
 }
 
 fn available_modules_response() -> AdminModuleRegistrySnapshotResponse {
-    module_registry_snapshot_response(admin_module_metadata_snapshot().modules)
+    match module_catalog_response(PathBuf::from(".lenso/module-catalog.json")) {
+        Some(response) => response,
+        None => module_registry_snapshot_response(admin_module_metadata_snapshot().modules),
+    }
 }
 
 #[utoipa::path(
@@ -298,6 +303,126 @@ fn module_registry_snapshot_response(
     }
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalModuleCatalog {
+    #[serde(default)]
+    modules: Vec<LocalModuleCatalogEntry>,
+    #[serde(default = "default_module_catalog_version")]
+    version: u8,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalModuleCatalogEntry {
+    name: String,
+    version: String,
+    source: String,
+    manifest_reference: String,
+    #[serde(default)]
+    base_url: Option<String>,
+    #[serde(default)]
+    console_packages: Vec<LocalModuleCatalogConsolePackage>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalModuleCatalogConsolePackage {
+    #[serde(rename = "packageName")]
+    _package_name: String,
+    #[serde(rename = "exportName")]
+    _export_name: String,
+    #[serde(default)]
+    #[serde(rename = "route")]
+    _route: Option<String>,
+}
+
+const fn default_module_catalog_version() -> u8 {
+    1
+}
+
+fn module_catalog_response(
+    catalog_file_path: impl AsRef<FsPath>,
+) -> Option<AdminModuleRegistrySnapshotResponse> {
+    let catalog_file_path = catalog_file_path.as_ref();
+    let source = match fs::read_to_string(catalog_file_path) {
+        Ok(source) => source,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(error) => {
+            return Some(module_catalog_error_response(
+                catalog_file_path,
+                format!("module catalog could not be read: {error}"),
+            ));
+        }
+    };
+    let catalog = match serde_json::from_str::<LocalModuleCatalog>(&source) {
+        Ok(catalog) => catalog,
+        Err(error) => {
+            return Some(module_catalog_error_response(
+                catalog_file_path,
+                format!("module catalog could not be parsed: {error}"),
+            ));
+        }
+    };
+    let modules = catalog
+        .modules
+        .into_iter()
+        .map(module_catalog_entry_module)
+        .collect::<Vec<_>>();
+
+    Some(AdminModuleRegistrySnapshotResponse {
+        version: 1,
+        status: AdminModuleRegistrySnapshotStatus::Passed,
+        catalog: AdminModuleRegistrySnapshotCatalogDto {
+            modules: modules.len(),
+            registry_file: catalog_file_path.display().to_string(),
+            version: catalog.version,
+        },
+        issues: vec![],
+        modules,
+    })
+}
+
+fn module_catalog_error_response(
+    catalog_file_path: &FsPath,
+    message: String,
+) -> AdminModuleRegistrySnapshotResponse {
+    AdminModuleRegistrySnapshotResponse {
+        version: 1,
+        status: AdminModuleRegistrySnapshotStatus::Failed,
+        catalog: AdminModuleRegistrySnapshotCatalogDto {
+            modules: 0,
+            registry_file: catalog_file_path.display().to_string(),
+            version: 1,
+        },
+        issues: vec![AdminModuleRegistrySnapshotIssueDto {
+            group: "Catalog".to_owned(),
+            message,
+            fix: "fix .lenso/module-catalog.json or remove it to use loaded remote modules"
+                .to_owned(),
+        }],
+        modules: vec![],
+    }
+}
+
+fn module_catalog_entry_module(
+    entry: LocalModuleCatalogEntry,
+) -> AdminModuleRegistrySnapshotModuleDto {
+    let _source = entry.source;
+    AdminModuleRegistrySnapshotModuleDto {
+        name: entry.name.clone(),
+        source: ModuleSource::Remote,
+        catalog_version: entry.version.clone(),
+        manifest_reference: entry.manifest_reference,
+        base_url: entry.base_url,
+        console_package_hints: entry.console_packages.len(),
+        manifest_name: Some(entry.name),
+        manifest_status: AdminModuleRegistrySnapshotManifestStatus::Ok,
+        manifest_version: Some(entry.version),
+        status: AdminModuleRegistrySnapshotModuleStatus::Ready,
+    }
+}
+
 fn module_registry_snapshot_module(
     module: AdminModuleMetadata,
 ) -> AdminModuleRegistrySnapshotModuleDto {
@@ -326,7 +451,6 @@ fn module_registry_snapshot_module(
         manifest_reference,
         base_url,
         console_package_hints: module.console.len(),
-        install_policy: AdminModuleRegistrySnapshotInstallPolicy::Trusted,
         manifest_name: if has_error { None } else { Some(module_name) },
         manifest_status: if has_error {
             AdminModuleRegistrySnapshotManifestStatus::Unreadable

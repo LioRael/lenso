@@ -201,6 +201,7 @@ Third-party scaffolding uses a separate remote-oriented lane:
 
 ```sh
 pnpm create:module billing --remote --output-dir ../module-packages
+lenso module catalog add https://example.com/lenso/module/v1/manifest
 lenso module add https://example.com/lenso/module/v1/manifest
 lenso module marketplace install https://example.com/lenso/module/v1/manifest
 lenso console-package apply-plan
@@ -210,6 +211,11 @@ The default install path is user-driven: see a module, install from its
 manifest, apply the console package plan, restart the host, and use the module.
 The manifest URL is the install boundary; local host files record the remote
 module and any console package commands that need to be run.
+
+`.lenso/module-catalog.json` is the optional discovery list behind Available
+Modules. A host can add entries with `lenso module catalog add <manifest-url>`.
+The catalog only records module basics, manifest URL, base URL, summary, and
+console package hints.
 
 If the manifest is installed from a local file or non-protocol URL, pass the
 runtime module base URL explicitly:
@@ -224,6 +230,8 @@ without compiling third-party code into the application.
 
 The first CLI install lane writes host-local state only:
 
+- `.lenso/module-catalog.json`: optional local discovery entries for Available
+  Modules.
 - `.env`: appends or replaces `REMOTE_MODULES=<name>=<base_url>`.
 - `.lenso/console-package-install-plan.json`: records requested Runtime Console
   packages, exports, routes, and manual `pnpm --dir apps/runtime-console add`
