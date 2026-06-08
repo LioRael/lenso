@@ -35,7 +35,10 @@ import {
   isApiMode,
   runtimeConsoleDataSource,
 } from "../lib/http-client";
-import { availableModuleRowsFromResponse } from "./available-modules-model";
+import {
+  availableModuleHandoffState,
+  availableModuleRowsFromResponse,
+} from "./available-modules-model";
 import {
   type AdminModuleMetadata,
   type ConfigValueMetadata,
@@ -166,7 +169,7 @@ function ModulesContent() {
     rows: availableModuleRows,
   });
   const [selectedModuleName, setSelectedModuleName] = useState<string | null>(
-    null
+    initialSelectedModuleName()
   );
   const [filters, setFilters] = useState<ModuleRegistryFilters>({
     query: "",
@@ -226,6 +229,8 @@ function ModulesContent() {
       <div className="grid min-h-0 grid-cols-[260px_minmax(0,1fr)] overflow-hidden">
         <nav className="min-h-0 overflow-auto border-r border-(--border-subtle) p-2 font-mono text-[12px]">
           <ModuleRegistryCatalogPanel
+            configValues={configValues}
+            modules={modules}
             panelState={availableModulePanelState}
             rows={availableModuleRows}
           />
@@ -313,9 +318,13 @@ function ModulesContent() {
 }
 
 function ModuleRegistryCatalogPanel({
+  configValues,
+  modules,
   panelState,
   rows,
 }: {
+  configValues: ConfigValueMetadata[];
+  modules: AdminModuleMetadata[];
   panelState: ReturnType<typeof availableModulesPanelState>;
   rows: ReturnType<typeof availableModulesRows>;
 }) {
@@ -362,6 +371,22 @@ function ModuleRegistryCatalogPanel({
             const [installCommand] = moduleRegistryHandoffCommands({
               manifestReference: row.manifestReference,
             });
+            const installedModule = modules.find(
+              (module) => module.module_name === row.name
+            );
+            const handoff = availableModuleHandoffState({
+              installed: installedModule
+                ? {
+                    moduleName: installedModule.module_name,
+                    restartPending: moduleRestartPending(
+                      installedModule,
+                      configValues
+                    ),
+                  }
+                : null,
+              installCommand: installCommand?.command ?? "",
+              row,
+            });
             const commandKey = `install:${row.key}`;
             return (
               <article
@@ -376,7 +401,7 @@ function ModuleRegistryCatalogPanel({
                     {row.version}
                   </span>
                   <span className="ml-auto shrink-0 border border-(--border-subtle) px-1 py-0.5 text-[9px] text-(--secondary)">
-                    {row.source}
+                    {handoff.label}
                   </span>
                 </div>
                 <div className="line-clamp-2 text-[9px] text-(--muted)">
@@ -384,9 +409,26 @@ function ModuleRegistryCatalogPanel({
                 </div>
                 <div className="truncate text-[9px] text-(--muted)">
                   caps {row.capabilityCount} / console{" "}
-                  {row.consolePackageHintCount}
+                  {row.consolePackageHintCount} / {row.source}
                 </div>
-                {installCommand ? (
+                {handoff.kind === "installed" ||
+                handoff.kind === "restart_pending" ? (
+                  <button
+                    className="border border-(--border-subtle) bg-(--surface) px-2 py-1 text-left text-[10px] text-(--secondary) hover:bg-(--sidebar) hover:text-(--foreground)"
+                    onClick={() => window.location.assign(handoff.path)}
+                    title={handoff.detail}
+                    type="button"
+                  >
+                    <span className="block truncate">
+                      {handoff.kind === "installed"
+                        ? "Open Module"
+                        : "Open Restart Step"}
+                    </span>
+                    <span className="block truncate pt-0.5 text-[9px] text-(--muted)">
+                      {handoff.detail}
+                    </span>
+                  </button>
+                ) : installCommand ? (
                   <div className="grid grid-cols-[minmax(0,1fr)_24px] items-center gap-1">
                     <code
                       className="truncate border border-(--border-subtle) bg-(--surface) px-1.5 py-1 text-[9px] text-(--secondary)"
@@ -412,6 +454,11 @@ function ModuleRegistryCatalogPanel({
                         <Copy size={11} />
                       )}
                     </button>
+                  </div>
+                ) : null}
+                {handoff.kind === "available" ? (
+                  <div className="truncate text-[9px] text-(--muted)">
+                    then apply-plan / pnpm install / restart
                   </div>
                 ) : null}
               </article>
@@ -452,6 +499,13 @@ function ModuleRegistryCatalogPanel({
       </div>
     </section>
   );
+}
+
+function initialSelectedModuleName(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  return new URLSearchParams(window.location.search).get("module");
 }
 
 function ModuleRefreshHistory({ history }: { history: ModuleRefreshRecord[] }) {

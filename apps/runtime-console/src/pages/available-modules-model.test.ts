@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
   type AvailableModulesResponse,
   type AvailableModulesCatalog,
+  availableModuleHandoffState,
   availableModuleRowsFromResponse,
   availableModuleRows,
 } from "./available-modules-model";
@@ -69,6 +70,58 @@ describe("available modules model", () => {
       preflightLabel: "ready",
       preflightReason: "module manifest is available",
       preflightStatus: "ready",
+    });
+  });
+
+  test("builds low-friction handoff state from local install status", () => {
+    const [row] = availableModuleRows(catalog);
+    expect(row).toBeDefined();
+
+    expect(
+      availableModuleHandoffState({
+        installCommand:
+          "lenso module add https://example.com/lenso/module/v1/manifest",
+        row: row!,
+      })
+    ).toEqual({
+      action: "install",
+      command: "lenso module add https://example.com/lenso/module/v1/manifest",
+      detail: "manifest will be read from the manifest URL during install",
+      kind: "available",
+      label: "available",
+      moduleName: "billing",
+    });
+
+    expect(
+      availableModuleHandoffState({
+        installed: { moduleName: "billing", restartPending: false },
+        installCommand:
+          "lenso module add https://example.com/lenso/module/v1/manifest",
+        row: row!,
+      })
+    ).toEqual({
+      action: "open",
+      detail: "open installed module",
+      kind: "installed",
+      label: "installed",
+      moduleName: "billing",
+      path: "/modules?module=billing",
+    });
+
+    expect(
+      availableModuleHandoffState({
+        installed: { moduleName: "billing", restartPending: true },
+        installCommand:
+          "lenso module add https://example.com/lenso/module/v1/manifest",
+        row: row!,
+      })
+    ).toEqual({
+      action: "restart",
+      detail: "restart API and worker",
+      kind: "restart_pending",
+      label: "restart pending",
+      moduleName: "billing",
+      path: "/modules?module=billing",
     });
   });
 

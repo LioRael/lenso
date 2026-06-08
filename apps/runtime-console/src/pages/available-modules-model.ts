@@ -103,6 +103,35 @@ export type AvailableModuleRow = {
   summary: string;
 };
 
+export type AvailableModuleHandoffState =
+  | {
+      kind: "available";
+      label: "available";
+      action: "install";
+      detail: string;
+      moduleName: string;
+      command: string;
+      path?: undefined;
+    }
+  | {
+      kind: "installed";
+      label: "installed";
+      action: "open";
+      detail: string;
+      moduleName: string;
+      command?: undefined;
+      path: string;
+    }
+  | {
+      kind: "restart_pending";
+      label: "restart pending";
+      action: "restart";
+      detail: string;
+      moduleName: string;
+      command?: undefined;
+      path: string;
+    };
+
 export type AvailableModuleManifestSnapshots = Record<
   string,
   AvailableModuleManifestSnapshot | undefined
@@ -167,6 +196,47 @@ export function availableModuleRowsFromResponse(
       version: module.catalogVersion,
     };
   });
+}
+
+export function availableModuleHandoffState({
+  installed,
+  installCommand,
+  row,
+}: {
+  installed?: { moduleName: string; restartPending: boolean } | null;
+  installCommand: string;
+  row: AvailableModuleRow;
+}): AvailableModuleHandoffState {
+  if (installed?.restartPending) {
+    return {
+      action: "restart",
+      detail: "restart API and worker",
+      kind: "restart_pending",
+      label: "restart pending",
+      moduleName: installed.moduleName,
+      path: `/modules?module=${encodeURIComponent(installed.moduleName)}`,
+    };
+  }
+
+  if (installed) {
+    return {
+      action: "open",
+      detail: "open installed module",
+      kind: "installed",
+      label: "installed",
+      moduleName: installed.moduleName,
+      path: `/modules?module=${encodeURIComponent(installed.moduleName)}`,
+    };
+  }
+
+  return {
+    action: "install",
+    command: installCommand,
+    detail: row.preflightReason,
+    kind: "available",
+    label: "available",
+    moduleName: row.name,
+  };
 }
 
 function availableModulePreflight(
