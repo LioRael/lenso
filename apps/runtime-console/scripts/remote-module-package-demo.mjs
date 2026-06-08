@@ -132,6 +132,18 @@ const main = async () => {
     );
     await execFileAsync("pnpm", ["--dir", packageRoot, "smoke"]);
 
+    const catalogEntry = JSON.parse(
+      await readFile(path.join(packageRoot, "catalog-entry.json"), "utf-8")
+    );
+    if (
+      catalogEntry.name !== "billing" ||
+      catalogEntry.version !== "0.1.0" ||
+      catalogEntry.consolePackages?.[0]?.packageName !==
+        "@vendor/lenso-billing-console"
+    ) {
+      throw new Error("catalog-entry.json did not match generated module");
+    }
+
     backendProcess = spawn(process.execPath, ["src/server.mjs"], {
       cwd: path.join(packageRoot, "backend"),
       env: { ...process.env, PORT: "0" },
@@ -147,7 +159,7 @@ const main = async () => {
       "--repo-root",
       hostRoot,
       "--summary",
-      "Billing workspace and operations",
+      catalogEntry.summary,
     ]);
     await runConsolePackageCli([
       "module",

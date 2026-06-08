@@ -757,6 +757,22 @@ const remoteManifestJson = ({ packageContext }) => ({
   version: "0.1.0",
 });
 
+const remoteCatalogEntryJson = ({ packageContext }) => ({
+  baseUrl: "https://example.com/lenso/module/v1",
+  consolePackages: [
+    {
+      exportName: packageContext.moduleName,
+      packageName: packageContext.packageName,
+      route: packageContext.route,
+    },
+  ],
+  manifestReference: "https://example.com/lenso/module/v1/manifest",
+  name: packageContext.moduleId,
+  source: "remote",
+  summary: `${packageContext.label} workspace and operations`,
+  version: "0.1.0",
+});
+
 const remotePackageReadme = ({
   moduleId,
   packageRootName,
@@ -767,6 +783,7 @@ Remote Lenso module package scaffold.
 ## Shape
 
 - \`lenso.module.json\`: install-time module manifest.
+- \`catalog-entry.json\`: optional local catalog entry for discovery.
 - \`backend/\`: remote module backend implementation.
 - \`console/\`: optional Runtime Console package.
 - \`contracts/\`: module-owned event and runtime-function contracts.
@@ -785,6 +802,13 @@ Expose the remote module protocol from a stable base URL such as:
 
 \`\`\`text
 GET https://example.com/lenso/module/v1/manifest
+\`\`\`
+
+Use \`catalog-entry.json\` as the local discovery record, or add the manifest
+URL directly:
+
+\`\`\`sh
+lenso module catalog add https://example.com/lenso/module/v1/manifest
 \`\`\`
 
 Then install it into a host project:
@@ -967,6 +991,11 @@ const queueRemoteModuleFiles = ({
     pendingWrites,
     path.join(packageRoot, "lenso.module.json"),
     `${JSON.stringify(remoteManifestJson({ packageContext }), null, 2)}\n`
+  );
+  queueWrite(
+    pendingWrites,
+    path.join(packageRoot, "catalog-entry.json"),
+    `${JSON.stringify(remoteCatalogEntryJson({ packageContext }), null, 2)}\n`
   );
   queueWrite(
     pendingWrites,

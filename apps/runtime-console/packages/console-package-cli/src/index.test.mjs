@@ -593,6 +593,9 @@ describe("module scaffold CLI", () => {
     const manifest = JSON.parse(
       await readFile(path.join(packageRoot, "lenso.module.json"), "utf-8")
     );
+    const catalogEntry = JSON.parse(
+      await readFile(path.join(packageRoot, "catalog-entry.json"), "utf-8")
+    );
     const rootPackageJson = JSON.parse(
       await readFile(path.join(packageRoot, "package.json"), "utf-8")
     );
@@ -628,6 +631,21 @@ describe("module scaffold CLI", () => {
       name: "billing",
       source: "remote",
       version: "0.1.0",
+    });
+    expect(catalogEntry).toMatchObject({
+      baseUrl: "https://example.com/lenso/module/v1",
+      consolePackages: [
+        {
+          exportName: "billingConsoleModule",
+          packageName: "@vendor/lenso-billing-console",
+          route: "/data/billing",
+        },
+      ],
+      manifestReference: "https://example.com/lenso/module/v1/manifest",
+      name: manifest.name,
+      source: manifest.source,
+      summary: "Billing workspace and operations",
+      version: manifest.version,
     });
     const consoleSurface = JSON.parse(
       await readFile(
@@ -712,7 +730,7 @@ describe("module scaffold CLI", () => {
     ).resolves.toContain("Module-owned contracts");
     await expect(
       readFile(path.join(packageRoot, "README.md"), "utf-8")
-    ).resolves.toContain("catalog add");
+    ).resolves.toContain("catalog-entry.json");
   });
 
   test("adds a remote module source from a manifest to an env file", async () => {
