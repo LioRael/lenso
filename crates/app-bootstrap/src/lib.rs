@@ -10,8 +10,9 @@
 //!   honor profile entry lists and configured remote sources for runtime apps.
 //! - [`module_manifests`]: context-free manifest data (no [`AppContext`]) for
 //!   read-only / `OpenAPI` paths, with profile-aware variants for runtime use.
-//! - [`merge_linked_http`]: context-free HTTP routes and their OpenAPI docs
-//!   (API only), assembled without a live [`AppContext`].
+//! - [`merge_linked_http`] and [`merge_platform_runtime_admin`]: context-free
+//!   HTTP routes and their OpenAPI docs (API only), assembled without a live
+//!   [`AppContext`].
 //! - [`story_display_descriptors`]: console display metadata, sourced from the
 //!   context-free [`module_manifests`].
 //!
@@ -110,6 +111,15 @@ fn linked_module_entries(profile: CompositionProfile) -> &'static [LinkedModuleE
         CompositionProfile::Core => CORE_LINKED_MODULE_ENTRIES,
         CompositionProfile::Demo => DEMO_LINKED_MODULE_ENTRIES,
     }
+}
+
+fn linked_module_entry_for_profile(
+    profile: CompositionProfile,
+    module_name: &str,
+) -> Option<&'static LinkedModuleEntry> {
+    linked_module_entries(profile)
+        .iter()
+        .find(|entry| entry.module_name == module_name)
 }
 
 fn linked_module_enabled_from_config(config: &platform_core::AppConfig, module_name: &str) -> bool {
@@ -1099,6 +1109,33 @@ pub fn merge_linked_http_for_context(
         .fold(base, |router, contribution| (contribution.merge)(router)))
 }
 
+/// Merge runtime-admin routes owned by platform system modules.
+///
+/// Story is a linked system module, so its runtime story endpoints are mounted
+/// through the composition root instead of directly from the API app.
+pub fn merge_platform_runtime_admin(base: ApiOpenApiRouter) -> ApiOpenApiRouter {
+    merge_platform_runtime_admin_for_profile(base, CompositionProfile::default())
+}
+
+pub fn merge_platform_runtime_admin_for_profile(
+    base: ApiOpenApiRouter,
+    profile: CompositionProfile,
+) -> ApiOpenApiRouter {
+    if linked_module_entry_for_profile(profile, story::module::MODULE_NAME).is_some() {
+        base.merge(story::backend::router())
+    } else {
+        base
+    }
+}
+
+pub fn merge_platform_runtime_admin_for_context(
+    base: ApiOpenApiRouter,
+    ctx: &AppContext,
+) -> platform_core::AppResult<ApiOpenApiRouter> {
+    let profile = CompositionProfile::from_config(&ctx.config)?;
+    Ok(merge_platform_runtime_admin_for_profile(base, profile))
+}
+
 /// Story-display descriptors for every module. Sourced from context-free
 /// manifests so the `OpenAPI` path stays pure (no [`AppContext`]).
 #[must_use]
@@ -1132,6 +1169,20 @@ pub fn story_display_descriptors_for_context(
         .into_iter()
         .flat_map(|entry| (entry.manifest)().story_display)
         .collect())
+}
+
+pub fn install_default_story_display_catalog(ctx: &AppContext) -> platform_core::AppResult<()> {
+    story::backend::install_default_story_display(story_display_descriptors_for_context(ctx)?);
+    Ok(())
+}
+
+pub fn install_story_display_catalog(metadata: &[AdminModuleMetadata]) {
+    story::backend::install_story_display(
+        metadata
+            .iter()
+            .flat_map(|module| module.story_display.clone())
+            .collect(),
+    );
 }
 
 /// Every module's setting descriptors.
@@ -1699,6 +1750,21 @@ mod tests {
                 module.manifest.name
             );
         }
+    }
+
+    #[test]
+    fn platform_runtime_admin_routes_include_story_module_routes() {
+        let document = merge_platform_runtime_admin(platform_http::OpenApiRouter::new())
+            .to_openapi();
+        let value = serde_json::to_value(document).expect("OpenAPI document should serialize");
+        let paths = value["paths"].as_object().expect("OpenAPI paths object");
+
+        assert!(paths.contains_key("/admin/runtime/stories"));
+        assert!(paths.contains_key("/admin/runtime/stories/{correlation_id}"));
+        assert!(paths.contains_key("/admin/runtime/stories/{correlation_id}/heatmap"));
+        assert!(
+            paths.contains_key("/admin/runtime/stories/{correlation_id}/technical-operations")
+        );
     }
 
     #[test]

@@ -80,12 +80,7 @@ fn install_admin_module_metadata(metadata: Vec<platform_admin_data::AdminModuleM
 }
 
 fn install_platform_admin_catalogs(metadata: &[platform_admin_data::AdminModuleMetadata]) {
-    story::backend::install_story_display(
-        metadata
-            .iter()
-            .flat_map(|module| module.story_display.clone())
-            .collect(),
-    );
+    app_bootstrap::install_story_display_catalog(metadata);
     platform_admin::install_runtime_function_declarations(
         platform_admin::runtime_function_declarations_from_modules(
             app_bootstrap::runtime_function_declaration_sources_from_metadata(metadata),

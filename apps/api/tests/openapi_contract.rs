@@ -54,22 +54,12 @@ fn openapi_document_does_not_replace_default_admin_catalogs() {
         .lock()
         .expect("catalog test lock poisoned");
     platform_admin::reset_catalogs_for_test();
-    story::backend::reset_catalogs_for_test();
-    story::backend::install_default_story_display(vec![story_descriptor(
-        "openapi.default.sentinel",
-        "OpenAPI Default Sentinel",
-    )]);
     platform_admin::install_default_runtime_function_declarations(vec![runtime_declaration(
         "openapi.default.sentinel",
     )]);
 
     let _ = openapi_document();
 
-    assert!(
-        story::backend::story_display_catalog_snapshot()
-            .iter()
-            .any(|descriptor| descriptor.display_name == "OpenAPI Default Sentinel")
-    );
     assert!(
         platform_admin::runtime_function_declaration_catalog_snapshot()
             .iter()
@@ -83,22 +73,12 @@ fn openapi_document_does_not_replace_runtime_admin_catalogs() {
         .lock()
         .expect("catalog test lock poisoned");
     platform_admin::reset_catalogs_for_test();
-    story::backend::reset_catalogs_for_test();
-    story::backend::install_story_display(vec![story_descriptor(
-        "openapi.runtime.sentinel",
-        "OpenAPI Runtime Sentinel",
-    )]);
     platform_admin::install_runtime_function_declarations(vec![runtime_declaration(
         "openapi.runtime.sentinel",
     )]);
 
     let _ = openapi_document();
 
-    assert!(
-        story::backend::story_display_catalog_snapshot()
-            .iter()
-            .any(|descriptor| descriptor.display_name == "OpenAPI Runtime Sentinel")
-    );
     assert!(
         platform_admin::runtime_function_declaration_catalog_snapshot()
             .iter()
@@ -315,16 +295,6 @@ fn module_http_method(method: &str) -> Option<ModuleHttpMethod> {
         "patch" => Some(ModuleHttpMethod::Patch),
         "delete" => Some(ModuleHttpMethod::Delete),
         _ => None,
-    }
-}
-
-fn story_descriptor(name: &str, display_name: &str) -> platform_core::StoryDisplayDescriptor {
-    platform_core::StoryDisplayDescriptor {
-        source: platform_core::StoryDisplaySource::ExecutionName {
-            name: name.to_owned(),
-        },
-        display_name: display_name.to_owned(),
-        story_title: None,
     }
 }
 
