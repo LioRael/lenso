@@ -225,8 +225,6 @@ pub fn router() -> ApiOpenApiRouter {
     OpenApiRouter::new()
         .routes(routes!(get_summary))
         .routes(routes!(get_heatmap))
-        .routes(routes!(get_story_heatmap))
-        .routes(routes!(get_story_technical_operations))
         .routes(routes!(get_execution_technical_operations))
         .routes(routes!(get_execution_payload))
         .routes(routes!(get_execution_logs))
