@@ -15,6 +15,7 @@ platform-http.workspace = true
 platform-runtime.workspace = true
 identity.workspace = true
 notifications.workspace = true
+story.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 

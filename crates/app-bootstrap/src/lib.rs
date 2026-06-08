@@ -29,9 +29,8 @@ use platform_core::{
 };
 use platform_http::ApiOpenApiRouter;
 use platform_module::{
-    AdminSchema, AdminSurface, ConsoleArea, ConsolePackage, ConsoleSurface,
-    LifecycleActivationRunPolicy, LifecycleStartupCheckKind, LinkedBinding, Module,
-    ModuleLoadStatus, ModuleManifest, ModuleSource,
+    AdminSchema, AdminSurface, LifecycleActivationRunPolicy, LifecycleStartupCheckKind,
+    LinkedBinding, Module, ModuleLoadStatus, ModuleManifest, ModuleSource,
 };
 use platform_module_remote::{RemoteHttpProxyRegistry, RemoteModuleConfig, RemoteModuleSource};
 use platform_runtime::{
@@ -80,8 +79,8 @@ impl Default for CompositionProfile {
 
 const CORE_LINKED_MODULE_ENTRIES: &[LinkedModuleEntry] = &[LinkedModuleEntry {
     module_name: "platform-story",
-    manifest: platform_story_manifest,
-    load: platform_story_module,
+    manifest: story::module::manifest,
+    load: story::module::module,
     http_binding: None,
 }];
 
@@ -100,8 +99,8 @@ const DEMO_LINKED_MODULE_ENTRIES: &[LinkedModuleEntry] = &[
     },
     LinkedModuleEntry {
         module_name: "platform-story",
-        manifest: platform_story_manifest,
-        load: platform_story_module,
+        manifest: story::module::manifest,
+        load: story::module::module,
         http_binding: None,
     },
 ];
@@ -178,31 +177,6 @@ fn disabled_linked_module_entries_for_context(
             .filter(|entry| !linked_module_enabled(ctx, entry.module_name))
             .collect(),
     )
-}
-
-const STORY_CONSOLE_CAPABILITY: &str = "runtime.stories.read";
-
-fn platform_story_manifest() -> ModuleManifest {
-    ModuleManifest::builder("platform-story")
-        .capabilities(vec![STORY_CONSOLE_CAPABILITY.to_owned()])
-        .console(vec![ConsoleSurface {
-            name: "stories".to_owned(),
-            label: "Stories".to_owned(),
-            area: ConsoleArea::Runtime,
-            route: "/runtime/stories".to_owned(),
-            package: ConsolePackage {
-                name: "@lenso/story-console".to_owned(),
-                export: "storyConsoleModule".to_owned(),
-            },
-            icon: Some("workflow".to_owned()),
-            required_capabilities: vec![STORY_CONSOLE_CAPABILITY.to_owned()],
-            navigation: None,
-        }])
-        .build()
-}
-
-fn platform_story_module(_ctx: &AppContext) -> Module {
-    Module::linked(platform_story_manifest(), LinkedBinding::builder().build())
 }
 
 /// Demo-default linked modules helper (context-bound: builds bindings).

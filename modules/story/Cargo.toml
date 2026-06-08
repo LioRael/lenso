@@ -1,0 +1,15 @@
+[package]
+name = "story"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+platform-core.workspace = true
+platform-module.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true
