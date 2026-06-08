@@ -1275,6 +1275,7 @@ const updateConsolePackageInstallPlan = async ({
     }),
     manifestReference,
     moduleName,
+    restartRequired: true,
   });
   return `${JSON.stringify({ modules, version: 1 }, null, 2)}\n`;
 };

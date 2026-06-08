@@ -717,6 +717,7 @@ describe("module scaffold CLI", () => {
             },
           ],
           moduleName: "billing",
+          restartRequired: true,
         },
       ],
       version: 1,

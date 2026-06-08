@@ -749,6 +749,11 @@ function MissingConsolePackagesTable({
           {rows.length}
         </span>
       </header>
+      <div className="border-b border-(--border-subtle) px-3 py-2 text-[11px] text-(--secondary)">
+        Run <code>lenso console-package apply-plan</code>, then{" "}
+        <code>pnpm --dir apps/runtime-console install</code>. Restart the API
+        and worker after package changes.
+      </div>
       <div className="overflow-auto">
         <table className="w-full min-w-[820px] table-fixed">
           <thead className="bg-(--sidebar) text-[10px] uppercase tracking-wide text-(--muted)">
@@ -957,7 +962,15 @@ function ModuleOperationsPanel({
           },
           {
             label: "restart pending",
-            value: module.source === "linked" ? String(restartPending) : "-",
+            value: restartPending ? "true" : "false",
+          },
+          {
+            label: "next step",
+            value: restartPending
+              ? "restart API and worker to apply the desired module state"
+              : isRemote
+                ? "module is loaded; use declared host proxy endpoints"
+                : "linked module state is current",
           },
           {
             label: "reason",
