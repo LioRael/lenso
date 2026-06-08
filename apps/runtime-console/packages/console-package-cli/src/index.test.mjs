@@ -669,17 +669,25 @@ describe("module scaffold CLI", () => {
       "APP_ENV=local\nREMOTE_MODULES=remote-crm=http://127.0.0.1:4100/lenso/module/v1\nRUST_LOG=info\n"
     );
 
-    await expect(
-      runConsolePackageCli([
-        "module",
-        "add",
-        pathToFileURL(manifestPath).href,
-        "--repo-root",
-        repoRoot,
-        "--base-url",
-        "http://127.0.0.1:4200/lenso/module/v1",
-      ])
-    ).resolves.toBe(0);
+    const logs = [];
+    const logSpy = vi.spyOn(console, "log").mockImplementation((message) => {
+      logs.push(String(message));
+    });
+    try {
+      await expect(
+        runConsolePackageCli([
+          "module",
+          "add",
+          pathToFileURL(manifestPath).href,
+          "--repo-root",
+          repoRoot,
+          "--base-url",
+          "http://127.0.0.1:4200/lenso/module/v1",
+        ])
+      ).resolves.toBe(0);
+    } finally {
+      logSpy.mockRestore();
+    }
 
     const envFile = await readFile(path.join(repoRoot, ".env"), "utf-8");
     expect(envFile).toContain(
@@ -713,6 +721,19 @@ describe("module scaffold CLI", () => {
       ],
       version: 1,
     });
+    const output = logs.join("\n");
+    expect(output).toContain("Added remote module billing.");
+    expect(output).toContain("Updated:");
+    expect(output).toContain("- .env");
+    expect(output).toContain("- .lenso/console-package-install-plan.json");
+    expect(output).toContain("Next steps:");
+    expect(output).toContain("- lenso console-package apply-plan");
+    expect(output).toContain("- pnpm --dir apps/runtime-console install");
+    expect(output).toContain("- restart the API and worker");
+    expect(output).not.toContain("review");
+    expect(output).not.toContain("doctor");
+    expect(output).not.toContain("hardening");
+    expect(output).not.toContain("publisher");
   });
 
   test("derives the remote base url from protocol manifest urls", async () => {

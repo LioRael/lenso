@@ -47,6 +47,19 @@ manifest URL ends in `/manifest`, then writes host-local state:
 - `.lenso/console-package-install-plan.json`: records requested Runtime Console
   packages and their install commands.
 
+Expected CLI output points at the same short path:
+
+```text
+Added remote module billing.
+Updated:
+- .env
+- .lenso/console-package-install-plan.json
+Next steps:
+- lenso console-package apply-plan
+- pnpm --dir apps/runtime-console install
+- restart the API and worker
+```
+
 Apply the generated console package install plan:
 
 ```sh

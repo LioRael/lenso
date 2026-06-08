@@ -1323,14 +1323,13 @@ const addRemoteModule = async ({ manifestReference, options }) => {
   await writeFile(installPlanPath, installPlan);
 
   console.log(`Added remote module ${remoteModule.name}.`);
+  console.log("Updated:");
+  console.log(`- ${path.relative(repoRoot, envFilePath)}`);
+  console.log(`- ${path.relative(repoRoot, installPlanPath)}`);
   console.log("Next steps:");
-  console.log(
-    `- run console package install commands from ${path.relative(repoRoot, installPlanPath)}`
-  );
-  console.log("- restart the API and worker so REMOTE_MODULES is reloaded");
-  console.log(
-    "- open the Runtime Console module registry and workspace switcher to verify the remote source"
-  );
+  console.log("- lenso console-package apply-plan");
+  console.log("- pnpm --dir apps/runtime-console install");
+  console.log("- restart the API and worker");
 };
 
 const createConsolePackage = async ({ defaultRuntimeConsoleRoot, options }) => {
