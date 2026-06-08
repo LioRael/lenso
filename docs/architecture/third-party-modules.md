@@ -137,7 +137,7 @@ capabilities must match the backend `ConsoleSurface`.
 
 The host is responsible for:
 
-- module source configuration and install policy
+- module source configuration
 - manifest fetch, validation, linting, and compatibility checks
 - capability enforcement
 - HTTP proxy routing and header policy
@@ -146,7 +146,8 @@ The host is responsible for:
 - persisted Runtime Story and Technical Operations records
 - admin action authorization and projection
 - console package installation and registry resolution
-- signature, provenance, and publisher key trust checks
+- optional signature, provenance, and publisher key trust checks when a host
+  chooses a curated production policy
 
 Remote modules must not write host runtime tables, consume host outbox rows,
 receive caller bearer tokens, or claim host-owned story/function-run records.
@@ -167,6 +168,8 @@ Current Runtime Console support includes:
 - workspace-installed console packages
 - package manifests derived into install metadata
 - module metadata showing missing frontend package install plans
+- low-friction remote install through `lenso module add <manifest-url>` and
+  `lenso module marketplace install <manifest-url>`
 - host-local publisher key trust through `lenso module publisher list`,
   `lenso module publisher doctor`, `lenso module publisher trust`, and
   `lenso module publisher revoke`
@@ -213,37 +216,18 @@ Third-party scaffolding uses a separate remote-oriented lane:
 
 ```sh
 pnpm create:module billing --remote --output-dir ../module-packages
-lenso module publisher list
-lenso module publisher doctor
-lenso module publisher trust "Acme Billing" acme-ed25519-2026 --public-key-file ./acme-ed25519.pem
-lenso module registry add billing \
-  --manifest https://example.com/lenso/module/v1/manifest \
-  --base-url https://example.com/lenso/module/v1 \
-  --version 0.1.0 \
-  --capability billing.read \
-  --console-package '@vendor/lenso-billing-console#billingConsoleModule' \
-  --route /data/billing \
-  --publisher "Acme Billing" \
-  --source-repository https://github.com/acme/lenso-billing-module \
-  --package-url https://packages.example.com/lenso-billing-0.1.0.tgz \
-  --checksum sha256:<hex> \
-  --signature-url https://packages.example.com/lenso-billing-0.1.0.tgz.sig \
-  --public-key-id acme-ed25519-2026
-lenso module registry list --registry-file .lenso/module-registry.json
-lenso module registry doctor --registry-file .lenso/module-registry.json
-lenso module registry inspect billing --registry-file .lenso/module-registry.json
-lenso module registry review billing --registry-file .lenso/module-registry.json
-lenso module registry install billing --registry-file .lenso/module-registry.json
-lenso module registry remove billing --reason "replaced by billing-v2"
-lenso module registry restore billing --reason "billing-v2 rollback"
-lenso module marketplace export
-lenso module marketplace import .lenso/marketplace-bundle.json
 lenso module add https://example.com/lenso/module/v1/manifest
+lenso module marketplace install https://example.com/lenso/module/v1/manifest
 lenso console-package apply-plan
 lenso module doctor
 ```
 
-Module Registry v0 is a local catalog and preflight layer, not a marketplace.
+The default install path is user-driven: see a module, install from its
+manifest, apply the console package plan, restart the host, and verify. It does
+not require publisher keys, registry review, history, or bundle import/export.
+
+Module Registry v0 is an optional local catalog and preflight layer, not a
+required marketplace gate.
 The catalog maps a module name to a remote manifest reference, optional base
 URL, capabilities, and console package hints:
 
@@ -294,7 +278,9 @@ Registry review also enforces compatibility before installation. Catalog
 entries can declare supported Lenso host versions and console package API
 versions through `compatibility`; incompatible modules are blocked before host
 files are written.
-Publisher trust is host-local. The host stores trusted publisher keys in:
+
+Publisher trust is host-local and optional. Hosts that want a curated
+production policy can store trusted publisher keys in:
 
 ```sh
 lenso module publisher trust "Acme Billing" acme-ed25519-2026 --public-key-file ./acme-ed25519.pem
@@ -325,6 +311,10 @@ and the Signature Verify v0 gate verifies `ed25519-detached` signatures against
 the trusted publisher key selected by `publisher` and `publicKeyId`.
 `pnpm --dir apps/runtime-console run demo:module-registry-install` exercises the
 same sequence against a temporary host fixture without mutating the working tree.
+
+These trust, signature, provenance, history, doctor, and bundle commands are
+advanced hardening tools. They must not be presented as prerequisites for the
+normal marketplace install path.
 
 If the manifest is installed from a local file or non-protocol URL, pass the
 runtime module base URL explicitly:

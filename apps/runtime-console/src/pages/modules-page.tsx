@@ -333,11 +333,18 @@ function ModuleRegistryCatalogPanel({
   rows: ReturnType<typeof availableModuleRegistrySnapshotRows>;
   selectedAvailableModuleName: string | null;
 }) {
+  const selectedAvailableModule = rows.find(
+    (row) =>
+      row.name ===
+      availableModuleRegistryTargetModuleName({
+        currentModuleName: moduleName,
+        selectedAvailableModuleName,
+      })
+  );
   const commands = moduleRegistryHandoffCommands(
-    availableModuleRegistryTargetModuleName({
-      currentModuleName: moduleName,
-      selectedAvailableModuleName,
-    })
+    selectedAvailableModule
+      ? { manifestReference: selectedAvailableModule.manifestReference }
+      : {}
   );
   const [copiedCommandKey, setCopiedCommandKey] = useState<string | null>(null);
   const copyCommand = (key: string, command: string) => {
@@ -406,8 +413,7 @@ function ModuleRegistryCatalogPanel({
               </div>
               <div className="truncate text-[9px] text-(--muted)">
                 {row.source} / caps {row.capabilityCount} / console{" "}
-                {row.consolePackageHintCount} / policy {row.installPolicy} /
-                publisher {row.provenancePublisher}
+                {row.consolePackageHintCount}
               </div>
               {row.preflightFix ? (
                 <div className="truncate text-[9px] text-(--warning)">

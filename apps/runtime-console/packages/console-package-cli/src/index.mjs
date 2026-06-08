@@ -3726,7 +3726,13 @@ const createProgram = ({ defaultRuntimeConsoleRoot } = {}) => {
     .addHelpText(
       "after",
       `
-Third-party remote module flow:
+Remote module install:
+  lenso module add <manifest-url>
+  lenso module marketplace install <manifest-url>
+  lenso console-package apply-plan
+  lenso module doctor
+
+Advanced registry and hardening:
   lenso module publisher list
   lenso module publisher doctor
   lenso module publisher trust <publisher> <public-key-id>
@@ -3742,9 +3748,6 @@ Third-party remote module flow:
   lenso module registry history
   lenso module marketplace export
   lenso module marketplace import <bundle>
-  lenso module add <manifest-url>
-  lenso console-package apply-plan
-  lenso module doctor
 `
     );
   addSharedCreateOptions(
@@ -3771,7 +3774,14 @@ Third-party remote module flow:
 
   const marketplaceCommand = moduleCommand
     .command("marketplace")
-    .description("export local module marketplace bundles");
+    .description("install modules and exchange local marketplace bundles");
+  addRemoteModuleOptions(
+    marketplaceCommand
+      .command("install <manifestReference>")
+      .description("install a remote module from its manifest")
+  ).action(async (manifestReference, options) => {
+    await addRemoteModule({ manifestReference, options });
+  });
   addModuleMarketplaceExportOptions(
     marketplaceCommand
       .command("export")

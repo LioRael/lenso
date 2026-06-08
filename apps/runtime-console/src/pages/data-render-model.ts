@@ -662,51 +662,16 @@ export function filterModuleRegistry(
   });
 }
 
-export function moduleRegistryHandoffCommands(
-  moduleName = "<module>"
-): ModuleRegistryHandoffCommand[] {
+export function moduleRegistryHandoffCommands({
+  manifestReference = "<manifest-url>",
+}: {
+  manifestReference?: string;
+} = {}): ModuleRegistryHandoffCommand[] {
   return [
     {
-      key: "publishers",
-      label: "keys",
-      command: "lenso module publisher list",
-    },
-    {
-      key: "trust-publisher",
-      label: "trust",
-      command:
-        "lenso module publisher trust <publisher> <public-key-id> --public-key-file <pem>",
-    },
-    {
-      key: "list",
-      label: "catalog",
-      command:
-        "lenso module registry list --registry-file .lenso/module-registry.json",
-    },
-    {
-      key: "inspect",
-      label: "preflight",
-      command: `lenso module registry review ${moduleName} --registry-file .lenso/module-registry.json`,
-    },
-    {
-      key: "install",
+      key: "add",
       label: "install",
-      command: `lenso module registry install ${moduleName} --registry-file .lenso/module-registry.json`,
-    },
-    {
-      key: "remove",
-      label: "archive",
-      command: `lenso module registry remove ${moduleName} --registry-file .lenso/module-registry.json --reason <reason>`,
-    },
-    {
-      key: "restore",
-      label: "restore",
-      command: `lenso module registry restore ${moduleName} --registry-file .lenso/module-registry.json --reason <reason>`,
-    },
-    {
-      key: "history",
-      label: "history",
-      command: "lenso module registry history",
+      command: `lenso module add ${manifestReference}`,
     },
     {
       key: "apply-plan",
@@ -717,12 +682,6 @@ export function moduleRegistryHandoffCommands(
       key: "doctor",
       label: "verify",
       command: "lenso module doctor",
-    },
-    {
-      key: "demo",
-      label: "smoke",
-      command:
-        "pnpm --dir apps/runtime-console run demo:module-registry-install",
     },
   ];
 }

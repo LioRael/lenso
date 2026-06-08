@@ -780,53 +780,17 @@ describe("module status helpers", () => {
     ).toEqual([]);
   });
 
-  test("builds module registry install handoff commands", () => {
-    expect(moduleRegistryHandoffCommands("billing")).toEqual([
+  test("builds low-friction module install handoff commands", () => {
+    expect(
+      moduleRegistryHandoffCommands({
+        manifestReference: "https://example.com/lenso/module/v1/manifest",
+      })
+    ).toEqual([
       {
-        key: "publishers",
-        label: "keys",
-        command: "lenso module publisher list",
-      },
-      {
-        key: "trust-publisher",
-        label: "trust",
-        command:
-          "lenso module publisher trust <publisher> <public-key-id> --public-key-file <pem>",
-      },
-      {
-        key: "list",
-        label: "catalog",
-        command:
-          "lenso module registry list --registry-file .lenso/module-registry.json",
-      },
-      {
-        key: "inspect",
-        label: "preflight",
-        command:
-          "lenso module registry review billing --registry-file .lenso/module-registry.json",
-      },
-      {
-        key: "install",
+        key: "add",
         label: "install",
         command:
-          "lenso module registry install billing --registry-file .lenso/module-registry.json",
-      },
-      {
-        key: "remove",
-        label: "archive",
-        command:
-          "lenso module registry remove billing --registry-file .lenso/module-registry.json --reason <reason>",
-      },
-      {
-        key: "restore",
-        label: "restore",
-        command:
-          "lenso module registry restore billing --registry-file .lenso/module-registry.json --reason <reason>",
-      },
-      {
-        key: "history",
-        label: "history",
-        command: "lenso module registry history",
+          "lenso module add https://example.com/lenso/module/v1/manifest",
       },
       {
         key: "apply-plan",
@@ -837,12 +801,6 @@ describe("module status helpers", () => {
         key: "doctor",
         label: "verify",
         command: "lenso module doctor",
-      },
-      {
-        key: "demo",
-        label: "smoke",
-        command:
-          "pnpm --dir apps/runtime-console run demo:module-registry-install",
       },
     ]);
   });

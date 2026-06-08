@@ -2947,6 +2947,8 @@ describe("module scaffold CLI", () => {
       "utf-8"
     );
     expect(flowDoc).toContain("lenso module add");
+    expect(flowDoc).toContain("lenso module marketplace install");
+    expect(flowDoc).toContain("## Advanced Hardening");
     expect(flowDoc).toContain("lenso module publisher list");
     expect(flowDoc).toContain("lenso module publisher doctor");
     expect(flowDoc).toContain("lenso module publisher trust");
@@ -2961,7 +2963,7 @@ describe("module scaffold CLI", () => {
     expect(flowDoc).toContain("lenso module registry doctor --registry-file");
     expect(flowDoc).toContain("/admin/data/module-registry/snapshot");
     expect(flowDoc).toContain("Available Modules");
-    expect(flowDoc).toContain("does not install modules");
+    expect(flowDoc).toContain("does not require publisher keys");
     expect(flowDoc).toContain("lenso module registry inspect");
     expect(flowDoc).toContain("lenso module registry review");
     expect(flowDoc).toContain("lenso module registry install");
@@ -3004,14 +3006,15 @@ describe("module scaffold CLI", () => {
     );
 
     expect(architectureDoc).toContain("remote module install CLI");
+    expect(architectureDoc).toContain("lenso module marketplace install");
+    expect(architectureDoc).toContain("advanced hardening tools");
     expect(architectureDoc).toContain("Module Registry v0");
     expect(architectureDoc).toContain("module publisher list");
     expect(architectureDoc).toContain("module publisher doctor");
     expect(architectureDoc).toContain("module publisher trust");
     expect(architectureDoc).toContain("module publisher revoke");
     expect(architectureDoc).toContain("module registry add");
-    expect(architectureDoc).toContain("module registry remove");
-    expect(architectureDoc).toContain("module registry restore");
+    expect(architectureDoc).toContain("module registry remove`/`restore");
     expect(architectureDoc).toContain("module marketplace export");
     expect(architectureDoc).toContain("module marketplace import");
     expect(architectureDoc).toContain("module registry list");
@@ -3033,8 +3036,10 @@ describe("module scaffold CLI", () => {
       "--help",
     ]);
 
-    expect(stdout).toContain("Third-party remote module flow");
+    expect(stdout).toContain("Remote module install");
     expect(stdout).toContain("lenso module add <manifest-url>");
+    expect(stdout).toContain("lenso module marketplace install <manifest-url>");
+    expect(stdout).toContain("Advanced registry and hardening");
     expect(stdout).toContain("lenso module publisher list");
     expect(stdout).toContain("lenso module publisher doctor");
     expect(stdout).toContain(
@@ -3272,6 +3277,32 @@ describe("module scaffold CLI", () => {
       runConsolePackageCli([
         "module",
         "add",
+        manifestUrl,
+        "--repo-root",
+        repoRoot,
+      ])
+    ).resolves.toBe(0);
+
+    await expect(readFile(path.join(repoRoot, ".env"), "utf-8")).resolves.toBe(
+      `REMOTE_MODULES=billing=${manifestUrl.slice(0, -"/manifest".length)}\n`
+    );
+  });
+
+  test("installs a marketplace module from a manifest url", async () => {
+    const repoRoot = await createRepoFixture();
+    const manifestUrl = await serveManifest({
+      capabilities: ["billing.read"],
+      console: [],
+      name: "billing",
+      source: "remote",
+      version: "0.1.0",
+    });
+
+    await expect(
+      runConsolePackageCli([
+        "module",
+        "marketplace",
+        "install",
         manifestUrl,
         "--repo-root",
         repoRoot,
