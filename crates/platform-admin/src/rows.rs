@@ -145,39 +145,6 @@ pub(crate) struct RuntimeNodeRef {
     pub(crate) correlation_id: String,
 }
 
-#[derive(Debug, Clone)]
-pub(crate) struct StoryWorkRow {
-    pub(crate) item_type: String,
-    pub(crate) id: String,
-    pub(crate) name: String,
-    pub(crate) status: String,
-    pub(crate) attempts: i32,
-    pub(crate) max_attempts: i32,
-    pub(crate) correlation_id: String,
-    pub(crate) created_at: DateTime<Utc>,
-    pub(crate) started_at: Option<DateTime<Utc>>,
-    pub(crate) completed_at: Option<DateTime<Utc>>,
-    pub(crate) last_error: Option<String>,
-    pub(crate) metadata: Value,
-}
-
-pub(crate) type StoryWorkTuple = (
-    String,
-    String,
-    String,
-    String,
-    i32,
-    i32,
-    String,
-    Option<String>,
-    String,
-    DateTime<Utc>,
-    Option<DateTime<Utc>>,
-    Option<DateTime<Utc>>,
-    Option<String>,
-    Value,
-);
-
 impl From<OutboxAdminRow> for AdminOutboxEvent {
     fn from(row: OutboxAdminRow) -> Self {
         let (
@@ -482,42 +449,6 @@ impl From<StoryEventDetailRow> for StoryEventDetail {
     }
 }
 
-impl From<StoryWorkTuple> for StoryWorkRow {
-    fn from(row: StoryWorkTuple) -> Self {
-        let (
-            item_type,
-            id,
-            name,
-            status,
-            attempts,
-            max_attempts,
-            correlation_id,
-            _causation_id,
-            _service,
-            created_at,
-            started_at,
-            completed_at,
-            last_error,
-            metadata,
-        ) = row;
-
-        Self {
-            item_type,
-            id,
-            name,
-            status,
-            attempts,
-            max_attempts,
-            correlation_id,
-            created_at,
-            started_at,
-            completed_at,
-            last_error,
-            metadata,
-        }
-    }
-}
-
 impl From<HeatmapRow> for AdminRuntimeHeatmapCell {
     fn from(row: HeatmapRow) -> Self {
         let (
@@ -619,44 +550,5 @@ impl From<ExecutionLogRow> for AdminRuntimeExecutionLog {
             span_id: row.span_id,
             redacted_fields: row.redacted_fields,
         }
-    }
-}
-
-impl From<&StoryWorkRow> for AdminRuntimeTimelineItem {
-    fn from(row: &StoryWorkRow) -> Self {
-        Self {
-            item_type: timeline_item_type(&row.item_type, &row.status, row.attempts).to_owned(),
-            id: row.id.clone(),
-            name: row.name.clone(),
-            status: row.status.clone(),
-            attempts: row.attempts,
-            max_attempts: row.max_attempts,
-            created_at: row.created_at,
-            started_at: row.started_at,
-            completed_at: row.completed_at,
-            last_error: row.last_error.clone(),
-            correlation_id: row.correlation_id.clone(),
-            related_node_id: Some(row.id.clone()),
-        }
-    }
-}
-
-pub(crate) fn timeline_item_type(item_type: &str, status: &str, attempts: i32) -> &'static str {
-    if status == "dead" {
-        return "dead_letter";
-    }
-    if status == "failed" {
-        return "failure";
-    }
-    if attempts > 1 {
-        return "retry";
-    }
-    match item_type {
-        "http" | "http_request" => "http_request",
-        "event" | "outbox_event" => "outbox_event",
-        "function" | "function_run" => "function_run",
-        "remote_proxy_call" => "remote_proxy_call",
-        "admin_action" => "admin_action",
-        _ => "runtime",
     }
 }

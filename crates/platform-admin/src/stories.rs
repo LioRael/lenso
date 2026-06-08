@@ -20,12 +20,6 @@ impl RuntimeNodeIndex {
     }
 }
 
-pub(crate) fn runtime_node_index(rows: &[StoryWorkRow]) -> RuntimeNodeIndex {
-    RuntimeNodeIndex {
-        ids: rows.iter().map(|row| row.id.clone()).collect(),
-    }
-}
-
 pub(crate) fn execution_payload_from_outbox(
     detail: AdminOutboxEventDetail,
 ) -> AdminRuntimeExecutionPayload {
@@ -135,17 +129,6 @@ pub(crate) fn execution_payload_from_story_event(
     }
 }
 
-pub(crate) fn row_duration_ms(row: &StoryWorkRow) -> i64 {
-    let Some(started_at) = row.started_at else {
-        return 0;
-    };
-    row.completed_at
-        .unwrap_or(started_at)
-        .signed_duration_since(started_at)
-        .num_milliseconds()
-        .max(0)
-}
-
 pub(crate) fn runtime_status(
     outbox: &AdminRuntimeOutboxSummary,
     functions: &AdminRuntimeFunctionSummary,
@@ -188,26 +171,6 @@ mod tests {
     use serde_json::Value;
 
     #[test]
-    fn timeline_item_type_preserves_failure_retry_and_dead_letter_kinds() {
-        assert_eq!(timeline_item_type("event", "published", 1), "outbox_event");
-        assert_eq!(
-            timeline_item_type("outbox_event", "published", 1),
-            "outbox_event"
-        );
-        assert_eq!(
-            timeline_item_type("function", "completed", 1),
-            "function_run"
-        );
-        assert_eq!(
-            timeline_item_type("function_run", "completed", 1),
-            "function_run"
-        );
-        assert_eq!(timeline_item_type("function", "completed", 2), "retry");
-        assert_eq!(timeline_item_type("function", "failed", 2), "failure");
-        assert_eq!(timeline_item_type("event", "dead", 3), "dead_letter");
-    }
-
-    #[test]
     fn technical_operation_dto_serializes_business_friendly_shape() {
         let operation = AdminRuntimeTechnicalOperation {
             attributes: serde_json::json!({ "db.system": "postgresql" }),
@@ -234,12 +197,6 @@ mod tests {
 
     #[test]
     fn telemetry_span_maps_known_function_run_to_execution_node() {
-        let rows = vec![story_row(
-            "function",
-            "fnrun_test",
-            None,
-            "2026-05-31T00:00:00Z",
-        )];
         let operations = technical_operations_from_spans(
             vec![telemetry_span(
                 "span_function",
@@ -250,7 +207,7 @@ mod tests {
                     "db.system": "postgresql"
                 }),
             )],
-            &runtime_node_index(&rows),
+            &RuntimeNodeIndex::single("fnrun_test".to_owned()),
         );
 
         assert_eq!(operations.len(), 1);
@@ -260,7 +217,6 @@ mod tests {
 
     #[test]
     fn telemetry_span_maps_known_outbox_event_to_execution_node() {
-        let rows = vec![story_row("event", "evt_test", None, "2026-05-31T00:00:00Z")];
         let operations = technical_operations_from_spans(
             vec![telemetry_span(
                 "span_outbox",
@@ -271,7 +227,7 @@ mod tests {
                     "lenso.execution.kind": "outbox_event"
                 }),
             )],
-            &runtime_node_index(&rows),
+            &RuntimeNodeIndex::single("evt_test".to_owned()),
         );
 
         assert_eq!(operations[0].related_node_id.as_deref(), Some("evt_test"));
@@ -289,7 +245,7 @@ mod tests {
                     "http.request.method": "GET"
                 }),
             )],
-            &runtime_node_index(&[]),
+            &RuntimeNodeIndex::default(),
         );
 
         assert_eq!(operations[0].related_node_id, None);
@@ -310,7 +266,7 @@ mod tests {
                     "user.email": "a@example.test"
                 }),
             )],
-            &runtime_node_index(&[]),
+            &RuntimeNodeIndex::default(),
         );
 
         assert_eq!(operations[0].attributes["db.system"], "postgresql");
@@ -322,32 +278,6 @@ mod tests {
                 .is_none()
         );
         assert!(operations[0].attributes.get("user.email").is_none());
-    }
-
-    fn story_row(
-        item_type: &str,
-        id: &str,
-        _causation_id: Option<&str>,
-        created_at: &str,
-    ) -> StoryWorkRow {
-        StoryWorkRow {
-            item_type: item_type.to_owned(),
-            id: id.to_owned(),
-            name: id.to_owned(),
-            status: if item_type == "event" {
-                "published".to_owned()
-            } else {
-                "completed".to_owned()
-            },
-            attempts: 1,
-            max_attempts: 3,
-            correlation_id: "corr_test".to_owned(),
-            created_at: parse_time(created_at),
-            started_at: Some(parse_time(created_at)),
-            completed_at: Some(parse_time(created_at)),
-            last_error: None,
-            metadata: Value::Object(Default::default()),
-        }
     }
 
     fn parse_time(value: &str) -> DateTime<Utc> {
