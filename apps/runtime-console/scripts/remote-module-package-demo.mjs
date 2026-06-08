@@ -166,6 +166,19 @@ const main = async () => {
       stdio: ["ignore", "pipe", "pipe"],
     });
     const manifestUrl = await readManifestUrlFromProcess(backendProcess);
+    const moduleBaseUrl = manifestUrl.slice(0, -"/manifest".length);
+    const schemaPage = await fetch(`${moduleBaseUrl}/admin/contacts`).then(
+      (response) => response.json()
+    );
+    if (schemaPage.records?.[0]?.email !== "ada@example.com") {
+      throw new Error("schema-admin list endpoint did not return contacts");
+    }
+    const schemaDetail = await fetch(
+      `${moduleBaseUrl}/admin/contacts/contact_1`
+    ).then((response) => response.json());
+    if (schemaDetail.record?.name !== "Ada Lovelace") {
+      throw new Error("schema-admin detail endpoint did not return contact");
+    }
 
     await runConsolePackageCli([
       "module",
@@ -206,11 +219,7 @@ const main = async () => {
       "catalog"
     );
     const envFile = await readFile(path.join(hostRoot, ".env"), "utf-8");
-    assertContains(
-      envFile,
-      `REMOTE_MODULES=billing=${manifestUrl.slice(0, -"/manifest".length)}`,
-      ".env"
-    );
+    assertContains(envFile, `REMOTE_MODULES=billing=${moduleBaseUrl}`, ".env");
     const installPlan = await readFile(
       path.join(hostRoot, ".lenso/console-package-install-plan.json"),
       "utf-8"

@@ -724,7 +724,36 @@ const queueRemoteConsolePackageFiles = ({ packageContext, pendingWrites }) => {
 };
 
 const remoteManifestJson = ({ packageContext }) => ({
-  admin: null,
+  admin: {
+    entities: [
+      {
+        fields: [
+          {
+            field_type: { kind: "string" },
+            label: "Email",
+            name: "email",
+            nullable: false,
+          },
+          {
+            field_type: { kind: "string" },
+            label: "Name",
+            name: "name",
+            nullable: false,
+          },
+          {
+            field_type: { kind: "timestamp" },
+            label: "Created At",
+            name: "created_at",
+            nullable: false,
+          },
+        ],
+        label: "Contacts",
+        name: "contacts",
+        read_capability: packageContext.capability,
+      },
+    ],
+    kind: "schema",
+  },
   capabilities: [packageContext.capability],
   console: [
     {
@@ -881,10 +910,37 @@ const remoteBackendPackageJson = ({ moduleId }) =>
 
 const remoteBackendServer = ({ packageContext }) => `import {
   defineRemoteModule,
+  defineSchemaEntity,
+  schemaAdmin,
   serveRemoteModule,
+  textField,
+  timestampField,
 } from "@lenso/remote-module-kit";
 
+const contacts = [
+  {
+    id: "contact_1",
+    created_at: "2026-01-01T00:00:00Z",
+    email: "ada@example.com",
+    name: "Ada Lovelace",
+  },
+  {
+    id: "contact_2",
+    created_at: "2026-01-02T00:00:00Z",
+    email: "grace@example.com",
+    name: "Grace Hopper",
+  },
+];
+
+const contactsEntity = defineSchemaEntity({
+  fields: [textField("email"), textField("name"), timestampField("created_at")],
+  label: "Contacts",
+  name: "contacts",
+  readCapability: "${packageContext.capability}",
+});
+
 const module = defineRemoteModule({
+  admin: schemaAdmin([contactsEntity]),
   capabilities: ["${packageContext.capability}"],
   console: [
     {
@@ -913,6 +969,15 @@ const module = defineRemoteModule({
 });
 
 await serveRemoteModule(module, {
+  data: {
+    contacts: {
+      detail: async (id) => contacts.find((contact) => contact.id === id),
+      list: async ({ limit }) => ({
+        next_cursor: null,
+        records: contacts.slice(0, limit),
+      }),
+    },
+  },
   port: Number(process.env.PORT ?? 4100),
   onReady: ({ manifestUrl }) => {
     console.log("${packageContext.moduleId} manifest: " + manifestUrl);

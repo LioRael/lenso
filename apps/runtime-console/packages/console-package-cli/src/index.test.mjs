@@ -610,6 +610,20 @@ describe("module scaffold CLI", () => {
       },
     });
     expect(manifest).toMatchObject({
+      admin: {
+        entities: [
+          {
+            fields: [
+              { field_type: { kind: "string" }, name: "email" },
+              { field_type: { kind: "string" }, name: "name" },
+              { field_type: { kind: "timestamp" }, name: "created_at" },
+            ],
+            name: "contacts",
+            read_capability: "billing.read",
+          },
+        ],
+        kind: "schema",
+      },
       capabilities: ["billing.read"],
       console: [
         {
@@ -689,7 +703,9 @@ describe("module scaffold CLI", () => {
       "utf-8"
     );
     expect(backendServer).toContain("defineRemoteModule");
+    expect(backendServer).toContain("defineSchemaEntity");
     expect(backendServer).toContain("serveRemoteModule");
+    expect(backendServer).toContain("contacts.slice(0, limit)");
     await expect(
       readFile(path.join(packageRoot, "backend/src/smoke.mjs"), "utf-8")
     ).resolves.toContain("backend smoke passed");
@@ -716,9 +732,26 @@ describe("module scaffold CLI", () => {
       response.json()
     );
     expect(servedManifest).toMatchObject({
+      admin: {
+        kind: "schema",
+      },
       name: "billing",
       source: "remote",
     });
+    await expect(
+      fetch(`${manifestUrl.slice(0, -"/manifest".length)}/admin/contacts`).then(
+        (response) => response.json()
+      )
+    ).resolves.toEqual(
+      expect.objectContaining({
+        records: expect.arrayContaining([
+          expect.objectContaining({
+            email: "ada@example.com",
+            id: "contact_1",
+          }),
+        ]),
+      })
+    );
     const consolePackageJson = JSON.parse(
       await readFile(path.join(packageRoot, "console/package.json"), "utf-8")
     );

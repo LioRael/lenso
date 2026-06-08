@@ -1,6 +1,16 @@
 import { describe, expect, test } from "vitest";
 
-import { defineRemoteModule, serveRemoteModule } from ".";
+import {
+  booleanField,
+  defineRemoteModule,
+  defineSchemaEntity,
+  integerField,
+  jsonField,
+  schemaAdmin,
+  serveRemoteModule,
+  textField,
+  timestampField,
+} from ".";
 
 describe("@lenso/remote-module-kit", () => {
   test("defines a serializable remote module manifest", () => {
@@ -64,6 +74,90 @@ describe("@lenso/remote-module-kit", () => {
         error: {
           code: "not_found",
         },
+      });
+    } finally {
+      await served.close();
+    }
+  });
+
+  test("defines schema-admin entities and serves list/detail data", async () => {
+    const contacts = defineSchemaEntity({
+      fields: [
+        textField("email"),
+        textField("name", { label: "Full name" }),
+        integerField("score", { nullable: true }),
+        booleanField("active"),
+        timestampField("created_at"),
+        jsonField("metadata"),
+      ],
+      label: "Contacts",
+      name: "contacts",
+      readCapability: "crm.contacts.read",
+    });
+    const manifest = defineRemoteModule({
+      admin: schemaAdmin([contacts]),
+      capabilities: ["crm.contacts.read"],
+      name: "crm",
+    });
+    expect(manifest.admin).toMatchObject({
+      entities: [
+        {
+          fields: [
+            {
+              field_type: { kind: "string" },
+              label: "Email",
+              name: "email",
+              nullable: false,
+            },
+            {
+              field_type: { kind: "string" },
+              label: "Full name",
+              name: "name",
+            },
+            {
+              field_type: { kind: "integer" },
+              name: "score",
+              nullable: true,
+            },
+            { field_type: { kind: "boolean" }, name: "active" },
+            { field_type: { kind: "timestamp" }, name: "created_at" },
+            { field_type: { kind: "json" }, name: "metadata" },
+          ],
+          name: "contacts",
+          read_capability: "crm.contacts.read",
+        },
+      ],
+      kind: "schema",
+    });
+
+    const served = await serveRemoteModule(manifest, {
+      data: {
+        contacts: {
+          detail: (id) =>
+            id === "contact_1" ? { email: "ada@example.com", id } : null,
+          list: ({ limit }) => ({
+            next_cursor: null,
+            records: [{ email: "ada@example.com", limit }],
+          }),
+        },
+      },
+      port: 0,
+    });
+    try {
+      await expect(
+        fetch(`${served.baseUrl}/admin/contacts?limit=2`).then((response) =>
+          response.json()
+        )
+      ).resolves.toEqual({
+        next_cursor: null,
+        records: [{ email: "ada@example.com", limit: 2 }],
+      });
+      await expect(
+        fetch(`${served.baseUrl}/admin/contacts/contact_1`).then((response) =>
+          response.json()
+        )
+      ).resolves.toEqual({
+        record: { email: "ada@example.com", id: "contact_1" },
       });
     } finally {
       await served.close();
