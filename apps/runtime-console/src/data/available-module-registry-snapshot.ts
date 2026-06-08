@@ -86,10 +86,10 @@ export function availableModuleRegistrySnapshotRows(
 }
 
 export type AvailableModuleRegistrySnapshotPanelState = {
-  kind: "loading" | "error" | "empty" | "issues" | "ready";
+  kind: "loading" | "error" | "empty" | "ready";
   label: string;
   message: string;
-  issueCount: number;
+  moduleCount: number;
 };
 
 export function availableModuleRegistrySnapshotPanelState({
@@ -103,55 +103,33 @@ export function availableModuleRegistrySnapshotPanelState({
 }): AvailableModuleRegistrySnapshotPanelState {
   if (isLoading) {
     return {
-      issueCount: 0,
+      moduleCount: 0,
       kind: "loading",
-      label: "loading snapshot",
-      message: "Fetching registry preflight snapshot.",
+      label: "loading",
+      message: "Loading available modules.",
     };
   }
   if (isError) {
     return {
-      issueCount: 0,
+      moduleCount: 0,
       kind: "error",
-      label: "snapshot unavailable",
-      message: "Registry preflight snapshot could not be loaded.",
+      label: "unavailable",
+      message: "Available modules could not be loaded.",
     };
   }
   if (rows.length === 0) {
     return {
-      issueCount: 0,
+      moduleCount: 0,
       kind: "empty",
       label: "no remote modules",
-      message: "No remote modules are present in the registry snapshot.",
-    };
-  }
-
-  const issueCount = rows.filter(
-    (row) => row.preflightStatus !== "ready"
-  ).length;
-  if (issueCount > 0) {
-    return {
-      issueCount,
-      kind: "issues",
-      label: `${issueCount} issue${issueCount === 1 ? "" : "s"}`,
-      message: "Registry snapshot has modules that need attention.",
+      message: "No remote modules are available.",
     };
   }
 
   return {
-    issueCount: 0,
+    moduleCount: rows.length,
     kind: "ready",
-    label: "ready",
-    message: "Registry snapshot preflight is ready.",
+    label: `${rows.length} module${rows.length === 1 ? "" : "s"}`,
+    message: "Install from a manifest URL.",
   };
-}
-
-export function availableModuleRegistryTargetModuleName({
-  currentModuleName,
-  selectedAvailableModuleName,
-}: {
-  currentModuleName: string | null;
-  selectedAvailableModuleName: string | null;
-}) {
-  return selectedAvailableModuleName ?? currentModuleName ?? "<module>";
 }

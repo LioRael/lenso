@@ -25,7 +25,6 @@ import {
   availableModuleRegistrySnapshotPanelState,
   availableModuleRegistrySnapshotQueryKey,
   availableModuleRegistrySnapshotRows,
-  availableModuleRegistryTargetModuleName,
   fetchAvailableModuleRegistrySnapshot,
   moduleRefreshInvalidationQueryKeys,
 } from "../data/available-module-registry-snapshot";
@@ -36,7 +35,6 @@ import {
   isApiMode,
   runtimeConsoleDataSource,
 } from "../lib/http-client";
-import type { AvailableModulePreflightStatus } from "./available-module-registry-model";
 import { availableModuleRegistryRowsFromSnapshot } from "./available-module-registry-model";
 import {
   type AdminModuleMetadata,
@@ -169,8 +167,6 @@ function ModulesContent() {
   const [selectedModuleName, setSelectedModuleName] = useState<string | null>(
     null
   );
-  const [selectedAvailableModuleName, setSelectedAvailableModuleName] =
-    useState<string | null>(null);
   const [filters, setFilters] = useState<ModuleRegistryFilters>({
     query: "",
     lint: "all",
@@ -229,11 +225,8 @@ function ModulesContent() {
       <div className="grid min-h-0 grid-cols-[260px_minmax(0,1fr)] overflow-hidden">
         <nav className="min-h-0 overflow-auto border-r border-(--border-subtle) p-2 font-mono text-[12px]">
           <ModuleRegistryCatalogPanel
-            moduleName={selectedModuleName}
-            onSelectModule={setSelectedAvailableModuleName}
             panelState={availableModulePanelState}
             rows={availableModuleRows}
-            selectedAvailableModuleName={selectedAvailableModuleName}
           />
           <ModuleRegistryControls
             filters={filters}
@@ -319,31 +312,12 @@ function ModulesContent() {
 }
 
 function ModuleRegistryCatalogPanel({
-  moduleName,
-  onSelectModule,
   panelState,
   rows,
-  selectedAvailableModuleName,
 }: {
-  moduleName: string | null;
-  onSelectModule: (moduleName: string) => void;
   panelState: ReturnType<typeof availableModuleRegistrySnapshotPanelState>;
   rows: ReturnType<typeof availableModuleRegistrySnapshotRows>;
-  selectedAvailableModuleName: string | null;
 }) {
-  const selectedAvailableModule = rows.find(
-    (row) =>
-      row.name ===
-      availableModuleRegistryTargetModuleName({
-        currentModuleName: moduleName,
-        selectedAvailableModuleName,
-      })
-  );
-  const commands = moduleRegistryHandoffCommands(
-    selectedAvailableModule
-      ? { manifestReference: selectedAvailableModule.manifestReference }
-      : {}
-  );
   const [copiedCommandKey, setCopiedCommandKey] = useState<string | null>(null);
   const copyCommand = (key: string, command: string) => {
     void window.navigator.clipboard?.writeText(command);
@@ -359,7 +333,7 @@ function ModuleRegistryCatalogPanel({
           Available Modules
         </span>
         <span className="ml-auto border border-[color-mix(in_srgb,var(--info)_35%,transparent)] px-1.5 py-0.5 text-[9px] text-(--info)">
-          Registry v0
+          Marketplace
         </span>
       </header>
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 border-b border-(--border-subtle) px-2 py-1 text-[9px]">
@@ -367,13 +341,15 @@ function ModuleRegistryCatalogPanel({
         <span
           className={cn(
             "shrink-0 border px-1 py-0.5",
-            registrySnapshotStateClass(panelState.kind)
+            panelState.kind === "error"
+              ? "border-[color-mix(in_srgb,var(--error)_55%,transparent)] text-(--error)"
+              : "border-[color-mix(in_srgb,var(--info)_35%,transparent)] text-(--info)"
           )}
         >
           {panelState.label}
         </span>
       </div>
-      <div className="grid gap-1 border-b border-(--border-subtle) p-2">
+      <div className="grid gap-1 p-2">
         {panelState.kind === "loading" ||
         panelState.kind === "error" ||
         panelState.kind === "empty" ? (
@@ -381,112 +357,100 @@ function ModuleRegistryCatalogPanel({
             {panelState.message}
           </div>
         ) : (
-          rows.map((row) => (
-            <button
-              className={cn(
-                "grid gap-1 border border-(--border-subtle) bg-(--background) px-2 py-1.5 text-left hover:bg-(--sidebar)",
-                row.name === selectedAvailableModuleName &&
-                  "border-[color-mix(in_srgb,var(--accent)_55%,transparent)] bg-(--accent-soft)"
-              )}
-              key={row.key}
-              onClick={() => onSelectModule(row.name)}
-              type="button"
-            >
-              <div className="flex min-w-0 items-center gap-1">
-                <span className="truncate text-[11px] text-(--foreground)">
-                  {row.name}
-                </span>
-                <span className="shrink-0 text-[9px] text-(--muted)">
-                  {row.version}
-                </span>
-                <span
-                  className={cn(
-                    "ml-auto shrink-0 border px-1 py-0.5 text-[9px]",
-                    availableModuleStatusClass(row.preflightStatus)
-                  )}
-                  title={row.preflightReason}
-                >
-                  {row.preflightLabel}
-                </span>
-              </div>
-              <div className="truncate text-[9px] text-(--muted)">
-                {row.source} / caps {row.capabilityCount} / console{" "}
-                {row.consolePackageHintCount}
-              </div>
-              {row.preflightFix ? (
-                <div className="truncate text-[9px] text-(--warning)">
-                  fix: {row.preflightFix}
+          rows.map((row) => {
+            const [installCommand] = moduleRegistryHandoffCommands({
+              manifestReference: row.manifestReference,
+            });
+            const commandKey = `install:${row.key}`;
+            return (
+              <article
+                className="grid gap-1 border border-(--border-subtle) bg-(--background) px-2 py-1.5"
+                key={row.key}
+              >
+                <div className="flex min-w-0 items-center gap-1">
+                  <span className="truncate text-[11px] text-(--foreground)">
+                    {row.name}
+                  </span>
+                  <span className="shrink-0 text-[9px] text-(--muted)">
+                    {row.version}
+                  </span>
+                  <span className="ml-auto shrink-0 border border-(--border-subtle) px-1 py-0.5 text-[9px] text-(--secondary)">
+                    {row.source}
+                  </span>
                 </div>
-              ) : null}
-            </button>
-          ))
+                <div className="line-clamp-2 text-[9px] text-(--muted)">
+                  {row.summary}
+                </div>
+                <div className="truncate text-[9px] text-(--muted)">
+                  caps {row.capabilityCount} / console{" "}
+                  {row.consolePackageHintCount}
+                </div>
+                {installCommand ? (
+                  <div className="grid grid-cols-[minmax(0,1fr)_24px] items-center gap-1">
+                    <code
+                      className="truncate border border-(--border-subtle) bg-(--surface) px-1.5 py-1 text-[9px] text-(--secondary)"
+                      title={installCommand.command}
+                    >
+                      {installCommand.command}
+                    </code>
+                    <button
+                      aria-label={`${moduleRegistryHandoffCopyLabel(copiedCommandKey, commandKey)} install command`}
+                      className="grid size-6 place-items-center border border-(--border-subtle) bg-(--surface) text-(--muted) hover:bg-(--sidebar) hover:text-(--foreground)"
+                      onClick={() =>
+                        copyCommand(commandKey, installCommand.command)
+                      }
+                      title={moduleRegistryHandoffCopyLabel(
+                        copiedCommandKey,
+                        commandKey
+                      )}
+                      type="button"
+                    >
+                      {copiedCommandKey === commandKey ? (
+                        <Check size={11} />
+                      ) : (
+                        <Copy size={11} />
+                      )}
+                    </button>
+                  </div>
+                ) : null}
+              </article>
+            );
+          })
         )}
       </div>
-      <div className="grid gap-1 p-2">
-        {commands.map((item) => (
-          <div
-            className="grid grid-cols-[52px_minmax(0,1fr)_24px] items-center gap-1"
-            key={item.key}
+      <div className="grid gap-1 border-t border-(--border-subtle) p-2">
+        <div className="grid grid-cols-[52px_minmax(0,1fr)_24px] items-center gap-1">
+          <span className="truncate text-[9px] uppercase text-(--muted)">
+            console
+          </span>
+          <code
+            className="truncate border border-(--border-subtle) bg-(--background) px-1.5 py-1 text-[9px] text-(--secondary)"
+            title="lenso console-package apply-plan"
           >
-            <span className="truncate text-[9px] uppercase text-(--muted)">
-              {item.label}
-            </span>
-            <code
-              className="truncate border border-(--border-subtle) bg-(--background) px-1.5 py-1 text-[9px] text-(--secondary)"
-              title={item.command}
-            >
-              {item.command}
-            </code>
-            <button
-              aria-label={`${moduleRegistryHandoffCopyLabel(copiedCommandKey, item.key)} ${item.label} command`}
-              className="grid size-6 place-items-center border border-(--border-subtle) bg-(--background) text-(--muted) hover:bg-(--sidebar) hover:text-(--foreground)"
-              onClick={() => copyCommand(item.key, item.command)}
-              title={moduleRegistryHandoffCopyLabel(copiedCommandKey, item.key)}
-              type="button"
-            >
-              {copiedCommandKey === item.key ? (
-                <Check size={11} />
-              ) : (
-                <Copy size={11} />
-              )}
-            </button>
-          </div>
-        ))}
+            lenso console-package apply-plan
+          </code>
+          <button
+            aria-label={`${moduleRegistryHandoffCopyLabel(copiedCommandKey, "apply-plan")} console command`}
+            className="grid size-6 place-items-center border border-(--border-subtle) bg-(--background) text-(--muted) hover:bg-(--sidebar) hover:text-(--foreground)"
+            onClick={() =>
+              copyCommand("apply-plan", "lenso console-package apply-plan")
+            }
+            title={moduleRegistryHandoffCopyLabel(
+              copiedCommandKey,
+              "apply-plan"
+            )}
+            type="button"
+          >
+            {copiedCommandKey === "apply-plan" ? (
+              <Check size={11} />
+            ) : (
+              <Copy size={11} />
+            )}
+          </button>
+        </div>
       </div>
     </section>
   );
-}
-
-function availableModuleStatusClass(status: AvailableModulePreflightStatus) {
-  if (status === "ready") {
-    return "border-[color-mix(in_srgb,var(--success)_45%,transparent)] text-(--success)";
-  }
-  if (
-    status === "archived" ||
-    status === "needs_base_url" ||
-    status === "package_hint_mismatch"
-  ) {
-    return "border-[color-mix(in_srgb,var(--warning)_55%,transparent)] text-(--warning)";
-  }
-  if (status === "manifest_mismatch") {
-    return "border-[color-mix(in_srgb,var(--error)_55%,transparent)] text-(--error)";
-  }
-  return "border-[color-mix(in_srgb,var(--info)_35%,transparent)] text-(--info)";
-}
-
-function registrySnapshotStateClass(
-  state: ReturnType<typeof availableModuleRegistrySnapshotPanelState>["kind"]
-) {
-  if (state === "ready") {
-    return "border-[color-mix(in_srgb,var(--success)_45%,transparent)] text-(--success)";
-  }
-  if (state === "issues") {
-    return "border-[color-mix(in_srgb,var(--warning)_55%,transparent)] text-(--warning)";
-  }
-  if (state === "error") {
-    return "border-[color-mix(in_srgb,var(--error)_55%,transparent)] text-(--error)";
-  }
-  return "border-[color-mix(in_srgb,var(--info)_35%,transparent)] text-(--info)";
 }
 
 function ModuleRefreshHistory({ history }: { history: ModuleRefreshRecord[] }) {

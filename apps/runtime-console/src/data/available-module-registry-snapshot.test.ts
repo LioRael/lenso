@@ -4,7 +4,6 @@ import {
   availableModuleRegistrySnapshotPanelState,
   availableModuleRegistrySnapshotQueryKey,
   availableModuleRegistrySnapshotRows,
-  availableModuleRegistryTargetModuleName,
   moduleRefreshInvalidationQueryKeys,
   fetchAvailableModuleRegistrySnapshot,
   sampleAvailableModuleRegistrySnapshot,
@@ -77,10 +76,10 @@ describe("available module registry snapshot provider", () => {
         rows: [],
       })
     ).toEqual({
-      issueCount: 0,
+      moduleCount: 0,
       kind: "loading",
-      label: "loading snapshot",
-      message: "Fetching registry preflight snapshot.",
+      label: "loading",
+      message: "Loading available modules.",
     });
 
     expect(
@@ -91,7 +90,7 @@ describe("available module registry snapshot provider", () => {
       })
     ).toMatchObject({
       kind: "error",
-      label: "snapshot unavailable",
+      label: "unavailable",
     });
 
     expect(
@@ -112,49 +111,9 @@ describe("available module registry snapshot provider", () => {
         rows: availableModuleRegistrySnapshotRows(),
       })
     ).toMatchObject({
-      issueCount: 1,
-      kind: "issues",
-      label: "1 issue",
-    });
-
-    expect(
-      availableModuleRegistrySnapshotPanelState({
-        isError: false,
-        isLoading: false,
-        rows: availableModuleRegistrySnapshotRows({
-          ...sampleAvailableModuleRegistrySnapshot,
-          issues: [],
-          modules: [sampleAvailableModuleRegistrySnapshot.modules[0]!],
-          status: "passed",
-        }),
-      })
-    ).toMatchObject({
-      issueCount: 0,
+      moduleCount: 2,
       kind: "ready",
-      label: "ready",
+      label: "2 modules",
     });
-  });
-
-  test("uses selected available module for handoff commands", () => {
-    expect(
-      availableModuleRegistryTargetModuleName({
-        currentModuleName: "identity",
-        selectedAvailableModuleName: "billing",
-      })
-    ).toBe("billing");
-
-    expect(
-      availableModuleRegistryTargetModuleName({
-        currentModuleName: "identity",
-        selectedAvailableModuleName: null,
-      })
-    ).toBe("identity");
-
-    expect(
-      availableModuleRegistryTargetModuleName({
-        currentModuleName: null,
-        selectedAvailableModuleName: null,
-      })
-    ).toBe("<module>");
   });
 });
