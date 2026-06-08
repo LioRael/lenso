@@ -6,7 +6,6 @@ import {
   consoleModuleMetadataFromManifest,
   consoleModulePackageReferences,
   consoleModules,
-  defaultConsoleRoute,
   defineConsoleModule,
   selectDefaultConsoleRoute,
 } from "./console-modules";
@@ -298,10 +297,9 @@ describe("console module registry", () => {
         path: "/data/remote-crm",
       },
     ]);
-    expect(defaultConsoleRoute).toMatchObject({
-      moduleId: "platform-story",
-      path: "/runtime/stories",
-    });
+    expect(
+      buildConsoleRoutes(consoleModules).map((route) => route.path)
+    ).toEqual(["/runtime/stories", "/data/identity", "/data/remote-crm"]);
   });
 
   test("build-time module metadata creates switchable workspaces", () => {

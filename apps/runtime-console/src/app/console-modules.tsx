@@ -144,4 +144,3 @@ export const consoleModules = resolveConsoleModules(
 
 export const consoleRoutes = buildConsoleRoutes(consoleModules);
 export const consoleNavigation = buildConsoleNavigation(consoleModules);
-export const defaultConsoleRoute = selectDefaultConsoleRoute(consoleRoutes);

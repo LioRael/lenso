@@ -18,7 +18,9 @@ import { OperationsPage } from "../pages/operations-page";
 import { OverviewPage } from "../pages/overview-page";
 import { QueuesPage } from "../pages/queues-page";
 import { RemoteProxyCallsPage } from "../pages/remote-proxy-calls-page";
-import { consoleRoutes, defaultConsoleRoute } from "./console-modules";
+import { consoleRoutes } from "./console-modules";
+
+export const rootRedirectPath = "/overview";
 
 const rootRoute = createRootRoute({
   component: () => (
@@ -34,7 +36,7 @@ const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
   beforeLoad: () => {
-    throw redirect({ to: defaultConsoleRoute.path as "." });
+    throw redirect({ to: rootRedirectPath });
   },
 });
 
