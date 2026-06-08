@@ -777,8 +777,10 @@ GET https://example.com/lenso/module/v1/manifest
 Then install it into a host project:
 
 \`\`\`sh
+lenso module catalog add https://example.com/lenso/module/v1/manifest
 lenso module add https://example.com/lenso/module/v1/manifest
 lenso console-package apply-plan
+pnpm --dir apps/runtime-console install
 \`\`\`
 
 If the manifest is inspected from a local file, provide the runtime base URL:
@@ -794,7 +796,22 @@ host application's linked \`modules/\` workspace.
 
 const remoteBackendReadme = ({ moduleId }) => `# Remote module backend
 
-Implement the ${moduleId} backend in the language or framework you prefer.
+The generated Node server exposes the ${moduleId} manifest at:
+
+\`\`\`text
+GET /lenso/module/v1/manifest
+\`\`\`
+
+Run it locally:
+
+\`\`\`sh
+cd backend
+pnpm install
+pnpm dev
+\`\`\`
+
+Replace \`src/server.mjs\` with the language or framework you prefer as the
+module grows.
 
 The backend should expose the remote module protocol expected by
 \`platform-module-remote\`, including a stable manifest endpoint and any
@@ -802,6 +819,67 @@ declared schema-admin, action, HTTP proxy, or runtime-function endpoints.
 
 The host owns auth, capability enforcement, proxy policy, runtime queues,
 retries, Runtime Stories, and Technical Operations records.
+`;
+
+const remoteBackendPackageJson = ({ moduleId }) =>
+  `${JSON.stringify(
+    {
+      name: `${moduleId}-remote-backend`,
+      private: true,
+      scripts: {
+        dev: "node src/server.mjs",
+        start: "node src/server.mjs",
+      },
+      type: "module",
+      version: "0.1.0",
+    },
+    null,
+    2
+  )}\n`;
+
+const remoteBackendServer = ({
+  moduleId,
+}) => `import { createServer } from "node:http";
+import { readFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const manifestPath = join(__dirname, "../../lenso.module.json");
+const port = Number(process.env.PORT ?? 4100);
+
+const readManifest = async () => JSON.parse(await readFile(manifestPath, "utf8"));
+
+const sendJson = (response, statusCode, body) => {
+  response.writeHead(statusCode, {
+    "content-type": "application/json; charset=utf-8",
+  });
+  response.end(JSON.stringify(body));
+};
+
+const server = createServer(async (request, response) => {
+  if (request.method === "GET" && request.url === "/lenso/module/v1/manifest") {
+    sendJson(response, 200, await readManifest());
+    return;
+  }
+
+  sendJson(response, 404, {
+    error: {
+      code: "not_found",
+      message: "${moduleId} remote module endpoint not found",
+    },
+  });
+});
+
+server.listen(port, "127.0.0.1", () => {
+  const address = server.address();
+  const boundPort = typeof address === "object" && address ? address.port : port;
+  console.log(
+    "${moduleId} manifest: http://127.0.0.1:" +
+      boundPort +
+      "/lenso/module/v1/manifest"
+  );
+});
 `;
 
 const remoteContractsReadme = () => `# Module-owned contracts
@@ -834,6 +912,16 @@ const queueRemoteModuleFiles = ({
     pendingWrites,
     path.join(packageRoot, "backend/README.md"),
     remoteBackendReadme({ moduleId: packageContext.moduleId })
+  );
+  queueWrite(
+    pendingWrites,
+    path.join(packageRoot, "backend/package.json"),
+    remoteBackendPackageJson({ moduleId: packageContext.moduleId })
+  );
+  queueWrite(
+    pendingWrites,
+    path.join(packageRoot, "backend/src/server.mjs"),
+    remoteBackendServer({ moduleId: packageContext.moduleId })
   );
   queueWrite(
     pendingWrites,
@@ -1150,10 +1238,16 @@ const createRemoteModule = async ({ options }) => {
 
   console.log(`Created remote module package ${packageRootName}.`);
   console.log("Next steps:");
-  console.log("- expose lenso.module.json from a stable module URL");
+  console.log(`- pnpm --dir ${packageRootName}/backend dev`);
+  console.log(
+    `- lenso module catalog add http://127.0.0.1:4100/lenso/module/v1/manifest`
+  );
+  console.log(
+    `- lenso module add http://127.0.0.1:4100/lenso/module/v1/manifest`
+  );
   console.log("- publish or install the console package");
-  console.log("- lenso module add <manifest-url>");
   console.log("- lenso console-package apply-plan");
+  console.log("- pnpm --dir apps/runtime-console install");
 };
 
 const validateRemoteModuleManifest = (manifest) => {
