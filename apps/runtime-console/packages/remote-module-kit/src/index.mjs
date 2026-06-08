@@ -30,6 +30,77 @@ const sendJson = (response, statusCode, body) => {
   response.end(JSON.stringify(body));
 };
 
+const route = (method, path, options = {}) => ({
+  ...(options.capability ? { capability: options.capability } : {}),
+  ...(options.displayName ? { display_name: options.displayName } : {}),
+  method,
+  path,
+  ...(options.storyTitle ? { story_title: options.storyTitle } : {}),
+});
+
+const routeKey = (method, path) => `${method} ${path}`;
+
+const matchRoutePath = (pattern, pathname) => {
+  const patternParts = pattern.split("/").filter(Boolean);
+  const pathParts = pathname.split("/").filter(Boolean);
+  if (patternParts.length !== pathParts.length) {
+    return null;
+  }
+  const params = {};
+  for (const [index, patternPart] of patternParts.entries()) {
+    const pathPart = pathParts[index];
+    if (!pathPart) {
+      return null;
+    }
+    if (patternPart.startsWith("{") && patternPart.endsWith("}")) {
+      const paramName = patternPart.slice(1, -1);
+      if (!paramName) {
+        return null;
+      }
+      params[paramName] = decodeURIComponent(pathPart);
+      continue;
+    }
+    if (patternPart !== pathPart) {
+      return null;
+    }
+  }
+  return params;
+};
+
+const readBody = async (request) => {
+  const chunks = [];
+  for await (const chunk of request) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  if (chunks.length === 0) {
+    return;
+  }
+  const text = Buffer.concat(chunks).toString("utf-8");
+  if (!text.trim()) {
+    return;
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+};
+
+const normalizeHandlerResult = (result) => {
+  if (
+    typeof result === "object" &&
+    result !== null &&
+    "body" in result &&
+    ("statusCode" in result || Object.keys(result).length <= 2)
+  ) {
+    return {
+      body: result.body,
+      statusCode: result.statusCode ?? 200,
+    };
+  }
+  return { body: result ?? null, statusCode: 200 };
+};
+
 const handleAdminDataRequest = async ({ basePath, data, requestUrl }) => {
   const url = new URL(requestUrl, "http://127.0.0.1");
   const prefix = `${basePath}/admin/`;
@@ -74,6 +145,55 @@ const handleAdminDataRequest = async ({ basePath, data, requestUrl }) => {
   };
 };
 
+const handleHttpRouteRequest = async ({
+  basePath,
+  handlers,
+  manifest,
+  request,
+}) => {
+  const { method } = request;
+  if (!method) {
+    return null;
+  }
+  const url = new URL(request.url ?? "", "http://127.0.0.1");
+  if (!url.pathname.startsWith(`${basePath}/`)) {
+    return null;
+  }
+  const modulePath = url.pathname.slice(basePath.length) || "/";
+  for (const declaredRoute of manifest.http_routes) {
+    if (declaredRoute.method !== method) {
+      continue;
+    }
+    const params = matchRoutePath(declaredRoute.path, modulePath);
+    if (!params) {
+      continue;
+    }
+    const handler =
+      handlers[routeKey(declaredRoute.method, declaredRoute.path)];
+    if (!handler) {
+      return {
+        body: {
+          error: {
+            code: "not_found",
+            message: `${declaredRoute.method} ${declaredRoute.path} handler not found`,
+          },
+        },
+        statusCode: 404,
+      };
+    }
+    const body = await readBody(request);
+    return normalizeHandlerResult(
+      await handler({
+        body,
+        params,
+        request,
+        url,
+      })
+    );
+  }
+  return null;
+};
+
 export const defineRemoteModule = (definition) => {
   if (!definition.name.trim()) {
     throw new Error("Remote module name is required");
@@ -91,6 +211,17 @@ export const defineRemoteModule = (definition) => {
     version: definition.version ?? "0.1.0",
   };
 };
+
+export const getRoute = (path, options = {}) => route("GET", path, options);
+
+export const postRoute = (path, options = {}) => route("POST", path, options);
+
+export const putRoute = (path, options = {}) => route("PUT", path, options);
+
+export const patchRoute = (path, options = {}) => route("PATCH", path, options);
+
+export const deleteRoute = (path, options = {}) =>
+  route("DELETE", path, options);
 
 export const textField = (name, options = {}) =>
   field(name, { kind: "string" }, options);
@@ -145,6 +276,16 @@ export const serveRemoteModule = async (manifest, options = {}) => {
         sendJson(response, adminResult.statusCode, adminResult.body);
         return;
       }
+    }
+    const httpResult = await handleHttpRouteRequest({
+      basePath,
+      handlers: options.http ?? {},
+      manifest,
+      request,
+    });
+    if (httpResult) {
+      sendJson(response, httpResult.statusCode, httpResult.body);
+      return;
     }
 
     sendJson(response, 404, {

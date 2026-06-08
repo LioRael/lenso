@@ -4,8 +4,10 @@ import {
   booleanField,
   defineRemoteModule,
   defineSchemaEntity,
+  getRoute,
   integerField,
   jsonField,
+  postRoute,
   schemaAdmin,
   serveRemoteModule,
   textField,
@@ -55,6 +57,31 @@ describe("@lenso/remote-module-kit", () => {
       },
       source: "remote",
       version: "0.1.0",
+    });
+  });
+
+  test("defines HTTP route declarations", () => {
+    expect(
+      defineRemoteModule({
+        httpRoutes: [
+          getRoute("/contacts/{id}", {
+            capability: "crm.contacts.read",
+            displayName: "Fetch Contact",
+            storyTitle: "Fetch Contact",
+          }),
+        ],
+        name: "crm",
+      })
+    ).toMatchObject({
+      http_routes: [
+        {
+          capability: "crm.contacts.read",
+          display_name: "Fetch Contact",
+          method: "GET",
+          path: "/contacts/{id}",
+          story_title: "Fetch Contact",
+        },
+      ],
     });
   });
 
@@ -158,6 +185,50 @@ describe("@lenso/remote-module-kit", () => {
         )
       ).resolves.toEqual({
         record: { email: "ada@example.com", id: "contact_1" },
+      });
+    } finally {
+      await served.close();
+    }
+  });
+
+  test("serves declared HTTP routes with params and request body", async () => {
+    const manifest = defineRemoteModule({
+      httpRoutes: [
+        getRoute("/contacts/{id}", { capability: "crm.contacts.read" }),
+        postRoute("/contacts", { capability: "crm.contacts.write" }),
+      ],
+      name: "crm",
+    });
+    const served = await serveRemoteModule(manifest, {
+      http: {
+        "GET /contacts/{id}": ({ params }) => ({
+          email: "ada@example.com",
+          id: params.id,
+        }),
+        "POST /contacts": ({ body }) => ({
+          body: { contact: body },
+          statusCode: 201,
+        }),
+      },
+      port: 0,
+    });
+    try {
+      await expect(
+        fetch(`${served.baseUrl}/contacts/contact_1`).then((response) =>
+          response.json()
+        )
+      ).resolves.toEqual({
+        email: "ada@example.com",
+        id: "contact_1",
+      });
+      const createResponse = await fetch(`${served.baseUrl}/contacts`, {
+        body: JSON.stringify({ email: "grace@example.com" }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      expect(createResponse.status).toBe(201);
+      await expect(createResponse.json()).resolves.toEqual({
+        contact: { email: "grace@example.com" },
       });
     } finally {
       await served.close();

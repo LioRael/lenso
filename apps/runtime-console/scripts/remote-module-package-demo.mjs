@@ -179,6 +179,12 @@ const main = async () => {
     if (schemaDetail.record?.name !== "Ada Lovelace") {
       throw new Error("schema-admin detail endpoint did not return contact");
     }
+    const httpContact = await fetch(`${moduleBaseUrl}/contacts/contact_1`).then(
+      (response) => response.json()
+    );
+    if (httpContact.email !== "ada@example.com") {
+      throw new Error("HTTP route endpoint did not return contact");
+    }
 
     await runConsolePackageCli([
       "module",

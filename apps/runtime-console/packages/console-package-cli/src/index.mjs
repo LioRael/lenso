@@ -777,7 +777,15 @@ const remoteManifestJson = ({ packageContext }) => ({
       route: packageContext.route,
     },
   ],
-  http_routes: [],
+  http_routes: [
+    {
+      capability: packageContext.capability,
+      display_name: "Fetch Contact",
+      method: "GET",
+      path: "/contacts/{id}",
+      story_title: "Fetch Contact",
+    },
+  ],
   name: packageContext.moduleId,
   runtime: {
     functions: [],
@@ -911,6 +919,7 @@ const remoteBackendPackageJson = ({ moduleId }) =>
 const remoteBackendServer = ({ packageContext }) => `import {
   defineRemoteModule,
   defineSchemaEntity,
+  getRoute,
   schemaAdmin,
   serveRemoteModule,
   textField,
@@ -964,6 +973,13 @@ const module = defineRemoteModule({
       route: "${packageContext.route}",
     },
   ],
+  httpRoutes: [
+    getRoute("/contacts/{id}", {
+      capability: "${packageContext.capability}",
+      displayName: "Fetch Contact",
+      storyTitle: "Fetch Contact",
+    }),
+  ],
   name: "${packageContext.moduleId}",
   version: "0.1.0",
 });
@@ -977,6 +993,10 @@ await serveRemoteModule(module, {
         records: contacts.slice(0, limit),
       }),
     },
+  },
+  http: {
+    "GET /contacts/{id}": ({ params }) =>
+      contacts.find((contact) => contact.id === params.id) ?? null,
   },
   port: Number(process.env.PORT ?? 4100),
   onReady: ({ manifestUrl }) => {
@@ -1012,6 +1032,13 @@ try {
   const manifest = await fetch(manifestUrl).then((response) => response.json());
   if (manifest.name !== "${moduleId}" || manifest.source !== "remote") {
     throw new Error("manifest response did not match ${moduleId}");
+  }
+  const moduleBaseUrl = manifestUrl.slice(0, -"/manifest".length);
+  const contact = await fetch(moduleBaseUrl + "/contacts/contact_1").then(
+    (response) => response.json()
+  );
+  if (contact.email !== "ada@example.com") {
+    throw new Error("HTTP route response did not match ${moduleId}");
   }
 
   console.log("${moduleId} backend smoke passed");

@@ -642,7 +642,15 @@ describe("module scaffold CLI", () => {
           route: "/data/billing",
         },
       ],
-      http_routes: [],
+      http_routes: [
+        {
+          capability: "billing.read",
+          display_name: "Fetch Contact",
+          method: "GET",
+          path: "/contacts/{id}",
+          story_title: "Fetch Contact",
+        },
+      ],
       name: "billing",
       source: "remote",
       version: "0.1.0",
@@ -704,7 +712,9 @@ describe("module scaffold CLI", () => {
     );
     expect(backendServer).toContain("defineRemoteModule");
     expect(backendServer).toContain("defineSchemaEntity");
+    expect(backendServer).toContain("getRoute");
     expect(backendServer).toContain("serveRemoteModule");
+    expect(backendServer).toContain('"GET /contacts/{id}"');
     expect(backendServer).toContain("contacts.slice(0, limit)");
     await expect(
       readFile(path.join(packageRoot, "backend/src/smoke.mjs"), "utf-8")
@@ -752,6 +762,14 @@ describe("module scaffold CLI", () => {
         ]),
       })
     );
+    await expect(
+      fetch(
+        `${manifestUrl.slice(0, -"/manifest".length)}/contacts/contact_1`
+      ).then((response) => response.json())
+    ).resolves.toMatchObject({
+      email: "ada@example.com",
+      id: "contact_1",
+    });
     const consolePackageJson = JSON.parse(
       await readFile(path.join(packageRoot, "console/package.json"), "utf-8")
     );
