@@ -369,12 +369,37 @@ export type ModuleRuntimeFunctionRow = {
   retryPolicy: string;
 };
 
+export type ModuleLifecycleJobRow = {
+  key: string;
+  name: string;
+  functionName: string;
+  runPolicy: string;
+  required: string;
+  input: string;
+  functionPath: string;
+};
+
+export type ModuleLifecycleCheckRow = {
+  key: string;
+  name: string;
+  kind: string;
+  target: string;
+  required: string;
+};
+
 export type ModuleEntrypointRow = {
   key: string;
   label: string;
   path: string;
   detail: string;
-  kind: "data" | "console" | "http" | "runtime" | "package" | "restart";
+  kind:
+    | "data"
+    | "console"
+    | "http"
+    | "lifecycle"
+    | "runtime"
+    | "package"
+    | "restart";
 };
 
 export type ModuleConsoleSurfaceRow = {
@@ -740,6 +765,19 @@ function moduleRegistrySearchText(module: AdminModuleMetadata): string {
       runtimeFunction.input_schema ?? "",
       retryPolicyLabel(runtimeFunction.retry_policy),
     ]),
+    ...(module.lifecycle?.activation_jobs ?? []).flatMap((job) => [
+      job.name,
+      job.function_name,
+      job.run_policy ?? "every_startup",
+      formatLifecycleInput(job.input),
+    ]),
+    ...(module.lifecycle?.startup_checks ?? []).flatMap((check) => [
+      check.name,
+      check.kind,
+      check.kind === "function_registered"
+        ? check.function_name
+        : check.capability,
+    ]),
     ...module.console.flatMap((surface) => [
       surface.name,
       surface.label,
@@ -994,6 +1032,37 @@ export function moduleRuntimeFunctionRows(
   });
 }
 
+export function moduleLifecycleJobRows(
+  module: AdminModuleMetadata
+): ModuleLifecycleJobRow[] {
+  return (module.lifecycle?.activation_jobs ?? []).map((job, index) => ({
+    functionName: job.function_name,
+    functionPath: `/operations/functions?module=${encodeURIComponent(
+      module.module_name
+    )}&q=${encodeURIComponent(job.function_name)}`,
+    input: formatLifecycleInput(job.input),
+    key: `${job.name}:${job.function_name}:${index}`,
+    name: job.name,
+    required: job.required === false ? "optional" : "required",
+    runPolicy: job.run_policy ?? "every_startup",
+  }));
+}
+
+export function moduleLifecycleCheckRows(
+  module: AdminModuleMetadata
+): ModuleLifecycleCheckRow[] {
+  return (module.lifecycle?.startup_checks ?? []).map((check, index) => ({
+    key: `${check.name}:${check.kind}:${index}`,
+    kind: check.kind,
+    name: check.name,
+    required: check.required === false ? "optional" : "required",
+    target:
+      check.kind === "function_registered"
+        ? check.function_name
+        : check.capability,
+  }));
+}
+
 export function moduleEntrypointRows(
   module: AdminModuleMetadata,
   options: {
@@ -1065,7 +1134,29 @@ export function moduleEntrypointRows(
     });
   }
 
+  const lifecycleJobs = module.lifecycle?.activation_jobs ?? [];
+  if (lifecycleJobs.length > 0) {
+    rows.push({
+      detail: `${lifecycleJobs.length} startup job${lifecycleJobs.length === 1 ? "" : "s"}`,
+      key: "lifecycle",
+      kind: "lifecycle",
+      label: "Activation Jobs",
+      path: "#activation-jobs",
+    });
+  }
+
   return rows;
+}
+
+function formatLifecycleInput(input: unknown): string {
+  if (input === null || input === undefined) {
+    return "{}";
+  }
+  try {
+    return JSON.stringify(input);
+  } catch {
+    return String(input);
+  }
 }
 
 export function moduleConsoleSurfaceRows(

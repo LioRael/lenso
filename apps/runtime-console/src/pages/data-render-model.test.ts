@@ -35,6 +35,8 @@ import {
   moduleHttpRouteRows,
   moduleIsLoaded,
   latestModuleRefreshResult,
+  moduleLifecycleCheckRows,
+  moduleLifecycleJobRows,
   moduleNavItems,
   moduleRegistrySummary,
   moduleRuntimeFunctionRows,
@@ -848,6 +850,18 @@ describe("module status helpers", () => {
           },
         ],
       },
+      lifecycle: {
+        activation_jobs: [
+          {
+            function_name: "remote_crm.sync_contact.v1",
+            input: { reason: "worker_startup" },
+            name: "sync contacts on startup",
+            required: true,
+            run_policy: "every_startup",
+          },
+        ],
+        startup_checks: [],
+      },
     });
 
     expect(
@@ -898,6 +912,13 @@ describe("module status helpers", () => {
         label: "Runtime Queue",
         path: "/operations/queues?selected=runtime.functions%3Aremote-crm",
       },
+      {
+        detail: "1 startup job",
+        key: "lifecycle",
+        kind: "lifecycle",
+        label: "Activation Jobs",
+        path: "#activation-jobs",
+      },
     ]);
   });
 
@@ -935,6 +956,58 @@ describe("module status helpers", () => {
         queuePath: "/operations/queues?selected=runtime.functions%3Aremote-crm",
         retryPolicy: "3 attempts / 1000ms",
         version: "1",
+      },
+    ]);
+  });
+
+  test("builds lifecycle activation rows for registry detail", () => {
+    const module: AdminModuleMetadata = moduleMetadata({
+      admin: null,
+      error: null,
+      http_routes: [],
+      lifecycle: {
+        activation_jobs: [
+          {
+            function_name: "remote_crm.sync_contact.v1",
+            input: { reason: "worker_startup" },
+            name: "sync contacts on startup",
+            required: true,
+            run_policy: "every_startup",
+          },
+        ],
+        startup_checks: [
+          {
+            function_name: "remote_crm.sync_contact.v1",
+            kind: "function_registered",
+            name: "sync function registered",
+            required: true,
+          },
+        ],
+      },
+      module_name: "remote-crm",
+      source: "remote",
+      status: "loaded",
+    });
+
+    expect(moduleLifecycleJobRows(module)).toEqual([
+      {
+        functionName: "remote_crm.sync_contact.v1",
+        functionPath:
+          "/operations/functions?module=remote-crm&q=remote_crm.sync_contact.v1",
+        input: '{"reason":"worker_startup"}',
+        key: "sync contacts on startup:remote_crm.sync_contact.v1:0",
+        name: "sync contacts on startup",
+        required: "required",
+        runPolicy: "every_startup",
+      },
+    ]);
+    expect(moduleLifecycleCheckRows(module)).toEqual([
+      {
+        key: "sync function registered:function_registered:0",
+        kind: "function_registered",
+        name: "sync function registered",
+        required: "required",
+        target: "remote_crm.sync_contact.v1",
       },
     ]);
   });

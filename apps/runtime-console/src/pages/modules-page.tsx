@@ -57,6 +57,8 @@ import {
   moduleGovernanceRows,
   moduleHttpRouteRows,
   moduleIsLoaded,
+  moduleLifecycleCheckRows,
+  moduleLifecycleJobRows,
   latestModuleRefreshResult,
   moduleRegistryHandoffCommands,
   moduleRegistryHandoffCopyLabel,
@@ -783,6 +785,8 @@ function ModuleRegistryDetail({
   const availableCapabilities = useConsoleCapabilities();
   const routeRows = moduleHttpRouteRows(module);
   const runtimeRows = moduleRuntimeFunctionRows(module);
+  const lifecycleJobRows = moduleLifecycleJobRows(module);
+  const lifecycleCheckRows = moduleLifecycleCheckRows(module);
   const manifestChecks = moduleManifestChecks(module);
   const consoleRows = moduleConsoleSurfaceRows(module, {
     availableCapabilities,
@@ -831,6 +835,10 @@ function ModuleRegistryDetail({
         rows={missingConsolePackages}
       />
       <ModuleStoryDisplayTable rows={storyRows} />
+      <ModuleLifecycleTable
+        checkRows={lifecycleCheckRows}
+        jobRows={lifecycleJobRows}
+      />
       <ModuleRuntimeFunctionsTable rows={runtimeRows} />
       <ModuleManifestChecks checks={manifestChecks} />
       <ModuleHttpRoutesTable rows={routeRows} />
@@ -1592,6 +1600,114 @@ function ModuleRuntimeFunctionsTable({
           </tbody>
         </table>
       </div>
+    </section>
+  );
+}
+
+function ModuleLifecycleTable({
+  checkRows,
+  jobRows,
+}: {
+  checkRows: ReturnType<typeof moduleLifecycleCheckRows>;
+  jobRows: ReturnType<typeof moduleLifecycleJobRows>;
+}) {
+  if (checkRows.length === 0 && jobRows.length === 0) {
+    return (
+      <section className="border border-(--border-subtle) bg-(--surface) px-3 py-2 text-(--muted)">
+        No lifecycle activation declared.
+      </section>
+    );
+  }
+
+  return (
+    <section
+      className="min-w-0 border border-(--border-subtle) bg-(--surface)"
+      id="activation-jobs"
+    >
+      <header className="flex items-center gap-2 border-b border-(--border-subtle) px-3 py-2 font-semibold">
+        <Zap className="text-(--success)" size={14} />
+        <span>Activation Jobs</span>
+        <span className="ml-auto border border-(--border-subtle) px-1.5 py-0.5 text-[10px] text-(--secondary)">
+          {jobRows.length} jobs / {checkRows.length} checks
+        </span>
+      </header>
+      <div className="border-b border-(--border-subtle) px-3 py-2 text-[11px] text-(--muted)">
+        Startup jobs are declared by the module and enqueued by the host worker
+        during lifecycle activation.
+      </div>
+      {jobRows.length > 0 ? (
+        <div className="overflow-auto">
+          <table className="w-full min-w-[920px] table-fixed">
+            <thead className="bg-(--sidebar) text-[10px] uppercase tracking-wide text-(--muted)">
+              <tr>
+                <th className="px-3 py-1.5 text-left">job</th>
+                <th className="px-3 py-1.5 text-left">function</th>
+                <th className="w-32 px-3 py-1.5 text-left">policy</th>
+                <th className="w-24 px-3 py-1.5 text-left">required</th>
+                <th className="px-3 py-1.5 text-left">input</th>
+              </tr>
+            </thead>
+            <tbody>
+              {jobRows.map((row) => (
+                <tr
+                  className="border-t border-(--border-subtle) text-[11px]"
+                  key={row.key}
+                >
+                  <td className="truncate px-3 py-1.5 text-(--foreground)">
+                    {row.name}
+                  </td>
+                  <td className="px-3 py-1.5">
+                    <button
+                      className="min-w-0 truncate border border-(--border-subtle) bg-(--background) px-1.5 py-1 text-left text-[10px] text-(--secondary) hover:bg-(--sidebar) hover:text-(--foreground)"
+                      onClick={() => pushOperationsUrl(row.functionPath)}
+                      title={row.functionName}
+                      type="button"
+                    >
+                      {row.functionName}
+                    </button>
+                  </td>
+                  <td className="truncate px-3 py-1.5 text-(--secondary)">
+                    {row.runPolicy}
+                  </td>
+                  <td className="truncate px-3 py-1.5 text-(--secondary)">
+                    {row.required}
+                  </td>
+                  <td
+                    className="truncate px-3 py-1.5 text-(--muted)"
+                    title={row.input}
+                  >
+                    {row.input}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+      {checkRows.length > 0 ? (
+        <div className="border-t border-(--border-subtle) px-3 py-2">
+          <div className="mb-1 text-[10px] uppercase text-(--muted)">
+            startup checks
+          </div>
+          <div className="grid gap-1">
+            {checkRows.map((row) => (
+              <div
+                className="grid min-w-0 grid-cols-[minmax(0,190px)_130px_minmax(0,1fr)_80px] gap-2 text-[11px]"
+                key={row.key}
+              >
+                <span className="truncate text-(--foreground)" title={row.name}>
+                  {row.name}
+                </span>
+                <span className="truncate text-(--secondary)">{row.kind}</span>
+                <span className="truncate text-(--muted)" title={row.target}>
+                  {row.target}
+                </span>
+                <span className="truncate text-(--muted)">{row.required}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
