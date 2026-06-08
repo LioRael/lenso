@@ -85,6 +85,12 @@ version, source, capability count, console package count, and copyable install
 commands. Installing from a manifest URL writes local module configuration and
 the console package install plan.
 
+The repository's `remote-crm` fixture demonstrates the installed-console
+surface path. Its manifest declares `@lenso/remote-crm-console` /
+`remoteCrmConsoleModule`, and the workspace package contributes the
+`/data/remote-crm` page through the static console package registry. That keeps
+the demo low-friction while still avoiding arbitrary remote JavaScript loading.
+
 ## Smoke Demo
 
 Run the temporary-host smoke demo without mutating the working tree:

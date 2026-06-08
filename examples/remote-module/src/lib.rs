@@ -11,7 +11,8 @@ use platform_module::{
     AdminAction, AdminActionConfirmation, AdminActionDangerLevel, AdminActionInputField,
     AdminActionInputSchema, AdminDeclarativeComponent, AdminDeclarativePage,
     AdminDeclarativeSection, AdminDeclarativeSurface, AdminEmbeddedEntry, AdminEmbeddedRuntime,
-    AdminEmbeddedSurface, AdminMetricBinding, AdminSandboxPolicy, AdminSchema, EntitySchema,
+    AdminEmbeddedSurface, AdminMetricBinding, AdminSandboxPolicy, AdminSchema, ConsoleArea,
+    ConsoleNavigation, ConsolePackage, ConsoleSurface, ConsoleWorkspaceRef, EntitySchema,
     FieldSchema, FieldType, LifecycleActivationJobDeclaration, LifecycleActivationRunPolicy,
     LifecycleStartupCheckDeclaration, LifecycleStartupCheckKind, LifecycleSurface,
     ModuleHttpMethod, ModuleHttpRoute, ModuleManifest, RuntimeFunctionDeclaration,
@@ -167,6 +168,7 @@ async fn manifest() -> Json<ModuleManifest> {
     Json(
         ModuleManifest::builder("remote-crm")
             .admin(contacts_schema())
+            .console(vec![remote_crm_console_surface()])
             .http_routes(contact_http_routes())
             .runtime(runtime_surface())
             .lifecycle(lifecycle_surface())
@@ -641,6 +643,30 @@ fn contacts_schema() -> AdminSchema {
                 },
             ],
         }],
+    }
+}
+
+fn remote_crm_console_surface() -> ConsoleSurface {
+    ConsoleSurface {
+        name: "remote-crm".to_owned(),
+        label: "Remote CRM".to_owned(),
+        area: ConsoleArea::Data,
+        route: "/data/remote-crm".to_owned(),
+        package: ConsolePackage {
+            name: "@lenso/remote-crm-console".to_owned(),
+            export: "remoteCrmConsoleModule".to_owned(),
+        },
+        icon: Some("network".to_owned()),
+        required_capabilities: vec!["remote_crm.contacts.read".to_owned()],
+        navigation: Some(ConsoleNavigation {
+            workspace: ConsoleWorkspaceRef {
+                id: "remote-crm".to_owned(),
+                label: "Remote CRM".to_owned(),
+                icon: Some("network".to_owned()),
+            },
+            group: None,
+            order: Some(70),
+        }),
     }
 }
 

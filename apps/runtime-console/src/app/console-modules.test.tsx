@@ -209,6 +209,24 @@ describe("console module registry", () => {
         route: "/data/identity",
         surfaceName: "identity",
       },
+      {
+        area: "data",
+        exportName: "remoteCrmConsoleModule",
+        icon: "network",
+        label: "Remote CRM",
+        moduleName: "remote-crm",
+        navigation: {
+          order: 70,
+          workspace: {
+            icon: "network",
+            id: "remote-crm",
+            label: "Remote CRM",
+          },
+        },
+        packageName: "@lenso/remote-crm-console",
+        route: "/data/remote-crm",
+        surfaceName: "remote-crm",
+      },
     ]);
     expect(consoleModules.map((module) => module.id)).toContain(
       "platform-story"
@@ -242,6 +260,17 @@ describe("console module registry", () => {
         },
         path: "/data/identity",
       },
+      {
+        navigation: {
+          order: 70,
+          workspace: {
+            icon: "network",
+            id: "remote-crm",
+            label: "Remote CRM",
+          },
+        },
+        path: "/data/remote-crm",
+      },
     ]);
     expect(
       buildConsoleNavigation(consoleModules).map((item) => ({
@@ -271,6 +300,17 @@ describe("console module registry", () => {
         },
         path: "/data/identity",
       },
+      {
+        navigation: {
+          order: 70,
+          workspace: {
+            icon: "network",
+            id: "remote-crm",
+            label: "Remote CRM",
+          },
+        },
+        path: "/data/remote-crm",
+      },
     ]);
     expect(defaultConsoleRoute).toMatchObject({
       moduleId: "platform-story",
@@ -297,6 +337,11 @@ describe("console module registry", () => {
         id: "identity",
         items: ["/data/identity"],
         label: "Identity",
+      },
+      {
+        id: "remote-crm",
+        items: ["/data/remote-crm"],
+        label: "Remote CRM",
       },
     ]);
   });

@@ -1,4 +1,5 @@
 import { identityConsoleManifest } from "@lenso/identity-console";
+import { remoteCrmConsoleManifest } from "@lenso/remote-crm-console";
 import {
   consoleSurfaceFromPackageManifest,
   type ConsolePackageManifest,
@@ -131,6 +132,7 @@ export function consoleModuleMetadataFromManifest(
 export const buildTimeConsoleModuleMetadata = [
   storyConsoleManifest,
   identityConsoleManifest,
+  remoteCrmConsoleManifest,
 ].map(consoleModuleMetadataFromManifest);
 
 export const consoleModulePackageReferences =

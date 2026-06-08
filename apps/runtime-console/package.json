@@ -14,7 +14,7 @@
     "create:console-package": "lenso-console-package create",
     "demo:remote-module-install": "node scripts/remote-module-install-demo.mjs",
     "build": "tsc -b && vite build",
-    "test": "vitest run src packages/story-console/src packages/identity-console/src packages/console-package-api/src packages/console-package-cli/src",
+    "test": "vitest run src packages/story-console/src packages/identity-console/src packages/remote-crm-console/src packages/console-package-api/src packages/console-package-cli/src",
     "typecheck": "tsc -b --pretty false",
     "preview": "vite preview --host 0.0.0.0"
   },
@@ -22,6 +22,7 @@
     "@base-ui/react": "^1.5.0",
     "@gsap/react": "^2.1.2",
     "@lenso/identity-console": "workspace:*",
+    "@lenso/remote-crm-console": "workspace:*",
     "@lenso/runtime-console-api": "workspace:*",
     "@lenso/story-console": "workspace:*",
     "@tailwindcss/vite": "^4.1.0",

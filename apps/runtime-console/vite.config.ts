@@ -35,6 +35,9 @@ export default defineConfig({
       "@lenso/identity-console": fileURLToPath(
         new URL("packages/identity-console/src/index.tsx", import.meta.url)
       ),
+      "@lenso/remote-crm-console": fileURLToPath(
+        new URL("packages/remote-crm-console/src/index.tsx", import.meta.url)
+      ),
       "@lenso/story-console": fileURLToPath(
         new URL("packages/story-console/src/index.tsx", import.meta.url)
       ),

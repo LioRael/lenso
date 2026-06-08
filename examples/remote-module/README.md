@@ -8,6 +8,16 @@ It exposes a read-only CRM-style Contacts module:
 - `GET /lenso/module/v1/admin/contacts?limit=50&cursor=...`
 - `GET /lenso/module/v1/admin/contacts/{id}`
 
+The default manifest also declares a host-rendered Runtime Console surface:
+
+- package: `@lenso/remote-crm-console`
+- export: `remoteCrmConsoleModule`
+- route: `/data/remote-crm`
+
+The package is workspace-installed in this repository so the local demo can
+show the full path: remote manifest -> console package registry -> module-owned
+workspace page.
+
 It also exposes a second embedded-admin module base for testing
 `AdminSurface::EmbeddedCustom`:
 

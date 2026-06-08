@@ -24,6 +24,28 @@ async fn manifest_matches_remote_module_protocol() {
     assert_eq!(manifest["name"], "remote-crm");
     assert_eq!(manifest["admin"]["kind"], "schema");
     assert_eq!(manifest["admin"]["entities"][0]["name"], "contacts");
+    assert_eq!(manifest["console"][0]["name"], "remote-crm");
+    assert_eq!(manifest["console"][0]["label"], "Remote CRM");
+    assert_eq!(manifest["console"][0]["area"], "data");
+    assert_eq!(manifest["console"][0]["route"], "/data/remote-crm");
+    assert_eq!(
+        manifest["console"][0]["package"]["name"],
+        "@lenso/remote-crm-console"
+    );
+    assert_eq!(
+        manifest["console"][0]["package"]["export"],
+        "remoteCrmConsoleModule"
+    );
+    assert_eq!(manifest["console"][0]["icon"], "network");
+    assert_eq!(
+        manifest["console"][0]["required_capabilities"],
+        json!(["remote_crm.contacts.read"])
+    );
+    assert_eq!(
+        manifest["console"][0]["navigation"]["workspace"]["id"],
+        "remote-crm"
+    );
+    assert_eq!(manifest["console"][0]["navigation"]["order"], 70);
     let routes = manifest["http_routes"].as_array().expect("http routes");
     assert!(has_route(routes, "GET", "/contacts"));
     assert!(has_route(routes, "POST", "/contacts"));
