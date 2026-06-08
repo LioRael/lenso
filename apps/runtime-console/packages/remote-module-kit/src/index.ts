@@ -37,6 +37,7 @@ export interface RemoteModuleManifest {
   runtime: {
     functions: readonly RemoteRuntimeFunctionDeclaration[];
   };
+  lifecycle?: RemoteLifecycleSurface;
   admin: unknown | null;
   console?: readonly RemoteModuleConsoleSurface[];
 }
@@ -117,6 +118,32 @@ export type RemoteRuntimeHandler = (
   context: RemoteRuntimeHandlerContext
 ) => unknown | Promise<unknown>;
 
+export interface RemoteLifecycleStartupCheck {
+  name: string;
+  required?: boolean;
+  kind: "function_registered" | "capability_declared";
+  function_name?: string;
+  capability?: string;
+}
+
+export interface RemoteLifecycleActivationJob {
+  name: string;
+  function_name: string;
+  run_policy?: "every_startup";
+  input?: unknown;
+  required?: boolean;
+}
+
+export interface RemoteLifecycleSurface {
+  startup_checks: readonly RemoteLifecycleStartupCheck[];
+  activation_jobs: readonly RemoteLifecycleActivationJob[];
+}
+
+export interface RemoteLifecycleActivationOptions {
+  input?: unknown;
+  required?: boolean;
+}
+
 export type SchemaFieldType =
   | { kind: "string" }
   | { kind: "integer" }
@@ -149,6 +176,7 @@ export interface RemoteModuleDefinition {
   capabilities?: readonly string[];
   httpRoutes?: readonly RemoteHttpRoute[];
   runtimeFunctions?: readonly RemoteRuntimeFunctionDeclaration[];
+  lifecycle?: RemoteLifecycleSurface;
   admin?: unknown | null;
   console?: readonly RemoteModuleConsoleSurface[];
 }
@@ -483,6 +511,7 @@ export const defineRemoteModule = (
     capabilities: definition.capabilities ?? [],
     console: definition.console ?? [],
     http_routes: definition.httpRoutes ?? [],
+    ...(definition.lifecycle ? { lifecycle: definition.lifecycle } : {}),
     name: definition.name,
     runtime: {
       functions: definition.runtimeFunctions ?? [],
@@ -520,6 +549,29 @@ export const runtimeFunction = (
   ...(options.retryPolicy ? { retry_policy: options.retryPolicy } : {}),
   name,
   version: options.version ?? 1,
+});
+
+export const everyStartup = (
+  name: string,
+  functionName: string,
+  options: RemoteLifecycleActivationOptions = {}
+): RemoteLifecycleActivationJob => ({
+  function_name: functionName,
+  input: options.input ?? {},
+  name,
+  required: options.required ?? true,
+  run_policy: "every_startup",
+});
+
+export const lifecycle = ({
+  activationJobs,
+  startupChecks,
+}: {
+  startupChecks?: readonly RemoteLifecycleStartupCheck[];
+  activationJobs?: readonly RemoteLifecycleActivationJob[];
+}): RemoteLifecycleSurface => ({
+  activation_jobs: activationJobs ?? [],
+  startup_checks: startupChecks ?? [],
 });
 
 export const textField = (name: string, options: FieldOptions = {}) =>

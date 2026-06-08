@@ -4,9 +4,11 @@ import {
   booleanField,
   defineRemoteModule,
   defineSchemaEntity,
+  everyStartup,
   getRoute,
   integerField,
   jsonField,
+  lifecycle,
   postRoute,
   runtimeFunction,
   schemaAdmin,
@@ -114,6 +116,49 @@ describe("@lenso/remote-module-kit", () => {
               max_attempts: 3,
             },
             version: 1,
+          },
+        ],
+      },
+    });
+  });
+
+  test("defines lifecycle activation declarations", () => {
+    expect(
+      defineRemoteModule({
+        lifecycle: lifecycle({
+          activationJobs: [
+            everyStartup("sync contacts on startup", "crm.contacts.enrich.v1", {
+              input: { reason: "worker_startup" },
+            }),
+          ],
+          startupChecks: [
+            {
+              function_name: "crm.contacts.enrich.v1",
+              kind: "function_registered",
+              name: "contacts enrich function is registered",
+              required: true,
+            },
+          ],
+        }),
+        name: "crm",
+      })
+    ).toMatchObject({
+      lifecycle: {
+        activation_jobs: [
+          {
+            function_name: "crm.contacts.enrich.v1",
+            input: { reason: "worker_startup" },
+            name: "sync contacts on startup",
+            required: true,
+            run_policy: "every_startup",
+          },
+        ],
+        startup_checks: [
+          {
+            function_name: "crm.contacts.enrich.v1",
+            kind: "function_registered",
+            name: "contacts enrich function is registered",
+            required: true,
           },
         ],
       },

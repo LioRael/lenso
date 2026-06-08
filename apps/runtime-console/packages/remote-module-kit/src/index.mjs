@@ -256,6 +256,7 @@ export const defineRemoteModule = (definition) => {
     capabilities: definition.capabilities ?? [],
     console: definition.console ?? [],
     http_routes: definition.httpRoutes ?? [],
+    ...(definition.lifecycle ? { lifecycle: definition.lifecycle } : {}),
     name: definition.name,
     runtime: {
       functions: definition.runtimeFunctions ?? [],
@@ -282,6 +283,19 @@ export const runtimeFunction = (name, options = {}) => ({
   ...(options.retryPolicy ? { retry_policy: options.retryPolicy } : {}),
   name,
   version: options.version ?? 1,
+});
+
+export const everyStartup = (name, functionName, options = {}) => ({
+  function_name: functionName,
+  input: options.input ?? {},
+  name,
+  required: options.required ?? true,
+  run_policy: "every_startup",
+});
+
+export const lifecycle = ({ activationJobs, startupChecks }) => ({
+  activation_jobs: activationJobs ?? [],
+  startup_checks: startupChecks ?? [],
 });
 
 export const textField = (name, options = {}) =>

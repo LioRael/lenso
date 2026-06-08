@@ -6,11 +6,11 @@ use platform_admin_data::{
     AdminModuleMetadata, install_admin_module_metadata, install_admin_modules,
 };
 use platform_core::{
-    ActorContext, AppConfig, AppContext, AuthConfig, CorrelationId, DatabaseConfig, DbPool,
-    HttpConfig, LoggingEventPublisher, ModuleSourcesConfig, PLATFORM_MIGRATIONS,
-    RemoteModuleSourceConfig, ServiceConfig, TelemetryConfig, TraceContext, apply_migrations,
+    AppConfig, AppContext, AuthConfig, DatabaseConfig, DbPool, HttpConfig, LoggingEventPublisher,
+    ModuleSourcesConfig, PLATFORM_MIGRATIONS, RemoteModuleSourceConfig, ServiceConfig,
+    TelemetryConfig, apply_migrations,
 };
-use platform_runtime::{EnqueueFunctionRequest, RUNTIME_MIGRATIONS, RuntimeClient, RuntimeWorker};
+use platform_runtime::{RUNTIME_MIGRATIONS, RuntimeWorker};
 use platform_testing::TestDatabase;
 use serde_json::Value;
 use std::sync::Arc;
@@ -548,7 +548,7 @@ async fn remote_http_proxy_forwards_declared_get_routes() {
 }
 
 #[tokio::test]
-async fn installed_remote_module_runs_through_api_proxy_and_worker_runtime() {
+async fn installed_remote_module_lifecycle_activation_runs_through_worker_runtime() {
     let _guard = REMOTE_SMOKE_TEST_LOCK.lock().await;
     let Some(db) = TestDatabase::create().await else {
         return;
@@ -593,25 +593,11 @@ async fn installed_remote_module_runs_through_api_proxy_and_worker_runtime() {
     assert_eq!(proxied["data"]["email"], "ada@example.com");
     assert_eq!(proxied["remote_path"], "/contacts/contact_1");
 
-    RuntimeClient::new(db.pool.clone())
-        .enqueue_function(EnqueueFunctionRequest {
-            function_name: "remote_crm.sync_contact.v1".to_owned(),
-            input_json: serde_json::json!({ "contact_id": "contact_1" }),
-            correlation_id: CorrelationId::new("corr_install_to_run"),
-            actor: ActorContext::Service {
-                service_id: "worker".to_owned(),
-                scopes: vec!["runtime.functions.enqueue".to_owned()],
-            },
-            trace: TraceContext {
-                trace_id: Some("trace_install_to_run".to_owned()),
-                span_id: Some("span_install_to_run".to_owned()),
-                baggage: Vec::new(),
-            },
-            causation_id: Some("remote_module_install".to_owned()),
-            max_attempts: Some(3),
-        })
-        .await
-        .expect("remote runtime function should enqueue");
+    let activation_run_ids =
+        app_bootstrap::enqueue_lifecycle_activation_jobs(&ctx, &modules, &registry)
+            .await
+            .expect("remote lifecycle activation should enqueue");
+    assert_eq!(activation_run_ids.len(), 1);
 
     let worker = RuntimeWorker::new(db.pool.clone(), Arc::new(registry), "worker-install-run");
     assert_eq!(
@@ -622,23 +608,40 @@ async fn installed_remote_module_runs_through_api_proxy_and_worker_runtime() {
         1
     );
     let status: String =
-        sqlx::query_scalar("select status from runtime.function_runs where function_name = $1")
-            .bind("remote_crm.sync_contact.v1")
+        sqlx::query_scalar("select status from runtime.function_runs where id = $1")
+            .bind(&activation_run_ids[0])
             .fetch_one(&db.pool)
             .await
             .expect("function run status should query");
     assert_eq!(status, "completed");
+    let lifecycle_run: (String, String, Value) = sqlx::query_as(
+        r#"
+        select correlation_id, causation_id, input_json
+        from runtime.function_runs
+        where id = $1
+        "#,
+    )
+    .bind(&activation_run_ids[0])
+    .fetch_one(&db.pool)
+    .await
+    .expect("lifecycle function run should query");
+    assert!(lifecycle_run.0.starts_with("corr_lifecycle_"));
+    assert_eq!(
+        lifecycle_run.1,
+        "module_lifecycle:remote-crm:sync contacts on startup"
+    );
+    assert_eq!(lifecycle_run.2["reason"], "worker_startup");
     let remote_runtime_operation: Value = sqlx::query_scalar(
         r#"
         select log.attributes
         from platform.execution_logs log
-        where log.execution_name = $1
+        where log.execution_id = $1
             and log.attributes ->> 'source' = 'remote_runtime'
         order by log.occurred_at asc
         limit 1
         "#,
     )
-    .bind("remote_crm.sync_contact.v1")
+    .bind(&activation_run_ids[0])
     .fetch_one(&db.pool)
     .await
     .expect("remote runtime operation should query");

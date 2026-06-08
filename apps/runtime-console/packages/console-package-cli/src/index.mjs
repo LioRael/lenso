@@ -786,6 +786,25 @@ const remoteManifestJson = ({ packageContext }) => ({
       story_title: "Fetch Contact",
     },
   ],
+  lifecycle: {
+    activation_jobs: [
+      {
+        function_name: `${packageContext.moduleId}.contacts.enrich.v1`,
+        input: { reason: "worker_startup" },
+        name: "sync contacts on startup",
+        required: true,
+        run_policy: "every_startup",
+      },
+    ],
+    startup_checks: [
+      {
+        function_name: `${packageContext.moduleId}.contacts.enrich.v1`,
+        kind: "function_registered",
+        name: "contacts enrich function is registered",
+        required: true,
+      },
+    ],
+  },
   name: packageContext.moduleId,
   runtime: {
     functions: [
@@ -930,7 +949,9 @@ const remoteBackendPackageJson = ({ moduleId }) =>
 const remoteBackendServer = ({ packageContext }) => `import {
   defineRemoteModule,
   defineSchemaEntity,
+  everyStartup,
   getRoute,
+  lifecycle,
   runtimeFunction,
   schemaAdmin,
   serveRemoteModule,
@@ -992,6 +1013,25 @@ const module = defineRemoteModule({
       storyTitle: "Fetch Contact",
     }),
   ],
+  lifecycle: lifecycle({
+    activationJobs: [
+      everyStartup(
+        "sync contacts on startup",
+        "${packageContext.moduleId}.contacts.enrich.v1",
+        {
+          input: { reason: "worker_startup" },
+        }
+      ),
+    ],
+    startupChecks: [
+      {
+        function_name: "${packageContext.moduleId}.contacts.enrich.v1",
+        kind: "function_registered",
+        name: "contacts enrich function is registered",
+        required: true,
+      },
+    ],
+  }),
   name: "${packageContext.moduleId}",
   runtimeFunctions: [
     runtimeFunction("${packageContext.moduleId}.contacts.enrich.v1", {

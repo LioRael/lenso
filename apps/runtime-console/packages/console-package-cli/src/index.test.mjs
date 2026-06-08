@@ -655,6 +655,25 @@ describe("module scaffold CLI", () => {
           story_title: "Fetch Contact",
         },
       ],
+      lifecycle: {
+        activation_jobs: [
+          {
+            function_name: "billing.contacts.enrich.v1",
+            input: { reason: "worker_startup" },
+            name: "sync contacts on startup",
+            required: true,
+            run_policy: "every_startup",
+          },
+        ],
+        startup_checks: [
+          {
+            function_name: "billing.contacts.enrich.v1",
+            kind: "function_registered",
+            name: "contacts enrich function is registered",
+            required: true,
+          },
+        ],
+      },
       name: "billing",
       runtime: {
         functions: [
@@ -730,7 +749,9 @@ describe("module scaffold CLI", () => {
     );
     expect(backendServer).toContain("defineRemoteModule");
     expect(backendServer).toContain("defineSchemaEntity");
+    expect(backendServer).toContain("everyStartup");
     expect(backendServer).toContain("getRoute");
+    expect(backendServer).toContain("lifecycle");
     expect(backendServer).toContain("runtimeFunction");
     expect(backendServer).toContain("serveRemoteModule");
     expect(backendServer).toContain('"GET /contacts/{id}"');
