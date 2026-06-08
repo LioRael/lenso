@@ -37,6 +37,9 @@ release-check:
     just check
     just demo-release
 
+release-package:
+    sh scripts/release-package.sh
+
 test:
     cargo test --locked --workspace
 

@@ -89,3 +89,13 @@ Before publishing, collect:
 - any known local infrastructure caveats;
 - the minimum supported local stack: Rust toolchain, Node/pnpm, Docker, and
   Postgres.
+
+Use [release-notes-template.md](release-notes-template.md) for manual notes, or
+run:
+
+```sh
+LENSO_RELEASE_VERSION=v0.1.0 just release-package
+```
+
+The end-to-end release branch and GitHub Actions flow lives in
+[release-process.md](release-process.md).

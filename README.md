@@ -208,3 +208,6 @@ Use `just release-check` before cutting a release branch or tag. It runs the
 full local quality gate plus the remote module install-to-run demo. The release
 scope and manual smoke checklist live in
 [docs/release-readiness.md](docs/release-readiness.md).
+
+Release packaging and tagging steps live in
+[docs/release-process.md](docs/release-process.md).
