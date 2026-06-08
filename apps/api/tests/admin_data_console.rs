@@ -473,7 +473,7 @@ async fn admin_action_invocation_calls_declared_source() {
 }
 
 #[tokio::test]
-async fn module_registry_snapshot_returns_remote_preflight_rows() {
+async fn available_modules_returns_remote_install_rows() {
     let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
     install_admin_modules(vec![]);
     install_admin_module_metadata(vec![AdminModuleMetadata {
@@ -507,9 +507,10 @@ async fn module_registry_snapshot_returns_remote_preflight_rows() {
     let app = build_router(ctx);
 
     let response = app
-        .oneshot(admin_get("/admin/data/module-registry/snapshot"))
+        .clone()
+        .oneshot(admin_get("/admin/data/available-modules"))
         .await
-        .expect("snapshot request completes");
+        .expect("available modules request completes");
 
     assert_eq!(response.status(), StatusCode::OK);
     let body = json_body(response).await;
@@ -534,6 +535,12 @@ async fn module_registry_snapshot_returns_remote_preflight_rows() {
     assert_eq!(body["modules"][0]["manifestStatus"], "ok");
     assert_eq!(body["modules"][0]["installPolicy"], "trusted");
     assert_eq!(body["modules"][0]["status"], "ready");
+
+    let legacy_response = app
+        .oneshot(admin_get("/admin/data/module-registry/snapshot"))
+        .await
+        .expect("legacy snapshot request completes");
+    assert_eq!(legacy_response.status(), StatusCode::OK);
 }
 
 #[tokio::test]

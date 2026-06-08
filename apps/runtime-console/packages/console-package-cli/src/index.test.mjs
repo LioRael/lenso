@@ -451,7 +451,7 @@ describe("module scaffold CLI", () => {
     expect(flowDoc).not.toContain("lenso module marketplace export");
     expect(flowDoc).not.toContain("lenso module marketplace import");
     expect(flowDoc).not.toContain("lenso module registry doctor");
-    expect(flowDoc).toContain("/admin/data/module-registry/snapshot");
+    expect(flowDoc).toContain("/admin/data/available-modules");
     expect(flowDoc).toContain("Available Modules");
     expect(flowDoc).toContain("Installing from a manifest URL");
     expect(flowDoc).not.toContain("lenso module registry inspect");

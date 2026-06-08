@@ -31,8 +31,8 @@ pub struct AdminModuleMetadataListResponse {
     pub refresh_history: Vec<AdminModuleRefreshRecordDto>,
 }
 
-/// Response for `GET /admin/data/module-registry/snapshot`: a read-only
-/// Runtime Console preflight view shaped like `lenso module registry doctor --json`.
+/// Response for `GET /admin/data/available-modules`: a read-only list of
+/// remote modules that can be installed from their manifest URL.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AdminModuleRegistrySnapshotResponse {
     pub version: u8,

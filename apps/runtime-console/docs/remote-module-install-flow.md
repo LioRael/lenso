@@ -77,7 +77,7 @@ When the host API is running, the Runtime Console can show available modules
 from:
 
 ```text
-GET /admin/data/module-registry/snapshot
+GET /admin/data/available-modules
 ```
 
 The Available Modules panel keeps that view lightweight: it shows module name,

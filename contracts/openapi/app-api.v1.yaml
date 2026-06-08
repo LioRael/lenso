@@ -233,6 +233,37 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /admin/data/available-modules:
+    get:
+      tags:
+      - admin-data
+      operationId: admin_data_available_modules
+      parameters:
+      - name: authorization
+        in: header
+        description: Development service bearer token
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Available remote modules for marketplace install
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminModuleRegistrySnapshotResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/data/module-registry/snapshot:
     get:
       tags:
@@ -247,7 +278,7 @@ paths:
           type: string
       responses:
         '200':
-          description: Read-only module registry preflight snapshot
+          description: Legacy alias for available remote modules
           content:
             application/json:
               schema:
@@ -3238,8 +3269,8 @@ components:
     AdminModuleRegistrySnapshotResponse:
       type: object
       description: |-
-        Response for `GET /admin/data/module-registry/snapshot`: a read-only
-        Runtime Console preflight view shaped like `lenso module registry doctor --json`.
+        Response for `GET /admin/data/available-modules`: a read-only list of
+        remote modules that can be installed from their manifest URL.
       required:
       - version
       - status

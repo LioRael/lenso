@@ -440,6 +440,7 @@ pub fn router() -> ApiOpenApiRouter {
     OpenApiRouter::new()
         .routes(routes!(list_modules))
         .routes(routes!(refresh_modules))
+        .routes(routes!(available_modules))
         .routes(routes!(module_registry_snapshot))
         .routes(routes!(list_schemas))
         .routes(routes!(refresh_schemas))

@@ -71,7 +71,7 @@ export async function fetchAvailableModules({
   client?: AvailableModulesHttpClient;
 } = {}): Promise<AvailableModulesResponse> {
   if (apiMode) {
-    return client.get("admin/data/module-registry/snapshot").json();
+    return client.get("admin/data/available-modules").json();
   }
   return sampleAvailableModulesResponse;
 }

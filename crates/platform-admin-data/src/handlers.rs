@@ -110,7 +110,7 @@ pub(crate) async fn refresh_modules(
     tag = "admin-data",
     params(("authorization" = String, Header, description = "Development service bearer token")),
     responses(
-        (status = 200, description = "Read-only module registry preflight snapshot", body = AdminModuleRegistrySnapshotResponse, content_type = "application/json"),
+        (status = 200, description = "Legacy alias for available remote modules", body = AdminModuleRegistrySnapshotResponse, content_type = "application/json"),
         (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
         (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
     )
@@ -119,9 +119,30 @@ pub(crate) async fn module_registry_snapshot(
     _admin: AdminActor,
     HttpRequestContext(_request_ctx): HttpRequestContext,
 ) -> Result<Json<AdminModuleRegistrySnapshotResponse>, ApiErrorResponse> {
-    Ok(Json(module_registry_snapshot_response(
-        admin_module_metadata_snapshot().modules,
-    )))
+    Ok(Json(available_modules_response()))
+}
+
+#[utoipa::path(
+    get,
+    path = "/admin/data/available-modules",
+    operation_id = "admin_data_available_modules",
+    tag = "admin-data",
+    params(("authorization" = String, Header, description = "Development service bearer token")),
+    responses(
+        (status = 200, description = "Available remote modules for marketplace install", body = AdminModuleRegistrySnapshotResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+    )
+)]
+pub(crate) async fn available_modules(
+    _admin: AdminActor,
+    HttpRequestContext(_request_ctx): HttpRequestContext,
+) -> Result<Json<AdminModuleRegistrySnapshotResponse>, ApiErrorResponse> {
+    Ok(Json(available_modules_response()))
+}
+
+fn available_modules_response() -> AdminModuleRegistrySnapshotResponse {
+    module_registry_snapshot_response(admin_module_metadata_snapshot().modules)
 }
 
 #[utoipa::path(

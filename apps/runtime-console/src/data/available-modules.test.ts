@@ -62,7 +62,7 @@ describe("available modules provider", () => {
     await expect(
       fetchAvailableModules({ apiMode: true, client })
     ).resolves.toBe(response);
-    expect(getCalls).toEqual(["admin/data/module-registry/snapshot"]);
+    expect(getCalls).toEqual(["admin/data/available-modules"]);
   });
 
   test("summarizes available modules panel states", () => {
