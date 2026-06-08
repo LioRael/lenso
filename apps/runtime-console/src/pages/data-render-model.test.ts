@@ -26,6 +26,7 @@ import {
   moduleConsoleSurfaceRows,
   moduleDisabledByConfig,
   moduleDesiredEnabled,
+  moduleEntrypointRows,
   moduleEnabledConfigKey,
   moduleErrorMessage,
   moduleGovernanceRows,
@@ -805,6 +806,94 @@ describe("module status helpers", () => {
   test("labels copied module registry commands", () => {
     expect(moduleRegistryHandoffCopyLabel("inspect", "inspect")).toBe("copied");
     expect(moduleRegistryHandoffCopyLabel("install", "inspect")).toBe("copy");
+  });
+
+  test("builds module entrypoints for installed module handoff", () => {
+    const module: AdminModuleMetadata = moduleMetadata({
+      module_name: "remote-crm",
+      source: "remote",
+      status: "loaded",
+      error: null,
+      admin: { kind: "schema", entities: [entity] },
+      console: [
+        {
+          area: "data",
+          label: "CRM",
+          name: "crm",
+          package: {
+            export: "CrmConsole",
+            name: "@lenso/crm-console",
+          },
+          route: "/data/crm",
+        },
+      ],
+      http_routes: [
+        {
+          capability: "remote_crm.contacts.read",
+          method: "GET",
+          path: "/contacts/{id}",
+        },
+      ],
+      runtime: {
+        functions: [
+          {
+            name: "remote_crm.sync_contact.v1",
+            queue: "remote-crm",
+            version: 1,
+          },
+        ],
+      },
+    });
+
+    expect(
+      moduleEntrypointRows(module, {
+        hasMissingConsolePackages: true,
+        restartPending: true,
+      })
+    ).toEqual([
+      {
+        detail: "restart API and worker",
+        key: "restart",
+        kind: "restart",
+        label: "Restart Pending",
+        path: "",
+      },
+      {
+        detail: "lenso console-package apply-plan",
+        key: "console-package",
+        kind: "package",
+        label: "Install Console Package",
+        path: "",
+      },
+      {
+        detail: "schema",
+        key: "data",
+        kind: "data",
+        label: "Open Data",
+        path: "/data",
+      },
+      {
+        detail: "data / CRM",
+        key: "console:crm",
+        kind: "console",
+        label: "Open Console Surface",
+        path: "/data/crm",
+      },
+      {
+        detail: "1 interface",
+        key: "http",
+        kind: "http",
+        label: "HTTP Interfaces",
+        path: "#http-interfaces",
+      },
+      {
+        detail: "1 function",
+        key: "runtime",
+        kind: "runtime",
+        label: "Runtime Queue",
+        path: "/operations/queues?selected=runtime.functions%3Aremote-crm",
+      },
+    ]);
   });
 
   test("builds runtime function rows for registry detail", () => {

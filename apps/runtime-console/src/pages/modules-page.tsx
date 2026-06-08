@@ -48,6 +48,7 @@ import {
   moduleConsoleSurfaceRows,
   moduleDisabledByConfig,
   moduleDesiredEnabled,
+  moduleEntrypointRows,
   moduleEnabledConfigKey,
   moduleErrorMessage,
   moduleGovernanceRows,
@@ -685,6 +686,11 @@ function ModuleRegistryDetail({
   const consolePackageInstallPlan = consolePackageInstallPlanFromMetadata([
     module,
   ]);
+  const restartPending = moduleRestartPending(module, configValues);
+  const entrypointRows = moduleEntrypointRows(module, {
+    hasMissingConsolePackages: missingConsolePackages.length > 0,
+    restartPending,
+  });
   const storyRows = storyDisplayRows(module);
   return (
     <div className="grid gap-3">
@@ -706,6 +712,7 @@ function ModuleRegistryDetail({
         )}
       </section>
 
+      <ModuleEntrypointsPanel rows={entrypointRows} />
       <ModuleOperationsPanel
         configValues={configValues}
         history={history}
@@ -724,6 +731,65 @@ function ModuleRegistryDetail({
       <ModuleHttpRoutesTable rows={routeRows} />
     </div>
   );
+}
+
+function ModuleEntrypointsPanel({
+  rows,
+}: {
+  rows: ReturnType<typeof moduleEntrypointRows>;
+}) {
+  if (rows.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="min-w-0 border border-(--border-subtle) bg-(--surface)">
+      <header className="flex items-center gap-2 border-b border-(--border-subtle) px-3 py-2 font-semibold">
+        <SquareTerminal className="text-(--accent)" size={14} />
+        <span>Open Module</span>
+        <span className="ml-auto border border-(--border-subtle) px-1.5 py-0.5 text-[10px] text-(--secondary)">
+          {rows.length}
+        </span>
+      </header>
+      <div className="grid gap-1 p-2 sm:grid-cols-2 xl:grid-cols-4">
+        {rows.map((row) => (
+          <button
+            className={cn(
+              "min-w-0 border border-(--border-subtle) bg-(--background) px-2 py-2 text-left hover:bg-(--sidebar)",
+              !row.path && "cursor-default"
+            )}
+            disabled={!row.path}
+            key={row.key}
+            onClick={() => openModuleEntrypoint(row.path)}
+            title={row.detail}
+            type="button"
+          >
+            <span className="block truncate text-[11px] text-(--foreground)">
+              {row.label}
+            </span>
+            <span className="block truncate pt-1 text-[10px] text-(--muted)">
+              {row.detail}
+            </span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function openModuleEntrypoint(path: string) {
+  if (!path) {
+    return;
+  }
+  if (path.startsWith("#")) {
+    document.querySelector(path)?.scrollIntoView({ block: "start" });
+    return;
+  }
+  if (path.startsWith("/operations/")) {
+    pushOperationsUrl(path);
+    return;
+  }
+  window.location.assign(path);
 }
 
 function MissingConsolePackagesTable({
@@ -1523,7 +1589,10 @@ function ModuleHttpRoutesTable({
   }
 
   return (
-    <section className="min-w-0 border border-(--border-subtle) bg-(--surface)">
+    <section
+      className="min-w-0 border border-(--border-subtle) bg-(--surface)"
+      id="http-interfaces"
+    >
       <header className="flex items-center gap-2 border-b border-(--border-subtle) px-3 py-2 font-semibold">
         <Route className="text-(--accent)" size={14} />
         <span>HTTP Interfaces</span>

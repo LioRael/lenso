@@ -369,6 +369,14 @@ export type ModuleRuntimeFunctionRow = {
   retryPolicy: string;
 };
 
+export type ModuleEntrypointRow = {
+  key: string;
+  label: string;
+  path: string;
+  detail: string;
+  kind: "data" | "console" | "http" | "runtime" | "package" | "restart";
+};
+
 export type ModuleConsoleSurfaceRow = {
   key: string;
   name: string;
@@ -979,6 +987,80 @@ export function moduleRuntimeFunctionRows(
       version: String(runtimeFunction.version),
     };
   });
+}
+
+export function moduleEntrypointRows(
+  module: AdminModuleMetadata,
+  options: {
+    hasMissingConsolePackages?: boolean;
+    restartPending?: boolean;
+  } = {}
+): ModuleEntrypointRow[] {
+  const rows: ModuleEntrypointRow[] = [];
+
+  if (options.restartPending) {
+    rows.push({
+      detail: "restart API and worker",
+      key: "restart",
+      kind: "restart",
+      label: "Restart Pending",
+      path: "",
+    });
+  }
+
+  if (options.hasMissingConsolePackages) {
+    rows.push({
+      detail: "lenso console-package apply-plan",
+      key: "console-package",
+      kind: "package",
+      label: "Install Console Package",
+      path: "",
+    });
+  }
+
+  if (module.admin !== null) {
+    rows.push({
+      detail: adminSurfaceLabel(module.admin),
+      key: "data",
+      kind: "data",
+      label: "Open Data",
+      path: "/data",
+    });
+  }
+
+  for (const surface of module.console) {
+    rows.push({
+      detail: `${surface.area} / ${surface.label}`,
+      key: `console:${surface.name}`,
+      kind: "console",
+      label: "Open Console Surface",
+      path: surface.route,
+    });
+  }
+
+  if (module.http_routes.length > 0) {
+    rows.push({
+      detail: `${module.http_routes.length} interface${module.http_routes.length === 1 ? "" : "s"}`,
+      key: "http",
+      kind: "http",
+      label: "HTTP Interfaces",
+      path: "#http-interfaces",
+    });
+  }
+
+  const runtimeFunctions = module.runtime?.functions ?? [];
+  if (runtimeFunctions.length > 0) {
+    const queueKey = `runtime.functions:${runtimeFunctions[0]?.queue ?? module.module_name}`;
+    rows.push({
+      detail: `${runtimeFunctions.length} function${runtimeFunctions.length === 1 ? "" : "s"}`,
+      key: "runtime",
+      kind: "runtime",
+      label: "Runtime Queue",
+      path: `/operations/queues?selected=${encodeURIComponent(queueKey)}`,
+    });
+  }
+
+  return rows;
 }
 
 export function moduleConsoleSurfaceRows(
