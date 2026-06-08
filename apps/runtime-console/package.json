@@ -13,6 +13,7 @@
     "create:module": "lenso-console-package module create",
     "create:console-package": "lenso-console-package create",
     "demo:remote-module-install": "node scripts/remote-module-install-demo.mjs",
+    "demo:remote-module-package": "node scripts/remote-module-package-demo.mjs",
     "build": "tsc -b && vite build",
     "test": "vitest run src packages/story-console/src packages/identity-console/src packages/remote-crm-console/src packages/console-package-api/src packages/console-package-cli/src",
     "typecheck": "tsc -b --pretty false",

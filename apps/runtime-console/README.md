@@ -135,9 +135,10 @@ lenso module add https://example.com/lenso/module/v1/manifest
 lenso console-package apply-plan
 ```
 
-Run `pnpm demo:remote-module-install` for a temp-directory smoke demo of that
-flow. See `docs/remote-module-install-flow.md` for the full host and module
-author workflow.
+Run `pnpm demo:remote-module-package` for a temp-directory smoke demo of that
+flow. The older `pnpm demo:remote-module-install` command is kept as an alias.
+See `docs/remote-module-install-flow.md` for the full host and module author
+workflow.
 
 See `docs/console-package-template.md` before adding a package. The short path is:
 

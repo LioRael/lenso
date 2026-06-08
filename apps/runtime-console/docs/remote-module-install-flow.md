@@ -134,7 +134,7 @@ the demo low-friction while still avoiding arbitrary remote JavaScript loading.
 Run the temporary-host smoke demo without mutating the working tree:
 
 ```sh
-pnpm --dir apps/runtime-console run demo:remote-module-install
+pnpm --dir apps/runtime-console run demo:remote-module-package
 ```
 
 Set `LENSO_KEEP_REMOTE_MODULE_INSTALL_DEMO=1` to keep the generated temp
@@ -143,7 +143,7 @@ directory for inspection.
 Expected success output ends with:
 
 ```text
-Remote module install demo passed
+Remote module package demo passed
 ```
 
 ## Troubleshooting

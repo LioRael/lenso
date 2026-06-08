@@ -492,7 +492,7 @@ describe("module scaffold CLI", () => {
       "fix: pnpm --dir apps/runtime-console add <package-name>"
     );
     expect(flowDoc).toContain("fix: lenso console-package apply-plan");
-    expect(flowDoc).toContain("Remote module install demo passed");
+    expect(flowDoc).toContain("Remote module package demo passed");
     expect(flowDoc).not.toContain("Module registry install demo passed");
 
     await expect(
@@ -553,7 +553,7 @@ describe("module scaffold CLI", () => {
     expect(stdout).not.toContain("lenso module doctor");
   });
 
-  test("runs the remote module install demo script", async () => {
+  test("runs the remote module package demo script", async () => {
     const runtimeConsoleRoot = path.resolve(import.meta.dirname, "../../..");
     const packageJson = JSON.parse(
       await readFile(path.join(runtimeConsoleRoot, "package.json"), "utf-8")
@@ -561,12 +561,15 @@ describe("module scaffold CLI", () => {
     expect(packageJson.scripts["demo:remote-module-install"]).toBe(
       "node scripts/remote-module-install-demo.mjs"
     );
+    expect(packageJson.scripts["demo:remote-module-package"]).toBe(
+      "node scripts/remote-module-package-demo.mjs"
+    );
 
     const { stdout } = await execFileAsync(process.execPath, [
-      path.join(runtimeConsoleRoot, "scripts/remote-module-install-demo.mjs"),
+      path.join(runtimeConsoleRoot, "scripts/remote-module-package-demo.mjs"),
     ]);
 
-    expect(stdout).toContain("Remote module install demo passed");
+    expect(stdout).toContain("Remote module package demo passed");
   });
 
   test("creates a standalone remote module package", async () => {
