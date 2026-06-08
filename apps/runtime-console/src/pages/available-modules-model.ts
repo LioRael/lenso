@@ -123,6 +123,15 @@ export type AvailableModuleHandoffState =
       path: string;
     }
   | {
+      kind: "package_install_needed";
+      label: "package install needed";
+      action: "install_package";
+      detail: string;
+      moduleName: string;
+      command?: undefined;
+      path: string;
+    }
+  | {
       kind: "restart_pending";
       label: "restart pending";
       action: "restart";
@@ -203,7 +212,11 @@ export function availableModuleHandoffState({
   installCommand,
   row,
 }: {
-  installed?: { moduleName: string; restartPending: boolean } | null;
+  installed?: {
+    moduleName: string;
+    packageInstallNeeded?: boolean;
+    restartPending: boolean;
+  } | null;
   installCommand: string;
   row: AvailableModuleRow;
 }): AvailableModuleHandoffState {
@@ -213,6 +226,17 @@ export function availableModuleHandoffState({
       detail: "restart API and worker",
       kind: "restart_pending",
       label: "restart pending",
+      moduleName: installed.moduleName,
+      path: `/modules?module=${encodeURIComponent(installed.moduleName)}`,
+    };
+  }
+
+  if (installed?.packageInstallNeeded) {
+    return {
+      action: "install_package",
+      detail: "install console package and restart",
+      kind: "package_install_needed",
+      label: "package install needed",
       moduleName: installed.moduleName,
       path: `/modules?module=${encodeURIComponent(installed.moduleName)}`,
     };

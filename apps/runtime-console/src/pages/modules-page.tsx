@@ -412,10 +412,14 @@ function ModuleRegistryCatalogPanel({
             const installedModule = modules.find(
               (module) => module.module_name === row.name
             );
+            const packageInstallNeeded = installedModule
+              ? missingConsolePackagesFromMetadata([installedModule]).length > 0
+              : false;
             const handoff = availableModuleHandoffState({
               installed: installedModule
                 ? {
                     moduleName: installedModule.module_name,
+                    packageInstallNeeded,
                     restartPending: moduleRestartPending(
                       installedModule,
                       configValues
@@ -453,6 +457,7 @@ function ModuleRegistryCatalogPanel({
                   base {row.baseUrl}
                 </div>
                 {handoff.kind === "installed" ||
+                handoff.kind === "package_install_needed" ||
                 handoff.kind === "restart_pending" ? (
                   <button
                     className="border border-(--border-subtle) bg-(--surface) px-2 py-1 text-left text-[10px] text-(--secondary) hover:bg-(--sidebar) hover:text-(--foreground)"
@@ -463,7 +468,9 @@ function ModuleRegistryCatalogPanel({
                     <span className="block truncate">
                       {handoff.kind === "installed"
                         ? "Open Module"
-                        : "Open Restart Step"}
+                        : handoff.kind === "package_install_needed"
+                          ? "Open Package Step"
+                          : "Open Restart Step"}
                     </span>
                     <span className="block truncate pt-0.5 text-[9px] text-(--muted)">
                       {handoff.detail}

@@ -94,7 +94,31 @@ describe("available modules model", () => {
 
     expect(
       availableModuleHandoffState({
-        installed: { moduleName: "billing", restartPending: false },
+        installed: {
+          moduleName: "billing",
+          packageInstallNeeded: true,
+          restartPending: false,
+        },
+        installCommand:
+          "lenso module add https://example.com/lenso/module/v1/manifest",
+        row: row!,
+      })
+    ).toEqual({
+      action: "install_package",
+      detail: "install console package and restart",
+      kind: "package_install_needed",
+      label: "package install needed",
+      moduleName: "billing",
+      path: "/modules?module=billing",
+    });
+
+    expect(
+      availableModuleHandoffState({
+        installed: {
+          moduleName: "billing",
+          packageInstallNeeded: false,
+          restartPending: false,
+        },
         installCommand:
           "lenso module add https://example.com/lenso/module/v1/manifest",
         row: row!,
@@ -110,7 +134,11 @@ describe("available modules model", () => {
 
     expect(
       availableModuleHandoffState({
-        installed: { moduleName: "billing", restartPending: true },
+        installed: {
+          moduleName: "billing",
+          packageInstallNeeded: true,
+          restartPending: true,
+        },
         installCommand:
           "lenso module add https://example.com/lenso/module/v1/manifest",
         row: row!,
