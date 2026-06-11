@@ -958,6 +958,10 @@ describe("module scaffold CLI", () => {
     expect(output).toContain("Updated:");
     expect(output).toContain("- .env");
     expect(output).toContain("- .lenso/console-package-install-plan.json");
+    expect(output).toContain(
+      "REMOTE_MODULES: billing=http://127.0.0.1:4200/lenso/module/v1"
+    );
+    expect(output).toContain("Console packages: 1");
     expect(output).toContain("Next steps:");
     expect(output).toContain("- lenso console-package apply-plan");
     expect(output).toContain("- pnpm --dir apps/runtime-console install");
@@ -977,20 +981,35 @@ describe("module scaffold CLI", () => {
       source: "remote",
       version: "0.1.0",
     });
+    const logs = [];
+    const logSpy = vi.spyOn(console, "log").mockImplementation((message) => {
+      logs.push(String(message));
+    });
 
-    await expect(
-      runConsolePackageCli([
-        "module",
-        "add",
-        manifestUrl,
-        "--repo-root",
-        repoRoot,
-      ])
-    ).resolves.toBe(0);
+    try {
+      await expect(
+        runConsolePackageCli([
+          "module",
+          "add",
+          manifestUrl,
+          "--repo-root",
+          repoRoot,
+        ])
+      ).resolves.toBe(0);
+    } finally {
+      logSpy.mockRestore();
+    }
 
     await expect(readFile(path.join(repoRoot, ".env"), "utf-8")).resolves.toBe(
       `REMOTE_MODULES=billing=${manifestUrl.slice(0, -"/manifest".length)}\n`
     );
+
+    const output = logs.join("\n");
+    expect(output).toContain("Added remote module billing.");
+    expect(output).toContain("Console packages: 0");
+    expect(output).toContain("- restart the API and worker");
+    expect(output).not.toContain("lenso console-package apply-plan");
+    expect(output).not.toContain("pnpm --dir apps/runtime-console install");
   });
 
   test("installs a marketplace module from a manifest url", async () => {

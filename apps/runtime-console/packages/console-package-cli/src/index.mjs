@@ -1666,6 +1666,13 @@ const updateConsolePackageInstallPlan = async ({
   return `${JSON.stringify({ modules, version: 1 }, null, 2)}\n`;
 };
 
+const consolePackageCountFromInstallPlan = ({ installPlan, moduleName }) => {
+  const modulePlan = (installPlan.modules ?? []).find(
+    (module) => module.moduleName === moduleName
+  );
+  return modulePlan?.consolePackages?.length ?? 0;
+};
+
 const readModuleCatalog = async (catalogFilePath) => {
   const source = await readTextIfExists(catalogFilePath);
   if (!source) {
@@ -1778,12 +1785,17 @@ const addRemoteModule = async ({ manifestReference, options }) => {
     manifestReference,
     moduleName: remoteModule.name,
   });
+  const consolePackageCount = consolePackageCountFromInstallPlan({
+    installPlan: JSON.parse(installPlan),
+    moduleName: remoteModule.name,
+  });
 
   if (options.dryRun) {
     console.log("Remote module install dry run:");
     console.log(`- ${path.relative(repoRoot, envFilePath)}`);
     console.log(`- ${path.relative(repoRoot, installPlanPath)}`);
     console.log(`- ${remoteModule.name}=${baseUrl}`);
+    console.log(`- console packages: ${consolePackageCount}`);
     return;
   }
 
@@ -1796,9 +1808,13 @@ const addRemoteModule = async ({ manifestReference, options }) => {
   console.log("Updated:");
   console.log(`- ${path.relative(repoRoot, envFilePath)}`);
   console.log(`- ${path.relative(repoRoot, installPlanPath)}`);
+  console.log(`REMOTE_MODULES: ${remoteModule.name}=${baseUrl}`);
+  console.log(`Console packages: ${consolePackageCount}`);
   console.log("Next steps:");
-  console.log("- lenso console-package apply-plan");
-  console.log("- pnpm --dir apps/runtime-console install");
+  if (consolePackageCount > 0) {
+    console.log("- lenso console-package apply-plan");
+    console.log("- pnpm --dir apps/runtime-console install");
+  }
   console.log("- restart the API and worker");
 };
 
