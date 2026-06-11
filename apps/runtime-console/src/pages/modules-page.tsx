@@ -332,9 +332,6 @@ function ModuleRegistryCatalogPanel({
   rows: ReturnType<typeof availableModulesRows>;
 }) {
   const [copiedCommandKey, setCopiedCommandKey] = useState<string | null>(null);
-  const packageHandoffCommands = moduleRegistryHandoffCommands().filter(
-    (command) => command.key !== "add"
-  );
   const copyCommand = (key: string, command: string) => {
     void window.navigator.clipboard?.writeText(command);
     setCopiedCommandKey(key);
@@ -349,7 +346,7 @@ function ModuleRegistryCatalogPanel({
           Available Modules
         </span>
         <span className="ml-auto border border-[color-mix(in_srgb,var(--info)_35%,transparent)] px-1.5 py-0.5 text-[9px] text-(--info)">
-          Marketplace
+          Remote install
         </span>
       </header>
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 border-b border-(--border-subtle) px-2 py-1 text-[9px]">
@@ -508,47 +505,15 @@ function ModuleRegistryCatalogPanel({
                 ) : null}
                 {handoff.kind === "available" ? (
                   <div className="truncate text-[9px] text-(--muted)">
-                    then apply-plan / pnpm install / restart
+                    {row.consolePackageHintCount > 0
+                      ? "then install console package and restart"
+                      : "then restart API and worker"}
                   </div>
                 ) : null}
               </article>
             );
           })
         )}
-      </div>
-      <div className="grid gap-1 border-t border-(--border-subtle) p-2">
-        {packageHandoffCommands.map((command) => (
-          <div
-            className="grid grid-cols-[52px_minmax(0,1fr)_24px] items-center gap-1"
-            key={command.key}
-          >
-            <span className="truncate text-[9px] uppercase text-(--muted)">
-              {command.label}
-            </span>
-            <code
-              className="truncate border border-(--border-subtle) bg-(--background) px-1.5 py-1 text-[9px] text-(--secondary)"
-              title={command.command}
-            >
-              {command.command}
-            </code>
-            <button
-              aria-label={`${moduleRegistryHandoffCopyLabel(copiedCommandKey, command.key)} ${command.label} command`}
-              className="grid size-6 place-items-center border border-(--border-subtle) bg-(--background) text-(--muted) hover:bg-(--sidebar) hover:text-(--foreground)"
-              onClick={() => copyCommand(command.key, command.command)}
-              title={moduleRegistryHandoffCopyLabel(
-                copiedCommandKey,
-                command.key
-              )}
-              type="button"
-            >
-              {copiedCommandKey === command.key ? (
-                <Check size={11} />
-              ) : (
-                <Copy size={11} />
-              )}
-            </button>
-          </div>
-        ))}
       </div>
     </section>
   );

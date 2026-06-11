@@ -53,6 +53,8 @@ export const availableModulesQueryKey = [
   "available-modules",
 ] as const;
 
+const moduleAddCommand = "lenso module add <manifest-url>";
+
 export function moduleRefreshInvalidationQueryKeys() {
   return [["modules", "registry"], availableModulesQueryKey] as const;
 }
@@ -107,7 +109,7 @@ export function availableModulesPanelState({
   const firstIssue = response?.issues[0];
   if (isLoading) {
     return {
-      actionCommand: "lenso module catalog add <manifest-url>",
+      actionCommand: moduleAddCommand,
       detail: source,
       moduleCount: 0,
       kind: "loading",
@@ -118,7 +120,7 @@ export function availableModulesPanelState({
   }
   if (isError) {
     return {
-      actionCommand: "lenso module catalog add <manifest-url>",
+      actionCommand: moduleAddCommand,
       detail: "check the API and local catalog file",
       moduleCount: 0,
       kind: "error",
@@ -129,8 +131,8 @@ export function availableModulesPanelState({
   }
   if (rows.length === 0) {
     return {
-      actionCommand: "lenso module catalog add <manifest-url>",
-      detail: "add a manifest URL to show modules here",
+      actionCommand: moduleAddCommand,
+      detail: "install a manifest URL to show modules here",
       moduleCount: 0,
       kind: "empty",
       label: "no remote modules",
@@ -140,8 +142,8 @@ export function availableModulesPanelState({
   }
 
   return {
-    actionCommand: "lenso module catalog add <manifest-url>",
-    detail: firstIssue?.fix ?? "copy install commands from this catalog",
+    actionCommand: moduleAddCommand,
+    detail: firstIssue?.fix ?? "copy a module install command",
     moduleCount: rows.length,
     kind: "ready",
     label: `${rows.length} module${rows.length === 1 ? "" : "s"}`,
