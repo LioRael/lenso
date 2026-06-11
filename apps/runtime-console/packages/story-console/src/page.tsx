@@ -38,12 +38,23 @@ gsap.registerPlugin(useGSAP);
 const emptyStories: RuntimeStory[] = [];
 const selectedStoryStorageKey = "runtime-console:selected-story-correlation-id";
 export const runtimeStoriesDefaultViewMode = "story" satisfies StoryViewMode;
+export type StoryModuleMetadata = {
+  module_name?: string;
+  status?: "loaded" | "error";
+};
+
+export function storyModuleIsUnavailable(
+  module: StoryModuleMetadata | undefined
+) {
+  return module !== undefined && module.status !== "loaded";
+}
 
 export function RuntimeStoriesPage() {
   const {
     context: { useRuntimeConsole },
     data: { retryTargetForNode },
     hooks: { useBrowserUrlPopState, useListKeyboard, usePersistedLayout },
+    modules: { useMetadata: useConsoleModulesMetadata },
     queries: { useRuntimeStories },
     story: { findStoryByCorrelation },
     ui: {
@@ -61,7 +72,12 @@ export function RuntimeStoriesPage() {
   } = runtimeConsoleHostApi;
   const { activeStoryTarget, clearStoryTarget, openRetry } =
     useRuntimeConsole();
-  const storiesQuery = useRuntimeStories();
+  const modulesQuery = useConsoleModulesMetadata();
+  const storyModule = modulesQuery.data?.modules.find(
+    (module) => module.module_name === "platform-story"
+  );
+  const storyModuleUnavailable = storyModuleIsUnavailable(storyModule);
+  const storiesQuery = useRuntimeStories({ enabled: !storyModuleUnavailable });
   const stories = storiesQuery.data ?? emptyStories;
   const [query, setQuery] = useState(() => readRuntimeStoriesParam("q"));
   const [selectedStoryId, setSelectedStoryId] = useState<string | null>(
@@ -444,7 +460,7 @@ export function RuntimeStoriesPage() {
     },
   });
 
-  if (storiesQuery.isLoading) {
+  if (modulesQuery.isLoading || storiesQuery.isLoading) {
     return (
       <div className="grid h-full grid-cols-[clamp(220px,24vw,320px)_1px_minmax(0,1fr)] overflow-hidden bg-(--background)">
         <StoryListSkeleton />
@@ -456,6 +472,18 @@ export function RuntimeStoriesPage() {
           </EmptyState.Description>
         </EmptyState>
       </div>
+    );
+  }
+
+  if (storyModuleUnavailable) {
+    return (
+      <EmptyState className="h-full bg-(--surface)">
+        <EmptyState.Title>Story module disabled</EmptyState.Title>
+        <EmptyState.Description>
+          Enable platform-story in Modules, then restart the API to use Runtime
+          Stories.
+        </EmptyState.Description>
+      </EmptyState>
     );
   }
 

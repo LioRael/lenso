@@ -8,6 +8,7 @@ describe("console host api", () => {
       "function"
     );
     expect(runtimeConsoleHostApi.adminData.useRecords).toBeTypeOf("function");
+    expect(runtimeConsoleHostApi.modules.useMetadata).toBeTypeOf("function");
     expect(runtimeConsoleHostApi.context.useRuntimeConsole).toBeTypeOf(
       "function"
     );

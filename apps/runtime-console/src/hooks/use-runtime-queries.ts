@@ -246,8 +246,11 @@ export function useDeadLetters() {
   });
 }
 
-export function useRuntimeStories() {
+export function useRuntimeStories({
+  enabled = true,
+}: { enabled?: boolean } = {}) {
   return useQuery({
+    enabled,
     queryKey: runtimeQueryKeys.stories,
     queryFn: async () => (isApiMode() ? fetchRuntimeStories() : runtimeStories),
   });

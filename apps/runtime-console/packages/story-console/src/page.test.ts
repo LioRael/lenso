@@ -2,7 +2,10 @@ import { runtimeConsoleHostApi } from "@lenso/runtime-console-api";
 import { describe, expect, test } from "vitest";
 
 import { shouldCloseInspectorOnEscape } from "./keyboard";
-import { runtimeStoriesDefaultViewMode } from "./page";
+import {
+  runtimeStoriesDefaultViewMode,
+  storyModuleIsUnavailable,
+} from "./page";
 
 describe("story workbench page contracts", () => {
   test("defaults to the runtime story visualization mode", () => {
@@ -22,6 +25,22 @@ describe("story workbench page contracts", () => {
     };
 
     expect(storyHeaderProps.story.id).toBe(story.id);
+  });
+
+  test("treats disabled story metadata as unavailable", () => {
+    expect(storyModuleIsUnavailable(undefined)).toBe(false);
+    expect(
+      storyModuleIsUnavailable({
+        module_name: "platform-story",
+        status: "loaded",
+      })
+    ).toBe(false);
+    expect(
+      storyModuleIsUnavailable({
+        module_name: "platform-story",
+        status: "error",
+      })
+    ).toBe(true);
   });
 
   test("closes the inspector on plain Escape outside editable controls", () => {

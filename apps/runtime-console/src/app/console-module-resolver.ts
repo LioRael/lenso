@@ -25,6 +25,8 @@ export type ConsoleModulePackageReference = {
 
 export type ConsoleModuleMetadata = {
   module_name?: string;
+  status?: "loaded" | "error";
+  error?: string | null;
   console?: {
     name?: string;
     label?: string;

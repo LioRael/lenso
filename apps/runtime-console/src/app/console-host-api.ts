@@ -21,10 +21,14 @@ import { usePersistedLayout } from "../hooks/use-persisted-layout";
 import { useRuntimeStories } from "../hooks/use-runtime-queries";
 import { operationsPath } from "../pages/operations-url-model";
 import { useConsoleAdminRecords } from "./console-admin-data-api";
+import { useConsoleModulesMetadata } from "./console-module-metadata-query";
 
 export const runtimeConsoleHostApi = {
   adminData: {
     useRecords: useConsoleAdminRecords,
+  },
+  modules: {
+    useMetadata: useConsoleModulesMetadata,
   },
   context: {
     useRuntimeConsole,
@@ -70,6 +74,7 @@ export type {
   ConsoleAdminListResponse,
   ConsoleAdminRecord,
 } from "./console-admin-data-api";
+export type { ConsoleModuleMetadata } from "./console-module-resolver";
 export type { ExecutionInspectorTab } from "../components/runtime/execution-inspector-model";
 export type { StoryViewMode } from "../components/runtime/story-tabs";
 export type { ExecutionNode, RuntimeStory } from "../data/mock-runtime";

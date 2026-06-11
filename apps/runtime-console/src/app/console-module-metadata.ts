@@ -1,7 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
-
-import { httpClient, isApiMode } from "../lib/http-client";
+import { isApiMode } from "../lib/http-client";
 import { useConsoleCapabilities } from "./console-capabilities";
+import { useConsoleModulesMetadata } from "./console-module-metadata-query";
 import {
   type ConsoleModuleMetadata,
   createDevManualConsolePackageInstaller,
@@ -14,12 +13,6 @@ import {
   buildConsoleNavigation,
   buildTimeConsoleModuleMetadata,
 } from "./console-modules";
-
-type ModulesMetadataResponse = {
-  modules: ConsoleModuleMetadata[];
-};
-
-const consoleModulesMetadataQueryKey = ["modules", "registry"] as const;
 
 export function consoleModuleMetadataWithFallback({
   apiMode,
@@ -77,12 +70,7 @@ export async function previewConsolePackageInstallResults(
 export function useConsoleNavigation() {
   const apiMode = isApiMode();
   const availableCapabilities = useConsoleCapabilities();
-  const modulesQuery = useQuery({
-    enabled: apiMode,
-    queryKey: consoleModulesMetadataQueryKey,
-    queryFn: () =>
-      httpClient.get("admin/data/modules").json<ModulesMetadataResponse>(),
-  });
+  const modulesQuery = useConsoleModulesMetadata();
   const modules = consoleModuleMetadataWithFallback({
     apiMode,
     data: modulesQuery.data?.modules,
