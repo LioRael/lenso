@@ -1,0 +1,4 @@
+interface:
+  display_name: "Lenso Rust Backend"
+  short_description: "Rust backend workflow for Lenso"
+  default_prompt: "Use $lenso-rust-backend to implement this Lenso Rust backend change while preserving architecture rules."

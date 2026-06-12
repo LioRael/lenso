@@ -1,0 +1,77 @@
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version, for example v0.1.0"
+        required: true
+        type: string
+      notes:
+        description: "Short release note summary"
+        required: false
+        type: string
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: lenso
+          POSTGRES_PASSWORD: lenso
+          POSTGRES_USER: lenso
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lenso -d lenso"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      APP_ENV: local
+      DATABASE_URL: postgres://lenso:lenso@localhost:5432/lenso
+      HTTP_HOST: 0.0.0.0
+      HTTP_PORT: 3000
+      RUST_LOG: info,lenso=debug
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: packages/ts-sdk/pnpm-lock.yaml
+      - name: Install just
+        uses: extractions/setup-just@v2
+      - name: Run release gate
+        run: just release-check
+      - name: Build release package
+        env:
+          LENSO_RELEASE_NOTES_SUMMARY: ${{ inputs.notes }}
+          LENSO_RELEASE_VERSION: ${{ inputs.version }}
+        run: just release-package
+      - name: Upload release notes draft
+        uses: actions/upload-artifact@v4
+        with:
+          name: lenso-${{ inputs.version }}-release-notes
+          path: dist/release/lenso-${{ inputs.version }}-release-notes.md
+          if-no-files-found: error
+      - name: Upload release source package
+        uses: actions/upload-artifact@v4
+        with:
+          name: lenso-${{ inputs.version }}-source
+          path: dist/release/lenso-${{ inputs.version }}-source.tar.gz
+          if-no-files-found: error
+      - name: Upload artifact README
+        uses: actions/upload-artifact@v4
+        with:
+          name: lenso-${{ inputs.version }}-artifact-readme
+          path: dist/release/lenso-${{ inputs.version }}-artifact-readme.md
+          if-no-files-found: error

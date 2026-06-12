@@ -1,0 +1,13 @@
+target/
+node_modules/
+dist/
+.pnpm-store/
+
+.env
+.env.*
+!.env.example
+.lenso/
+
+.DS_Store
+*.log
+*.tsbuildinfo

@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "identity.cleanup_expired_sessions.v1",
+  "title": "identity.cleanup_expired_sessions.v1",
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false
+}
+
