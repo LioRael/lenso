@@ -1,8 +1,23 @@
 # Lenso Backend Platform
 
+[![CI](https://github.com/LioRael/lenso/actions/workflows/ci.yml/badge.svg)](https://github.com/LioRael/lenso/actions/workflows/ci.yml)
+
 Rust-first service-ready modular monolith scaffold with generated contracts and a TypeScript SDK.
 
 The platform starts as one deployable backend system with clear module boundaries. Modules own product capabilities, platform crates provide shared service-kit foundations, the runtime handles durable background work, and contracts produce stable API/event/SDK artifacts. The Runtime Console lives in the sibling `lenso-runtime-console` repository and consumes this backend API.
+
+## Repository Pair
+
+- Backend platform: this repository owns Rust services, platform crates, modules, migrations, contracts, and the generated TypeScript SDK.
+- Runtime Console: [`LioRael/lenso-runtime-console`](https://github.com/LioRael/lenso-runtime-console) owns the frontend workspace that consumes the admin APIs and SDK from this repository.
+
+Keep both repositories checked out as siblings when working on Console-backed backend changes:
+
+```text
+framework/
+  lenso/
+  lenso-runtime-console/
+```
 
 ## Architecture Overview
 
