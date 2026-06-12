@@ -12,9 +12,6 @@ on:
         required: false
         type: string
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   package:
     runs-on: ubuntu-latest
@@ -39,19 +36,19 @@ jobs:
       HTTP_PORT: 3000
       RUST_LOG: info,lenso=debug
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           run_install: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: pnpm
           cache-dependency-path: packages/ts-sdk/pnpm-lock.yaml
       - name: Install just
-        uses: extractions/setup-just@v2
+        uses: extractions/setup-just@v4
       - name: Run release gate
         run: just release-check
       - name: Build release package
@@ -60,19 +57,19 @@ jobs:
           LENSO_RELEASE_VERSION: ${{ inputs.version }}
         run: just release-package
       - name: Upload release notes draft
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lenso-${{ inputs.version }}-release-notes
           path: dist/release/lenso-${{ inputs.version }}-release-notes.md
           if-no-files-found: error
       - name: Upload release source package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lenso-${{ inputs.version }}-source
           path: dist/release/lenso-${{ inputs.version }}-source.tar.gz
           if-no-files-found: error
       - name: Upload artifact README
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lenso-${{ inputs.version }}-artifact-readme
           path: dist/release/lenso-${{ inputs.version }}-artifact-readme.md
