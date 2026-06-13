@@ -3003,6 +3003,17 @@ components:
       - active
       - needs_attention
       - blocked
+    AdminModuleCompatibilityDto:
+      type: object
+      properties:
+        consolePackageApi:
+          type:
+          - string
+          - 'null'
+        lenso:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/AdminModuleLensoCompatibilityDto'
     AdminModuleGovernanceDto:
       type: object
       required:
@@ -3023,6 +3034,27 @@ components:
             $ref: '#/components/schemas/AdminCapabilityIssueDto'
         capability_summary:
           $ref: '#/components/schemas/AdminCapabilitySummaryDto'
+    AdminModuleHostCompatibilityDto:
+      type: object
+      required:
+      - consolePackageApi
+      - lensoVersion
+      properties:
+        consolePackageApi:
+          type: string
+        lensoVersion:
+          type: string
+    AdminModuleLensoCompatibilityDto:
+      type: object
+      properties:
+        maxVersion:
+          type:
+          - string
+          - 'null'
+        minVersion:
+          type:
+          - string
+          - 'null'
     AdminModuleMetadataDto:
       type: object
       required:
@@ -3215,6 +3247,7 @@ components:
       - ok
       - invalid
       - unreadable
+      - archived
     AdminModuleRegistrySnapshotModuleDto:
       type: object
       required:
@@ -3222,19 +3255,39 @@ components:
       - source
       - catalogVersion
       - manifestReference
+      - capabilities
       - consolePackageHints
+      - hostCompatibility
       - manifestStatus
       - status
       properties:
+        archiveReason:
+          type:
+          - string
+          - 'null'
+        archivedAt:
+          type:
+          - string
+          - 'null'
         baseUrl:
           type:
           - string
           - 'null'
+        capabilities:
+          type: array
+          items:
+            type: string
         catalogVersion:
           type: string
+        compatibility:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/AdminModuleCompatibilityDto'
         consolePackageHints:
           type: integer
           minimum: 0
+        hostCompatibility:
+          $ref: '#/components/schemas/AdminModuleHostCompatibilityDto'
         manifestName:
           type:
           - string
@@ -3253,11 +3306,16 @@ components:
           $ref: '#/components/schemas/ModuleSource'
         status:
           $ref: '#/components/schemas/AdminModuleRegistrySnapshotModuleStatus'
+        summary:
+          type:
+          - string
+          - 'null'
     AdminModuleRegistrySnapshotModuleStatus:
       type: string
       enum:
       - ready
       - needs_attention
+      - archived
     AdminModuleRegistrySnapshotResponse:
       type: object
       description: |-

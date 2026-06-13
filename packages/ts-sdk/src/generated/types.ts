@@ -173,11 +173,26 @@ export type AdminMetricBinding = {
 
 export type AdminModuleActivationState = string;
 
+export type AdminModuleCompatibilityDto = {
+  consolePackageApi?: string | null;
+  lenso?: AdminModuleLensoCompatibilityDto | null;
+};
+
 export type AdminModuleGovernanceDto = {
   activation_reasons: Array<string>;
   activation_state: AdminModuleActivationState;
   capability_issues: Array<AdminCapabilityIssueDto>;
   capability_summary: AdminCapabilitySummaryDto;
+};
+
+export type AdminModuleHostCompatibilityDto = {
+  consolePackageApi: string;
+  lensoVersion: string;
+};
+
+export type AdminModuleLensoCompatibilityDto = {
+  maxVersion?: string | null;
+  minVersion?: string | null;
 };
 
 export type AdminModuleMetadataDto = {
@@ -243,9 +258,14 @@ export type AdminModuleRegistrySnapshotIssueDto = {
 export type AdminModuleRegistrySnapshotManifestStatus = string;
 
 export type AdminModuleRegistrySnapshotModuleDto = {
+  archiveReason?: string | null;
+  archivedAt?: string | null;
   baseUrl?: string | null;
+  capabilities: Array<string>;
   catalogVersion: string;
+  compatibility?: AdminModuleCompatibilityDto | null;
   consolePackageHints: number;
+  hostCompatibility: AdminModuleHostCompatibilityDto;
   manifestName?: string | null;
   manifestReference: string;
   manifestStatus: AdminModuleRegistrySnapshotManifestStatus;
@@ -253,6 +273,7 @@ export type AdminModuleRegistrySnapshotModuleDto = {
   name: string;
   source: ModuleSource;
   status: AdminModuleRegistrySnapshotModuleStatus;
+  summary?: string | null;
 };
 
 export type AdminModuleRegistrySnapshotModuleStatus = string;

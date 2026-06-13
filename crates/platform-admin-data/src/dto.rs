@@ -71,12 +71,39 @@ pub struct AdminModuleRegistrySnapshotModuleDto {
     pub source: ModuleSource,
     pub catalog_version: String,
     pub manifest_reference: String,
+    pub summary: Option<String>,
     pub base_url: Option<String>,
+    pub capabilities: Vec<String>,
     pub console_package_hints: usize,
+    pub compatibility: Option<AdminModuleCompatibilityDto>,
+    pub host_compatibility: AdminModuleHostCompatibilityDto,
+    pub archived_at: Option<String>,
+    pub archive_reason: Option<String>,
     pub manifest_name: Option<String>,
     pub manifest_status: AdminModuleRegistrySnapshotManifestStatus,
     pub manifest_version: Option<String>,
     pub status: AdminModuleRegistrySnapshotModuleStatus,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminModuleCompatibilityDto {
+    pub console_package_api: Option<String>,
+    pub lenso: Option<AdminModuleLensoCompatibilityDto>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminModuleLensoCompatibilityDto {
+    pub min_version: Option<String>,
+    pub max_version: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminModuleHostCompatibilityDto {
+    pub console_package_api: String,
+    pub lenso_version: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -85,6 +112,7 @@ pub enum AdminModuleRegistrySnapshotManifestStatus {
     Ok,
     Invalid,
     Unreadable,
+    Archived,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -92,6 +120,7 @@ pub enum AdminModuleRegistrySnapshotManifestStatus {
 pub enum AdminModuleRegistrySnapshotModuleStatus {
     Ready,
     NeedsAttention,
+    Archived,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

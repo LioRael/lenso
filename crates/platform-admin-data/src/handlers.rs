@@ -1,7 +1,8 @@
 use crate::dto::{
     AdminActionInvocationDto, AdminActionInvokeRequest, AdminActionInvokeResponse,
     AdminCapabilityIssueDto, AdminCapabilitySummaryDto, AdminDataDetailResponse,
-    AdminDataListResponse, AdminDataPageInfo, AdminModuleActivationState, AdminModuleGovernanceDto,
+    AdminDataListResponse, AdminDataPageInfo, AdminModuleActivationState,
+    AdminModuleCompatibilityDto, AdminModuleGovernanceDto, AdminModuleHostCompatibilityDto,
     AdminModuleMetadataDto, AdminModuleMetadataListResponse, AdminModuleRefreshModuleResultDto,
     AdminModuleRefreshModuleStatusDto, AdminModuleRefreshRecordDto, AdminModuleRefreshStatusDto,
     AdminModuleRegistrySnapshotCatalogDto, AdminModuleRegistrySnapshotIssueDto,
@@ -33,6 +34,7 @@ use platform_module::{
 };
 use serde::Deserialize;
 use serde_json::Value;
+use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path as FsPath, PathBuf};
@@ -40,6 +42,8 @@ use std::time::Instant;
 
 const DEFAULT_LIMIT: i64 = 50;
 const MAX_LIMIT: i64 = 200;
+const HOST_CONSOLE_PACKAGE_API_VERSION: &str = "1";
+const HOST_LENSO_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct DataListQuery {
@@ -320,9 +324,19 @@ struct LocalModuleCatalogEntry {
     source: String,
     manifest_reference: String,
     #[serde(default)]
+    summary: Option<String>,
+    #[serde(default)]
     base_url: Option<String>,
     #[serde(default)]
+    capabilities: Vec<String>,
+    #[serde(default)]
     console_packages: Vec<LocalModuleCatalogConsolePackage>,
+    #[serde(default)]
+    compatibility: Option<AdminModuleCompatibilityDto>,
+    #[serde(default)]
+    archived_at: Option<String>,
+    #[serde(default)]
+    archive_reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -364,21 +378,30 @@ fn module_catalog_response(
             ));
         }
     };
+    let mut issues = Vec::new();
     let modules = catalog
         .modules
         .into_iter()
-        .map(module_catalog_entry_module)
+        .map(|entry| {
+            let module = module_catalog_entry_module(entry);
+            issues.extend(module_catalog_entry_issues(&module));
+            module
+        })
         .collect::<Vec<_>>();
 
     Some(AdminModuleRegistrySnapshotResponse {
         version: 1,
-        status: AdminModuleRegistrySnapshotStatus::Passed,
+        status: if issues.is_empty() {
+            AdminModuleRegistrySnapshotStatus::Passed
+        } else {
+            AdminModuleRegistrySnapshotStatus::Failed
+        },
         catalog: AdminModuleRegistrySnapshotCatalogDto {
             modules: modules.len(),
             registry_file: catalog_file_path.display().to_string(),
             version: catalog.version,
         },
-        issues: vec![],
+        issues,
         modules,
     })
 }
@@ -409,17 +432,148 @@ fn module_catalog_entry_module(
     entry: LocalModuleCatalogEntry,
 ) -> AdminModuleRegistrySnapshotModuleDto {
     let _source = entry.source;
+    let archived = entry.archived_at.is_some();
+    let needs_attention = !archived
+        && (module_needs_base_url(entry.base_url.as_deref(), &entry.manifest_reference)
+            || module_compatibility_issue(&entry.name, entry.compatibility.as_ref()).is_some());
+
     AdminModuleRegistrySnapshotModuleDto {
         name: entry.name.clone(),
         source: ModuleSource::Remote,
         catalog_version: entry.version.clone(),
         manifest_reference: entry.manifest_reference,
+        summary: entry.summary,
         base_url: entry.base_url,
+        capabilities: entry.capabilities,
         console_package_hints: entry.console_packages.len(),
-        manifest_name: Some(entry.name),
-        manifest_status: AdminModuleRegistrySnapshotManifestStatus::Ok,
-        manifest_version: Some(entry.version),
-        status: AdminModuleRegistrySnapshotModuleStatus::Ready,
+        compatibility: entry.compatibility,
+        host_compatibility: host_module_compatibility(),
+        archived_at: entry.archived_at,
+        archive_reason: entry.archive_reason,
+        manifest_name: if archived { None } else { Some(entry.name) },
+        manifest_status: if archived {
+            AdminModuleRegistrySnapshotManifestStatus::Archived
+        } else {
+            AdminModuleRegistrySnapshotManifestStatus::Ok
+        },
+        manifest_version: if archived { None } else { Some(entry.version) },
+        status: if archived {
+            AdminModuleRegistrySnapshotModuleStatus::Archived
+        } else if needs_attention {
+            AdminModuleRegistrySnapshotModuleStatus::NeedsAttention
+        } else {
+            AdminModuleRegistrySnapshotModuleStatus::Ready
+        },
+    }
+}
+
+fn module_catalog_entry_issues(
+    module: &AdminModuleRegistrySnapshotModuleDto,
+) -> Vec<AdminModuleRegistrySnapshotIssueDto> {
+    if matches!(
+        module.status,
+        AdminModuleRegistrySnapshotModuleStatus::Archived
+    ) {
+        return vec![];
+    }
+
+    let mut issues = Vec::new();
+    if let Some(issue) = module_compatibility_issue(&module.name, module.compatibility.as_ref()) {
+        issues.push(issue);
+    }
+    if module_needs_base_url(module.base_url.as_deref(), &module.manifest_reference) {
+        issues.push(AdminModuleRegistrySnapshotIssueDto {
+            group: "Catalog".to_owned(),
+            message: format!("{} baseUrl is missing", module.name),
+            fix: "add baseUrl or use a manifest URL ending with /manifest".to_owned(),
+        });
+    }
+    issues
+}
+
+fn module_needs_base_url(base_url: Option<&str>, manifest_reference: &str) -> bool {
+    base_url.is_none() && !is_http_manifest_reference(manifest_reference)
+}
+
+fn is_http_manifest_reference(manifest_reference: &str) -> bool {
+    (manifest_reference.starts_with("http://") || manifest_reference.starts_with("https://"))
+        && manifest_reference.ends_with("/manifest")
+}
+
+fn module_compatibility_issue(
+    module_name: &str,
+    compatibility: Option<&AdminModuleCompatibilityDto>,
+) -> Option<AdminModuleRegistrySnapshotIssueDto> {
+    let compatibility = compatibility?;
+    if let Some(lenso) = compatibility.lenso.as_ref() {
+        if let Some(min_version) = lenso.min_version.as_ref() {
+            if !matches!(
+                compare_versions(HOST_LENSO_VERSION, min_version),
+                Some(Ordering::Equal | Ordering::Greater)
+            ) {
+                return Some(AdminModuleRegistrySnapshotIssueDto {
+                    group: "Compatibility".to_owned(),
+                    message: format!(
+                        "{module_name} requires Lenso >= {min_version}; host is {HOST_LENSO_VERSION}"
+                    ),
+                    fix: format!(
+                        "upgrade Lenso to {min_version} or install a compatible {module_name} catalog entry"
+                    ),
+                });
+            }
+        }
+        if let Some(max_version) = lenso.max_version.as_ref() {
+            if !matches!(
+                compare_versions(HOST_LENSO_VERSION, max_version),
+                Some(Ordering::Equal | Ordering::Less)
+            ) {
+                return Some(AdminModuleRegistrySnapshotIssueDto {
+                    group: "Compatibility".to_owned(),
+                    message: format!(
+                        "{module_name} supports Lenso <= {max_version}; host is {HOST_LENSO_VERSION}"
+                    ),
+                    fix: format!("install a compatible {module_name} catalog entry"),
+                });
+            }
+        }
+    }
+
+    if let Some(console_package_api) = compatibility.console_package_api.as_ref() {
+        if console_package_api != HOST_CONSOLE_PACKAGE_API_VERSION {
+            return Some(AdminModuleRegistrySnapshotIssueDto {
+                group: "Compatibility".to_owned(),
+                message: format!(
+                    "{module_name} requires console package API {console_package_api}; host supports {HOST_CONSOLE_PACKAGE_API_VERSION}"
+                ),
+                fix: format!(
+                    "install a compatible {module_name} catalog entry or update Runtime Console package support"
+                ),
+            });
+        }
+    }
+
+    None
+}
+
+fn compare_versions(left: &str, right: &str) -> Option<Ordering> {
+    Some(parse_version(left)?.cmp(&parse_version(right)?))
+}
+
+fn parse_version(value: &str) -> Option<[u64; 3]> {
+    let mut parts = value.split('.');
+    let major = parts.next()?.parse::<u64>().ok()?;
+    let minor = parts.next()?.parse::<u64>().ok()?;
+    let patch = parts.next()?.parse::<u64>().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some([major, minor, patch])
+}
+
+fn host_module_compatibility() -> AdminModuleHostCompatibilityDto {
+    AdminModuleHostCompatibilityDto {
+        console_package_api: HOST_CONSOLE_PACKAGE_API_VERSION.to_owned(),
+        lenso_version: HOST_LENSO_VERSION.to_owned(),
     }
 }
 
@@ -427,6 +581,8 @@ fn module_registry_snapshot_module(
     module: AdminModuleMetadata,
 ) -> AdminModuleRegistrySnapshotModuleDto {
     let module_name = module.module_name;
+    let capabilities = module.capabilities;
+    let console_package_hints = module.console.len();
     let remote = match module.source_diagnostics {
         Some(AdminModuleSourceDiagnostics::Remote(remote)) => Some(remote),
         None => None,
@@ -449,8 +605,14 @@ fn module_registry_snapshot_module(
         source: module.source,
         catalog_version: "unknown".to_owned(),
         manifest_reference,
+        summary: None,
         base_url,
-        console_package_hints: module.console.len(),
+        capabilities,
+        console_package_hints,
+        compatibility: None,
+        host_compatibility: host_module_compatibility(),
+        archived_at: None,
+        archive_reason: None,
         manifest_name: if has_error { None } else { Some(module_name) },
         manifest_status: if has_error {
             AdminModuleRegistrySnapshotManifestStatus::Unreadable
