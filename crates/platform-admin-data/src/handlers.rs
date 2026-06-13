@@ -2,15 +2,17 @@ use crate::dto::{
     AdminActionInvocationDto, AdminActionInvokeRequest, AdminActionInvokeResponse,
     AdminCapabilityIssueDto, AdminCapabilitySummaryDto, AdminDataDetailResponse,
     AdminDataListResponse, AdminDataPageInfo, AdminModuleActivationState,
-    AdminModuleCompatibilityDto, AdminModuleGovernanceDto, AdminModuleHostCompatibilityDto,
-    AdminModuleMetadataDto, AdminModuleMetadataListResponse, AdminModuleRefreshModuleResultDto,
+    AdminModuleCompatibilityDto, AdminModuleConsolePackagePlanPackageDto,
+    AdminModuleConsolePackagePlanStateDto, AdminModuleGovernanceDto,
+    AdminModuleHostCompatibilityDto, AdminModuleInstallStateDto, AdminModuleMetadataDto,
+    AdminModuleMetadataListResponse, AdminModuleRefreshModuleResultDto,
     AdminModuleRefreshModuleStatusDto, AdminModuleRefreshRecordDto, AdminModuleRefreshStatusDto,
     AdminModuleRegistrySnapshotCatalogDto, AdminModuleRegistrySnapshotIssueDto,
     AdminModuleRegistrySnapshotManifestStatus, AdminModuleRegistrySnapshotModuleDto,
     AdminModuleRegistrySnapshotModuleStatus, AdminModuleRegistrySnapshotResponse,
-    AdminModuleRegistrySnapshotStatus, AdminModuleSchema, AdminModuleSourceDiagnosticsDto,
-    AdminModuleStatus, AdminRemoteModuleDiagnosticsDto, AdminSchemaListResponse,
-    AdminSchemaRefreshResponse,
+    AdminModuleRegistrySnapshotStatus, AdminModuleRemoteSourceInstallStateDto, AdminModuleSchema,
+    AdminModuleSourceDiagnosticsDto, AdminModuleStatus, AdminRemoteModuleDiagnosticsDto,
+    AdminSchemaListResponse, AdminSchemaRefreshResponse,
 };
 use crate::{
     AdminModule, AdminModuleMetadata, AdminModuleMetadataRefreshModuleResult,
@@ -35,7 +37,7 @@ use platform_module::{
 use serde::Deserialize;
 use serde_json::Value;
 use std::cmp::Ordering;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path as FsPath, PathBuf};
 use std::time::Instant;
@@ -148,9 +150,15 @@ pub(crate) async fn available_modules(
 }
 
 fn available_modules_response() -> AdminModuleRegistrySnapshotResponse {
-    match module_catalog_response(PathBuf::from(".lenso/module-catalog.json")) {
+    let metadata = admin_module_metadata_snapshot().modules;
+    let install_state = AvailableModuleInstallStateContext::from_paths(
+        &metadata,
+        PathBuf::from(".env"),
+        PathBuf::from(".lenso/console-package-install-plan.json"),
+    );
+    match module_catalog_response(PathBuf::from(".lenso/module-catalog.json"), &install_state) {
         Some(response) => response,
-        None => module_registry_snapshot_response(admin_module_metadata_snapshot().modules),
+        None => module_registry_snapshot_response(metadata, &install_state),
     }
 }
 
@@ -260,11 +268,12 @@ fn metadata_response_modules(modules: Vec<AdminModuleMetadata>) -> Vec<AdminModu
 
 fn module_registry_snapshot_response(
     modules: Vec<AdminModuleMetadata>,
+    install_state: &AvailableModuleInstallStateContext,
 ) -> AdminModuleRegistrySnapshotResponse {
     let modules = modules
         .into_iter()
         .filter(|module| matches!(module.source, ModuleSource::Remote))
-        .map(module_registry_snapshot_module)
+        .map(|module| module_registry_snapshot_module(module, install_state))
         .collect::<Vec<_>>();
     let issue_count = modules
         .iter()
@@ -351,12 +360,304 @@ struct LocalModuleCatalogConsolePackage {
     _route: Option<String>,
 }
 
+#[derive(Debug)]
+struct AvailableModuleInstallStateContext {
+    console_plan: LocalConsolePackageInstallPlanState,
+    registered_modules: HashSet<String>,
+    remote_sources: LocalRemoteModulesEnvState,
+    running_base_urls: HashMap<String, String>,
+}
+
+#[derive(Debug)]
+struct LocalRemoteModulesEnvState {
+    env_file: String,
+    error: Option<String>,
+    modules: HashMap<String, String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalConsolePackageInstallPlan {
+    #[serde(default)]
+    modules: Vec<LocalConsolePackageInstallPlanModule>,
+    #[serde(default = "default_console_package_install_plan_version")]
+    _version: u8,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalConsolePackageInstallPlanModule {
+    #[serde(default)]
+    _base_url: Option<String>,
+    #[serde(default)]
+    console_packages: Vec<LocalConsolePackageInstallPlanPackage>,
+    #[serde(default)]
+    _manifest_reference: Option<String>,
+    module_name: String,
+    #[serde(default)]
+    restart_required: Option<bool>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalConsolePackageInstallPlanPackage {
+    #[serde(default)]
+    command: Option<String>,
+    export_name: String,
+    #[serde(default)]
+    key: Option<String>,
+    package_name: String,
+    #[serde(default)]
+    _requested_by_module: Option<String>,
+    #[serde(default)]
+    route: Option<String>,
+    #[serde(default)]
+    status: Option<String>,
+}
+
+#[derive(Debug)]
+struct LocalConsolePackageInstallPlanState {
+    error: Option<String>,
+    exists: bool,
+    modules: HashMap<String, LocalConsolePackageInstallPlanModule>,
+    plan_file: String,
+}
+
 const fn default_module_catalog_version() -> u8 {
     1
 }
 
+const fn default_console_package_install_plan_version() -> u8 {
+    1
+}
+
+impl AvailableModuleInstallStateContext {
+    fn from_paths(
+        metadata: &[AdminModuleMetadata],
+        env_file_path: impl AsRef<FsPath>,
+        console_plan_file_path: impl AsRef<FsPath>,
+    ) -> Self {
+        Self {
+            console_plan: local_console_package_install_plan_state(console_plan_file_path),
+            registered_modules: metadata
+                .iter()
+                .map(|module| module.module_name.clone())
+                .collect(),
+            remote_sources: local_remote_modules_env_state(env_file_path),
+            running_base_urls: metadata
+                .iter()
+                .filter_map(|module| {
+                    let Some(AdminModuleSourceDiagnostics::Remote(remote)) =
+                        module.source_diagnostics.as_ref()
+                    else {
+                        return None;
+                    };
+                    Some((
+                        module.module_name.clone(),
+                        normalize_remote_base_url(&remote.base_url),
+                    ))
+                })
+                .collect(),
+        }
+    }
+
+    fn install_state(&self, module_name: &str) -> AdminModuleInstallStateDto {
+        AdminModuleInstallStateDto {
+            module_registered: self.registered_modules.contains(module_name),
+            remote_source: self.remote_source_state(module_name),
+            console_plan: self.console_plan_state(module_name),
+        }
+    }
+
+    fn remote_source_state(&self, module_name: &str) -> AdminModuleRemoteSourceInstallStateDto {
+        let desired_base_url = self.remote_sources.modules.get(module_name).cloned();
+        let running_base_url = self.running_base_urls.get(module_name).cloned();
+        let restart_reason =
+            remote_source_restart_reason(desired_base_url.as_deref(), running_base_url.as_deref());
+
+        AdminModuleRemoteSourceInstallStateDto {
+            env_file: self.remote_sources.env_file.clone(),
+            configured: desired_base_url.is_some(),
+            desired_base_url,
+            running_base_url,
+            restart_pending: restart_reason.is_some(),
+            restart_reason,
+            error: self.remote_sources.error.clone(),
+        }
+    }
+
+    fn console_plan_state(&self, module_name: &str) -> AdminModuleConsolePackagePlanStateDto {
+        let module_plan = self.console_plan.modules.get(module_name);
+        let packages = module_plan
+            .map(|module_plan| {
+                module_plan
+                    .console_packages
+                    .iter()
+                    .map(|package| AdminModuleConsolePackagePlanPackageDto {
+                        key: package.key.clone(),
+                        package_name: package.package_name.clone(),
+                        export_name: package.export_name.clone(),
+                        command: package.command.clone(),
+                        route: package.route.clone(),
+                        status: package.status.clone(),
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+
+        AdminModuleConsolePackagePlanStateDto {
+            plan_file: self.console_plan.plan_file.clone(),
+            exists: self.console_plan.exists,
+            readable: self.console_plan.exists && self.console_plan.error.is_none(),
+            error: self.console_plan.error.clone(),
+            module_entry_present: module_plan.is_some(),
+            package_count: packages.len(),
+            restart_required: module_plan.and_then(|module_plan| module_plan.restart_required),
+            packages,
+        }
+    }
+}
+
+fn local_remote_modules_env_state(env_file_path: impl AsRef<FsPath>) -> LocalRemoteModulesEnvState {
+    let env_file_path = env_file_path.as_ref();
+    let env_file = env_file_path.display().to_string();
+    let source = match fs::read_to_string(env_file_path) {
+        Ok(source) => source,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return LocalRemoteModulesEnvState {
+                env_file,
+                error: None,
+                modules: HashMap::new(),
+            };
+        }
+        Err(error) => {
+            return LocalRemoteModulesEnvState {
+                env_file,
+                error: Some(format!("remote module env file could not be read: {error}")),
+                modules: HashMap::new(),
+            };
+        }
+    };
+    LocalRemoteModulesEnvState {
+        env_file,
+        error: None,
+        modules: parse_remote_modules_env_source(&source),
+    }
+}
+
+fn parse_remote_modules_env_source(source: &str) -> HashMap<String, String> {
+    source
+        .lines()
+        .filter_map(remote_modules_env_value)
+        .last()
+        .map(parse_remote_modules_value)
+        .unwrap_or_default()
+}
+
+fn remote_modules_env_value(line: &str) -> Option<String> {
+    let line = line.trim();
+    if line.is_empty() || line.starts_with('#') {
+        return None;
+    }
+    let line = line.strip_prefix("export ").unwrap_or(line);
+    let (key, value) = line.split_once('=')?;
+    (key.trim() == "REMOTE_MODULES").then(|| unquote_env_value(value.trim()).to_owned())
+}
+
+fn parse_remote_modules_value(value: String) -> HashMap<String, String> {
+    value
+        .split(',')
+        .filter_map(|entry| {
+            let (name, base_url) = entry.trim().split_once('=')?;
+            let name = name.trim();
+            let base_url = normalize_remote_base_url(base_url);
+            if name.is_empty() || base_url.is_empty() {
+                return None;
+            }
+            Some((name.to_owned(), base_url))
+        })
+        .collect()
+}
+
+fn unquote_env_value(value: &str) -> &str {
+    if value.len() >= 2
+        && ((value.starts_with('"') && value.ends_with('"'))
+            || (value.starts_with('\'') && value.ends_with('\'')))
+    {
+        &value[1..value.len() - 1]
+    } else {
+        value
+    }
+}
+
+fn local_console_package_install_plan_state(
+    console_plan_file_path: impl AsRef<FsPath>,
+) -> LocalConsolePackageInstallPlanState {
+    let console_plan_file_path = console_plan_file_path.as_ref();
+    let plan_file = console_plan_file_path.display().to_string();
+    let source = match fs::read_to_string(console_plan_file_path) {
+        Ok(source) => source,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return LocalConsolePackageInstallPlanState {
+                error: None,
+                exists: false,
+                modules: HashMap::new(),
+                plan_file,
+            };
+        }
+        Err(error) => {
+            return LocalConsolePackageInstallPlanState {
+                error: Some(format!(
+                    "console package install plan could not be read: {error}"
+                )),
+                exists: true,
+                modules: HashMap::new(),
+                plan_file,
+            };
+        }
+    };
+    match serde_json::from_str::<LocalConsolePackageInstallPlan>(&source) {
+        Ok(plan) => LocalConsolePackageInstallPlanState {
+            error: None,
+            exists: true,
+            modules: plan
+                .modules
+                .into_iter()
+                .map(|module| (module.module_name.clone(), module))
+                .collect(),
+            plan_file,
+        },
+        Err(error) => LocalConsolePackageInstallPlanState {
+            error: Some(format!(
+                "console package install plan could not be parsed: {error}"
+            )),
+            exists: true,
+            modules: HashMap::new(),
+            plan_file,
+        },
+    }
+}
+
+fn remote_source_restart_reason(
+    desired_base_url: Option<&str>,
+    running_base_url: Option<&str>,
+) -> Option<String> {
+    match (desired_base_url, running_base_url) {
+        (Some(_), None) => Some("remote source configured in .env but not loaded".to_owned()),
+        (Some(desired), Some(running)) if desired != running => {
+            Some("REMOTE_MODULES base URL differs from running module metadata".to_owned())
+        }
+        _ => None,
+    }
+}
+
+fn normalize_remote_base_url(value: &str) -> String {
+    value.trim().trim_end_matches('/').to_owned()
+}
+
 fn module_catalog_response(
     catalog_file_path: impl AsRef<FsPath>,
+    install_state: &AvailableModuleInstallStateContext,
 ) -> Option<AdminModuleRegistrySnapshotResponse> {
     let catalog_file_path = catalog_file_path.as_ref();
     let source = match fs::read_to_string(catalog_file_path) {
@@ -383,7 +684,7 @@ fn module_catalog_response(
         .modules
         .into_iter()
         .map(|entry| {
-            let module = module_catalog_entry_module(entry);
+            let module = module_catalog_entry_module(entry, install_state);
             issues.extend(module_catalog_entry_issues(&module));
             module
         })
@@ -430,15 +731,17 @@ fn module_catalog_error_response(
 
 fn module_catalog_entry_module(
     entry: LocalModuleCatalogEntry,
+    install_state: &AvailableModuleInstallStateContext,
 ) -> AdminModuleRegistrySnapshotModuleDto {
     let _source = entry.source;
     let archived = entry.archived_at.is_some();
+    let name = entry.name;
     let needs_attention = !archived
         && (module_needs_base_url(entry.base_url.as_deref(), &entry.manifest_reference)
-            || module_compatibility_issue(&entry.name, entry.compatibility.as_ref()).is_some());
+            || module_compatibility_issue(&name, entry.compatibility.as_ref()).is_some());
 
     AdminModuleRegistrySnapshotModuleDto {
-        name: entry.name.clone(),
+        name: name.clone(),
         source: ModuleSource::Remote,
         catalog_version: entry.version.clone(),
         manifest_reference: entry.manifest_reference,
@@ -450,13 +753,14 @@ fn module_catalog_entry_module(
         host_compatibility: host_module_compatibility(),
         archived_at: entry.archived_at,
         archive_reason: entry.archive_reason,
-        manifest_name: if archived { None } else { Some(entry.name) },
+        manifest_name: if archived { None } else { Some(name.clone()) },
         manifest_status: if archived {
             AdminModuleRegistrySnapshotManifestStatus::Archived
         } else {
             AdminModuleRegistrySnapshotManifestStatus::Ok
         },
         manifest_version: if archived { None } else { Some(entry.version) },
+        install_state: install_state.install_state(&name),
         status: if archived {
             AdminModuleRegistrySnapshotModuleStatus::Archived
         } else if needs_attention {
@@ -579,6 +883,7 @@ fn host_module_compatibility() -> AdminModuleHostCompatibilityDto {
 
 fn module_registry_snapshot_module(
     module: AdminModuleMetadata,
+    install_state: &AvailableModuleInstallStateContext,
 ) -> AdminModuleRegistrySnapshotModuleDto {
     let module_name = module.module_name;
     let capabilities = module.capabilities;
@@ -613,7 +918,11 @@ fn module_registry_snapshot_module(
         host_compatibility: host_module_compatibility(),
         archived_at: None,
         archive_reason: None,
-        manifest_name: if has_error { None } else { Some(module_name) },
+        manifest_name: if has_error {
+            None
+        } else {
+            Some(module_name.clone())
+        },
         manifest_status: if has_error {
             AdminModuleRegistrySnapshotManifestStatus::Unreadable
         } else {
@@ -624,6 +933,7 @@ fn module_registry_snapshot_module(
         } else {
             Some("unknown".to_owned())
         },
+        install_state: install_state.install_state(&module_name),
         status: if has_error {
             AdminModuleRegistrySnapshotModuleStatus::NeedsAttention
         } else {
