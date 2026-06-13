@@ -215,7 +215,10 @@ module and any console package commands that need to be run.
 `.lenso/module-catalog.json` is the optional discovery list behind Available
 Modules. A host can add entries with `lenso module catalog add <manifest-url>`.
 The catalog only records module basics, manifest URL, base URL, summary, and
-console package hints.
+console package hints. The admin API reflects that discovery data back to
+Runtime Console with capability counts, host compatibility preflight results,
+and archived catalog entries; it still does not act as a marketplace review or
+trust workflow.
 
 If the manifest is installed from a local file or non-protocol URL, pass the
 runtime module base URL explicitly:

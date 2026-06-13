@@ -539,6 +539,15 @@ async fn available_modules_returns_remote_install_rows() {
         body["modules"][0]["baseUrl"],
         "https://example.com/lenso/module/v1"
     );
+    assert_eq!(body["modules"][0]["capabilities"][0], "billing.read");
+    assert_eq!(
+        body["modules"][0]["hostCompatibility"]["consolePackageApi"],
+        "1"
+    );
+    assert_eq!(
+        body["modules"][0]["hostCompatibility"]["lensoVersion"],
+        "0.1.0"
+    );
     assert_eq!(body["modules"][0]["manifestStatus"], "ok");
     assert_eq!(body["modules"][0]["status"], "ready");
 
@@ -563,6 +572,15 @@ async fn available_modules_reads_local_module_catalog() {
                 "source": "remote",
                 "manifestReference": "https://example.com/billing/manifest",
                 "baseUrl": "https://example.com/billing",
+                "summary": "Billing workspace and operations",
+                "capabilities": ["billing.read", "billing.write"],
+                "compatibility": {
+                    "consolePackageApi": "1",
+                    "lenso": {
+                        "minVersion": "0.1.0",
+                        "maxVersion": "0.1.0"
+                    }
+                },
                 "consolePackages": [{
                     "packageName": "@vendor/lenso-billing-console",
                     "exportName": "billingConsoleModule",
@@ -599,11 +617,99 @@ async fn available_modules_reads_local_module_catalog() {
     assert_eq!(body["modules"][0]["name"], "billing");
     assert_eq!(body["modules"][0]["catalogVersion"], "0.2.0");
     assert_eq!(
+        body["modules"][0]["summary"],
+        "Billing workspace and operations"
+    );
+    assert_eq!(body["modules"][0]["capabilities"][0], "billing.read");
+    assert_eq!(body["modules"][0]["capabilities"][1], "billing.write");
+    assert_eq!(
+        body["modules"][0]["compatibility"]["lenso"]["minVersion"],
+        "0.1.0"
+    );
+    assert_eq!(
         body["modules"][0]["manifestReference"],
         "https://example.com/billing/manifest"
     );
     assert_eq!(body["modules"][0]["consolePackageHints"], 1);
     assert!(body["modules"][0].get("installPolicy").is_none());
+}
+
+#[tokio::test]
+async fn available_modules_marks_catalog_preflight_issues() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
+    fs::create_dir_all(".lenso").expect("create catalog dir");
+    fs::write(
+        ".lenso/module-catalog.json",
+        serde_json::json!({
+            "version": 1,
+            "modules": [
+                {
+                    "name": "billing",
+                    "version": "0.2.0",
+                    "source": "remote",
+                    "manifestReference": "https://example.com/billing/manifest",
+                    "baseUrl": "https://example.com/billing",
+                    "compatibility": {
+                        "lenso": {
+                            "minVersion": "0.2.0"
+                        }
+                    }
+                },
+                {
+                    "name": "local-crm",
+                    "version": "0.1.0",
+                    "source": "remote",
+                    "manifestReference": "./lenso.module.json"
+                },
+                {
+                    "name": "old-billing",
+                    "version": "0.1.0",
+                    "source": "remote",
+                    "manifestReference": "https://example.com/old-billing/manifest",
+                    "baseUrl": "https://example.com/old-billing",
+                    "archivedAt": "2026-06-07T12:00:00.000Z",
+                    "archiveReason": "replaced by billing-v2"
+                }
+            ]
+        })
+        .to_string(),
+    )
+    .expect("write catalog fixture");
+    install_admin_module_metadata(vec![]);
+    let ctx = AppContext::new(
+        AppConfig::from_env(),
+        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test").expect("lazy pool"),
+        Arc::new(LoggingEventPublisher),
+    );
+    let app = build_router(ctx);
+
+    let response = app
+        .oneshot(admin_get("/admin/data/available-modules"))
+        .await
+        .expect("available modules request completes");
+
+    remove_module_catalog_fixture();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["status"], "failed");
+    assert_eq!(body["catalog"]["modules"], 3);
+    assert_eq!(body["issues"].as_array().expect("issues array").len(), 2);
+    assert_eq!(body["issues"][0]["group"], "Compatibility");
+    assert_eq!(
+        body["issues"][0]["message"],
+        "billing requires Lenso >= 0.2.0; host is 0.1.0"
+    );
+    assert_eq!(body["issues"][1]["group"], "Catalog");
+    assert_eq!(body["issues"][1]["message"], "local-crm baseUrl is missing");
+    assert_eq!(body["modules"][0]["status"], "needs_attention");
+    assert_eq!(body["modules"][1]["status"], "needs_attention");
+    assert_eq!(body["modules"][2]["status"], "archived");
+    assert_eq!(body["modules"][2]["manifestStatus"], "archived");
+    assert_eq!(
+        body["modules"][2]["archiveReason"],
+        "replaced by billing-v2"
+    );
 }
 
 #[tokio::test]
