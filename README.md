@@ -19,6 +19,9 @@ framework/
   lenso-runtime-console/
 ```
 
+Repository operations notes, including branch protection and cross-repo CI
+wiring, live in [docs/repository-operations.md](docs/repository-operations.md).
+
 ## Architecture Overview
 
 - Modular monolith first: modules run in-process today and can later be extracted behind HTTP, gRPC, or event boundaries.
