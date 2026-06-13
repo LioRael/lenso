@@ -178,6 +178,26 @@ export type AdminModuleCompatibilityDto = {
   lenso?: AdminModuleLensoCompatibilityDto | null;
 };
 
+export type AdminModuleConsolePackagePlanPackageDto = {
+  command?: string | null;
+  exportName: string;
+  key?: string | null;
+  packageName: string;
+  route?: string | null;
+  status?: string | null;
+};
+
+export type AdminModuleConsolePackagePlanStateDto = {
+  error?: string | null;
+  exists: boolean;
+  moduleEntryPresent: boolean;
+  packageCount: number;
+  packages: Array<AdminModuleConsolePackagePlanPackageDto>;
+  planFile: string;
+  readable: boolean;
+  restartRequired?: boolean | null;
+};
+
 export type AdminModuleGovernanceDto = {
   activation_reasons: Array<string>;
   activation_state: AdminModuleActivationState;
@@ -188,6 +208,12 @@ export type AdminModuleGovernanceDto = {
 export type AdminModuleHostCompatibilityDto = {
   consolePackageApi: string;
   lensoVersion: string;
+};
+
+export type AdminModuleInstallStateDto = {
+  consolePlan: AdminModuleConsolePackagePlanStateDto;
+  moduleRegistered: boolean;
+  remoteSource: AdminModuleRemoteSourceInstallStateDto;
 };
 
 export type AdminModuleLensoCompatibilityDto = {
@@ -266,6 +292,7 @@ export type AdminModuleRegistrySnapshotModuleDto = {
   compatibility?: AdminModuleCompatibilityDto | null;
   consolePackageHints: number;
   hostCompatibility: AdminModuleHostCompatibilityDto;
+  installState: AdminModuleInstallStateDto;
   manifestName?: string | null;
   manifestReference: string;
   manifestStatus: AdminModuleRegistrySnapshotManifestStatus;
@@ -287,6 +314,16 @@ export type AdminModuleRegistrySnapshotResponse = {
 };
 
 export type AdminModuleRegistrySnapshotStatus = string;
+
+export type AdminModuleRemoteSourceInstallStateDto = {
+  configured: boolean;
+  desiredBaseUrl?: string | null;
+  envFile: string;
+  error?: string | null;
+  restartPending: boolean;
+  restartReason?: string | null;
+  runningBaseUrl?: string | null;
+};
 
 export type AdminModuleSchema = {
   error?: string | null;

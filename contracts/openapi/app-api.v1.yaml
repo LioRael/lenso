@@ -3014,6 +3014,65 @@ components:
           oneOf:
           - type: 'null'
           - $ref: '#/components/schemas/AdminModuleLensoCompatibilityDto'
+    AdminModuleConsolePackagePlanPackageDto:
+      type: object
+      required:
+      - packageName
+      - exportName
+      properties:
+        command:
+          type:
+          - string
+          - 'null'
+        exportName:
+          type: string
+        key:
+          type:
+          - string
+          - 'null'
+        packageName:
+          type: string
+        route:
+          type:
+          - string
+          - 'null'
+        status:
+          type:
+          - string
+          - 'null'
+    AdminModuleConsolePackagePlanStateDto:
+      type: object
+      required:
+      - planFile
+      - exists
+      - readable
+      - moduleEntryPresent
+      - packageCount
+      - packages
+      properties:
+        error:
+          type:
+          - string
+          - 'null'
+        exists:
+          type: boolean
+        moduleEntryPresent:
+          type: boolean
+        packageCount:
+          type: integer
+          minimum: 0
+        packages:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminModuleConsolePackagePlanPackageDto'
+        planFile:
+          type: string
+        readable:
+          type: boolean
+        restartRequired:
+          type:
+          - boolean
+          - 'null'
     AdminModuleGovernanceDto:
       type: object
       required:
@@ -3044,6 +3103,19 @@ components:
           type: string
         lensoVersion:
           type: string
+    AdminModuleInstallStateDto:
+      type: object
+      required:
+      - moduleRegistered
+      - remoteSource
+      - consolePlan
+      properties:
+        consolePlan:
+          $ref: '#/components/schemas/AdminModuleConsolePackagePlanStateDto'
+        moduleRegistered:
+          type: boolean
+        remoteSource:
+          $ref: '#/components/schemas/AdminModuleRemoteSourceInstallStateDto'
     AdminModuleLensoCompatibilityDto:
       type: object
       properties:
@@ -3259,6 +3331,7 @@ components:
       - consolePackageHints
       - hostCompatibility
       - manifestStatus
+      - installState
       - status
       properties:
         archiveReason:
@@ -3288,6 +3361,8 @@ components:
           minimum: 0
         hostCompatibility:
           $ref: '#/components/schemas/AdminModuleHostCompatibilityDto'
+        installState:
+          $ref: '#/components/schemas/AdminModuleInstallStateDto'
         manifestName:
           type:
           - string
@@ -3349,6 +3424,35 @@ components:
       enum:
       - passed
       - failed
+    AdminModuleRemoteSourceInstallStateDto:
+      type: object
+      required:
+      - envFile
+      - configured
+      - restartPending
+      properties:
+        configured:
+          type: boolean
+        desiredBaseUrl:
+          type:
+          - string
+          - 'null'
+        envFile:
+          type: string
+        error:
+          type:
+          - string
+          - 'null'
+        restartPending:
+          type: boolean
+        restartReason:
+          type:
+          - string
+          - 'null'
+        runningBaseUrl:
+          type:
+          - string
+          - 'null'
     AdminModuleSchema:
       type: object
       required:

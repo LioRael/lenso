@@ -21,7 +21,7 @@ use platform_runtime::RUNTIME_MIGRATIONS;
 use platform_testing::TestDatabase;
 use serde_json::Value;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::Mutex;
@@ -31,6 +31,39 @@ static ADMIN_DATA_CONSOLE_TEST_LOCK: Mutex<()> = Mutex::const_new(());
 
 fn remove_module_catalog_fixture() {
     let _ = fs::remove_file(Path::new(".lenso/module-catalog.json"));
+}
+
+struct FileFixture {
+    original: Option<Vec<u8>>,
+    path: PathBuf,
+}
+
+impl FileFixture {
+    fn write(path: impl Into<PathBuf>, contents: impl AsRef<[u8]>) -> Self {
+        let path = path.into();
+        let fixture = Self {
+            original: fs::read(&path).ok(),
+            path,
+        };
+        if let Some(parent) = fixture.path.parent() {
+            fs::create_dir_all(parent).expect("create fixture parent");
+        }
+        fs::write(&fixture.path, contents).expect("write fixture");
+        fixture
+    }
+}
+
+impl Drop for FileFixture {
+    fn drop(&mut self) {
+        match &self.original {
+            Some(original) => {
+                let _ = fs::write(&self.path, original);
+            }
+            None => {
+                let _ = fs::remove_file(&self.path);
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -632,6 +665,103 @@ async fn available_modules_reads_local_module_catalog() {
     );
     assert_eq!(body["modules"][0]["consolePackageHints"], 1);
     assert!(body["modules"][0].get("installPolicy").is_none());
+}
+
+#[tokio::test]
+async fn available_modules_reports_local_install_state() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
+    let _catalog = FileFixture::write(
+        ".lenso/module-catalog.json",
+        serde_json::json!({
+            "version": 1,
+            "modules": [{
+                "name": "billing",
+                "version": "0.2.0",
+                "source": "remote",
+                "manifestReference": "https://example.com/billing/manifest",
+                "baseUrl": "https://example.com/billing",
+                "summary": "Billing workspace and operations",
+                "consolePackages": [{
+                    "packageName": "@vendor/lenso-billing-console",
+                    "exportName": "billingConsoleModule",
+                    "route": "/data/billing"
+                }]
+            }]
+        })
+        .to_string(),
+    );
+    let _install_plan = FileFixture::write(
+        ".lenso/console-package-install-plan.json",
+        serde_json::json!({
+            "version": 1,
+            "modules": [{
+                "baseUrl": "https://example.com/billing",
+                "consolePackages": [{
+                    "command": "pnpm add @vendor/lenso-billing-console",
+                    "exportName": "billingConsoleModule",
+                    "key": "@vendor/lenso-billing-console#billingConsoleModule",
+                    "packageName": "@vendor/lenso-billing-console",
+                    "requestedByModule": "billing",
+                    "route": "/data/billing",
+                    "status": "requires_manual_install"
+                }],
+                "manifestReference": "https://example.com/billing/manifest",
+                "moduleName": "billing",
+                "restartRequired": true
+            }]
+        })
+        .to_string(),
+    );
+    let _env = FileFixture::write(
+        ".env",
+        "REMOTE_MODULES=billing=https://example.com/billing/\n",
+    );
+    install_admin_module_metadata(vec![]);
+    let ctx = AppContext::new(
+        AppConfig::from_env(),
+        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test").expect("lazy pool"),
+        Arc::new(LoggingEventPublisher),
+    );
+    let app = build_router(ctx);
+
+    let response = app
+        .oneshot(admin_get("/admin/data/available-modules"))
+        .await
+        .expect("available modules request completes");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    let install_state = &body["modules"][0]["installState"];
+    assert_eq!(install_state["moduleRegistered"], false);
+    assert_eq!(install_state["remoteSource"]["envFile"], ".env");
+    assert_eq!(install_state["remoteSource"]["configured"], true);
+    assert_eq!(
+        install_state["remoteSource"]["desiredBaseUrl"],
+        "https://example.com/billing"
+    );
+    assert_eq!(install_state["remoteSource"]["runningBaseUrl"], Value::Null);
+    assert_eq!(install_state["remoteSource"]["restartPending"], true);
+    assert_eq!(
+        install_state["remoteSource"]["restartReason"],
+        "remote source configured in .env but not loaded"
+    );
+    assert_eq!(
+        install_state["consolePlan"]["planFile"],
+        ".lenso/console-package-install-plan.json"
+    );
+    assert_eq!(install_state["consolePlan"]["exists"], true);
+    assert_eq!(install_state["consolePlan"]["readable"], true);
+    assert_eq!(install_state["consolePlan"]["moduleEntryPresent"], true);
+    assert_eq!(install_state["consolePlan"]["packageCount"], 1);
+    assert_eq!(install_state["consolePlan"]["restartRequired"], true);
+    assert_eq!(
+        install_state["consolePlan"]["packages"][0]["key"],
+        "@vendor/lenso-billing-console#billingConsoleModule"
+    );
+    assert_eq!(
+        install_state["consolePlan"]["packages"][0]["command"],
+        "pnpm add @vendor/lenso-billing-console"
+    );
 }
 
 #[tokio::test]

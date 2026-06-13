@@ -82,7 +82,52 @@ pub struct AdminModuleRegistrySnapshotModuleDto {
     pub manifest_name: Option<String>,
     pub manifest_status: AdminModuleRegistrySnapshotManifestStatus,
     pub manifest_version: Option<String>,
+    pub install_state: AdminModuleInstallStateDto,
     pub status: AdminModuleRegistrySnapshotModuleStatus,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminModuleInstallStateDto {
+    pub module_registered: bool,
+    pub remote_source: AdminModuleRemoteSourceInstallStateDto,
+    pub console_plan: AdminModuleConsolePackagePlanStateDto,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminModuleRemoteSourceInstallStateDto {
+    pub env_file: String,
+    pub configured: bool,
+    pub desired_base_url: Option<String>,
+    pub running_base_url: Option<String>,
+    pub restart_pending: bool,
+    pub restart_reason: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminModuleConsolePackagePlanStateDto {
+    pub plan_file: String,
+    pub exists: bool,
+    pub readable: bool,
+    pub error: Option<String>,
+    pub module_entry_present: bool,
+    pub package_count: usize,
+    pub restart_required: Option<bool>,
+    pub packages: Vec<AdminModuleConsolePackagePlanPackageDto>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminModuleConsolePackagePlanPackageDto {
+    pub key: Option<String>,
+    pub package_name: String,
+    pub export_name: String,
+    pub command: Option<String>,
+    pub route: Option<String>,
+    pub status: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
