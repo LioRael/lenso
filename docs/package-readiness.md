@@ -63,6 +63,7 @@ just package-readiness
 The gate checks that:
 
 - `@lenso/ts-sdk` is not marked private.
+- its package license is MIT and the tarball includes `LICENSE`.
 - its npm publish config targets the public npm registry.
 - `pnpm --dir packages/ts-sdk run build` produces a clean `dist/`.
 - `npm pack --dry-run` includes only the package manifest, README, and compiled
@@ -98,6 +99,8 @@ pnpm --dir ../lenso-runtime-console run check
 The `@lenso/remote-module-kit` package should expose built JavaScript and type
 declarations from a stable package entrypoint. Examples must not depend on a
 local `file:` path into `../lenso-runtime-console`.
+Its package gate also verifies the MIT license metadata and `LICENSE` tarball
+entry.
 
 If the Runtime Console package gate is green and the registry check shows no
 existing `@lenso/remote-module-kit` version, publish from the package directory:

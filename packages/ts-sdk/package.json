@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "TypeScript SDK for Lenso's generated HTTP API.",
   "type": "module",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

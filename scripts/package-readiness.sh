@@ -22,6 +22,9 @@ const failures = [];
 if (pkg.private === true) {
   failures.push("package must not be private");
 }
+if (pkg.license !== "MIT") {
+  failures.push("license must be MIT");
+}
 if (pkg.publishConfig?.access !== "public") {
   failures.push("publishConfig.access must be public");
 }
@@ -60,6 +63,7 @@ const packPath = process.argv[2];
 const [pack] = JSON.parse(fs.readFileSync(packPath, "utf8"));
 const files = pack.files.map((entry) => entry.path).sort();
 const required = [
+  "LICENSE",
   "README.md",
   "dist/generated/client.d.ts",
   "dist/generated/client.js",
