@@ -7,6 +7,7 @@ use crate::admin::{
 };
 use crate::admin_schema::AdminSchema;
 use crate::console::ConsoleSurface;
+use crate::events::{EventHandlerDeclaration, EventSurface};
 use crate::http::{ModuleHttpMethod, ModuleHttpRoute, lint_module_http_routes};
 use crate::lifecycle::{
     LifecycleActivationJobDeclaration, LifecycleStartupCheckDeclaration, LifecycleStartupCheckKind,
@@ -49,6 +50,11 @@ pub struct ModuleManifest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runtime: Option<RuntimeSurface>,
 
+    /// Declared event subscriptions. These entries are manifest data only;
+    /// source bindings decide how to register executable behavior.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub events: Option<EventSurface>,
+
     /// Declared lifecycle work. The host validates and schedules these entries;
     /// modules do not receive arbitrary startup callbacks.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -74,6 +80,7 @@ impl ModuleManifest {
                 admin: None,
                 http_routes: Vec::new(),
                 runtime: None,
+                events: None,
                 lifecycle: None,
                 console: Vec::new(),
                 capabilities: Vec::new(),
@@ -114,6 +121,7 @@ pub fn lint_module_manifest(
         manifest.admin.as_ref(),
         &manifest.http_routes,
         manifest.runtime.as_ref(),
+        manifest.events.as_ref(),
         manifest.lifecycle.as_ref(),
         &manifest.console,
         &manifest.capabilities,
@@ -126,6 +134,7 @@ pub fn lint_module_manifest_parts(
     admin: Option<&AdminSurface>,
     http_routes: &[ModuleHttpRoute],
     runtime: Option<&RuntimeSurface>,
+    events: Option<&EventSurface>,
     lifecycle: Option<&LifecycleSurface>,
     console: &[ConsoleSurface],
     capabilities: &[String],
@@ -180,6 +189,9 @@ pub fn lint_module_manifest_parts(
     let mut runtime_lints = Vec::new();
     if let Some(runtime) = runtime {
         lint_runtime_surface(runtime, &mut runtime_lints);
+    }
+    if let Some(events) = events {
+        lint_event_surface(events, &mut lints);
     }
     if let Some(lifecycle) = lifecycle {
         lint_lifecycle_surface(lifecycle, runtime, capabilities, &mut lints);
@@ -426,6 +438,77 @@ fn lint_runtime_function(
             subject: format!("{subject}.retry_policy"),
             message: "Runtime function retry policy declares zero attempts.".to_owned(),
             suggestion: "Set max_attempts to at least 1 or omit the retry policy.".to_owned(),
+        });
+    }
+}
+
+fn lint_event_surface(events: &EventSurface, lints: &mut Vec<ModuleManifestLint>) {
+    if events.handlers.is_empty() {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Warning,
+            subject: "events.handlers".to_owned(),
+            message: "Event surface declares no handlers.".to_owned(),
+            suggestion: "Add at least one event handler declaration or omit the events surface."
+                .to_owned(),
+        });
+        return;
+    }
+
+    let mut names = HashSet::new();
+    for handler in &events.handlers {
+        lint_event_handler(handler, &mut names, lints);
+    }
+}
+
+fn lint_event_handler(
+    handler: &EventHandlerDeclaration,
+    names: &mut HashSet<String>,
+    lints: &mut Vec<ModuleManifestLint>,
+) {
+    let subject = if present(&handler.name) {
+        format!("events.handler.{}", handler.name)
+    } else {
+        "events.handler".to_owned()
+    };
+
+    if !present(&handler.name) {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Error,
+            subject: subject.clone(),
+            message: "Event handler declaration is missing a name.".to_owned(),
+            suggestion: "Set a stable handler name such as sync_contact_on_user_registered."
+                .to_owned(),
+        });
+    } else if !valid_runtime_function_name(&handler.name) {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Warning,
+            subject: subject.clone(),
+            message: "Event handler name should be a stable path-safe identifier.".to_owned(),
+            suggestion: "Use ASCII letters, digits, dot, underscore, or hyphen.".to_owned(),
+        });
+    } else if !names.insert(handler.name.clone()) {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Error,
+            subject: subject.clone(),
+            message: "Duplicate event handler declaration.".to_owned(),
+            suggestion: "Keep one declaration per event handler name.".to_owned(),
+        });
+    }
+
+    if !present(&handler.event_name) {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Error,
+            subject: format!("{subject}.event_name"),
+            message: "Event handler declaration is missing an event_name.".to_owned(),
+            suggestion: "Set the stable outbox event name this handler consumes.".to_owned(),
+        });
+    } else if !valid_runtime_function_name(&handler.event_name) {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Warning,
+            subject: format!("{subject}.event_name"),
+            message: "Event name should be a stable path-safe identifier.".to_owned(),
+            suggestion: "Use the versioned event name such as identity.user_registered.v1."
+                .to_owned(),
         });
     }
 }
@@ -922,6 +1005,13 @@ impl ModuleManifestBuilder {
         self
     }
 
+    /// Attach event handler declarations.
+    #[must_use]
+    pub fn events(mut self, events: EventSurface) -> Self {
+        self.manifest.events = Some(events);
+        self
+    }
+
     /// Attach a schema-driven admin surface.
     #[must_use]
     pub fn admin(mut self, schema: AdminSchema) -> Self {
@@ -973,7 +1063,7 @@ mod tests {
     };
     use crate::{
         AdminEmbeddedEntry, AdminEmbeddedRuntime, AdminEmbeddedSurface, AdminSandboxPolicy,
-        ConsoleArea, ConsolePackage, ConsoleSurface,
+        ConsoleArea, ConsolePackage, ConsoleSurface, EventHandlerDeclaration, EventSurface,
     };
     use crate::{
         LifecycleActivationJobDeclaration, LifecycleActivationRunPolicy,
@@ -1320,6 +1410,32 @@ mod tests {
             "got {json}"
         );
         assert!(json.contains(r#""queue":"remote-crm""#), "got {json}");
+        let back: ModuleManifest = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(manifest, back);
+    }
+
+    #[test]
+    fn manifest_with_event_handlers_round_trips_through_json() {
+        let manifest = ModuleManifest::builder("remote-crm")
+            .events(EventSurface {
+                handlers: vec![EventHandlerDeclaration {
+                    name: "sync_contact_on_user_registered".to_owned(),
+                    event_name: "identity.user_registered.v1".to_owned(),
+                }],
+            })
+            .build();
+
+        let json = serde_json::to_string(&manifest).expect("serialize");
+
+        assert!(json.contains(r#""events""#), "got {json}");
+        assert!(
+            json.contains(r#""name":"sync_contact_on_user_registered""#),
+            "got {json}"
+        );
+        assert!(
+            json.contains(r#""event_name":"identity.user_registered.v1""#),
+            "got {json}"
+        );
         let back: ModuleManifest = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(manifest, back);
     }

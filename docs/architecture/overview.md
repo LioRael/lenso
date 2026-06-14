@@ -73,12 +73,14 @@ operator-visible HTTP proxying:
   navigation.
 - Remote runtime functions execute through host-owned worker queues, retry
   policy, Runtime Story data, and Technical Operations.
+- Remote event handlers execute through host-owned outbox dispatch: the worker
+  claims rows, invokes declared remote handlers, and keeps retry/dead-letter
+  state in `platform.outbox`.
 - Declarative admin actions invoke host-owned `/admin/data/{module}/actions/*`
   endpoints with manifest capability checks. Successful and failed action
   invocations are projected into Runtime Stories and Technical Operations.
-- Remote event handlers, embedded host bridges, JavaScript bundle loading, Wasm
-  execution, streaming, per-module OpenAPI fragments, and marketplace install
-  trust remain deferred.
+- Embedded host bridges, JavaScript bundle loading, Wasm execution, streaming,
+  per-module OpenAPI fragments, and marketplace install trust remain deferred.
 
 The service kit should stay stable and small. It exists to remove boilerplate, not to own business behavior.
 

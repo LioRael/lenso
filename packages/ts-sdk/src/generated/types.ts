@@ -226,6 +226,7 @@ export type AdminModuleMetadataDto = {
   capabilities: Array<string>;
   console: Array<ConsoleSurface>;
   error?: string | null;
+  events?: EventSurface | null;
   governance: AdminModuleGovernanceDto;
   http_routes: Array<ModuleHttpRoute>;
   lifecycle?: LifecycleSurface | null;
@@ -778,6 +779,15 @@ export type ErrorBody = {
 
 export type ErrorResponse = {
   error: ErrorBody;
+};
+
+export type EventHandlerDeclaration = {
+  event_name: string;
+  name: string;
+};
+
+export type EventSurface = {
+  handlers?: Array<EventHandlerDeclaration>;
 };
 
 export type FieldSchema = {

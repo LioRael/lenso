@@ -3,7 +3,7 @@
 
 use platform_core::{StoryDisplayDescriptor, StoryDisplaySource};
 use platform_module::{
-    AdminSchema, AdminSurface, ConsoleSurface, LifecycleSurface, ModuleHttpRoute,
+    AdminSchema, AdminSurface, ConsoleSurface, EventSurface, LifecycleSurface, ModuleHttpRoute,
     ModuleManifestLint, ModuleSource, RuntimeSurface,
 };
 use serde::{Deserialize, Serialize};
@@ -213,6 +213,7 @@ pub struct AdminModuleMetadataDto {
     pub source_diagnostics: Option<AdminModuleSourceDiagnosticsDto>,
     pub http_routes: Vec<ModuleHttpRoute>,
     pub runtime: Option<RuntimeSurface>,
+    pub events: Option<EventSurface>,
     pub lifecycle: Option<LifecycleSurface>,
     pub console: Vec<ConsoleSurface>,
     pub governance: AdminModuleGovernanceDto,

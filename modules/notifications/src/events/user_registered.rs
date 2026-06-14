@@ -53,7 +53,7 @@ impl WelcomeEmailRequestedHandler {
 
 #[async_trait::async_trait]
 impl EventHandler for WelcomeEmailRequestedHandler {
-    fn event_name(&self) -> &'static str {
+    fn event_name(&self) -> &str {
         USER_REGISTERED
     }
 

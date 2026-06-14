@@ -69,3 +69,22 @@ pub struct RemoteFunctionInvokeRequest {
 pub struct RemoteFunctionInvokeResponse {
     pub output: Value,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoteEventHandleRequest {
+    pub request_id: String,
+    pub outbox_event_id: String,
+    pub handler_name: String,
+    pub event_name: String,
+    pub event_version: u16,
+    pub source_module: String,
+    pub aggregate_type: String,
+    pub aggregate_id: String,
+    pub correlation_id: String,
+    pub causation_id: Option<String>,
+    pub occurred_at: String,
+    pub actor: ActorContext,
+    pub trace: TraceContext,
+    pub payload: Value,
+    pub headers: Value,
+}

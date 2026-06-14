@@ -6,7 +6,7 @@
 use platform_core::{AppError, ErrorCode, RequestContext, StoryDisplayDescriptor};
 use platform_http::{ApiErrorResponse, ApiOpenApiRouter, OpenApiRouter, routes};
 use platform_module::{
-    AdminActionSource, AdminDataSource, AdminSchema, AdminSurface, ConsoleSurface,
+    AdminActionSource, AdminDataSource, AdminSchema, AdminSurface, ConsoleSurface, EventSurface,
     LifecycleSurface, ModuleHttpRoute, ModuleLoadStatus, ModuleSource, RuntimeSurface,
 };
 use std::sync::{Arc, OnceLock, RwLock};
@@ -61,6 +61,9 @@ pub struct AdminModuleMetadata {
     /// Declared runtime functions. Metadata only; runtime registration belongs
     /// to the source-specific binding and worker composition.
     pub runtime: Option<RuntimeSurface>,
+    /// Declared event handlers. Metadata only; event dispatch registration
+    /// belongs to the source-specific binding and worker composition.
+    pub events: Option<EventSurface>,
     /// Declared lifecycle checks and activation jobs. Metadata only; worker startup
     /// owns validation and enqueueing.
     pub lifecycle: Option<LifecycleSurface>,

@@ -84,7 +84,7 @@ impl CountingHandler {
 
 #[async_trait::async_trait]
 impl EventHandler for CountingHandler {
-    fn event_name(&self) -> &'static str {
+    fn event_name(&self) -> &str {
         self.event_name
     }
 
@@ -99,7 +99,7 @@ struct FailingHandler;
 
 #[async_trait::async_trait]
 impl EventHandler for FailingHandler {
-    fn event_name(&self) -> &'static str {
+    fn event_name(&self) -> &str {
         "identity.user_registered.v1"
     }
 

@@ -1,6 +1,7 @@
 use platform_core::{AppContext, StoryDisplayDescriptor, StoryDisplaySource};
 use platform_module::{
-    LinkedBinding, Module, ModuleManifest, RuntimeFunctionDeclaration, RuntimeSurface,
+    EventHandlerDeclaration, EventSurface, LinkedBinding, Module, ModuleManifest,
+    RuntimeFunctionDeclaration, RuntimeSurface,
 };
 use platform_runtime::RuntimeClient;
 use std::sync::Arc;
@@ -37,6 +38,12 @@ pub fn manifest() -> ModuleManifest {
                 retry_policy: None,
             }],
         })
+        .events(EventSurface {
+            handlers: vec![EventHandlerDeclaration {
+                name: "notifications.handle_user_registered".to_owned(),
+                event_name: crate::events::USER_REGISTERED.to_owned(),
+            }],
+        })
         .build()
 }
 
@@ -71,5 +78,12 @@ mod tests {
             runtime.functions[0].input_schema.as_deref(),
             Some("notifications.send_welcome_email.v1")
         );
+        let events = manifest.events.expect("events surface");
+        assert_eq!(events.handlers.len(), 1);
+        assert_eq!(
+            events.handlers[0].name,
+            "notifications.handle_user_registered"
+        );
+        assert_eq!(events.handlers[0].event_name, "identity.user_registered.v1");
     }
 }

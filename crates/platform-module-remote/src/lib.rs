@@ -7,6 +7,7 @@ mod admin_action;
 mod admin_data;
 mod binding;
 mod config;
+mod event;
 mod protocol;
 mod proxy;
 mod request;
@@ -14,11 +15,13 @@ mod response;
 mod router;
 mod runtime;
 mod source;
+mod validation;
 
 pub use admin_action::RemoteAdminActionSource;
 pub use admin_data::RemoteAdminDataSource;
 pub use binding::RemoteBinding;
 pub use config::RemoteModuleConfig;
+pub use event::RemoteEventHandler;
 pub use protocol::{
     RemoteErrorBody, RemoteErrorDetail, RemoteErrorEnvelope, RemoteManifestResponse,
 };
