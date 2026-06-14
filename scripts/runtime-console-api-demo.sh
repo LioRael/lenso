@@ -129,7 +129,7 @@ Runtime Console API demo is running.
 Remote module:  http://$remote_addr
 API base:       $api_base
 Console page:   $console_url
-Worker:         app-worker with remote runtime functions
+Worker:         app-worker with remote runtime functions and event handlers
 
 Verify the seeded remote story and runtime function paths:
   just console-api-qa

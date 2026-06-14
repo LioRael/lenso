@@ -7,7 +7,7 @@ use platform_admin_data::{
 };
 use platform_core::{
     AppConfig, AppContext, AuthConfig, DatabaseConfig, DbPool, HttpConfig, LoggingEventPublisher,
-    ModuleSourcesConfig, PLATFORM_MIGRATIONS, RemoteModuleSourceConfig, ServiceConfig,
+    ModuleSourcesConfig, OutboxRelay, PLATFORM_MIGRATIONS, RemoteModuleSourceConfig, ServiceConfig,
     TelemetryConfig, apply_migrations,
 };
 use platform_runtime::{RUNTIME_MIGRATIONS, RuntimeWorker};
@@ -363,6 +363,14 @@ async fn remote_module_fixture_is_visible_through_admin_data_api() {
         3
     );
     assert_eq!(
+        remote_module["events"]["handlers"][0]["name"],
+        "sync_contact_on_user_registered"
+    );
+    assert_eq!(
+        remote_module["events"]["handlers"][0]["event_name"],
+        "identity.user_registered.v1"
+    );
+    assert_eq!(
         remote_module["lifecycle"]["startup_checks"][0]["kind"],
         "function_registered"
     );
@@ -654,6 +662,129 @@ async fn installed_remote_module_lifecycle_activation_runs_through_worker_runtim
         "/runtime/functions/remote_crm.sync_contact.v1/invoke"
     );
     assert_eq!(remote_runtime_operation["success"], true);
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn installed_remote_module_event_handler_enqueues_runtime_function() {
+    let _guard = REMOTE_SMOKE_TEST_LOCK.lock().await;
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let migrations = PLATFORM_MIGRATIONS
+        .iter()
+        .chain(RUNTIME_MIGRATIONS)
+        .copied()
+        .collect::<Vec<_>>();
+    apply_migrations(&db.pool, &migrations)
+        .await
+        .expect("platform and runtime migrations apply");
+
+    let base_url = spawn_remote_module(remote_module_example::router()).await;
+    let remote_sources = vec![RemoteModuleSourceConfig {
+        name: "remote-crm".to_owned(),
+        base_url,
+        auth_token_env: None,
+        timeout_ms: 5_000,
+    }];
+    let ctx =
+        app_context_with_remote_modules_and_db(remote_sources, db.pool.clone(), db.url.clone());
+    let modules = app_bootstrap::load_modules(&ctx)
+        .await
+        .expect("installed remote module loads");
+    let function_registry = Arc::new(app_bootstrap::function_registry(&modules));
+    let event_handlers = app_bootstrap::event_handlers_with_runtime_actions(
+        &ctx,
+        &modules,
+        function_registry.clone(),
+    );
+    assert!(
+        function_registry
+            .get("remote_crm.sync_contact.v1")
+            .is_some()
+    );
+    assert_eq!(
+        event_handlers.handler_count("identity.user_registered.v1"),
+        1
+    );
+
+    insert_remote_user_registered_outbox_event(&db.pool).await;
+    let relay = OutboxRelay::new(db.pool.clone(), "worker-remote-event-demo");
+    assert_eq!(
+        relay
+            .relay_once(&event_handlers, 10)
+            .await
+            .expect("remote event handler should dispatch"),
+        1
+    );
+    let outbox_status: String =
+        sqlx::query_scalar("select status from platform.outbox where id = 'evt_remote_user'")
+            .fetch_one(&db.pool)
+            .await
+            .expect("outbox status should query");
+    assert_eq!(outbox_status, "published");
+
+    let pending_run: (String, String, Value, Value, Option<String>) = sqlx::query_as(
+        r#"
+        select
+            status,
+            correlation_id,
+            input_json,
+            actor,
+            input_json #>> '{_lenso_runtime,causation_id}' as causation_id
+        from runtime.function_runs
+        where function_name = 'remote_crm.sync_contact.v1'
+        "#,
+    )
+    .fetch_one(&db.pool)
+    .await
+    .expect("enqueued remote function should query");
+    assert_eq!(pending_run.0, "pending");
+    assert_eq!(pending_run.1, "corr_remote_event_demo");
+    assert_eq!(pending_run.2["contact_id"], "usr_remote_demo");
+    assert_eq!(pending_run.2["email"], "remote-user@example.com");
+    assert_eq!(pending_run.2["source_event_id"], "evt_remote_user");
+    assert_eq!(
+        pending_run.4.as_deref(),
+        Some("remote_event_handler:evt_remote_user:sync_contact_on_user_registered:0")
+    );
+    assert_eq!(pending_run.3["kind"], "user");
+    assert_eq!(pending_run.3["user_id"], "usr_actor");
+
+    let worker = RuntimeWorker::new(
+        db.pool.clone(),
+        function_registry,
+        "worker-remote-event-demo",
+    );
+    assert_eq!(
+        worker
+            .claim_and_run_batch(10)
+            .await
+            .expect("remote event result function should run"),
+        1
+    );
+    let completed: (String, Value) = sqlx::query_as(
+        r#"
+        select run.status, log.attributes
+        from runtime.function_runs run
+        join platform.execution_logs log on log.execution_id = run.id
+        where run.function_name = 'remote_crm.sync_contact.v1'
+            and log.attributes ->> 'source' = 'remote_runtime'
+        order by log.occurred_at asc
+        limit 1
+        "#,
+    )
+    .fetch_one(&db.pool)
+    .await
+    .expect("completed remote function operation should query");
+    assert_eq!(completed.0, "completed");
+    assert_eq!(completed.1["module_name"], "remote-crm");
+    assert_eq!(
+        completed.1["remote_path"],
+        "/runtime/functions/remote_crm.sync_contact.v1/invoke"
+    );
+    assert_eq!(completed.1["success"], true);
 
     db.cleanup().await;
 }
@@ -1602,6 +1733,61 @@ async fn insert_remote_function_run(pool: &DbPool) {
     .execute(pool)
     .await
     .expect("remote runtime function run should insert");
+}
+
+async fn insert_remote_user_registered_outbox_event(pool: &DbPool) {
+    sqlx::query(
+        r#"
+        insert into platform.outbox (
+            id,
+            event_name,
+            event_version,
+            source_module,
+            aggregate_type,
+            aggregate_id,
+            correlation_id,
+            causation_id,
+            occurred_at,
+            payload,
+            headers,
+            max_attempts
+        )
+        values (
+            'evt_remote_user',
+            'identity.user_registered.v1',
+            1,
+            'identity',
+            'user',
+            'usr_remote_demo',
+            'corr_remote_event_demo',
+            'httpreq_remote_event_demo',
+            now(),
+            $1,
+            $2,
+            3
+        )
+        "#,
+    )
+    .bind(serde_json::json!({
+        "user_id": "usr_remote_demo",
+        "email": "remote-user@example.com",
+        "display_name": "Remote User",
+    }))
+    .bind(serde_json::json!({
+        "actor": {
+            "kind": "user",
+            "user_id": "usr_actor",
+            "scopes": ["identity.users.write"]
+        },
+        "trace": {
+            "trace_id": "00000000000000000000000000000031",
+            "span_id": "0000000000000031",
+            "baggage": []
+        }
+    }))
+    .execute(pool)
+    .await
+    .expect("remote demo outbox event should insert");
 }
 
 trait RequestExt {

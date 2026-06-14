@@ -13,7 +13,8 @@ use platform_module::{
     AdminDeclarativeSection, AdminDeclarativeSurface, AdminEmbeddedEntry, AdminEmbeddedRuntime,
     AdminEmbeddedSurface, AdminMetricBinding, AdminSandboxPolicy, AdminSchema, ConsoleArea,
     ConsoleNavigation, ConsolePackage, ConsoleSurface, ConsoleWorkspaceRef, EntitySchema,
-    FieldSchema, FieldType, LifecycleActivationJobDeclaration, LifecycleActivationRunPolicy,
+    EventHandlerDeclaration, EventSurface, FieldSchema, FieldType,
+    LifecycleActivationJobDeclaration, LifecycleActivationRunPolicy,
     LifecycleStartupCheckDeclaration, LifecycleStartupCheckKind, LifecycleSurface,
     ModuleHttpMethod, ModuleHttpRoute, ModuleManifest, RuntimeFunctionDeclaration,
     RuntimeRetryPolicyDeclaration, RuntimeSurface,
@@ -107,6 +108,9 @@ const CONTACTS: &[Contact] = &[
 ];
 
 const OVERSIZED_PROXY_RESPONSE_BYTES: usize = (4 * 1024 * 1024) + 1;
+const REMOTE_SYNC_CONTACT_FUNCTION: &str = "remote_crm.sync_contact.v1";
+const REMOTE_USER_REGISTERED_HANDLER: &str = "sync_contact_on_user_registered";
+const IDENTITY_USER_REGISTERED_EVENT: &str = "identity.user_registered.v1";
 
 #[must_use]
 pub fn router() -> Router {
@@ -160,6 +164,10 @@ pub fn router() -> Router {
             "/lenso/module/v1/runtime/functions/{function_name}/invoke",
             post(invoke_runtime_function),
         )
+        .route(
+            "/lenso/module/v1/events/handlers/{handler_name}/invoke",
+            post(invoke_event_handler),
+        )
         .route("/lenso/module/v1/admin/contacts", get(list_contacts))
         .route("/lenso/module/v1/admin/contacts/{id}", get(get_contact))
 }
@@ -171,6 +179,7 @@ async fn manifest() -> Json<ModuleManifest> {
             .console(vec![remote_crm_console_surface()])
             .http_routes(contact_http_routes())
             .runtime(runtime_surface())
+            .events(event_surface())
             .lifecycle(lifecycle_surface())
             .capabilities(vec!["remote_crm.contacts.read".to_owned()])
             .build(),
@@ -479,8 +488,8 @@ async fn invoke_runtime_function(
     Path(function_name): Path<String>,
     Json(request): Json<RuntimeFunctionInvokeRequest>,
 ) -> Response {
-    if function_name != "remote_crm.sync_contact.v1"
-        || request.function_name != "remote_crm.sync_contact.v1"
+    if function_name != REMOTE_SYNC_CONTACT_FUNCTION
+        || request.function_name != REMOTE_SYNC_CONTACT_FUNCTION
     {
         return remote_error(
             StatusCode::NOT_FOUND,
@@ -514,6 +523,52 @@ async fn invoke_runtime_function(
                 .and_then(Value::as_str)
                 .unwrap_or(""),
         }
+    }))
+    .into_response()
+}
+
+async fn invoke_event_handler(
+    Path(handler_name): Path<String>,
+    Json(request): Json<Value>,
+) -> Response {
+    if handler_name != REMOTE_USER_REGISTERED_HANDLER {
+        return remote_error(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            format!("event handler {handler_name} was not found"),
+            false,
+        );
+    }
+    if request.get("event_name").and_then(Value::as_str) != Some(IDENTITY_USER_REGISTERED_EVENT) {
+        return remote_error(
+            StatusCode::BAD_REQUEST,
+            "validation_failed",
+            format!("event handler {handler_name} received an unsupported event"),
+            false,
+        );
+    }
+
+    let payload = request.get("payload").unwrap_or(&Value::Null);
+    let contact_id = payload
+        .get("user_id")
+        .or_else(|| request.get("aggregate_id"))
+        .and_then(Value::as_str)
+        .unwrap_or("unknown_contact");
+    let email = payload.get("email").and_then(Value::as_str).unwrap_or("");
+
+    Json(json!({
+        "actions": [{
+            "type": "enqueue_function",
+            "function_name": REMOTE_SYNC_CONTACT_FUNCTION,
+            "input": {
+                "contact_id": contact_id,
+                "email": email,
+                "source_event_id": request
+                    .get("outbox_event_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or(""),
+            }
+        }]
     }))
     .into_response()
 }
@@ -748,14 +803,23 @@ fn contact_http_routes() -> Vec<ModuleHttpRoute> {
 fn runtime_surface() -> RuntimeSurface {
     RuntimeSurface {
         functions: vec![RuntimeFunctionDeclaration {
-            name: "remote_crm.sync_contact.v1".to_owned(),
+            name: REMOTE_SYNC_CONTACT_FUNCTION.to_owned(),
             version: 1,
             queue: "remote-crm".to_owned(),
-            input_schema: Some("remote_crm.sync_contact.v1".to_owned()),
+            input_schema: Some(REMOTE_SYNC_CONTACT_FUNCTION.to_owned()),
             retry_policy: Some(RuntimeRetryPolicyDeclaration {
                 max_attempts: 3,
                 initial_delay_ms: 1000,
             }),
+        }],
+    }
+}
+
+fn event_surface() -> EventSurface {
+    EventSurface {
+        handlers: vec![EventHandlerDeclaration {
+            name: REMOTE_USER_REGISTERED_HANDLER.to_owned(),
+            event_name: IDENTITY_USER_REGISTERED_EVENT.to_owned(),
         }],
     }
 }
@@ -766,12 +830,12 @@ fn lifecycle_surface() -> LifecycleSurface {
             name: "sync contact function is registered".to_owned(),
             required: true,
             check: LifecycleStartupCheckKind::FunctionRegistered {
-                function_name: "remote_crm.sync_contact.v1".to_owned(),
+                function_name: REMOTE_SYNC_CONTACT_FUNCTION.to_owned(),
             },
         }],
         activation_jobs: vec![LifecycleActivationJobDeclaration {
             name: "sync contacts on startup".to_owned(),
-            function_name: "remote_crm.sync_contact.v1".to_owned(),
+            function_name: REMOTE_SYNC_CONTACT_FUNCTION.to_owned(),
             run_policy: LifecycleActivationRunPolicy::EveryStartup,
             input: json!({ "reason": "worker_startup" }),
             required: true,
