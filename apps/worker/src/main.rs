@@ -34,12 +34,13 @@ async fn main() -> anyhow::Result<()> {
     let modules = app_bootstrap::load_modules(&ctx)
         .await
         .context("failed to load modules")?;
-    let registry = app_bootstrap::function_registry(&modules);
+    let registry = Arc::new(app_bootstrap::function_registry(&modules));
     let activation_run_ids =
         app_bootstrap::enqueue_lifecycle_activation_jobs(&ctx, &modules, &registry)
             .await
             .context("failed to enqueue module lifecycle activation jobs")?;
-    let event_handlers = app_bootstrap::event_handlers(&modules);
+    let event_handlers =
+        app_bootstrap::event_handlers_with_runtime_actions(&ctx, &modules, registry.clone());
 
     info!(
         functions = registry.all().count(),
@@ -48,7 +49,7 @@ async fn main() -> anyhow::Result<()> {
         "starting worker"
     );
 
-    run_worker_loop(ctx.clone(), event_handlers, Arc::new(registry)).await;
+    run_worker_loop(ctx.clone(), event_handlers, registry).await;
     Ok(())
 }
 

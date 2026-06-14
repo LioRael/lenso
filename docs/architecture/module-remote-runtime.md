@@ -23,7 +23,6 @@ parallel runtime.
 
 - Remote modules directly polling or claiming `runtime.function_runs`.
 - Remote modules directly consuming `platform.outbox`.
-- Remote event handler registration.
 - Remote scheduling, queues, flows, or trigger ownership.
 - Streaming function output or long-lived bidirectional channels.
 - Browser credentials, host bearer-token forwarding, or arbitrary host bridges.
@@ -207,11 +206,32 @@ payload, and original event headers. The host may authenticate with the
 configured host-to-remote token, but must not forward caller bearer tokens or
 cookies.
 
-Success may return a JSON body or `204 No Content`; the body is ignored by the
-host in this first slice. Failure uses the standard remote error envelope, and
-retryability is mapped through the existing outbox retry/dead-letter machinery.
-Remote handlers cannot yet ask the host to enqueue functions or emit new events;
-that needs a separate declarative result protocol.
+Success may return a JSON body or `204 No Content`. Empty success performs no
+follow-up action. JSON success may include a bounded declarative result action:
+
+```json
+{
+  "actions": [
+    {
+      "type": "enqueue_function",
+      "function_name": "remote_crm.sync_contact.v1",
+      "input": { "contact_id": "usr_1" }
+    }
+  ]
+}
+```
+
+The first result-action slice intentionally supports at most one
+`enqueue_function` action. The host only accepts functions declared by the same
+remote module and already registered in the host `FunctionRegistry`; it uses the
+registered retry policy when inserting `runtime.function_runs`. The remote
+handler cannot set host retry policy, write runtime tables, emit events, invoke
+admin actions, or call arbitrary host bridges.
+
+Failure uses the standard remote error envelope, and retryability is mapped
+through the existing outbox retry/dead-letter machinery. Invalid result actions
+are non-retryable protocol failures and cause the claimed outbox row to become
+dead through the existing relay path.
 
 ## Implementation Order
 
@@ -229,6 +249,10 @@ that needs a separate declarative result protocol.
    remote invocation metadata.
 7. Add manifest event declarations plus proxy-backed remote event handlers that
    dispatch through the host-owned outbox relay. Done.
+8. Allow remote event handlers to return one declarative `enqueue_function`
+   result action for a runtime function declared by the same remote module.
+   Done.
 
-Do not implement event-handler declarative result actions, action bridges,
-streaming, or marketplace trust in the first remote event-handler slice.
+Do not implement event-emitting result actions, admin action bridges, arbitrary
+host bridges, streaming, or marketplace trust in the remote event-handler result
+slice.

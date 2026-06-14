@@ -21,7 +21,7 @@ pub use admin_action::RemoteAdminActionSource;
 pub use admin_data::RemoteAdminDataSource;
 pub use binding::RemoteBinding;
 pub use config::RemoteModuleConfig;
-pub use event::RemoteEventHandler;
+pub use event::{RemoteEventHandler, RemoteEventHostActionRunner};
 pub use protocol::{
     RemoteErrorBody, RemoteErrorDetail, RemoteErrorEnvelope, RemoteManifestResponse,
 };

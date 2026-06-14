@@ -10,7 +10,10 @@ async fn notifications_registers_user_registered_handler() {
     let module = notifications::module::module(&ctx);
 
     let mut event_registry = platform_core::EventHandlerRegistry::new();
-    module.binding.register_event_handlers(&mut event_registry);
+    module.binding.register_event_handlers(
+        &mut event_registry,
+        &platform_module::EventHandlerRegistrationContext::empty(),
+    );
     assert_eq!(
         event_registry.handler_count("identity.user_registered.v1"),
         1

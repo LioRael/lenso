@@ -88,3 +88,15 @@ pub struct RemoteEventHandleRequest {
     pub payload: Value,
     pub headers: Value,
 }
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RemoteEventHandleResponse {
+    #[serde(default)]
+    pub actions: Vec<RemoteEventResultAction>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum RemoteEventResultAction {
+    EnqueueFunction { function_name: String, input: Value },
+}

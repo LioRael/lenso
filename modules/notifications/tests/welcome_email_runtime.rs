@@ -21,7 +21,10 @@ async fn user_registered_event_enqueues_welcome_email_function() {
     );
     let module = notifications::module::module(&ctx);
     let mut registry = EventHandlerRegistry::new();
-    module.binding.register_event_handlers(&mut registry);
+    module.binding.register_event_handlers(
+        &mut registry,
+        &platform_module::EventHandlerRegistrationContext::empty(),
+    );
 
     let relay = OutboxRelay::new(db.pool.clone(), "worker-a");
     relay
