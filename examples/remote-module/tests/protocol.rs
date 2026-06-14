@@ -102,6 +102,15 @@ async fn manifest_matches_remote_module_protocol() {
     assert_eq!(functions[0]["input_schema"], "remote_crm.sync_contact.v1");
     assert_eq!(functions[0]["retry_policy"]["max_attempts"], 3);
     assert_eq!(functions[0]["retry_policy"]["initial_delay_ms"], 1000);
+    let event_handlers = manifest["events"]["handlers"]
+        .as_array()
+        .expect("event handlers");
+    assert_eq!(event_handlers.len(), 1);
+    assert_eq!(event_handlers[0]["name"], "sync_contact_on_user_registered");
+    assert_eq!(
+        event_handlers[0]["event_name"],
+        "identity.user_registered.v1"
+    );
 }
 
 #[tokio::test]
@@ -262,6 +271,40 @@ async fn runtime_function_invoke_returns_output_envelope() {
     assert_eq!(value["output"]["request_id"], "fnrun_1");
     assert_eq!(value["output"]["function_run_id"], "fnrun_1");
     assert_eq!(value["output"]["correlation_id"], "corr_1");
+}
+
+#[tokio::test]
+async fn event_handler_invoke_returns_enqueue_function_action() {
+    let response = remote_module_example::router()
+        .oneshot(
+            http::Request::builder()
+                .method(http::Method::POST)
+                .uri("/lenso/module/v1/events/handlers/sync_contact_on_user_registered/invoke")
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(axum::body::Body::from(
+                    r#"{"request_id":"evt_1:sync_contact_on_user_registered","outbox_event_id":"evt_1","handler_name":"sync_contact_on_user_registered","event_name":"identity.user_registered.v1","event_version":1,"source_module":"identity","aggregate_type":"user","aggregate_id":"usr_1","correlation_id":"corr_1","causation_id":"httpreq_1","occurred_at":"2026-06-14T00:00:00Z","actor":{"kind":"user","user_id":"usr_actor","scopes":[]},"trace":{"trace_id":"trace_1","span_id":"span_1","baggage":[]},"payload":{"user_id":"usr_1","email":"ada@example.com"},"headers":{}}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let value: Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(value["actions"].as_array().expect("actions").len(), 1);
+    assert_eq!(value["actions"][0]["type"], "enqueue_function");
+    assert_eq!(
+        value["actions"][0]["function_name"],
+        "remote_crm.sync_contact.v1"
+    );
+    assert_eq!(value["actions"][0]["input"]["contact_id"], "usr_1");
+    assert_eq!(value["actions"][0]["input"]["email"], "ada@example.com");
+    assert_eq!(value["actions"][0]["input"]["source_event_id"], "evt_1");
 }
 
 #[tokio::test]

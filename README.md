@@ -127,7 +127,8 @@ This starts the remote module example, the API with `remote-crm`,
 `remote-crm-embedded`, and `remote-crm-declarative` configured, and the Runtime
 Console in API mode. Open the Data page and select `remote-crm-embedded` to see
 the sandboxed iframe surface, or `remote-crm-declarative` to see the host-rendered
-declarative surface.
+declarative surface. The `remote-crm` fixture also declares a remote event
+handler that can ask the host to enqueue its declared runtime function.
 If the default ports are busy, override them with `REMOTE_MODULE_ADDR`,
 `HTTP_PORT`, or `CONSOLE_PORT`.
 
