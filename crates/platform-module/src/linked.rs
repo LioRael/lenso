@@ -116,7 +116,7 @@ mod tests {
 
     #[async_trait]
     impl EventHandler for NoopEventHandler {
-        fn event_name(&self) -> &'static str {
+        fn event_name(&self) -> &str {
             "test.event"
         }
 

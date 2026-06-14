@@ -57,6 +57,12 @@ async fn manifest() -> Json<Value> {
                 }
             }]
         },
+        "events": {
+            "handlers": [{
+                "name": "sync_contact_on_user_registered",
+                "event_name": "identity.user_registered.v1"
+            }]
+        },
         "lifecycle": {
             "startup_checks": [{
                 "name": "sync contact function is registered",
@@ -273,6 +279,12 @@ async fn loads_manifest_and_attaches_admin_data_source() {
     let mut registry = platform_runtime::FunctionRegistry::default();
     module.binding.register_functions(&mut registry);
     assert!(registry.get("remote_crm.sync_contact.v1").is_some());
+    let mut event_registry = platform_core::EventHandlerRegistry::default();
+    module.binding.register_event_handlers(&mut event_registry);
+    assert_eq!(
+        event_registry.handler_count("identity.user_registered.v1"),
+        1
+    );
     assert!(matches!(
         module.manifest.admin,
         Some(AdminSurface::Schema(_))

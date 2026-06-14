@@ -237,6 +237,7 @@ fn metadata_response_modules(modules: Vec<AdminModuleMetadata>) -> Vec<AdminModu
                 m.admin.as_ref(),
                 &m.http_routes,
                 m.runtime.as_ref(),
+                m.events.as_ref(),
                 m.lifecycle.as_ref(),
                 &m.console,
                 &m.capabilities,
@@ -249,6 +250,7 @@ fn metadata_response_modules(modules: Vec<AdminModuleMetadata>) -> Vec<AdminModu
                 source_diagnostics: source_diagnostics_dto(m.source_diagnostics.clone()),
                 http_routes: m.http_routes.clone(),
                 runtime: m.runtime.clone(),
+                events: m.events.clone(),
                 lifecycle: m.lifecycle.clone(),
                 console: m.console.clone(),
                 governance: module_governance(m, &manifest_lints),
@@ -1462,6 +1464,7 @@ mod tests {
                 story_title: Some("Fetch Contact".to_owned()),
             }],
             runtime: None,
+            events: None,
             lifecycle: Some(LifecycleSurface {
                 startup_checks: Vec::new(),
                 activation_jobs: vec![LifecycleActivationJobDeclaration {
@@ -1504,6 +1507,7 @@ mod tests {
                 story_title: Some("Fetch Contact".to_owned()),
             }],
             runtime: None,
+            events: None,
             lifecycle: None,
             console: vec![ConsoleSurface {
                 name: "contacts".to_owned(),

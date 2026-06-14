@@ -23,6 +23,7 @@ The Runtime Console derives categories from `subject`:
 | `admin.declarative...` | `admin.declarative` |
 | `admin.embedded...` | `admin.embedded` |
 | `runtime...` | `runtime` |
+| `events...` | `events` |
 | `lifecycle...` | `lifecycle` |
 | `console...` | `console` |
 | `module...` | `module` |
@@ -68,6 +69,12 @@ Console category mapping and tests in the same change.
 | `error` | `runtime.function.{name}` | Runtime function name is declared more than once. |
 | `warning` | `runtime.function.{name}.input_schema` | Runtime function input schema does not match the function name. |
 | `warning` | `runtime.function.{name}.retry_policy` | Runtime retry policy declares zero attempts. |
+| `warning` | `events.handlers` | Event surface declares no handlers. |
+| `error` | `events.handler` | Event handler declaration is missing a name. |
+| `warning` | `events.handler.{name}` | Event handler name is not path-safe. |
+| `error` | `events.handler.{name}` | Event handler name is declared more than once. |
+| `error` | `events.handler.{name}.event_name` | Event handler declaration is missing an event name. |
+| `warning` | `events.handler.{name}.event_name` | Event name is not path-safe. |
 | `warning` | `lifecycle` | Lifecycle surface declares no startup checks or activation jobs. |
 | `warning` | `lifecycle.startup_check` | Lifecycle startup check is missing a name. |
 | `error` | `lifecycle.startup_check.function_registered.{function}` | Lifecycle startup check references an unknown runtime function. |

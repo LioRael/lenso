@@ -42,8 +42,11 @@ impl RemoteModuleSource {
             ));
         }
         validate_remote_http_routes(&manifest.http_routes)?;
-        let binding =
-            RemoteBinding::from_runtime_surface(self.config.clone(), manifest.runtime.as_ref())?;
+        let binding = RemoteBinding::from_surfaces(
+            self.config.clone(),
+            manifest.runtime.as_ref(),
+            manifest.events.as_ref(),
+        )?;
 
         let has_admin_data = match &manifest.admin {
             Some(AdminSurface::Schema(_)) => true,

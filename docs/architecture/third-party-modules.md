@@ -183,7 +183,6 @@ The following are intentionally deferred:
 - embedded host bridges
 - streaming proxy protocols
 - per-module OpenAPI fragment ingestion
-- remote event handlers
 - write-capable schema-admin CRUD
 
 Each deferred area needs a versioned protocol and host-side enforcement before

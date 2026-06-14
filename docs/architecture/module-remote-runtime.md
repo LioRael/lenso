@@ -170,18 +170,48 @@ function timeout is configured.
 
 ## Event Handlers
 
-Remote event handlers are deferred. The host should not let remote modules
-subscribe directly to outbox rows in the first runtime slice.
+Remote event handlers use the same host-owned outbox dispatch model as linked
+handlers. A remote module may declare event subscriptions, but it never claims
+or consumes `platform.outbox` rows directly.
 
-When added later, the likely shape is still host-owned dispatch:
+Manifest declarations are pure data:
 
-1. Worker claims outbox rows.
-2. Host resolves event handler declarations from loaded module manifests.
-3. Host invokes the remote handler through a bounded request/response protocol.
-4. Remote handler may return function enqueue requests or a declarative result.
-5. Host persists any resulting function runs or outbox state transitions.
+```json
+{
+  "events": {
+    "handlers": [
+      {
+        "name": "sync_contact_on_user_registered",
+        "event_name": "identity.user_registered.v1"
+      }
+    ]
+  }
+}
+```
 
-This keeps transactional outbox semantics and operator visibility in the host.
+The worker loads configured remote modules through `app-bootstrap`, registers
+proxy-backed handlers in the shared `EventHandlerRegistry`, then dispatches
+claimed outbox rows through the existing relay. Success marks the row
+`published`; retryable remote failures use the existing `failed` retry path and
+eventually become `dead` after `max_attempts`.
+
+The remote protocol is request/response JSON over the module base URL:
+
+```text
+POST /lenso/module/v1/events/handlers/{handler_name}/invoke
+```
+
+The request includes the host-owned outbox event id, event name/version,
+source module, aggregate identity, correlation/causation ids, actor, trace,
+payload, and original event headers. The host may authenticate with the
+configured host-to-remote token, but must not forward caller bearer tokens or
+cookies.
+
+Success may return a JSON body or `204 No Content`; the body is ignored by the
+host in this first slice. Failure uses the standard remote error envelope, and
+retryability is mapped through the existing outbox retry/dead-letter machinery.
+Remote handlers cannot yet ask the host to enqueue functions or emit new events;
+that needs a separate declarative result protocol.
 
 ## Implementation Order
 
@@ -197,6 +227,8 @@ This keeps transactional outbox semantics and operator visibility in the host.
    attempts, timeout, and missing remote function behavior. Done.
 6. Add Runtime Console tests only if existing function-run views need additional
    remote invocation metadata.
+7. Add manifest event declarations plus proxy-backed remote event handlers that
+   dispatch through the host-owned outbox relay. Done.
 
-Do not implement remote event handlers, action bridges, streaming, or
-marketplace trust in the first remote runtime slice.
+Do not implement event-handler declarative result actions, action bridges,
+streaming, or marketplace trust in the first remote event-handler slice.

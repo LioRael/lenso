@@ -16,6 +16,7 @@ mod admin_data;
 mod admin_schema;
 mod binding;
 mod console;
+mod events;
 mod http;
 mod lifecycle;
 mod linked;
@@ -36,6 +37,7 @@ pub use console::{
     ConsoleArea, ConsoleNavigation, ConsoleNavigationGroup, ConsolePackage, ConsoleSurface,
     ConsoleWorkspaceRef,
 };
+pub use events::{EventHandlerDeclaration, EventSurface};
 pub use http::{
     ModuleHttpMethod, ModuleHttpRoute, ModuleRouteLint, ModuleRouteLintSeverity,
     lint_module_http_routes,

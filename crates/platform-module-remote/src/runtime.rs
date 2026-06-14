@@ -1,6 +1,7 @@
 use crate::config::RemoteModuleConfig;
 use crate::protocol::{RemoteFunctionInvokeRequest, RemoteFunctionInvokeResponse};
 use crate::response::{ResponseBodyPolicy, decode_json_response_with_policy};
+use crate::validation::validate_path_segment;
 use platform_core::{AppError, AppResult, ErrorCode, ExecutionContext};
 use platform_runtime::{FunctionHandlerObservability, RuntimeFunction};
 use serde_json::Value;
@@ -111,19 +112,8 @@ impl RuntimeFunction for RemoteRuntimeFunction {
 }
 
 pub(crate) fn validate_function_name(function_name: &str) -> AppResult<()> {
-    let valid = !function_name.is_empty()
-        && function_name.chars().all(|character| {
-            character.is_ascii_alphanumeric()
-                || character == '.'
-                || character == '_'
-                || character == '-'
-        });
-    if valid {
-        return Ok(());
-    }
-
-    Err(AppError::new(
-        ErrorCode::Validation,
+    validate_path_segment(
+        function_name,
         "remote runtime function name must be a stable path segment",
-    ))
+    )
 }

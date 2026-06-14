@@ -3156,6 +3156,10 @@ components:
           type:
           - string
           - 'null'
+        events:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/EventSurface'
         governance:
           $ref: '#/components/schemas/AdminModuleGovernanceDto'
         http_routes:
@@ -4771,6 +4775,27 @@ components:
       properties:
         error:
           $ref: '#/components/schemas/ErrorBody'
+    EventHandlerDeclaration:
+      type: object
+      required:
+      - name
+      - event_name
+      properties:
+        event_name:
+          type: string
+          description: |-
+            Stable event name consumed from `platform.outbox`, e.g.
+            `identity.user_registered.v1`.
+        name:
+          type: string
+          description: Stable handler name used by remote loading sources as the invoke path.
+    EventSurface:
+      type: object
+      properties:
+        handlers:
+          type: array
+          items:
+            $ref: '#/components/schemas/EventHandlerDeclaration'
     FieldSchema:
       type: object
       description: One field of an entity.

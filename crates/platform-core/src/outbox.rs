@@ -179,13 +179,13 @@ pub trait EventDispatcher: Debug + Send + Sync {
 
 #[async_trait]
 pub trait EventHandler: Debug + Send + Sync {
-    fn event_name(&self) -> &'static str;
+    fn event_name(&self) -> &str;
     async fn handle(&self, event: &ClaimedOutboxEvent) -> AppResult<()>;
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct EventHandlerRegistry {
-    handlers: BTreeMap<&'static str, Vec<Arc<dyn EventHandler>>>,
+    handlers: BTreeMap<String, Vec<Arc<dyn EventHandler>>>,
 }
 
 impl EventHandlerRegistry {
@@ -195,7 +195,7 @@ impl EventHandlerRegistry {
 
     pub fn register(&mut self, handler: Arc<dyn EventHandler>) {
         self.handlers
-            .entry(handler.event_name())
+            .entry(handler.event_name().to_owned())
             .or_default()
             .push(handler);
     }
