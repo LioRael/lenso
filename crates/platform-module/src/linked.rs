@@ -1,6 +1,6 @@
 //! The compile-time loading source: behavior is linked Rust code.
 
-use crate::binding::ModuleBinding;
+use crate::binding::{EventHandlerRegistrationContext, ModuleBinding};
 use platform_core::{EventHandler, EventHandlerRegistry};
 use platform_http::ApiOpenApiRouter;
 use platform_runtime::{FunctionRegistry, RuntimeDescriptor};
@@ -41,7 +41,11 @@ impl ModuleBinding for LinkedBinding {
         self.runtime.register_into(registry);
     }
 
-    fn register_event_handlers(&self, registry: &mut EventHandlerRegistry) {
+    fn register_event_handlers(
+        &self,
+        registry: &mut EventHandlerRegistry,
+        _context: &EventHandlerRegistrationContext,
+    ) {
         registry.register_all(self.event_handlers.clone());
     }
 }
@@ -153,7 +157,7 @@ mod tests {
             .build();
 
         let mut registry = EventHandlerRegistry::default();
-        binding.register_event_handlers(&mut registry);
+        binding.register_event_handlers(&mut registry, &EventHandlerRegistrationContext::empty());
 
         assert_eq!(registry.handler_count("test.event"), 1);
     }

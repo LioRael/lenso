@@ -29,13 +29,15 @@ use platform_core::{
 };
 use platform_http::ApiOpenApiRouter;
 use platform_module::{
-    AdminSchema, AdminSurface, LifecycleActivationRunPolicy, LifecycleStartupCheckKind,
-    LinkedBinding, Module, ModuleLoadStatus, ModuleManifest, ModuleSource,
+    AdminSchema, AdminSurface, EventHandlerRegistrationContext, LifecycleActivationRunPolicy,
+    LifecycleStartupCheckKind, LinkedBinding, Module, ModuleLoadStatus, ModuleManifest,
+    ModuleSource,
 };
 use platform_module_remote::{RemoteHttpProxyRegistry, RemoteModuleConfig, RemoteModuleSource};
 use platform_runtime::{
     EnqueueFunctionRequest, FunctionRegistry, RUNTIME_MIGRATIONS, RuntimeClient,
 };
+use std::sync::Arc;
 use std::time::Instant;
 
 struct LinkedModuleEntry {
@@ -1057,9 +1059,33 @@ fn runtime_max_attempts_for_enqueue(max_attempts: u32) -> i32 {
 /// Build an [`EventHandlerRegistry`] from every module's binding.
 #[must_use]
 pub fn event_handlers(modules: &[Module]) -> EventHandlerRegistry {
+    event_handlers_with_context(modules, &EventHandlerRegistrationContext::empty())
+}
+
+/// Build an [`EventHandlerRegistry`] with host runtime actions enabled for
+/// remote event-handler result actions.
+#[must_use]
+pub fn event_handlers_with_runtime_actions(
+    ctx: &AppContext,
+    modules: &[Module],
+    function_registry: Arc<FunctionRegistry>,
+) -> EventHandlerRegistry {
+    let context = EventHandlerRegistrationContext::with_runtime(
+        RuntimeClient::new(ctx.db.clone()),
+        function_registry,
+    );
+    event_handlers_with_context(modules, &context)
+}
+
+fn event_handlers_with_context(
+    modules: &[Module],
+    context: &EventHandlerRegistrationContext,
+) -> EventHandlerRegistry {
     let mut registry = EventHandlerRegistry::new();
     for module in modules {
-        module.binding.register_event_handlers(&mut registry);
+        module
+            .binding
+            .register_event_handlers(&mut registry, context);
     }
     registry
 }

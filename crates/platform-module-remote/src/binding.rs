@@ -1,16 +1,28 @@
 use crate::config::RemoteModuleConfig;
-use crate::event::RemoteEventHandler;
+use crate::event::{
+    RemoteEventHandler, RemoteEventHostActionRunner, validate_event_handler_name,
+    validate_event_name,
+};
 use crate::runtime::{RemoteRuntimeFunction, validate_function_name};
-use platform_core::{AppResult, EventHandler, EventHandlerRegistry};
-use platform_module::{EventSurface, ModuleBinding, RuntimeSurface};
+use platform_core::{AppResult, EventHandlerRegistry};
+use platform_module::{
+    EventHandlerRegistrationContext, EventSurface, ModuleBinding, RuntimeSurface,
+};
 use platform_runtime::{FunctionDefinition, FunctionRegistry, RetryPolicy};
 use std::sync::Arc;
 use std::time::Duration;
 
 #[derive(Debug, Clone, Default)]
 pub struct RemoteBinding {
+    config: Option<RemoteModuleConfig>,
     functions: Vec<FunctionDefinition>,
-    event_handlers: Vec<Arc<dyn EventHandler>>,
+    event_handlers: Vec<RemoteEventHandlerRegistration>,
+}
+
+#[derive(Debug, Clone)]
+struct RemoteEventHandlerRegistration {
+    name: String,
+    event_name: String,
 }
 
 impl RemoteBinding {
@@ -50,15 +62,17 @@ impl RemoteBinding {
             .into_iter()
             .flat_map(|surface| surface.handlers.iter())
             .map(|declaration| {
-                Ok(Arc::new(RemoteEventHandler::new(
-                    config.clone(),
-                    declaration.name.clone(),
-                    declaration.event_name.clone(),
-                )?) as Arc<dyn EventHandler>)
+                validate_event_handler_name(&declaration.name)?;
+                validate_event_name(&declaration.event_name)?;
+                Ok(RemoteEventHandlerRegistration {
+                    name: declaration.name.clone(),
+                    event_name: declaration.event_name.clone(),
+                })
             })
             .collect::<AppResult<Vec<_>>>()?;
 
         Ok(Self {
+            config: Some(config),
             functions,
             event_handlers,
         })
@@ -72,8 +86,38 @@ impl ModuleBinding for RemoteBinding {
         }
     }
 
-    fn register_event_handlers(&self, registry: &mut EventHandlerRegistry) {
-        registry.register_all(self.event_handlers.clone());
+    fn register_event_handlers(
+        &self,
+        registry: &mut EventHandlerRegistry,
+        context: &EventHandlerRegistrationContext,
+    ) {
+        let Some(config) = &self.config else {
+            return;
+        };
+        let allowed_function_names = self
+            .functions
+            .iter()
+            .map(|function| function.name.clone())
+            .collect::<Vec<_>>();
+
+        for declaration in &self.event_handlers {
+            let mut handler = RemoteEventHandler::new(
+                config.clone(),
+                declaration.name.clone(),
+                declaration.event_name.clone(),
+            )
+            .expect("remote event handler declaration was validated");
+
+            if let Some(runtime) = context.runtime() {
+                handler = handler.with_host_action_runner(RemoteEventHostActionRunner::new(
+                    runtime.runtime_client.clone(),
+                    runtime.function_registry.clone(),
+                    allowed_function_names.clone(),
+                ));
+            }
+
+            registry.register(std::sync::Arc::new(handler));
+        }
     }
 }
 
@@ -155,7 +199,7 @@ mod tests {
         .expect("remote binding should build");
 
         let mut registry = EventHandlerRegistry::default();
-        binding.register_event_handlers(&mut registry);
+        binding.register_event_handlers(&mut registry, &EventHandlerRegistrationContext::empty());
 
         assert_eq!(registry.handler_count("identity.user_registered.v1"), 1);
     }

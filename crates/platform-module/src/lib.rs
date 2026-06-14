@@ -32,7 +32,7 @@ pub use admin::{
 };
 pub use admin_data::{AdminActionSource, AdminDataSource, AdminListQuery, AdminPage};
 pub use admin_schema::{AdminSchema, EntitySchema, FieldSchema, FieldType};
-pub use binding::ModuleBinding;
+pub use binding::{EventHandlerRegistrationContext, EventHandlerRuntimeContext, ModuleBinding};
 pub use console::{
     ConsoleArea, ConsoleNavigation, ConsoleNavigationGroup, ConsolePackage, ConsoleSurface,
     ConsoleWorkspaceRef,

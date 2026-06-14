@@ -280,7 +280,10 @@ async fn loads_manifest_and_attaches_admin_data_source() {
     module.binding.register_functions(&mut registry);
     assert!(registry.get("remote_crm.sync_contact.v1").is_some());
     let mut event_registry = platform_core::EventHandlerRegistry::default();
-    module.binding.register_event_handlers(&mut event_registry);
+    module.binding.register_event_handlers(
+        &mut event_registry,
+        &platform_module::EventHandlerRegistrationContext::empty(),
+    );
     assert_eq!(
         event_registry.handler_count("identity.user_registered.v1"),
         1
