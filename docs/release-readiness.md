@@ -59,9 +59,11 @@ In a separate shell, verify the installable remote module path:
 pnpm --dir ../lenso-runtime-console demo:release
 ```
 
-The release demo starts the `hello-action` example module, reads its manifest,
+The release demo starts the internal `hello-action` fixture, reads its manifest,
 checks schema-admin, HTTP route, runtime function behavior, installs the manifest
 into a host fixture, and verifies local `REMOTE_MODULES` plus the install plan.
+User-facing examples that install published packages live in
+[LioRael/lenso-examples](https://github.com/LioRael/lenso-examples).
 
 The manual first-user flow lives in [getting-started.md](getting-started.md).
 

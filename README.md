@@ -159,11 +159,13 @@ Remote module release demo:
 pnpm --dir ../lenso-runtime-console demo:release
 ```
 
-This starts the example `hello-action` remote module, reads its manifest, checks
-its schema-admin, HTTP route, and runtime function endpoints, and verifies the
-short install path: `lenso module add <manifest-url>`. It uses the sibling
-`../lenso-runtime-console` checkout for the local `lenso` CLI and
-`@lenso/remote-module-kit` package.
+This starts the internal `hello-action` fixture, reads its manifest, checks its
+schema-admin, HTTP route, and runtime function endpoints, and verifies the short
+install path: `lenso module add <manifest-url>`. It uses the sibling
+`../lenso-runtime-console` checkout for local release validation.
+
+User-facing examples that install the published npm packages live in
+[LioRael/lenso-examples](https://github.com/LioRael/lenso-examples).
 
 The smoke command starts the collector, emits one outbox-style span and one
 function-style span, and checks collector debug logs for
