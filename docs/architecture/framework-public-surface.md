@@ -90,8 +90,14 @@ targets that need their own maintainers.
 
 ## Starter And Examples
 
-The examples repository should become the learning surface after packages are
-publishable. It should not be the first package boundary.
+The examples repository is the learning surface after packages are publishable.
+It is not the first package boundary; it consumes package boundaries after they
+exist.
+
+The first examples repository is
+[LioRael/lenso-examples](https://github.com/LioRael/lenso-examples). It starts
+with the JavaScript `hello-action` remote module and uses registry packages
+instead of sibling workspace paths.
 
 Extract examples only when:
 
@@ -133,5 +139,5 @@ facade exists.
 3. Replace the reserved `lenso` crates.io placeholder with a small facade crate
    over stable module-authoring contracts.
 4. Add a starter path after the first two authoring packages are usable.
-5. Move examples into an external repository once they consume public packages
+5. Grow the external examples repository once examples consume public packages
    or documented local overrides instead of sibling workspace paths.

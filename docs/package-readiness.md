@@ -124,9 +124,14 @@ Before replacing the reserved placeholder with a real version:
 - run `cargo package --list` and `cargo publish --dry-run` from an isolated
   facade crate checkout or release branch.
 
-## Example Extraction Gate
+## Examples Repository
 
-Create a separate examples repository only after these are true:
+The first separate examples repository is
+[LioRael/lenso-examples](https://github.com/LioRael/lenso-examples). Its initial
+`hello-action` example uses the published `@lenso/remote-module-kit` and
+`@lenso/ts-sdk` packages and runs its own smoke CI.
+
+Keep using this gate before adding more external examples:
 
 - `@lenso/remote-module-kit` is published or has a successful publish dry-run.
 - `@lenso/ts-sdk` has a clean package dry-run.
@@ -142,6 +147,6 @@ The first extracted repository should contain:
   vendored as a fixture;
 - a short README pointing back to the backend and Runtime Console repositories.
 
-Keep a minimal fixture inside this backend repository for integration tests. The
+Keep minimal fixtures inside this backend repository for integration tests. The
 external examples repository is for users; this repository still needs local
 fixtures for CI and contract coverage.

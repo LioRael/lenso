@@ -1,6 +1,10 @@
 # Hello Action Remote Module
 
-This is the smallest release-demo remote module for Lenso. It exposes:
+This is the internal release-demo fixture for Lenso. User-facing examples that
+install published packages live in
+[LioRael/lenso-examples](https://github.com/LioRael/lenso-examples).
+
+The fixture exposes:
 
 - a manifest at `http://127.0.0.1:4100/lenso/module/v1/manifest`;
 - one HTTP route, `GET /hello/{name}`;

@@ -79,10 +79,16 @@ plan. Restart the API, worker, and Console after installing a real module.
 
 ## Install The Example Module Manually
 
-Start the example module:
+User-facing examples live in
+[LioRael/lenso-examples](https://github.com/LioRael/lenso-examples) and depend
+on published `@lenso/*` packages instead of sibling workspace paths.
+
+Clone and start the example module in a separate checkout:
 
 ```sh
-node examples/remote-modules/hello-action/src/server.mjs
+git clone https://github.com/LioRael/lenso-examples ../lenso-examples
+pnpm --dir ../lenso-examples install
+pnpm --dir ../lenso-examples start:hello-action
 ```
 
 Install its manifest:
