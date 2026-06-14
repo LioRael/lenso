@@ -11,7 +11,7 @@ use tracing::info;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let config = AppConfig::from_env();
+    let config = AppConfig::try_from_env().context("invalid application configuration")?;
     telemetry::init(&config.telemetry)?;
 
     let db = connect_pool(&config.database).await?;

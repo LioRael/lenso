@@ -25,9 +25,14 @@ Start from the committed local defaults:
 cp .env.example .env
 ```
 
-`.env.example` contains local Postgres, API, CORS, logging, and optional OTLP
-defaults. Module installs may update `REMOTE_MODULES` in `.env`; that is local
-runtime configuration, not a registry or install-history database.
+`.env.example` contains local Postgres, API, CORS, linked composition profile,
+logging, and optional OTLP defaults. Module installs may update `REMOTE_MODULES`
+in `.env`; that is local runtime configuration, not a registry or
+install-history database.
+
+Local development defaults to `LENSO_COMPOSITION_PROFILE=demo`, which includes
+the identity and notifications fixture modules. Non-local environments must set
+`LENSO_COMPOSITION_PROFILE=core` or `LENSO_COMPOSITION_PROFILE=demo` explicitly.
 
 Development bearer tokens such as `Bearer dev-service:admin` are accepted only
 for local/development API environments. Do not use them as deployment

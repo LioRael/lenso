@@ -8,7 +8,7 @@ use axum::response::Response;
 use chrono::{DateTime, Utc};
 use platform_core::{
     ActorContext, AppContext, CorrelationId, IdGenerator, RequestContext, RequestId, UuidGenerator,
-    generate_trace_context,
+    generate_trace_context, is_local_development_environment,
     story_events::{
         HttpRequestStoryEventRecord, http_request_story_creation, http_request_story_event_id,
         insert_http_request_story_projection,
@@ -201,7 +201,7 @@ fn traceparent_header(headers: &axum::http::HeaderMap) -> Option<String> {
 }
 
 fn parse_dev_bearer_actor(value: String, environment: &str) -> Option<ActorContext> {
-    if !dev_bearer_auth_enabled(environment) {
+    if !is_local_development_environment(environment) {
         return None;
     }
 
@@ -220,13 +220,6 @@ fn parse_dev_bearer_actor(value: String, environment: &str) -> Option<ActorConte
     }
 
     None
-}
-
-fn dev_bearer_auth_enabled(environment: &str) -> bool {
-    matches!(
-        environment.trim().to_ascii_lowercase().as_str(),
-        "local" | "dev" | "development" | "test"
-    )
 }
 
 fn parse_dev_actor_scopes(value: &str) -> (String, Vec<String>) {

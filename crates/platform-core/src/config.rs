@@ -1,7 +1,9 @@
+use crate::error::{AppError, AppResult, ErrorDetail};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 pub const DEFAULT_LINKED_MODULE_PROFILE: &str = "demo";
+pub const LENSO_COMPOSITION_PROFILE_ENV: &str = "LENSO_COMPOSITION_PROFILE";
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AppConfig {
@@ -18,15 +20,22 @@ pub struct AppConfig {
 
 impl AppConfig {
     pub fn from_env() -> Self {
-        Self {
-            service: ServiceConfig::default(),
+        Self::try_from_env().expect("valid Lenso application configuration")
+    }
+
+    pub fn try_from_env() -> AppResult<Self> {
+        let service = ServiceConfig::default();
+        Ok(Self {
+            module_sources: ModuleSourcesConfig::try_from_env_for_environment(
+                &service.environment,
+            )?,
+            service,
             database: DatabaseConfig::from_env(),
             http: HttpConfig::default(),
             telemetry: TelemetryConfig::default(),
             auth: AuthConfig::default(),
-            module_sources: ModuleSourcesConfig::from_env(),
             modules: BTreeMap::new(),
-        }
+        })
     }
 }
 
@@ -177,13 +186,14 @@ pub struct ModuleSourcesConfig {
 }
 
 impl ModuleSourcesConfig {
-    fn from_env() -> Self {
-        Self {
+    fn try_from_env_for_environment(environment: &str) -> AppResult<Self> {
+        Ok(Self {
             linked_profile: linked_module_profile_from_env_value(
-                std::env::var("LENSO_COMPOSITION_PROFILE").ok().as_deref(),
-            ),
+                std::env::var(LENSO_COMPOSITION_PROFILE_ENV).ok().as_deref(),
+                environment,
+            )?,
             remote: remote_module_sources_from_env(),
-        }
+        })
     }
 }
 
@@ -200,12 +210,35 @@ fn default_linked_module_profile() -> String {
     DEFAULT_LINKED_MODULE_PROFILE.to_owned()
 }
 
-fn linked_module_profile_from_env_value(value: Option<&str>) -> String {
-    value
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or(DEFAULT_LINKED_MODULE_PROFILE)
-        .to_owned()
+fn linked_module_profile_from_env_value(
+    value: Option<&str>,
+    environment: &str,
+) -> AppResult<String> {
+    let Some(profile) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        if is_local_development_environment(environment) {
+            return Ok(DEFAULT_LINKED_MODULE_PROFILE.to_owned());
+        }
+        return Err(AppError::validation(
+            "Lenso composition profile is required outside local development",
+            vec![ErrorDetail {
+                field: Some(LENSO_COMPOSITION_PROFILE_ENV.to_owned()),
+                reason: format!(
+                    "set {LENSO_COMPOSITION_PROFILE_ENV}=core or {LENSO_COMPOSITION_PROFILE_ENV}=demo when APP_ENV is `{}`",
+                    environment.trim()
+                ),
+            }],
+        ));
+    };
+
+    Ok(profile.to_owned())
+}
+
+#[must_use]
+pub fn is_local_development_environment(environment: &str) -> bool {
+    matches!(
+        environment.trim().to_ascii_lowercase().as_str(),
+        "local" | "dev" | "development" | "test"
+    )
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -267,15 +300,41 @@ mod tests {
     #[test]
     fn linked_module_profile_from_env_value_trims_empty_to_default() {
         assert_eq!(
-            linked_module_profile_from_env_value(None),
+            linked_module_profile_from_env_value(None, "local").expect("local default"),
             DEFAULT_LINKED_MODULE_PROFILE
         );
         assert_eq!(
-            linked_module_profile_from_env_value(Some("  ")),
+            linked_module_profile_from_env_value(Some("  "), "development")
+                .expect("development default"),
             DEFAULT_LINKED_MODULE_PROFILE
         );
-        assert_eq!(linked_module_profile_from_env_value(Some("core")), "core");
-        assert_eq!(linked_module_profile_from_env_value(Some(" demo ")), "demo");
+        assert_eq!(
+            linked_module_profile_from_env_value(Some("core"), "production")
+                .expect("explicit profile"),
+            "core"
+        );
+        assert_eq!(
+            linked_module_profile_from_env_value(Some(" demo "), "production")
+                .expect("explicit profile"),
+            "demo"
+        );
+    }
+
+    #[test]
+    fn linked_module_profile_from_env_value_requires_explicit_profile_outside_local() {
+        let error = linked_module_profile_from_env_value(None, "production")
+            .expect_err("production requires explicit linked profile");
+
+        assert_eq!(error.code, crate::ErrorCode::Validation);
+        assert_eq!(
+            error.details[0].field.as_deref(),
+            Some(LENSO_COMPOSITION_PROFILE_ENV)
+        );
+        assert!(
+            error.details[0]
+                .reason
+                .contains("LENSO_COMPOSITION_PROFILE=core")
+        );
     }
 
     #[test]

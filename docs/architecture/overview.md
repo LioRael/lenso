@@ -36,7 +36,9 @@ Current demo module fixtures:
 These modules are demo fixtures, not product defaults. `app-bootstrap` selects a
 linked composition profile: `core` keeps only platform-owned linked surfaces such
 as `platform-story`, while `demo` adds `identity` and `notifications` for local
-development, examples, contracts, and integration tests.
+development, examples, contracts, and integration tests. Local development may
+default to `demo`; non-local environments must set
+`LENSO_COMPOSITION_PROFILE=core` or `LENSO_COMPOSITION_PROFILE=demo` explicitly.
 
 ## Platform Service Kit
 
