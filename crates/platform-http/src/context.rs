@@ -46,7 +46,7 @@ pub async fn request_context_middleware(
     let correlation_id = header_value(request.headers(), CORRELATION_ID_HEADER)
         .unwrap_or_else(|| UuidGenerator.new_id("corr"));
     let actor = authorization_header(request.headers())
-        .and_then(parse_dev_bearer_actor)
+        .and_then(|value| parse_dev_bearer_actor(value, &ctx.config.service.environment))
         .unwrap_or_default();
     let trace = traceparent_header(request.headers())
         .and_then(|value| trace_context_from_traceparent(&value))
@@ -200,7 +200,11 @@ fn traceparent_header(headers: &axum::http::HeaderMap) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
-fn parse_dev_bearer_actor(value: String) -> Option<ActorContext> {
+fn parse_dev_bearer_actor(value: String, environment: &str) -> Option<ActorContext> {
+    if !dev_bearer_auth_enabled(environment) {
+        return None;
+    }
+
     let token = value.strip_prefix("Bearer ")?;
 
     if let Some(user_id) = token.strip_prefix("dev-user:") {
@@ -216,6 +220,13 @@ fn parse_dev_bearer_actor(value: String) -> Option<ActorContext> {
     }
 
     None
+}
+
+fn dev_bearer_auth_enabled(environment: &str) -> bool {
+    matches!(
+        environment.trim().to_ascii_lowercase().as_str(),
+        "local" | "dev" | "development" | "test"
+    )
 }
 
 fn parse_dev_actor_scopes(value: &str) -> (String, Vec<String>) {

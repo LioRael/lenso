@@ -29,6 +29,10 @@ cp .env.example .env
 defaults. Module installs may update `REMOTE_MODULES` in `.env`; that is local
 runtime configuration, not a registry or install-history database.
 
+Development bearer tokens such as `Bearer dev-service:admin` are accepted only
+for local/development API environments. Do not use them as deployment
+credentials.
+
 ## Run The Local Services
 
 Start Postgres and apply migrations:

@@ -41,6 +41,21 @@ async fn admin_runtime_summary_rejects_user_actor() {
 }
 
 #[tokio::test]
+async fn admin_runtime_summary_rejects_dev_bearer_outside_local_environment() {
+    let app = auth_only_app_for_environment("production");
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/summary")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
 async fn admin_runtime_outbox_requires_authentication() {
     let app = auth_only_app();
 
@@ -2243,8 +2258,14 @@ async fn test_app_with_telemetry(db: &TestDatabase, spans: Vec<TelemetrySpan>) -
 }
 
 fn auth_only_app() -> axum::Router {
+    auth_only_app_for_environment("local")
+}
+
+fn auth_only_app_for_environment(environment: &str) -> axum::Router {
+    let mut config = AppConfig::from_env();
+    config.service.environment = environment.to_owned();
     let ctx = AppContext::new(
-        AppConfig::from_env(),
+        config,
         platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
             .expect("lazy pool should build"),
         Arc::new(LoggingEventPublisher),

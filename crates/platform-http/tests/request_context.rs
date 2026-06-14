@@ -130,6 +130,26 @@ async fn dev_service_bearer_token_can_set_scopes() {
 }
 
 #[tokio::test]
+async fn dev_bearer_token_is_ignored_outside_local_environment() {
+    let response = router_for_environment("production")
+        .oneshot(
+            Request::builder()
+                .uri("/context")
+                .header(
+                    "authorization",
+                    "Bearer dev-service:admin:remote_crm.contacts.read",
+                )
+                .body(Body::empty())
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should complete");
+
+    let body = json_body(response).await;
+    assert_eq!(body["actor"]["kind"], "anonymous");
+}
+
+#[tokio::test]
 async fn malformed_json_returns_standard_error_shape_with_request_context() {
     let response = router()
         .oneshot(
@@ -156,8 +176,14 @@ async fn malformed_json_returns_standard_error_shape_with_request_context() {
 }
 
 fn router() -> Router {
+    router_for_environment("local")
+}
+
+fn router_for_environment(environment: &str) -> Router {
+    let mut config = AppConfig::from_env();
+    config.service.environment = environment.to_owned();
     let ctx = AppContext::new(
-        AppConfig::from_env(),
+        config,
         platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
             .expect("lazy db pool should construct"),
         Arc::new(LoggingEventPublisher),
