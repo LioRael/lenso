@@ -33,6 +33,9 @@ check:
 release-check:
     just check
 
+package-readiness:
+    sh scripts/package-readiness.sh
+
 release-package:
     sh scripts/release-package.sh
 

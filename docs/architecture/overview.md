@@ -1,6 +1,11 @@
 # Architecture Overview
 
-Lenso is a Rust-first service-ready modular monolith with an embedded runtime, an Axum HTTP API, a background worker, a migration runner, a Vite/React Runtime Console, and a generated TypeScript SDK. The platform gives future projects reliable defaults without becoming a framework that hides the system.
+Lenso is a Rust-first backend framework and service-ready modular monolith with
+an embedded runtime, an Axum HTTP API, a background worker, a migration runner, a
+Vite/React Runtime Console, and a generated TypeScript SDK. The platform gives
+future projects reliable defaults without hiding the system. The public package
+surface is defined in
+[`framework-public-surface.md`](framework-public-surface.md).
 
 ## Modular Monolith
 

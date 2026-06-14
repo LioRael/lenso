@@ -1,12 +1,46 @@
 {
   "name": "@lenso/ts-sdk",
   "version": "0.1.0",
-  "private": true,
+  "description": "TypeScript SDK for Lenso's generated HTTP API.",
   "type": "module",
+  "license": "UNLICENSED",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LioRael/lenso.git",
+    "directory": "packages/ts-sdk"
+  },
+  "bugs": {
+    "url": "https://github.com/LioRael/lenso/issues"
+  },
+  "homepage": "https://github.com/LioRael/lenso#readme",
+  "keywords": [
+    "lenso",
+    "typescript",
+    "sdk",
+    "openapi",
+    "runtime-console"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "pnpm clean && tsc -p tsconfig.build.json",
+    "prepack": "pnpm build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "generate": "cargo run -p generate-ts-sdk",
