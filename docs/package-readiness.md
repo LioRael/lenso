@@ -22,6 +22,36 @@ as `platform-core`, `platform-module`, `platform-runtime`, and `app-bootstrap`
 are implementation details until their API contracts are intentionally designed
 for external consumers.
 
+## First Publish Order
+
+Use `0.1.0` for the first npm packages unless a blocking contract change lands
+before publication. Keep the first batch focused on packages a user can install
+from a blank project:
+
+| Order | Artifact | Version | Source repo | Publish stance |
+| --- | --- | --- | --- | --- |
+| 1 | `@lenso/ts-sdk` | `0.1.0` | `lenso` | Publish first after `just package-readiness` passes. |
+| 2 | `@lenso/remote-module-kit` | `0.1.0` | `lenso-runtime-console` | Publish after the backend SDK package gate is green. |
+| 3 | `lenso` crates.io crate | next real version after reserved `0.0.1` | `lenso` | Defer until the facade crate exists and passes `cargo publish --dry-run`. |
+| 4 | examples repository | n/a | separate repository | Extract only after examples consume published packages or documented local overrides. |
+
+The npm packages are independent artifacts, but publishing the SDK first keeps
+the generated API contract available before examples and module tooling point
+users at registry installs. The Rust crate is a separate facade decision and
+should not force internal workspace crates into public API shape.
+
+Before publishing, check registry state from a clean checkout:
+
+```sh
+npm view @lenso/ts-sdk version --json
+npm view @lenso/remote-module-kit version --json
+cargo info lenso
+```
+
+For npm, `E404` means the package name has no published version yet. For
+crates.io, the current `lenso` package is a reserved placeholder at `0.0.1`; do
+not publish workspace implementation crates to work around that.
+
 ## Backend Package Gate
 
 Run:
@@ -44,6 +74,14 @@ The gate checks that:
 This gate is intentionally a publish preflight. It does not upload anything to
 npm or crates.io.
 
+If the backend package gate is green and the registry check shows no existing
+`@lenso/ts-sdk` version, publish from the package directory:
+
+```sh
+cd packages/ts-sdk
+npm publish --access public
+```
+
 ## Coordinated Runtime Console Package
 
 Before examples move out of this repository, publish or dry-run the sibling
@@ -60,6 +98,14 @@ pnpm --dir ../lenso-runtime-console run check
 The `@lenso/remote-module-kit` package should expose built JavaScript and type
 declarations from a stable package entrypoint. Examples must not depend on a
 local `file:` path into `../lenso-runtime-console`.
+
+If the Runtime Console package gate is green and the registry check shows no
+existing `@lenso/remote-module-kit` version, publish from the package directory:
+
+```sh
+cd ../lenso-runtime-console/packages/remote-module-kit
+npm publish --access public
+```
 
 ## Crates.io Direction
 
