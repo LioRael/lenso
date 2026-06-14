@@ -1,40 +1,6 @@
 import { GeneratedLensoClient, type LensoClientOptions } from './generated/client.js';
 
-export type {
-  AdminFunctionRunDetail,
-  AdminFunctionRunListResponse,
-  AdminFunctionRunResponse,
-  AdminOutboxEventDetail,
-  AdminOutboxEventDetailResponse,
-  AdminOutboxListResponse,
-  AdminRuntimeFunctionRunItem,
-  AdminRuntimeFunctionDeclarationMetadata,
-  AdminRuntimeFunctionSummary,
-  AdminRuntimeHeatmapCell,
-  AdminRuntimeHeatmapResponse,
-  AdminRuntimeOutboxItem,
-  AdminRuntimeOutboxSummary,
-  AdminRuntimeStoryDetail,
-  AdminRuntimeStoryDetailResponse,
-  AdminRuntimeStoryEdge,
-  AdminRuntimeStoryListItem,
-  AdminRuntimeStoryListResponse,
-  AdminRuntimeStoryNode,
-  AdminRuntimeSummaryItem,
-  AdminRuntimeSummaryResponse,
-  AdminRuntimeTechnicalOperation,
-  AdminRuntimeTechnicalOperationListResponse,
-  AdminRuntimeTimelineItem,
-  CreateUserRequest,
-  CreateUserResponse,
-  CreateUserResponseEnvelope,
-  ErrorBody,
-  ErrorResponse,
-  MeResponse,
-  MeResponseEnvelope,
-  PageInfo,
-  ValidationErrorDetail,
-} from './generated/types.js';
+export type * from './generated/types.js';
 export { LensoApiError, type LensoClientOptions } from './generated/client.js';
 
 export type LensoClient = {
