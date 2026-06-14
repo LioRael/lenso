@@ -26,6 +26,19 @@ documented local infrastructure issue.
 
 Runtime Console checks run in the sibling `lenso-runtime-console` repository.
 
+## Package Gate
+
+Run the package preflight before publishing npm or crates.io artifacts:
+
+```sh
+just package-readiness
+```
+
+This verifies the backend-owned npm package tarball and keeps internal Rust
+workspace crates non-publishable while the public `lenso` facade crate is still
+being prepared. The detailed package and examples split checklist lives in
+[package-readiness.md](package-readiness.md).
+
 ## Local Smoke
 
 Use this sequence for a manual service smoke:
