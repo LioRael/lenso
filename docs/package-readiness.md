@@ -3,6 +3,10 @@
 This document defines the package boundary before publishing npm or crates.io
 artifacts and before moving examples into a separate repository.
 
+The framework-facing package strategy lives in
+[architecture/framework-public-surface.md](architecture/framework-public-surface.md).
+This document is the backend packaging checklist for that strategy.
+
 ## Current Publish Surface
 
 Publish only consumer-facing packages first:
