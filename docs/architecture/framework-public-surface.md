@@ -63,6 +63,14 @@ helpers for booting an API, worker, and migration runner, but the first package
 should avoid promising a complete hosted application API before the shape is
 clear.
 
+The intended long-term shape is still one `lenso` facade crate with feature
+gates for different authors. Module authors should be able to use the default
+module-authoring surface, while host applications can opt into a `host` feature
+that exposes narrow boot helpers such as API, worker, and migration runners. The
+`host` feature must not leak internal app or platform crate types in public
+signatures; it should stay a small facade over intentionally stable host
+operations.
+
 The transitional starter host template in `templates/starter-host` is the
 pressure test for that future facade. It keeps the current API, worker, and
 migration entrypoints visible from a blank project while depending on internal
