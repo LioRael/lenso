@@ -42,6 +42,8 @@ $summary
 
 - Commit: $commit_sha
 - Gate: \`just release-check\` passed in the release workflow.
+- Package preflight: \`just package-readiness\` passed in the release workflow.
+- Registry uploads: controlled by the release workflow publish inputs.
 - Runtime Console checks run in the separate \`lenso-runtime-console\` repository.
 
 ## First Release Scope

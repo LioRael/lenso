@@ -30,9 +30,9 @@ from a blank project:
 
 | Order | Artifact | Version | Source repo | Publish stance |
 | --- | --- | --- | --- | --- |
-| 1 | `@lenso/ts-sdk` | `0.1.0` | `lenso` | Publish first after `just package-readiness` passes. |
+| 1 | `@lenso/ts-sdk` | `0.1.0` | `lenso` | Already published; keep `publish_ts_sdk=false` for `v0.1.0` workflow reruns. |
 | 2 | `@lenso/remote-module-kit` | `0.1.0` | `lenso-runtime-console` | Publish after the backend SDK package gate is green. |
-| 3 | `lenso` crates.io crate | next real version after reserved `0.0.1` | `lenso` | Publish after the facade crate package dry-run is green and release notes are ready. |
+| 3 | `lenso` crates.io crate | `0.1.0` after reserved `0.0.1` | `lenso` | Publish with `publish_rust_crate=true` after the facade crate dry-run is green and release notes are ready. |
 | 4 | examples repository | n/a | separate repository | Extract only after examples consume published packages or documented local overrides. |
 
 The npm packages are independent artifacts, but publishing the SDK first keeps
@@ -78,7 +78,9 @@ This gate is intentionally a publish preflight. It does not upload anything to
 npm or crates.io.
 
 If the backend package gate is green and the registry check shows no existing
-`@lenso/ts-sdk` version, publish from the package directory:
+`@lenso/ts-sdk` version, prefer the GitHub `release` workflow with
+`publish_ts_sdk=true`. For an emergency manual publish, publish from the package
+directory:
 
 ```sh
 cd packages/ts-sdk
@@ -123,8 +125,14 @@ Before replacing the reserved placeholder with a real version:
 - add package metadata such as description, repository, homepage, and README;
 - keep internal workspace crates `publish = false`;
 - run `cargo package --list -p lenso`;
-- run `cargo publish --dry-run -p lenso` from a release branch when ready to
+- run `cargo publish --dry-run -p lenso` from a release branch or the GitHub
+  `release` workflow with both publish inputs set to `false` when ready to
   validate against crates.io.
+
+For the real upload, prefer the GitHub `release` workflow with
+`publish_rust_crate=true` and the `CARGO_REGISTRY_TOKEN` repository secret
+configured. Manual publishing should remain a fallback for registry outages or
+workflow failures after the same dry-run checks have passed.
 
 ## Examples Repository
 

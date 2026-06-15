@@ -137,3 +137,9 @@ The end-to-end release branch and GitHub Actions flow lives in
 
 The release workflow runs with a Postgres service because backend checks include
 DB-backed Rust integration tests.
+
+When triggered with both publish inputs set to `false`, the workflow performs
+package dry-runs only. When `publish_ts_sdk` or `publish_rust_crate` is `true`,
+it requires the matching `NPM_TOKEN` or `CARGO_REGISTRY_TOKEN` repository secret
+and publishes the selected backend-owned registry artifact after the same gates
+pass.
