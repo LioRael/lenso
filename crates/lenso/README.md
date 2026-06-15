@@ -27,13 +27,13 @@ until their public API is intentionally designed.
 
 ```rust
 use lenso::{
-    AdminSchema, AdminSurface, EntitySchema, FieldSchema, FieldType, ModuleManifest,
-    ModuleSource, RuntimeFunctionDeclaration, RuntimeSurface, lint_module_manifest,
+    AdminSchema, EntitySchema, FieldSchema, FieldType, ModuleManifest, ModuleSource,
+    RuntimeFunctionDeclaration, RuntimeSurface, lint_module_manifest,
 };
 
 let manifest = ModuleManifest::builder("example")
     .capabilities(vec!["example.records.read".to_owned()])
-    .admin(AdminSurface::Schema(AdminSchema {
+    .admin(AdminSchema {
         entities: vec![EntitySchema {
             name: "records".to_owned(),
             label: "Records".to_owned(),
@@ -45,7 +45,7 @@ let manifest = ModuleManifest::builder("example")
             }],
             read_capability: "example.records.read".to_owned(),
         }],
-    }))
+    })
     .runtime(RuntimeSurface {
         functions: vec![RuntimeFunctionDeclaration {
             name: "example.refresh.v1".to_owned(),
