@@ -50,16 +50,19 @@ pub(crate) fn api_router_for_profile(profile: CompositionProfile) -> ApiOpenApiR
         .merge(platform_module_remote::router())
 }
 
-pub(crate) fn api_router_for_context(
+pub(crate) fn api_router_for_context_with_composition(
     ctx: &AppContext,
+    composition: &app_bootstrap::HostComposition,
 ) -> platform_core::AppResult<ApiOpenApiRouter> {
     let profile = CompositionProfile::from_config(&ctx.config)?;
     let base =
         OpenApiRouter::with_openapi(openapi_document_for_profile(profile)).merge(base_router());
-    Ok(app_bootstrap::merge_linked_http_for_context(base, ctx)?
-        .merge(platform_admin::router())
-        .merge(platform_admin_data::router())
-        .merge(platform_module_remote::router()))
+    Ok(
+        app_bootstrap::merge_linked_http_for_context_with_composition(base, ctx, composition)?
+            .merge(platform_admin::router())
+            .merge(platform_admin_data::router())
+            .merge(platform_module_remote::router()),
+    )
 }
 
 fn openapi_document_for_profile(profile: CompositionProfile) -> utoipa::openapi::OpenApi {

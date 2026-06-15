@@ -10,6 +10,7 @@ description = "Internal host boot facade for the Lenso backend framework."
 [dependencies]
 anyhow.workspace = true
 app-api.workspace = true
+app-bootstrap.workspace = true
 app-migrate.workspace = true
 app-worker.workspace = true
 
