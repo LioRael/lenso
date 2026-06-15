@@ -1130,6 +1130,7 @@ dependencies = [
  "app-bootstrap",
  "app-migrate",
  "app-worker",
+ "lenso",
 ]
 
 [[package]]

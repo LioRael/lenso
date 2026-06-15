@@ -5,6 +5,7 @@
 //! final public facade shape is still being validated.
 
 pub use app_bootstrap::{HostComposition, HostLinkedModule};
+pub use lenso::ModuleManifest;
 
 #[derive(Debug, Clone, Default)]
 pub struct HostBuilder {

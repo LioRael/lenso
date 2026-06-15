@@ -51,9 +51,48 @@ struct LinkedModuleEntry {
 pub struct HostLinkedModule {
     pub module_name: &'static str,
     pub manifest: fn() -> ModuleManifest,
-    pub load: fn(&AppContext) -> Module,
+    pub load: Option<fn(&AppContext) -> Module>,
     pub http_binding: Option<fn() -> LinkedBinding>,
     pub migrations: &'static [Migration],
+}
+
+impl HostLinkedModule {
+    #[must_use]
+    pub const fn manifest_only(
+        module_name: &'static str,
+        manifest: fn() -> ModuleManifest,
+        migrations: &'static [Migration],
+    ) -> Self {
+        Self {
+            module_name,
+            manifest,
+            load: None,
+            http_binding: None,
+            migrations,
+        }
+    }
+
+    #[must_use]
+    pub const fn linked(
+        module_name: &'static str,
+        manifest: fn() -> ModuleManifest,
+        load: fn(&AppContext) -> Module,
+        migrations: &'static [Migration],
+    ) -> Self {
+        Self {
+            module_name,
+            manifest,
+            load: Some(load),
+            http_binding: None,
+            migrations,
+        }
+    }
+
+    #[must_use]
+    pub const fn with_http_binding(mut self, http_binding: fn() -> LinkedBinding) -> Self {
+        self.http_binding = Some(http_binding);
+        self
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -253,6 +292,13 @@ fn disabled_host_linked_modules_for_context(
         .collect()
 }
 
+fn load_host_linked_module(ctx: &AppContext, entry: HostLinkedModule) -> Module {
+    match entry.load {
+        Some(load) => load(ctx),
+        None => Module::linked((entry.manifest)(), LinkedBinding::builder().build()),
+    }
+}
+
 /// Demo-default linked modules helper (context-bound: builds bindings).
 ///
 /// Startup and config-aware paths should use [`modules_for_config`] or
@@ -277,7 +323,7 @@ pub fn modules_for_config_with_composition(
     modules.extend(
         host_linked_modules_for_context(ctx, composition)
             .into_iter()
-            .map(|entry| (entry.load)(ctx)),
+            .map(|entry| load_host_linked_module(ctx, entry)),
     );
     Ok(modules)
 }
@@ -1477,7 +1523,7 @@ pub fn runtime_config_descriptors_with_composition(
         .chain(
             host_linked_modules_for_config(&ctx.config, composition)
                 .into_iter()
-                .map(|entry| (entry.load)(ctx)),
+                .map(|entry| load_host_linked_module(ctx, entry)),
         )
         .flat_map(|module| module.runtime_config.iter().cloned())
         .collect::<Vec<_>>();
@@ -1621,6 +1667,23 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert!(keys.iter().any(|key| key == "modules.billing.enabled"));
+    }
+
+    #[tokio::test]
+    async fn host_composition_modules_include_manifest_only_modules() {
+        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build");
+        let config = test_config_with_database_url("postgres://localhost/lenso_test");
+        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
+        let composition = HostComposition::new().with_linked_module(test_host_linked_module());
+
+        let names = modules_for_config_with_composition(&ctx, &composition)
+            .expect("host composition modules should load")
+            .into_iter()
+            .map(|module| module.manifest.name)
+            .collect::<Vec<_>>();
+
+        assert!(names.iter().any(|name| name == "billing"));
     }
 
     #[test]
@@ -2622,18 +2685,8 @@ mod tests {
         ModuleManifest::builder("billing").build()
     }
 
-    fn test_host_module(_ctx: &AppContext) -> Module {
-        Module::linked(test_host_manifest(), LinkedBinding::builder().build())
-    }
-
     fn test_host_linked_module() -> HostLinkedModule {
-        HostLinkedModule {
-            module_name: "billing",
-            manifest: test_host_manifest,
-            load: test_host_module,
-            http_binding: None,
-            migrations: TEST_HOST_MIGRATIONS,
-        }
+        HostLinkedModule::manifest_only("billing", test_host_manifest, TEST_HOST_MIGRATIONS)
     }
 
     fn test_config(db: &TestDatabase) -> AppConfig {

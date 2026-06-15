@@ -51,9 +51,25 @@ Restart `api` and `worker` after changing module configuration.
 User-facing remote-module examples live in
 <https://github.com/LioRael/lenso-examples>.
 
+## Add A Linked Module
+
+Local Rust modules are registered from `src/lib.rs`:
+
+```rust
+lenso_host::HostBuilder::new()
+    .linked_module(modules::app::linked_module())
+    .build()
+```
+
+The included `src/modules/app.rs` module is a project-owned skeleton. Rename it
+or add modules beside it as your backend grows. The first step is usually a
+manifest; when the module owns tables, pass its migration list through
+`HostLinkedModule::manifest_only(...)`.
+
 ## Files
 
 - `src/lib.rs` is the host-owned module composition hook.
+- `src/modules/app.rs` is the first project-owned linked module skeleton.
 - `src/bin/migrate.rs` delegates to the host migration runner.
 - `src/bin/api.rs` delegates to the host API runner.
 - `src/bin/worker.rs` delegates to the host worker runner.

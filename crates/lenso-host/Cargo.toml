@@ -13,6 +13,7 @@ app-api.workspace = true
 app-bootstrap.workspace = true
 app-migrate.workspace = true
 app-worker.workspace = true
+lenso.workspace = true
 
 [lints]
 workspace = true
