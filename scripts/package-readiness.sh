@@ -108,19 +108,31 @@ const fs = require("node:fs");
 
 const metadataPath = process.argv[2];
 const metadata = JSON.parse(fs.readFileSync(metadataPath, "utf8"));
+const allowedPublishable = new Set(["lenso"]);
 const publishable = metadata.packages
   .filter((pkg) => pkg.publish === null || pkg.publish === undefined || pkg.publish.length > 0)
   .map((pkg) => pkg.name);
+const unexpected = publishable.filter((name) => !allowedPublishable.has(name));
+const missing = [...allowedPublishable].filter((name) => !publishable.includes(name));
 
-if (publishable.length > 0) {
-  console.error("Workspace crates are still internal; do not publish these crates directly:");
-  console.error(publishable.map((name) => `- ${name}`).join("\n"));
+if (unexpected.length > 0 || missing.length > 0) {
+  if (unexpected.length > 0) {
+    console.error("Only the public facade crate may be publishable; keep these crates internal:");
+    console.error(unexpected.map((name) => `- ${name}`).join("\n"));
+  }
+  if (missing.length > 0) {
+    console.error("Expected public facade crates are not publishable:");
+    console.error(missing.map((name) => `- ${name}`).join("\n"));
+  }
   process.exit(1);
 }
 
 console.log(
-  `Rust workspace stance: ${metadata.packages.length} packages remain publish=false; publish the lenso facade crate first.`
+  `Rust workspace stance: ${publishable.join(", ")} is publishable; other workspace crates remain internal.`
 );
 NODE
+
+echo "Dry-running cargo package for lenso facade..."
+cargo package --locked -p lenso --allow-dirty
 
 echo "Package readiness checks passed."

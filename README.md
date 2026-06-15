@@ -42,10 +42,11 @@ First-time local setup lives in [docs/getting-started.md](docs/getting-started.m
   - `worker`: background worker and outbox relay app.
   - `migrate`: deterministic migration runner.
 - `crates/`
+  - `lenso`: public Rust facade crate for serializable module-authoring declarations and manifest lints.
   - `platform-core`: config, errors, context, DB, migrations, events, outbox, health, telemetry primitives.
   - `platform-http`: Axum adapters, request context middleware, JSON extractor, error responses, health routes, and the `OpenApiRouter` re-exports for single-source OpenAPI.
   - `platform-runtime`: embedded runtime primitives for functions, triggers, queues, flows, retries, and store traits.
-  - `platform-module`: module framework contracts for `ModuleManifest`, `ModuleBinding`, linked/remote sources, admin surfaces, and console surfaces.
+  - `platform-module`: behavior seams and compatibility re-exports for module loading, linked bindings, and schema-admin data/action sources.
   - `platform-admin`: runtime-observability backend for the Runtime Console (`/admin/runtime/*`); reads platform/runtime tables only.
   - `platform-admin-data`: schema-admin backend for generic module data (`/admin/data/*`).
   - `platform-testing`: shared test database helpers.

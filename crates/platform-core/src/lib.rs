@@ -14,7 +14,6 @@ pub mod outbox;
 pub mod remote_proxy_calls;
 pub mod runtime_config;
 pub mod shutdown;
-pub mod story_display;
 pub mod story_events;
 pub mod telemetry;
 pub mod telemetry_attrs;
@@ -43,6 +42,7 @@ pub use execution_logs::{
 };
 pub use health::{HealthRegistry, HealthStatus};
 pub use ids::{IdGenerator, UuidGenerator};
+pub use lenso::{StoryDisplayDescriptor, StoryDisplaySource};
 pub use migrations::{Migration, PLATFORM_MIGRATIONS, apply_migrations};
 pub use outbox::{
     ClaimedOutboxEvent, EventDispatcher, EventHandler, EventHandlerRegistry,
@@ -58,7 +58,6 @@ pub use runtime_config::{
     StaticRuntimeConfigProvider, StoredRuntimeConfig,
 };
 pub use shutdown::Shutdown;
-pub use story_display::{StoryDisplayDescriptor, StoryDisplaySource};
 pub use telemetry_attrs::{
     RuntimeSpanAttributes, generate_trace_context, record_runtime_span_attributes,
     trace_context_from_headers, trace_context_from_traceparent, trace_headers,

@@ -5,6 +5,7 @@ members = [
     "apps/worker",
     "apps/migrate",
     "examples/remote-module",
+    "crates/lenso",
     "crates/app-bootstrap",
     "crates/platform-admin",
     "crates/platform-admin-data",
@@ -55,6 +56,7 @@ utoipa = { version = "5.5", features = ["axum_extras", "chrono", "uuid"] }
 utoipa-axum = "0.2"
 uuid = { version = "1.23", features = ["serde", "v7"] }
 
+lenso = { path = "crates/lenso" }
 platform-core = { path = "crates/platform-core" }
 platform-admin = { path = "crates/platform-admin" }
 platform-admin-data = { path = "crates/platform-admin-data" }

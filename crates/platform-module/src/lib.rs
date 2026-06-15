@@ -11,48 +11,30 @@
 //! - [`AdminActionSource`]: executable behavior for manifest-declared admin
 //!   actions.
 
-mod admin;
 mod admin_data;
-mod admin_schema;
 mod binding;
-mod console;
-mod events;
-mod http;
-mod lifecycle;
 mod linked;
-mod manifest;
 mod module;
-mod runtime;
 
-pub use admin::{
+pub use admin_data::{AdminActionSource, AdminDataSource, AdminListQuery, AdminPage};
+pub use binding::{EventHandlerRegistrationContext, EventHandlerRuntimeContext, ModuleBinding};
+pub use lenso::{
     AdminAction, AdminActionConfirmation, AdminActionDangerLevel, AdminActionInputField,
     AdminActionInputSchema, AdminDeclarativeComponent, AdminDeclarativePage,
     AdminDeclarativeSection, AdminDeclarativeSurface, AdminEmbeddedEntry, AdminEmbeddedRuntime,
-    AdminEmbeddedSurface, AdminMetricBinding, AdminPermission, AdminSandboxPolicy, AdminSurface,
-};
-pub use admin_data::{AdminActionSource, AdminDataSource, AdminListQuery, AdminPage};
-pub use admin_schema::{AdminSchema, EntitySchema, FieldSchema, FieldType};
-pub use binding::{EventHandlerRegistrationContext, EventHandlerRuntimeContext, ModuleBinding};
-pub use console::{
-    ConsoleArea, ConsoleNavigation, ConsoleNavigationGroup, ConsolePackage, ConsoleSurface,
-    ConsoleWorkspaceRef,
-};
-pub use events::{EventHandlerDeclaration, EventSurface};
-pub use http::{
-    ModuleHttpMethod, ModuleHttpRoute, ModuleRouteLint, ModuleRouteLintSeverity,
-    lint_module_http_routes,
-};
-pub use lifecycle::{
-    LifecycleActivationJobDeclaration, LifecycleActivationRunPolicy,
+    AdminEmbeddedSurface, AdminMetricBinding, AdminPermission, AdminSandboxPolicy, AdminSchema,
+    AdminSurface, ConsoleArea, ConsoleNavigation, ConsoleNavigationGroup, ConsolePackage,
+    ConsoleSurface, ConsoleWorkspaceRef, EntitySchema, EventHandlerDeclaration, EventSurface,
+    FieldSchema, FieldType, LifecycleActivationJobDeclaration, LifecycleActivationRunPolicy,
     LifecycleStartupCheckDeclaration, LifecycleStartupCheckKind, LifecycleSurface,
+    ModuleCapabilityReference, ModuleHttpMethod, ModuleHttpRoute, ModuleManifest,
+    ModuleManifestBuilder, ModuleManifestLint, ModuleManifestLintSeverity, ModuleRouteLint,
+    ModuleRouteLintSeverity, ModuleSource, RuntimeFunctionDeclaration,
+    RuntimeRetryPolicyDeclaration, RuntimeSurface, StoryDisplayDescriptor, StoryDisplaySource,
+    lint_module_http_routes, lint_module_manifest, lint_module_manifest_parts,
+    module_capability_references,
 };
 pub use linked::{
     LinkedBinding, LinkedBindingBuilder, LinkedHttpContribution, LinkedHttpRouteMerger,
 };
-pub use manifest::{
-    ModuleCapabilityReference, ModuleManifest, ModuleManifestBuilder, ModuleManifestLint,
-    ModuleManifestLintSeverity, lint_module_manifest, lint_module_manifest_parts,
-    module_capability_references,
-};
-pub use module::{Module, ModuleLoadStatus, ModuleSource};
-pub use runtime::{RuntimeFunctionDeclaration, RuntimeRetryPolicyDeclaration, RuntimeSurface};
+pub use module::{Module, ModuleLoadStatus};

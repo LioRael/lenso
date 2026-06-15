@@ -1,6 +1,7 @@
 //! A module's pure-data contract: serializable metadata describable without
 //! behavior. Owned + serde so every loading source produces the same shape.
 
+use crate::StoryDisplayDescriptor;
 use crate::admin::{
     AdminDeclarativeComponent, AdminDeclarativeSurface, AdminEmbeddedEntry, AdminEmbeddedRuntime,
     AdminEmbeddedSurface, AdminPermission, AdminSurface,
@@ -13,9 +14,8 @@ use crate::lifecycle::{
     LifecycleActivationJobDeclaration, LifecycleStartupCheckDeclaration, LifecycleStartupCheckKind,
     LifecycleSurface,
 };
-use crate::module::ModuleSource;
+use crate::module_source::ModuleSource;
 use crate::runtime::{RuntimeFunctionDeclaration, RuntimeSurface};
-use platform_core::StoryDisplayDescriptor;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use utoipa::ToSchema;
@@ -165,9 +165,11 @@ pub fn lint_module_manifest_parts(
     for route_lint in lint_module_http_routes(source, http_routes) {
         lints.push(ModuleManifestLint {
             severity: match route_lint.severity {
-                crate::ModuleRouteLintSeverity::Ok => ModuleManifestLintSeverity::Ok,
-                crate::ModuleRouteLintSeverity::Warning => ModuleManifestLintSeverity::Warning,
-                crate::ModuleRouteLintSeverity::Error => ModuleManifestLintSeverity::Error,
+                crate::http::ModuleRouteLintSeverity::Ok => ModuleManifestLintSeverity::Ok,
+                crate::http::ModuleRouteLintSeverity::Warning => {
+                    ModuleManifestLintSeverity::Warning
+                }
+                crate::http::ModuleRouteLintSeverity::Error => ModuleManifestLintSeverity::Error,
             },
             subject: route_lint.subject,
             message: route_lint.message,
@@ -1071,7 +1073,7 @@ mod tests {
     };
     use crate::{ModuleHttpMethod, ModuleHttpRoute};
     use crate::{RuntimeFunctionDeclaration, RuntimeRetryPolicyDeclaration, RuntimeSurface};
-    use platform_core::{StoryDisplayDescriptor, StoryDisplaySource};
+    use crate::{StoryDisplayDescriptor, StoryDisplaySource};
 
     #[test]
     fn manifest_round_trips_through_json() {

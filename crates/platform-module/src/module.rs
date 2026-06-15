@@ -3,7 +3,7 @@
 use crate::admin_data::{AdminActionSource, AdminDataSource};
 use crate::binding::ModuleBinding;
 use crate::linked::{LinkedBinding, LinkedHttpContribution};
-use crate::manifest::ModuleManifest;
+use lenso::{ModuleManifest, ModuleSource};
 use platform_core::RuntimeConfigDescriptor;
 use std::sync::Arc;
 
@@ -24,13 +24,6 @@ pub struct Module {
     pub admin_data: Option<Arc<dyn AdminDataSource>>,
     /// Optional executable admin actions. Set via [`Module::with_admin_actions`].
     pub admin_actions: Option<Arc<dyn AdminActionSource>>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, utoipa::ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum ModuleSource {
-    Linked,
-    Remote,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
