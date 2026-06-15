@@ -6,6 +6,7 @@ members = [
     "apps/migrate",
     "examples/remote-module",
     "crates/lenso",
+    "crates/lenso-host",
     "crates/app-bootstrap",
     "crates/platform-admin",
     "crates/platform-admin-data",
@@ -67,6 +68,9 @@ platform-runtime = { path = "crates/platform-runtime" }
 platform-testing = { path = "crates/platform-testing" }
 app-bootstrap = { path = "crates/app-bootstrap" }
 app-api = { path = "apps/api" }
+app-migrate = { path = "apps/migrate" }
+app-worker = { path = "apps/worker" }
+lenso-host = { path = "crates/lenso-host" }
 identity = { path = "modules/identity" }
 notifications = { path = "modules/notifications" }
 story = { path = "modules/story" }

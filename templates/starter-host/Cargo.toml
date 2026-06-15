@@ -21,7 +21,5 @@ path = "src/bin/migrate.rs"
 
 [dependencies]
 anyhow = "1.0"
-app-api = { git = "https://github.com/LioRael/lenso", branch = "main", package = "app-api" }
-app-migrate = { git = "https://github.com/LioRael/lenso", branch = "main", package = "app-migrate" }
-app-worker = { git = "https://github.com/LioRael/lenso", branch = "main", package = "app-worker" }
+lenso-host = { git = "https://github.com/LioRael/lenso", branch = "main", package = "lenso-host" }
 tokio = { version = "1.52", features = ["macros", "rt-multi-thread"] }
