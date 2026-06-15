@@ -694,9 +694,13 @@ async fn installed_remote_module_event_handler_enqueues_runtime_function() {
         .await
         .expect("installed remote module loads");
     let function_registry = Arc::new(app_bootstrap::function_registry(&modules));
+    let remote_module = modules
+        .iter()
+        .find(|module| module.manifest.name == "remote-crm")
+        .expect("remote-crm module loads");
     let event_handlers = app_bootstrap::event_handlers_with_runtime_actions(
         &ctx,
-        &modules,
+        std::slice::from_ref(remote_module),
         function_registry.clone(),
     );
     assert!(
