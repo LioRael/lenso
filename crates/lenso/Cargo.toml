@@ -1,0 +1,20 @@
+[package]
+name = "lenso"
+version = "0.1.0"
+edition.workspace = true
+license = "MIT"
+description = "Public module-authoring contracts for the Lenso backend framework."
+repository = "https://github.com/LioRael/lenso"
+homepage = "https://github.com/LioRael/lenso"
+readme = "README.md"
+rust-version.workspace = true
+categories = ["web-programming", "development-tools"]
+keywords = ["backend", "framework", "modules", "runtime"]
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+utoipa.workspace = true
+
+[lints]
+workspace = true

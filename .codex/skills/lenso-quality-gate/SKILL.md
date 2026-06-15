@@ -64,12 +64,14 @@ pnpm --dir packages/ts-sdk run typecheck
 
 ## Verification Selection
 
-- Rust-only behavior: `cargo test --locked -p <package>` or `just test` for broad changes.
+- Default to focused local gates during feature work, then rely on GitHub Actions for full workspace coverage.
+- Rust-only behavior: `cargo check --locked -p <package> --all-targets` and `cargo test --locked -p <package>`.
 - Architecture or domain boundaries: `just arch-check`.
 - Generated contracts or SDK: `just generated-check`, then `just sdk-check` if SDK behavior changed.
 - Runtime Console: `just console-check` for substantial UI changes.
-- Cross-cutting Rust, contracts, SDK, console, or CI changes: `just check`.
-- Pre-PR or when matching GitHub Actions matters: `just ci`.
+- Package or release gates: run the relevant package/release preflight, such as `just package-readiness`.
+- Run full `just check` locally only for high-risk changes such as contracts, migrations, runtime or remote-module core paths, package/release gates, CI changes, or when explicitly requested.
+- Use `just ci` when matching GitHub Actions matters or before an intentional release candidate.
 
 ## Staging And Commit Workflow
 

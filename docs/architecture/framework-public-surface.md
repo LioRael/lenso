@@ -29,25 +29,27 @@ package boundary is the user-facing contract.
 
 ## Rust Facade Crate
 
-The crates.io package named `lenso` should become the public Rust facade crate.
-It should not expose the whole backend implementation.
+The crates.io package named `lenso` is the public Rust facade crate. It should
+not expose the whole backend implementation.
 
-The first useful facade should focus on module authoring:
+The first useful facade focuses on serializable module declarations:
 
 - manifest construction and linting;
-- linked module binding builders;
-- schema-admin declarations and read seams;
+- schema-admin declarations;
 - runtime function declarations;
 - event handler declarations;
 - HTTP route declarations;
 - console surface declarations.
 
-These contracts currently live in `crates/platform-module`, but the public crate
-should decide which names are stable and re-export only those names. Internal
-crates such as `platform-core`, `platform-http`, `platform-runtime`,
-`platform-admin`, `platform-admin-data`, `platform-module-remote`,
-`platform-testing`, and `app-bootstrap` should remain `publish = false` until a
-specific external use case justifies publishing them.
+These declaration contracts live in `crates/lenso` and are re-exported by
+`crates/platform-module` for backend workspace compatibility. Behavior seams
+that depend on host internals, such as linked binding builders, admin data
+sources, and event/function registration contexts, remain in `platform-module`
+until a stable external host-authoring API exists. Internal crates such as
+`platform-core`, `platform-http`, `platform-runtime`, `platform-admin`,
+`platform-admin-data`, `platform-module-remote`, `platform-testing`, and
+`app-bootstrap` should remain `publish = false` until a specific external use
+case justifies publishing them.
 
 Host application assembly is a later facade layer. It may eventually expose
 helpers for booting an API, worker, and migration runner, but the first package
@@ -136,8 +138,8 @@ facade exists.
    clean and publishable.
 2. Prepare `@lenso/remote-module-kit` in the Runtime Console repository as the
    first authoring package for remote modules.
-3. Replace the reserved `lenso` crates.io placeholder with a small facade crate
-   over stable module-authoring contracts.
+3. Replace the reserved `lenso` crates.io placeholder with the small facade
+   crate over stable module-authoring declarations.
 4. Add a starter path after the first two authoring packages are usable.
 5. Grow the external examples repository once examples consume public packages
    or documented local overrides instead of sibling workspace paths.

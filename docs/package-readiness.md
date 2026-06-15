@@ -14,8 +14,8 @@ Publish only consumer-facing packages first:
 - `@lenso/ts-sdk` from this backend repository.
 - `@lenso/remote-module-kit` from the sibling `lenso-runtime-console`
   repository.
-- the `lenso` crates.io facade crate, which is already reserved and should
-  become the public Rust entrypoint when it has real source.
+- the `lenso` crates.io facade crate, which is already reserved and now carries
+  the public module-authoring declaration surface.
 
 Do not publish the current internal Rust workspace crates directly. Names such
 as `platform-core`, `platform-module`, `platform-runtime`, and `app-bootstrap`
@@ -32,7 +32,7 @@ from a blank project:
 | --- | --- | --- | --- | --- |
 | 1 | `@lenso/ts-sdk` | `0.1.0` | `lenso` | Publish first after `just package-readiness` passes. |
 | 2 | `@lenso/remote-module-kit` | `0.1.0` | `lenso-runtime-console` | Publish after the backend SDK package gate is green. |
-| 3 | `lenso` crates.io crate | next real version after reserved `0.0.1` | `lenso` | Defer until the facade crate exists and passes `cargo publish --dry-run`. |
+| 3 | `lenso` crates.io crate | next real version after reserved `0.0.1` | `lenso` | Publish after the facade crate package dry-run is green and release notes are ready. |
 | 4 | examples repository | n/a | separate repository | Extract only after examples consume published packages or documented local overrides. |
 
 The npm packages are independent artifacts, but publishing the SDK first keeps
@@ -68,9 +68,11 @@ The gate checks that:
 - `pnpm --dir packages/ts-sdk run build` produces a clean `dist/`.
 - `npm pack --dry-run` includes only the package manifest, README, and compiled
   `dist/` files.
-- every current Rust workspace package remains `publish = false`, so internal
-  crates cannot be published accidentally while the facade crate is still being
-  prepared.
+- `lenso` is the only publishable Rust workspace package.
+- internal Rust workspace packages remain `publish = false`, so implementation
+  crates cannot be published accidentally.
+- `cargo package -p lenso --allow-dirty` can assemble and verify the facade
+  crate without depending on unpublished internal crates.
 
 This gate is intentionally a publish preflight. It does not upload anything to
 npm or crates.io.
@@ -112,17 +114,17 @@ npm publish --access public
 
 ## Crates.io Direction
 
-The crates.io package named `lenso` should be the first public Rust package. Its
-job is to be a small facade over stable module-authoring contracts, not to expose
-the full backend implementation.
+The crates.io package named `lenso` is the first public Rust package. Its job is
+to be a small facade over stable module-authoring contracts, not to expose the
+full backend implementation.
 
 Before replacing the reserved placeholder with a real version:
 
-- decide the license for public Rust packages;
 - add package metadata such as description, repository, homepage, and README;
 - keep internal workspace crates `publish = false`;
-- run `cargo package --list` and `cargo publish --dry-run` from an isolated
-  facade crate checkout or release branch.
+- run `cargo package --list -p lenso`;
+- run `cargo publish --dry-run -p lenso` from a release branch when ready to
+  validate against crates.io.
 
 ## Examples Repository
 

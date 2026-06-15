@@ -34,9 +34,9 @@ Run the package preflight before publishing npm or crates.io artifacts:
 just package-readiness
 ```
 
-This verifies the backend-owned npm package tarball and keeps internal Rust
-workspace crates non-publishable while the public `lenso` facade crate is still
-being prepared. The detailed package and examples split checklist lives in
+This verifies the backend-owned npm package tarball, verifies the public
+`lenso` facade crate package, and keeps internal Rust workspace crates
+non-publishable. The detailed package and examples split checklist lives in
 [package-readiness.md](package-readiness.md).
 
 ## Local Smoke
