@@ -63,6 +63,14 @@ helpers for booting an API, worker, and migration runner, but the first package
 should avoid promising a complete hosted application API before the shape is
 clear.
 
+The transitional starter host template in `templates/starter-host` is the
+pressure test for that future facade. It keeps the current API, worker, and
+migration entrypoints visible from a blank project while depending on internal
+host crates through Git dependencies. It uses Cargo's system-Git fetch mode so
+private repository credentials follow normal Git configuration. Treat
+duplication in that template as a signal for the next host facade extraction,
+not as a stable public API.
+
 ## Remote Module Kit
 
 `@lenso/remote-module-kit` is the primary package for out-of-process module
@@ -149,6 +157,7 @@ facade exists.
 3. Keep the crates.io `lenso` facade limited to stable module-authoring
    declarations until a host application API is intentionally designed.
 4. Add a starter host path after the examples prove the published package
-   install story end to end.
+   install story end to end. The first transitional path is
+   `templates/starter-host`.
 5. Grow the external examples repository without reintroducing sibling
    workspace dependencies.

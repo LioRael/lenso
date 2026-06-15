@@ -27,6 +27,21 @@ cargo add lenso@0.1.0
 That crate exposes serializable module declarations and manifest linting. Local
 host development in this backend repository still uses the workspace crates.
 
+For a blank host project, start from the transitional starter template:
+
+```sh
+cp -R templates/starter-host ../my-lenso-host
+cd ../my-lenso-host
+cp .env.example .env
+docker compose up -d postgres
+cargo run --bin migrate
+cargo run --bin api
+```
+
+Run `cargo run --bin worker` in a second shell. The template depends on this
+backend repository through Git dependencies until a stable public host facade is
+available.
+
 ## Configure Local Environment
 
 Start from the committed local defaults:
