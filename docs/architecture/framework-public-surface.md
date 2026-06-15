@@ -78,11 +78,11 @@ helpers as the host-facing surface.
 
 The transitional starter host template in `templates/starter-host` is the
 pressure test for that future facade. It keeps the current API, worker, and
-migration entrypoints visible from a blank project while depending on internal
-host crates through Git dependencies. It uses Cargo's system-Git fetch mode so
-private repository credentials follow normal Git configuration. Treat
-duplication in that template as a signal for the next host facade extraction,
-not as a stable public API.
+migration entrypoints visible from a blank project while depending on the
+temporary `lenso-host` Git package. It uses Cargo's system-Git fetch mode so
+private repository credentials follow normal Git configuration. Treat new needs
+in that template as a signal for the next host facade extraction, not as a
+stable public API.
 
 ## Remote Module Kit
 

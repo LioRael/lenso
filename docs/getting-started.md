@@ -39,8 +39,11 @@ cargo run --bin api
 ```
 
 Run `cargo run --bin worker` in a second shell. The template depends on this
-backend repository through Git dependencies until a stable public host facade is
-available.
+backend repository's temporary `lenso-host` Git package until a stable public
+host feature is available from the `lenso` crate. `lenso-host` only wraps the
+API, worker, and migration boot helpers; it is not the final public package
+boundary. Pin it to a tag or commit before using the starter outside local
+experiments.
 
 ## Configure Local Environment
 

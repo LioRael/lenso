@@ -46,7 +46,8 @@ Runnable examples that consume those published npm packages live in
 A transitional host starter lives in
 [templates/starter-host](templates/starter-host). It shows the current API,
 worker, migration, and local Postgres shape while the stable public host facade
-is still being designed.
+is still being designed. Its binaries go through the temporary `lenso-host`
+facade instead of importing internal app or platform crates directly.
 
 ## Architecture Overview
 
@@ -92,7 +93,7 @@ First-time local setup lives in [docs/getting-started.md](docs/getting-started.m
   - Local Postgres and optional OpenTelemetry collector config.
 - `templates/`
   - `starter-host`: transitional blank-project host skeleton for API, worker,
-    migrations, and local Postgres.
+    migrations, and local Postgres through the temporary `lenso-host` facade.
 
 Runtime Console source lives in the sibling `../lenso-runtime-console` repository. This backend repository still owns the `/admin/runtime/*`, `/admin/data/*`, module manifest, and contract APIs that the Console consumes.
 
