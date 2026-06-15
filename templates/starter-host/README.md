@@ -53,6 +53,7 @@ User-facing remote-module examples live in
 
 ## Files
 
+- `src/lib.rs` is the host-owned module composition hook.
 - `src/bin/migrate.rs` delegates to the host migration runner.
 - `src/bin/api.rs` delegates to the host API runner.
 - `src/bin/worker.rs` delegates to the host worker runner.

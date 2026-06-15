@@ -18,14 +18,21 @@ pub mod openapi;
 pub use openapi::openapi_document;
 
 pub async fn run_from_env() -> anyhow::Result<()> {
+    run_from_env_with_composition(app_bootstrap::HostComposition::default()).await
+}
+
+pub async fn run_from_env_with_composition(
+    composition: app_bootstrap::HostComposition,
+) -> anyhow::Result<()> {
     let config = AppConfig::try_from_env().context("invalid application configuration")?;
     telemetry::init(&config.telemetry)?;
 
     let db = connect_pool(&config.database).await?;
     let mut ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
 
-    let descriptors = app_bootstrap::runtime_config_descriptors(&ctx)
-        .context("failed to collect runtime-config descriptors")?;
+    let descriptors =
+        app_bootstrap::runtime_config_descriptors_with_composition(&ctx, &composition)
+            .context("failed to collect runtime-config descriptors")?;
     let registry = RuntimeConfigRegistry::try_new(descriptors)
         .context("duplicate runtime-config descriptor registered")?;
     platform_admin::install_runtime_config_registry(registry.clone());
@@ -36,13 +43,14 @@ pub async fn run_from_env() -> anyhow::Result<()> {
     runtime_config.spawn_listener();
     ctx = ctx.with_runtime_config_provider(runtime_config);
 
-    let admin_modules = app_bootstrap::load_admin_modules(&ctx)
+    let admin_modules = app_bootstrap::load_admin_modules_with_composition(&ctx, &composition)
         .await
         .context("failed to load admin modules")?;
     platform_admin_data::install_admin_modules(admin_modules);
-    let admin_module_metadata = app_bootstrap::load_admin_module_metadata(&ctx)
-        .await
-        .context("failed to load admin module metadata")?;
+    let admin_module_metadata =
+        app_bootstrap::load_admin_module_metadata_with_composition(&ctx, &composition)
+            .await
+            .context("failed to load admin module metadata")?;
     install_admin_module_metadata(admin_module_metadata);
     let remote_http_proxy_registry = app_bootstrap::load_remote_http_proxy_registry(&ctx)
         .await
@@ -50,21 +58,28 @@ pub async fn run_from_env() -> anyhow::Result<()> {
     platform_module_remote::install_remote_http_proxy_registry(remote_http_proxy_registry);
 
     let admin_refresh_ctx = ctx.clone();
+    let admin_refresh_composition = composition.clone();
     platform_admin_data::install_admin_module_refresh_fn(move || {
         let ctx = admin_refresh_ctx.clone();
-        async move { app_bootstrap::load_admin_modules(&ctx).await }
+        let composition = admin_refresh_composition.clone();
+        async move { app_bootstrap::load_admin_modules_with_composition(&ctx, &composition).await }
     });
     let admin_metadata_refresh_ctx = ctx.clone();
+    let admin_metadata_refresh_composition = composition.clone();
     platform_admin_data::install_admin_module_metadata_refresh_fn(move || {
         let ctx = admin_metadata_refresh_ctx.clone();
+        let composition = admin_metadata_refresh_composition.clone();
         async move {
-            let metadata = app_bootstrap::load_admin_module_metadata(&ctx).await?;
+            let metadata =
+                app_bootstrap::load_admin_module_metadata_with_composition(&ctx, &composition)
+                    .await?;
             install_platform_admin_catalogs(&metadata);
             Ok(metadata)
         }
     });
 
-    let app = try_build_router(ctx.clone()).context("failed to build API router")?;
+    let app = try_build_router_with_composition(ctx.clone(), &composition)
+        .context("failed to build API router")?;
     let address: SocketAddr = format!("{}:{}", ctx.config.http.host, ctx.config.http.port)
         .parse()
         .context("invalid HTTP bind address")?;
@@ -86,8 +101,16 @@ pub fn build_router(ctx: AppContext) -> Router {
 }
 
 pub fn try_build_router(ctx: AppContext) -> platform_core::AppResult<Router> {
-    install_default_platform_admin_catalogs(&ctx)?;
-    let (router, document) = openapi::api_router_for_context(&ctx)?.split_for_parts();
+    try_build_router_with_composition(ctx, &app_bootstrap::HostComposition::default())
+}
+
+pub fn try_build_router_with_composition(
+    ctx: AppContext,
+    composition: &app_bootstrap::HostComposition,
+) -> platform_core::AppResult<Router> {
+    install_default_platform_admin_catalogs(&ctx, composition)?;
+    let (router, document) =
+        openapi::api_router_for_context_with_composition(&ctx, composition)?.split_for_parts();
     let document = Arc::new(document);
 
     Ok(router
@@ -102,11 +125,17 @@ pub fn try_build_router(ctx: AppContext) -> platform_core::AppResult<Router> {
         .with_state(ctx))
 }
 
-fn install_default_platform_admin_catalogs(ctx: &AppContext) -> platform_core::AppResult<()> {
-    app_bootstrap::install_default_story_display_catalog(ctx)?;
+fn install_default_platform_admin_catalogs(
+    ctx: &AppContext,
+    composition: &app_bootstrap::HostComposition,
+) -> platform_core::AppResult<()> {
+    app_bootstrap::install_default_story_display_catalog_with_composition(ctx, composition)?;
     platform_admin::install_default_runtime_function_declarations(
         platform_admin::runtime_function_declarations_from_modules(
-            app_bootstrap::linked_runtime_function_declaration_sources_for_context(ctx)?,
+            app_bootstrap::linked_runtime_function_declaration_sources_for_context_with_composition(
+                ctx,
+                composition,
+            )?,
         ),
     );
     Ok(())

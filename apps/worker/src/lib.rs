@@ -10,14 +10,21 @@ use std::time::Duration;
 use tracing::info;
 
 pub async fn run_from_env() -> anyhow::Result<()> {
+    run_from_env_with_composition(app_bootstrap::HostComposition::default()).await
+}
+
+pub async fn run_from_env_with_composition(
+    composition: app_bootstrap::HostComposition,
+) -> anyhow::Result<()> {
     let config = AppConfig::try_from_env().context("invalid application configuration")?;
     telemetry::init(&config.telemetry)?;
 
     let db = connect_pool(&config.database).await?;
     let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
 
-    let descriptors = app_bootstrap::runtime_config_descriptors(&ctx)
-        .context("failed to collect runtime-config descriptors")?;
+    let descriptors =
+        app_bootstrap::runtime_config_descriptors_with_composition(&ctx, &composition)
+            .context("failed to collect runtime-config descriptors")?;
     let runtime_config_registry = RuntimeConfigRegistry::try_new(descriptors)
         .context("duplicate runtime-config descriptor registered")?;
     let runtime_config = PostgresRuntimeConfigProvider::connect(
@@ -30,7 +37,7 @@ pub async fn run_from_env() -> anyhow::Result<()> {
     runtime_config.spawn_listener();
     let ctx = ctx.with_runtime_config_provider(runtime_config);
 
-    let modules = app_bootstrap::load_modules(&ctx)
+    let modules = app_bootstrap::load_modules_with_composition(&ctx, &composition)
         .await
         .context("failed to load modules")?;
     let registry = Arc::new(app_bootstrap::function_registry(&modules));

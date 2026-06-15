@@ -47,6 +47,42 @@ struct LinkedModuleEntry {
     http_binding: Option<fn() -> LinkedBinding>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct HostLinkedModule {
+    pub module_name: &'static str,
+    pub manifest: fn() -> ModuleManifest,
+    pub load: fn(&AppContext) -> Module,
+    pub http_binding: Option<fn() -> LinkedBinding>,
+    pub migrations: &'static [Migration],
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct HostComposition {
+    linked_modules: Vec<HostLinkedModule>,
+}
+
+impl HostComposition {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    #[must_use]
+    pub fn with_linked_module(mut self, module: HostLinkedModule) -> Self {
+        self.add_linked_module(module);
+        self
+    }
+
+    pub fn add_linked_module(&mut self, module: HostLinkedModule) {
+        self.linked_modules.push(module);
+    }
+
+    #[must_use]
+    pub fn linked_modules(&self) -> &[HostLinkedModule] {
+        &self.linked_modules
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CompositionProfile {
     Core,
@@ -181,6 +217,42 @@ fn disabled_linked_module_entries_for_context(
     )
 }
 
+fn host_linked_modules_for_config(
+    config: &platform_core::AppConfig,
+    composition: &HostComposition,
+) -> Vec<HostLinkedModule> {
+    composition
+        .linked_modules()
+        .iter()
+        .copied()
+        .filter(|entry| linked_module_enabled_from_config(config, entry.module_name))
+        .collect()
+}
+
+fn host_linked_modules_for_context(
+    ctx: &AppContext,
+    composition: &HostComposition,
+) -> Vec<HostLinkedModule> {
+    composition
+        .linked_modules()
+        .iter()
+        .copied()
+        .filter(|entry| linked_module_enabled(ctx, entry.module_name))
+        .collect()
+}
+
+fn disabled_host_linked_modules_for_context(
+    ctx: &AppContext,
+    composition: &HostComposition,
+) -> Vec<HostLinkedModule> {
+    composition
+        .linked_modules()
+        .iter()
+        .copied()
+        .filter(|entry| !linked_module_enabled(ctx, entry.module_name))
+        .collect()
+}
+
 /// Demo-default linked modules helper (context-bound: builds bindings).
 ///
 /// Startup and config-aware paths should use [`modules_for_config`] or
@@ -197,6 +269,19 @@ pub fn modules_for_config(ctx: &AppContext) -> platform_core::AppResult<Vec<Modu
         .collect())
 }
 
+pub fn modules_for_config_with_composition(
+    ctx: &AppContext,
+    composition: &HostComposition,
+) -> platform_core::AppResult<Vec<Module>> {
+    let mut modules = modules_for_config(ctx)?;
+    modules.extend(
+        host_linked_modules_for_context(ctx, composition)
+            .into_iter()
+            .map(|entry| (entry.load)(ctx)),
+    );
+    Ok(modules)
+}
+
 #[must_use]
 pub fn modules_for_profile(ctx: &AppContext, profile: CompositionProfile) -> Vec<Module> {
     linked_module_entries(profile)
@@ -211,7 +296,14 @@ pub fn modules_for_profile(ctx: &AppContext, profile: CompositionProfile) -> Vec
 /// must stay context-local and infallible. Startup paths that can perform IO
 /// should use this async loader.
 pub async fn load_modules(ctx: &AppContext) -> platform_core::AppResult<Vec<Module>> {
-    let mut loaded = modules_for_config(ctx)?;
+    load_modules_with_composition(ctx, &HostComposition::default()).await
+}
+
+pub async fn load_modules_with_composition(
+    ctx: &AppContext,
+    composition: &HostComposition,
+) -> platform_core::AppResult<Vec<Module>> {
+    let mut loaded = modules_for_config_with_composition(ctx, composition)?;
 
     for remote in &ctx.config.module_sources.remote {
         if !remote_module_enabled(ctx, &remote.name) {
@@ -226,6 +318,13 @@ pub async fn load_modules(ctx: &AppContext) -> platform_core::AppResult<Vec<Modu
 
 pub fn migrations_for_config(
     config: &platform_core::AppConfig,
+) -> platform_core::AppResult<Vec<Migration>> {
+    migrations_for_config_with_composition(config, &HostComposition::default())
+}
+
+pub fn migrations_for_config_with_composition(
+    config: &platform_core::AppConfig,
+    composition: &HostComposition,
 ) -> platform_core::AppResult<Vec<Migration>> {
     let mut migrations = PLATFORM_MIGRATIONS
         .iter()
@@ -244,6 +343,10 @@ pub fn migrations_for_config(
                     .copied(),
             );
         }
+    }
+
+    for module in host_linked_modules_for_config(config, composition) {
+        migrations.extend(module.migrations.iter().copied());
     }
 
     Ok(migrations)
@@ -344,6 +447,28 @@ pub fn linked_runtime_function_declaration_sources_for_context(
         .collect())
 }
 
+pub fn linked_runtime_function_declaration_sources_for_context_with_composition(
+    ctx: &AppContext,
+    composition: &HostComposition,
+) -> platform_core::AppResult<
+    Vec<(
+        String,
+        ModuleSource,
+        Option<platform_module::RuntimeSurface>,
+    )>,
+> {
+    let mut sources = linked_runtime_function_declaration_sources_for_context(ctx)?;
+    sources.extend(
+        host_linked_modules_for_context(ctx, composition)
+            .into_iter()
+            .map(|entry| {
+                let manifest = (entry.manifest)();
+                (manifest.name, ModuleSource::Linked, manifest.runtime)
+            }),
+    );
+    Ok(sources)
+}
+
 /// Runtime function declaration sources from loaded module metadata, including
 /// configured remote modules.
 #[must_use]
@@ -437,6 +562,22 @@ pub fn linked_http_modules_for_context(ctx: &AppContext) -> platform_core::AppRe
         .collect())
 }
 
+pub fn linked_http_modules_for_context_with_composition(
+    ctx: &AppContext,
+    composition: &HostComposition,
+) -> platform_core::AppResult<Vec<Module>> {
+    let mut modules = linked_http_modules_for_context(ctx)?;
+    modules.extend(
+        host_linked_modules_for_context(ctx, composition)
+            .into_iter()
+            .filter_map(|entry| {
+                let http_binding = entry.http_binding?;
+                Some(Module::linked((entry.manifest)(), http_binding()))
+            }),
+    );
+    Ok(modules)
+}
+
 /// Aggregate admin-capable modules: those declaring an admin surface and
 /// providing either an `AdminDataSource` or an `AdminActionSource`. Modules
 /// without an admin behavior source are filtered out — "optional capability"
@@ -448,7 +589,15 @@ pub fn admin_modules(ctx: &AppContext) -> Vec<AdminModule> {
 
 /// Load schema-admin capable modules, including configured remotes.
 pub async fn load_admin_modules(ctx: &AppContext) -> platform_core::AppResult<Vec<AdminModule>> {
-    let mut admin_modules = admin_modules_from_modules(modules_for_config(ctx)?);
+    load_admin_modules_with_composition(ctx, &HostComposition::default()).await
+}
+
+pub async fn load_admin_modules_with_composition(
+    ctx: &AppContext,
+    composition: &HostComposition,
+) -> platform_core::AppResult<Vec<AdminModule>> {
+    let mut admin_modules =
+        admin_modules_from_modules(modules_for_config_with_composition(ctx, composition)?);
 
     for remote in &ctx.config.module_sources.remote {
         if !remote_module_enabled(ctx, &remote.name) {
@@ -473,8 +622,17 @@ pub async fn load_admin_modules(ctx: &AppContext) -> platform_core::AppResult<Ve
 pub async fn load_admin_module_metadata(
     ctx: &AppContext,
 ) -> platform_core::AppResult<Vec<AdminModuleMetadata>> {
-    let mut metadata = admin_metadata_from_modules(modules_for_config(ctx)?);
+    load_admin_module_metadata_with_composition(ctx, &HostComposition::default()).await
+}
+
+pub async fn load_admin_module_metadata_with_composition(
+    ctx: &AppContext,
+    composition: &HostComposition,
+) -> platform_core::AppResult<Vec<AdminModuleMetadata>> {
+    let mut metadata =
+        admin_metadata_from_modules(modules_for_config_with_composition(ctx, composition)?);
     metadata.extend(disabled_linked_admin_metadata(ctx)?);
+    metadata.extend(disabled_host_linked_admin_metadata(ctx, composition));
 
     for remote in &ctx.config.module_sources.remote {
         let config = remote_module_config(remote);
@@ -720,6 +878,45 @@ fn disabled_linked_admin_metadata(
             }
         })
         .collect())
+}
+
+fn disabled_host_linked_admin_metadata(
+    ctx: &AppContext,
+    composition: &HostComposition,
+) -> Vec<AdminModuleMetadata> {
+    disabled_host_linked_modules_for_context(ctx, composition)
+        .into_iter()
+        .map(|entry| {
+            let ModuleManifest {
+                name,
+                admin,
+                http_routes,
+                runtime,
+                events,
+                lifecycle,
+                console,
+                story_display,
+                capabilities,
+                ..
+            } = (entry.manifest)();
+            AdminModuleMetadata {
+                module_name: name,
+                source: ModuleSource::Linked,
+                load_status: ModuleLoadStatus::Error {
+                    message: "module disabled by configuration".to_owned(),
+                },
+                http_routes,
+                runtime,
+                events,
+                lifecycle,
+                console,
+                story_display,
+                capabilities,
+                admin,
+                source_diagnostics: None,
+            }
+        })
+        .collect()
 }
 
 fn remote_source_diagnostics(
@@ -1131,6 +1328,19 @@ pub fn merge_linked_http_for_context(
         .fold(base, |router, contribution| (contribution.merge)(router)))
 }
 
+pub fn merge_linked_http_for_context_with_composition(
+    base: ApiOpenApiRouter,
+    ctx: &AppContext,
+    composition: &HostComposition,
+) -> platform_core::AppResult<ApiOpenApiRouter> {
+    Ok(
+        linked_http_modules_for_context_with_composition(ctx, composition)?
+            .into_iter()
+            .filter_map(|module| module.linked_http)
+            .fold(base, |router, contribution| (contribution.merge)(router)),
+    )
+}
+
 /// Story-display descriptors for every module. Sourced from context-free
 /// manifests so the `OpenAPI` path stays pure (no [`AppContext`]).
 #[must_use]
@@ -1167,11 +1377,24 @@ pub fn story_display_descriptors_for_context(
 }
 
 pub fn install_default_story_display_catalog(ctx: &AppContext) -> platform_core::AppResult<()> {
+    install_default_story_display_catalog_with_composition(ctx, &HostComposition::default())
+}
+
+pub fn install_default_story_display_catalog_with_composition(
+    ctx: &AppContext,
+    composition: &HostComposition,
+) -> platform_core::AppResult<()> {
     if !linked_module_enabled(ctx, story::module::MODULE_NAME) {
         story::backend::install_default_story_display(Vec::new());
         return Ok(());
     }
-    story::backend::install_default_story_display(story_display_descriptors_for_context(ctx)?);
+    let mut descriptors = story_display_descriptors_for_context(ctx)?;
+    descriptors.extend(
+        host_linked_modules_for_context(ctx, composition)
+            .into_iter()
+            .flat_map(|entry| (entry.manifest)().story_display),
+    );
+    story::backend::install_default_story_display(descriptors);
     Ok(())
 }
 
@@ -1191,6 +1414,13 @@ pub fn install_story_display_catalog(metadata: &[AdminModuleMetadata]) {
 pub fn runtime_config_descriptors(
     ctx: &AppContext,
 ) -> platform_core::AppResult<Vec<RuntimeConfigDescriptor>> {
+    runtime_config_descriptors_with_composition(ctx, &HostComposition::default())
+}
+
+pub fn runtime_config_descriptors_with_composition(
+    ctx: &AppContext,
+    composition: &HostComposition,
+) -> platform_core::AppResult<Vec<RuntimeConfigDescriptor>> {
     let profile = CompositionProfile::from_config(&ctx.config)?;
     let module_enabled_descriptors =
         linked_module_entries(profile)
@@ -1206,6 +1436,22 @@ pub fn runtime_config_descriptors(
                 editable: true,
                 restart_only: true,
                 description: "Whether this linked module is loaded on service startup.",
+            });
+    let host_module_enabled_descriptors =
+        composition
+            .linked_modules()
+            .iter()
+            .map(|entry| RuntimeConfigDescriptor {
+                key: module_enabled_config_key(entry.module_name),
+                scope: RuntimeConfigScope::Shared,
+                value_type: RuntimeConfigType::Bool,
+                default: serde_json::json!(linked_module_enabled_from_config(
+                    &ctx.config,
+                    entry.module_name
+                )),
+                editable: true,
+                restart_only: true,
+                description: "Whether this host linked module is loaded on service startup.",
             });
     let remote_module_enabled_descriptors =
         ctx.config
@@ -1228,6 +1474,11 @@ pub fn runtime_config_descriptors(
         .iter()
         .filter(|entry| linked_module_enabled_from_config(&ctx.config, entry.module_name))
         .map(|entry| (entry.load)(ctx))
+        .chain(
+            host_linked_modules_for_config(&ctx.config, composition)
+                .into_iter()
+                .map(|entry| (entry.load)(ctx)),
+        )
         .flat_map(|module| module.runtime_config.iter().cloned())
         .collect::<Vec<_>>();
     // Platform-owned descriptors (e.g. worker knobs) plus every module's; keys
@@ -1236,6 +1487,7 @@ pub fn runtime_config_descriptors(
         .iter()
         .cloned()
         .chain(module_enabled_descriptors)
+        .chain(host_module_enabled_descriptors)
         .chain(remote_module_enabled_descriptors)
         .chain(module_descriptors)
         .collect())
@@ -1338,6 +1590,37 @@ mod tests {
                 .iter()
                 .any(|name| name == &"notifications/0001_create_notifications_schema")
         );
+    }
+
+    #[test]
+    fn host_composition_migrations_include_enabled_host_linked_modules() {
+        let config = test_config_with_database_url("postgres://localhost/lenso_test");
+        let composition = HostComposition::new().with_linked_module(test_host_linked_module());
+
+        let names = migrations_for_config_with_composition(&config, &composition)
+            .expect("host composition migrations should load")
+            .into_iter()
+            .map(|migration| migration.name)
+            .collect::<Vec<_>>();
+
+        assert!(names.iter().any(|name| name == &"billing/0001_init"));
+    }
+
+    #[tokio::test]
+    async fn host_composition_runtime_config_includes_host_module_toggle() {
+        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build");
+        let config = test_config_with_database_url("postgres://localhost/lenso_test");
+        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
+        let composition = HostComposition::new().with_linked_module(test_host_linked_module());
+
+        let keys = runtime_config_descriptors_with_composition(&ctx, &composition)
+            .expect("host composition descriptors should load")
+            .into_iter()
+            .map(|descriptor| descriptor.key)
+            .collect::<Vec<_>>();
+
+        assert!(keys.iter().any(|key| key == "modules.billing.enabled"));
     }
 
     #[test]
@@ -2328,6 +2611,29 @@ mod tests {
             handler: Arc::new(NoopFunctionHandler),
         });
         registry
+    }
+
+    const TEST_HOST_MIGRATIONS: &[Migration] = &[Migration {
+        name: "billing/0001_init",
+        sql: "select 1;",
+    }];
+
+    fn test_host_manifest() -> ModuleManifest {
+        ModuleManifest::builder("billing").build()
+    }
+
+    fn test_host_module(_ctx: &AppContext) -> Module {
+        Module::linked(test_host_manifest(), LinkedBinding::builder().build())
+    }
+
+    fn test_host_linked_module() -> HostLinkedModule {
+        HostLinkedModule {
+            module_name: "billing",
+            manifest: test_host_manifest,
+            load: test_host_module,
+            http_binding: None,
+            migrations: TEST_HOST_MIGRATIONS,
+        }
     }
 
     fn test_config(db: &TestDatabase) -> AppConfig {
