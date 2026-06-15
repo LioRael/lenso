@@ -9,38 +9,43 @@ This document is the backend packaging checklist for that strategy.
 
 ## Current Publish Surface
 
-Publish only consumer-facing packages first:
+Publish only consumer-facing packages:
 
 - `@lenso/ts-sdk` from this backend repository.
 - `@lenso/remote-module-kit` from the sibling `lenso-runtime-console`
   repository.
-- the `lenso` crates.io facade crate, which is already reserved and now carries
-  the public module-authoring declaration surface.
+- the `lenso` crates.io facade crate, which carries the public
+  module-authoring declaration surface.
 
 Do not publish the current internal Rust workspace crates directly. Names such
 as `platform-core`, `platform-module`, `platform-runtime`, and `app-bootstrap`
 are implementation details until their API contracts are intentionally designed
 for external consumers.
 
-## First Publish Order
+Registry baseline as of the first release line:
 
-Use `0.1.0` for the first npm packages unless a blocking contract change lands
-before publication. Keep the first batch focused on packages a user can install
-from a blank project:
+- `@lenso/ts-sdk@0.1.0` is published on npm.
+- `@lenso/remote-module-kit@0.1.1` is published on npm.
+- `lenso@0.1.0` is published on crates.io.
+
+## Published Baseline
+
+Keep the first release line focused on packages a user can install from a blank
+project:
 
 | Order | Artifact | Version | Source repo | Publish stance |
 | --- | --- | --- | --- | --- |
 | 1 | `@lenso/ts-sdk` | `0.1.0` | `lenso` | Already published; keep `publish_ts_sdk=false` for `v0.1.0` workflow reruns. |
-| 2 | `@lenso/remote-module-kit` | `0.1.0` | `lenso-runtime-console` | Publish after the backend SDK package gate is green. |
-| 3 | `lenso` crates.io crate | `0.1.0` after reserved `0.0.1` | `lenso` | Publish with `publish_rust_crate=true` after the facade crate dry-run is green and release notes are ready. |
-| 4 | examples repository | n/a | separate repository | Extract only after examples consume published packages or documented local overrides. |
+| 2 | `@lenso/remote-module-kit` | `0.1.1` | `lenso-runtime-console` | Already published; examples can consume the registry package. |
+| 3 | `lenso` crates.io crate | `0.1.0` | `lenso` | Already published; keep internal workspace crates private. |
+| 4 | examples repository | n/a | separate repository | Grow examples against registry packages or documented local overrides. |
 
 The npm packages are independent artifacts, but publishing the SDK first keeps
 the generated API contract available before examples and module tooling point
 users at registry installs. The Rust crate is a separate facade decision and
 should not force internal workspace crates into public API shape.
 
-Before publishing, check registry state from a clean checkout:
+Before publishing a future version, check registry state from a clean checkout:
 
 ```sh
 npm view @lenso/ts-sdk version --json
@@ -49,8 +54,8 @@ cargo info lenso
 ```
 
 For npm, `E404` means the package name has no published version yet. For
-crates.io, the current `lenso` package is a reserved placeholder at `0.0.1`; do
-not publish workspace implementation crates to work around that.
+crates.io, do not publish workspace implementation crates to work around missing
+facade coverage.
 
 ## Backend Package Gate
 
@@ -77,10 +82,10 @@ The gate checks that:
 This gate is intentionally a publish preflight. It does not upload anything to
 npm or crates.io.
 
-If the backend package gate is green and the registry check shows no existing
-`@lenso/ts-sdk` version, prefer the GitHub `release` workflow with
-`publish_ts_sdk=true`. For an emergency manual publish, publish from the package
-directory:
+If the backend package gate is green and the registry check shows the intended
+`@lenso/ts-sdk` version does not already exist, prefer the GitHub `release`
+workflow with `publish_ts_sdk=true`. For an emergency manual publish, publish
+from the package directory:
 
 ```sh
 cd packages/ts-sdk
@@ -89,8 +94,8 @@ npm publish --access public
 
 ## Coordinated Runtime Console Package
 
-Before examples move out of this repository, publish or dry-run the sibling
-Runtime Console package that examples depend on:
+Before adding examples that depend on new remote-module-kit behavior, publish or
+dry-run the sibling Runtime Console package that examples depend on:
 
 ```sh
 pnpm --dir ../lenso-runtime-console run check
@@ -106,8 +111,9 @@ local `file:` path into `../lenso-runtime-console`.
 Its package gate also verifies the MIT license metadata and `LICENSE` tarball
 entry.
 
-If the Runtime Console package gate is green and the registry check shows no
-existing `@lenso/remote-module-kit` version, publish from the package directory:
+If the Runtime Console package gate is green and the registry check shows the
+intended `@lenso/remote-module-kit` version does not already exist, publish from
+the package directory:
 
 ```sh
 cd ../lenso-runtime-console/packages/remote-module-kit
@@ -120,7 +126,7 @@ The crates.io package named `lenso` is the first public Rust package. Its job is
 to be a small facade over stable module-authoring contracts, not to expose the
 full backend implementation.
 
-Before replacing the reserved placeholder with a real version:
+Before publishing a future version:
 
 - add package metadata such as description, repository, homepage, and README;
 - keep internal workspace crates `publish = false`;
@@ -143,8 +149,9 @@ The first separate examples repository is
 
 Keep using this gate before adding more external examples:
 
-- `@lenso/remote-module-kit` is published or has a successful publish dry-run.
-- `@lenso/ts-sdk` has a clean package dry-run.
+- `@lenso/remote-module-kit` is consumed from npm or has a documented local
+  override.
+- `@lenso/ts-sdk` is consumed from npm or has a documented local override.
 - examples use registry versions or documented local override instructions, not
   sibling `file:` dependencies.
 - the examples repository has its own CI that can start the module, fetch

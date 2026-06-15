@@ -2,6 +2,12 @@
 
 `lenso` is the public Rust facade for Lenso module-authoring contracts.
 
+Install it from crates.io:
+
+```sh
+cargo add lenso@0.1.0
+```
+
 This first facade slice exposes serializable module manifest declarations:
 
 - module manifests and manifest lints;

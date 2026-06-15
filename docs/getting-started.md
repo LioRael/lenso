@@ -17,6 +17,16 @@ URL, install it, restart services, and inspect the loaded module.
 just install
 ```
 
+For a blank Rust module-authoring project outside this repository, install the
+published facade crate instead:
+
+```sh
+cargo add lenso@0.1.0
+```
+
+That crate exposes serializable module declarations and manifest linting. Local
+host development in this backend repository still uses the workspace crates.
+
 ## Configure Local Environment
 
 Start from the committed local defaults:
@@ -81,7 +91,8 @@ plan. Restart the API, worker, and Console after installing a real module.
 
 User-facing examples live in
 [LioRael/lenso-examples](https://github.com/LioRael/lenso-examples) and depend
-on published `@lenso/*` packages instead of sibling workspace paths.
+on published `@lenso/remote-module-kit@0.1.1` and `@lenso/ts-sdk@0.1.0`
+packages instead of sibling workspace paths.
 
 Clone and start the example module in a separate checkout:
 
