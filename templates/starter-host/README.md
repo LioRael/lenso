@@ -61,15 +61,28 @@ lenso_host::HostBuilder::new()
     .build()
 ```
 
-The included `src/modules/app.rs` module is a project-owned skeleton. Rename it
+The included `src/modules/app` module is a project-owned skeleton. Rename it
 or add modules beside it as your backend grows. The first step is usually a
 manifest; when the module owns tables, pass its migration list through
 `HostLinkedModule::manifest_only(...)`.
 
+The starter's `app` module already includes a first migration:
+
+```text
+src/modules/app/migrations/0001_create_app_schema.sql
+```
+
+Add application tables there or create another numbered migration beside it,
+then run:
+
+```sh
+cargo run --bin migrate
+```
+
 ## Files
 
 - `src/lib.rs` is the host-owned module composition hook.
-- `src/modules/app.rs` is the first project-owned linked module skeleton.
+- `src/modules/app` is the first project-owned linked module skeleton.
 - `src/bin/migrate.rs` delegates to the host migration runner.
 - `src/bin/api.rs` delegates to the host API runner.
 - `src/bin/worker.rs` delegates to the host worker runner.

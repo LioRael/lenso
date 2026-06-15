@@ -1131,6 +1131,7 @@ dependencies = [
  "app-migrate",
  "app-worker",
  "lenso",
+ "platform-core",
 ]
 
 [[package]]
