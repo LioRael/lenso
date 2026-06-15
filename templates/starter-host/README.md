@@ -63,7 +63,11 @@ lenso_host::HostBuilder::new()
 
 The included `src/modules/app` module is a project-owned skeleton. Rename it
 or add modules beside it as your backend grows. The first step is usually a
-manifest; when the module owns tables, pass its migration list through
+manifest. The starter manifest declares the placeholder `app.data.read`
+capability so the module has visible metadata in the host registry; replace it
+with your real application capabilities as the module grows.
+
+When the module owns tables, pass its migration list through
 `HostLinkedModule::manifest_only(...)`.
 
 The starter's `app` module already includes a first migration:
