@@ -10,6 +10,10 @@ client so private repository credentials work the same way as normal `git clone`
 commands. Pin those dependencies to a tag or commit before using this outside
 local experiments.
 
+The binary entrypoints are deliberately thin wrappers around backend host
+runner helpers. That keeps this template close to the future public host facade
+without exposing the internal platform crates as its user-facing API.
+
 ## Start
 
 ```sh
@@ -48,8 +52,8 @@ User-facing remote-module examples live in
 
 ## Files
 
-- `src/bin/migrate.rs` applies platform and module migrations.
-- `src/bin/api.rs` starts the Axum API host.
-- `src/bin/worker.rs` starts the outbox relay and runtime worker.
+- `src/bin/migrate.rs` delegates to the migration runner helper.
+- `src/bin/api.rs` delegates to the API host runner helper.
+- `src/bin/worker.rs` delegates to the worker runner helper.
 - `docker-compose.yml` starts local Postgres.
 - `.env.example` keeps local defaults explicit.

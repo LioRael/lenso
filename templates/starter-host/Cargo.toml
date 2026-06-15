@@ -22,12 +22,6 @@ path = "src/bin/migrate.rs"
 [dependencies]
 anyhow = "1.0"
 app-api = { git = "https://github.com/LioRael/lenso", branch = "main", package = "app-api" }
-app-bootstrap = { git = "https://github.com/LioRael/lenso", branch = "main", package = "app-bootstrap" }
-axum = "0.8"
-platform-admin = { git = "https://github.com/LioRael/lenso", branch = "main", package = "platform-admin" }
-platform-admin-data = { git = "https://github.com/LioRael/lenso", branch = "main", package = "platform-admin-data" }
-platform-core = { git = "https://github.com/LioRael/lenso", branch = "main", package = "platform-core" }
-platform-module-remote = { git = "https://github.com/LioRael/lenso", branch = "main", package = "platform-module-remote" }
-platform-runtime = { git = "https://github.com/LioRael/lenso", branch = "main", package = "platform-runtime" }
-tokio = { version = "1.52", features = ["macros", "rt-multi-thread", "signal", "time"] }
-tracing = "0.1"
+app-migrate = { git = "https://github.com/LioRael/lenso", branch = "main", package = "app-migrate" }
+app-worker = { git = "https://github.com/LioRael/lenso", branch = "main", package = "app-worker" }
+tokio = { version = "1.52", features = ["macros", "rt-multi-thread"] }
