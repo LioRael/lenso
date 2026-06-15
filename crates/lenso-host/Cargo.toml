@@ -14,6 +14,7 @@ app-bootstrap.workspace = true
 app-migrate.workspace = true
 app-worker.workspace = true
 lenso.workspace = true
+platform-core.workspace = true
 
 [lints]
 workspace = true
