@@ -6,6 +6,7 @@
 
 pub use app_bootstrap::{HostComposition, HostLinkedModule};
 pub use lenso::ModuleManifest;
+pub use platform_core::Migration;
 
 #[derive(Debug, Clone, Default)]
 pub struct HostBuilder {
