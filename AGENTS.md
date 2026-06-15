@@ -44,6 +44,14 @@ Use `just` as the root task runner.
 - `just check`: run the full local quality gate, excluding dependency installation.
 - `just ci`: run the same quality gate used by GitHub Actions, including frozen pnpm installs.
 
+## Validation Strategy
+
+Default to narrow validation during feature work. Run full `just check` locally
+only for high-risk changes such as contracts, migrations, runtime or remote
+module core paths, package/release gates, or when explicitly requested. For
+normal feature slices, use focused local gates that match the changed surface
+and rely on GitHub Actions for full workspace coverage.
+
 For local services:
 
 - `just db-up`: start local Postgres.
