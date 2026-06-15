@@ -71,6 +71,11 @@ that exposes narrow boot helpers such as API, worker, and migration runners. The
 signatures; it should stay a small facade over intentionally stable host
 operations.
 
+Until that package shape can be made cycle-free and publishable, `crates/lenso-host`
+is the internal pressure-test crate for the same API. It may depend on the
+workspace app crates, but starter templates should treat only its thin boot
+helpers as the host-facing surface.
+
 The transitional starter host template in `templates/starter-host` is the
 pressure test for that future facade. It keeps the current API, worker, and
 migration entrypoints visible from a blank project while depending on internal
