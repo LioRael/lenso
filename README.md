@@ -22,6 +22,27 @@ framework/
 Repository operations notes, including branch protection and cross-repo CI
 wiring, live in [docs/repository-operations.md](docs/repository-operations.md).
 
+## Published Packages
+
+The first public Rust authoring surface is published on crates.io:
+
+```sh
+cargo add lenso@0.1.0
+```
+
+The `lenso` crate is a small facade for module-authoring declarations and
+manifest lints. It does not expose host application assembly, storage, HTTP
+server wiring, worker execution, or linked-module behavior bindings.
+
+The current npm authoring/client packages are:
+
+- `@lenso/remote-module-kit@0.1.1`, owned by
+  [`LioRael/lenso-runtime-console`](https://github.com/LioRael/lenso-runtime-console).
+- `@lenso/ts-sdk@0.1.0`, generated from this repository's OpenAPI contracts.
+
+Runnable examples that consume those published npm packages live in
+[`LioRael/lenso-examples`](https://github.com/LioRael/lenso-examples).
+
 ## Architecture Overview
 
 - Modular monolith first: modules run in-process today and can later be extracted behind HTTP, gRPC, or event boundaries.

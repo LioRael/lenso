@@ -10,9 +10,9 @@ user needs to install before writing their own backend or module.
 The intended first-user flow is:
 
 ```sh
-cargo add lenso
-pnpm add @lenso/remote-module-kit
-pnpm add @lenso/ts-sdk
+cargo add lenso@0.1.0
+pnpm add @lenso/remote-module-kit@0.1.1
+pnpm add @lenso/ts-sdk@0.1.0
 ```
 
 Not every project needs every package:
@@ -26,6 +26,13 @@ Not every project needs every package:
 
 The source repositories can stay organized around implementation ownership. The
 package boundary is the user-facing contract.
+
+Current registry baseline:
+
+- `lenso@0.1.0` is published on crates.io.
+- `@lenso/remote-module-kit@0.1.1` is published from the Runtime Console
+  repository.
+- `@lenso/ts-sdk@0.1.0` is published from this backend repository.
 
 ## Rust Facade Crate
 
@@ -101,11 +108,12 @@ The first examples repository is
 with the JavaScript `hello-action` remote module and uses registry packages
 instead of sibling workspace paths.
 
-Extract examples only when:
+Grow examples only when:
 
-- `@lenso/remote-module-kit` can be installed from npm or has a successful
-  publish dry-run;
-- `@lenso/ts-sdk` has a clean package dry-run;
+- `@lenso/remote-module-kit` is installed from npm or an explicitly documented
+  local override;
+- `@lenso/ts-sdk` is installed from npm or an explicitly documented local
+  override;
 - Rust examples either depend on the public `lenso` facade crate or explicitly
   vendor fixture-only code;
 - example CI can start a module, fetch `/lenso/module/v1/manifest`, and run a
@@ -134,12 +142,13 @@ facade exists.
 
 ## Near-Term Sequence
 
-1. Keep `@lenso/ts-sdk` in the backend repository, but make its npm artifact
-   clean and publishable.
-2. Prepare `@lenso/remote-module-kit` in the Runtime Console repository as the
-   first authoring package for remote modules.
-3. Replace the reserved `lenso` crates.io placeholder with the small facade
-   crate over stable module-authoring declarations.
-4. Add a starter path after the first two authoring packages are usable.
-5. Grow the external examples repository once examples consume public packages
-   or documented local overrides instead of sibling workspace paths.
+1. Keep the backend-owned `@lenso/ts-sdk` source with the OpenAPI contracts and
+   continue publishing generated npm artifacts from this repository.
+2. Keep `@lenso/remote-module-kit` in the Runtime Console repository and grow it
+   as the remote-module authoring facade.
+3. Keep the crates.io `lenso` facade limited to stable module-authoring
+   declarations until a host application API is intentionally designed.
+4. Add a starter host path after the examples prove the published package
+   install story end to end.
+5. Grow the external examples repository without reintroducing sibling
+   workspace dependencies.
