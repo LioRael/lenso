@@ -4,11 +4,11 @@ Minimal host application skeleton for running Lenso as a backend framework from
 a blank Rust project.
 
 This template is intentionally transitional. It depends on the backend
-repository's host crates through Git dependencies while the stable public host
-facade is still being designed. The included Cargo config uses the system Git
-client so private repository credentials work the same way as normal `git clone`
-commands. Pin those dependencies to a tag or commit before using this outside
-local experiments.
+repository's temporary `lenso-host` Git package while the stable public host
+feature is still being designed for the `lenso` crate. The included Cargo
+config uses the system Git client so private repository credentials work the
+same way as normal `git clone` commands. Pin the dependency to a tag or commit
+before using this outside local experiments.
 
 The binary entrypoints are deliberately thin wrappers around the temporary
 `lenso-host` facade. That keeps this template close to the future public host
