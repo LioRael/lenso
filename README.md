@@ -43,6 +43,11 @@ The current npm authoring/client packages are:
 Runnable examples that consume those published npm packages live in
 [`LioRael/lenso-examples`](https://github.com/LioRael/lenso-examples).
 
+A transitional host starter lives in
+[templates/starter-host](templates/starter-host). It shows the current API,
+worker, migration, and local Postgres shape while the stable public host facade
+is still being designed.
+
 ## Architecture Overview
 
 - Modular monolith first: modules run in-process today and can later be extracted behind HTTP, gRPC, or event boundaries.
@@ -85,6 +90,9 @@ First-time local setup lives in [docs/getting-started.md](docs/getting-started.m
   - `arch-check`: lightweight architecture rule checker.
 - `infrastructure/local/`
   - Local Postgres and optional OpenTelemetry collector config.
+- `templates/`
+  - `starter-host`: transitional blank-project host skeleton for API, worker,
+    migrations, and local Postgres.
 
 Runtime Console source lives in the sibling `../lenso-runtime-console` repository. This backend repository still owns the `/admin/runtime/*`, `/admin/data/*`, module manifest, and contract APIs that the Console consumes.
 
