@@ -13,6 +13,7 @@ use platform_core::{
 use platform_runtime::{RUNTIME_MIGRATIONS, RuntimeWorker};
 use platform_testing::TestDatabase;
 use serde_json::Value;
+use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
@@ -20,6 +21,20 @@ use tokio::sync::Mutex;
 use tower::ServiceExt;
 
 static REMOTE_SMOKE_TEST_LOCK: Mutex<()> = Mutex::const_new(());
+
+fn lazy_failing_db() -> DbPool {
+    // ponytail: proxy-only tests don't assert DB writes, so fail optional persistence fast.
+    PgPoolOptions::new()
+        .max_connections(1)
+        .acquire_timeout(Duration::from_millis(50))
+        .connect_lazy_with(
+            PgConnectOptions::new()
+                .host("127.0.0.1")
+                .port(1)
+                .username("postgres")
+                .database("lenso_test"),
+        )
+}
 
 async fn spawn_remote_module(router: Router) -> String {
     let listener = TcpListener::bind(("127.0.0.1", 0))
@@ -45,7 +60,7 @@ async fn app_with_remote_module(base_url: String) -> axum::Router {
 }
 
 async fn app_with_remote_modules(remote: Vec<RemoteModuleSourceConfig>) -> axum::Router {
-    let db = DbPool::connect_lazy("postgres://localhost/lenso_test").expect("lazy pool");
+    let db = lazy_failing_db();
     app_with_remote_modules_and_db(remote, db, "postgres://localhost/lenso_test".to_owned()).await
 }
 
