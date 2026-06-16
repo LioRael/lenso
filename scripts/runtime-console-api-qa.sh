@@ -54,8 +54,7 @@ cat <<EOF
 Runtime Console API QA passed.
 
 Optional manual pass:
-  just console-api
-  open the Local URL printed by Vite
+  run the Runtime Console from the sibling repository
   check /operations/queues
   check /operations/functions
   check /operations/dead-letters

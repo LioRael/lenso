@@ -17,9 +17,8 @@ just release-check
 - Rust formatting checks.
 - Rust workspace compile check.
 - Rust workspace tests.
-- Contract and TypeScript SDK regeneration checks.
+- Contract regeneration checks.
 - Architecture guardrails.
-- TypeScript SDK check.
 
 If this command fails, treat the failure as release blocking unless it is a
 documented local infrastructure issue.
@@ -28,40 +27,29 @@ Runtime Console checks run in the sibling `lenso-runtime-console` repository.
 
 ## Package Gate
 
-Run the package preflight before publishing npm or crates.io artifacts:
+Run the package preflight before publishing crates.io artifacts:
 
 ```sh
 just package-readiness
 ```
 
-This verifies the backend-owned npm package tarball, verifies the public
-`lenso` facade crate package, and keeps internal Rust workspace crates
-non-publishable. The detailed package and examples split checklist lives in
-[package-readiness.md](package-readiness.md).
+This verifies the public `lenso` facade crate package. The detailed package and
+examples split checklist lives in [package-readiness.md](package-readiness.md).
 
 ## Local Smoke
 
 Use this sequence for a manual service smoke:
 
 ```sh
-just install
 cp .env.example .env
 just db-up
 just migrate
 just api
 just worker
-just console-api
 ```
 
-In a separate shell, verify the installable remote module path:
-
-```sh
-pnpm --dir ../lenso-runtime-console demo:release
-```
-
-The release demo starts the internal `hello-action` fixture, reads its manifest,
-checks schema-admin, HTTP route, runtime function behavior, installs the manifest
-into a host fixture, and verifies local `REMOTE_MODULES` plus the install plan.
+Verify Runtime Console and remote-module package behavior in the sibling
+`lenso-runtime-console` repository.
 User-facing examples that install published packages live in
 [LioRael/lenso-examples](https://github.com/LioRael/lenso-examples).
 
@@ -74,8 +62,6 @@ Most release-smoke failures are local setup issues:
 - Docker is not running: start Docker, then run `just db-up` again.
 - Postgres is not ready: run `just db-up`, wait for the container to be healthy,
   then run `just migrate`.
-- Runtime Console dependencies are missing or stale: run
-  `pnpm --dir ../lenso-runtime-console install`.
 - API or Console ports are busy: change `HTTP_PORT`, `CONSOLE_PORT`, or
   `VITE_API_BASE_URL` for that shell.
 - The remote module manifest URL does not respond: start the module process and
@@ -95,7 +81,7 @@ The first publishable scope is intentionally narrow:
   functions, and lifecycle activation jobs.
 - Runtime Console integration is provided by the separate
   `lenso-runtime-console` repository.
-- Generated contracts and the TypeScript SDK are committed and reproducible.
+- Generated contracts are committed and reproducible.
 
 ## Non-Goals For The First Release
 
@@ -122,8 +108,7 @@ Before publishing, collect:
   coordinated backend/frontend version;
 - generated artifact status from `just generated-check`;
 - any known local infrastructure caveats;
-- the minimum supported local stack: Rust toolchain, Node/pnpm, Docker, and
-  Postgres.
+- the minimum supported local stack: Rust toolchain, Docker, and Postgres.
 
 Use [release-notes-template.md](release-notes-template.md) for manual notes, or
 run:
@@ -138,8 +123,7 @@ The end-to-end release branch and GitHub Actions flow lives in
 The release workflow runs with a Postgres service because backend checks include
 DB-backed Rust integration tests.
 
-When triggered with both publish inputs set to `false`, the workflow performs
-package dry-runs only. When `publish_ts_sdk` or `publish_rust_crate` is `true`,
-it requires the matching `NPM_TOKEN` or `CARGO_REGISTRY_TOKEN` repository secret
-and publishes the selected backend-owned registry artifact after the same gates
-pass.
+When triggered with `publish_rust_crate=false`, the workflow performs package
+dry-runs only. When `publish_rust_crate=true`, it requires the
+`CARGO_REGISTRY_TOKEN` repository secret and publishes the backend-owned Rust
+artifact after the same gates pass.

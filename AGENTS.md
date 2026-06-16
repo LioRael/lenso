@@ -4,7 +4,7 @@ Guidance for coding agents working in this repository.
 
 ## Project Shape
 
-Lenso is a Rust-first modular monolith backend with a generated TypeScript SDK. Runtime Console source lives in the sibling `../lenso-runtime-console` repository.
+Lenso is a Rust-first modular monolith backend. Runtime Console source lives in the sibling `../lenso-runtime-console` repository.
 
 - `apps/api`: Axum HTTP API.
 - `apps/worker`: background worker and outbox relay.
@@ -17,7 +17,6 @@ Lenso is a Rust-first modular monolith backend with a generated TypeScript SDK. 
 - `crates/app-bootstrap`: composition root that enumerates concrete modules for the API and worker.
 - `modules/*`: product or fixture capabilities packaged as modules. Modules should stay vertical and avoid cross-module imports.
 - `contracts/*`: committed OpenAPI, JSON Schema, event, error, and runtime contracts.
-- `packages/ts-sdk`: generated TypeScript SDK from `contracts/openapi/app-api.v1.yaml`.
 - `tools/*`: generators and architecture checks.
 - `infrastructure/local`: local Postgres and optional OpenTelemetry collector.
 
@@ -32,18 +31,15 @@ The worktree may contain user changes. Do not revert, reformat, stage, or commit
 Use `just` as the root task runner.
 
 - `just`: list available recipes.
-- `just install`: install pnpm dependencies for the SDK.
 - `just fmt`: format Rust code.
 - `just fmt-check`: check Rust formatting.
 - `just rust-check`: run `cargo check --locked --workspace --all-targets`.
 - `just test`: run Rust workspace tests.
-- `just generate`: regenerate contracts and the TypeScript SDK.
+- `just generate`: regenerate contracts.
 - `just generated-check`: regenerate committed artifacts and fail if they differ from git.
 - `just arch-check`: run architecture guardrails.
-- `just sdk-check`: typecheck `packages/ts-sdk`.
-- `just console-check`: run the sibling Runtime Console quality gate.
 - `just check`: run the full local quality gate, excluding dependency installation.
-- `just ci`: run the same quality gate used by GitHub Actions, including frozen pnpm installs.
+- `just ci`: run the same quality gate used by GitHub Actions.
 
 ## Validation Strategy
 
@@ -59,8 +55,6 @@ For local services:
 - `just migrate`: run migrations.
 - `just api`: start the API on the configured HTTP host/port.
 - `just worker`: start the worker.
-- `just console`: run the sibling Runtime Console with seeded data.
-- `just console-api`: run the sibling Runtime Console against `http://localhost:3000`.
 - `just observability-up`: start Postgres plus the optional OpenTelemetry collector profile.
 - `just down`: stop local infrastructure.
 
@@ -71,7 +65,6 @@ Generated files are committed but must not be edited by hand.
 - Update Rust/OpenAPI/event sources first.
 - Run `just generate`.
 - Run `just generated-check` before finishing.
-- Generated SDK files live under `packages/ts-sdk/src/generated`.
 - Contract artifacts live under `contracts`.
 
 If generated files change, include the source change and generated output together.
@@ -105,23 +98,14 @@ The Runtime Console is developed in the sibling `../lenso-runtime-console`
 repository. This backend repository owns the admin APIs, generated contracts,
 and `ModuleManifest.console` declarations consumed by that frontend.
 
-- Use `pnpm --dir ../lenso-runtime-console ...` when running frontend package scripts from this backend checkout.
 - Keep backend `ModuleManifest.console` data aligned with the frontend package surface contracts.
 - Validate substantial frontend changes inside `../lenso-runtime-console`.
-
-## TypeScript SDK Guidelines
-
-The SDK in `packages/ts-sdk` is generated from OpenAPI.
-
-- Do not hand-edit `packages/ts-sdk/src/generated`.
-- Keep SDK checks reproducible through local package dependencies, not global tools.
-- Use `just sdk-check` for typechecking.
 
 ## CI Expectations
 
 GitHub Actions runs `just ci` on pull requests and pushes to `main`.
 
-Before claiming work is complete, run the narrowest meaningful verification for the change. For cross-cutting backend changes to Rust, contracts, SDK, or CI, run `just ci`. For changes that affect Runtime Console behavior, also run the relevant checks in `../lenso-runtime-console`.
+Before claiming work is complete, run the narrowest meaningful verification for the change. For cross-cutting backend changes to Rust, contracts, or CI, run `just ci`. For changes that affect Runtime Console behavior, also run the relevant checks in `../lenso-runtime-console`.
 
 If a command fails because network access is blocked while installing dependencies, rerun the same command with the required approval rather than changing project files to work around the sandbox.
 
