@@ -9,6 +9,8 @@ use lenso_host::prelude::*;
 /// environment configuration.
 pub fn host_composition() -> HostComposition {
     HostBuilder::new()
+        .linked_module(builtins::auth())
+        .linked_module(builtins::auth_password())
         .linked_module(modules::app::linked_module())
         .build()
 }

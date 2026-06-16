@@ -430,6 +430,57 @@ async fn served_core_profile_openapi_omits_demo_identity_paths_after_demo_docume
     assert!(!tags.iter().any(|tag| tag["name"] == "identity"));
 }
 
+#[tokio::test]
+async fn served_core_profile_openapi_keeps_composed_auth_routes() {
+    let _guard = catalog_test_lock()
+        .lock()
+        .expect("catalog test lock poisoned");
+    let _ = openapi_document();
+
+    let mut config = AppConfig::from_env();
+    config.module_sources.linked_profile = "core".to_owned();
+    let ctx = AppContext::new(
+        config,
+        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build"),
+        Arc::new(LoggingEventPublisher),
+    );
+    let composition = app_bootstrap::HostComposition::new()
+        .with_linked_module(app_bootstrap::auth_linked_module())
+        .with_linked_module(app_bootstrap::auth_password_linked_module());
+    let app = app_api::try_build_router_with_composition(ctx, &composition)
+        .expect("core profile auth composition router should build");
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/openapi.json")
+                .body(Body::empty())
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    let document: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("served OpenAPI should be JSON");
+    let paths = document["paths"]
+        .as_object()
+        .expect("OpenAPI paths should be an object");
+    let tags = document["tags"]
+        .as_array()
+        .expect("OpenAPI tags should be an array");
+
+    assert!(paths.contains_key("/v1/auth/dev/sessions"));
+    assert!(paths.contains_key("/v1/auth/password/register"));
+    assert!(tags.iter().any(|tag| tag["name"] == "auth"));
+    assert!(!tags.iter().any(|tag| tag["name"] == "identity"));
+}
+
 fn assert_manifest_declares_route(manifest: &ModuleManifest, path: &str, method: ModuleHttpMethod) {
     assert!(
         manifest

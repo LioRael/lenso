@@ -43,8 +43,11 @@ pub(crate) fn api_router() -> ApiOpenApiRouter {
 }
 
 pub(crate) fn api_router_for_profile(profile: CompositionProfile) -> ApiOpenApiRouter {
-    let base =
-        OpenApiRouter::with_openapi(openapi_document_for_profile(profile)).merge(base_router());
+    let base = OpenApiRouter::with_openapi(openapi_document_for_profile_with_composition(
+        profile,
+        &app_bootstrap::HostComposition::default(),
+    ))
+    .merge(base_router());
     app_bootstrap::merge_linked_http_for_profile(base, profile)
         .merge(platform_admin::router())
         .merge(platform_admin_data::router())
@@ -56,8 +59,11 @@ pub(crate) fn api_router_for_context_with_composition(
     composition: &app_bootstrap::HostComposition,
 ) -> platform_core::AppResult<ApiOpenApiRouter> {
     let profile = CompositionProfile::from_config(&ctx.config)?;
-    let base =
-        OpenApiRouter::with_openapi(openapi_document_for_profile(profile)).merge(base_router());
+    let base = OpenApiRouter::with_openapi(openapi_document_for_profile_with_composition(
+        profile,
+        composition,
+    ))
+    .merge(base_router());
     Ok(
         app_bootstrap::merge_linked_http_for_context_with_composition(base, ctx, composition)?
             .merge(platform_admin::router())
@@ -66,13 +72,20 @@ pub(crate) fn api_router_for_context_with_composition(
     )
 }
 
-fn openapi_document_for_profile(profile: CompositionProfile) -> utoipa::openapi::OpenApi {
+fn openapi_document_for_profile_with_composition(
+    profile: CompositionProfile,
+    composition: &app_bootstrap::HostComposition,
+) -> utoipa::openapi::OpenApi {
     let mut document = ApiDoc::openapi();
     if let Some(tags) = &mut document.tags {
+        let has_auth = profile == CompositionProfile::Demo
+            || composition
+                .linked_modules()
+                .iter()
+                .any(|module| module.module_name == "auth");
         match profile {
-            CompositionProfile::Auth => tags.retain(|tag| tag.name != "identity"),
             CompositionProfile::Core => {
-                tags.retain(|tag| tag.name != "auth" && tag.name != "identity")
+                tags.retain(|tag| (has_auth || tag.name != "auth") && tag.name != "identity")
             }
             CompositionProfile::Demo => {}
         }
