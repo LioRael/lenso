@@ -75,7 +75,7 @@ pub fn merge_http(base: ApiOpenApiRouter) -> ApiOpenApiRouter {
 pub fn binding() -> LinkedBinding {
     LinkedBinding::builder()
         .http(LinkedHttpContribution {
-            public_prefixes: &["/v1/auth/"],
+            public_prefixes: &["/v1/auth/dev/", "/v1/auth/sessions/"],
             merge: merge_http,
         })
         .build()

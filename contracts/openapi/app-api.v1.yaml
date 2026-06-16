@@ -2427,6 +2427,132 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /v1/auth/password/login:
+    post:
+      tags:
+      - auth
+      operationId: auth_password_login
+      parameters:
+      - name: x-request-id
+        in: header
+        description: Optional caller-provided request identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: x-correlation-id
+        in: header
+        description: Optional caller-provided correlation identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      requestBody:
+        description: Create a session for a password identity
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordLoginRequest'
+        required: true
+      responses:
+        '200':
+          description: Password session created
+          headers:
+            x-correlation-id:
+              schema:
+                type: string
+              description: Correlation identifier shared across related work
+            x-request-id:
+              schema:
+                type: string
+              description: Request identifier for this HTTP request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasswordSessionResponseEnvelope'
+        '400':
+          description: Request validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Invalid identifier or password
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/auth/password/register:
+    post:
+      tags:
+      - auth
+      operationId: auth_password_register
+      parameters:
+      - name: x-request-id
+        in: header
+        description: Optional caller-provided request identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: x-correlation-id
+        in: header
+        description: Optional caller-provided correlation identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      requestBody:
+        description: Register a password identity for an identifier
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordRegisterRequest'
+        required: true
+      responses:
+        '200':
+          description: Password identity registered
+          headers:
+            x-correlation-id:
+              schema:
+                type: string
+              description: Correlation identifier shared across related work
+            x-request-id:
+              schema:
+                type: string
+              description: Request identifier for this HTTP request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasswordSessionResponseEnvelope'
+        '400':
+          description: Request validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Identifier already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /v1/auth/sessions/revoke:
     post:
       tags:
@@ -5179,6 +5305,50 @@ components:
           - string
           - 'null'
           format: date-time
+    PasswordLoginRequest:
+      type: object
+      required:
+      - identifier
+      - password
+      properties:
+        identifier:
+          type: string
+        password:
+          type: string
+    PasswordRegisterRequest:
+      type: object
+      required:
+      - identifier
+      - password
+      properties:
+        identifier:
+          type: string
+        password:
+          type: string
+    PasswordSessionResponse:
+      type: object
+      required:
+      - user_id
+      - session_id
+      - token
+      - expires_at
+      properties:
+        expires_at:
+          type: string
+          format: date-time
+        session_id:
+          type: string
+        token:
+          type: string
+        user_id:
+          type: string
+    PasswordSessionResponseEnvelope:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/PasswordSessionResponse'
     RemoteHttpProxyResponse:
       type: object
       required:

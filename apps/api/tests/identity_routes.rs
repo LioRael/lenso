@@ -381,6 +381,151 @@ async fn auth_session_cookie_can_call_me() {
 }
 
 #[tokio::test]
+async fn password_register_session_cookie_can_call_me() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app_with_auth_resolver(&db).await;
+
+    let session_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/auth/password/register")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"identifier":"Ada@Example.COM","password":"correct horse"}"#,
+                ))
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should complete");
+    assert_eq!(session_response.status(), StatusCode::OK);
+    let session_body = json_body(session_response).await;
+    let token = session_body["data"]["token"]
+        .as_str()
+        .expect("session response should include token")
+        .to_owned();
+    let user_id = session_body["data"]["user_id"]
+        .as_str()
+        .expect("session response should include user id")
+        .to_owned();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/identity/me")
+                .header("cookie", format!("lenso_session={token}"))
+                .body(Body::empty())
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["data"]["user_id"], user_id);
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn password_login_accepts_normalized_identifier() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app_with_auth_resolver(&db).await;
+
+    let register_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/auth/password/register")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"identifier":"Ada@Example.COM","password":"correct horse"}"#,
+                ))
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should complete");
+    assert_eq!(register_response.status(), StatusCode::OK);
+    let register_body = json_body(register_response).await;
+    let user_id = register_body["data"]["user_id"]
+        .as_str()
+        .expect("register response should include user id")
+        .to_owned();
+
+    let login_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/auth/password/login")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"identifier":"ada@example.com","password":"correct horse"}"#,
+                ))
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(login_response.status(), StatusCode::OK);
+    let login_body = json_body(login_response).await;
+    assert_eq!(login_body["data"]["user_id"], user_id);
+    assert!(login_body["data"]["token"].as_str().is_some());
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn password_login_rejects_wrong_password() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app_with_auth_resolver(&db).await;
+
+    let register_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/auth/password/register")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"identifier":"+8613800000000","password":"correct horse"}"#,
+                ))
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should complete");
+    assert_eq!(register_response.status(), StatusCode::OK);
+
+    let login_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/auth/password/login")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"identifier":"+8613800000000","password":"wrong horse"}"#,
+                ))
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(login_response.status(), StatusCode::UNAUTHORIZED);
+    let body = json_body(login_response).await;
+    assert_eq!(body["error"]["code"], "unauthorized");
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
 async fn revoked_auth_session_cookie_cannot_call_me() {
     let Some(db) = TestDatabase::create().await else {
         return;
@@ -626,6 +771,7 @@ async fn test_app_with_auth_resolver(db: &TestDatabase) -> axum::Router {
         .iter()
         .chain(RUNTIME_MIGRATIONS)
         .chain(auth::migrations::AUTH_MIGRATIONS)
+        .chain(auth_password::migrations::AUTH_PASSWORD_MIGRATIONS)
         .chain(identity::migrations::IDENTITY_MIGRATIONS)
         .copied()
         .collect::<Vec<_>>();

@@ -14,6 +14,7 @@ platform-admin-data.workspace = true
 platform-http.workspace = true
 platform-runtime.workspace = true
 auth.workspace = true
+auth-password.workspace = true
 identity.workspace = true
 notifications.workspace = true
 story.workspace = true

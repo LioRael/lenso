@@ -122,13 +122,18 @@ pub fn check_forbidden_cross_module_imports(root: &Path) -> anyhow::Result<()> {
             let source = fs::read_to_string(&file)
                 .with_context(|| format!("failed to read {}", file.display()))?;
             for other_module in module_names.iter().filter(|name| *name != module) {
-                for pattern in [
-                    format!("use {other_module}::"),
-                    format!("{other_module}::"),
-                    format!("extern crate {other_module}"),
-                ] {
-                    if source.contains(&pattern) {
-                        violations.push(format!("{} imports `{pattern}`", relative(root, &file)));
+                for line in source.lines() {
+                    for pattern in [
+                        format!("use {other_module}::"),
+                        format!("{other_module}::"),
+                        format!("extern crate {other_module}"),
+                    ] {
+                        if line.contains(&pattern)
+                            && !allowed_public_module_import(line, other_module)
+                        {
+                            violations
+                                .push(format!("{} imports `{pattern}`", relative(root, &file)));
+                        }
                     }
                 }
             }
@@ -139,6 +144,10 @@ pub fn check_forbidden_cross_module_imports(root: &Path) -> anyhow::Result<()> {
         violations,
         "modules must call other modules through public interfaces or events",
     )
+}
+
+fn allowed_public_module_import(line: &str, module: &str) -> bool {
+    line.contains(&format!("use {module}::public")) || line.contains(&format!("{module}::public::"))
 }
 
 /// Platform admin/remote crates must not depend on concrete modules; they work

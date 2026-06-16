@@ -76,6 +76,48 @@ fn openapi_contains_auth_dev_session_contract() {
 }
 
 #[test]
+fn openapi_contains_auth_password_contract() {
+    let document = openapi_document();
+    let value = serde_json::to_value(&document).expect("OpenAPI document should serialize");
+
+    let register = &value["paths"]["/v1/auth/password/register"]["post"];
+    assert_eq!(register["operationId"], "auth_password_register");
+    assert_eq!(
+        register["requestBody"]["content"]["application/json"]["schema"]["$ref"],
+        "#/components/schemas/PasswordRegisterRequest"
+    );
+    assert_eq!(
+        register["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+        "#/components/schemas/PasswordSessionResponseEnvelope"
+    );
+
+    for status in ["400", "409", "500"] {
+        assert_eq!(
+            register["responses"][status]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/ErrorResponse"
+        );
+    }
+
+    let login = &value["paths"]["/v1/auth/password/login"]["post"];
+    assert_eq!(login["operationId"], "auth_password_login");
+    assert_eq!(
+        login["requestBody"]["content"]["application/json"]["schema"]["$ref"],
+        "#/components/schemas/PasswordLoginRequest"
+    );
+    assert_eq!(
+        login["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+        "#/components/schemas/PasswordSessionResponseEnvelope"
+    );
+
+    for status in ["400", "401", "500"] {
+        assert_eq!(
+            login["responses"][status]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/ErrorResponse"
+        );
+    }
+}
+
+#[test]
 fn committed_openapi_artifact_matches_rust_source() {
     let generated =
         serde_json::to_value(openapi_document()).expect("OpenAPI document should serialize");

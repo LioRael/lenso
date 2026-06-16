@@ -35,6 +35,17 @@ The current HTTP surface is intentionally small:
 - `POST /v1/auth/dev/sessions` creates a local-development session for a user id.
 - `POST /v1/auth/sessions/revoke` revokes the current bearer or cookie session.
 
+The first provider is the separate linked `auth-password` module:
+
+- `modules.auth-password.enabled = false` disables the password provider.
+- It depends on `auth`; if `auth` is disabled, `auth-password` is not installed.
+- `POST /v1/auth/password/register` registers `identifier + password`.
+- `POST /v1/auth/password/login` creates a session for a password identity.
+
+The password provider stores provider-specific credential hashes in its own
+`auth_password` schema. It uses `auth::public` helpers to create auth users,
+identities, and sessions, so the auth core remains the owner of those tables.
+
 The actor resolver accepts a bearer session token or `lenso_session` cookie,
 checks `auth.sessions`, and returns only:
 
@@ -48,6 +59,7 @@ belong to the installing application or later focused auth slices.
 ## Loading Model
 
 Keep core auth linked/in-process for now. Session resolution is a host trust
-boundary and runs on every request. Remote modules may later provide provider
-connectors, but they should not own host sessions or receive caller bearer
-tokens.
+boundary and runs on every request. First-party linked provider modules can sit
+beside it, as `auth-password` does. Remote modules may later provide external
+provider connectors, but they should not own host sessions or receive caller
+bearer tokens.

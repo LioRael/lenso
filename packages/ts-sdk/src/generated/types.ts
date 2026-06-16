@@ -876,6 +876,27 @@ export type PageInfo = {
   next_created_before?: string | null;
 };
 
+export type PasswordLoginRequest = {
+  identifier: string;
+  password: string;
+};
+
+export type PasswordRegisterRequest = {
+  identifier: string;
+  password: string;
+};
+
+export type PasswordSessionResponse = {
+  expires_at: string;
+  session_id: string;
+  token: string;
+  user_id: string;
+};
+
+export type PasswordSessionResponseEnvelope = {
+  data: PasswordSessionResponse;
+};
+
 export type RemoteHttpProxyResponse = {
   capability: string;
   data: unknown;
