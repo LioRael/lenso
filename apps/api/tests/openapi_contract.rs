@@ -38,6 +38,44 @@ fn openapi_contains_identity_create_user_contract() {
 }
 
 #[test]
+fn openapi_contains_auth_dev_session_contract() {
+    let document = openapi_document();
+    let value = serde_json::to_value(&document).expect("OpenAPI document should serialize");
+
+    let operation = &value["paths"]["/v1/auth/dev/sessions"]["post"];
+    assert_eq!(operation["operationId"], "auth_create_dev_session");
+    assert_eq!(
+        operation["requestBody"]["content"]["application/json"]["schema"]["$ref"],
+        "#/components/schemas/CreateDevSessionRequest"
+    );
+    assert_eq!(
+        operation["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+        "#/components/schemas/CreateDevSessionResponseEnvelope"
+    );
+
+    for status in ["400", "403", "500"] {
+        assert_eq!(
+            operation["responses"][status]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/ErrorResponse"
+        );
+    }
+
+    let revoke = &value["paths"]["/v1/auth/sessions/revoke"]["post"];
+    assert_eq!(revoke["operationId"], "auth_revoke_session");
+    assert_eq!(
+        revoke["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+        "#/components/schemas/RevokeSessionResponseEnvelope"
+    );
+
+    for status in ["401", "500"] {
+        assert_eq!(
+            revoke["responses"][status]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/ErrorResponse"
+        );
+    }
+}
+
+#[test]
 fn committed_openapi_artifact_matches_rust_source() {
     let generated =
         serde_json::to_value(openapi_document()).expect("OpenAPI document should serialize");

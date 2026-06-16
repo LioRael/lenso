@@ -746,6 +746,21 @@ export type ConsoleWorkspaceRef = {
   label: string;
 };
 
+export type CreateDevSessionRequest = {
+  user_id: string;
+};
+
+export type CreateDevSessionResponse = {
+  expires_at: string;
+  session_id: string;
+  token: string;
+  user_id: string;
+};
+
+export type CreateDevSessionResponseEnvelope = {
+  data: CreateDevSessionResponse;
+};
+
 export type CreateUserRequest = {
   display_name?: string | null;
   email: string;
@@ -873,6 +888,14 @@ export type RemoteHttpProxyResponse = {
 };
 
 export type RemoteHttpProxyStatus = string;
+
+export type RevokeSessionResponse = {
+  revoked: boolean;
+};
+
+export type RevokeSessionResponseEnvelope = {
+  data: RevokeSessionResponse;
+};
 
 export type RuntimeFunctionDeclaration = {
   input_schema?: string | null;

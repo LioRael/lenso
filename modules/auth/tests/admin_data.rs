@@ -1,0 +1,65 @@
+use auth::admin::AuthAdminData;
+use auth::models::{AuthUser, AuthUserId};
+use auth::repositories::{AuthUserRepository, PostgresAuthUserRepository};
+use chrono::Utc;
+use platform_core::{PLATFORM_MIGRATIONS, apply_migrations};
+use platform_module::{AdminDataSource, AdminListQuery};
+use platform_runtime::RUNTIME_MIGRATIONS;
+use platform_testing::TestDatabase;
+use std::sync::Arc;
+
+async fn seed(repo: &PostgresAuthUserRepository, id: &str) {
+    repo.insert(&AuthUser {
+        id: AuthUserId(id.to_owned()),
+        created_at: Utc::now(),
+        disabled_at: None,
+    })
+    .await
+    .expect("insert should succeed");
+}
+
+#[tokio::test]
+async fn admin_data_lists_auth_users_with_cursor_pagination() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let migrations = PLATFORM_MIGRATIONS
+        .iter()
+        .chain(RUNTIME_MIGRATIONS)
+        .chain(auth::migrations::AUTH_MIGRATIONS)
+        .copied()
+        .collect::<Vec<_>>();
+    apply_migrations(&db.pool, &migrations)
+        .await
+        .expect("migrations apply");
+
+    let repo = PostgresAuthUserRepository::new(db.pool.clone());
+    seed(&repo, "usr_a").await;
+    seed(&repo, "usr_b").await;
+    seed(&repo, "usr_c").await;
+
+    let admin = AuthAdminData::new(Arc::new(repo));
+    let page1 = admin
+        .list("users", &AdminListQuery::new(2, None))
+        .await
+        .expect("list page 1");
+    assert_eq!(page1.records.len(), 2);
+    assert_eq!(page1.records[0]["id"], "usr_a");
+    assert_eq!(page1.records[1]["id"], "usr_b");
+
+    let page2 = admin
+        .list(
+            "users",
+            &AdminListQuery::new(2, Some(page1.next_cursor.expect("cursor"))),
+        )
+        .await
+        .expect("list page 2");
+    assert_eq!(page2.records.len(), 1);
+    assert_eq!(page2.records[0]["id"], "usr_c");
+    assert!(page2.next_cursor.is_none());
+
+    let one = admin.get("users", "usr_a").await.expect("get");
+    assert_eq!(one.expect("some")["id"], "usr_a");
+
+    db.cleanup().await;
+}

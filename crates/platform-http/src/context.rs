@@ -7,8 +7,8 @@ use axum::middleware::Next;
 use axum::response::Response;
 use chrono::{DateTime, Utc};
 use platform_core::{
-    ActorContext, AppContext, CorrelationId, IdGenerator, RequestContext, RequestId, UuidGenerator,
-    generate_trace_context, is_local_development_environment,
+    ActorResolutionRequest, AppContext, CorrelationId, IdGenerator, RequestContext, RequestId,
+    UuidGenerator, generate_trace_context,
     story_events::{
         HttpRequestStoryEventRecord, http_request_story_creation, http_request_story_event_id,
         insert_http_request_story_projection,
@@ -21,6 +21,7 @@ use tracing::Instrument;
 const REQUEST_ID_HEADER: &str = "x-request-id";
 const CORRELATION_ID_HEADER: &str = "x-correlation-id";
 const AUTHORIZATION_HEADER: &str = "authorization";
+const COOKIE_HEADER: &str = "cookie";
 const TRACEPARENT_HEADER: &str = "traceparent";
 
 #[derive(Debug, Clone)]
@@ -45,9 +46,13 @@ pub async fn request_context_middleware(
         .unwrap_or_else(|| UuidGenerator.new_id("req"));
     let correlation_id = header_value(request.headers(), CORRELATION_ID_HEADER)
         .unwrap_or_else(|| UuidGenerator.new_id("corr"));
-    let actor = authorization_header(request.headers())
-        .and_then(|value| parse_dev_bearer_actor(value, &ctx.config.service.environment))
-        .unwrap_or_default();
+    let actor = ctx
+        .actor_resolver
+        .resolve_actor(ActorResolutionRequest {
+            authorization: authorization_header(request.headers()),
+            cookie: cookie_header(request.headers()),
+        })
+        .await;
     let trace = traceparent_header(request.headers())
         .and_then(|value| trace_context_from_traceparent(&value))
         .unwrap_or_else(generate_trace_context);
@@ -191,8 +196,8 @@ fn authorization_header(headers: &axum::http::HeaderMap) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
-fn traceparent_header(headers: &axum::http::HeaderMap) -> Option<String> {
-    let name = HeaderName::from_static(TRACEPARENT_HEADER);
+fn cookie_header(headers: &axum::http::HeaderMap) -> Option<String> {
+    let name = HeaderName::from_static(COOKIE_HEADER);
     headers
         .get(name)
         .and_then(|value| value.to_str().ok())
@@ -200,36 +205,11 @@ fn traceparent_header(headers: &axum::http::HeaderMap) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
-fn parse_dev_bearer_actor(value: String, environment: &str) -> Option<ActorContext> {
-    if !is_local_development_environment(environment) {
-        return None;
-    }
-
-    let token = value.strip_prefix("Bearer ")?;
-
-    if let Some(user_id) = token.strip_prefix("dev-user:") {
-        return Some(ActorContext::User {
-            user_id: user_id.to_owned(),
-            scopes: Vec::new(),
-        });
-    }
-
-    if let Some(service_token) = token.strip_prefix("dev-service:") {
-        let (service_id, scopes) = parse_dev_actor_scopes(service_token);
-        return Some(ActorContext::Service { service_id, scopes });
-    }
-
-    None
-}
-
-fn parse_dev_actor_scopes(value: &str) -> (String, Vec<String>) {
-    let Some((id, raw_scopes)) = value.split_once(':') else {
-        return (value.to_owned(), Vec::new());
-    };
-    let scopes = raw_scopes
-        .split(',')
-        .filter(|scope| !scope.is_empty())
+fn traceparent_header(headers: &axum::http::HeaderMap) -> Option<String> {
+    let name = HeaderName::from_static(TRACEPARENT_HEADER);
+    headers
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
-        .collect();
-    (id.to_owned(), scopes)
 }

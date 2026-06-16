@@ -163,6 +163,12 @@ const CORE_LINKED_MODULE_ENTRIES: &[LinkedModuleEntry] = &[LinkedModuleEntry {
 
 const DEMO_LINKED_MODULE_ENTRIES: &[LinkedModuleEntry] = &[
     LinkedModuleEntry {
+        module_name: "auth",
+        manifest: auth::module::manifest,
+        load: auth::module::module,
+        http_binding: Some(auth::module::binding),
+    },
+    LinkedModuleEntry {
         module_name: "identity",
         manifest: identity::module::manifest,
         load: identity::module::module,
@@ -221,6 +227,21 @@ fn remote_module_enabled(ctx: &AppContext, module_name: &str) -> bool {
         .raw(&module_enabled_config_key(module_name))
         .and_then(serde_json::Value::as_bool)
         .unwrap_or_else(|| remote_module_enabled_from_config(&ctx.config, module_name))
+}
+
+pub fn auth_actor_resolver_for_context(
+    ctx: &AppContext,
+) -> platform_core::AppResult<Option<Arc<dyn platform_core::ActorResolver>>> {
+    let profile = CompositionProfile::from_config(&ctx.config)?;
+    if profile != CompositionProfile::Demo || !linked_module_enabled(ctx, auth::module::MODULE_NAME)
+    {
+        return Ok(None);
+    }
+
+    Ok(Some(Arc::new(auth::resolver::AuthActorResolver::new(
+        ctx.db.clone(),
+        ctx.actor_resolver.clone(),
+    ))))
 }
 
 fn linked_module_entries_for_context(
@@ -379,6 +400,9 @@ pub fn migrations_for_config_with_composition(
         .collect::<Vec<_>>();
 
     if CompositionProfile::from_config(config)? == CompositionProfile::Demo {
+        if linked_module_enabled_from_config(config, "auth") {
+            migrations.extend(auth::migrations::AUTH_MIGRATIONS.iter().copied());
+        }
         if linked_module_enabled_from_config(config, "identity") {
             migrations.extend(identity::migrations::IDENTITY_MIGRATIONS.iter().copied());
         }
@@ -407,6 +431,7 @@ pub fn migrations_for_profile(profile: CompositionProfile) -> Vec<Migration> {
         .collect::<Vec<_>>();
 
     if profile == CompositionProfile::Demo {
+        migrations.extend(auth::migrations::AUTH_MIGRATIONS.iter().copied());
         migrations.extend(identity::migrations::IDENTITY_MIGRATIONS.iter().copied());
         migrations.extend(
             notifications::migrations::NOTIFICATIONS_MIGRATIONS
@@ -1603,7 +1628,10 @@ mod tests {
             .map(|manifest| manifest.name)
             .collect::<Vec<_>>();
 
-        assert_eq!(names, vec!["identity", "notifications", "platform-story"]);
+        assert_eq!(
+            names,
+            vec!["auth", "identity", "notifications", "platform-story"]
+        );
     }
 
     #[test]
@@ -1615,6 +1643,7 @@ mod tests {
 
         assert!(names.iter().any(|name| name.starts_with("platform/")));
         assert!(names.iter().any(|name| name.starts_with("runtime/")));
+        assert!(!names.iter().any(|name| name.starts_with("auth/")));
         assert!(!names.iter().any(|name| name.starts_with("identity/")));
         assert!(!names.iter().any(|name| name.starts_with("notifications/")));
     }
@@ -1626,6 +1655,11 @@ mod tests {
             .map(|migration| migration.name)
             .collect::<Vec<_>>();
 
+        assert!(
+            names
+                .iter()
+                .any(|name| name == &"auth/0001_create_auth_schema")
+        );
         assert!(
             names
                 .iter()
@@ -1709,7 +1743,10 @@ mod tests {
             .map(|manifest| manifest.name)
             .collect::<Vec<_>>();
 
-        assert_eq!(names, vec!["identity", "notifications", "platform-story"]);
+        assert_eq!(
+            names,
+            vec!["auth", "identity", "notifications", "platform-story"]
+        );
     }
 
     #[test]
@@ -1724,6 +1761,10 @@ mod tests {
         assert_eq!(
             linked_http_route_owners_for_profile(CompositionProfile::Demo),
             vec![
+                LinkedHttpRouteOwner {
+                    module_name: "auth".to_owned(),
+                    public_prefixes: &["/v1/auth/"],
+                },
                 LinkedHttpRouteOwner {
                     module_name: "identity".to_owned(),
                     public_prefixes: &["/v1/identity/"],
@@ -1754,6 +1795,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn auth_actor_resolver_is_demo_profile_only() {
+        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build");
+        let demo_ctx = AppContext::new(
+            test_config_with_database_url("postgres://localhost/lenso_test"),
+            db.clone(),
+            Arc::new(LoggingEventPublisher),
+        );
+        assert!(
+            auth_actor_resolver_for_context(&demo_ctx)
+                .expect("demo profile")
+                .is_some()
+        );
+
+        let mut core_config = test_config_with_database_url("postgres://localhost/lenso_test");
+        core_config.module_sources.linked_profile = "core".to_owned();
+        let core_ctx = AppContext::new(core_config, db, Arc::new(LoggingEventPublisher));
+        assert!(
+            auth_actor_resolver_for_context(&core_ctx)
+                .expect("core profile")
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn auth_actor_resolver_respects_disabled_auth_module() {
+        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build");
+        let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
+        config.modules.insert(
+            auth::module::MODULE_NAME.to_owned(),
+            ModuleConfig {
+                enabled: Some(false),
+                values: BTreeMap::new(),
+            },
+        );
+        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
+
+        assert!(
+            auth_actor_resolver_for_context(&ctx)
+                .expect("demo profile")
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
     async fn modules_for_config_skips_disabled_linked_modules() {
         let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
             .expect("lazy pool should build");
@@ -1773,7 +1860,7 @@ mod tests {
             .map(|module| module.manifest.name)
             .collect::<Vec<_>>();
 
-        assert_eq!(names, vec!["notifications", "platform-story"]);
+        assert_eq!(names, vec!["auth", "notifications", "platform-story"]);
     }
 
     #[tokio::test]
@@ -1801,14 +1888,14 @@ mod tests {
             .map(|module| module.manifest.name)
             .collect::<Vec<_>>();
 
-        assert_eq!(names, vec!["notifications", "platform-story"]);
+        assert_eq!(names, vec!["auth", "notifications", "platform-story"]);
         let linked_http_names = linked_http_modules_for_context(&ctx)
             .expect("linked HTTP modules should load")
             .into_iter()
             .map(|module| module.manifest.name)
             .collect::<Vec<_>>();
 
-        assert_eq!(linked_http_names, vec!["platform-story"]);
+        assert_eq!(linked_http_names, vec!["auth", "platform-story"]);
     }
 
     #[tokio::test]
@@ -1835,7 +1922,7 @@ mod tests {
             .into_iter()
             .map(|module| module.manifest.name)
             .collect::<Vec<_>>();
-        assert_eq!(linked_http_names, vec!["identity"]);
+        assert_eq!(linked_http_names, vec!["auth", "identity"]);
 
         let metadata = load_admin_module_metadata(&ctx)
             .await
@@ -1867,6 +1954,9 @@ mod tests {
             .map(|descriptor| (descriptor.key, descriptor.restart_only, descriptor.default))
             .collect::<Vec<_>>();
 
+        assert!(keys.iter().any(|(key, restart_only, default)| {
+            key == "modules.auth.enabled" && *restart_only && default == &json!(true)
+        }));
         assert!(keys.iter().any(|(key, restart_only, default)| {
             key == "modules.identity.enabled" && *restart_only && default == &json!(true)
         }));
@@ -2024,7 +2114,7 @@ mod tests {
             .map(|module| module.manifest.name)
             .collect::<Vec<_>>();
 
-        assert_eq!(names, vec!["platform-story"]);
+        assert_eq!(names, vec!["auth", "platform-story"]);
     }
 
     #[test]
@@ -2044,7 +2134,7 @@ mod tests {
             .map(|module| module.manifest.name)
             .collect::<Vec<_>>();
 
-        assert_eq!(names, vec!["identity"]);
+        assert_eq!(names, vec!["auth", "identity"]);
     }
 
     #[tokio::test]
@@ -2142,6 +2232,10 @@ mod tests {
         assert_eq!(
             linked_http_route_owners(),
             vec![
+                LinkedHttpRouteOwner {
+                    module_name: "auth".to_owned(),
+                    public_prefixes: &["/v1/auth/"],
+                },
                 LinkedHttpRouteOwner {
                     module_name: "identity".to_owned(),
                     public_prefixes: &["/v1/identity/"],

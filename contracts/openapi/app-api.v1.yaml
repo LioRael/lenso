@@ -2364,6 +2364,135 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /v1/auth/dev/sessions:
+    post:
+      tags:
+      - auth
+      operationId: auth_create_dev_session
+      parameters:
+      - name: x-request-id
+        in: header
+        description: Optional caller-provided request identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: x-correlation-id
+        in: header
+        description: Optional caller-provided correlation identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      requestBody:
+        description: Create a local-development auth session for a user id
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDevSessionRequest'
+        required: true
+      responses:
+        '200':
+          description: Development session created
+          headers:
+            x-correlation-id:
+              schema:
+                type: string
+              description: Correlation identifier shared across related work
+            x-request-id:
+              schema:
+                type: string
+              description: Request identifier for this HTTP request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateDevSessionResponseEnvelope'
+        '400':
+          description: Request validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Development sessions are only available in local environments
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/auth/sessions/revoke:
+    post:
+      tags:
+      - auth
+      operationId: auth_revoke_session
+      parameters:
+      - name: authorization
+        in: header
+        description: Bearer session token
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: cookie
+        in: header
+        description: Cookie header containing `lenso_session`
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: x-request-id
+        in: header
+        description: Optional caller-provided request identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: x-correlation-id
+        in: header
+        description: Optional caller-provided correlation identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      responses:
+        '200':
+          description: Session revoke attempted
+          headers:
+            x-correlation-id:
+              schema:
+                type: string
+              description: Correlation identifier shared across related work
+            x-request-id:
+              schema:
+                type: string
+              description: Request identifier for this HTTP request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RevokeSessionResponseEnvelope'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /v1/identity/me:
     get:
       tags:
@@ -4684,6 +4813,37 @@ components:
           type: string
         label:
           type: string
+    CreateDevSessionRequest:
+      type: object
+      required:
+      - user_id
+      properties:
+        user_id:
+          type: string
+    CreateDevSessionResponse:
+      type: object
+      required:
+      - user_id
+      - session_id
+      - token
+      - expires_at
+      properties:
+        expires_at:
+          type: string
+          format: date-time
+        session_id:
+          type: string
+        token:
+          type: string
+        user_id:
+          type: string
+    CreateDevSessionResponseEnvelope:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/CreateDevSessionResponse'
     CreateUserRequest:
       type: object
       required:
@@ -5054,6 +5214,20 @@ components:
       type: string
       enum:
       - forwarded
+    RevokeSessionResponse:
+      type: object
+      required:
+      - revoked
+      properties:
+        revoked:
+          type: boolean
+    RevokeSessionResponseEnvelope:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/RevokeSessionResponse'
     RuntimeFunctionDeclaration:
       type: object
       required:
@@ -5158,6 +5332,8 @@ components:
         reason:
           type: string
 tags:
+- name: auth
+  description: Auth module development session APIs
 - name: identity
   description: Identity module fixture APIs
 - name: admin-runtime
