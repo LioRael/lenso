@@ -184,10 +184,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn router_documents_status_route() {
+    fn router_documents_app_routes() {
         let document = router().to_openapi();
 
         assert!(document.paths.paths.contains_key("/v1/app/status"));
-        assert!(document.paths.paths.contains_key("/v1/app/items"));
+        let items = document
+            .paths
+            .paths
+            .get("/v1/app/items")
+            .expect("items path should be documented");
+        assert!(items.get.is_some());
+        assert!(items.post.is_some());
     }
 }
