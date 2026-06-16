@@ -1,0 +1,102 @@
+[workspace]
+resolver = "2"
+members = [
+    "apps/api",
+    "apps/worker",
+    "apps/migrate",
+    "examples/remote-module",
+    "crates/lenso",
+    "crates/lenso-host",
+    "crates/app-bootstrap",
+    "crates/platform-admin",
+    "crates/platform-admin-data",
+    "crates/platform-core",
+    "crates/platform-module",
+    "crates/platform-module-remote",
+    "crates/platform-http",
+    "crates/platform-runtime",
+    "crates/platform-testing",
+    "modules/auth",
+    "modules/auth-password",
+    "modules/identity",
+    "modules/notifications",
+    "modules/story",
+    "tools/generate-contracts",
+    "tools/generate-ts-sdk",
+    "tools/arch-check",
+    "tools/otel-smoke",
+]
+
+[workspace.package]
+edition = "2024"
+license = "UNLICENSED"
+publish = false
+rust-version = "1.94"
+
+[workspace.dependencies]
+anyhow = "1.0"
+argon2 = "0.5.3"
+arc-swap = "1"
+async-trait = "0.1"
+axum = "0.8"
+chrono = { version = "0.4", features = ["serde"] }
+http = "1.4"
+opentelemetry = "0.32"
+opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic"] }
+opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
+prost = "0.14"
+rand_core = { version = "0.6", features = ["getrandom"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+sha2 = "0.10"
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls-ring-webpki", "postgres", "uuid", "chrono", "json"] }
+thiserror = "2.0"
+tokio = { version = "1.52", features = ["macros", "rt-multi-thread", "signal", "time"] }
+tonic = { version = "0.14", default-features = false, features = ["channel", "codegen"] }
+tonic-prost = "0.14"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace", "request-id", "util", "cors"] }
+tracing = "0.1"
+tracing-opentelemetry = "0.33"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
+utoipa = { version = "5.5", features = ["axum_extras", "chrono", "uuid"] }
+utoipa-axum = "0.2"
+uuid = { version = "1.23", features = ["serde", "v7"] }
+
+lenso = { path = "crates/lenso" }
+platform-core = { path = "crates/platform-core" }
+platform-admin = { path = "crates/platform-admin" }
+platform-admin-data = { path = "crates/platform-admin-data" }
+platform-module = { path = "crates/platform-module" }
+platform-module-remote = { path = "crates/platform-module-remote" }
+platform-http = { path = "crates/platform-http" }
+platform-runtime = { path = "crates/platform-runtime" }
+platform-testing = { path = "crates/platform-testing" }
+app-bootstrap = { path = "crates/app-bootstrap" }
+app-api = { path = "apps/api" }
+app-migrate = { path = "apps/migrate" }
+app-worker = { path = "apps/worker" }
+lenso-host = { path = "crates/lenso-host" }
+auth = { path = "modules/auth" }
+auth-password = { path = "modules/auth-password" }
+identity = { path = "modules/identity" }
+notifications = { path = "modules/notifications" }
+story = { path = "modules/story" }
+generate-contracts = { path = "tools/generate-contracts" }
+generate-ts-sdk = { path = "tools/generate-ts-sdk" }
+arch-check = { path = "tools/arch-check" }
+remote-module-example = { path = "examples/remote-module" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+all = "warn"
+pedantic = "warn"
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+must_use_candidate = "allow"

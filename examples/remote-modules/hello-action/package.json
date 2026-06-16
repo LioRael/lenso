@@ -1,0 +1,13 @@
+{
+  "name": "@lenso/example-hello-action",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "smoke": "node src/smoke.mjs"
+  },
+  "dependencies": {
+    "@lenso/remote-module-kit": "file:../../../../lenso-runtime-console/packages/remote-module-kit"
+  }
+}

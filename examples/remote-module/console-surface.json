@@ -1,0 +1,21 @@
+{
+  "area": "data",
+  "exportName": "remoteCrmConsoleModule",
+  "icon": "network",
+  "id": "remote-crm",
+  "label": "Remote CRM",
+  "navigation": {
+    "order": 70,
+    "workspace": {
+      "icon": "network",
+      "id": "remote-crm",
+      "label": "Remote CRM"
+    }
+  },
+  "packageName": "@lenso/remote-crm-console",
+  "requiredCapabilities": ["remote_crm.contacts.read"],
+  "route": "/data/remote-crm",
+  "source": "installed",
+  "surfaceName": "remote-crm",
+  "version": "workspace"
+}

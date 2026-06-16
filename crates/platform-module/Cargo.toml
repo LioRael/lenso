@@ -1,0 +1,20 @@
+[package]
+name = "platform-module"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lenso.workspace = true
+platform-core.workspace = true
+platform-http.workspace = true
+platform-runtime.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+async-trait.workspace = true
+utoipa.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,126 @@
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version, for example v0.1.0"
+        required: true
+        type: string
+      notes:
+        description: "Short release note summary"
+        required: false
+        type: string
+      publish_ts_sdk:
+        description: "Publish @lenso/ts-sdk to npm"
+        required: true
+        default: false
+        type: boolean
+      publish_rust_crate:
+        description: "Publish lenso to crates.io"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: lenso
+          POSTGRES_PASSWORD: lenso
+          POSTGRES_USER: lenso
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lenso -d lenso"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      APP_ENV: local
+      DATABASE_URL: postgres://lenso:lenso@localhost:5432/lenso
+      HTTP_HOST: 0.0.0.0
+      HTTP_PORT: 3000
+      LENSO_RELEASE_VERSION: ${{ inputs.version }}
+      RUST_LOG: info,lenso=debug
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: packages/ts-sdk/pnpm-lock.yaml
+          registry-url: https://registry.npmjs.org
+      - name: Install just
+        uses: extractions/setup-just@v4
+      - name: Check release version
+        run: just release-version-check
+      - name: Run release gate
+        run: just release-check
+      - name: Run package publish preflight
+        run: just package-readiness
+      - name: Dry-run npm publish
+        if: ${{ inputs.publish_ts_sdk }}
+        run: npm publish --dry-run --access public
+        working-directory: packages/ts-sdk
+      - name: Dry-run crates.io publish
+        run: cargo publish --dry-run --locked -p lenso --allow-dirty
+      - name: Build release package
+        env:
+          LENSO_RELEASE_NOTES_SUMMARY: ${{ inputs.notes }}
+        run: just release-package
+      - name: Validate registry secrets
+        if: ${{ inputs.publish_ts_sdk || inputs.publish_rust_crate }}
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ "${{ inputs.publish_ts_sdk }}" = "true" ]; then
+            test -n "$NPM_TOKEN" || { echo "NPM_TOKEN is required when publish_ts_sdk=true" >&2; exit 1; }
+          fi
+          if [ "${{ inputs.publish_rust_crate }}" = "true" ]; then
+            test -n "$CARGO_REGISTRY_TOKEN" || { echo "CARGO_REGISTRY_TOKEN is required when publish_rust_crate=true" >&2; exit 1; }
+          fi
+      - name: Publish @lenso/ts-sdk to npm
+        if: ${{ inputs.publish_ts_sdk }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
+        working-directory: packages/ts-sdk
+      - name: Publish lenso to crates.io
+        if: ${{ inputs.publish_rust_crate }}
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish --locked -p lenso --allow-dirty --token "$CARGO_REGISTRY_TOKEN"
+      - name: Skip registry upload
+        if: ${{ !inputs.publish_ts_sdk && !inputs.publish_rust_crate }}
+        run: echo "registry publish inputs are false; uploads were skipped after dry-runs."
+      - name: Upload release notes draft
+        uses: actions/upload-artifact@v7
+        with:
+          name: lenso-${{ inputs.version }}-release-notes
+          path: dist/release/lenso-${{ inputs.version }}-release-notes.md
+          if-no-files-found: error
+      - name: Upload release source package
+        uses: actions/upload-artifact@v7
+        with:
+          name: lenso-${{ inputs.version }}-source
+          path: dist/release/lenso-${{ inputs.version }}-source.tar.gz
+          if-no-files-found: error
+      - name: Upload artifact README
+        uses: actions/upload-artifact@v7
+        with:
+          name: lenso-${{ inputs.version }}-artifact-readme
+          path: dist/release/lenso-${{ inputs.version }}-artifact-readme.md
+          if-no-files-found: error
