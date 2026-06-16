@@ -1841,6 +1841,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn auth_actor_resolver_does_not_require_identity_module() {
+        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build");
+        let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
+        config.modules.insert(
+            "identity".to_owned(),
+            ModuleConfig {
+                enabled: Some(false),
+                values: BTreeMap::new(),
+            },
+        );
+        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
+
+        assert!(
+            auth_actor_resolver_for_context(&ctx)
+                .expect("demo profile")
+                .is_some()
+        );
+    }
+
+    #[tokio::test]
     async fn modules_for_config_skips_disabled_linked_modules() {
         let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
             .expect("lazy pool should build");

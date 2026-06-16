@@ -32,6 +32,8 @@ Current demo module fixtures:
 - `story` owns the `platform-story` Runtime Console module manifest and keeps
   Story visible as a first-class linked module while the compatible
   `/admin/runtime/*` backend remains mounted through `platform-admin`.
+- `auth` owns the authentication anchor, session tables, development session
+  routes, and host actor resolver. See [`auth-module.md`](auth-module.md).
 - `identity` exercises users, identity HTTP routes, `identity.user_registered.v1`,
   `identity.cleanup_expired_sessions.v1`, schema-admin reads, and a module-owned
   Runtime Console workspace.
@@ -40,9 +42,9 @@ Current demo module fixtures:
 
 These modules are demo fixtures, not product defaults. `app-bootstrap` selects a
 linked composition profile: `core` keeps only platform-owned linked surfaces such
-as `platform-story`, while `demo` adds `identity` and `notifications` for local
-development, examples, contracts, and integration tests. Local development may
-default to `demo`; non-local environments must set
+as `platform-story`, while `demo` adds `auth`, `identity`, and `notifications`
+for local development, examples, contracts, and integration tests. Local
+development may default to `demo`; non-local environments must set
 `LENSO_COMPOSITION_PROFILE=core` or `LENSO_COMPOSITION_PROFILE=demo` explicitly.
 
 ## Platform Service Kit
