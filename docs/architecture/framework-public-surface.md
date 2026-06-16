@@ -20,7 +20,8 @@ Not every project needs every package:
 - JavaScript or TypeScript remote-module authors use
   `@lenso/remote-module-kit`.
 - API consumers can use the OpenAPI contract directly; `@lenso/ts-sdk` is an
-  optional generated client for fixed host APIs.
+  optional generated client for fixed host APIs, not part of the default module
+  or host starter path.
 - Application starters and example repositories compose those packages into a
   runnable backend, worker, migration, Runtime Console, and remote module demo.
 
@@ -124,6 +125,10 @@ this package needs a clean build output, declarations, package metadata, and
 `@lenso/ts-sdk` is a generated client for the host HTTP API. It is optional:
 useful for consumers of a fixed deployed host API, but not part of the core
 framework authoring path.
+
+The Runtime Console currently uses it as a backend contract/type consumer. That
+does not make it a required package for module authors, host starters, or
+examples.
 
 Keep the SDK source in this backend repository while it exists. That preserves
 an atomic workflow:
