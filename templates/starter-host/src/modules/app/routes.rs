@@ -1,7 +1,7 @@
 use lenso_host::http::{
     ApiErrorResponse, ApiOpenApiRouter, AppContext, AppError, DataResponse, ErrorCode,
-    ErrorResponse, HttpRequestContext, Json, JsonBody, OpenApiRouter, RequestContext, State, json,
-    routes,
+    ErrorResponse, HttpRequestContext, Json, JsonBody, OpenApiRouter, Path, RequestContext, State,
+    json, routes,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
@@ -49,6 +49,7 @@ fn router() -> ApiOpenApiRouter {
     OpenApiRouter::new()
         .routes(routes!(status))
         .routes(routes!(create_item))
+        .routes(routes!(get_item))
         .routes(routes!(list_items))
 }
 
@@ -157,6 +158,53 @@ async fn list_items(
     Ok(json(items))
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/app/items/{id}",
+    operation_id = "app_get_item",
+    tag = "app",
+    params(("id" = i64, Path, description = "App item id")),
+    responses(
+        (
+            status = 200,
+            description = "App-owned item",
+            body = AppItemResponseEnvelope,
+            content_type = "application/json"
+        ),
+        (
+            status = 404,
+            description = "Item not found",
+            body = ErrorResponse,
+            content_type = "application/json"
+        ),
+        (
+            status = 500,
+            description = "Internal server error",
+            body = ErrorResponse,
+            content_type = "application/json"
+        )
+    )
+)]
+async fn get_item(
+    State(ctx): State<AppContext>,
+    HttpRequestContext(request_ctx): HttpRequestContext,
+    Path(id): Path<i64>,
+) -> Result<Json<DataResponse<AppItem>>, ApiErrorResponse> {
+    let row = sqlx::query("select id, title from app.items where id = $1")
+        .bind(id)
+        .fetch_optional(&ctx.db)
+        .await
+        .map_err(|error| database_error(error, &request_ctx))?
+        .ok_or_else(|| {
+            ApiErrorResponse::with_context(
+                AppError::new(ErrorCode::NotFound, format!("app item {id} was not found")),
+                &request_ctx,
+            )
+        })?;
+
+    Ok(json(item_from_row(row, &request_ctx)?))
+}
+
 fn item_from_row(
     row: sqlx::postgres::PgRow,
     request_ctx: &RequestContext,
@@ -195,5 +243,11 @@ mod tests {
             .expect("items path should be documented");
         assert!(items.get.is_some());
         assert!(items.post.is_some());
+        let item = document
+            .paths
+            .paths
+            .get("/v1/app/items/{id}")
+            .expect("item detail path should be documented");
+        assert!(item.get.is_some());
     }
 }
