@@ -145,6 +145,8 @@ mod tests {
             RuntimeConfigDescriptor {
                 key: "identity.password_reset_ttl_minutes".to_owned(),
                 scope: RuntimeConfigScope::Shared,
+                group: None,
+                order: 0,
                 value_type: RuntimeConfigType::Int {
                     min: Some(1),
                     max: Some(1440),
@@ -157,6 +159,8 @@ mod tests {
             RuntimeConfigDescriptor {
                 key: "api.feature.enabled".to_owned(),
                 scope: RuntimeConfigScope::Service("api"),
+                group: None,
+                order: 0,
                 value_type: RuntimeConfigType::Bool,
                 default: json!(false),
                 editable: true,

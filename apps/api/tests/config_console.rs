@@ -3,8 +3,8 @@ use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
 use platform_core::{
     AppConfig, AppContext, DatabaseConfig, LoggingEventPublisher, PLATFORM_MIGRATIONS,
-    PostgresRuntimeConfigProvider, RuntimeConfigDescriptor, RuntimeConfigRegistry,
-    RuntimeConfigScope, RuntimeConfigType, apply_migrations,
+    PostgresRuntimeConfigProvider, RuntimeConfigDescriptor, RuntimeConfigGroupDescriptor,
+    RuntimeConfigRegistry, RuntimeConfigScope, RuntimeConfigType, apply_migrations,
 };
 use platform_testing::TestDatabase;
 use serde_json::{Value, json};
@@ -12,26 +12,38 @@ use std::sync::Arc;
 use tower::ServiceExt;
 
 fn registry() -> RuntimeConfigRegistry {
-    RuntimeConfigRegistry::try_new(vec![
-        RuntimeConfigDescriptor {
-            key: "demo.flag".to_owned(),
-            scope: RuntimeConfigScope::Shared,
-            value_type: RuntimeConfigType::Bool,
-            default: json!(false),
-            editable: true,
-            restart_only: false,
-            description: "demo flag",
-        },
-        RuntimeConfigDescriptor {
-            key: "demo.locked".to_owned(),
-            scope: RuntimeConfigScope::Shared,
-            value_type: RuntimeConfigType::Bool,
-            default: json!(true),
-            editable: false,
-            restart_only: false,
-            description: "non-editable demo flag",
-        },
-    ])
+    RuntimeConfigRegistry::try_new_with_groups(
+        vec![
+            RuntimeConfigDescriptor {
+                key: "demo.flag".to_owned(),
+                scope: RuntimeConfigScope::Shared,
+                group: Some("demo"),
+                order: 10,
+                value_type: RuntimeConfigType::Bool,
+                default: json!(false),
+                editable: true,
+                restart_only: false,
+                description: "demo flag",
+            },
+            RuntimeConfigDescriptor {
+                key: "demo.locked".to_owned(),
+                scope: RuntimeConfigScope::Shared,
+                group: Some("demo"),
+                order: 20,
+                value_type: RuntimeConfigType::Bool,
+                default: json!(true),
+                editable: false,
+                restart_only: false,
+                description: "non-editable demo flag",
+            },
+        ],
+        vec![RuntimeConfigGroupDescriptor {
+            id: "demo",
+            label: "Demo",
+            description: "Demo settings.",
+            order: 10,
+        }],
+    )
     .unwrap()
 }
 
@@ -106,11 +118,19 @@ async fn config_console_round_trip() {
     assert_eq!(response.status(), StatusCode::OK);
     let body = json_body(response).await;
     assert!(
+        body["groups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|group| group["id"] == "demo" && group["label"] == "Demo"),
+        "descriptors should include demo group: {body:?}"
+    );
+    assert!(
         body["data"]
             .as_array()
             .unwrap()
             .iter()
-            .any(|d| d["key"] == "demo.flag"),
+            .any(|d| d["key"] == "demo.flag" && d["group"] == "demo" && d["order"] == 10),
         "descriptors should include demo.flag: {body:?}"
     );
 

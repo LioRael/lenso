@@ -60,6 +60,8 @@ impl RuntimeConfigType {
 pub struct RuntimeConfigDescriptor {
     pub key: String,
     pub scope: RuntimeConfigScope,
+    pub group: Option<&'static str>,
+    pub order: i32,
     pub value_type: RuntimeConfigType,
     pub default: Value,
     pub editable: bool,
@@ -95,15 +97,34 @@ impl RuntimeConfigDescriptor {
     }
 }
 
+/// Presentation metadata for a set of related config keys.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuntimeConfigGroupDescriptor {
+    pub id: &'static str,
+    pub label: &'static str,
+    pub description: &'static str,
+    pub order: i32,
+}
+
 /// An immutable, validated set of descriptors indexed by `(service_key, key)`.
 #[derive(Debug, Clone, Default)]
 pub struct RuntimeConfigRegistry {
     by_scope_key: BTreeMap<(String, String), RuntimeConfigDescriptor>,
+    groups: BTreeMap<String, RuntimeConfigGroupDescriptor>,
 }
 
 impl RuntimeConfigRegistry {
     /// Build a registry, rejecting duplicate `(scope, key)` pairs.
     pub fn try_new(descriptors: Vec<RuntimeConfigDescriptor>) -> AppResult<Self> {
+        Self::try_new_with_groups(descriptors, Vec::new())
+    }
+
+    /// Build a registry with presentation groups, rejecting duplicate descriptors
+    /// and conflicting group ids.
+    pub fn try_new_with_groups(
+        descriptors: Vec<RuntimeConfigDescriptor>,
+        groups: Vec<RuntimeConfigGroupDescriptor>,
+    ) -> AppResult<Self> {
         let mut by_scope_key = BTreeMap::new();
         for descriptor in descriptors {
             let index = (
@@ -118,7 +139,25 @@ impl RuntimeConfigRegistry {
             }
             by_scope_key.insert(index, descriptor);
         }
-        Ok(Self { by_scope_key })
+
+        let mut by_id = BTreeMap::new();
+        for group in groups {
+            if let Some(existing) = by_id.get(group.id) {
+                if existing != &group {
+                    return Err(AppError::new(
+                        ErrorCode::Internal,
+                        format!("conflicting setting group descriptor for `{}`", group.id),
+                    ));
+                }
+                continue;
+            }
+            by_id.insert(group.id.to_owned(), group);
+        }
+
+        Ok(Self {
+            by_scope_key,
+            groups: by_id,
+        })
     }
 
     /// Look up a descriptor by exact scope and key.
@@ -139,6 +178,11 @@ impl RuntimeConfigRegistry {
     pub fn iter(&self) -> impl Iterator<Item = &RuntimeConfigDescriptor> {
         self.by_scope_key.values()
     }
+
+    /// All presentation groups, ordered by id.
+    pub fn groups(&self) -> impl Iterator<Item = &RuntimeConfigGroupDescriptor> {
+        self.groups.values()
+    }
 }
 
 #[cfg(test)]
@@ -150,6 +194,8 @@ mod tests {
         RuntimeConfigDescriptor {
             key: "demo.enabled".to_owned(),
             scope: RuntimeConfigScope::Shared,
+            group: None,
+            order: 0,
             value_type: RuntimeConfigType::Bool,
             default: json!(true),
             editable: true,
@@ -170,6 +216,8 @@ mod tests {
         let d = RuntimeConfigDescriptor {
             key: "demo.count".to_owned(),
             scope: RuntimeConfigScope::Service("api"),
+            group: None,
+            order: 0,
             value_type: RuntimeConfigType::Int {
                 min: Some(1),
                 max: Some(10),
@@ -190,6 +238,8 @@ mod tests {
         let d = RuntimeConfigDescriptor {
             key: "demo.mode".to_owned(),
             scope: RuntimeConfigScope::Shared,
+            group: None,
+            order: 0,
             value_type: RuntimeConfigType::Enum(&["a", "b"]),
             default: json!("a"),
             editable: true,
@@ -219,5 +269,23 @@ mod tests {
                 .get(&RuntimeConfigScope::Service("api"), "demo.enabled")
                 .is_none()
         );
+    }
+
+    #[test]
+    fn registry_deduplicates_matching_groups() {
+        let group = RuntimeConfigGroupDescriptor {
+            id: "demo",
+            label: "Demo",
+            description: "demo settings",
+            order: 10,
+        };
+
+        let registry = RuntimeConfigRegistry::try_new_with_groups(
+            vec![bool_descriptor()],
+            vec![group.clone(), group],
+        )
+        .unwrap();
+
+        assert_eq!(registry.groups().count(), 1);
     }
 }

@@ -84,6 +84,8 @@ mod tests {
         let registry = RuntimeConfigRegistry::try_new(vec![RuntimeConfigDescriptor {
             key: "demo.enabled".to_owned(),
             scope: RuntimeConfigScope::Shared,
+            group: None,
+            order: 0,
             value_type: RuntimeConfigType::Bool,
             default: json!(true),
             editable: true,
@@ -102,6 +104,8 @@ mod tests {
         let registry = RuntimeConfigRegistry::try_new(vec![RuntimeConfigDescriptor {
             key: "x".to_owned(),
             scope: RuntimeConfigScope::Shared,
+            group: None,
+            order: 0,
             value_type: RuntimeConfigType::Bool,
             default: json!(false),
             editable: true,

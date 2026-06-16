@@ -2450,7 +2450,7 @@ paths:
           - string
           - 'null'
       requestBody:
-        description: Create a session for a password identity
+        description: Create a session or JWT for a password identity
         content:
           application/json:
             schema:
@@ -2458,7 +2458,7 @@ paths:
         required: true
       responses:
         '200':
-          description: Password session created
+          description: Password authentication successful
           headers:
             x-correlation-id:
               schema:
@@ -4765,6 +4765,7 @@ components:
       required:
       - key
       - service
+      - order
       - value_type
       - default
       - editable
@@ -4776,8 +4777,15 @@ components:
           type: string
         editable:
           type: boolean
+        group:
+          type:
+          - string
+          - 'null'
         key:
           type: string
+        order:
+          type: integer
+          format: int32
         restart_only:
           type: boolean
         service:
@@ -4787,12 +4795,35 @@ components:
       type: object
       description: The list of all registered descriptors.
       required:
+      - groups
       - data
       properties:
         data:
           type: array
           items:
             $ref: '#/components/schemas/ConfigDescriptorDto'
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConfigGroupDto'
+    ConfigGroupDto:
+      type: object
+      description: Presentation metadata for a set of related settings.
+      required:
+      - id
+      - label
+      - description
+      - order
+      properties:
+        description:
+          type: string
+        id:
+          type: string
+        label:
+          type: string
+        order:
+          type: integer
+          format: int32
     ConfigValueDto:
       type: object
       description: A resolved effective value plus where it came from.
@@ -5337,7 +5368,6 @@ components:
       type: object
       required:
       - user_id
-      - session_id
       - token
       - expires_at
       properties:
@@ -5345,7 +5375,9 @@ components:
           type: string
           format: date-time
         session_id:
-          type: string
+          type:
+          - string
+          - 'null'
         token:
           type: string
         user_id:

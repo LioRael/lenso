@@ -30,11 +30,23 @@ pub(crate) async fn list_config_descriptors(
     State(_ctx): State<AppContext>,
     HttpRequestContext(_request_ctx): HttpRequestContext,
 ) -> Result<Json<ConfigDescriptorListResponse>, ApiErrorResponse> {
-    let data = runtime_config_registry()
+    let registry = runtime_config_registry();
+    let groups = registry
+        .groups()
+        .map(|group| ConfigGroupDto {
+            id: group.id.to_owned(),
+            label: group.label.to_owned(),
+            description: group.description.to_owned(),
+            order: group.order,
+        })
+        .collect();
+    let data = registry
         .iter()
         .map(|d| ConfigDescriptorDto {
             key: d.key.to_owned(),
             service: d.scope.as_service_key().to_owned(),
+            group: d.group.map(str::to_owned),
+            order: d.order,
             value_type: d.value_type.to_json(),
             default: d.default.clone(),
             editable: d.editable,
@@ -42,7 +54,7 @@ pub(crate) async fn list_config_descriptors(
             description: d.description.to_owned(),
         })
         .collect();
-    Ok(Json(ConfigDescriptorListResponse { data }))
+    Ok(Json(ConfigDescriptorListResponse { groups, data }))
 }
 
 #[utoipa::path(

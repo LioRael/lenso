@@ -4,7 +4,9 @@
 //! product module, so they are registered as platform-owned descriptors at the
 //! composition root rather than via a module manifest.
 
-use crate::runtime_config::{RuntimeConfigDescriptor, RuntimeConfigScope, RuntimeConfigType};
+use crate::runtime_config::{
+    RuntimeConfigDescriptor, RuntimeConfigGroupDescriptor, RuntimeConfigScope, RuntimeConfigType,
+};
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::LazyLock;
@@ -26,11 +28,23 @@ impl Default for WorkerRuntimeConfig {
 }
 
 /// Platform-owned, worker-scoped runtime config descriptors.
+pub static RUNTIME_CONFIG_GROUPS: LazyLock<Vec<RuntimeConfigGroupDescriptor>> =
+    LazyLock::new(|| {
+        vec![RuntimeConfigGroupDescriptor {
+            id: "worker.runtime",
+            label: "Worker Runtime",
+            description: "Worker polling and claim behavior.",
+            order: 40,
+        }]
+    });
+
 pub static RUNTIME_CONFIG: LazyLock<Vec<RuntimeConfigDescriptor>> = LazyLock::new(|| {
     vec![
         RuntimeConfigDescriptor {
             key: "worker.poll_interval_ms".to_owned(),
             scope: RuntimeConfigScope::Service("worker"),
+            group: Some("worker.runtime"),
+            order: 10,
             value_type: RuntimeConfigType::Int {
                 min: Some(50),
                 max: Some(60_000),
@@ -43,6 +57,8 @@ pub static RUNTIME_CONFIG: LazyLock<Vec<RuntimeConfigDescriptor>> = LazyLock::ne
         RuntimeConfigDescriptor {
             key: "worker.batch_size".to_owned(),
             scope: RuntimeConfigScope::Service("worker"),
+            group: Some("worker.runtime"),
+            order: 20,
             value_type: RuntimeConfigType::Int {
                 min: Some(1),
                 max: Some(1_000),

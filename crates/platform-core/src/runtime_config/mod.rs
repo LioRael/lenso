@@ -11,7 +11,8 @@ mod snapshot;
 pub mod store;
 
 pub use descriptor::{
-    RuntimeConfigDescriptor, RuntimeConfigRegistry, RuntimeConfigScope, RuntimeConfigType,
+    RuntimeConfigDescriptor, RuntimeConfigGroupDescriptor, RuntimeConfigRegistry,
+    RuntimeConfigScope, RuntimeConfigType,
 };
 pub use postgres::{CONFIG_NOTIFY_CHANNEL, PostgresRuntimeConfigProvider};
 pub use provider::{RuntimeConfigCell, RuntimeConfigProvider, StaticRuntimeConfigProvider};

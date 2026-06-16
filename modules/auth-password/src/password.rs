@@ -1,5 +1,6 @@
+use crate::config::AuthPasswordConfig;
 use argon2::password_hash::{PasswordHash, SaltString};
-use argon2::{Argon2, PasswordHasher, PasswordVerifier};
+use argon2::{Argon2, Params, PasswordHasher, PasswordVerifier, Version};
 use platform_core::error::ErrorDetail;
 use platform_core::{AppError, AppResult, ErrorCode};
 use rand_core::{OsRng, RngCore};
@@ -29,9 +30,9 @@ pub fn validate_password(password: &str) -> AppResult<()> {
     Ok(())
 }
 
-pub fn hash_password(password: &str) -> AppResult<String> {
+pub fn hash_password(password: &str, config: &AuthPasswordConfig) -> AppResult<String> {
     let salt = SaltString::generate(&mut OsRng);
-    Argon2::default()
+    argon2_from_config(config)?
         .hash_password(password.as_bytes(), &salt)
         .map(|hash| hash.to_string())
         .map_err(|_| AppError::new(ErrorCode::Internal, "Password hashing failed"))
@@ -60,6 +61,22 @@ pub fn new_session_token() -> String {
         let _ = write!(token, "{byte:02x}");
     }
     token
+}
+
+fn argon2_from_config(config: &AuthPasswordConfig) -> AppResult<Argon2<'static>> {
+    let params = Params::new(
+        config.argon2_memory_kib,
+        config.argon2_time_cost,
+        config.argon2_parallelism,
+        None,
+    )
+    .map_err(|_| AppError::new(ErrorCode::Internal, "Invalid password hash configuration"))?;
+
+    Ok(Argon2::new(
+        config.argon2_algorithm(),
+        Version::default(),
+        params,
+    ))
 }
 
 fn validation_error(field: &str, reason: &str) -> AppError {
@@ -94,10 +111,47 @@ mod tests {
 
     #[test]
     fn password_hash_verifies_original_password_only() {
-        let hash = hash_password("correct horse").expect("password should hash");
+        let hash = hash_password("correct horse", &AuthPasswordConfig::default())
+            .expect("password should hash");
 
         assert!(verify_password(&hash, "correct horse").expect("hash should verify"));
         assert!(!verify_password(&hash, "wrong horse").expect("hash should verify"));
+    }
+
+    #[test]
+    fn password_hash_uses_configured_argon2_policy() {
+        let config = AuthPasswordConfig {
+            hash_algorithm: crate::config::HashAlgorithm::Argon2i,
+            argon2_memory_kib: 16 * 1024,
+            argon2_time_cost: 3,
+            argon2_parallelism: 2,
+            ..AuthPasswordConfig::default()
+        };
+        let hash = hash_password("correct horse", &config).expect("password should hash");
+        let parsed = PasswordHash::new(&hash).expect("hash should parse");
+
+        assert_eq!(parsed.algorithm.to_string(), "argon2i");
+        assert_eq!(
+            parsed
+                .params
+                .get("m")
+                .and_then(|value| value.decimal().ok()),
+            Some(16 * 1024)
+        );
+        assert_eq!(
+            parsed
+                .params
+                .get("t")
+                .and_then(|value| value.decimal().ok()),
+            Some(3)
+        );
+        assert_eq!(
+            parsed
+                .params
+                .get("p")
+                .and_then(|value| value.decimal().ok()),
+            Some(2)
+        );
     }
 
     #[test]

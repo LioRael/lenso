@@ -12,6 +12,8 @@ fn registry() -> RuntimeConfigRegistry {
     RuntimeConfigRegistry::try_new(vec![RuntimeConfigDescriptor {
         key: "demo.ttl_minutes".to_owned(),
         scope: RuntimeConfigScope::Shared,
+        group: None,
+        order: 0,
         value_type: RuntimeConfigType::Int {
             min: Some(1),
             max: Some(1000),

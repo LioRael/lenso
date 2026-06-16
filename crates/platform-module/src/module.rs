@@ -4,7 +4,7 @@ use crate::admin_data::{AdminActionSource, AdminDataSource};
 use crate::binding::ModuleBinding;
 use crate::linked::{LinkedBinding, LinkedHttpContribution};
 use lenso::{ModuleManifest, ModuleSource};
-use platform_core::RuntimeConfigDescriptor;
+use platform_core::{RuntimeConfigDescriptor, RuntimeConfigGroupDescriptor};
 use std::sync::Arc;
 
 /// One loaded module. `manifest` is serializable data; `binding` is behavior;
@@ -19,6 +19,7 @@ pub struct Module {
     pub load_status: ModuleLoadStatus,
     pub linked_http: Option<LinkedHttpContribution>,
     pub runtime_config: &'static [RuntimeConfigDescriptor],
+    pub runtime_config_groups: &'static [RuntimeConfigGroupDescriptor],
     /// Optional schema-admin data source. `None` for modules without an admin
     /// surface (e.g. notifications). Set via [`Module::with_admin_data`].
     pub admin_data: Option<Arc<dyn AdminDataSource>>,
@@ -45,6 +46,7 @@ impl Module {
             load_status: ModuleLoadStatus::Loaded,
             linked_http,
             runtime_config: &[],
+            runtime_config_groups: &[],
             admin_data: None,
             admin_actions: None,
         }
@@ -61,6 +63,7 @@ impl Module {
             load_status: ModuleLoadStatus::Loaded,
             linked_http: None,
             runtime_config: &[],
+            runtime_config_groups: &[],
             admin_data: None,
             admin_actions: None,
         }
@@ -73,6 +76,16 @@ impl Module {
         runtime_config: &'static [RuntimeConfigDescriptor],
     ) -> Self {
         self.runtime_config = runtime_config;
+        self
+    }
+
+    /// Attach presentation groups for the module's editable configuration.
+    #[must_use]
+    pub fn with_runtime_config_groups(
+        mut self,
+        runtime_config_groups: &'static [RuntimeConfigGroupDescriptor],
+    ) -> Self {
+        self.runtime_config_groups = runtime_config_groups;
         self
     }
 

@@ -8,6 +8,8 @@ use utoipa::{IntoParams, ToSchema};
 pub struct ConfigDescriptorDto {
     pub key: String,
     pub service: String,
+    pub group: Option<String>,
+    pub order: i32,
     pub value_type: Value,
     pub default: Value,
     pub editable: bool,
@@ -15,9 +17,19 @@ pub struct ConfigDescriptorDto {
     pub description: String,
 }
 
+/// Presentation metadata for a set of related settings.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ConfigGroupDto {
+    pub id: String,
+    pub label: String,
+    pub description: String,
+    pub order: i32,
+}
+
 /// The list of all registered descriptors.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ConfigDescriptorListResponse {
+    pub groups: Vec<ConfigGroupDto>,
     pub data: Vec<ConfigDescriptorDto>,
 }
 

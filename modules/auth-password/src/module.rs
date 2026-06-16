@@ -1,3 +1,4 @@
+use crate::config::AuthPasswordConfig;
 use platform_core::AppContext;
 use platform_http::ApiOpenApiRouter;
 use platform_module::{
@@ -49,6 +50,27 @@ pub fn binding() -> LinkedBinding {
 
 pub fn module(_ctx: &AppContext) -> Module {
     Module::linked(manifest(), binding())
+        .with_runtime_config_groups(crate::config::RUNTIME_CONFIG_GROUPS.as_slice())
+        .with_runtime_config(crate::config::RUNTIME_CONFIG.as_slice())
+}
+
+/// Build a [`JwtActorResolver`] if auth-password is configured with `token_strategy = "jwt"`.
+///
+/// Returns `Ok(None)` when the strategy is `"session"` (the default) or when
+/// the auth-password module is not enabled. Returns `Ok(Some(..))` with the
+/// resolver wrapping the given `fallback`.
+pub fn jwt_actor_resolver(
+    ctx: &AppContext,
+    fallback: std::sync::Arc<dyn platform_core::ActorResolver>,
+) -> platform_core::AppResult<Option<std::sync::Arc<dyn platform_core::ActorResolver>>> {
+    let config = AuthPasswordConfig::from_context(ctx)?;
+    let jwt_config = match config.jwt_config()? {
+        Some(cfg) => cfg,
+        None => return Ok(None),
+    };
+    Ok(Some(std::sync::Arc::new(
+        crate::resolver::JwtActorResolver::new(jwt_config, fallback),
+    )))
 }
 
 #[cfg(test)]
