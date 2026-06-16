@@ -1,7 +1,7 @@
 /* eslint-disable */
 // Generated from contracts/openapi/app-api.v1.yaml. Do not edit by hand.
 
-import type { CreateUserRequest, CreateUserResponse, ErrorResponse } from './types.js';
+import type { CreateUserRequest, CreateUserResponse, ErrorResponse, PasswordLoginRequest, PasswordRegisterRequest, PasswordSessionResponse } from './types.js';
 
 export type LensoClientOptions = {
   baseUrl: string;
@@ -25,6 +25,10 @@ export type CreateUserResponseEnvelope = {
   data: CreateUserResponse;
 };
 
+export type PasswordSessionResponseEnvelope = {
+  data: PasswordSessionResponse;
+};
+
 export class GeneratedLensoClient {
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
@@ -37,7 +41,35 @@ export class GeneratedLensoClient {
   }
 
   async createUser(input: CreateUserRequest): Promise<CreateUserResponse> {
-    const response = await this.fetchImpl(`${this.baseUrl}/v1/identity/users`, {
+    const body = await this.postJson<CreateUserResponseEnvelope>(
+      '/v1/identity/users',
+      input
+    );
+    return body.data;
+  }
+
+  async authPasswordRegister(
+    input: PasswordRegisterRequest
+  ): Promise<PasswordSessionResponse> {
+    const body = await this.postJson<PasswordSessionResponseEnvelope>(
+      '/v1/auth/password/register',
+      input
+    );
+    return body.data;
+  }
+
+  async authPasswordLogin(
+    input: PasswordLoginRequest
+  ): Promise<PasswordSessionResponse> {
+    const body = await this.postJson<PasswordSessionResponseEnvelope>(
+      '/v1/auth/password/login',
+      input
+    );
+    return body.data;
+  }
+
+  private async postJson<T>(path: string, input: unknown): Promise<T> {
+    const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -51,7 +83,7 @@ export class GeneratedLensoClient {
       throw new LensoApiError(response.status, body as ErrorResponse);
     }
 
-    return (body as CreateUserResponseEnvelope).data;
+    return body as T;
   }
 
   private async resolveHeaders(): Promise<HeadersInit> {

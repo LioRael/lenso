@@ -35,10 +35,30 @@ pub fn generated_types_source() -> anyhow::Result<String> {
 
 pub fn generated_client_source() -> anyhow::Result<String> {
     let document = read_openapi()?;
-    assert_create_user_operation(&document)?;
+    assert_json_operation(
+        &document,
+        "/paths/~1v1~1identity~1users/post",
+        "identity_create_user",
+        "CreateUserRequest",
+        "CreateUserResponseEnvelope",
+    )?;
+    assert_json_operation(
+        &document,
+        "/paths/~1v1~1auth~1password~1register/post",
+        "auth_password_register",
+        "PasswordRegisterRequest",
+        "PasswordSessionResponseEnvelope",
+    )?;
+    assert_json_operation(
+        &document,
+        "/paths/~1v1~1auth~1password~1login/post",
+        "auth_password_login",
+        "PasswordLoginRequest",
+        "PasswordSessionResponseEnvelope",
+    )?;
 
     Ok(format!(
-        "{GENERATED_HEADER}import type {{ CreateUserRequest, CreateUserResponse, ErrorResponse }} from './types.js';\n\n{}",
+        "{GENERATED_HEADER}import type {{ CreateUserRequest, CreateUserResponse, ErrorResponse, PasswordLoginRequest, PasswordRegisterRequest, PasswordSessionResponse }} from './types.js';\n\n{}",
         CLIENT_BODY
     ))
 }
@@ -67,30 +87,38 @@ fn repo_root() -> PathBuf {
         .to_path_buf()
 }
 
-fn assert_create_user_operation(document: &Value) -> anyhow::Result<()> {
+fn assert_json_operation(
+    document: &Value,
+    operation_pointer: &str,
+    expected_operation_id: &str,
+    request_type: &str,
+    response_type: &str,
+) -> anyhow::Result<()> {
     let operation = document
-        .pointer("/paths/~1v1~1identity~1users/post")
-        .context("OpenAPI document is missing POST /v1/identity/users")?;
+        .pointer(operation_pointer)
+        .with_context(|| format!("OpenAPI document is missing {operation_pointer}"))?;
     let operation_id = operation
         .get("operationId")
         .and_then(Value::as_str)
-        .context("create user operation is missing operationId")?;
-    if operation_id != "identity_create_user" {
-        bail!("unexpected create user operationId: {operation_id}");
+        .with_context(|| format!("{operation_pointer} is missing operationId"))?;
+    if operation_id != expected_operation_id {
+        bail!("unexpected operationId for {operation_pointer}: {operation_id}");
     }
 
     let request_ref = operation
         .pointer("/requestBody/content/application~1json/schema/$ref")
         .and_then(Value::as_str);
-    if request_ref != Some("#/components/schemas/CreateUserRequest") {
-        bail!("create user request body must reference CreateUserRequest");
+    let expected_request_ref = format!("#/components/schemas/{request_type}");
+    if request_ref != Some(expected_request_ref.as_str()) {
+        bail!("{operation_pointer} request body must reference {request_type}");
     }
 
     let success_ref = operation
         .pointer("/responses/200/content/application~1json/schema/$ref")
         .and_then(Value::as_str);
-    if success_ref != Some("#/components/schemas/CreateUserResponseEnvelope") {
-        bail!("create user response must reference CreateUserResponseEnvelope");
+    let expected_success_ref = format!("#/components/schemas/{response_type}");
+    if success_ref != Some(expected_success_ref.as_str()) {
+        bail!("{operation_pointer} response must reference {response_type}");
     }
 
     Ok(())
@@ -234,6 +262,10 @@ export type CreateUserResponseEnvelope = {
   data: CreateUserResponse;
 };
 
+export type PasswordSessionResponseEnvelope = {
+  data: PasswordSessionResponse;
+};
+
 export class GeneratedLensoClient {
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
@@ -246,7 +278,35 @@ export class GeneratedLensoClient {
   }
 
   async createUser(input: CreateUserRequest): Promise<CreateUserResponse> {
-    const response = await this.fetchImpl(`${this.baseUrl}/v1/identity/users`, {
+    const body = await this.postJson<CreateUserResponseEnvelope>(
+      '/v1/identity/users',
+      input
+    );
+    return body.data;
+  }
+
+  async authPasswordRegister(
+    input: PasswordRegisterRequest
+  ): Promise<PasswordSessionResponse> {
+    const body = await this.postJson<PasswordSessionResponseEnvelope>(
+      '/v1/auth/password/register',
+      input
+    );
+    return body.data;
+  }
+
+  async authPasswordLogin(
+    input: PasswordLoginRequest
+  ): Promise<PasswordSessionResponse> {
+    const body = await this.postJson<PasswordSessionResponseEnvelope>(
+      '/v1/auth/password/login',
+      input
+    );
+    return body.data;
+  }
+
+  private async postJson<T>(path: string, input: unknown): Promise<T> {
+    const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -260,7 +320,7 @@ export class GeneratedLensoClient {
       throw new LensoApiError(response.status, body as ErrorResponse);
     }
 
-    return (body as CreateUserResponseEnvelope).data;
+    return body as T;
   }
 
   private async resolveHeaders(): Promise<HeadersInit> {

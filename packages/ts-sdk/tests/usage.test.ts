@@ -4,6 +4,7 @@ import {
   createClient,
   type CreateUserResponse,
   LensoApiError,
+  type PasswordSessionResponse,
 } from "../src/index.js";
 
 describe("createClient", () => {
@@ -88,5 +89,51 @@ describe("createClient", () => {
         },
       },
     });
+  });
+
+  test("creates password auth sessions", async () => {
+    const requests: Array<{ input: RequestInfo | URL; init?: RequestInit }> =
+      [];
+    const fetchImpl: typeof fetch = async (input, init) => {
+      requests.push(init === undefined ? { input } : { input, init });
+
+      return new Response(
+        JSON.stringify({
+          data: {
+            user_id: "usr_1",
+            session_id: "sess_1",
+            token: "sess_token",
+            expires_at: "2026-06-16T12:00:00Z",
+          },
+        }),
+        { status: 200 }
+      );
+    };
+    const client = createClient({
+      baseUrl: "http://localhost:3000/",
+      fetch: fetchImpl,
+    });
+
+    const registerSession: PasswordSessionResponse =
+      await client.auth.password.register({
+        identifier: "ada@example.com",
+        password: "correct horse",
+      });
+    const loginSession = await client.auth.password.login({
+      identifier: "ada@example.com",
+      password: "correct horse",
+    });
+
+    expect(registerSession).toEqual({
+      user_id: "usr_1",
+      session_id: "sess_1",
+      token: "sess_token",
+      expires_at: "2026-06-16T12:00:00Z",
+    });
+    expect(loginSession).toEqual(registerSession);
+    expect(requests.map((request) => String(request.input))).toEqual([
+      "http://localhost:3000/v1/auth/password/register",
+      "http://localhost:3000/v1/auth/password/login",
+    ]);
   });
 });
