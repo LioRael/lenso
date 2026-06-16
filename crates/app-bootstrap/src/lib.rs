@@ -25,13 +25,13 @@ use platform_core::error::ErrorDetail;
 use platform_core::{
     ActorContext, AppContext, AppError, CorrelationId, EventHandlerRegistry, Migration,
     PLATFORM_MIGRATIONS, RuntimeConfigDescriptor, RuntimeConfigScope, RuntimeConfigType,
-    StoryDisplayDescriptor, TraceContext,
+    StoryDisplayDescriptor, StoryDisplaySource, TraceContext,
 };
 use platform_http::ApiOpenApiRouter;
 use platform_module::{
     AdminSchema, AdminSurface, EventHandlerRegistrationContext, LifecycleActivationRunPolicy,
-    LifecycleStartupCheckKind, LinkedBinding, Module, ModuleLoadStatus, ModuleManifest,
-    ModuleSource,
+    LifecycleStartupCheckKind, LinkedBinding, Module, ModuleHttpMethod, ModuleLoadStatus,
+    ModuleManifest, ModuleSource,
 };
 use platform_module_remote::{RemoteHttpProxyRegistry, RemoteModuleConfig, RemoteModuleSource};
 use platform_runtime::{
@@ -1525,7 +1525,7 @@ pub fn story_display_descriptors_for_profile(
 ) -> Vec<StoryDisplayDescriptor> {
     module_manifests_for_profile(profile)
         .into_iter()
-        .flat_map(|manifest| manifest.story_display)
+        .flat_map(story_display_descriptors_from_manifest)
         .collect()
 }
 
@@ -1534,7 +1534,7 @@ pub fn story_display_descriptors_for_config(
 ) -> platform_core::AppResult<Vec<StoryDisplayDescriptor>> {
     Ok(linked_module_entries_for_config(config)?
         .into_iter()
-        .flat_map(|entry| (entry.manifest)().story_display)
+        .flat_map(|entry| story_display_descriptors_from_manifest((entry.manifest)()))
         .collect())
 }
 
@@ -1543,7 +1543,7 @@ pub fn story_display_descriptors_for_context(
 ) -> platform_core::AppResult<Vec<StoryDisplayDescriptor>> {
     Ok(linked_module_entries_for_context(ctx)?
         .into_iter()
-        .flat_map(|entry| (entry.manifest)().story_display)
+        .flat_map(|entry| story_display_descriptors_from_manifest((entry.manifest)()))
         .collect())
 }
 
@@ -1563,7 +1563,7 @@ pub fn install_default_story_display_catalog_with_composition(
     descriptors.extend(
         host_linked_modules_for_context(ctx, composition)
             .into_iter()
-            .flat_map(|entry| (entry.manifest)().story_display),
+            .flat_map(|entry| story_display_descriptors_from_manifest((entry.manifest)())),
     );
     story::backend::install_default_story_display(descriptors);
     Ok(())
@@ -1573,9 +1573,68 @@ pub fn install_story_display_catalog(metadata: &[AdminModuleMetadata]) {
     story::backend::install_story_display(
         metadata
             .iter()
-            .flat_map(|module| module.story_display.clone())
+            .flat_map(story_display_descriptors_from_metadata)
             .collect(),
     );
+}
+
+fn story_display_descriptors_from_metadata(
+    module: &AdminModuleMetadata,
+) -> Vec<StoryDisplayDescriptor> {
+    story_display_descriptors_from_manifest(
+        ModuleManifest::builder(module.module_name.clone())
+            .story_display(module.story_display.clone())
+            .http_routes(module.http_routes.clone())
+            .build(),
+    )
+}
+
+fn story_display_descriptors_from_manifest(
+    manifest: ModuleManifest,
+) -> Vec<StoryDisplayDescriptor> {
+    let mut descriptors = manifest.story_display;
+    let existing_http = descriptors
+        .iter()
+        .filter_map(|descriptor| match &descriptor.source {
+            StoryDisplaySource::HttpRequest { method, path } => {
+                Some((method.clone(), path.clone()))
+            }
+            StoryDisplaySource::ExecutionName { .. } => None,
+        })
+        .collect::<Vec<_>>();
+
+    descriptors.extend(manifest.http_routes.into_iter().filter_map(|route| {
+        let display_name = route.display_name?;
+        let method = http_method_label(route.method)?;
+        if existing_http
+            .iter()
+            .any(|(existing_method, existing_path)| {
+                existing_method == method && existing_path == &route.path
+            })
+        {
+            return None;
+        }
+        Some(StoryDisplayDescriptor {
+            source: StoryDisplaySource::HttpRequest {
+                method: method.to_owned(),
+                path: route.path,
+            },
+            display_name,
+            story_title: route.story_title,
+        })
+    }));
+    descriptors
+}
+
+fn http_method_label(method: ModuleHttpMethod) -> Option<&'static str> {
+    Some(match method {
+        ModuleHttpMethod::Get => "GET",
+        ModuleHttpMethod::Post => "POST",
+        ModuleHttpMethod::Put => "PUT",
+        ModuleHttpMethod::Patch => "PATCH",
+        ModuleHttpMethod::Delete => "DELETE",
+        _ => return None,
+    })
 }
 
 /// Every module's setting descriptors.
@@ -1738,6 +1797,19 @@ mod tests {
                 "platform-story"
             ]
         );
+    }
+
+    #[test]
+    fn http_route_metadata_contributes_story_display_descriptors() {
+        let descriptors = story_display_descriptors_for_profile(CompositionProfile::Demo);
+
+        assert!(descriptors.iter().any(|descriptor| {
+            matches!(
+                &descriptor.source,
+                StoryDisplaySource::HttpRequest { method, path }
+                    if method == "GET" && path == "/v1/identity/me"
+            ) && descriptor.display_name == "Fetch Current User"
+        }));
     }
 
     #[test]

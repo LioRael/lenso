@@ -5,6 +5,8 @@ use lenso_host::prelude::*;
 
 pub const MODULE_NAME: &str = "app";
 pub const APP_STATUS_READ_CAPABILITY: &str = "app.status.read";
+pub const APP_ITEMS_READ_CAPABILITY: &str = "app.items.read";
+pub const APP_ITEMS_WRITE_CAPABILITY: &str = "app.items.write";
 
 const APP_MIGRATIONS: &[Migration] = &[Migration {
     name: "app/0001_create_app_schema",
@@ -20,18 +22,38 @@ pub fn linked_module() -> HostLinkedModule {
 }
 
 pub fn http_routes() -> Vec<ModuleHttpRoute> {
-    vec![ModuleHttpRoute {
-        method: ModuleHttpMethod::Get,
-        path: "/v1/app/status".to_owned(),
-        capability: Some(APP_STATUS_READ_CAPABILITY.to_owned()),
-        display_name: Some("App Status".to_owned()),
-        story_title: Some("App Status".to_owned()),
-    }]
+    vec![
+        ModuleHttpRoute {
+            method: ModuleHttpMethod::Get,
+            path: "/v1/app/status".to_owned(),
+            capability: Some(APP_STATUS_READ_CAPABILITY.to_owned()),
+            display_name: Some("App Status".to_owned()),
+            story_title: Some("App Status".to_owned()),
+        },
+        ModuleHttpRoute {
+            method: ModuleHttpMethod::Get,
+            path: "/v1/app/items".to_owned(),
+            capability: Some(APP_ITEMS_READ_CAPABILITY.to_owned()),
+            display_name: Some("List App Items".to_owned()),
+            story_title: Some("App Items".to_owned()),
+        },
+        ModuleHttpRoute {
+            method: ModuleHttpMethod::Post,
+            path: "/v1/app/items".to_owned(),
+            capability: Some(APP_ITEMS_WRITE_CAPABILITY.to_owned()),
+            display_name: Some("Create App Item".to_owned()),
+            story_title: Some("App Items".to_owned()),
+        },
+    ]
 }
 
 fn manifest() -> ModuleManifest {
     ModuleManifest::builder(MODULE_NAME)
-        .capabilities(vec![APP_STATUS_READ_CAPABILITY.to_owned()])
+        .capabilities(vec![
+            APP_STATUS_READ_CAPABILITY.to_owned(),
+            APP_ITEMS_READ_CAPABILITY.to_owned(),
+            APP_ITEMS_WRITE_CAPABILITY.to_owned(),
+        ])
         .http_routes(http_routes())
         .build()
 }
@@ -56,7 +78,14 @@ mod tests {
 
         assert_eq!(module.module_name, MODULE_NAME);
         assert_eq!(manifest.name, MODULE_NAME);
-        assert_eq!(manifest.capabilities, vec![APP_STATUS_READ_CAPABILITY]);
+        assert_eq!(
+            manifest.capabilities,
+            vec![
+                APP_STATUS_READ_CAPABILITY,
+                APP_ITEMS_READ_CAPABILITY,
+                APP_ITEMS_WRITE_CAPABILITY
+            ]
+        );
         assert_eq!(manifest.http_routes, http_routes());
         assert!(module.http_binding.is_some());
         assert!(module
