@@ -34,6 +34,8 @@ The API binds to `HTTP_HOST:HTTP_PORT` from `.env` and serves:
 
 - `GET /health`;
 - `GET /v1/app/status`;
+- `GET /v1/app/items`;
+- `POST /v1/app/items`;
 - `GET /openapi.json`;
 - `GET /docs`;
 - Runtime Console admin APIs under `/admin/*`;
@@ -65,10 +67,10 @@ HostBuilder::new()
 ```
 
 The included `src/modules/app` module is a project-owned skeleton. Rename it
-or add modules beside it as your backend grows. It declares a small
-`GET /v1/app/status` route plus the `app.status.read` capability so the module
-has visible metadata and a real HTTP surface in the host registry; replace
-them with your real application capabilities as the module grows.
+or add modules beside it as your backend grows. It declares a small status
+route, an `app.items` table, and `GET`/`POST /v1/app/items` routes so the
+module has visible metadata and a real HTTP/data surface in the host registry;
+replace them with your real application capabilities as the module grows.
 
 When the module owns tables, pass its migration list through
 `HostLinkedModule::manifest_only(...)`.
@@ -88,6 +90,16 @@ cargo run --bin migrate
 
 Add HTTP routes through `src/modules/app/routes.rs`, declare their manifest
 metadata in `src/modules/app/mod.rs`, then restart the API.
+
+Create and read starter data:
+
+```sh
+curl -sS -X POST http://127.0.0.1:3000/v1/app/items \
+  -H 'content-type: application/json' \
+  -d '{"title":"first item"}' | jq .
+
+curl -sS http://127.0.0.1:3000/v1/app/items | jq .
+```
 
 ## Files
 

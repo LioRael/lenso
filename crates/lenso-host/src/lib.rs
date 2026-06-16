@@ -11,9 +11,14 @@ pub use platform_core::Migration;
 /// HTTP authoring helpers for host-owned linked modules.
 pub mod http {
     pub use axum::Json;
+    pub use axum::extract::State;
     pub use axum::routing::{delete, get, patch, post, put};
+    pub use platform_core::{AppContext, AppError, ErrorCode, RequestContext};
     pub use platform_http::responses::{DataResponse, json};
-    pub use platform_http::{ApiOpenApiRouter, OpenApiRouter, routes};
+    pub use platform_http::{
+        ApiErrorResponse, ApiOpenApiRouter, ErrorResponse, HttpRequestContext, JsonBody,
+        OpenApiRouter, routes,
+    };
     pub use platform_module::{
         LinkedBinding, LinkedHttpContribution, ModuleHttpMethod, ModuleHttpRoute,
     };

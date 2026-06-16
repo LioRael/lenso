@@ -44,7 +44,8 @@ host feature is available from the `lenso` crate. `lenso-host` only wraps the
 API, worker, migration boot helpers, and a narrow linked HTTP route authoring
 surface; it is not the final public package boundary. Pin it to a tag or commit
 before using the starter outside local experiments. The starter exposes
-`GET /v1/app/status` as the first host-owned linked route.
+`GET /v1/app/status` plus `GET`/`POST /v1/app/items` as the first host-owned
+linked routes and data surface.
 
 ## Configure Local Environment
 
