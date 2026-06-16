@@ -187,8 +187,10 @@ facade exists.
    as the remote-module authoring facade.
 3. Keep the crates.io `lenso` facade limited to stable module-authoring
    declarations until a host application API is intentionally designed.
-4. Add a starter host path after the examples prove the published package
-   install story end to end. The first transitional path is
-   `templates/starter-host`.
-5. Grow the external examples repository without reintroducing sibling
+4. Keep `templates/starter-host` as the transitional host pressure test until
+   its boot, migration, HTTP, and app-owned data slices stabilize.
+5. Move only the stable subset of `lenso-host` into a future `lenso` `host`
+   feature; leave app-owned SQL, repositories, CRUD shape, auth/session policy,
+   and console UI out of the facade.
+6. Grow the external examples repository without reintroducing sibling
    workspace dependencies.
