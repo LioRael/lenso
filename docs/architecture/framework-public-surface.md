@@ -76,6 +76,24 @@ is the internal pressure-test crate for the same API. It may depend on the
 workspace app crates, but starter templates should treat only its thin boot
 helpers as the host-facing surface.
 
+The current pressure-test surface is intentionally narrow:
+
+- `HostBuilder`, `HostComposition`, and `HostLinkedModule` for composing
+  host-owned linked modules;
+- `run_api_from_env_with_composition`, `run_worker_from_env_with_composition`,
+  and `run_migrations_from_env_with_composition` for booting the three host
+  entrypoints;
+- `Migration` and `ModuleManifest` re-exports for starter module metadata;
+- `lenso_host::http` re-exports for linked HTTP handlers, including
+  `OpenApiRouter`, `routes!`, `JsonBody`, `DataResponse`, standard error
+  response helpers, `AppContext`, and `LinkedHttpContribution`.
+
+`lenso-host` should not grow a repository layer, query builder, CRUD framework,
+or auth/session abstraction just because the starter needs one example. The
+starter may use normal Rust crates such as `sqlx`, `serde`, `axum`, and
+`utoipa` directly for app-owned business code. Promote only the boot and HTTP
+authoring helpers that stay stable across at least one real starter data slice.
+
 The transitional starter host template in `templates/starter-host` is the
 pressure test for that future facade. It keeps the current API, worker, and
 migration entrypoints visible from a blank project while depending on the
