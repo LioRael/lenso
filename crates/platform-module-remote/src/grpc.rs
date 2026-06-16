@@ -19,14 +19,8 @@ const HANDLE_EVENT_PATH: &str = "/lenso.remote.v1.RemoteModule/HandleEvent";
 const MAX_GRPC_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, PartialEq, prost::Message)]
-struct GrpcJsonRequest {
+struct JsonEnvelope {
     // ponytail: first gRPC lane reuses stable JSON envelopes; typed proto can replace this later.
-    #[prost(string, tag = "1")]
-    payload_json: String,
-}
-
-#[derive(Clone, PartialEq, prost::Message)]
-struct GrpcJsonResponse {
     #[prost(string, tag = "1")]
     payload_json: String,
 }
@@ -74,7 +68,7 @@ where
     TResponse: DeserializeOwned,
 {
     let mut client = connect(config, operation).await?;
-    let mut request = Request::new(GrpcJsonRequest {
+    let mut request = Request::new(JsonEnvelope {
         payload_json: serde_json::to_string(request).map_err(|error| {
             AppError::new(
                 ErrorCode::Internal,
@@ -95,7 +89,7 @@ where
         "lenso.remote.v1.RemoteModule",
         method_name(path),
     ));
-    let codec = tonic_prost::ProstCodec::<GrpcJsonRequest, GrpcJsonResponse>::default();
+    let codec = tonic_prost::ProstCodec::<JsonEnvelope, JsonEnvelope>::default();
     let response = client
         .unary(request, PathAndQuery::from_static(path), codec)
         .await
@@ -237,7 +231,7 @@ mod tests {
     }
 
     #[test]
-    fn json_envelope_round_trips_through_grpc_payload() {
+    fn json_envelope_matches_proto_wire_contract() {
         let envelope = RemoteErrorEnvelope {
             error: crate::protocol::RemoteErrorBody {
                 code: "external_dependency_failure".to_owned(),
@@ -246,9 +240,12 @@ mod tests {
                 details: Vec::new(),
             },
         };
-        let request = GrpcJsonRequest {
+        let request = JsonEnvelope {
             payload_json: serde_json::to_string(&envelope).expect("envelope serializes"),
         };
+        let encoded = prost::Message::encode_to_vec(&request);
+        let request =
+            <JsonEnvelope as prost::Message>::decode(encoded.as_slice()).expect("envelope decodes");
 
         let decoded: RemoteErrorEnvelope =
             serde_json::from_str(&request.payload_json).expect("envelope decodes");
@@ -396,14 +393,11 @@ mod tests {
                         path: &'static str,
                     }
 
-                    impl UnaryService<GrpcJsonRequest> for JsonSvc {
-                        type Response = GrpcJsonResponse;
+                    impl UnaryService<JsonEnvelope> for JsonSvc {
+                        type Response = JsonEnvelope;
                         type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
 
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<GrpcJsonRequest>,
-                        ) -> Self::Future {
+                        fn call(&mut self, request: tonic::Request<JsonEnvelope>) -> Self::Future {
                             let path = self.path;
                             Box::pin(async move {
                                 grpc_json_response(path, request.into_inner())
@@ -420,7 +414,7 @@ mod tests {
                     };
                     Box::pin(async move {
                         let codec =
-                            tonic_prost::ProstCodec::<GrpcJsonResponse, GrpcJsonRequest>::default();
+                            tonic_prost::ProstCodec::<JsonEnvelope, JsonEnvelope>::default();
                         let mut grpc = tonic::server::Grpc::new(codec);
                         Ok(grpc.unary(JsonSvc { path }, req).await)
                     })
@@ -445,10 +439,7 @@ mod tests {
         const NAME: &'static str = "lenso.remote.v1.RemoteModule";
     }
 
-    fn grpc_json_response(
-        path: &str,
-        request: GrpcJsonRequest,
-    ) -> Result<GrpcJsonResponse, Status> {
+    fn grpc_json_response(path: &str, request: JsonEnvelope) -> Result<JsonEnvelope, Status> {
         let payload = match path {
             GET_MANIFEST_PATH => serde_json::to_string(&manifest()).expect("manifest serializes"),
             INVOKE_FUNCTION_PATH => {
@@ -483,7 +474,7 @@ mod tests {
             _ => return Err(Status::unimplemented("unknown path")),
         };
 
-        Ok(GrpcJsonResponse {
+        Ok(JsonEnvelope {
             payload_json: payload,
         })
     }
