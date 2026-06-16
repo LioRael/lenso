@@ -11,6 +11,7 @@ pub struct RemoteHttpProxyRegistry {
 pub struct RemoteHttpProxyModule {
     pub module_name: String,
     pub base_url: String,
+    pub transport: RemoteModuleTransport,
     pub timeout_ms: u64,
     pub(crate) auth_token: Option<String>,
     pub routes: Vec<RemoteHttpProxyRoute>,
@@ -29,6 +30,7 @@ pub struct RemoteHttpProxyRoute {
 pub struct RemoteHttpProxyMatch {
     pub module_name: String,
     pub base_url: String,
+    pub(crate) transport: RemoteModuleTransport,
     pub(crate) timeout_ms: u64,
     pub(crate) auth_token: Option<String>,
     pub method: ModuleHttpMethod,
@@ -45,7 +47,6 @@ impl RemoteHttpProxyRegistry {
     pub fn from_modules(modules: &[Module], configs: &[RemoteModuleConfig]) -> Self {
         let config_by_name: BTreeMap<_, _> = configs
             .iter()
-            .filter(|config| config.transport == RemoteModuleTransport::HttpJson)
             .map(|config| (config.name.as_str(), config))
             .collect();
         let modules = modules
@@ -67,6 +68,7 @@ impl RemoteHttpProxyRegistry {
                     RemoteHttpProxyModule {
                         module_name: module.manifest.name.clone(),
                         base_url: config.base_url.clone(),
+                        transport: config.transport,
                         timeout_ms: config.timeout_ms,
                         auth_token: config.auth_token.clone(),
                         routes,
@@ -104,6 +106,7 @@ impl RemoteHttpProxyRegistry {
             Some(RemoteHttpProxyMatch {
                 module_name: module.module_name.clone(),
                 base_url: module.base_url.clone(),
+                transport: module.transport,
                 timeout_ms: module.timeout_ms,
                 auth_token: module.auth_token.clone(),
                 method: route.method,
@@ -279,7 +282,7 @@ mod tests {
     }
 
     #[test]
-    fn registry_skips_grpc_remote_modules() {
+    fn registry_includes_grpc_remote_modules() {
         let registry = RemoteHttpProxyRegistry::from_modules(
             &[remote_module(
                 "remote-crm",
@@ -291,7 +294,11 @@ mod tests {
             )],
         );
 
-        assert!(registry.is_empty());
+        let matched = registry
+            .match_route("remote-crm", ModuleHttpMethod::Get, "/contacts")
+            .expect("route should match");
+        assert_eq!(matched.transport, RemoteModuleTransport::Grpc);
+        assert_eq!(matched.base_url, "http://127.0.0.1:50051");
     }
 
     #[test]

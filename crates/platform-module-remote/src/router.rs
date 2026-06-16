@@ -1,4 +1,8 @@
-use crate::request::{ProxyRequestBody, apply_proxy_request_policy};
+use crate::config::{RemoteModuleConfig, RemoteModuleTransport};
+use crate::protocol::{RemoteErrorEnvelope, RemoteHttpProxyInvokeRequest};
+use crate::request::{
+    ProxyRequestBody, apply_grpc_proxy_request_policy, apply_proxy_request_policy,
+};
 use crate::response::ResponseBodyPolicy;
 use crate::{RemoteHttpProxyMatch, RemoteHttpProxyRegistry};
 use axum::Json;
@@ -452,6 +456,15 @@ async fn forward_delete(
 async fn forward_proxy_request(
     request: ProxyForwardRequest<'_>,
 ) -> Result<Value, ApiErrorResponse> {
+    match request.matched.transport {
+        RemoteModuleTransport::HttpJson => forward_http_json_proxy_request(request).await,
+        RemoteModuleTransport::Grpc => forward_grpc_proxy_request(request).await,
+    }
+}
+
+async fn forward_http_json_proxy_request(
+    request: ProxyForwardRequest<'_>,
+) -> Result<Value, ApiErrorResponse> {
     let ctx = request.ctx;
     let matched = request.matched;
     let request_ctx = request.request_ctx;
@@ -573,6 +586,137 @@ async fn forward_proxy_request(
             Err(ApiErrorResponse::with_context(error, request_ctx))
         }
     }
+}
+
+async fn forward_grpc_proxy_request(
+    request: ProxyForwardRequest<'_>,
+) -> Result<Value, ApiErrorResponse> {
+    let ctx = request.ctx;
+    let matched = request.matched;
+    let request_ctx = request.request_ctx;
+    let started_at = Instant::now();
+    let parts =
+        apply_grpc_proxy_request_policy(request.method, request.headers, request_ctx, request.body)
+            .map_err(|error| ApiErrorResponse::with_context(error, request_ctx))?;
+    let config = RemoteModuleConfig {
+        name: matched.module_name.clone(),
+        base_url: matched.base_url.clone(),
+        transport: RemoteModuleTransport::Grpc,
+        auth_token: matched.auth_token.clone(),
+        timeout_ms: matched.timeout_ms,
+    };
+    let response = match crate::grpc::proxy_http_route(
+        &config,
+        &RemoteHttpProxyInvokeRequest {
+            request_id: request_ctx.request_id.0.clone(),
+            correlation_id: request_ctx.correlation_id.0.clone(),
+            module_name: matched.module_name.clone(),
+            method: module_http_method_label(request.method).to_owned(),
+            declared_path: matched.declared_path.clone(),
+            remote_path: matched.remote_path.clone(),
+            path_params: matched.path_params.clone(),
+            headers: parts.headers,
+            body: parts.body,
+        },
+    )
+    .await
+    {
+        Ok(response) => response,
+        Err(error) => {
+            let app_error = with_proxy_error_details(error, matched, request.method, None);
+            record_proxy_call(
+                ctx,
+                matched,
+                request_ctx,
+                started_at,
+                None,
+                Some(&app_error),
+            )
+            .await;
+            return Err(ApiErrorResponse::with_context(app_error, request_ctx));
+        }
+    };
+    let remote_status = match reqwest::StatusCode::from_u16(response.status_code) {
+        Ok(status) => status,
+        Err(error) => {
+            let app_error = AppError::new(
+                ErrorCode::ExternalDependency,
+                format!("remote HTTP proxy gRPC status code was invalid: {error}"),
+            );
+            let app_error = with_proxy_error_details(app_error, matched, request.method, None);
+            record_proxy_call(
+                ctx,
+                matched,
+                request_ctx,
+                started_at,
+                None,
+                Some(&app_error),
+            )
+            .await;
+            return Err(ApiErrorResponse::with_context(app_error, request_ctx));
+        }
+    };
+
+    match decode_grpc_proxy_response(response.body, remote_status, request.method) {
+        Ok(data) => {
+            record_proxy_call(
+                ctx,
+                matched,
+                request_ctx,
+                started_at,
+                Some(remote_status),
+                None,
+            )
+            .await;
+            Ok(data)
+        }
+        Err(error) => {
+            let error =
+                with_proxy_error_details(error, matched, request.method, Some(remote_status));
+            record_proxy_call(
+                ctx,
+                matched,
+                request_ctx,
+                started_at,
+                Some(remote_status),
+                Some(&error),
+            )
+            .await;
+            Err(ApiErrorResponse::with_context(error, request_ctx))
+        }
+    }
+}
+
+fn decode_grpc_proxy_response(
+    body: Option<Value>,
+    remote_status: reqwest::StatusCode,
+    method: ModuleHttpMethod,
+) -> Result<Value, AppError> {
+    if remote_status.is_success() {
+        if method == ModuleHttpMethod::Delete
+            && remote_status == reqwest::StatusCode::NO_CONTENT
+            && body.is_none()
+        {
+            return Ok(Value::Null);
+        }
+        return body.ok_or_else(|| {
+            AppError::new(
+                ErrorCode::ExternalDependency,
+                "remote HTTP proxy gRPC response body was missing",
+            )
+        });
+    }
+
+    if let Some(body) = body
+        && let Ok(envelope) = serde_json::from_value::<RemoteErrorEnvelope>(body)
+    {
+        return Err(crate::response::remote_error(remote_status, envelope));
+    }
+
+    Err(crate::response::fallback_status_error(
+        remote_status,
+        "HTTP proxy",
+    ))
 }
 
 fn with_proxy_error_details(
@@ -738,6 +882,7 @@ mod tests {
         RemoteHttpProxyMatch {
             module_name: "remote-crm".to_owned(),
             base_url: "http://127.0.0.1:4100/lenso/module/v1/".to_owned(),
+            transport: RemoteModuleTransport::HttpJson,
             timeout_ms: 5_000,
             auth_token: None,
             method,

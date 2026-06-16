@@ -14,12 +14,13 @@ const GET_MANIFEST_PATH: &str = "/lenso.remote.v1.RemoteModule/GetManifest";
 const LIST_ADMIN_RECORDS_PATH: &str = "/lenso.remote.v1.RemoteModule/ListAdminRecords";
 const GET_ADMIN_RECORD_PATH: &str = "/lenso.remote.v1.RemoteModule/GetAdminRecord";
 const INVOKE_ADMIN_ACTION_PATH: &str = "/lenso.remote.v1.RemoteModule/InvokeAdminAction";
+const PROXY_HTTP_ROUTE_PATH: &str = "/lenso.remote.v1.RemoteModule/ProxyHttpRoute";
 const INVOKE_FUNCTION_PATH: &str = "/lenso.remote.v1.RemoteModule/InvokeFunction";
 const HANDLE_EVENT_PATH: &str = "/lenso.remote.v1.RemoteModule/HandleEvent";
 
 #[derive(Clone, PartialEq, prost::Message)]
 struct JsonEnvelope {
-    // ponytail: keep the example on the first stable JSON envelope lane.
+    // Keep the example on the first stable JSON envelope lane.
     #[prost(string, tag = "1")]
     payload_json: String,
 }
@@ -58,6 +59,7 @@ where
             | LIST_ADMIN_RECORDS_PATH
             | GET_ADMIN_RECORD_PATH
             | INVOKE_ADMIN_ACTION_PATH
+            | PROXY_HTTP_ROUTE_PATH
             | INVOKE_FUNCTION_PATH
             | HANDLE_EVENT_PATH => {
                 struct JsonSvc {
@@ -81,6 +83,7 @@ where
                     LIST_ADMIN_RECORDS_PATH => LIST_ADMIN_RECORDS_PATH,
                     GET_ADMIN_RECORD_PATH => GET_ADMIN_RECORD_PATH,
                     INVOKE_ADMIN_ACTION_PATH => INVOKE_ADMIN_ACTION_PATH,
+                    PROXY_HTTP_ROUTE_PATH => PROXY_HTTP_ROUTE_PATH,
                     INVOKE_FUNCTION_PATH => INVOKE_FUNCTION_PATH,
                     HANDLE_EVENT_PATH => HANDLE_EVENT_PATH,
                     _ => unreachable!("matched paths above"),
@@ -118,6 +121,7 @@ fn grpc_json_response(path: &str, request: JsonEnvelope) -> Result<JsonEnvelope,
         LIST_ADMIN_RECORDS_PATH => list_admin_records_payload(&request.payload_json)?,
         GET_ADMIN_RECORD_PATH => get_admin_record_payload(&request.payload_json)?,
         INVOKE_ADMIN_ACTION_PATH => invoke_admin_action_payload(&request.payload_json)?,
+        PROXY_HTTP_ROUTE_PATH => proxy_http_route_payload(&request.payload_json)?,
         INVOKE_FUNCTION_PATH => invoke_function_payload(&request.payload_json)?,
         HANDLE_EVENT_PATH => handle_event_payload(&request.payload_json)?,
         _ => return Err(Status::unimplemented("unknown method")),
@@ -234,6 +238,48 @@ fn invoke_admin_action_payload(payload_json: &str) -> Result<String, Status> {
                 .unwrap_or(false),
             "contacts": CONTACTS.len(),
         }
+    }))
+    .map_err(|error| Status::internal(error.to_string()))
+}
+
+fn proxy_http_route_payload(payload_json: &str) -> Result<String, Status> {
+    let request: Value = serde_json::from_str(payload_json)
+        .map_err(|error| Status::invalid_argument(error.to_string()))?;
+    if request.get("remote_path").and_then(Value::as_str) == Some("/contacts")
+        && request.get("method").and_then(Value::as_str) == Some("GET")
+    {
+        return serde_json::to_string(&json!({
+            "status_code": 200,
+            "body": {
+                "contacts": CONTACTS.iter().map(contact_to_value).collect::<Vec<_>>(),
+            }
+        }))
+        .map_err(|error| Status::internal(error.to_string()));
+    }
+
+    let path = request
+        .get("remote_path")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let id = path.strip_prefix("/contacts/");
+    let Some(contact) = id.and_then(|id| CONTACTS.iter().find(|contact| contact.id == id)) else {
+        return serde_json::to_string(&json!({
+            "status_code": 404,
+            "body": {
+                "error": {
+                    "code": "not_found",
+                    "message": format!("remote route {path} was not found"),
+                    "retryable": false,
+                    "details": []
+                }
+            }
+        }))
+        .map_err(|error| Status::internal(error.to_string()));
+    };
+
+    serde_json::to_string(&json!({
+        "status_code": 200,
+        "body": contact_to_value(contact),
     }))
     .map_err(|error| Status::internal(error.to_string()))
 }
