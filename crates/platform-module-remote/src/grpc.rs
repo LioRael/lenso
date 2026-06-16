@@ -255,6 +255,18 @@ mod tests {
         assert_eq!(decoded.error.message, "remote failed");
     }
 
+    #[test]
+    fn grpc_proto_contract_documents_json_envelope_lane() {
+        let proto = include_str!("../../../contracts/grpc/lenso/remote/v1/remote_module.proto");
+
+        assert!(proto.contains("service RemoteModule"));
+        assert!(proto.contains("rpc GetManifest"));
+        assert!(proto.contains("rpc InvokeFunction"));
+        assert!(proto.contains("rpc HandleEvent"));
+        assert!(proto.contains("message JsonEnvelope"));
+        assert!(proto.contains("string payload_json = 1"));
+    }
+
     #[tokio::test]
     async fn grpc_transport_loads_manifest_invokes_function_and_handles_event() {
         let base_url = spawn_remote_module_server().await;

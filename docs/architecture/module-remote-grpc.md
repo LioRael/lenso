@@ -25,7 +25,8 @@ The first implementation uses protobuf unary calls with one JSON payload field.
 This keeps the existing `ModuleManifest`, runtime invoke, and event-handler
 envelopes stable while proving the transport boundary. A later public protocol
 can replace the JSON field with typed protobuf messages when the surface is
-ready to freeze.
+ready to freeze. The checked-in protocol file lives at
+`contracts/grpc/lenso/remote/v1/remote_module.proto`.
 
 ## Deferred
 
