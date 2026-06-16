@@ -35,6 +35,7 @@ The API binds to `HTTP_HOST:HTTP_PORT` from `.env` and serves:
 - `GET /health`;
 - `GET /v1/app/status`;
 - `GET /v1/app/items`;
+- `GET /v1/app/items/{id}`;
 - `POST /v1/app/items`;
 - `GET /openapi.json`;
 - `GET /docs`;
@@ -68,8 +69,8 @@ HostBuilder::new()
 
 The included `src/modules/app` module is a project-owned skeleton. Rename it
 or add modules beside it as your backend grows. It declares a small status
-route, an `app.items` table, and `GET`/`POST /v1/app/items` routes so the
-module has visible metadata and a real HTTP/data surface in the host registry;
+route, an `app.items` table, and item read/write routes so the module has
+visible metadata and a real HTTP/data surface in the host registry;
 replace them with your real application capabilities as the module grows.
 
 When the module owns tables, pass its migration list through
@@ -99,6 +100,8 @@ curl -sS -X POST http://127.0.0.1:3000/v1/app/items \
   -d '{"title":"first item"}' | jq .
 
 curl -sS http://127.0.0.1:3000/v1/app/items | jq .
+
+curl -sS http://127.0.0.1:3000/v1/app/items/1 | jq .
 ```
 
 ## Files
