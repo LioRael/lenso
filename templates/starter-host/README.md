@@ -44,6 +44,10 @@ The API binds to `HTTP_HOST:HTTP_PORT` from `.env` and serves:
 - Runtime Console admin APIs under `/admin/*`;
 - installed remote module HTTP proxies under `/modules/{module}/http/*`.
 
+The starter defaults to `LENSO_COMPOSITION_PROFILE=auth`, which installs
+Lenso's auth anchor, the password provider, and platform story metadata without
+the demo `identity` or `notifications` fixtures.
+
 ## Add A Remote Module
 
 Start a module that exposes a Lenso manifest, then add it to `.env`:

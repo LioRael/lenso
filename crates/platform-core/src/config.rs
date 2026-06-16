@@ -223,7 +223,7 @@ fn linked_module_profile_from_env_value(
             vec![ErrorDetail {
                 field: Some(LENSO_COMPOSITION_PROFILE_ENV.to_owned()),
                 reason: format!(
-                    "set {LENSO_COMPOSITION_PROFILE_ENV}=core or {LENSO_COMPOSITION_PROFILE_ENV}=demo when APP_ENV is `{}`",
+                    "set {LENSO_COMPOSITION_PROFILE_ENV}=auth, {LENSO_COMPOSITION_PROFILE_ENV}=core, or {LENSO_COMPOSITION_PROFILE_ENV}=demo when APP_ENV is `{}`",
                     environment.trim()
                 ),
             }],
@@ -312,6 +312,11 @@ mod tests {
             linked_module_profile_from_env_value(Some("core"), "production")
                 .expect("explicit profile"),
             "core"
+        );
+        assert_eq!(
+            linked_module_profile_from_env_value(Some(" auth "), "production")
+                .expect("explicit profile"),
+            "auth"
         );
         assert_eq!(
             linked_module_profile_from_env_value(Some(" demo "), "production")
