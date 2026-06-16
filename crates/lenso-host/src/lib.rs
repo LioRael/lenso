@@ -8,8 +8,22 @@ pub use app_bootstrap::{HostComposition, HostLinkedModule};
 pub use lenso::ModuleManifest;
 pub use platform_core::Migration;
 
+/// HTTP authoring helpers for host-owned linked modules.
+pub mod http {
+    pub use axum::Json;
+    pub use axum::routing::{delete, get, patch, post, put};
+    pub use platform_http::responses::{DataResponse, json};
+    pub use platform_http::{ApiOpenApiRouter, OpenApiRouter, routes};
+    pub use platform_module::{
+        LinkedBinding, LinkedHttpContribution, ModuleHttpMethod, ModuleHttpRoute,
+    };
+}
+
 /// Common host-authoring imports for starter applications.
 pub mod prelude {
+    pub use crate::http::{
+        LinkedBinding, LinkedHttpContribution, ModuleHttpMethod, ModuleHttpRoute,
+    };
     pub use crate::{HostBuilder, HostComposition, HostLinkedModule, Migration, ModuleManifest};
 }
 
@@ -84,14 +98,34 @@ pub async fn run_migrations_from_env_with_composition(
 
 #[cfg(test)]
 mod tests {
+    use super::http::{ApiOpenApiRouter, LinkedBinding, LinkedHttpContribution};
     use super::prelude::*;
 
+    fn merge_http(base: ApiOpenApiRouter) -> ApiOpenApiRouter {
+        base
+    }
+
     fn manifest() -> ModuleManifest {
-        ModuleManifest::builder("app").build()
+        ModuleManifest::builder("app")
+            .http_routes(vec![ModuleHttpRoute {
+                method: ModuleHttpMethod::Get,
+                path: "/v1/app/status".to_owned(),
+                capability: None,
+                display_name: Some("App Status".to_owned()),
+                story_title: Some("App Status".to_owned()),
+            }])
+            .build()
     }
 
     #[test]
     fn prelude_exports_host_authoring_types() {
+        let _binding = LinkedBinding::builder()
+            .http(LinkedHttpContribution {
+                public_prefixes: &["/v1/app/"],
+                merge: merge_http,
+            })
+            .build();
+
         let _composition: HostComposition = HostBuilder::new()
             .linked_module(HostLinkedModule::manifest_only(
                 "app",

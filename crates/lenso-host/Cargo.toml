@@ -13,8 +13,11 @@ app-api.workspace = true
 app-bootstrap.workspace = true
 app-migrate.workspace = true
 app-worker.workspace = true
+axum.workspace = true
 lenso.workspace = true
 platform-core.workspace = true
+platform-http.workspace = true
+platform-module.workspace = true
 
 [lints]
 workspace = true

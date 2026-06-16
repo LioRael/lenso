@@ -1130,8 +1130,11 @@ dependencies = [
  "app-bootstrap",
  "app-migrate",
  "app-worker",
+ "axum",
  "lenso",
  "platform-core",
+ "platform-http",
+ "platform-module",
 ]
 
 [[package]]
