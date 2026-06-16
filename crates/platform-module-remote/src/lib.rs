@@ -8,6 +8,7 @@ mod admin_data;
 mod binding;
 mod config;
 mod event;
+mod grpc;
 mod protocol;
 mod proxy;
 mod request;
@@ -20,7 +21,7 @@ mod validation;
 pub use admin_action::RemoteAdminActionSource;
 pub use admin_data::RemoteAdminDataSource;
 pub use binding::RemoteBinding;
-pub use config::RemoteModuleConfig;
+pub use config::{RemoteModuleConfig, RemoteModuleTransport};
 pub use event::{RemoteEventHandler, RemoteEventHostActionRunner};
 pub use protocol::{
     RemoteErrorBody, RemoteErrorDetail, RemoteErrorEnvelope, RemoteManifestResponse,

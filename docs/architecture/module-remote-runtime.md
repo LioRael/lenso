@@ -82,8 +82,8 @@ Do not put executable behavior or transport clients into `ModuleManifest`.
 
 ## Protocol Sketch
 
-The first protocol should be request/response JSON over the existing remote
-module base URL:
+The default protocol is request/response JSON over the existing remote module
+base URL:
 
 ```text
 POST /lenso/module/v1/runtime/functions/{function_name}/invoke
@@ -194,7 +194,7 @@ claimed outbox rows through the existing relay. Success marks the row
 `published`; retryable remote failures use the existing `failed` retry path and
 eventually become `dead` after `max_attempts`.
 
-The remote protocol is request/response JSON over the module base URL:
+The default remote protocol is request/response JSON over the module base URL:
 
 ```text
 POST /lenso/module/v1/events/handlers/{handler_name}/invoke
@@ -256,3 +256,6 @@ dead through the existing relay path.
 Do not implement event-emitting result actions, admin action bridges, arbitrary
 host bridges, streaming, or marketplace trust in the remote event-handler result
 slice.
+
+Native gRPC transport is a separate lane. See
+`docs/architecture/module-remote-grpc.md`.

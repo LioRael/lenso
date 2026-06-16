@@ -1,4 +1,4 @@
-use crate::config::RemoteModuleConfig;
+use crate::config::{RemoteModuleConfig, RemoteModuleTransport};
 use crate::protocol::{
     RemoteEventHandleRequest, RemoteEventHandleResponse, RemoteEventResultAction,
 };
@@ -77,6 +77,14 @@ impl RemoteEventHandler {
             payload: event.payload.clone(),
             headers: event.headers.clone(),
         };
+        if self.config.transport == RemoteModuleTransport::Grpc {
+            let response = crate::grpc::handle_event(&self.config, &request_body).await?;
+            self.action_runner
+                .run_actions(event, &self.handler_name, response.actions)
+                .await?;
+            return Ok(());
+        }
+
         let mut request = self.client.post(self.invoke_url()).json(&request_body);
         if let Some(token) = &self.config.auth_token {
             request = request.bearer_auth(token);

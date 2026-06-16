@@ -971,9 +971,20 @@ fn remote_source_diagnostics(
     load_duration_ms: Option<u64>,
     load_error: Option<String>,
 ) -> AdminModuleSourceDiagnostics {
+    let manifest_url = match config.transport {
+        platform_module_remote::RemoteModuleTransport::HttpJson => {
+            format!("{}/manifest", config.base_url)
+        }
+        platform_module_remote::RemoteModuleTransport::Grpc => {
+            format!(
+                "{}#lenso.remote.v1.RemoteModule/GetManifest",
+                config.base_url
+            )
+        }
+    };
     AdminModuleSourceDiagnostics::Remote(AdminRemoteModuleDiagnostics {
         base_url: config.base_url.clone(),
-        manifest_url: format!("{}/manifest", config.base_url),
+        manifest_url,
         timeout_ms: config.timeout_ms,
         auth_configured: config.auth_token.is_some(),
         load_duration_ms,
