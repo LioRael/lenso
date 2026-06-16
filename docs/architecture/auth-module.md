@@ -57,6 +57,8 @@ fields to `auth.users`.
 
 Today `auth` is a linked module registered by `crates/app-bootstrap`:
 
+- The `auth` linked profile installs `auth`, `auth-password`, and
+  `platform-story` without demo fixtures.
 - The `demo` linked profile enables it by default.
 - `modules.auth.enabled = false` disables its migrations, HTTP routes, admin
   data, and actor resolver install.

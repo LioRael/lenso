@@ -124,6 +124,7 @@ impl HostComposition {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CompositionProfile {
+    Auth,
     Core,
     Demo,
 }
@@ -131,13 +132,14 @@ pub enum CompositionProfile {
 impl CompositionProfile {
     pub fn parse(value: &str) -> platform_core::AppResult<Self> {
         match value.trim().to_ascii_lowercase().as_str() {
+            "auth" => Ok(Self::Auth),
             "core" => Ok(Self::Core),
             "demo" => Ok(Self::Demo),
             other => Err(AppError::validation(
                 "Invalid Lenso composition profile",
                 vec![ErrorDetail {
                     field: Some("module_sources.linked_profile".to_owned()),
-                    reason: format!("expected `core` or `demo`, got `{other}`"),
+                    reason: format!("expected `auth`, `core`, or `demo`, got `{other}`"),
                 }],
             )),
         }
@@ -160,6 +162,27 @@ const CORE_LINKED_MODULE_ENTRIES: &[LinkedModuleEntry] = &[LinkedModuleEntry {
     load: story::module::module,
     http_binding: Some(story::module::binding),
 }];
+
+const AUTH_LINKED_MODULE_ENTRIES: &[LinkedModuleEntry] = &[
+    LinkedModuleEntry {
+        module_name: "auth",
+        manifest: auth::module::manifest,
+        load: auth::module::module,
+        http_binding: Some(auth::module::binding),
+    },
+    LinkedModuleEntry {
+        module_name: "auth-password",
+        manifest: auth_password::module::manifest,
+        load: auth_password::module::module,
+        http_binding: Some(auth_password::module::binding),
+    },
+    LinkedModuleEntry {
+        module_name: "platform-story",
+        manifest: story::module::manifest,
+        load: story::module::module,
+        http_binding: Some(story::module::binding),
+    },
+];
 
 const DEMO_LINKED_MODULE_ENTRIES: &[LinkedModuleEntry] = &[
     LinkedModuleEntry {
@@ -196,6 +219,7 @@ const DEMO_LINKED_MODULE_ENTRIES: &[LinkedModuleEntry] = &[
 
 fn linked_module_entries(profile: CompositionProfile) -> &'static [LinkedModuleEntry] {
     match profile {
+        CompositionProfile::Auth => AUTH_LINKED_MODULE_ENTRIES,
         CompositionProfile::Core => CORE_LINKED_MODULE_ENTRIES,
         CompositionProfile::Demo => DEMO_LINKED_MODULE_ENTRIES,
     }
@@ -287,7 +311,10 @@ pub fn auth_actor_resolver_for_context(
     ctx: &AppContext,
 ) -> platform_core::AppResult<Option<Arc<dyn platform_core::ActorResolver>>> {
     let profile = CompositionProfile::from_config(&ctx.config)?;
-    if profile != CompositionProfile::Demo || !linked_module_enabled(ctx, auth::module::MODULE_NAME)
+    if !linked_module_entries(profile)
+        .iter()
+        .any(|entry| entry.module_name == auth::module::MODULE_NAME)
+        || !linked_module_enabled(ctx, auth::module::MODULE_NAME)
     {
         return Ok(None);
     }
@@ -473,21 +500,27 @@ pub fn migrations_for_config_with_composition(
         .copied()
         .collect::<Vec<_>>();
 
+    match CompositionProfile::from_config(config)? {
+        CompositionProfile::Auth | CompositionProfile::Demo => {
+            if linked_module_enabled_from_config(config, "auth") {
+                migrations.extend(auth::migrations::AUTH_MIGRATIONS.iter().copied());
+            }
+            if linked_module_with_dependencies_enabled_from_config(
+                config,
+                "auth-password",
+                auth_password::module::manifest,
+            ) {
+                migrations.extend(
+                    auth_password::migrations::AUTH_PASSWORD_MIGRATIONS
+                        .iter()
+                        .copied(),
+                );
+            }
+        }
+        CompositionProfile::Core => {}
+    }
+
     if CompositionProfile::from_config(config)? == CompositionProfile::Demo {
-        if linked_module_enabled_from_config(config, "auth") {
-            migrations.extend(auth::migrations::AUTH_MIGRATIONS.iter().copied());
-        }
-        if linked_module_with_dependencies_enabled_from_config(
-            config,
-            "auth-password",
-            auth_password::module::manifest,
-        ) {
-            migrations.extend(
-                auth_password::migrations::AUTH_PASSWORD_MIGRATIONS
-                    .iter()
-                    .copied(),
-            );
-        }
         if linked_module_enabled_from_config(config, "identity") {
             migrations.extend(identity::migrations::IDENTITY_MIGRATIONS.iter().copied());
         }
@@ -515,13 +548,16 @@ pub fn migrations_for_profile(profile: CompositionProfile) -> Vec<Migration> {
         .copied()
         .collect::<Vec<_>>();
 
-    if profile == CompositionProfile::Demo {
+    if matches!(profile, CompositionProfile::Auth | CompositionProfile::Demo) {
         migrations.extend(auth::migrations::AUTH_MIGRATIONS.iter().copied());
         migrations.extend(
             auth_password::migrations::AUTH_PASSWORD_MIGRATIONS
                 .iter()
                 .copied(),
         );
+    }
+
+    if profile == CompositionProfile::Demo {
         migrations.extend(identity::migrations::IDENTITY_MIGRATIONS.iter().copied());
         migrations.extend(
             notifications::migrations::NOTIFICATIONS_MIGRATIONS
@@ -1770,7 +1806,11 @@ mod tests {
 
     #[test]
     fn linked_module_entry_names_match_manifests() {
-        for profile in [CompositionProfile::Core, CompositionProfile::Demo] {
+        for profile in [
+            CompositionProfile::Auth,
+            CompositionProfile::Core,
+            CompositionProfile::Demo,
+        ] {
             for entry in linked_module_entries(profile) {
                 assert_eq!(
                     entry.module_name,
@@ -1789,6 +1829,16 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(names, vec!["platform-story"]);
+    }
+
+    #[test]
+    fn auth_profile_includes_auth_without_demo_fixtures() {
+        let names = module_manifests_for_profile(CompositionProfile::Auth)
+            .into_iter()
+            .map(|manifest| manifest.name)
+            .collect::<Vec<_>>();
+
+        assert_eq!(names, vec!["auth", "auth-password", "platform-story"]);
     }
 
     #[test]
@@ -1834,6 +1884,29 @@ mod tests {
         assert!(names.iter().any(|name| name.starts_with("runtime/")));
         assert!(!names.iter().any(|name| name.starts_with("auth/")));
         assert!(!names.iter().any(|name| name.starts_with("auth-password/")));
+        assert!(!names.iter().any(|name| name.starts_with("identity/")));
+        assert!(!names.iter().any(|name| name.starts_with("notifications/")));
+    }
+
+    #[test]
+    fn auth_profile_migrations_include_auth_without_demo_fixtures() {
+        let names = migrations_for_profile(CompositionProfile::Auth)
+            .into_iter()
+            .map(|migration| migration.name)
+            .collect::<Vec<_>>();
+
+        assert!(names.iter().any(|name| name.starts_with("platform/")));
+        assert!(names.iter().any(|name| name.starts_with("runtime/")));
+        assert!(
+            names
+                .iter()
+                .any(|name| name == &"auth/0001_create_auth_schema")
+        );
+        assert!(
+            names
+                .iter()
+                .any(|name| name == &"auth-password/0001_create_auth_password_schema")
+        );
         assert!(!names.iter().any(|name| name.starts_with("identity/")));
         assert!(!names.iter().any(|name| name.starts_with("notifications/")));
     }
@@ -1916,17 +1989,33 @@ mod tests {
     }
 
     #[test]
-    fn demo_profile_includes_every_core_entry() {
-        let demo_names = linked_module_entries(CompositionProfile::Demo)
+    fn auth_profile_includes_every_core_entry() {
+        let auth_names = linked_module_entries(CompositionProfile::Auth)
             .iter()
             .map(|entry| entry.module_name)
             .collect::<Vec<_>>();
 
         for core_entry in linked_module_entries(CompositionProfile::Core) {
             assert!(
-                demo_names.contains(&core_entry.module_name),
-                "demo profile should include core linked module `{}`",
+                auth_names.contains(&core_entry.module_name),
+                "auth profile should include core linked module `{}`",
                 core_entry.module_name
+            );
+        }
+    }
+
+    #[test]
+    fn demo_profile_includes_every_auth_entry() {
+        let demo_names = linked_module_entries(CompositionProfile::Demo)
+            .iter()
+            .map(|entry| entry.module_name)
+            .collect::<Vec<_>>();
+
+        for auth_entry in linked_module_entries(CompositionProfile::Auth) {
+            assert!(
+                demo_names.contains(&auth_entry.module_name),
+                "demo profile should include auth linked module `{}`",
+                auth_entry.module_name
             );
         }
     }
@@ -1958,6 +2047,23 @@ mod tests {
                 module_name: "platform-story".to_owned(),
                 public_prefixes: &["/admin/runtime/stories"],
             }]
+        );
+        assert_eq!(
+            linked_http_route_owners_for_profile(CompositionProfile::Auth),
+            vec![
+                LinkedHttpRouteOwner {
+                    module_name: "auth".to_owned(),
+                    public_prefixes: &["/v1/auth/dev/", "/v1/auth/sessions/"],
+                },
+                LinkedHttpRouteOwner {
+                    module_name: "auth-password".to_owned(),
+                    public_prefixes: &["/v1/auth/password/"],
+                },
+                LinkedHttpRouteOwner {
+                    module_name: "platform-story".to_owned(),
+                    public_prefixes: &["/admin/runtime/stories"],
+                },
+            ]
         );
         assert_eq!(
             linked_http_route_owners_for_profile(CompositionProfile::Demo),
@@ -2000,7 +2106,24 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn auth_actor_resolver_is_demo_profile_only() {
+    async fn modules_for_config_uses_auth_linked_profile() {
+        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build");
+        let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
+        config.module_sources.linked_profile = "auth".to_owned();
+        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
+
+        let names = modules_for_config(&ctx)
+            .expect("auth linked profile should parse")
+            .into_iter()
+            .map(|module| module.manifest.name)
+            .collect::<Vec<_>>();
+
+        assert_eq!(names, vec!["auth", "auth-password", "platform-story"]);
+    }
+
+    #[tokio::test]
+    async fn auth_actor_resolver_is_auth_profile_aware() {
         let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
             .expect("lazy pool should build");
         let demo_ctx = AppContext::new(
@@ -2011,6 +2134,15 @@ mod tests {
         assert!(
             auth_actor_resolver_for_context(&demo_ctx)
                 .expect("demo profile")
+                .is_some()
+        );
+
+        let mut auth_config = test_config_with_database_url("postgres://localhost/lenso_test");
+        auth_config.module_sources.linked_profile = "auth".to_owned();
+        let auth_ctx = AppContext::new(auth_config, db.clone(), Arc::new(LoggingEventPublisher));
+        assert!(
+            auth_actor_resolver_for_context(&auth_ctx)
+                .expect("auth profile")
                 .is_some()
         );
 
@@ -2519,6 +2651,7 @@ mod tests {
                 .iter()
                 .any(|detail| detail.field.as_deref() == Some("module_sources.linked_profile"))
         );
+        assert!(error.details[0].reason.contains("auth"));
     }
 
     #[test]

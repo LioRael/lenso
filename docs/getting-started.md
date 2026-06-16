@@ -61,8 +61,11 @@ in `.env`; that is local runtime configuration, not a registry or
 install-history database.
 
 Local development defaults to `LENSO_COMPOSITION_PROFILE=demo`, which includes
-the identity and notifications fixture modules. Non-local environments must set
-`LENSO_COMPOSITION_PROFILE=core` or `LENSO_COMPOSITION_PROFILE=demo` explicitly.
+the identity and notifications fixture modules. Starter hosts can use
+`LENSO_COMPOSITION_PROFILE=auth` to install auth without those demo fixtures.
+Non-local environments must set `LENSO_COMPOSITION_PROFILE=auth`,
+`LENSO_COMPOSITION_PROFILE=core`, or `LENSO_COMPOSITION_PROFILE=demo`
+explicitly.
 
 Development bearer tokens such as `Bearer dev-service:admin` are accepted only
 for local/development API environments. Do not use them as deployment

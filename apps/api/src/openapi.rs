@@ -68,9 +68,13 @@ pub(crate) fn api_router_for_context_with_composition(
 
 fn openapi_document_for_profile(profile: CompositionProfile) -> utoipa::openapi::OpenApi {
     let mut document = ApiDoc::openapi();
-    if profile == CompositionProfile::Core {
-        if let Some(tags) = &mut document.tags {
-            tags.retain(|tag| tag.name != "auth" && tag.name != "identity");
+    if let Some(tags) = &mut document.tags {
+        match profile {
+            CompositionProfile::Auth => tags.retain(|tag| tag.name != "identity"),
+            CompositionProfile::Core => {
+                tags.retain(|tag| tag.name != "auth" && tag.name != "identity")
+            }
+            CompositionProfile::Demo => {}
         }
     }
     document
