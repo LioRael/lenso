@@ -111,8 +111,8 @@ plan. Restart the API, worker, and Console after installing a real module.
 
 User-facing examples live in
 [LioRael/lenso-examples](https://github.com/LioRael/lenso-examples) and depend
-on published `@lenso/remote-module-kit@0.1.1` and `@lenso/ts-sdk@0.1.0`
-packages instead of sibling workspace paths.
+on the published `@lenso/remote-module-kit@0.1.1` package instead of sibling
+workspace paths.
 
 Clone and start the example module in a separate checkout:
 

@@ -47,7 +47,7 @@ The `quality` job runs:
 just ci
 ```
 
-That gate installs the SDK dependencies with a frozen lockfile, checks Rust
+That gate installs the optional SDK dependencies with a frozen lockfile, checks Rust
 formatting, compiles and tests the Rust workspace, verifies generated contracts
 and SDK files, runs architecture checks, and typechecks the TypeScript SDK.
 
@@ -56,7 +56,7 @@ The workflow uses Node 24 with Node 24-native GitHub Actions.
 ## Runtime Console CI Dependency
 
 The Runtime Console CI checks out this backend repository to typecheck and build
-against the generated SDK package.
+against the backend admin API contracts and fixtures.
 
 The cross-repository checkout is configured with:
 
@@ -72,8 +72,8 @@ Runtime Console repository secret with the same name.
 
 Current repository metadata should stay aligned with the README:
 
-- Description: `Rust-first modular monolith backend with generated contracts, TypeScript SDK, and Runtime Console admin APIs`
-- Topics: `axum`, `lenso`, `modular-monolith`, `openapi`, `postgres`, `runtime-console`, `rust`, `typescript-sdk`
+- Description: `Rust-first modular monolith backend with generated contracts and Runtime Console admin APIs`
+- Topics: `axum`, `lenso`, `modular-monolith`, `openapi`, `postgres`, `runtime-console`, `rust`
 
 Update GitHub metadata when the repository role changes materially.
 

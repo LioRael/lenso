@@ -12,7 +12,6 @@ The intended first-user flow is:
 ```sh
 cargo add lenso@0.1.0
 pnpm add @lenso/remote-module-kit@0.1.1
-pnpm add @lenso/ts-sdk@0.1.0
 ```
 
 Not every project needs every package:
@@ -20,7 +19,8 @@ Not every project needs every package:
 - Rust linked-module authors use the `lenso` crate.
 - JavaScript or TypeScript remote-module authors use
   `@lenso/remote-module-kit`.
-- API consumers use `@lenso/ts-sdk`.
+- API consumers can use the OpenAPI contract directly; `@lenso/ts-sdk` is an
+  optional generated client for fixed host APIs.
 - Application starters and example repositories compose those packages into a
   runnable backend, worker, migration, Runtime Console, and remote module demo.
 
@@ -32,7 +32,8 @@ Current registry baseline:
 - `lenso@0.1.0` is published on crates.io.
 - `@lenso/remote-module-kit@0.1.1` is published from the Runtime Console
   repository.
-- `@lenso/ts-sdk@0.1.0` is published from this backend repository.
+- `@lenso/ts-sdk@0.1.0` is published from this backend repository, but it is
+  not required for module authors or starter hosts.
 
 ## Rust Facade Crate
 
@@ -120,21 +121,21 @@ this package needs a clean build output, declarations, package metadata, and
 
 ## TypeScript SDK
 
-`@lenso/ts-sdk` is a generated client for the host HTTP API. It should be
-published independently as an npm package, but its source should stay with the
-backend contracts for now.
+`@lenso/ts-sdk` is a generated client for the host HTTP API. It is optional:
+useful for consumers of a fixed deployed host API, but not part of the core
+framework authoring path.
 
-Keeping the SDK source in this backend repository preserves an atomic workflow:
+Keep the SDK source in this backend repository while it exists. That preserves
+an atomic workflow:
 
 - Rust handlers define OpenAPI.
 - committed contracts are regenerated.
 - generated SDK files are regenerated.
-- package dry-runs prove the publish artifact is clean.
+- package dry-runs prove the existing publish artifact remains reproducible.
 
-An independent SDK source repository would add cross-repository synchronization
-without changing the user install story. Revisit that only if the SDK gains a
-large handwritten surface, multiple release trains, or non-TypeScript language
-targets that need their own maintainers.
+Do not move the SDK to a separate repository unless it gains real independent
+consumers, a larger handwritten surface, or a separate release cadence. If it
+stays unused, deleting it is simpler than splitting it out.
 
 ## Starter And Examples
 
@@ -151,8 +152,6 @@ Grow examples only when:
 
 - `@lenso/remote-module-kit` is installed from npm or an explicitly documented
   local override;
-- `@lenso/ts-sdk` is installed from npm or an explicitly documented local
-  override;
 - Rust examples either depend on the public `lenso` facade crate or explicitly
   vendor fixture-only code;
 - example CI can start a module, fetch `/lenso/module/v1/manifest`, and run a
@@ -181,14 +180,14 @@ facade exists.
 
 ## Near-Term Sequence
 
-1. Keep the backend-owned `@lenso/ts-sdk` source with the OpenAPI contracts and
-   continue publishing generated npm artifacts from this repository.
-2. Keep `@lenso/remote-module-kit` in the Runtime Console repository and grow it
+1. Keep `@lenso/remote-module-kit` in the Runtime Console repository and grow it
    as the remote-module authoring facade.
-3. Keep the crates.io `lenso` facade limited to stable module-authoring
+2. Keep the crates.io `lenso` facade limited to stable module-authoring
    declarations until a host application API is intentionally designed.
-4. Keep `templates/starter-host` as the transitional host pressure test until
+3. Keep `templates/starter-host` as the transitional host pressure test until
    its boot, migration, HTTP, and app-owned data slices stabilize.
+4. Keep `@lenso/ts-sdk` as optional generated output beside the OpenAPI
+   contracts; do not prioritize new SDK publishes without a real consumer.
 5. Move only the stable subset of `lenso-host` into a future `lenso` `host`
    feature; leave app-owned SQL, repositories, CRUD shape, auth/session policy,
    and console UI out of the facade.
