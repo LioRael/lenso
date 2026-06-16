@@ -23,6 +23,11 @@ struct CreateItemRequest {
     title: String,
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+struct UpdateItemRequest {
+    title: String,
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 struct AppItem {
     id: i64,
@@ -50,6 +55,8 @@ fn router() -> ApiOpenApiRouter {
         .routes(routes!(status))
         .routes(routes!(create_item))
         .routes(routes!(get_item))
+        .routes(routes!(update_item))
+        .routes(routes!(delete_item))
         .routes(routes!(list_items))
 }
 
@@ -205,6 +212,121 @@ async fn get_item(
     Ok(json(item_from_row(row, &request_ctx)?))
 }
 
+#[utoipa::path(
+    patch,
+    path = "/v1/app/items/{id}",
+    operation_id = "app_update_item",
+    tag = "app",
+    params(("id" = i64, Path, description = "App item id")),
+    request_body(
+        content = UpdateItemRequest,
+        content_type = "application/json",
+        description = "Update an app-owned item"
+    ),
+    responses(
+        (
+            status = 200,
+            description = "Item updated",
+            body = AppItemResponseEnvelope,
+            content_type = "application/json"
+        ),
+        (
+            status = 400,
+            description = "Request validation failed",
+            body = ErrorResponse,
+            content_type = "application/json"
+        ),
+        (
+            status = 404,
+            description = "Item not found",
+            body = ErrorResponse,
+            content_type = "application/json"
+        ),
+        (
+            status = 500,
+            description = "Internal server error",
+            body = ErrorResponse,
+            content_type = "application/json"
+        )
+    )
+)]
+async fn update_item(
+    State(ctx): State<AppContext>,
+    HttpRequestContext(request_ctx): HttpRequestContext,
+    Path(id): Path<i64>,
+    JsonBody(input): JsonBody<UpdateItemRequest>,
+) -> Result<Json<DataResponse<AppItem>>, ApiErrorResponse> {
+    let title = input.title.trim();
+    if title.is_empty() {
+        return Err(ApiErrorResponse::with_context(
+            AppError::new(ErrorCode::Validation, "item title is required"),
+            &request_ctx,
+        ));
+    }
+
+    let row = sqlx::query("update app.items set title = $1 where id = $2 returning id, title")
+        .bind(title)
+        .bind(id)
+        .fetch_optional(&ctx.db)
+        .await
+        .map_err(|error| database_error(error, &request_ctx))?
+        .ok_or_else(|| {
+            ApiErrorResponse::with_context(
+                AppError::new(ErrorCode::NotFound, format!("app item {id} was not found")),
+                &request_ctx,
+            )
+        })?;
+
+    Ok(json(item_from_row(row, &request_ctx)?))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/v1/app/items/{id}",
+    operation_id = "app_delete_item",
+    tag = "app",
+    params(("id" = i64, Path, description = "App item id")),
+    responses(
+        (
+            status = 200,
+            description = "Item deleted",
+            body = AppItemResponseEnvelope,
+            content_type = "application/json"
+        ),
+        (
+            status = 404,
+            description = "Item not found",
+            body = ErrorResponse,
+            content_type = "application/json"
+        ),
+        (
+            status = 500,
+            description = "Internal server error",
+            body = ErrorResponse,
+            content_type = "application/json"
+        )
+    )
+)]
+async fn delete_item(
+    State(ctx): State<AppContext>,
+    HttpRequestContext(request_ctx): HttpRequestContext,
+    Path(id): Path<i64>,
+) -> Result<Json<DataResponse<AppItem>>, ApiErrorResponse> {
+    let row = sqlx::query("delete from app.items where id = $1 returning id, title")
+        .bind(id)
+        .fetch_optional(&ctx.db)
+        .await
+        .map_err(|error| database_error(error, &request_ctx))?
+        .ok_or_else(|| {
+            ApiErrorResponse::with_context(
+                AppError::new(ErrorCode::NotFound, format!("app item {id} was not found")),
+                &request_ctx,
+            )
+        })?;
+
+    Ok(json(item_from_row(row, &request_ctx)?))
+}
+
 fn item_from_row(
     row: sqlx::postgres::PgRow,
     request_ctx: &RequestContext,
@@ -249,5 +371,7 @@ mod tests {
             .get("/v1/app/items/{id}")
             .expect("item detail path should be documented");
         assert!(item.get.is_some());
+        assert!(item.patch.is_some());
+        assert!(item.delete.is_some());
     }
 }
