@@ -1,7 +1,9 @@
+use lenso_host::prelude::*;
+
 pub const MODULE_NAME: &str = "app";
 pub const APP_DATA_READ_CAPABILITY: &str = "app.data.read";
 
-const APP_MIGRATIONS: &[lenso_host::Migration] = &[lenso_host::Migration {
+const APP_MIGRATIONS: &[Migration] = &[Migration {
     name: "app/0001_create_app_schema",
     sql: include_str!("migrations/0001_create_app_schema.sql"),
 }];
@@ -9,12 +11,12 @@ const APP_MIGRATIONS: &[lenso_host::Migration] = &[lenso_host::Migration {
 /// Project-owned linked module skeleton.
 ///
 /// Rename this module or add more modules beside it as your backend grows.
-pub fn linked_module() -> lenso_host::HostLinkedModule {
-    lenso_host::HostLinkedModule::manifest_only(MODULE_NAME, manifest, APP_MIGRATIONS)
+pub fn linked_module() -> HostLinkedModule {
+    HostLinkedModule::manifest_only(MODULE_NAME, manifest, APP_MIGRATIONS)
 }
 
-fn manifest() -> lenso_host::ModuleManifest {
-    lenso_host::ModuleManifest::builder(MODULE_NAME)
+fn manifest() -> ModuleManifest {
+    ModuleManifest::builder(MODULE_NAME)
         .capabilities(vec![APP_DATA_READ_CAPABILITY.to_owned()])
         .build()
 }
