@@ -21,6 +21,38 @@ plan, or organization membership.
 `identity` remains a demo fixture. It is useful for examples and integration
 tests, but it is not a dependency of `auth`.
 
+## Product User Tables
+
+Applications should treat `auth.users.id` as the actor id and define their own
+business tables around it. A simple app can keep the same id:
+
+```sql
+create table app.users (
+    id text primary key,
+    display_name text not null,
+    created_at timestamptz not null
+);
+```
+
+The app creates or updates this row in its own module after registration, invite
+acceptance, or onboarding. The auth module does not insert it automatically.
+
+Apps that need a different profile/account id can keep a mapping instead:
+
+```sql
+create table app.accounts (
+    id text primary key,
+    auth_user_id text not null unique,
+    name text not null,
+    created_at timestamptz not null
+);
+```
+
+Routes that need the product profile should read `ActorContext::User { user_id,
+.. }` from the request context and query the app-owned table by `user_id`. If no
+row exists, return the app's onboarding or not-found behavior. Do not add those
+fields to `auth.users`.
+
 ## Installation
 
 Today `auth` is a linked module registered by `crates/app-bootstrap`:
