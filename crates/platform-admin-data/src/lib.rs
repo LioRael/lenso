@@ -91,6 +91,7 @@ pub enum AdminModuleSourceDiagnostics {
 
 #[derive(Clone, Debug)]
 pub struct AdminRemoteModuleDiagnostics {
+    pub transport: String,
     pub base_url: String,
     pub manifest_url: String,
     pub timeout_ms: u64,

@@ -952,6 +952,7 @@ fn source_diagnostics_dto(
     match diagnostics? {
         AdminModuleSourceDiagnostics::Remote(remote) => Some(
             AdminModuleSourceDiagnosticsDto::Remote(AdminRemoteModuleDiagnosticsDto {
+                transport: remote.transport,
                 base_url: remote.base_url,
                 manifest_url: remote.manifest_url,
                 timeout_ms: remote.timeout_ms,

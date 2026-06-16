@@ -551,6 +551,7 @@ async fn available_modules_returns_remote_install_rows() {
         admin: None,
         source_diagnostics: Some(AdminModuleSourceDiagnostics::Remote(
             AdminRemoteModuleDiagnostics {
+                transport: "http_json".to_owned(),
                 base_url: "https://example.com/lenso/module/v1".to_owned(),
                 manifest_url: "https://example.com/lenso/module/v1/manifest".to_owned(),
                 timeout_ms: 1000,
