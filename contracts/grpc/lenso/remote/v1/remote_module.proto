@@ -6,6 +6,9 @@ package lenso.remote.v1;
 // Keep stable JSON envelopes until the public typed proto surface is ready.
 service RemoteModule {
   rpc GetManifest(JsonEnvelope) returns (JsonEnvelope);
+  rpc ListAdminRecords(JsonEnvelope) returns (JsonEnvelope);
+  rpc GetAdminRecord(JsonEnvelope) returns (JsonEnvelope);
+  rpc InvokeAdminAction(JsonEnvelope) returns (JsonEnvelope);
   rpc InvokeFunction(JsonEnvelope) returns (JsonEnvelope);
   rpc HandleEvent(JsonEnvelope) returns (JsonEnvelope);
 }

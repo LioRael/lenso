@@ -1,4 +1,5 @@
 use http::StatusCode;
+use platform_module::AdminListQuery;
 use platform_module_remote::{RemoteModuleConfig, RemoteModuleSource};
 use serde_json::{Value, json};
 use std::net::{SocketAddr, TcpListener};
@@ -136,13 +137,34 @@ async fn grpc_manifest_matches_remote_module_protocol() {
 
     assert_eq!(module.manifest.name, "remote-crm");
     assert_eq!(
-        module.manifest.runtime.unwrap().functions[0].name,
+        module.manifest.runtime.as_ref().expect("runtime").functions[0].name,
         "remote_crm.sync_contact.v1"
     );
     assert_eq!(
-        module.manifest.events.unwrap().handlers[0].name,
+        module.manifest.events.as_ref().expect("events").handlers[0].name,
         "sync_contact_on_user_registered"
     );
+
+    let page = module
+        .admin_data
+        .as_ref()
+        .expect("grpc admin data")
+        .list("contacts", &AdminListQuery::new(2, None))
+        .await
+        .expect("list contacts over grpc");
+    assert_eq!(page.records.len(), 2);
+    assert_eq!(page.records[0]["email"], "ada@example.com");
+    assert_eq!(page.next_cursor.as_deref(), Some("contact_2"));
+
+    let record = module
+        .admin_data
+        .as_ref()
+        .expect("grpc admin data")
+        .get("contacts", "contact_1")
+        .await
+        .expect("get contact over grpc")
+        .expect("contact");
+    assert_eq!(record["name"], "Ada Lovelace");
 }
 
 #[tokio::test]

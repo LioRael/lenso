@@ -1,9 +1,12 @@
 use crate::config::RemoteModuleConfig;
 use crate::protocol::{
-    RemoteEventHandleRequest, RemoteEventHandleResponse, RemoteFunctionInvokeRequest,
-    RemoteFunctionInvokeResponse, RemoteManifestResponse,
+    RemoteActionInvokeResponse, RemoteAdminActionInvokeRequest, RemoteAdminGetRequest,
+    RemoteAdminListRequest, RemoteEventHandleRequest, RemoteEventHandleResponse,
+    RemoteFunctionInvokeRequest, RemoteFunctionInvokeResponse, RemoteGetResponse,
+    RemoteListResponse, RemoteManifestResponse,
 };
 use platform_core::{AppError, AppResult, ErrorCode};
+use platform_module::AdminListQuery;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::time::Duration;
@@ -14,6 +17,9 @@ use tonic::transport::{Channel, Endpoint};
 use tonic::{Code, Request, Status};
 
 const GET_MANIFEST_PATH: &str = "/lenso.remote.v1.RemoteModule/GetManifest";
+const LIST_ADMIN_RECORDS_PATH: &str = "/lenso.remote.v1.RemoteModule/ListAdminRecords";
+const GET_ADMIN_RECORD_PATH: &str = "/lenso.remote.v1.RemoteModule/GetAdminRecord";
+const INVOKE_ADMIN_ACTION_PATH: &str = "/lenso.remote.v1.RemoteModule/InvokeAdminAction";
 const INVOKE_FUNCTION_PATH: &str = "/lenso.remote.v1.RemoteModule/InvokeFunction";
 const HANDLE_EVENT_PATH: &str = "/lenso.remote.v1.RemoteModule/HandleEvent";
 const MAX_GRPC_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
@@ -33,6 +39,58 @@ pub(crate) async fn fetch_manifest(
         GET_MANIFEST_PATH,
         "manifest",
         &serde_json::json!({}),
+    )
+    .await
+}
+
+pub(crate) async fn list_admin_records(
+    config: &RemoteModuleConfig,
+    entity: &str,
+    query: &AdminListQuery,
+) -> AppResult<RemoteListResponse> {
+    unary_json(
+        config,
+        LIST_ADMIN_RECORDS_PATH,
+        "admin data list",
+        &RemoteAdminListRequest {
+            entity: entity.to_owned(),
+            limit: query.limit,
+            cursor: query.cursor.clone(),
+        },
+    )
+    .await
+}
+
+pub(crate) async fn get_admin_record(
+    config: &RemoteModuleConfig,
+    entity: &str,
+    id: &str,
+) -> AppResult<RemoteGetResponse> {
+    unary_json(
+        config,
+        GET_ADMIN_RECORD_PATH,
+        "admin data get",
+        &RemoteAdminGetRequest {
+            entity: entity.to_owned(),
+            id: id.to_owned(),
+        },
+    )
+    .await
+}
+
+pub(crate) async fn invoke_admin_action(
+    config: &RemoteModuleConfig,
+    action: &str,
+    input: serde_json::Value,
+) -> AppResult<RemoteActionInvokeResponse> {
+    unary_json(
+        config,
+        INVOKE_ADMIN_ACTION_PATH,
+        "admin action invoke",
+        &RemoteAdminActionInvokeRequest {
+            action: action.to_owned(),
+            input,
+        },
     )
     .await
 }
@@ -189,6 +247,9 @@ fn status_is_retryable(code: Code) -> bool {
 fn method_name(path: &str) -> &'static str {
     match path {
         GET_MANIFEST_PATH => "GetManifest",
+        LIST_ADMIN_RECORDS_PATH => "ListAdminRecords",
+        GET_ADMIN_RECORD_PATH => "GetAdminRecord",
+        INVOKE_ADMIN_ACTION_PATH => "InvokeAdminAction",
         INVOKE_FUNCTION_PATH => "InvokeFunction",
         HANDLE_EVENT_PATH => "HandleEvent",
         _ => "Unknown",
@@ -199,13 +260,15 @@ fn method_name(path: &str) -> &'static str {
 mod tests {
     use super::*;
     use crate::protocol::{
+        RemoteAdminActionInvokeRequest, RemoteAdminGetRequest, RemoteAdminListRequest,
         RemoteErrorEnvelope, RemoteEventResultAction, RemoteFunctionInvokeResponse,
     };
     use crate::{RemoteModuleSource, RemoteModuleTransport, RemoteRuntimeFunction};
     use platform_core::{ActorContext, CorrelationId, ExecutionContext, ExecutionId, TraceContext};
     use platform_module::{
-        EventHandlerDeclaration, EventSurface, ModuleManifest, RuntimeFunctionDeclaration,
-        RuntimeRetryPolicyDeclaration, RuntimeSurface,
+        AdminAction, AdminActionDangerLevel, AdminDeclarativeSurface, AdminListQuery, AdminSchema,
+        EntitySchema, EventHandlerDeclaration, EventSurface, FieldSchema, FieldType,
+        ModuleManifest, RuntimeFunctionDeclaration, RuntimeRetryPolicyDeclaration, RuntimeSurface,
     };
     use serde_json::json;
     use std::convert::Infallible;
@@ -258,6 +321,9 @@ mod tests {
 
         assert!(proto.contains("service RemoteModule"));
         assert!(proto.contains("rpc GetManifest"));
+        assert!(proto.contains("rpc ListAdminRecords"));
+        assert!(proto.contains("rpc GetAdminRecord"));
+        assert!(proto.contains("rpc InvokeAdminAction"));
         assert!(proto.contains("rpc InvokeFunction"));
         assert!(proto.contains("rpc HandleEvent"));
         assert!(proto.contains("message JsonEnvelope"));
@@ -287,6 +353,32 @@ mod tests {
                 .name,
             "remote_grpc.sync_contact.v1"
         );
+
+        let admin_data = module.admin_data.as_ref().expect("grpc admin data source");
+        let page = admin_data
+            .list("contacts", &AdminListQuery::new(2, None))
+            .await
+            .expect("admin list invokes over grpc");
+        assert_eq!(page.records.len(), 2);
+        assert_eq!(page.next_cursor.as_deref(), Some("contact_2"));
+        assert_eq!(page.records[0]["email"], "ada@example.com");
+
+        let record = admin_data
+            .get("contacts", "contact_1")
+            .await
+            .expect("admin get invokes over grpc")
+            .expect("contact exists");
+        assert_eq!(record["name"], "Ada Lovelace");
+
+        let action_output = module
+            .admin_actions
+            .as_ref()
+            .expect("grpc admin action source")
+            .invoke("sync_contacts", json!({ "dry_run": true }))
+            .await
+            .expect("admin action invokes over grpc");
+        assert_eq!(action_output["synced"], true);
+        assert_eq!(action_output["dry_run"], true);
 
         let output = RemoteRuntimeFunction::new(config.clone(), "remote_grpc.sync_contact.v1")
             .expect("runtime function builds")
@@ -388,7 +480,12 @@ mod tests {
 
         fn call(&mut self, req: http::Request<B>) -> Self::Future {
             match req.uri().path() {
-                GET_MANIFEST_PATH | INVOKE_FUNCTION_PATH | HANDLE_EVENT_PATH => {
+                GET_MANIFEST_PATH
+                | LIST_ADMIN_RECORDS_PATH
+                | GET_ADMIN_RECORD_PATH
+                | INVOKE_ADMIN_ACTION_PATH
+                | INVOKE_FUNCTION_PATH
+                | HANDLE_EVENT_PATH => {
                     struct JsonSvc {
                         path: &'static str,
                     }
@@ -408,6 +505,9 @@ mod tests {
 
                     let path = match req.uri().path() {
                         GET_MANIFEST_PATH => GET_MANIFEST_PATH,
+                        LIST_ADMIN_RECORDS_PATH => LIST_ADMIN_RECORDS_PATH,
+                        GET_ADMIN_RECORD_PATH => GET_ADMIN_RECORD_PATH,
+                        INVOKE_ADMIN_ACTION_PATH => INVOKE_ADMIN_ACTION_PATH,
                         INVOKE_FUNCTION_PATH => INVOKE_FUNCTION_PATH,
                         HANDLE_EVENT_PATH => HANDLE_EVENT_PATH,
                         _ => unreachable!("matched paths above"),
@@ -442,6 +542,48 @@ mod tests {
     fn grpc_json_response(path: &str, request: JsonEnvelope) -> Result<JsonEnvelope, Status> {
         let payload = match path {
             GET_MANIFEST_PATH => serde_json::to_string(&manifest()).expect("manifest serializes"),
+            LIST_ADMIN_RECORDS_PATH => {
+                let request: RemoteAdminListRequest =
+                    serde_json::from_str(&request.payload_json)
+                        .map_err(|error| Status::invalid_argument(error.to_string()))?;
+                if request.entity != "contacts" {
+                    return Err(Status::not_found("unknown entity"));
+                }
+                serde_json::to_string(&RemoteListResponse {
+                    records: contacts()
+                        .into_iter()
+                        .take(request.limit.clamp(1, 100) as usize)
+                        .collect(),
+                    next_cursor: Some("contact_2".to_owned()),
+                })
+                .expect("admin list response serializes")
+            }
+            GET_ADMIN_RECORD_PATH => {
+                let request: RemoteAdminGetRequest = serde_json::from_str(&request.payload_json)
+                    .map_err(|error| Status::invalid_argument(error.to_string()))?;
+                if request.entity != "contacts" || request.id != "contact_1" {
+                    return Err(Status::not_found("unknown record"));
+                }
+                serde_json::to_string(&RemoteGetResponse {
+                    record: Some(contact("contact_1", "Ada Lovelace", "ada@example.com")),
+                })
+                .expect("admin get response serializes")
+            }
+            INVOKE_ADMIN_ACTION_PATH => {
+                let request: RemoteAdminActionInvokeRequest =
+                    serde_json::from_str(&request.payload_json)
+                        .map_err(|error| Status::invalid_argument(error.to_string()))?;
+                if request.action != "sync_contacts" {
+                    return Err(Status::not_found("unknown action"));
+                }
+                serde_json::to_string(&RemoteActionInvokeResponse {
+                    result: json!({
+                        "synced": true,
+                        "dry_run": request.input["dry_run"].as_bool().unwrap_or(false),
+                    }),
+                })
+                .expect("admin action response serializes")
+            }
             INVOKE_FUNCTION_PATH => {
                 let request: RemoteFunctionInvokeRequest =
                     serde_json::from_str(&request.payload_json)
@@ -481,6 +623,30 @@ mod tests {
 
     fn manifest() -> ModuleManifest {
         ModuleManifest::builder("remote-grpc")
+            .declarative_admin(AdminDeclarativeSurface {
+                pages: Vec::new(),
+                actions: vec![AdminAction {
+                    name: "sync_contacts".to_owned(),
+                    label: "Sync contacts".to_owned(),
+                    capability: "remote_grpc.contacts.sync".to_owned(),
+                    input_schema: None,
+                    confirmation: None,
+                    danger_level: AdminActionDangerLevel::Low,
+                }],
+                fallback_schema: Some(AdminSchema {
+                    entities: vec![EntitySchema {
+                        name: "contacts".to_owned(),
+                        label: "Contacts".to_owned(),
+                        read_capability: "remote_grpc.contacts.read".to_owned(),
+                        fields: vec![FieldSchema {
+                            name: "email".to_owned(),
+                            label: "Email".to_owned(),
+                            field_type: FieldType::String,
+                            nullable: false,
+                        }],
+                    }],
+                }),
+            })
             .runtime(RuntimeSurface {
                 functions: vec![RuntimeFunctionDeclaration {
                     name: "remote_grpc.sync_contact.v1".to_owned(),
@@ -500,5 +666,20 @@ mod tests {
                 }],
             })
             .build()
+    }
+
+    fn contacts() -> Vec<serde_json::Value> {
+        vec![
+            contact("contact_1", "Ada Lovelace", "ada@example.com"),
+            contact("contact_2", "Grace Hopper", "grace@example.com"),
+        ]
+    }
+
+    fn contact(id: &str, name: &str, email: &str) -> serde_json::Value {
+        json!({
+            "id": id,
+            "name": name,
+            "email": email,
+        })
     }
 }

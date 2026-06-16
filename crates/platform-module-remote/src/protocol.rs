@@ -53,6 +53,25 @@ pub struct RemoteActionInvokeResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoteAdminListRequest {
+    pub entity: String,
+    pub limit: i64,
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoteAdminGetRequest {
+    pub entity: String,
+    pub id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoteAdminActionInvokeRequest {
+    pub action: String,
+    pub input: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemoteFunctionInvokeRequest {
     pub request_id: String,
     pub function_run_id: String,

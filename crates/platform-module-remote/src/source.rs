@@ -58,11 +58,11 @@ impl RemoteModuleSource {
             Some(AdminSurface::DeclarativeCustom(surface)) if !surface.actions.is_empty()
         );
         let mut module = Module::remote(manifest, Arc::new(binding));
-        if has_admin_data && self.config.transport == RemoteModuleTransport::HttpJson {
+        if has_admin_data {
             module =
                 module.with_admin_data(Arc::new(RemoteAdminDataSource::new(self.config.clone())?));
         }
-        if has_admin_actions && self.config.transport == RemoteModuleTransport::HttpJson {
+        if has_admin_actions {
             module = module
                 .with_admin_actions(Arc::new(RemoteAdminActionSource::new(self.config.clone())?));
         }
