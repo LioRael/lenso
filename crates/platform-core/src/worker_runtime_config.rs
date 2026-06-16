@@ -44,7 +44,9 @@ pub static RUNTIME_CONFIG: LazyLock<Vec<RuntimeConfigDescriptor>> = LazyLock::ne
             key: "worker.poll_interval_ms".to_owned(),
             scope: RuntimeConfigScope::Service("worker"),
             group: Some("worker.runtime"),
+            section: None,
             order: 10,
+            visible_when: None,
             value_type: RuntimeConfigType::Int {
                 min: Some(50),
                 max: Some(60_000),
@@ -58,7 +60,9 @@ pub static RUNTIME_CONFIG: LazyLock<Vec<RuntimeConfigDescriptor>> = LazyLock::ne
             key: "worker.batch_size".to_owned(),
             scope: RuntimeConfigScope::Service("worker"),
             group: Some("worker.runtime"),
+            section: None,
             order: 20,
+            visible_when: None,
             value_type: RuntimeConfigType::Int {
                 min: Some(1),
                 max: Some(1_000),

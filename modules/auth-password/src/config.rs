@@ -1,7 +1,7 @@
 use crate::jwt::JwtConfig;
 use platform_core::{
     AppContext, AppError, AppResult, RuntimeConfigDescriptor, RuntimeConfigGroupDescriptor,
-    RuntimeConfigScope, RuntimeConfigSnapshot, RuntimeConfigType,
+    RuntimeConfigScope, RuntimeConfigSnapshot, RuntimeConfigType, RuntimeConfigVisibilityCondition,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -150,15 +150,9 @@ pub static RUNTIME_CONFIG_GROUPS: LazyLock<Vec<RuntimeConfigGroupDescriptor>> =
             },
             RuntimeConfigGroupDescriptor {
                 id: "auth-password.tokens",
-                label: "Token Issuance",
-                description: "How auth-password issues credentials after login.",
+                label: "Tokens",
+                description: "Token issuance strategy and JWT settings.",
                 order: 40,
-            },
-            RuntimeConfigGroupDescriptor {
-                id: "auth-password.jwt",
-                label: "JWT",
-                description: "JWT signing and claim defaults.",
-                order: 50,
             },
         ]
     });
@@ -169,7 +163,9 @@ pub static RUNTIME_CONFIG: LazyLock<Vec<RuntimeConfigDescriptor>> = LazyLock::ne
             key: "auth-password.hash_algorithm".to_owned(),
             scope: RuntimeConfigScope::Shared,
             group: Some("auth-password.hashing"),
+            section: None,
             order: 10,
+            visible_when: None,
             value_type: RuntimeConfigType::Enum(&["argon2id", "argon2i"]),
             default: json!("argon2id"),
             editable: true,
@@ -180,7 +176,9 @@ pub static RUNTIME_CONFIG: LazyLock<Vec<RuntimeConfigDescriptor>> = LazyLock::ne
             key: "auth-password.argon2_memory_kib".to_owned(),
             scope: RuntimeConfigScope::Shared,
             group: Some("auth-password.hashing"),
+            section: None,
             order: 20,
+            visible_when: None,
             value_type: RuntimeConfigType::Int {
                 min: Some(MIN_ARGON2_MEMORY_KIB),
                 max: Some(MAX_ARGON2_MEMORY_KIB),
@@ -194,7 +192,9 @@ pub static RUNTIME_CONFIG: LazyLock<Vec<RuntimeConfigDescriptor>> = LazyLock::ne
             key: "auth-password.argon2_time_cost".to_owned(),
             scope: RuntimeConfigScope::Shared,
             group: Some("auth-password.hashing"),
+            section: None,
             order: 30,
+            visible_when: None,
             value_type: RuntimeConfigType::Int {
                 min: Some(i64::from(argon2::Params::MIN_T_COST)),
                 max: Some(MAX_ARGON2_TIME_COST),
@@ -208,7 +208,9 @@ pub static RUNTIME_CONFIG: LazyLock<Vec<RuntimeConfigDescriptor>> = LazyLock::ne
             key: "auth-password.argon2_parallelism".to_owned(),
             scope: RuntimeConfigScope::Shared,
             group: Some("auth-password.hashing"),
+            section: None,
             order: 40,
+            visible_when: None,
             value_type: RuntimeConfigType::Int {
                 min: Some(i64::from(argon2::Params::MIN_P_COST)),
                 max: Some(MAX_ARGON2_PARALLELISM),
@@ -222,7 +224,9 @@ pub static RUNTIME_CONFIG: LazyLock<Vec<RuntimeConfigDescriptor>> = LazyLock::ne
             key: "auth-password.token_strategy".to_owned(),
             scope: RuntimeConfigScope::Shared,
             group: Some("auth-password.tokens"),
+            section: Some("Issuance"),
             order: 10,
+            visible_when: None,
             value_type: RuntimeConfigType::Enum(&["session", "jwt"]),
             default: json!("session"),
             editable: true,
@@ -232,8 +236,10 @@ pub static RUNTIME_CONFIG: LazyLock<Vec<RuntimeConfigDescriptor>> = LazyLock::ne
         RuntimeConfigDescriptor {
             key: "auth-password.jwt_secret".to_owned(),
             scope: RuntimeConfigScope::Shared,
-            group: Some("auth-password.jwt"),
-            order: 10,
+            group: Some("auth-password.tokens"),
+            section: Some("JWT"),
+            order: 20,
+            visible_when: Some(jwt_visibility_condition()),
             value_type: RuntimeConfigType::String,
             default: json!(null),
             editable: true,
@@ -243,8 +249,10 @@ pub static RUNTIME_CONFIG: LazyLock<Vec<RuntimeConfigDescriptor>> = LazyLock::ne
         RuntimeConfigDescriptor {
             key: "auth-password.jwt_issuer".to_owned(),
             scope: RuntimeConfigScope::Shared,
-            group: Some("auth-password.jwt"),
-            order: 20,
+            group: Some("auth-password.tokens"),
+            section: Some("JWT"),
+            order: 30,
+            visible_when: Some(jwt_visibility_condition()),
             value_type: RuntimeConfigType::String,
             default: json!("lenso"),
             editable: true,
@@ -254,8 +262,10 @@ pub static RUNTIME_CONFIG: LazyLock<Vec<RuntimeConfigDescriptor>> = LazyLock::ne
         RuntimeConfigDescriptor {
             key: "auth-password.jwt_audience".to_owned(),
             scope: RuntimeConfigScope::Shared,
-            group: Some("auth-password.jwt"),
-            order: 30,
+            group: Some("auth-password.tokens"),
+            section: Some("JWT"),
+            order: 40,
+            visible_when: Some(jwt_visibility_condition()),
             value_type: RuntimeConfigType::String,
             default: json!("lenso"),
             editable: true,
@@ -265,8 +275,10 @@ pub static RUNTIME_CONFIG: LazyLock<Vec<RuntimeConfigDescriptor>> = LazyLock::ne
         RuntimeConfigDescriptor {
             key: "auth-password.jwt_ttl_hours".to_owned(),
             scope: RuntimeConfigScope::Shared,
-            group: Some("auth-password.jwt"),
-            order: 40,
+            group: Some("auth-password.tokens"),
+            section: Some("JWT"),
+            order: 50,
+            visible_when: Some(jwt_visibility_condition()),
             value_type: RuntimeConfigType::Int {
                 min: Some(1),
                 max: Some(168),
@@ -278,6 +290,14 @@ pub static RUNTIME_CONFIG: LazyLock<Vec<RuntimeConfigDescriptor>> = LazyLock::ne
         },
     ]
 });
+
+fn jwt_visibility_condition() -> RuntimeConfigVisibilityCondition {
+    RuntimeConfigVisibilityCondition::Equals {
+        service: "*",
+        key: "auth-password.token_strategy",
+        value: json!("jwt"),
+    }
+}
 
 fn default_argon2_memory_kib() -> u32 {
     DEFAULT_ARGON2_MEMORY_KIB

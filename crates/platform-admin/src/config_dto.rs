@@ -9,7 +9,9 @@ pub struct ConfigDescriptorDto {
     pub key: String,
     pub service: String,
     pub group: Option<String>,
+    pub section: Option<String>,
     pub order: i32,
+    pub visible_when: Option<ConfigVisibilityConditionDto>,
     pub value_type: Value,
     pub default: Value,
     pub editable: bool,
@@ -24,6 +26,17 @@ pub struct ConfigGroupDto {
     pub label: String,
     pub description: String,
     pub order: i32,
+}
+
+/// A declarative condition that controls whether a setting is shown.
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ConfigVisibilityConditionDto {
+    Equals {
+        service: String,
+        key: String,
+        value: Value,
+    },
 }
 
 /// The list of all registered descriptors.

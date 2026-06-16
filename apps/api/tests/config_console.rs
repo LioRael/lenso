@@ -4,7 +4,8 @@ use axum::http::{Request, StatusCode};
 use platform_core::{
     AppConfig, AppContext, DatabaseConfig, LoggingEventPublisher, PLATFORM_MIGRATIONS,
     PostgresRuntimeConfigProvider, RuntimeConfigDescriptor, RuntimeConfigGroupDescriptor,
-    RuntimeConfigRegistry, RuntimeConfigScope, RuntimeConfigType, apply_migrations,
+    RuntimeConfigRegistry, RuntimeConfigScope, RuntimeConfigType, RuntimeConfigVisibilityCondition,
+    apply_migrations,
 };
 use platform_testing::TestDatabase;
 use serde_json::{Value, json};
@@ -18,7 +19,9 @@ fn registry() -> RuntimeConfigRegistry {
                 key: "demo.flag".to_owned(),
                 scope: RuntimeConfigScope::Shared,
                 group: Some("demo"),
+                section: Some("Basics"),
                 order: 10,
+                visible_when: None,
                 value_type: RuntimeConfigType::Bool,
                 default: json!(false),
                 editable: true,
@@ -29,7 +32,13 @@ fn registry() -> RuntimeConfigRegistry {
                 key: "demo.locked".to_owned(),
                 scope: RuntimeConfigScope::Shared,
                 group: Some("demo"),
+                section: Some("Basics"),
                 order: 20,
+                visible_when: Some(RuntimeConfigVisibilityCondition::Equals {
+                    service: "*",
+                    key: "demo.flag",
+                    value: json!(true),
+                }),
                 value_type: RuntimeConfigType::Bool,
                 default: json!(true),
                 editable: false,
@@ -126,12 +135,23 @@ async fn config_console_round_trip() {
         "descriptors should include demo group: {body:?}"
     );
     assert!(
-        body["data"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|d| d["key"] == "demo.flag" && d["group"] == "demo" && d["order"] == 10),
+        body["data"].as_array().unwrap().iter().any(|d| {
+            d["key"] == "demo.flag"
+                && d["group"] == "demo"
+                && d["section"] == "Basics"
+                && d["order"] == 10
+                && d["visible_when"].is_null()
+        }),
         "descriptors should include demo.flag: {body:?}"
+    );
+    assert!(
+        body["data"].as_array().unwrap().iter().any(|d| {
+            d["key"] == "demo.locked"
+                && d["visible_when"]["kind"] == "equals"
+                && d["visible_when"]["key"] == "demo.flag"
+                && d["visible_when"]["value"] == true
+        }),
+        "descriptors should include demo.locked visibility: {body:?}"
     );
 
     // 2) unauthenticated request is rejected

@@ -56,7 +56,8 @@ pub use runtime_config::{
     CONFIG_NOTIFY_CHANNEL, PostgresRuntimeConfigProvider, RuntimeConfigAuditEntry,
     RuntimeConfigCell, RuntimeConfigDescriptor, RuntimeConfigGroupDescriptor,
     RuntimeConfigProvider, RuntimeConfigRegistry, RuntimeConfigScope, RuntimeConfigSnapshot,
-    RuntimeConfigSource, RuntimeConfigType, StaticRuntimeConfigProvider, StoredRuntimeConfig,
+    RuntimeConfigSource, RuntimeConfigType, RuntimeConfigVisibilityCondition,
+    StaticRuntimeConfigProvider, StoredRuntimeConfig,
 };
 pub use shutdown::Shutdown;
 pub use telemetry_attrs::{

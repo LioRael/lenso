@@ -61,7 +61,9 @@ pub struct RuntimeConfigDescriptor {
     pub key: String,
     pub scope: RuntimeConfigScope,
     pub group: Option<&'static str>,
+    pub section: Option<&'static str>,
     pub order: i32,
+    pub visible_when: Option<RuntimeConfigVisibilityCondition>,
     pub value_type: RuntimeConfigType,
     pub default: Value,
     pub editable: bool,
@@ -95,6 +97,16 @@ impl RuntimeConfigDescriptor {
             ))
         }
     }
+}
+
+/// A declarative visibility condition for console presentation.
+#[derive(Debug, Clone, PartialEq)]
+pub enum RuntimeConfigVisibilityCondition {
+    Equals {
+        service: &'static str,
+        key: &'static str,
+        value: Value,
+    },
 }
 
 /// Presentation metadata for a set of related config keys.
@@ -195,7 +207,9 @@ mod tests {
             key: "demo.enabled".to_owned(),
             scope: RuntimeConfigScope::Shared,
             group: None,
+            section: None,
             order: 0,
+            visible_when: None,
             value_type: RuntimeConfigType::Bool,
             default: json!(true),
             editable: true,
@@ -217,7 +231,9 @@ mod tests {
             key: "demo.count".to_owned(),
             scope: RuntimeConfigScope::Service("api"),
             group: None,
+            section: None,
             order: 0,
+            visible_when: None,
             value_type: RuntimeConfigType::Int {
                 min: Some(1),
                 max: Some(10),
@@ -239,7 +255,9 @@ mod tests {
             key: "demo.mode".to_owned(),
             scope: RuntimeConfigScope::Shared,
             group: None,
+            section: None,
             order: 0,
+            visible_when: None,
             value_type: RuntimeConfigType::Enum(&["a", "b"]),
             default: json!("a"),
             editable: true,

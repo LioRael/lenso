@@ -4788,9 +4788,17 @@ components:
           format: int32
         restart_only:
           type: boolean
+        section:
+          type:
+          - string
+          - 'null'
         service:
           type: string
         value_type: {}
+        visible_when:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ConfigVisibilityConditionDto'
     ConfigDescriptorListResponse:
       type: object
       description: The list of all registered descriptors.
@@ -4847,6 +4855,25 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ConfigValueDto'
+    ConfigVisibilityConditionDto:
+      oneOf:
+      - type: object
+        required:
+        - service
+        - key
+        - value
+        - kind
+        properties:
+          key:
+            type: string
+          kind:
+            type: string
+            enum:
+            - equals
+          service:
+            type: string
+          value: {}
+      description: A declarative condition that controls whether a setting is shown.
     ConfigWriteRequest:
       type: object
       description: Request body for writing a value.

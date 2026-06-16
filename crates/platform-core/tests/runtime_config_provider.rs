@@ -13,7 +13,9 @@ fn registry() -> RuntimeConfigRegistry {
         key: "demo.ttl_minutes".to_owned(),
         scope: RuntimeConfigScope::Shared,
         group: None,
+        section: None,
         order: 0,
+        visible_when: None,
         value_type: RuntimeConfigType::Int {
             min: Some(1),
             max: Some(1000),

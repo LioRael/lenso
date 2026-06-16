@@ -36,7 +36,9 @@ pub static RUNTIME_CONFIG: LazyLock<Vec<RuntimeConfigDescriptor>> = LazyLock::ne
         key: "identity.password_reset_ttl_minutes".to_owned(),
         scope: RuntimeConfigScope::Shared,
         group: Some("identity.general"),
+        section: None,
         order: 10,
+        visible_when: None,
         value_type: RuntimeConfigType::Int {
             min: Some(5),
             max: Some(1440),

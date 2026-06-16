@@ -5,7 +5,7 @@ use crate::config_dto::*;
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use platform_core::runtime_config::store::{delete_value, load_audit, upsert_value};
-use platform_core::{AppContext, AppError, ErrorCode};
+use platform_core::{AppContext, AppError, ErrorCode, RuntimeConfigVisibilityCondition};
 use platform_http::{AdminActor, ApiErrorResponse, ErrorResponse, HttpRequestContext};
 
 const AUDIT_DEFAULT_LIMIT: i64 = 50;
@@ -46,7 +46,9 @@ pub(crate) async fn list_config_descriptors(
             key: d.key.to_owned(),
             service: d.scope.as_service_key().to_owned(),
             group: d.group.map(str::to_owned),
+            section: d.section.map(str::to_owned),
             order: d.order,
+            visible_when: d.visible_when.as_ref().map(visibility_condition_dto),
             value_type: d.value_type.to_json(),
             default: d.default.clone(),
             editable: d.editable,
@@ -55,6 +57,22 @@ pub(crate) async fn list_config_descriptors(
         })
         .collect();
     Ok(Json(ConfigDescriptorListResponse { groups, data }))
+}
+
+fn visibility_condition_dto(
+    condition: &RuntimeConfigVisibilityCondition,
+) -> ConfigVisibilityConditionDto {
+    match condition {
+        RuntimeConfigVisibilityCondition::Equals {
+            service,
+            key,
+            value,
+        } => ConfigVisibilityConditionDto::Equals {
+            service: (*service).to_owned(),
+            key: (*key).to_owned(),
+            value: value.clone(),
+        },
+    }
 }
 
 #[utoipa::path(

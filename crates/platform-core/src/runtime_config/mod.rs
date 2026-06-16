@@ -12,7 +12,7 @@ pub mod store;
 
 pub use descriptor::{
     RuntimeConfigDescriptor, RuntimeConfigGroupDescriptor, RuntimeConfigRegistry,
-    RuntimeConfigScope, RuntimeConfigType,
+    RuntimeConfigScope, RuntimeConfigType, RuntimeConfigVisibilityCondition,
 };
 pub use postgres::{CONFIG_NOTIFY_CHANNEL, PostgresRuntimeConfigProvider};
 pub use provider::{RuntimeConfigCell, RuntimeConfigProvider, StaticRuntimeConfigProvider};

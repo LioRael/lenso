@@ -1730,7 +1730,9 @@ pub fn runtime_config_descriptors_with_composition(
                 key: module_enabled_config_key(entry.module_name),
                 scope: RuntimeConfigScope::Shared,
                 group: Some("modules"),
+                section: None,
                 order: 10,
+                visible_when: None,
                 value_type: RuntimeConfigType::Bool,
                 default: serde_json::json!(linked_module_enabled_from_config(
                     &ctx.config,
@@ -1748,7 +1750,9 @@ pub fn runtime_config_descriptors_with_composition(
                 key: module_enabled_config_key(entry.module_name),
                 scope: RuntimeConfigScope::Shared,
                 group: Some("modules"),
+                section: None,
                 order: 10,
+                visible_when: None,
                 value_type: RuntimeConfigType::Bool,
                 default: serde_json::json!(linked_module_enabled_from_config(
                     &ctx.config,
@@ -1767,7 +1771,9 @@ pub fn runtime_config_descriptors_with_composition(
                 key: module_enabled_config_key(&source.name),
                 scope: RuntimeConfigScope::Shared,
                 group: Some("modules"),
+                section: None,
                 order: 10,
+                visible_when: None,
                 value_type: RuntimeConfigType::Bool,
                 default: serde_json::json!(remote_module_enabled_from_config(
                     &ctx.config,
