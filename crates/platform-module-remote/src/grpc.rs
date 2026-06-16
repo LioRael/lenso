@@ -3,7 +3,8 @@ use crate::protocol::{
     RemoteActionInvokeResponse, RemoteAdminActionInvokeRequest, RemoteAdminGetRequest,
     RemoteAdminListRequest, RemoteEventHandleRequest, RemoteEventHandleResponse,
     RemoteFunctionInvokeRequest, RemoteFunctionInvokeResponse, RemoteGetResponse,
-    RemoteListResponse, RemoteManifestResponse,
+    RemoteHttpProxyInvokeRequest, RemoteHttpProxyInvokeResponse, RemoteListResponse,
+    RemoteManifestResponse,
 };
 use platform_core::{AppError, AppResult, ErrorCode};
 use platform_module::AdminListQuery;
@@ -20,13 +21,14 @@ const GET_MANIFEST_PATH: &str = "/lenso.remote.v1.RemoteModule/GetManifest";
 const LIST_ADMIN_RECORDS_PATH: &str = "/lenso.remote.v1.RemoteModule/ListAdminRecords";
 const GET_ADMIN_RECORD_PATH: &str = "/lenso.remote.v1.RemoteModule/GetAdminRecord";
 const INVOKE_ADMIN_ACTION_PATH: &str = "/lenso.remote.v1.RemoteModule/InvokeAdminAction";
+const PROXY_HTTP_ROUTE_PATH: &str = "/lenso.remote.v1.RemoteModule/ProxyHttpRoute";
 const INVOKE_FUNCTION_PATH: &str = "/lenso.remote.v1.RemoteModule/InvokeFunction";
 const HANDLE_EVENT_PATH: &str = "/lenso.remote.v1.RemoteModule/HandleEvent";
 const MAX_GRPC_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, PartialEq, prost::Message)]
 struct JsonEnvelope {
-    // ponytail: first gRPC lane reuses stable JSON envelopes; typed proto can replace this later.
+    // The first gRPC lane reuses stable JSON envelopes; typed proto can replace this later.
     #[prost(string, tag = "1")]
     payload_json: String,
 }
@@ -93,6 +95,13 @@ pub(crate) async fn invoke_admin_action(
         },
     )
     .await
+}
+
+pub(crate) async fn proxy_http_route(
+    config: &RemoteModuleConfig,
+    request: &RemoteHttpProxyInvokeRequest,
+) -> AppResult<RemoteHttpProxyInvokeResponse> {
+    unary_json(config, PROXY_HTTP_ROUTE_PATH, "HTTP proxy", request).await
 }
 
 pub(crate) async fn invoke_function(
@@ -167,7 +176,7 @@ async fn connect(
     operation: &'static str,
 ) -> AppResult<tonic::client::Grpc<Channel>> {
     let timeout = Duration::from_millis(config.timeout_ms);
-    let endpoint = Endpoint::from_shared(config.base_url.clone())
+    let endpoint = Endpoint::new(config.base_url.clone())
         .map_err(|error| {
             AppError::new(
                 ErrorCode::Validation,
@@ -250,6 +259,7 @@ fn method_name(path: &str) -> &'static str {
         LIST_ADMIN_RECORDS_PATH => "ListAdminRecords",
         GET_ADMIN_RECORD_PATH => "GetAdminRecord",
         INVOKE_ADMIN_ACTION_PATH => "InvokeAdminAction",
+        PROXY_HTTP_ROUTE_PATH => "ProxyHttpRoute",
         INVOKE_FUNCTION_PATH => "InvokeFunction",
         HANDLE_EVENT_PATH => "HandleEvent",
         _ => "Unknown",
@@ -262,6 +272,7 @@ mod tests {
     use crate::protocol::{
         RemoteAdminActionInvokeRequest, RemoteAdminGetRequest, RemoteAdminListRequest,
         RemoteErrorEnvelope, RemoteEventResultAction, RemoteFunctionInvokeResponse,
+        RemoteHttpProxyInvokeRequest,
     };
     use crate::{RemoteModuleSource, RemoteModuleTransport, RemoteRuntimeFunction};
     use platform_core::{ActorContext, CorrelationId, ExecutionContext, ExecutionId, TraceContext};
@@ -324,6 +335,7 @@ mod tests {
         assert!(proto.contains("rpc ListAdminRecords"));
         assert!(proto.contains("rpc GetAdminRecord"));
         assert!(proto.contains("rpc InvokeAdminAction"));
+        assert!(proto.contains("rpc ProxyHttpRoute"));
         assert!(proto.contains("rpc InvokeFunction"));
         assert!(proto.contains("rpc HandleEvent"));
         assert!(proto.contains("message JsonEnvelope"));
@@ -379,6 +391,25 @@ mod tests {
             .expect("admin action invokes over grpc");
         assert_eq!(action_output["synced"], true);
         assert_eq!(action_output["dry_run"], true);
+
+        let proxy_output = proxy_http_route(
+            &config,
+            &RemoteHttpProxyInvokeRequest {
+                request_id: "req_proxy_1".to_owned(),
+                correlation_id: "corr_grpc_1".to_owned(),
+                module_name: "remote-grpc".to_owned(),
+                method: "GET".to_owned(),
+                declared_path: "/contacts/{id}".to_owned(),
+                remote_path: "/contacts/contact_1".to_owned(),
+                path_params: [("id".to_owned(), "contact_1".to_owned())].into(),
+                headers: [("accept".to_owned(), "application/json".to_owned())].into(),
+                body: None,
+            },
+        )
+        .await
+        .expect("http proxy invokes over grpc");
+        assert_eq!(proxy_output.status_code, 200);
+        assert_eq!(proxy_output.body.expect("proxy body")["id"], "contact_1");
 
         let output = RemoteRuntimeFunction::new(config.clone(), "remote_grpc.sync_contact.v1")
             .expect("runtime function builds")
@@ -484,6 +515,7 @@ mod tests {
                 | LIST_ADMIN_RECORDS_PATH
                 | GET_ADMIN_RECORD_PATH
                 | INVOKE_ADMIN_ACTION_PATH
+                | PROXY_HTTP_ROUTE_PATH
                 | INVOKE_FUNCTION_PATH
                 | HANDLE_EVENT_PATH => {
                     struct JsonSvc {
@@ -508,6 +540,7 @@ mod tests {
                         LIST_ADMIN_RECORDS_PATH => LIST_ADMIN_RECORDS_PATH,
                         GET_ADMIN_RECORD_PATH => GET_ADMIN_RECORD_PATH,
                         INVOKE_ADMIN_ACTION_PATH => INVOKE_ADMIN_ACTION_PATH,
+                        PROXY_HTTP_ROUTE_PATH => PROXY_HTTP_ROUTE_PATH,
                         INVOKE_FUNCTION_PATH => INVOKE_FUNCTION_PATH,
                         HANDLE_EVENT_PATH => HANDLE_EVENT_PATH,
                         _ => unreachable!("matched paths above"),
@@ -583,6 +616,19 @@ mod tests {
                     }),
                 })
                 .expect("admin action response serializes")
+            }
+            PROXY_HTTP_ROUTE_PATH => {
+                let request: RemoteHttpProxyInvokeRequest =
+                    serde_json::from_str(&request.payload_json)
+                        .map_err(|error| Status::invalid_argument(error.to_string()))?;
+                if request.method != "GET" || request.remote_path != "/contacts/contact_1" {
+                    return Err(Status::not_found("unknown HTTP route"));
+                }
+                serde_json::to_string(&RemoteHttpProxyInvokeResponse {
+                    status_code: 200,
+                    body: Some(contact("contact_1", "Ada Lovelace", "ada@example.com")),
+                })
+                .expect("http proxy response serializes")
             }
             INVOKE_FUNCTION_PATH => {
                 let request: RemoteFunctionInvokeRequest =

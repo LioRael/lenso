@@ -138,7 +138,7 @@ fn invalid_content_type(operation: &str, content_type: Option<&str>) -> AppError
     }
 }
 
-fn remote_error(status: StatusCode, envelope: RemoteErrorEnvelope) -> AppError {
+pub(crate) fn remote_error(status: StatusCode, envelope: RemoteErrorEnvelope) -> AppError {
     let remote = envelope.error;
     let mut error = AppError::new(error_code_from_remote(&remote.code, status), remote.message);
     error.details = remote
@@ -169,7 +169,7 @@ fn remote_detail(detail: RemoteErrorDetail) -> ErrorDetail {
     }
 }
 
-fn fallback_status_error(status: StatusCode, operation: &str) -> AppError {
+pub(crate) fn fallback_status_error(status: StatusCode, operation: &str) -> AppError {
     let mut error = AppError::new(
         error_code_from_status(status),
         format!("remote {operation} returned status {status}"),

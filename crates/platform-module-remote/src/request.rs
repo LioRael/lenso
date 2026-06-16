@@ -2,6 +2,8 @@ use axum::body::Bytes;
 use axum::http::HeaderMap;
 use platform_core::{AppError, AppResult, ErrorCode};
 use platform_module::ModuleHttpMethod;
+use serde_json::Value;
+use std::collections::BTreeMap;
 
 const ACCEPT_HEADER: &str = "accept";
 const CONTENT_TYPE_HEADER: &str = "content-type";
@@ -13,8 +15,13 @@ const MAX_PROXY_REQUEST_BYTES: usize = 1024 * 1024;
 #[derive(Debug, Clone)]
 pub(crate) enum ProxyRequestBody {
     Empty,
-    #[allow(dead_code)]
     Json(Bytes),
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ProxyGrpcRequestParts {
+    pub headers: BTreeMap<String, String>,
+    pub body: Option<Value>,
 }
 
 pub(crate) fn apply_proxy_request_policy(
@@ -49,12 +56,69 @@ pub(crate) fn apply_proxy_request_policy(
     }
 }
 
+pub(crate) fn apply_grpc_proxy_request_policy(
+    method: ModuleHttpMethod,
+    headers: &HeaderMap,
+    request_ctx: &platform_core::RequestContext,
+    body: ProxyRequestBody,
+) -> AppResult<ProxyGrpcRequestParts> {
+    let mut forwarded = BTreeMap::new();
+    if let Some(value) = header_value(headers, ACCEPT_HEADER) {
+        forwarded.insert(ACCEPT_HEADER.to_owned(), value.to_owned());
+    }
+    forwarded.insert(
+        X_REQUEST_ID_HEADER.to_owned(),
+        request_ctx.request_id.0.clone(),
+    );
+    forwarded.insert(
+        X_CORRELATION_ID_HEADER.to_owned(),
+        request_ctx.correlation_id.0.clone(),
+    );
+    if let (Some(trace_id), Some(span_id)) = (
+        request_ctx.trace.trace_id.as_deref(),
+        request_ctx.trace.span_id.as_deref(),
+    ) {
+        forwarded.insert(
+            TRACEPARENT_HEADER.to_owned(),
+            format!("00-{trace_id}-{span_id}-01"),
+        );
+    }
+
+    let body = match body {
+        ProxyRequestBody::Empty => None,
+        ProxyRequestBody::Json(body) => {
+            let content_type = validate_json_body_policy(method, headers, &body)?;
+            forwarded.insert(CONTENT_TYPE_HEADER.to_owned(), content_type.to_owned());
+            Some(serde_json::from_slice(&body).map_err(|error| {
+                AppError::new(
+                    ErrorCode::Validation,
+                    format!("remote HTTP proxy request body was invalid JSON: {error}"),
+                )
+            })?)
+        }
+    };
+
+    Ok(ProxyGrpcRequestParts {
+        headers: forwarded,
+        body,
+    })
+}
+
 fn apply_json_body_policy(
     request: reqwest::RequestBuilder,
     method: ModuleHttpMethod,
     headers: &HeaderMap,
     body: Bytes,
 ) -> AppResult<reqwest::RequestBuilder> {
+    let content_type = validate_json_body_policy(method, headers, &body)?;
+    Ok(request.header(CONTENT_TYPE_HEADER, content_type).body(body))
+}
+
+fn validate_json_body_policy<'a>(
+    method: ModuleHttpMethod,
+    headers: &'a HeaderMap,
+    body: &Bytes,
+) -> AppResult<&'a str> {
     if !method_allows_request_body(method) {
         return Err(AppError::new(
             ErrorCode::Validation,
@@ -74,8 +138,7 @@ fn apply_json_body_policy(
         ));
     }
 
-    let content_type = validated_json_content_type(headers)?;
-    Ok(request.header(CONTENT_TYPE_HEADER, content_type).body(body))
+    validated_json_content_type(headers)
 }
 
 fn forward_header(
@@ -87,6 +150,13 @@ fn forward_header(
         Some(value) if !value.is_empty() => request.header(name, value),
         _ => request,
     }
+}
+
+fn header_value<'a>(headers: &'a HeaderMap, name: &'static str) -> Option<&'a str> {
+    headers
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| !value.is_empty())
 }
 
 fn validated_json_content_type(headers: &HeaderMap) -> AppResult<&str> {
@@ -265,6 +335,52 @@ mod tests {
             request.body().and_then(reqwest::Body::as_bytes),
             Some(&b"{\"name\":\"Ada\"}"[..])
         );
+    }
+
+    #[test]
+    fn grpc_policy_forwards_allowed_headers_and_json_body() {
+        let mut headers = headers();
+        headers.insert(
+            CONTENT_TYPE_HEADER,
+            "application/json; charset=utf-8".parse().expect("header"),
+        );
+
+        let parts = apply_grpc_proxy_request_policy(
+            ModuleHttpMethod::Post,
+            &headers,
+            &request_context(),
+            ProxyRequestBody::Json(Bytes::from_static(br#"{"dry_run":true}"#)),
+        )
+        .expect("policy applies");
+
+        assert_eq!(
+            parts.headers.get(ACCEPT_HEADER).map(String::as_str),
+            Some("application/json")
+        );
+        assert_eq!(
+            parts.headers.get(X_REQUEST_ID_HEADER).map(String::as_str),
+            Some("req_test")
+        );
+        assert_eq!(
+            parts
+                .headers
+                .get(X_CORRELATION_ID_HEADER)
+                .map(String::as_str),
+            Some("corr_test")
+        );
+        assert_eq!(
+            parts.headers.get(TRACEPARENT_HEADER).map(String::as_str),
+            Some("00-00000000000000000000000000000001-0000000000000001-01")
+        );
+        assert_eq!(
+            parts.headers.get(CONTENT_TYPE_HEADER).map(String::as_str),
+            Some("application/json; charset=utf-8")
+        );
+        assert_eq!(parts.body, Some(serde_json::json!({ "dry_run": true })));
+        assert!(!parts.headers.contains_key(AUTHORIZATION_HEADER));
+        assert!(!parts.headers.contains_key(COOKIE_HEADER));
+        assert!(!parts.headers.contains_key(X_FORWARDED_FOR_HEADER));
+        assert!(!parts.headers.contains_key(CONNECTION_HEADER));
     }
 
     #[test]

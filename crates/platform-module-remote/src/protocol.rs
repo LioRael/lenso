@@ -2,6 +2,7 @@ use platform_core::{ActorContext, TraceContext};
 use platform_module::{AdminPage, ModuleManifest};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::BTreeMap;
 
 pub type RemoteManifestResponse = ModuleManifest;
 
@@ -69,6 +70,25 @@ pub struct RemoteAdminGetRequest {
 pub struct RemoteAdminActionInvokeRequest {
     pub action: String,
     pub input: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoteHttpProxyInvokeRequest {
+    pub request_id: String,
+    pub correlation_id: String,
+    pub module_name: String,
+    pub method: String,
+    pub declared_path: String,
+    pub remote_path: String,
+    pub path_params: BTreeMap<String, String>,
+    pub headers: BTreeMap<String, String>,
+    pub body: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoteHttpProxyInvokeResponse {
+    pub status_code: u16,
+    pub body: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

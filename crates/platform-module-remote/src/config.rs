@@ -46,7 +46,13 @@ fn normalize_base_url(base_url: String) -> (RemoteModuleTransport, String) {
             RemoteModuleTransport::Grpc,
             format!("http://{}", rest.trim_end_matches('/')),
         ),
-        None => (RemoteModuleTransport::HttpJson, trimmed.to_owned()),
+        None => match trimmed.strip_prefix("grpcs://") {
+            Some(rest) => (
+                RemoteModuleTransport::Grpc,
+                format!("https://{}", rest.trim_end_matches('/')),
+            ),
+            None => (RemoteModuleTransport::HttpJson, trimmed.to_owned()),
+        },
     }
 }
 
@@ -69,5 +75,13 @@ mod tests {
 
         assert_eq!(config.transport, RemoteModuleTransport::Grpc);
         assert_eq!(config.base_url, "http://127.0.0.1:50051");
+    }
+
+    #[test]
+    fn grpcs_scheme_selects_grpc_transport_with_tls_endpoint() {
+        let config = RemoteModuleConfig::new("remote-crm", "grpcs://remote.example.test:50051/");
+
+        assert_eq!(config.transport, RemoteModuleTransport::Grpc);
+        assert_eq!(config.base_url, "https://remote.example.test:50051");
     }
 }
