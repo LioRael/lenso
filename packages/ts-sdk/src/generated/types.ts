@@ -225,6 +225,7 @@ export type AdminModuleMetadataDto = {
   admin?: AdminSurface | null;
   capabilities: Array<string>;
   console: Array<ConsoleSurface>;
+  dependencies: Array<string>;
   error?: string | null;
   events?: EventSurface | null;
   governance: AdminModuleGovernanceDto;

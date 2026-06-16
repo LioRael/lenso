@@ -6,6 +6,7 @@ use platform_module::{
 };
 
 pub const MODULE_NAME: &str = "auth-password";
+pub const AUTH_MODULE_DEPENDENCY: &str = "auth";
 
 pub fn http_routes() -> Vec<ModuleHttpRoute> {
     vec![
@@ -28,6 +29,7 @@ pub fn http_routes() -> Vec<ModuleHttpRoute> {
 
 pub fn manifest() -> ModuleManifest {
     ModuleManifest::builder(MODULE_NAME)
+        .dependencies(vec![AUTH_MODULE_DEPENDENCY.to_owned()])
         .http_routes(http_routes())
         .build()
 }

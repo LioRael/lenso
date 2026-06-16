@@ -3394,6 +3394,7 @@ components:
       - manifest_lints
       - story_display
       - capabilities
+      - dependencies
       properties:
         admin:
           oneOf:
@@ -3407,6 +3408,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ConsoleSurface'
+        dependencies:
+          type: array
+          items:
+            type: string
         error:
           type:
           - string

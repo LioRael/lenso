@@ -220,19 +220,52 @@ fn linked_module_enabled(ctx: &AppContext, module_name: &str) -> bool {
         .unwrap_or_else(|| linked_module_enabled_from_config(&ctx.config, module_name))
 }
 
-fn linked_module_with_dependencies_enabled(ctx: &AppContext, module_name: &str) -> bool {
-    linked_module_enabled(ctx, module_name)
-        && (module_name != auth_password::module::MODULE_NAME
-            || linked_module_enabled(ctx, auth::module::MODULE_NAME))
+fn first_disabled_dependency(ctx: &AppContext, manifest: fn() -> ModuleManifest) -> Option<String> {
+    (manifest)()
+        .dependencies
+        .into_iter()
+        .find(|dependency| !linked_module_enabled(ctx, dependency))
+}
+
+fn first_disabled_dependency_from_config(
+    config: &platform_core::AppConfig,
+    manifest: fn() -> ModuleManifest,
+) -> Option<String> {
+    (manifest)()
+        .dependencies
+        .into_iter()
+        .find(|dependency| !linked_module_enabled_from_config(config, dependency))
+}
+
+fn linked_module_with_dependencies_enabled(
+    ctx: &AppContext,
+    module_name: &str,
+    manifest: fn() -> ModuleManifest,
+) -> bool {
+    linked_module_enabled(ctx, module_name) && first_disabled_dependency(ctx, manifest).is_none()
 }
 
 fn linked_module_with_dependencies_enabled_from_config(
     config: &platform_core::AppConfig,
     module_name: &str,
+    manifest: fn() -> ModuleManifest,
 ) -> bool {
     linked_module_enabled_from_config(config, module_name)
-        && (module_name != auth_password::module::MODULE_NAME
-            || linked_module_enabled_from_config(config, auth::module::MODULE_NAME))
+        && first_disabled_dependency_from_config(config, manifest).is_none()
+}
+
+fn linked_module_disabled_reason(
+    ctx: &AppContext,
+    module_name: &str,
+    manifest: fn() -> ModuleManifest,
+) -> Option<String> {
+    if !linked_module_enabled(ctx, module_name) {
+        return Some("module disabled by configuration".to_owned());
+    }
+    if let Some(dependency) = first_disabled_dependency(ctx, manifest) {
+        return Some(format!("module dependency disabled: {dependency}"));
+    }
+    None
 }
 
 fn remote_module_enabled_from_config(config: &platform_core::AppConfig, module_name: &str) -> bool {
@@ -271,7 +304,9 @@ fn linked_module_entries_for_context(
     Ok(
         linked_module_entries(CompositionProfile::from_config(&ctx.config)?)
             .iter()
-            .filter(|entry| linked_module_with_dependencies_enabled(ctx, entry.module_name))
+            .filter(|entry| {
+                linked_module_with_dependencies_enabled(ctx, entry.module_name, entry.manifest)
+            })
             .collect(),
     )
 }
@@ -283,7 +318,11 @@ fn linked_module_entries_for_config(
         linked_module_entries(CompositionProfile::from_config(config)?)
             .iter()
             .filter(|entry| {
-                linked_module_with_dependencies_enabled_from_config(config, entry.module_name)
+                linked_module_with_dependencies_enabled_from_config(
+                    config,
+                    entry.module_name,
+                    entry.manifest,
+                )
             })
             .collect(),
     )
@@ -295,7 +334,9 @@ fn disabled_linked_module_entries_for_context(
     Ok(
         linked_module_entries(CompositionProfile::from_config(&ctx.config)?)
             .iter()
-            .filter(|entry| !linked_module_enabled(ctx, entry.module_name))
+            .filter(|entry| {
+                linked_module_disabled_reason(ctx, entry.module_name, entry.manifest).is_some()
+            })
             .collect(),
     )
 }
@@ -308,7 +349,13 @@ fn host_linked_modules_for_config(
         .linked_modules()
         .iter()
         .copied()
-        .filter(|entry| linked_module_enabled_from_config(config, entry.module_name))
+        .filter(|entry| {
+            linked_module_with_dependencies_enabled_from_config(
+                config,
+                entry.module_name,
+                entry.manifest,
+            )
+        })
         .collect()
 }
 
@@ -320,7 +367,9 @@ fn host_linked_modules_for_context(
         .linked_modules()
         .iter()
         .copied()
-        .filter(|entry| linked_module_enabled(ctx, entry.module_name))
+        .filter(|entry| {
+            linked_module_with_dependencies_enabled(ctx, entry.module_name, entry.manifest)
+        })
         .collect()
 }
 
@@ -332,7 +381,9 @@ fn disabled_host_linked_modules_for_context(
         .linked_modules()
         .iter()
         .copied()
-        .filter(|entry| !linked_module_enabled(ctx, entry.module_name))
+        .filter(|entry| {
+            linked_module_disabled_reason(ctx, entry.module_name, entry.manifest).is_some()
+        })
         .collect()
 }
 
@@ -426,7 +477,11 @@ pub fn migrations_for_config_with_composition(
         if linked_module_enabled_from_config(config, "auth") {
             migrations.extend(auth::migrations::AUTH_MIGRATIONS.iter().copied());
         }
-        if linked_module_with_dependencies_enabled_from_config(config, "auth-password") {
+        if linked_module_with_dependencies_enabled_from_config(
+            config,
+            "auth-password",
+            auth_password::module::manifest,
+        ) {
             migrations.extend(
                 auth_password::migrations::AUTH_PASSWORD_MIGRATIONS
                     .iter()
@@ -844,6 +899,7 @@ fn admin_metadata_from_modules(modules: Vec<Module>) -> Vec<AdminModuleMetadata>
                 console,
                 story_display,
                 capabilities,
+                dependencies,
                 ..
             } = module.manifest;
             AdminModuleMetadata {
@@ -857,6 +913,7 @@ fn admin_metadata_from_modules(modules: Vec<Module>) -> Vec<AdminModuleMetadata>
                 console,
                 story_display,
                 capabilities,
+                dependencies,
                 admin,
                 source_diagnostics: None,
             }
@@ -919,6 +976,7 @@ fn failed_remote_admin_metadata(
         console: Vec::new(),
         story_display: Vec::new(),
         capabilities: Vec::new(),
+        dependencies: Vec::new(),
         admin: None,
         source_diagnostics: Some(remote_source_diagnostics(
             config,
@@ -943,6 +1001,7 @@ fn disabled_remote_admin_metadata(config: &RemoteModuleConfig) -> AdminModuleMet
         console: Vec::new(),
         story_display: Vec::new(),
         capabilities: Vec::new(),
+        dependencies: Vec::new(),
         admin: None,
         source_diagnostics: Some(remote_source_diagnostics(config, None, None, None)),
     }
@@ -964,13 +1023,15 @@ fn disabled_linked_admin_metadata(
                 console,
                 story_display,
                 capabilities,
+                dependencies,
                 ..
             } = (entry.manifest)();
             AdminModuleMetadata {
                 module_name: name,
                 source: ModuleSource::Linked,
                 load_status: ModuleLoadStatus::Error {
-                    message: "module disabled by configuration".to_owned(),
+                    message: linked_module_disabled_reason(ctx, entry.module_name, entry.manifest)
+                        .unwrap_or_else(|| "module disabled by configuration".to_owned()),
                 },
                 http_routes,
                 runtime,
@@ -979,6 +1040,7 @@ fn disabled_linked_admin_metadata(
                 console,
                 story_display,
                 capabilities,
+                dependencies,
                 admin,
                 source_diagnostics: None,
             }
@@ -1003,13 +1065,15 @@ fn disabled_host_linked_admin_metadata(
                 console,
                 story_display,
                 capabilities,
+                dependencies,
                 ..
             } = (entry.manifest)();
             AdminModuleMetadata {
                 module_name: name,
                 source: ModuleSource::Linked,
                 load_status: ModuleLoadStatus::Error {
-                    message: "module disabled by configuration".to_owned(),
+                    message: linked_module_disabled_reason(ctx, entry.module_name, entry.manifest)
+                        .unwrap_or_else(|| "module disabled by configuration".to_owned()),
                 },
                 http_routes,
                 runtime,
@@ -1018,6 +1082,7 @@ fn disabled_host_linked_admin_metadata(
                 console,
                 story_display,
                 capabilities,
+                dependencies,
                 admin,
                 source_diagnostics: None,
             }
@@ -1918,6 +1983,39 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert!(!names.iter().any(|name| name == "auth-password"));
+    }
+
+    #[tokio::test]
+    async fn auth_password_dependency_status_is_visible_in_metadata() {
+        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build");
+        let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
+        config.modules.insert(
+            auth::module::MODULE_NAME.to_owned(),
+            ModuleConfig {
+                enabled: Some(false),
+                values: BTreeMap::new(),
+            },
+        );
+        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
+
+        let metadata = load_admin_module_metadata(&ctx)
+            .await
+            .expect("module metadata should load");
+        let auth_password = metadata
+            .iter()
+            .find(|module| module.module_name == "auth-password")
+            .expect("dependency-disabled provider should remain visible in metadata");
+
+        assert_eq!(
+            auth_password.dependencies,
+            vec![auth::module::MODULE_NAME.to_owned()]
+        );
+        assert!(matches!(
+            &auth_password.load_status,
+            ModuleLoadStatus::Error { message }
+                if message == "module dependency disabled: auth"
+        ));
     }
 
     #[tokio::test]

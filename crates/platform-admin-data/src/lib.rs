@@ -74,6 +74,8 @@ pub struct AdminModuleMetadata {
     pub story_display: Vec<StoryDisplayDescriptor>,
     /// Declared capability strings owned by the module.
     pub capabilities: Vec<String>,
+    /// Declared module dependencies.
+    pub dependencies: Vec<String>,
     /// The declared admin surface. Missing for modules with no admin surface
     /// and degraded failed remotes whose manifest could not be loaded.
     pub admin: Option<AdminSurface>,

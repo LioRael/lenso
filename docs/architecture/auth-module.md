@@ -39,6 +39,8 @@ The first provider is the separate linked `auth-password` module:
 
 - `modules.auth-password.enabled = false` disables the password provider.
 - It depends on `auth`; if `auth` is disabled, `auth-password` is not installed.
+- Its `ModuleManifest.dependencies` declares `["auth"]`, and
+  `/admin/data/modules` exposes that dependency for diagnostics and installers.
 - `POST /v1/auth/password/register` registers `identifier + password`.
 - `POST /v1/auth/password/login` creates a session for a password identity.
 

@@ -241,6 +241,7 @@ fn metadata_response_modules(modules: Vec<AdminModuleMetadata>) -> Vec<AdminModu
                 m.lifecycle.as_ref(),
                 &m.console,
                 &m.capabilities,
+                &m.dependencies,
             );
             AdminModuleMetadataDto {
                 module_name: m.module_name.clone(),
@@ -262,6 +263,7 @@ fn metadata_response_modules(modules: Vec<AdminModuleMetadata>) -> Vec<AdminModu
                     .map(Into::into)
                     .collect(),
                 capabilities: m.capabilities.clone(),
+                dependencies: m.dependencies.clone(),
                 admin: m.admin.clone(),
             }
         })
@@ -1478,10 +1480,12 @@ mod tests {
             console: Vec::new(),
             story_display: Vec::new(),
             capabilities: Vec::new(),
+            dependencies: vec!["auth".to_owned()],
             admin: None,
             source_diagnostics: None,
         }]);
 
+        assert_eq!(modules[0].dependencies, vec!["auth"]);
         assert!(modules[0].lifecycle.is_some());
         assert!(modules[0].manifest_lints.iter().any(|lint| {
             lint.subject == "lifecycle.activation_job.warm contact cache"
@@ -1524,6 +1528,7 @@ mod tests {
             }],
             story_display: Vec::new(),
             capabilities: vec!["remote_crm.contacts.write".to_owned()],
+            dependencies: Vec::new(),
             admin: Some(AdminSurface::Schema(AdminSchema {
                 entities: vec![EntitySchema {
                     name: "contacts".to_owned(),
