@@ -57,8 +57,9 @@ fields to `auth.users`.
 
 Today `auth` is a linked module registered by `crates/app-bootstrap`:
 
-- The `auth` linked profile installs `auth`, `auth-password`, and
-  `platform-story` without demo fixtures.
+- Product hosts should use `LENSO_COMPOSITION_PROFILE=core` and explicitly add
+  `builtins::auth()` plus provider modules such as `builtins::auth_password()`
+  to their host composition.
 - The `demo` linked profile enables it by default.
 - `modules.auth.enabled = false` disables its migrations, HTTP routes, admin
   data, and actor resolver install.

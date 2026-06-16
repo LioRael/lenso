@@ -8,6 +8,13 @@ pub use app_bootstrap::{HostComposition, HostLinkedModule};
 pub use lenso::ModuleManifest;
 pub use platform_core::Migration;
 
+/// First-party linked modules that a host can opt into explicitly.
+pub mod builtins {
+    pub use app_bootstrap::{
+        auth_linked_module as auth, auth_password_linked_module as auth_password,
+    };
+}
+
 /// HTTP authoring helpers for host-owned linked modules.
 pub mod http {
     pub use axum::Json;
@@ -29,7 +36,9 @@ pub mod prelude {
     pub use crate::http::{
         LinkedBinding, LinkedHttpContribution, ModuleHttpMethod, ModuleHttpRoute,
     };
-    pub use crate::{HostBuilder, HostComposition, HostLinkedModule, Migration, ModuleManifest};
+    pub use crate::{
+        HostBuilder, HostComposition, HostLinkedModule, Migration, ModuleManifest, builtins,
+    };
 }
 
 #[derive(Debug, Clone, Default)]

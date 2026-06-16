@@ -108,7 +108,9 @@ pub fn try_build_router_with_composition(
     mut ctx: AppContext,
     composition: &app_bootstrap::HostComposition,
 ) -> platform_core::AppResult<Router> {
-    if let Some(actor_resolver) = app_bootstrap::auth_actor_resolver_for_context(&ctx)? {
+    if let Some(actor_resolver) =
+        app_bootstrap::auth_actor_resolver_for_context_with_composition(&ctx, composition)?
+    {
         ctx = ctx.with_actor_resolver(actor_resolver);
     }
     install_default_platform_admin_catalogs(&ctx, composition)?;
