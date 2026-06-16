@@ -19,12 +19,11 @@
   functions, and lifecycle activation jobs.
 - Runtime Console integration is provided by the separate
   `lenso-runtime-console` repository.
-- Generated contracts and the TypeScript SDK are committed and reproducible.
+- Generated contracts are committed and reproducible.
 
 ## Getting Started
 
 ```sh
-just install
 just db-up
 just migrate
 just check

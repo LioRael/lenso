@@ -3,19 +3,10 @@ set dotenv-load := true
 api_pkg := "app-api"
 worker_pkg := "app-worker"
 migrate_pkg := "app-migrate"
-ts_sdk_dir := "packages/ts-sdk"
-runtime_console_dir := "../lenso-runtime-console"
 compose_file := "infrastructure/local/docker-compose.yml"
 
 default:
     @just --list
-
-# Dependencies
-install:
-    pnpm --dir={{ts_sdk_dir}} install
-
-install-ci:
-    CI=true pnpm --dir={{ts_sdk_dir}} install --frozen-lockfile
 
 # Quality gates
 fmt: rust-fmt
@@ -28,7 +19,6 @@ check:
     just test
     just generated-check
     just arch-check
-    just sdk-check
 
 release-check:
     just check
@@ -64,15 +54,6 @@ worker:
 migrate:
     cargo run -p {{migrate_pkg}}
 
-console:
-    pnpm --dir={{runtime_console_dir}} run dev
-
-console-api:
-    VITE_RUNTIME_CONSOLE_MODE=api VITE_API_BASE_URL=http://localhost:3000 pnpm --dir={{runtime_console_dir}} run dev
-
-console-api-demo:
-    sh scripts/runtime-console-api-demo.sh
-
 console-api-smoke:
     sh scripts/runtime-console-api-smoke.sh
 
@@ -81,18 +62,6 @@ console-api-fixture:
 
 console-api-qa:
     sh scripts/runtime-console-api-qa.sh
-
-embedded-admin-demo:
-    sh scripts/embedded-admin-demo.sh
-
-console-check:
-    pnpm --dir={{runtime_console_dir}} run check
-
-remote-module-run-demo:
-    pnpm --dir={{runtime_console_dir}} run demo:remote-module-run
-
-demo-release:
-    pnpm --dir={{runtime_console_dir}} run demo:release
 
 # Local infrastructure
 db-up:
@@ -162,41 +131,22 @@ up: db-up
 down:
     docker compose -f {{compose_file}} down
 
-# Contracts and generated clients
-generate: generate-contracts generate-ts-sdk
+# Contracts
+generate: generate-contracts
 
 generate-contracts:
     cargo run --locked -p generate-contracts
 
 contracts: generate-contracts
 
-generate-ts-sdk:
-    cargo run --locked -p generate-ts-sdk
-
-generate-sdk: generate-ts-sdk
-
 generated-check:
     @set -eu; \
     tmp=$(mktemp -d); \
     trap 'rm -rf "$tmp"' EXIT; \
-    mkdir -p "$tmp/contracts" "$tmp/ts-generated"; \
+    mkdir -p "$tmp/contracts"; \
     cp -R contracts/. "$tmp/contracts/"; \
-    cp -R packages/ts-sdk/src/generated/. "$tmp/ts-generated/"; \
     just generate; \
-    diff -ru "$tmp/contracts" contracts; \
-    diff -ru "$tmp/ts-generated" packages/ts-sdk/src/generated
-
-sdk-typecheck:
-    pnpm --dir={{ts_sdk_dir}} run typecheck
-
-sdk-build:
-    pnpm --dir={{ts_sdk_dir}} run build
-
-sdk-test:
-    pnpm --dir={{ts_sdk_dir}} run test
-
-sdk-check:
-    pnpm --dir={{ts_sdk_dir}} run check
+    diff -ru "$tmp/contracts" contracts
 
 arch-check:
     cargo run --locked -p arch-check

@@ -67,13 +67,6 @@ Do not create DDD or Clean Architecture folders:
 - Generated contract artifacts must not be manually patched.
 - Handwritten contract artifacts must still parse and use names that match their path and title.
 
-## SDK
-
-- The TypeScript SDK is generated from `contracts/openapi/app-api.v1.yaml`.
-- Do not hand-edit files under `packages/ts-sdk/src/generated/`.
-- Handwritten SDK code belongs in `packages/ts-sdk/src/index.ts`.
-- Regenerate the SDK with `just generate-ts-sdk` after changing OpenAPI.
-
 ## Runtime And Outbox
 
 - The runtime must not own business logic.
@@ -90,4 +83,4 @@ Run:
 just arch-check
 ```
 
-The checker fails on forbidden module folders, forbidden cross-module imports inside module source code, stale generated contracts, stale generated SDK files, missing OpenAPI artifacts, malformed contract JSON/YAML, missing event contracts referenced by source code, event contract name/path mismatches, missing runtime function contracts for registered module runtime functions, and runtime function contract name/path mismatches. Runtime Console source guardrails live in the sibling frontend repository.
+The checker fails on forbidden module folders, forbidden cross-module imports inside module source code, stale generated contracts, missing OpenAPI artifacts, malformed contract JSON/YAML, missing event contracts referenced by source code, event contract name/path mismatches, missing runtime function contracts for registered module runtime functions, and runtime function contract name/path mismatches. Runtime Console source guardrails live in the sibling frontend repository.

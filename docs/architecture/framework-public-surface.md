@@ -19,9 +19,7 @@ Not every project needs every package:
 - Rust linked-module authors use the `lenso` crate.
 - JavaScript or TypeScript remote-module authors use
   `@lenso/remote-module-kit`.
-- API consumers can use the OpenAPI contract directly; `@lenso/ts-sdk` is an
-  optional generated client for fixed host APIs, not part of the default module
-  or host starter path.
+- API consumers use the OpenAPI contract directly.
 - Application starters and example repositories compose those packages into a
   runnable backend, worker, migration, Runtime Console, and remote module demo.
 
@@ -33,8 +31,6 @@ Current registry baseline:
 - `lenso@0.1.0` is published on crates.io.
 - `@lenso/remote-module-kit@0.1.1` is published from the Runtime Console
   repository.
-- `@lenso/ts-sdk@0.1.0` is published from this backend repository, but it is
-  not required for module authors or starter hosts.
 
 ## Rust Facade Crate
 
@@ -120,28 +116,6 @@ Examples must not depend on a sibling `file:` path into
 this package needs a clean build output, declarations, package metadata, and
 `npm pack --dry-run` coverage.
 
-## TypeScript SDK
-
-`@lenso/ts-sdk` is a generated client for the host HTTP API. It is optional:
-useful for consumers of a fixed deployed host API, but not part of the core
-framework authoring path.
-
-The Runtime Console currently uses it as a backend contract/type consumer. That
-does not make it a required package for module authors, host starters, or
-examples.
-
-Keep the SDK source in this backend repository while it exists. That preserves
-an atomic workflow:
-
-- Rust handlers define OpenAPI.
-- committed contracts are regenerated.
-- generated SDK files are regenerated.
-- package dry-runs prove the existing publish artifact remains reproducible.
-
-Do not move the SDK to a separate repository unless it gains real independent
-consumers, a larger handwritten surface, or a separate release cadence. If it
-stays unused, deleting it is simpler than splitting it out.
-
 ## Starter And Examples
 
 The examples repository is the learning surface after packages are publishable.
@@ -191,10 +165,8 @@ facade exists.
    declarations until a host application API is intentionally designed.
 3. Keep `templates/starter-host` as the transitional host pressure test until
    its boot, migration, HTTP, and app-owned data slices stabilize.
-4. Keep `@lenso/ts-sdk` as optional generated output beside the OpenAPI
-   contracts; do not prioritize new SDK publishes without a real consumer.
-5. Move only the stable subset of `lenso-host` into a future `lenso` `host`
+4. Move only the stable subset of `lenso-host` into a future `lenso` `host`
    feature; leave app-owned SQL, repositories, CRUD shape, auth/session policy,
    and console UI out of the facade.
-6. Grow the external examples repository without reintroducing sibling
+5. Grow the external examples repository without reintroducing sibling
    workspace dependencies.

@@ -9,13 +9,6 @@ URL, install it, restart services, and inspect the loaded module.
 - Rust toolchain compatible with the workspace.
 - `just`.
 - Docker for local Postgres.
-- Node 24 and `pnpm`.
-
-## Install Dependencies
-
-```sh
-just install
-```
 
 For a blank Rust module-authoring project outside this repository, install the
 published facade crate instead:
@@ -77,50 +70,31 @@ just db-up
 just migrate
 ```
 
-Start the API, worker, and Runtime Console in separate shells:
+Start the API and worker in separate shells:
 
 ```sh
 just api
 just worker
-just console-api
 ```
 
-Open the Runtime Console at the Vite URL printed by `just console-api`.
-
-## Run The Release Demo
-
-Use the sibling Runtime Console repository's demo to verify the current
-remote-module path without keeping long-running services open:
-
-```sh
-pnpm --dir ../lenso-runtime-console demo:release
-```
-
-The demo starts the example `hello-action` remote module, reads its manifest,
-checks its schema-admin, HTTP route, and runtime function endpoints, then runs
-the same install command a user would run:
-
-```sh
-lenso module add <manifest-url>
-```
-
-The install writes local `REMOTE_MODULES` config and a console package install
-plan. Restart the API, worker, and Console after installing a real module.
+Run the Runtime Console from the sibling `../lenso-runtime-console` repository
+when you need the frontend.
 
 ## Install The Example Module Manually
 
 User-facing examples live in
-[LioRael/lenso-examples](https://github.com/LioRael/lenso-examples) and depend
-on the published `@lenso/remote-module-kit@0.1.1` package instead of sibling
-workspace paths.
+[LioRael/lenso-examples](https://github.com/LioRael/lenso-examples). This
+backend repository does not ship JavaScript example modules or manage their
+package dependencies.
 
 Clone and start the example module in a separate checkout:
 
 ```sh
 git clone https://github.com/LioRael/lenso-examples ../lenso-examples
-pnpm --dir ../lenso-examples install
-pnpm --dir ../lenso-examples start:hello-action
 ```
+
+Start the example module from the `lenso-examples` repository, then install its
+manifest here with the same command a user would run.
 
 Install its manifest:
 

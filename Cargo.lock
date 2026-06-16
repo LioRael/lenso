@@ -126,7 +126,6 @@ dependencies = [
  "anyhow",
  "app-api",
  "generate-contracts",
- "generate-ts-sdk",
  "serde_json",
  "serde_yaml",
 ]
@@ -695,15 +694,6 @@ dependencies = [
  "anyhow",
  "app-api",
  "serde",
- "serde_json",
- "serde_yaml",
-]
-
-[[package]]
-name = "generate-ts-sdk"
-version = "0.1.0"
-dependencies = [
- "anyhow",
  "serde_json",
  "serde_yaml",
 ]

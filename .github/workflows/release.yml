@@ -11,11 +11,6 @@ on:
         description: "Short release note summary"
         required: false
         type: string
-      publish_ts_sdk:
-        description: "Publish @lenso/ts-sdk to npm"
-        required: true
-        default: false
-        type: boolean
       publish_rust_crate:
         description: "Publish lenso to crates.io"
         required: true
@@ -53,15 +48,6 @@ jobs:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - uses: pnpm/action-setup@v6
-        with:
-          run_install: false
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: pnpm
-          cache-dependency-path: packages/ts-sdk/pnpm-lock.yaml
-          registry-url: https://registry.npmjs.org
       - name: Install just
         uses: extractions/setup-just@v4
       - name: Check release version
@@ -70,10 +56,6 @@ jobs:
         run: just release-check
       - name: Run package publish preflight
         run: just package-readiness
-      - name: Dry-run npm publish
-        if: ${{ inputs.publish_ts_sdk }}
-        run: npm publish --dry-run --access public
-        working-directory: packages/ts-sdk
       - name: Dry-run crates.io publish
         run: cargo publish --dry-run --locked -p lenso --allow-dirty
       - name: Build release package
@@ -81,30 +63,20 @@ jobs:
           LENSO_RELEASE_NOTES_SUMMARY: ${{ inputs.notes }}
         run: just release-package
       - name: Validate registry secrets
-        if: ${{ inputs.publish_ts_sdk || inputs.publish_rust_crate }}
+        if: ${{ inputs.publish_rust_crate }}
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          if [ "${{ inputs.publish_ts_sdk }}" = "true" ]; then
-            test -n "$NPM_TOKEN" || { echo "NPM_TOKEN is required when publish_ts_sdk=true" >&2; exit 1; }
-          fi
           if [ "${{ inputs.publish_rust_crate }}" = "true" ]; then
             test -n "$CARGO_REGISTRY_TOKEN" || { echo "CARGO_REGISTRY_TOKEN is required when publish_rust_crate=true" >&2; exit 1; }
           fi
-      - name: Publish @lenso/ts-sdk to npm
-        if: ${{ inputs.publish_ts_sdk }}
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public
-        working-directory: packages/ts-sdk
       - name: Publish lenso to crates.io
         if: ${{ inputs.publish_rust_crate }}
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: cargo publish --locked -p lenso --allow-dirty --token "$CARGO_REGISTRY_TOKEN"
       - name: Skip registry upload
-        if: ${{ !inputs.publish_ts_sdk && !inputs.publish_rust_crate }}
+        if: ${{ !inputs.publish_rust_crate }}
         run: echo "registry publish inputs are false; uploads were skipped after dry-runs."
       - name: Upload release notes draft
         uses: actions/upload-artifact@v7
