@@ -38,3 +38,15 @@ fn router() -> ApiOpenApiRouter {
 async fn status() -> Json<DataResponse<AppStatusResponse>> {
     json(AppStatusResponse { status: "ok" })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn router_documents_status_route() {
+        let document = router().to_openapi();
+
+        assert!(document.paths.paths.contains_key("/v1/app/status"));
+    }
+}
