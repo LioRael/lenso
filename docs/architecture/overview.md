@@ -2,9 +2,9 @@
 
 Lenso is a Rust-first backend framework and service-ready modular monolith with
 an embedded runtime, an Axum HTTP API, a background worker, a migration runner, a
-Vite/React Runtime Console, and a generated TypeScript SDK. The platform gives
-future projects reliable defaults without hiding the system. The public package
-surface is defined in
+Vite/React Runtime Console, committed contracts, and an optional generated
+TypeScript SDK. The platform gives future projects reliable defaults without
+hiding the system. The public package surface is defined in
 [`framework-public-surface.md`](framework-public-surface.md).
 
 ## Modular Monolith
@@ -157,12 +157,12 @@ Freshness and contract coverage are checked by Rust tests and `arch-check`. Hand
 
 ## TypeScript SDK Generation
 
-The TypeScript SDK is generated from the committed OpenAPI artifact:
+The optional TypeScript SDK is generated from the committed OpenAPI artifact:
 
 ```sh
 just generate-ts-sdk
 ```
 
-Generated files live under `packages/ts-sdk/src/generated/`. The stable ergonomic wrapper lives in `packages/ts-sdk/src/index.ts` and currently exposes identity helpers while re-exporting generated API types.
+Generated files live under `packages/ts-sdk/src/generated/`. The stable ergonomic wrapper lives in `packages/ts-sdk/src/index.ts` and currently exposes identity helpers while re-exporting generated API types. Keep this package beside the OpenAPI contracts unless it grows real independent consumers; splitting it out would add synchronization work without helping module authors.
 
 Do not hand-edit generated SDK files. Change the Rust OpenAPI source, regenerate contracts, then regenerate the SDK.

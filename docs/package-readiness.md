@@ -9,13 +9,14 @@ This document is the backend packaging checklist for that strategy.
 
 ## Current Publish Surface
 
-Publish only consumer-facing packages:
+Publish only packages with a current consumer-facing job:
 
-- `@lenso/ts-sdk` from this backend repository.
 - `@lenso/remote-module-kit` from the sibling `lenso-runtime-console`
   repository.
 - the `lenso` crates.io facade crate, which carries the public
   module-authoring declaration surface.
+- `@lenso/ts-sdk` remains an optional generated client from this backend
+  repository, not a required framework package.
 
 Do not publish the current internal Rust workspace crates directly. Names such
 as `platform-core`, `platform-module`, `platform-runtime`, and `app-bootstrap`
@@ -35,15 +36,14 @@ project:
 
 | Order | Artifact | Version | Source repo | Publish stance |
 | --- | --- | --- | --- | --- |
-| 1 | `@lenso/ts-sdk` | `0.1.0` | `lenso` | Already published; keep `publish_ts_sdk=false` for `v0.1.0` workflow reruns. |
-| 2 | `@lenso/remote-module-kit` | `0.1.1` | `lenso-runtime-console` | Already published; examples can consume the registry package. |
-| 3 | `lenso` crates.io crate | `0.1.0` | `lenso` | Already published; keep internal workspace crates private. |
+| 1 | `@lenso/remote-module-kit` | `0.1.1` | `lenso-runtime-console` | Already published; examples can consume the registry package. |
+| 2 | `lenso` crates.io crate | `0.1.0` | `lenso` | Already published; keep internal workspace crates private. |
+| 3 | `@lenso/ts-sdk` | `0.1.0` | `lenso` | Already published; optional generated client. Keep `publish_ts_sdk=false` unless a real API-client consumer needs a new version. |
 | 4 | examples repository | n/a | separate repository | Grow examples against registry packages or documented local overrides. |
 
-The npm packages are independent artifacts, but publishing the SDK first keeps
-the generated API contract available before examples and module tooling point
-users at registry installs. The Rust crate is a separate facade decision and
-should not force internal workspace crates into public API shape.
+The remote-module kit and Rust facade are the framework path. The TypeScript SDK
+is a generated API-client artifact; it should not block examples or force the
+release order.
 
 Before publishing a future version, check registry state from a clean checkout:
 
@@ -65,7 +65,8 @@ Run:
 just package-readiness
 ```
 
-The gate checks that:
+The gate still checks the existing backend-owned SDK package so published
+`0.1.0` remains reproducible:
 
 - `@lenso/ts-sdk` is not marked private.
 - its package license is MIT and the tarball includes `LICENSE`.
@@ -82,10 +83,10 @@ The gate checks that:
 This gate is intentionally a publish preflight. It does not upload anything to
 npm or crates.io.
 
-If the backend package gate is green and the registry check shows the intended
-`@lenso/ts-sdk` version does not already exist, prefer the GitHub `release`
-workflow with `publish_ts_sdk=true`. For an emergency manual publish, publish
-from the package directory:
+If the backend package gate is green and a real API-client consumer needs a new
+`@lenso/ts-sdk` version, prefer the GitHub `release` workflow with
+`publish_ts_sdk=true`. Otherwise leave `publish_ts_sdk=false`. For an emergency
+manual publish, publish from the package directory:
 
 ```sh
 cd packages/ts-sdk
@@ -144,14 +145,13 @@ workflow failures after the same dry-run checks have passed.
 
 The first separate examples repository is
 [LioRael/lenso-examples](https://github.com/LioRael/lenso-examples). Its initial
-`hello-action` example uses the published `@lenso/remote-module-kit` and
-`@lenso/ts-sdk` packages and runs its own smoke CI.
+`hello-action` example uses the published `@lenso/remote-module-kit` package
+and runs its own smoke CI.
 
 Keep using this gate before adding more external examples:
 
 - `@lenso/remote-module-kit` is consumed from npm or has a documented local
   override.
-- `@lenso/ts-sdk` is consumed from npm or has a documented local override.
 - examples use registry versions or documented local override instructions, not
   sibling `file:` dependencies.
 - the examples repository has its own CI that can start the module, fetch

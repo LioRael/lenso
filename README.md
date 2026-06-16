@@ -2,14 +2,14 @@
 
 [![CI](https://github.com/LioRael/lenso/actions/workflows/ci.yml/badge.svg)](https://github.com/LioRael/lenso/actions/workflows/ci.yml)
 
-Rust-first service-ready modular monolith scaffold with generated contracts and a TypeScript SDK.
+Rust-first service-ready modular monolith scaffold with generated contracts and an optional TypeScript SDK.
 
 The platform starts as one deployable backend system with clear module boundaries. Modules own product capabilities, platform crates provide shared service-kit foundations, the runtime handles durable background work, and contracts produce stable API/event/SDK artifacts. The Runtime Console lives in the sibling `lenso-runtime-console` repository and consumes this backend API.
 
 ## Repository Pair
 
-- Backend platform: this repository owns Rust services, platform crates, modules, migrations, contracts, and the generated TypeScript SDK.
-- Runtime Console: [`LioRael/lenso-runtime-console`](https://github.com/LioRael/lenso-runtime-console) owns the frontend workspace that consumes the admin APIs and SDK from this repository.
+- Backend platform: this repository owns Rust services, platform crates, modules, migrations, contracts, and the optional generated TypeScript SDK.
+- Runtime Console: [`LioRael/lenso-runtime-console`](https://github.com/LioRael/lenso-runtime-console) owns the frontend workspace that consumes the admin APIs from this repository.
 
 Keep both repositories checked out as siblings when working on Console-backed backend changes:
 
@@ -34,13 +34,14 @@ The `lenso` crate is a small facade for module-authoring declarations and
 manifest lints. It does not expose host application assembly, storage, HTTP
 server wiring, worker execution, or linked-module behavior bindings.
 
-The current npm authoring/client packages are:
+The current npm packages are:
 
 - `@lenso/remote-module-kit@0.1.1`, owned by
   [`LioRael/lenso-runtime-console`](https://github.com/LioRael/lenso-runtime-console).
-- `@lenso/ts-sdk@0.1.0`, generated from this repository's OpenAPI contracts.
+- `@lenso/ts-sdk@0.1.0`, an optional generated client for consumers of a
+  fixed host API.
 
-Runnable examples that consume those published npm packages live in
+Runnable examples that consume the remote-module kit live in
 [`LioRael/lenso-examples`](https://github.com/LioRael/lenso-examples).
 
 A transitional host starter lives in
@@ -56,7 +57,7 @@ facade instead of importing internal app or platform crates directly.
 - Explicit SQL and Postgres: no custom ORM, no hidden database magic.
 - Transactional outbox: module writes and emitted events commit atomically.
 - In-process outbox relay: worker claims outbox rows, dispatches registered handlers, and marks delivery state.
-- Contract layer: Rust-authored OpenAPI and JSON Schema artifacts feed the TypeScript SDK.
+- Contract layer: Rust-authored OpenAPI and JSON Schema artifacts are committed; the TypeScript SDK is optional generated output.
 
 More detail lives in [docs/architecture/overview.md](docs/architecture/overview.md). Hard rules live in [docs/architecture/rules.md](docs/architecture/rules.md).
 
@@ -84,7 +85,7 @@ First-time local setup lives in [docs/getting-started.md](docs/getting-started.m
 - `contracts/`
   - Generated and curated OpenAPI, JSON Schema, event, error, and runtime contracts.
 - `packages/`
-  - `ts-sdk`: TypeScript SDK generated from `contracts/openapi/app-api.v1.yaml`.
+  - `ts-sdk`: optional TypeScript SDK generated from `contracts/openapi/app-api.v1.yaml`.
 - `tools/`
   - `generate-contracts`: writes committed contract artifacts from Rust sources.
   - `generate-ts-sdk`: writes committed TypeScript SDK generated files from OpenAPI.

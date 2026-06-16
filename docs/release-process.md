@@ -63,7 +63,8 @@ workflow starts a Postgres service for DB-backed checks.
 
 Before a real registry publish, configure these repository secrets in GitHub:
 
-- `NPM_TOKEN`: npm token with publish access to `@lenso/ts-sdk`.
+- `NPM_TOKEN`: npm token with publish access to `@lenso/ts-sdk`, only needed
+  when `publish_ts_sdk=true`.
 - `CARGO_REGISTRY_TOKEN`: crates.io token with publish access to `lenso`.
 
 Run the workflow once with both publish inputs set to `false` before using the
@@ -76,7 +77,8 @@ artifact you intend to publish:
 
 - `version`: `v0.1.0`
 - `notes`: the release summary
-- `publish_ts_sdk`: `false` if `@lenso/ts-sdk@0.1.0` is already published
+- `publish_ts_sdk`: `false` by default; set `true` only when a real API-client
+  consumer needs a new `@lenso/ts-sdk` version
 - `publish_rust_crate`: `true` to publish `lenso@0.1.0` to crates.io
 
 The publish path first repeats the full release and package gates, then uploads
