@@ -1,7 +1,7 @@
 use lenso_host::http::{
     ApiErrorResponse, ApiOpenApiRouter, AppContext, AppError, DataResponse, ErrorCode,
     ErrorResponse, HttpRequestContext, Json, JsonBody, OpenApiRouter, Path, RequestContext, State,
-    json, routes,
+    UserActor, json, routes,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
@@ -31,6 +31,7 @@ struct UpdateItemRequest {
 #[derive(Debug, Serialize, ToSchema)]
 struct AppItem {
     id: i64,
+    owner_user_id: String,
     title: String,
 }
 
@@ -100,6 +101,18 @@ async fn status() -> Json<DataResponse<AppStatusResponse>> {
             content_type = "application/json"
         ),
         (
+            status = 401,
+            description = "Authentication is required",
+            body = ErrorResponse,
+            content_type = "application/json"
+        ),
+        (
+            status = 403,
+            description = "User authentication is required",
+            body = ErrorResponse,
+            content_type = "application/json"
+        ),
+        (
             status = 500,
             description = "Internal server error",
             body = ErrorResponse,
@@ -109,6 +122,7 @@ async fn status() -> Json<DataResponse<AppStatusResponse>> {
 )]
 async fn create_item(
     State(ctx): State<AppContext>,
+    actor: UserActor,
     HttpRequestContext(request_ctx): HttpRequestContext,
     JsonBody(input): JsonBody<CreateItemRequest>,
 ) -> Result<Json<DataResponse<AppItem>>, ApiErrorResponse> {
@@ -120,11 +134,18 @@ async fn create_item(
         ));
     }
 
-    let row = sqlx::query("insert into app.items (title) values ($1) returning id, title")
-        .bind(title)
-        .fetch_one(&ctx.db)
-        .await
-        .map_err(|error| database_error(error, &request_ctx))?;
+    let row = sqlx::query(
+        r#"
+        insert into app.items (owner_user_id, title)
+        values ($1, $2)
+        returning id, owner_user_id, title
+        "#,
+    )
+    .bind(&actor.user_id)
+    .bind(title)
+    .fetch_one(&ctx.db)
+    .await
+    .map_err(|error| database_error(error, &request_ctx))?;
 
     Ok(json(item_from_row(row, &request_ctx)?))
 }
@@ -137,8 +158,20 @@ async fn create_item(
     responses(
         (
             status = 200,
-            description = "Recent app-owned items",
+            description = "Recent app-owned items for the authenticated user",
             body = AppItemsResponseEnvelope,
+            content_type = "application/json"
+        ),
+        (
+            status = 401,
+            description = "Authentication is required",
+            body = ErrorResponse,
+            content_type = "application/json"
+        ),
+        (
+            status = 403,
+            description = "User authentication is required",
+            body = ErrorResponse,
             content_type = "application/json"
         ),
         (
@@ -151,12 +184,22 @@ async fn create_item(
 )]
 async fn list_items(
     State(ctx): State<AppContext>,
+    actor: UserActor,
     HttpRequestContext(request_ctx): HttpRequestContext,
 ) -> Result<Json<DataResponse<Vec<AppItem>>>, ApiErrorResponse> {
-    let rows = sqlx::query("select id, title from app.items order by id desc limit 50")
-        .fetch_all(&ctx.db)
-        .await
-        .map_err(|error| database_error(error, &request_ctx))?;
+    let rows = sqlx::query(
+        r#"
+        select id, owner_user_id, title
+        from app.items
+        where owner_user_id = $1
+        order by id desc
+        limit 50
+        "#,
+    )
+    .bind(&actor.user_id)
+    .fetch_all(&ctx.db)
+    .await
+    .map_err(|error| database_error(error, &request_ctx))?;
     let items = rows
         .into_iter()
         .map(|row| item_from_row(row, &request_ctx))
@@ -185,6 +228,18 @@ async fn list_items(
             content_type = "application/json"
         ),
         (
+            status = 401,
+            description = "Authentication is required",
+            body = ErrorResponse,
+            content_type = "application/json"
+        ),
+        (
+            status = 403,
+            description = "User authentication is required",
+            body = ErrorResponse,
+            content_type = "application/json"
+        ),
+        (
             status = 500,
             description = "Internal server error",
             body = ErrorResponse,
@@ -194,20 +249,28 @@ async fn list_items(
 )]
 async fn get_item(
     State(ctx): State<AppContext>,
+    actor: UserActor,
     HttpRequestContext(request_ctx): HttpRequestContext,
     Path(id): Path<i64>,
 ) -> Result<Json<DataResponse<AppItem>>, ApiErrorResponse> {
-    let row = sqlx::query("select id, title from app.items where id = $1")
-        .bind(id)
-        .fetch_optional(&ctx.db)
-        .await
-        .map_err(|error| database_error(error, &request_ctx))?
-        .ok_or_else(|| {
-            ApiErrorResponse::with_context(
-                AppError::new(ErrorCode::NotFound, format!("app item {id} was not found")),
-                &request_ctx,
-            )
-        })?;
+    let row = sqlx::query(
+        r#"
+        select id, owner_user_id, title
+        from app.items
+        where id = $1 and owner_user_id = $2
+        "#,
+    )
+    .bind(id)
+    .bind(&actor.user_id)
+    .fetch_optional(&ctx.db)
+    .await
+    .map_err(|error| database_error(error, &request_ctx))?
+    .ok_or_else(|| {
+        ApiErrorResponse::with_context(
+            AppError::new(ErrorCode::NotFound, format!("app item {id} was not found")),
+            &request_ctx,
+        )
+    })?;
 
     Ok(json(item_from_row(row, &request_ctx)?))
 }
@@ -243,6 +306,18 @@ async fn get_item(
             content_type = "application/json"
         ),
         (
+            status = 401,
+            description = "Authentication is required",
+            body = ErrorResponse,
+            content_type = "application/json"
+        ),
+        (
+            status = 403,
+            description = "User authentication is required",
+            body = ErrorResponse,
+            content_type = "application/json"
+        ),
+        (
             status = 500,
             description = "Internal server error",
             body = ErrorResponse,
@@ -252,6 +327,7 @@ async fn get_item(
 )]
 async fn update_item(
     State(ctx): State<AppContext>,
+    actor: UserActor,
     HttpRequestContext(request_ctx): HttpRequestContext,
     Path(id): Path<i64>,
     JsonBody(input): JsonBody<UpdateItemRequest>,
@@ -264,18 +340,26 @@ async fn update_item(
         ));
     }
 
-    let row = sqlx::query("update app.items set title = $1 where id = $2 returning id, title")
-        .bind(title)
-        .bind(id)
-        .fetch_optional(&ctx.db)
-        .await
-        .map_err(|error| database_error(error, &request_ctx))?
-        .ok_or_else(|| {
-            ApiErrorResponse::with_context(
-                AppError::new(ErrorCode::NotFound, format!("app item {id} was not found")),
-                &request_ctx,
-            )
-        })?;
+    let row = sqlx::query(
+        r#"
+        update app.items
+        set title = $1
+        where id = $2 and owner_user_id = $3
+        returning id, owner_user_id, title
+        "#,
+    )
+    .bind(title)
+    .bind(id)
+    .bind(&actor.user_id)
+    .fetch_optional(&ctx.db)
+    .await
+    .map_err(|error| database_error(error, &request_ctx))?
+    .ok_or_else(|| {
+        ApiErrorResponse::with_context(
+            AppError::new(ErrorCode::NotFound, format!("app item {id} was not found")),
+            &request_ctx,
+        )
+    })?;
 
     Ok(json(item_from_row(row, &request_ctx)?))
 }
@@ -300,6 +384,18 @@ async fn update_item(
             content_type = "application/json"
         ),
         (
+            status = 401,
+            description = "Authentication is required",
+            body = ErrorResponse,
+            content_type = "application/json"
+        ),
+        (
+            status = 403,
+            description = "User authentication is required",
+            body = ErrorResponse,
+            content_type = "application/json"
+        ),
+        (
             status = 500,
             description = "Internal server error",
             body = ErrorResponse,
@@ -309,20 +405,28 @@ async fn update_item(
 )]
 async fn delete_item(
     State(ctx): State<AppContext>,
+    actor: UserActor,
     HttpRequestContext(request_ctx): HttpRequestContext,
     Path(id): Path<i64>,
 ) -> Result<Json<DataResponse<AppItem>>, ApiErrorResponse> {
-    let row = sqlx::query("delete from app.items where id = $1 returning id, title")
-        .bind(id)
-        .fetch_optional(&ctx.db)
-        .await
-        .map_err(|error| database_error(error, &request_ctx))?
-        .ok_or_else(|| {
-            ApiErrorResponse::with_context(
-                AppError::new(ErrorCode::NotFound, format!("app item {id} was not found")),
-                &request_ctx,
-            )
-        })?;
+    let row = sqlx::query(
+        r#"
+        delete from app.items
+        where id = $1 and owner_user_id = $2
+        returning id, owner_user_id, title
+        "#,
+    )
+    .bind(id)
+    .bind(&actor.user_id)
+    .fetch_optional(&ctx.db)
+    .await
+    .map_err(|error| database_error(error, &request_ctx))?
+    .ok_or_else(|| {
+        ApiErrorResponse::with_context(
+            AppError::new(ErrorCode::NotFound, format!("app item {id} was not found")),
+            &request_ctx,
+        )
+    })?;
 
     Ok(json(item_from_row(row, &request_ctx)?))
 }
@@ -335,6 +439,9 @@ fn item_from_row(
         id: row
             .try_get("id")
             .map_err(|error| database_error(error, request_ctx))?,
+        owner_user_id: row
+            .try_get("owner_user_id")
+            .map_err(|error| database_error(error, request_ctx))?,
         title: row
             .try_get("title")
             .map_err(|error| database_error(error, request_ctx))?,
@@ -343,8 +450,7 @@ fn item_from_row(
 
 fn database_error(error: sqlx::Error, request_ctx: &RequestContext) -> ApiErrorResponse {
     ApiErrorResponse::with_context(
-        AppError::new(ErrorCode::Internal, "App item database operation failed")
-            .with_source(error),
+        AppError::new(ErrorCode::Internal, "App item database operation failed").with_source(error),
         request_ctx,
     )
 }

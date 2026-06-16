@@ -17,7 +17,7 @@ pub mod http {
     pub use platform_http::responses::{DataResponse, json};
     pub use platform_http::{
         ApiErrorResponse, ApiOpenApiRouter, ErrorResponse, HttpRequestContext, JsonBody,
-        OpenApiRouter, routes,
+        OpenApiRouter, UserActor, routes,
     };
     pub use platform_module::{
         LinkedBinding, LinkedHttpContribution, ModuleHttpMethod, ModuleHttpRoute,

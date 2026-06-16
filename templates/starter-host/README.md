@@ -34,11 +34,11 @@ The API binds to `HTTP_HOST:HTTP_PORT` from `.env` and serves:
 
 - `GET /health`;
 - `GET /v1/app/status`;
-- `GET /v1/app/items`;
-- `GET /v1/app/items/{id}`;
-- `PATCH /v1/app/items/{id}`;
-- `DELETE /v1/app/items/{id}`;
-- `POST /v1/app/items`;
+- `GET /v1/app/items` for the authenticated user;
+- `GET /v1/app/items/{id}` for the authenticated user;
+- `PATCH /v1/app/items/{id}` for the authenticated user;
+- `DELETE /v1/app/items/{id}` for the authenticated user;
+- `POST /v1/app/items` for the authenticated user;
 - `GET /openapi.json`;
 - `GET /docs`;
 - Runtime Console admin APIs under `/admin/*`;
@@ -74,6 +74,10 @@ or add modules beside it as your backend grows. It declares a small status
 route, an `app.items` table, and item read/write routes so the module has
 visible metadata and a real HTTP/data surface in the host registry;
 replace them with your real application capabilities as the module grows.
+The item table is intentionally app-owned and keyed by `owner_user_id`, which
+comes from `ActorContext::User.user_id`. This is the pattern to use for product
+profiles, accounts, and other user data instead of adding profile fields to
+Lenso's auth anchor.
 
 When the module owns tables, pass its migration list through
 `HostLinkedModule::manifest_only(...)`.
@@ -99,17 +103,25 @@ Create and read starter data:
 ```sh
 curl -sS -X POST http://127.0.0.1:3000/v1/app/items \
   -H 'content-type: application/json' \
+  -H 'authorization: Bearer dev-user:usr_demo' \
   -d '{"title":"first item"}' | jq .
 
-curl -sS http://127.0.0.1:3000/v1/app/items | jq .
+curl -sS http://127.0.0.1:3000/v1/app/items \
+  -H 'authorization: Bearer dev-user:usr_demo' | jq .
 
-curl -sS http://127.0.0.1:3000/v1/app/items/1 | jq .
+curl -sS http://127.0.0.1:3000/v1/app/items/1 \
+  -H 'authorization: Bearer dev-user:usr_demo' | jq .
+
+curl -sS http://127.0.0.1:3000/v1/app/items/1 \
+  -H 'authorization: Bearer dev-user:usr_other' | jq .
 
 curl -sS -X PATCH http://127.0.0.1:3000/v1/app/items/1 \
   -H 'content-type: application/json' \
+  -H 'authorization: Bearer dev-user:usr_demo' \
   -d '{"title":"renamed item"}' | jq .
 
-curl -sS -X DELETE http://127.0.0.1:3000/v1/app/items/1 | jq .
+curl -sS -X DELETE http://127.0.0.1:3000/v1/app/items/1 \
+  -H 'authorization: Bearer dev-user:usr_demo' | jq .
 ```
 
 ## Files
