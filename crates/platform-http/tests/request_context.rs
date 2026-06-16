@@ -5,7 +5,10 @@ use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
-use platform_core::{AppConfig, AppContext, LoggingEventPublisher};
+use platform_core::{
+    ActorContext, ActorResolutionRequest, ActorResolver, AppConfig, AppContext,
+    LoggingEventPublisher,
+};
 use platform_http::{HttpRequestContext, JsonBody};
 use serde::Deserialize;
 use serde_json::Value;
@@ -150,6 +153,26 @@ async fn dev_bearer_token_is_ignored_outside_local_environment() {
 }
 
 #[tokio::test]
+async fn custom_actor_resolver_can_set_actor_context() {
+    let response = router_with_actor_resolver(Arc::new(StaticActorResolver))
+        .oneshot(
+            Request::builder()
+                .uri("/context")
+                .header("authorization", "Bearer real-token")
+                .header("cookie", "lenso_session=session_123")
+                .body(Body::empty())
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should complete");
+
+    let body = json_body(response).await;
+    assert_eq!(body["actor"]["kind"], "user");
+    assert_eq!(body["actor"]["user_id"], "user_from_resolver");
+    assert_eq!(body["actor"]["scopes"], serde_json::json!(["auth.test"]));
+}
+
+#[tokio::test]
 async fn malformed_json_returns_standard_error_shape_with_request_context() {
     let response = router()
         .oneshot(
@@ -180,14 +203,28 @@ fn router() -> Router {
 }
 
 fn router_for_environment(environment: &str) -> Router {
+    router_for_environment_with_actor_resolver(environment, None)
+}
+
+fn router_with_actor_resolver(actor_resolver: Arc<dyn ActorResolver>) -> Router {
+    router_for_environment_with_actor_resolver("production", Some(actor_resolver))
+}
+
+fn router_for_environment_with_actor_resolver(
+    environment: &str,
+    actor_resolver: Option<Arc<dyn ActorResolver>>,
+) -> Router {
     let mut config = AppConfig::from_env();
     config.service.environment = environment.to_owned();
-    let ctx = AppContext::new(
+    let mut ctx = AppContext::new(
         config,
         platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
             .expect("lazy db pool should construct"),
         Arc::new(LoggingEventPublisher),
     );
+    if let Some(actor_resolver) = actor_resolver {
+        ctx = ctx.with_actor_resolver(actor_resolver);
+    }
 
     Router::new()
         .route("/context", get(context_handler))
@@ -213,6 +250,21 @@ async fn json_handler(JsonBody(input): JsonBody<JsonInput>) -> impl IntoResponse
 #[derive(Debug, Deserialize)]
 struct JsonInput {
     name: String,
+}
+
+#[derive(Debug)]
+struct StaticActorResolver;
+
+#[async_trait::async_trait]
+impl ActorResolver for StaticActorResolver {
+    async fn resolve_actor(&self, request: ActorResolutionRequest) -> ActorContext {
+        assert_eq!(request.authorization.as_deref(), Some("Bearer real-token"));
+        assert_eq!(request.cookie.as_deref(), Some("lenso_session=session_123"));
+        ActorContext::User {
+            user_id: "user_from_resolver".to_owned(),
+            scopes: vec!["auth.test".to_owned()],
+        }
+    }
 }
 
 async fn json_body(response: axum::response::Response) -> Value {

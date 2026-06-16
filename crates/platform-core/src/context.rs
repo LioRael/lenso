@@ -1,5 +1,5 @@
 use crate::clock::{Clock, SystemClock};
-use crate::config::AppConfig;
+use crate::config::{AppConfig, is_local_development_environment};
 use crate::db::DbPool;
 use crate::events::EventPublisher;
 use crate::execution_logs::{ExecutionLogProvider, PostgresExecutionLogProvider};
@@ -61,6 +61,76 @@ impl Default for ActorContext {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct ActorResolutionRequest {
+    pub authorization: Option<String>,
+    pub cookie: Option<String>,
+}
+
+#[async_trait::async_trait]
+pub trait ActorResolver: Debug + Send + Sync {
+    async fn resolve_actor(&self, request: ActorResolutionRequest) -> ActorContext;
+}
+
+#[derive(Debug, Clone)]
+pub struct DevActorResolver {
+    environment: String,
+}
+
+impl DevActorResolver {
+    #[must_use]
+    pub fn new(environment: impl Into<String>) -> Self {
+        Self {
+            environment: environment.into(),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl ActorResolver for DevActorResolver {
+    async fn resolve_actor(&self, request: ActorResolutionRequest) -> ActorContext {
+        let _ = request.cookie;
+        request
+            .authorization
+            .and_then(|value| parse_dev_bearer_actor(&value, &self.environment))
+            .unwrap_or_default()
+    }
+}
+
+fn parse_dev_bearer_actor(value: &str, environment: &str) -> Option<ActorContext> {
+    if !is_local_development_environment(environment) {
+        return None;
+    }
+
+    let token = value.strip_prefix("Bearer ")?;
+
+    if let Some(user_id) = token.strip_prefix("dev-user:") {
+        return Some(ActorContext::User {
+            user_id: user_id.to_owned(),
+            scopes: Vec::new(),
+        });
+    }
+
+    if let Some(service_token) = token.strip_prefix("dev-service:") {
+        let (service_id, scopes) = parse_dev_actor_scopes(service_token);
+        return Some(ActorContext::Service { service_id, scopes });
+    }
+
+    None
+}
+
+fn parse_dev_actor_scopes(value: &str) -> (String, Vec<String>) {
+    let Some((id, raw_scopes)) = value.split_once(':') else {
+        return (value.to_owned(), Vec::new());
+    };
+    let scopes = raw_scopes
+        .split(',')
+        .filter(|scope| !scope.is_empty())
+        .map(ToOwned::to_owned)
+        .collect();
+    (id.to_owned(), scopes)
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RequestContext {
     pub request_id: RequestId,
@@ -88,6 +158,7 @@ impl RequestContext {
 pub struct AppContext {
     pub config: Arc<AppConfig>,
     pub db: DbPool,
+    pub actor_resolver: Arc<dyn ActorResolver>,
     pub clock: Arc<dyn Clock>,
     pub ids: Arc<dyn IdGenerator>,
     pub events: Arc<dyn EventPublisher>,
@@ -104,6 +175,7 @@ impl Debug for AppContext {
             .debug_struct("AppContext")
             .field("config", &self.config)
             .field("db", &"<pool>")
+            .field("actor_resolver", &self.actor_resolver)
             .field("telemetry_spans", &self.telemetry_spans)
             .field("execution_logs", &self.execution_logs)
             .field("runtime_config", &self.runtime_config)
@@ -116,9 +188,11 @@ impl Debug for AppContext {
 impl AppContext {
     pub fn new(config: AppConfig, db: DbPool, events: Arc<dyn EventPublisher>) -> Self {
         let execution_logs = Arc::new(PostgresExecutionLogProvider::new(db.clone()));
+        let actor_resolver = Arc::new(DevActorResolver::new(config.service.environment.clone()));
         Self {
             config: Arc::new(config),
             db,
+            actor_resolver,
             clock: Arc::new(SystemClock),
             ids: Arc::new(UuidGenerator),
             events,
@@ -128,6 +202,11 @@ impl AppContext {
             health: HealthRegistry::default(),
             shutdown: Shutdown::new(),
         }
+    }
+
+    pub fn with_actor_resolver(mut self, actor_resolver: Arc<dyn ActorResolver>) -> Self {
+        self.actor_resolver = actor_resolver;
+        self
     }
 
     pub fn with_telemetry_span_provider(

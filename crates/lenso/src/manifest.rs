@@ -67,6 +67,10 @@ pub struct ModuleManifest {
     /// RESERVED SEAM — capabilities the module declares (perms/tenancy).
     #[serde(default)]
     pub capabilities: Vec<String>,
+
+    /// Other modules this module requires to be installed first.
+    #[serde(default)]
+    pub dependencies: Vec<String>,
 }
 
 impl ModuleManifest {
@@ -84,6 +88,7 @@ impl ModuleManifest {
                 lifecycle: None,
                 console: Vec::new(),
                 capabilities: Vec::new(),
+                dependencies: Vec::new(),
             },
         }
     }
@@ -125,6 +130,7 @@ pub fn lint_module_manifest(
         manifest.lifecycle.as_ref(),
         &manifest.console,
         &manifest.capabilities,
+        &manifest.dependencies,
     )
 }
 
@@ -138,6 +144,7 @@ pub fn lint_module_manifest_parts(
     lifecycle: Option<&LifecycleSurface>,
     console: &[ConsoleSurface],
     capabilities: &[String],
+    dependencies: &[String],
 ) -> Vec<ModuleManifestLint> {
     let mut lints = Vec::new();
 
@@ -158,6 +165,25 @@ pub fn lint_module_manifest_parts(
                 message: "Capability name should use dot-separated lowercase identifiers."
                     .to_owned(),
                 suggestion: "Use a stable capability name such as module.entity.read.".to_owned(),
+            });
+        }
+    }
+    for dependency in dependencies {
+        if !present(dependency) {
+            lints.push(ModuleManifestLint {
+                severity: ModuleManifestLintSeverity::Error,
+                subject: "dependency".to_owned(),
+                message: "Module dependency name must not be empty.".to_owned(),
+                suggestion: "Remove the empty dependency or set it to a stable module name."
+                    .to_owned(),
+            });
+        } else if dependency == name {
+            lints.push(ModuleManifestLint {
+                severity: ModuleManifestLintSeverity::Error,
+                subject: format!("dependency {dependency}"),
+                message: "Module must not depend on itself.".to_owned(),
+                suggestion: "Remove the self dependency from ModuleManifest.dependencies."
+                    .to_owned(),
             });
         }
     }
@@ -993,6 +1019,13 @@ impl ModuleManifestBuilder {
         self
     }
 
+    /// Attach required module dependencies.
+    #[must_use]
+    pub fn dependencies(mut self, dependencies: Vec<String>) -> Self {
+        self.manifest.dependencies = dependencies;
+        self
+    }
+
     /// Attach declared module-owned HTTP routes.
     #[must_use]
     pub fn http_routes(mut self, routes: Vec<ModuleHttpRoute>) -> Self {
@@ -1287,6 +1320,21 @@ mod tests {
             !json.contains("admin"),
             "admin: None must be skipped, got {json}"
         );
+    }
+
+    #[test]
+    fn manifest_lints_self_dependency() {
+        let manifest = ModuleManifest::builder("auth")
+            .dependencies(vec!["auth".to_owned()])
+            .build();
+
+        let lints = lint_module_manifest(ModuleSource::Linked, &manifest);
+
+        assert!(lints.iter().any(|lint| {
+            lint.severity == ModuleManifestLintSeverity::Error
+                && lint.subject == "dependency auth"
+                && lint.message == "Module must not depend on itself."
+        }));
     }
 
     #[test]

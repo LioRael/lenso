@@ -220,6 +220,7 @@ pub struct AdminModuleMetadataDto {
     pub manifest_lints: Vec<ModuleManifestLint>,
     pub story_display: Vec<StoryDisplayDescriptorDto>,
     pub capabilities: Vec<String>,
+    pub dependencies: Vec<String>,
     pub admin: Option<AdminSurface>,
 }
 

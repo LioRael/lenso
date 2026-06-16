@@ -138,6 +138,39 @@ fn removed_openapi_path_fails() {
     );
 }
 
+#[test]
+fn cross_module_public_import_is_allowed() {
+    let root = TestRepo::new();
+    root.write("modules/auth/src/lib.rs", "pub mod public;");
+    root.write(
+        "modules/auth-password/src/lib.rs",
+        "use auth::public::{self, AuthUserId};",
+    );
+
+    arch_check::check_forbidden_cross_module_imports(root.path())
+        .expect("public module imports should be allowed");
+}
+
+#[test]
+fn cross_module_internal_import_fails() {
+    let root = TestRepo::new();
+    root.write("modules/auth/src/lib.rs", "pub mod public;");
+    root.write(
+        "modules/auth-password/src/lib.rs",
+        "use auth::repositories::PostgresAuthUserRepository;",
+    );
+
+    let error = arch_check::check_forbidden_cross_module_imports(root.path())
+        .expect_err("internal module imports should fail");
+
+    assert!(
+        error
+            .to_string()
+            .contains("modules must call other modules through public interfaces"),
+        "{error}",
+    );
+}
+
 struct TestRepo {
     root: std::path::PathBuf,
 }

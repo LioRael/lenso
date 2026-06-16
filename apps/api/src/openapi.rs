@@ -23,6 +23,7 @@ use utoipa::OpenApi;
         description = "Rust-first modular monolith API contract"
     ),
     tags(
+        (name = "auth", description = "Auth module development session APIs"),
         (name = "identity", description = "Identity module fixture APIs"),
         (name = "admin-runtime", description = "Read-only runtime console APIs"),
         (name = "admin-config", description = "Editable configuration console APIs"),
@@ -69,7 +70,7 @@ fn openapi_document_for_profile(profile: CompositionProfile) -> utoipa::openapi:
     let mut document = ApiDoc::openapi();
     if profile == CompositionProfile::Core {
         if let Some(tags) = &mut document.tags {
-            tags.retain(|tag| tag.name != "identity");
+            tags.retain(|tag| tag.name != "auth" && tag.name != "identity");
         }
     }
     document

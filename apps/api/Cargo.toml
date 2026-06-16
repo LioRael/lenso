@@ -28,6 +28,8 @@ utoipa.workspace = true
 
 [dev-dependencies]
 async-trait.workspace = true
+auth.workspace = true
+auth-password.workspace = true
 platform-module.workspace = true
 platform-testing.workspace = true
 remote-module-example.workspace = true

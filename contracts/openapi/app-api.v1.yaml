@@ -2364,6 +2364,261 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /v1/auth/dev/sessions:
+    post:
+      tags:
+      - auth
+      operationId: auth_create_dev_session
+      parameters:
+      - name: x-request-id
+        in: header
+        description: Optional caller-provided request identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: x-correlation-id
+        in: header
+        description: Optional caller-provided correlation identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      requestBody:
+        description: Create a local-development auth session for a user id
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDevSessionRequest'
+        required: true
+      responses:
+        '200':
+          description: Development session created
+          headers:
+            x-correlation-id:
+              schema:
+                type: string
+              description: Correlation identifier shared across related work
+            x-request-id:
+              schema:
+                type: string
+              description: Request identifier for this HTTP request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateDevSessionResponseEnvelope'
+        '400':
+          description: Request validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Development sessions are only available in local environments
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/auth/password/login:
+    post:
+      tags:
+      - auth
+      operationId: auth_password_login
+      parameters:
+      - name: x-request-id
+        in: header
+        description: Optional caller-provided request identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: x-correlation-id
+        in: header
+        description: Optional caller-provided correlation identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      requestBody:
+        description: Create a session for a password identity
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordLoginRequest'
+        required: true
+      responses:
+        '200':
+          description: Password session created
+          headers:
+            x-correlation-id:
+              schema:
+                type: string
+              description: Correlation identifier shared across related work
+            x-request-id:
+              schema:
+                type: string
+              description: Request identifier for this HTTP request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasswordSessionResponseEnvelope'
+        '400':
+          description: Request validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Invalid identifier or password
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/auth/password/register:
+    post:
+      tags:
+      - auth
+      operationId: auth_password_register
+      parameters:
+      - name: x-request-id
+        in: header
+        description: Optional caller-provided request identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: x-correlation-id
+        in: header
+        description: Optional caller-provided correlation identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      requestBody:
+        description: Register a password identity for an identifier
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordRegisterRequest'
+        required: true
+      responses:
+        '200':
+          description: Password identity registered
+          headers:
+            x-correlation-id:
+              schema:
+                type: string
+              description: Correlation identifier shared across related work
+            x-request-id:
+              schema:
+                type: string
+              description: Request identifier for this HTTP request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasswordSessionResponseEnvelope'
+        '400':
+          description: Request validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Identifier already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/auth/sessions/revoke:
+    post:
+      tags:
+      - auth
+      operationId: auth_revoke_session
+      parameters:
+      - name: authorization
+        in: header
+        description: Bearer session token
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: cookie
+        in: header
+        description: Cookie header containing `lenso_session`
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: x-request-id
+        in: header
+        description: Optional caller-provided request identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: x-correlation-id
+        in: header
+        description: Optional caller-provided correlation identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      responses:
+        '200':
+          description: Session revoke attempted
+          headers:
+            x-correlation-id:
+              schema:
+                type: string
+              description: Correlation identifier shared across related work
+            x-request-id:
+              schema:
+                type: string
+              description: Request identifier for this HTTP request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RevokeSessionResponseEnvelope'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /v1/identity/me:
     get:
       tags:
@@ -3139,6 +3394,7 @@ components:
       - manifest_lints
       - story_display
       - capabilities
+      - dependencies
       properties:
         admin:
           oneOf:
@@ -3152,6 +3408,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ConsoleSurface'
+        dependencies:
+          type: array
+          items:
+            type: string
         error:
           type:
           - string
@@ -4684,6 +4944,37 @@ components:
           type: string
         label:
           type: string
+    CreateDevSessionRequest:
+      type: object
+      required:
+      - user_id
+      properties:
+        user_id:
+          type: string
+    CreateDevSessionResponse:
+      type: object
+      required:
+      - user_id
+      - session_id
+      - token
+      - expires_at
+      properties:
+        expires_at:
+          type: string
+          format: date-time
+        session_id:
+          type: string
+        token:
+          type: string
+        user_id:
+          type: string
+    CreateDevSessionResponseEnvelope:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/CreateDevSessionResponse'
     CreateUserRequest:
       type: object
       required:
@@ -5019,6 +5310,50 @@ components:
           - string
           - 'null'
           format: date-time
+    PasswordLoginRequest:
+      type: object
+      required:
+      - identifier
+      - password
+      properties:
+        identifier:
+          type: string
+        password:
+          type: string
+    PasswordRegisterRequest:
+      type: object
+      required:
+      - identifier
+      - password
+      properties:
+        identifier:
+          type: string
+        password:
+          type: string
+    PasswordSessionResponse:
+      type: object
+      required:
+      - user_id
+      - session_id
+      - token
+      - expires_at
+      properties:
+        expires_at:
+          type: string
+          format: date-time
+        session_id:
+          type: string
+        token:
+          type: string
+        user_id:
+          type: string
+    PasswordSessionResponseEnvelope:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/PasswordSessionResponse'
     RemoteHttpProxyResponse:
       type: object
       required:
@@ -5054,6 +5389,20 @@ components:
       type: string
       enum:
       - forwarded
+    RevokeSessionResponse:
+      type: object
+      required:
+      - revoked
+      properties:
+        revoked:
+          type: boolean
+    RevokeSessionResponseEnvelope:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          $ref: '#/components/schemas/RevokeSessionResponse'
     RuntimeFunctionDeclaration:
       type: object
       required:
@@ -5158,6 +5507,8 @@ components:
         reason:
           type: string
 tags:
+- name: auth
+  description: Auth module development session APIs
 - name: identity
   description: Identity module fixture APIs
 - name: admin-runtime

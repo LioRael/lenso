@@ -207,6 +207,7 @@ fn app() -> axum::Router {
         console: vec![],
         story_display: vec![],
         capabilities: vec![],
+        dependencies: vec![],
         admin: Some(AdminSurface::Schema(stub_schema())),
         source_diagnostics: None,
     }]);
@@ -488,6 +489,7 @@ async fn admin_action_invocation_calls_declared_source() {
         console: vec![],
         story_display: vec![],
         capabilities: vec!["remote_crm.contacts.sync".to_owned()],
+        dependencies: vec![],
         admin: Some(stub_declarative_surface()),
         source_diagnostics: None,
     }]);
@@ -529,6 +531,7 @@ async fn available_modules_returns_remote_install_rows() {
         console: vec![],
         story_display: vec![],
         capabilities: vec!["billing.read".to_owned()],
+        dependencies: vec![],
         admin: None,
         source_diagnostics: Some(AdminModuleSourceDiagnostics::Remote(
             AdminRemoteModuleDiagnostics {
@@ -869,6 +872,7 @@ async fn admin_action_invocation_requires_confirmation_phrase_when_declared() {
         console: vec![],
         story_display: vec![],
         capabilities: vec!["remote_crm.contacts.sync".to_owned()],
+        dependencies: vec![],
         admin: Some(stub_declarative_surface()),
         source_diagnostics: None,
     }]);
@@ -927,6 +931,7 @@ async fn admin_action_invocation_validates_declared_input_schema() {
         console: vec![],
         story_display: vec![],
         capabilities: vec!["remote_crm.contacts.sync".to_owned()],
+        dependencies: vec![],
         admin: Some(stub_declarative_surface()),
         source_diagnostics: None,
     }]);
@@ -1028,6 +1033,7 @@ async fn admin_action_invocation_records_story_and_technical_operation() {
         console: vec![],
         story_display: vec![],
         capabilities: vec!["remote_crm.contacts.sync".to_owned()],
+        dependencies: vec![],
         admin: Some(stub_declarative_surface()),
         source_diagnostics: None,
     }]);
@@ -1181,6 +1187,7 @@ async fn admin_action_invocation_requires_declared_capability_scope() {
         console: vec![],
         story_display: vec![],
         capabilities: vec!["remote_crm.contacts.sync".to_owned()],
+        dependencies: vec![],
         admin: Some(stub_declarative_surface()),
         source_diagnostics: None,
     }]);
@@ -1226,6 +1233,7 @@ async fn admin_action_invocation_rejects_unknown_action() {
         console: vec![],
         story_display: vec![],
         capabilities: vec!["remote_crm.contacts.sync".to_owned()],
+        dependencies: vec![],
         admin: Some(stub_declarative_surface()),
         source_diagnostics: None,
     }]);
@@ -1374,6 +1382,7 @@ async fn refresh_schema_replaces_installed_modules() {
                     story_title: Some("User Registration".to_owned()),
                 }],
                 capabilities: vec!["identity.users.read".to_owned()],
+                dependencies: vec![],
                 admin: Some(AdminSurface::Schema(stub_schema())),
                 source_diagnostics: None,
             },
@@ -1390,6 +1399,7 @@ async fn refresh_schema_replaces_installed_modules() {
                 console: vec![],
                 story_display: vec![],
                 capabilities: vec![],
+                dependencies: vec![],
                 admin: None,
                 source_diagnostics: None,
             },
@@ -1487,6 +1497,7 @@ async fn refresh_modules_replaces_module_registry_metadata() {
         console: vec![],
         story_display: vec![],
         capabilities: vec![],
+        dependencies: vec![],
         admin: Some(AdminSurface::Schema(stub_schema())),
         source_diagnostics: None,
     }]);
@@ -1509,6 +1520,7 @@ async fn refresh_modules_replaces_module_registry_metadata() {
                 story_title: None,
             }],
             capabilities: vec!["notifications.email.send".to_owned()],
+            dependencies: vec![],
             admin: None,
             source_diagnostics: None,
         }])
@@ -1586,6 +1598,7 @@ async fn refresh_modules_records_error_without_dropping_snapshot() {
         console: vec![],
         story_display: vec![],
         capabilities: vec![],
+        dependencies: vec![],
         admin: Some(AdminSurface::Schema(stub_schema())),
         source_diagnostics: None,
     }]);
