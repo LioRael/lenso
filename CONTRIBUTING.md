@@ -1,7 +1,7 @@
 # Contributing to Lenso
 
-Thanks for contributing. Lenso is a Rust-first modular monolith backend with a
-generated TypeScript SDK. Runtime Console source lives in the sibling
+Thanks for contributing. Lenso is a Rust-first modular monolith backend.
+Runtime Console source lives in the sibling
 `lenso-runtime-console` repository. This guide covers the backend workflow,
 conventions, and quality gates for changes. For deeper context, read
 [`README.md`](README.md), [`AGENTS.md`](AGENTS.md),
@@ -12,15 +12,8 @@ conventions, and quality gates for changes. For deeper context, read
 
 - Rust toolchain compatible with the workspace (`rust-version = 1.94`).
 - [`just`](https://github.com/casey/just) as the root task runner.
-- Node 24 and `pnpm` for the SDK.
 - The sibling `../lenso-runtime-console` checkout for Runtime Console work.
 - Docker if you want local Postgres via `just db-up`.
-
-Install SDK dependencies once:
-
-```sh
-just install
-```
 
 ## Development Workflow
 
@@ -41,23 +34,21 @@ Typical local loop:
 just db-up
 just migrate
 just api      # and `just worker` for background work
-just console  # Runtime Console from ../lenso-runtime-console
 ```
 
 ## Quality Gates
 
 Run the narrowest verification that covers your change. For cross-cutting backend
-changes to Rust, contracts, SDK, or CI, run the full backend gate.
+changes to Rust, contracts, or CI, run the full backend gate.
 
 | Command | Scope |
 | --- | --- |
 | `just rust-check` | `cargo check --locked --workspace --all-targets` |
 | `just test` | Rust workspace tests |
 | `just arch-check` | architecture guardrails |
-| `just sdk-check` | typecheck `packages/ts-sdk` |
 | `just generated-check` | regenerate artifacts and fail if they differ from git |
 | `just check` | full local quality gate (no dependency install) |
-| `just ci` | the exact gate GitHub Actions runs, with frozen pnpm installs |
+| `just ci` | the exact gate GitHub Actions runs |
 
 Run `just` to list all recipes.
 
@@ -69,7 +60,6 @@ The architecture checker (`just arch-check`) and CI fail on:
   `domain`, `infrastructure`.
 - Cross-module imports inside module source code.
 - Missing or stale OpenAPI / contract artifacts.
-- Stale generated TypeScript SDK files.
 - Missing event payload contracts for current events.
 
 When working in Rust:
@@ -89,15 +79,14 @@ then regenerate:
 2. Run `just generate`.
 3. Run `just generated-check` before finishing.
 
-Generated SDK files live under `packages/ts-sdk/src/generated`; contract artifacts
-live under `contracts`. Always include the source change and regenerated output in
-the same commit.
+Contract artifacts live under `contracts`. Always include the source change and
+regenerated output in the same commit.
 
 ## Runtime Console
 
 The console lives in the sibling `../lenso-runtime-console` repository. Backend
 changes may still affect Console contracts through `/admin/runtime/*`,
-`/admin/data/*`, `ModuleManifest.console`, and generated OpenAPI/SDK output.
+`/admin/data/*`, `ModuleManifest.console`, and generated OpenAPI output.
 When changing those contracts, update and verify the frontend repository in the
 same local workspace.
 

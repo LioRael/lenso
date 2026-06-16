@@ -22,7 +22,6 @@ members = [
     "modules/notifications",
     "modules/story",
     "tools/generate-contracts",
-    "tools/generate-ts-sdk",
     "tools/arch-check",
     "tools/otel-smoke",
 ]
@@ -85,7 +84,6 @@ identity = { path = "modules/identity" }
 notifications = { path = "modules/notifications" }
 story = { path = "modules/story" }
 generate-contracts = { path = "tools/generate-contracts" }
-generate-ts-sdk = { path = "tools/generate-ts-sdk" }
 arch-check = { path = "tools/arch-check" }
 remote-module-example = { path = "examples/remote-module" }
 

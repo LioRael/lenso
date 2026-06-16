@@ -1132,18 +1132,20 @@ fn remote_source_diagnostics(
     load_duration_ms: Option<u64>,
     load_error: Option<String>,
 ) -> AdminModuleSourceDiagnostics {
-    let manifest_url = match config.transport {
+    let (transport, manifest_url) = match config.transport {
         platform_module_remote::RemoteModuleTransport::HttpJson => {
-            format!("{}/manifest", config.base_url)
+            ("http_json", format!("{}/manifest", config.base_url))
         }
-        platform_module_remote::RemoteModuleTransport::Grpc => {
+        platform_module_remote::RemoteModuleTransport::Grpc => (
+            "grpc",
             format!(
                 "{}#lenso.remote.v1.RemoteModule/GetManifest",
                 config.base_url
-            )
-        }
+            ),
+        ),
     };
     AdminModuleSourceDiagnostics::Remote(AdminRemoteModuleDiagnostics {
+        transport: transport.to_owned(),
         base_url: config.base_url.clone(),
         manifest_url,
         timeout_ms: config.timeout_ms,
@@ -2463,13 +2465,13 @@ mod tests {
             .expect("lazy pool should build");
         let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
         config.module_sources.remote.push(RemoteModuleSourceConfig {
-            name: "remote-crm".to_owned(),
-            base_url: "http://127.0.0.1:65535".to_owned(),
+            name: "remote-grpc-crm".to_owned(),
+            base_url: "grpc://127.0.0.1:65535".to_owned(),
             auth_token_env: None,
             timeout_ms: 1,
         });
         config.modules.insert(
-            "remote-crm".to_owned(),
+            "remote-grpc-crm".to_owned(),
             ModuleConfig {
                 enabled: Some(false),
                 values: BTreeMap::new(),
@@ -2482,7 +2484,7 @@ mod tests {
             .expect("module metadata should load");
         let remote = metadata
             .iter()
-            .find(|module| module.module_name == "remote-crm")
+            .find(|module| module.module_name == "remote-grpc-crm")
             .expect("disabled remote module should remain visible in metadata");
 
         assert_eq!(remote.source, ModuleSource::Remote);
@@ -2494,7 +2496,8 @@ mod tests {
         assert!(matches!(
             &remote.source_diagnostics,
             Some(AdminModuleSourceDiagnostics::Remote(diagnostics))
-                if diagnostics.base_url == "http://127.0.0.1:65535"
+                if diagnostics.transport == "grpc"
+                    && diagnostics.base_url == "http://127.0.0.1:65535"
         ));
     }
 

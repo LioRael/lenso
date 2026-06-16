@@ -14,9 +14,8 @@ The default manifest also declares a host-rendered Runtime Console surface:
 - export: `remoteCrmConsoleModule`
 - route: `/data/remote-crm`
 
-The package is workspace-installed in this repository so the local demo can
-show the full path: remote manifest -> console package registry -> module-owned
-workspace page.
+The frontend package itself is owned by the Runtime Console repository. This
+backend fixture only declares the surface metadata that the host API exposes.
 
 It also exposes a second embedded-admin module base for testing
 `AdminSurface::EmbeddedCustom`:
@@ -83,29 +82,17 @@ Operations.
 Use this flow when checking that the remote HTTP proxy is visible from the
 Runtime Story perspective.
 
-From the repo root, start the full local demo:
+From the repo root, start Postgres and migrations, then run the remote module
+fixture and API in separate shells:
 
 ```sh
-just console-api-demo
+just db-up
+just migrate
+cargo run --locked -p remote-module-example
+REMOTE_MODULES=remote-crm=http://127.0.0.1:4100/lenso/module/v1,remote-crm-embedded=http://127.0.0.1:4100/lenso/module/v1/embedded,remote-crm-declarative=http://127.0.0.1:4100/lenso/module/v1/declarative just api
 ```
 
-This starts local Postgres and migrations, launches the remote module fixture,
-starts the API with `remote-crm`, `remote-crm-embedded`, and
-`remote-crm-declarative` loaded, and opens Runtime Console in API mode.
-
-If Postgres is already running and migrated, skip the database setup:
-
-```sh
-SKIP_DB_SETUP=1 just console-api-demo
-```
-
-If the default ports are busy, override them:
-
-```sh
-REMOTE_MODULE_ADDR=127.0.0.1:4101 HTTP_PORT=3001 VITE_API_BASE_URL=http://localhost:3001 CONSOLE_PORT=5176 just console-api-demo
-```
-
-In another shell, seed and verify the remote story path:
+Seed and verify the remote story path:
 
 ```sh
 just console-api-qa
@@ -139,26 +126,6 @@ In Runtime Console, verify:
 - Selecting the remote call node shows request, trace, span, path params, and
   route details in the Inspector.
 - Technical Operations includes a row with `source = remote_proxy`.
-
-Manual fallback:
-
-```sh
-cargo run --locked -p remote-module-example
-```
-
-In another shell:
-
-```sh
-just db-up
-just migrate
-REMOTE_MODULES=remote-crm=http://127.0.0.1:4100/lenso/module/v1 just api
-```
-
-In a third shell:
-
-```sh
-just console-api
-```
 
 Then trigger a successful proxied contact fetch:
 
@@ -197,12 +164,5 @@ The declarative manifest uses host-rendered `metric_strip`, `entity_table`, and
 and detail sections are read-only and use the declarative admin data endpoints
 above; the fallback schema is not advertised as a generic schema-admin module.
 
-For a one-command local Console demo from the repo root:
-
-```sh
-just embedded-admin-demo
-```
-
-Use `just console-api-demo` for the broader Remote Calls and Runtime Story QA
-flow. Use `just embedded-admin-demo` when the focus is specifically embedded and
-declarative admin surfaces.
+Use `just console-api-qa` for the broader Remote Calls and Runtime Story QA
+flow after the backend services are running.

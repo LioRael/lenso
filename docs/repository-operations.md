@@ -1,8 +1,8 @@
 # Repository Operations
 
 This repository is the backend half of the Lenso repo pair. It owns the Rust
-services, platform crates, modules, migrations, contracts, generated TypeScript
-SDK, and admin APIs consumed by the Runtime Console.
+services, platform crates, modules, migrations, contracts, and admin APIs
+consumed by the Runtime Console.
 
 ## Repository Pair
 
@@ -47,11 +47,8 @@ The `quality` job runs:
 just ci
 ```
 
-That gate installs the optional SDK dependencies with a frozen lockfile, checks Rust
-formatting, compiles and tests the Rust workspace, verifies generated contracts
-and SDK files, runs architecture checks, and typechecks the TypeScript SDK.
-
-The workflow uses Node 24 with Node 24-native GitHub Actions.
+That gate checks Rust formatting, compiles and tests the Rust workspace,
+verifies generated contracts, and runs architecture checks.
 
 ## Runtime Console CI Dependency
 
@@ -98,7 +95,6 @@ When moving this repo pair to a new owner or recreating either repository:
 3. Verify the required check name is still `quality`.
 4. Recreate the Runtime Console read-only backend deploy key.
 5. Recreate `LENSO_REPO_DEPLOY_KEY` in the Runtime Console repository.
-6. Verify both CI workflows use Node 24-compatible action versions.
-7. Run both main-branch CI workflows and confirm they pass.
-8. Preserve or intentionally replace `archive/pre-squash-history`.
-9. Update README repository links and GitHub metadata if owner or repo names changed.
+6. Run both main-branch CI workflows and confirm they pass.
+7. Preserve or intentionally replace `archive/pre-squash-history`.
+8. Update README repository links and GitHub metadata if owner or repo names changed.

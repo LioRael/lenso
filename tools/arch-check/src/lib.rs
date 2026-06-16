@@ -55,11 +55,6 @@ pub fn run() -> anyhow::Result<()> {
         &mut failures,
     );
     collect_result(
-        check_generated_sdk_fresh(&root),
-        "fresh generated SDK",
-        &mut failures,
-    );
-    collect_result(
         check_event_schema_refs_exist(&root),
         "event schema references",
         &mut failures,
@@ -234,23 +229,6 @@ pub fn check_contract_artifacts_fresh(root: &Path) -> anyhow::Result<()> {
     }
 
     ensure_empty(violations, "contract artifacts must match Rust sources")
-}
-
-pub fn check_generated_sdk_fresh(root: &Path) -> anyhow::Result<()> {
-    let mut violations = Vec::new();
-    let types = fs::read_to_string(root.join("packages/ts-sdk/src/generated/types.ts"))
-        .context("failed to read generated TypeScript types")?;
-    let client = fs::read_to_string(root.join("packages/ts-sdk/src/generated/client.ts"))
-        .context("failed to read generated TypeScript client")?;
-
-    if types != generate_ts_sdk::generated_types_source()? {
-        violations.push("packages/ts-sdk/src/generated/types.ts is stale".to_owned());
-    }
-    if client != generate_ts_sdk::generated_client_source()? {
-        violations.push("packages/ts-sdk/src/generated/client.ts is stale".to_owned());
-    }
-
-    ensure_empty(violations, "generated SDK files must match OpenAPI")
 }
 
 pub fn check_contract_files_parse(root: &Path) -> anyhow::Result<()> {

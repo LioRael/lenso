@@ -41,8 +41,7 @@ This writes:
 - `dist/release/lenso-v0.1.0-artifact-readme.md`
 
 The source archive is generated from `git archive HEAD`, so it contains committed
-source files and excludes local build output, `.git`, `target/`, `node_modules/`,
-and `dist/`.
+source files and excludes local build output, `.git`, `target/`, and `dist/`.
 
 ## 4. Run The GitHub Workflow
 
@@ -50,25 +49,22 @@ Open the `release` workflow in GitHub Actions and trigger it with:
 
 - `version`: `v0.1.0`
 - `notes`: a short release summary
-- `publish_ts_sdk`: `false`
 - `publish_rust_crate`: `false`
 
-With both publish inputs set to `false`, the workflow runs `just release-check`,
-verifies that the release version matches the backend-owned package metadata,
-runs `just package-readiness`, dry-runs the crates.io publish, generates a
-release notes draft, and uploads the source package plus artifact README. The
-workflow starts a Postgres service for DB-backed checks.
+With `publish_rust_crate=false`, the workflow runs `just release-check`,
+verifies that the release version matches the `lenso` crate metadata, runs
+`just package-readiness`, dry-runs the crates.io publish, generates a release
+notes draft, and uploads the source package plus artifact README. The workflow
+starts a Postgres service for DB-backed checks.
 
 ## 5. Configure Registry Secrets
 
 Before a real registry publish, configure these repository secrets in GitHub:
 
-- `NPM_TOKEN`: npm token with publish access to `@lenso/ts-sdk`, only needed
-  when `publish_ts_sdk=true`.
 - `CARGO_REGISTRY_TOKEN`: crates.io token with publish access to `lenso`.
 
-Run the workflow once with both publish inputs set to `false` before using the
-secrets. The dry-run path does not upload package versions.
+Run the workflow once with `publish_rust_crate=false` before using the secret.
+The dry-run path does not upload package versions.
 
 ## 6. Publish Packages
 
@@ -77,8 +73,6 @@ artifact you intend to publish:
 
 - `version`: `v0.1.0`
 - `notes`: the release summary
-- `publish_ts_sdk`: `false` by default; set `true` only when a real API-client
-  consumer needs a new `@lenso/ts-sdk` version
 - `publish_rust_crate`: `true` to publish `lenso@0.1.0` to crates.io
 
 The publish path first repeats the full release and package gates, then uploads
@@ -93,10 +87,8 @@ After the publish workflow passes, check whether the tag already exists:
 git rev-parse v0.1.0
 ```
 
-If the tag already exists, do not move it. For the current `v0.1.0` line,
-`@lenso/ts-sdk@0.1.0` was published before the Rust facade crate existed, so a
-crate-only follow-up publish should be recorded from the workflow run and
-crates.io package page instead of rewriting the tag.
+If the tag already exists, do not move it. Record crate-only follow-up publishes
+from the workflow run and crates.io package page instead of rewriting the tag.
 
 For future coordinated versions where the tag does not exist yet:
 
