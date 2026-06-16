@@ -1,4 +1,5 @@
 use crate::config::RemoteModuleConfig;
+use crate::config::RemoteModuleTransport;
 use crate::protocol::RemoteActionInvokeResponse;
 use crate::response::decode_json_response;
 use platform_core::{AppError, AppResult, ErrorCode};
@@ -43,6 +44,12 @@ impl RemoteAdminActionSource {
 impl AdminActionSource for RemoteAdminActionSource {
     async fn invoke(&self, action: &str, input: Value) -> AppResult<Value> {
         validate_action_name(action)?;
+        if self.config.transport == RemoteModuleTransport::Grpc {
+            return crate::grpc::invoke_admin_action(&self.config, action, input)
+                .await
+                .map(|envelope| envelope.result);
+        }
+
         let response = self
             .request(reqwest::Method::POST, &format!("admin/actions/{action}"))
             .json(&input)

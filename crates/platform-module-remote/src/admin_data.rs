@@ -1,4 +1,5 @@
 use crate::config::RemoteModuleConfig;
+use crate::config::RemoteModuleTransport;
 use crate::protocol::{RemoteGetResponse, RemoteListResponse};
 use crate::response::decode_json_response;
 use platform_core::{AppError, AppResult, ErrorCode};
@@ -57,6 +58,12 @@ impl RemoteAdminDataSource {
 #[async_trait::async_trait]
 impl AdminDataSource for RemoteAdminDataSource {
     async fn list(&self, entity: &str, query: &AdminListQuery) -> AppResult<AdminPage> {
+        if self.config.transport == RemoteModuleTransport::Grpc {
+            return crate::grpc::list_admin_records(&self.config, entity, query)
+                .await
+                .map(Into::into);
+        }
+
         let mut request = self
             .request(reqwest::Method::GET, &format!("admin/{entity}"))
             .query(&[("limit", query.limit.to_string())]);
@@ -71,6 +78,14 @@ impl AdminDataSource for RemoteAdminDataSource {
     }
 
     async fn get(&self, entity: &str, id: &str) -> AppResult<Option<Value>> {
+        if self.config.transport == RemoteModuleTransport::Grpc {
+            return match crate::grpc::get_admin_record(&self.config, entity, id).await {
+                Ok(response) => Ok(response.record),
+                Err(error) if error.code == ErrorCode::NotFound => Ok(None),
+                Err(error) => Err(error),
+            };
+        }
+
         let request = self.request(reqwest::Method::GET, &format!("admin/{entity}/{id}"));
         Ok(self
             .send_json::<RemoteGetResponse>(request)

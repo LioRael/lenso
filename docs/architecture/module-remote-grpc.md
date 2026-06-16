@@ -5,7 +5,7 @@ does not replace the existing HTTP/JSON protocol. The host still owns auth,
 timeouts, retries, outbox claims, Runtime Story semantics, and operator
 visibility.
 
-## First Slice
+## Current Lane
 
 Configure a gRPC remote module by using a `grpc://` endpoint in `REMOTE_MODULES`:
 
@@ -17,6 +17,9 @@ The host normalizes that endpoint to a tonic `http://` channel and calls:
 
 ```text
 /lenso.remote.v1.RemoteModule/GetManifest
+/lenso.remote.v1.RemoteModule/ListAdminRecords
+/lenso.remote.v1.RemoteModule/GetAdminRecord
+/lenso.remote.v1.RemoteModule/InvokeAdminAction
 /lenso.remote.v1.RemoteModule/InvokeFunction
 /lenso.remote.v1.RemoteModule/HandleEvent
 ```
@@ -30,7 +33,6 @@ ready to freeze. The checked-in protocol file lives at
 
 ## Deferred
 
-- gRPC admin data and admin actions.
 - gRPC-backed public HTTP proxy routes.
 - TLS configuration for `grpcs://`.
 - Streaming, bidirectional channels, and arbitrary host bridges.

@@ -1,6 +1,7 @@
 use super::{
-    IDENTITY_USER_REGISTERED_EVENT, REMOTE_SYNC_CONTACT_FUNCTION, REMOTE_USER_REGISTERED_HANDLER,
-    RuntimeFunctionInvokeRequest, remote_crm_manifest,
+    CONTACTS, IDENTITY_USER_REGISTERED_EVENT, REMOTE_SYNC_CONTACT_FUNCTION,
+    REMOTE_USER_REGISTERED_HANDLER, RuntimeFunctionInvokeRequest, contact_to_value,
+    remote_crm_manifest,
 };
 use serde_json::{Value, json};
 use std::convert::Infallible;
@@ -10,6 +11,9 @@ use tonic::server::{NamedService, UnaryService};
 use tonic::{Request, Status};
 
 const GET_MANIFEST_PATH: &str = "/lenso.remote.v1.RemoteModule/GetManifest";
+const LIST_ADMIN_RECORDS_PATH: &str = "/lenso.remote.v1.RemoteModule/ListAdminRecords";
+const GET_ADMIN_RECORD_PATH: &str = "/lenso.remote.v1.RemoteModule/GetAdminRecord";
+const INVOKE_ADMIN_ACTION_PATH: &str = "/lenso.remote.v1.RemoteModule/InvokeAdminAction";
 const INVOKE_FUNCTION_PATH: &str = "/lenso.remote.v1.RemoteModule/InvokeFunction";
 const HANDLE_EVENT_PATH: &str = "/lenso.remote.v1.RemoteModule/HandleEvent";
 
@@ -50,7 +54,12 @@ where
 
     fn call(&mut self, req: http::Request<B>) -> Self::Future {
         match req.uri().path() {
-            GET_MANIFEST_PATH | INVOKE_FUNCTION_PATH | HANDLE_EVENT_PATH => {
+            GET_MANIFEST_PATH
+            | LIST_ADMIN_RECORDS_PATH
+            | GET_ADMIN_RECORD_PATH
+            | INVOKE_ADMIN_ACTION_PATH
+            | INVOKE_FUNCTION_PATH
+            | HANDLE_EVENT_PATH => {
                 struct JsonSvc {
                     path: &'static str,
                 }
@@ -69,6 +78,9 @@ where
 
                 let path = match req.uri().path() {
                     GET_MANIFEST_PATH => GET_MANIFEST_PATH,
+                    LIST_ADMIN_RECORDS_PATH => LIST_ADMIN_RECORDS_PATH,
+                    GET_ADMIN_RECORD_PATH => GET_ADMIN_RECORD_PATH,
+                    INVOKE_ADMIN_ACTION_PATH => INVOKE_ADMIN_ACTION_PATH,
                     INVOKE_FUNCTION_PATH => INVOKE_FUNCTION_PATH,
                     HANDLE_EVENT_PATH => HANDLE_EVENT_PATH,
                     _ => unreachable!("matched paths above"),
@@ -103,6 +115,9 @@ fn grpc_json_response(path: &str, request: JsonEnvelope) -> Result<JsonEnvelope,
     let payload = match path {
         GET_MANIFEST_PATH => serde_json::to_string(&remote_crm_manifest())
             .map_err(|error| Status::internal(error.to_string()))?,
+        LIST_ADMIN_RECORDS_PATH => list_admin_records_payload(&request.payload_json)?,
+        GET_ADMIN_RECORD_PATH => get_admin_record_payload(&request.payload_json)?,
+        INVOKE_ADMIN_ACTION_PATH => invoke_admin_action_payload(&request.payload_json)?,
         INVOKE_FUNCTION_PATH => invoke_function_payload(&request.payload_json)?,
         HANDLE_EVENT_PATH => handle_event_payload(&request.payload_json)?,
         _ => return Err(Status::unimplemented("unknown method")),
@@ -145,6 +160,79 @@ fn invoke_function_payload(payload_json: &str) -> Result<String, Status> {
                 .get("trace_id")
                 .and_then(Value::as_str)
                 .unwrap_or(""),
+        }
+    }))
+    .map_err(|error| Status::internal(error.to_string()))
+}
+
+fn list_admin_records_payload(payload_json: &str) -> Result<String, Status> {
+    let request: Value = serde_json::from_str(payload_json)
+        .map_err(|error| Status::invalid_argument(error.to_string()))?;
+    if request.get("entity").and_then(Value::as_str) != Some("contacts") {
+        return Err(Status::not_found("admin entity was not found"));
+    }
+
+    let cursor = request.get("cursor").and_then(Value::as_str);
+    let start = cursor
+        .and_then(|cursor| CONTACTS.iter().position(|contact| contact.id == cursor))
+        .map_or(0, |index| index + 1);
+    let limit = request
+        .get("limit")
+        .and_then(Value::as_i64)
+        .unwrap_or(50)
+        .clamp(1, 100) as usize;
+    let records = CONTACTS
+        .iter()
+        .skip(start)
+        .take(limit)
+        .map(contact_to_value)
+        .collect::<Vec<_>>();
+    let next_cursor = (start + records.len() < CONTACTS.len())
+        .then(|| records.last())
+        .flatten()
+        .and_then(|record| record.get("id"))
+        .and_then(Value::as_str);
+
+    serde_json::to_string(&json!({
+        "records": records,
+        "next_cursor": next_cursor,
+    }))
+    .map_err(|error| Status::internal(error.to_string()))
+}
+
+fn get_admin_record_payload(payload_json: &str) -> Result<String, Status> {
+    let request: Value = serde_json::from_str(payload_json)
+        .map_err(|error| Status::invalid_argument(error.to_string()))?;
+    if request.get("entity").and_then(Value::as_str) != Some("contacts") {
+        return Err(Status::not_found("admin entity was not found"));
+    }
+    let id = request.get("id").and_then(Value::as_str).unwrap_or("");
+    let Some(contact) = CONTACTS.iter().find(|contact| contact.id == id) else {
+        return Err(Status::not_found("admin record was not found"));
+    };
+
+    serde_json::to_string(&json!({
+        "record": contact_to_value(contact),
+    }))
+    .map_err(|error| Status::internal(error.to_string()))
+}
+
+fn invoke_admin_action_payload(payload_json: &str) -> Result<String, Status> {
+    let request: Value = serde_json::from_str(payload_json)
+        .map_err(|error| Status::invalid_argument(error.to_string()))?;
+    if request.get("action").and_then(Value::as_str) != Some("sync_contacts") {
+        return Err(Status::not_found("admin action was not found"));
+    }
+    let input = request.get("input").unwrap_or(&Value::Null);
+
+    serde_json::to_string(&json!({
+        "result": {
+            "synced": true,
+            "dry_run": input
+                .get("dry_run")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            "contacts": CONTACTS.len(),
         }
     }))
     .map_err(|error| Status::internal(error.to_string()))
