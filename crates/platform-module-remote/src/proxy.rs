@@ -1,4 +1,4 @@
-use crate::config::RemoteModuleConfig;
+use crate::config::{RemoteModuleConfig, RemoteModuleTransport};
 use platform_module::{Module, ModuleHttpMethod, ModuleHttpRoute, ModuleSource};
 use std::collections::{BTreeMap, HashSet};
 
@@ -45,6 +45,7 @@ impl RemoteHttpProxyRegistry {
     pub fn from_modules(modules: &[Module], configs: &[RemoteModuleConfig]) -> Self {
         let config_by_name: BTreeMap<_, _> = configs
             .iter()
+            .filter(|config| config.transport == RemoteModuleTransport::HttpJson)
             .map(|config| (config.name.as_str(), config))
             .collect();
         let modules = modules
@@ -275,6 +276,22 @@ mod tests {
             .expect("route should match");
         assert_eq!(matched.timeout_ms, 250);
         assert_eq!(matched.auth_token.as_deref(), Some("remote-secret"));
+    }
+
+    #[test]
+    fn registry_skips_grpc_remote_modules() {
+        let registry = RemoteHttpProxyRegistry::from_modules(
+            &[remote_module(
+                "remote-crm",
+                vec![route(ModuleHttpMethod::Get, "/contacts")],
+            )],
+            &[RemoteModuleConfig::new(
+                "remote-crm",
+                "grpc://127.0.0.1:50051",
+            )],
+        );
+
+        assert!(registry.is_empty());
     }
 
     #[test]

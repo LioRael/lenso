@@ -43,14 +43,27 @@ The server listens on `127.0.0.1:4100` by default. Override it with:
 REMOTE_MODULE_ADDR=127.0.0.1:4101 cargo run --locked -p remote-module-example
 ```
 
+Run the same fixture as a native gRPC remote module:
+
+```sh
+cargo run --locked -p remote-module-example -- --grpc
+```
+
 Connect it to the API in another shell:
 
 ```sh
 REMOTE_MODULES=remote-crm=http://127.0.0.1:4100/lenso/module/v1 just api
 ```
 
-The API loads the module manifest at startup and serves its schema-admin data
-through the normal `/admin/data/*` backend.
+Or connect the gRPC transport:
+
+```sh
+REMOTE_MODULES=remote-crm=grpc://127.0.0.1:4100 just api
+```
+
+The API loads the module manifest at startup. The HTTP transport also serves
+schema-admin data through the normal `/admin/data/*` backend; the gRPC transport
+currently covers manifest, runtime function, and event-handler calls.
 The manifest also declares module-local HTTP route metadata for `/contacts`,
 `/contacts/{id}`, and proxy fixture routes. The host preserves that metadata
 under `/admin/data/modules` and exposes matched routes through:

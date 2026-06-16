@@ -1,4 +1,4 @@
-use crate::config::RemoteModuleConfig;
+use crate::config::{RemoteModuleConfig, RemoteModuleTransport};
 use crate::protocol::{RemoteFunctionInvokeRequest, RemoteFunctionInvokeResponse};
 use crate::response::{ResponseBodyPolicy, decode_json_response_with_policy};
 use crate::validation::validate_path_segment;
@@ -48,6 +48,12 @@ impl RemoteRuntimeFunction {
             trace: ctx.trace,
             input,
         };
+        if self.config.transport == RemoteModuleTransport::Grpc {
+            return crate::grpc::invoke_function(&self.config, &request_body)
+                .await
+                .map(|response| response.output);
+        }
+
         let mut request = self.client.post(self.invoke_url()).json(&request_body);
         if let Some(token) = &self.config.auth_token {
             request = request.bearer_auth(token);
