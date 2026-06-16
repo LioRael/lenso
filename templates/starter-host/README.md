@@ -33,6 +33,7 @@ cargo run --bin worker
 The API binds to `HTTP_HOST:HTTP_PORT` from `.env` and serves:
 
 - `GET /health`;
+- `GET /v1/app/status`;
 - `GET /openapi.json`;
 - `GET /docs`;
 - Runtime Console admin APIs under `/admin/*`;
@@ -64,10 +65,10 @@ HostBuilder::new()
 ```
 
 The included `src/modules/app` module is a project-owned skeleton. Rename it
-or add modules beside it as your backend grows. The first step is usually a
-manifest. The starter manifest declares the placeholder `app.data.read`
-capability so the module has visible metadata in the host registry; replace it
-with your real application capabilities as the module grows.
+or add modules beside it as your backend grows. It declares a small
+`GET /v1/app/status` route plus the `app.status.read` capability so the module
+has visible metadata and a real HTTP surface in the host registry; replace
+them with your real application capabilities as the module grows.
 
 When the module owns tables, pass its migration list through
 `HostLinkedModule::manifest_only(...)`.
@@ -84,6 +85,9 @@ then run:
 ```sh
 cargo run --bin migrate
 ```
+
+Add HTTP routes through `src/modules/app/routes.rs`, declare their manifest
+metadata in `src/modules/app/mod.rs`, then restart the API.
 
 ## Files
 
