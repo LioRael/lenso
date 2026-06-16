@@ -8,6 +8,11 @@ pub use app_bootstrap::{HostComposition, HostLinkedModule};
 pub use lenso::ModuleManifest;
 pub use platform_core::Migration;
 
+/// Common host-authoring imports for starter applications.
+pub mod prelude {
+    pub use crate::{HostBuilder, HostComposition, HostLinkedModule, Migration, ModuleManifest};
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct HostBuilder {
     composition: HostComposition,
@@ -75,4 +80,27 @@ pub async fn run_migrations_from_env_with_composition(
     composition: HostComposition,
 ) -> anyhow::Result<()> {
     app_migrate::run_from_env_with_composition(composition).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::prelude::*;
+
+    fn manifest() -> ModuleManifest {
+        ModuleManifest::builder("app").build()
+    }
+
+    #[test]
+    fn prelude_exports_host_authoring_types() {
+        let _composition: HostComposition = HostBuilder::new()
+            .linked_module(HostLinkedModule::manifest_only(
+                "app",
+                manifest,
+                &[Migration {
+                    name: "app/0001_init",
+                    sql: "select 1;",
+                }],
+            ))
+            .build();
+    }
 }

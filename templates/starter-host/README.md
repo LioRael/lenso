@@ -56,7 +56,9 @@ User-facing remote-module examples live in
 Local Rust modules are registered from `src/lib.rs`:
 
 ```rust
-lenso_host::HostBuilder::new()
+use lenso_host::prelude::*;
+
+HostBuilder::new()
     .linked_module(modules::app::linked_module())
     .build()
 ```
