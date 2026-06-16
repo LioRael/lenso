@@ -2051,6 +2051,37 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /admin/system/restart:
+    post:
+      tags:
+      - admin-system
+      operationId: admin_system_restart
+      parameters:
+      - name: authorization
+        in: header
+        description: Development service bearer token
+        required: true
+        schema:
+          type: string
+      responses:
+        '202':
+          description: Service restart requested
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminServiceRestartResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /modules/{module}/http/{*path}:
     get:
       tags:
@@ -2450,7 +2481,7 @@ paths:
           - string
           - 'null'
       requestBody:
-        description: Create a session for a password identity
+        description: Create a session or JWT for a password identity
         content:
           application/json:
             schema:
@@ -2458,7 +2489,7 @@ paths:
         required: true
       responses:
         '200':
-          description: Password session created
+          description: Password authentication successful
           headers:
             x-correlation-id:
               schema:
@@ -4684,6 +4715,19 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AdminModuleSchema'
+    AdminServiceRestartResponse:
+      type: object
+      required:
+      - status
+      - service
+      - requires_supervisor
+      properties:
+        requires_supervisor:
+          type: boolean
+        service:
+          type: string
+        status:
+          type: string
     AdminSurface:
       oneOf:
       - allOf:
@@ -4765,6 +4809,7 @@ components:
       required:
       - key
       - service
+      - order
       - value_type
       - default
       - editable
@@ -4776,39 +4821,85 @@ components:
           type: string
         editable:
           type: boolean
+        group:
+          type:
+          - string
+          - 'null'
         key:
           type: string
+        order:
+          type: integer
+          format: int32
         restart_only:
           type: boolean
+        section:
+          type:
+          - string
+          - 'null'
         service:
           type: string
         value_type: {}
+        visible_when:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ConfigVisibilityConditionDto'
     ConfigDescriptorListResponse:
       type: object
       description: The list of all registered descriptors.
       required:
+      - groups
       - data
       properties:
         data:
           type: array
           items:
             $ref: '#/components/schemas/ConfigDescriptorDto'
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConfigGroupDto'
+    ConfigGroupDto:
+      type: object
+      description: Presentation metadata for a set of related settings.
+      required:
+      - id
+      - label
+      - description
+      - order
+      properties:
+        description:
+          type: string
+        id:
+          type: string
+        label:
+          type: string
+        order:
+          type: integer
+          format: int32
     ConfigValueDto:
       type: object
-      description: A resolved effective value plus where it came from.
+      description: A resolved config value for the running service plus any persisted desired value.
       required:
       - key
       - value
+      - effective_value
+      - desired_value
+      - pending_restart
       - source
       properties:
+        desired_value: {}
+        effective_value: {}
         key:
           type: string
+        pending_restart:
+          type: boolean
         source:
           type: string
-        value: {}
+        value:
+          description: Backward-compatible alias for `effective_value`.
     ConfigValueListResponse:
       type: object
-      description: The list of effective values for the running service.
+      description: The list of effective and desired values for the running service.
       required:
       - data
       properties:
@@ -4816,6 +4907,25 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ConfigValueDto'
+    ConfigVisibilityConditionDto:
+      oneOf:
+      - type: object
+        required:
+        - service
+        - key
+        - value
+        - kind
+        properties:
+          key:
+            type: string
+          kind:
+            type: string
+            enum:
+            - equals
+          service:
+            type: string
+          value: {}
+      description: A declarative condition that controls whether a setting is shown.
     ConfigWriteRequest:
       type: object
       description: Request body for writing a value.
@@ -5337,7 +5447,6 @@ components:
       type: object
       required:
       - user_id
-      - session_id
       - token
       - expires_at
       properties:
@@ -5345,7 +5454,9 @@ components:
           type: string
           format: date-time
         session_id:
-          type: string
+          type:
+          - string
+          - 'null'
         token:
           type: string
         user_id:

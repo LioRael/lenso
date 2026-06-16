@@ -54,9 +54,10 @@ pub use remote_proxy_calls::{
 };
 pub use runtime_config::{
     CONFIG_NOTIFY_CHANNEL, PostgresRuntimeConfigProvider, RuntimeConfigAuditEntry,
-    RuntimeConfigCell, RuntimeConfigDescriptor, RuntimeConfigProvider, RuntimeConfigRegistry,
-    RuntimeConfigScope, RuntimeConfigSnapshot, RuntimeConfigSource, RuntimeConfigType,
-    StaticRuntimeConfigProvider, StoredRuntimeConfig,
+    RuntimeConfigCell, RuntimeConfigDescriptor, RuntimeConfigGeneratedValue,
+    RuntimeConfigGroupDescriptor, RuntimeConfigProvider, RuntimeConfigRegistry, RuntimeConfigScope,
+    RuntimeConfigSnapshot, RuntimeConfigSource, RuntimeConfigType,
+    RuntimeConfigVisibilityCondition, StaticRuntimeConfigProvider, StoredRuntimeConfig,
 };
 pub use shutdown::Shutdown;
 pub use telemetry_attrs::{

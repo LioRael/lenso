@@ -68,6 +68,13 @@ pub struct ExecutionLogQuery {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+pub struct AdminServiceRestartResponse {
+    pub status: String,
+    pub service: String,
+    pub requires_supervisor: bool,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 pub struct PageInfo {
     pub limit: i64,
     pub next_created_before: Option<DateTime<Utc>>,

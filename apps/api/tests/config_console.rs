@@ -3,8 +3,9 @@ use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
 use platform_core::{
     AppConfig, AppContext, DatabaseConfig, LoggingEventPublisher, PLATFORM_MIGRATIONS,
-    PostgresRuntimeConfigProvider, RuntimeConfigDescriptor, RuntimeConfigRegistry,
-    RuntimeConfigScope, RuntimeConfigType, apply_migrations,
+    PostgresRuntimeConfigProvider, RuntimeConfigDescriptor, RuntimeConfigGeneratedValue,
+    RuntimeConfigGroupDescriptor, RuntimeConfigRegistry, RuntimeConfigScope, RuntimeConfigType,
+    RuntimeConfigVisibilityCondition, apply_migrations,
 };
 use platform_testing::TestDatabase;
 use serde_json::{Value, json};
@@ -12,26 +13,87 @@ use std::sync::Arc;
 use tower::ServiceExt;
 
 fn registry() -> RuntimeConfigRegistry {
-    RuntimeConfigRegistry::try_new(vec![
-        RuntimeConfigDescriptor {
-            key: "demo.flag".to_owned(),
-            scope: RuntimeConfigScope::Shared,
-            value_type: RuntimeConfigType::Bool,
-            default: json!(false),
-            editable: true,
-            restart_only: false,
-            description: "demo flag",
-        },
-        RuntimeConfigDescriptor {
-            key: "demo.locked".to_owned(),
-            scope: RuntimeConfigScope::Shared,
-            value_type: RuntimeConfigType::Bool,
-            default: json!(true),
-            editable: false,
-            restart_only: false,
-            description: "non-editable demo flag",
-        },
-    ])
+    RuntimeConfigRegistry::try_new_with_groups(
+        vec![
+            RuntimeConfigDescriptor {
+                key: "demo.flag".to_owned(),
+                scope: RuntimeConfigScope::Shared,
+                group: Some("demo"),
+                section: Some("Basics"),
+                order: 10,
+                visible_when: None,
+                generated: None,
+                value_type: RuntimeConfigType::Bool,
+                default: json!(false),
+                editable: true,
+                restart_only: false,
+                description: "demo flag",
+            },
+            RuntimeConfigDescriptor {
+                key: "demo.locked".to_owned(),
+                scope: RuntimeConfigScope::Shared,
+                group: Some("demo"),
+                section: Some("Basics"),
+                order: 20,
+                visible_when: Some(RuntimeConfigVisibilityCondition::Equals {
+                    service: "*",
+                    key: "demo.flag",
+                    value: json!(true),
+                }),
+                generated: None,
+                value_type: RuntimeConfigType::Bool,
+                default: json!(true),
+                editable: false,
+                restart_only: false,
+                description: "non-editable demo flag",
+            },
+            RuntimeConfigDescriptor {
+                key: "demo.mode".to_owned(),
+                scope: RuntimeConfigScope::Shared,
+                group: Some("demo"),
+                section: Some("Generated"),
+                order: 30,
+                visible_when: None,
+                generated: None,
+                value_type: RuntimeConfigType::Enum(&["basic", "secret"]),
+                default: json!("basic"),
+                editable: true,
+                restart_only: true,
+                description: "demo mode",
+            },
+            RuntimeConfigDescriptor {
+                key: "demo.secret".to_owned(),
+                scope: RuntimeConfigScope::Shared,
+                group: Some("demo"),
+                section: Some("Generated"),
+                order: 40,
+                visible_when: Some(RuntimeConfigVisibilityCondition::Equals {
+                    service: "*",
+                    key: "demo.mode",
+                    value: json!("secret"),
+                }),
+                generated: Some(RuntimeConfigGeneratedValue::Secret {
+                    bytes: 32,
+                    when: RuntimeConfigVisibilityCondition::Equals {
+                        service: "*",
+                        key: "demo.mode",
+                        value: json!("secret"),
+                    },
+                }),
+                value_type: RuntimeConfigType::String,
+                default: json!(null),
+                editable: true,
+                restart_only: false,
+                description: "generated demo secret",
+            },
+        ],
+        vec![RuntimeConfigGroupDescriptor {
+            id: "demo",
+            label: "Demo",
+            description: "Demo settings.",
+            order: 10,
+        }],
+    )
     .unwrap()
 }
 
@@ -106,12 +168,31 @@ async fn config_console_round_trip() {
     assert_eq!(response.status(), StatusCode::OK);
     let body = json_body(response).await;
     assert!(
-        body["data"]
+        body["groups"]
             .as_array()
             .unwrap()
             .iter()
-            .any(|d| d["key"] == "demo.flag"),
+            .any(|group| group["id"] == "demo" && group["label"] == "Demo"),
+        "descriptors should include demo group: {body:?}"
+    );
+    assert!(
+        body["data"].as_array().unwrap().iter().any(|d| {
+            d["key"] == "demo.flag"
+                && d["group"] == "demo"
+                && d["section"] == "Basics"
+                && d["order"] == 10
+                && d["visible_when"].is_null()
+        }),
         "descriptors should include demo.flag: {body:?}"
+    );
+    assert!(
+        body["data"].as_array().unwrap().iter().any(|d| {
+            d["key"] == "demo.locked"
+                && d["visible_when"]["kind"] == "equals"
+                && d["visible_when"]["key"] == "demo.flag"
+                && d["visible_when"]["value"] == true
+        }),
+        "descriptors should include demo.locked visibility: {body:?}"
     );
 
     // 2) unauthenticated request is rejected
@@ -178,7 +259,81 @@ async fn config_console_round_trip() {
         .expect("request completes");
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
 
-    // 6) the audit endpoint reads the DB directly and should reflect the write
+    // 6) generated values initialize once when their trigger value is written
+    let response = app
+        .clone()
+        .oneshot(
+            req_json(
+                "PUT",
+                "/admin/config/*/demo.mode",
+                &json!({"value": "secret"}),
+            )
+            .with_admin(),
+        )
+        .await
+        .expect("request completes");
+    assert_eq!(response.status(), StatusCode::OK);
+    let response = app
+        .clone()
+        .oneshot(req("GET", "/admin/config/*/demo.secret/audit").with_admin())
+        .await
+        .expect("request completes");
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    let secret_entries = body["data"].as_array().unwrap();
+    assert_eq!(secret_entries.len(), 1, "secret should initialize once");
+    assert_eq!(
+        secret_entries[0]["new_value"]
+            .as_str()
+            .expect("generated secret is a string")
+            .len(),
+        64
+    );
+    let response = app
+        .clone()
+        .oneshot(req("GET", "/admin/config/values").with_admin())
+        .await
+        .expect("request completes");
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    let mode_value = body["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|value| value["key"] == "demo.mode")
+        .expect("demo.mode value exists");
+    assert_eq!(mode_value["value"], json!("basic"));
+    assert_eq!(mode_value["effective_value"], json!("basic"));
+    assert_eq!(mode_value["desired_value"], json!("secret"));
+    assert_eq!(mode_value["pending_restart"], json!(true));
+
+    let response = app
+        .clone()
+        .oneshot(
+            req_json(
+                "PUT",
+                "/admin/config/*/demo.mode",
+                &json!({"value": "secret"}),
+            )
+            .with_admin(),
+        )
+        .await
+        .expect("request completes");
+    assert_eq!(response.status(), StatusCode::OK);
+    let response = app
+        .clone()
+        .oneshot(req("GET", "/admin/config/*/demo.secret/audit").with_admin())
+        .await
+        .expect("request completes");
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(
+        body["data"].as_array().unwrap().len(),
+        1,
+        "secret should not be regenerated"
+    );
+
+    // 7) the audit endpoint reads the DB directly and should reflect the write
     let response = app
         .clone()
         .oneshot(req("GET", "/admin/config/*/demo.flag/audit").with_admin())

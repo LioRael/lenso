@@ -4,12 +4,19 @@ use super::*;
 use crate::config_dto::*;
 use axum::Json;
 use axum::extract::{Path, Query, State};
-use platform_core::runtime_config::store::{delete_value, load_audit, upsert_value};
-use platform_core::{AppContext, AppError, ErrorCode};
+use platform_core::runtime_config::generated::initialize_generated_values;
+use platform_core::runtime_config::store::{
+    delete_value, load_all_values, load_audit, upsert_value,
+};
+use platform_core::{
+    AppContext, AppError, ErrorCode, RuntimeConfigDescriptor, RuntimeConfigSource,
+    RuntimeConfigVisibilityCondition,
+};
 use platform_http::{AdminActor, ApiErrorResponse, ErrorResponse, HttpRequestContext};
 
 const AUDIT_DEFAULT_LIMIT: i64 = 50;
 const AUDIT_MAX_LIMIT: i64 = 200;
+const ADMIN_CONFIG_SERVICE_KEY: &str = "api";
 
 #[utoipa::path(
     get,
@@ -30,11 +37,25 @@ pub(crate) async fn list_config_descriptors(
     State(_ctx): State<AppContext>,
     HttpRequestContext(_request_ctx): HttpRequestContext,
 ) -> Result<Json<ConfigDescriptorListResponse>, ApiErrorResponse> {
-    let data = runtime_config_registry()
+    let registry = runtime_config_registry();
+    let groups = registry
+        .groups()
+        .map(|group| ConfigGroupDto {
+            id: group.id.to_owned(),
+            label: group.label.to_owned(),
+            description: group.description.to_owned(),
+            order: group.order,
+        })
+        .collect();
+    let data = registry
         .iter()
         .map(|d| ConfigDescriptorDto {
             key: d.key.to_owned(),
             service: d.scope.as_service_key().to_owned(),
+            group: d.group.map(str::to_owned),
+            section: d.section.map(str::to_owned),
+            order: d.order,
+            visible_when: d.visible_when.as_ref().map(visibility_condition_dto),
             value_type: d.value_type.to_json(),
             default: d.default.clone(),
             editable: d.editable,
@@ -42,7 +63,23 @@ pub(crate) async fn list_config_descriptors(
             description: d.description.to_owned(),
         })
         .collect();
-    Ok(Json(ConfigDescriptorListResponse { data }))
+    Ok(Json(ConfigDescriptorListResponse { groups, data }))
+}
+
+fn visibility_condition_dto(
+    condition: &RuntimeConfigVisibilityCondition,
+) -> ConfigVisibilityConditionDto {
+    match condition {
+        RuntimeConfigVisibilityCondition::Equals {
+            service,
+            key,
+            value,
+        } => ConfigVisibilityConditionDto::Equals {
+            service: (*service).to_owned(),
+            key: (*key).to_owned(),
+            value: value.clone(),
+        },
+    }
 }
 
 #[utoipa::path(
@@ -62,21 +99,65 @@ pub(crate) async fn list_config_descriptors(
 pub(crate) async fn list_config_values(
     _admin: AdminActor,
     State(ctx): State<AppContext>,
-    HttpRequestContext(_request_ctx): HttpRequestContext,
+    HttpRequestContext(request_ctx): HttpRequestContext,
 ) -> Result<Json<ConfigValueListResponse>, ApiErrorResponse> {
     let snapshot = ctx.runtime_config.snapshot();
-    let data = snapshot
-        .entries()
-        .map(|(key, value, source)| ConfigValueDto {
-            key: key.to_owned(),
-            value: value.clone(),
-            source: serde_json::to_value(source)
-                .ok()
-                .and_then(|v| v.as_str().map(ToOwned::to_owned))
-                .unwrap_or_else(|| "default".to_owned()),
+    let stored = load_all_values(&ctx.db)
+        .await
+        .map_err(|error| ApiErrorResponse::with_context(error, &request_ctx))?;
+    let data = runtime_config_registry()
+        .iter()
+        .map(|descriptor| {
+            let effective_value = snapshot
+                .raw(&descriptor.key)
+                .cloned()
+                .unwrap_or_else(|| descriptor.default.clone());
+            let desired_value = desired_value(descriptor, ADMIN_CONFIG_SERVICE_KEY, &stored);
+            ConfigValueDto {
+                key: descriptor.key.to_owned(),
+                value: effective_value.clone(),
+                effective_value: effective_value.clone(),
+                pending_restart: descriptor.restart_only && desired_value != effective_value,
+                desired_value,
+                source: snapshot
+                    .source(&descriptor.key)
+                    .map(source_label)
+                    .unwrap_or_else(|| "default".to_owned()),
+            }
         })
         .collect();
     Ok(Json(ConfigValueListResponse { data }))
+}
+
+fn desired_value(
+    descriptor: &RuntimeConfigDescriptor,
+    service_key: &str,
+    stored: &std::collections::BTreeMap<(String, String), serde_json::Value>,
+) -> serde_json::Value {
+    let key = descriptor.key.to_owned();
+    let scoped_service = descriptor.scope.as_service_key();
+    let scoped_row = if scoped_service == "*" {
+        stored.get(&(service_key.to_owned(), key.clone()))
+    } else {
+        stored.get(&(scoped_service.to_owned(), key.clone()))
+    };
+    if let Some(value) = scoped_row.filter(|value| descriptor.validate(value).is_ok()) {
+        return value.clone();
+    }
+    if let Some(value) = stored
+        .get(&("*".to_owned(), key))
+        .filter(|value| descriptor.validate(value).is_ok())
+    {
+        return value.clone();
+    }
+    descriptor.default.clone()
+}
+
+fn source_label(source: RuntimeConfigSource) -> String {
+    serde_json::to_value(source)
+        .ok()
+        .and_then(|value| value.as_str().map(ToOwned::to_owned))
+        .unwrap_or_else(|| "default".to_owned())
 }
 
 #[utoipa::path(
@@ -136,10 +217,25 @@ pub(crate) async fn put_config_value(
     let stored = upsert_value(&ctx.db, &service, &key, &body.value, Some(&actor))
         .await
         .map_err(|error| ApiErrorResponse::with_context(error, &request_ctx))?;
+    let stored_values = load_all_values(&ctx.db)
+        .await
+        .map_err(|error| ApiErrorResponse::with_context(error, &request_ctx))?;
+    let generated = initialize_generated_values(
+        &ctx.db,
+        runtime_config_registry(),
+        ADMIN_CONFIG_SERVICE_KEY,
+        &stored_values,
+        Some(&actor),
+    )
+    .await
+    .map_err(|error| ApiErrorResponse::with_context(error, &request_ctx))?;
 
     let applies_on_restart = descriptor.restart_only;
 
     notify_config_changed(&ctx, &service, &key, &request_ctx).await?;
+    for (generated_service, generated_key) in generated {
+        notify_config_changed(&ctx, &generated_service, &generated_key, &request_ctx).await?;
+    }
 
     tracing::info!(
         actor = %actor,

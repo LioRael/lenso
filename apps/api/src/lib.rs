@@ -5,7 +5,7 @@ use axum::middleware;
 use axum::response::Html;
 use platform_core::{
     AppConfig, AppContext, LoggingEventPublisher, PostgresRuntimeConfigProvider,
-    RuntimeConfigRegistry, connect_pool, telemetry,
+    RuntimeConfigRegistry, Shutdown, connect_pool, telemetry,
 };
 use platform_http::request_context_middleware;
 use std::net::SocketAddr;
@@ -33,7 +33,10 @@ pub async fn run_from_env_with_composition(
     let descriptors =
         app_bootstrap::runtime_config_descriptors_with_composition(&ctx, &composition)
             .context("failed to collect runtime-config descriptors")?;
-    let registry = RuntimeConfigRegistry::try_new(descriptors)
+    let groups =
+        app_bootstrap::runtime_config_group_descriptors_with_composition(&ctx, &composition)
+            .context("failed to collect runtime-config groups")?;
+    let registry = RuntimeConfigRegistry::try_new_with_groups(descriptors, groups)
         .context("duplicate runtime-config descriptor registered")?;
     platform_admin::install_runtime_config_registry(registry.clone());
     let runtime_config =
@@ -87,9 +90,16 @@ pub async fn run_from_env_with_composition(
     info!(%address, "starting API server");
     let listener = tokio::net::TcpListener::bind(address).await?;
 
+    let shutdown = ctx.shutdown.clone();
     axum::serve(listener, app)
-        .with_graceful_shutdown(async {
-            platform_core::Shutdown::wait_for_signal().await;
+        .with_graceful_shutdown(async move {
+            let mut shutdown_rx = shutdown.subscribe();
+            tokio::select! {
+                () = Shutdown::wait_for_signal() => {},
+                changed = shutdown_rx.changed() => {
+                    let _ = changed;
+                },
+            }
         })
         .await?;
 

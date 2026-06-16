@@ -24,8 +24,8 @@ use platform_admin_data::{
 use platform_core::error::ErrorDetail;
 use platform_core::{
     ActorContext, AppContext, AppError, CorrelationId, EventHandlerRegistry, Migration,
-    PLATFORM_MIGRATIONS, RuntimeConfigDescriptor, RuntimeConfigScope, RuntimeConfigType,
-    StoryDisplayDescriptor, StoryDisplaySource, TraceContext,
+    PLATFORM_MIGRATIONS, RuntimeConfigDescriptor, RuntimeConfigGroupDescriptor, RuntimeConfigScope,
+    RuntimeConfigType, StoryDisplayDescriptor, StoryDisplaySource, TraceContext,
 };
 use platform_http::ApiOpenApiRouter;
 use platform_module::{
@@ -46,6 +46,13 @@ struct LinkedModuleEntry {
     load: fn(&AppContext) -> Module,
     http_binding: Option<fn() -> LinkedBinding>,
 }
+
+const MODULES_CONFIG_GROUP: RuntimeConfigGroupDescriptor = RuntimeConfigGroupDescriptor {
+    id: "modules",
+    label: "Modules",
+    description: "Module load toggles applied on service startup.",
+    order: 10,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub struct HostLinkedModule {
@@ -329,10 +336,24 @@ pub fn auth_actor_resolver_for_context_with_composition(
         return Ok(None);
     }
 
-    Ok(Some(Arc::new(auth::resolver::AuthActorResolver::new(
-        ctx.db.clone(),
-        ctx.actor_resolver.clone(),
-    ))))
+    let auth_resolver: Arc<dyn platform_core::ActorResolver> = Arc::new(
+        auth::resolver::AuthActorResolver::new(ctx.db.clone(), ctx.actor_resolver.clone()),
+    );
+
+    let auth_password_enabled = linked_module_with_dependencies_enabled(
+        ctx,
+        auth_password::module::MODULE_NAME,
+        auth_password::module::manifest,
+    );
+    if auth_password_enabled {
+        if let Some(jwt_resolver) =
+            auth_password::module::jwt_actor_resolver(ctx, auth_resolver.clone())?
+        {
+            return Ok(Some(jwt_resolver));
+        }
+    }
+
+    Ok(Some(auth_resolver))
 }
 
 fn linked_module_entries_for_context(
@@ -1708,6 +1729,11 @@ pub fn runtime_config_descriptors_with_composition(
             .map(|entry| RuntimeConfigDescriptor {
                 key: module_enabled_config_key(entry.module_name),
                 scope: RuntimeConfigScope::Shared,
+                group: Some("modules"),
+                section: None,
+                order: 10,
+                visible_when: None,
+                generated: None,
                 value_type: RuntimeConfigType::Bool,
                 default: serde_json::json!(linked_module_enabled_from_config(
                     &ctx.config,
@@ -1724,6 +1750,11 @@ pub fn runtime_config_descriptors_with_composition(
             .map(|entry| RuntimeConfigDescriptor {
                 key: module_enabled_config_key(entry.module_name),
                 scope: RuntimeConfigScope::Shared,
+                group: Some("modules"),
+                section: None,
+                order: 10,
+                visible_when: None,
+                generated: None,
                 value_type: RuntimeConfigType::Bool,
                 default: serde_json::json!(linked_module_enabled_from_config(
                     &ctx.config,
@@ -1741,6 +1772,11 @@ pub fn runtime_config_descriptors_with_composition(
             .map(|source| RuntimeConfigDescriptor {
                 key: module_enabled_config_key(&source.name),
                 scope: RuntimeConfigScope::Shared,
+                group: Some("modules"),
+                section: None,
+                order: 10,
+                visible_when: None,
+                generated: None,
                 value_type: RuntimeConfigType::Bool,
                 default: serde_json::json!(remote_module_enabled_from_config(
                     &ctx.config,
@@ -1770,6 +1806,40 @@ pub fn runtime_config_descriptors_with_composition(
         .chain(host_module_enabled_descriptors)
         .chain(remote_module_enabled_descriptors)
         .chain(module_descriptors)
+        .collect())
+}
+
+/// Every config presentation group known to the current composition.
+pub fn runtime_config_group_descriptors(
+    ctx: &AppContext,
+) -> platform_core::AppResult<Vec<RuntimeConfigGroupDescriptor>> {
+    runtime_config_group_descriptors_with_composition(ctx, &HostComposition::default())
+}
+
+pub fn runtime_config_group_descriptors_with_composition(
+    ctx: &AppContext,
+    composition: &HostComposition,
+) -> platform_core::AppResult<Vec<RuntimeConfigGroupDescriptor>> {
+    let profile = CompositionProfile::from_config(&ctx.config)?;
+    let module_groups = linked_module_entries(profile)
+        .iter()
+        .filter(|entry| linked_module_enabled_from_config(&ctx.config, entry.module_name))
+        .map(|entry| (entry.load)(ctx))
+        .chain(
+            host_linked_modules_for_config(&ctx.config, composition)
+                .into_iter()
+                .map(|entry| load_host_linked_module(ctx, entry)),
+        )
+        .flat_map(|module| module.runtime_config_groups.iter().cloned())
+        .collect::<Vec<_>>();
+
+    Ok(std::iter::once(MODULES_CONFIG_GROUP.clone())
+        .chain(
+            platform_core::worker_runtime_config::RUNTIME_CONFIG_GROUPS
+                .iter()
+                .cloned(),
+        )
+        .chain(module_groups)
         .collect())
 }
 
@@ -2205,6 +2275,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn auth_actor_resolver_allows_jwt_strategy_without_secret() {
+        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build");
+        let config = test_config_with_database_url("postgres://localhost/lenso_test");
+        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
+        let registry =
+            RuntimeConfigRegistry::try_new(runtime_config_descriptors(&ctx).expect("descriptors"))
+                .expect("registry");
+        let mut stored = BTreeMap::new();
+        stored.insert(
+            ("*".to_owned(), "auth-password.token_strategy".to_owned()),
+            json!("jwt"),
+        );
+        let snapshot = RuntimeConfigSnapshot::resolve(&registry, "api", &stored);
+        let ctx = ctx.with_runtime_config_provider(Arc::new(TestRuntimeConfigProvider {
+            snapshot: Arc::new(snapshot),
+        }));
+
+        assert!(
+            auth_actor_resolver_for_context(&ctx)
+                .expect("JWT resolver should be skipped until jwt_secret is configured")
+                .is_some()
+        );
+    }
+
+    #[tokio::test]
     async fn modules_for_config_skips_disabled_linked_modules() {
         let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
             .expect("lazy pool should build");
@@ -2324,21 +2420,59 @@ mod tests {
         let keys = runtime_config_descriptors(&ctx)
             .expect("descriptors should load")
             .into_iter()
-            .map(|descriptor| (descriptor.key, descriptor.restart_only, descriptor.default))
+            .map(|descriptor| {
+                (
+                    descriptor.key,
+                    descriptor.group,
+                    descriptor.restart_only,
+                    descriptor.default,
+                )
+            })
             .collect::<Vec<_>>();
 
-        assert!(keys.iter().any(|(key, restart_only, default)| {
-            key == "modules.auth.enabled" && *restart_only && default == &json!(true)
+        assert!(keys.iter().any(|(key, group, restart_only, default)| {
+            key == "modules.auth.enabled"
+                && *group == Some("modules")
+                && *restart_only
+                && default == &json!(true)
         }));
-        assert!(keys.iter().any(|(key, restart_only, default)| {
-            key == "modules.auth-password.enabled" && *restart_only && default == &json!(true)
+        assert!(keys.iter().any(|(key, group, restart_only, default)| {
+            key == "modules.auth-password.enabled"
+                && *group == Some("modules")
+                && *restart_only
+                && default == &json!(true)
         }));
-        assert!(keys.iter().any(|(key, restart_only, default)| {
-            key == "modules.identity.enabled" && *restart_only && default == &json!(true)
+        assert!(keys.iter().any(|(key, group, restart_only, default)| {
+            key == "modules.identity.enabled"
+                && *group == Some("modules")
+                && *restart_only
+                && default == &json!(true)
         }));
-        assert!(keys.iter().any(|(key, restart_only, default)| {
-            key == "modules.platform-story.enabled" && *restart_only && default == &json!(true)
+        assert!(keys.iter().any(|(key, group, restart_only, default)| {
+            key == "modules.platform-story.enabled"
+                && *group == Some("modules")
+                && *restart_only
+                && default == &json!(true)
         }));
+    }
+
+    #[tokio::test]
+    async fn runtime_config_groups_include_module_owned_groups() {
+        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build");
+        let config = test_config_with_database_url("postgres://localhost/lenso_test");
+        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
+
+        let groups = runtime_config_group_descriptors(&ctx)
+            .expect("groups should load")
+            .into_iter()
+            .map(|group| (group.id, group.label))
+            .collect::<Vec<_>>();
+
+        assert!(groups.contains(&("modules", "Modules")));
+        assert!(groups.contains(&("auth-password.hashing", "Password Hashing")));
+        assert!(groups.contains(&("auth-password.tokens", "Tokens")));
+        assert!(!groups.iter().any(|(id, _)| *id == "auth-password.jwt"));
     }
 
     #[tokio::test]

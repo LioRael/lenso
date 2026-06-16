@@ -156,6 +156,7 @@ pub fn binding() -> LinkedBinding {
 pub fn module(ctx: &AppContext) -> Module {
     let repository = Arc::new(PostgresUserRepository::new(ctx.db.clone()));
     Module::linked(manifest(), binding())
+        .with_runtime_config_groups(crate::config::RUNTIME_CONFIG_GROUPS.as_slice())
         .with_runtime_config(crate::config::RUNTIME_CONFIG.as_slice())
         .with_admin_data(Arc::new(IdentityAdminData::new(repository)))
 }

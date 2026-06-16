@@ -1,8 +1,5 @@
-use crate::dto::{
-    PasswordLoginRequest, PasswordRegisterRequest, PasswordSessionResponse,
-    PasswordSessionResponseEnvelope,
-};
-use crate::repositories::PasswordAuthRepository;
+use crate::dto::PasswordSessionResponse;
+use crate::repositories::{AuthToken, PasswordAuthRepository};
 use axum::Json;
 use axum::extract::State;
 use chrono::Duration;
@@ -27,7 +24,7 @@ pub fn router() -> ApiOpenApiRouter {
     operation_id = "auth_password_register",
     tag = "auth",
     request_body(
-        content = PasswordRegisterRequest,
+        content = crate::dto::PasswordRegisterRequest,
         content_type = "application/json",
         description = "Register a password identity for an identifier"
     ),
@@ -39,7 +36,7 @@ pub fn router() -> ApiOpenApiRouter {
         (
             status = 200,
             description = "Password identity registered",
-            body = PasswordSessionResponseEnvelope,
+            body = crate::dto::PasswordSessionResponseEnvelope,
             content_type = "application/json",
             headers(
                 ("x-request-id" = String, description = "Request identifier for this HTTP request"),
@@ -69,10 +66,12 @@ pub fn router() -> ApiOpenApiRouter {
 async fn register(
     State(ctx): State<AppContext>,
     HttpRequestContext(request_ctx): HttpRequestContext,
-    JsonBody(input): JsonBody<PasswordRegisterRequest>,
+    JsonBody(input): JsonBody<crate::dto::PasswordRegisterRequest>,
 ) -> Result<Json<DataResponse<PasswordSessionResponse>>, ApiErrorResponse> {
     let now = ctx.clock.now();
-    let session = PasswordAuthRepository::new(ctx.db.clone())
+    let password_config = crate::config::AuthPasswordConfig::from_context(&ctx)
+        .map_err(|error| ApiErrorResponse::with_context(error, &request_ctx))?;
+    let auth_token = PasswordAuthRepository::new(ctx.db.clone())
         .register(
             &input.identifier,
             &input.password,
@@ -81,16 +80,12 @@ async fn register(
             ctx.ids.new_id("sess"),
             now,
             now + Duration::hours(SESSION_TTL_HOURS),
+            &password_config,
         )
         .await
         .map_err(|error| ApiErrorResponse::with_context(error, &request_ctx))?;
 
-    Ok(json(PasswordSessionResponse {
-        user_id: session.user_id.0,
-        session_id: session.id,
-        token: session.token,
-        expires_at: session.expires_at,
-    }))
+    Ok(json(auth_token_to_response(auth_token)))
 }
 
 #[utoipa::path(
@@ -99,9 +94,9 @@ async fn register(
     operation_id = "auth_password_login",
     tag = "auth",
     request_body(
-        content = PasswordLoginRequest,
+        content = crate::dto::PasswordLoginRequest,
         content_type = "application/json",
-        description = "Create a session for a password identity"
+        description = "Create a session or JWT for a password identity"
     ),
     params(
         ("x-request-id" = Option<String>, Header, description = "Optional caller-provided request identifier"),
@@ -110,8 +105,8 @@ async fn register(
     responses(
         (
             status = 200,
-            description = "Password session created",
-            body = PasswordSessionResponseEnvelope,
+            description = "Password authentication successful",
+            body = crate::dto::PasswordSessionResponseEnvelope,
             content_type = "application/json",
             headers(
                 ("x-request-id" = String, description = "Request identifier for this HTTP request"),
@@ -141,24 +136,43 @@ async fn register(
 async fn login(
     State(ctx): State<AppContext>,
     HttpRequestContext(request_ctx): HttpRequestContext,
-    JsonBody(input): JsonBody<PasswordLoginRequest>,
+    JsonBody(input): JsonBody<crate::dto::PasswordLoginRequest>,
 ) -> Result<Json<DataResponse<PasswordSessionResponse>>, ApiErrorResponse> {
     let now = ctx.clock.now();
-    let session = PasswordAuthRepository::new(ctx.db.clone())
+    let password_config = crate::config::AuthPasswordConfig::from_context(&ctx)
+        .map_err(|error| ApiErrorResponse::with_context(error, &request_ctx))?;
+    let auth_token = PasswordAuthRepository::new(ctx.db.clone())
         .login(
             &input.identifier,
             &input.password,
             ctx.ids.new_id("sess"),
             now,
             now + Duration::hours(SESSION_TTL_HOURS),
+            &password_config,
         )
         .await
         .map_err(|error| ApiErrorResponse::with_context(error, &request_ctx))?;
 
-    Ok(json(PasswordSessionResponse {
-        user_id: session.user_id.0,
-        session_id: session.id,
-        token: session.token,
-        expires_at: session.expires_at,
-    }))
+    Ok(json(auth_token_to_response(auth_token)))
+}
+
+fn auth_token_to_response(token: AuthToken) -> PasswordSessionResponse {
+    match token {
+        AuthToken::Session(session) => PasswordSessionResponse {
+            user_id: session.user_id.0,
+            session_id: Some(session.id),
+            token: session.token,
+            expires_at: session.expires_at,
+        },
+        AuthToken::Jwt {
+            user_id,
+            token,
+            expires_at,
+        } => PasswordSessionResponse {
+            user_id,
+            session_id: None,
+            token,
+            expires_at,
+        },
+    }
 }

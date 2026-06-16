@@ -106,6 +106,80 @@ pub async fn upsert_value(
     })
 }
 
+/// Upsert a generated value only if the row is missing, JSON null, or an empty string.
+pub async fn upsert_value_if_missing(
+    pool: &DbPool,
+    service: &str,
+    key: &str,
+    value: &Value,
+    actor: Option<&str>,
+) -> AppResult<Option<StoredRuntimeConfig>> {
+    let mut tx = pool.begin().await.map_err(store_error)?;
+
+    let row = sqlx::query_as::<
+        _,
+        (
+            String,
+            String,
+            Value,
+            DateTime<Utc>,
+            Option<String>,
+            Option<Value>,
+        ),
+    >(
+        r#"
+        with previous as (
+            select value from config.setting_values where service = $1 and key = $2
+        )
+        insert into config.setting_values (service, key, value, updated_at, updated_by)
+        values ($1, $2, $3, now(), $4)
+        on conflict (service, key)
+        do update set value = excluded.value, updated_at = now(), updated_by = excluded.updated_by
+        where config.setting_values.value = 'null'::jsonb
+           or config.setting_values.value = '""'::jsonb
+        returning service, key, value, updated_at, updated_by, (select value from previous) as old_value
+        "#,
+    )
+    .bind(service)
+    .bind(key)
+    .bind(value)
+    .bind(actor)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(store_error)?;
+
+    let Some(row) = row else {
+        tx.commit().await.map_err(store_error)?;
+        return Ok(None);
+    };
+
+    sqlx::query(
+        r#"
+        insert into config.setting_audit (id, service, key, old_value, new_value, actor, changed_at)
+        values ($1, $2, $3, $4, $5, $6, now())
+        "#,
+    )
+    .bind(Uuid::now_v7())
+    .bind(service)
+    .bind(key)
+    .bind(&row.5)
+    .bind(value)
+    .bind(actor)
+    .execute(&mut *tx)
+    .await
+    .map_err(store_error)?;
+
+    tx.commit().await.map_err(store_error)?;
+
+    Ok(Some(StoredRuntimeConfig {
+        service: row.0,
+        key: row.1,
+        value: row.2,
+        updated_at: row.3,
+        updated_by: row.4,
+    }))
+}
+
 /// Delete a stored row (reset to shared/default), recording an audit entry if a
 /// row existed. Returns true if a row was deleted.
 pub async fn delete_value(

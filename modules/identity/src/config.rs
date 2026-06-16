@@ -1,4 +1,6 @@
-use platform_core::{RuntimeConfigDescriptor, RuntimeConfigScope, RuntimeConfigType};
+use platform_core::{
+    RuntimeConfigDescriptor, RuntimeConfigGroupDescriptor, RuntimeConfigScope, RuntimeConfigType,
+};
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::LazyLock;
@@ -19,10 +21,25 @@ impl Default for IdentityConfig {
 }
 
 /// Editable settings owned by the identity module.
+pub static RUNTIME_CONFIG_GROUPS: LazyLock<Vec<RuntimeConfigGroupDescriptor>> =
+    LazyLock::new(|| {
+        vec![RuntimeConfigGroupDescriptor {
+            id: "identity.general",
+            label: "Identity",
+            description: "Identity module defaults.",
+            order: 20,
+        }]
+    });
+
 pub static RUNTIME_CONFIG: LazyLock<Vec<RuntimeConfigDescriptor>> = LazyLock::new(|| {
     vec![RuntimeConfigDescriptor {
         key: "identity.password_reset_ttl_minutes".to_owned(),
         scope: RuntimeConfigScope::Shared,
+        group: Some("identity.general"),
+        section: None,
+        order: 10,
+        visible_when: None,
+        generated: None,
         value_type: RuntimeConfigType::Int {
             min: Some(5),
             max: Some(1440),

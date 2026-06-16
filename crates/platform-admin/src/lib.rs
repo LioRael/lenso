@@ -35,6 +35,7 @@ mod rows;
 mod spans;
 mod stories;
 mod support;
+mod system_handlers;
 
 pub use config_dto::*;
 #[allow(clippy::wildcard_imports)]
@@ -52,6 +53,8 @@ use spans::*;
 use stories::*;
 #[allow(clippy::wildcard_imports)]
 use support::*;
+#[allow(clippy::wildcard_imports)]
+use system_handlers::*;
 
 static RUNTIME_FUNCTION_DECLARATIONS: OnceLock<
     RwLock<InstalledCatalog<AdminRuntimeFunctionDeclarationMetadata>>,
@@ -240,6 +243,7 @@ pub fn router() -> ApiOpenApiRouter {
         .routes(routes!(list_config_values))
         .routes(routes!(put_config_value, delete_config_value))
         .routes(routes!(get_config_audit))
+        .routes(routes!(restart_service))
 }
 
 #[cfg(test)]

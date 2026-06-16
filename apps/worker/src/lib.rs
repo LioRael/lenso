@@ -25,7 +25,10 @@ pub async fn run_from_env_with_composition(
     let descriptors =
         app_bootstrap::runtime_config_descriptors_with_composition(&ctx, &composition)
             .context("failed to collect runtime-config descriptors")?;
-    let runtime_config_registry = RuntimeConfigRegistry::try_new(descriptors)
+    let groups =
+        app_bootstrap::runtime_config_group_descriptors_with_composition(&ctx, &composition)
+            .context("failed to collect runtime-config groups")?;
+    let runtime_config_registry = RuntimeConfigRegistry::try_new_with_groups(descriptors, groups)
         .context("duplicate runtime-config descriptor registered")?;
     let runtime_config = PostgresRuntimeConfigProvider::connect(
         ctx.db.clone(),

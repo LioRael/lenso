@@ -1,6 +1,9 @@
+pub mod config;
 pub mod dto;
+pub mod jwt;
 pub mod migrations;
 pub mod module;
 pub mod password;
 pub mod repositories;
+pub mod resolver;
 pub mod routes;

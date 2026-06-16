@@ -1,3 +1,5 @@
+use crate::config::{AuthPasswordConfig, TokenStrategy};
+use crate::jwt;
 use crate::password::{
     hash_password, new_session_token, normalize_identifier, validate_password, verify_password,
 };
@@ -10,6 +12,17 @@ const PASSWORD_PROVIDER: &str = "password";
 #[derive(Debug, Clone)]
 pub struct PasswordAuthRepository {
     pool: DbPool,
+}
+
+/// Token returned by register/login, varying by strategy.
+#[derive(Debug)]
+pub enum AuthToken {
+    Session(AuthSession),
+    Jwt {
+        user_id: String,
+        token: String,
+        expires_at: DateTime<Utc>,
+    },
 }
 
 impl PasswordAuthRepository {
@@ -27,48 +40,92 @@ impl PasswordAuthRepository {
         session_id: String,
         now: DateTime<Utc>,
         expires_at: DateTime<Utc>,
-    ) -> AppResult<AuthSession> {
+        config: &AuthPasswordConfig,
+    ) -> AppResult<AuthToken> {
         let normalized_identifier = normalize_identifier(identifier)?;
         validate_password(password)?;
-        let password_hash = hash_password(password)?;
-        let token = new_session_token();
+        let password_hash = hash_password(password, config)?;
 
-        let mut tx = self.pool.begin().await.map_err(map_sql_error)?;
-        let identity = public::create_user_identity_in_tx(
-            &mut tx,
-            AuthUserId(user_id),
-            identity_id,
-            PASSWORD_PROVIDER,
-            &normalized_identifier,
-            now,
-        )
-        .await?;
+        match config.token_strategy {
+            TokenStrategy::Session => {
+                let token = new_session_token();
+                let mut tx = self.pool.begin().await.map_err(map_sql_error)?;
+                let identity = public::create_user_identity_in_tx(
+                    &mut tx,
+                    AuthUserId(user_id),
+                    identity_id,
+                    PASSWORD_PROVIDER,
+                    &normalized_identifier,
+                    now,
+                )
+                .await?;
 
-        sqlx::query(
-            r#"
-            insert into auth_password.credentials (identity_id, password_hash, created_at, updated_at)
-            values ($1, $2, $3, $3)
-            "#,
-        )
-        .bind(&identity.id)
-        .bind(password_hash)
-        .bind(now)
-        .execute(&mut *tx)
-        .await
-        .map_err(map_sql_error)?;
+                sqlx::query(
+                    r#"
+                    insert into auth_password.credentials (identity_id, password_hash, created_at, updated_at)
+                    values ($1, $2, $3, $3)
+                    "#,
+                )
+                .bind(&identity.id)
+                .bind(password_hash)
+                .bind(now)
+                .execute(&mut *tx)
+                .await
+                .map_err(map_sql_error)?;
 
-        let session = public::create_session_in_tx(
-            &mut tx,
-            &identity.user_id,
-            session_id,
-            token,
-            now,
-            expires_at,
-        )
-        .await?;
+                let session = public::create_session_in_tx(
+                    &mut tx,
+                    &identity.user_id,
+                    session_id,
+                    token,
+                    now,
+                    expires_at,
+                )
+                .await?;
 
-        tx.commit().await.map_err(map_sql_error)?;
-        Ok(session)
+                tx.commit().await.map_err(map_sql_error)?;
+                Ok(AuthToken::Session(session))
+            }
+            TokenStrategy::Jwt => {
+                let jwt_config = config.jwt_config()?.ok_or_else(|| {
+                    AppError::new(ErrorCode::Internal, "JWT configuration is required")
+                })?;
+                let mut tx = self.pool.begin().await.map_err(map_sql_error)?;
+                let identity = public::create_user_identity_in_tx(
+                    &mut tx,
+                    AuthUserId(user_id),
+                    identity_id,
+                    PASSWORD_PROVIDER,
+                    &normalized_identifier,
+                    now,
+                )
+                .await?;
+
+                sqlx::query(
+                    r#"
+                    insert into auth_password.credentials (identity_id, password_hash, created_at, updated_at)
+                    values ($1, $2, $3, $3)
+                    "#,
+                )
+                .bind(&identity.id)
+                .bind(password_hash)
+                .bind(now)
+                .execute(&mut *tx)
+                .await
+                .map_err(map_sql_error)?;
+
+                tx.commit().await.map_err(map_sql_error)?;
+
+                let user_id_str = identity.user_id.0.clone();
+                let token = jwt::create_token(&user_id_str, &jwt_config, now);
+
+                Ok(AuthToken::Jwt {
+                    user_id: user_id_str,
+                    token,
+                    expires_at,
+                })
+            }
+        }
     }
 
     pub async fn login(
@@ -78,7 +135,8 @@ impl PasswordAuthRepository {
         session_id: String,
         now: DateTime<Utc>,
         expires_at: DateTime<Utc>,
-    ) -> AppResult<AuthSession> {
+        config: &AuthPasswordConfig,
+    ) -> AppResult<AuthToken> {
         let normalized_identifier = normalize_identifier(identifier)?;
         validate_password(password)?;
 
@@ -108,15 +166,32 @@ impl PasswordAuthRepository {
             return Err(invalid_credentials());
         }
 
-        public::create_session(
-            &self.pool,
-            &identity.user_id,
-            session_id,
-            new_session_token(),
-            now,
-            expires_at,
-        )
-        .await
+        match config.token_strategy {
+            TokenStrategy::Session => {
+                let session = public::create_session(
+                    &self.pool,
+                    &identity.user_id,
+                    session_id,
+                    new_session_token(),
+                    now,
+                    expires_at,
+                )
+                .await?;
+                Ok(AuthToken::Session(session))
+            }
+            TokenStrategy::Jwt => {
+                let jwt_config = config.jwt_config()?.ok_or_else(|| {
+                    AppError::new(ErrorCode::Internal, "JWT configuration is required")
+                })?;
+                let user_id_str = identity.user_id.0.clone();
+                let token = jwt::create_token(&user_id_str, &jwt_config, now);
+                Ok(AuthToken::Jwt {
+                    user_id: user_id_str,
+                    token,
+                    expires_at,
+                })
+            }
+        }
     }
 }
 
