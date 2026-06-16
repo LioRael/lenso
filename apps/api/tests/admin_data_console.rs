@@ -20,14 +20,30 @@ use platform_module::{
 use platform_runtime::RUNTIME_MIGRATIONS;
 use platform_testing::TestDatabase;
 use serde_json::Value;
+use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
 use tokio::sync::Mutex;
 use tower::ServiceExt;
 
 static ADMIN_DATA_CONSOLE_TEST_LOCK: Mutex<()> = Mutex::const_new(());
+
+fn lazy_failing_db() -> platform_core::DbPool {
+    // ponytail: no-DB tests only need optional persistence to fail fast.
+    PgPoolOptions::new()
+        .max_connections(1)
+        .acquire_timeout(Duration::from_millis(50))
+        .connect_lazy_with(
+            PgConnectOptions::new()
+                .host("127.0.0.1")
+                .port(1)
+                .username("postgres")
+                .database("lenso_test"),
+        )
+}
 
 fn remove_module_catalog_fixture() {
     let _ = fs::remove_file(Path::new(".lenso/module-catalog.json"));
@@ -213,7 +229,7 @@ fn app() -> axum::Router {
     }]);
     let ctx = AppContext::new(
         AppConfig::from_env(),
-        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test").expect("lazy pool"),
+        lazy_failing_db(),
         Arc::new(LoggingEventPublisher),
     );
     build_router(ctx)
@@ -352,7 +368,7 @@ async fn modules_endpoint_lists_linked_module_http_routes() {
     let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
     let ctx = AppContext::new(
         AppConfig::from_env(),
-        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test").expect("lazy pool"),
+        lazy_failing_db(),
         Arc::new(LoggingEventPublisher),
     );
     install_admin_modules(app_bootstrap::admin_modules(&ctx));
@@ -399,7 +415,7 @@ async fn modules_endpoint_lists_linked_modules_without_admin_surfaces() {
     let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
     let ctx = AppContext::new(
         AppConfig::from_env(),
-        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test").expect("lazy pool"),
+        lazy_failing_db(),
         Arc::new(LoggingEventPublisher),
     );
     install_admin_modules(app_bootstrap::admin_modules(&ctx));
@@ -495,7 +511,7 @@ async fn admin_action_invocation_calls_declared_source() {
     }]);
     let ctx = AppContext::new(
         AppConfig::from_env(),
-        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test").expect("lazy pool"),
+        lazy_failing_db(),
         Arc::new(LoggingEventPublisher),
     );
     let app = build_router(ctx);
@@ -547,7 +563,7 @@ async fn available_modules_returns_remote_install_rows() {
     }]);
     let ctx = AppContext::new(
         AppConfig::from_env(),
-        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test").expect("lazy pool"),
+        lazy_failing_db(),
         Arc::new(LoggingEventPublisher),
     );
     let app = build_router(ctx);
@@ -633,7 +649,7 @@ async fn available_modules_reads_local_module_catalog() {
     install_admin_module_metadata(vec![]);
     let ctx = AppContext::new(
         AppConfig::from_env(),
-        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test").expect("lazy pool"),
+        lazy_failing_db(),
         Arc::new(LoggingEventPublisher),
     );
     let app = build_router(ctx);
@@ -725,7 +741,7 @@ async fn available_modules_reports_local_install_state() {
     install_admin_module_metadata(vec![]);
     let ctx = AppContext::new(
         AppConfig::from_env(),
-        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test").expect("lazy pool"),
+        lazy_failing_db(),
         Arc::new(LoggingEventPublisher),
     );
     let app = build_router(ctx);
@@ -814,7 +830,7 @@ async fn available_modules_marks_catalog_preflight_issues() {
     install_admin_module_metadata(vec![]);
     let ctx = AppContext::new(
         AppConfig::from_env(),
-        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test").expect("lazy pool"),
+        lazy_failing_db(),
         Arc::new(LoggingEventPublisher),
     );
     let app = build_router(ctx);
@@ -878,7 +894,7 @@ async fn admin_action_invocation_requires_confirmation_phrase_when_declared() {
     }]);
     let ctx = AppContext::new(
         AppConfig::from_env(),
-        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test").expect("lazy pool"),
+        lazy_failing_db(),
         Arc::new(LoggingEventPublisher),
     );
     let app = build_router(ctx);
@@ -937,7 +953,7 @@ async fn admin_action_invocation_validates_declared_input_schema() {
     }]);
     let ctx = AppContext::new(
         AppConfig::from_env(),
-        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test").expect("lazy pool"),
+        lazy_failing_db(),
         Arc::new(LoggingEventPublisher),
     );
     let app = build_router(ctx);
@@ -1193,7 +1209,7 @@ async fn admin_action_invocation_requires_declared_capability_scope() {
     }]);
     let ctx = AppContext::new(
         AppConfig::from_env(),
-        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test").expect("lazy pool"),
+        lazy_failing_db(),
         Arc::new(LoggingEventPublisher),
     );
     let app = build_router(ctx);
@@ -1239,7 +1255,7 @@ async fn admin_action_invocation_rejects_unknown_action() {
     }]);
     let ctx = AppContext::new(
         AppConfig::from_env(),
-        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test").expect("lazy pool"),
+        lazy_failing_db(),
         Arc::new(LoggingEventPublisher),
     );
     let app = build_router(ctx);
@@ -1283,7 +1299,7 @@ async fn unlisted_modules_can_read_records_without_schema_discovery() {
     install_admin_module_metadata(vec![]);
     let ctx = AppContext::new(
         AppConfig::from_env(),
-        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test").expect("lazy pool"),
+        lazy_failing_db(),
         Arc::new(LoggingEventPublisher),
     );
     let app = build_router(ctx);
@@ -1407,7 +1423,7 @@ async fn refresh_schema_replaces_installed_modules() {
     });
     let ctx = AppContext::new(
         AppConfig::from_env(),
-        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test").expect("lazy pool"),
+        lazy_failing_db(),
         Arc::new(LoggingEventPublisher),
     );
     let app = build_router(ctx);
@@ -1527,7 +1543,7 @@ async fn refresh_modules_replaces_module_registry_metadata() {
     });
     let ctx = AppContext::new(
         AppConfig::from_env(),
-        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test").expect("lazy pool"),
+        lazy_failing_db(),
         Arc::new(LoggingEventPublisher),
     );
     let app = build_router(ctx);
@@ -1611,7 +1627,7 @@ async fn refresh_modules_records_error_without_dropping_snapshot() {
     });
     let ctx = AppContext::new(
         AppConfig::from_env(),
-        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test").expect("lazy pool"),
+        lazy_failing_db(),
         Arc::new(LoggingEventPublisher),
     );
     let app = build_router(ctx);
