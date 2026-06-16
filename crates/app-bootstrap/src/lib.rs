@@ -1733,6 +1733,7 @@ pub fn runtime_config_descriptors_with_composition(
                 section: None,
                 order: 10,
                 visible_when: None,
+                generated: None,
                 value_type: RuntimeConfigType::Bool,
                 default: serde_json::json!(linked_module_enabled_from_config(
                     &ctx.config,
@@ -1753,6 +1754,7 @@ pub fn runtime_config_descriptors_with_composition(
                 section: None,
                 order: 10,
                 visible_when: None,
+                generated: None,
                 value_type: RuntimeConfigType::Bool,
                 default: serde_json::json!(linked_module_enabled_from_config(
                     &ctx.config,
@@ -1774,6 +1776,7 @@ pub fn runtime_config_descriptors_with_composition(
                 section: None,
                 order: 10,
                 visible_when: None,
+                generated: None,
                 value_type: RuntimeConfigType::Bool,
                 default: serde_json::json!(remote_module_enabled_from_config(
                     &ctx.config,
@@ -2272,6 +2275,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn auth_actor_resolver_allows_jwt_strategy_without_secret() {
+        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build");
+        let config = test_config_with_database_url("postgres://localhost/lenso_test");
+        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
+        let registry =
+            RuntimeConfigRegistry::try_new(runtime_config_descriptors(&ctx).expect("descriptors"))
+                .expect("registry");
+        let mut stored = BTreeMap::new();
+        stored.insert(
+            ("*".to_owned(), "auth-password.token_strategy".to_owned()),
+            json!("jwt"),
+        );
+        let snapshot = RuntimeConfigSnapshot::resolve(&registry, "api", &stored);
+        let ctx = ctx.with_runtime_config_provider(Arc::new(TestRuntimeConfigProvider {
+            snapshot: Arc::new(snapshot),
+        }));
+
+        assert!(
+            auth_actor_resolver_for_context(&ctx)
+                .expect("JWT resolver should be skipped until jwt_secret is configured")
+                .is_some()
+        );
+    }
+
+    #[tokio::test]
     async fn modules_for_config_skips_disabled_linked_modules() {
         let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
             .expect("lazy pool should build");
@@ -2442,8 +2471,8 @@ mod tests {
 
         assert!(groups.contains(&("modules", "Modules")));
         assert!(groups.contains(&("auth-password.hashing", "Password Hashing")));
-        assert!(groups.contains(&("auth-password.tokens", "Token Issuance")));
-        assert!(groups.contains(&("auth-password.jwt", "JWT")));
+        assert!(groups.contains(&("auth-password.tokens", "Tokens")));
+        assert!(!groups.iter().any(|(id, _)| *id == "auth-password.jwt"));
     }
 
     #[tokio::test]

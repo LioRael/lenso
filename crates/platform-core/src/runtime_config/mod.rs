@@ -5,14 +5,15 @@
 //! provider that resolve effective values from defaults plus stored overrides.
 
 mod descriptor;
+pub mod generated;
 mod postgres;
 mod provider;
 mod snapshot;
 pub mod store;
 
 pub use descriptor::{
-    RuntimeConfigDescriptor, RuntimeConfigGroupDescriptor, RuntimeConfigRegistry,
-    RuntimeConfigScope, RuntimeConfigType, RuntimeConfigVisibilityCondition,
+    RuntimeConfigDescriptor, RuntimeConfigGeneratedValue, RuntimeConfigGroupDescriptor,
+    RuntimeConfigRegistry, RuntimeConfigScope, RuntimeConfigType, RuntimeConfigVisibilityCondition,
 };
 pub use postgres::{CONFIG_NOTIFY_CHANNEL, PostgresRuntimeConfigProvider};
 pub use provider::{RuntimeConfigCell, RuntimeConfigProvider, StaticRuntimeConfigProvider};

@@ -39,6 +39,7 @@ pub static RUNTIME_CONFIG: LazyLock<Vec<RuntimeConfigDescriptor>> = LazyLock::ne
         section: None,
         order: 10,
         visible_when: None,
+        generated: None,
         value_type: RuntimeConfigType::Int {
             min: Some(5),
             max: Some(1440),

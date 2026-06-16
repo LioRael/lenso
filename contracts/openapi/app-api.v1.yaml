@@ -2051,6 +2051,37 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /admin/system/restart:
+    post:
+      tags:
+      - admin-system
+      operationId: admin_system_restart
+      parameters:
+      - name: authorization
+        in: header
+        description: Development service bearer token
+        required: true
+        schema:
+          type: string
+      responses:
+        '202':
+          description: Service restart requested
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminServiceRestartResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /modules/{module}/http/{*path}:
     get:
       tags:
@@ -4684,6 +4715,19 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AdminModuleSchema'
+    AdminServiceRestartResponse:
+      type: object
+      required:
+      - status
+      - service
+      - requires_supervisor
+      properties:
+        requires_supervisor:
+          type: boolean
+        service:
+          type: string
+        status:
+          type: string
     AdminSurface:
       oneOf:
       - allOf:
@@ -4834,20 +4878,28 @@ components:
           format: int32
     ConfigValueDto:
       type: object
-      description: A resolved effective value plus where it came from.
+      description: A resolved config value for the running service plus any persisted desired value.
       required:
       - key
       - value
+      - effective_value
+      - desired_value
+      - pending_restart
       - source
       properties:
+        desired_value: {}
+        effective_value: {}
         key:
           type: string
+        pending_restart:
+          type: boolean
         source:
           type: string
-        value: {}
+        value:
+          description: Backward-compatible alias for `effective_value`.
     ConfigValueListResponse:
       type: object
-      description: The list of effective values for the running service.
+      description: The list of effective and desired values for the running service.
       required:
       - data
       properties:

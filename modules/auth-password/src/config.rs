@@ -1,7 +1,8 @@
 use crate::jwt::JwtConfig;
 use platform_core::{
-    AppContext, AppError, AppResult, RuntimeConfigDescriptor, RuntimeConfigGroupDescriptor,
-    RuntimeConfigScope, RuntimeConfigSnapshot, RuntimeConfigType, RuntimeConfigVisibilityCondition,
+    AppContext, AppError, AppResult, RuntimeConfigDescriptor, RuntimeConfigGeneratedValue,
+    RuntimeConfigGroupDescriptor, RuntimeConfigScope, RuntimeConfigSnapshot, RuntimeConfigType,
+    RuntimeConfigVisibilityCondition,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -166,6 +167,7 @@ pub static RUNTIME_CONFIG: LazyLock<Vec<RuntimeConfigDescriptor>> = LazyLock::ne
             section: None,
             order: 10,
             visible_when: None,
+            generated: None,
             value_type: RuntimeConfigType::Enum(&["argon2id", "argon2i"]),
             default: json!("argon2id"),
             editable: true,
@@ -179,6 +181,7 @@ pub static RUNTIME_CONFIG: LazyLock<Vec<RuntimeConfigDescriptor>> = LazyLock::ne
             section: None,
             order: 20,
             visible_when: None,
+            generated: None,
             value_type: RuntimeConfigType::Int {
                 min: Some(MIN_ARGON2_MEMORY_KIB),
                 max: Some(MAX_ARGON2_MEMORY_KIB),
@@ -195,6 +198,7 @@ pub static RUNTIME_CONFIG: LazyLock<Vec<RuntimeConfigDescriptor>> = LazyLock::ne
             section: None,
             order: 30,
             visible_when: None,
+            generated: None,
             value_type: RuntimeConfigType::Int {
                 min: Some(i64::from(argon2::Params::MIN_T_COST)),
                 max: Some(MAX_ARGON2_TIME_COST),
@@ -211,6 +215,7 @@ pub static RUNTIME_CONFIG: LazyLock<Vec<RuntimeConfigDescriptor>> = LazyLock::ne
             section: None,
             order: 40,
             visible_when: None,
+            generated: None,
             value_type: RuntimeConfigType::Int {
                 min: Some(i64::from(argon2::Params::MIN_P_COST)),
                 max: Some(MAX_ARGON2_PARALLELISM),
@@ -227,6 +232,7 @@ pub static RUNTIME_CONFIG: LazyLock<Vec<RuntimeConfigDescriptor>> = LazyLock::ne
             section: Some("Issuance"),
             order: 10,
             visible_when: None,
+            generated: None,
             value_type: RuntimeConfigType::Enum(&["session", "jwt"]),
             default: json!("session"),
             editable: true,
@@ -240,6 +246,10 @@ pub static RUNTIME_CONFIG: LazyLock<Vec<RuntimeConfigDescriptor>> = LazyLock::ne
             section: Some("JWT"),
             order: 20,
             visible_when: Some(jwt_visibility_condition()),
+            generated: Some(RuntimeConfigGeneratedValue::Secret {
+                bytes: 32,
+                when: jwt_visibility_condition(),
+            }),
             value_type: RuntimeConfigType::String,
             default: json!(null),
             editable: true,
@@ -253,6 +263,7 @@ pub static RUNTIME_CONFIG: LazyLock<Vec<RuntimeConfigDescriptor>> = LazyLock::ne
             section: Some("JWT"),
             order: 30,
             visible_when: Some(jwt_visibility_condition()),
+            generated: None,
             value_type: RuntimeConfigType::String,
             default: json!("lenso"),
             editable: true,
@@ -266,6 +277,7 @@ pub static RUNTIME_CONFIG: LazyLock<Vec<RuntimeConfigDescriptor>> = LazyLock::ne
             section: Some("JWT"),
             order: 40,
             visible_when: Some(jwt_visibility_condition()),
+            generated: None,
             value_type: RuntimeConfigType::String,
             default: json!("lenso"),
             editable: true,
@@ -279,6 +291,7 @@ pub static RUNTIME_CONFIG: LazyLock<Vec<RuntimeConfigDescriptor>> = LazyLock::ne
             section: Some("JWT"),
             order: 50,
             visible_when: Some(jwt_visibility_condition()),
+            generated: None,
             value_type: RuntimeConfigType::Int {
                 min: Some(1),
                 max: Some(168),

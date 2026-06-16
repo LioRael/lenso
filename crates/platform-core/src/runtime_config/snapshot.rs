@@ -149,6 +149,7 @@ mod tests {
                 section: None,
                 order: 0,
                 visible_when: None,
+                generated: None,
                 value_type: RuntimeConfigType::Int {
                     min: Some(1),
                     max: Some(1440),
@@ -165,6 +166,7 @@ mod tests {
                 section: None,
                 order: 0,
                 visible_when: None,
+                generated: None,
                 value_type: RuntimeConfigType::Bool,
                 default: json!(false),
                 editable: true,

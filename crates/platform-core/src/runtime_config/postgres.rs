@@ -1,6 +1,7 @@
 use crate::db::DbPool;
 use crate::error::AppResult;
 use crate::runtime_config::descriptor::RuntimeConfigRegistry;
+use crate::runtime_config::generated::initialize_generated_values;
 use crate::runtime_config::provider::{RuntimeConfigCell, RuntimeConfigProvider};
 use crate::runtime_config::snapshot::{RuntimeConfigSnapshot, RuntimeConfigSource};
 use crate::runtime_config::store::load_all_values;
@@ -11,6 +12,28 @@ use std::sync::Arc;
 
 /// The channel name used for cross-instance config-change notifications.
 pub const CONFIG_NOTIFY_CHANNEL: &str = "config_changed";
+const GENERATED_CONFIG_ACTOR: &str = "runtime-config";
+
+async fn load_reconciled_values(
+    pool: &DbPool,
+    registry: &RuntimeConfigRegistry,
+    service_key: &str,
+) -> AppResult<BTreeMap<(String, String), Value>> {
+    let stored = load_all_values(pool).await?;
+    let generated = initialize_generated_values(
+        pool,
+        registry,
+        service_key,
+        &stored,
+        Some(GENERATED_CONFIG_ACTOR),
+    )
+    .await?;
+    if generated.is_empty() {
+        Ok(stored)
+    } else {
+        load_all_values(pool).await
+    }
+}
 
 /// Capture the startup-resolved (value, source) for every restart-only
 /// descriptor applicable to this service, so later refreshes can revert them.
@@ -55,7 +78,7 @@ impl PostgresRuntimeConfigProvider {
         service_key: impl Into<String>,
     ) -> AppResult<Arc<Self>> {
         let service_key = service_key.into();
-        let stored = load_all_values(&pool).await?;
+        let stored = load_reconciled_values(&pool, &registry, &service_key).await?;
         let snapshot = RuntimeConfigSnapshot::resolve(&registry, &service_key, &stored);
         let restart_only_frozen = freeze_restart_only(&registry, &snapshot);
         let cell = Arc::new(RuntimeConfigCell::new(snapshot));
@@ -73,7 +96,7 @@ impl PostgresRuntimeConfigProvider {
     /// Restart-only keys are reverted to their frozen startup values so they do
     /// not take effect until the process restarts.
     pub async fn refresh(&self) -> AppResult<()> {
-        let stored = load_all_values(&self.pool).await?;
+        let stored = load_reconciled_values(&self.pool, &self.registry, &self.service_key).await?;
         let snapshot = RuntimeConfigSnapshot::resolve(&self.registry, &self.service_key, &stored)
             .with_overrides(&self.restart_only_frozen);
         self.cell.store(snapshot);

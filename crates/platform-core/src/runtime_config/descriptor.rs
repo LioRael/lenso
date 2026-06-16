@@ -64,6 +64,7 @@ pub struct RuntimeConfigDescriptor {
     pub section: Option<&'static str>,
     pub order: i32,
     pub visible_when: Option<RuntimeConfigVisibilityCondition>,
+    pub generated: Option<RuntimeConfigGeneratedValue>,
     pub value_type: RuntimeConfigType,
     pub default: Value,
     pub editable: bool,
@@ -106,6 +107,15 @@ pub enum RuntimeConfigVisibilityCondition {
         service: &'static str,
         key: &'static str,
         value: Value,
+    },
+}
+
+/// A value that the config backend may initialize when its condition becomes true.
+#[derive(Debug, Clone, PartialEq)]
+pub enum RuntimeConfigGeneratedValue {
+    Secret {
+        bytes: usize,
+        when: RuntimeConfigVisibilityCondition,
     },
 }
 
@@ -210,6 +220,7 @@ mod tests {
             section: None,
             order: 0,
             visible_when: None,
+            generated: None,
             value_type: RuntimeConfigType::Bool,
             default: json!(true),
             editable: true,
@@ -234,6 +245,7 @@ mod tests {
             section: None,
             order: 0,
             visible_when: None,
+            generated: None,
             value_type: RuntimeConfigType::Int {
                 min: Some(1),
                 max: Some(10),
@@ -258,6 +270,7 @@ mod tests {
             section: None,
             order: 0,
             visible_when: None,
+            generated: None,
             value_type: RuntimeConfigType::Enum(&["a", "b"]),
             default: json!("a"),
             editable: true,

@@ -1,4 +1,4 @@
-use crate::config::AuthPasswordConfig;
+use crate::config::{AuthPasswordConfig, TokenStrategy};
 use platform_core::AppContext;
 use platform_http::ApiOpenApiRouter;
 use platform_module::{
@@ -64,6 +64,9 @@ pub fn jwt_actor_resolver(
     fallback: std::sync::Arc<dyn platform_core::ActorResolver>,
 ) -> platform_core::AppResult<Option<std::sync::Arc<dyn platform_core::ActorResolver>>> {
     let config = AuthPasswordConfig::from_context(ctx)?;
+    if config.token_strategy == TokenStrategy::Jwt && config.jwt_secret.is_none() {
+        return Ok(None);
+    }
     let jwt_config = match config.jwt_config()? {
         Some(cfg) => cfg,
         None => return Ok(None),

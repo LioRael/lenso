@@ -46,15 +46,19 @@ pub struct ConfigDescriptorListResponse {
     pub data: Vec<ConfigDescriptorDto>,
 }
 
-/// A resolved effective value plus where it came from.
+/// A resolved config value for the running service plus any persisted desired value.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ConfigValueDto {
     pub key: String,
+    /// Backward-compatible alias for `effective_value`.
     pub value: Value,
+    pub effective_value: Value,
+    pub desired_value: Value,
+    pub pending_restart: bool,
     pub source: String,
 }
 
-/// The list of effective values for the running service.
+/// The list of effective and desired values for the running service.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ConfigValueListResponse {
     pub data: Vec<ConfigValueDto>,
