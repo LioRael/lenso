@@ -388,6 +388,7 @@ export type AdminRemoteModuleDiagnosticsDto = {
   load_duration_ms?: number | null;
   manifest_url: string;
   timeout_ms: number;
+  transport: string;
 };
 
 export type AdminRemoteProxyCallItem = {

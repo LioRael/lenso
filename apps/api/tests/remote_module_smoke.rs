@@ -322,6 +322,10 @@ async fn remote_module_fixture_is_visible_through_admin_data_api() {
     assert_eq!(remote_module["source"], "remote");
     assert_eq!(remote_module["status"], "loaded");
     assert_eq!(remote_module["source_diagnostics"]["kind"], "remote");
+    assert_eq!(
+        remote_module["source_diagnostics"]["transport"],
+        "http_json"
+    );
     assert_eq!(remote_module["source_diagnostics"]["base_url"], base_url);
     assert_eq!(
         remote_module["source_diagnostics"]["manifest_url"],
@@ -1551,6 +1555,10 @@ async fn failed_remote_module_load_is_reported_in_schema() {
         .find(|module| module["module_name"] == "remote-crm")
         .expect("failed remote module metadata");
     assert_eq!(remote_module["source_diagnostics"]["kind"], "remote");
+    assert_eq!(
+        remote_module["source_diagnostics"]["transport"],
+        "http_json"
+    );
     assert_eq!(
         remote_module["source_diagnostics"]["base_url"],
         "http://127.0.0.1:9/lenso/module/v1"

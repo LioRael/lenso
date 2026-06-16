@@ -3874,6 +3874,7 @@ components:
     AdminRemoteModuleDiagnosticsDto:
       type: object
       required:
+      - transport
       - base_url
       - manifest_url
       - timeout_ms
@@ -3903,6 +3904,8 @@ components:
           type: integer
           format: int64
           minimum: 0
+        transport:
+          type: string
     AdminRemoteProxyCallItem:
       type: object
       required:

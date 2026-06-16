@@ -232,6 +232,7 @@ pub enum AdminModuleSourceDiagnosticsDto {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AdminRemoteModuleDiagnosticsDto {
+    pub transport: String,
     pub base_url: String,
     pub manifest_url: String,
     pub timeout_ms: u64,
