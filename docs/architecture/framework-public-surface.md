@@ -85,7 +85,7 @@ The current pressure-test surface is intentionally narrow:
   entrypoints;
 - `Migration` and `ModuleManifest` re-exports for starter module metadata;
 - `lenso_host::http` re-exports for linked HTTP handlers, including
-  `OpenApiRouter`, `routes!`, `JsonBody`, `DataResponse`, standard error
+  `OpenApiRouter`, `routes!`, `Path`, `JsonBody`, `DataResponse`, standard error
   response helpers, `AppContext`, and `LinkedHttpContribution`.
 
 `lenso-host` should not grow a repository layer, query builder, CRUD framework,

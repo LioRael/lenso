@@ -24,6 +24,9 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use std::time::Duration;
 
+mod grpc;
+pub use grpc::serve_grpc;
+
 #[derive(Debug, Clone)]
 struct Contact {
     id: &'static str,
@@ -173,17 +176,19 @@ pub fn router() -> Router {
 }
 
 async fn manifest() -> Json<ModuleManifest> {
-    Json(
-        ModuleManifest::builder("remote-crm")
-            .admin(contacts_schema())
-            .console(vec![remote_crm_console_surface()])
-            .http_routes(contact_http_routes())
-            .runtime(runtime_surface())
-            .events(event_surface())
-            .lifecycle(lifecycle_surface())
-            .capabilities(vec!["remote_crm.contacts.read".to_owned()])
-            .build(),
-    )
+    Json(remote_crm_manifest())
+}
+
+fn remote_crm_manifest() -> ModuleManifest {
+    ModuleManifest::builder("remote-crm")
+        .admin(contacts_schema())
+        .console(vec![remote_crm_console_surface()])
+        .http_routes(contact_http_routes())
+        .runtime(runtime_surface())
+        .events(event_surface())
+        .lifecycle(lifecycle_surface())
+        .capabilities(vec!["remote_crm.contacts.read".to_owned()])
+        .build()
 }
 
 async fn declarative_manifest() -> Json<ModuleManifest> {

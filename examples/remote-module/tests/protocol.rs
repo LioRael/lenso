@@ -1,5 +1,7 @@
 use http::StatusCode;
+use platform_module_remote::{RemoteModuleConfig, RemoteModuleSource};
 use serde_json::{Value, json};
+use std::net::{SocketAddr, TcpListener};
 use tower::ServiceExt;
 
 #[tokio::test]
@@ -110,6 +112,36 @@ async fn manifest_matches_remote_module_protocol() {
     assert_eq!(
         event_handlers[0]["event_name"],
         "identity.user_registered.v1"
+    );
+}
+
+#[tokio::test]
+async fn grpc_manifest_matches_remote_module_protocol() {
+    let addr = unused_addr();
+    tokio::spawn(async move {
+        remote_module_example::serve_grpc(addr)
+            .await
+            .expect("serve grpc remote module");
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+
+    let module = RemoteModuleSource::new(RemoteModuleConfig::new(
+        "remote-crm",
+        format!("grpc://{addr}"),
+    ))
+    .unwrap()
+    .load()
+    .await
+    .unwrap();
+
+    assert_eq!(module.manifest.name, "remote-crm");
+    assert_eq!(
+        module.manifest.runtime.unwrap().functions[0].name,
+        "remote_crm.sync_contact.v1"
+    );
+    assert_eq!(
+        module.manifest.events.unwrap().handlers[0].name,
+        "sync_contact_on_user_registered"
     );
 }
 
@@ -583,4 +615,11 @@ fn route<'a>(routes: &'a [Value], method: &str, path: &str) -> Option<&'a Value>
     routes
         .iter()
         .find(|route| route["method"] == method && route["path"] == path)
+}
+
+fn unused_addr() -> SocketAddr {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    drop(listener);
+    addr
 }

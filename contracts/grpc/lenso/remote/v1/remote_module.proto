@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package lenso.remote.v1;
+
+// First native gRPC lane for Lenso remote modules.
+// Keep stable JSON envelopes until the public typed proto surface is ready.
+service RemoteModule {
+  rpc GetManifest(JsonEnvelope) returns (JsonEnvelope);
+  rpc InvokeFunction(JsonEnvelope) returns (JsonEnvelope);
+  rpc HandleEvent(JsonEnvelope) returns (JsonEnvelope);
+}
+
+message JsonEnvelope {
+  string payload_json = 1;
+}

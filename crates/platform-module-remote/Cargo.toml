@@ -13,9 +13,12 @@ platform-core.workspace = true
 platform-http.workspace = true
 platform-module.workspace = true
 platform-runtime.workspace = true
+prost.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+tonic.workspace = true
+tonic-prost.workspace = true
 tracing.workspace = true
 utoipa.workspace = true
 
@@ -23,6 +26,7 @@ utoipa.workspace = true
 platform-testing.workspace = true
 sqlx.workspace = true
 tokio.workspace = true
+tonic = { workspace = true, features = ["router", "server"] }
 
 [lints]
 workspace = true

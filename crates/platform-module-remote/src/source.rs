@@ -1,7 +1,7 @@
 use crate::admin_action::RemoteAdminActionSource;
 use crate::admin_data::RemoteAdminDataSource;
 use crate::binding::RemoteBinding;
-use crate::config::RemoteModuleConfig;
+use crate::config::{RemoteModuleConfig, RemoteModuleTransport};
 use crate::protocol::RemoteManifestResponse;
 use crate::response::decode_json_response;
 use platform_core::error::ErrorDetail;
@@ -58,11 +58,11 @@ impl RemoteModuleSource {
             Some(AdminSurface::DeclarativeCustom(surface)) if !surface.actions.is_empty()
         );
         let mut module = Module::remote(manifest, Arc::new(binding));
-        if has_admin_data {
+        if has_admin_data && self.config.transport == RemoteModuleTransport::HttpJson {
             module =
                 module.with_admin_data(Arc::new(RemoteAdminDataSource::new(self.config.clone())?));
         }
-        if has_admin_actions {
+        if has_admin_actions && self.config.transport == RemoteModuleTransport::HttpJson {
             module = module
                 .with_admin_actions(Arc::new(RemoteAdminActionSource::new(self.config.clone())?));
         }
@@ -70,6 +70,10 @@ impl RemoteModuleSource {
     }
 
     async fn fetch_manifest(&self) -> AppResult<RemoteManifestResponse> {
+        if self.config.transport == RemoteModuleTransport::Grpc {
+            return crate::grpc::fetch_manifest(&self.config).await;
+        }
+
         let request = self
             .client
             .get(format!("{}/manifest", self.config.base_url));

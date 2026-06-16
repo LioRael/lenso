@@ -38,6 +38,13 @@ pub fn http_routes() -> Vec<ModuleHttpRoute> {
             story_title: Some("App Items".to_owned()),
         },
         ModuleHttpRoute {
+            method: ModuleHttpMethod::Get,
+            path: "/v1/app/items/{id}".to_owned(),
+            capability: Some(APP_ITEMS_READ_CAPABILITY.to_owned()),
+            display_name: Some("Get App Item".to_owned()),
+            story_title: Some("App Items".to_owned()),
+        },
+        ModuleHttpRoute {
             method: ModuleHttpMethod::Post,
             path: "/v1/app/items".to_owned(),
             capability: Some(APP_ITEMS_WRITE_CAPABILITY.to_owned()),
