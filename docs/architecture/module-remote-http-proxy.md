@@ -35,13 +35,16 @@ query, or fragment segments. Valid declarations are exposed as metadata through
 `GET`, `POST`, `PUT`, `PATCH`, and `DELETE` public API routes are installed at
 `/modules/{module}/http/{*path}`. They match the declaration, enforce
 service/system auth plus route capability, and forward the request to the remote
-module without caller credentials. If the remote source has a configured auth
-token, the host uses that token for the remote request. Successful remote
-responses must be JSON (`application/json` or `application/*+json`) and must not
-exceed the current 4 MiB proxy response limit. POST, PUT, and PATCH request
-bodies must be JSON and must not exceed the current 1 MiB proxy request limit.
-DELETE request bodies must be empty; DELETE `204 No Content` success responses
-are returned in the proxy envelope with `data = null`.
+module without caller credentials. HTTP/JSON remote sources receive ordinary
+HTTP requests; gRPC remote sources receive the same request data through
+`/lenso.remote.v1.RemoteModule/ProxyHttpRoute`. If the remote source has a
+configured auth token, the host uses that token for the remote request.
+Successful remote responses must be JSON (`application/json` or
+`application/*+json`) and must not exceed the current 4 MiB proxy response
+limit. POST, PUT, and PATCH request bodies must be JSON and must not exceed the
+current 1 MiB proxy request limit. DELETE request bodies must be empty; DELETE
+`204 No Content` success responses are returned in the proxy envelope with
+`data = null`.
 
 ## Goals
 
