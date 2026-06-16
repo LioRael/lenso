@@ -3,6 +3,7 @@ set -eu
 
 root_dir="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 version="${LENSO_RELEASE_VERSION:-}"
+publish_ts_sdk="${LENSO_PUBLISH_TS_SDK:-false}"
 
 if [ -z "$version" ]; then
     echo "LENSO_RELEASE_VERSION is required" >&2
@@ -25,15 +26,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-ts_sdk_version="$(node - "$root_dir/packages/ts-sdk/package.json" <<'NODE'
-const fs = require("node:fs");
-
-const manifestPath = process.argv[2];
-const pkg = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-process.stdout.write(pkg.version);
-NODE
-)"
-
 cargo metadata --format-version=1 --no-deps --locked > "$metadata_json"
 lenso_crate_version="$(node - "$metadata_json" <<'NODE'
 const fs = require("node:fs");
@@ -49,9 +41,22 @@ process.stdout.write(crate.version);
 NODE
 )"
 
-if [ "$ts_sdk_version" != "$package_version" ]; then
-    echo "@lenso/ts-sdk version $ts_sdk_version does not match $version" >&2
-    exit 1
+if [ "$publish_ts_sdk" = "true" ]; then
+    ts_sdk_version="$(node - "$root_dir/packages/ts-sdk/package.json" <<'NODE'
+const fs = require("node:fs");
+
+const manifestPath = process.argv[2];
+const pkg = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+process.stdout.write(pkg.version);
+NODE
+)"
+
+    if [ "$ts_sdk_version" != "$package_version" ]; then
+        echo "@lenso/ts-sdk version $ts_sdk_version does not match $version" >&2
+        exit 1
+    fi
+else
+    echo "Skipping @lenso/ts-sdk version check because LENSO_PUBLISH_TS_SDK is false."
 fi
 
 if [ "$lenso_crate_version" != "$package_version" ]; then
@@ -59,4 +64,4 @@ if [ "$lenso_crate_version" != "$package_version" ]; then
     exit 1
 fi
 
-echo "Release version $version matches @lenso/ts-sdk and lenso crate metadata."
+echo "Release version $version matches selected package metadata."

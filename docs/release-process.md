@@ -54,10 +54,10 @@ Open the `release` workflow in GitHub Actions and trigger it with:
 - `publish_rust_crate`: `false`
 
 With both publish inputs set to `false`, the workflow runs `just release-check`,
-verifies that the release version matches the backend-owned package metadata,
-runs `just package-readiness`, dry-runs the crates.io publish, generates a
-release notes draft, and uploads the source package plus artifact README. The
-workflow starts a Postgres service for DB-backed checks.
+verifies that the release version matches the selected package metadata, runs
+`just package-readiness`, dry-runs the crates.io publish, generates a release
+notes draft, and uploads the source package plus artifact README. The workflow
+starts a Postgres service for DB-backed checks.
 
 ## 5. Configure Registry Secrets
 

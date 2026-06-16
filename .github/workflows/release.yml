@@ -48,6 +48,7 @@ jobs:
       HTTP_HOST: 0.0.0.0
       HTTP_PORT: 3000
       LENSO_RELEASE_VERSION: ${{ inputs.version }}
+      LENSO_PUBLISH_TS_SDK: ${{ inputs.publish_ts_sdk }}
       RUST_LOG: info,lenso=debug
     steps:
       - uses: actions/checkout@v6
