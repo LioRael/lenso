@@ -369,13 +369,11 @@ async fn failed_http_request_creates_request_level_story() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/v1/identity/users")
+                .uri("/v1/auth/dev/sessions")
                 .header("content-type", "application/json")
                 .header("x-request-id", "req_validation_story")
                 .header("x-correlation-id", "corr_validation_story")
-                .body(Body::from(
-                    r#"{"email":"not-an-email","display_name":"Ada"}"#,
-                ))
+                .body(Body::from(r#"{"user_id":""}"#))
                 .expect("request should build"),
         )
         .await
@@ -399,7 +397,7 @@ async fn failed_http_request_creates_request_level_story() {
         list_body["data"][0]["correlation_id"],
         "corr_validation_story"
     );
-    assert_eq!(list_body["data"][0]["title"], "User Registration");
+    assert_eq!(list_body["data"][0]["title"], "Development Auth Session");
     assert_eq!(list_body["data"][0]["pattern"][0], "http_request");
     assert_eq!(list_body["data"][0]["status"], "failed");
     assert_eq!(list_body["data"][0]["error_count"], 1);
@@ -426,98 +424,6 @@ async fn failed_http_request_creates_request_level_story() {
         detail_body["data"]["nodes"][0]["id"]
     );
     assert_eq!(detail_body["data"]["edges"].as_array().unwrap().len(), 0);
-
-    db.cleanup().await;
-}
-
-#[tokio::test]
-async fn successful_request_with_outbox_work_creates_http_root_story() {
-    let Some(db) = TestDatabase::create().await else {
-        return;
-    };
-    let app = test_app_with_identity(&db).await;
-
-    let create_response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/v1/identity/users")
-                .header("content-type", "application/json")
-                .header("x-request-id", "req_create_user_story")
-                .header("x-correlation-id", "corr_create_user_story")
-                .body(Body::from(
-                    r#"{"email":"story-root@example.test","display_name":"Ada"}"#,
-                ))
-                .expect("request should build"),
-        )
-        .await
-        .expect("request should complete");
-
-    assert_eq!(create_response.status(), StatusCode::OK);
-    wait_for_story_event(&db.pool, "corr_create_user_story").await;
-
-    let list_response = app
-        .clone()
-        .oneshot(
-            admin_get("/admin/runtime/stories?limit=10")
-                .with_header("authorization", "Bearer dev-service:admin"),
-        )
-        .await
-        .expect("request should complete");
-
-    assert_eq!(list_response.status(), StatusCode::OK);
-    let list_body = json_body(list_response).await;
-    assert_eq!(
-        list_body["data"][0]["correlation_id"],
-        "corr_create_user_story"
-    );
-    assert_eq!(list_body["data"][0]["title"], "User Registration");
-    assert_eq!(list_body["data"][0]["node_count"], 2);
-    assert_eq!(list_body["data"][0]["pattern"][0], "http_request");
-    assert_eq!(list_body["data"][0]["pattern"][1], "event");
-
-    let detail_response = app
-        .oneshot(
-            admin_get("/admin/runtime/stories/corr_create_user_story")
-                .with_header("authorization", "Bearer dev-service:admin"),
-        )
-        .await
-        .expect("request should complete");
-
-    assert_eq!(detail_response.status(), StatusCode::OK);
-    let detail_body = json_body(detail_response).await;
-    let nodes = detail_body["data"]["nodes"].as_array().unwrap();
-    assert_eq!(nodes.len(), 2);
-
-    let http_node = nodes
-        .iter()
-        .find(|node| node["type"] == "http_request")
-        .expect("HTTP request node should exist");
-    let event_node = nodes
-        .iter()
-        .find(|node| node["name"] == "identity.user_registered.v1")
-        .expect("outbox event node should exist");
-    let http_node_id = http_node["id"].as_str().unwrap();
-    let event_node_id = event_node["id"].as_str().unwrap();
-
-    assert_eq!(http_node_id, "httpreq_req_create_user_story");
-    assert_eq!(http_node["name"], "POST /v1/identity/users");
-    assert_eq!(http_node["display_name"], "Create User Request");
-    assert_eq!(http_node["status"], "completed");
-    assert_eq!(http_node["service"], "api");
-    assert!(http_node["metadata"]["causation_id"].is_null());
-    assert_eq!(event_node["type"], "event");
-    assert_eq!(event_node["name"], "identity.user_registered.v1");
-    assert_eq!(event_node["display_name"], "User Registered");
-    assert_eq!(event_node["service"], "identity");
-    assert_eq!(event_node["metadata"]["causation_id"], http_node_id);
-
-    let edges = detail_body["data"]["edges"].as_array().unwrap();
-    assert_eq!(edges.len(), 1);
-    assert_eq!(edges[0]["source"], http_node_id);
-    assert_eq!(edges[0]["target"], event_node_id);
-    assert_eq!(edges[0]["type"], "causation");
 
     db.cleanup().await;
 }
@@ -2215,27 +2121,6 @@ async fn test_app(db: &TestDatabase) -> axum::Router {
     build_router(ctx)
 }
 
-async fn test_app_with_identity(db: &TestDatabase) -> axum::Router {
-    let migrations = PLATFORM_MIGRATIONS
-        .iter()
-        .chain(RUNTIME_MIGRATIONS)
-        .chain(identity::migrations::IDENTITY_MIGRATIONS)
-        .copied()
-        .collect::<Vec<_>>();
-    apply_migrations(&db.pool, &migrations)
-        .await
-        .expect("migrations should apply");
-
-    let mut config = AppConfig::from_env();
-    config.database = DatabaseConfig {
-        url: db.url.clone(),
-        max_connections: 5,
-    };
-    let ctx = AppContext::new(config, db.pool.clone(), Arc::new(LoggingEventPublisher));
-    install_runtime_function_declarations();
-    build_router(ctx)
-}
-
 async fn test_app_with_telemetry(db: &TestDatabase, spans: Vec<TelemetrySpan>) -> axum::Router {
     let migrations = PLATFORM_MIGRATIONS
         .iter()
@@ -2275,11 +2160,17 @@ fn auth_only_app_for_environment(environment: &str) -> axum::Router {
 }
 
 fn install_runtime_function_declarations() {
-    platform_admin::install_runtime_function_declarations(
-        platform_admin::runtime_function_declarations_from_modules(
-            app_bootstrap::linked_runtime_function_declaration_sources(),
-        ),
-    );
+    platform_admin::install_runtime_function_declarations(vec![
+        platform_admin::AdminRuntimeFunctionDeclarationMetadata {
+            module_name: "notifications".to_owned(),
+            module_source: platform_module::ModuleSource::Linked,
+            name: "notifications.send_welcome_email.v1".to_owned(),
+            version: 1,
+            queue: "notifications".to_owned(),
+            input_schema: Some("notifications.send_welcome_email.v1".to_owned()),
+            retry_policy: None,
+        },
+    ]);
 }
 
 fn assert_welcome_email_runtime_declaration(value: &Value) {

@@ -8,36 +8,6 @@ use std::sync::{Arc, Mutex, OnceLock};
 use tower::ServiceExt;
 
 #[test]
-fn openapi_contains_identity_create_user_contract() {
-    let document = openapi_document();
-    let value = serde_json::to_value(&document).expect("OpenAPI document should serialize");
-
-    let operation = &value["paths"]["/v1/identity/users"]["post"];
-    assert_eq!(operation["operationId"], "identity_create_user");
-    assert_eq!(
-        operation["requestBody"]["content"]["application/json"]["schema"]["$ref"],
-        "#/components/schemas/CreateUserRequest"
-    );
-    assert_eq!(
-        operation["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
-        "#/components/schemas/CreateUserResponseEnvelope"
-    );
-
-    for status in ["400", "409", "500"] {
-        assert_eq!(
-            operation["responses"][status]["content"]["application/json"]["schema"]["$ref"],
-            "#/components/schemas/ErrorResponse"
-        );
-    }
-
-    let schemas = &value["components"]["schemas"];
-    assert!(schemas["CreateUserRequest"].is_object());
-    assert!(schemas["CreateUserResponse"].is_object());
-    assert!(schemas["ErrorResponse"].is_object());
-    assert!(schemas["ValidationErrorDetail"].is_object());
-}
-
-#[test]
 fn openapi_contains_auth_dev_session_contract() {
     let document = openapi_document();
     let value = serde_json::to_value(&document).expect("OpenAPI document should serialize");
@@ -230,74 +200,6 @@ fn linked_module_openapi_routes_are_declared_in_manifest() {
 }
 
 #[tokio::test]
-async fn core_profile_router_does_not_mount_identity_routes() {
-    let _guard = catalog_test_lock()
-        .lock()
-        .expect("catalog test lock poisoned");
-    let _ = openapi_document();
-
-    let mut config = AppConfig::from_env();
-    config.module_sources.linked_profile = "core".to_owned();
-    let ctx = AppContext::new(
-        config,
-        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
-            .expect("lazy pool should build"),
-        Arc::new(LoggingEventPublisher),
-    );
-    let app = app_api::try_build_router(ctx).expect("core profile router should build");
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/v1/identity/users")
-                .method("POST")
-                .body(Body::empty())
-                .expect("request should build"),
-        )
-        .await
-        .expect("request should complete");
-
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
-async fn disabled_linked_module_router_does_not_mount_identity_routes() {
-    let _guard = catalog_test_lock()
-        .lock()
-        .expect("catalog test lock poisoned");
-    let _ = openapi_document();
-
-    let mut config = AppConfig::from_env();
-    config.modules.insert(
-        "identity".to_owned(),
-        ModuleConfig {
-            enabled: Some(false),
-            values: BTreeMap::new(),
-        },
-    );
-    let ctx = AppContext::new(
-        config,
-        platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
-            .expect("lazy pool should build"),
-        Arc::new(LoggingEventPublisher),
-    );
-    let app = app_api::try_build_router(ctx).expect("demo profile router should build");
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/v1/identity/users")
-                .method("POST")
-                .body(Body::empty())
-                .expect("request should build"),
-        )
-        .await
-        .expect("request should complete");
-
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
 async fn disabled_story_module_router_does_not_mount_story_routes() {
     let _guard = catalog_test_lock()
         .lock()
@@ -385,7 +287,7 @@ async fn served_openapi_omits_disabled_story_module_routes() {
 }
 
 #[tokio::test]
-async fn served_core_profile_openapi_omits_demo_identity_paths_after_demo_document_assembly() {
+async fn served_core_profile_openapi_omits_demo_auth_paths_after_demo_document_assembly() {
     let _guard = catalog_test_lock()
         .lock()
         .expect("catalog test lock poisoned");
@@ -425,9 +327,9 @@ async fn served_core_profile_openapi_omits_demo_identity_paths_after_demo_docume
         .as_array()
         .expect("OpenAPI tags should be an array");
 
-    assert!(!paths.contains_key("/v1/identity/users"));
-    assert!(!paths.contains_key("/v1/identity/me"));
-    assert!(!tags.iter().any(|tag| tag["name"] == "identity"));
+    assert!(!paths.contains_key("/v1/auth/dev/sessions"));
+    assert!(!paths.contains_key("/v1/auth/password/register"));
+    assert!(!tags.iter().any(|tag| tag["name"] == "auth"));
 }
 
 #[tokio::test]
@@ -478,7 +380,6 @@ async fn served_core_profile_openapi_keeps_composed_auth_routes() {
     assert!(paths.contains_key("/v1/auth/dev/sessions"));
     assert!(paths.contains_key("/v1/auth/password/register"));
     assert!(tags.iter().any(|tag| tag["name"] == "auth"));
-    assert!(!tags.iter().any(|tag| tag["name"] == "identity"));
 }
 
 fn assert_manifest_declares_route(manifest: &ModuleManifest, path: &str, method: ModuleHttpMethod) {

@@ -18,8 +18,8 @@ by the auth user id, or keep a separate mapping if it needs different ids. The
 auth module should not grow profile fields such as name, email, avatar, bio,
 plan, or organization membership.
 
-`identity` remains a demo fixture. It is useful for examples and integration
-tests, but it is not a dependency of `auth`.
+Product profile data stays outside `auth`; install or write an application
+module when user-facing profiles are needed.
 
 ## Product User Tables
 

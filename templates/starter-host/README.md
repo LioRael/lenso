@@ -46,7 +46,7 @@ The API binds to `HTTP_HOST:HTTP_PORT` from `.env` and serves:
 
 The starter keeps `LENSO_COMPOSITION_PROFILE=core` and explicitly installs
 Lenso's auth anchor plus the password provider from `src/lib.rs`. That keeps the
-demo `identity` and `notifications` fixtures out of new product hosts.
+default host small while leaving product modules under application control.
 
 ## Add A Remote Module
 

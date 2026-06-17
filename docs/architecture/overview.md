@@ -27,7 +27,7 @@ A module exposes metadata and behavior through `module.rs`. Pure declarations su
 
 Modules must not query another module's tables or import another module's internal modules. Cross-module async work goes through events and runtime function enqueueing.
 
-Current demo module fixtures:
+Current linked module fixtures:
 
 - `story` owns the `platform-story` Runtime Console module manifest and keeps
   Story visible as a first-class linked module while the compatible
@@ -36,20 +36,15 @@ Current demo module fixtures:
   routes, and host actor resolver. See [`auth-module.md`](auth-module.md).
 - `auth-password` exercises a first-party linked password provider over the auth
   public interface.
-- `identity` exercises users, identity HTTP routes, `identity.user_registered.v1`,
-  `identity.cleanup_expired_sessions.v1`, schema-admin reads, and a module-owned
-  Runtime Console workspace.
-- `notifications` exercises identity registration event handling and
-  `notifications.send_welcome_email.v1`.
 
 These modules are demo fixtures, not product defaults. `app-bootstrap` selects a
 linked composition profile: `core` keeps only platform-owned linked surfaces such
-as `platform-story`, while `demo` adds `auth`, `auth-password`, `identity`, and
-`notifications` for local development, examples, contracts, and integration
-tests. Product hosts should use `core` and explicitly install first-party auth
-modules through their host composition. Local development may default to `demo`;
-non-local environments must set `LENSO_COMPOSITION_PROFILE=core` or
-`LENSO_COMPOSITION_PROFILE=demo` explicitly.
+as `platform-story`, while `demo` adds `auth` and `auth-password` for local
+development, examples, contracts, and integration tests. Product hosts should
+use `core` and explicitly install first-party auth modules through their host
+composition. Local development may default to `demo`; non-local environments
+must set `LENSO_COMPOSITION_PROFILE=core` or `LENSO_COMPOSITION_PROFILE=demo`
+explicitly.
 
 ## Platform Service Kit
 
@@ -103,13 +98,13 @@ The runtime is embedded beside the modular monolith. It manages functions, trigg
 
 Modules register runtime functions through their `ModuleBinding`. The worker app gets the module set from `app-bootstrap`, composes their runtime descriptors into a `FunctionRegistry`, registers module event handlers, runs the transactional outbox relay, and runs the runtime worker loop.
 
-Current flow from an identity event to runtime work:
+Current flow from a module event to runtime work:
 
-1. `identity.create_user` inserts `identity.users`.
-2. The same transaction inserts `identity.user_registered.v1` into `platform.outbox`.
+1. A module command writes its own tables.
+2. The same transaction inserts a versioned event into `platform.outbox`.
 3. The worker claims pending outbox rows with `FOR UPDATE SKIP LOCKED`.
 4. The relay dispatches events through an in-process `EventHandlerRegistry`.
-5. `notifications` handles `identity.user_registered.v1` and enqueues `notifications.send_welcome_email.v1`.
+5. Event handlers may enqueue versioned runtime functions.
 6. The runtime worker claims pending function runs and invokes registered function handlers.
 7. Success marks outbox/function rows complete; failures retry or eventually mark `dead`.
 
@@ -121,9 +116,9 @@ The Runtime Console is a Vite/React operator UI developed in the sibling
 `lenso-runtime-console` repository. It can run with local mock data or against
 this backend API.
 
-The API exposes admin runtime endpoints under `/admin/runtime/*` for summaries, stories, story timeline items, heatmaps, outbox events, function runs, retries, execution payloads, and technical operations. Story timeline data is returned by the Runtime Story detail endpoint rather than a standalone timeline endpoint. These are served by the compatible `platform-admin` backend while Story ownership moves into `modules/story`; they use the same OpenAPI contract as the public identity API. Story display names are module-owned, so the composition root injects the aggregated catalog into `platform-admin` (via `install_story_display`) rather than having it depend on concrete modules.
+The API exposes admin runtime endpoints under `/admin/runtime/*` for summaries, stories, story timeline items, heatmaps, outbox events, function runs, retries, execution payloads, and technical operations. Story timeline data is returned by the Runtime Story detail endpoint rather than a standalone timeline endpoint. These are served by the compatible `platform-admin` backend while Story ownership moves into `modules/story`; they use the same OpenAPI contract as the public linked-module APIs. Story display names are module-owned, so the composition root injects the aggregated catalog into `platform-admin` (via `install_story_display`) rather than having it depend on concrete modules.
 
-The API also exposes schema-admin endpoints under `/admin/data/*`. These are served by `platform-admin-data`, which reads module schemas and data through the injected `AdminSurface::Schema` + `AdminDataSource` registry. The demo profile uses a read-only identity User fixture to exercise the framework; Lenso does not prescribe product-default business modules. Writes, richer RBAC, and custom module UI are later module-framework steps.
+The API also exposes schema-admin endpoints under `/admin/data/*`. These are served by `platform-admin-data`, which reads module schemas and data through the injected `AdminSurface::Schema` + `AdminDataSource` registry. The demo profile uses the auth User anchor to exercise the framework; Lenso does not prescribe product-default business modules. Writes, richer RBAC, and custom module UI are later module-framework steps.
 
 The module registry endpoint under `/admin/data/modules` is also the source of truth for module manifest health and Runtime Console frontend contributions. `platform-admin-data` derives manifest lint results from the public `lenso` facade helpers, including HTTP route and console surface declaration checks, and returns those lint results with the module metadata. The Runtime Console renders these `manifest_lints` as Manifest Lints; it must not reimplement the lint rules locally. See `docs/architecture/module-manifest-lints.md` for the current lint catalog and UI category contract. Module-owned Runtime Console pages are declared through `ConsoleSurface` and loaded through the host's console module registry; see `docs/architecture/module-console-surfaces.md`.
 
@@ -133,8 +128,10 @@ OpenTelemetry data is an enrichment layer for technical operations. See `docs/ar
 
 Rust is the authoring source for the OpenAPI document. Each HTTP handler carries its own `#[utoipa::path]` annotation and is registered through `utoipa-axum`'s `OpenApiRouter`, so routes and their documentation share a single source. `apps/api/src/openapi.rs` holds only the document-level metadata (title, version, tags) and assembles the linked-module and admin routers into the committed contract, including:
 
-- `POST /v1/identity/users`
-- `GET /v1/identity/me`
+- `POST /v1/auth/dev/sessions`
+- `POST /v1/auth/sessions/revoke`
+- `POST /v1/auth/password/register`
+- `POST /v1/auth/password/login`
 - `/admin/runtime/*` Runtime Console endpoints
 - `/admin/data/*` schema-admin endpoints
 - standard error responses and request/correlation headers
@@ -149,7 +146,7 @@ Committed contract artifacts live under `contracts/`:
 - `contracts/events/{module}/*.schema.json`
 - `contracts/runtime/functions/*.schema.json`
 
-Generated contract artifacts are committed. The current generator writes the OpenAPI artifact, the standard error response schema, and the generated identity event schema:
+Generated contract artifacts are committed. The current generator writes the OpenAPI artifact and the standard error response schema:
 
 ```sh
 just generate-contracts

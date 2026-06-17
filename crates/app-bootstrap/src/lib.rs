@@ -182,18 +182,6 @@ const DEMO_LINKED_MODULE_ENTRIES: &[LinkedModuleEntry] = &[
         http_binding: Some(auth_password::module::binding),
     },
     LinkedModuleEntry {
-        module_name: "identity",
-        manifest: identity::module::manifest,
-        load: identity::module::module,
-        http_binding: Some(identity::module::binding),
-    },
-    LinkedModuleEntry {
-        module_name: "notifications",
-        manifest: notifications::module::manifest,
-        load: notifications::module::module,
-        http_binding: None,
-    },
-    LinkedModuleEntry {
         module_name: "platform-story",
         manifest: story::module::manifest,
         load: story::module::module,
@@ -546,16 +534,6 @@ pub fn migrations_for_config_with_composition(
                     .copied(),
             );
         }
-        if linked_module_enabled_from_config(config, "identity") {
-            migrations.extend(identity::migrations::IDENTITY_MIGRATIONS.iter().copied());
-        }
-        if linked_module_enabled_from_config(config, "notifications") {
-            migrations.extend(
-                notifications::migrations::NOTIFICATIONS_MIGRATIONS
-                    .iter()
-                    .copied(),
-            );
-        }
     }
 
     for module in host_linked_modules_for_config(config, composition) {
@@ -577,12 +555,6 @@ pub fn migrations_for_profile(profile: CompositionProfile) -> Vec<Migration> {
         migrations.extend(auth::migrations::AUTH_MIGRATIONS.iter().copied());
         migrations.extend(
             auth_password::migrations::AUTH_PASSWORD_MIGRATIONS
-                .iter()
-                .copied(),
-        );
-        migrations.extend(identity::migrations::IDENTITY_MIGRATIONS.iter().copied());
-        migrations.extend(
-            notifications::migrations::NOTIFICATIONS_MIGRATIONS
                 .iter()
                 .copied(),
         );
@@ -1907,16 +1879,7 @@ mod tests {
             .map(|manifest| manifest.name)
             .collect::<Vec<_>>();
 
-        assert_eq!(
-            names,
-            vec![
-                "auth",
-                "auth-password",
-                "identity",
-                "notifications",
-                "platform-story"
-            ]
-        );
+        assert_eq!(names, vec!["auth", "auth-password", "platform-story"]);
     }
 
     #[test]
@@ -1927,8 +1890,8 @@ mod tests {
             matches!(
                 &descriptor.source,
                 StoryDisplaySource::HttpRequest { method, path }
-                    if method == "GET" && path == "/v1/identity/me"
-            ) && descriptor.display_name == "Fetch Current User"
+                    if method == "POST" && path == "/v1/auth/dev/sessions"
+            ) && descriptor.display_name == "Create Development Session"
         }));
     }
 
@@ -1943,8 +1906,6 @@ mod tests {
         assert!(names.iter().any(|name| name.starts_with("runtime/")));
         assert!(!names.iter().any(|name| name.starts_with("auth/")));
         assert!(!names.iter().any(|name| name.starts_with("auth-password/")));
-        assert!(!names.iter().any(|name| name.starts_with("identity/")));
-        assert!(!names.iter().any(|name| name.starts_with("notifications/")));
     }
 
     #[test]
@@ -1963,16 +1924,6 @@ mod tests {
             names
                 .iter()
                 .any(|name| name == &"auth-password/0001_create_auth_password_schema")
-        );
-        assert!(
-            names
-                .iter()
-                .any(|name| name == &"identity/0001_create_identity_schema")
-        );
-        assert!(
-            names
-                .iter()
-                .any(|name| name == &"notifications/0001_create_notifications_schema")
         );
     }
 
@@ -2014,8 +1965,6 @@ mod tests {
                 .iter()
                 .any(|name| name == &"auth-password/0001_create_auth_password_schema")
         );
-        assert!(!names.iter().any(|name| name.starts_with("identity/")));
-        assert!(!names.iter().any(|name| name.starts_with("notifications/")));
     }
 
     #[tokio::test]
@@ -2075,16 +2024,7 @@ mod tests {
             .map(|manifest| manifest.name)
             .collect::<Vec<_>>();
 
-        assert_eq!(
-            names,
-            vec![
-                "auth",
-                "auth-password",
-                "identity",
-                "notifications",
-                "platform-story"
-            ]
-        );
+        assert_eq!(names, vec!["auth", "auth-password", "platform-story"]);
     }
 
     #[test]
@@ -2106,10 +2046,6 @@ mod tests {
                 LinkedHttpRouteOwner {
                     module_name: "auth-password".to_owned(),
                     public_prefixes: &["/v1/auth/password/"],
-                },
-                LinkedHttpRouteOwner {
-                    module_name: "identity".to_owned(),
-                    public_prefixes: &["/v1/identity/"],
                 },
                 LinkedHttpRouteOwner {
                     module_name: "platform-story".to_owned(),
@@ -2254,27 +2190,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn auth_actor_resolver_does_not_require_identity_module() {
-        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
-            .expect("lazy pool should build");
-        let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
-        config.modules.insert(
-            "identity".to_owned(),
-            ModuleConfig {
-                enabled: Some(false),
-                values: BTreeMap::new(),
-            },
-        );
-        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
-
-        assert!(
-            auth_actor_resolver_for_context(&ctx)
-                .expect("demo profile")
-                .is_some()
-        );
-    }
-
-    #[tokio::test]
     async fn auth_actor_resolver_allows_jwt_strategy_without_secret() {
         let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
             .expect("lazy pool should build");
@@ -2306,7 +2221,7 @@ mod tests {
             .expect("lazy pool should build");
         let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
         config.modules.insert(
-            "identity".to_owned(),
+            "auth-password".to_owned(),
             ModuleConfig {
                 enabled: Some(false),
                 values: BTreeMap::new(),
@@ -2320,10 +2235,7 @@ mod tests {
             .map(|module| module.manifest.name)
             .collect::<Vec<_>>();
 
-        assert_eq!(
-            names,
-            vec!["auth", "auth-password", "notifications", "platform-story"]
-        );
+        assert_eq!(names, vec!["auth", "platform-story"]);
     }
 
     #[tokio::test]
@@ -2337,7 +2249,7 @@ mod tests {
                 .expect("registry");
         let mut stored = BTreeMap::new();
         stored.insert(
-            ("*".to_owned(), "modules.identity.enabled".to_owned()),
+            ("*".to_owned(), "modules.auth-password.enabled".to_owned()),
             json!(false),
         );
         let snapshot = RuntimeConfigSnapshot::resolve(&registry, "api", &stored);
@@ -2351,20 +2263,14 @@ mod tests {
             .map(|module| module.manifest.name)
             .collect::<Vec<_>>();
 
-        assert_eq!(
-            names,
-            vec!["auth", "auth-password", "notifications", "platform-story"]
-        );
+        assert_eq!(names, vec!["auth", "platform-story"]);
         let linked_http_names = linked_http_modules_for_context(&ctx)
             .expect("linked HTTP modules should load")
             .into_iter()
             .map(|module| module.manifest.name)
             .collect::<Vec<_>>();
 
-        assert_eq!(
-            linked_http_names,
-            vec!["auth", "auth-password", "platform-story"]
-        );
+        assert_eq!(linked_http_names, vec!["auth", "platform-story"]);
     }
 
     #[tokio::test]
@@ -2391,7 +2297,7 @@ mod tests {
             .into_iter()
             .map(|module| module.manifest.name)
             .collect::<Vec<_>>();
-        assert_eq!(linked_http_names, vec!["auth", "auth-password", "identity"]);
+        assert_eq!(linked_http_names, vec!["auth", "auth-password"]);
 
         let metadata = load_admin_module_metadata(&ctx)
             .await
@@ -2438,12 +2344,6 @@ mod tests {
         }));
         assert!(keys.iter().any(|(key, group, restart_only, default)| {
             key == "modules.auth-password.enabled"
-                && *group == Some("modules")
-                && *restart_only
-                && default == &json!(true)
-        }));
-        assert!(keys.iter().any(|(key, group, restart_only, default)| {
-            key == "modules.identity.enabled"
                 && *group == Some("modules")
                 && *restart_only
                 && default == &json!(true)
@@ -2587,7 +2487,7 @@ mod tests {
     fn migrations_for_config_skip_disabled_linked_module_migrations() {
         let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
         config.modules.insert(
-            "identity".to_owned(),
+            "auth-password".to_owned(),
             ModuleConfig {
                 enabled: Some(false),
                 values: BTreeMap::new(),
@@ -2600,11 +2500,11 @@ mod tests {
             .map(|migration| migration.name)
             .collect::<Vec<_>>();
 
-        assert!(!names.iter().any(|name| name.starts_with("identity/")));
+        assert!(!names.iter().any(|name| name.starts_with("auth-password/")));
         assert!(
             names
                 .iter()
-                .any(|name| name == &"notifications/0001_create_notifications_schema")
+                .any(|name| name == &"auth/0001_create_auth_schema")
         );
     }
 
@@ -2612,7 +2512,7 @@ mod tests {
     fn linked_http_modules_for_config_skip_disabled_linked_routes() {
         let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
         config.modules.insert(
-            "identity".to_owned(),
+            "auth-password".to_owned(),
             ModuleConfig {
                 enabled: Some(false),
                 values: BTreeMap::new(),
@@ -2625,7 +2525,7 @@ mod tests {
             .map(|module| module.manifest.name)
             .collect::<Vec<_>>();
 
-        assert_eq!(names, vec!["auth", "auth-password", "platform-story"]);
+        assert_eq!(names, vec!["auth", "platform-story"]);
     }
 
     #[test]
@@ -2645,7 +2545,7 @@ mod tests {
             .map(|module| module.manifest.name)
             .collect::<Vec<_>>();
 
-        assert_eq!(names, vec!["auth", "auth-password", "identity"]);
+        assert_eq!(names, vec!["auth", "auth-password"]);
     }
 
     #[tokio::test]
@@ -2675,7 +2575,7 @@ mod tests {
             .expect("lazy pool should build");
         let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
         config.modules.insert(
-            "identity".to_owned(),
+            "auth-password".to_owned(),
             ModuleConfig {
                 enabled: Some(false),
                 values: BTreeMap::new(),
@@ -2686,42 +2586,16 @@ mod tests {
         let metadata = load_admin_module_metadata(&ctx)
             .await
             .expect("module metadata should load");
-        let identity = metadata
+        let auth_password = metadata
             .iter()
-            .find(|module| module.module_name == "identity")
+            .find(|module| module.module_name == "auth-password")
             .expect("disabled module should remain visible in metadata");
 
         assert!(matches!(
-            &identity.load_status,
+            &auth_password.load_status,
             ModuleLoadStatus::Error { message }
                 if message == "module disabled by configuration"
         ));
-    }
-
-    #[tokio::test]
-    async fn runtime_declaration_sources_exclude_disabled_module_metadata() {
-        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
-            .expect("lazy pool should build");
-        let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
-        config.modules.insert(
-            "identity".to_owned(),
-            ModuleConfig {
-                enabled: Some(false),
-                values: BTreeMap::new(),
-            },
-        );
-        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
-
-        let metadata = load_admin_module_metadata(&ctx)
-            .await
-            .expect("module metadata should load");
-        let sources = runtime_function_declaration_sources_from_metadata(&metadata);
-
-        assert!(
-            !sources
-                .iter()
-                .any(|(name, _, runtime)| name == "identity" && runtime.is_some())
-        );
     }
 
     #[test]
@@ -2750,10 +2624,6 @@ mod tests {
                 LinkedHttpRouteOwner {
                     module_name: "auth-password".to_owned(),
                     public_prefixes: &["/v1/auth/password/"],
-                },
-                LinkedHttpRouteOwner {
-                    module_name: "identity".to_owned(),
-                    public_prefixes: &["/v1/identity/"],
                 },
                 LinkedHttpRouteOwner {
                     module_name: "platform-story".to_owned(),

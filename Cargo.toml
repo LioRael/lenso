@@ -18,8 +18,6 @@ members = [
     "crates/platform-testing",
     "modules/auth",
     "modules/auth-password",
-    "modules/identity",
-    "modules/notifications",
     "modules/story",
     "tools/generate-contracts",
     "tools/arch-check",
@@ -81,8 +79,6 @@ app-worker = { path = "apps/worker" }
 lenso-host = { path = "crates/lenso-host" }
 auth = { path = "modules/auth" }
 auth-password = { path = "modules/auth-password" }
-identity = { path = "modules/identity" }
-notifications = { path = "modules/notifications" }
 story = { path = "modules/story" }
 generate-contracts = { path = "tools/generate-contracts" }
 arch-check = { path = "tools/arch-check" }

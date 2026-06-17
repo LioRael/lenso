@@ -12,20 +12,12 @@ pub fn generate_contracts() -> anyhow::Result<()> {
         "contracts/errors/error-response.v1.schema.json",
         &error_response_schema(),
     )?;
-    write_json(
-        "contracts/events/identity/identity.user_registered.v1.schema.json",
-        &identity_user_registered_schema(),
-    )?;
 
     Ok(())
 }
 
 pub fn generated_error_response_schema() -> Value {
     error_response_schema()
-}
-
-pub fn generated_identity_user_registered_schema() -> Value {
-    identity_user_registered_schema()
 }
 
 fn write_yaml(path: impl AsRef<Path>, value: &impl serde::Serialize) -> anyhow::Result<()> {
@@ -87,23 +79,6 @@ fn error_response_schema() -> Value {
                 },
                 "additionalProperties": false
             }
-        },
-        "additionalProperties": false
-    })
-}
-
-fn identity_user_registered_schema() -> Value {
-    json!({
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://contracts.lenso.local/events/identity/identity.user_registered.v1.schema.json",
-        "title": "identity.user_registered.v1",
-        "type": "object",
-        "required": ["user_id", "email", "display_name", "registered_at"],
-        "properties": {
-            "user_id": { "type": "string" },
-            "email": { "type": "string", "format": "email" },
-            "display_name": { "type": ["string", "null"] },
-            "registered_at": { "type": "string", "format": "date-time" }
         },
         "additionalProperties": false
     })

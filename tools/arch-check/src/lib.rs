@@ -212,20 +212,12 @@ pub fn check_contract_artifacts_fresh(root: &Path) -> anyhow::Result<()> {
     let generated_openapi = serde_json::to_value(app_api::openapi_document())
         .context("OpenAPI document should serialize")?;
     let error_schema = read_json(root.join("contracts/errors/error-response.v1.schema.json"))?;
-    let event_schema =
-        read_json(root.join("contracts/events/identity/identity.user_registered.v1.schema.json"))?;
-
     let mut violations = Vec::new();
     if openapi != generated_openapi {
         violations.push("contracts/openapi/app-api.v1.yaml is stale".to_owned());
     }
     if error_schema != generate_contracts::generated_error_response_schema() {
         violations.push("contracts/errors/error-response.v1.schema.json is stale".to_owned());
-    }
-    if event_schema != generate_contracts::generated_identity_user_registered_schema() {
-        violations.push(
-            "contracts/events/identity/identity.user_registered.v1.schema.json is stale".to_owned(),
-        );
     }
 
     ensure_empty(violations, "contract artifacts must match Rust sources")
