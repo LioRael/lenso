@@ -32,6 +32,12 @@ package-readiness:
 release-package:
     sh scripts/release-package.sh
 
+starter-check:
+    sh scripts/starter-host-check.sh
+
+first-user-smoke:
+    sh scripts/first-user-smoke.sh
+
 test:
     cargo test --locked --workspace
 

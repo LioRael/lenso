@@ -38,6 +38,12 @@ examples split checklist lives in [package-readiness.md](package-readiness.md).
 
 ## Local Smoke
 
+Run the starter template gate:
+
+```sh
+just starter-check
+```
+
 Use this sequence for a manual service smoke:
 
 ```sh
@@ -46,6 +52,13 @@ just db-up
 just migrate
 just api
 just worker
+```
+
+For the first-user backend flow, including a remote module fixture and
+Console-facing admin APIs, run:
+
+```sh
+just first-user-smoke
 ```
 
 Verify Runtime Console and remote-module package behavior in the sibling
@@ -64,6 +77,8 @@ Most release-smoke failures are local setup issues:
   then run `just migrate`.
 - API or Console ports are busy: change `HTTP_PORT`, `CONSOLE_PORT`, or
   `VITE_API_BASE_URL` for that shell.
+- `first-user-smoke` port defaults are busy: set `FIRST_USER_SMOKE_HTTP_PORT`
+  or `FIRST_USER_SMOKE_REMOTE_MODULE_ADDR` for that shell.
 - The remote module manifest URL does not respond: start the module process and
   open `/lenso/module/v1/manifest` in a browser or with `curl`.
 - `REMOTE_MODULES` changed but the module is not visible: restart the API,

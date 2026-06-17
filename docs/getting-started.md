@@ -35,10 +35,11 @@ Run `cargo run --bin worker` in a second shell. The template depends on this
 backend repository's temporary `lenso-host` Git package until a stable public
 host feature is available from the `lenso` crate. `lenso-host` only wraps the
 API, worker, migration boot helpers, and a narrow linked HTTP route authoring
-surface; it is not the final public package boundary. Pin it to a tag or commit
-before using the starter outside local experiments. The starter exposes
-`GET /v1/app/status` plus `GET`/`POST /v1/app/items` as the first host-owned
-linked routes and data surface.
+surface; it is not the final public package boundary. Release templates pin it
+to a commit; local development may temporarily point at a branch, but release
+branches must not. The starter exposes `GET /v1/app/status` plus
+`GET`/`POST /v1/app/items` as the first host-owned linked routes and data
+surface.
 
 ## Configure Local Environment
 
@@ -109,12 +110,23 @@ Restart the local services and open the Runtime Console. The module should be
 available through the Modules/Data surfaces and its remote calls should appear
 in operations views after use.
 
+Remote sources and Runtime Console package exports are loaded at process
+startup. After installing a module, restart the API, worker, and Runtime Console.
+
+To run the backend part of this flow without opening the frontend:
+
+```sh
+just first-user-smoke
+```
+
 ## Release Check
 
 Before cutting a local release branch or tag, run:
 
 ```sh
+just starter-check
 just release-check
 ```
 
-This runs the backend repository quality gate.
+`starter-check` compiles the transitional starter from a temporary copy.
+`release-check` runs the backend repository quality gate.

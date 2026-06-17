@@ -32,7 +32,8 @@ cargo run --bin worker
 
 The API binds to `HTTP_HOST:HTTP_PORT` from `.env` and serves:
 
-- `GET /health`;
+- `GET /livez`;
+- `GET /readyz`;
 - `GET /v1/app/status`;
 - `GET /v1/app/items` for the authenticated user;
 - `GET /v1/app/items/{id}` for the authenticated user;
