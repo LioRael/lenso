@@ -63,7 +63,7 @@ fi
 just --justfile "$repo_root/justfile" db-up
 just --justfile "$repo_root/justfile" migrate
 
-cargo run --locked -p remote-module-example >"$remote_log" 2>&1 &
+cargo run --locked -p remote-module-fixture >"$remote_log" 2>&1 &
 remote_pid=$!
 wait_url "$remote_url/lenso/module/v1/manifest" "remote module"
 

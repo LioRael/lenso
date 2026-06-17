@@ -5,7 +5,7 @@ use std::net::SocketAddr;
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "remote_module_example=info".to_owned()),
+            std::env::var("RUST_LOG").unwrap_or_else(|_| "remote_module_fixture=info".to_owned()),
         )
         .init();
 
@@ -15,12 +15,12 @@ async fn main() -> anyhow::Result<()> {
         .context("invalid REMOTE_MODULE_ADDR")?;
 
     if std::env::args().any(|arg| arg == "--grpc") {
-        remote_module_example::serve_grpc(address).await?;
+        remote_module_fixture::serve_grpc(address).await?;
         return Ok(());
     }
 
-    tracing::info!(%address, "starting remote module example");
+    tracing::info!(%address, "starting remote module fixture");
     let listener = tokio::net::TcpListener::bind(address).await?;
-    axum::serve(listener, remote_module_example::router()).await?;
+    axum::serve(listener, remote_module_fixture::router()).await?;
     Ok(())
 }

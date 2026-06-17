@@ -4,7 +4,7 @@ members = [
     "apps/api",
     "apps/worker",
     "apps/migrate",
-    "examples/remote-module",
+    "fixtures/remote-module",
     "crates/lenso",
     "crates/lenso-host",
     "crates/app-bootstrap",
@@ -82,7 +82,7 @@ auth-password = { path = "modules/auth-password" }
 story = { path = "modules/story" }
 generate-contracts = { path = "tools/generate-contracts" }
 arch-check = { path = "tools/arch-check" }
-remote-module-example = { path = "examples/remote-module" }
+remote-module-fixture = { path = "fixtures/remote-module" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

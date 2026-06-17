@@ -77,6 +77,8 @@ First-time local setup lives in [docs/getting-started.md](docs/getting-started.m
   - `auth`: host-owned authentication anchor and development session routes.
   - `auth-password`: first-party password provider for the auth anchor.
   - `story`: platform-owned Runtime Console story surface.
+- `fixtures/`
+  - `remote-module`: internal remote-module fixture for integration and protocol checks.
 - `contracts/`
   - Generated and curated OpenAPI, JSON Schema, event, error, and runtime contracts.
 - `tools/`

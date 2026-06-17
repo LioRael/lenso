@@ -1,4 +1,4 @@
-# Remote Module Example
+# Remote Module Fixture
 
 Small out-of-process module fixture for the Lenso Remote module protocol.
 
@@ -33,19 +33,19 @@ And a declarative custom admin module base for testing
 Run it locally:
 
 ```sh
-cargo run --locked -p remote-module-example
+cargo run --locked -p remote-module-fixture
 ```
 
 The server listens on `127.0.0.1:4100` by default. Override it with:
 
 ```sh
-REMOTE_MODULE_ADDR=127.0.0.1:4101 cargo run --locked -p remote-module-example
+REMOTE_MODULE_ADDR=127.0.0.1:4101 cargo run --locked -p remote-module-fixture
 ```
 
 Run the same fixture as a native gRPC remote module:
 
 ```sh
-cargo run --locked -p remote-module-example -- --grpc
+cargo run --locked -p remote-module-fixture -- --grpc
 ```
 
 Connect it to the API in another shell:
@@ -88,7 +88,7 @@ fixture and API in separate shells:
 ```sh
 just db-up
 just migrate
-cargo run --locked -p remote-module-example
+cargo run --locked -p remote-module-fixture
 REMOTE_MODULES=remote-crm=http://127.0.0.1:4100/lenso/module/v1,remote-crm-embedded=http://127.0.0.1:4100/lenso/module/v1/embedded,remote-crm-declarative=http://127.0.0.1:4100/lenso/module/v1/declarative just api
 ```
 
