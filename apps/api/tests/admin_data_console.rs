@@ -385,29 +385,26 @@ async fn modules_endpoint_lists_linked_module_http_routes() {
         .expect("request completes");
     assert_eq!(response.status(), StatusCode::OK);
     let json = json_body(response).await;
-    let identity = json["modules"]
+    let auth = json["modules"]
         .as_array()
         .expect("modules array")
         .iter()
-        .find(|module| module["module_name"] == "identity")
-        .expect("identity module metadata");
-    assert_eq!(identity["source"], "linked");
-    assert_eq!(identity["http_routes"][0]["method"], "POST");
-    assert_eq!(identity["http_routes"][0]["path"], "/v1/identity/users");
+        .find(|module| module["module_name"] == "auth")
+        .expect("auth module metadata");
+    assert_eq!(auth["source"], "linked");
+    assert_eq!(auth["http_routes"][0]["method"], "POST");
+    assert_eq!(auth["http_routes"][0]["path"], "/v1/auth/dev/sessions");
     assert_eq!(
-        identity["http_routes"][0]["display_name"],
-        "Create User Request"
+        auth["http_routes"][0]["display_name"],
+        "Create Development Session"
     );
     assert_eq!(
-        identity["http_routes"][0]["story_title"],
-        "User Registration"
+        auth["http_routes"][0]["story_title"],
+        "Development Auth Session"
     );
-    assert_eq!(identity["http_routes"][1]["method"], "GET");
-    assert_eq!(identity["http_routes"][1]["path"], "/v1/identity/me");
-    assert_eq!(
-        identity["http_routes"][1]["display_name"],
-        "Fetch Current User"
-    );
+    assert_eq!(auth["http_routes"][1]["method"], "POST");
+    assert_eq!(auth["http_routes"][1]["path"], "/v1/auth/sessions/revoke");
+    assert_eq!(auth["http_routes"][1]["display_name"], "Revoke Session");
 }
 
 #[tokio::test]
@@ -432,37 +429,18 @@ async fn modules_endpoint_lists_linked_modules_without_admin_surfaces() {
         .expect("request completes");
     assert_eq!(response.status(), StatusCode::OK);
     let json = json_body(response).await;
-    let notifications = json["modules"]
+    let auth_password = json["modules"]
         .as_array()
         .expect("modules array")
         .iter()
-        .find(|module| module["module_name"] == "notifications")
-        .expect("notifications module metadata");
-    assert_eq!(notifications["source"], "linked");
-    assert_eq!(notifications["status"], "loaded");
-    assert_eq!(notifications["error"], Value::Null);
-    assert_eq!(notifications["http_routes"], serde_json::json!([]));
-    assert_eq!(
-        notifications["runtime"]["functions"][0]["name"],
-        "notifications.send_welcome_email.v1"
-    );
-    assert_eq!(
-        notifications["runtime"]["functions"][0]["queue"],
-        "notifications"
-    );
-    assert_eq!(notifications["capabilities"], serde_json::json!([]));
-    assert!(
-        notifications["story_display"]
-            .as_array()
-            .expect("story display array")
-            .iter()
-            .any(|descriptor| {
-                descriptor["display_name"] == "Send Welcome Email"
-                    && descriptor["source"]["kind"] == "execution_name"
-                    && descriptor["source"]["name"] == "notifications.send_welcome_email.v1"
-            })
-    );
-    assert_eq!(notifications["admin"], Value::Null);
+        .find(|module| module["module_name"] == "auth-password")
+        .expect("auth-password module metadata");
+    assert_eq!(auth_password["source"], "linked");
+    assert_eq!(auth_password["status"], "loaded");
+    assert_eq!(auth_password["error"], Value::Null);
+    assert_eq!(auth_password["runtime"], Value::Null);
+    assert_eq!(auth_password["dependencies"], serde_json::json!(["auth"]));
+    assert_eq!(auth_password["admin"], Value::Null);
 }
 
 #[tokio::test]

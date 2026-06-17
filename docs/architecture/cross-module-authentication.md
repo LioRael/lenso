@@ -123,7 +123,7 @@ For module-specific authorization beyond the built-in extractors, read the
 
 No module imports `auth` for request-level authentication. The `auth` module
 exports `AuthIdentity` and `AuthUserId` through `auth::public` solely for the
-`identity` module's user-creation transaction flow — this is a structural
+`auth-password` module's credential-registration flow — this is a structural
 database dependency, not an HTTP auth dependency.
 
 Modules receive authentication through the platform middleware that runs before

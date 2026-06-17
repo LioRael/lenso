@@ -5,10 +5,8 @@ modules. It covers module-owned console pages that are installed into the
 host's Vite/React app at build time.
 
 Lenso provides the framework for module frontend packages. It does not ship
-product-default business modules. `identity` and `identity-console` are
-framework fixtures used to exercise schema-admin, module metadata, and package
-registration paths; product projects decide which real business modules to
-install.
+product-default business modules; product projects decide which real business
+modules to install.
 
 Console surfaces are distinct from admin surfaces:
 
@@ -19,7 +17,7 @@ Console surfaces are distinct from admin surfaces:
 The first implementation extracts the Runtime Stories page into the
 `platform-story` console package. It is a first-party platform package bundled
 with the host app, but it uses the same manifest shape intended for
-module-owned packages. `identity-console` is the installed package fixture.
+module-owned packages.
 
 ## Manifest Contract
 

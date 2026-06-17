@@ -24,7 +24,6 @@ use utoipa::OpenApi;
     ),
     tags(
         (name = "auth", description = "Auth module development session APIs"),
-        (name = "identity", description = "Identity module fixture APIs"),
         (name = "admin-runtime", description = "Read-only runtime console APIs"),
         (name = "admin-config", description = "Editable configuration console APIs"),
         (name = "admin-data", description = "Schema-driven admin data console APIs")
@@ -84,9 +83,7 @@ fn openapi_document_for_profile_with_composition(
                 .iter()
                 .any(|module| module.module_name == "auth");
         match profile {
-            CompositionProfile::Core => {
-                tags.retain(|tag| (has_auth || tag.name != "auth") && tag.name != "identity")
-            }
+            CompositionProfile::Core => tags.retain(|tag| has_auth || tag.name != "auth"),
             CompositionProfile::Demo => {}
         }
     }

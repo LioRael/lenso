@@ -74,8 +74,9 @@ First-time local setup lives in [docs/getting-started.md](docs/getting-started.m
   - `platform-testing`: shared test database helpers.
   - `app-bootstrap`: composition root listing the concrete modules; both `api` and `worker` wire their module set from here.
 - `modules/`
-  - `identity`: framework fixture for a create-user vertical slice, user table, outbox event, HTTP route, repository, command tests.
-  - `notifications`: framework fixture for an in-process handler of `identity.user_registered.v1`.
+  - `auth`: host-owned authentication anchor and development session routes.
+  - `auth-password`: first-party password provider for the auth anchor.
+  - `story`: platform-owned Runtime Console story surface.
 - `contracts/`
   - Generated and curated OpenAPI, JSON Schema, event, error, and runtime contracts.
 - `tools/`

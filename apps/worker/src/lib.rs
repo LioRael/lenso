@@ -54,7 +54,6 @@ pub async fn run_from_env_with_composition(
     info!(
         functions = registry.all().count(),
         lifecycle_activation_jobs = activation_run_ids.len(),
-        user_registered_handlers = event_handlers.handler_count("identity.user_registered.v1"),
         "starting worker"
     );
 
