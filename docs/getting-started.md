@@ -23,12 +23,18 @@ host development in this backend repository still uses the workspace crates.
 For a blank host project, start from the transitional starter template:
 
 ```sh
-cp -R templates/starter-host ../my-lenso-host
+cp -R crates/lenso-cli/templates/starter-host ../my-lenso-host
 cd ../my-lenso-host
 cp .env.example .env
 docker compose up -d postgres
 cargo run --bin migrate
 cargo run --bin api
+```
+
+Prefer the scaffolder when it is available:
+
+```sh
+cargo run -p lenso-cli -- host init ../my-lenso-host
 ```
 
 Run `cargo run --bin worker` in a second shell. The template depends on this

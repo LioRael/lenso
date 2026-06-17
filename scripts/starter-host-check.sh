@@ -5,7 +5,11 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
-cp -R "$repo_root/templates/starter-host" "$tmp_dir/lenso-starter-host"
+cp -R "$repo_root/crates/lenso-cli/templates/starter-host" "$tmp_dir/lenso-starter-host"
+
+# The template manifest is stored as Cargo.toml.tmpl inside the package so the
+# crate does not look like a nested Cargo project; restore it here.
+mv "$tmp_dir/lenso-starter-host/Cargo.toml.tmpl" "$tmp_dir/lenso-starter-host/Cargo.toml"
 
 python3 - "$tmp_dir/lenso-starter-host/Cargo.toml" "$repo_root" <<'PY'
 import re

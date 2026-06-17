@@ -39,10 +39,12 @@ repository. Runnable examples live in
 [`LioRael/lenso-examples`](https://github.com/LioRael/lenso-examples).
 
 A transitional host starter lives in
-[templates/starter-host](templates/starter-host). It shows the current API,
-worker, migration, and local Postgres shape while the stable public host facade
-is still being designed. Its binaries go through the temporary `lenso-host`
-facade instead of importing internal app or platform crates directly.
+[crates/lenso-cli/templates/starter-host](crates/lenso-cli/templates/starter-host)
+and is scaffolded with the `lenso` CLI (`lenso host init <dir>`). It shows the
+current API, worker, migration, and local Postgres shape while the stable public
+host facade is still being designed. Its binaries go through the temporary
+`lenso-host` facade instead of importing internal app or platform crates
+directly.
 
 ## Architecture Overview
 
@@ -64,15 +66,17 @@ First-time local setup lives in [docs/getting-started.md](docs/getting-started.m
   - `worker`: background worker and outbox relay app.
   - `migrate`: deterministic migration runner.
 - `crates/`
-  - `lenso`: public Rust facade crate for serializable module-authoring declarations and manifest lints.
-  - `platform-core`: config, errors, context, DB, migrations, events, outbox, health, telemetry primitives.
+ - `lenso`: public Rust facade crate for serializable module-authoring declarations and manifest lints.
+  - `lenso-cli`: command-line interface for scaffolding host applications (`lenso host init <dir>`).
+ - `platform-core`: config, errors, context, DB, migrations, events, outbox, health, telemetry primitives.
   - `platform-http`: Axum adapters, request context middleware, JSON extractor, error responses, health routes, and the `OpenApiRouter` re-exports for single-source OpenAPI.
   - `platform-runtime`: embedded runtime primitives for functions, triggers, queues, flows, retries, and store traits.
   - `platform-module`: behavior seams and compatibility re-exports for module loading, linked bindings, and schema-admin data/action sources.
   - `platform-admin`: runtime-observability backend for the Runtime Console (`/admin/runtime/*`); reads platform/runtime tables only.
   - `platform-admin-data`: schema-admin backend for generic module data (`/admin/data/*`).
   - `platform-testing`: shared test database helpers.
-  - `app-bootstrap`: composition root listing the concrete modules; both `api` and `worker` wire their module set from here.
+ - `app-bootstrap`: composition root listing the concrete modules; both `api` and `worker` wire their module set from here.
+  - `lenso-host`: internal transitional host boot facade consumed by the starter template.
 - `modules/`
   - `auth`: host-owned authentication anchor and development session routes.
   - `auth-password`: first-party password provider for the auth anchor.
@@ -86,9 +90,6 @@ First-time local setup lives in [docs/getting-started.md](docs/getting-started.m
   - `arch-check`: lightweight architecture rule checker.
 - `infrastructure/local/`
   - Local Postgres and optional OpenTelemetry collector config.
-- `templates/`
-  - `starter-host`: transitional blank-project host skeleton for API, worker,
-    migrations, and local Postgres through the temporary `lenso-host` facade.
 
 Runtime Console source lives in the sibling `../lenso-runtime-console` repository. This backend repository still owns the `/admin/runtime/*`, `/admin/data/*`, module manifest, and contract APIs that the Console consumes.
 

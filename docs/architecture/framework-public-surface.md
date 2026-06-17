@@ -94,13 +94,14 @@ authoring helpers that stay stable across at least one real starter data slice.
 `lenso-host` is a pressure-test facade: app-owned SQL and CRUD code stay in the
 starter until a narrower public host feature has proven itself.
 
-The transitional starter host template in `templates/starter-host` is the
-pressure test for that future facade. It keeps the current API, worker, and
-migration entrypoints visible from a blank project while depending on the
-temporary `lenso-host` Git package. It uses Cargo's system-Git fetch mode so
-private repository credentials follow normal Git configuration. Treat new needs
-in that template as a signal for the next host facade extraction, not as a
-stable public API.
+The transitional starter host template lives in
+`crates/lenso-cli/templates/starter-host` and is the single source for the
+`lenso host init <dir>` scaffolder. It is the pressure test for that future
+facade: it keeps the current API, worker, and migration entrypoints visible
+from a blank project while depending on the temporary `lenso-host` Git package.
+It uses Cargo's system-Git fetch mode so private repository credentials follow
+normal Git configuration. Treat new needs in that template as a signal for the
+next host facade extraction, not as a stable public API.
 
 ## Remote Module Kit
 
@@ -165,8 +166,8 @@ facade exists.
    as the remote-module authoring facade.
 2. Keep the crates.io `lenso` facade limited to stable module-authoring
    declarations until a host application API is intentionally designed.
-3. Keep `templates/starter-host` as the transitional host pressure test until
-   its boot, migration, HTTP, and app-owned data slices stabilize.
+3. Keep `crates/lenso-cli/templates/starter-host` as the transitional host pressure test until
+  its boot, migration, HTTP, and app-owned data slices stabilize.
 4. Move only the stable subset of `lenso-host` into a future `lenso` `host`
    feature; leave app-owned SQL, repositories, CRUD shape, auth/session policy,
    and console UI out of the facade.
