@@ -285,7 +285,7 @@ async fn wait_for_story_event(pool: &platform_core::DbPool, source_id: &str) {
 #[tokio::test]
 async fn remote_module_fixture_is_visible_through_admin_data_api() {
     let _guard = REMOTE_SMOKE_TEST_LOCK.lock().await;
-    let base_url = spawn_remote_module(remote_module_example::router()).await;
+    let base_url = spawn_remote_module(remote_module_fixture::router()).await;
     let app = app_with_remote_module(base_url.clone()).await;
 
     let schema_response = app
@@ -450,7 +450,7 @@ async fn remote_runtime_function_runs_include_module_declaration() {
     let Some(db) = TestDatabase::create().await else {
         return;
     };
-    let base_url = spawn_remote_module(remote_module_example::router()).await;
+    let base_url = spawn_remote_module(remote_module_fixture::router()).await;
     let app = app_with_remote_module_and_test_db(base_url, &db).await;
     insert_remote_function_run(&db.pool).await;
 
@@ -483,7 +483,7 @@ async fn remote_runtime_function_runs_include_module_declaration() {
 #[tokio::test]
 async fn remote_http_proxy_forwards_declared_get_routes() {
     let _guard = REMOTE_SMOKE_TEST_LOCK.lock().await;
-    let base_url = spawn_remote_module(remote_module_example::router()).await;
+    let base_url = spawn_remote_module(remote_module_fixture::router()).await;
     let app = app_with_remote_module(base_url).await;
 
     let unauthenticated = app
@@ -589,7 +589,7 @@ async fn installed_remote_module_lifecycle_activation_runs_through_worker_runtim
         .await
         .expect("platform and runtime migrations apply");
 
-    let base_url = spawn_remote_module(remote_module_example::router()).await;
+    let base_url = spawn_remote_module(remote_module_fixture::router()).await;
     let remote_sources = vec![RemoteModuleSourceConfig {
         name: "remote-crm".to_owned(),
         base_url: base_url.clone(),
@@ -700,7 +700,7 @@ async fn installed_remote_module_event_handler_enqueues_runtime_function() {
         .await
         .expect("platform and runtime migrations apply");
 
-    let base_url = spawn_remote_module(remote_module_example::router()).await;
+    let base_url = spawn_remote_module(remote_module_fixture::router()).await;
     let remote_sources = vec![RemoteModuleSourceConfig {
         name: "remote-crm".to_owned(),
         base_url,
@@ -818,7 +818,7 @@ async fn remote_http_proxy_persists_call_history_and_story_operations() {
     let Some(db) = TestDatabase::create().await else {
         return;
     };
-    let base_url = spawn_remote_module(remote_module_example::router()).await;
+    let base_url = spawn_remote_module(remote_module_fixture::router()).await;
     let app = app_with_remote_module_and_test_db(base_url, &db).await;
 
     let success_response = app
@@ -1174,7 +1174,7 @@ async fn remote_http_proxy_persists_call_history_and_story_operations() {
 #[tokio::test]
 async fn remote_http_proxy_rejects_unsafe_get_responses() {
     let _guard = REMOTE_SMOKE_TEST_LOCK.lock().await;
-    let base_url = spawn_remote_module(remote_module_example::router()).await;
+    let base_url = spawn_remote_module(remote_module_fixture::router()).await;
     let app = app_with_remote_module(base_url).await;
 
     let text_response = app
@@ -1239,7 +1239,7 @@ async fn remote_http_proxy_rejects_unsafe_get_responses() {
 #[tokio::test]
 async fn remote_http_proxy_uses_configured_remote_timeout() {
     let _guard = REMOTE_SMOKE_TEST_LOCK.lock().await;
-    let base_url = spawn_remote_module(remote_module_example::router()).await;
+    let base_url = spawn_remote_module(remote_module_fixture::router()).await;
     let app = app_with_remote_modules(vec![RemoteModuleSourceConfig {
         name: "remote-crm".to_owned(),
         base_url,
@@ -1283,7 +1283,7 @@ async fn remote_http_proxy_uses_configured_remote_timeout() {
 #[tokio::test]
 async fn remote_http_proxy_forwards_declared_post_routes() {
     let _guard = REMOTE_SMOKE_TEST_LOCK.lock().await;
-    let base_url = spawn_remote_module(remote_module_example::router()).await;
+    let base_url = spawn_remote_module(remote_module_fixture::router()).await;
     let app = app_with_remote_module(base_url).await;
 
     let matched_response = app
@@ -1364,7 +1364,7 @@ async fn remote_http_proxy_forwards_declared_post_routes() {
 #[tokio::test]
 async fn remote_http_proxy_forwards_declared_put_and_patch_routes() {
     let _guard = REMOTE_SMOKE_TEST_LOCK.lock().await;
-    let base_url = spawn_remote_module(remote_module_example::router()).await;
+    let base_url = spawn_remote_module(remote_module_fixture::router()).await;
     let app = app_with_remote_module(base_url).await;
 
     let put_response = app
@@ -1436,7 +1436,7 @@ async fn remote_http_proxy_forwards_declared_put_and_patch_routes() {
 #[tokio::test]
 async fn remote_http_proxy_forwards_declared_delete_routes() {
     let _guard = REMOTE_SMOKE_TEST_LOCK.lock().await;
-    let base_url = spawn_remote_module(remote_module_example::router()).await;
+    let base_url = spawn_remote_module(remote_module_fixture::router()).await;
     let app = app_with_remote_module(base_url).await;
 
     let deleted_response = app
@@ -1588,12 +1588,12 @@ async fn failed_remote_module_load_is_reported_in_schema() {
 #[tokio::test]
 async fn custom_remote_modules_are_visible_through_metadata_api() {
     let _guard = REMOTE_SMOKE_TEST_LOCK.lock().await;
-    let fixture_base = spawn_remote_module(remote_module_example::router()).await;
+    let fixture_base = spawn_remote_module(remote_module_fixture::router()).await;
     let iframe_origin = fixture_base.trim_end_matches("/lenso/module/v1").to_owned();
     let app = app_with_remote_modules(vec![
         RemoteModuleSourceConfig {
             name: "remote-crm".to_owned(),
-            base_url: spawn_remote_module(remote_module_example::router()).await,
+            base_url: spawn_remote_module(remote_module_fixture::router()).await,
             auth_token_env: None,
             timeout_ms: 5_000,
         },

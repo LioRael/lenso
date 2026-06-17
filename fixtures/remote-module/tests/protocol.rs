@@ -7,7 +7,7 @@ use tower::ServiceExt;
 
 #[tokio::test]
 async fn manifest_matches_remote_module_protocol() {
-    let response = remote_module_example::router()
+    let response = remote_module_fixture::router()
         .oneshot(
             http::Request::builder()
                 .uri("/lenso/module/v1/manifest")
@@ -120,7 +120,7 @@ async fn manifest_matches_remote_module_protocol() {
 async fn grpc_manifest_matches_remote_module_protocol() {
     let addr = unused_addr();
     tokio::spawn(async move {
-        remote_module_example::serve_grpc(addr)
+        remote_module_fixture::serve_grpc(addr)
             .await
             .expect("serve grpc remote module");
     });
@@ -169,7 +169,7 @@ async fn grpc_manifest_matches_remote_module_protocol() {
 
 #[tokio::test]
 async fn embedded_manifest_matches_remote_module_protocol() {
-    let response = remote_module_example::router()
+    let response = remote_module_fixture::router()
         .oneshot(
             http::Request::builder()
                 .uri("/lenso/module/v1/embedded/manifest")
@@ -209,7 +209,7 @@ async fn embedded_manifest_matches_remote_module_protocol() {
 
 #[tokio::test]
 async fn declarative_manifest_matches_remote_module_protocol() {
-    let response = remote_module_example::router()
+    let response = remote_module_fixture::router()
         .oneshot(
             http::Request::builder()
                 .uri("/lenso/module/v1/declarative/manifest")
@@ -277,7 +277,7 @@ async fn declarative_manifest_matches_remote_module_protocol() {
 
 #[tokio::test]
 async fn embedded_admin_page_is_served_for_iframe_rendering() {
-    let response = remote_module_example::router()
+    let response = remote_module_fixture::router()
         .oneshot(
             http::Request::builder()
                 .uri("/lenso/module/v1/embedded/admin")
@@ -299,7 +299,7 @@ async fn embedded_admin_page_is_served_for_iframe_rendering() {
 
 #[tokio::test]
 async fn runtime_function_invoke_returns_output_envelope() {
-    let response = remote_module_example::router()
+    let response = remote_module_fixture::router()
         .oneshot(
             http::Request::builder()
                 .method(http::Method::POST)
@@ -329,7 +329,7 @@ async fn runtime_function_invoke_returns_output_envelope() {
 
 #[tokio::test]
 async fn event_handler_invoke_returns_enqueue_function_action() {
-    let response = remote_module_example::router()
+    let response = remote_module_fixture::router()
         .oneshot(
             http::Request::builder()
                 .method(http::Method::POST)
@@ -363,7 +363,7 @@ async fn event_handler_invoke_returns_enqueue_function_action() {
 
 #[tokio::test]
 async fn declarative_admin_action_returns_result_envelope() {
-    let response = remote_module_example::router()
+    let response = remote_module_fixture::router()
         .oneshot(
             http::Request::builder()
                 .method(http::Method::POST)
@@ -389,7 +389,7 @@ async fn declarative_admin_action_returns_result_envelope() {
 
 #[tokio::test]
 async fn contacts_list_returns_records_and_cursor_shape() {
-    let response = remote_module_example::router()
+    let response = remote_module_fixture::router()
         .oneshot(
             http::Request::builder()
                 .uri("/lenso/module/v1/admin/contacts?limit=2")
@@ -413,7 +413,7 @@ async fn contacts_list_returns_records_and_cursor_shape() {
 
 #[tokio::test]
 async fn http_contacts_route_returns_resource_json() {
-    let response = remote_module_example::router()
+    let response = remote_module_fixture::router()
         .oneshot(
             http::Request::builder()
                 .uri("/lenso/module/v1/contacts/contact_1")
@@ -435,7 +435,7 @@ async fn http_contacts_route_returns_resource_json() {
 
 #[tokio::test]
 async fn http_contacts_post_route_accepts_json() {
-    let response = remote_module_example::router()
+    let response = remote_module_fixture::router()
         .oneshot(
             http::Request::builder()
                 .method(http::Method::POST)
@@ -463,7 +463,7 @@ async fn http_contacts_post_route_accepts_json() {
 
 #[tokio::test]
 async fn http_contacts_put_and_patch_routes_accept_json() {
-    let put = remote_module_example::router()
+    let put = remote_module_fixture::router()
         .oneshot(
             http::Request::builder()
                 .method(http::Method::PUT)
@@ -484,7 +484,7 @@ async fn http_contacts_put_and_patch_routes_accept_json() {
     assert_eq!(contact["email"], "updated@example.com");
     assert_eq!(contact["operation"], "replaced");
 
-    let patch = remote_module_example::router()
+    let patch = remote_module_fixture::router()
         .oneshot(
             http::Request::builder()
                 .method(http::Method::PATCH)
@@ -508,7 +508,7 @@ async fn http_contacts_put_and_patch_routes_accept_json() {
 
 #[tokio::test]
 async fn http_contacts_delete_routes_return_json_or_empty_success() {
-    let deleted = remote_module_example::router()
+    let deleted = remote_module_fixture::router()
         .oneshot(
             http::Request::builder()
                 .method(http::Method::DELETE)
@@ -527,7 +527,7 @@ async fn http_contacts_delete_routes_return_json_or_empty_success() {
     assert_eq!(contact["id"], "contact_1");
     assert_eq!(contact["deleted"], true);
 
-    let purged = remote_module_example::router()
+    let purged = remote_module_fixture::router()
         .oneshot(
             http::Request::builder()
                 .method(http::Method::DELETE)
@@ -547,7 +547,7 @@ async fn http_contacts_delete_routes_return_json_or_empty_success() {
 
 #[tokio::test]
 async fn http_proxy_fixture_routes_cover_response_policy() {
-    let text = remote_module_example::router()
+    let text = remote_module_fixture::router()
         .oneshot(
             http::Request::builder()
                 .uri("/lenso/module/v1/proxy-fixtures/text")
@@ -565,7 +565,7 @@ async fn http_proxy_fixture_routes_cover_response_policy() {
         Some("text/plain; charset=utf-8")
     );
 
-    let oversized = remote_module_example::router()
+    let oversized = remote_module_fixture::router()
         .oneshot(
             http::Request::builder()
                 .uri("/lenso/module/v1/proxy-fixtures/oversized")
@@ -591,7 +591,7 @@ async fn http_proxy_fixture_routes_cover_response_policy() {
 
 #[tokio::test]
 async fn contact_detail_returns_one_record_or_404() {
-    let found = remote_module_example::router()
+    let found = remote_module_fixture::router()
         .oneshot(
             http::Request::builder()
                 .uri("/lenso/module/v1/admin/contacts/contact_1")
@@ -609,7 +609,7 @@ async fn contact_detail_returns_one_record_or_404() {
     let detail: Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(detail["record"]["email"], "ada@example.com");
 
-    let missing = remote_module_example::router()
+    let missing = remote_module_fixture::router()
         .oneshot(
             http::Request::builder()
                 .uri("/lenso/module/v1/admin/contacts/nope")

@@ -52,7 +52,7 @@ EOF
     cat >&2 <<EOF
 
 Start the remote module fixture and API with remote-crm loaded:
-  cargo run --locked -p remote-module-example
+  cargo run --locked -p remote-module-fixture
   REMOTE_MODULES=remote-crm=http://127.0.0.1:4100/lenso/module/v1 just api
 
 Then run:

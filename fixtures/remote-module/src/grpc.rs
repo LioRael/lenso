@@ -26,7 +26,7 @@ struct JsonEnvelope {
 }
 
 pub async fn serve_grpc(address: SocketAddr) -> anyhow::Result<()> {
-    tracing::info!(%address, "starting remote module example grpc server");
+    tracing::info!(%address, "starting remote module fixture grpc server");
     tonic::transport::Server::builder()
         .add_service(RemoteModuleGrpcServer)
         .serve(address)
