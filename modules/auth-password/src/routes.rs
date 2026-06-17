@@ -4,7 +4,7 @@ use axum::Json;
 use axum::extract::State;
 use chrono::Duration;
 use platform_core::AppContext;
-use platform_http::responses::{DataResponse, json};
+use platform_http::responses::json;
 use platform_http::{
     ApiErrorResponse, ApiOpenApiRouter, ErrorResponse, HttpRequestContext, JsonBody, OpenApiRouter,
     routes,
@@ -36,7 +36,7 @@ pub fn router() -> ApiOpenApiRouter {
         (
             status = 200,
             description = "Password identity registered",
-            body = crate::dto::PasswordSessionResponseEnvelope,
+            body = PasswordSessionResponse,
             content_type = "application/json",
             headers(
                 ("x-request-id" = String, description = "Request identifier for this HTTP request"),
@@ -67,7 +67,7 @@ async fn register(
     State(ctx): State<AppContext>,
     HttpRequestContext(request_ctx): HttpRequestContext,
     JsonBody(input): JsonBody<crate::dto::PasswordRegisterRequest>,
-) -> Result<Json<DataResponse<PasswordSessionResponse>>, ApiErrorResponse> {
+) -> Result<Json<PasswordSessionResponse>, ApiErrorResponse> {
     let now = ctx.clock.now();
     let password_config = crate::config::AuthPasswordConfig::from_context(&ctx)
         .map_err(|error| ApiErrorResponse::with_context(error, &request_ctx))?;
@@ -106,7 +106,7 @@ async fn register(
         (
             status = 200,
             description = "Password authentication successful",
-            body = crate::dto::PasswordSessionResponseEnvelope,
+            body = PasswordSessionResponse,
             content_type = "application/json",
             headers(
                 ("x-request-id" = String, description = "Request identifier for this HTTP request"),
@@ -137,7 +137,7 @@ async fn login(
     State(ctx): State<AppContext>,
     HttpRequestContext(request_ctx): HttpRequestContext,
     JsonBody(input): JsonBody<crate::dto::PasswordLoginRequest>,
-) -> Result<Json<DataResponse<PasswordSessionResponse>>, ApiErrorResponse> {
+) -> Result<Json<PasswordSessionResponse>, ApiErrorResponse> {
     let now = ctx.clock.now();
     let password_config = crate::config::AuthPasswordConfig::from_context(&ctx)
         .map_err(|error| ApiErrorResponse::with_context(error, &request_ctx))?;

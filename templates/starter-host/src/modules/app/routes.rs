@@ -1,7 +1,7 @@
 use lenso_host::http::{
-    ApiErrorResponse, ApiOpenApiRouter, AppContext, AppError, DataResponse, ErrorCode,
-    ErrorResponse, HttpRequestContext, Json, JsonBody, OpenApiRouter, Path, RequestContext, State,
-    UserActor, json, routes,
+    ApiErrorResponse, ApiOpenApiRouter, AppContext, AppError, ErrorCode, ErrorResponse,
+    HttpRequestContext, Json, JsonBody, OpenApiRouter, Path, RequestContext, State, UserActor,
+    json, routes,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
@@ -10,12 +10,6 @@ use utoipa::ToSchema;
 #[derive(Debug, Serialize, ToSchema)]
 struct AppStatusResponse {
     status: &'static str,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-#[schema(as = AppStatusResponseEnvelope)]
-struct AppStatusResponseEnvelope {
-    data: AppStatusResponse,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -33,18 +27,6 @@ struct AppItem {
     id: i64,
     owner_user_id: String,
     title: String,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-#[schema(as = AppItemResponseEnvelope)]
-struct AppItemResponseEnvelope {
-    data: AppItem,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-#[schema(as = AppItemsResponseEnvelope)]
-struct AppItemsResponseEnvelope {
-    data: Vec<AppItem>,
 }
 
 pub fn merge_http(base: ApiOpenApiRouter) -> ApiOpenApiRouter {
@@ -69,11 +51,11 @@ fn router() -> ApiOpenApiRouter {
     responses((
         status = 200,
         description = "App module status",
-        body = AppStatusResponseEnvelope,
+        body = AppStatusResponse,
         content_type = "application/json"
     ))
 )]
-async fn status() -> Json<DataResponse<AppStatusResponse>> {
+async fn status() -> Json<AppStatusResponse> {
     json(AppStatusResponse { status: "ok" })
 }
 
@@ -91,7 +73,7 @@ async fn status() -> Json<DataResponse<AppStatusResponse>> {
         (
             status = 200,
             description = "Item created",
-            body = AppItemResponseEnvelope,
+            body = AppItem,
             content_type = "application/json"
         ),
         (
@@ -125,7 +107,7 @@ async fn create_item(
     actor: UserActor,
     HttpRequestContext(request_ctx): HttpRequestContext,
     JsonBody(input): JsonBody<CreateItemRequest>,
-) -> Result<Json<DataResponse<AppItem>>, ApiErrorResponse> {
+) -> Result<Json<AppItem>, ApiErrorResponse> {
     let title = input.title.trim();
     if title.is_empty() {
         return Err(ApiErrorResponse::with_context(
@@ -159,7 +141,7 @@ async fn create_item(
         (
             status = 200,
             description = "Recent app-owned items for the authenticated user",
-            body = AppItemsResponseEnvelope,
+            body = Vec<AppItem>,
             content_type = "application/json"
         ),
         (
@@ -186,7 +168,7 @@ async fn list_items(
     State(ctx): State<AppContext>,
     actor: UserActor,
     HttpRequestContext(request_ctx): HttpRequestContext,
-) -> Result<Json<DataResponse<Vec<AppItem>>>, ApiErrorResponse> {
+) -> Result<Json<Vec<AppItem>>, ApiErrorResponse> {
     let rows = sqlx::query(
         r#"
         select id, owner_user_id, title
@@ -218,7 +200,7 @@ async fn list_items(
         (
             status = 200,
             description = "App-owned item",
-            body = AppItemResponseEnvelope,
+            body = AppItem,
             content_type = "application/json"
         ),
         (
@@ -252,7 +234,7 @@ async fn get_item(
     actor: UserActor,
     HttpRequestContext(request_ctx): HttpRequestContext,
     Path(id): Path<i64>,
-) -> Result<Json<DataResponse<AppItem>>, ApiErrorResponse> {
+) -> Result<Json<AppItem>, ApiErrorResponse> {
     let row = sqlx::query(
         r#"
         select id, owner_user_id, title
@@ -290,7 +272,7 @@ async fn get_item(
         (
             status = 200,
             description = "Item updated",
-            body = AppItemResponseEnvelope,
+            body = AppItem,
             content_type = "application/json"
         ),
         (
@@ -331,7 +313,7 @@ async fn update_item(
     HttpRequestContext(request_ctx): HttpRequestContext,
     Path(id): Path<i64>,
     JsonBody(input): JsonBody<UpdateItemRequest>,
-) -> Result<Json<DataResponse<AppItem>>, ApiErrorResponse> {
+) -> Result<Json<AppItem>, ApiErrorResponse> {
     let title = input.title.trim();
     if title.is_empty() {
         return Err(ApiErrorResponse::with_context(
@@ -374,7 +356,7 @@ async fn update_item(
         (
             status = 200,
             description = "Item deleted",
-            body = AppItemResponseEnvelope,
+            body = AppItem,
             content_type = "application/json"
         ),
         (
@@ -408,7 +390,7 @@ async fn delete_item(
     actor: UserActor,
     HttpRequestContext(request_ctx): HttpRequestContext,
     Path(id): Path<i64>,
-) -> Result<Json<DataResponse<AppItem>>, ApiErrorResponse> {
+) -> Result<Json<AppItem>, ApiErrorResponse> {
     let row = sqlx::query(
         r#"
         delete from app.items

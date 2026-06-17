@@ -1,7 +1,4 @@
-use crate::dto::{
-    CreateDevSessionRequest, CreateDevSessionResponse, CreateDevSessionResponseEnvelope,
-    RevokeSessionResponse, RevokeSessionResponseEnvelope,
-};
+use crate::dto::{CreateDevSessionRequest, CreateDevSessionResponse, RevokeSessionResponse};
 use crate::models::AuthUserId;
 use crate::repositories::PostgresAuthUserRepository;
 use crate::resolver::first_session_token;
@@ -14,7 +11,7 @@ use platform_core::error::ErrorDetail;
 use platform_core::{
     ActorResolutionRequest, AppContext, AppError, ErrorCode, is_local_development_environment,
 };
-use platform_http::responses::{DataResponse, json};
+use platform_http::responses::json;
 use platform_http::{
     ApiErrorResponse, ApiOpenApiRouter, ErrorResponse, HttpRequestContext, JsonBody, OpenApiRouter,
     routes,
@@ -46,7 +43,7 @@ pub fn router() -> ApiOpenApiRouter {
         (
             status = 200,
             description = "Development session created",
-            body = CreateDevSessionResponseEnvelope,
+            body = CreateDevSessionResponse,
             content_type = "application/json",
             headers(
                 ("x-request-id" = String, description = "Request identifier for this HTTP request"),
@@ -77,7 +74,7 @@ async fn create_dev_session(
     State(ctx): State<AppContext>,
     HttpRequestContext(request_ctx): HttpRequestContext,
     JsonBody(input): JsonBody<CreateDevSessionRequest>,
-) -> Result<Json<DataResponse<CreateDevSessionResponse>>, ApiErrorResponse> {
+) -> Result<Json<CreateDevSessionResponse>, ApiErrorResponse> {
     if !is_local_development_environment(&ctx.config.service.environment) {
         return Err(ApiErrorResponse::with_context(
             AppError::new(
@@ -137,7 +134,7 @@ async fn create_dev_session(
         (
             status = 200,
             description = "Session revoke attempted",
-            body = RevokeSessionResponseEnvelope,
+            body = RevokeSessionResponse,
             content_type = "application/json",
             headers(
                 ("x-request-id" = String, description = "Request identifier for this HTTP request"),
@@ -162,7 +159,7 @@ async fn revoke_session(
     State(ctx): State<AppContext>,
     HttpRequestContext(request_ctx): HttpRequestContext,
     headers: HeaderMap,
-) -> Result<Json<DataResponse<RevokeSessionResponse>>, ApiErrorResponse> {
+) -> Result<Json<RevokeSessionResponse>, ApiErrorResponse> {
     let request = ActorResolutionRequest {
         authorization: header_value(&headers, AUTHORIZATION),
         cookie: header_value(&headers, COOKIE),

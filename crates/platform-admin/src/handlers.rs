@@ -7,7 +7,7 @@ use platform_core::{
     AppContext, AppError, ErrorCode, ExecutionLogQuery as ProviderExecutionLogQuery,
     ExecutionLogRow, TelemetrySpanQuery,
 };
-use platform_http::responses::{DataResponse, json};
+use platform_http::responses::json;
 use platform_http::{AdminActor, ApiErrorResponse, ErrorResponse, HttpRequestContext};
 
 #[utoipa::path(
@@ -1024,7 +1024,7 @@ pub(crate) async fn list_function_runs(
         (
             status = 200,
             description = "Outbox event detail",
-            body = AdminOutboxEventDetailResponse,
+            body = AdminOutboxEventDetail,
             content_type = "application/json",
             headers(
                 ("x-request-id" = String, description = "Request identifier for this HTTP request"),
@@ -1062,7 +1062,7 @@ pub(crate) async fn get_outbox_event(
     State(ctx): State<AppContext>,
     HttpRequestContext(request_ctx): HttpRequestContext,
     Path(id): Path<String>,
-) -> Result<Json<DataResponse<AdminOutboxEventDetail>>, ApiErrorResponse> {
+) -> Result<Json<AdminOutboxEventDetail>, ApiErrorResponse> {
     let row = fetch_outbox_event_detail(&ctx, &request_ctx, &id).await?;
     Ok(json(row))
 }
@@ -1082,7 +1082,7 @@ pub(crate) async fn get_outbox_event(
         (
             status = 200,
             description = "Runtime function run",
-            body = AdminFunctionRunResponse,
+            body = AdminFunctionRunDetail,
             content_type = "application/json",
             headers(
                 ("x-request-id" = String, description = "Request identifier for this HTTP request"),
@@ -1120,7 +1120,7 @@ pub(crate) async fn get_function_run(
     State(ctx): State<AppContext>,
     HttpRequestContext(request_ctx): HttpRequestContext,
     Path(id): Path<String>,
-) -> Result<Json<DataResponse<AdminFunctionRunDetail>>, ApiErrorResponse> {
+) -> Result<Json<AdminFunctionRunDetail>, ApiErrorResponse> {
     let row = fetch_function_run_detail(&ctx, &request_ctx, &id).await?;
     Ok(json(row))
 }
@@ -1275,7 +1275,7 @@ pub(crate) async fn retry_outbox_event(
     State(ctx): State<AppContext>,
     HttpRequestContext(request_ctx): HttpRequestContext,
     Path(id): Path<String>,
-) -> Result<Json<DataResponse<AdminOutboxEvent>>, ApiErrorResponse> {
+) -> Result<Json<AdminOutboxEvent>, ApiErrorResponse> {
     let current = fetch_outbox_event(&ctx, &request_ctx, &id).await?;
     ensure_retryable_status("outbox event", &id, &current.status, &request_ctx)?;
 
@@ -1335,7 +1335,7 @@ pub(crate) async fn retry_outbox_event(
         (
             status = 200,
             description = "Runtime function run retry was scheduled",
-            body = AdminFunctionRunResponse,
+            body = AdminFunctionRun,
             content_type = "application/json",
             headers(
                 ("x-request-id" = String, description = "Request identifier for this HTTP request"),
@@ -1379,7 +1379,7 @@ pub(crate) async fn retry_function_run(
     State(ctx): State<AppContext>,
     HttpRequestContext(request_ctx): HttpRequestContext,
     Path(id): Path<String>,
-) -> Result<Json<DataResponse<AdminFunctionRun>>, ApiErrorResponse> {
+) -> Result<Json<AdminFunctionRun>, ApiErrorResponse> {
     let current = fetch_function_run(&ctx, &request_ctx, &id).await?;
     ensure_retryable_status("function run", &id, &current.status, &request_ctx)?;
 

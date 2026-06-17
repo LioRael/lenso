@@ -21,7 +21,7 @@ pub mod http {
     pub use axum::extract::{Path, State};
     pub use axum::routing::{delete, get, patch, post, put};
     pub use platform_core::{AppContext, AppError, ErrorCode, RequestContext};
-    pub use platform_http::responses::{DataResponse, json};
+    pub use platform_http::responses::json;
     pub use platform_http::{
         ApiErrorResponse, ApiOpenApiRouter, ErrorResponse, HttpRequestContext, JsonBody,
         OpenApiRouter, UserActor, routes,

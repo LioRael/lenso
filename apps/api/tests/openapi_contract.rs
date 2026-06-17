@@ -20,7 +20,7 @@ fn openapi_contains_auth_dev_session_contract() {
     );
     assert_eq!(
         operation["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
-        "#/components/schemas/CreateDevSessionResponseEnvelope"
+        "#/components/schemas/CreateDevSessionResponse"
     );
 
     for status in ["400", "403", "500"] {
@@ -34,7 +34,7 @@ fn openapi_contains_auth_dev_session_contract() {
     assert_eq!(revoke["operationId"], "auth_revoke_session");
     assert_eq!(
         revoke["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
-        "#/components/schemas/RevokeSessionResponseEnvelope"
+        "#/components/schemas/RevokeSessionResponse"
     );
 
     for status in ["401", "500"] {
@@ -58,7 +58,7 @@ fn openapi_contains_auth_password_contract() {
     );
     assert_eq!(
         register["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
-        "#/components/schemas/PasswordSessionResponseEnvelope"
+        "#/components/schemas/PasswordSessionResponse"
     );
 
     for status in ["400", "409", "500"] {
@@ -76,7 +76,7 @@ fn openapi_contains_auth_password_contract() {
     );
     assert_eq!(
         login["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
-        "#/components/schemas/PasswordSessionResponseEnvelope"
+        "#/components/schemas/PasswordSessionResponse"
     );
 
     for status in ["400", "401", "500"] {
