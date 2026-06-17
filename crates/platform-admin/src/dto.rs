@@ -88,12 +88,6 @@ pub struct AdminOutboxListResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-#[schema(as = AdminOutboxEventDetailResponse)]
-pub struct AdminOutboxEventDetailResponse {
-    pub data: AdminOutboxEventDetail,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
 #[schema(as = AdminFunctionRunListResponse)]
 pub struct AdminFunctionRunListResponse {
     pub data: Vec<AdminFunctionRun>,
@@ -112,12 +106,6 @@ pub struct AdminRemoteProxyCallListResponse {
 pub struct AdminActionInvocationListResponse {
     pub data: Vec<AdminActionInvocation>,
     pub page: PageInfo,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-#[schema(as = AdminFunctionRunResponse)]
-pub struct AdminFunctionRunResponse {
-    pub data: AdminFunctionRunDetail,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

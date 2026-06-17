@@ -16,18 +16,6 @@ pub struct CreateDevSessionResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-#[schema(as = CreateDevSessionResponseEnvelope)]
-pub struct CreateDevSessionResponseEnvelope {
-    pub data: CreateDevSessionResponse,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
 pub struct RevokeSessionResponse {
     pub revoked: bool,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-#[schema(as = RevokeSessionResponseEnvelope)]
-pub struct RevokeSessionResponseEnvelope {
-    pub data: RevokeSessionResponse,
 }

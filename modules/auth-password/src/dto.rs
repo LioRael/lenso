@@ -22,9 +22,3 @@ pub struct PasswordSessionResponse {
     pub token: String,
     pub expires_at: DateTime<Utc>,
 }
-
-#[derive(Debug, Serialize, ToSchema)]
-#[schema(as = PasswordSessionResponseEnvelope)]
-pub struct PasswordSessionResponseEnvelope {
-    pub data: PasswordSessionResponse,
-}

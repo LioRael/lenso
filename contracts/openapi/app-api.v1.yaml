@@ -1091,7 +1091,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AdminFunctionRunResponse'
+                $ref: '#/components/schemas/AdminFunctionRunDetail'
         '401':
           description: Authentication is required
           content:
@@ -1165,7 +1165,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AdminFunctionRunResponse'
+                $ref: '#/components/schemas/AdminRuntimeFunctionRunItem'
         '401':
           description: Authentication is required
           content:
@@ -1444,7 +1444,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AdminOutboxEventDetailResponse'
+                $ref: '#/components/schemas/AdminOutboxEventDetail'
         '401':
           description: Authentication is required
           content:
@@ -2439,7 +2439,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CreateDevSessionResponseEnvelope'
+                $ref: '#/components/schemas/CreateDevSessionResponse'
         '400':
           description: Request validation failed
           content:
@@ -2502,7 +2502,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PasswordSessionResponseEnvelope'
+                $ref: '#/components/schemas/PasswordSessionResponse'
         '400':
           description: Request validation failed
           content:
@@ -2565,7 +2565,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PasswordSessionResponseEnvelope'
+                $ref: '#/components/schemas/PasswordSessionResponse'
         '400':
           description: Request validation failed
           content:
@@ -2637,7 +2637,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RevokeSessionResponseEnvelope'
+                $ref: '#/components/schemas/RevokeSessionResponse'
         '401':
           description: Authentication is required
           content:
@@ -3087,13 +3087,6 @@ components:
             $ref: '#/components/schemas/AdminRuntimeFunctionRunItem'
         page:
           $ref: '#/components/schemas/PageInfo'
-    AdminFunctionRunResponse:
-      type: object
-      required:
-      - data
-      properties:
-        data:
-          $ref: '#/components/schemas/AdminFunctionRunDetail'
     AdminMetricBinding:
       type: object
       required:
@@ -3680,13 +3673,6 @@ components:
         status:
           type: string
         trace: {}
-    AdminOutboxEventDetailResponse:
-      type: object
-      required:
-      - data
-      properties:
-        data:
-          $ref: '#/components/schemas/AdminOutboxEventDetail'
     AdminOutboxListResponse:
       type: object
       required:
@@ -4902,13 +4888,6 @@ components:
           type: string
         user_id:
           type: string
-    CreateDevSessionResponseEnvelope:
-      type: object
-      required:
-      - data
-      properties:
-        data:
-          $ref: '#/components/schemas/CreateDevSessionResponse'
     EntitySchema:
       type: object
       description: One manageable entity (e.g. identity's "users").
@@ -5227,13 +5206,6 @@ components:
           type: string
         user_id:
           type: string
-    PasswordSessionResponseEnvelope:
-      type: object
-      required:
-      - data
-      properties:
-        data:
-          $ref: '#/components/schemas/PasswordSessionResponse'
     RemoteHttpProxyResponse:
       type: object
       required:
@@ -5276,13 +5248,6 @@ components:
       properties:
         revoked:
           type: boolean
-    RevokeSessionResponseEnvelope:
-      type: object
-      required:
-      - data
-      properties:
-        data:
-          $ref: '#/components/schemas/RevokeSessionResponse'
     RuntimeFunctionDeclaration:
       type: object
       required:

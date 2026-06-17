@@ -1768,19 +1768,19 @@ async fn service_actor_can_fetch_outbox_detail() {
 
     assert_eq!(response.status(), StatusCode::OK);
     let body = json_body(response).await;
-    assert_eq!(body["data"]["id"], "evt_1");
-    assert_eq!(body["data"]["event_name"], "identity.user_registered.v1");
-    assert_eq!(body["data"]["payload"]["user_id"], "usr_1");
-    assert_eq!(body["data"]["actor"]["kind"], "service");
-    assert_eq!(body["data"]["actor"]["service_id"], "api");
-    assert_eq!(body["data"]["trace"]["trace_id"], "trace_1");
-    assert_eq!(body["data"]["correlation_id"], "corr_1");
-    assert_eq!(body["data"]["causation_id"], "req_1");
-    assert_eq!(body["data"]["status"], "pending");
-    assert_eq!(body["data"]["attempts"], 0);
-    assert_eq!(body["data"]["max_attempts"], 3);
-    assert!(body["data"]["occurred_at"].is_string());
-    assert!(body["data"]["created_at"].is_string());
+    assert_eq!(body["id"], "evt_1");
+    assert_eq!(body["event_name"], "identity.user_registered.v1");
+    assert_eq!(body["payload"]["user_id"], "usr_1");
+    assert_eq!(body["actor"]["kind"], "service");
+    assert_eq!(body["actor"]["service_id"], "api");
+    assert_eq!(body["trace"]["trace_id"], "trace_1");
+    assert_eq!(body["correlation_id"], "corr_1");
+    assert_eq!(body["causation_id"], "req_1");
+    assert_eq!(body["status"], "pending");
+    assert_eq!(body["attempts"], 0);
+    assert_eq!(body["max_attempts"], 3);
+    assert!(body["occurred_at"].is_string());
+    assert!(body["created_at"].is_string());
 
     db.cleanup().await;
 }
@@ -1826,11 +1826,11 @@ async fn service_actor_can_retry_failed_outbox_event() {
 
     assert_eq!(response.status(), StatusCode::OK);
     let body = json_body(response).await;
-    assert_eq!(body["data"]["id"], "evt_failed");
-    assert_eq!(body["data"]["status"], "pending");
-    assert_eq!(body["data"]["attempts"], 2);
-    assert_eq!(body["data"]["locked_by"], Value::Null);
-    assert_eq!(body["data"]["last_error"], Value::Null);
+    assert_eq!(body["id"], "evt_failed");
+    assert_eq!(body["status"], "pending");
+    assert_eq!(body["attempts"], 2);
+    assert_eq!(body["locked_by"], Value::Null);
+    assert_eq!(body["last_error"], Value::Null);
 
     let row = outbox_retry_state(&db.pool, "evt_failed").await;
     assert_eq!(row.status, "pending");
@@ -1929,12 +1929,12 @@ async fn service_actor_can_retry_dead_function_run() {
 
     assert_eq!(response.status(), StatusCode::OK);
     let body = json_body(response).await;
-    assert_eq!(body["data"]["id"], "fnrun_dead");
-    assert_eq!(body["data"]["status"], "pending");
-    assert_eq!(body["data"]["attempts"], 3);
-    assert_eq!(body["data"]["locked_by"], Value::Null);
-    assert_eq!(body["data"]["last_error"], Value::Null);
-    assert_welcome_email_runtime_declaration(&body["data"]["runtime_declaration"]);
+    assert_eq!(body["id"], "fnrun_dead");
+    assert_eq!(body["status"], "pending");
+    assert_eq!(body["attempts"], 3);
+    assert_eq!(body["locked_by"], Value::Null);
+    assert_eq!(body["last_error"], Value::Null);
+    assert_welcome_email_runtime_declaration(&body["runtime_declaration"]);
 
     let row = function_retry_state(&db.pool, "fnrun_dead").await;
     assert_eq!(row.status, "pending");
@@ -1986,20 +1986,17 @@ async fn service_actor_can_get_function_run_by_id() {
 
     assert_eq!(response.status(), StatusCode::OK);
     let body = json_body(response).await;
-    assert_eq!(body["data"]["id"], "fnrun_1");
-    assert_eq!(
-        body["data"]["function_name"],
-        "notifications.send_welcome_email.v1"
-    );
-    assert_eq!(body["data"]["status"], "pending");
-    assert_eq!(body["data"]["input_json"]["user_id"], "usr_1");
-    assert_eq!(body["data"]["actor"]["kind"], "system");
-    assert_eq!(body["data"]["correlation_id"], "corr_1");
-    assert_eq!(body["data"]["attempts"], 0);
-    assert_eq!(body["data"]["max_attempts"], 3);
-    assert_welcome_email_runtime_declaration(&body["data"]["runtime_declaration"]);
-    assert!(body["data"]["available_at"].is_string());
-    assert!(body["data"]["created_at"].is_string());
+    assert_eq!(body["id"], "fnrun_1");
+    assert_eq!(body["function_name"], "notifications.send_welcome_email.v1");
+    assert_eq!(body["status"], "pending");
+    assert_eq!(body["input_json"]["user_id"], "usr_1");
+    assert_eq!(body["actor"]["kind"], "system");
+    assert_eq!(body["correlation_id"], "corr_1");
+    assert_eq!(body["attempts"], 0);
+    assert_eq!(body["max_attempts"], 3);
+    assert_welcome_email_runtime_declaration(&body["runtime_declaration"]);
+    assert!(body["available_at"].is_string());
+    assert!(body["created_at"].is_string());
 
     db.cleanup().await;
 }
