@@ -83,14 +83,16 @@ The current pressure-test surface is intentionally narrow:
   entrypoints;
 - `Migration` and `ModuleManifest` re-exports for starter module metadata;
 - `lenso_host::http` re-exports for linked HTTP handlers, including
-  `OpenApiRouter`, `routes!`, `Path`, `JsonBody`, `DataResponse`, standard error
-  response helpers, `AppContext`, and `LinkedHttpContribution`.
+  `OpenApiRouter`, `routes!`, `Path`, `JsonBody`, standard error response
+  helpers, `AppContext`, and `LinkedHttpContribution`.
 
 `lenso-host` should not grow a repository layer, query builder, CRUD framework,
 or auth/session abstraction just because the starter needs one example. The
 starter may use normal Rust crates such as `sqlx`, `serde`, `axum`, and
 `utoipa` directly for app-owned business code. Promote only the boot and HTTP
 authoring helpers that stay stable across at least one real starter data slice.
+`lenso-host` is a pressure-test facade: app-owned SQL and CRUD code stay in the
+starter until a narrower public host feature has proven itself.
 
 The transitional starter host template in `templates/starter-host` is the
 pressure test for that future facade. It keeps the current API, worker, and

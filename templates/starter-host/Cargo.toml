@@ -22,7 +22,7 @@ path = "src/bin/migrate.rs"
 [dependencies]
 anyhow = "1.0"
 axum = "0.8"
-lenso-host = { git = "https://github.com/LioRael/lenso", branch = "main", package = "lenso-host" }
+lenso-host = { git = "https://github.com/LioRael/lenso", rev = "0c0efd2b5d8d8a94762951e1d8274373363ccfee", package = "lenso-host" }
 serde = { version = "1.0", features = ["derive"] }
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls-ring-webpki", "postgres"] }
 tokio = { version = "1.52", features = ["macros", "rt-multi-thread"] }
