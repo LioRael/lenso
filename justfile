@@ -18,6 +18,7 @@ check:
     just rust-check
     just test
     just generated-check
+    just cli-check
     just arch-check
 
 release-check:
@@ -34,6 +35,9 @@ release-package:
 
 starter-check:
     sh scripts/starter-host-check.sh
+
+cli-check:
+    sh scripts/lenso-cli-check.sh
 
 first-user-smoke:
     sh scripts/first-user-smoke.sh

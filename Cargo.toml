@@ -7,6 +7,7 @@ members = [
     "fixtures/remote-module",
     "crates/lenso",
     "crates/lenso-host",
+    "crates/lenso-cli",
     "crates/app-bootstrap",
     "crates/platform-admin",
     "crates/platform-admin-data",
@@ -37,7 +38,9 @@ arc-swap = "1"
 async-trait = "0.1"
 axum = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive"] }
 http = "1.4"
+include_dir = "0.7"
 jsonwebtoken = "9"
 opentelemetry = "0.32"
 opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic"] }
@@ -77,6 +80,7 @@ app-api = { path = "apps/api" }
 app-migrate = { path = "apps/migrate" }
 app-worker = { path = "apps/worker" }
 lenso-host = { path = "crates/lenso-host" }
+lenso-cli = { path = "crates/lenso-cli" }
 auth = { path = "modules/auth" }
 auth-password = { path = "modules/auth-password" }
 story = { path = "modules/story" }
