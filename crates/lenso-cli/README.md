@@ -84,6 +84,17 @@ modules on API/worker startup. Services started by the host are tracked with
 services that are already ready before startup are treated as external and are
 not stopped by the host.
 
+Diagnose installed remote-module service state with:
+
+```sh
+lenso module doctor
+lenso module doctor billing
+```
+
+The doctor reads `REMOTE_MODULES` and `.lenso/module-services.json`, checks
+service `readyUrl` endpoints, and points to stale `.lock`/`.pid` files when a
+host-started service did not become ready.
+
 Remove the local remote-module source and its pending console package plan with:
 
 ```sh
