@@ -5,7 +5,6 @@ use crate::runtime_config::descriptor::{
 };
 use crate::runtime_config::snapshot::RuntimeConfigSnapshot;
 use crate::runtime_config::store::upsert_value_if_missing;
-use rand_core::{OsRng, RngCore};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -63,7 +62,7 @@ fn condition_matches(
 
 fn generate_secret(bytes: usize) -> String {
     let mut raw = vec![0_u8; bytes];
-    OsRng.fill_bytes(&mut raw);
+    getrandom::fill(&mut raw).expect("OS randomness should be available");
     let mut out = String::with_capacity(bytes * 2);
     for byte in raw {
         let _ = write!(&mut out, "{byte:02x}");
