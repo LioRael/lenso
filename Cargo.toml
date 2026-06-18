@@ -5,7 +5,6 @@ members = [
     "crates/lenso",
     "crates/lenso-api",
     "crates/lenso-host",
-    "crates/lenso-cli",
     "crates/lenso-migrate",
     "crates/lenso-worker",
     "crates/lenso-bootstrap",
@@ -38,10 +37,8 @@ arc-swap = "1"
 async-trait = "0.1"
 axum = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
-clap = { version = "4", features = ["derive"] }
 dotenvy = "0.15"
 http = "1.4"
-include_dir = "0.7"
 getrandom = "0.4"
 jsonwebtoken = { version = "10", features = ["rust_crypto"] }
 opentelemetry = "0.32"
@@ -81,7 +78,6 @@ lenso-api = { path = "crates/lenso-api" }
 lenso-migrate = { path = "crates/lenso-migrate" }
 lenso-worker = { path = "crates/lenso-worker" }
 lenso-host = { path = "crates/lenso-host" }
-lenso-cli = { path = "crates/lenso-cli" }
 auth = { path = "modules/auth" }
 auth-password = { path = "modules/auth-password" }
 story = { path = "modules/story" }

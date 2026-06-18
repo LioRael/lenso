@@ -25,9 +25,4 @@ if [ "$lenso_crate_version" != "$package_version" ]; then
     exit 1
 fi
 
-if grep -R 'branch = "main"' crates/lenso-cli/templates/starter-host/Cargo.toml.tmpl >/dev/null; then
-    echo "starter host must not depend on branch = main for release" >&2
-    exit 1
-fi
-
 echo "Release version $version matches lenso crate metadata."

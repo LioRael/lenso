@@ -44,11 +44,10 @@ This writes:
 
 The source archive is generated from `git archive HEAD`, so it contains committed
 source files and excludes local build output, `.git`, `target/`, and `dist/`.
-`just console-build` also syncs the prebuilt Runtime Console into
-`crates/lenso-cli/console`, so `lenso host init` can copy it into generated
-hosts. The hosted archive additionally includes the prebuilt Runtime Console
-under `.lenso/console/dist`, so users do not need Node.js or pnpm to serve
-`/console`.
+The hosted archive additionally includes the prebuilt Runtime Console under
+`.lenso/console/dist`, so users do not need Node.js or pnpm to serve `/console`.
+The standalone `lenso-cli` repository owns CLI release packaging and starter
+console embedding.
 
 ## 4. Run The GitHub Workflow
 
@@ -57,7 +56,6 @@ Open the `release` workflow in GitHub Actions and trigger it with:
 - `version`: `v0.2.1`
 - `notes`: a short release summary
 - `publish_rust_crate`: `false`
-- `publish_lenso_cli`: `false`
 
 With `publish_rust_crate=false`, the workflow runs `just release-check`,
 verifies that the release version matches the `lenso` crate metadata, runs
@@ -84,20 +82,17 @@ artifact you intend to publish:
 - `version`: `v0.2.1`
 - `notes`: the release summary
 - `publish_rust_crate`: `true` to publish `lenso@0.2.1` to crates.io
-- `publish_lenso_cli`: `true` only when intentionally publishing
-  `lenso-cli@0.1.1` from this repository
 
 The publish path first repeats the full release and package gates, then uploads
-only the selected artifacts. If a selected artifact's secret is missing, the
-workflow stops before registry upload.
+the selected artifact. If the secret is missing, the workflow stops before
+registry upload.
 
 ## 7. Verify The GitHub Release
 
 When `publish_rust_crate=true`, the workflow publishes `lenso` to crates.io and
-then creates the GitHub Release from the same commit. `lenso-cli` publishes only
-when `publish_lenso_cli=true`. The release uses the requested version as the
-tag, the generated release notes as the body, and attaches the source package
-plus artifact README.
+then creates the GitHub Release from the same commit. The release uses the
+requested version as the tag, the generated release notes as the body, and
+attaches the source package plus artifact README.
 
 After the publish workflow passes, verify the release:
 

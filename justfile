@@ -29,17 +29,8 @@ release-version-check:
 package-readiness:
     sh scripts/package-readiness.sh
 
-cli-package-readiness:
-    cargo package --locked -p lenso-cli --allow-dirty
-
 release-package:
     sh scripts/release-package.sh
-
-smoke-check:
-    just cli-check
-
-cli-check:
-    scripts/lenso-cli-check.sh
 
 first-user-smoke:
     sh scripts/first-user-smoke.sh
