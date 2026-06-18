@@ -34,7 +34,7 @@ impl AppConfig {
             http: HttpConfig::default(),
             telemetry: TelemetryConfig::default(),
             auth: AuthConfig::default(),
-            modules: BTreeMap::new(),
+            modules: module_configs_from_env(),
         })
     }
 }
@@ -174,6 +174,39 @@ impl ModuleConfig {
     #[must_use]
     pub fn is_enabled(&self) -> bool {
         self.enabled.unwrap_or(true)
+    }
+}
+
+fn module_configs_from_env() -> BTreeMap<String, ModuleConfig> {
+    std::env::vars()
+        .filter_map(|(key, value)| module_config_from_env_entry(&key, &value))
+        .collect()
+}
+
+fn module_config_from_env_entry(key: &str, value: &str) -> Option<(String, ModuleConfig)> {
+    let module_name = key
+        .strip_prefix("LENSO_MODULE_")?
+        .strip_suffix("_ENABLED")?
+        .to_ascii_lowercase()
+        .replace('_', "-");
+    if module_name.is_empty() {
+        return None;
+    }
+    let enabled = parse_bool_env(value)?;
+    Some((
+        module_name,
+        ModuleConfig {
+            enabled: Some(enabled),
+            values: BTreeMap::new(),
+        },
+    ))
+}
+
+fn parse_bool_env(value: &str) -> Option<bool> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => Some(true),
+        "0" | "false" | "no" | "off" => Some(false),
+        _ => None,
     }
 }
 
@@ -365,5 +398,15 @@ mod tests {
         assert!(parse_remote_module_source("").is_none());
         assert!(parse_remote_module_source("missing-url").is_none());
         assert!(parse_remote_module_source("=http://localhost:4100").is_none());
+    }
+
+    #[test]
+    fn module_config_from_env_entry_parses_enabled_override() {
+        let (name, config) =
+            module_config_from_env_entry("LENSO_MODULE_AUTH_PASSWORD_ENABLED", "false")
+                .expect("module enabled env should parse");
+
+        assert_eq!(name, "auth-password");
+        assert_eq!(config.enabled, Some(false));
     }
 }

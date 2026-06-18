@@ -207,7 +207,7 @@ trusts and registers them.
 
 The local developer workflow is supported by:
 
-- `pnpm exec lenso-console-package create <module>` (or the local
+- `lenso console-package create <module>` (or the local
   `pnpm create:console-package <module>` alias): creates a workspace package
   skeleton, host registration entries, `console-surface.json`, and a Rust
   `console-surface.rs` snippet.

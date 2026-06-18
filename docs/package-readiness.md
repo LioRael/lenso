@@ -22,10 +22,12 @@ Registry baseline as of the first release line:
 
 - `lenso@0.1.0` is published on crates.io.
 - `lenso-cli@0.1.0` is the next publish candidate: it scaffolds host
-  applications with `lenso host init <dir>` and embeds the starter template. It
-  depends only on `clap` and `include_dir`, so it is publishable independently
-  of the internal workspace crates. Publish it after its scaffold gate
-  (`just cli-check`) is stable.
+  applications with `lenso host init <dir>`, creates linked and remote module
+  scaffolds with `lenso module create`, installs remote modules with
+  `lenso module add <manifest-url>`, and creates or applies Runtime Console
+  package registrations. It embeds the starter template and depends only on
+  registry crates, so it is publishable independently of the internal workspace
+  crates. Publish it after its CLI gate (`just cli-check`) is stable.
 
 ## Published Baseline
 
@@ -35,7 +37,7 @@ project:
 | Order | Artifact | Version | Source repo | Publish stance |
 | --- | --- | --- | --- | --- |
 | 1 | `lenso` crates.io crate | `0.1.0` | `lenso` | Already published; keep internal workspace crates private. |
-| 2 | `lenso-cli` crates.io crate | `0.1.0` | `lenso` | Scaffold CLI; publish candidate once `lenso host init` is stable. |
+| 2 | `lenso-cli` crates.io crate | `0.1.0` | `lenso` | Unified CLI for host, module, remote module, and Runtime Console package workflows. |
 
 ## Backend Package Gate
 
@@ -49,10 +51,9 @@ The gate verifies that `cargo package -p lenso --allow-dirty` can assemble the
 facade crate without depending on unpublished internal crates. It does not upload
 anything to crates.io.
 
-`lenso-cli` is publishable for the same reason: its only dependencies are
-`clap` and `include_dir`, and the embedded starter template is bundled inside
-the crate. Add `cargo package -p lenso-cli` to the release smoke once the
-scaffold surface stabilizes.
+`lenso-cli` is publishable for the same reason: its dependencies are registry
+crates, and the embedded starter template is bundled inside the crate. The gate
+also dry-runs packaging for `lenso-cli`.
 
 ## Crates.io Direction
 

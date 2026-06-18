@@ -264,6 +264,97 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /admin/data/available-modules/{module}/install:
+    post:
+      tags:
+      - admin-data
+      operationId: admin_data_install_available_module
+      parameters:
+      - name: module
+        in: path
+        description: Available remote module name
+        required: true
+        schema:
+          type: string
+      - name: authorization
+        in: header
+        description: Development service bearer token
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Remote module install state written to host-local files
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminModuleInstallResponse'
+        '400':
+          description: Catalog entry cannot be installed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Unknown available module
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+      - admin-data
+      operationId: admin_data_uninstall_available_module
+      parameters:
+      - name: module
+        in: path
+        description: Available module name
+        required: true
+        schema:
+          type: string
+      - name: authorization
+        in: header
+        description: Development service bearer token
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Module install state removed from host-local files
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminModuleInstallResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Unknown available module
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/data/module-registry/snapshot:
     get:
       tags:
@@ -3203,19 +3294,51 @@ components:
           type: string
         lensoVersion:
           type: string
+    AdminModuleInstallResponse:
+      type: object
+      description: |-
+        Response for visually installing an available remote module from the
+        marketplace catalog.
+      required:
+      - moduleName
+      - manifestReference
+      - consolePlan
+      - restartRequired
+      properties:
+        consolePlan:
+          $ref: '#/components/schemas/AdminModuleConsolePackagePlanStateDto'
+        linkedSource:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/AdminModuleLinkedSourceInstallStateDto'
+        manifestReference:
+          type: string
+        moduleName:
+          type: string
+        remoteSource:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/AdminModuleRemoteSourceInstallStateDto'
+        restartRequired:
+          type: boolean
     AdminModuleInstallStateDto:
       type: object
       required:
       - moduleRegistered
-      - remoteSource
       - consolePlan
       properties:
         consolePlan:
           $ref: '#/components/schemas/AdminModuleConsolePackagePlanStateDto'
+        linkedSource:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/AdminModuleLinkedSourceInstallStateDto'
         moduleRegistered:
           type: boolean
         remoteSource:
-          $ref: '#/components/schemas/AdminModuleRemoteSourceInstallStateDto'
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/AdminModuleRemoteSourceInstallStateDto'
     AdminModuleLensoCompatibilityDto:
       type: object
       properties:
@@ -3227,6 +3350,34 @@ components:
           type:
           - string
           - 'null'
+    AdminModuleLinkedSourceInstallStateDto:
+      type: object
+      required:
+      - envFile
+      - configured
+      - runningEnabled
+      - restartPending
+      properties:
+        configured:
+          type: boolean
+        desiredEnabled:
+          type:
+          - boolean
+          - 'null'
+        envFile:
+          type: string
+        error:
+          type:
+          - string
+          - 'null'
+        restartPending:
+          type: boolean
+        restartReason:
+          type:
+          - string
+          - 'null'
+        runningEnabled:
+          type: boolean
     AdminModuleMetadataDto:
       type: object
       required:

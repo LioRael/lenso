@@ -197,9 +197,7 @@ fn print_next_steps(target: &Path, package_name: &str) {
     eprintln!("  cargo run --bin api       # API server");
     eprintln!("  cargo run --bin worker    # in another shell");
     eprintln!();
-    eprintln!(
-        "Add a remote module by editing REMOTE_MODULES in .env, then restart api and worker."
-    );
+    eprintln!("Add a remote module with `lenso module add <manifest-url>`.");
 }
 
 #[cfg(test)]
