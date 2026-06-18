@@ -206,6 +206,7 @@ pub fn http_request_story_creation(path: &str, status_code: u16) -> HttpRequestS
 
 fn is_console_or_internal_path(path: &str) -> bool {
     path.starts_with("/admin/runtime")
+        || path.starts_with("/console/")
         || path == "/docs"
         || path == "/openapi.json"
         || path.ends_with("/health")
@@ -283,6 +284,14 @@ mod tests {
     fn admin_runtime_paths_do_not_create_story_roots() {
         assert_eq!(
             http_request_story_creation("/admin/runtime/stories/corr_1", 200),
+            HttpRequestStoryCreation::Never
+        );
+    }
+
+    #[test]
+    fn console_asset_paths_do_not_create_story_roots() {
+        assert_eq!(
+            http_request_story_creation("/console/extensions/crm/entry.js", 200),
             HttpRequestStoryCreation::Never
         );
     }

@@ -73,6 +73,9 @@ console-api-fixture:
 console-api-qa:
     sh scripts/runtime-console-api-qa.sh
 
+console-build:
+    sh scripts/build-runtime-console.sh
+
 # Local infrastructure
 db-up:
     docker compose -f {{compose_file}} up -d postgres
