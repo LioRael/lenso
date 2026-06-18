@@ -141,10 +141,12 @@ Paths and component schemas are collected automatically from the annotated handl
 Committed contract artifacts live under `contracts/`:
 
 - `contracts/openapi/app-api.v1.yaml`
-- `contracts/errors/*`
-- `contracts/schemas/common/*`
-- `contracts/events/{module}/*.schema.json`
-- `contracts/runtime/functions/*.schema.json`
+- `contracts/errors/error-response.v1.schema.json`
+- `contracts/grpc/lenso/remote/v1/remote_module.proto`
+
+When modules add emitted event payloads or registered runtime functions, their
+JSON Schema contracts belong under `contracts/events/{module}/` and
+`contracts/runtime/functions/` respectively.
 
 Generated contract artifacts are committed. The current generator writes the OpenAPI artifact and the standard error response schema:
 
