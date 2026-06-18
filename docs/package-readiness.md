@@ -61,7 +61,11 @@ anything to crates.io.
 
 `lenso-cli` is publishable for the same reason: its dependencies are registry
 crates, and the embedded starter template plus Runtime Console payload are
-bundled inside the crate. The gate also dry-runs packaging for `lenso-cli`.
+bundled inside the crate. Its package gate is separate:
+
+```sh
+just cli-package-readiness
+```
 
 `cargo package -p lenso-host --allow-dirty --no-verify` is useful as a boundary
 probe, but it is not a release gate yet. Today it stops at repository-internal
@@ -78,15 +82,15 @@ Before publishing a future version:
 - add package metadata such as description, repository, homepage, and README;
 - keep internal workspace crates `publish = false`;
 - run `cargo package --list -p lenso`;
-- run `cargo publish --dry-run -p lenso` and
-  `cargo publish --dry-run -p lenso-cli` from a release branch or the GitHub
+- run `cargo publish --dry-run -p lenso` from a release branch or the GitHub
   `release` workflow with `publish_rust_crate=false` when ready to validate
   against crates.io.
 
 For the real upload, prefer the GitHub `release` workflow with
 `publish_rust_crate=true` and the `CARGO_REGISTRY_TOKEN` repository secret
-configured. Manual publishing should remain a fallback for registry outages or
-workflow failures after the same dry-run checks have passed.
+configured. Use `publish_lenso_cli=true` only when intentionally publishing the
+CLI from this repository. Manual publishing should remain a fallback for
+registry outages or workflow failures after the same dry-run checks have passed.
 
 ## Examples Repository
 
