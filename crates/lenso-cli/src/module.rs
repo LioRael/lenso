@@ -1,0 +1,2574 @@
+use std::collections::BTreeMap;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use anyhow::{Context, Result, anyhow, bail};
+use serde_json::{Map, Value, json};
+
+#[derive(Debug, Clone)]
+pub struct RemoteModuleInstallOptions {
+    pub base_url: Option<String>,
+    pub console_plan: bool,
+    pub dry_run: bool,
+    pub env_file: Option<PathBuf>,
+    pub install_plan_file: Option<PathBuf>,
+    pub repo_root: Option<PathBuf>,
+    pub runtime_console_root: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ModuleCatalogAddOptions {
+    pub base_url: Option<String>,
+    pub catalog_file: Option<PathBuf>,
+    pub dry_run: bool,
+    pub repo_root: Option<PathBuf>,
+    pub summary: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ModuleCreateOptions {
+    pub area: Option<String>,
+    pub capability: Option<String>,
+    pub dry_run: bool,
+    pub icon: Option<String>,
+    pub label: Option<String>,
+    pub module_id: String,
+    pub output_dir: Option<PathBuf>,
+    pub package_name: Option<String>,
+    pub package_root: Option<String>,
+    pub package_scope: Option<String>,
+    pub package_slug: Option<String>,
+    pub remote: bool,
+    pub repo_root: Option<PathBuf>,
+    pub route: Option<String>,
+    pub runtime_console_root: Option<PathBuf>,
+    pub source: Option<String>,
+    pub surface_name: Option<String>,
+    pub with_console: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConsolePackageCreateOptions {
+    pub area: Option<String>,
+    pub capability: Option<String>,
+    pub dry_run: bool,
+    pub icon: Option<String>,
+    pub label: Option<String>,
+    pub module_id: String,
+    pub package_name: Option<String>,
+    pub package_scope: Option<String>,
+    pub package_slug: Option<String>,
+    pub route: Option<String>,
+    pub runtime_console_root: Option<PathBuf>,
+    pub source: Option<String>,
+    pub surface_name: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConsolePackageApplyPlanOptions {
+    pub dependency_version: Option<String>,
+    pub dry_run: bool,
+    pub install_plan_file: Option<PathBuf>,
+    pub log_next_steps: bool,
+    pub repo_root: Option<PathBuf>,
+    pub runtime_console_root: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AppliedConsolePlan {
+    repo_root: PathBuf,
+    runtime_console_root: PathBuf,
+}
+
+#[derive(Debug, Clone)]
+struct ConsolePackageContext {
+    area: String,
+    capability: String,
+    component_name: String,
+    icon: String,
+    label: String,
+    manifest_name: String,
+    module_id: String,
+    module_name: String,
+    package_dir: PathBuf,
+    package_name: String,
+    package_private: bool,
+    package_slug: String,
+    registry_source: String,
+    route: String,
+    runtime_console_api_version: String,
+    surface_name: String,
+}
+
+#[derive(Debug)]
+struct RepoPaths {
+    app_bootstrap_cargo_toml_path: PathBuf,
+    app_bootstrap_lib_path: PathBuf,
+    cargo_toml_path: PathBuf,
+}
+
+type PendingWrites = BTreeMap<PathBuf, String>;
+
+pub async fn create_module(options: ModuleCreateOptions) -> Result<()> {
+    if options.remote {
+        return create_remote_module(options).await;
+    }
+
+    let repo_root = resolve_repo_root(options.repo_root.as_deref())?;
+    let module_id = slugify(&options.module_id);
+    if module_id.is_empty() {
+        bail!("Module id is required");
+    }
+    let module_crate = snake_case(&module_id);
+    let module_dir = repo_root.join("modules").join(&module_id);
+    if module_dir.exists() {
+        bail!("Module directory already exists: modules/{module_id}");
+    }
+
+    let runtime_console_root = options
+        .runtime_console_root
+        .clone()
+        .unwrap_or_else(|| repo_root.join("apps/runtime-console"));
+    let runtime_console_root = absolutize(&runtime_console_root)?;
+    let console_surface = if options.with_console {
+        let context = build_console_package_context(
+            ConsolePackageBuildInput::from_module_options(&options),
+            &runtime_console_root,
+        )?;
+        if context.package_dir.exists() {
+            bail!(
+                "Console package directory already exists: {}",
+                display_relative(&runtime_console_root, &context.package_dir)
+            );
+        }
+        Some(context)
+    } else {
+        None
+    };
+
+    let mut pending_writes = PendingWrites::new();
+    let paths = repo_paths(&repo_root);
+    queue_module_files(
+        &mut pending_writes,
+        &module_dir,
+        &module_id,
+        console_surface.as_ref(),
+    )?;
+    update_workspace_cargo_toml(&mut pending_writes, &paths.cargo_toml_path, &module_id)?;
+    update_app_bootstrap_cargo_toml(
+        &mut pending_writes,
+        &paths.app_bootstrap_cargo_toml_path,
+        &module_id,
+    )?;
+    update_app_bootstrap_lib(
+        &mut pending_writes,
+        &paths.app_bootstrap_lib_path,
+        &module_crate,
+        &module_id,
+    )?;
+
+    if let Some(console_surface) = console_surface.as_ref() {
+        queue_console_package(
+            &mut pending_writes,
+            &runtime_console_root,
+            console_surface,
+            true,
+        )?;
+    }
+
+    if options.dry_run {
+        println!("Module dry run:");
+        for file_path in pending_writes.keys() {
+            println!("- {}", display_relative(&repo_root, file_path));
+        }
+        return Ok(());
+    }
+
+    write_pending_files(&pending_writes)?;
+
+    println!("Created module {module_id}.");
+    if let Some(console_surface) = console_surface {
+        println!("Created {}.", console_surface.package_name);
+    }
+    println!("Next steps:");
+    println!("- cargo test --locked -p {module_crate}");
+    println!("- just rust-check");
+    println!("- just arch-check");
+
+    Ok(())
+}
+
+pub async fn create_console_package(options: ConsolePackageCreateOptions) -> Result<()> {
+    let runtime_console_root = options
+        .runtime_console_root
+        .as_deref()
+        .map(Path::to_path_buf)
+        .unwrap_or(std::env::current_dir().context("resolve current directory")?);
+    let runtime_console_root = absolutize(&runtime_console_root)?;
+    let context = build_console_package_context(
+        ConsolePackageBuildInput::from_console_package_options(&options),
+        &runtime_console_root,
+    )?;
+
+    if context.package_dir.exists() {
+        bail!(
+            "Console package directory already exists: {}",
+            display_relative(&runtime_console_root, &context.package_dir)
+        );
+    }
+
+    let mut pending_writes = PendingWrites::new();
+    queue_console_package(&mut pending_writes, &runtime_console_root, &context, true)?;
+
+    if options.dry_run {
+        println!("Console package dry run:");
+        for file_path in pending_writes.keys() {
+            println!("- {}", display_relative(&runtime_console_root, file_path));
+        }
+        return Ok(());
+    }
+
+    write_pending_files(&pending_writes)?;
+
+    println!("Created {}.", context.package_name);
+    println!("Next steps:");
+    println!(
+        "- Copy {}/console-surface.rs into the Rust module manifest",
+        context.package_slug
+    );
+    println!(
+        "- Keep navigation.workspace.id=\"{}\" so the module owns its workspace",
+        context.module_id
+    );
+    println!("- Omit navigation only for host System surfaces");
+    println!("- pnpm install --lockfile-only");
+    println!("- pnpm check:console-packages");
+    println!("- pnpm check");
+
+    Ok(())
+}
+
+pub async fn add_remote_module(
+    manifest_reference: &str,
+    options: RemoteModuleInstallOptions,
+) -> Result<()> {
+    let repo_root = resolve_repo_root(options.repo_root.as_deref())?;
+    let env_file_path = resolve_path(
+        &repo_root,
+        options
+            .env_file
+            .as_deref()
+            .unwrap_or_else(|| Path::new(".env")),
+    );
+    let install_plan_path = resolve_path(
+        &repo_root,
+        options
+            .install_plan_file
+            .as_deref()
+            .unwrap_or_else(|| Path::new(".lenso/console-package-install-plan.json")),
+    );
+    let manifest = validate_remote_module_manifest(read_json_reference(manifest_reference).await?)?;
+    let module_name = string_field(&manifest, "name")?.trim().to_owned();
+    let base_url = derive_remote_base_url(options.base_url.as_deref(), manifest_reference)?;
+    let env_file = update_remote_modules_env(&env_file_path, &module_name, &base_url)?;
+    let install_plan = update_console_package_install_plan(
+        &install_plan_path,
+        &manifest,
+        manifest_reference,
+        &base_url,
+    )?;
+    let console_package_count =
+        console_package_count_from_install_plan(&install_plan, &module_name);
+
+    if options.dry_run {
+        println!("Remote module install dry run:");
+        println!("- {}", display_relative(&repo_root, &env_file_path));
+        println!("- {}", display_relative(&repo_root, &install_plan_path));
+        println!("- {module_name}={base_url}");
+        println!("- console packages: {console_package_count}");
+        return Ok(());
+    }
+
+    write_file(&env_file_path, env_file.as_bytes())?;
+    write_json(&install_plan_path, &install_plan)?;
+
+    println!("Added remote module {module_name}.");
+    println!("Updated:");
+    println!("- {}", display_relative(&repo_root, &env_file_path));
+    println!("- {}", display_relative(&repo_root, &install_plan_path));
+    println!("REMOTE_MODULES: {module_name}={base_url}");
+    println!("Console packages: {console_package_count}");
+
+    let applied_console_plan = if console_package_count > 0 && options.console_plan {
+        Some(
+            apply_console_package_install_plan(ConsolePackageApplyPlanOptions {
+                dependency_version: None,
+                dry_run: false,
+                install_plan_file: Some(install_plan_path),
+                log_next_steps: false,
+                repo_root: Some(repo_root.clone()),
+                runtime_console_root: options.runtime_console_root,
+            })
+            .await?,
+        )
+    } else {
+        None
+    };
+
+    println!("Next steps:");
+    if let Some(applied) = applied_console_plan {
+        let console_root = display_relative(&applied.repo_root, &applied.runtime_console_root);
+        println!("- pnpm --dir {console_root} install");
+        println!("- pnpm --dir {console_root} check:console-packages");
+        println!("- restart Runtime Console after installing packages");
+    } else if console_package_count > 0 {
+        println!("- lenso console-package apply-plan");
+        println!("- pnpm install");
+        println!("- restart Runtime Console after applying the plan");
+    }
+    println!("- restart the API and worker");
+
+    Ok(())
+}
+
+pub async fn add_module_catalog_entry(
+    manifest_reference: &str,
+    options: ModuleCatalogAddOptions,
+) -> Result<()> {
+    let repo_root = resolve_repo_root(options.repo_root.as_deref())?;
+    let catalog_file_path = resolve_path(
+        &repo_root,
+        options
+            .catalog_file
+            .as_deref()
+            .unwrap_or_else(|| Path::new(".lenso/module-catalog.json")),
+    );
+    let manifest = validate_remote_module_manifest(read_json_reference(manifest_reference).await?)?;
+    let module_name = string_field(&manifest, "name")?.trim().to_owned();
+    let version = string_field(&manifest, "version")?.trim().to_owned();
+    let base_url = derive_remote_base_url(options.base_url.as_deref(), manifest_reference)?;
+    let mut catalog = read_json_if_exists(&catalog_file_path)?
+        .unwrap_or_else(|| json!({ "modules": [], "version": 1 }));
+    let modules = catalog
+        .get_mut("modules")
+        .and_then(Value::as_array_mut)
+        .ok_or_else(|| anyhow!("Module catalog modules must be an array"))?;
+    modules.retain(|entry| entry.get("name").and_then(Value::as_str) != Some(module_name.as_str()));
+    modules.push(module_catalog_entry_from_manifest(
+        &manifest,
+        manifest_reference,
+        &base_url,
+        options.summary.as_deref(),
+    )?);
+
+    if options.dry_run {
+        println!("Module catalog dry run:");
+        println!("- {}", display_relative(&repo_root, &catalog_file_path));
+        println!("- {module_name} {version}");
+        return Ok(());
+    }
+
+    write_json(&catalog_file_path, &catalog)?;
+    println!("Added {module_name} to module catalog.");
+    println!("Updated:");
+    println!("- {}", display_relative(&repo_root, &catalog_file_path));
+    println!("Install:");
+    println!("- lenso module add {manifest_reference}");
+
+    Ok(())
+}
+
+pub async fn apply_console_package_install_plan(
+    options: ConsolePackageApplyPlanOptions,
+) -> Result<AppliedConsolePlan> {
+    let repo_root = resolve_repo_root(options.repo_root.as_deref())?;
+    let runtime_console_root = options
+        .runtime_console_root
+        .as_deref()
+        .map(Path::to_path_buf)
+        .unwrap_or(default_runtime_console_root_for_repo(&repo_root)?);
+    let runtime_console_root = absolutize(&runtime_console_root)?;
+    let install_plan_path = resolve_path(
+        &repo_root,
+        options
+            .install_plan_file
+            .as_deref()
+            .unwrap_or_else(|| Path::new(".lenso/console-package-install-plan.json")),
+    );
+    let dependency_version = options
+        .dependency_version
+        .unwrap_or_else(|| "latest".to_owned());
+    let install_plan = read_json(&install_plan_path)?;
+    let paths = runtime_console_paths(&runtime_console_root);
+    let mut package_json = read_json(&paths.package_json_path)?;
+    let mut manifest_exports_source = read_text(&paths.manifest_exports_path)?;
+    let mut module_exports_source = read_text(&paths.module_exports_path)?;
+    let plan_items = unique_console_package_plan_items(&install_plan);
+
+    for item in &plan_items {
+        update_package_json_dependency(&mut package_json, &item.package_name, &dependency_version)?;
+        let manifest_name = manifest_name_from_module_export(&item.export_name);
+        manifest_exports_source = insert_before_needle(
+            &manifest_exports_source,
+            &format!(
+                "import {{ {manifest_name} }} from \"{}\";\n",
+                item.package_name
+            ),
+            "export const consolePackageManifests",
+        )?;
+        manifest_exports_source = insert_before_needle(
+            &manifest_exports_source,
+            &format!("  {manifest_name},\n"),
+            "] as const;",
+        )?;
+        module_exports_source = insert_before_needle(
+            &module_exports_source,
+            &format!(
+                "import {{ {manifest_name}, {} }} from \"{}\";\n",
+                item.export_name, item.package_name
+            ),
+            "import {",
+        )?;
+        module_exports_source = insert_before_needle(
+            &module_exports_source,
+            &format!(
+                "  [consolePackageKey({manifest_name})]: {},\n",
+                item.export_name
+            ),
+            "} satisfies ConsolePackageModuleExportsByKey;",
+        )?;
+    }
+
+    if options.dry_run {
+        println!("Console package install plan dry run:");
+        println!(
+            "- {}",
+            display_relative(&repo_root, &paths.package_json_path)
+        );
+        println!(
+            "- {}",
+            display_relative(&repo_root, &paths.manifest_exports_path)
+        );
+        println!(
+            "- {}",
+            display_relative(&repo_root, &paths.module_exports_path)
+        );
+        return Ok(AppliedConsolePlan {
+            repo_root,
+            runtime_console_root,
+        });
+    }
+
+    write_json(&paths.package_json_path, &package_json)?;
+    write_file(
+        &paths.manifest_exports_path,
+        manifest_exports_source.as_bytes(),
+    )?;
+    write_file(&paths.module_exports_path, module_exports_source.as_bytes())?;
+
+    println!(
+        "Applied {} console package install plan item(s).",
+        plan_items.len()
+    );
+    if options.log_next_steps {
+        let console_root = display_relative(&repo_root, &runtime_console_root);
+        println!("Next steps:");
+        println!("- pnpm --dir {console_root} install");
+        println!("- pnpm --dir {console_root} check:console-packages");
+        println!("- pnpm check");
+    }
+
+    Ok(AppliedConsolePlan {
+        repo_root,
+        runtime_console_root,
+    })
+}
+
+async fn create_remote_module(options: ModuleCreateOptions) -> Result<()> {
+    let module_id = slugify(&options.module_id);
+    if module_id.is_empty() {
+        bail!("Module id is required");
+    }
+    let output_root = options
+        .output_dir
+        .as_deref()
+        .map(Path::to_path_buf)
+        .unwrap_or(std::env::current_dir().context("resolve current directory")?);
+    let output_root = absolutize(&output_root)?;
+    let package_root_name = slugify(
+        options
+            .package_root
+            .as_deref()
+            .unwrap_or(&format!("lenso-{module_id}")),
+    );
+    if package_root_name.is_empty() {
+        bail!("Remote package root is required");
+    }
+    let package_root = output_root.join(&package_root_name);
+    if package_root.exists() {
+        bail!(
+            "Remote module package already exists: {}",
+            package_root.display()
+        );
+    }
+
+    let mut package_context = build_console_package_context(
+        ConsolePackageBuildInput::for_remote_module(&options, &module_id),
+        &package_root,
+    )?;
+    package_context.package_dir = package_root.join("console");
+
+    let mut pending_writes = PendingWrites::new();
+    queue_remote_module_files(
+        &mut pending_writes,
+        &package_root,
+        &package_root_name,
+        &package_context,
+    )?;
+
+    if options.dry_run {
+        println!("Remote module dry run:");
+        for file_path in pending_writes.keys() {
+            println!("- {}", display_relative(&output_root, file_path));
+        }
+        return Ok(());
+    }
+
+    write_pending_files(&pending_writes)?;
+
+    println!("Created remote module package {package_root_name}.");
+    println!("Next steps:");
+    println!("- pnpm --dir {package_root_name}/backend dev");
+    println!("- lenso module add http://127.0.0.1:4100/lenso/module/v1/manifest");
+    println!(
+        "- lenso module catalog add http://127.0.0.1:4100/lenso/module/v1/manifest # optional discovery"
+    );
+    println!("- publish or install the console package");
+    println!("- pnpm install");
+
+    Ok(())
+}
+
+#[derive(Debug, Clone)]
+struct ConsolePackageBuildInput {
+    area: Option<String>,
+    capability: Option<String>,
+    icon: Option<String>,
+    label: Option<String>,
+    module_id: String,
+    package_name: Option<String>,
+    package_private: bool,
+    package_scope: Option<String>,
+    package_slug: Option<String>,
+    registry_source: Option<String>,
+    route: Option<String>,
+    runtime_console_api_version: String,
+    surface_name: Option<String>,
+}
+
+impl ConsolePackageBuildInput {
+    fn from_module_options(options: &ModuleCreateOptions) -> Self {
+        Self {
+            area: options.area.clone(),
+            capability: options.capability.clone(),
+            icon: options.icon.clone(),
+            label: options.label.clone(),
+            module_id: options.module_id.clone(),
+            package_name: options.package_name.clone(),
+            package_private: true,
+            package_scope: options.package_scope.clone(),
+            package_slug: options.package_slug.clone(),
+            registry_source: options.source.clone(),
+            route: options.route.clone(),
+            runtime_console_api_version: "workspace:*".to_owned(),
+            surface_name: options.surface_name.clone(),
+        }
+    }
+
+    fn from_console_package_options(options: &ConsolePackageCreateOptions) -> Self {
+        Self {
+            area: options.area.clone(),
+            capability: options.capability.clone(),
+            icon: options.icon.clone(),
+            label: options.label.clone(),
+            module_id: options.module_id.clone(),
+            package_name: options.package_name.clone(),
+            package_private: true,
+            package_scope: options.package_scope.clone(),
+            package_slug: options.package_slug.clone(),
+            registry_source: options.source.clone(),
+            route: options.route.clone(),
+            runtime_console_api_version: "workspace:*".to_owned(),
+            surface_name: options.surface_name.clone(),
+        }
+    }
+
+    fn for_remote_module(options: &ModuleCreateOptions, module_id: &str) -> Self {
+        Self {
+            area: options.area.clone(),
+            capability: options.capability.clone(),
+            icon: options.icon.clone(),
+            label: options.label.clone(),
+            module_id: module_id.to_owned(),
+            package_name: options.package_name.clone().or_else(|| {
+                Some(format!(
+                    "{}/lenso-{module_id}-console",
+                    options.package_scope.as_deref().unwrap_or("@vendor")
+                ))
+            }),
+            package_private: false,
+            package_scope: options.package_scope.clone(),
+            package_slug: Some(format!("{module_id}-console")),
+            registry_source: options
+                .source
+                .clone()
+                .or_else(|| Some("installed".to_owned())),
+            route: options.route.clone(),
+            runtime_console_api_version: "^0.1.0".to_owned(),
+            surface_name: options.surface_name.clone(),
+        }
+    }
+}
+
+fn build_console_package_context(
+    input: ConsolePackageBuildInput,
+    runtime_console_root: &Path,
+) -> Result<ConsolePackageContext> {
+    let module_id = slugify(&input.module_id);
+    if module_id.is_empty() {
+        bail!("Module id is required");
+    }
+    let package_slug = slugify(
+        input
+            .package_slug
+            .as_deref()
+            .unwrap_or(&format!("{module_id}-console")),
+    );
+    if package_slug.is_empty() {
+        bail!("Console package slug is required");
+    }
+    let package_name = input.package_name.unwrap_or_else(|| {
+        format!(
+            "{}/{}",
+            input.package_scope.as_deref().unwrap_or("@lenso"),
+            package_slug
+        )
+    });
+    let area = input.area.unwrap_or_else(|| "data".to_owned());
+    rust_console_area(&area)?;
+    let label = input.label.unwrap_or_else(|| title_case(&module_id));
+    let route = input
+        .route
+        .unwrap_or_else(|| format!("/{area}/{module_id}"));
+    let registry_source = input
+        .registry_source
+        .unwrap_or_else(|| "installed".to_owned());
+    let icon = input.icon.unwrap_or_else(|| default_icon(&area).to_owned());
+    let capability = input
+        .capability
+        .unwrap_or_else(|| format!("{module_id}.read"));
+    let surface_name = input.surface_name.unwrap_or_else(|| module_id.clone());
+    let export_stem = export_stem_from_package_slug(&package_slug);
+    let manifest_name = format!("{export_stem}Manifest");
+    let module_name = format!("{export_stem}Module");
+    let component_name = format!("{}ConsolePage", pascal_case(&module_id));
+    let package_dir = runtime_console_root.join("packages").join(&package_slug);
+
+    Ok(ConsolePackageContext {
+        area,
+        capability,
+        component_name,
+        icon,
+        label,
+        manifest_name,
+        module_id,
+        module_name,
+        package_dir,
+        package_name,
+        package_private: input.package_private,
+        package_slug,
+        registry_source,
+        route,
+        runtime_console_api_version: input.runtime_console_api_version,
+        surface_name,
+    })
+}
+
+fn queue_module_files(
+    pending_writes: &mut PendingWrites,
+    module_dir: &Path,
+    module_id: &str,
+    console_surface: Option<&ConsolePackageContext>,
+) -> Result<()> {
+    queue_write(
+        pending_writes,
+        module_dir.join("Cargo.toml"),
+        module_cargo_toml(module_id),
+    );
+    queue_write(
+        pending_writes,
+        module_dir.join("src/lib.rs"),
+        "pub mod module;\n".to_owned(),
+    );
+    queue_write(
+        pending_writes,
+        module_dir.join("src/module.rs"),
+        module_manifest(module_id, console_surface)?,
+    );
+    Ok(())
+}
+
+fn module_cargo_toml(module_id: &str) -> String {
+    format!(
+        r#"[package]
+name = "{module_id}"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+platform-core.workspace = true
+platform-module.workspace = true
+
+[lints]
+workspace = true
+"#
+    )
+}
+
+fn module_manifest(
+    module_id: &str,
+    console_surface: Option<&ConsolePackageContext>,
+) -> Result<String> {
+    let imports = if console_surface.is_some() {
+        "use platform_module::{ConsoleArea, ConsolePackage, ConsoleSurface, LinkedBinding, Module, ModuleManifest};"
+    } else {
+        "use platform_module::{LinkedBinding, Module, ModuleManifest};"
+    };
+    let manifest_builder = if let Some(console_surface) = console_surface {
+        format!(
+            r#"ModuleManifest::builder({})
+        .capabilities(vec![{}.to_owned()])
+        .console(vec![ConsoleSurface {{
+            name: {}.to_owned(),
+            label: {}.to_owned(),
+            area: ConsoleArea::{},
+            route: {}.to_owned(),
+            package: ConsolePackage {{
+                name: {}.to_owned(),
+                export: {}.to_owned(),
+            }},
+            icon: Some({}.to_owned()),
+            required_capabilities: vec![{}.to_owned()],
+            navigation: Some(platform_module::ConsoleNavigation {{
+                workspace: platform_module::ConsoleWorkspaceRef {{
+                    id: {}.to_owned(),
+                    label: {}.to_owned(),
+                    icon: Some({}.to_owned()),
+                }},
+                group: None,
+                order: Some(10),
+            }}),
+        }}])
+        .build()"#,
+            rust_string_literal(module_id),
+            rust_string_literal(&console_surface.capability),
+            rust_string_literal(&console_surface.surface_name),
+            rust_string_literal(&console_surface.label),
+            rust_console_area(&console_surface.area)?,
+            rust_string_literal(&console_surface.route),
+            rust_string_literal(&console_surface.package_name),
+            rust_string_literal(&console_surface.module_name),
+            rust_string_literal(&console_surface.icon),
+            rust_string_literal(&console_surface.capability),
+            rust_string_literal(module_id),
+            rust_string_literal(&console_surface.label),
+            rust_string_literal(&console_surface.icon),
+        )
+    } else {
+        format!(
+            "ModuleManifest::builder({}).build()",
+            rust_string_literal(module_id)
+        )
+    };
+
+    Ok(format!(
+        r#"use platform_core::AppContext;
+{imports}
+
+/// Context-free manifest: serializable metadata only.
+pub fn manifest() -> ModuleManifest {{
+    {manifest_builder}
+}}
+
+/// The loaded module: manifest + linked behavior.
+pub fn module(_ctx: &AppContext) -> Module {{
+    Module::linked(manifest(), LinkedBinding::builder().build())
+}}
+
+#[cfg(test)]
+mod tests {{
+    use super::*;
+
+    #[test]
+    fn manifest_uses_module_name() {{
+        assert_eq!(manifest().name, {});
+    }}
+}}
+"#,
+        rust_string_literal(module_id)
+    ))
+}
+
+fn update_workspace_cargo_toml(
+    pending_writes: &mut PendingWrites,
+    cargo_toml_path: &Path,
+    module_id: &str,
+) -> Result<()> {
+    let mut file_source = read_text(cargo_toml_path)?;
+    file_source = insert_before_first_needle(
+        &file_source,
+        &format!("    \"modules/{module_id}\",\n"),
+        &["    \"tools/", "]\n\n[workspace.package]"],
+    )?;
+    file_source = insert_before_first_needle(
+        &file_source,
+        &format!("{module_id} = {{ path = \"modules/{module_id}\" }}\n"),
+        &[
+            "generate-contracts =",
+            "arch-check =",
+            "remote-module-example =",
+        ],
+    )?;
+    queue_write(pending_writes, cargo_toml_path.to_path_buf(), file_source);
+    Ok(())
+}
+
+fn update_app_bootstrap_cargo_toml(
+    pending_writes: &mut PendingWrites,
+    cargo_toml_path: &Path,
+    module_id: &str,
+) -> Result<()> {
+    let file_source = read_text(cargo_toml_path)?;
+    queue_write(
+        pending_writes,
+        cargo_toml_path.to_path_buf(),
+        insert_before_first_needle(
+            &file_source,
+            &format!("{module_id}.workspace = true\n"),
+            &[
+                "serde_json.workspace",
+                "tracing.workspace",
+                "\n[dev-dependencies]",
+            ],
+        )?,
+    );
+    Ok(())
+}
+
+fn update_app_bootstrap_lib(
+    pending_writes: &mut PendingWrites,
+    app_bootstrap_lib_path: &Path,
+    module_crate: &str,
+    module_id: &str,
+) -> Result<()> {
+    let file_source = read_text(app_bootstrap_lib_path)?;
+    let entry = format!(
+        r#"    LinkedModuleEntry {{
+        module_name: "{module_id}",
+        manifest: {module_crate}::module::manifest,
+        load: {module_crate}::module::module,
+        http_binding: None,
+    }},
+"#
+    );
+    queue_write(
+        pending_writes,
+        app_bootstrap_lib_path.to_path_buf(),
+        insert_into_demo_linked_module_entries(&file_source, &entry)?,
+    );
+    Ok(())
+}
+
+fn queue_console_package(
+    pending_writes: &mut PendingWrites,
+    runtime_console_root: &Path,
+    context: &ConsolePackageContext,
+    update_host: bool,
+) -> Result<()> {
+    queue_console_package_files(pending_writes, context)?;
+    if update_host {
+        let paths = runtime_console_paths(runtime_console_root);
+        update_runtime_console_package_json(pending_writes, &paths, context)?;
+        update_tsconfig(pending_writes, &paths, &context.package_slug)?;
+        update_oxlint_config(pending_writes, &paths, &context.package_slug)?;
+        update_manifest_exports(pending_writes, &paths, context)?;
+        update_module_exports(pending_writes, &paths, context)?;
+    }
+    Ok(())
+}
+
+fn queue_console_package_files(
+    pending_writes: &mut PendingWrites,
+    context: &ConsolePackageContext,
+) -> Result<()> {
+    queue_write(
+        pending_writes,
+        context.package_dir.join("package.json"),
+        console_package_package_json(context)?,
+    );
+    queue_write(
+        pending_writes,
+        context.package_dir.join("console-surface.json"),
+        console_surface_json(context)?,
+    );
+    queue_write(
+        pending_writes,
+        context.package_dir.join("console-surface.rs"),
+        console_surface_rust(context)?,
+    );
+    queue_write(
+        pending_writes,
+        context.package_dir.join("src/manifest.ts"),
+        console_package_manifest_ts(context)?,
+    );
+    queue_write(
+        pending_writes,
+        context.package_dir.join("src/page.tsx"),
+        console_package_page_tsx(context),
+    );
+    queue_write(
+        pending_writes,
+        context.package_dir.join("src/index.tsx"),
+        console_package_index_tsx(context),
+    );
+    queue_write(
+        pending_writes,
+        context.package_dir.join("src/index.test.tsx"),
+        console_package_test_tsx(context),
+    );
+    Ok(())
+}
+
+fn console_package_package_json(context: &ConsolePackageContext) -> Result<String> {
+    json_string_pretty(&json!({
+        "exports": {
+            ".": "./src/index.tsx",
+        },
+        "name": context.package_name,
+        "peerDependencies": {
+            "@lenso/runtime-console-api": context.runtime_console_api_version,
+            "react": "^19.1.0",
+            "react-dom": "^19.1.0",
+        },
+        "private": context.package_private,
+        "scripts": {
+            "check": "pnpm test && pnpm typecheck",
+            "test": "echo \"console package smoke passed\"",
+            "typecheck": "echo \"console package typecheck placeholder\"",
+        },
+        "type": "module",
+        "version": "0.1.0",
+    }))
+}
+
+fn console_surface_json(context: &ConsolePackageContext) -> Result<String> {
+    json_string_pretty(&json!({
+        "exportName": context.module_name,
+        "id": context.module_id,
+        "packageName": context.package_name,
+        "source": context.registry_source,
+        "surfaces": [
+            {
+                "area": context.area,
+                "icon": context.icon,
+                "label": context.label,
+                "navigation": {
+                    "order": 10,
+                    "workspace": {
+                        "icon": context.icon,
+                        "id": context.module_id,
+                        "label": context.label,
+                    },
+                },
+                "requiredCapabilities": [context.capability],
+                "route": context.route,
+                "surfaceName": context.surface_name,
+            },
+        ],
+        "version": "workspace",
+    }))
+}
+
+fn console_surface_rust(context: &ConsolePackageContext) -> Result<String> {
+    Ok(format!(
+        r#"use platform_module::{{ConsoleArea, ConsolePackage, ConsoleSurface}};
+
+ConsoleSurface {{
+    name: {}.to_owned(),
+    label: {}.to_owned(),
+    area: ConsoleArea::{},
+    route: {}.to_owned(),
+    package: ConsolePackage {{
+        name: {}.to_owned(),
+        export: {}.to_owned(),
+    }},
+    icon: Some({}.to_owned()),
+    required_capabilities: vec![{}.to_owned()],
+    navigation: Some(platform_module::ConsoleNavigation {{
+        workspace: platform_module::ConsoleWorkspaceRef {{
+            id: {}.to_owned(),
+            label: {}.to_owned(),
+            icon: Some({}.to_owned()),
+        }},
+        group: None,
+        order: Some(10),
+    }}),
+}}
+"#,
+        rust_string_literal(&context.surface_name),
+        rust_string_literal(&context.label),
+        rust_console_area(&context.area)?,
+        rust_string_literal(&context.route),
+        rust_string_literal(&context.package_name),
+        rust_string_literal(&context.module_name),
+        rust_string_literal(&context.icon),
+        rust_string_literal(&context.capability),
+        rust_string_literal(&context.module_id),
+        rust_string_literal(&context.label),
+        rust_string_literal(&context.icon),
+    ))
+}
+
+fn console_package_manifest_ts(context: &ConsolePackageContext) -> Result<String> {
+    Ok(format!(
+        r#"import {{ defineConsolePackageManifest }} from "@lenso/runtime-console-api";
+
+import consoleSurface from "../console-surface.json";
+
+const consoleSurfaceContract = consoleSurface as unknown as {{
+  readonly exportName: {};
+  readonly id: {};
+  readonly packageName: {};
+  readonly source: {};
+  readonly surfaces: readonly [
+    {{
+      readonly area: {};
+      readonly icon: {};
+      readonly label: {};
+      readonly navigation: {{
+        readonly order: 10;
+        readonly workspace: {{
+          readonly icon: {};
+          readonly id: {};
+          readonly label: {};
+        }};
+      }};
+      readonly requiredCapabilities: readonly [{}];
+      readonly route: {};
+      readonly surfaceName: {};
+    }},
+  ];
+  readonly version: "workspace";
+}};
+
+export const {} = defineConsolePackageManifest(
+  consoleSurfaceContract
+);
+"#,
+        ts_string_literal(&context.module_name)?,
+        ts_string_literal(&context.module_id)?,
+        ts_string_literal(&context.package_name)?,
+        ts_string_literal(&context.registry_source)?,
+        ts_string_literal(&context.area)?,
+        ts_string_literal(&context.icon)?,
+        ts_string_literal(&context.label)?,
+        ts_string_literal(&context.icon)?,
+        ts_string_literal(&context.module_id)?,
+        ts_string_literal(&context.label)?,
+        ts_string_literal(&context.capability)?,
+        ts_string_literal(&context.route)?,
+        ts_string_literal(&context.surface_name)?,
+        context.manifest_name,
+    ))
+}
+
+fn console_package_page_tsx(context: &ConsolePackageContext) -> String {
+    format!(
+        r#"export function {}() {{
+  return (
+    <main className="flex min-h-screen flex-col gap-3 px-6 py-5">
+      <header>
+        <p className="font-medium text-muted-foreground text-xs uppercase tracking-normal">
+          {}
+        </p>
+        <h1 className="font-semibold text-2xl text-foreground">{}</h1>
+      </header>
+    </main>
+  );
+}}
+"#,
+        context.component_name, context.label, context.label
+    )
+}
+
+fn console_package_index_tsx(context: &ConsolePackageContext) -> String {
+    format!(
+        r#"import {{ defineConsoleModule }} from "@lenso/runtime-console-api";
+
+import {{ {} }} from "./manifest";
+import {{ {} }} from "./page";
+
+const [consoleSurface] = {}.surfaces;
+
+export const {} = defineConsoleModule({{
+  id: {}.id,
+  surfaces: [
+    {{
+      area: consoleSurface.area,
+      component: {},
+      icon: consoleSurface.icon,
+      label: consoleSurface.label,
+      navigation: consoleSurface.navigation,
+      path: consoleSurface.route,
+    }},
+  ],
+}});
+
+export {{ {} }} from "./manifest";
+export {{ {} }} from "./page";
+"#,
+        context.manifest_name,
+        context.component_name,
+        context.manifest_name,
+        context.module_name,
+        context.manifest_name,
+        context.component_name,
+        context.manifest_name,
+        context.component_name,
+    )
+}
+
+fn console_package_test_tsx(context: &ConsolePackageContext) -> String {
+    format!(
+        r#"import {{ describe, expect, test }} from "vitest";
+
+import {{ {}, {}, {} }} from ".";
+
+const [consoleSurface] = {}.surfaces;
+
+describe({}, () => {{
+  test("exports a console module manifest and route", () => {{
+    expect({}).toMatchObject({{
+      exportName: {},
+      id: {},
+      packageName: {},
+      surfaces: [{{ route: {} }}],
+    }});
+    expect({}).toMatchObject({{
+      id: {}.id,
+      surfaces: [
+        {{
+          area: consoleSurface.area,
+          icon: consoleSurface.icon,
+          label: consoleSurface.label,
+          path: consoleSurface.route,
+        }},
+      ],
+    }});
+    expect({}.surfaces[0]?.component).toBe({});
+  }});
+}});
+"#,
+        context.component_name,
+        context.manifest_name,
+        context.module_name,
+        context.manifest_name,
+        ts_string_literal_lossy(&context.package_name),
+        context.manifest_name,
+        ts_string_literal_lossy(&context.module_name),
+        ts_string_literal_lossy(&context.module_id),
+        ts_string_literal_lossy(&context.package_name),
+        ts_string_literal_lossy(&context.route),
+        context.module_name,
+        context.manifest_name,
+        context.module_name,
+        context.component_name,
+    )
+}
+
+fn update_runtime_console_package_json(
+    pending_writes: &mut PendingWrites,
+    paths: &RuntimeConsolePaths,
+    context: &ConsolePackageContext,
+) -> Result<()> {
+    let mut package_json = read_json(&paths.package_json_path)?;
+    update_package_json_dependency(&mut package_json, &context.package_name, "workspace:*")?;
+    let scripts = package_json
+        .as_object_mut()
+        .ok_or_else(|| anyhow!("Runtime Console package.json must be a JSON object"))?
+        .entry("scripts")
+        .or_insert_with(|| Value::Object(Map::new()))
+        .as_object_mut()
+        .ok_or_else(|| anyhow!("Runtime Console package.json scripts must be an object"))?;
+    let current_test = scripts
+        .get("test")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    scripts.insert(
+        "test".to_owned(),
+        Value::String(append_token(
+            current_test,
+            &format!("packages/{}/src", context.package_slug),
+            "packages/console-package-api/src",
+        )),
+    );
+    queue_write(
+        pending_writes,
+        paths.package_json_path.clone(),
+        json_string_pretty(&package_json)?,
+    );
+    Ok(())
+}
+
+fn update_tsconfig(
+    pending_writes: &mut PendingWrites,
+    paths: &RuntimeConsolePaths,
+    package_slug: &str,
+) -> Result<()> {
+    let mut tsconfig = read_json(&paths.tsconfig_path)?;
+    let include = tsconfig
+        .as_object_mut()
+        .ok_or_else(|| anyhow!("Runtime Console tsconfig.json must be a JSON object"))?
+        .entry("include")
+        .or_insert_with(|| Value::Array(Vec::new()))
+        .as_array_mut()
+        .ok_or_else(|| anyhow!("Runtime Console tsconfig include must be an array"))?;
+    append_json_string(include, &format!("packages/{package_slug}/src"));
+    queue_write(
+        pending_writes,
+        paths.tsconfig_path.clone(),
+        json_string_pretty(&tsconfig)?,
+    );
+    Ok(())
+}
+
+fn update_oxlint_config(
+    pending_writes: &mut PendingWrites,
+    paths: &RuntimeConsolePaths,
+    package_slug: &str,
+) -> Result<()> {
+    let file_source = read_text(&paths.oxlint_config_path)?;
+    queue_write(
+        pending_writes,
+        paths.oxlint_config_path.clone(),
+        insert_before_needle(
+            &file_source,
+            &format!("        \"packages/{package_slug}/src/**/*.{{ts,tsx}}\",\n"),
+            "        \"vite.config.ts\",",
+        )?,
+    );
+    Ok(())
+}
+
+fn update_manifest_exports(
+    pending_writes: &mut PendingWrites,
+    paths: &RuntimeConsolePaths,
+    context: &ConsolePackageContext,
+) -> Result<()> {
+    let mut file_source = read_text(&paths.manifest_exports_path)?;
+    file_source = insert_before_needle(
+        &file_source,
+        &format!(
+            "import {{ {} }} from \"{}\";\n",
+            context.manifest_name, context.package_name
+        ),
+        "export const consolePackageManifests",
+    )?;
+    file_source = insert_before_needle(
+        &file_source,
+        &format!("  {},\n", context.manifest_name),
+        "] as const;",
+    )?;
+    queue_write(
+        pending_writes,
+        paths.manifest_exports_path.clone(),
+        file_source,
+    );
+    Ok(())
+}
+
+fn update_module_exports(
+    pending_writes: &mut PendingWrites,
+    paths: &RuntimeConsolePaths,
+    context: &ConsolePackageContext,
+) -> Result<()> {
+    let mut file_source = read_text(&paths.module_exports_path)?;
+    file_source = insert_before_needle(
+        &file_source,
+        &format!(
+            "import {{ {}, {} }} from \"{}\";\n",
+            context.manifest_name, context.module_name, context.package_name
+        ),
+        "import {",
+    )?;
+    file_source = insert_before_needle(
+        &file_source,
+        &format!(
+            "  [consolePackageKey({})]: {},\n",
+            context.manifest_name, context.module_name
+        ),
+        "} satisfies ConsolePackageModuleExportsByKey;",
+    )?;
+    queue_write(
+        pending_writes,
+        paths.module_exports_path.clone(),
+        file_source,
+    );
+    Ok(())
+}
+
+fn queue_remote_module_files(
+    pending_writes: &mut PendingWrites,
+    package_root: &Path,
+    package_root_name: &str,
+    context: &ConsolePackageContext,
+) -> Result<()> {
+    queue_write(
+        pending_writes,
+        package_root.join("lenso.module.json"),
+        json_string_pretty(&remote_manifest_json(context))?,
+    );
+    queue_write(
+        pending_writes,
+        package_root.join("catalog-entry.json"),
+        json_string_pretty(&remote_catalog_entry_json(context))?,
+    );
+    queue_write(
+        pending_writes,
+        package_root.join("package.json"),
+        remote_root_package_json(&context.module_id)?,
+    );
+    queue_write(
+        pending_writes,
+        package_root.join("README.md"),
+        remote_package_readme(&context.module_id, package_root_name),
+    );
+    queue_write(
+        pending_writes,
+        package_root.join("backend/README.md"),
+        remote_backend_readme(&context.module_id),
+    );
+    queue_write(
+        pending_writes,
+        package_root.join("backend/package.json"),
+        remote_backend_package_json(&context.module_id)?,
+    );
+    queue_write(
+        pending_writes,
+        package_root.join("backend/src/server.mjs"),
+        remote_backend_server(context),
+    );
+    queue_write(
+        pending_writes,
+        package_root.join("backend/src/smoke.mjs"),
+        remote_backend_smoke(&context.module_id),
+    );
+    queue_write(
+        pending_writes,
+        package_root.join("backend/openapi.yaml"),
+        format!(
+            "openapi: 3.1.0\ninfo:\n  title: {} Remote Module\n  version: 0.1.0\npaths: {{}}\n",
+            context.label
+        ),
+    );
+    queue_write(
+        pending_writes,
+        package_root.join("contracts/README.md"),
+        remote_contracts_readme(),
+    );
+    queue_write(
+        pending_writes,
+        package_root.join("contracts/events/.gitkeep"),
+        String::new(),
+    );
+    queue_write(
+        pending_writes,
+        package_root.join("contracts/runtime-functions/.gitkeep"),
+        String::new(),
+    );
+    queue_console_package_files(pending_writes, context)?;
+    Ok(())
+}
+
+fn remote_manifest_json(context: &ConsolePackageContext) -> Value {
+    json!({
+        "admin": {
+            "entities": [
+                {
+                    "fields": [
+                        {
+                            "field_type": { "kind": "string" },
+                            "label": "Email",
+                            "name": "email",
+                            "nullable": false,
+                        },
+                        {
+                            "field_type": { "kind": "string" },
+                            "label": "Name",
+                            "name": "name",
+                            "nullable": false,
+                        },
+                        {
+                            "field_type": { "kind": "timestamp" },
+                            "label": "Created At",
+                            "name": "created_at",
+                            "nullable": false,
+                        },
+                    ],
+                    "label": "Contacts",
+                    "name": "contacts",
+                    "read_capability": context.capability,
+                },
+            ],
+            "kind": "schema",
+        },
+        "capabilities": [context.capability],
+        "console": [
+            {
+                "area": context.area,
+                "icon": context.icon,
+                "label": context.label,
+                "name": context.surface_name,
+                "navigation": {
+                    "order": 10,
+                    "workspace": {
+                        "icon": context.icon,
+                        "id": context.module_id,
+                        "label": context.label,
+                    },
+                },
+                "package": {
+                    "export": context.module_name,
+                    "name": context.package_name,
+                },
+                "required_capabilities": [context.capability],
+                "route": context.route,
+            },
+        ],
+        "http_routes": [
+            {
+                "capability": context.capability,
+                "display_name": "Fetch Contact",
+                "method": "GET",
+                "path": "/contacts/{id}",
+                "story_title": "Fetch Contact",
+            },
+        ],
+        "lifecycle": {
+            "activation_jobs": [
+                {
+                    "function_name": format!("{}.contacts.enrich.v1", context.module_id),
+                    "input": { "reason": "worker_startup" },
+                    "name": "sync contacts on startup",
+                    "required": true,
+                    "run_policy": "every_startup",
+                },
+            ],
+            "startup_checks": [
+                {
+                    "function_name": format!("{}.contacts.enrich.v1", context.module_id),
+                    "kind": "function_registered",
+                    "name": "contacts enrich function is registered",
+                    "required": true,
+                },
+            ],
+        },
+        "name": context.module_id,
+        "runtime": {
+            "functions": [
+                {
+                    "input_schema": format!("{}.contacts.enrich.v1", context.module_id),
+                    "name": format!("{}.contacts.enrich.v1", context.module_id),
+                    "queue": context.module_id,
+                    "retry_policy": {
+                        "initial_delay_ms": 1000,
+                        "max_attempts": 3,
+                    },
+                    "version": 1,
+                },
+            ],
+        },
+        "source": "remote",
+        "version": "0.1.0",
+    })
+}
+
+fn remote_catalog_entry_json(context: &ConsolePackageContext) -> Value {
+    json!({
+        "baseUrl": "https://example.com/lenso/module/v1",
+        "consolePackages": [
+            {
+                "exportName": context.module_name,
+                "packageName": context.package_name,
+                "route": context.route,
+            },
+        ],
+        "manifestReference": "https://example.com/lenso/module/v1/manifest",
+        "name": context.module_id,
+        "source": "remote",
+        "summary": format!("{} workspace and operations", context.label),
+        "version": "0.1.0",
+    })
+}
+
+fn remote_root_package_json(module_id: &str) -> Result<String> {
+    json_string_pretty(&json!({
+        "name": format!("lenso-{module_id}"),
+        "private": true,
+        "scripts": {
+            "check": "pnpm --dir backend check && pnpm --dir console check",
+            "dev": "pnpm --dir backend dev",
+            "smoke": "pnpm --dir backend smoke",
+        },
+        "type": "module",
+        "version": "0.1.0",
+    }))
+}
+
+fn remote_package_readme(module_id: &str, package_root_name: &str) -> String {
+    format!(
+        r#"# {}
+
+Remote Lenso module package scaffold.
+
+## Shape
+
+- `lenso.module.json`: install-time module manifest.
+- `catalog-entry.json`: optional local catalog entry for discovery.
+- `backend/`: remote module backend implementation.
+- `console/`: optional Runtime Console package.
+- `contracts/`: module-owned event and runtime-function contracts.
+
+## Local
+
+```sh
+pnpm dev
+pnpm smoke
+pnpm check
+```
+
+## Install
+
+Expose the remote module protocol from a stable base URL such as:
+
+```text
+GET https://example.com/lenso/module/v1/manifest
+```
+
+Use `catalog-entry.json` as the local discovery record, or add the manifest
+URL directly:
+
+```sh
+lenso module add https://example.com/lenso/module/v1/manifest
+```
+
+If you want it to appear in Available Modules before installing it, add a local
+catalog entry:
+
+```sh
+lenso module catalog add https://example.com/lenso/module/v1/manifest
+```
+
+If the manifest is inspected from a local file, provide the runtime base URL:
+
+```sh
+lenso module add ./lenso.module.json --base-url https://example.com/lenso/module/v1
+```
+
+This scaffold lives in `{package_root_name}` and should stay separate from a
+host application's linked `modules/` workspace.
+"#,
+        title_case(module_id)
+    )
+}
+
+fn remote_backend_readme(module_id: &str) -> String {
+    format!(
+        r#"# Remote module backend
+
+The generated Node server exposes the {module_id} manifest at:
+
+```text
+GET /lenso/module/v1/manifest
+```
+
+Run it locally:
+
+```sh
+cd backend
+pnpm install
+pnpm dev
+```
+
+Replace `src/server.mjs` with the language or framework you prefer as the
+module grows.
+
+The backend should expose the remote module protocol expected by
+`platform-module-remote`, including a stable manifest endpoint and any declared
+schema-admin, action, HTTP proxy, or runtime-function endpoints.
+
+The host owns auth, capability enforcement, proxy policy, runtime queues,
+retries, Runtime Stories, and Technical Operations records.
+"#
+    )
+}
+
+fn remote_backend_package_json(module_id: &str) -> Result<String> {
+    json_string_pretty(&json!({
+        "dependencies": {
+            "@lenso/remote-module-kit": "^0.1.0",
+        },
+        "name": format!("{module_id}-remote-backend"),
+        "private": true,
+        "scripts": {
+            "check": "node src/smoke.mjs",
+            "dev": "node src/server.mjs",
+            "smoke": "node src/smoke.mjs",
+            "start": "node src/server.mjs",
+        },
+        "type": "module",
+        "version": "0.1.0",
+    }))
+}
+
+fn remote_backend_server(context: &ConsolePackageContext) -> String {
+    format!(
+        r#"import {{
+  defineRemoteModule,
+  defineSchemaEntity,
+  everyStartup,
+  getRoute,
+  lifecycle,
+  runtimeFunction,
+  schemaAdmin,
+  serveRemoteModule,
+  textField,
+  timestampField,
+}} from "@lenso/remote-module-kit";
+
+const contacts = [
+  {{
+    id: "contact_1",
+    created_at: "2026-01-01T00:00:00Z",
+    email: "ada@example.com",
+    name: "Ada Lovelace",
+  }},
+  {{
+    id: "contact_2",
+    created_at: "2026-01-02T00:00:00Z",
+    email: "grace@example.com",
+    name: "Grace Hopper",
+  }},
+];
+
+const contactsEntity = defineSchemaEntity({{
+  fields: [textField("email"), textField("name"), timestampField("created_at")],
+  label: "Contacts",
+  name: "contacts",
+  readCapability: {},
+}});
+
+const module = defineRemoteModule({{
+  admin: schemaAdmin([contactsEntity]),
+  capabilities: [{}],
+  console: [
+    {{
+      area: {},
+      icon: {},
+      label: {},
+      name: {},
+      navigation: {{
+        order: 10,
+        workspace: {{
+          icon: {},
+          id: {},
+          label: {},
+        }},
+      }},
+      package: {{
+        export: {},
+        name: {},
+      }},
+      required_capabilities: [{}],
+      route: {},
+    }},
+  ],
+  httpRoutes: [
+    getRoute("/contacts/{{id}}", {{
+      capability: {},
+      displayName: "Fetch Contact",
+      storyTitle: "Fetch Contact",
+    }}),
+  ],
+  lifecycle: lifecycle({{
+    activationJobs: [
+      everyStartup(
+        "sync contacts on startup",
+        {},
+        {{
+          input: {{ reason: "worker_startup" }},
+        }}
+      ),
+    ],
+    startupChecks: [
+      {{
+        function_name: {},
+        kind: "function_registered",
+        name: "contacts enrich function is registered",
+        required: true,
+      }},
+    ],
+  }}),
+  name: {},
+  runtimeFunctions: [
+    runtimeFunction({}, {{
+      inputSchema: {},
+      queue: {},
+      retryPolicy: {{
+        initial_delay_ms: 1000,
+        max_attempts: 3,
+      }},
+      version: 1,
+    }}),
+  ],
+  version: "0.1.0",
+}});
+
+await serveRemoteModule(module, {{
+  data: {{
+    contacts: {{
+      detail: async (id) => contacts.find((contact) => contact.id === id),
+      list: async ({{ limit }}) => ({{
+        next_cursor: null,
+        records: contacts.slice(0, limit),
+      }}),
+    }},
+  }},
+  http: {{
+    "GET /contacts/{{id}}": ({{ params }}) =>
+      contacts.find((contact) => contact.id === params.id) ?? null,
+  }},
+  runtime: {{
+    {}: ({{ input }}) => {{
+      const contactId = input?.contact_id;
+      const contact = contacts.find((item) => item.id === contactId);
+      return {{
+        contact,
+        enriched: Boolean(contact),
+        source: {},
+      }};
+    }},
+  }},
+  port: Number(process.env.PORT ?? 4100),
+  onReady: ({{ manifestUrl }}) => {{
+    console.log({} + manifestUrl);
+  }},
+}});
+"#,
+        ts_string_literal_lossy(&context.capability),
+        ts_string_literal_lossy(&context.capability),
+        ts_string_literal_lossy(&context.area),
+        ts_string_literal_lossy(&context.icon),
+        ts_string_literal_lossy(&context.label),
+        ts_string_literal_lossy(&context.surface_name),
+        ts_string_literal_lossy(&context.icon),
+        ts_string_literal_lossy(&context.module_id),
+        ts_string_literal_lossy(&context.label),
+        ts_string_literal_lossy(&context.module_name),
+        ts_string_literal_lossy(&context.package_name),
+        ts_string_literal_lossy(&context.capability),
+        ts_string_literal_lossy(&context.route),
+        ts_string_literal_lossy(&context.capability),
+        ts_string_literal_lossy(&format!("{}.contacts.enrich.v1", context.module_id)),
+        ts_string_literal_lossy(&format!("{}.contacts.enrich.v1", context.module_id)),
+        ts_string_literal_lossy(&context.module_id),
+        ts_string_literal_lossy(&format!("{}.contacts.enrich.v1", context.module_id)),
+        ts_string_literal_lossy(&format!("{}.contacts.enrich.v1", context.module_id)),
+        ts_string_literal_lossy(&context.module_id),
+        ts_string_literal_lossy(&format!("{}.contacts.enrich.v1", context.module_id)),
+        ts_string_literal_lossy(&context.module_id),
+        ts_string_literal_lossy(&format!("{} manifest: ", context.module_id)),
+    )
+}
+
+fn remote_backend_smoke(module_id: &str) -> String {
+    format!(
+        r#"import {{ spawn }} from "node:child_process";
+
+const childProcess = spawn(process.execPath, ["src/server.mjs"], {{
+  env: {{ ...process.env, PORT: "0" }},
+  stdio: ["ignore", "pipe", "inherit"],
+}});
+
+const timeout = setTimeout(() => childProcess.kill(), 3000);
+
+try {{
+  let manifestUrl = "";
+  for await (const chunk of childProcess.stdout) {{
+    manifestUrl = String(chunk).match(new RegExp("http://\\S+", "u"))?.[0] ?? "";
+    if (manifestUrl) {{
+      break;
+    }}
+  }}
+
+  if (!manifestUrl) {{
+    throw new Error("manifest URL was not printed");
+  }}
+
+  const manifest = await fetch(manifestUrl).then((response) => response.json());
+  if (manifest.name !== {} || manifest.source !== "remote") {{
+    throw new Error("manifest response did not match {module_id}");
+  }}
+  const moduleBaseUrl = manifestUrl.slice(0, -"/manifest".length);
+  const contact = await fetch(moduleBaseUrl + "/contacts/contact_1").then(
+    (response) => response.json()
+  );
+  if (contact.email !== "ada@example.com") {{
+    throw new Error("HTTP route response did not match {module_id}");
+  }}
+  const runtimeResult = await fetch(
+    moduleBaseUrl + "/runtime/functions/{module_id}.contacts.enrich.v1/invoke",
+    {{
+      body: JSON.stringify({{
+        actor: {{ id: "worker", kind: "service", scopes: [] }},
+        attempt: 1,
+        correlation_id: "corr_1",
+        function_name: "{module_id}.contacts.enrich.v1",
+        function_run_id: "fnrun_1",
+        input: {{ contact_id: "contact_1" }},
+        request_id: "req_1",
+        trace: {{ span_id: "span_1", trace_id: "trace_1" }},
+      }}),
+      headers: {{ "content-type": "application/json" }},
+      method: "POST",
+    }}
+  ).then((response) => response.json());
+  if (!runtimeResult.output?.enriched) {{
+    throw new Error("runtime function response did not match {module_id}");
+  }}
+
+  console.log("{module_id} backend smoke passed");
+}} finally {{
+  clearTimeout(timeout);
+  childProcess.kill();
+}}
+"#,
+        ts_string_literal_lossy(module_id)
+    )
+}
+
+fn remote_contracts_readme() -> String {
+    "# Module-owned contracts\n\nKeep event and runtime-function JSON Schema contracts here.\n\nThe host may validate these before installing or enabling a remote module.\n".to_owned()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ConsolePackagePlanItem {
+    export_name: String,
+    package_name: String,
+}
+
+#[derive(Debug)]
+struct RuntimeConsolePaths {
+    manifest_exports_path: PathBuf,
+    module_exports_path: PathBuf,
+    oxlint_config_path: PathBuf,
+    package_json_path: PathBuf,
+    tsconfig_path: PathBuf,
+}
+
+fn repo_paths(repo_root: &Path) -> RepoPaths {
+    RepoPaths {
+        app_bootstrap_cargo_toml_path: repo_root.join("crates/app-bootstrap/Cargo.toml"),
+        app_bootstrap_lib_path: repo_root.join("crates/app-bootstrap/src/lib.rs"),
+        cargo_toml_path: repo_root.join("Cargo.toml"),
+    }
+}
+
+fn queue_write(pending_writes: &mut PendingWrites, file_path: PathBuf, contents: String) {
+    pending_writes.insert(file_path, contents);
+}
+
+fn write_pending_files(pending_writes: &PendingWrites) -> Result<()> {
+    for (file_path, contents) in pending_writes {
+        write_file(file_path, contents.as_bytes())?;
+    }
+    Ok(())
+}
+
+fn json_string_pretty(value: &Value) -> Result<String> {
+    let mut contents = serde_json::to_string_pretty(value)?;
+    contents.push('\n');
+    Ok(contents)
+}
+
+fn append_json_string(items: &mut Vec<Value>, item: &str) {
+    if items.iter().any(|value| value.as_str() == Some(item)) {
+        return;
+    }
+    items.push(Value::String(item.to_owned()));
+}
+
+fn append_token(value: &str, token: &str, before_token: &str) -> String {
+    let mut tokens = value.split(' ').collect::<Vec<_>>();
+    if tokens.contains(&token) {
+        return value.to_owned();
+    }
+    let insert_index = tokens
+        .iter()
+        .position(|candidate| *candidate == before_token)
+        .unwrap_or(tokens.len());
+    tokens.insert(insert_index, token);
+    tokens.join(" ")
+}
+
+fn insert_before_first_needle(file_source: &str, entry: &str, needles: &[&str]) -> Result<String> {
+    if file_source.contains(entry.trim()) {
+        return Ok(file_source.to_owned());
+    }
+    for needle in needles {
+        if file_source.contains(needle) {
+            return insert_before_needle(file_source, entry, needle);
+        }
+    }
+    Ok(format!("{}\n{entry}", file_source.trim_end()))
+}
+
+fn insert_into_demo_linked_module_entries(file_source: &str, entry: &str) -> Result<String> {
+    if file_source.contains(entry.trim()) {
+        return Ok(file_source.to_owned());
+    }
+    let entries_start = file_source
+        .find("const DEMO_LINKED_MODULE_ENTRIES")
+        .ok_or_else(|| anyhow!("Could not find DEMO_LINKED_MODULE_ENTRIES in app-bootstrap"))?;
+    let entries_end = file_source[entries_start..]
+        .find("];")
+        .map(|index| entries_start + index)
+        .ok_or_else(|| anyhow!("Could not find DEMO_LINKED_MODULE_ENTRIES closing bracket"))?;
+    Ok(format!(
+        "{}{}{}",
+        &file_source[..entries_end],
+        entry,
+        &file_source[entries_end..]
+    ))
+}
+
+fn slugify(value: &str) -> String {
+    let mut output = String::new();
+    let mut last_was_dash = false;
+    for character in value.trim().chars().flat_map(char::to_lowercase) {
+        if character.is_ascii_alphanumeric() {
+            output.push(character);
+            last_was_dash = false;
+        } else if !last_was_dash && !output.is_empty() {
+            output.push('-');
+            last_was_dash = true;
+        }
+    }
+    output.trim_matches('-').to_owned()
+}
+
+fn snake_case(value: &str) -> String {
+    value.replace('-', "_")
+}
+
+fn camel_case(value: &str) -> String {
+    let mut output = String::new();
+    let mut uppercase_next = false;
+    for character in value.chars() {
+        if character == '-' {
+            uppercase_next = true;
+        } else if uppercase_next {
+            output.extend(character.to_uppercase());
+            uppercase_next = false;
+        } else {
+            output.push(character);
+        }
+    }
+    output
+}
+
+fn pascal_case(value: &str) -> String {
+    let camel = camel_case(value);
+    let mut chars = camel.chars();
+    let Some(first) = chars.next() else {
+        return String::new();
+    };
+    format!("{}{}", first.to_uppercase(), chars.collect::<String>())
+}
+
+fn export_stem_from_package_slug(package_slug: &str) -> String {
+    let normalized = package_slug
+        .strip_suffix("-console")
+        .unwrap_or(package_slug);
+    format!("{}Console", camel_case(normalized))
+}
+
+fn rust_console_area(area_name: &str) -> Result<&'static str> {
+    match area_name {
+        "configuration" => Ok("Configuration"),
+        "data" => Ok("Data"),
+        "operations" => Ok("Operations"),
+        "runtime" => Ok("Runtime"),
+        other => bail!("Unsupported console surface area: {other}"),
+    }
+}
+
+fn title_case(value: &str) -> String {
+    value
+        .split('-')
+        .map(|part| {
+            let mut chars = part.chars();
+            let Some(first) = chars.next() else {
+                return String::new();
+            };
+            format!("{}{}", first.to_uppercase(), chars.collect::<String>())
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn default_icon(area_name: &str) -> &'static str {
+    if area_name == "runtime" {
+        "workflow"
+    } else {
+        "database"
+    }
+}
+
+fn rust_string_literal(value: &str) -> String {
+    format!("{value:?}")
+}
+
+fn ts_string_literal(value: &str) -> Result<String> {
+    serde_json::to_string(value).context("serialize TypeScript string literal")
+}
+
+fn ts_string_literal_lossy(value: &str) -> String {
+    ts_string_literal(value).unwrap_or_else(|_| "\"\"".to_owned())
+}
+
+fn validate_remote_module_manifest(manifest: Value) -> Result<Value> {
+    if !manifest.is_object() {
+        bail!("Remote module manifest must be a JSON object");
+    }
+    let name = string_field(&manifest, "name")?;
+    if name.trim().is_empty() {
+        bail!("Remote module manifest name is required");
+    }
+    let version = string_field(&manifest, "version")?;
+    if version.trim().is_empty() {
+        bail!("Remote module manifest version is required");
+    }
+    if manifest.get("source").and_then(Value::as_str) != Some("remote") {
+        bail!("Remote module manifest source must be remote");
+    }
+    if !manifest.get("capabilities").is_some_and(Value::is_array) {
+        bail!("Remote module manifest capabilities must be an array");
+    }
+    if !manifest.get("console").is_some_and(Value::is_array) {
+        bail!("Remote module manifest console must be an array");
+    }
+    Ok(manifest)
+}
+
+async fn read_json_reference(reference: &str) -> Result<Value> {
+    if reference.starts_with("http://") || reference.starts_with("https://") {
+        let response = reqwest::get(reference)
+            .await
+            .with_context(|| format!("fetch module manifest {reference}"))?;
+        if !response.status().is_success() {
+            bail!(
+                "Failed to fetch module manifest: {} {}",
+                response.status().as_u16(),
+                response.status().canonical_reason().unwrap_or("")
+            );
+        }
+        return response
+            .json::<Value>()
+            .await
+            .context("parse remote module manifest JSON");
+    }
+    let path = if let Some(file_path) = reference.strip_prefix("file://") {
+        PathBuf::from(file_path)
+    } else {
+        PathBuf::from(reference)
+    };
+    read_json(&path)
+}
+
+fn derive_remote_base_url(base_url: Option<&str>, manifest_reference: &str) -> Result<String> {
+    if let Some(base_url) = base_url {
+        return Ok(trim_trailing_slashes(base_url));
+    }
+    if manifest_reference.starts_with("http://") || manifest_reference.starts_with("https://") {
+        let mut url = reqwest::Url::parse(manifest_reference)
+            .with_context(|| format!("parse manifest URL {manifest_reference}"))?;
+        if url.path().ends_with("/manifest") {
+            let next_path = url.path().trim_end_matches("/manifest").to_owned();
+            url.set_path(&next_path);
+            url.set_query(None);
+            url.set_fragment(None);
+            return Ok(trim_trailing_slashes(url.as_str()));
+        }
+    }
+    bail!("Remote module base URL is required unless the manifest URL ends with /manifest");
+}
+
+fn update_remote_modules_env(
+    env_file_path: &Path,
+    module_name: &str,
+    base_url: &str,
+) -> Result<String> {
+    let source = read_text_if_exists(env_file_path)?;
+    let current_value = source
+        .lines()
+        .find_map(|line| line.strip_prefix("REMOTE_MODULES="))
+        .unwrap_or_default();
+    let mut entries = parse_remote_module_entries(current_value);
+    entries.retain(|(name, _)| name != module_name);
+    entries.push((module_name.to_owned(), base_url.to_owned()));
+    Ok(upsert_env_value(
+        &source,
+        "REMOTE_MODULES",
+        &format_remote_module_entries(&entries),
+    ))
+}
+
+fn update_console_package_install_plan(
+    install_plan_path: &Path,
+    manifest: &Value,
+    manifest_reference: &str,
+    base_url: &str,
+) -> Result<Value> {
+    let module_name = string_field(manifest, "name")?.trim();
+    let mut plan = read_json_if_exists(install_plan_path)?
+        .unwrap_or_else(|| json!({ "modules": [], "version": 1 }));
+    let modules = plan
+        .get_mut("modules")
+        .and_then(Value::as_array_mut)
+        .ok_or_else(|| anyhow!("Console package install plan modules must be an array"))?;
+    modules.retain(|entry| entry.get("moduleName").and_then(Value::as_str) != Some(module_name));
+    modules.push(json!({
+        "baseUrl": base_url,
+        "consolePackages": remote_module_console_package_plans(manifest)?,
+        "manifestReference": manifest_reference,
+        "moduleName": module_name,
+        "restartRequired": true,
+    }));
+    Ok(json!({ "modules": modules, "version": 1 }))
+}
+
+fn remote_module_console_package_plans(manifest: &Value) -> Result<Vec<Value>> {
+    let module_name = string_field(manifest, "name")?.trim();
+    let mut items = Vec::new();
+    for surface in manifest
+        .get("console")
+        .and_then(Value::as_array)
+        .ok_or_else(|| anyhow!("Remote module manifest console must be an array"))?
+    {
+        let package = surface.get("package").and_then(Value::as_object);
+        let Some(package_name) = package.and_then(|p| p.get("name")).and_then(Value::as_str) else {
+            continue;
+        };
+        let Some(export_name) = package
+            .and_then(|p| p.get("export"))
+            .and_then(Value::as_str)
+        else {
+            continue;
+        };
+        let route = surface.get("route").and_then(Value::as_str).unwrap_or("-");
+        let surface_name = surface.get("name").and_then(Value::as_str).unwrap_or("-");
+        let surface_label = surface
+            .get("label")
+            .and_then(Value::as_str)
+            .unwrap_or(surface_name);
+        let key = console_package_key(package_name, export_name);
+        items.push(json!({
+            "command": format!("pnpm add {package_name}"),
+            "exportName": export_name,
+            "key": key,
+            "packageName": package_name,
+            "reason": format!("{module_name} / {surface_label} / {route}"),
+            "requestedByModule": module_name,
+            "route": route,
+            "status": "requires_manual_install",
+            "surfaceLabel": surface_label,
+            "surfaceName": surface_name,
+        }));
+    }
+    Ok(items)
+}
+
+fn console_package_count_from_install_plan(install_plan: &Value, module_name: &str) -> usize {
+    install_plan
+        .get("modules")
+        .and_then(Value::as_array)
+        .and_then(|modules| {
+            modules.iter().find(|module| {
+                module.get("moduleName").and_then(Value::as_str) == Some(module_name)
+            })
+        })
+        .and_then(|module| module.get("consolePackages"))
+        .and_then(Value::as_array)
+        .map_or(0, Vec::len)
+}
+
+fn module_catalog_entry_from_manifest(
+    manifest: &Value,
+    manifest_reference: &str,
+    base_url: &str,
+    summary: Option<&str>,
+) -> Result<Value> {
+    let empty = Vec::new();
+    let console_surfaces = manifest
+        .get("console")
+        .and_then(Value::as_array)
+        .unwrap_or(&empty);
+    let console_packages = console_surfaces
+        .iter()
+        .filter_map(|surface| {
+            let package = surface.get("package").and_then(Value::as_object)?;
+            Some(json!({
+                "exportName": package.get("export")?.as_str()?,
+                "packageName": package.get("name")?.as_str()?,
+                "route": surface.get("route").and_then(Value::as_str).unwrap_or("-"),
+            }))
+        })
+        .collect::<Vec<_>>();
+    Ok(json!({
+        "baseUrl": base_url,
+        "consolePackages": console_packages,
+        "manifestReference": manifest_reference,
+        "name": string_field(manifest, "name")?.trim(),
+        "source": "remote",
+        "summary": summary.or_else(|| manifest.get("summary").and_then(Value::as_str)).unwrap_or("-"),
+        "version": string_field(manifest, "version")?.trim(),
+    }))
+}
+
+fn unique_console_package_plan_items(install_plan: &Value) -> Vec<ConsolePackagePlanItem> {
+    let mut items_by_key = BTreeMap::new();
+    for module_plan in install_plan
+        .get("modules")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        for console_package in module_plan
+            .get("consolePackages")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            let Some(package_name) = console_package.get("packageName").and_then(Value::as_str)
+            else {
+                continue;
+            };
+            let Some(export_name) = console_package.get("exportName").and_then(Value::as_str)
+            else {
+                continue;
+            };
+            items_by_key.insert(
+                console_package_key(package_name, export_name),
+                ConsolePackagePlanItem {
+                    export_name: export_name.to_owned(),
+                    package_name: package_name.to_owned(),
+                },
+            );
+        }
+    }
+    items_by_key.into_values().collect()
+}
+
+fn update_package_json_dependency(
+    package_json: &mut Value,
+    package_name: &str,
+    dependency_version: &str,
+) -> Result<()> {
+    let object = package_json
+        .as_object_mut()
+        .ok_or_else(|| anyhow!("Runtime Console package.json must be a JSON object"))?;
+    let dependencies = object
+        .entry("dependencies")
+        .or_insert_with(|| Value::Object(Map::new()))
+        .as_object_mut()
+        .ok_or_else(|| anyhow!("Runtime Console package.json dependencies must be an object"))?;
+    dependencies
+        .entry(package_name.to_owned())
+        .or_insert_with(|| Value::String(dependency_version.to_owned()));
+    Ok(())
+}
+
+fn manifest_name_from_module_export(module_name: &str) -> String {
+    module_name.strip_suffix("Module").map_or_else(
+        || format!("{module_name}Manifest"),
+        |stem| format!("{stem}Manifest"),
+    )
+}
+
+fn console_package_key(package_name: &str, export_name: &str) -> String {
+    format!("{package_name}#{export_name}")
+}
+
+fn parse_remote_module_entries(value: &str) -> Vec<(String, String)> {
+    value
+        .split(',')
+        .filter_map(|entry| {
+            let entry = entry.trim();
+            if entry.is_empty() {
+                return None;
+            }
+            let (name, base_url) = entry.split_once('=')?;
+            let name = name.trim();
+            let base_url = base_url.trim();
+            if name.is_empty() || base_url.is_empty() {
+                None
+            } else {
+                Some((name.to_owned(), base_url.to_owned()))
+            }
+        })
+        .collect()
+}
+
+fn format_remote_module_entries(entries: &[(String, String)]) -> String {
+    entries
+        .iter()
+        .map(|(name, base_url)| format!("{name}={base_url}"))
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn upsert_env_value(source: &str, key: &str, value: &str) -> String {
+    let key_prefix = format!("{key}=");
+    let mut lines = if source.is_empty() {
+        Vec::new()
+    } else {
+        source
+            .split('\n')
+            .map(ToOwned::to_owned)
+            .collect::<Vec<_>>()
+    };
+    if let Some(index) = lines.iter().position(|line| line.starts_with(&key_prefix)) {
+        lines[index] = format!("{key}={value}");
+        format!("{}\n", lines.join("\n").trim_end_matches('\n'))
+    } else {
+        let trimmed = source.trim_end();
+        if trimmed.is_empty() {
+            format!("{key}={value}\n")
+        } else {
+            format!("{trimmed}\n{key}={value}\n")
+        }
+    }
+}
+
+fn insert_before_needle(file_source: &str, entry: &str, needle: &str) -> Result<String> {
+    if file_source.contains(entry.trim()) {
+        return Ok(file_source.to_owned());
+    }
+    let index = file_source
+        .find(needle)
+        .ok_or_else(|| anyhow!("Could not find insertion point: {needle}"))?;
+    Ok(format!(
+        "{}{}{}",
+        &file_source[..index],
+        entry,
+        &file_source[index..]
+    ))
+}
+
+fn runtime_console_paths(runtime_console_root: &Path) -> RuntimeConsolePaths {
+    RuntimeConsolePaths {
+        manifest_exports_path: runtime_console_root.join("src/console-package-manifest-exports.ts"),
+        module_exports_path: runtime_console_root.join("src/console-package-module-exports.ts"),
+        oxlint_config_path: runtime_console_root.join("oxlint.config.ts"),
+        package_json_path: runtime_console_root.join("package.json"),
+        tsconfig_path: runtime_console_root.join("tsconfig.json"),
+    }
+}
+
+fn default_runtime_console_root_for_repo(repo_root: &Path) -> Result<PathBuf> {
+    if repo_root
+        .join("src/console-package-module-exports.ts")
+        .exists()
+    {
+        return Ok(repo_root.to_path_buf());
+    }
+    let nested = repo_root.join("apps/runtime-console");
+    if nested
+        .join("src/console-package-module-exports.ts")
+        .exists()
+    {
+        return Ok(nested);
+    }
+    let cwd = std::env::current_dir().context("resolve current directory")?;
+    if cwd.join("src/console-package-module-exports.ts").exists() {
+        return Ok(cwd);
+    }
+    Ok(nested)
+}
+
+fn resolve_repo_root(repo_root: Option<&Path>) -> Result<PathBuf> {
+    if let Some(repo_root) = repo_root {
+        return absolutize(repo_root);
+    }
+    find_repo_root(&std::env::current_dir().context("resolve current directory")?)
+}
+
+fn find_repo_root(start_path: &Path) -> Result<PathBuf> {
+    let mut current = absolutize(start_path)?;
+    loop {
+        if current.join("Cargo.toml").exists() && current.join("crates/app-bootstrap").exists() {
+            return Ok(current);
+        }
+        let Some(parent) = current.parent() else {
+            return absolutize(start_path);
+        };
+        if parent == current {
+            return absolutize(start_path);
+        }
+        current = parent.to_path_buf();
+    }
+}
+
+fn absolutize(path: &Path) -> Result<PathBuf> {
+    if path.is_absolute() {
+        Ok(path.to_path_buf())
+    } else {
+        Ok(std::env::current_dir()
+            .context("resolve current directory")?
+            .join(path))
+    }
+}
+
+fn resolve_path(repo_root: &Path, path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        repo_root.join(path)
+    }
+}
+
+fn display_relative(base: &Path, path: &Path) -> String {
+    path.strip_prefix(base)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .to_string()
+}
+
+fn trim_trailing_slashes(value: &str) -> String {
+    value.trim_end_matches('/').to_owned()
+}
+
+fn string_field<'a>(value: &'a Value, key: &str) -> Result<&'a str> {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("Remote module manifest {key} is required"))
+}
+
+fn read_json(path: &Path) -> Result<Value> {
+    let source = read_text(path)?;
+    serde_json::from_str(&source).with_context(|| format!("parse JSON {}", path.display()))
+}
+
+fn read_json_if_exists(path: &Path) -> Result<Option<Value>> {
+    if path.exists() {
+        Ok(Some(read_json(path)?))
+    } else {
+        Ok(None)
+    }
+}
+
+fn read_text(path: &Path) -> Result<String> {
+    fs::read_to_string(path).with_context(|| format!("read {}", path.display()))
+}
+
+fn read_text_if_exists(path: &Path) -> Result<String> {
+    if path.exists() {
+        read_text(path)
+    } else {
+        Ok(String::new())
+    }
+}
+
+fn write_file(path: &Path, contents: &[u8]) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("create directory {}", parent.display()))?;
+    }
+    fs::write(path, contents).with_context(|| format!("write {}", path.display()))
+}
+
+fn write_json(path: &Path, value: &Value) -> Result<()> {
+    let mut contents = serde_json::to_string_pretty(value)?;
+    contents.push('\n');
+    write_file(path, contents.as_bytes())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn env_remote_modules_are_upserted() {
+        let source = "APP_ENV=local\nREMOTE_MODULES=crm=http://old\nRUST_LOG=info\n";
+        let updated = upsert_env_value(
+            source,
+            "REMOTE_MODULES",
+            &format_remote_module_entries(&[
+                ("crm".to_owned(), "http://old".to_owned()),
+                ("billing".to_owned(), "http://new".to_owned()),
+            ]),
+        );
+
+        assert!(updated.contains("APP_ENV=local"));
+        assert!(updated.contains("RUST_LOG=info"));
+        assert!(updated.contains("REMOTE_MODULES=crm=http://old,billing=http://new"));
+    }
+
+    #[test]
+    fn manifest_url_derives_base_url() {
+        let base = derive_remote_base_url(
+            None,
+            "https://example.com/lenso/module/v1/manifest?debug=1#hash",
+        )
+        .unwrap();
+
+        assert_eq!(base, "https://example.com/lenso/module/v1");
+    }
+
+    #[test]
+    fn plan_items_are_unique() {
+        let plan = json!({
+            "modules": [
+                {
+                    "consolePackages": [
+                        { "packageName": "@vendor/a", "exportName": "aModule" },
+                        { "packageName": "@vendor/a", "exportName": "aModule" }
+                    ]
+                }
+            ]
+        });
+
+        assert_eq!(
+            unique_console_package_plan_items(&plan),
+            vec![ConsolePackagePlanItem {
+                export_name: "aModule".to_owned(),
+                package_name: "@vendor/a".to_owned(),
+            }]
+        );
+    }
+}

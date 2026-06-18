@@ -193,23 +193,22 @@ third-party modules can rely on it.
 The local scaffold command is optimized for project-owned linked modules:
 
 ```sh
-pnpm create:module billing --with-console
+lenso module create billing --with-console
 ```
 
 Third-party scaffolding uses a separate remote-oriented lane:
 
 ```sh
-pnpm create:module billing --remote --output-dir ../module-packages
+lenso module create billing --remote --output-dir ../module-packages
 lenso module catalog add https://example.com/lenso/module/v1/manifest
 lenso module add https://example.com/lenso/module/v1/manifest
 lenso module marketplace install https://example.com/lenso/module/v1/manifest
-lenso console-package apply-plan
 ```
 
 The default install path is user-driven: see a module, install from its
-manifest, apply the console package plan, restart the host, and use the module.
-The manifest URL is the install boundary; local host files record the remote
-module and any console package commands that need to be run.
+manifest, install packages, restart the host, and use the module. `module add`
+updates host-local remote module configuration and applies Runtime Console
+package registration when the manifest declares console packages.
 
 `.lenso/module-catalog.json` is the optional discovery list behind Available
 Modules. A host can add entries with `lenso module catalog add <manifest-url>`.
@@ -218,6 +217,12 @@ console package hints. The admin API reflects that discovery data back to
 Runtime Console with capability counts, host compatibility preflight results,
 and archived catalog entries; it still does not act as a marketplace review or
 trust workflow.
+
+When a host has no local catalog, Available Modules preserves the current loaded
+remote-module view if any remote modules are already configured. If neither a
+local catalog nor loaded remote modules exist, the API falls back to the
+read-only `builtin:lenso-official-module-catalog` so a fresh host has an
+official discovery source without fetching remote marketplace state.
 
 If the manifest is installed from a local file or non-protocol URL, pass the
 runtime module base URL explicitly:
@@ -238,6 +243,12 @@ The first CLI install lane writes host-local state only:
 - `.lenso/console-package-install-plan.json`: records requested Runtime Console
   packages, exports, routes, and manual `pnpm add` commands to run in the
   Runtime Console repository.
+
+Runtime Console can perform the same host-local install write through
+`POST /admin/data/available-modules/{module}/install`. The visual path is still
+an operator-reviewed install: it writes `.env` and the console package install
+plan, then reports restart/package follow-up state. It does not execute shell
+commands, install npm packages, hot-load modules, or grant marketplace trust.
 
 `lenso console-package apply-plan` consumes that plan and updates Runtime
 Console package dependencies, manifest exports, and module export mappings.

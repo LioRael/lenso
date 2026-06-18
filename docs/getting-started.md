@@ -109,7 +109,6 @@ Install its manifest:
 
 ```sh
 lenso module add http://127.0.0.1:4100/lenso/module/v1/manifest
-lenso console-package apply-plan
 ```
 
 Restart the local services and open the Runtime Console. The module should be
