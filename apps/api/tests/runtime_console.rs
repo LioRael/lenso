@@ -4,7 +4,7 @@ use axum::http::{Request, StatusCode};
 use chrono::{DateTime, Utc};
 use platform_core::{
     AppConfig, AppContext, DatabaseConfig, InMemoryTelemetrySpanProvider, LoggingEventPublisher,
-    PLATFORM_MIGRATIONS, TelemetrySpan, apply_migrations,
+    ModuleSourcesConfig, PLATFORM_MIGRATIONS, TelemetrySpan, apply_migrations,
 };
 use platform_runtime::RUNTIME_MIGRATIONS;
 use platform_testing::TestDatabase;
@@ -2108,7 +2108,7 @@ async fn test_app(db: &TestDatabase) -> axum::Router {
         .await
         .expect("migrations should apply");
 
-    let mut config = AppConfig::from_env();
+    let mut config = test_app_config();
     config.database = DatabaseConfig {
         url: db.url.clone(),
         max_connections: 5,
@@ -2128,7 +2128,7 @@ async fn test_app_with_telemetry(db: &TestDatabase, spans: Vec<TelemetrySpan>) -
         .await
         .expect("migrations should apply");
 
-    let mut config = AppConfig::from_env();
+    let mut config = test_app_config();
     config.database = DatabaseConfig {
         url: db.url.clone(),
         max_connections: 5,
@@ -2144,7 +2144,7 @@ fn auth_only_app() -> axum::Router {
 }
 
 fn auth_only_app_for_environment(environment: &str) -> axum::Router {
-    let mut config = AppConfig::from_env();
+    let mut config = test_app_config();
     config.service.environment = environment.to_owned();
     let ctx = AppContext::new(
         config,
@@ -2154,6 +2154,14 @@ fn auth_only_app_for_environment(environment: &str) -> axum::Router {
     );
     install_runtime_function_declarations();
     build_router(ctx)
+}
+
+fn test_app_config() -> AppConfig {
+    let mut config = AppConfig::from_env();
+    // ponytail: runtime console tests need built-in routes, not local .env module toggles.
+    config.module_sources = ModuleSourcesConfig::default();
+    config.modules.clear();
+    config
 }
 
 fn install_runtime_function_declarations() {

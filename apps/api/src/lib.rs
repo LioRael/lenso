@@ -46,6 +46,10 @@ pub async fn run_from_env_with_composition(
     runtime_config.spawn_listener();
     ctx = ctx.with_runtime_config_provider(runtime_config);
 
+    let _remote_services = app_bootstrap::start_installed_remote_module_services(&ctx)
+        .await
+        .context("failed to start remote module services")?;
+
     let admin_modules = app_bootstrap::load_admin_modules_with_composition(&ctx, &composition)
         .await
         .context("failed to load admin modules")?;

@@ -116,7 +116,6 @@ Deferred from the first implementation:
 - Bidirectional host/module action bridge.
 - Remote JavaScript bundle loading.
 - Wasm component execution.
-- Marketplace install, signature verification, and provenance policy.
 - Module-owned routing inside the Runtime Console shell.
 
 ## Relationship To Existing Surfaces

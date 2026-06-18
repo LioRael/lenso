@@ -7,8 +7,8 @@ use platform_admin_data::{
     install_admin_module_refresh_fn, install_admin_modules,
 };
 use platform_core::{
-    AppConfig, AppContext, LoggingEventPublisher, PLATFORM_MIGRATIONS, StoryDisplayDescriptor,
-    StoryDisplaySource, apply_migrations,
+    AppConfig, AppContext, LoggingEventPublisher, ModuleSourcesConfig, PLATFORM_MIGRATIONS,
+    StoryDisplayDescriptor, StoryDisplaySource, apply_migrations,
 };
 use platform_module::{
     AdminAction, AdminActionConfirmation, AdminActionDangerLevel, AdminActionInputField,
@@ -43,6 +43,14 @@ fn lazy_failing_db() -> platform_core::DbPool {
                 .username("postgres")
                 .database("lenso_test"),
         )
+}
+
+fn app_config_with_default_modules() -> AppConfig {
+    let mut config = AppConfig::from_env();
+    // ponytail: these metadata tests assert built-in demo modules, not local .env toggles.
+    config.module_sources = ModuleSourcesConfig::default();
+    config.modules.clear();
+    config
 }
 
 fn remove_module_catalog_fixture() {
@@ -386,7 +394,7 @@ async fn modules_endpoint_lists_registry_metadata() {
 async fn modules_endpoint_lists_linked_module_http_routes() {
     let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
     let ctx = AppContext::new(
-        AppConfig::from_env(),
+        app_config_with_default_modules(),
         lazy_failing_db(),
         Arc::new(LoggingEventPublisher),
     );
@@ -430,7 +438,7 @@ async fn modules_endpoint_lists_linked_module_http_routes() {
 async fn modules_endpoint_lists_linked_modules_without_admin_surfaces() {
     let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
     let ctx = AppContext::new(
-        AppConfig::from_env(),
+        app_config_with_default_modules(),
         lazy_failing_db(),
         Arc::new(LoggingEventPublisher),
     );

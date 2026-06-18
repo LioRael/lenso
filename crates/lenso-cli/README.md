@@ -55,15 +55,44 @@ lenso console-package create billing
 ## Install a remote module
 
 ```sh
-lenso module add https://example.com/lenso/module/v1/manifest
+lenso module install https://example.com/lenso/module/v1/manifest
 ```
 
-`module add` updates `REMOTE_MODULES`, writes the local console package install
-plan, and applies Runtime Console package registration when the manifest declares
-console packages. Use `--runtime-console-root` when the console app lives outside
-the host repository, and `--no-console-plan` when you want to apply the plan
-later with:
+`module install` updates `REMOTE_MODULES`, writes the local console package
+install plan, and applies Runtime Console package registration when the manifest
+declares console packages. `module add` remains a compatibility alias for remote
+installs. Use `--runtime-console-root` when the console app lives outside the
+host repository, and `--no-console-plan` when you want to apply the plan later
+with:
 
 ```sh
 lenso console-package apply-plan
+```
+
+Remote manifests may also declare `install.env` values and `install.commands`.
+Env values are written to `.env`; commands are recorded in the plan and run only
+when you pass:
+
+```sh
+lenso module install https://example.com/lenso/module/v1/manifest --run-install-commands
+```
+
+For long-running remote module backends, declare `install.services`. These are
+stored in `.lenso/module-services.json` and started before the host loads remote
+modules on API/worker startup. Services started by the host are tracked with
+`.lock`/`.pid` files and stopped when the owning API/worker process exits;
+services that are already ready before startup are treated as external and are
+not stopped by the host.
+
+Remove the local remote-module source and its pending console package plan with:
+
+```sh
+lenso module uninstall billing
+```
+
+Enable or disable an already-linked module without deleting source files:
+
+```sh
+lenso module install auth --source linked
+lenso module uninstall auth --source linked
 ```

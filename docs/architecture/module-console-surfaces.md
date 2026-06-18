@@ -132,9 +132,9 @@ implementation supports trusted workspace packages:
 4. The module uses the host facade instead of private host imports.
 
 A later installable-module step should preserve those boundaries and add the
-missing lifecycle pieces: dependency resolution, package provenance, version
-compatibility, capability enforcement before route mounting, and failure UI
-when a package cannot be loaded.
+missing lifecycle pieces: dependency resolution, version compatibility,
+capability enforcement before route mounting, and failure UI when a package
+cannot be loaded.
 
 Do not add ad hoc dynamic imports, global objects, or direct host token access as
 a shortcut. Runtime Console package loading needs a versioned host API and
@@ -221,9 +221,9 @@ Future installers can choose one of these execution lanes:
 - A dev-only local tool that updates the host workspace and requires an explicit
   developer action.
 - A backend endpoint such as `/admin/data/console-packages/install`, guarded by
-  admin auth, provenance checks, lockfile policy, and audit logging.
-- A marketplace install protocol with signed packages, version compatibility,
-  and declared host API requirements.
+  admin auth, lockfile policy, and audit logging.
+- An official marketplace install protocol with curated packages, version
+  compatibility, and declared host API requirements.
 
 All lanes must preserve the same request/result boundary. The host decides
 whether a package is trusted, compatible, and allowed; module manifests only

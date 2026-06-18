@@ -63,7 +63,8 @@ current 1 MiB proxy request limit. DELETE request bodies must be empty; DELETE
 - Event handler registration or remote outbox dispatch.
 - Browser-facing embedded admin bridges.
 - Arbitrary streaming, websocket, SSE, or multipart proxying.
-- Marketplace trust, signatures, and install-time provenance.
+- Operator trust decisions for explicit module installs and official catalog
+  curation.
 
 ## Host Namespace
 
@@ -261,8 +262,8 @@ Initial implementation should expose one static proxy route shape:
 ```
 
 That route can document the proxy envelope and limitations, but not every
-module-owned endpoint. A later install-time contract system may expose per-module
-OpenAPI fragments after trust, validation, and versioning are specified.
+module-owned endpoint. A later contract system may expose per-module OpenAPI
+fragments after validation and versioning are specified.
 
 ## Implementation Order
 

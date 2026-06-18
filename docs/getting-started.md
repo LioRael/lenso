@@ -108,7 +108,7 @@ manifest here with the same command a user would run.
 Install its manifest:
 
 ```sh
-lenso module add http://127.0.0.1:4100/lenso/module/v1/manifest
+lenso module install http://127.0.0.1:4100/lenso/module/v1/manifest
 ```
 
 Restart the local services and open the Runtime Console. The module should be
