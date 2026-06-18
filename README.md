@@ -44,9 +44,8 @@ repository. Runnable examples live in
 A transitional host starter lives in
 [`LioRael/lenso-cli`](https://github.com/LioRael/lenso-cli) and is scaffolded
 with the `lenso` CLI (`lenso host init <dir>`). It shows the current API,
-worker, migration, and local Postgres shape. New starters should use
-`lenso = { features = ["host"] }`; the `lenso-host` crate remains as a
-compatibility re-export for existing generated hosts.
+worker, migration, and local Postgres shape. New starters use
+`lenso = { features = ["host"] }`.
 
 ## Architecture Overview
 
@@ -70,7 +69,6 @@ First-time local setup lives in [docs/getting-started.md](docs/getting-started.m
   - `lenso-worker`: background worker and outbox relay app.
   - `lenso-migrate`: deterministic migration runner.
   - `lenso-bootstrap`: composition root listing the concrete modules; both `lenso-api` and `lenso-worker` wire their module set from here.
-  - `lenso-host`: compatibility re-export for existing starter hosts.
   - `platform-core`: config, errors, context, DB, migrations, events, outbox, health, telemetry primitives.
   - `platform-http`: Axum adapters, request context middleware, JSON extractor, error responses, health routes, and the `OpenApiRouter` re-exports for single-source OpenAPI.
   - `platform-runtime`: embedded runtime primitives for functions, triggers, queues, flows, retries, and store traits.

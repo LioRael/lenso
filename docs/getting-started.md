@@ -24,8 +24,8 @@ For a blank host project, install the standalone CLI and scaffold the starter:
 
 ```sh
 cargo install lenso-cli
-lenso host init ../my-lenso-host
-cd ../my-lenso-host
+lenso host init ../my-lenso-app
+cd ../my-lenso-app
 cp .env.example .env
 docker compose up -d postgres
 cargo run --bin migrate
