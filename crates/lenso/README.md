@@ -5,7 +5,7 @@
 Install it from crates.io:
 
 ```sh
-cargo add lenso@0.1.0
+cargo add lenso@0.2.0
 ```
 
 This first facade slice exposes serializable module manifest declarations:
