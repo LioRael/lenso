@@ -100,6 +100,7 @@ fn app_context_with_remote_modules_and_db(
         http: HttpConfig::default(),
         telemetry: TelemetryConfig::default(),
         auth: AuthConfig::default(),
+        console: Default::default(),
         module_sources: ModuleSourcesConfig {
             remote,
             ..ModuleSourcesConfig::default()
