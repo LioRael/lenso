@@ -6,16 +6,19 @@ Rust-first service-ready modular monolith scaffold with generated contracts.
 
 The platform starts as one deployable backend system with clear module boundaries. Modules own product capabilities, platform crates provide shared service-kit foundations, the runtime handles durable background work, and contracts produce stable API/event artifacts. The Runtime Console lives in the sibling `lenso-runtime-console` repository and consumes this backend API.
 
-## Repository Pair
+## Repository Set
 
 - Backend platform: this repository owns Rust services, platform crates, modules, migrations, and contracts.
 - Runtime Console: [`LioRael/lenso-runtime-console`](https://github.com/LioRael/lenso-runtime-console) owns the frontend workspace that consumes the admin APIs from this repository.
+- CLI: [`LioRael/lenso-cli`](https://github.com/LioRael/lenso-cli) owns the standalone `lenso` command and host starter template.
 
-Keep both repositories checked out as siblings when working on Console-backed backend changes:
+Keep the relevant repositories checked out as siblings when working across
+backend, Console, or CLI boundaries:
 
 ```text
 framework/
   lenso/
+  lenso-cli/
   lenso-runtime-console/
 ```
 
@@ -39,12 +42,11 @@ repository. Runnable examples live in
 [`LioRael/lenso-examples`](https://github.com/LioRael/lenso-examples).
 
 A transitional host starter lives in
-[crates/lenso-cli/templates/starter-host](crates/lenso-cli/templates/starter-host)
-and is scaffolded with the `lenso` CLI (`lenso host init <dir>`). It shows the
-current API, worker, migration, and local Postgres shape while the stable public
-host facade is still being designed. Its binaries go through the temporary
-`lenso-host` facade instead of importing internal app or platform crates
-directly.
+[`LioRael/lenso-cli`](https://github.com/LioRael/lenso-cli) and is scaffolded
+with the `lenso` CLI (`lenso host init <dir>`). It shows the current API,
+worker, migration, and local Postgres shape while the stable public host facade
+is still being designed. Its binaries go through the temporary `lenso-host`
+facade instead of importing internal app or platform crates directly.
 
 ## Architecture Overview
 
@@ -63,7 +65,6 @@ First-time local setup lives in [docs/getting-started.md](docs/getting-started.m
 
 - `crates/`
   - `lenso`: public Rust facade crate for serializable module-authoring declarations and manifest lints.
-  - `lenso-cli`: command-line interface for scaffolding host applications (`lenso host init <dir>`).
   - `lenso-api`: Axum HTTP API app.
   - `lenso-worker`: background worker and outbox relay app.
   - `lenso-migrate`: deterministic migration runner.
@@ -177,7 +178,6 @@ just generate
 - `just fmt`: format Rust code.
 - `just fmt-check`: check Rust formatting.
 - `just check`: run the default local quality gate without slow smoke checks.
-- `just smoke-check`: run slower scaffolded-host smoke checks.
 - `just test`: run Rust workspace tests with the locked dependency graph.
 - `just rust-check`: run `cargo check` for the whole workspace.
 - `just arch-check`: run architecture guardrails.

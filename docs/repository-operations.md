@@ -88,13 +88,13 @@ somewhere else.
 
 ## Migration Checklist
 
-When moving this repo pair to a new owner or recreating either repository:
+When moving the Lenso repositories to a new owner or recreating one of them:
 
-1. Push both repositories and keep them as private repos unless intentionally publishing them.
-2. Reapply `main` branch protection in both repositories.
+1. Push `lenso`, `lenso-runtime-console`, and `lenso-cli`, and keep them as private repos unless intentionally publishing them.
+2. Reapply `main` branch protection in each repository.
 3. Verify the required check name is still `quality`.
 4. Recreate the Runtime Console read-only backend deploy key.
 5. Recreate `LENSO_REPO_DEPLOY_KEY` in the Runtime Console repository.
-6. Run both main-branch CI workflows and confirm they pass.
+6. Run the main-branch CI workflows and confirm they pass.
 7. Preserve or intentionally replace `archive/pre-squash-history`.
 8. Update README repository links and GitHub metadata if owner or repo names changed.

@@ -94,8 +94,9 @@ starter may use normal Rust crates such as `sqlx`, `serde`, `axum`, and
 authoring helpers that stay stable across real starter data slices. App-owned
 SQL and CRUD code stay in the starter.
 
-The starter host template lives in `crates/lenso-cli/templates/starter-host` and
-is the single source for the `lenso host init <dir>` scaffolder. It keeps the
+The starter host template lives in the standalone
+[`LioRael/lenso-cli`](https://github.com/LioRael/lenso-cli) repository and is
+the single source for the `lenso host init <dir>` scaffolder. It keeps the
 current API, worker, and migration entrypoints visible from a blank project
 while depending on the Git-pinned `lenso-host` package. It uses Cargo's
 system-Git fetch mode so private repository credentials follow normal Git
@@ -165,7 +166,7 @@ facade exists.
    as the remote-module authoring facade.
 2. Keep the crates.io `lenso` facade limited to stable module-authoring
    declarations until a host application API is intentionally designed.
-3. Keep `crates/lenso-cli/templates/starter-host` as the host facade pressure
+3. Keep the standalone `lenso-cli` starter template as the host facade pressure
    test until its boot, migration, HTTP, and app-owned data slices stabilize.
 4. Move only the stable subset of `lenso-host` into a future `lenso` `host`
    feature; leave app-owned SQL, repositories, CRUD shape, auth/session policy,

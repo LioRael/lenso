@@ -27,14 +27,8 @@ Registry baseline as of the first release line:
 
 - `lenso@0.1.0` is published on crates.io.
 - `lenso@0.2.1` is the next facade crate publish candidate.
-- `lenso-cli@0.1.1` is the first CLI publish candidate: it scaffolds host
-  applications with `lenso host init <dir>`, creates linked and remote module
-  scaffolds with `lenso module create`, installs remote modules with
-  `lenso module add <manifest-url>`, and creates or applies Runtime Console
-  package registrations. It embeds the starter template and the prebuilt
-  Runtime Console payload, and depends only on registry crates, so it is
-  publishable independently of the internal workspace crates. Publish it after
-  its CLI gate (`just cli-check`) is stable.
+- `lenso-cli` is owned by the standalone
+  [`LioRael/lenso-cli`](https://github.com/LioRael/lenso-cli) repository.
 
 ## Published Baseline
 
@@ -45,7 +39,6 @@ project:
 | --- | --- | --- | --- | --- |
 | 1 | `lenso` crates.io crate | `0.1.0` | `lenso` | Already published; keep internal workspace crates private. |
 | 2 | `lenso` crates.io crate | `0.2.0` | `lenso` | Next facade crate release for current module-authoring contracts. |
-| 3 | `lenso-cli` crates.io crate | `0.1.0` | `lenso` | Unified CLI for host, module, remote module, and Runtime Console package workflows. |
 
 ## Backend Package Gate
 
@@ -58,14 +51,6 @@ just package-readiness
 The gate verifies that `cargo package -p lenso --allow-dirty` can assemble the
 facade crate without depending on unpublished internal crates. It does not upload
 anything to crates.io.
-
-`lenso-cli` is publishable for the same reason: its dependencies are registry
-crates, and the embedded starter template plus Runtime Console payload are
-bundled inside the crate. Its package gate is separate:
-
-```sh
-just cli-package-readiness
-```
 
 `cargo package -p lenso-host --allow-dirty --no-verify` is useful as a boundary
 probe, but it is not a release gate yet. Today it stops at repository-internal
@@ -88,9 +73,8 @@ Before publishing a future version:
 
 For the real upload, prefer the GitHub `release` workflow with
 `publish_rust_crate=true` and the `CARGO_REGISTRY_TOKEN` repository secret
-configured. Use `publish_lenso_cli=true` only when intentionally publishing the
-CLI from this repository. Manual publishing should remain a fallback for
-registry outages or workflow failures after the same dry-run checks have passed.
+configured. Manual publishing should remain a fallback for registry outages or
+workflow failures after the same dry-run checks have passed.
 
 ## Examples Repository
 

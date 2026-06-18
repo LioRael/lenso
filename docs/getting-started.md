@@ -20,21 +20,16 @@ cargo add lenso@0.2.1
 That crate exposes serializable module declarations and manifest linting. Local
 host development in this backend repository still uses the workspace crates.
 
-For a blank host project, start from the starter template:
+For a blank host project, install the standalone CLI and scaffold the starter:
 
 ```sh
-cp -R crates/lenso-cli/templates/starter-host ../my-lenso-host
+cargo install lenso-cli
+lenso host init ../my-lenso-host
 cd ../my-lenso-host
 cp .env.example .env
 docker compose up -d postgres
 cargo run --bin migrate
 cargo run --bin api
-```
-
-Prefer the scaffolder when it is available:
-
-```sh
-cargo run -p lenso-cli -- host init ../my-lenso-host
 ```
 
 Run `cargo run --bin worker` in a second shell. The template depends on this
@@ -139,4 +134,5 @@ just release-check
 ```
 
 `release-check` runs the backend repository quality gate without slow smoke
-checks. Run `just smoke-check` when touching the CLI starter path.
+checks. Run the CLI repository's starter smoke checks when touching the
+standalone scaffolder.

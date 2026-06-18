@@ -23,9 +23,9 @@ just release-check
 If this command fails, treat the failure as release blocking unless it is a
 documented local infrastructure issue.
 
-This gate intentionally excludes scaffolded-host and service smoke checks. Run
-those separately when touching the CLI/starter path or validating a release
-candidate end to end.
+This gate intentionally excludes service smoke checks. Run those separately
+when validating a release candidate end to end. CLI starter checks live in the
+standalone `lenso-cli` repository.
 
 Runtime Console checks run in the sibling `lenso-runtime-console` repository.
 
@@ -41,12 +41,6 @@ This verifies the public `lenso` facade crate package. The detailed package and
 examples split checklist lives in [package-readiness.md](package-readiness.md).
 
 ## Local Smoke
-
-For the scaffolded host path, run:
-
-```sh
-just smoke-check
-```
 
 Use this sequence for a manual service smoke:
 
@@ -146,4 +140,4 @@ When triggered with `publish_rust_crate=false`, the workflow performs the
 backend `lenso` package dry-run only. When `publish_rust_crate=true`, it
 requires the `CARGO_REGISTRY_TOKEN` repository secret and publishes the
 backend-owned Rust artifact after the same gates pass. `lenso-cli` publishing is
-controlled separately by `publish_lenso_cli`.
+owned by the standalone CLI repository.
