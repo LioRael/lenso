@@ -1,7 +1,7 @@
-use app_api::build_router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
 use chrono::{DateTime, Utc};
+use lenso_api::build_router;
 use platform_core::{
     AppConfig, AppContext, DatabaseConfig, InMemoryTelemetrySpanProvider, LoggingEventPublisher,
     ModuleSourcesConfig, PLATFORM_MIGRATIONS, TelemetrySpan, apply_migrations,
@@ -2003,7 +2003,7 @@ async fn service_actor_can_get_function_run_by_id() {
 
 #[tokio::test]
 async fn admin_runtime_openapi_contract_is_present() {
-    let document = app_api::openapi_document();
+    let document = lenso_api::openapi_document();
     let value = serde_json::to_value(&document).expect("OpenAPI document should serialize");
 
     assert_eq!(

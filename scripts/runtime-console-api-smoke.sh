@@ -57,7 +57,7 @@ wait_for_remote_runtime_function() {
     done
 
     echo "Runtime Console API smoke failed: remote runtime function did not complete" >&2
-    echo "Start app-worker with REMOTE_MODULES configured." >&2
+    echo "Start lenso-worker with REMOTE_MODULES configured." >&2
     echo "Response:" >&2
     jq . "$file" >&2 || cat "$file" >&2
     exit 1

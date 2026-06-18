@@ -25,9 +25,9 @@ Use `$lenso-module-framework` for manifest/binding/admin-surface architecture, `
 
 - `crates/platform-module`: manifest data, admin surfaces, runtime declarations, HTTP route declarations, and manifest lint helpers.
 - `crates/platform-module-remote`: remote source loading, protocol/client behavior, admin data source, HTTP proxy registry/router, and proxy-backed runtime functions.
-- `crates/app-bootstrap`: loads configured remote modules, injects admin data sources, builds proxy registries, and registers remote runtime handlers.
-- `apps/api`: mounts host-owned remote proxy routes and includes their static proxy envelopes in OpenAPI.
-- `apps/worker`: runs host-owned runtime execution for linked and proxy-backed remote functions.
+- `crates/lenso-bootstrap`: loads configured remote modules, injects admin data sources, builds proxy registries, and registers remote runtime handlers.
+- `crates/lenso-api`: mounts host-owned remote proxy routes and includes their static proxy envelopes in OpenAPI.
+- `crates/lenso-worker`: runs host-owned runtime execution for linked and proxy-backed remote functions.
 - `apps/runtime-console`: renders module metadata, custom admin surfaces, manifest lints, story nodes, Technical Operations, and `/operations/remote-calls`.
 
 ## Boundaries
@@ -83,7 +83,7 @@ Use focused Rust checks first:
 cargo test --locked -p platform-module --all-targets
 cargo test --locked -p platform-module-remote --all-targets
 cargo test --locked -p platform-admin-data --all-targets
-cargo test --locked -p app-bootstrap --all-targets
+cargo test --locked -p lenso-bootstrap --all-targets
 ```
 
 For API/contract changes:

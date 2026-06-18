@@ -1,8 +1,8 @@
 set dotenv-load := true
 
-api_pkg := "app-api"
-worker_pkg := "app-worker"
-migrate_pkg := "app-migrate"
+api_pkg := "lenso-api"
+worker_pkg := "lenso-worker"
+migrate_pkg := "lenso-migrate"
 compose_file := "infrastructure/local/docker-compose.yml"
 
 default:

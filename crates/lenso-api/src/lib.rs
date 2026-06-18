@@ -20,11 +20,11 @@ pub mod openapi;
 pub use openapi::openapi_document;
 
 pub async fn run_from_env() -> anyhow::Result<()> {
-    run_from_env_with_composition(app_bootstrap::HostComposition::default()).await
+    run_from_env_with_composition(lenso_bootstrap::HostComposition::default()).await
 }
 
 pub async fn run_from_env_with_composition(
-    composition: app_bootstrap::HostComposition,
+    composition: lenso_bootstrap::HostComposition,
 ) -> anyhow::Result<()> {
     let config = AppConfig::try_from_env().context("invalid application configuration")?;
     telemetry::init(&config.telemetry)?;
@@ -33,10 +33,10 @@ pub async fn run_from_env_with_composition(
     let mut ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
 
     let descriptors =
-        app_bootstrap::runtime_config_descriptors_with_composition(&ctx, &composition)
+        lenso_bootstrap::runtime_config_descriptors_with_composition(&ctx, &composition)
             .context("failed to collect runtime-config descriptors")?;
     let groups =
-        app_bootstrap::runtime_config_group_descriptors_with_composition(&ctx, &composition)
+        lenso_bootstrap::runtime_config_group_descriptors_with_composition(&ctx, &composition)
             .context("failed to collect runtime-config groups")?;
     let registry = RuntimeConfigRegistry::try_new_with_groups(descriptors, groups)
         .context("duplicate runtime-config descriptor registered")?;
@@ -48,20 +48,20 @@ pub async fn run_from_env_with_composition(
     runtime_config.spawn_listener();
     ctx = ctx.with_runtime_config_provider(runtime_config);
 
-    let _remote_services = app_bootstrap::start_installed_remote_module_services(&ctx)
+    let _remote_services = lenso_bootstrap::start_installed_remote_module_services(&ctx)
         .await
         .context("failed to start remote module services")?;
 
-    let admin_modules = app_bootstrap::load_admin_modules_with_composition(&ctx, &composition)
+    let admin_modules = lenso_bootstrap::load_admin_modules_with_composition(&ctx, &composition)
         .await
         .context("failed to load admin modules")?;
     platform_admin_data::install_admin_modules(admin_modules);
     let admin_module_metadata =
-        app_bootstrap::load_admin_module_metadata_with_composition(&ctx, &composition)
+        lenso_bootstrap::load_admin_module_metadata_with_composition(&ctx, &composition)
             .await
             .context("failed to load admin module metadata")?;
     install_admin_module_metadata(admin_module_metadata);
-    let remote_http_proxy_registry = app_bootstrap::load_remote_http_proxy_registry(&ctx)
+    let remote_http_proxy_registry = lenso_bootstrap::load_remote_http_proxy_registry(&ctx)
         .await
         .context("failed to load remote HTTP proxy registry")?;
     platform_module_remote::install_remote_http_proxy_registry(remote_http_proxy_registry);
@@ -71,7 +71,7 @@ pub async fn run_from_env_with_composition(
     platform_admin_data::install_admin_module_refresh_fn(move || {
         let ctx = admin_refresh_ctx.clone();
         let composition = admin_refresh_composition.clone();
-        async move { app_bootstrap::load_admin_modules_with_composition(&ctx, &composition).await }
+        async move { lenso_bootstrap::load_admin_modules_with_composition(&ctx, &composition).await }
     });
     let admin_metadata_refresh_ctx = ctx.clone();
     let admin_metadata_refresh_composition = composition.clone();
@@ -80,7 +80,7 @@ pub async fn run_from_env_with_composition(
         let composition = admin_metadata_refresh_composition.clone();
         async move {
             let metadata =
-                app_bootstrap::load_admin_module_metadata_with_composition(&ctx, &composition)
+                lenso_bootstrap::load_admin_module_metadata_with_composition(&ctx, &composition)
                     .await?;
             install_platform_admin_catalogs(&metadata);
             Ok(metadata)
@@ -117,15 +117,15 @@ pub fn build_router(ctx: AppContext) -> Router {
 }
 
 pub fn try_build_router(ctx: AppContext) -> platform_core::AppResult<Router> {
-    try_build_router_with_composition(ctx, &app_bootstrap::HostComposition::default())
+    try_build_router_with_composition(ctx, &lenso_bootstrap::HostComposition::default())
 }
 
 pub fn try_build_router_with_composition(
     mut ctx: AppContext,
-    composition: &app_bootstrap::HostComposition,
+    composition: &lenso_bootstrap::HostComposition,
 ) -> platform_core::AppResult<Router> {
     if let Some(actor_resolver) =
-        app_bootstrap::auth_actor_resolver_for_context_with_composition(&ctx, composition)?
+        lenso_bootstrap::auth_actor_resolver_for_context_with_composition(&ctx, composition)?
     {
         ctx = ctx.with_actor_resolver(actor_resolver);
     }
@@ -158,12 +158,12 @@ pub fn try_build_router_with_composition(
 
 fn install_default_platform_admin_catalogs(
     ctx: &AppContext,
-    composition: &app_bootstrap::HostComposition,
+    composition: &lenso_bootstrap::HostComposition,
 ) -> platform_core::AppResult<()> {
-    app_bootstrap::install_default_story_display_catalog_with_composition(ctx, composition)?;
+    lenso_bootstrap::install_default_story_display_catalog_with_composition(ctx, composition)?;
     platform_admin::install_default_runtime_function_declarations(
         platform_admin::runtime_function_declarations_from_modules(
-            app_bootstrap::linked_runtime_function_declaration_sources_for_context_with_composition(
+            lenso_bootstrap::linked_runtime_function_declaration_sources_for_context_with_composition(
                 ctx,
                 composition,
             )?,
@@ -178,10 +178,10 @@ fn install_admin_module_metadata(metadata: Vec<platform_admin_data::AdminModuleM
 }
 
 fn install_platform_admin_catalogs(metadata: &[platform_admin_data::AdminModuleMetadata]) {
-    app_bootstrap::install_story_display_catalog(metadata);
+    lenso_bootstrap::install_story_display_catalog(metadata);
     platform_admin::install_runtime_function_declarations(
         platform_admin::runtime_function_declarations_from_modules(
-            app_bootstrap::runtime_function_declaration_sources_from_metadata(metadata),
+            lenso_bootstrap::runtime_function_declaration_sources_from_metadata(metadata),
         ),
     );
 }

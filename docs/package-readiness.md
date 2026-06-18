@@ -14,9 +14,14 @@ Publish only backend packages with a current consumer-facing job:
   module-authoring declaration surface.
 
 Do not publish the current internal Rust workspace crates directly. Names such
-as `platform-core`, `platform-module`, `platform-runtime`, and `app-bootstrap`
-are implementation details until their API contracts are intentionally designed
-for external consumers.
+as `platform-core`, `platform-module`, `platform-runtime`, `lenso-api`,
+`lenso-worker`, `lenso-migrate`, and `lenso-bootstrap` are implementation
+details until their API contracts are intentionally designed for external
+consumers.
+
+`lenso-host` is the current host-facing Rust API, but it is distributed to
+generated hosts as a Git-pinned dependency. Do not publish it to crates.io until
+the `lenso-*` boot crates underneath it also have a registry publish strategy.
 
 Registry baseline as of the first release line:
 
@@ -57,6 +62,10 @@ anything to crates.io.
 `lenso-cli` is publishable for the same reason: its dependencies are registry
 crates, and the embedded starter template plus Runtime Console payload are
 bundled inside the crate. The gate also dry-runs packaging for `lenso-cli`.
+
+`cargo package -p lenso-host --allow-dirty --no-verify` is useful as a boundary
+probe, but it is not a release gate yet. Today it stops at repository-internal
+path dependencies, which is expected for the Git-pinned host facade.
 
 ## Crates.io Direction
 

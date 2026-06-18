@@ -183,8 +183,8 @@ impl RemoteModuleServiceDoctorStatus {
 
 #[derive(Debug)]
 struct RepoPaths {
-    app_bootstrap_cargo_toml_path: PathBuf,
-    app_bootstrap_lib_path: PathBuf,
+    lenso_bootstrap_cargo_toml_path: PathBuf,
+    lenso_bootstrap_lib_path: PathBuf,
     cargo_toml_path: PathBuf,
 }
 
@@ -238,14 +238,14 @@ pub async fn create_module(options: ModuleCreateOptions) -> Result<()> {
         console_surface.as_ref(),
     )?;
     update_workspace_cargo_toml(&mut pending_writes, &paths.cargo_toml_path, &module_id)?;
-    update_app_bootstrap_cargo_toml(
+    update_lenso_bootstrap_cargo_toml(
         &mut pending_writes,
-        &paths.app_bootstrap_cargo_toml_path,
+        &paths.lenso_bootstrap_cargo_toml_path,
         &module_id,
     )?;
-    update_app_bootstrap_lib(
+    update_lenso_bootstrap_lib(
         &mut pending_writes,
-        &paths.app_bootstrap_lib_path,
+        &paths.lenso_bootstrap_lib_path,
         &module_crate,
         &module_id,
     )?;
@@ -1459,7 +1459,7 @@ fn update_workspace_cargo_toml(
     Ok(())
 }
 
-fn update_app_bootstrap_cargo_toml(
+fn update_lenso_bootstrap_cargo_toml(
     pending_writes: &mut PendingWrites,
     cargo_toml_path: &Path,
     module_id: &str,
@@ -1481,13 +1481,13 @@ fn update_app_bootstrap_cargo_toml(
     Ok(())
 }
 
-fn update_app_bootstrap_lib(
+fn update_lenso_bootstrap_lib(
     pending_writes: &mut PendingWrites,
-    app_bootstrap_lib_path: &Path,
+    lenso_bootstrap_lib_path: &Path,
     module_crate: &str,
     module_id: &str,
 ) -> Result<()> {
-    let file_source = read_text(app_bootstrap_lib_path)?;
+    let file_source = read_text(lenso_bootstrap_lib_path)?;
     let entry = format!(
         r#"    LinkedModuleEntry {{
         module_name: "{module_id}",
@@ -1499,7 +1499,7 @@ fn update_app_bootstrap_lib(
     );
     queue_write(
         pending_writes,
-        app_bootstrap_lib_path.to_path_buf(),
+        lenso_bootstrap_lib_path.to_path_buf(),
         insert_into_demo_linked_module_entries(&file_source, &entry)?,
     );
     Ok(())
@@ -2535,8 +2535,8 @@ struct RuntimeConsolePaths {
 
 fn repo_paths(repo_root: &Path) -> RepoPaths {
     RepoPaths {
-        app_bootstrap_cargo_toml_path: repo_root.join("crates/app-bootstrap/Cargo.toml"),
-        app_bootstrap_lib_path: repo_root.join("crates/app-bootstrap/src/lib.rs"),
+        lenso_bootstrap_cargo_toml_path: repo_root.join("crates/lenso-bootstrap/Cargo.toml"),
+        lenso_bootstrap_lib_path: repo_root.join("crates/lenso-bootstrap/src/lib.rs"),
         cargo_toml_path: repo_root.join("Cargo.toml"),
     }
 }
@@ -2596,7 +2596,7 @@ fn insert_into_demo_linked_module_entries(file_source: &str, entry: &str) -> Res
     }
     let entries_start = file_source
         .find("const DEMO_LINKED_MODULE_ENTRIES")
-        .ok_or_else(|| anyhow!("Could not find DEMO_LINKED_MODULE_ENTRIES in app-bootstrap"))?;
+        .ok_or_else(|| anyhow!("Could not find DEMO_LINKED_MODULE_ENTRIES in lenso-bootstrap"))?;
     let entries_end = file_source[entries_start..]
         .find("];")
         .map(|index| entries_start + index)
@@ -4402,7 +4402,7 @@ fn resolve_repo_root(repo_root: Option<&Path>) -> Result<PathBuf> {
 fn find_repo_root(start_path: &Path) -> Result<PathBuf> {
     let mut current = absolutize(start_path)?;
     loop {
-        if current.join("Cargo.toml").exists() && current.join("crates/app-bootstrap").exists() {
+        if current.join("Cargo.toml").exists() && current.join("crates/lenso-bootstrap").exists() {
             return Ok(current);
         }
         let Some(parent) = current.parent() else {

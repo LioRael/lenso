@@ -8,7 +8,7 @@ rust-version.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-app-api.workspace = true
+lenso-api.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true

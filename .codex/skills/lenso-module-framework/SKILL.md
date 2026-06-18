@@ -1,6 +1,6 @@
 ---
 name: lenso-module-framework
-description: Use when changing or reasoning about Lenso's module framework, crates/platform-module, crates/platform-admin-data, crates/app-bootstrap module registration, AdminSurface/AdminDataSource, ModuleManifest/ModuleBinding, manifest lints, schema-admin, custom admin surfaces, or loading-source architecture.
+description: Use when changing or reasoning about Lenso's module framework, crates/platform-module, crates/platform-admin-data, crates/lenso-bootstrap module registration, AdminSurface/AdminDataSource, ModuleManifest/ModuleBinding, manifest lints, schema-admin, custom admin surfaces, or loading-source architecture.
 ---
 
 # Lenso Module Framework
@@ -34,7 +34,7 @@ Use `$lenso-remote-modules` for remote protocol, proxy, remote runtime, and remo
 
 - `ModuleManifest` is owned, serializable data. It carries declarations such as name, story display, capabilities, and optional admin surface.
 - `ModuleBinding` is a narrow behavior trait. It abstracts only what varies by source, such as runtime function registration, event handler registration, and HTTP route behavior.
-- `LinkedBinding` is the in-process source. Remote modules are loaded through `platform-module-remote` and app-bootstrap wiring.
+- `LinkedBinding` is the in-process source. Remote modules are loaded through `platform-module-remote` and lenso-bootstrap wiring.
 - Do not move pure data into `ModuleBinding`; upper layers should read manifest data directly.
 - Do not replace the open loading-source seam with a closed enum. Future sources should be new binding/source implementations.
 
@@ -61,7 +61,7 @@ Important type-shape rule:
 
 - `platform-admin` is the Runtime Console observability backend under `/admin/runtime/*`. It reads platform/runtime tables and has zero business-domain dependencies.
 - `platform-admin-data` is the schema-admin backend under `/admin/data/*`. It works through injected `AdminModule` registry entries, `AdminSurface::Schema`, and `AdminDataSource`; it must not depend on concrete domains.
-- `crates/app-bootstrap` is the composition root. It pairs manifests, bindings, story display descriptors, and data sources from concrete modules.
+- `crates/lenso-bootstrap` is the composition root. It pairs manifests, bindings, story display descriptors, and data sources from concrete modules.
 
 Manifest lint rules belong in `platform-module`. `platform-admin-data` exposes lint results through module metadata, and Runtime Console screens render them without duplicating lint logic locally.
 
@@ -80,7 +80,7 @@ protocol and manifest-declared permissions.
 
 ## Remote Modules
 
-Configured remote modules are loaded through `platform-module-remote` and composed in `crates/app-bootstrap`.
+Configured remote modules are loaded through `platform-module-remote` and composed in `crates/lenso-bootstrap`.
 
 Current remote slices include:
 
@@ -99,7 +99,7 @@ OpenAPI is single-source through `utoipa-axum`.
 
 - Put `#[utoipa::path(...)]` on real handlers.
 - Register handlers with `OpenApiRouter::new().routes(routes!(handler))`.
-- Keep document-level metadata and assembly in `apps/api/src/openapi.rs`.
+- Keep document-level metadata and assembly in `crates/lenso-api/src/openapi.rs`.
 - Do not add detached stub functions just to carry OpenAPI annotations.
 - Keep `openapi_document()` pure and context-free; generators, arch checks, and sync tests call it outside a Tokio runtime.
 

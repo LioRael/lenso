@@ -1700,7 +1700,7 @@ pub fn function_registry(modules: &[Module]) -> FunctionRegistry {
 /// Validate and enqueue every startup activation job declared by loaded modules.
 ///
 /// Lifecycle activation is host-owned: module manifests declare the work, and
-/// the app bootstrap validates those declarations against the runtime registry
+/// the Lenso bootstrap validates those declarations against the runtime registry
 /// before scheduling function runs.
 pub async fn enqueue_lifecycle_activation_jobs(
     ctx: &AppContext,
@@ -3725,7 +3725,7 @@ mod tests {
             .expect("system time should be after Unix epoch")
             .as_nanos();
         let dir = std::env::temp_dir().join(format!(
-            "lenso-app-bootstrap-service-lock-{}-{unique}",
+            "lenso-bootstrap-service-lock-{}-{unique}",
             std::process::id()
         ));
         let lock_file_path = dir.join("service.lock");

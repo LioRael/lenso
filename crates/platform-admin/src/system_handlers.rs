@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
-const API_BINARY_NAME: &str = "app-api";
+const API_BINARY_NAME: &str = "lenso-api";
 const SIGNAL_DELAY: Duration = Duration::from_millis(100);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,14 +70,14 @@ pub(crate) async fn restart_service(
 }
 
 fn schedule_restart() -> std::io::Result<RestartLaunch> {
-    let Some(exe) = current_app_api_exe() else {
+    let Some(exe) = current_lenso_api_exe() else {
         return Ok(RestartLaunch::RequiresSupervisor);
     };
     spawn_delayed_restart(&exe)?;
     Ok(RestartLaunch::SelfSpawned)
 }
 
-fn current_app_api_exe() -> Option<PathBuf> {
+fn current_lenso_api_exe() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let stem = exe.file_stem()?.to_str()?;
     (stem == API_BINARY_NAME).then_some(exe)

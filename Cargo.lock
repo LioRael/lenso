@@ -83,82 +83,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
-name = "app-api"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "app-bootstrap",
- "async-trait",
- "auth",
- "auth-password",
- "axum",
- "chrono",
- "platform-admin",
- "platform-admin-data",
- "platform-core",
- "platform-http",
- "platform-module",
- "platform-module-remote",
- "platform-runtime",
- "platform-testing",
- "remote-module-fixture",
- "serde",
- "serde_json",
- "serde_yaml",
- "sqlx",
- "tokio",
- "tower",
- "tower-http 0.7.0",
- "tracing",
- "utoipa",
-]
-
-[[package]]
-name = "app-bootstrap"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "auth",
- "auth-password",
- "platform-admin-data",
- "platform-core",
- "platform-http",
- "platform-module",
- "platform-module-remote",
- "platform-runtime",
- "platform-testing",
- "reqwest",
- "serde_json",
- "sqlx",
- "story",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "app-migrate"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "app-bootstrap",
- "platform-core",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "app-worker"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "app-bootstrap",
- "platform-core",
- "platform-runtime",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "arc-swap"
 version = "1.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -172,8 +96,8 @@ name = "arch-check"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "app-api",
  "generate-contracts",
+ "lenso-api",
  "serde_json",
  "serde_yaml",
 ]
@@ -999,7 +923,7 @@ name = "generate-contracts"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "app-api",
+ "lenso-api",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -1590,6 +1514,59 @@ dependencies = [
 ]
 
 [[package]]
+name = "lenso-api"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "auth",
+ "auth-password",
+ "axum",
+ "chrono",
+ "lenso-bootstrap",
+ "platform-admin",
+ "platform-admin-data",
+ "platform-core",
+ "platform-http",
+ "platform-module",
+ "platform-module-remote",
+ "platform-runtime",
+ "platform-testing",
+ "remote-module-fixture",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sqlx",
+ "tokio",
+ "tower",
+ "tower-http 0.7.0",
+ "tracing",
+ "utoipa",
+]
+
+[[package]]
+name = "lenso-bootstrap"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "auth",
+ "auth-password",
+ "platform-admin-data",
+ "platform-core",
+ "platform-http",
+ "platform-module",
+ "platform-module-remote",
+ "platform-runtime",
+ "platform-testing",
+ "reqwest",
+ "serde_json",
+ "sqlx",
+ "story",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "lenso-cli"
 version = "0.1.1"
 dependencies = [
@@ -1606,15 +1583,38 @@ name = "lenso-host"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "app-api",
- "app-bootstrap",
- "app-migrate",
- "app-worker",
  "axum",
  "lenso",
+ "lenso-api",
+ "lenso-bootstrap",
+ "lenso-migrate",
+ "lenso-worker",
  "platform-core",
  "platform-http",
  "platform-module",
+]
+
+[[package]]
+name = "lenso-migrate"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "lenso-bootstrap",
+ "platform-core",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "lenso-worker"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "lenso-bootstrap",
+ "platform-core",
+ "platform-runtime",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
