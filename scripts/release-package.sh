@@ -10,7 +10,7 @@ fi
 case "$version" in
     v*) ;;
     *)
-        echo "LENSO_RELEASE_VERSION must start with v, for example v0.1.0" >&2
+        echo "LENSO_RELEASE_VERSION must start with v, for example v0.2.0" >&2
         exit 1
         ;;
 esac

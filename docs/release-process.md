@@ -20,7 +20,7 @@ just release-check
 ## 2. Create A Release Branch
 
 ```sh
-git switch -c release/v0.1.0
+git switch -c release/v0.2.0
 ```
 
 Use the version you plan to publish. Keep the branch focused on release notes,
@@ -31,14 +31,14 @@ last-mile docs, and blocking fixes only.
 Build local release artifacts:
 
 ```sh
-LENSO_RELEASE_VERSION=v0.1.0 just release-package
+LENSO_RELEASE_VERSION=v0.2.0 just release-package
 ```
 
 This writes:
 
-- `dist/release/lenso-v0.1.0-release-notes.md`
-- `dist/release/lenso-v0.1.0-source.tar.gz`
-- `dist/release/lenso-v0.1.0-artifact-readme.md`
+- `dist/release/lenso-v0.2.0-release-notes.md`
+- `dist/release/lenso-v0.2.0-source.tar.gz`
+- `dist/release/lenso-v0.2.0-artifact-readme.md`
 
 The source archive is generated from `git archive HEAD`, so it contains committed
 source files and excludes local build output, `.git`, `target/`, and `dist/`.
@@ -47,7 +47,7 @@ source files and excludes local build output, `.git`, `target/`, and `dist/`.
 
 Open the `release` workflow in GitHub Actions and trigger it with:
 
-- `version`: `v0.1.0`
+- `version`: `v0.2.0`
 - `notes`: a short release summary
 - `publish_rust_crate`: `false`
 
@@ -71,9 +71,10 @@ The dry-run path does not upload package versions.
 After the dry-run workflow passes, trigger the same workflow again with the
 artifact you intend to publish:
 
-- `version`: `v0.1.0`
+- `version`: `v0.2.0`
 - `notes`: the release summary
-- `publish_rust_crate`: `true` to publish `lenso@0.1.0` to crates.io
+- `publish_rust_crate`: `true` to publish `lenso@0.2.0` and
+  `lenso-cli@0.1.0` to crates.io
 
 The publish path first repeats the full release and package gates, then uploads
 only the selected artifacts. If a selected artifact's secret is missing, the
@@ -84,7 +85,7 @@ workflow stops before registry upload.
 After the publish workflow passes, check whether the tag already exists:
 
 ```sh
-git rev-parse v0.1.0
+git rev-parse v0.2.0
 ```
 
 If the tag already exists, do not move it. Record crate-only follow-up publishes
@@ -93,8 +94,8 @@ from the workflow run and crates.io package page instead of rewriting the tag.
 For future coordinated versions where the tag does not exist yet:
 
 ```sh
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
 Create a GitHub Release from the tag, paste the generated release notes draft,
