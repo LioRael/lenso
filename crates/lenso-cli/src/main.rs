@@ -64,6 +64,8 @@ enum ModuleCommand {
     Add(RemoteModuleInstallArgs),
     /// Remove a remote source or disable a linked module.
     Uninstall(RemoteModuleUninstallArgs),
+    /// Diagnose installed remote module services.
+    Doctor(ModuleDoctorArgs),
     /// Manage a local module catalog.
     Catalog {
         #[command(subcommand)]
@@ -162,6 +164,24 @@ struct RemoteModuleUninstallArgs {
     /// Print uninstall changes without writing them.
     #[arg(long)]
     dry_run: bool,
+}
+
+#[derive(Debug, Args, Clone)]
+struct ModuleDoctorArgs {
+    /// Optional module name to check.
+    module_name: Option<String>,
+
+    /// Lenso host repository root.
+    #[arg(long)]
+    repo_root: Option<std::path::PathBuf>,
+
+    /// Environment file to read.
+    #[arg(long)]
+    env_file: Option<std::path::PathBuf>,
+
+    /// Remote module services file.
+    #[arg(long)]
+    module_services_file: Option<std::path::PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -379,6 +399,17 @@ impl From<&RemoteModuleUninstallArgs> for module::RemoteModuleUninstallOptions {
     }
 }
 
+impl From<&ModuleDoctorArgs> for module::ModuleDoctorOptions {
+    fn from(args: &ModuleDoctorArgs) -> Self {
+        Self {
+            env_file: args.env_file.clone(),
+            module_name: args.module_name.clone(),
+            module_services_file: args.module_services_file.clone(),
+            repo_root: args.repo_root.clone(),
+        }
+    }
+}
+
 impl From<&ModuleCreateArgs> for module::ModuleCreateOptions {
     fn from(args: &ModuleCreateArgs) -> Self {
         Self {
@@ -469,6 +500,9 @@ async fn main() -> anyhow::Result<()> {
             }
             ModuleCommand::Uninstall(args) => {
                 module::uninstall_module(&args.module_name, (&args).into()).await?;
+            }
+            ModuleCommand::Doctor(args) => {
+                module::doctor_module((&args).into()).await?;
             }
             ModuleCommand::Catalog { command } => match command {
                 ModuleCatalogCommand::Add(args) => {

@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
 use serde_json::{Map, Value, json};
@@ -28,6 +29,14 @@ pub struct RemoteModuleUninstallOptions {
     pub module_services_file: Option<PathBuf>,
     pub repo_root: Option<PathBuf>,
     pub source: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ModuleDoctorOptions {
+    pub env_file: Option<PathBuf>,
+    pub module_name: Option<String>,
+    pub module_services_file: Option<PathBuf>,
+    pub repo_root: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -134,6 +143,42 @@ struct RemoteModuleServiceInstallSpec {
     ready_url: String,
     ready_timeout_ms: u64,
     auto_start: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RemoteModuleServiceState {
+    module_name: String,
+    services: Vec<RemoteModuleServiceInstallSpec>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RemoteModuleServiceDoctorStatus {
+    Ready,
+    Disabled,
+    ManualNotReady,
+    NotConfigured,
+    NotReady,
+    StaleState,
+}
+
+impl RemoteModuleServiceDoctorStatus {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Ready => "ready",
+            Self::Disabled => "disabled",
+            Self::ManualNotReady => "manual_not_ready",
+            Self::NotConfigured => "not_configured",
+            Self::NotReady => "not_ready",
+            Self::StaleState => "stale_or_starting",
+        }
+    }
+
+    fn is_issue(self) -> bool {
+        matches!(
+            self,
+            Self::NotConfigured | Self::NotReady | Self::StaleState
+        )
+    }
 }
 
 #[derive(Debug)]
@@ -529,6 +574,125 @@ pub async fn uninstall_remote_module(
     println!("Uninstalled remote module {module_name}.");
     println!("Next steps:");
     println!("- restart the API and worker");
+
+    Ok(())
+}
+
+pub async fn doctor_module(options: ModuleDoctorOptions) -> Result<()> {
+    let repo_root = resolve_repo_root(options.repo_root.as_deref())?;
+    let env_file_path = resolve_path(
+        &repo_root,
+        options
+            .env_file
+            .as_deref()
+            .unwrap_or_else(|| Path::new(".env")),
+    );
+    let module_services_path = resolve_path(
+        &repo_root,
+        options
+            .module_services_file
+            .as_deref()
+            .unwrap_or_else(|| Path::new(".lenso/module-services.json")),
+    );
+    let requested_module = options
+        .module_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|module_name| !module_name.is_empty());
+    let env_source = read_text_if_exists(&env_file_path)?;
+    let remote_modules = remote_module_entries_from_env_source(&env_source);
+    let service_states = read_remote_module_service_states(&module_services_path)?;
+    let services_state_dir = module_services_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."));
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_millis(800))
+        .build()
+        .context("build module doctor HTTP client")?;
+    let mut issue_count = 0usize;
+    let mut checked_count = 0usize;
+
+    println!("Module doctor:");
+    println!("- env: {}", display_relative(&repo_root, &env_file_path));
+    println!(
+        "- services: {}",
+        display_relative(&repo_root, &module_services_path)
+    );
+    println!("- remote modules: {}", remote_modules.len());
+
+    for state in service_states
+        .iter()
+        .filter(|state| requested_module.is_none_or(|module_name| state.module_name == module_name))
+    {
+        let configured = remote_modules
+            .iter()
+            .any(|(module_name, _)| module_name == &state.module_name);
+        let enabled = module_enabled_from_env_source(&env_source, &state.module_name);
+
+        for service in &state.services {
+            checked_count += 1;
+            let ready = remote_service_ready_url(&client, &service.ready_url).await;
+            let lock_file_path = remote_module_service_state_path(
+                services_state_dir,
+                &state.module_name,
+                service,
+                "lock",
+            );
+            let pid_file_path = remote_module_service_state_path(
+                services_state_dir,
+                &state.module_name,
+                service,
+                "pid",
+            );
+            let lock_exists = lock_file_path.exists();
+            let pid_exists = pid_file_path.exists();
+            let status = remote_module_service_doctor_status(
+                configured,
+                enabled,
+                service.auto_start,
+                ready,
+                lock_exists,
+                pid_exists,
+            );
+            if status.is_issue() {
+                issue_count += 1;
+            }
+
+            println!(
+                "- {}/{}: {}",
+                state.module_name,
+                service.name,
+                status.label()
+            );
+            println!("  readyUrl: {}", service.ready_url);
+            if !ready {
+                println!("  command: {}", service.command);
+            }
+            if lock_exists || pid_exists {
+                println!(
+                    "  state: lock={} pid={}",
+                    display_relative(&repo_root, &lock_file_path),
+                    display_relative(&repo_root, &pid_file_path)
+                );
+            }
+            if let Some(fix) = remote_module_service_doctor_fix(status) {
+                println!("  fix: {fix}");
+            }
+        }
+    }
+
+    if checked_count == 0 {
+        if let Some(module_name) = requested_module {
+            println!("- services checked: 0 for {module_name}");
+        } else {
+            println!("- services checked: 0");
+        }
+        return Ok(());
+    }
+    println!("- services checked: {checked_count}");
+    if issue_count > 0 {
+        bail!("Module doctor found {issue_count} issue(s)");
+    }
 
     Ok(())
 }
@@ -2467,6 +2631,23 @@ fn linked_module_enabled_env_key(module_name: &str) -> String {
     )
 }
 
+fn module_enabled_from_env_source(source: &str, module_name: &str) -> bool {
+    let key = linked_module_enabled_env_key(module_name);
+    source
+        .lines()
+        .find_map(|line| line.strip_prefix(&format!("{key}=")))
+        .and_then(parse_env_bool)
+        .unwrap_or(true)
+}
+
+fn parse_env_bool(value: &str) -> Option<bool> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => Some(true),
+        "0" | "false" | "no" | "off" => Some(false),
+        _ => None,
+    }
+}
+
 fn run_install_commands(repo_root: &Path, commands: &[InstallCommandSpec]) -> Result<()> {
     for command in commands {
         let cwd = command
@@ -2779,6 +2960,179 @@ fn remote_module_service_plans(install_services: &[RemoteModuleServiceInstallSpe
         .collect()
 }
 
+fn read_remote_module_service_states(
+    services_file_path: &Path,
+) -> Result<Vec<RemoteModuleServiceState>> {
+    let Some(value) = read_json_if_exists(services_file_path)? else {
+        return Ok(Vec::new());
+    };
+    parse_remote_module_service_states(&value)
+}
+
+fn parse_remote_module_service_states(value: &Value) -> Result<Vec<RemoteModuleServiceState>> {
+    let modules = value
+        .get("modules")
+        .and_then(Value::as_array)
+        .ok_or_else(|| anyhow!("Remote module services file modules must be an array"))?;
+    let mut states = Vec::new();
+    for module in modules {
+        let module_name = module
+            .get("moduleName")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow!("Remote module services file moduleName must be a string"))?
+            .trim();
+        if module_name.is_empty() {
+            bail!("Remote module services file moduleName must be non-empty");
+        }
+        let services = module
+            .get("services")
+            .and_then(Value::as_array)
+            .ok_or_else(|| anyhow!("{module_name} services must be an array"))?;
+        let mut service_specs = Vec::new();
+        for service in services {
+            let command = service
+                .get("command")
+                .and_then(Value::as_str)
+                .ok_or_else(|| anyhow!("{module_name} service command must be a string"))?
+                .trim();
+            if command.is_empty() {
+                bail!("{module_name} service command must be non-empty");
+            }
+            let ready_url = service
+                .get("readyUrl")
+                .and_then(Value::as_str)
+                .ok_or_else(|| anyhow!("{module_name} service readyUrl must be a string"))?
+                .trim();
+            if ready_url.is_empty() {
+                bail!("{module_name} service readyUrl must be non-empty");
+            }
+            service_specs.push(RemoteModuleServiceInstallSpec {
+                name: service
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|name| !name.is_empty())
+                    .unwrap_or(module_name)
+                    .to_owned(),
+                command: command.to_owned(),
+                cwd: service
+                    .get("cwd")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|cwd| !cwd.is_empty())
+                    .map(ToOwned::to_owned),
+                ready_url: ready_url.to_owned(),
+                ready_timeout_ms: service
+                    .get("readyTimeoutMs")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(10_000),
+                auto_start: service
+                    .get("autoStart")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(true),
+            });
+        }
+        states.push(RemoteModuleServiceState {
+            module_name: module_name.to_owned(),
+            services: service_specs,
+        });
+    }
+    Ok(states)
+}
+
+async fn remote_service_ready_url(client: &reqwest::Client, ready_url: &str) -> bool {
+    client
+        .get(ready_url)
+        .send()
+        .await
+        .is_ok_and(|response| response.status().is_success())
+}
+
+fn remote_module_service_doctor_status(
+    configured: bool,
+    enabled: bool,
+    auto_start: bool,
+    ready: bool,
+    lock_exists: bool,
+    pid_exists: bool,
+) -> RemoteModuleServiceDoctorStatus {
+    if !configured {
+        return RemoteModuleServiceDoctorStatus::NotConfigured;
+    }
+    if !enabled {
+        return RemoteModuleServiceDoctorStatus::Disabled;
+    }
+    if ready {
+        return RemoteModuleServiceDoctorStatus::Ready;
+    }
+    if !auto_start {
+        return RemoteModuleServiceDoctorStatus::ManualNotReady;
+    }
+    if lock_exists || pid_exists {
+        return RemoteModuleServiceDoctorStatus::StaleState;
+    }
+    RemoteModuleServiceDoctorStatus::NotReady
+}
+
+fn remote_module_service_doctor_fix(
+    status: RemoteModuleServiceDoctorStatus,
+) -> Option<&'static str> {
+    match status {
+        RemoteModuleServiceDoctorStatus::Ready => None,
+        RemoteModuleServiceDoctorStatus::Disabled => {
+            Some("enable the module if this service should run")
+        }
+        RemoteModuleServiceDoctorStatus::ManualNotReady => {
+            Some("start this service manually or set autoStart=true in the manifest")
+        }
+        RemoteModuleServiceDoctorStatus::NotConfigured => {
+            Some("install the module or remove its service entry")
+        }
+        RemoteModuleServiceDoctorStatus::NotReady => {
+            Some("start the service command or restart the API/worker")
+        }
+        RemoteModuleServiceDoctorStatus::StaleState => {
+            Some("restart the API/worker; remove stale lock/pid files if it remains stuck")
+        }
+    }
+}
+
+fn remote_module_service_state_path(
+    services_state_dir: &Path,
+    module_name: &str,
+    service: &RemoteModuleServiceInstallSpec,
+    extension: &str,
+) -> PathBuf {
+    services_state_dir.join(format!(
+        "remote-{}-{}.{}",
+        remote_module_service_state_segment(module_name),
+        remote_module_service_state_segment(&service.name),
+        extension
+    ))
+}
+
+fn remote_module_service_state_segment(value: &str) -> String {
+    let mut segment = String::new();
+    let mut previous_dash = false;
+    for character in value.chars() {
+        if character.is_ascii_alphanumeric() {
+            segment.push(character.to_ascii_lowercase());
+            previous_dash = false;
+        } else if !segment.is_empty() && !previous_dash {
+            segment.push('-');
+            previous_dash = true;
+        }
+    }
+    while segment.ends_with('-') {
+        segment.pop();
+    }
+    if segment.is_empty() {
+        "service".to_owned()
+    } else {
+        segment
+    }
+}
+
 fn install_command_plans(
     install_commands: &[InstallCommandSpec],
     install_commands_executed: bool,
@@ -3006,6 +3360,14 @@ fn parse_remote_module_entries(value: &str) -> Vec<(String, String)> {
             }
         })
         .collect()
+}
+
+fn remote_module_entries_from_env_source(source: &str) -> Vec<(String, String)> {
+    let current_value = source
+        .lines()
+        .find_map(|line| line.strip_prefix("REMOTE_MODULES="))
+        .unwrap_or_default();
+    parse_remote_module_entries(current_value)
 }
 
 fn format_remote_module_entries(entries: &[(String, String)]) -> String {
@@ -3350,6 +3712,84 @@ mod tests {
                 .and_then(|module| module.get("moduleName"))
                 .and_then(Value::as_str),
             Some("crm")
+        );
+    }
+
+    #[test]
+    fn remote_module_service_states_are_parsed() {
+        let state = json!({
+            "modules": [
+                {
+                    "moduleName": "crm",
+                    "services": [
+                        {
+                            "autoStart": false,
+                            "command": "pnpm --dir ../crm/backend dev",
+                            "cwd": "../crm",
+                            "name": "crm-api",
+                            "readyTimeoutMs": 12000,
+                            "readyUrl": "http://127.0.0.1:4100/lenso/module/v1/manifest"
+                        }
+                    ]
+                }
+            ],
+            "version": 1
+        });
+        let states = parse_remote_module_service_states(&state).unwrap();
+
+        assert_eq!(states.len(), 1);
+        assert_eq!(states[0].module_name, "crm");
+        assert_eq!(states[0].services[0].name, "crm-api");
+        assert_eq!(states[0].services[0].cwd.as_deref(), Some("../crm"));
+        assert_eq!(states[0].services[0].ready_timeout_ms, 12000);
+        assert!(!states[0].services[0].auto_start);
+    }
+
+    #[test]
+    fn module_enabled_env_defaults_to_true_and_parses_false() {
+        assert!(module_enabled_from_env_source("", "crm"));
+        assert!(!module_enabled_from_env_source(
+            "LENSO_MODULE_CRM_ENABLED=false\n",
+            "crm"
+        ));
+        assert!(module_enabled_from_env_source(
+            "LENSO_MODULE_CRM_ENABLED=yes\n",
+            "crm"
+        ));
+    }
+
+    #[test]
+    fn doctor_status_flags_stale_started_state() {
+        assert_eq!(
+            remote_module_service_doctor_status(true, true, true, false, true, true),
+            RemoteModuleServiceDoctorStatus::StaleState
+        );
+        assert_eq!(
+            remote_module_service_doctor_status(true, true, false, false, false, false),
+            RemoteModuleServiceDoctorStatus::ManualNotReady
+        );
+        assert_eq!(
+            remote_module_service_doctor_status(false, true, true, true, false, false),
+            RemoteModuleServiceDoctorStatus::NotConfigured
+        );
+    }
+
+    #[test]
+    fn remote_module_service_state_path_sanitizes_names() {
+        let service = RemoteModuleServiceInstallSpec {
+            name: "API Worker".to_owned(),
+            command: "node server.mjs".to_owned(),
+            cwd: None,
+            ready_url: "http://127.0.0.1:4100/lenso/module/v1/manifest".to_owned(),
+            ready_timeout_ms: 10_000,
+            auto_start: true,
+        };
+        let path =
+            remote_module_service_state_path(Path::new(".lenso"), "CRM Module", &service, "lock");
+
+        assert_eq!(
+            path,
+            PathBuf::from(".lenso/remote-crm-module-api-worker.lock")
         );
     }
 
