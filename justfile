@@ -18,7 +18,6 @@ check:
     just rust-check
     just test
     just generated-check
-    just cli-check
     just arch-check
 
 release-check:
@@ -32,6 +31,9 @@ package-readiness:
 
 release-package:
     sh scripts/release-package.sh
+
+smoke-check:
+    just cli-check
 
 cli-check:
     scripts/lenso-cli-check.sh

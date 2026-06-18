@@ -38,7 +38,8 @@ Use `just` as the root task runner.
 - `just generate`: regenerate contracts.
 - `just generated-check`: regenerate committed artifacts and fail if they differ from git.
 - `just arch-check`: run architecture guardrails.
-- `just check`: run the full local quality gate, excluding dependency installation.
+- `just check`: run the default local quality gate, excluding dependency installation and slow smoke checks.
+- `just smoke-check`: run slower scaffolded-host smoke checks.
 - `just ci`: run the same quality gate used by GitHub Actions.
 
 ## Validation Strategy

@@ -176,7 +176,8 @@ just generate
 - `just`: list available recipes.
 - `just fmt`: format Rust code.
 - `just fmt-check`: check Rust formatting.
-- `just check`: run the full local quality gate.
+- `just check`: run the default local quality gate without slow smoke checks.
+- `just smoke-check`: run slower scaffolded-host smoke checks.
 - `just test`: run Rust workspace tests with the locked dependency graph.
 - `just rust-check`: run `cargo check` for the whole workspace.
 - `just arch-check`: run architecture guardrails.
