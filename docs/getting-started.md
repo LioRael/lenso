@@ -11,10 +11,10 @@ URL, install it, restart services, and inspect the loaded module.
 - Docker for local Postgres.
 
 For a blank Rust module-authoring project outside this repository, install the
-published facade crate instead:
+Git-pinned facade crate instead:
 
 ```sh
-cargo add lenso@0.2.1
+cargo add lenso --git https://github.com/LioRael/lenso --tag v0.3.0
 ```
 
 That crate exposes serializable module declarations and manifest linting. Local

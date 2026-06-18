@@ -1385,7 +1385,7 @@ dependencies = [
 
 [[package]]
 name = "lenso"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -1454,7 +1454,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-contracts"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",

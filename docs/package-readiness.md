@@ -22,9 +22,9 @@ consumers.
 
 Registry baseline as of the first release line:
 
-- `lenso@0.1.0` is published on crates.io.
-- `lenso-contracts@0.2.1` is the next crates.io publish candidate.
-- `lenso@0.2.1` is the Git facade candidate for generated hosts.
+- `lenso@0.2.1` is published on crates.io.
+- `lenso-contracts@0.3.0` is the next crates.io publish candidate.
+- `lenso@0.3.0` is the Git facade candidate for generated hosts.
 - `lenso-cli` is owned by the standalone
   [`LioRael/lenso-cli`](https://github.com/LioRael/lenso-cli) repository.
 
@@ -36,8 +36,8 @@ project:
 | Order | Artifact | Version | Source repo | Publish stance |
 | --- | --- | --- | --- | --- |
 | 1 | `lenso` crates.io crate | `0.1.0` | `lenso` | Already published; keep internal workspace crates private. |
-| 2 | `lenso-contracts` crates.io crate | `0.2.1` | `lenso` | Shared declaration contracts used by the facade and platform crates. |
-| 3 | `lenso` Git crate | `0.2.1` | `lenso` | Facade for current module-authoring contracts and the Git-only `host` feature. |
+| 2 | `lenso-contracts` crates.io crate | `0.3.0` | `lenso` | Shared declaration contracts used by the facade and platform crates. |
+| 3 | `lenso` Git crate | `0.3.0` | `lenso` | Facade for current module-authoring contracts and the Git-only `host` feature. |
 
 ## Backend Package Gate
 
