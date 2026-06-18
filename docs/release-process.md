@@ -80,26 +80,19 @@ The publish path first repeats the full release and package gates, then uploads
 only the selected artifacts. If a selected artifact's secret is missing, the
 workflow stops before registry upload.
 
-## 7. Tag And Publish The GitHub Release
+## 7. Verify The GitHub Release
 
-After the publish workflow passes, check whether the tag already exists:
+When `publish_rust_crate=true`, the workflow publishes the crates.io packages
+and then creates the GitHub Release from the same commit. It uses the requested
+version as the tag, the generated release notes as the body, and attaches the
+source package plus artifact README.
+
+After the publish workflow passes, verify the release:
 
 ```sh
 git rev-parse v0.2.0
+gh release view v0.2.0
 ```
-
-If the tag already exists, do not move it. Record crate-only follow-up publishes
-from the workflow run and crates.io package page instead of rewriting the tag.
-
-For future coordinated versions where the tag does not exist yet:
-
-```sh
-git tag v0.2.0
-git push origin v0.2.0
-```
-
-Create a GitHub Release from the tag, paste the generated release notes draft,
-and attach the source package artifact plus artifact README.
 
 ## 8. Keep The First Release Narrow
 
