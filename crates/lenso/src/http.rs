@@ -1,7 +1,7 @@
 //! Pure-data HTTP route declarations for module manifests.
 //!
 //! These declarations are metadata only. Linked modules still contribute real
-//! Axum/OpenAPI routes through `app-bootstrap`; remote route proxying requires a
+//! Axum/OpenAPI routes through `lenso-bootstrap`; remote route proxying requires a
 //! separate host protocol before these entries can be mounted.
 
 use serde::{Deserialize, Serialize};

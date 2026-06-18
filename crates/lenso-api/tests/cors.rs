@@ -1,6 +1,6 @@
-use app_api::build_router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
+use lenso_api::build_router;
 use platform_core::{AppConfig, AppContext, LoggingEventPublisher};
 use std::sync::Arc;
 use tower::ServiceExt;

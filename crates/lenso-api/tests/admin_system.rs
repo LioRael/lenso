@@ -1,6 +1,6 @@
-use app_api::build_router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
+use lenso_api::build_router;
 use platform_core::{AppConfig, AppContext, DbPool, LoggingEventPublisher};
 use serde_json::Value;
 use std::sync::Arc;

@@ -43,8 +43,8 @@ Do not create DDD or Clean Architecture folders:
 
 ## Module Registration
 
-- The concrete module set is enumerated only in `crates/app-bootstrap`. Apps must not hand-wire individual modules.
-- A new module is registered through the `app-bootstrap` entry points it needs: `modules` (runtime functions, event handlers, runtime config, admin data), `module_manifests` (context-free metadata), `merge_linked_http` (Linked HTTP routes), and `story_display_descriptors` (runtime console metadata).
+- The concrete module set is enumerated only in `crates/lenso-bootstrap`. Apps must not hand-wire individual modules.
+- A new module is registered through the `lenso-bootstrap` entry points it needs: `modules` (runtime functions, event handlers, runtime config, admin data), `module_manifests` (context-free metadata), `merge_linked_http` (Linked HTTP routes), and `story_display_descriptors` (runtime console metadata).
 - Each module exposes module data as `ModuleManifest` from the public `lenso` facade and source-specific behavior through `ModuleBinding` from `platform-module`; do not recreate descriptor types per module.
 - Keep data and behavior split. Serializable declarations belong in `ModuleManifest`; behavior belongs behind narrow traits such as `ModuleBinding` and `AdminDataSource`.
 - `platform-admin` and `platform-admin-data` must not depend on concrete module crates. Use composition-root injection and platform-module seams.
@@ -59,7 +59,7 @@ Do not create DDD or Clean Architecture folders:
 
 - No HTTP API without OpenAPI schema coverage.
 - HTTP handlers carry their own `#[utoipa::path]` annotation and are registered via `utoipa-axum`'s `OpenApiRouter` (`routes!`), so each route's path and parameters are authored once. Do not add detached `#[utoipa::path]` stub functions.
-- `apps/api/src/openapi.rs` holds only document-level metadata (info, tags); it must not re-declare path or schema lists that the annotated handlers already provide.
+- `crates/lenso-api/src/openapi.rs` holds only document-level metadata (info, tags); it must not re-declare path or schema lists that the annotated handlers already provide.
 - No event payload without a JSON Schema contract under `contracts/events/`.
 - No runtime function without a JSON Schema contract under `contracts/runtime/functions/`.
 - Error responses must use the standard error shape.

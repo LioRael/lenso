@@ -36,7 +36,7 @@ The resolver chain determines which variant applies:
 - **AuthActorResolver** — production. Validates Bearer tokens and
   `lenso_session` cookies against `auth.sessions` / `auth.users`.
 
-Composition in `app-bootstrap` wires the resolver chain based on the enabled
+Composition in `lenso-bootstrap` wires the resolver chain based on the enabled
 modules. Adding a new auth method means adding a new `ActorResolver`
 implementation — no existing module changes required.
 
@@ -127,12 +127,12 @@ exports `AuthIdentity` and `AuthUserId` through `auth::public` solely for the
 database dependency, not an HTTP auth dependency.
 
 Modules receive authentication through the platform middleware that runs before
-any handler, injected via `app-bootstrap`. The wiring is:
+any handler, injected via `lenso-bootstrap`. The wiring is:
 
-1. `app-bootstrap` checks the composition profile.
+1. `lenso-bootstrap` checks the composition profile.
 2. If the `auth` module is enabled, `AuthActorResolver` wraps the app context:
    `ctx.with_actor_resolver(actor_resolver)`.
-3. The API app applies this at startup (`apps/api/src/lib.rs`).
+3. The Lenso API crate applies this at startup (`crates/lenso-api/src/lib.rs`).
 
 ## Summary
 
@@ -142,4 +142,4 @@ any handler, injected via `app-bootstrap`. The wiring is:
 - **Don't** import the `auth` module crate from other modules.
 - **Don't** add auth-centric logic to modules that don't own auth data.
 - Extending auth means implementing `ActorResolver` and adding it to the chain
-  in `app-bootstrap` — zero changes to existing modules.
+  in `lenso-bootstrap` — zero changes to existing modules.

@@ -1,7 +1,7 @@
 //! HTTP-backed module source for out-of-process modules.
 //!
 //! This crate owns transport only. Core contracts stay in `platform-module`,
-//! and host integration stays in `app-bootstrap`.
+//! and host integration stays in `lenso-bootstrap`.
 
 mod admin_action;
 mod admin_data;

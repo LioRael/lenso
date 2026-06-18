@@ -1,16 +1,20 @@
 //! Narrow host boot helpers for Lenso applications.
 //!
-//! This crate is an internal bridge toward the future `lenso` host feature. It
-//! keeps starter hosts away from deep `app-*` and `platform-*` imports while the
-//! final public facade shape is still being validated.
+//! This crate is the current host-facing API used by generated Lenso host
+//! applications. It keeps starter hosts away from deep boot and platform imports
+//! while the long-term `lenso` facade shape stays narrow.
+//!
+//! `lenso-host` is distributed to host applications as a Git-pinned dependency
+//! today. It is not a crates.io package until the boot crates below it have a
+//! registry publish strategy.
 
-pub use app_bootstrap::{HostComposition, HostLinkedModule};
 pub use lenso::ModuleManifest;
+pub use lenso_bootstrap::{HostComposition, HostLinkedModule};
 pub use platform_core::Migration;
 
 /// First-party linked modules that a host can opt into explicitly.
 pub mod builtins {
-    pub use app_bootstrap::{
+    pub use lenso_bootstrap::{
         auth_linked_module as auth, auth_password_linked_module as auth_password,
     };
 }
@@ -83,7 +87,7 @@ pub async fn run_api_from_env() -> anyhow::Result<()> {
 
 /// Start the Lenso API host with additional host-owned linked modules.
 pub async fn run_api_from_env_with_composition(composition: HostComposition) -> anyhow::Result<()> {
-    app_api::run_from_env_with_composition(composition).await
+    lenso_api::run_from_env_with_composition(composition).await
 }
 
 /// Start the Lenso worker from environment configuration.
@@ -95,7 +99,7 @@ pub async fn run_worker_from_env() -> anyhow::Result<()> {
 pub async fn run_worker_from_env_with_composition(
     composition: HostComposition,
 ) -> anyhow::Result<()> {
-    app_worker::run_from_env_with_composition(composition).await
+    lenso_worker::run_from_env_with_composition(composition).await
 }
 
 /// Apply Lenso migrations from environment configuration.
@@ -107,7 +111,7 @@ pub async fn run_migrations_from_env() -> anyhow::Result<()> {
 pub async fn run_migrations_from_env_with_composition(
     composition: HostComposition,
 ) -> anyhow::Result<()> {
-    app_migrate::run_from_env_with_composition(composition).await
+    lenso_migrate::run_from_env_with_composition(composition).await
 }
 
 #[cfg(test)]

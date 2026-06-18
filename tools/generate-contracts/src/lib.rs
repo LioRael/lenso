@@ -6,7 +6,7 @@ use std::path::Path;
 pub fn generate_contracts() -> anyhow::Result<()> {
     write_yaml(
         "contracts/openapi/app-api.v1.yaml",
-        &app_api::openapi_document(),
+        &lenso_api::openapi_document(),
     )?;
     write_json(
         "contracts/errors/error-response.v1.schema.json",

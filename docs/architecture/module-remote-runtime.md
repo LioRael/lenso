@@ -189,7 +189,7 @@ Manifest declarations are pure data:
 }
 ```
 
-The worker loads configured remote modules through `app-bootstrap`, registers
+The worker loads configured remote modules through `lenso-bootstrap`, registers
 proxy-backed handlers in the shared `EventHandlerRegistry`, then dispatches
 claimed outbox rows through the existing relay. Success marks the row
 `published`; retryable remote failures use the existing `failed` retry path and

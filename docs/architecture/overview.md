@@ -37,7 +37,7 @@ Current linked module fixtures:
 - `auth-password` exercises a first-party linked password provider over the auth
   public interface.
 
-These modules are demo fixtures, not product defaults. `app-bootstrap` selects a
+These modules are demo fixtures, not product defaults. `lenso-bootstrap` selects a
 linked composition profile: `core` keeps only platform-owned linked surfaces such
 as `platform-story`, while `demo` adds `auth` and `auth-password` for local
 development, examples, contracts, and integration tests. Product hosts should
@@ -52,7 +52,7 @@ The service kit is split into a few crates:
 
 - `platform-core`: config, error model, request context, actor context, IDs, clock, DB pool, migrations, events, transactional outbox, relay primitives, health, shutdown, telemetry foundations, and telemetry query abstractions.
 - `lenso`: the public Rust facade crate for serializable module-authoring declarations: module manifests, admin surfaces, HTTP route metadata, runtime/event/lifecycle declarations, Runtime Console surfaces, story display metadata, and manifest lints.
-- `lenso-host`: the internal transitional host boot facade for API, worker, and migration runner helpers. Starter templates depend on this crate while the future public `lenso` host feature is being validated.
+- `lenso-host`: the current Git-pinned host boot facade for API, worker, and migration runner helpers. Starter templates depend on this crate while the long-term `lenso` facade stays focused on module-authoring declarations.
 - `platform-http`: Axum request context middleware, auth extractors, standard JSON error responses, JSON extractor, response helpers, health routes, and the `OpenApiRouter` re-exports used for single-source OpenAPI.
 - `platform-runtime`: embedded runtime primitives for functions, triggers, queues, flows, retry policies, registry, worker execution, and store traits.
 - `platform-module`: internal module behavior seams and compatibility re-exports. `ModuleBinding` is the narrow behavior seam; `LinkedBinding` is the current compile-time source; `AdminDataSource` and `AdminActionSource` support generic schema-admin reads and manifest-declared action execution. It re-exports `lenso` declaration types for backend workspace compatibility.
@@ -60,7 +60,7 @@ The service kit is split into a few crates:
 - `platform-admin-data`: the schema-admin backend for module business data. It exposes generic `/admin/data/*` endpoints over injected `AdminSurface::Schema` manifests and `AdminDataSource` implementations, without depending on concrete modules.
 - `platform-testing`: shared test database utilities.
 
-A thin composition root, `app-bootstrap`, sits above the service kit. It is the single place that enumerates the concrete modules, and both the API and the worker derive their module set from it. It pairs manifests, bindings, runtime config descriptors, story-display metadata, and admin data sources from concrete modules. It depends on the module crates, so it lives outside `platform-*` (those crates must not depend on concrete modules).
+A thin composition root, `lenso-bootstrap`, sits above the service kit. It is the single place that enumerates the concrete modules, and both the API and the worker derive their module set from it. It pairs manifests, bindings, runtime config descriptors, story-display metadata, and admin data sources from concrete modules. It depends on the module crates, so it lives outside `platform-*` (those crates must not depend on concrete modules).
 
 Configured remote modules are loaded at startup through `platform-module-remote`. The current Remote slices support manifest loading, declared HTTP route metadata, schema-admin reads, admin surface metadata, host-owned HTTP proxying for declared GET, POST, PUT, PATCH, and DELETE routes, remote runtime functions, and remote event handlers. Third-party module packaging and ecosystem boundaries are specified in `docs/architecture/third-party-modules.md`. Route proxying is specified separately in `docs/architecture/module-remote-http-proxy.md`. Remote runtime execution and event-handler dispatch are scoped in `docs/architecture/module-remote-runtime.md`, with native gRPC transport scoped in `docs/architecture/module-remote-grpc.md`. Module install trust is operator-owned: the CLI accepts explicit manifest URLs, and official catalogs are curated at publication time without adding a separate host-side trust protocol.
 
@@ -96,7 +96,7 @@ The service kit should stay stable and small. It exists to remove boilerplate, n
 
 The runtime is embedded beside the modular monolith. It manages functions, triggers, queues, flows, retry policies, function run persistence, and execution metadata. It does not own business logic.
 
-Modules register runtime functions through their `ModuleBinding`. The worker app gets the module set from `app-bootstrap`, composes their runtime descriptors into a `FunctionRegistry`, registers module event handlers, runs the transactional outbox relay, and runs the runtime worker loop.
+Modules register runtime functions through their `ModuleBinding`. The worker app gets the module set from `lenso-bootstrap`, composes their runtime descriptors into a `FunctionRegistry`, registers module event handlers, runs the transactional outbox relay, and runs the runtime worker loop.
 
 Current flow from a module event to runtime work:
 
@@ -126,7 +126,7 @@ OpenTelemetry data is an enrichment layer for technical operations. See `docs/ar
 
 ## Contract Layer
 
-Rust is the authoring source for the OpenAPI document. Each HTTP handler carries its own `#[utoipa::path]` annotation and is registered through `utoipa-axum`'s `OpenApiRouter`, so routes and their documentation share a single source. `apps/api/src/openapi.rs` holds only the document-level metadata (title, version, tags) and assembles the linked-module and admin routers into the committed contract, including:
+Rust is the authoring source for the OpenAPI document. Each HTTP handler carries its own `#[utoipa::path]` annotation and is registered through `utoipa-axum`'s `OpenApiRouter`, so routes and their documentation share a single source. `crates/lenso-api/src/openapi.rs` holds only the document-level metadata (title, version, tags) and assembles the linked-module and admin routers into the committed contract, including:
 
 - `POST /v1/auth/dev/sessions`
 - `POST /v1/auth/sessions/revoke`

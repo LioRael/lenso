@@ -33,7 +33,7 @@ Third-party ecosystem modules should default to `Remote`.
 
 `Linked` modules are for first-party application code, framework fixtures, and
 local project-owned modules that intentionally compile into the host. They can
-use `modules/<name>` and `crates/app-bootstrap` registration.
+use `modules/<name>` and `crates/lenso-bootstrap` registration.
 
 `Remote` modules are the right default for external contributors because they
 are language-independent, can be versioned and deployed separately, and keep the

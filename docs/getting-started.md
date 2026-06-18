@@ -20,7 +20,7 @@ cargo add lenso@0.2.1
 That crate exposes serializable module declarations and manifest linting. Local
 host development in this backend repository still uses the workspace crates.
 
-For a blank host project, start from the transitional starter template:
+For a blank host project, start from the starter template:
 
 ```sh
 cp -R crates/lenso-cli/templates/starter-host ../my-lenso-host
@@ -38,12 +38,10 @@ cargo run -p lenso-cli -- host init ../my-lenso-host
 ```
 
 Run `cargo run --bin worker` in a second shell. The template depends on this
-backend repository's temporary `lenso-host` Git package until a stable public
-host feature is available from the `lenso` crate. `lenso-host` only wraps the
+backend repository's Git-pinned `lenso-host` package. `lenso-host` wraps the
 API, worker, migration boot helpers, and a narrow linked HTTP route authoring
-surface; it is not the final public package boundary. Release templates pin it
-to a commit; local development may temporarily point at a branch, but release
-branches must not. The starter exposes `GET /v1/app/status` plus
+surface; generated hosts should pin it to a tag or commit for reproducible
+builds. The starter exposes `GET /v1/app/status` plus
 `GET`/`POST /v1/app/items` as the first host-owned linked routes and data
 surface.
 Published `lenso-cli` builds include the prebuilt Runtime Console and copy it
@@ -141,5 +139,5 @@ just starter-check
 just release-check
 ```
 
-`starter-check` compiles the transitional starter from a temporary copy.
+`starter-check` compiles the starter from a temporary copy.
 `release-check` runs the backend repository quality gate.

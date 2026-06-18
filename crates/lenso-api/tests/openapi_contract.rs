@@ -1,6 +1,6 @@
-use app_api::{build_router, openapi_document};
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
+use lenso_api::{build_router, openapi_document};
 use platform_core::{
     AppConfig, AppContext, LoggingEventPublisher, ModuleConfig, ModuleSourcesConfig,
 };
@@ -152,7 +152,7 @@ fn linked_module_http_routes_are_registered_in_openapi() {
     let value = serde_json::to_value(&document).expect("OpenAPI document should serialize");
     let paths = value["paths"].as_object().expect("OpenAPI paths object");
 
-    for manifest in app_bootstrap::module_manifests() {
+    for manifest in lenso_bootstrap::module_manifests() {
         for route in manifest.http_routes {
             let path = paths.get(&route.path).unwrap_or_else(|| {
                 panic!(
@@ -177,9 +177,9 @@ fn linked_module_openapi_routes_are_declared_in_manifest() {
     let document = openapi_document();
     let value = serde_json::to_value(&document).expect("OpenAPI document should serialize");
     let paths = value["paths"].as_object().expect("OpenAPI paths object");
-    let manifests = app_bootstrap::module_manifests();
+    let manifests = lenso_bootstrap::module_manifests();
 
-    for owner in app_bootstrap::linked_http_route_owners() {
+    for owner in lenso_bootstrap::linked_http_route_owners() {
         let manifest = manifests
             .iter()
             .find(|manifest| manifest.name == owner.module_name)
@@ -230,7 +230,7 @@ async fn disabled_story_module_router_does_not_mount_story_routes() {
             .expect("lazy pool should build"),
         Arc::new(LoggingEventPublisher),
     );
-    let app = app_api::try_build_router(ctx).expect("demo profile router should build");
+    let app = lenso_api::try_build_router(ctx).expect("demo profile router should build");
 
     let response = app
         .oneshot(
@@ -267,7 +267,7 @@ async fn served_openapi_omits_disabled_story_module_routes() {
             .expect("lazy pool should build"),
         Arc::new(LoggingEventPublisher),
     );
-    let app = app_api::try_build_router(ctx).expect("demo profile router should build");
+    let app = lenso_api::try_build_router(ctx).expect("demo profile router should build");
 
     let response = app
         .oneshot(
@@ -311,7 +311,7 @@ async fn served_core_profile_openapi_omits_demo_auth_paths_after_demo_document_a
             .expect("lazy pool should build"),
         Arc::new(LoggingEventPublisher),
     );
-    let app = app_api::try_build_router(ctx).expect("core profile router should build");
+    let app = lenso_api::try_build_router(ctx).expect("core profile router should build");
 
     let response = app
         .oneshot(
@@ -357,10 +357,10 @@ async fn served_core_profile_openapi_keeps_composed_auth_routes() {
             .expect("lazy pool should build"),
         Arc::new(LoggingEventPublisher),
     );
-    let composition = app_bootstrap::HostComposition::new()
-        .with_linked_module(app_bootstrap::auth_linked_module())
-        .with_linked_module(app_bootstrap::auth_password_linked_module());
-    let app = app_api::try_build_router_with_composition(ctx, &composition)
+    let composition = lenso_bootstrap::HostComposition::new()
+        .with_linked_module(lenso_bootstrap::auth_linked_module())
+        .with_linked_module(lenso_bootstrap::auth_password_linked_module());
+    let app = lenso_api::try_build_router_with_composition(ctx, &composition)
         .expect("core profile auth composition router should build");
 
     let response = app

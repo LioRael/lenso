@@ -1,14 +1,14 @@
 [workspace]
 resolver = "2"
 members = [
-    "apps/api",
-    "apps/worker",
-    "apps/migrate",
     "fixtures/remote-module",
     "crates/lenso",
+    "crates/lenso-api",
     "crates/lenso-host",
     "crates/lenso-cli",
-    "crates/app-bootstrap",
+    "crates/lenso-migrate",
+    "crates/lenso-worker",
+    "crates/lenso-bootstrap",
     "crates/platform-admin",
     "crates/platform-admin-data",
     "crates/platform-core",
@@ -67,7 +67,7 @@ utoipa = { version = "5.5", features = ["axum_extras", "chrono", "uuid"] }
 utoipa-axum = "0.2"
 uuid = { version = "1.23", features = ["serde", "v7"] }
 
-lenso = { path = "crates/lenso" }
+lenso = { path = "crates/lenso", version = "0.2.1" }
 platform-core = { path = "crates/platform-core" }
 platform-admin = { path = "crates/platform-admin" }
 platform-admin-data = { path = "crates/platform-admin-data" }
@@ -76,10 +76,10 @@ platform-module-remote = { path = "crates/platform-module-remote" }
 platform-http = { path = "crates/platform-http" }
 platform-runtime = { path = "crates/platform-runtime" }
 platform-testing = { path = "crates/platform-testing" }
-app-bootstrap = { path = "crates/app-bootstrap" }
-app-api = { path = "apps/api" }
-app-migrate = { path = "apps/migrate" }
-app-worker = { path = "apps/worker" }
+lenso-bootstrap = { path = "crates/lenso-bootstrap" }
+lenso-api = { path = "crates/lenso-api" }
+lenso-migrate = { path = "crates/lenso-migrate" }
+lenso-worker = { path = "crates/lenso-worker" }
 lenso-host = { path = "crates/lenso-host" }
 lenso-cli = { path = "crates/lenso-cli" }
 auth = { path = "modules/auth" }

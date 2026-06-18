@@ -54,13 +54,13 @@ sources, and event/function registration contexts, remain in `platform-module`
 until a stable external host-authoring API exists. Internal crates such as
 `platform-core`, `platform-http`, `platform-runtime`, `platform-admin`,
 `platform-admin-data`, `platform-module-remote`, `platform-testing`, and
-`app-bootstrap` should remain `publish = false` until a specific external use
+`lenso-bootstrap` should remain `publish = false` until a specific external use
 case justifies publishing them.
 
-Host application assembly is a later facade layer. It may eventually expose
-helpers for booting an API, worker, and migration runner, but the first package
-should avoid promising a complete hosted application API before the shape is
-clear.
+Host application assembly is exposed today through the narrow `lenso-host`
+facade consumed by generated starter hosts. Keep that surface small: boot the
+API, worker, and migration runner, compose linked modules, and expose linked
+HTTP authoring helpers.
 
 The intended long-term shape is still one `lenso` facade crate with feature
 gates for different authors. Module authors should be able to use the default
@@ -70,12 +70,12 @@ that exposes narrow boot helpers such as API, worker, and migration runners. The
 signatures; it should stay a small facade over intentionally stable host
 operations.
 
-Until that package shape can be made cycle-free and publishable, `crates/lenso-host`
-is the internal pressure-test crate for the same API. It may depend on the
-workspace app crates, but starter templates should treat only its thin boot
-helpers as the host-facing surface.
+Until that package shape can be made cycle-free and publishable,
+`crates/lenso-host` is the current Git-pinned host facade for the same API. It
+depends on the workspace `lenso-*` boot crates, and starter templates should
+treat only its thin boot helpers as the host-facing surface.
 
-The current pressure-test surface is intentionally narrow:
+The current host-facing surface is intentionally narrow:
 
 - `HostBuilder`, `HostComposition`, and `HostLinkedModule` for composing
   host-owned linked modules;
@@ -90,19 +90,17 @@ The current pressure-test surface is intentionally narrow:
 `lenso-host` should not grow a repository layer, query builder, CRUD framework,
 or auth/session abstraction just because the starter needs one example. The
 starter may use normal Rust crates such as `sqlx`, `serde`, `axum`, and
-`utoipa` directly for app-owned business code. Promote only the boot and HTTP
-authoring helpers that stay stable across at least one real starter data slice.
-`lenso-host` is a pressure-test facade: app-owned SQL and CRUD code stay in the
-starter until a narrower public host feature has proven itself.
+`utoipa` directly for app-owned business code. Keep promoting only boot and HTTP
+authoring helpers that stay stable across real starter data slices. App-owned
+SQL and CRUD code stay in the starter.
 
-The transitional starter host template lives in
-`crates/lenso-cli/templates/starter-host` and is the single source for the
-`lenso host init <dir>` scaffolder. It is the pressure test for that future
-facade: it keeps the current API, worker, and migration entrypoints visible
-from a blank project while depending on the temporary `lenso-host` Git package.
-It uses Cargo's system-Git fetch mode so private repository credentials follow
-normal Git configuration. Treat new needs in that template as a signal for the
-next host facade extraction, not as a stable public API.
+The starter host template lives in `crates/lenso-cli/templates/starter-host` and
+is the single source for the `lenso host init <dir>` scaffolder. It keeps the
+current API, worker, and migration entrypoints visible from a blank project
+while depending on the Git-pinned `lenso-host` package. It uses Cargo's
+system-Git fetch mode so private repository credentials follow normal Git
+configuration. Treat new needs in that template as a signal for the next host
+facade extraction.
 
 ## Remote Module Kit
 
@@ -167,8 +165,8 @@ facade exists.
    as the remote-module authoring facade.
 2. Keep the crates.io `lenso` facade limited to stable module-authoring
    declarations until a host application API is intentionally designed.
-3. Keep `crates/lenso-cli/templates/starter-host` as the transitional host pressure test until
-  its boot, migration, HTTP, and app-owned data slices stabilize.
+3. Keep `crates/lenso-cli/templates/starter-host` as the host facade pressure
+   test until its boot, migration, HTTP, and app-owned data slices stabilize.
 4. Move only the stable subset of `lenso-host` into a future `lenso` `host`
    feature; leave app-owned SQL, repositories, CRUD shape, auth/session policy,
    and console UI out of the facade.

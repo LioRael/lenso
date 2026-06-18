@@ -5,7 +5,7 @@
 //! there is a single source of truth per endpoint. This module only contributes
 //! the document-level metadata (info, tags) that is not tied to any one route.
 
-use app_bootstrap::CompositionProfile;
+use lenso_bootstrap::CompositionProfile;
 use platform_core::AppContext;
 use platform_http::{ApiOpenApiRouter, OpenApiRouter, base_router};
 use utoipa::OpenApi;
@@ -44,10 +44,10 @@ pub(crate) fn api_router() -> ApiOpenApiRouter {
 pub(crate) fn api_router_for_profile(profile: CompositionProfile) -> ApiOpenApiRouter {
     let base = OpenApiRouter::with_openapi(openapi_document_for_profile_with_composition(
         profile,
-        &app_bootstrap::HostComposition::default(),
+        &lenso_bootstrap::HostComposition::default(),
     ))
     .merge(base_router());
-    app_bootstrap::merge_linked_http_for_profile(base, profile)
+    lenso_bootstrap::merge_linked_http_for_profile(base, profile)
         .merge(platform_admin::router())
         .merge(platform_admin_data::router())
         .merge(platform_module_remote::router())
@@ -55,7 +55,7 @@ pub(crate) fn api_router_for_profile(profile: CompositionProfile) -> ApiOpenApiR
 
 pub(crate) fn api_router_for_context_with_composition(
     ctx: &AppContext,
-    composition: &app_bootstrap::HostComposition,
+    composition: &lenso_bootstrap::HostComposition,
 ) -> platform_core::AppResult<ApiOpenApiRouter> {
     let profile = CompositionProfile::from_config(&ctx.config)?;
     let base = OpenApiRouter::with_openapi(openapi_document_for_profile_with_composition(
@@ -64,7 +64,7 @@ pub(crate) fn api_router_for_context_with_composition(
     ))
     .merge(base_router());
     Ok(
-        app_bootstrap::merge_linked_http_for_context_with_composition(base, ctx, composition)?
+        lenso_bootstrap::merge_linked_http_for_context_with_composition(base, ctx, composition)?
             .merge(platform_admin::router())
             .merge(platform_admin_data::router())
             .merge(platform_module_remote::router()),
@@ -73,7 +73,7 @@ pub(crate) fn api_router_for_context_with_composition(
 
 fn openapi_document_for_profile_with_composition(
     profile: CompositionProfile,
-    composition: &app_bootstrap::HostComposition,
+    composition: &lenso_bootstrap::HostComposition,
 ) -> utoipa::openapi::OpenApi {
     let mut document = ApiDoc::openapi();
     if let Some(tags) = &mut document.tags {

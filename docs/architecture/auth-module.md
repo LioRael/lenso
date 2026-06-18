@@ -55,7 +55,7 @@ fields to `auth.users`.
 
 ## Installation
 
-Today `auth` is a linked module registered by `crates/app-bootstrap`:
+Today `auth` is a linked module registered by `crates/lenso-bootstrap`:
 
 - Product hosts should use `LENSO_COMPOSITION_PROFILE=core` and explicitly add
   `builtins::auth()` plus provider modules such as `builtins::auth_password()`

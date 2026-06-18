@@ -209,7 +209,7 @@ pub fn check_openapi_omits_removed_paths(root: &Path) -> anyhow::Result<()> {
 
 pub fn check_contract_artifacts_fresh(root: &Path) -> anyhow::Result<()> {
     let openapi = read_yaml(root.join("contracts/openapi/app-api.v1.yaml"))?;
-    let generated_openapi = serde_json::to_value(app_api::openapi_document())
+    let generated_openapi = serde_json::to_value(lenso_api::openapi_document())
         .context("OpenAPI document should serialize")?;
     let error_schema = read_json(root.join("contracts/errors/error-response.v1.schema.json"))?;
     let mut violations = Vec::new();

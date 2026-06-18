@@ -1,6 +1,6 @@
-use app_api::build_router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
+use lenso_api::build_router;
 use platform_admin_data::{
     AdminModule, AdminModuleMetadata, AdminModuleSourceDiagnostics, AdminRemoteModuleDiagnostics,
     install_admin_module_metadata, install_admin_module_metadata_refresh_fn,
@@ -398,9 +398,9 @@ async fn modules_endpoint_lists_linked_module_http_routes() {
         lazy_failing_db(),
         Arc::new(LoggingEventPublisher),
     );
-    install_admin_modules(app_bootstrap::admin_modules(&ctx));
+    install_admin_modules(lenso_bootstrap::admin_modules(&ctx));
     install_admin_module_metadata(
-        app_bootstrap::load_admin_module_metadata(&ctx)
+        lenso_bootstrap::load_admin_module_metadata(&ctx)
             .await
             .expect("admin module metadata loads"),
     );
@@ -442,9 +442,9 @@ async fn modules_endpoint_lists_linked_modules_without_admin_surfaces() {
         lazy_failing_db(),
         Arc::new(LoggingEventPublisher),
     );
-    install_admin_modules(app_bootstrap::admin_modules(&ctx));
+    install_admin_modules(lenso_bootstrap::admin_modules(&ctx));
     install_admin_module_metadata(
-        app_bootstrap::load_admin_module_metadata(&ctx)
+        lenso_bootstrap::load_admin_module_metadata(&ctx)
             .await
             .expect("admin module metadata loads"),
     );

@@ -1,6 +1,6 @@
 ---
 name: lenso-rust-backend
-description: Use when changing Lenso Rust backend code in apps/api, apps/worker, apps/migrate, crates/platform-*, crates/app-bootstrap, domains/*, migrations, runtime/outbox workers, module registration, admin/runtime backends, remote modules, or architecture-level Rust behavior.
+description: Use when changing Lenso Rust backend code in crates/lenso-api, crates/lenso-worker, crates/lenso-migrate, crates/platform-*, crates/lenso-bootstrap, domains/*, migrations, runtime/outbox workers, module registration, admin/runtime backends, remote modules, or architecture-level Rust behavior.
 ---
 
 # Lenso Rust Backend
@@ -18,7 +18,7 @@ For architecture-level changes, read:
 
 If the task touches specific module-framework areas, also use:
 
-- `$lenso-module-framework` for `platform-module`, `platform-admin-data`, manifests, bindings, admin surfaces, and app-bootstrap module registration.
+- `$lenso-module-framework` for `platform-module`, `platform-admin-data`, manifests, bindings, admin surfaces, and lenso-bootstrap module registration.
 - `$lenso-remote-modules` for `platform-module-remote`, remote manifests, HTTP proxying, remote runtime functions, or remote/custom admin surfaces.
 - `$lenso-contracts-sdk` for OpenAPI, generated contracts, event schemas, runtime function contracts, or SDK output.
 - `$lenso-quality-gate` when choosing checks, staging, committing, or merging.
@@ -32,11 +32,11 @@ git diff -- <path>
 
 ## Repository Shape
 
-- `apps/api`: Axum HTTP API, OpenAPI assembly, and mounted public/admin/remote routers.
-- `apps/worker`: outbox relay, event dispatch, and runtime worker loop.
-- `apps/migrate`: deterministic migration runner.
+- `crates/lenso-api`: Axum HTTP API, OpenAPI assembly, and mounted public/admin/remote routers.
+- `crates/lenso-worker`: outbox relay, event dispatch, and runtime worker loop.
+- `crates/lenso-migrate`: deterministic migration runner.
 - `crates/platform-*`: shared platform primitives, runtime, module contracts, admin backends, testing, migrations, outbox, errors, health, telemetry, and remote module support.
-- `crates/app-bootstrap`: the composition root that enumerates linked and configured remote modules for the API and worker.
+- `crates/lenso-bootstrap`: the composition root that enumerates linked and configured remote modules for the API and worker.
 - `domains/*`: business capabilities with vertical Rust structure and no cross-domain internal imports.
 - `contracts/*` and `packages/ts-sdk`: committed generated artifacts; do not hand-edit generated output.
 
@@ -44,7 +44,7 @@ git diff -- <path>
 
 - Do not create DDD or Clean Architecture domain folders named `api`, `application`, `domain`, or `infrastructure`.
 - Do not import another domain's internals from domain source code. Use stable public interfaces for synchronous calls and events/runtime functions for asynchronous work.
-- Register concrete modules only in `crates/app-bootstrap`; platform crates expose seams and must not depend on business domains.
+- Register concrete modules only in `crates/lenso-bootstrap`; platform crates expose seams and must not depend on business domains.
 - Keep module data and behavior split. Serializable declarations belong in `ModuleManifest`; source-specific behavior belongs behind narrow traits such as `ModuleBinding`; admin record reads belong behind `AdminDataSource`.
 - Keep `platform-admin` as runtime observability and `platform-admin-data` as schema-admin business data. Neither crate should depend on concrete domains.
 - Keep OpenAPI single-source through `utoipa-axum`: annotate real handlers and register them with `OpenApiRouter::routes(routes!(handler))`.

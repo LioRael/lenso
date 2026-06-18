@@ -1,7 +1,7 @@
-use app_api::build_router;
 use axum::Router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
+use lenso_api::build_router;
 use platform_admin_data::{
     AdminModuleMetadata, install_admin_module_metadata, install_admin_modules,
 };
@@ -70,13 +70,13 @@ async fn app_with_remote_modules_and_db(
     database_url: String,
 ) -> axum::Router {
     let ctx = app_context_with_remote_modules_and_db(remote, db, database_url);
-    let admin_modules = app_bootstrap::load_admin_modules(&ctx)
+    let admin_modules = lenso_bootstrap::load_admin_modules(&ctx)
         .await
         .expect("remote admin modules load");
-    let admin_module_metadata = app_bootstrap::load_admin_module_metadata(&ctx)
+    let admin_module_metadata = lenso_bootstrap::load_admin_module_metadata(&ctx)
         .await
         .expect("remote admin module metadata loads");
-    let remote_http_proxy_registry = app_bootstrap::load_remote_http_proxy_registry(&ctx)
+    let remote_http_proxy_registry = lenso_bootstrap::load_remote_http_proxy_registry(&ctx)
         .await
         .expect("remote HTTP proxy registry loads");
 
@@ -113,7 +113,7 @@ fn app_context_with_remote_modules_and_db(
 fn install_module_metadata(metadata: Vec<AdminModuleMetadata>) {
     platform_admin::install_runtime_function_declarations(
         platform_admin::runtime_function_declarations_from_modules(
-            app_bootstrap::runtime_function_declaration_sources_from_metadata(&metadata),
+            lenso_bootstrap::runtime_function_declaration_sources_from_metadata(&metadata),
         ),
     );
     install_admin_module_metadata(metadata);
@@ -602,10 +602,10 @@ async fn installed_remote_module_lifecycle_activation_runs_through_worker_runtim
         db.pool.clone(),
         db.url.clone(),
     );
-    let modules = app_bootstrap::load_modules(&ctx)
+    let modules = lenso_bootstrap::load_modules(&ctx)
         .await
         .expect("installed remote module loads");
-    let registry = app_bootstrap::function_registry(&modules);
+    let registry = lenso_bootstrap::function_registry(&modules);
     assert!(registry.get("remote_crm.sync_contact.v1").is_some());
 
     let app = app_with_remote_modules_and_db(remote_sources, db.pool.clone(), db.url.clone()).await;
@@ -622,7 +622,7 @@ async fn installed_remote_module_lifecycle_activation_runs_through_worker_runtim
     assert_eq!(proxied["remote_path"], "/contacts/contact_1");
 
     let activation_run_ids =
-        app_bootstrap::enqueue_lifecycle_activation_jobs(&ctx, &modules, &registry)
+        lenso_bootstrap::enqueue_lifecycle_activation_jobs(&ctx, &modules, &registry)
             .await
             .expect("remote lifecycle activation should enqueue");
     assert_eq!(activation_run_ids.len(), 1);
@@ -710,15 +710,15 @@ async fn installed_remote_module_event_handler_enqueues_runtime_function() {
     }];
     let ctx =
         app_context_with_remote_modules_and_db(remote_sources, db.pool.clone(), db.url.clone());
-    let modules = app_bootstrap::load_modules(&ctx)
+    let modules = lenso_bootstrap::load_modules(&ctx)
         .await
         .expect("installed remote module loads");
-    let function_registry = Arc::new(app_bootstrap::function_registry(&modules));
+    let function_registry = Arc::new(lenso_bootstrap::function_registry(&modules));
     let remote_module = modules
         .iter()
         .find(|module| module.manifest.name == "remote-crm")
         .expect("remote-crm module loads");
-    let event_handlers = app_bootstrap::event_handlers_with_runtime_actions(
+    let event_handlers = lenso_bootstrap::event_handlers_with_runtime_actions(
         &ctx,
         std::slice::from_ref(remote_module),
         function_registry.clone(),

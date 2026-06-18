@@ -67,11 +67,11 @@ cargo run --locked -p remote-module-fixture >"$remote_log" 2>&1 &
 remote_pid=$!
 wait_url "$remote_url/lenso/module/v1/manifest" "remote module"
 
-cargo run --locked -p app-api >"$api_log" 2>&1 &
+cargo run --locked -p lenso-api >"$api_log" 2>&1 &
 api_pid=$!
 wait_url "$api_url/livez" "API"
 
-cargo run --locked -p app-worker >"$worker_log" 2>&1 &
+cargo run --locked -p lenso-worker >"$worker_log" 2>&1 &
 worker_pid=$!
 
 curl --noproxy '*' -fsS \
