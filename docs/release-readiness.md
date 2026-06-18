@@ -142,7 +142,8 @@ The end-to-end release branch and GitHub Actions flow lives in
 The release workflow runs with a Postgres service because backend checks include
 DB-backed Rust integration tests.
 
-When triggered with `publish_rust_crate=false`, the workflow performs package
-dry-runs only. When `publish_rust_crate=true`, it requires the
-`CARGO_REGISTRY_TOKEN` repository secret and publishes the backend-owned Rust
-artifact after the same gates pass.
+When triggered with `publish_rust_crate=false`, the workflow performs the
+backend `lenso` package dry-run only. When `publish_rust_crate=true`, it
+requires the `CARGO_REGISTRY_TOKEN` repository secret and publishes the
+backend-owned Rust artifact after the same gates pass. `lenso-cli` publishing is
+controlled separately by `publish_lenso_cli`.

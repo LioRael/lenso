@@ -29,6 +29,9 @@ release-version-check:
 package-readiness:
     sh scripts/package-readiness.sh
 
+cli-package-readiness:
+    cargo package --locked -p lenso-cli --allow-dirty
+
 release-package:
     sh scripts/release-package.sh
 
