@@ -5,7 +5,6 @@ members = [
     "crates/lenso-contracts",
     "crates/lenso",
     "crates/lenso-api",
-    "crates/lenso-host",
     "crates/lenso-migrate",
     "crates/lenso-worker",
     "crates/lenso-bootstrap",
@@ -79,7 +78,6 @@ lenso-bootstrap = { path = "crates/lenso-bootstrap" }
 lenso-api = { path = "crates/lenso-api" }
 lenso-migrate = { path = "crates/lenso-migrate" }
 lenso-worker = { path = "crates/lenso-worker" }
-lenso-host = { path = "crates/lenso-host" }
 auth = { path = "modules/auth" }
 auth-password = { path = "modules/auth-password" }
 story = { path = "modules/story" }

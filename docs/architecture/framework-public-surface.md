@@ -62,9 +62,6 @@ Host application assembly is exposed through the narrow `lenso::host` facade.
 Keep that surface small: boot the API, worker, and migration runner, compose
 linked modules, and expose linked HTTP authoring helpers.
 
-The `lenso-host` crate remains as a compatibility re-export for generated hosts
-that still import `lenso_host::*`.
-
 The current host-facing surface is intentionally narrow:
 
 - `HostBuilder`, `HostComposition`, and `HostLinkedModule` for composing

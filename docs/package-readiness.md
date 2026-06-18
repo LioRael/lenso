@@ -20,9 +20,6 @@ as `platform-core`, `platform-module`, `platform-runtime`, `lenso-api`,
 details until their API contracts are intentionally designed for external
 consumers.
 
-`lenso-host` is a compatibility re-export for generated hosts that still import
-`lenso_host::*`; do not publish it to crates.io.
-
 Registry baseline as of the first release line:
 
 - `lenso@0.1.0` is published on crates.io.
@@ -53,10 +50,6 @@ just package-readiness
 The gate verifies that `cargo package -p lenso-contracts --allow-dirty` can
 assemble the crates.io contract package. It does not upload anything to
 crates.io.
-
-`cargo package -p lenso-host --allow-dirty --no-verify` is useful as a boundary
-probe, but it is not a release gate yet. Today it stops at repository-internal
-path dependencies, which is expected for the Git-pinned host facade.
 
 ## Crates.io Direction
 

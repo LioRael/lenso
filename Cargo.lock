@@ -1462,13 +1462,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lenso-host"
-version = "0.1.0"
-dependencies = [
- "lenso",
-]
-
-[[package]]
 name = "lenso-migrate"
 version = "0.1.0"
 dependencies = [
