@@ -18,7 +18,7 @@ on:
         type: boolean
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   package:
@@ -130,3 +130,15 @@ jobs:
           name: lenso-${{ inputs.version }}-artifact-readme
           path: dist/release/lenso-${{ inputs.version }}-artifact-readme.md
           if-no-files-found: error
+      - name: Publish GitHub Release
+        if: ${{ inputs.publish_rust_crate }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ inputs.version }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Lenso ${{ inputs.version }}" \
+            --notes-file "dist/release/lenso-${{ inputs.version }}-release-notes.md" \
+            "dist/release/lenso-${{ inputs.version }}-source.tar.gz" \
+            "dist/release/lenso-${{ inputs.version }}-artifact-readme.md"
