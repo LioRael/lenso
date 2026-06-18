@@ -8,6 +8,11 @@ use include_dir::{Dir, DirEntry, include_dir};
 /// project that `lenso host init` writes out.
 const TEMPLATE_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/templates/starter-host");
 
+/// Optional prebuilt Runtime Console payload. Release builds populate this
+/// directory before packaging `lenso-cli`; development builds may only contain
+/// the marker file.
+const CONSOLE_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/console");
+
 /// Template-wide rewrite values applied when scaffolding a named project.
 #[derive(Debug, Clone)]
 struct Rewrites {
@@ -34,9 +39,27 @@ pub fn init(dir: &str, name: Option<&str>, force: bool) -> Result<()> {
 
     prepare_target(&target, force)?;
     extract(&TEMPLATE_DIR, &target, PathBuf::new(), &rewrites)?;
+    let console_status = install_embedded_console(&target)?;
 
-    print_next_steps(&target, &package_name);
+    print_next_steps(&target, &package_name, console_status);
     Ok(())
+}
+
+/// Refresh hosted Runtime Console assets in an existing Lenso host project.
+pub fn update_console(repo_root: Option<&Path>) -> Result<()> {
+    let target = repo_root.unwrap_or_else(|| Path::new("."));
+    match install_embedded_console(target)? {
+        ConsoleInstallStatus::Installed => {
+            eprintln!(
+                "Updated bundled Runtime Console in {}",
+                target.join(".lenso").join("console").display()
+            );
+            Ok(())
+        }
+        ConsoleInstallStatus::NotPackaged => bail!(
+            "Runtime Console assets were not embedded in this lenso-cli build; install a release build that includes the console"
+        ),
+    }
 }
 
 /// Reject names that cannot be a Cargo package name.
@@ -166,6 +189,60 @@ fn write_file(contents: &[u8], kind: RewriteKind, out: &Path, rewrites: &Rewrite
     Ok(())
 }
 
+fn install_embedded_console(target: &Path) -> Result<ConsoleInstallStatus> {
+    let Some(dist_dir) = CONSOLE_DIR.get_dir("dist") else {
+        return Ok(ConsoleInstallStatus::NotPackaged);
+    };
+    if CONSOLE_DIR.get_file("dist/index.html").is_none() {
+        return Ok(ConsoleInstallStatus::NotPackaged);
+    }
+
+    let console_root = target.join(".lenso").join("console");
+    copy_embedded_dir(dist_dir, &console_root.join("dist"))?;
+
+    if let Some(extensions_dir) = CONSOLE_DIR.get_dir("extensions") {
+        copy_embedded_dir(extensions_dir, &console_root.join("extensions"))?;
+    } else {
+        fs::create_dir_all(console_root.join("extensions"))
+            .with_context(|| format!("create {}", console_root.join("extensions").display()))?;
+    }
+
+    let registry = console_root.join("extensions").join("registry.json");
+    if !registry.exists() {
+        fs::write(&registry, b"{\"version\":1,\"bundles\":[]}\n")
+            .with_context(|| format!("write {}", registry.display()))?;
+    }
+
+    Ok(ConsoleInstallStatus::Installed)
+}
+
+fn copy_embedded_dir(dir: &Dir, target: &Path) -> Result<()> {
+    if target.exists() {
+        fs::remove_dir_all(target).with_context(|| format!("remove {}", target.display()))?;
+    }
+    fs::create_dir_all(target).with_context(|| format!("create {}", target.display()))?;
+
+    for entry in dir.entries() {
+        let name = entry_name(entry)?;
+        let out_path = target.join(name);
+        match entry {
+            DirEntry::Dir(child) => copy_embedded_dir(child, &out_path)?,
+            DirEntry::File(file) => {
+                fs::write(&out_path, file.contents())
+                    .with_context(|| format!("write {}", out_path.display()))?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum ConsoleInstallStatus {
+    Installed,
+    NotPackaged,
+}
+
 /// Replace the template package name with the requested project name.
 fn rewrite_cargo_toml(contents: &[u8], rewrites: &Rewrites) -> Result<String> {
     let text = std::str::from_utf8(contents).context("template Cargo.toml is not UTF-8")?;
@@ -183,11 +260,19 @@ fn rewrite_bin_source(contents: &[u8], rewrites: &Rewrites) -> String {
     text.replace("lenso_starter_host", &rewrites.lib_name)
 }
 
-fn print_next_steps(target: &Path, package_name: &str) {
+fn print_next_steps(target: &Path, package_name: &str, console_status: ConsoleInstallStatus) {
     eprintln!(
         "Created Lenso host project `{package_name}` in {}",
         target.display()
     );
+    match console_status {
+        ConsoleInstallStatus::Installed => {
+            eprintln!("Installed the bundled Runtime Console into .lenso/console.");
+        }
+        ConsoleInstallStatus::NotPackaged => {
+            eprintln!("Runtime Console assets were not embedded in this lenso-cli build.");
+        }
+    }
     eprintln!();
     eprintln!("Next steps:");
     eprintln!("  cd {}", target.display());
@@ -196,6 +281,9 @@ fn print_next_steps(target: &Path, package_name: &str) {
     eprintln!("  cargo run --bin migrate");
     eprintln!("  cargo run --bin api       # API server");
     eprintln!("  cargo run --bin worker    # in another shell");
+    if console_status == ConsoleInstallStatus::Installed {
+        eprintln!("  open http://127.0.0.1:3000/console");
+    }
     eprintln!();
     eprintln!("Install a remote module with `lenso module install <manifest-url>`.");
 }
@@ -241,5 +329,44 @@ mod tests {
         let input = b"lenso_starter_host::host_composition()";
         let out = rewrite_bin_source(input, &rewrites);
         assert_eq!(out, "billing_svc::host_composition()");
+    }
+
+    #[test]
+    fn copies_embedded_console_tree() {
+        let target = std::env::temp_dir().join(format!(
+            "lenso-cli-console-copy-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = fs::remove_dir_all(&target);
+
+        copy_embedded_dir(&CONSOLE_DIR, &target).unwrap();
+        assert!(target.join(".keep").exists());
+
+        fs::remove_dir_all(target).unwrap();
+    }
+
+    #[test]
+    fn update_console_matches_packaged_asset_state() {
+        let target = std::env::temp_dir().join(format!(
+            "lenso-cli-console-update-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&target).unwrap();
+
+        let result = update_console(Some(&target));
+
+        if CONSOLE_DIR.get_file("dist/index.html").is_some() {
+            result.unwrap();
+            assert!(target.join(".lenso/console/dist/index.html").exists());
+        } else {
+            assert!(result.is_err());
+        }
+        fs::remove_dir_all(target).unwrap();
     }
 }

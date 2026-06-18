@@ -240,12 +240,14 @@ The default install path is user-driven: see a module, install from its
 manifest, install packages, restart the host, and use the module.
 `module install` updates host-local remote module configuration, applies
 manifest-declared `install.env` values, records `install.commands`, writes
-`install.services`, and applies Runtime Console package registration when the
-manifest declares console packages. `module add` remains a compatibility alias
-for remote installs.
+`install.services`, writes an install receipt to `.lenso/module-installs.json`,
+and applies Runtime Console package registration when the manifest declares
+console packages. `module add` remains a compatibility alias for remote
+installs.
 `module uninstall <name>` removes the host-local remote module source and any
-pending console package install-plan entry for that module; it leaves module
-data and already-installed Runtime Console package dependencies alone.
+pending console package install-plan and install-receipt entry for that module;
+it leaves module data and already-installed Runtime Console package dependencies
+alone.
 
 `.lenso/module-catalog.json` is the optional discovery list behind Available
 Modules. A host can add entries with `lenso module catalog add <manifest-url>`.
@@ -277,6 +279,8 @@ The first CLI install lane writes host-local state only:
 - `.lenso/module-catalog.json`: optional local discovery entries for Available
   Modules.
 - `.env`: appends or replaces `REMOTE_MODULES=<name>=<base_url>`.
+- `.lenso/module-installs.json`: records the module source and host-local writes
+  so uninstall does not need to infer what was installed.
 - `.lenso/console-package-install-plan.json`: records requested Runtime Console
   packages, exports, routes, and manual `pnpm add` commands to run in the
   Runtime Console repository.

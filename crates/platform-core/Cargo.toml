@@ -11,6 +11,7 @@ lenso.workspace = true
 arc-swap.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
+dotenvy.workspace = true
 getrandom.workspace = true
 opentelemetry.workspace = true
 opentelemetry-otlp.workspace = true

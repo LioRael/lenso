@@ -66,6 +66,13 @@ jobs:
           node-version: 24
       - name: Check release version
         run: just release-version-check
+      - name: Install Runtime Console dependencies
+        working-directory: lenso-runtime-console
+        run: pnpm install --frozen-lockfile
+      - name: Build hosted Runtime Console
+        env:
+          RUNTIME_CONSOLE_ROOT: lenso-runtime-console
+        run: just console-build
       - name: Run release gate
         run: just release-check
       - name: Run package publish preflight
@@ -74,13 +81,6 @@ jobs:
         run: cargo publish --dry-run --locked -p lenso --allow-dirty
       - name: Dry-run lenso-cli crates.io publish
         run: cargo publish --dry-run --locked -p lenso-cli --allow-dirty
-      - name: Install Runtime Console dependencies
-        working-directory: lenso-runtime-console
-        run: pnpm install --frozen-lockfile
-      - name: Build hosted Runtime Console
-        env:
-          RUNTIME_CONSOLE_ROOT: lenso-runtime-console
-        run: just console-build
       - name: Build release package
         env:
           LENSO_RELEASE_NOTES_SUMMARY: ${{ inputs.notes }}
