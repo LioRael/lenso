@@ -3,7 +3,6 @@ use argon2::password_hash::{PasswordHash, SaltString};
 use argon2::{Argon2, Params, PasswordHasher, PasswordVerifier, Version};
 use platform_core::error::ErrorDetail;
 use platform_core::{AppError, AppResult, ErrorCode};
-use rand_core::{OsRng, RngCore};
 use std::fmt::Write as _;
 
 const MAX_IDENTIFIER_BYTES: usize = 512;
@@ -31,7 +30,10 @@ pub fn validate_password(password: &str) -> AppResult<()> {
 }
 
 pub fn hash_password(password: &str, config: &AuthPasswordConfig) -> AppResult<String> {
-    let salt = SaltString::generate(&mut OsRng);
+    let mut salt_bytes = [0u8; 16];
+    getrandom::fill(&mut salt_bytes).expect("OS randomness should be available");
+    let salt = SaltString::encode_b64(&salt_bytes)
+        .expect("16 random bytes should produce a valid Argon2 salt");
     argon2_from_config(config)?
         .hash_password(password.as_bytes(), &salt)
         .map(|hash| hash.to_string())
@@ -53,7 +55,7 @@ pub fn verify_password(password_hash: &str, password: &str) -> AppResult<bool> {
 
 pub fn new_session_token() -> String {
     let mut bytes = [0u8; 32];
-    OsRng.fill_bytes(&mut bytes);
+    getrandom::fill(&mut bytes).expect("OS randomness should be available");
 
     let mut token = String::with_capacity("sess_".len() + bytes.len() * 2);
     token.push_str("sess_");
