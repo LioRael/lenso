@@ -42,12 +42,18 @@ The API binds to `HTTP_HOST:HTTP_PORT` from `.env` and serves:
 - `POST /v1/app/items` for the authenticated user;
 - `GET /openapi.json`;
 - `GET /docs`;
+- Runtime Console frontend under `/console`;
 - Runtime Console admin APIs under `/admin/*`;
 - installed remote module HTTP proxies under `/modules/{module}/http/*`.
 
-The starter keeps `LENSO_COMPOSITION_PROFILE=core` and explicitly installs
-Lenso's auth anchor plus the password provider from `src/lib.rs`. That keeps the
-default host small while leaving product modules under application control.
+The starter keeps `LENSO_COMPOSITION_PROFILE=core` and does not install an auth
+module by default. Local development can use `Bearer dev-user:<id>` tokens; add
+real auth modules only when the application needs them:
+
+```sh
+lenso module install auth
+lenso module install auth-password
+```
 
 ## Add A Remote Module
 
@@ -70,8 +76,6 @@ Local Rust modules are registered from `src/lib.rs`:
 use lenso_host::prelude::*;
 
 HostBuilder::new()
-    .linked_module(builtins::auth())
-    .linked_module(builtins::auth_password())
     .linked_module(modules::app::linked_module())
     .build()
 ```

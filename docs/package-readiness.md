@@ -26,9 +26,10 @@ Registry baseline as of the first release line:
   applications with `lenso host init <dir>`, creates linked and remote module
   scaffolds with `lenso module create`, installs remote modules with
   `lenso module add <manifest-url>`, and creates or applies Runtime Console
-  package registrations. It embeds the starter template and depends only on
-  registry crates, so it is publishable independently of the internal workspace
-  crates. Publish it after its CLI gate (`just cli-check`) is stable.
+  package registrations. It embeds the starter template and the prebuilt
+  Runtime Console payload, and depends only on registry crates, so it is
+  publishable independently of the internal workspace crates. Publish it after
+  its CLI gate (`just cli-check`) is stable.
 
 ## Published Baseline
 
@@ -54,8 +55,8 @@ facade crate without depending on unpublished internal crates. It does not uploa
 anything to crates.io.
 
 `lenso-cli` is publishable for the same reason: its dependencies are registry
-crates, and the embedded starter template is bundled inside the crate. The gate
-also dry-runs packaging for `lenso-cli`.
+crates, and the embedded starter template plus Runtime Console payload are
+bundled inside the crate. The gate also dry-runs packaging for `lenso-cli`.
 
 ## Crates.io Direction
 

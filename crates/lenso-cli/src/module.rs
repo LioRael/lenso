@@ -28,7 +28,7 @@ pub struct RemoteModuleUninstallOptions {
     pub install_plan_file: Option<PathBuf>,
     pub module_services_file: Option<PathBuf>,
     pub repo_root: Option<PathBuf>,
-    pub source: String,
+    pub source: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -190,6 +190,8 @@ struct RepoPaths {
 
 type PendingWrites = BTreeMap<PathBuf, String>;
 
+const MODULE_INSTALL_LEDGER_PATH: &str = ".lenso/module-installs.json";
+
 pub async fn create_module(options: ModuleCreateOptions) -> Result<()> {
     if options.remote {
         return create_remote_module(options).await;
@@ -333,9 +335,37 @@ pub async fn install_module(
     module_reference: &str,
     options: RemoteModuleInstallOptions,
 ) -> Result<()> {
+    if let Some(descriptor) = read_install_descriptor(module_reference).await? {
+        return install_module_descriptor(&descriptor, module_reference, options).await;
+    }
+
     match parse_module_source(&options.source)? {
         ModuleSource::Remote => add_remote_module(module_reference, options).await,
         ModuleSource::Linked => install_linked_module(module_reference, options),
+    }
+}
+
+async fn install_module_descriptor(
+    descriptor: &Value,
+    descriptor_reference: &str,
+    options: RemoteModuleInstallOptions,
+) -> Result<()> {
+    match parse_module_source(string_field(descriptor, "source")?)? {
+        ModuleSource::Remote => {
+            let manifest_reference = descriptor
+                .get("remote")
+                .and_then(|remote| {
+                    remote
+                        .get("manifest_url")
+                        .or_else(|| remote.get("manifestUrl"))
+                })
+                .and_then(Value::as_str)
+                .unwrap_or(descriptor_reference);
+            add_remote_module(manifest_reference, options).await
+        }
+        ModuleSource::Linked => {
+            install_linked_module_descriptor(descriptor, descriptor_reference, options)
+        }
     }
 }
 
@@ -358,6 +388,7 @@ pub async fn add_remote_module(
             .as_deref()
             .unwrap_or_else(|| Path::new(".lenso/console-package-install-plan.json")),
     );
+    let install_ledger_path = repo_root.join(MODULE_INSTALL_LEDGER_PATH);
     let module_services_path = resolve_path(
         &repo_root,
         options
@@ -387,6 +418,26 @@ pub async fn add_remote_module(
     )?;
     let module_services =
         update_remote_module_services_file(&module_services_path, &module_name, &install_services)?;
+    let install_ledger = update_module_install_ledger(
+        &install_ledger_path,
+        remote_module_install_ledger_entry(
+            &module_name,
+            manifest_reference,
+            &base_url,
+            remote_module_install_writes(
+                &repo_root,
+                &env_file_path,
+                &install_plan_path,
+                module_services
+                    .as_ref()
+                    .map(|_| module_services_path.as_path()),
+            ),
+            &install_env,
+            &install_commands,
+            &install_services,
+            console_package_count_from_install_plan(&install_plan, &module_name),
+        ),
+    )?;
     let console_package_count =
         console_package_count_from_install_plan(&install_plan, &module_name);
 
@@ -394,6 +445,7 @@ pub async fn add_remote_module(
         println!("Remote module install dry run:");
         println!("- {}", display_relative(&repo_root, &env_file_path));
         println!("- {}", display_relative(&repo_root, &install_plan_path));
+        println!("- {}", display_relative(&repo_root, &install_ledger_path));
         if module_services.is_some() {
             println!("- {}", display_relative(&repo_root, &module_services_path));
         }
@@ -407,6 +459,7 @@ pub async fn add_remote_module(
 
     write_file(&env_file_path, env_file.as_bytes())?;
     write_json(&install_plan_path, &install_plan)?;
+    write_json(&install_ledger_path, &install_ledger)?;
     if let Some(module_services) = &module_services {
         write_json(&module_services_path, module_services)?;
     }
@@ -415,6 +468,7 @@ pub async fn add_remote_module(
     println!("Updated:");
     println!("- {}", display_relative(&repo_root, &env_file_path));
     println!("- {}", display_relative(&repo_root, &install_plan_path));
+    println!("- {}", display_relative(&repo_root, &install_ledger_path));
     if module_services.is_some() {
         println!("- {}", display_relative(&repo_root, &module_services_path));
     }
@@ -487,20 +541,198 @@ fn install_linked_module(module_name: &str, options: RemoteModuleInstallOptions)
     )
 }
 
+fn install_linked_module_descriptor(
+    descriptor: &Value,
+    descriptor_reference: &str,
+    options: RemoteModuleInstallOptions,
+) -> Result<()> {
+    let module_name = string_field(descriptor, "name")?.trim();
+    if module_name.is_empty() {
+        bail!("Linked module descriptor name is required");
+    }
+    let linked = descriptor
+        .get("linked")
+        .ok_or_else(|| anyhow!("Linked module descriptor linked section is required"))?;
+    let call = string_field(linked, "call")?.trim();
+    if call.is_empty() {
+        bail!("Linked module descriptor linked.call is required");
+    }
+
+    let repo_root = resolve_repo_root(options.repo_root.as_deref())?;
+    let env_file_path = resolve_path(
+        &repo_root,
+        options
+            .env_file
+            .as_deref()
+            .unwrap_or_else(|| Path::new(".env")),
+    );
+    let cargo_toml_path = repo_root.join("Cargo.toml");
+    let host_lib_path = repo_root.join("src/lib.rs");
+    let install_ledger_path = repo_root.join(MODULE_INSTALL_LEDGER_PATH);
+
+    let dependencies = descriptor
+        .get("dependencies")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+
+    let mut env_file =
+        set_linked_module_enabled_env(&read_text_if_exists(&env_file_path)?, module_name, true);
+    for dependency in &dependencies {
+        env_file = set_linked_module_enabled_env(&env_file, dependency, true);
+    }
+
+    let mut cargo_toml = read_text_if_exists(&cargo_toml_path)?;
+    let mut cargo_toml_changed = false;
+    let mut host_lib = read_text(&host_lib_path)?;
+    for dependency in &dependencies {
+        if let Some(dependency_descriptor) = builtin_linked_module_descriptor(dependency) {
+            let dependency_linked = dependency_descriptor.get("linked").ok_or_else(|| {
+                anyhow!("Linked dependency descriptor linked section is required")
+            })?;
+            if let Some(updated) = update_host_cargo_toml_for_linked_descriptor(
+                &cargo_toml,
+                dependency_linked.get("cargo"),
+            )? {
+                cargo_toml = updated;
+                cargo_toml_changed = true;
+            }
+            host_lib = update_host_lib_for_linked_descriptor(
+                &host_lib,
+                dependency_linked.get("use").and_then(Value::as_str),
+                string_field(dependency_linked, "call")?,
+            )?;
+        }
+    }
+    if let Some(updated) =
+        update_host_cargo_toml_for_linked_descriptor(&cargo_toml, linked.get("cargo"))?
+    {
+        cargo_toml = updated;
+        cargo_toml_changed = true;
+    }
+    host_lib = update_host_lib_for_linked_descriptor(
+        &host_lib,
+        linked.get("use").and_then(Value::as_str),
+        call,
+    )?;
+    let install_ledger = update_module_install_ledger(
+        &install_ledger_path,
+        linked_module_install_ledger_entry(
+            module_name,
+            descriptor_reference,
+            call,
+            &dependencies,
+            linked_module_install_writes(
+                &repo_root,
+                &env_file_path,
+                if cargo_toml_changed {
+                    Some(cargo_toml_path.as_path())
+                } else {
+                    None
+                },
+                &host_lib_path,
+            ),
+            cargo_toml_changed,
+        ),
+    )?;
+
+    if options.dry_run {
+        println!("Linked module install dry run:");
+        println!("- {}", display_relative(&repo_root, &env_file_path));
+        if cargo_toml_changed {
+            println!("- {}", display_relative(&repo_root, &cargo_toml_path));
+        }
+        println!("- {}", display_relative(&repo_root, &host_lib_path));
+        println!("- {}", display_relative(&repo_root, &install_ledger_path));
+        println!("- {module_name}");
+        return Ok(());
+    }
+
+    write_file(&env_file_path, env_file.as_bytes())?;
+    if cargo_toml_changed {
+        write_file(&cargo_toml_path, cargo_toml.as_bytes())?;
+    }
+    write_file(&host_lib_path, host_lib.as_bytes())?;
+    write_json(&install_ledger_path, &install_ledger)?;
+
+    println!("Installed linked module {module_name}.");
+    println!("Updated:");
+    println!("- {}", display_relative(&repo_root, &env_file_path));
+    if cargo_toml_changed {
+        println!("- {}", display_relative(&repo_root, &cargo_toml_path));
+    }
+    println!("- {}", display_relative(&repo_root, &host_lib_path));
+    println!("- {}", display_relative(&repo_root, &install_ledger_path));
+    println!("Next steps:");
+    println!("- cargo run --bin migrate");
+    println!("- restart the API and worker");
+
+    Ok(())
+}
+
 pub async fn uninstall_module(
     module_name: &str,
     options: RemoteModuleUninstallOptions,
 ) -> Result<()> {
-    match parse_module_source(&options.source)? {
+    match uninstall_module_source(module_name, &options)? {
         ModuleSource::Remote => uninstall_remote_module(module_name, options).await,
-        ModuleSource::Linked => set_linked_module_enabled(
-            module_name,
-            false,
-            options.env_file,
-            options.repo_root,
-            options.dry_run,
-        ),
+        ModuleSource::Linked => uninstall_linked_module(module_name, options),
     }
+}
+
+fn uninstall_module_source(
+    module_name: &str,
+    options: &RemoteModuleUninstallOptions,
+) -> Result<ModuleSource> {
+    if let Some(source) = options.source.as_deref() {
+        return parse_module_source(source);
+    }
+
+    let module_name = module_name.trim();
+    if module_name.is_empty() {
+        bail!("Module name is required");
+    }
+
+    let repo_root = resolve_repo_root(options.repo_root.as_deref())?;
+    let env_file_path = resolve_path(
+        &repo_root,
+        options
+            .env_file
+            .as_deref()
+            .unwrap_or_else(|| Path::new(".env")),
+    );
+    let install_plan_path = resolve_path(
+        &repo_root,
+        options
+            .install_plan_file
+            .as_deref()
+            .unwrap_or_else(|| Path::new(".lenso/console-package-install-plan.json")),
+    );
+    let install_ledger_path = repo_root.join(MODULE_INSTALL_LEDGER_PATH);
+    let module_services_path = resolve_path(
+        &repo_root,
+        options
+            .module_services_file
+            .as_deref()
+            .unwrap_or_else(|| Path::new(".lenso/module-services.json")),
+    );
+    if let Some(source) = module_install_ledger_source(&install_ledger_path, module_name)? {
+        return Ok(source);
+    }
+
+    infer_uninstall_module_source(
+        module_name,
+        &read_text_if_exists(&env_file_path)?,
+        remote_module_install_state_exists(
+            module_name,
+            &env_file_path,
+            &install_plan_path,
+            &module_services_path,
+        )?,
+    )
 }
 
 pub async fn uninstall_remote_module(
@@ -526,6 +758,7 @@ pub async fn uninstall_remote_module(
             .as_deref()
             .unwrap_or_else(|| Path::new(".lenso/console-package-install-plan.json")),
     );
+    let install_ledger_path = repo_root.join(MODULE_INSTALL_LEDGER_PATH);
     let module_services_path = resolve_path(
         &repo_root,
         options
@@ -535,6 +768,7 @@ pub async fn uninstall_remote_module(
     );
     let env_file = remove_remote_module_from_env(&env_file_path, module_name)?;
     let install_plan = remove_console_package_install_plan_module(&install_plan_path, module_name)?;
+    let install_ledger = remove_module_install_ledger_module(&install_ledger_path, module_name)?;
     let module_services =
         remove_remote_module_services_file_module(&module_services_path, module_name)?;
 
@@ -546,21 +780,34 @@ pub async fn uninstall_remote_module(
         if install_plan.is_some() {
             println!("- {}", display_relative(&repo_root, &install_plan_path));
         }
+        if install_ledger.is_some() {
+            println!("- {}", display_relative(&repo_root, &install_ledger_path));
+        }
         if module_services.is_some() {
             println!("- {}", display_relative(&repo_root, &module_services_path));
         }
-        if env_file.is_none() && install_plan.is_none() && module_services.is_none() {
+        if env_file.is_none()
+            && install_plan.is_none()
+            && install_ledger.is_none()
+            && module_services.is_none()
+        {
             println!("- no local install state found");
         }
         return Ok(());
     }
 
-    let changed = env_file.is_some() || install_plan.is_some() || module_services.is_some();
+    let changed = env_file.is_some()
+        || install_plan.is_some()
+        || install_ledger.is_some()
+        || module_services.is_some();
     if let Some(env_file) = env_file {
         write_file(&env_file_path, env_file.as_bytes())?;
     }
     if let Some(install_plan) = install_plan {
         write_json(&install_plan_path, &install_plan)?;
+    }
+    if let Some(install_ledger) = install_ledger {
+        write_json(&install_ledger_path, &install_ledger)?;
     }
     if let Some(module_services) = module_services {
         write_json(&module_services_path, &module_services)?;
@@ -2575,6 +2822,450 @@ fn remove_remote_module_from_env_source(source: &str, module_name: &str) -> Opti
     })
 }
 
+fn remote_module_install_state_exists(
+    module_name: &str,
+    env_file_path: &Path,
+    install_plan_path: &Path,
+    module_services_path: &Path,
+) -> Result<bool> {
+    let env_source = read_text_if_exists(env_file_path)?;
+    if remote_module_entries_from_env_source(&env_source)
+        .iter()
+        .any(|(name, _)| name == module_name)
+    {
+        return Ok(true);
+    }
+
+    if read_json_if_exists(install_plan_path)?
+        .as_ref()
+        .is_some_and(|plan| install_plan_has_module(plan, module_name))
+    {
+        return Ok(true);
+    }
+
+    Ok(read_remote_module_service_states(module_services_path)?
+        .iter()
+        .any(|state| state.module_name == module_name))
+}
+
+fn install_plan_has_module(plan: &Value, module_name: &str) -> bool {
+    plan.get("modules")
+        .and_then(Value::as_array)
+        .is_some_and(|modules| {
+            modules
+                .iter()
+                .any(|module| module.get("moduleName").and_then(Value::as_str) == Some(module_name))
+        })
+}
+
+fn update_module_install_ledger(ledger_path: &Path, entry: Value) -> Result<Value> {
+    let module_name = entry
+        .get("moduleName")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("Module install ledger entry moduleName is required"))?;
+    let mut ledger =
+        read_json_if_exists(ledger_path)?.unwrap_or_else(|| json!({ "modules": [], "version": 1 }));
+    let modules = ledger
+        .get_mut("modules")
+        .and_then(Value::as_array_mut)
+        .ok_or_else(|| anyhow!("Module install ledger modules must be an array"))?;
+    modules.retain(|module| module.get("moduleName").and_then(Value::as_str) != Some(module_name));
+    modules.push(entry);
+    Ok(json!({ "modules": modules.clone(), "version": 1 }))
+}
+
+fn remove_module_install_ledger_module(
+    ledger_path: &Path,
+    module_name: &str,
+) -> Result<Option<Value>> {
+    read_json_if_exists(ledger_path)?.map_or(Ok(None), |ledger| {
+        remove_module_install_ledger_module_value(ledger, module_name)
+    })
+}
+
+fn remove_module_install_ledger_modules(
+    ledger_path: &Path,
+    module_names: &[String],
+) -> Result<Option<Value>> {
+    read_json_if_exists(ledger_path)?.map_or(Ok(None), |mut ledger| {
+        let modules = ledger
+            .get_mut("modules")
+            .and_then(Value::as_array_mut)
+            .ok_or_else(|| anyhow!("Module install ledger modules must be an array"))?;
+        let original_len = modules.len();
+        modules.retain(|module| {
+            let Some(module_name) = module.get("moduleName").and_then(Value::as_str) else {
+                return true;
+            };
+            !module_names.iter().any(|name| name == module_name)
+        });
+        if modules.len() == original_len {
+            return Ok(None);
+        }
+        Ok(Some(json!({ "modules": modules.clone(), "version": 1 })))
+    })
+}
+
+fn remove_module_install_ledger_module_value(
+    mut ledger: Value,
+    module_name: &str,
+) -> Result<Option<Value>> {
+    let modules = ledger
+        .get_mut("modules")
+        .and_then(Value::as_array_mut)
+        .ok_or_else(|| anyhow!("Module install ledger modules must be an array"))?;
+    let original_len = modules.len();
+    modules.retain(|module| module.get("moduleName").and_then(Value::as_str) != Some(module_name));
+    if modules.len() == original_len {
+        return Ok(None);
+    }
+    Ok(Some(json!({ "modules": modules.clone(), "version": 1 })))
+}
+
+fn set_linked_module_enabled_ledger(
+    ledger_path: &Path,
+    module_name: &str,
+    enabled: bool,
+    env_path: &str,
+) -> Result<Value> {
+    let Some(mut ledger) = read_json_if_exists(ledger_path)? else {
+        return update_module_install_ledger(
+            ledger_path,
+            simple_linked_module_install_ledger_entry(module_name, enabled, env_path),
+        );
+    };
+    let modules = ledger
+        .get_mut("modules")
+        .and_then(Value::as_array_mut)
+        .ok_or_else(|| anyhow!("Module install ledger modules must be an array"))?;
+    if let Some(module) = modules
+        .iter_mut()
+        .find(|module| module.get("moduleName").and_then(Value::as_str) == Some(module_name))
+    {
+        module
+            .as_object_mut()
+            .ok_or_else(|| anyhow!("Module install ledger entries must be objects"))?
+            .insert("enabled".to_owned(), json!(enabled));
+        return Ok(json!({ "modules": modules.clone(), "version": 1 }));
+    }
+    modules.push(simple_linked_module_install_ledger_entry(
+        module_name,
+        enabled,
+        env_path,
+    ));
+    Ok(json!({ "modules": modules.clone(), "version": 1 }))
+}
+
+fn module_install_ledger_source(
+    ledger_path: &Path,
+    module_name: &str,
+) -> Result<Option<ModuleSource>> {
+    let Some(ledger) = read_json_if_exists(ledger_path)? else {
+        return Ok(None);
+    };
+    let source = ledger
+        .get("modules")
+        .and_then(Value::as_array)
+        .and_then(|modules| {
+            modules.iter().find(|module| {
+                module.get("moduleName").and_then(Value::as_str) == Some(module_name)
+            })
+        })
+        .and_then(|module| module.get("source"))
+        .and_then(Value::as_str);
+    source.map(parse_module_source).transpose()
+}
+
+fn linked_module_uninstall_call(ledger_path: &Path, module_name: &str) -> Result<Option<String>> {
+    if let Some(call) = read_json_if_exists(ledger_path)?
+        .as_ref()
+        .and_then(|ledger| {
+            ledger
+                .get("modules")
+                .and_then(Value::as_array)
+                .and_then(|modules| {
+                    modules.iter().find(|module| {
+                        module.get("moduleName").and_then(Value::as_str) == Some(module_name)
+                    })
+                })
+                .and_then(|module| module.get("linked"))
+                .and_then(|linked| linked.get("call"))
+                .and_then(Value::as_str)
+        })
+    {
+        return Ok(Some(call.to_owned()));
+    }
+
+    linked_module_uninstall_call_from_builtin(module_name)
+}
+
+fn linked_module_uninstall_call_from_builtin(module_name: &str) -> Result<Option<String>> {
+    Ok(builtin_linked_module_descriptor(module_name)
+        .map(|descriptor| string_field(&descriptor["linked"], "call").map(ToOwned::to_owned))
+        .transpose()?)
+}
+
+fn remove_linked_module_from_host_lib_source(source: &str, call: &str) -> Option<String> {
+    let entry = format!(".linked_module({call})");
+    let lines = source
+        .lines()
+        .filter(|line| !line.trim().starts_with(&entry))
+        .collect::<Vec<_>>();
+    (lines.len() != source.lines().count()).then(|| format!("{}\n", lines.join("\n")))
+}
+
+fn remove_linked_modules_from_host_lib_source(source: &str, calls: &[String]) -> Option<String> {
+    let mut current = source.to_owned();
+    let mut changed = false;
+    for call in calls {
+        if let Some(next) = remove_linked_module_from_host_lib_source(&current, call) {
+            current = next;
+            changed = true;
+        }
+    }
+    changed.then_some(current)
+}
+
+fn linked_modules_to_uninstall(
+    module_name: &str,
+    ledger: Option<&Value>,
+    env_source: &str,
+    host_lib_source: &str,
+) -> Result<Vec<String>> {
+    let mut modules = Vec::new();
+    collect_linked_dependents_to_uninstall(
+        module_name,
+        ledger,
+        env_source,
+        host_lib_source,
+        &mut modules,
+    )?;
+    if !modules.iter().any(|candidate| candidate == module_name) {
+        modules.push(module_name.to_owned());
+    }
+    Ok(modules)
+}
+
+fn collect_linked_dependents_to_uninstall(
+    module_name: &str,
+    ledger: Option<&Value>,
+    env_source: &str,
+    host_lib_source: &str,
+    modules: &mut Vec<String>,
+) -> Result<()> {
+    for dependent in builtin_linked_module_dependents(module_name)? {
+        if !linked_module_is_installed(&dependent, ledger, env_source, host_lib_source)? {
+            continue;
+        }
+        collect_linked_dependents_to_uninstall(
+            &dependent,
+            ledger,
+            env_source,
+            host_lib_source,
+            modules,
+        )?;
+        if !modules.iter().any(|module| module == &dependent) {
+            modules.push(dependent);
+        }
+    }
+    Ok(())
+}
+
+fn builtin_linked_module_dependents(module_name: &str) -> Result<Vec<String>> {
+    builtin_linked_module_names()
+        .iter()
+        .filter_map(|candidate| {
+            let descriptor = builtin_linked_module_descriptor(candidate)?;
+            let dependencies = descriptor.get("dependencies").and_then(Value::as_array)?;
+            dependencies
+                .iter()
+                .filter_map(Value::as_str)
+                .any(|dependency| dependency == module_name)
+                .then(|| Ok((*candidate).to_owned()))
+        })
+        .collect()
+}
+
+fn linked_module_is_installed(
+    module_name: &str,
+    ledger: Option<&Value>,
+    env_source: &str,
+    host_lib_source: &str,
+) -> Result<bool> {
+    if ledger.is_some_and(|ledger| {
+        ledger
+            .get("modules")
+            .and_then(Value::as_array)
+            .is_some_and(|modules| {
+                modules.iter().any(|module| {
+                    module.get("moduleName").and_then(Value::as_str) == Some(module_name)
+                        && module.get("source").and_then(Value::as_str) == Some("linked")
+                })
+            })
+    }) {
+        return Ok(true);
+    }
+    if linked_module_enabled_env_exists(env_source, module_name) {
+        return Ok(true);
+    }
+    Ok(linked_module_uninstall_call_from_builtin(module_name)?
+        .as_deref()
+        .is_some_and(|call| host_lib_source.contains(&format!(".linked_module({call})"))))
+}
+
+fn remote_module_install_ledger_entry(
+    module_name: &str,
+    manifest_reference: &str,
+    base_url: &str,
+    writes: Vec<Value>,
+    install_env: &[(String, String)],
+    install_commands: &[InstallCommandSpec],
+    install_services: &[RemoteModuleServiceInstallSpec],
+    console_package_count: usize,
+) -> Value {
+    json!({
+        "baseUrl": base_url,
+        "enabled": true,
+        "install": {
+            "commands": install_command_receipts(install_commands),
+            "consolePackages": console_package_count,
+            "env": install_env_receipts(install_env),
+            "services": install_service_receipts(install_services),
+        },
+        "manifestReference": manifest_reference,
+        "moduleName": module_name,
+        "source": "remote",
+        "writes": writes,
+    })
+}
+
+fn linked_module_install_ledger_entry(
+    module_name: &str,
+    descriptor_reference: &str,
+    call: &str,
+    dependencies: &[String],
+    writes: Vec<Value>,
+    cargo_toml_changed: bool,
+) -> Value {
+    let manifest_reference = if builtin_linked_module_descriptor(descriptor_reference).is_some() {
+        format!("builtin:{descriptor_reference}")
+    } else {
+        descriptor_reference.to_owned()
+    };
+    json!({
+        "dependencies": dependencies,
+        "enabled": true,
+        "linked": {
+            "call": call,
+            "cargoTomlChanged": cargo_toml_changed,
+        },
+        "manifestReference": manifest_reference,
+        "moduleName": module_name,
+        "source": "linked",
+        "writes": writes,
+    })
+}
+
+fn simple_linked_module_install_ledger_entry(
+    module_name: &str,
+    enabled: bool,
+    env_path: &str,
+) -> Value {
+    json!({
+        "enabled": enabled,
+        "manifestReference": format!("linked:{module_name}"),
+        "moduleName": module_name,
+        "source": "linked",
+        "writes": [
+            { "kind": "env", "key": linked_module_enabled_env_key(module_name), "path": env_path }
+        ],
+    })
+}
+
+fn remote_module_install_writes(
+    repo_root: &Path,
+    env_file_path: &Path,
+    install_plan_path: &Path,
+    module_services_path: Option<&Path>,
+) -> Vec<Value> {
+    let mut writes = vec![
+        json!({
+            "kind": "env",
+            "key": "REMOTE_MODULES",
+            "path": display_relative(repo_root, env_file_path),
+        }),
+        json!({
+            "kind": "consolePackageInstallPlan",
+            "path": display_relative(repo_root, install_plan_path),
+        }),
+    ];
+    if let Some(module_services_path) = module_services_path {
+        writes.push(json!({
+            "kind": "moduleServices",
+            "path": display_relative(repo_root, module_services_path),
+        }));
+    }
+    writes
+}
+
+fn linked_module_install_writes(
+    repo_root: &Path,
+    env_file_path: &Path,
+    cargo_toml_path: Option<&Path>,
+    host_lib_path: &Path,
+) -> Vec<Value> {
+    let mut writes = vec![json!({
+        "kind": "env",
+        "path": display_relative(repo_root, env_file_path),
+    })];
+    if let Some(cargo_toml_path) = cargo_toml_path {
+        writes.push(json!({
+            "kind": "cargoToml",
+            "path": display_relative(repo_root, cargo_toml_path),
+        }));
+    }
+    writes.push(json!({
+        "kind": "hostComposition",
+        "path": display_relative(repo_root, host_lib_path),
+    }));
+    writes
+}
+
+fn install_env_receipts(install_env: &[(String, String)]) -> Vec<Value> {
+    install_env
+        .iter()
+        .map(|(key, _)| json!({ "key": key }))
+        .collect()
+}
+
+fn install_command_receipts(install_commands: &[InstallCommandSpec]) -> Vec<Value> {
+    install_commands
+        .iter()
+        .map(|command| {
+            json!({
+                "command": &command.command,
+                "cwd": command.cwd.as_deref().unwrap_or("."),
+            })
+        })
+        .collect()
+}
+
+fn install_service_receipts(install_services: &[RemoteModuleServiceInstallSpec]) -> Vec<Value> {
+    install_services
+        .iter()
+        .map(|service| {
+            json!({
+                "autoStart": service.auto_start,
+                "command": &service.command,
+                "cwd": service.cwd.as_deref().unwrap_or("."),
+                "name": &service.name,
+                "readyTimeoutMs": service.ready_timeout_ms,
+                "readyUrl": &service.ready_url,
+            })
+        })
+        .collect()
+}
+
 fn set_linked_module_enabled(
     module_name: &str,
     enabled: bool,
@@ -2591,25 +3282,103 @@ fn set_linked_module_enabled(
         &repo_root,
         env_file.as_deref().unwrap_or_else(|| Path::new(".env")),
     );
+    let install_ledger_path = repo_root.join(MODULE_INSTALL_LEDGER_PATH);
     let key = linked_module_enabled_env_key(&module_name);
     let value = if enabled { "true" } else { "false" };
     let env_file =
         set_linked_module_enabled_env(&read_text_if_exists(&env_file_path)?, &module_name, enabled);
+    let install_ledger = set_linked_module_enabled_ledger(
+        &install_ledger_path,
+        &module_name,
+        enabled,
+        &display_relative(&repo_root, &env_file_path),
+    )?;
 
     if dry_run {
         let action = if enabled { "install" } else { "uninstall" };
         println!("Linked module {action} dry run:");
         println!("- {}", display_relative(&repo_root, &env_file_path));
+        println!("- {}", display_relative(&repo_root, &install_ledger_path));
         println!("- {key}={value}");
         return Ok(());
     }
 
     write_file(&env_file_path, env_file.as_bytes())?;
+    write_json(&install_ledger_path, &install_ledger)?;
     if enabled {
         println!("Enabled linked module {module_name}.");
     } else {
         println!("Disabled linked module {module_name}.");
     }
+    println!("Next steps:");
+    println!("- restart the API and worker");
+
+    Ok(())
+}
+
+fn uninstall_linked_module(module_name: &str, options: RemoteModuleUninstallOptions) -> Result<()> {
+    let module_name = slugify(module_name);
+    if module_name.is_empty() {
+        bail!("Module name is required");
+    }
+    let repo_root = resolve_repo_root(options.repo_root.as_deref())?;
+    let env_file_path = resolve_path(
+        &repo_root,
+        options
+            .env_file
+            .as_deref()
+            .unwrap_or_else(|| Path::new(".env")),
+    );
+    let host_lib_path = repo_root.join("src/lib.rs");
+    let install_ledger_path = repo_root.join(MODULE_INSTALL_LEDGER_PATH);
+    let ledger = read_json_if_exists(&install_ledger_path)?;
+    let env_source = read_text_if_exists(&env_file_path)?;
+    let host_lib_source = read_text_if_exists(&host_lib_path)?;
+    let modules =
+        linked_modules_to_uninstall(&module_name, ledger.as_ref(), &env_source, &host_lib_source)?;
+    let mut calls = Vec::new();
+    for module_name in &modules {
+        if let Some(call) = linked_module_uninstall_call(&install_ledger_path, module_name)? {
+            calls.push(call);
+        }
+    }
+    let env_file = modules
+        .iter()
+        .fold(env_source.clone(), |source, module_name| {
+            remove_env_value(&source, &linked_module_enabled_env_key(module_name))
+        });
+    let env_file = (env_file != env_source).then_some(env_file);
+    let host_lib = remove_linked_modules_from_host_lib_source(&host_lib_source, &calls);
+    let install_ledger = remove_module_install_ledger_modules(&install_ledger_path, &modules)?;
+
+    if options.dry_run {
+        println!("Linked module uninstall dry run:");
+        if env_file.is_some() {
+            println!("- {}", display_relative(&repo_root, &env_file_path));
+        }
+        if host_lib.is_some() {
+            println!("- {}", display_relative(&repo_root, &host_lib_path));
+        }
+        if install_ledger.is_some() {
+            println!("- {}", display_relative(&repo_root, &install_ledger_path));
+        }
+        for call in calls {
+            println!("- remove {call}");
+        }
+        return Ok(());
+    }
+
+    if let Some(env_file) = env_file {
+        write_file(&env_file_path, env_file.as_bytes())?;
+    }
+    if let Some(host_lib) = host_lib {
+        write_file(&host_lib_path, host_lib.as_bytes())?;
+    }
+    if let Some(install_ledger) = install_ledger {
+        write_json(&install_ledger_path, &install_ledger)?;
+    }
+
+    println!("Uninstalled linked module(s): {}.", modules.join(", "));
     println!("Next steps:");
     println!("- restart the API and worker");
 
@@ -2638,6 +3407,31 @@ fn module_enabled_from_env_source(source: &str, module_name: &str) -> bool {
         .find_map(|line| line.strip_prefix(&format!("{key}=")))
         .and_then(parse_env_bool)
         .unwrap_or(true)
+}
+
+fn infer_uninstall_module_source(
+    module_name: &str,
+    env_source: &str,
+    remote_installed: bool,
+) -> Result<ModuleSource> {
+    if remote_installed {
+        return Ok(ModuleSource::Remote);
+    }
+
+    if builtin_linked_module_descriptor(module_name).is_some()
+        || linked_module_enabled_env_exists(env_source, module_name)
+    {
+        return Ok(ModuleSource::Linked);
+    }
+
+    Ok(ModuleSource::Remote)
+}
+
+fn linked_module_enabled_env_exists(source: &str, module_name: &str) -> bool {
+    let key = linked_module_enabled_env_key(module_name);
+    source
+        .lines()
+        .any(|line| line.trim_start().starts_with(&format!("{key}=")))
 }
 
 fn parse_env_bool(value: &str) -> Option<bool> {
@@ -3334,6 +4128,128 @@ fn console_package_key(package_name: &str, export_name: &str) -> String {
     format!("{package_name}#{export_name}")
 }
 
+async fn read_install_descriptor(reference: &str) -> Result<Option<Value>> {
+    if let Some(descriptor) = builtin_linked_module_descriptor(reference) {
+        return Ok(Some(descriptor));
+    }
+
+    if !looks_like_json_reference(reference) {
+        return Ok(None);
+    }
+
+    let descriptor = read_json_reference(reference).await?;
+    Ok(descriptor.get("source").is_some().then_some(descriptor))
+}
+
+fn builtin_linked_module_descriptor(reference: &str) -> Option<Value> {
+    match reference.trim() {
+        "auth" => Some(json!({
+            "name": "auth",
+            "source": "linked",
+            "linked": {
+                "call": "builtins::auth()"
+            }
+        })),
+        "auth-password" => Some(json!({
+            "name": "auth-password",
+            "source": "linked",
+            "dependencies": ["auth"],
+            "linked": {
+                "call": "builtins::auth_password()"
+            }
+        })),
+        _ => None,
+    }
+}
+
+fn builtin_linked_module_names() -> &'static [&'static str] {
+    &["auth", "auth-password"]
+}
+
+fn looks_like_json_reference(reference: &str) -> bool {
+    reference.starts_with("http://")
+        || reference.starts_with("https://")
+        || reference.starts_with("file://")
+        || reference.ends_with(".json")
+        || Path::new(reference).exists()
+}
+
+fn update_host_cargo_toml_for_linked_descriptor(
+    source: &str,
+    cargo: Option<&Value>,
+) -> Result<Option<String>> {
+    let Some(cargo) = cargo.filter(|value| !value.is_null()) else {
+        return Ok(None);
+    };
+    let package = string_field(cargo, "package")?.trim();
+    if package.is_empty() {
+        bail!("Linked module descriptor linked.cargo.package is required");
+    }
+    if source
+        .lines()
+        .any(|line| line.trim_start().starts_with(&format!("{package} ")))
+    {
+        return Ok(None);
+    }
+    let dependency = linked_cargo_dependency(package, cargo)?;
+    Ok(Some(insert_after_needle(
+        source,
+        &format!("{dependency}\n"),
+        "[dependencies]\n",
+    )?))
+}
+
+fn linked_cargo_dependency(package: &str, cargo: &Value) -> Result<String> {
+    if let Some(path) = cargo.get("path").and_then(Value::as_str) {
+        return Ok(format!(
+            "{package} = {{ path = {} }}",
+            rust_string_literal(path)
+        ));
+    }
+    if let Some(git) = cargo.get("git").and_then(Value::as_str) {
+        let mut fields = vec![format!("git = {}", rust_string_literal(git))];
+        for key in ["rev", "tag", "branch"] {
+            if let Some(value) = cargo.get(key).and_then(Value::as_str) {
+                fields.push(format!("{key} = {}", rust_string_literal(value)));
+            }
+        }
+        return Ok(format!("{package} = {{ {} }}", fields.join(", ")));
+    }
+    let version = cargo.get("version").and_then(Value::as_str).unwrap_or("*");
+    Ok(format!("{package} = {}", rust_string_literal(version)))
+}
+
+fn update_host_lib_for_linked_descriptor(
+    source: &str,
+    use_path: Option<&str>,
+    call: &str,
+) -> Result<String> {
+    let source = maybe_insert_use(source, use_path)?;
+    let entry = format!("        .linked_module({call})\n");
+    if source.contains(entry.trim()) {
+        return Ok(source);
+    }
+    if source.contains("        .linked_module(modules::app::linked_module())\n") {
+        return insert_before_needle(
+            &source,
+            &entry,
+            "        .linked_module(modules::app::linked_module())\n",
+        );
+    }
+    insert_before_needle(&source, &entry, "        .build()")
+}
+
+fn maybe_insert_use(source: &str, use_path: Option<&str>) -> Result<String> {
+    let Some(use_path) = use_path.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(source.to_owned());
+    };
+    let entry = format!("use {use_path};\n");
+    if source.contains(entry.trim()) {
+        return Ok(source.to_owned());
+    }
+    insert_after_needle(source, &entry, "use lenso_host::prelude::*;\n")
+}
+
 fn parse_module_source(source: &str) -> Result<ModuleSource> {
     match source.trim().to_ascii_lowercase().as_str() {
         "linked" => Ok(ModuleSource::Linked),
@@ -3421,6 +4337,22 @@ fn insert_before_needle(file_source: &str, entry: &str, needle: &str) -> Result<
     let index = file_source
         .find(needle)
         .ok_or_else(|| anyhow!("Could not find insertion point: {needle}"))?;
+    Ok(format!(
+        "{}{}{}",
+        &file_source[..index],
+        entry,
+        &file_source[index..]
+    ))
+}
+
+fn insert_after_needle(file_source: &str, entry: &str, needle: &str) -> Result<String> {
+    if file_source.contains(entry.trim()) {
+        return Ok(file_source.to_owned());
+    }
+    let index = file_source
+        .find(needle)
+        .ok_or_else(|| anyhow!("Could not find insertion point: {needle}"))?
+        + needle.len();
     Ok(format!(
         "{}{}{}",
         &file_source[..index],
@@ -3613,6 +4545,163 @@ mod tests {
         assert_eq!(parse_module_source("remote").unwrap(), ModuleSource::Remote);
         assert_eq!(parse_module_source("linked").unwrap(), ModuleSource::Linked);
         assert!(parse_module_source("wasm").is_err());
+    }
+
+    #[test]
+    fn uninstall_source_infers_linked_for_builtin_when_remote_is_absent() {
+        assert_eq!(
+            infer_uninstall_module_source("auth", "", false).unwrap(),
+            ModuleSource::Linked
+        );
+    }
+
+    #[test]
+    fn uninstall_source_prefers_remote_install_state() {
+        assert_eq!(
+            infer_uninstall_module_source("auth", "", true).unwrap(),
+            ModuleSource::Remote
+        );
+    }
+
+    #[test]
+    fn uninstall_source_infers_linked_from_env_toggle() {
+        assert_eq!(
+            infer_uninstall_module_source("billing", "LENSO_MODULE_BILLING_ENABLED=true\n", false)
+                .unwrap(),
+            ModuleSource::Linked
+        );
+    }
+
+    #[test]
+    fn install_ledger_entry_replaces_existing_module() {
+        let path = Path::new("/tmp/missing-module-installs.json");
+        let entry = simple_linked_module_install_ledger_entry("auth", true, ".env");
+        let ledger = update_module_install_ledger(path, entry).unwrap();
+        let updated = update_module_install_ledger(
+            path,
+            simple_linked_module_install_ledger_entry("auth", false, ".env"),
+        )
+        .unwrap();
+
+        assert_eq!(ledger["modules"].as_array().unwrap().len(), 1);
+        assert_eq!(updated["modules"].as_array().unwrap().len(), 1);
+        assert_eq!(updated["modules"][0]["enabled"], false);
+    }
+
+    #[test]
+    fn install_ledger_module_is_removed() {
+        let ledger = json!({
+            "modules": [
+                { "moduleName": "crm", "source": "remote" },
+                { "moduleName": "auth", "source": "linked" }
+            ],
+            "version": 1
+        });
+        let updated = remove_module_install_ledger_module_value(ledger, "crm")
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(updated["modules"].as_array().unwrap().len(), 1);
+        assert_eq!(updated["modules"][0]["moduleName"], "auth");
+    }
+
+    #[test]
+    fn linked_uninstall_call_reads_install_receipt() {
+        let path =
+            std::env::temp_dir().join(format!("lenso-module-installs-{}.json", std::process::id()));
+        let ledger = json!({
+            "modules": [
+                {
+                    "enabled": true,
+                    "linked": { "call": "builtins::auth()" },
+                    "moduleName": "auth",
+                    "source": "linked"
+                }
+            ],
+            "version": 1
+        });
+        write_json(&path, &ledger).unwrap();
+
+        let call = linked_module_uninstall_call(&path, "auth").unwrap();
+        fs::remove_file(&path).ok();
+
+        assert_eq!(call.as_deref(), Some("builtins::auth()"));
+    }
+
+    #[test]
+    fn linked_module_is_removed_from_host_composition() {
+        let source = "pub fn host_composition() -> HostComposition {\n    HostBuilder::new()\n        .linked_module(builtins::auth())\n        .linked_module(modules::app::linked_module())\n        .build()\n}\n";
+        let updated = remove_linked_module_from_host_lib_source(source, "builtins::auth()")
+            .expect("host lib should change");
+
+        assert!(!updated.contains("builtins::auth()"));
+        assert!(updated.contains(".linked_module(modules::app::linked_module())"));
+    }
+
+    #[test]
+    fn linked_uninstall_includes_installed_dependents_first() {
+        let host_lib = "HostBuilder::new()\n    .linked_module(builtins::auth())\n    .linked_module(builtins::auth_password())\n    .build()\n";
+        let modules = linked_modules_to_uninstall("auth", None, "", host_lib).unwrap();
+
+        assert_eq!(modules, vec!["auth-password", "auth"]);
+    }
+
+    #[test]
+    fn linked_modules_are_removed_from_host_composition() {
+        let source = "pub fn host_composition() -> HostComposition {\n    HostBuilder::new()\n        .linked_module(builtins::auth())\n        .linked_module(builtins::auth_password())\n        .linked_module(modules::app::linked_module())\n        .build()\n}\n";
+        let updated = remove_linked_modules_from_host_lib_source(
+            source,
+            &[
+                "builtins::auth_password()".to_owned(),
+                "builtins::auth()".to_owned(),
+            ],
+        )
+        .expect("host lib should change");
+
+        assert!(!updated.contains("builtins::auth()"));
+        assert!(!updated.contains("builtins::auth_password()"));
+        assert!(updated.contains(".linked_module(modules::app::linked_module())"));
+    }
+
+    #[test]
+    fn builtin_auth_descriptor_declares_linked_source() {
+        let descriptor = builtin_linked_module_descriptor("auth").expect("auth descriptor");
+
+        assert_eq!(descriptor["name"], "auth");
+        assert_eq!(descriptor["source"], "linked");
+        assert_eq!(descriptor["linked"]["call"], "builtins::auth()");
+    }
+
+    #[test]
+    fn linked_descriptor_updates_host_cargo_toml() {
+        let source = "[package]\nname = \"app\"\n\n[dependencies]\nanyhow = \"1\"\n";
+        let cargo = json!({
+            "package": "lenso-billing",
+            "version": "0.1"
+        });
+
+        let updated = update_host_cargo_toml_for_linked_descriptor(source, Some(&cargo))
+            .expect("cargo update")
+            .expect("cargo should change");
+
+        assert!(updated.contains("[dependencies]\nlenso-billing = \"0.1\"\nanyhow = \"1\""));
+    }
+
+    #[test]
+    fn linked_descriptor_updates_host_composition() {
+        let source = "mod modules;\n\nuse lenso_host::prelude::*;\n\npub fn host_composition() -> HostComposition {\n    HostBuilder::new()\n        .linked_module(modules::app::linked_module())\n        .build()\n}\n";
+
+        let updated = update_host_lib_for_linked_descriptor(
+            source,
+            Some("lenso_billing::linked_module"),
+            "linked_module()",
+        )
+        .expect("host lib update");
+
+        assert!(updated.contains("use lenso_billing::linked_module;\n"));
+        assert!(updated.contains(
+            "        .linked_module(linked_module())\n        .linked_module(modules::app::linked_module())"
+        ));
     }
 
     #[test]

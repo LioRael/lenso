@@ -21,6 +21,15 @@ cargo run --bin api
 
 The package name defaults to the target directory name and can be overridden with
 `--name`. Pass `--force` to scaffold into a non-empty directory.
+Release builds of `lenso-cli` also copy the bundled Runtime Console into the
+new project, so the API serves it at `/console` without requiring Node.js or
+pnpm in the host application.
+
+Update the hosted console later by upgrading `lenso-cli` and running:
+
+```sh
+lenso host update-console
+```
 
 The generated host depends on the transitional `lenso-host` crate while the
 stable public host facade is still being designed. See
@@ -52,18 +61,24 @@ The Runtime Console package generator is available directly as:
 lenso console-package create billing
 ```
 
-## Install a remote module
+## Install a module
 
 ```sh
 lenso module install https://example.com/lenso/module/v1/manifest
+lenso module install ./lenso.module.json
+lenso module install auth
 ```
 
-`module install` updates `REMOTE_MODULES`, writes the local console package
-install plan, and applies Runtime Console package registration when the manifest
-declares console packages. `module add` remains a compatibility alias for remote
-installs. Use `--runtime-console-root` when the console app lives outside the
-host repository, and `--no-console-plan` when you want to apply the plan later
-with:
+`module install` reads `source` from the module descriptor when one is present.
+Remote modules update `REMOTE_MODULES`, write the local console package install
+plan, record `.lenso/module-installs.json`, and apply Runtime Console package
+registration when the manifest declares console packages. Linked modules update
+the host `Cargo.toml`, `src/lib.rs`, `.env` toggle, and the same install
+receipt from the descriptor's `linked` section. `module add` remains a
+compatibility alias for remote installs.
+
+Use `--runtime-console-root` when the console app lives outside the host
+repository, and `--no-console-plan` when you want to apply the plan later with:
 
 ```sh
 lenso console-package apply-plan
@@ -95,13 +110,15 @@ The doctor reads `REMOTE_MODULES` and `.lenso/module-services.json`, checks
 service `readyUrl` endpoints, and points to stale `.lock`/`.pid` files when a
 host-started service did not become ready.
 
-Remove the local remote-module source and its pending console package plan with:
+Remove the local remote-module source, install receipt, and pending console
+package plan with:
 
 ```sh
 lenso module uninstall billing
 ```
 
-Enable or disable an already-linked module without deleting source files:
+Use `--source linked` only when you need to force the loading source. Prefer
+descriptors with a `source` field for new installs.
 
 ```sh
 lenso module install auth --source linked

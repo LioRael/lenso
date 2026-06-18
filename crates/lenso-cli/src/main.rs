@@ -52,6 +52,12 @@ enum HostCommand {
         #[arg(long)]
         force: bool,
     },
+    /// Refresh the hosted Runtime Console assets in a host project.
+    UpdateConsole {
+        /// Lenso host repository root.
+        #[arg(long)]
+        repo_root: Option<std::path::PathBuf>,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -95,7 +101,7 @@ struct RemoteModuleInstallArgs {
     /// Module reference: remote manifest URL/path, or linked module name.
     manifest_reference: String,
 
-    /// Loading source: remote or linked.
+    /// Legacy loading-source override when the reference is not a descriptor.
     #[arg(long, default_value = "remote")]
     source: String,
 
@@ -142,8 +148,8 @@ struct RemoteModuleUninstallArgs {
     module_name: String,
 
     /// Loading source: remote or linked.
-    #[arg(long, default_value = "remote")]
-    source: String,
+    #[arg(long)]
+    source: Option<String>,
 
     /// Lenso host repository root.
     #[arg(long)]
@@ -487,6 +493,9 @@ async fn main() -> anyhow::Result<()> {
     match cli.command {
         Command::Host { command } => match command {
             HostCommand::Init { dir, name, force } => host::init(&dir, name.as_deref(), force)?,
+            HostCommand::UpdateConsole { repo_root } => {
+                host::update_console(repo_root.as_deref())?;
+            }
         },
         Command::Module { command } => match command {
             ModuleCommand::Create(args) => {

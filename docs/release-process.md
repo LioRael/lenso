@@ -31,6 +31,7 @@ last-mile docs, and blocking fixes only.
 Build local release artifacts:
 
 ```sh
+just console-build
 LENSO_RELEASE_VERSION=v0.2.0 just release-package
 ```
 
@@ -43,8 +44,11 @@ This writes:
 
 The source archive is generated from `git archive HEAD`, so it contains committed
 source files and excludes local build output, `.git`, `target/`, and `dist/`.
-The hosted archive additionally includes the prebuilt Runtime Console under
-`.lenso/console/dist`, so users do not need Node.js or pnpm to serve `/console`.
+`just console-build` also syncs the prebuilt Runtime Console into
+`crates/lenso-cli/console`, so `lenso host init` can copy it into generated
+hosts. The hosted archive additionally includes the prebuilt Runtime Console
+under `.lenso/console/dist`, so users do not need Node.js or pnpm to serve
+`/console`.
 
 ## 4. Run The GitHub Workflow
 

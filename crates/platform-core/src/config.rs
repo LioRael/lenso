@@ -26,6 +26,7 @@ impl AppConfig {
     }
 
     pub fn try_from_env() -> AppResult<Self> {
+        let _ = dotenvy::dotenv();
         let service = ServiceConfig::default();
         Ok(Self {
             module_sources: ModuleSourcesConfig::try_from_env_for_environment(

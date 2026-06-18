@@ -2088,6 +2088,7 @@ dependencies = [
  "arc-swap",
  "async-trait",
  "chrono",
+ "dotenvy",
  "getrandom 0.4.3",
  "lenso",
  "opentelemetry",

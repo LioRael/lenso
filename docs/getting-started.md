@@ -46,6 +46,11 @@ to a commit; local development may temporarily point at a branch, but release
 branches must not. The starter exposes `GET /v1/app/status` plus
 `GET`/`POST /v1/app/items` as the first host-owned linked routes and data
 surface.
+Published `lenso-cli` builds include the prebuilt Runtime Console and copy it
+into generated hosts, so `cargo run --bin api` serves the console at
+`/console` without requiring Node.js or pnpm in the host project.
+To refresh the hosted console later, upgrade `lenso-cli` and run
+`lenso host update-console` from the host project.
 
 ## Configure Local Environment
 
@@ -61,10 +66,11 @@ in `.env`; that is local runtime configuration, not a registry or
 install-history database.
 
 Local development defaults to `LENSO_COMPOSITION_PROFILE=demo`, which includes
-the first-party auth modules and platform story surface. Starter hosts can use
-`LENSO_COMPOSITION_PROFILE=core` and explicitly install auth modules through
-their host composition. Non-local environments must set
-`LENSO_COMPOSITION_PROFILE=core` or `LENSO_COMPOSITION_PROFILE=demo` explicitly.
+the first-party auth modules and platform story surface. Starter hosts use
+`LENSO_COMPOSITION_PROFILE=core` and do not install auth by default; add auth
+modules through host composition only when the app needs them. Non-local
+environments must set `LENSO_COMPOSITION_PROFILE=core` or
+`LENSO_COMPOSITION_PROFILE=demo` explicitly.
 
 Development bearer tokens such as `Bearer dev-service:admin` are accepted only
 for local/development API environments. Do not use them as deployment
@@ -86,8 +92,10 @@ just api
 just worker
 ```
 
-Run the Runtime Console from the sibling `../lenso-runtime-console` repository
-when you need the frontend.
+Generated hosts serve the bundled Runtime Console at `/console` when they were
+created by a published CLI build. When developing this repository from source,
+run the Runtime Console from the sibling `../lenso-runtime-console` repository
+or run `just console-build` before packaging.
 
 ## Install The Example Module Manually
 
