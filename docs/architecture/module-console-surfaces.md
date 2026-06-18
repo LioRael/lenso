@@ -205,6 +205,60 @@ lets reviewers inspect package additions in source control, and keeps unknown
 package exports visible as Missing Console Packages until the host explicitly
 trusts and registers them.
 
+## Runtime Bundle Registry
+
+The API service hosts the Runtime Console from `LENSO_CONSOLE_DIST_DIR`
+(default `.lenso/console/dist`) under `/console/*`, with client-side route
+fallback to `index.html`. Runtime users should receive this directory as part
+of the service release artifact; they should not need Node.js, pnpm, or the
+frontend source repository.
+
+For local development or release packaging, build and install the hosted console
+dist from the sibling frontend repository:
+
+```sh
+just console-build
+```
+
+When the frontend repository is not next to this backend checkout, pass
+`RUNTIME_CONSOLE_ROOT=/path/to/lenso-runtime-console`.
+The build script also creates an empty extension registry when none exists.
+
+Installed third-party modules may provide already-built console bundles. The
+service exposes those bundles from the same origin under `/console/extensions/*`
+from `LENSO_CONSOLE_EXTENSIONS_DIR` (default `.lenso/console/extensions`); the
+Runtime Console reads
+`/console/extensions/registry.json` before creating its router and registers
+compatible bundle exports as `runtime_bundle` packages.
+
+The first registry shape is deliberately small:
+
+```json
+{
+  "version": 1,
+  "bundles": [
+    {
+      "packageName": "@vendor/crm-console",
+      "exportName": "crmConsoleModule",
+      "entry": "/console/extensions/crm/entry.js",
+      "hostApi": "1"
+    }
+  ]
+}
+```
+
+Rules:
+
+- Bundle entries must be same-origin URLs served by the host.
+- `hostApi` must match the Runtime Console host API version.
+- The exported value must be a `ConsoleModule`.
+- Unsupported host API versions, cross-origin entries, and malformed exports are
+  rejected before route registration.
+
+This is not arbitrary browser-side package installation. The host installation
+lane is still responsible for downloading, verifying, and placing bundle files
+in the configured console extension directory.
+
 The local developer workflow is supported by:
 
 - `lenso console-package create <module>` (or the local

@@ -38,10 +38,13 @@ This writes:
 
 - `dist/release/lenso-v0.2.0-release-notes.md`
 - `dist/release/lenso-v0.2.0-source.tar.gz`
+- `dist/release/lenso-v0.2.0-hosted.tar.gz` when `.lenso/console/dist` exists
 - `dist/release/lenso-v0.2.0-artifact-readme.md`
 
 The source archive is generated from `git archive HEAD`, so it contains committed
 source files and excludes local build output, `.git`, `target/`, and `dist/`.
+The hosted archive additionally includes the prebuilt Runtime Console under
+`.lenso/console/dist`, so users do not need Node.js or pnpm to serve `/console`.
 
 ## 4. Run The GitHub Workflow
 
