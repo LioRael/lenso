@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version, for example v0.2.1"
+        description: "Release version, for example v0.3.0"
         required: true
         type: string
       notes:
@@ -12,7 +12,7 @@ on:
         required: false
         type: string
       publish_rust_crate:
-        description: "Publish the lenso crate to crates.io"
+        description: "Publish the lenso-contracts crate to crates.io"
         required: true
         default: false
         type: boolean

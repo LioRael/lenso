@@ -10,7 +10,7 @@ user needs to install before writing their own backend or module.
 The intended first-user flow is:
 
 ```sh
-cargo add lenso@0.2.1
+cargo add lenso --git https://github.com/LioRael/lenso --tag v0.3.0
 pnpm add @lenso/remote-module-kit@0.1.1
 ```
 
@@ -28,15 +28,15 @@ package boundary is the user-facing contract.
 
 Current registry baseline:
 
-- `lenso@0.1.0` is published on crates.io.
-- `lenso@0.2.1` is the next facade crate publish candidate.
+- `lenso@0.2.1` is published on crates.io.
+- `lenso@0.3.0` is the Git facade candidate for generated hosts.
 - `@lenso/remote-module-kit@0.1.1` is published from the Runtime Console
   repository.
 
 ## Rust Facade Crate
 
-The crates.io package named `lenso` is the public Rust facade crate. It should
-not expose the whole backend implementation.
+The Git-pinned `lenso` package is the public Rust facade crate. It should not
+expose the whole backend implementation.
 
 The first useful facade focuses on serializable module declarations:
 
