@@ -21,8 +21,8 @@ for external consumers.
 Registry baseline as of the first release line:
 
 - `lenso@0.1.0` is published on crates.io.
-- `lenso@0.2.0` is the next facade crate publish candidate.
-- `lenso-cli@0.1.0` is the first CLI publish candidate: it scaffolds host
+- `lenso@0.2.1` is the next facade crate publish candidate.
+- `lenso-cli@0.1.1` is the first CLI publish candidate: it scaffolds host
   applications with `lenso host init <dir>`, creates linked and remote module
   scaffolds with `lenso module create`, installs remote modules with
   `lenso module add <manifest-url>`, and creates or applies Runtime Console

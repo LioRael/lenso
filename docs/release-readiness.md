@@ -129,7 +129,7 @@ Use [release-notes-template.md](release-notes-template.md) for manual notes, or
 run:
 
 ```sh
-LENSO_RELEASE_VERSION=v0.2.0 just release-package
+LENSO_RELEASE_VERSION=v0.2.1 just release-package
 ```
 
 The end-to-end release branch and GitHub Actions flow lives in
