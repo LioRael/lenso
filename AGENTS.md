@@ -6,15 +6,15 @@ Guidance for coding agents working in this repository.
 
 Lenso is a Rust-first modular monolith backend. Runtime Console source lives in the sibling `../lenso-runtime-console` repository.
 
-- `apps/api`: Axum HTTP API.
-- `apps/worker`: background worker and outbox relay.
-- `apps/migrate`: deterministic migration runner.
+- `crates/lenso-api`: Axum HTTP API.
+- `crates/lenso-worker`: background worker and outbox relay.
+- `crates/lenso-migrate`: deterministic migration runner.
 - `crates/platform-*`: shared platform primitives for config, HTTP, runtime, module contracts, admin backends, testing, migrations, outbox, errors, health, and telemetry.
 - `crates/lenso`: public Rust facade crate for serializable module-authoring declarations: `ModuleManifest`, admin surfaces, HTTP route metadata, runtime/event/lifecycle declarations, console surfaces, story display metadata, and manifest lints.
 - `crates/platform-module`: internal module behavior seams plus compatibility re-exports: `ModuleBinding`, `LinkedBinding` for compile-time modules, `AdminDataSource` for schema-admin reads, and `AdminActionSource` for executable admin actions.
 - `crates/platform-admin`: Runtime Console observability backend mounted under `/admin/runtime/*`; it observes runtime/outbox/story tables and must not depend on concrete modules.
 - `crates/platform-admin-data`: schema-admin backend mounted under `/admin/data/*`; it serves generic module data through `AdminSurface::Schema` and `AdminDataSource`, with no concrete-module dependencies.
-- `crates/app-bootstrap`: composition root that enumerates concrete modules for the API and worker.
+- `crates/lenso-bootstrap`: composition root that enumerates concrete modules for the API and worker.
 - `modules/*`: product or fixture capabilities packaged as modules. Modules should stay vertical and avoid cross-module imports.
 - `contracts/*`: committed OpenAPI, JSON Schema, event, error, and runtime contracts.
 - `tools/*`: generators and architecture checks.
@@ -76,7 +76,7 @@ If generated files change, include the source change and generated output togeth
 - Keep modules vertical and capability-oriented.
 - Do not introduce DDD/Clean Architecture folder names inside modules: `api`, `application`, `domain`, or `infrastructure`.
 - Do not add cross-module imports inside module source code.
-- Register module wiring only in `crates/app-bootstrap`; platform crates must expose seams and stay free of concrete-module dependencies.
+- Register module wiring only in `crates/lenso-bootstrap`; platform crates must expose seams and stay free of concrete-module dependencies.
 - Keep module data and behavior split: serializable declarations belong in `ModuleManifest`; source-specific behavior belongs behind narrow traits such as `ModuleBinding` and `AdminDataSource`.
 - Prefer explicit SQL and existing migration patterns.
 - Keep error responses aligned with the platform error model and committed schemas.
@@ -89,8 +89,8 @@ Claude Code project memory was imported into Codex on 2026-06-03. Keep these des
 - Step 1 is done: `DomainDescriptor` was split into owned, serializable `ModuleManifest` data plus narrow `ModuleBinding` behavior. `ModuleManifest` and pure declarations now live in `crates/lenso`; `platform-module` re-exports them for workspace compatibility and owns behavior seams. Only `LinkedBinding` is implemented today; future `Remote` and `Wasm` loading sources should be added as new bindings/sources without collapsing the manifest/behavior split.
 - Step 2 schema-admin is done as a read-only vertical slice. `AdminSurface::Schema(AdminSchema)` is manifest data; `AdminDataSource` is the behavior seam returning `serde_json::Value`; auth provides the current User schema/list/detail implementation.
 - Do not re-add `#[non_exhaustive]` to producer-constructed structs `AdminSchema`, `EntitySchema`, `FieldSchema`, or `AdminPage`; it blocks struct literal construction from other crates. Keep it on consumer-matched enums such as `FieldType` and `AdminSurface`.
-- `platform-admin` is runtime observability, not business CRUD. `platform-admin-data` is schema-admin business data. Both are platform crates and must not depend on concrete modules; `app-bootstrap` injects the module/data registries.
-- OpenAPI is single-source through `utoipa-axum`: put `#[utoipa::path]` on real handlers and register routes with `OpenApiRouter::routes(routes!(handler))`. `apps/api/src/openapi.rs::openapi_document()` must stay pure and context-free because generators, arch checks, and sync tests call it outside a runtime.
+- `platform-admin` is runtime observability, not business CRUD. `platform-admin-data` is schema-admin business data. Both are platform crates and must not depend on concrete modules; `lenso-bootstrap` injects the module/data registries.
+- OpenAPI is single-source through `utoipa-axum`: put `#[utoipa::path]` on real handlers and register routes with `OpenApiRouter::routes(routes!(handler))`. `crates/lenso-api/src/openapi.rs::openapi_document()` must stay pure and context-free because generators, arch checks, and sync tests call it outside a runtime.
 
 ## Runtime Console Guidelines
 
