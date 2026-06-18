@@ -12,9 +12,30 @@ categories = ["web-programming", "development-tools"]
 keywords = ["backend", "framework", "modules", "runtime"]
 
 [dependencies]
-serde.workspace = true
-serde_json.workspace = true
-utoipa.workspace = true
+anyhow = { workspace = true, optional = true }
+axum = { workspace = true, optional = true }
+lenso-api = { workspace = true, optional = true }
+lenso-bootstrap = { workspace = true, optional = true }
+lenso-contracts.workspace = true
+lenso-migrate = { workspace = true, optional = true }
+lenso-worker = { workspace = true, optional = true }
+platform-core = { workspace = true, optional = true }
+platform-http = { workspace = true, optional = true }
+platform-module = { workspace = true, optional = true }
+
+[features]
+default = []
+host = [
+    "dep:anyhow",
+    "dep:axum",
+    "dep:lenso-api",
+    "dep:lenso-bootstrap",
+    "dep:lenso-migrate",
+    "dep:lenso-worker",
+    "dep:platform-core",
+    "dep:platform-http",
+    "dep:platform-module",
+]
 
 [lints]
 workspace = true

@@ -1387,9 +1387,16 @@ dependencies = [
 name = "lenso"
 version = "0.2.1"
 dependencies = [
- "serde",
- "serde_json",
- "utoipa",
+ "anyhow",
+ "axum",
+ "lenso-api",
+ "lenso-bootstrap",
+ "lenso-contracts",
+ "lenso-migrate",
+ "lenso-worker",
+ "platform-core",
+ "platform-http",
+ "platform-module",
 ]
 
 [[package]]
@@ -1446,19 +1453,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "lenso-contracts"
+version = "0.2.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "utoipa",
+]
+
+[[package]]
 name = "lenso-host"
 version = "0.1.0"
 dependencies = [
- "anyhow",
- "axum",
  "lenso",
- "lenso-api",
- "lenso-bootstrap",
- "lenso-migrate",
- "lenso-worker",
- "platform-core",
- "platform-http",
- "platform-module",
 ]
 
 [[package]]
@@ -1951,7 +1958,7 @@ dependencies = [
  "chrono",
  "dotenvy",
  "getrandom 0.4.3",
- "lenso",
+ "lenso-contracts",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
@@ -1991,7 +1998,7 @@ name = "platform-module"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "lenso",
+ "lenso-contracts",
  "platform-core",
  "platform-http",
  "platform-runtime",

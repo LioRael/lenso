@@ -43,7 +43,7 @@ pub use execution_logs::{
 };
 pub use health::{HealthRegistry, HealthStatus};
 pub use ids::{IdGenerator, UuidGenerator};
-pub use lenso::{StoryDisplayDescriptor, StoryDisplaySource};
+pub use lenso_contracts::{StoryDisplayDescriptor, StoryDisplaySource};
 pub use migrations::{Migration, PLATFORM_MIGRATIONS, apply_migrations};
 pub use outbox::{
     ClaimedOutboxEvent, EventDispatcher, EventHandler, EventHandlerRegistry,

@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "fixtures/remote-module",
+    "crates/lenso-contracts",
     "crates/lenso",
     "crates/lenso-api",
     "crates/lenso-host",
@@ -65,6 +66,7 @@ utoipa-axum = "0.2"
 uuid = { version = "1.23", features = ["serde", "v7"] }
 
 lenso = { path = "crates/lenso", version = "0.2.1" }
+lenso-contracts = { path = "crates/lenso-contracts", version = "0.2.1" }
 platform-core = { path = "crates/platform-core" }
 platform-admin = { path = "crates/platform-admin" }
 platform-admin-data = { path = "crates/platform-admin-data" }

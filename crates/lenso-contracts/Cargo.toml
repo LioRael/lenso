@@ -1,0 +1,19 @@
+[package]
+name = "lenso-contracts"
+version = "0.2.1"
+edition.workspace = true
+license = "MIT"
+description = "Shared declaration contracts for the Lenso backend framework."
+repository = "https://github.com/LioRael/lenso"
+homepage = "https://github.com/LioRael/lenso"
+rust-version.workspace = true
+categories = ["web-programming", "development-tools"]
+keywords = ["backend", "framework", "modules", "contracts"]
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+utoipa.workspace = true
+
+[lints]
+workspace = true
