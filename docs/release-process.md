@@ -69,6 +69,8 @@ starts a Postgres service for DB-backed checks.
 Before a real registry publish, configure these repository secrets in GitHub:
 
 - `CARGO_REGISTRY_TOKEN`: crates.io token with publish access to `lenso`.
+- `LENSO_RUNTIME_CONSOLE_DEPLOY_KEY`: read-only deploy key for
+  `LioRael/lenso-runtime-console`.
 
 Run the workflow once with `publish_rust_crate=false` before using the secret.
 The dry-run path does not upload package versions.

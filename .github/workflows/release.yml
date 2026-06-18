@@ -46,11 +46,17 @@ jobs:
       RUST_LOG: info,lenso=debug
     steps:
       - uses: actions/checkout@v6
+      - name: Validate Runtime Console checkout secret
+        env:
+          LENSO_RUNTIME_CONSOLE_DEPLOY_KEY: ${{ secrets.LENSO_RUNTIME_CONSOLE_DEPLOY_KEY }}
+        run: |
+          test -n "$LENSO_RUNTIME_CONSOLE_DEPLOY_KEY" || { echo "LENSO_RUNTIME_CONSOLE_DEPLOY_KEY is required to checkout lenso-runtime-console" >&2; exit 1; }
       - name: Checkout Runtime Console
         uses: actions/checkout@v6
         with:
           repository: LioRael/lenso-runtime-console
           path: lenso-runtime-console
+          ssh-key: ${{ secrets.LENSO_RUNTIME_CONSOLE_DEPLOY_KEY }}
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install just
