@@ -11,8 +11,8 @@ The framework-facing package strategy lives in
 Publish only backend packages with a current consumer-facing job:
 
 - the `lenso-contracts` crates.io crate, which carries shared declaration data;
-- the `lenso` Git facade crate, which re-exports declarations and exposes the
-  `host` feature for generated hosts.
+- the `lenso` crates.io facade crate, which re-exports declarations for module
+  authors.
 
 Do not publish the current internal Rust workspace crates directly. Names such
 as `platform-core`, `platform-module`, `platform-runtime`, `lenso-api`,
@@ -23,8 +23,8 @@ consumers.
 Registry baseline as of the first release line:
 
 - `lenso@0.2.1` is published on crates.io.
-- `lenso-contracts@0.3.0` is the next crates.io publish candidate.
-- `lenso@0.3.0` is the Git facade candidate for generated hosts.
+- `lenso-contracts@0.3.0` is published on crates.io.
+- `lenso@0.3.0` is the next crates.io publish candidate.
 - `lenso-cli` is owned by the standalone
   [`LioRael/lenso-cli`](https://github.com/LioRael/lenso-cli) repository.
 
@@ -37,7 +37,7 @@ project:
 | --- | --- | --- | --- | --- |
 | 1 | `lenso` crates.io crate | `0.1.0` | `lenso` | Already published; keep internal workspace crates private. |
 | 2 | `lenso-contracts` crates.io crate | `0.3.0` | `lenso` | Shared declaration contracts used by the facade and platform crates. |
-| 3 | `lenso` Git crate | `0.3.0` | `lenso` | Facade for current module-authoring contracts and the Git-only `host` feature. |
+| 3 | `lenso` crates.io crate | `0.3.0` | `lenso` | Facade for current module-authoring contracts. |
 
 ## Backend Package Gate
 
@@ -47,16 +47,15 @@ Run:
 just package-readiness
 ```
 
-The gate verifies that `cargo package -p lenso-contracts --allow-dirty` can
-assemble the crates.io contract package. It does not upload anything to
-crates.io.
+The gate verifies that `cargo package -p lenso-contracts --allow-dirty` and
+`cargo package -p lenso --allow-dirty` can assemble the crates.io packages. It
+does not upload anything to crates.io.
 
 ## Crates.io Direction
 
 The crates.io package named `lenso-contracts` carries the stable
-module-authoring contracts. The Git-pinned `lenso` facade re-exports those
-contracts and exposes the narrow generated-host boot API through its `host`
-feature.
+module-authoring contracts. The crates.io package named `lenso` re-exports
+those contracts as the public facade.
 
 Before publishing a future version:
 

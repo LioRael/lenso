@@ -1,12 +1,11 @@
 # Lenso
 
-`lenso` is the public Rust facade for Lenso module-authoring and host boot
-contracts.
+`lenso` is the public Rust facade for Lenso module-authoring contracts.
 
-Install it from the release tag:
+Install it from crates.io:
 
 ```sh
-cargo add lenso --git https://github.com/LioRael/lenso --tag v0.3.0
+cargo add lenso@0.3.0
 ```
 
 The default facade exposes serializable module manifest declarations:
@@ -19,12 +18,6 @@ The default facade exposes serializable module manifest declarations:
 - lifecycle declarations;
 - Runtime Console surface declarations;
 - story display metadata.
-
-Enable the `host` feature for the narrow host boot facade:
-
-```toml
-lenso = { git = "https://github.com/LioRael/lenso", tag = "v0.3.0", features = ["host"] }
-```
 
 Application SQL, repositories, auth/session policy, CRUD shape, and Runtime
 Console UI stay in the host application or module code.

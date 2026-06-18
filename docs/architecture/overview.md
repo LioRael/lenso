@@ -52,7 +52,7 @@ The service kit is split into a few crates:
 
 - `platform-core`: config, error model, request context, actor context, IDs, clock, DB pool, migrations, events, transactional outbox, relay primitives, health, shutdown, telemetry foundations, and telemetry query abstractions.
 - `lenso-contracts`: shared serializable declaration contracts for module manifests, admin surfaces, HTTP route metadata, runtime/event/lifecycle declarations, Runtime Console surfaces, story display metadata, and manifest lints.
-- `lenso`: the public Rust facade crate. Its default surface re-exports declaration contracts; its `host` feature exposes the narrow API, worker, migration, and linked HTTP host boot facade.
+- `lenso`: the public Rust facade crate. Its surface re-exports declaration contracts for module authors.
 - `platform-http`: Axum request context middleware, auth extractors, standard JSON error responses, JSON extractor, response helpers, health routes, and the `OpenApiRouter` re-exports used for single-source OpenAPI.
 - `platform-runtime`: embedded runtime primitives for functions, triggers, queues, flows, retry policies, registry, worker execution, and store traits.
 - `platform-module`: internal module behavior seams and compatibility re-exports. `ModuleBinding` is the narrow behavior seam; `LinkedBinding` is the current compile-time source; `AdminDataSource` and `AdminActionSource` support generic schema-admin reads and manifest-declared action execution. It re-exports `lenso-contracts` declaration types for backend workspace compatibility.
