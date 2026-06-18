@@ -67,6 +67,16 @@ impl FileFixture {
         fs::write(&fixture.path, contents).expect("write fixture");
         fixture
     }
+
+    fn remove(path: impl Into<PathBuf>) -> Self {
+        let path = path.into();
+        let fixture = Self {
+            original: fs::read(&path).ok(),
+            path,
+        };
+        let _ = fs::remove_file(&fixture.path);
+        fixture
+    }
 }
 
 impl Drop for FileFixture {
@@ -261,6 +271,15 @@ fn admin_get(path: &str) -> Request<Body> {
 fn admin_post(path: &str) -> Request<Body> {
     Request::builder()
         .method("POST")
+        .uri(path)
+        .header("authorization", "Bearer dev-service:admin")
+        .body(Body::empty())
+        .expect("request builds")
+}
+
+fn admin_delete(path: &str) -> Request<Body> {
+    Request::builder()
+        .method("DELETE")
         .uri(path)
         .header("authorization", "Bearer dev-service:admin")
         .body(Body::empty())
@@ -593,6 +612,64 @@ async fn available_modules_returns_remote_install_rows() {
 }
 
 #[tokio::test]
+async fn available_modules_reads_official_catalog_when_no_local_catalog_exists() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
+    remove_module_catalog_fixture();
+    install_admin_module_metadata(vec![AdminModuleMetadata {
+        module_name: "auth".to_owned(),
+        source: ModuleSource::Linked,
+        load_status: ModuleLoadStatus::Loaded,
+        http_routes: vec![],
+        runtime: None,
+        events: None,
+        lifecycle: None,
+        console: vec![],
+        story_display: vec![],
+        capabilities: vec![],
+        dependencies: vec![],
+        admin: None,
+        source_diagnostics: None,
+    }]);
+    let ctx = AppContext::new(
+        AppConfig::from_env(),
+        lazy_failing_db(),
+        Arc::new(LoggingEventPublisher),
+    );
+    let app = build_router(ctx);
+
+    let response = app
+        .oneshot(admin_get("/admin/data/available-modules"))
+        .await
+        .expect("available modules request completes");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["status"], "passed");
+    assert_eq!(
+        body["catalog"]["registryFile"],
+        "builtin:lenso-official-module-catalog"
+    );
+    assert_eq!(body["catalog"]["modules"], 3);
+    assert_eq!(body["modules"][0]["name"], "auth");
+    assert_eq!(body["modules"][0]["source"], "linked");
+    assert_eq!(body["modules"][0]["catalogVersion"], "0.1.0");
+    assert_eq!(body["modules"][1]["name"], "auth-password");
+    assert_eq!(body["modules"][1]["source"], "linked");
+    assert_eq!(body["modules"][2]["name"], "remote-crm");
+    assert_eq!(body["modules"][2]["source"], "remote");
+    assert_eq!(
+        body["modules"][2]["manifestReference"],
+        "http://127.0.0.1:4100/lenso/module/v1/manifest"
+    );
+    assert_eq!(
+        body["modules"][2]["summary"],
+        "Official CRM fixture module for exercising remote module installation"
+    );
+    assert_eq!(body["modules"][2]["consolePackageHints"], 1);
+    assert_eq!(body["modules"][2]["status"], "ready");
+}
+
+#[tokio::test]
 async fn available_modules_reads_local_module_catalog() {
     let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
     fs::create_dir_all(".lenso").expect("create catalog dir");
@@ -625,7 +702,32 @@ async fn available_modules_reads_local_module_catalog() {
         .to_string(),
     )
     .expect("write catalog fixture");
-    install_admin_module_metadata(vec![]);
+    install_admin_module_metadata(vec![AdminModuleMetadata {
+        module_name: "billing".to_owned(),
+        source: ModuleSource::Remote,
+        load_status: ModuleLoadStatus::Loaded,
+        http_routes: vec![],
+        runtime: None,
+        events: None,
+        lifecycle: None,
+        console: vec![],
+        story_display: vec![],
+        capabilities: vec![],
+        dependencies: vec![],
+        admin: None,
+        source_diagnostics: Some(AdminModuleSourceDiagnostics::Remote(
+            AdminRemoteModuleDiagnostics {
+                transport: "http_json".to_owned(),
+                base_url: "https://example.com/billing".to_owned(),
+                manifest_url: "https://example.com/billing/manifest".to_owned(),
+                timeout_ms: 1000,
+                auth_configured: false,
+                load_duration_ms: None,
+                last_checked_at: None,
+                last_load_error: None,
+            },
+        )),
+    }]);
     let ctx = AppContext::new(
         AppConfig::from_env(),
         lazy_failing_db(),
@@ -717,7 +819,21 @@ async fn available_modules_reports_local_install_state() {
         ".env",
         "REMOTE_MODULES=billing=https://example.com/billing/\n",
     );
-    install_admin_module_metadata(vec![]);
+    install_admin_module_metadata(vec![AdminModuleMetadata {
+        module_name: "auth".to_owned(),
+        source: ModuleSource::Linked,
+        load_status: ModuleLoadStatus::Loaded,
+        http_routes: vec![],
+        runtime: None,
+        events: None,
+        lifecycle: None,
+        console: vec![],
+        story_display: vec![],
+        capabilities: vec![],
+        dependencies: vec![],
+        admin: None,
+        source_diagnostics: None,
+    }]);
     let ctx = AppContext::new(
         AppConfig::from_env(),
         lazy_failing_db(),
@@ -734,6 +850,7 @@ async fn available_modules_reports_local_install_state() {
     let body = json_body(response).await;
     let install_state = &body["modules"][0]["installState"];
     assert_eq!(install_state["moduleRegistered"], false);
+    assert_eq!(install_state["linkedSource"], Value::Null);
     assert_eq!(install_state["remoteSource"]["envFile"], ".env");
     assert_eq!(install_state["remoteSource"]["configured"], true);
     assert_eq!(
@@ -762,6 +879,403 @@ async fn available_modules_reports_local_install_state() {
     assert_eq!(
         install_state["consolePlan"]["packages"][0]["command"],
         "pnpm add @vendor/lenso-billing-console"
+    );
+}
+
+#[tokio::test]
+async fn available_module_install_writes_remote_source_and_console_plan() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
+    let _catalog = FileFixture::write(
+        ".lenso/module-catalog.json",
+        serde_json::json!({
+            "version": 1,
+            "modules": [{
+                "name": "billing",
+                "version": "0.2.0",
+                "source": "remote",
+                "manifestReference": "https://example.com/billing/manifest",
+                "baseUrl": "https://example.com/billing/",
+                "summary": "Billing workspace and operations",
+                "consolePackages": [{
+                    "packageName": "@vendor/lenso-billing-console",
+                    "exportName": "billingConsoleModule",
+                    "route": "/data/billing"
+                }]
+            }]
+        })
+        .to_string(),
+    );
+    let _env = FileFixture::write(
+        ".env",
+        "DATABASE_URL=postgres://localhost/lenso\nREMOTE_MODULES=crm=https://example.com/crm\n",
+    );
+    let _install_plan = FileFixture::remove(".lenso/console-package-install-plan.json");
+    install_admin_module_metadata(vec![AdminModuleMetadata {
+        module_name: "auth".to_owned(),
+        source: ModuleSource::Linked,
+        load_status: ModuleLoadStatus::Loaded,
+        http_routes: vec![],
+        runtime: None,
+        events: None,
+        lifecycle: None,
+        console: vec![],
+        story_display: vec![],
+        capabilities: vec![],
+        dependencies: vec![],
+        admin: None,
+        source_diagnostics: None,
+    }]);
+    let ctx = AppContext::new(
+        AppConfig::from_env(),
+        lazy_failing_db(),
+        Arc::new(LoggingEventPublisher),
+    );
+    let app = build_router(ctx);
+
+    let response = app
+        .oneshot(admin_post_json(
+            "/admin/data/available-modules/billing/install",
+            "{}",
+        ))
+        .await
+        .expect("install request completes");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["moduleName"], "billing");
+    assert_eq!(body["linkedSource"], Value::Null);
+    assert_eq!(body["remoteSource"]["envFile"], ".env");
+    assert_eq!(
+        body["remoteSource"]["desiredBaseUrl"],
+        "https://example.com/billing"
+    );
+    assert_eq!(body["remoteSource"]["restartPending"], true);
+    assert_eq!(body["consolePlan"]["packageCount"], 1);
+    assert_eq!(body["consolePlan"]["restartRequired"], true);
+
+    let env_file = fs::read_to_string(".env").expect("read env file");
+    assert!(env_file.contains("DATABASE_URL=postgres://localhost/lenso\n"));
+    assert!(
+        env_file.contains(
+            "REMOTE_MODULES=crm=https://example.com/crm,billing=https://example.com/billing\n"
+        ),
+        "{env_file}"
+    );
+
+    let install_plan =
+        fs::read_to_string(".lenso/console-package-install-plan.json").expect("read install plan");
+    let install_plan_json: Value =
+        serde_json::from_str(&install_plan).expect("install plan is json");
+    assert_eq!(install_plan_json["version"], 1);
+    assert_eq!(install_plan_json["modules"][0]["moduleName"], "billing");
+    assert_eq!(
+        install_plan_json["modules"][0]["manifestReference"],
+        "https://example.com/billing/manifest"
+    );
+    assert_eq!(
+        install_plan_json["modules"][0]["baseUrl"],
+        "https://example.com/billing"
+    );
+    assert_eq!(
+        install_plan_json["modules"][0]["consolePackages"][0]["command"],
+        "pnpm add @vendor/lenso-billing-console"
+    );
+    assert_eq!(
+        install_plan_json["modules"][0]["consolePackages"][0]["key"],
+        "@vendor/lenso-billing-console#billingConsoleModule"
+    );
+}
+
+#[tokio::test]
+async fn available_module_install_rejects_catalog_preflight_blockers() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
+    let _catalog = FileFixture::write(
+        ".lenso/module-catalog.json",
+        serde_json::json!({
+            "version": 1,
+            "modules": [{
+                "name": "local-crm",
+                "version": "0.1.0",
+                "source": "remote",
+                "manifestReference": "./lenso.module.json"
+            }]
+        })
+        .to_string(),
+    );
+    let _env = FileFixture::remove(".env");
+    let _install_plan = FileFixture::remove(".lenso/console-package-install-plan.json");
+    install_admin_module_metadata(vec![]);
+    let ctx = AppContext::new(
+        AppConfig::from_env(),
+        lazy_failing_db(),
+        Arc::new(LoggingEventPublisher),
+    );
+    let app = build_router(ctx);
+
+    let response = app
+        .oneshot(admin_post_json(
+            "/admin/data/available-modules/local-crm/install",
+            "{}",
+        ))
+        .await
+        .expect("install request completes");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = json_body(response).await;
+    assert_eq!(body["error"]["message"], "local-crm baseUrl is missing");
+    assert!(!Path::new(".env").exists());
+    assert!(!Path::new(".lenso/console-package-install-plan.json").exists());
+}
+
+#[tokio::test]
+async fn available_linked_module_install_sets_demo_composition_profile() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
+    remove_module_catalog_fixture();
+    let _env = FileFixture::write(".env", "DATABASE_URL=postgres://localhost/lenso\n");
+    install_admin_module_metadata(vec![]);
+    let ctx = AppContext::new(
+        AppConfig::from_env(),
+        lazy_failing_db(),
+        Arc::new(LoggingEventPublisher),
+    );
+    let app = build_router(ctx);
+
+    let response = app
+        .oneshot(admin_post_json(
+            "/admin/data/available-modules/auth/install",
+            "{}",
+        ))
+        .await
+        .expect("install request completes");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["moduleName"], "auth");
+    assert_eq!(body["restartRequired"], true);
+    assert_eq!(body["remoteSource"], Value::Null);
+    assert_eq!(body["linkedSource"]["configured"], true);
+    assert_eq!(body["linkedSource"]["desiredEnabled"], true);
+    assert_eq!(body["linkedSource"]["runningEnabled"], false);
+    assert_eq!(
+        body["linkedSource"]["restartReason"],
+        "linked module enabled by env override; restart API and worker"
+    );
+    let env_file = fs::read_to_string(".env").expect("read env file");
+    assert!(env_file.contains("DATABASE_URL=postgres://localhost/lenso\n"));
+    assert!(env_file.contains("LENSO_COMPOSITION_PROFILE=demo\n"));
+    assert!(env_file.contains("LENSO_MODULE_AUTH_ENABLED=true\n"));
+    assert!(!env_file.contains("REMOTE_MODULES=auth"));
+
+    let status_response = build_router(AppContext::new(
+        AppConfig::from_env(),
+        lazy_failing_db(),
+        Arc::new(LoggingEventPublisher),
+    ))
+    .oneshot(admin_get("/admin/data/available-modules"))
+    .await
+    .expect("available modules request completes");
+    let status_body = json_body(status_response).await;
+    let auth = status_body["modules"]
+        .as_array()
+        .expect("modules array")
+        .iter()
+        .find(|module| module["name"] == "auth")
+        .expect("auth available module");
+    assert_eq!(auth["installState"]["remoteSource"], Value::Null);
+    assert_eq!(auth["installState"]["linkedSource"]["restartPending"], true);
+    assert_eq!(
+        auth["installState"]["linkedSource"]["restartReason"],
+        "linked module enabled by env override; restart API and worker"
+    );
+}
+
+#[tokio::test]
+async fn available_remote_module_uninstall_removes_source_and_console_plan() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
+    let _catalog = FileFixture::write(
+        ".lenso/module-catalog.json",
+        serde_json::json!({
+            "version": 1,
+            "modules": [{
+                "name": "billing",
+                "version": "0.2.0",
+                "source": "remote",
+                "manifestReference": "https://example.com/billing/manifest",
+                "baseUrl": "https://example.com/billing",
+                "consolePackages": [{
+                    "packageName": "@vendor/lenso-billing-console",
+                    "exportName": "billingConsoleModule",
+                    "route": "/data/billing"
+                }]
+            }]
+        })
+        .to_string(),
+    );
+    let _env = FileFixture::write(
+        ".env",
+        "REMOTE_MODULES=crm=https://example.com/crm,billing=https://example.com/billing\n",
+    );
+    let _install_plan = FileFixture::write(
+        ".lenso/console-package-install-plan.json",
+        serde_json::json!({
+            "version": 1,
+            "modules": [
+                {
+                    "moduleName": "billing",
+                    "baseUrl": "https://example.com/billing",
+                    "manifestReference": "https://example.com/billing/manifest",
+                    "restartRequired": true,
+                    "consolePackages": [{
+                        "packageName": "@vendor/lenso-billing-console",
+                        "exportName": "billingConsoleModule"
+                    }]
+                },
+                {
+                    "moduleName": "crm",
+                    "baseUrl": "https://example.com/crm",
+                    "manifestReference": "https://example.com/crm/manifest",
+                    "restartRequired": true,
+                    "consolePackages": []
+                }
+            ]
+        })
+        .to_string(),
+    );
+    install_admin_module_metadata(vec![AdminModuleMetadata {
+        module_name: "billing".to_owned(),
+        source: ModuleSource::Remote,
+        load_status: ModuleLoadStatus::Loaded,
+        http_routes: vec![],
+        runtime: None,
+        events: None,
+        lifecycle: None,
+        console: vec![],
+        story_display: vec![],
+        capabilities: vec![],
+        dependencies: vec![],
+        admin: None,
+        source_diagnostics: Some(AdminModuleSourceDiagnostics::Remote(
+            AdminRemoteModuleDiagnostics {
+                transport: "http".to_owned(),
+                base_url: "https://example.com/billing".to_owned(),
+                manifest_url: "https://example.com/billing/manifest".to_owned(),
+                timeout_ms: 5000,
+                auth_configured: false,
+                load_duration_ms: Some(10),
+                last_checked_at: None,
+                last_load_error: None,
+            },
+        )),
+    }]);
+    let ctx = AppContext::new(
+        AppConfig::from_env(),
+        lazy_failing_db(),
+        Arc::new(LoggingEventPublisher),
+    );
+    let app = build_router(ctx);
+
+    let response = app
+        .oneshot(admin_delete(
+            "/admin/data/available-modules/billing/install",
+        ))
+        .await
+        .expect("uninstall request completes");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["moduleName"], "billing");
+    assert_eq!(body["restartRequired"], true);
+    assert_eq!(body["linkedSource"], Value::Null);
+    assert_eq!(body["remoteSource"]["configured"], false);
+    assert_eq!(
+        body["remoteSource"]["runningBaseUrl"],
+        "https://example.com/billing"
+    );
+    assert_eq!(body["remoteSource"]["restartPending"], true);
+    assert_eq!(
+        body["remoteSource"]["restartReason"],
+        "remote source removed from .env but still loaded"
+    );
+    let env_file = fs::read_to_string(".env").expect("read env file");
+    assert_eq!(env_file, "REMOTE_MODULES=crm=https://example.com/crm\n");
+    let install_plan =
+        fs::read_to_string(".lenso/console-package-install-plan.json").expect("read install plan");
+    let install_plan_json: Value =
+        serde_json::from_str(&install_plan).expect("install plan is json");
+    assert_eq!(install_plan_json["modules"].as_array().unwrap().len(), 1);
+    assert_eq!(install_plan_json["modules"][0]["moduleName"], "crm");
+}
+
+#[tokio::test]
+async fn available_linked_module_uninstall_disables_module_env_override() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
+    remove_module_catalog_fixture();
+    let _env = FileFixture::write(
+        ".env",
+        "LENSO_COMPOSITION_PROFILE=demo\nLENSO_MODULE_AUTH_ENABLED=true\n",
+    );
+    install_admin_module_metadata(vec![AdminModuleMetadata {
+        module_name: "auth".to_owned(),
+        source: ModuleSource::Linked,
+        load_status: ModuleLoadStatus::Loaded,
+        http_routes: vec![],
+        runtime: None,
+        events: None,
+        lifecycle: None,
+        console: vec![],
+        story_display: vec![],
+        capabilities: vec![],
+        dependencies: vec![],
+        admin: None,
+        source_diagnostics: None,
+    }]);
+    let ctx = AppContext::new(
+        AppConfig::from_env(),
+        lazy_failing_db(),
+        Arc::new(LoggingEventPublisher),
+    );
+    let app = build_router(ctx);
+
+    let response = app
+        .oneshot(admin_delete("/admin/data/available-modules/auth/install"))
+        .await
+        .expect("uninstall request completes");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["moduleName"], "auth");
+    assert_eq!(body["remoteSource"], Value::Null);
+    assert_eq!(body["linkedSource"]["configured"], true);
+    assert_eq!(body["linkedSource"]["desiredEnabled"], false);
+    assert_eq!(body["linkedSource"]["runningEnabled"], true);
+    assert_eq!(
+        body["linkedSource"]["restartReason"],
+        "linked module disabled by env override; restart API and worker"
+    );
+    let env_file = fs::read_to_string(".env").expect("read env file");
+    assert!(env_file.contains("LENSO_COMPOSITION_PROFILE=demo\n"));
+    assert!(env_file.contains("LENSO_MODULE_AUTH_ENABLED=false\n"));
+
+    let status_response = build_router(AppContext::new(
+        AppConfig::from_env(),
+        lazy_failing_db(),
+        Arc::new(LoggingEventPublisher),
+    ))
+    .oneshot(admin_get("/admin/data/available-modules"))
+    .await
+    .expect("available modules request completes");
+    let status_body = json_body(status_response).await;
+    let auth = status_body["modules"]
+        .as_array()
+        .expect("modules array")
+        .iter()
+        .find(|module| module["name"] == "auth")
+        .expect("auth available module");
+    assert_eq!(auth["installState"]["remoteSource"], Value::Null);
+    assert_eq!(auth["installState"]["linkedSource"]["restartPending"], true);
+    assert_eq!(
+        auth["installState"]["linkedSource"]["restartReason"],
+        "linked module disabled by env override; restart API and worker"
     );
 }
 

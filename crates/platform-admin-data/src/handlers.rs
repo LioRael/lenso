@@ -4,7 +4,8 @@ use crate::dto::{
     AdminDataListResponse, AdminDataPageInfo, AdminModuleActivationState,
     AdminModuleCompatibilityDto, AdminModuleConsolePackagePlanPackageDto,
     AdminModuleConsolePackagePlanStateDto, AdminModuleGovernanceDto,
-    AdminModuleHostCompatibilityDto, AdminModuleInstallStateDto, AdminModuleMetadataDto,
+    AdminModuleHostCompatibilityDto, AdminModuleInstallResponse, AdminModuleInstallStateDto,
+    AdminModuleLinkedSourceInstallStateDto, AdminModuleMetadataDto,
     AdminModuleMetadataListResponse, AdminModuleRefreshModuleResultDto,
     AdminModuleRefreshModuleStatusDto, AdminModuleRefreshRecordDto, AdminModuleRefreshStatusDto,
     AdminModuleRegistrySnapshotCatalogDto, AdminModuleRegistrySnapshotIssueDto,
@@ -35,6 +36,7 @@ use platform_module::{
     ModuleSource, lint_module_manifest_parts, module_capability_references,
 };
 use serde::Deserialize;
+use serde::Serialize;
 use serde_json::Value;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
@@ -46,6 +48,9 @@ const DEFAULT_LIMIT: i64 = 50;
 const MAX_LIMIT: i64 = 200;
 const HOST_CONSOLE_PACKAGE_API_VERSION: &str = "1";
 const HOST_LENSO_VERSION: &str = env!("CARGO_PKG_VERSION");
+const OFFICIAL_MODULE_CATALOG_REGISTRY_FILE: &str = "builtin:lenso-official-module-catalog";
+const OFFICIAL_MODULE_CATALOG_SOURCE: &str =
+    include_str!("../catalogs/lenso-official-module-catalog.json");
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct DataListQuery {
@@ -149,6 +154,55 @@ pub(crate) async fn available_modules(
     Ok(Json(available_modules_response()))
 }
 
+#[utoipa::path(
+    post,
+    path = "/admin/data/available-modules/{module}/install",
+    operation_id = "admin_data_install_available_module",
+    tag = "admin-data",
+    params(
+        ("module" = String, Path, description = "Available remote module name"),
+        ("authorization" = String, Header, description = "Development service bearer token"),
+    ),
+    responses(
+        (status = 200, description = "Remote module install state written to host-local files", body = AdminModuleInstallResponse, content_type = "application/json"),
+        (status = 400, description = "Catalog entry cannot be installed", body = ErrorResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 404, description = "Unknown available module", body = ErrorResponse, content_type = "application/json"),
+    )
+)]
+pub(crate) async fn install_available_module(
+    _admin: AdminActor,
+    Path(module): Path<String>,
+    HttpRequestContext(request_ctx): HttpRequestContext,
+) -> Result<Json<AdminModuleInstallResponse>, ApiErrorResponse> {
+    install_available_module_response(module, &request_ctx).map(Json)
+}
+
+#[utoipa::path(
+    delete,
+    path = "/admin/data/available-modules/{module}/install",
+    operation_id = "admin_data_uninstall_available_module",
+    tag = "admin-data",
+    params(
+        ("module" = String, Path, description = "Available module name"),
+        ("authorization" = String, Header, description = "Development service bearer token"),
+    ),
+    responses(
+        (status = 200, description = "Module install state removed from host-local files", body = AdminModuleInstallResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 404, description = "Unknown available module", body = ErrorResponse, content_type = "application/json"),
+    )
+)]
+pub(crate) async fn uninstall_available_module(
+    _admin: AdminActor,
+    Path(module): Path<String>,
+    HttpRequestContext(request_ctx): HttpRequestContext,
+) -> Result<Json<AdminModuleInstallResponse>, ApiErrorResponse> {
+    uninstall_available_module_response(module, &request_ctx).map(Json)
+}
+
 fn available_modules_response() -> AdminModuleRegistrySnapshotResponse {
     let metadata = admin_module_metadata_snapshot().modules;
     let install_state = AvailableModuleInstallStateContext::from_paths(
@@ -156,10 +210,155 @@ fn available_modules_response() -> AdminModuleRegistrySnapshotResponse {
         PathBuf::from(".env"),
         PathBuf::from(".lenso/console-package-install-plan.json"),
     );
-    match module_catalog_response(PathBuf::from(".lenso/module-catalog.json"), &install_state) {
-        Some(response) => response,
-        None => module_registry_snapshot_response(metadata, &install_state),
+    if let Some(response) =
+        module_catalog_file_response(PathBuf::from(".lenso/module-catalog.json"), &install_state)
+    {
+        return response;
     }
+    if metadata
+        .iter()
+        .any(|module| matches!(module.source, ModuleSource::Remote))
+    {
+        return module_registry_snapshot_response(metadata, &install_state);
+    }
+
+    module_catalog_source_response(
+        OFFICIAL_MODULE_CATALOG_REGISTRY_FILE.to_owned(),
+        OFFICIAL_MODULE_CATALOG_SOURCE,
+        &install_state,
+    )
+}
+
+fn install_available_module_response(
+    module_name: String,
+    ctx: &RequestContext,
+) -> Result<AdminModuleInstallResponse, ApiErrorResponse> {
+    let catalog_entry =
+        find_installable_catalog_entry(&module_name).map_err(|error| install_error(error, ctx))?;
+    if catalog_entry.source == "linked" {
+        return install_linked_available_module_response(catalog_entry, ctx);
+    }
+    let base_url = install_base_url(&catalog_entry).map_err(|error| install_error(error, ctx))?;
+    validate_installable_catalog_entry(&catalog_entry, &base_url)
+        .map_err(|error| install_error(error, ctx))?;
+
+    let env_file_path = PathBuf::from(".env");
+    let console_plan_file_path = PathBuf::from(".lenso/console-package-install-plan.json");
+    write_remote_modules_env(&env_file_path, &catalog_entry.name, &base_url)
+        .map_err(|error| install_error(error, ctx))?;
+    write_console_package_install_plan(&console_plan_file_path, &catalog_entry, &base_url)
+        .map_err(|error| install_error(error, ctx))?;
+
+    let metadata = admin_module_metadata_snapshot().modules;
+    let install_state = AvailableModuleInstallStateContext::from_paths(
+        &metadata,
+        &env_file_path,
+        &console_plan_file_path,
+    );
+    let state = install_state.install_state(&catalog_entry.name);
+    Ok(AdminModuleInstallResponse {
+        module_name: catalog_entry.name,
+        manifest_reference: catalog_entry.manifest_reference,
+        linked_source: state.linked_source,
+        remote_source: state.remote_source,
+        console_plan: state.console_plan,
+        restart_required: true,
+    })
+}
+
+fn uninstall_available_module_response(
+    module_name: String,
+    ctx: &RequestContext,
+) -> Result<AdminModuleInstallResponse, ApiErrorResponse> {
+    let catalog_entry =
+        find_installable_catalog_entry(&module_name).map_err(|error| install_error(error, ctx))?;
+    if catalog_entry.source == "linked" {
+        return uninstall_linked_available_module_response(catalog_entry, ctx);
+    }
+
+    let env_file_path = PathBuf::from(".env");
+    let console_plan_file_path = PathBuf::from(".lenso/console-package-install-plan.json");
+    remove_remote_modules_env(&env_file_path, &catalog_entry.name)
+        .map_err(|error| install_error(error, ctx))?;
+    remove_console_package_install_plan_module(&console_plan_file_path, &catalog_entry.name)
+        .map_err(|error| install_error(error, ctx))?;
+
+    let metadata = admin_module_metadata_snapshot().modules;
+    let install_state = AvailableModuleInstallStateContext::from_paths(
+        &metadata,
+        &env_file_path,
+        &console_plan_file_path,
+    );
+    let state = install_state.install_state(&catalog_entry.name);
+    Ok(AdminModuleInstallResponse {
+        module_name: catalog_entry.name,
+        manifest_reference: catalog_entry.manifest_reference,
+        linked_source: state.linked_source,
+        remote_source: state.remote_source,
+        console_plan: state.console_plan,
+        restart_required: true,
+    })
+}
+
+fn install_linked_available_module_response(
+    catalog_entry: LocalModuleCatalogEntry,
+    ctx: &RequestContext,
+) -> Result<AdminModuleInstallResponse, ApiErrorResponse> {
+    if catalog_entry.archived_at.is_some() {
+        return Err(install_error(
+            AppError::new(
+                ErrorCode::Validation,
+                format!("available module {} is archived", catalog_entry.name),
+            ),
+            ctx,
+        ));
+    }
+    write_linked_module_profile_env(PathBuf::from(".env"))
+        .map_err(|error| install_error(error, ctx))?;
+    write_linked_module_enabled_env(PathBuf::from(".env"), &catalog_entry.name, true)
+        .map_err(|error| install_error(error, ctx))?;
+    let metadata = admin_module_metadata_snapshot().modules;
+    let install_state = AvailableModuleInstallStateContext::from_paths(
+        &metadata,
+        PathBuf::from(".env"),
+        PathBuf::from(".lenso/console-package-install-plan.json"),
+    );
+    let state = install_state.install_state_for_source(&catalog_entry.name, ModuleSource::Linked);
+    Ok(AdminModuleInstallResponse {
+        module_name: catalog_entry.name,
+        manifest_reference: catalog_entry.manifest_reference,
+        linked_source: state.linked_source,
+        remote_source: state.remote_source,
+        console_plan: state.console_plan,
+        restart_required: true,
+    })
+}
+
+fn uninstall_linked_available_module_response(
+    catalog_entry: LocalModuleCatalogEntry,
+    ctx: &RequestContext,
+) -> Result<AdminModuleInstallResponse, ApiErrorResponse> {
+    write_linked_module_enabled_env(PathBuf::from(".env"), &catalog_entry.name, false)
+        .map_err(|error| install_error(error, ctx))?;
+    let metadata = admin_module_metadata_snapshot().modules;
+    let install_state = AvailableModuleInstallStateContext::from_paths(
+        &metadata,
+        PathBuf::from(".env"),
+        PathBuf::from(".lenso/console-package-install-plan.json"),
+    );
+    let state = install_state.install_state_for_source(&catalog_entry.name, ModuleSource::Linked);
+    Ok(AdminModuleInstallResponse {
+        module_name: catalog_entry.name,
+        manifest_reference: catalog_entry.manifest_reference,
+        linked_source: state.linked_source,
+        remote_source: state.remote_source,
+        console_plan: state.console_plan,
+        restart_required: true,
+    })
+}
+
+fn install_error(error: AppError, ctx: &RequestContext) -> ApiErrorResponse {
+    ApiErrorResponse::with_context(error, ctx)
 }
 
 #[utoipa::path(
@@ -320,7 +519,7 @@ fn module_registry_snapshot_response(
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct LocalModuleCatalog {
     #[serde(default)]
@@ -329,7 +528,7 @@ struct LocalModuleCatalog {
     version: u8,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct LocalModuleCatalogEntry {
     name: String,
@@ -352,24 +551,29 @@ struct LocalModuleCatalogEntry {
     archive_reason: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct LocalModuleCatalogConsolePackage {
-    #[serde(rename = "packageName")]
-    _package_name: String,
-    #[serde(rename = "exportName")]
-    _export_name: String,
+    package_name: String,
+    export_name: String,
     #[serde(default)]
-    #[serde(rename = "route")]
-    _route: Option<String>,
+    route: Option<String>,
 }
 
 #[derive(Debug)]
 struct AvailableModuleInstallStateContext {
     console_plan: LocalConsolePackageInstallPlanState,
+    linked_modules: LocalLinkedModulesEnvState,
     registered_modules: HashSet<String>,
     remote_sources: LocalRemoteModulesEnvState,
     running_base_urls: HashMap<String, String>,
+}
+
+#[derive(Debug)]
+struct LocalLinkedModulesEnvState {
+    env_file: String,
+    error: Option<String>,
+    enabled: HashMap<String, bool>,
 }
 
 #[derive(Debug)]
@@ -379,30 +583,30 @@ struct LocalRemoteModulesEnvState {
     modules: HashMap<String, String>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LocalConsolePackageInstallPlan {
     #[serde(default)]
     modules: Vec<LocalConsolePackageInstallPlanModule>,
     #[serde(default = "default_console_package_install_plan_version")]
-    _version: u8,
+    version: u8,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LocalConsolePackageInstallPlanModule {
     #[serde(default)]
-    _base_url: Option<String>,
+    base_url: Option<String>,
     #[serde(default)]
     console_packages: Vec<LocalConsolePackageInstallPlanPackage>,
     #[serde(default)]
-    _manifest_reference: Option<String>,
+    manifest_reference: Option<String>,
     module_name: String,
     #[serde(default)]
     restart_required: Option<bool>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LocalConsolePackageInstallPlanPackage {
     #[serde(default)]
@@ -412,7 +616,7 @@ struct LocalConsolePackageInstallPlanPackage {
     key: Option<String>,
     package_name: String,
     #[serde(default)]
-    _requested_by_module: Option<String>,
+    requested_by_module: Option<String>,
     #[serde(default)]
     route: Option<String>,
     #[serde(default)]
@@ -443,6 +647,7 @@ impl AvailableModuleInstallStateContext {
     ) -> Self {
         Self {
             console_plan: local_console_package_install_plan_state(console_plan_file_path),
+            linked_modules: local_linked_modules_env_state(&env_file_path),
             registered_modules: metadata
                 .iter()
                 .map(|module| module.module_name.clone())
@@ -466,10 +671,42 @@ impl AvailableModuleInstallStateContext {
     }
 
     fn install_state(&self, module_name: &str) -> AdminModuleInstallStateDto {
+        self.install_state_for_source(module_name, ModuleSource::Remote)
+    }
+
+    fn install_state_for_source(
+        &self,
+        module_name: &str,
+        source: ModuleSource,
+    ) -> AdminModuleInstallStateDto {
         AdminModuleInstallStateDto {
             module_registered: self.registered_modules.contains(module_name),
-            remote_source: self.remote_source_state(module_name),
+            linked_source: match source {
+                ModuleSource::Linked => Some(self.linked_source_state(module_name)),
+                _ => None,
+            },
+            remote_source: match source {
+                ModuleSource::Linked => None,
+                ModuleSource::Remote => Some(self.remote_source_state(module_name)),
+                _ => Some(self.remote_source_state(module_name)),
+            },
             console_plan: self.console_plan_state(module_name),
+        }
+    }
+
+    fn linked_source_state(&self, module_name: &str) -> AdminModuleLinkedSourceInstallStateDto {
+        let desired_enabled = self.linked_modules.enabled.get(module_name).copied();
+        let running_enabled = self.registered_modules.contains(module_name);
+        let restart_reason = linked_source_restart_reason(desired_enabled, running_enabled);
+
+        AdminModuleLinkedSourceInstallStateDto {
+            env_file: self.linked_modules.env_file.clone(),
+            configured: desired_enabled.is_some(),
+            desired_enabled,
+            running_enabled,
+            restart_pending: restart_reason.is_some(),
+            restart_reason,
+            error: self.linked_modules.error.clone(),
         }
     }
 
@@ -546,6 +783,70 @@ fn local_remote_modules_env_state(env_file_path: impl AsRef<FsPath>) -> LocalRem
         env_file,
         error: None,
         modules: parse_remote_modules_env_source(&source),
+    }
+}
+
+fn local_linked_modules_env_state(env_file_path: impl AsRef<FsPath>) -> LocalLinkedModulesEnvState {
+    let env_file_path = env_file_path.as_ref();
+    let env_file = env_file_path.display().to_string();
+    let source = match fs::read_to_string(env_file_path) {
+        Ok(source) => source,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return LocalLinkedModulesEnvState {
+                env_file,
+                error: None,
+                enabled: HashMap::new(),
+            };
+        }
+        Err(error) => {
+            return LocalLinkedModulesEnvState {
+                env_file,
+                error: Some(format!("linked module env file could not be read: {error}")),
+                enabled: HashMap::new(),
+            };
+        }
+    };
+    LocalLinkedModulesEnvState {
+        env_file,
+        error: None,
+        enabled: parse_linked_modules_env_source(&source),
+    }
+}
+
+fn parse_linked_modules_env_source(source: &str) -> HashMap<String, bool> {
+    source
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                return None;
+            }
+            let line = line.strip_prefix("export ").unwrap_or(line);
+            let (key, value) = line.split_once('=')?;
+            let module_name = module_name_from_linked_enabled_env_key(key.trim())?;
+            Some((
+                module_name,
+                parse_bool_env_value(&unquote_env_value(value.trim()))?,
+            ))
+        })
+        .collect()
+}
+
+fn module_name_from_linked_enabled_env_key(key: &str) -> Option<String> {
+    Some(
+        key.strip_prefix("LENSO_MODULE_")?
+            .strip_suffix("_ENABLED")?
+            .to_ascii_lowercase()
+            .replace('_', "-"),
+    )
+    .filter(|name| !name.is_empty())
+}
+
+fn parse_bool_env_value(value: &str) -> Option<bool> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => Some(true),
+        "0" | "false" | "no" | "off" => Some(false),
+        _ => None,
     }
 }
 
@@ -648,8 +949,24 @@ fn remote_source_restart_reason(
 ) -> Option<String> {
     match (desired_base_url, running_base_url) {
         (Some(_), None) => Some("remote source configured in .env but not loaded".to_owned()),
+        (None, Some(_)) => Some("remote source removed from .env but still loaded".to_owned()),
         (Some(desired), Some(running)) if desired != running => {
             Some("REMOTE_MODULES base URL differs from running module metadata".to_owned())
+        }
+        _ => None,
+    }
+}
+
+fn linked_source_restart_reason(
+    desired_enabled: Option<bool>,
+    running_enabled: bool,
+) -> Option<String> {
+    match (desired_enabled, running_enabled) {
+        (Some(true), false) => {
+            Some("linked module enabled by env override; restart API and worker".to_owned())
+        }
+        (Some(false), true) => {
+            Some("linked module disabled by env override; restart API and worker".to_owned())
         }
         _ => None,
     }
@@ -659,7 +976,7 @@ fn normalize_remote_base_url(value: &str) -> String {
     value.trim().trim_end_matches('/').to_owned()
 }
 
-fn module_catalog_response(
+fn module_catalog_file_response(
     catalog_file_path: impl AsRef<FsPath>,
     install_state: &AvailableModuleInstallStateContext,
 ) -> Option<AdminModuleRegistrySnapshotResponse> {
@@ -669,18 +986,74 @@ fn module_catalog_response(
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return None,
         Err(error) => {
             return Some(module_catalog_error_response(
-                catalog_file_path,
+                catalog_file_path.display().to_string(),
                 format!("module catalog could not be read: {error}"),
             ));
         }
     };
+    Some(module_catalog_source_response(
+        catalog_file_path.display().to_string(),
+        &source,
+        install_state,
+    ))
+}
+
+fn find_installable_catalog_entry(module_name: &str) -> Result<LocalModuleCatalogEntry, AppError> {
+    let catalog = read_install_catalog(PathBuf::from(".lenso/module-catalog.json"))?
+        .unwrap_or_else(official_module_catalog);
+    catalog
+        .modules
+        .into_iter()
+        .find(|entry| entry.name == module_name)
+        .ok_or_else(|| {
+            AppError::new(
+                ErrorCode::NotFound,
+                format!("available module {module_name} was not found"),
+            )
+        })
+}
+
+fn read_install_catalog(
+    catalog_file_path: impl AsRef<FsPath>,
+) -> Result<Option<LocalModuleCatalog>, AppError> {
+    let catalog_file_path = catalog_file_path.as_ref();
+    let source = match fs::read_to_string(catalog_file_path) {
+        Ok(source) => source,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(AppError::new(
+                ErrorCode::ExternalDependency,
+                format!("module catalog could not be read: {error}"),
+            ));
+        }
+    };
+    serde_json::from_str::<LocalModuleCatalog>(&source)
+        .map(Some)
+        .map_err(|error| {
+            AppError::new(
+                ErrorCode::Validation,
+                format!("module catalog could not be parsed: {error}"),
+            )
+        })
+}
+
+fn official_module_catalog() -> LocalModuleCatalog {
+    serde_json::from_str::<LocalModuleCatalog>(OFFICIAL_MODULE_CATALOG_SOURCE)
+        .expect("official module catalog is valid")
+}
+
+fn module_catalog_source_response(
+    registry_file: String,
+    source: &str,
+    install_state: &AvailableModuleInstallStateContext,
+) -> AdminModuleRegistrySnapshotResponse {
     let catalog = match serde_json::from_str::<LocalModuleCatalog>(&source) {
         Ok(catalog) => catalog,
         Err(error) => {
-            return Some(module_catalog_error_response(
-                catalog_file_path,
+            return module_catalog_error_response(
+                registry_file,
                 format!("module catalog could not be parsed: {error}"),
-            ));
+            );
         }
     };
     let mut issues = Vec::new();
@@ -694,7 +1067,7 @@ fn module_catalog_response(
         })
         .collect::<Vec<_>>();
 
-    Some(AdminModuleRegistrySnapshotResponse {
+    AdminModuleRegistrySnapshotResponse {
         version: 1,
         status: if issues.is_empty() {
             AdminModuleRegistrySnapshotStatus::Passed
@@ -703,16 +1076,385 @@ fn module_catalog_response(
         },
         catalog: AdminModuleRegistrySnapshotCatalogDto {
             modules: modules.len(),
-            registry_file: catalog_file_path.display().to_string(),
+            registry_file,
             version: catalog.version,
         },
         issues,
         modules,
+    }
+}
+
+fn validate_installable_catalog_entry(
+    entry: &LocalModuleCatalogEntry,
+    base_url: &str,
+) -> Result<(), AppError> {
+    if entry.archived_at.is_some() {
+        return Err(AppError::new(
+            ErrorCode::Validation,
+            format!("available module {} is archived", entry.name),
+        ));
+    }
+    if entry.source != "remote" {
+        return Err(AppError::new(
+            ErrorCode::Validation,
+            "only remote available modules can be installed visually",
+        ));
+    }
+    if base_url.is_empty() {
+        return Err(AppError::new(
+            ErrorCode::Validation,
+            format!("{} baseUrl is missing", entry.name),
+        ));
+    }
+    if module_compatibility_issue(&entry.name, entry.compatibility.as_ref()).is_some() {
+        return Err(AppError::new(
+            ErrorCode::Validation,
+            format!("{} is not compatible with this Lenso host", entry.name),
+        ));
+    }
+    Ok(())
+}
+
+fn install_base_url(entry: &LocalModuleCatalogEntry) -> Result<String, AppError> {
+    if let Some(base_url) = entry.base_url.as_ref() {
+        return Ok(normalize_remote_base_url(base_url));
+    }
+    if is_http_manifest_reference(&entry.manifest_reference) {
+        return Ok(entry
+            .manifest_reference
+            .strip_suffix("/manifest")
+            .unwrap_or(&entry.manifest_reference)
+            .to_owned());
+    }
+    Err(AppError::new(
+        ErrorCode::Validation,
+        format!("{} baseUrl is missing", entry.name),
+    ))
+}
+
+fn write_remote_modules_env(
+    env_file_path: impl AsRef<FsPath>,
+    module_name: &str,
+    base_url: &str,
+) -> Result<(), AppError> {
+    let env_file_path = env_file_path.as_ref();
+    let source = match fs::read_to_string(env_file_path) {
+        Ok(source) => source,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => {
+            return Err(AppError::new(
+                ErrorCode::ExternalDependency,
+                format!("remote module env file could not be read: {error}"),
+            ));
+        }
+    };
+    let current_value = source
+        .lines()
+        .filter_map(remote_modules_env_value)
+        .last()
+        .unwrap_or_default();
+    let mut entries = parse_remote_modules_entries(&current_value);
+    entries.retain(|entry| entry.name != module_name);
+    entries.push(RemoteModuleEnvEntry {
+        name: module_name.to_owned(),
+        base_url: normalize_remote_base_url(base_url),
+    });
+    let next_source = upsert_env_source(
+        &source,
+        "REMOTE_MODULES",
+        &format_remote_modules_entries(&entries),
+    );
+    fs::write(env_file_path, next_source).map_err(|error| {
+        AppError::new(
+            ErrorCode::ExternalDependency,
+            format!("remote module env file could not be written: {error}"),
+        )
     })
 }
 
+fn remove_remote_modules_env(
+    env_file_path: impl AsRef<FsPath>,
+    module_name: &str,
+) -> Result<(), AppError> {
+    let env_file_path = env_file_path.as_ref();
+    let source = match fs::read_to_string(env_file_path) {
+        Ok(source) => source,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(AppError::new(
+                ErrorCode::ExternalDependency,
+                format!("remote module env file could not be read: {error}"),
+            ));
+        }
+    };
+    let current_value = source
+        .lines()
+        .filter_map(remote_modules_env_value)
+        .last()
+        .unwrap_or_default();
+    let mut entries = parse_remote_modules_entries(&current_value);
+    entries.retain(|entry| entry.name != module_name);
+    let next_source = if entries.is_empty() {
+        remove_env_key_source(&source, "REMOTE_MODULES")
+    } else {
+        upsert_env_source(
+            &source,
+            "REMOTE_MODULES",
+            &format_remote_modules_entries(&entries),
+        )
+    };
+    fs::write(env_file_path, next_source).map_err(|error| {
+        AppError::new(
+            ErrorCode::ExternalDependency,
+            format!("remote module env file could not be written: {error}"),
+        )
+    })
+}
+
+fn write_linked_module_profile_env(env_file_path: impl AsRef<FsPath>) -> Result<(), AppError> {
+    let env_file_path = env_file_path.as_ref();
+    let source = match fs::read_to_string(env_file_path) {
+        Ok(source) => source,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => {
+            return Err(AppError::new(
+                ErrorCode::ExternalDependency,
+                format!("linked module env file could not be read: {error}"),
+            ));
+        }
+    };
+    let next_source = upsert_env_source(&source, "LENSO_COMPOSITION_PROFILE", "demo");
+    fs::write(env_file_path, next_source).map_err(|error| {
+        AppError::new(
+            ErrorCode::ExternalDependency,
+            format!("linked module env file could not be written: {error}"),
+        )
+    })
+}
+
+fn write_linked_module_enabled_env(
+    env_file_path: impl AsRef<FsPath>,
+    module_name: &str,
+    enabled: bool,
+) -> Result<(), AppError> {
+    let env_file_path = env_file_path.as_ref();
+    let source = match fs::read_to_string(env_file_path) {
+        Ok(source) => source,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => {
+            return Err(AppError::new(
+                ErrorCode::ExternalDependency,
+                format!("linked module env file could not be read: {error}"),
+            ));
+        }
+    };
+    let key = linked_module_enabled_env_key(module_name);
+    let next_source = upsert_env_source(&source, &key, if enabled { "true" } else { "false" });
+    fs::write(env_file_path, next_source).map_err(|error| {
+        AppError::new(
+            ErrorCode::ExternalDependency,
+            format!("linked module env file could not be written: {error}"),
+        )
+    })
+}
+
+fn write_console_package_install_plan(
+    console_plan_file_path: impl AsRef<FsPath>,
+    entry: &LocalModuleCatalogEntry,
+    base_url: &str,
+) -> Result<(), AppError> {
+    let console_plan_file_path = console_plan_file_path.as_ref();
+    let mut plan = match fs::read_to_string(console_plan_file_path) {
+        Ok(source) => {
+            serde_json::from_str::<LocalConsolePackageInstallPlan>(&source).map_err(|error| {
+                AppError::new(
+                    ErrorCode::Validation,
+                    format!("console package install plan could not be parsed: {error}"),
+                )
+            })?
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            LocalConsolePackageInstallPlan {
+                modules: vec![],
+                version: default_console_package_install_plan_version(),
+            }
+        }
+        Err(error) => {
+            return Err(AppError::new(
+                ErrorCode::ExternalDependency,
+                format!("console package install plan could not be read: {error}"),
+            ));
+        }
+    };
+    plan.version = 1;
+    plan.modules
+        .retain(|module| module.module_name != entry.name);
+    plan.modules.push(LocalConsolePackageInstallPlanModule {
+        base_url: Some(normalize_remote_base_url(base_url)),
+        console_packages: entry
+            .console_packages
+            .iter()
+            .map(|package| LocalConsolePackageInstallPlanPackage {
+                command: Some(format!("pnpm add {}", package.package_name)),
+                export_name: package.export_name.clone(),
+                key: Some(format!("{}#{}", package.package_name, package.export_name)),
+                package_name: package.package_name.clone(),
+                requested_by_module: Some(entry.name.clone()),
+                route: package.route.clone(),
+                status: Some("requires_manual_install".to_owned()),
+            })
+            .collect(),
+        manifest_reference: Some(entry.manifest_reference.clone()),
+        module_name: entry.name.clone(),
+        restart_required: Some(true),
+    });
+    if let Some(parent) = console_plan_file_path.parent() {
+        fs::create_dir_all(parent).map_err(|error| {
+            AppError::new(
+                ErrorCode::ExternalDependency,
+                format!("console package install plan directory could not be created: {error}"),
+            )
+        })?;
+    }
+    let source = serde_json::to_string_pretty(&plan)
+        .map(|source| format!("{source}\n"))
+        .map_err(|error| {
+            AppError::new(
+                ErrorCode::Internal,
+                format!("console package install plan could not be encoded: {error}"),
+            )
+        })?;
+    fs::write(console_plan_file_path, source).map_err(|error| {
+        AppError::new(
+            ErrorCode::ExternalDependency,
+            format!("console package install plan could not be written: {error}"),
+        )
+    })
+}
+
+fn remove_console_package_install_plan_module(
+    console_plan_file_path: impl AsRef<FsPath>,
+    module_name: &str,
+) -> Result<(), AppError> {
+    let console_plan_file_path = console_plan_file_path.as_ref();
+    let mut plan = match fs::read_to_string(console_plan_file_path) {
+        Ok(source) => {
+            serde_json::from_str::<LocalConsolePackageInstallPlan>(&source).map_err(|error| {
+                AppError::new(
+                    ErrorCode::Validation,
+                    format!("console package install plan could not be parsed: {error}"),
+                )
+            })?
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(AppError::new(
+                ErrorCode::ExternalDependency,
+                format!("console package install plan could not be read: {error}"),
+            ));
+        }
+    };
+    plan.modules
+        .retain(|module| module.module_name != module_name);
+    let source = serde_json::to_string_pretty(&plan)
+        .map(|source| format!("{source}\n"))
+        .map_err(|error| {
+            AppError::new(
+                ErrorCode::Internal,
+                format!("console package install plan could not be encoded: {error}"),
+            )
+        })?;
+    fs::write(console_plan_file_path, source).map_err(|error| {
+        AppError::new(
+            ErrorCode::ExternalDependency,
+            format!("console package install plan could not be written: {error}"),
+        )
+    })
+}
+
+#[derive(Debug)]
+struct RemoteModuleEnvEntry {
+    name: String,
+    base_url: String,
+}
+
+fn parse_remote_modules_entries(value: &str) -> Vec<RemoteModuleEnvEntry> {
+    value
+        .split(',')
+        .filter_map(|entry| {
+            let (name, base_url) = entry.trim().split_once('=')?;
+            let name = name.trim();
+            let base_url = normalize_remote_base_url(base_url);
+            if name.is_empty() || base_url.is_empty() {
+                return None;
+            }
+            Some(RemoteModuleEnvEntry {
+                name: name.to_owned(),
+                base_url,
+            })
+        })
+        .collect()
+}
+
+fn format_remote_modules_entries(entries: &[RemoteModuleEnvEntry]) -> String {
+    entries
+        .iter()
+        .map(|entry| format!("{}={}", entry.name, entry.base_url))
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn upsert_env_source(source: &str, key: &str, value: &str) -> String {
+    let mut replaced = false;
+    let mut lines = Vec::new();
+    for line in source.lines() {
+        if env_value(line, key).is_some() {
+            if !replaced {
+                lines.push(format!("{key}={value}"));
+                replaced = true;
+            }
+        } else {
+            lines.push(line.to_owned());
+        }
+    }
+    if !replaced {
+        lines.push(format!("{key}={value}"));
+    }
+    format!("{}\n", lines.join("\n"))
+}
+
+fn remove_env_key_source(source: &str, key: &str) -> String {
+    let lines = source
+        .lines()
+        .filter(|line| env_value(line, key).is_none())
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+    if lines.is_empty() {
+        String::new()
+    } else {
+        format!("{}\n", lines.join("\n"))
+    }
+}
+
+fn env_value(line: &str, expected_key: &str) -> Option<String> {
+    let line = line.trim();
+    if line.is_empty() || line.starts_with('#') {
+        return None;
+    }
+    let line = line.strip_prefix("export ").unwrap_or(line);
+    let (key, value) = line.split_once('=')?;
+    (key.trim() == expected_key).then(|| unquote_env_value(value.trim()).to_owned())
+}
+
+fn linked_module_enabled_env_key(module_name: &str) -> String {
+    format!(
+        "LENSO_MODULE_{}_ENABLED",
+        module_name.replace('-', "_").to_ascii_uppercase()
+    )
+}
+
 fn module_catalog_error_response(
-    catalog_file_path: &FsPath,
+    registry_file: String,
     message: String,
 ) -> AdminModuleRegistrySnapshotResponse {
     AdminModuleRegistrySnapshotResponse {
@@ -720,7 +1462,7 @@ fn module_catalog_error_response(
         status: AdminModuleRegistrySnapshotStatus::Failed,
         catalog: AdminModuleRegistrySnapshotCatalogDto {
             modules: 0,
-            registry_file: catalog_file_path.display().to_string(),
+            registry_file,
             version: 1,
         },
         issues: vec![AdminModuleRegistrySnapshotIssueDto {
@@ -737,16 +1479,17 @@ fn module_catalog_entry_module(
     entry: LocalModuleCatalogEntry,
     install_state: &AvailableModuleInstallStateContext,
 ) -> AdminModuleRegistrySnapshotModuleDto {
-    let _source = entry.source;
+    let source = catalog_entry_source(&entry.source);
     let archived = entry.archived_at.is_some();
     let name = entry.name;
     let needs_attention = !archived
-        && (module_needs_base_url(entry.base_url.as_deref(), &entry.manifest_reference)
+        && ((matches!(source, ModuleSource::Remote)
+            && module_needs_base_url(entry.base_url.as_deref(), &entry.manifest_reference))
             || module_compatibility_issue(&name, entry.compatibility.as_ref()).is_some());
 
     AdminModuleRegistrySnapshotModuleDto {
         name: name.clone(),
-        source: ModuleSource::Remote,
+        source,
         catalog_version: entry.version.clone(),
         manifest_reference: entry.manifest_reference,
         summary: entry.summary,
@@ -764,7 +1507,7 @@ fn module_catalog_entry_module(
             AdminModuleRegistrySnapshotManifestStatus::Ok
         },
         manifest_version: if archived { None } else { Some(entry.version) },
-        install_state: install_state.install_state(&name),
+        install_state: install_state.install_state_for_source(&name, source),
         status: if archived {
             AdminModuleRegistrySnapshotModuleStatus::Archived
         } else if needs_attention {
@@ -772,6 +1515,14 @@ fn module_catalog_entry_module(
         } else {
             AdminModuleRegistrySnapshotModuleStatus::Ready
         },
+    }
+}
+
+fn catalog_entry_source(source: &str) -> ModuleSource {
+    if source == "linked" {
+        ModuleSource::Linked
+    } else {
+        ModuleSource::Remote
     }
 }
 
@@ -789,7 +1540,9 @@ fn module_catalog_entry_issues(
     if let Some(issue) = module_compatibility_issue(&module.name, module.compatibility.as_ref()) {
         issues.push(issue);
     }
-    if module_needs_base_url(module.base_url.as_deref(), &module.manifest_reference) {
+    if matches!(module.source, ModuleSource::Remote)
+        && module_needs_base_url(module.base_url.as_deref(), &module.manifest_reference)
+    {
         issues.push(AdminModuleRegistrySnapshotIssueDto {
             group: "Catalog".to_owned(),
             message: format!("{} baseUrl is missing", module.name),

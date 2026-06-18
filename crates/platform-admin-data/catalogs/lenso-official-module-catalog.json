@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "modules": [
+    {
+      "name": "auth",
+      "version": "0.1.0",
+      "source": "linked",
+      "manifestReference": "builtin:auth",
+      "summary": "Official linked authentication anchor for users, sessions, and actor resolution",
+      "capabilities": [
+        "auth.users.read"
+      ]
+    },
+    {
+      "name": "auth-password",
+      "version": "0.1.0",
+      "source": "linked",
+      "manifestReference": "builtin:auth-password",
+      "summary": "Official linked password authentication provider for registration and login",
+      "capabilities": [],
+      "dependencies": [
+        "auth"
+      ]
+    },
+    {
+      "name": "remote-crm",
+      "version": "0.1.0",
+      "source": "remote",
+      "manifestReference": "http://127.0.0.1:4100/lenso/module/v1/manifest",
+      "baseUrl": "http://127.0.0.1:4100/lenso/module/v1",
+      "summary": "Official CRM fixture module for exercising remote module installation",
+      "capabilities": [
+        "remote_crm.contacts.read",
+        "remote_crm.contacts.sync"
+      ],
+      "compatibility": {
+        "consolePackageApi": "1",
+        "lenso": {
+          "minVersion": "0.1.0",
+          "maxVersion": "0.1.0"
+        }
+      },
+      "consolePackages": [
+        {
+          "packageName": "@lenso/remote-crm-console",
+          "exportName": "remoteCrmConsoleModule",
+          "route": "/data/remote-crm"
+        }
+      ]
+    }
+  ]
+}

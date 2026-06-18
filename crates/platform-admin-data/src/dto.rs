@@ -90,8 +90,21 @@ pub struct AdminModuleRegistrySnapshotModuleDto {
 #[serde(rename_all = "camelCase")]
 pub struct AdminModuleInstallStateDto {
     pub module_registered: bool,
-    pub remote_source: AdminModuleRemoteSourceInstallStateDto,
+    pub linked_source: Option<AdminModuleLinkedSourceInstallStateDto>,
+    pub remote_source: Option<AdminModuleRemoteSourceInstallStateDto>,
     pub console_plan: AdminModuleConsolePackagePlanStateDto,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminModuleLinkedSourceInstallStateDto {
+    pub env_file: String,
+    pub configured: bool,
+    pub desired_enabled: Option<bool>,
+    pub running_enabled: bool,
+    pub restart_pending: bool,
+    pub restart_reason: Option<String>,
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -117,6 +130,19 @@ pub struct AdminModuleConsolePackagePlanStateDto {
     pub package_count: usize,
     pub restart_required: Option<bool>,
     pub packages: Vec<AdminModuleConsolePackagePlanPackageDto>,
+}
+
+/// Response for visually installing an available remote module from the
+/// marketplace catalog.
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminModuleInstallResponse {
+    pub module_name: String,
+    pub manifest_reference: String,
+    pub linked_source: Option<AdminModuleLinkedSourceInstallStateDto>,
+    pub remote_source: Option<AdminModuleRemoteSourceInstallStateDto>,
+    pub console_plan: AdminModuleConsolePackagePlanStateDto,
+    pub restart_required: bool,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
