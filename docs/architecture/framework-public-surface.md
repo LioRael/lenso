@@ -47,7 +47,8 @@ The first useful facade focuses on serializable module declarations:
 - HTTP route declarations;
 - console surface declarations.
 
-These declaration contracts live in `crates/lenso` and are re-exported by
+These declaration contracts live in `crates/lenso-contracts`, are re-exported
+by `crates/lenso`, and are re-exported by
 `crates/platform-module` for backend workspace compatibility. Behavior seams
 that depend on host internals, such as linked binding builders, admin data
 sources, and event/function registration contexts, remain in `platform-module`
@@ -57,23 +58,12 @@ until a stable external host-authoring API exists. Internal crates such as
 `lenso-bootstrap` should remain `publish = false` until a specific external use
 case justifies publishing them.
 
-Host application assembly is exposed today through the narrow `lenso-host`
-facade consumed by generated starter hosts. Keep that surface small: boot the
-API, worker, and migration runner, compose linked modules, and expose linked
-HTTP authoring helpers.
+Host application assembly is exposed through the narrow `lenso::host` facade.
+Keep that surface small: boot the API, worker, and migration runner, compose
+linked modules, and expose linked HTTP authoring helpers.
 
-The intended long-term shape is still one `lenso` facade crate with feature
-gates for different authors. Module authors should be able to use the default
-module-authoring surface, while host applications can opt into a `host` feature
-that exposes narrow boot helpers such as API, worker, and migration runners. The
-`host` feature must not leak internal app or platform crate types in public
-signatures; it should stay a small facade over intentionally stable host
-operations.
-
-Until that package shape can be made cycle-free and publishable,
-`crates/lenso-host` is the current Git-pinned host facade for the same API. It
-depends on the workspace `lenso-*` boot crates, and starter templates should
-treat only its thin boot helpers as the host-facing surface.
+The `lenso-host` crate remains as a compatibility re-export for generated hosts
+that still import `lenso_host::*`.
 
 The current host-facing surface is intentionally narrow:
 
@@ -83,11 +73,11 @@ The current host-facing surface is intentionally narrow:
   and `run_migrations_from_env_with_composition` for booting the three host
   entrypoints;
 - `Migration` and `ModuleManifest` re-exports for starter module metadata;
-- `lenso_host::http` re-exports for linked HTTP handlers, including
+- `lenso::host::http` re-exports for linked HTTP handlers, including
   `OpenApiRouter`, `routes!`, `Path`, `JsonBody`, standard error response
   helpers, `AppContext`, and `LinkedHttpContribution`.
 
-`lenso-host` should not grow a repository layer, query builder, CRUD framework,
+`lenso::host` should not grow a repository layer, query builder, CRUD framework,
 or auth/session abstraction just because the starter needs one example. The
 starter may use normal Rust crates such as `sqlx`, `serde`, `axum`, and
 `utoipa` directly for app-owned business code. Keep promoting only boot and HTTP
@@ -98,10 +88,10 @@ The starter host template lives in the standalone
 [`LioRael/lenso-cli`](https://github.com/LioRael/lenso-cli) repository and is
 the single source for the `lenso host init <dir>` scaffolder. It keeps the
 current API, worker, and migration entrypoints visible from a blank project
-while depending on the Git-pinned `lenso-host` package. It uses Cargo's
-system-Git fetch mode so private repository credentials follow normal Git
-configuration. Treat new needs in that template as a signal for the next host
-facade extraction.
+while depending on the Git-pinned `lenso` package with the `host` feature. It
+uses Cargo's system-Git fetch mode so private repository credentials follow
+normal Git configuration. Treat new needs in that template as a signal for the
+next host facade extraction.
 
 ## Remote Module Kit
 
@@ -168,8 +158,7 @@ facade exists.
    declarations until a host application API is intentionally designed.
 3. Keep the standalone `lenso-cli` starter template as the host facade pressure
    test until its boot, migration, HTTP, and app-owned data slices stabilize.
-4. Move only the stable subset of `lenso-host` into a future `lenso` `host`
-   feature; leave app-owned SQL, repositories, CRUD shape, auth/session policy,
-   and console UI out of the facade.
+4. Leave app-owned SQL, repositories, CRUD shape, auth/session policy, and
+   console UI out of `lenso::host`.
 5. Grow the external examples repository without reintroducing sibling
    workspace dependencies.

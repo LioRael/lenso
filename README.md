@@ -33,9 +33,9 @@ The first public Rust authoring surface is published on crates.io:
 cargo add lenso@0.1.0
 ```
 
-The `lenso` crate is a small facade for module-authoring declarations and
-manifest lints. It does not expose host application assembly, storage, HTTP
-server wiring, worker execution, or linked-module behavior bindings.
+The `lenso` crate is the public Rust facade for module-authoring declarations
+and manifest lints. With its `host` feature enabled, it also exposes the narrow
+host boot facade used by generated host applications.
 
 Runtime Console and JavaScript module packages are owned outside this backend
 repository. Runnable examples live in
@@ -44,9 +44,9 @@ repository. Runnable examples live in
 A transitional host starter lives in
 [`LioRael/lenso-cli`](https://github.com/LioRael/lenso-cli) and is scaffolded
 with the `lenso` CLI (`lenso host init <dir>`). It shows the current API,
-worker, migration, and local Postgres shape while the stable public host facade
-is still being designed. Its binaries go through the temporary `lenso-host`
-facade instead of importing internal app or platform crates directly.
+worker, migration, and local Postgres shape. New starters should use
+`lenso = { features = ["host"] }`; the `lenso-host` crate remains as a
+compatibility re-export for existing generated hosts.
 
 ## Architecture Overview
 
@@ -64,12 +64,13 @@ First-time local setup lives in [docs/getting-started.md](docs/getting-started.m
 ## Repository Layout
 
 - `crates/`
+  - `lenso-contracts`: shared declaration contracts re-exported by `lenso` and consumed by platform crates.
   - `lenso`: public Rust facade crate for serializable module-authoring declarations and manifest lints.
   - `lenso-api`: Axum HTTP API app.
   - `lenso-worker`: background worker and outbox relay app.
   - `lenso-migrate`: deterministic migration runner.
   - `lenso-bootstrap`: composition root listing the concrete modules; both `lenso-api` and `lenso-worker` wire their module set from here.
-  - `lenso-host`: current Git-pinned host boot facade consumed by the starter template.
+  - `lenso-host`: compatibility re-export for existing starter hosts.
   - `platform-core`: config, errors, context, DB, migrations, events, outbox, health, telemetry primitives.
   - `platform-http`: Axum adapters, request context middleware, JSON extractor, error responses, health routes, and the `OpenApiRouter` re-exports for single-source OpenAPI.
   - `platform-runtime`: embedded runtime primitives for functions, triggers, queues, flows, retries, and store traits.

@@ -33,10 +33,10 @@ cargo run --bin api
 ```
 
 Run `cargo run --bin worker` in a second shell. The template depends on this
-backend repository's Git-pinned `lenso-host` package. `lenso-host` wraps the
-API, worker, migration boot helpers, and a narrow linked HTTP route authoring
-surface; generated hosts should pin it to a tag or commit for reproducible
-builds. The starter exposes `GET /v1/app/status` plus
+backend repository's Git-pinned `lenso` package with the `host` feature enabled.
+`lenso::host` wraps the API, worker, migration boot helpers, and a narrow linked
+HTTP route authoring surface; generated hosts should pin it to a tag or commit
+for reproducible builds. The starter exposes `GET /v1/app/status` plus
 `GET`/`POST /v1/app/items` as the first host-owned linked routes and data
 surface.
 Published `lenso-cli` builds include the prebuilt Runtime Console and copy it

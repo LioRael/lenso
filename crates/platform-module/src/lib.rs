@@ -18,7 +18,7 @@ mod module;
 
 pub use admin_data::{AdminActionSource, AdminDataSource, AdminListQuery, AdminPage};
 pub use binding::{EventHandlerRegistrationContext, EventHandlerRuntimeContext, ModuleBinding};
-pub use lenso::{
+pub use lenso_contracts::{
     AdminAction, AdminActionConfirmation, AdminActionDangerLevel, AdminActionInputField,
     AdminActionInputSchema, AdminDeclarativeComponent, AdminDeclarativePage,
     AdminDeclarativeSection, AdminDeclarativeSurface, AdminEmbeddedEntry, AdminEmbeddedRuntime,

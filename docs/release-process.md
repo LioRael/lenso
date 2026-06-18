@@ -59,15 +59,15 @@ Open the `release` workflow in GitHub Actions and trigger it with:
 
 With `publish_rust_crate=false`, the workflow runs `just release-check`,
 verifies that the release version matches the `lenso` crate metadata, runs
-`just package-readiness`, dry-runs the `lenso` crates.io publish, generates a
-release notes draft, and uploads the source package plus artifact README. The
-workflow starts a Postgres service for DB-backed checks.
+`just package-readiness`, dry-runs the `lenso-contracts` crates.io publish,
+generates a release notes draft, and uploads the source package plus artifact
+README. The workflow starts a Postgres service for DB-backed checks.
 
 ## 5. Configure Registry Secrets
 
 Before a real registry publish, configure these repository secrets in GitHub:
 
-- `CARGO_REGISTRY_TOKEN`: crates.io token with publish access to `lenso`.
+- `CARGO_REGISTRY_TOKEN`: crates.io token with publish access to `lenso-contracts`.
 - `LENSO_RUNTIME_CONSOLE_DEPLOY_KEY`: read-only deploy key for
   `LioRael/lenso-runtime-console`.
 
@@ -81,7 +81,7 @@ artifact you intend to publish:
 
 - `version`: `v0.2.1`
 - `notes`: the release summary
-- `publish_rust_crate`: `true` to publish `lenso@0.2.1` to crates.io
+- `publish_rust_crate`: `true` to publish `lenso-contracts@0.2.1` to crates.io
 
 The publish path first repeats the full release and package gates, then uploads
 the selected artifact. If the secret is missing, the workflow stops before
@@ -89,10 +89,10 @@ registry upload.
 
 ## 7. Verify The GitHub Release
 
-When `publish_rust_crate=true`, the workflow publishes `lenso` to crates.io and
-then creates the GitHub Release from the same commit. The release uses the
-requested version as the tag, the generated release notes as the body, and
-attaches the source package plus artifact README.
+When `publish_rust_crate=true`, the workflow publishes `lenso-contracts` to
+crates.io, then creates the GitHub Release from the same commit. The release
+uses the requested version as the tag, the generated release notes as the body,
+and attaches the source package plus artifact README.
 
 After the publish workflow passes, verify the release:
 

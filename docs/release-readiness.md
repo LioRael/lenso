@@ -137,7 +137,7 @@ The release workflow runs with a Postgres service because backend checks include
 DB-backed Rust integration tests.
 
 When triggered with `publish_rust_crate=false`, the workflow performs the
-backend `lenso` package dry-run only. When `publish_rust_crate=true`, it
-requires the `CARGO_REGISTRY_TOKEN` repository secret and publishes the
+backend `lenso-contracts` package dry-run only. When `publish_rust_crate=true`,
+it requires the `CARGO_REGISTRY_TOKEN` repository secret and publishes that
 backend-owned Rust artifact after the same gates pass. `lenso-cli` publishing is
 owned by the standalone CLI repository.

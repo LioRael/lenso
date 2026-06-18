@@ -3,7 +3,7 @@
 use crate::admin_data::{AdminActionSource, AdminDataSource};
 use crate::binding::ModuleBinding;
 use crate::linked::{LinkedBinding, LinkedHttpContribution};
-use lenso::{ModuleManifest, ModuleSource};
+use lenso_contracts::{ModuleManifest, ModuleSource};
 use platform_core::{RuntimeConfigDescriptor, RuntimeConfigGroupDescriptor};
 use std::sync::Arc;
 
