@@ -9,8 +9,10 @@ use platform_core::{
 };
 use platform_http::request_context_middleware;
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
+use tower_http::services::{ServeDir, ServeFile};
 use tracing::info;
 
 pub mod openapi;
@@ -131,10 +133,20 @@ pub fn try_build_router_with_composition(
     let (router, document) =
         openapi::api_router_for_context_with_composition(&ctx, composition)?.split_for_parts();
     let document = Arc::new(document);
+    let console_dist_dir = ctx.config.console.dist_dir.clone();
+    let console_index = PathBuf::from(&console_dist_dir).join("index.html");
 
     Ok(router
         .route("/docs", axum::routing::get(scalar_docs))
         .route("/openapi.json", axum::routing::get(serve_openapi))
+        .nest_service(
+            "/console/extensions",
+            ServeDir::new(ctx.config.console.extensions_dir.clone()),
+        )
+        .nest_service(
+            "/console",
+            ServeDir::new(console_dist_dir).fallback(ServeFile::new(console_index)),
+        )
         .layer(axum::Extension(document))
         .layer(middleware::from_fn_with_state(
             ctx.clone(),
