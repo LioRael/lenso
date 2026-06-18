@@ -31,5 +31,7 @@ cargo_toml.write_text(updated)
 PY
 
 echo "Compiling and testing the scaffolded host..."
+cargo check --manifest-path "$tmp_dir/smoke-app/Cargo.toml" --bins
+cargo test --manifest-path "$tmp_dir/smoke-app/Cargo.toml" --lib
 
 echo "lenso-cli check passed."
