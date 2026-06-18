@@ -58,7 +58,7 @@ tokio = { version = "1.52", features = ["macros", "rt-multi-thread", "signal", "
 tonic = { version = "0.14", default-features = false, features = ["channel", "codegen"] }
 tonic-prost = "0.14"
 tower = "0.5"
-tower-http = { version = "0.7", features = ["trace", "request-id", "util", "cors"] }
+tower-http = { version = "0.7", features = ["trace", "request-id", "util", "cors", "fs"] }
 tracing = "0.1"
 tracing-opentelemetry = "0.33"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }

@@ -3773,6 +3773,7 @@ mod tests {
             http: HttpConfig::default(),
             telemetry: TelemetryConfig::default(),
             auth: AuthConfig::default(),
+            console: Default::default(),
             module_sources: ModuleSourcesConfig::default(),
             modules: BTreeMap::new(),
         }
