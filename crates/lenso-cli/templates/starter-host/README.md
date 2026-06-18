@@ -51,10 +51,10 @@ default host small while leaving product modules under application control.
 
 ## Add A Remote Module
 
-Start a module that exposes a Lenso manifest, then add it to `.env`:
+Start a module that exposes a Lenso manifest, then install it into `.env`:
 
 ```sh
-REMOTE_MODULES=hello-action=http://127.0.0.1:4100/lenso/module/v1
+lenso module install http://127.0.0.1:4100/lenso/module/v1/manifest
 ```
 
 Restart `api` and `worker` after changing module configuration.

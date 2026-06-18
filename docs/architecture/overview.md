@@ -62,7 +62,7 @@ The service kit is split into a few crates:
 
 A thin composition root, `app-bootstrap`, sits above the service kit. It is the single place that enumerates the concrete modules, and both the API and the worker derive their module set from it. It pairs manifests, bindings, runtime config descriptors, story-display metadata, and admin data sources from concrete modules. It depends on the module crates, so it lives outside `platform-*` (those crates must not depend on concrete modules).
 
-Configured remote modules are loaded at startup through `platform-module-remote`. The current Remote slices support manifest loading, declared HTTP route metadata, schema-admin reads, admin surface metadata, host-owned HTTP proxying for declared GET, POST, PUT, PATCH, and DELETE routes, remote runtime functions, and remote event handlers. Third-party module packaging and ecosystem boundaries are specified in `docs/architecture/third-party-modules.md`. Route proxying is specified separately in `docs/architecture/module-remote-http-proxy.md`. Remote runtime execution and event-handler dispatch are scoped in `docs/architecture/module-remote-runtime.md`, with native gRPC transport scoped in `docs/architecture/module-remote-grpc.md`. Marketplace trust remains a separate future spec.
+Configured remote modules are loaded at startup through `platform-module-remote`. The current Remote slices support manifest loading, declared HTTP route metadata, schema-admin reads, admin surface metadata, host-owned HTTP proxying for declared GET, POST, PUT, PATCH, and DELETE routes, remote runtime functions, and remote event handlers. Third-party module packaging and ecosystem boundaries are specified in `docs/architecture/third-party-modules.md`. Route proxying is specified separately in `docs/architecture/module-remote-http-proxy.md`. Remote runtime execution and event-handler dispatch are scoped in `docs/architecture/module-remote-runtime.md`, with native gRPC transport scoped in `docs/architecture/module-remote-grpc.md`. Module install trust is operator-owned: the CLI accepts explicit manifest URLs, and official catalogs are curated at publication time without adding a separate host-side trust protocol.
 
 The current remote-module checkpoint is intentionally narrow but complete for
 operator-visible HTTP proxying:
@@ -88,7 +88,7 @@ operator-visible HTTP proxying:
   endpoints with manifest capability checks. Successful and failed action
   invocations are projected into Runtime Stories and Technical Operations.
 - Embedded host bridges, JavaScript bundle loading, Wasm execution, streaming,
-  per-module OpenAPI fragments, and marketplace install trust remain deferred.
+  and per-module OpenAPI fragments remain deferred.
 
 The service kit should stay stable and small. It exists to remove boilerplate, not to own business behavior.
 

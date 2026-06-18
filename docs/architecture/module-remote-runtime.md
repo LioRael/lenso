@@ -26,7 +26,8 @@ parallel runtime.
 - Remote scheduling, queues, flows, or trigger ownership.
 - Streaming function output or long-lived bidirectional channels.
 - Browser credentials, host bearer-token forwarding, or arbitrary host bridges.
-- Marketplace install trust, signatures, provenance, or compatibility policy.
+- Operator trust decisions for explicit module installs and official catalog
+  curation.
 - Wasm execution or JavaScript bundle execution.
 
 ## First Slice
@@ -254,8 +255,7 @@ dead through the existing relay path.
    Done.
 
 Do not implement event-emitting result actions, admin action bridges, arbitrary
-host bridges, streaming, or marketplace trust in the remote event-handler result
-slice.
+host bridges, or streaming in the remote event-handler result slice.
 
 Native gRPC transport is a separate lane. See
 `docs/architecture/module-remote-grpc.md`.

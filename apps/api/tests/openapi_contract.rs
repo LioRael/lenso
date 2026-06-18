@@ -1,11 +1,21 @@
 use app_api::{build_router, openapi_document};
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
-use platform_core::{AppConfig, AppContext, LoggingEventPublisher, ModuleConfig};
+use platform_core::{
+    AppConfig, AppContext, LoggingEventPublisher, ModuleConfig, ModuleSourcesConfig,
+};
 use platform_module::{ModuleHttpMethod, ModuleManifest, ModuleSource};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, OnceLock};
 use tower::ServiceExt;
+
+fn app_config_with_default_modules() -> AppConfig {
+    let mut config = AppConfig::from_env();
+    // ponytail: route/profile tests assert built-in module state, not local .env toggles.
+    config.module_sources = ModuleSourcesConfig::default();
+    config.modules.clear();
+    config
+}
 
 #[test]
 fn openapi_contains_auth_dev_session_contract() {
@@ -206,7 +216,7 @@ async fn disabled_story_module_router_does_not_mount_story_routes() {
         .expect("catalog test lock poisoned");
     let _ = openapi_document();
 
-    let mut config = AppConfig::from_env();
+    let mut config = app_config_with_default_modules();
     config.modules.insert(
         "platform-story".to_owned(),
         ModuleConfig {
@@ -243,7 +253,7 @@ async fn served_openapi_omits_disabled_story_module_routes() {
         .expect("catalog test lock poisoned");
     let _ = openapi_document();
 
-    let mut config = AppConfig::from_env();
+    let mut config = app_config_with_default_modules();
     config.modules.insert(
         "platform-story".to_owned(),
         ModuleConfig {
@@ -293,7 +303,7 @@ async fn served_core_profile_openapi_omits_demo_auth_paths_after_demo_document_a
         .expect("catalog test lock poisoned");
     let _ = openapi_document();
 
-    let mut config = AppConfig::from_env();
+    let mut config = app_config_with_default_modules();
     config.module_sources.linked_profile = "core".to_owned();
     let ctx = AppContext::new(
         config,
@@ -339,7 +349,7 @@ async fn served_core_profile_openapi_keeps_composed_auth_routes() {
         .expect("catalog test lock poisoned");
     let _ = openapi_document();
 
-    let mut config = AppConfig::from_env();
+    let mut config = app_config_with_default_modules();
     config.module_sources.linked_profile = "core".to_owned();
     let ctx = AppContext::new(
         config,

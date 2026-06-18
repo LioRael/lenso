@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use anyhow::{Context, Result, anyhow, bail};
 use serde_json::{Map, Value, json};
@@ -12,8 +13,21 @@ pub struct RemoteModuleInstallOptions {
     pub dry_run: bool,
     pub env_file: Option<PathBuf>,
     pub install_plan_file: Option<PathBuf>,
+    pub module_services_file: Option<PathBuf>,
     pub repo_root: Option<PathBuf>,
+    pub run_install_commands: bool,
     pub runtime_console_root: Option<PathBuf>,
+    pub source: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct RemoteModuleUninstallOptions {
+    pub dry_run: bool,
+    pub env_file: Option<PathBuf>,
+    pub install_plan_file: Option<PathBuf>,
+    pub module_services_file: Option<PathBuf>,
+    pub repo_root: Option<PathBuf>,
+    pub source: String,
 }
 
 #[derive(Debug, Clone)]
@@ -80,6 +94,12 @@ pub struct AppliedConsolePlan {
     runtime_console_root: PathBuf,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ModuleSource {
+    Linked,
+    Remote,
+}
+
 #[derive(Debug, Clone)]
 struct ConsolePackageContext {
     area: String,
@@ -98,6 +118,22 @@ struct ConsolePackageContext {
     route: String,
     runtime_console_api_version: String,
     surface_name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct InstallCommandSpec {
+    command: String,
+    cwd: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RemoteModuleServiceInstallSpec {
+    name: String,
+    command: String,
+    cwd: Option<String>,
+    ready_url: String,
+    ready_timeout_ms: u64,
+    auto_start: bool,
 }
 
 #[derive(Debug)]
@@ -248,6 +284,16 @@ pub async fn create_console_package(options: ConsolePackageCreateOptions) -> Res
     Ok(())
 }
 
+pub async fn install_module(
+    module_reference: &str,
+    options: RemoteModuleInstallOptions,
+) -> Result<()> {
+    match parse_module_source(&options.source)? {
+        ModuleSource::Remote => add_remote_module(module_reference, options).await,
+        ModuleSource::Linked => install_linked_module(module_reference, options),
+    }
+}
+
 pub async fn add_remote_module(
     manifest_reference: &str,
     options: RemoteModuleInstallOptions,
@@ -267,16 +313,35 @@ pub async fn add_remote_module(
             .as_deref()
             .unwrap_or_else(|| Path::new(".lenso/console-package-install-plan.json")),
     );
+    let module_services_path = resolve_path(
+        &repo_root,
+        options
+            .module_services_file
+            .as_deref()
+            .unwrap_or_else(|| Path::new(".lenso/module-services.json")),
+    );
     let manifest = validate_remote_module_manifest(read_json_reference(manifest_reference).await?)?;
     let module_name = string_field(&manifest, "name")?.trim().to_owned();
     let base_url = derive_remote_base_url(options.base_url.as_deref(), manifest_reference)?;
-    let env_file = update_remote_modules_env(&env_file_path, &module_name, &base_url)?;
+    let install_env = remote_module_install_env(&manifest)?;
+    let install_commands = remote_module_install_commands(&manifest)?;
+    let install_services = remote_module_install_services(&manifest, &module_name, &base_url)?;
+    let env_file = apply_manifest_install_env(
+        update_remote_modules_env(&env_file_path, &module_name, &base_url)?,
+        &install_env,
+    );
     let install_plan = update_console_package_install_plan(
         &install_plan_path,
         &manifest,
         manifest_reference,
         &base_url,
+        &install_env,
+        &install_commands,
+        &install_services,
+        false,
     )?;
+    let module_services =
+        update_remote_module_services_file(&module_services_path, &module_name, &install_services)?;
     let console_package_count =
         console_package_count_from_install_plan(&install_plan, &module_name);
 
@@ -284,19 +349,34 @@ pub async fn add_remote_module(
         println!("Remote module install dry run:");
         println!("- {}", display_relative(&repo_root, &env_file_path));
         println!("- {}", display_relative(&repo_root, &install_plan_path));
+        if module_services.is_some() {
+            println!("- {}", display_relative(&repo_root, &module_services_path));
+        }
         println!("- {module_name}={base_url}");
+        println!("- install env vars: {}", install_env.len());
+        println!("- install commands: {}", install_commands.len());
+        println!("- install services: {}", install_services.len());
         println!("- console packages: {console_package_count}");
         return Ok(());
     }
 
     write_file(&env_file_path, env_file.as_bytes())?;
     write_json(&install_plan_path, &install_plan)?;
+    if let Some(module_services) = &module_services {
+        write_json(&module_services_path, module_services)?;
+    }
 
     println!("Added remote module {module_name}.");
     println!("Updated:");
     println!("- {}", display_relative(&repo_root, &env_file_path));
     println!("- {}", display_relative(&repo_root, &install_plan_path));
+    if module_services.is_some() {
+        println!("- {}", display_relative(&repo_root, &module_services_path));
+    }
     println!("REMOTE_MODULES: {module_name}={base_url}");
+    println!("Install env vars: {}", install_env.len());
+    println!("Install commands: {}", install_commands.len());
+    println!("Install services: {}", install_services.len());
     println!("Console packages: {console_package_count}");
 
     let applied_console_plan = if console_package_count > 0 && options.console_plan {
@@ -304,7 +384,7 @@ pub async fn add_remote_module(
             apply_console_package_install_plan(ConsolePackageApplyPlanOptions {
                 dependency_version: None,
                 dry_run: false,
-                install_plan_file: Some(install_plan_path),
+                install_plan_file: Some(install_plan_path.clone()),
                 log_next_steps: false,
                 repo_root: Some(repo_root.clone()),
                 runtime_console_root: options.runtime_console_root,
@@ -313,6 +393,24 @@ pub async fn add_remote_module(
         )
     } else {
         None
+    };
+
+    let install_commands_ran = if !install_commands.is_empty() && options.run_install_commands {
+        run_install_commands(&repo_root, &install_commands)?;
+        let install_plan = update_console_package_install_plan(
+            &install_plan_path,
+            &manifest,
+            manifest_reference,
+            &base_url,
+            &install_env,
+            &install_commands,
+            &install_services,
+            true,
+        )?;
+        write_json(&install_plan_path, &install_plan)?;
+        true
+    } else {
+        false
     };
 
     println!("Next steps:");
@@ -326,6 +424,110 @@ pub async fn add_remote_module(
         println!("- pnpm install");
         println!("- restart Runtime Console after applying the plan");
     }
+    if !install_commands.is_empty() && !install_commands_ran {
+        println!("- rerun with --run-install-commands to execute manifest install commands");
+    }
+    println!("- restart the API and worker");
+
+    Ok(())
+}
+
+fn install_linked_module(module_name: &str, options: RemoteModuleInstallOptions) -> Result<()> {
+    set_linked_module_enabled(
+        module_name,
+        true,
+        options.env_file,
+        options.repo_root,
+        options.dry_run,
+    )
+}
+
+pub async fn uninstall_module(
+    module_name: &str,
+    options: RemoteModuleUninstallOptions,
+) -> Result<()> {
+    match parse_module_source(&options.source)? {
+        ModuleSource::Remote => uninstall_remote_module(module_name, options).await,
+        ModuleSource::Linked => set_linked_module_enabled(
+            module_name,
+            false,
+            options.env_file,
+            options.repo_root,
+            options.dry_run,
+        ),
+    }
+}
+
+pub async fn uninstall_remote_module(
+    module_name: &str,
+    options: RemoteModuleUninstallOptions,
+) -> Result<()> {
+    let module_name = module_name.trim();
+    if module_name.is_empty() {
+        bail!("Module name is required");
+    }
+    let repo_root = resolve_repo_root(options.repo_root.as_deref())?;
+    let env_file_path = resolve_path(
+        &repo_root,
+        options
+            .env_file
+            .as_deref()
+            .unwrap_or_else(|| Path::new(".env")),
+    );
+    let install_plan_path = resolve_path(
+        &repo_root,
+        options
+            .install_plan_file
+            .as_deref()
+            .unwrap_or_else(|| Path::new(".lenso/console-package-install-plan.json")),
+    );
+    let module_services_path = resolve_path(
+        &repo_root,
+        options
+            .module_services_file
+            .as_deref()
+            .unwrap_or_else(|| Path::new(".lenso/module-services.json")),
+    );
+    let env_file = remove_remote_module_from_env(&env_file_path, module_name)?;
+    let install_plan = remove_console_package_install_plan_module(&install_plan_path, module_name)?;
+    let module_services =
+        remove_remote_module_services_file_module(&module_services_path, module_name)?;
+
+    if options.dry_run {
+        println!("Remote module uninstall dry run:");
+        if env_file.is_some() {
+            println!("- {}", display_relative(&repo_root, &env_file_path));
+        }
+        if install_plan.is_some() {
+            println!("- {}", display_relative(&repo_root, &install_plan_path));
+        }
+        if module_services.is_some() {
+            println!("- {}", display_relative(&repo_root, &module_services_path));
+        }
+        if env_file.is_none() && install_plan.is_none() && module_services.is_none() {
+            println!("- no local install state found");
+        }
+        return Ok(());
+    }
+
+    let changed = env_file.is_some() || install_plan.is_some() || module_services.is_some();
+    if let Some(env_file) = env_file {
+        write_file(&env_file_path, env_file.as_bytes())?;
+    }
+    if let Some(install_plan) = install_plan {
+        write_json(&install_plan_path, &install_plan)?;
+    }
+    if let Some(module_services) = module_services {
+        write_json(&module_services_path, &module_services)?;
+    }
+
+    if !changed {
+        println!("Remote module {module_name} is not installed locally.");
+        return Ok(());
+    }
+
+    println!("Uninstalled remote module {module_name}.");
+    println!("Next steps:");
     println!("- restart the API and worker");
 
     Ok(())
@@ -373,7 +575,7 @@ pub async fn add_module_catalog_entry(
     println!("Updated:");
     println!("- {}", display_relative(&repo_root, &catalog_file_path));
     println!("Install:");
-    println!("- lenso module add {manifest_reference}");
+    println!("- lenso module install {manifest_reference}");
 
     Ok(())
 }
@@ -539,7 +741,7 @@ async fn create_remote_module(options: ModuleCreateOptions) -> Result<()> {
     println!("Created remote module package {package_root_name}.");
     println!("Next steps:");
     println!("- pnpm --dir {package_root_name}/backend dev");
-    println!("- lenso module add http://127.0.0.1:4100/lenso/module/v1/manifest");
+    println!("- lenso module install http://127.0.0.1:4100/lenso/module/v1/manifest");
     println!(
         "- lenso module catalog add http://127.0.0.1:4100/lenso/module/v1/manifest # optional discovery"
     );
@@ -1572,7 +1774,7 @@ Use `catalog-entry.json` as the local discovery record, or add the manifest
 URL directly:
 
 ```sh
-lenso module add https://example.com/lenso/module/v1/manifest
+lenso module install https://example.com/lenso/module/v1/manifest
 ```
 
 If you want it to appear in Available Modules before installing it, add a local
@@ -1585,13 +1787,44 @@ lenso module catalog add https://example.com/lenso/module/v1/manifest
 If the manifest is inspected from a local file, provide the runtime base URL:
 
 ```sh
-lenso module add ./lenso.module.json --base-url https://example.com/lenso/module/v1
+lenso module install ./lenso.module.json --base-url https://example.com/lenso/module/v1
 ```
+
+Optional install-time host work can be declared in `lenso.module.json`:
+
+```json
+{{
+  "install": {{
+    "env": {{
+      "{}_API_BASE_URL": "https://example.com"
+    }},
+    "commands": [
+      {{ "command": "pnpm --dir ../lenso-runtime-console install" }}
+    ],
+    "services": [
+      {{
+        "name": "{}-api",
+        "command": "pnpm --dir ../{}-backend dev",
+        "readyUrl": "https://example.com/lenso/module/v1/manifest",
+        "autoStart": true
+      }}
+    ]
+  }}
+}}
+```
+
+Env values are written to the host `.env`. Commands are recorded in the install
+plan and only run when the operator passes `--run-install-commands`. Services
+are stored in `.lenso/module-services.json` and started before the host loads
+remote modules on API/worker startup.
 
 This scaffold lives in `{package_root_name}` and should stay separate from a
 host application's linked `modules/` workspace.
 "#,
-        title_case(module_id)
+        title_case(module_id),
+        module_id.replace('-', "_").to_ascii_uppercase(),
+        module_id,
+        module_id
     )
 }
 
@@ -2147,11 +2380,133 @@ fn update_remote_modules_env(
     ))
 }
 
+fn remove_remote_module_from_env(
+    env_file_path: &Path,
+    module_name: &str,
+) -> Result<Option<String>> {
+    if !env_file_path.exists() {
+        return Ok(None);
+    }
+    Ok(remove_remote_module_from_env_source(
+        &read_text(env_file_path)?,
+        module_name,
+    ))
+}
+
+fn remove_remote_module_from_env_source(source: &str, module_name: &str) -> Option<String> {
+    let current_value = source
+        .lines()
+        .find_map(|line| line.strip_prefix("REMOTE_MODULES="))?;
+    let mut entries = parse_remote_module_entries(current_value);
+    let original_len = entries.len();
+    entries.retain(|(name, _)| name != module_name);
+    if entries.len() == original_len {
+        return None;
+    }
+    let next_value = format_remote_module_entries(&entries);
+    Some(if next_value.is_empty() {
+        remove_env_value(source, "REMOTE_MODULES")
+    } else {
+        upsert_env_value(source, "REMOTE_MODULES", &next_value)
+    })
+}
+
+fn set_linked_module_enabled(
+    module_name: &str,
+    enabled: bool,
+    env_file: Option<PathBuf>,
+    repo_root: Option<PathBuf>,
+    dry_run: bool,
+) -> Result<()> {
+    let module_name = slugify(module_name);
+    if module_name.is_empty() {
+        bail!("Module name is required");
+    }
+    let repo_root = resolve_repo_root(repo_root.as_deref())?;
+    let env_file_path = resolve_path(
+        &repo_root,
+        env_file.as_deref().unwrap_or_else(|| Path::new(".env")),
+    );
+    let key = linked_module_enabled_env_key(&module_name);
+    let value = if enabled { "true" } else { "false" };
+    let env_file =
+        set_linked_module_enabled_env(&read_text_if_exists(&env_file_path)?, &module_name, enabled);
+
+    if dry_run {
+        let action = if enabled { "install" } else { "uninstall" };
+        println!("Linked module {action} dry run:");
+        println!("- {}", display_relative(&repo_root, &env_file_path));
+        println!("- {key}={value}");
+        return Ok(());
+    }
+
+    write_file(&env_file_path, env_file.as_bytes())?;
+    if enabled {
+        println!("Enabled linked module {module_name}.");
+    } else {
+        println!("Disabled linked module {module_name}.");
+    }
+    println!("Next steps:");
+    println!("- restart the API and worker");
+
+    Ok(())
+}
+
+fn set_linked_module_enabled_env(source: &str, module_name: &str, enabled: bool) -> String {
+    upsert_env_value(
+        source,
+        &linked_module_enabled_env_key(module_name),
+        if enabled { "true" } else { "false" },
+    )
+}
+
+fn linked_module_enabled_env_key(module_name: &str) -> String {
+    format!(
+        "LENSO_MODULE_{}_ENABLED",
+        module_name.replace('-', "_").to_ascii_uppercase()
+    )
+}
+
+fn run_install_commands(repo_root: &Path, commands: &[InstallCommandSpec]) -> Result<()> {
+    for command in commands {
+        let cwd = command
+            .cwd
+            .as_deref()
+            .map(|cwd| resolve_path(repo_root, Path::new(cwd)))
+            .unwrap_or_else(|| repo_root.to_path_buf());
+        println!("Running install command: {}", command.command);
+        let status = shell_command(&command.command)
+            .current_dir(&cwd)
+            .status()
+            .with_context(|| format!("run install command `{}`", command.command))?;
+        if !status.success() {
+            bail!("Install command failed: {}", command.command);
+        }
+    }
+    Ok(())
+}
+
+fn shell_command(command: &str) -> Command {
+    if cfg!(windows) {
+        let mut process = Command::new("cmd");
+        process.arg("/C").arg(command);
+        process
+    } else {
+        let mut process = Command::new("sh");
+        process.arg("-c").arg(command);
+        process
+    }
+}
+
 fn update_console_package_install_plan(
     install_plan_path: &Path,
     manifest: &Value,
     manifest_reference: &str,
     base_url: &str,
+    install_env: &[(String, String)],
+    install_commands: &[InstallCommandSpec],
+    install_services: &[RemoteModuleServiceInstallSpec],
+    install_commands_executed: bool,
 ) -> Result<Value> {
     let module_name = string_field(manifest, "name")?.trim();
     let mut plan = read_json_if_exists(install_plan_path)?
@@ -2164,11 +2519,313 @@ fn update_console_package_install_plan(
     modules.push(json!({
         "baseUrl": base_url,
         "consolePackages": remote_module_console_package_plans(manifest)?,
+        "installCommands": install_command_plans(install_commands, install_commands_executed),
+        "installEnv": install_env_plans(install_env),
+        "installServices": install_service_plans(install_services),
         "manifestReference": manifest_reference,
         "moduleName": module_name,
         "restartRequired": true,
     }));
     Ok(json!({ "modules": modules, "version": 1 }))
+}
+
+fn update_remote_module_services_file(
+    services_file_path: &Path,
+    module_name: &str,
+    install_services: &[RemoteModuleServiceInstallSpec],
+) -> Result<Option<Value>> {
+    let existed = services_file_path.exists();
+    let mut state = read_json_if_exists(services_file_path)?
+        .unwrap_or_else(|| json!({ "modules": [], "version": 1 }));
+    let modules = state
+        .get_mut("modules")
+        .and_then(Value::as_array_mut)
+        .ok_or_else(|| anyhow!("Remote module services file modules must be an array"))?;
+    let original_len = modules.len();
+    modules.retain(|entry| entry.get("moduleName").and_then(Value::as_str) != Some(module_name));
+    if !install_services.is_empty() {
+        modules.push(json!({
+            "moduleName": module_name,
+            "services": remote_module_service_plans(install_services),
+        }));
+    }
+    if !existed && modules.is_empty() {
+        return Ok(None);
+    }
+    if existed || original_len != modules.len() || !install_services.is_empty() {
+        return Ok(Some(json!({ "modules": modules.clone(), "version": 1 })));
+    }
+    Ok(None)
+}
+
+fn remove_remote_module_services_file_module(
+    services_file_path: &Path,
+    module_name: &str,
+) -> Result<Option<Value>> {
+    read_json_if_exists(services_file_path)?.map_or(Ok(None), |mut state| {
+        let modules = state
+            .get_mut("modules")
+            .and_then(Value::as_array_mut)
+            .ok_or_else(|| anyhow!("Remote module services file modules must be an array"))?;
+        let original_len = modules.len();
+        modules
+            .retain(|entry| entry.get("moduleName").and_then(Value::as_str) != Some(module_name));
+        if modules.len() == original_len {
+            return Ok(None);
+        }
+        Ok(Some(json!({ "modules": modules.clone(), "version": 1 })))
+    })
+}
+
+fn apply_manifest_install_env(source: String, install_env: &[(String, String)]) -> String {
+    install_env.iter().fold(source, |source, (key, value)| {
+        upsert_env_value(&source, key, value)
+    })
+}
+
+fn remote_module_install_env(manifest: &Value) -> Result<Vec<(String, String)>> {
+    let Some(env) = manifest
+        .get("install")
+        .and_then(|install| install.get("env"))
+    else {
+        return Ok(Vec::new());
+    };
+    let object = env
+        .as_object()
+        .ok_or_else(|| anyhow!("Remote module manifest install.env must be an object"))?;
+    let mut values = Vec::new();
+    for (key, value) in object {
+        let key = key.trim();
+        if key.is_empty() {
+            bail!("Remote module manifest install.env keys must be non-empty");
+        }
+        if key == "REMOTE_MODULES" {
+            bail!("Remote module manifest install.env must not override REMOTE_MODULES");
+        }
+        let value = value
+            .as_str()
+            .ok_or_else(|| anyhow!("Remote module manifest install.env.{key} must be a string"))?;
+        values.push((key.to_owned(), value.to_owned()));
+    }
+    Ok(values)
+}
+
+fn remote_module_install_commands(manifest: &Value) -> Result<Vec<InstallCommandSpec>> {
+    let Some(commands) = manifest
+        .get("install")
+        .and_then(|install| install.get("commands"))
+    else {
+        return Ok(Vec::new());
+    };
+    let commands = commands
+        .as_array()
+        .ok_or_else(|| anyhow!("Remote module manifest install.commands must be an array"))?;
+    commands
+        .iter()
+        .map(|entry| match entry {
+            Value::String(command) => install_command_spec(command, None),
+            Value::Object(object) => {
+                let command = object
+                    .get("command")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| {
+                        anyhow!("Remote module manifest install.commands[].command is required")
+                    })?;
+                let cwd = object
+                    .get("cwd")
+                    .map(|value| {
+                        value.as_str().map(ToOwned::to_owned).ok_or_else(|| {
+                            anyhow!(
+                                "Remote module manifest install.commands[].cwd must be a string"
+                            )
+                        })
+                    })
+                    .transpose()?;
+                install_command_spec(command, cwd)
+            }
+            _ => {
+                bail!("Remote module manifest install.commands entries must be strings or objects")
+            }
+        })
+        .collect()
+}
+
+fn remote_module_install_services(
+    manifest: &Value,
+    module_name: &str,
+    base_url: &str,
+) -> Result<Vec<RemoteModuleServiceInstallSpec>> {
+    let Some(services) = manifest
+        .get("install")
+        .and_then(|install| install.get("services"))
+    else {
+        return Ok(Vec::new());
+    };
+    let services = services
+        .as_array()
+        .ok_or_else(|| anyhow!("Remote module manifest install.services must be an array"))?;
+    services
+        .iter()
+        .map(|entry| {
+            let object = entry.as_object().ok_or_else(|| {
+                anyhow!("Remote module manifest install.services entries must be objects")
+            })?;
+            let command = object
+                .get("command")
+                .and_then(Value::as_str)
+                .ok_or_else(|| {
+                    anyhow!("Remote module manifest install.services[].command is required")
+                })?
+                .trim();
+            if command.is_empty() {
+                bail!("Remote module manifest install service command must be non-empty");
+            }
+            let name = object
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or(module_name)
+                .trim();
+            let ready_url = object
+                .get("readyUrl")
+                .or_else(|| object.get("ready_url"))
+                .and_then(Value::as_str)
+                .map(trim_trailing_slashes)
+                .unwrap_or_else(|| format!("{}/manifest", trim_trailing_slashes(base_url)));
+            Ok(RemoteModuleServiceInstallSpec {
+                name: if name.is_empty() {
+                    module_name.to_owned()
+                } else {
+                    name.to_owned()
+                },
+                command: command.to_owned(),
+                cwd: object
+                    .get("cwd")
+                    .map(|value| {
+                        value.as_str().map(ToOwned::to_owned).ok_or_else(|| {
+                            anyhow!(
+                                "Remote module manifest install.services[].cwd must be a string"
+                            )
+                        })
+                    })
+                    .transpose()?
+                    .map(|value| value.trim().to_owned())
+                    .filter(|value| !value.is_empty()),
+                ready_url,
+                ready_timeout_ms: object
+                    .get("readyTimeoutMs")
+                    .or_else(|| object.get("ready_timeout_ms"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(10_000),
+                auto_start: object
+                    .get("autoStart")
+                    .or_else(|| object.get("auto_start"))
+                    .and_then(Value::as_bool)
+                    .unwrap_or(true),
+            })
+        })
+        .collect()
+}
+
+fn install_command_spec(command: &str, cwd: Option<String>) -> Result<InstallCommandSpec> {
+    let command = command.trim();
+    if command.is_empty() {
+        bail!("Remote module manifest install command must be non-empty");
+    }
+    Ok(InstallCommandSpec {
+        command: command.to_owned(),
+        cwd: cwd
+            .map(|value| value.trim().to_owned())
+            .filter(|value| !value.is_empty()),
+    })
+}
+
+fn install_env_plans(install_env: &[(String, String)]) -> Vec<Value> {
+    install_env
+        .iter()
+        .map(|(key, _)| json!({ "key": key, "status": "written" }))
+        .collect()
+}
+
+fn install_service_plans(install_services: &[RemoteModuleServiceInstallSpec]) -> Vec<Value> {
+    install_services
+        .iter()
+        .map(|service| {
+            json!({
+                "autoStart": service.auto_start,
+                "command": &service.command,
+                "cwd": service.cwd.as_deref().unwrap_or("."),
+                "name": &service.name,
+                "readyTimeoutMs": service.ready_timeout_ms,
+                "readyUrl": &service.ready_url,
+                "status": if service.auto_start { "registered" } else { "manual" },
+            })
+        })
+        .collect()
+}
+
+fn remote_module_service_plans(install_services: &[RemoteModuleServiceInstallSpec]) -> Vec<Value> {
+    install_services
+        .iter()
+        .map(|service| {
+            json!({
+                "autoStart": service.auto_start,
+                "command": &service.command,
+                "cwd": service.cwd.as_deref().unwrap_or("."),
+                "name": &service.name,
+                "readyTimeoutMs": service.ready_timeout_ms,
+                "readyUrl": &service.ready_url,
+            })
+        })
+        .collect()
+}
+
+fn install_command_plans(
+    install_commands: &[InstallCommandSpec],
+    install_commands_executed: bool,
+) -> Vec<Value> {
+    let status = if install_commands_executed {
+        "executed"
+    } else {
+        "requires_manual_run"
+    };
+    install_commands
+        .iter()
+        .map(|command| {
+            json!({
+                "command": &command.command,
+                "cwd": command.cwd.as_deref().unwrap_or("."),
+                "status": status,
+            })
+        })
+        .collect()
+}
+
+fn remove_console_package_install_plan_module(
+    install_plan_path: &Path,
+    module_name: &str,
+) -> Result<Option<Value>> {
+    read_json_if_exists(install_plan_path)?.map_or(Ok(None), |plan| {
+        remove_console_package_install_plan_module_value(plan, module_name)
+    })
+}
+
+fn remove_console_package_install_plan_module_value(
+    mut plan: Value,
+    module_name: &str,
+) -> Result<Option<Value>> {
+    let version = plan.get("version").cloned().unwrap_or_else(|| json!(1));
+    let modules = plan
+        .get_mut("modules")
+        .and_then(Value::as_array_mut)
+        .ok_or_else(|| anyhow!("Console package install plan modules must be an array"))?;
+    let original_len = modules.len();
+    modules.retain(|entry| entry.get("moduleName").and_then(Value::as_str) != Some(module_name));
+    if modules.len() == original_len {
+        return Ok(None);
+    }
+    Ok(Some(
+        json!({ "modules": modules.clone(), "version": version }),
+    ))
 }
 
 fn remote_module_console_package_plans(manifest: &Value) -> Result<Vec<Value>> {
@@ -2323,6 +2980,14 @@ fn console_package_key(package_name: &str, export_name: &str) -> String {
     format!("{package_name}#{export_name}")
 }
 
+fn parse_module_source(source: &str) -> Result<ModuleSource> {
+    match source.trim().to_ascii_lowercase().as_str() {
+        "linked" => Ok(ModuleSource::Linked),
+        "remote" => Ok(ModuleSource::Remote),
+        other => bail!("Unsupported module source `{other}`; expected `remote` or `linked`"),
+    }
+}
+
 fn parse_remote_module_entries(value: &str) -> Vec<(String, String)> {
     value
         .split(',')
@@ -2371,6 +3036,19 @@ fn upsert_env_value(source: &str, key: &str, value: &str) -> String {
         } else {
             format!("{trimmed}\n{key}={value}\n")
         }
+    }
+}
+
+fn remove_env_value(source: &str, key: &str) -> String {
+    let key_prefix = format!("{key}=");
+    let lines = source
+        .lines()
+        .filter(|line| !line.starts_with(&key_prefix))
+        .collect::<Vec<_>>();
+    if lines.is_empty() {
+        String::new()
+    } else {
+        format!("{}\n", lines.join("\n"))
     }
 }
 
@@ -2537,6 +3215,163 @@ mod tests {
         assert!(updated.contains("APP_ENV=local"));
         assert!(updated.contains("RUST_LOG=info"));
         assert!(updated.contains("REMOTE_MODULES=crm=http://old,billing=http://new"));
+    }
+
+    #[test]
+    fn env_remote_modules_are_removed() {
+        let source = "APP_ENV=local\nREMOTE_MODULES=crm=http://old,billing=http://new\n";
+        let updated = remove_remote_module_from_env_source(source, "crm").unwrap();
+
+        assert!(updated.contains("APP_ENV=local"));
+        assert!(updated.contains("REMOTE_MODULES=billing=http://new"));
+        assert!(!updated.contains("crm=http://old"));
+    }
+
+    #[test]
+    fn env_remote_modules_line_is_removed_when_empty() {
+        let source = "APP_ENV=local\nREMOTE_MODULES=crm=http://old\n";
+        let updated = remove_remote_module_from_env_source(source, "crm").unwrap();
+
+        assert_eq!(updated, "APP_ENV=local\n");
+    }
+
+    #[test]
+    fn linked_module_enabled_env_is_upserted() {
+        let source = "APP_ENV=local\n";
+        let updated = set_linked_module_enabled_env(source, "auth-password", false);
+
+        assert_eq!(
+            updated,
+            "APP_ENV=local\nLENSO_MODULE_AUTH_PASSWORD_ENABLED=false\n"
+        );
+    }
+
+    #[test]
+    fn module_source_parses_supported_values() {
+        assert_eq!(parse_module_source("remote").unwrap(), ModuleSource::Remote);
+        assert_eq!(parse_module_source("linked").unwrap(), ModuleSource::Linked);
+        assert!(parse_module_source("wasm").is_err());
+    }
+
+    #[test]
+    fn manifest_install_env_updates_source() {
+        let updated = apply_manifest_install_env(
+            "APP_ENV=local\n".to_owned(),
+            &[("CRM_API_URL".to_owned(), "http://crm".to_owned())],
+        );
+
+        assert_eq!(updated, "APP_ENV=local\nCRM_API_URL=http://crm\n");
+    }
+
+    #[test]
+    fn manifest_install_directives_are_parsed_and_planned() {
+        let manifest = json!({
+            "install": {
+                "env": {
+                    "CRM_API_URL": "http://crm"
+                },
+                "commands": [
+                    "just migrate",
+                    { "command": "pnpm install", "cwd": "../lenso-runtime-console" }
+                ]
+            }
+        });
+        let env = remote_module_install_env(&manifest).unwrap();
+        let commands = remote_module_install_commands(&manifest).unwrap();
+        let command_plan = install_command_plans(&commands, false);
+
+        assert_eq!(
+            env,
+            vec![("CRM_API_URL".to_owned(), "http://crm".to_owned())]
+        );
+        assert_eq!(commands[0].command, "just migrate");
+        assert_eq!(commands[1].cwd.as_deref(), Some("../lenso-runtime-console"));
+        assert_eq!(
+            command_plan[0].get("status").and_then(Value::as_str),
+            Some("requires_manual_run")
+        );
+    }
+
+    #[test]
+    fn manifest_install_env_cannot_override_remote_modules() {
+        let manifest = json!({
+            "install": {
+                "env": {
+                    "REMOTE_MODULES": "crm=http://other"
+                }
+            }
+        });
+
+        assert!(remote_module_install_env(&manifest).is_err());
+    }
+
+    #[test]
+    fn manifest_install_services_are_planned() {
+        let manifest = json!({
+            "install": {
+                "services": [
+                    {
+                        "name": "crm-api",
+                        "command": "pnpm --dir ../crm/backend dev",
+                        "cwd": ".",
+                        "readyTimeoutMs": 12000
+                    }
+                ]
+            }
+        });
+        let services = remote_module_install_services(
+            &manifest,
+            "crm",
+            "http://127.0.0.1:4100/lenso/module/v1",
+        )
+        .unwrap();
+        let service_file = update_remote_module_services_file(
+            Path::new("/tmp/missing-module-services.json"),
+            "crm",
+            &services,
+        )
+        .unwrap()
+        .unwrap();
+        let service_plan = install_service_plans(&services);
+
+        assert_eq!(
+            services[0].ready_url,
+            "http://127.0.0.1:4100/lenso/module/v1/manifest"
+        );
+        assert_eq!(
+            service_plan[0].get("status").and_then(Value::as_str),
+            Some("registered")
+        );
+        assert_eq!(
+            service_file
+                .get("modules")
+                .and_then(Value::as_array)
+                .and_then(|modules| modules.first())
+                .and_then(|module| module.get("moduleName"))
+                .and_then(Value::as_str),
+            Some("crm")
+        );
+    }
+
+    #[test]
+    fn install_plan_module_is_removed() {
+        let plan = json!({
+            "modules": [
+                { "moduleName": "crm", "consolePackages": [] },
+                { "moduleName": "billing", "consolePackages": [] }
+            ],
+            "version": 1
+        });
+        let updated = remove_console_package_install_plan_module_value(plan, "crm")
+            .unwrap()
+            .unwrap();
+        let modules = updated.get("modules").and_then(Value::as_array).unwrap();
+
+        assert_eq!(modules.len(), 1);
+        assert_eq!(
+            modules[0].get("moduleName").and_then(Value::as_str),
+            Some("billing")
+        );
     }
 
     #[test]

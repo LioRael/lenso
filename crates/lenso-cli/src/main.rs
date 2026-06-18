@@ -58,8 +58,12 @@ enum HostCommand {
 enum ModuleCommand {
     /// Create a linked or remote module scaffold.
     Create(ModuleCreateArgs),
+    /// Install a remote source or enable a linked module.
+    Install(RemoteModuleInstallArgs),
     /// Add a configured remote module source.
     Add(RemoteModuleInstallArgs),
+    /// Remove a remote source or disable a linked module.
+    Uninstall(RemoteModuleUninstallArgs),
     /// Manage a local module catalog.
     Catalog {
         #[command(subcommand)]
@@ -86,8 +90,12 @@ enum ModuleMarketplaceCommand {
 
 #[derive(Debug, Args, Clone)]
 struct RemoteModuleInstallArgs {
-    /// Remote module manifest URL, file URL, or local JSON path.
+    /// Module reference: remote manifest URL/path, or linked module name.
     manifest_reference: String,
+
+    /// Loading source: remote or linked.
+    #[arg(long, default_value = "remote")]
+    source: String,
 
     /// Lenso host repository root.
     #[arg(long)]
@@ -101,6 +109,10 @@ struct RemoteModuleInstallArgs {
     #[arg(long)]
     install_plan_file: Option<std::path::PathBuf>,
 
+    /// Remote module services file.
+    #[arg(long)]
+    module_services_file: Option<std::path::PathBuf>,
+
     /// Runtime Console app root.
     #[arg(long)]
     runtime_console_root: Option<std::path::PathBuf>,
@@ -113,7 +125,41 @@ struct RemoteModuleInstallArgs {
     #[arg(long = "no-console-plan", action = clap::ArgAction::SetFalse, default_value_t = true)]
     console_plan: bool,
 
+    /// Execute manifest-declared install.commands.
+    #[arg(long)]
+    run_install_commands: bool,
+
     /// Print install changes without writing them.
+    #[arg(long)]
+    dry_run: bool,
+}
+
+#[derive(Debug, Args, Clone)]
+struct RemoteModuleUninstallArgs {
+    /// Module name.
+    module_name: String,
+
+    /// Loading source: remote or linked.
+    #[arg(long, default_value = "remote")]
+    source: String,
+
+    /// Lenso host repository root.
+    #[arg(long)]
+    repo_root: Option<std::path::PathBuf>,
+
+    /// Environment file to update.
+    #[arg(long)]
+    env_file: Option<std::path::PathBuf>,
+
+    /// Console package install plan file.
+    #[arg(long)]
+    install_plan_file: Option<std::path::PathBuf>,
+
+    /// Remote module services file.
+    #[arg(long)]
+    module_services_file: Option<std::path::PathBuf>,
+
+    /// Print uninstall changes without writing them.
     #[arg(long)]
     dry_run: bool,
 }
@@ -311,8 +357,24 @@ impl From<&RemoteModuleInstallArgs> for module::RemoteModuleInstallOptions {
             dry_run: args.dry_run,
             env_file: args.env_file.clone(),
             install_plan_file: args.install_plan_file.clone(),
+            module_services_file: args.module_services_file.clone(),
             repo_root: args.repo_root.clone(),
+            run_install_commands: args.run_install_commands,
             runtime_console_root: args.runtime_console_root.clone(),
+            source: args.source.clone(),
+        }
+    }
+}
+
+impl From<&RemoteModuleUninstallArgs> for module::RemoteModuleUninstallOptions {
+    fn from(args: &RemoteModuleUninstallArgs) -> Self {
+        Self {
+            dry_run: args.dry_run,
+            env_file: args.env_file.clone(),
+            install_plan_file: args.install_plan_file.clone(),
+            module_services_file: args.module_services_file.clone(),
+            repo_root: args.repo_root.clone(),
+            source: args.source.clone(),
         }
     }
 }
@@ -399,8 +461,14 @@ async fn main() -> anyhow::Result<()> {
             ModuleCommand::Create(args) => {
                 module::create_module((&args).into()).await?;
             }
+            ModuleCommand::Install(args) => {
+                module::install_module(&args.manifest_reference, (&args).into()).await?;
+            }
             ModuleCommand::Add(args) => {
-                module::add_remote_module(&args.manifest_reference, (&args).into()).await?;
+                module::install_module(&args.manifest_reference, (&args).into()).await?;
+            }
+            ModuleCommand::Uninstall(args) => {
+                module::uninstall_module(&args.module_name, (&args).into()).await?;
             }
             ModuleCommand::Catalog { command } => match command {
                 ModuleCatalogCommand::Add(args) => {
@@ -410,7 +478,7 @@ async fn main() -> anyhow::Result<()> {
             },
             ModuleCommand::Marketplace { command } => match command {
                 ModuleMarketplaceCommand::Install(args) => {
-                    module::add_remote_module(&args.manifest_reference, (&args).into()).await?;
+                    module::install_module(&args.manifest_reference, (&args).into()).await?;
                 }
             },
         },

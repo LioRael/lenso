@@ -23,7 +23,7 @@ use platform_admin_data::{
 };
 use platform_core::error::ErrorDetail;
 use platform_core::{
-    ActorContext, AppContext, AppError, CorrelationId, EventHandlerRegistry, Migration,
+    ActorContext, AppContext, AppError, CorrelationId, ErrorCode, EventHandlerRegistry, Migration,
     PLATFORM_MIGRATIONS, RuntimeConfigDescriptor, RuntimeConfigGroupDescriptor, RuntimeConfigScope,
     RuntimeConfigType, StoryDisplayDescriptor, StoryDisplaySource, TraceContext,
 };
@@ -37,8 +37,17 @@ use platform_module_remote::{RemoteHttpProxyRegistry, RemoteModuleConfig, Remote
 use platform_runtime::{
     EnqueueFunctionRequest, FunctionRegistry, RUNTIME_MIGRATIONS, RuntimeClient,
 };
+use std::fs::{self, OpenOptions};
+use std::io::Write as _;
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command};
 use std::sync::Arc;
-use std::time::Instant;
+use std::thread;
+use std::time::{Duration, Instant};
+
+const DEFAULT_MODULE_SERVICES_FILE: &str = ".lenso/module-services.json";
+const DEFAULT_REMOTE_SERVICE_READY_TIMEOUT_MS: u64 = 10_000;
+const REMOTE_SERVICE_TERMINATE_GRACE_MS: u64 = 800;
 
 struct LinkedModuleEntry {
     module_name: &'static str,
@@ -1161,6 +1170,512 @@ fn remote_module_config(source: &platform_core::RemoteModuleSourceConfig) -> Rem
     }
 
     config
+}
+
+#[derive(Debug)]
+pub struct RemoteModuleServiceSupervisor {
+    services: Vec<RemoteModuleServiceHandle>,
+}
+
+impl RemoteModuleServiceSupervisor {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.services.is_empty()
+    }
+}
+
+impl Drop for RemoteModuleServiceSupervisor {
+    fn drop(&mut self) {
+        for service in &mut self.services {
+            terminate_remote_module_service(&mut service.child);
+            release_remote_module_service_state(&service.lock_file_path, &service.pid_file_path);
+        }
+    }
+}
+
+#[derive(Debug)]
+struct RemoteModuleServiceHandle {
+    child: Child,
+    lock_file_path: PathBuf,
+    pid_file_path: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RemoteModuleServiceSpec {
+    module_name: String,
+    service_name: String,
+    command: String,
+    cwd: Option<PathBuf>,
+    ready_url: String,
+    ready_timeout_ms: u64,
+    auto_start: bool,
+}
+
+pub async fn start_installed_remote_module_services(
+    ctx: &AppContext,
+) -> platform_core::AppResult<RemoteModuleServiceSupervisor> {
+    start_installed_remote_module_services_from_path(ctx, Path::new(DEFAULT_MODULE_SERVICES_FILE))
+        .await
+}
+
+pub async fn start_installed_remote_module_services_from_path(
+    ctx: &AppContext,
+    services_file_path: &Path,
+) -> platform_core::AppResult<RemoteModuleServiceSupervisor> {
+    let specs = read_remote_module_service_specs(services_file_path)?;
+    let services_state_dir = services_file_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."));
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_millis(800))
+        .build()
+        .map_err(|source| {
+            AppError::new(ErrorCode::Internal, "failed to build HTTP client").with_source(source)
+        })?;
+    let mut services = Vec::new();
+
+    for spec in specs {
+        if !spec.auto_start || !remote_service_module_enabled(ctx, &spec.module_name) {
+            continue;
+        }
+        if remote_service_ready(&client, &spec.ready_url).await {
+            tracing::info!(
+                module = %spec.module_name,
+                service = %spec.service_name,
+                ready_url = %spec.ready_url,
+                "remote module service already ready"
+            );
+            continue;
+        }
+        let lock_file_path = remote_module_service_state_path(services_state_dir, &spec, "lock");
+        let pid_file_path = remote_module_service_state_path(services_state_dir, &spec, "pid");
+        if !claim_remote_module_service_lock(&client, &spec, &lock_file_path, &pid_file_path)
+            .await?
+        {
+            continue;
+        }
+        let mut child = match spawn_remote_module_service(&spec) {
+            Ok(child) => child,
+            Err(error) => {
+                release_remote_module_service_state(&lock_file_path, &pid_file_path);
+                return Err(error);
+            }
+        };
+        if let Err(error) = write_remote_module_service_pid(&pid_file_path, child.id()) {
+            terminate_remote_module_service(&mut child);
+            release_remote_module_service_state(&lock_file_path, &pid_file_path);
+            return Err(error);
+        }
+        if let Err(error) = wait_for_remote_module_service(&client, &spec, &mut child).await {
+            terminate_remote_module_service(&mut child);
+            release_remote_module_service_state(&lock_file_path, &pid_file_path);
+            return Err(error);
+        }
+        tracing::info!(
+            module = %spec.module_name,
+            service = %spec.service_name,
+            ready_url = %spec.ready_url,
+            "started remote module service"
+        );
+        services.push(RemoteModuleServiceHandle {
+            child,
+            lock_file_path,
+            pid_file_path,
+        });
+    }
+
+    Ok(RemoteModuleServiceSupervisor { services })
+}
+
+fn remote_service_module_enabled(ctx: &AppContext, module_name: &str) -> bool {
+    ctx.config
+        .module_sources
+        .remote
+        .iter()
+        .any(|remote| remote.name == module_name)
+        && remote_module_enabled(ctx, module_name)
+}
+
+fn read_remote_module_service_specs(
+    services_file_path: &Path,
+) -> platform_core::AppResult<Vec<RemoteModuleServiceSpec>> {
+    let source = match std::fs::read_to_string(services_file_path) {
+        Ok(source) => source,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(source) => {
+            return Err(AppError::new(
+                ErrorCode::ExternalDependency,
+                format!("remote module services file could not be read: {source}"),
+            ));
+        }
+    };
+    let value = serde_json::from_str::<serde_json::Value>(&source).map_err(|source| {
+        AppError::new(
+            ErrorCode::Validation,
+            format!("remote module services file could not be parsed: {source}"),
+        )
+    })?;
+    parse_remote_module_service_specs(&value)
+}
+
+fn parse_remote_module_service_specs(
+    value: &serde_json::Value,
+) -> platform_core::AppResult<Vec<RemoteModuleServiceSpec>> {
+    let modules = value
+        .get("modules")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| {
+            AppError::new(
+                ErrorCode::Validation,
+                "remote module services file modules must be an array",
+            )
+        })?;
+    let mut specs = Vec::new();
+    for module in modules {
+        let module_name = json_string(module, "moduleName")?;
+        let services = module
+            .get("services")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| {
+                AppError::new(
+                    ErrorCode::Validation,
+                    format!("{module_name} services must be an array"),
+                )
+            })?;
+        for service in services {
+            let command = json_string(service, "command")?;
+            let ready_url = json_string(service, "readyUrl")?;
+            specs.push(RemoteModuleServiceSpec {
+                module_name: module_name.clone(),
+                service_name: service
+                    .get("name")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or(&module_name)
+                    .to_owned(),
+                command,
+                cwd: service
+                    .get("cwd")
+                    .and_then(serde_json::Value::as_str)
+                    .map(PathBuf::from),
+                ready_url,
+                ready_timeout_ms: service
+                    .get("readyTimeoutMs")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(DEFAULT_REMOTE_SERVICE_READY_TIMEOUT_MS),
+                auto_start: service
+                    .get("autoStart")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(true),
+            });
+        }
+    }
+    Ok(specs)
+}
+
+fn json_string(value: &serde_json::Value, key: &str) -> platform_core::AppResult<String> {
+    value
+        .get(key)
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_owned)
+        .ok_or_else(|| AppError::new(ErrorCode::Validation, format!("{key} must be a string")))
+}
+
+fn spawn_remote_module_service(spec: &RemoteModuleServiceSpec) -> platform_core::AppResult<Child> {
+    let cwd = spec
+        .cwd
+        .clone()
+        .unwrap_or(std::env::current_dir().map_err(|source| {
+            AppError::new(ErrorCode::Internal, "failed to resolve current directory")
+                .with_source(source)
+        })?);
+    let mut command = shell_command(&spec.command);
+    command.current_dir(cwd);
+    configure_remote_module_service_process(&mut command);
+    command.spawn().map_err(|source| {
+        AppError::new(
+            ErrorCode::ExternalDependency,
+            format!(
+                "failed to start remote module service {}: {}",
+                spec.module_name, spec.service_name
+            ),
+        )
+        .with_source(source)
+    })
+}
+
+async fn wait_for_remote_module_service(
+    client: &reqwest::Client,
+    spec: &RemoteModuleServiceSpec,
+    child: &mut Child,
+) -> platform_core::AppResult<()> {
+    let started = Instant::now();
+    let timeout = Duration::from_millis(spec.ready_timeout_ms);
+    loop {
+        if remote_service_ready(client, &spec.ready_url).await {
+            return Ok(());
+        }
+        if let Some(status) = child.try_wait().map_err(|source| {
+            AppError::new(
+                ErrorCode::ExternalDependency,
+                format!(
+                    "remote module service {} status could not be checked",
+                    spec.service_name
+                ),
+            )
+            .with_source(source)
+        })? {
+            return Err(AppError::new(
+                ErrorCode::ExternalDependency,
+                format!(
+                    "remote module service {} exited before it became ready: {status}",
+                    spec.service_name
+                ),
+            ));
+        }
+        if started.elapsed() >= timeout {
+            return Err(AppError::new(
+                ErrorCode::ExternalDependency,
+                format!(
+                    "remote module service {} did not become ready at {}",
+                    spec.service_name, spec.ready_url
+                ),
+            ));
+        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+}
+
+async fn remote_service_ready(client: &reqwest::Client, ready_url: &str) -> bool {
+    client
+        .get(ready_url)
+        .send()
+        .await
+        .is_ok_and(|response| response.status().is_success())
+}
+
+async fn claim_remote_module_service_lock(
+    client: &reqwest::Client,
+    spec: &RemoteModuleServiceSpec,
+    lock_file_path: &Path,
+    pid_file_path: &Path,
+) -> platform_core::AppResult<bool> {
+    match create_remote_module_service_lock(lock_file_path) {
+        Ok(()) => return Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(source) => {
+            return Err(AppError::new(
+                ErrorCode::ExternalDependency,
+                format!(
+                    "remote module service {} lock could not be created: {source}",
+                    spec.service_name
+                ),
+            ));
+        }
+    }
+
+    tracing::info!(
+        module = %spec.module_name,
+        service = %spec.service_name,
+        ready_url = %spec.ready_url,
+        "remote module service startup already claimed"
+    );
+    if wait_for_remote_module_service_ready(
+        client,
+        &spec.ready_url,
+        Duration::from_millis(spec.ready_timeout_ms),
+    )
+    .await
+    {
+        return Ok(false);
+    }
+
+    tracing::warn!(
+        module = %spec.module_name,
+        service = %spec.service_name,
+        lock_file = %lock_file_path.display(),
+        "remote module service lock did not become ready before timeout; treating it as stale"
+    );
+    terminate_stale_remote_module_service(pid_file_path);
+    release_remote_module_service_state(lock_file_path, pid_file_path);
+    match create_remote_module_service_lock(lock_file_path) {
+        Ok(()) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
+        Err(source) => Err(AppError::new(
+            ErrorCode::ExternalDependency,
+            format!(
+                "stale remote module service {} lock could not be replaced: {source}",
+                spec.service_name
+            ),
+        )),
+    }
+}
+
+fn create_remote_module_service_lock(lock_file_path: &Path) -> std::io::Result<()> {
+    if let Some(parent) = lock_file_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(lock_file_path)?;
+    writeln!(file, "owner_pid={}", std::process::id())?;
+    Ok(())
+}
+
+fn write_remote_module_service_pid(
+    pid_file_path: &Path,
+    child_pid: u32,
+) -> platform_core::AppResult<()> {
+    if let Some(parent) = pid_file_path.parent() {
+        fs::create_dir_all(parent).map_err(|source| {
+            AppError::new(
+                ErrorCode::ExternalDependency,
+                format!("remote module service pid directory could not be created: {source}"),
+            )
+        })?;
+    }
+    fs::write(pid_file_path, format!("{child_pid}\n")).map_err(|source| {
+        AppError::new(
+            ErrorCode::ExternalDependency,
+            format!("remote module service pid file could not be written: {source}"),
+        )
+    })
+}
+
+fn release_remote_module_service_state(lock_file_path: &Path, pid_file_path: &Path) {
+    let _ = fs::remove_file(pid_file_path);
+    let _ = fs::remove_file(lock_file_path);
+}
+
+#[cfg(unix)]
+fn terminate_stale_remote_module_service(pid_file_path: &Path) {
+    let Ok(source) = fs::read_to_string(pid_file_path) else {
+        return;
+    };
+    let Ok(pid) = source.trim().parse::<u32>() else {
+        return;
+    };
+
+    let _ = Command::new("kill")
+        .arg("-TERM")
+        .arg(format!("-{pid}"))
+        .status();
+    thread::sleep(Duration::from_millis(100));
+}
+
+#[cfg(not(unix))]
+fn terminate_stale_remote_module_service(_pid_file_path: &Path) {}
+
+async fn wait_for_remote_module_service_ready(
+    client: &reqwest::Client,
+    ready_url: &str,
+    timeout: Duration,
+) -> bool {
+    let started = Instant::now();
+    loop {
+        if remote_service_ready(client, ready_url).await {
+            return true;
+        }
+        if started.elapsed() >= timeout {
+            return false;
+        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+}
+
+fn remote_module_service_state_path(
+    services_state_dir: &Path,
+    spec: &RemoteModuleServiceSpec,
+    extension: &str,
+) -> PathBuf {
+    services_state_dir.join(format!(
+        "remote-{}-{}.{}",
+        remote_module_service_state_segment(&spec.module_name),
+        remote_module_service_state_segment(&spec.service_name),
+        extension
+    ))
+}
+
+fn remote_module_service_state_segment(value: &str) -> String {
+    let mut segment = String::new();
+    let mut previous_dash = false;
+    for character in value.chars() {
+        if character.is_ascii_alphanumeric() {
+            segment.push(character.to_ascii_lowercase());
+            previous_dash = false;
+        } else if !segment.is_empty() && !previous_dash {
+            segment.push('-');
+            previous_dash = true;
+        }
+    }
+    while segment.ends_with('-') {
+        segment.pop();
+    }
+    if segment.is_empty() {
+        "service".to_owned()
+    } else {
+        segment
+    }
+}
+
+fn terminate_remote_module_service(child: &mut Child) {
+    if matches!(child.try_wait(), Ok(Some(_))) {
+        return;
+    }
+
+    #[cfg(unix)]
+    {
+        let process_group_id = child.id();
+        let _ = Command::new("kill")
+            .arg("-TERM")
+            .arg(format!("-{process_group_id}"))
+            .status();
+        if wait_for_remote_module_service_exit(
+            child,
+            Duration::from_millis(REMOTE_SERVICE_TERMINATE_GRACE_MS),
+        ) {
+            return;
+        }
+    }
+
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+fn wait_for_remote_module_service_exit(child: &mut Child, timeout: Duration) -> bool {
+    let started = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => return true,
+            Ok(None) => {}
+            Err(_) => return true,
+        }
+        if started.elapsed() >= timeout {
+            return false;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[cfg(unix)]
+fn configure_remote_module_service_process(command: &mut Command) {
+    use std::os::unix::process::CommandExt;
+    command.process_group(0);
+}
+
+#[cfg(not(unix))]
+fn configure_remote_module_service_process(_command: &mut Command) {}
+
+fn shell_command(command: &str) -> Command {
+    if cfg!(windows) {
+        let mut process = Command::new("cmd");
+        process.arg("/C").arg(command);
+        process
+    } else {
+        let mut process = Command::new("sh");
+        process.arg("-c").arg(command);
+        process
+    }
 }
 
 fn current_timestamp() -> String {
@@ -3153,6 +3668,82 @@ mod tests {
             handler: Arc::new(NoopFunctionHandler),
         });
         registry
+    }
+
+    #[test]
+    fn remote_module_service_specs_parse() {
+        let specs = parse_remote_module_service_specs(&serde_json::json!({
+            "modules": [
+                {
+                    "moduleName": "crm",
+                    "services": [
+                        {
+                            "name": "crm-api",
+                            "command": "pnpm dev",
+                            "cwd": "../crm",
+                            "readyUrl": "http://127.0.0.1:4100/lenso/module/v1/manifest",
+                            "readyTimeoutMs": 12000,
+                            "autoStart": true
+                        }
+                    ]
+                }
+            ],
+            "version": 1
+        }))
+        .expect("service specs parse");
+
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].module_name, "crm");
+        assert_eq!(specs[0].service_name, "crm-api");
+        assert_eq!(specs[0].ready_timeout_ms, 12000);
+    }
+
+    #[test]
+    fn remote_module_service_state_path_sanitizes_names() {
+        let spec = RemoteModuleServiceSpec {
+            module_name: "CRM Module".to_owned(),
+            service_name: "API Worker!".to_owned(),
+            command: "pnpm dev".to_owned(),
+            cwd: None,
+            ready_url: "http://127.0.0.1:4100/lenso/module/v1/manifest".to_owned(),
+            ready_timeout_ms: 12000,
+            auto_start: true,
+        };
+
+        let path = remote_module_service_state_path(Path::new(".lenso"), &spec, "lock");
+
+        assert_eq!(
+            path,
+            PathBuf::from(".lenso/remote-crm-module-api-worker.lock")
+        );
+    }
+
+    #[test]
+    fn remote_module_service_lock_is_exclusive_and_released() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system time should be after Unix epoch")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "lenso-app-bootstrap-service-lock-{}-{unique}",
+            std::process::id()
+        ));
+        let lock_file_path = dir.join("service.lock");
+        let pid_file_path = dir.join("service.pid");
+
+        let _ = std::fs::remove_dir_all(&dir);
+        create_remote_module_service_lock(&lock_file_path)
+            .expect("first lock claim should create the lock");
+        let second_claim = create_remote_module_service_lock(&lock_file_path)
+            .expect_err("second lock claim should fail while the file exists");
+        assert_eq!(second_claim.kind(), std::io::ErrorKind::AlreadyExists);
+        std::fs::write(&pid_file_path, "123\n").expect("pid file should write");
+
+        release_remote_module_service_state(&lock_file_path, &pid_file_path);
+
+        assert!(!lock_file_path.exists());
+        assert!(!pid_file_path.exists());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     const TEST_HOST_MIGRATIONS: &[Migration] = &[Migration {

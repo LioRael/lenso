@@ -21,9 +21,11 @@ module = manifest data + loading source + optional Runtime Console package
 - Runtime Console packages are optional frontend contributions loaded by the
   host console registry.
 
-The host owns policy. A module declares what it needs and implements its own
-behavior; it does not own host auth, runtime queues, retries, story records,
-HTTP proxy policy, or install trust.
+The host owns runtime policy. A module declares what it needs and implements its
+own behavior; it does not own host auth, runtime queues, retries, story records,
+or HTTP proxy policy. Install trust is operator-owned: explicit manifest URLs are
+treated like direct CLI installs, and official catalogs are curated before
+publication.
 
 ## Default Source
 
@@ -92,6 +94,27 @@ modules. A representative shape:
   "admin": {
     "kind": "schema"
   },
+  "install": {
+    "env": {
+      "BILLING_API_BASE_URL": "https://billing.example.com"
+    },
+    "commands": [
+      {
+        "command": "pnpm --dir ../lenso-runtime-console install",
+        "cwd": "."
+      }
+    ],
+    "services": [
+      {
+        "name": "billing-api",
+        "command": "pnpm --dir ../lenso-billing/backend dev",
+        "cwd": ".",
+        "readyUrl": "https://billing.example.com/lenso/module/v1/manifest",
+        "readyTimeoutMs": 10000,
+        "autoStart": true
+      }
+    ]
+  },
   "console": [
     {
       "name": "billing",
@@ -109,7 +132,15 @@ modules. A representative shape:
 ```
 
 The host may cache the manifest, lint it through `platform-module`, and reject
-or degrade modules that request unsupported surfaces.
+or degrade modules that request unsupported surfaces. `install.env` is written
+to the host `.env` by the CLI. `install.commands` are recorded in the local
+install plan and only executed when the operator passes
+`--run-install-commands`. `install.services` are written to
+`.lenso/module-services.json`; the API and worker start those services before
+loading configured remote modules. Host-started services are tracked with
+lock/pid files next to `module-services.json` and are stopped when the owning
+API/worker process exits; services that are already ready before startup are
+treated as external and are not stopped by the host.
 
 ## Runtime Console Package
 
@@ -166,7 +197,7 @@ Current Runtime Console support includes:
 - workspace-installed console packages
 - package manifests derived into install metadata
 - module metadata showing missing frontend package install plans
-- low-friction remote install through `lenso module add <manifest-url>` and
+- low-friction remote install through `lenso module install <manifest-url>` and
   `lenso module marketplace install <manifest-url>`
 - remote module install CLI that writes local source configuration
 - console package apply-plan registration for requested package exports
@@ -176,7 +207,6 @@ Current Runtime Console support includes:
 
 The following are intentionally deferred:
 
-- marketplace distribution and global trust policy
 - automatic npm package installation
 - JavaScript bundle loading from module manifests
 - Wasm execution
@@ -201,22 +231,29 @@ Third-party scaffolding uses a separate remote-oriented lane:
 ```sh
 lenso module create billing --remote --output-dir ../module-packages
 lenso module catalog add https://example.com/lenso/module/v1/manifest
-lenso module add https://example.com/lenso/module/v1/manifest
+lenso module install https://example.com/lenso/module/v1/manifest
+lenso module uninstall billing
 lenso module marketplace install https://example.com/lenso/module/v1/manifest
 ```
 
 The default install path is user-driven: see a module, install from its
-manifest, install packages, restart the host, and use the module. `module add`
-updates host-local remote module configuration and applies Runtime Console
-package registration when the manifest declares console packages.
+manifest, install packages, restart the host, and use the module.
+`module install` updates host-local remote module configuration, applies
+manifest-declared `install.env` values, records `install.commands`, writes
+`install.services`, and applies Runtime Console package registration when the
+manifest declares console packages. `module add` remains a compatibility alias
+for remote installs.
+`module uninstall <name>` removes the host-local remote module source and any
+pending console package install-plan entry for that module; it leaves module
+data and already-installed Runtime Console package dependencies alone.
 
 `.lenso/module-catalog.json` is the optional discovery list behind Available
 Modules. A host can add entries with `lenso module catalog add <manifest-url>`.
 The catalog only records module basics, manifest URL, base URL, summary, and
 console package hints. The admin API reflects that discovery data back to
 Runtime Console with capability counts, host compatibility preflight results,
-and archived catalog entries; it still does not act as a marketplace review or
-trust workflow.
+and archived catalog entries; official catalogs are curated at publication time,
+while arbitrary catalog entries remain operator-selected.
 
 When a host has no local catalog, Available Modules preserves the current loaded
 remote-module view if any remote modules are already configured. If neither a
@@ -228,7 +265,7 @@ If the manifest is installed from a local file or non-protocol URL, pass the
 runtime module base URL explicitly:
 
 ```sh
-lenso module add ./lenso.module.json --base-url https://example.com/lenso/module/v1
+lenso module install ./lenso.module.json --base-url https://example.com/lenso/module/v1
 ```
 
 The remote lane should generate a module package, not a host workspace member.
@@ -248,7 +285,7 @@ Runtime Console can perform the same host-local install write through
 `POST /admin/data/available-modules/{module}/install`. The visual path is still
 an operator-reviewed install: it writes `.env` and the console package install
 plan, then reports restart/package follow-up state. It does not execute shell
-commands, install npm packages, hot-load modules, or grant marketplace trust.
+commands, install npm packages, or hot-load modules.
 
 `lenso console-package apply-plan` consumes that plan and updates Runtime
 Console package dependencies, manifest exports, and module export mappings.
@@ -258,4 +295,4 @@ The operator-facing walkthrough lives in
 `lenso-runtime-console/docs/remote-module-install-flow.md`.
 
 The plan file is intentionally ignored by git. It is an operator/developer
-handoff artifact, not marketplace trust state.
+handoff artifact, not a trust database.
