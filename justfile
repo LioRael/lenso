@@ -33,9 +33,6 @@ package-readiness:
 release-package:
     sh scripts/release-package.sh
 
-starter-check:
-    sh scripts/starter-host-check.sh
-
 cli-check:
     scripts/lenso-cli-check.sh
 

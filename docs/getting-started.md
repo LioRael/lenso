@@ -135,9 +135,8 @@ just first-user-smoke
 Before cutting a local release branch or tag, run:
 
 ```sh
-just starter-check
 just release-check
 ```
 
-`starter-check` compiles the starter from a temporary copy.
-`release-check` runs the backend repository quality gate.
+`release-check` runs the backend repository quality gate, including the CLI
+scaffolded-host check.

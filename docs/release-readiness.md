@@ -38,12 +38,6 @@ examples split checklist lives in [package-readiness.md](package-readiness.md).
 
 ## Local Smoke
 
-Run the starter template gate:
-
-```sh
-just starter-check
-```
-
 Use this sequence for a manual service smoke:
 
 ```sh
