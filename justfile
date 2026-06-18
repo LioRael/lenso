@@ -37,7 +37,7 @@ starter-check:
     sh scripts/starter-host-check.sh
 
 cli-check:
-    sh scripts/lenso-cli-check.sh
+    scripts/lenso-cli-check.sh
 
 first-user-smoke:
     sh scripts/first-user-smoke.sh
