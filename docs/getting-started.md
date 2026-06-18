@@ -138,5 +138,5 @@ Before cutting a local release branch or tag, run:
 just release-check
 ```
 
-`release-check` runs the backend repository quality gate, including the CLI
-scaffolded-host check.
+`release-check` runs the backend repository quality gate without slow smoke
+checks. Run `just smoke-check` when touching the CLI starter path.

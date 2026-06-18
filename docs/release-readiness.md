@@ -23,6 +23,10 @@ just release-check
 If this command fails, treat the failure as release blocking unless it is a
 documented local infrastructure issue.
 
+This gate intentionally excludes scaffolded-host and service smoke checks. Run
+those separately when touching the CLI/starter path or validating a release
+candidate end to end.
+
 Runtime Console checks run in the sibling `lenso-runtime-console` repository.
 
 ## Package Gate
@@ -37,6 +41,12 @@ This verifies the public `lenso` facade crate package. The detailed package and
 examples split checklist lives in [package-readiness.md](package-readiness.md).
 
 ## Local Smoke
+
+For the scaffolded host path, run:
+
+```sh
+just smoke-check
+```
 
 Use this sequence for a manual service smoke:
 
