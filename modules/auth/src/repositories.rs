@@ -23,6 +23,8 @@ pub trait AuthUserRepository: std::fmt::Debug + Send + Sync {
         &self,
         user_id: &AuthUserId,
         disabled_at: Option<DateTime<Utc>>,
+        disabled_reason: Option<&str>,
+        disabled_until: Option<DateTime<Utc>>,
     ) -> AppResult<bool>;
 }
 
@@ -49,8 +51,8 @@ impl PostgresAuthUserRepository {
 
         sqlx::query(
             r#"
-            insert into auth.users (id, created_at, disabled_at)
-            values ($1, $2, null)
+            insert into auth.users (id, created_at, disabled_at, disabled_reason, disabled_until)
+            values ($1, $2, null, null, null)
             on conflict (id) do nothing
             "#,
         )
@@ -60,15 +62,22 @@ impl PostgresAuthUserRepository {
         .await
         .map_err(map_sql_error)?;
 
-        let disabled_at = sqlx::query_scalar::<_, Option<DateTime<Utc>>>(
-            "select disabled_at from auth.users where id = $1",
+        let active_user_exists = sqlx::query_scalar::<_, bool>(
+            r#"
+            select exists(
+                select 1
+                from auth.users
+                where id = $1
+                  and (disabled_at is null or disabled_until <= now())
+            )
+            "#,
         )
         .bind(&user_id.0)
         .fetch_one(&mut *tx)
         .await
         .map_err(map_sql_error)?;
 
-        if disabled_at.is_some() {
+        if !active_user_exists {
             return Err(AppError::new(ErrorCode::Forbidden, "Auth user is disabled"));
         }
 
@@ -125,13 +134,21 @@ impl AuthUserRepository for PostgresAuthUserRepository {
     async fn insert(&self, user: &AuthUser) -> AppResult<()> {
         sqlx::query(
             r#"
-            insert into auth.users (id, created_at, disabled_at)
-            values ($1, $2, $3)
+            insert into auth.users (
+                id,
+                created_at,
+                disabled_at,
+                disabled_reason,
+                disabled_until
+            )
+            values ($1, $2, $3, $4, $5)
             "#,
         )
         .bind(&user.id.0)
         .bind(user.created_at)
         .bind(user.disabled_at)
+        .bind(user.disabled_reason.as_deref())
+        .bind(user.disabled_until)
         .execute(&self.pool)
         .await
         .map(|_| ())
@@ -141,7 +158,12 @@ impl AuthUserRepository for PostgresAuthUserRepository {
     async fn find_by_id(&self, user_id: &AuthUserId) -> AppResult<Option<AuthUser>> {
         sqlx::query_as::<_, UserRow>(
             r#"
-            select id, created_at, disabled_at
+            select
+                id,
+                created_at,
+                case when disabled_until <= now() then null else disabled_at end,
+                case when disabled_until <= now() then null else disabled_reason end,
+                case when disabled_until <= now() then null else disabled_until end
             from auth.users
             where id = $1
             "#,
@@ -158,7 +180,12 @@ impl AuthUserRepository for PostgresAuthUserRepository {
             Some(after) => {
                 sqlx::query_as::<_, UserRow>(
                     r#"
-                    select id, created_at, disabled_at
+                    select
+                        id,
+                        created_at,
+                        case when disabled_until <= now() then null else disabled_at end,
+                        case when disabled_until <= now() then null else disabled_reason end,
+                        case when disabled_until <= now() then null else disabled_until end
                     from auth.users
                     where id > $1
                     order by id asc
@@ -173,7 +200,12 @@ impl AuthUserRepository for PostgresAuthUserRepository {
             None => {
                 sqlx::query_as::<_, UserRow>(
                     r#"
-                    select id, created_at, disabled_at
+                    select
+                        id,
+                        created_at,
+                        case when disabled_until <= now() then null else disabled_at end,
+                        case when disabled_until <= now() then null else disabled_reason end,
+                        case when disabled_until <= now() then null else disabled_until end
                     from auth.users
                     order by id asc
                     limit $1
@@ -270,16 +302,22 @@ impl AuthUserRepository for PostgresAuthUserRepository {
         &self,
         user_id: &AuthUserId,
         disabled_at: Option<DateTime<Utc>>,
+        disabled_reason: Option<&str>,
+        disabled_until: Option<DateTime<Utc>>,
     ) -> AppResult<bool> {
         let result = sqlx::query(
             r#"
             update auth.users
-            set disabled_at = $2
+            set disabled_at = $2,
+                disabled_reason = $3,
+                disabled_until = $4
             where id = $1
             "#,
         )
         .bind(&user_id.0)
         .bind(disabled_at)
+        .bind(disabled_reason)
+        .bind(disabled_until)
         .execute(&self.pool)
         .await
         .map_err(map_sql_error)?;
@@ -288,7 +326,13 @@ impl AuthUserRepository for PostgresAuthUserRepository {
     }
 }
 
-type UserRow = (String, DateTime<Utc>, Option<DateTime<Utc>>);
+type UserRow = (
+    String,
+    DateTime<Utc>,
+    Option<DateTime<Utc>>,
+    Option<String>,
+    Option<DateTime<Utc>>,
+);
 type SessionRow = (
     String,
     String,
@@ -298,11 +342,13 @@ type SessionRow = (
 );
 
 fn user_from_row(row: UserRow) -> AuthUser {
-    let (id, created_at, disabled_at) = row;
+    let (id, created_at, disabled_at, disabled_reason, disabled_until) = row;
     AuthUser {
         id: AuthUserId(id),
         created_at,
         disabled_at,
+        disabled_reason,
+        disabled_until,
     }
 }
 

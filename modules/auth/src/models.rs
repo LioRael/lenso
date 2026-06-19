@@ -9,6 +9,8 @@ pub struct AuthUser {
     pub id: AuthUserId,
     pub created_at: DateTime<Utc>,
     pub disabled_at: Option<DateTime<Utc>>,
+    pub disabled_reason: Option<String>,
+    pub disabled_until: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

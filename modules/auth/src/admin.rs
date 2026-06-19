@@ -1,6 +1,6 @@
 use crate::models::{AuthSessionRecord, AuthUser, AuthUserId};
 use crate::repositories::AuthUserRepository;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use platform_core::{AppError, AppResult, ErrorCode};
 use platform_module::{AdminActionSource, AdminDataSource, AdminListQuery, AdminPage};
 use serde_json::Value;
@@ -108,18 +108,36 @@ impl AdminActionSource for AuthAdminData {
             }
             DISABLE_USER_ACTION => {
                 let user_id = action_user_id(&input)?;
+                let reason = optional_string(&input, "reason");
+                let disabled_until = optional_timestamp(&input, "disabled_until")?;
+                if disabled_until.is_some_and(|value| value <= Utc::now()) {
+                    return Err(AppError::new(
+                        ErrorCode::Validation,
+                        "disabled_until must be in the future",
+                    ));
+                }
                 let disabled = self
                     .repository
-                    .set_user_disabled_at(&user_id, Some(Utc::now()))
+                    .set_user_disabled_at(
+                        &user_id,
+                        Some(Utc::now()),
+                        reason.as_deref(),
+                        disabled_until,
+                    )
                     .await?;
                 Ok(serde_json::json!({
                     "disabled": disabled,
+                    "disabled_until": disabled_until,
+                    "reason": reason,
                     "user_id": user_id.0,
                 }))
             }
             ENABLE_USER_ACTION => {
                 let user_id = action_user_id(&input)?;
-                let enabled = self.repository.set_user_disabled_at(&user_id, None).await?;
+                let enabled = self
+                    .repository
+                    .set_user_disabled_at(&user_id, None, None, None)
+                    .await?;
                 Ok(serde_json::json!({
                     "enabled": enabled,
                     "user_id": user_id.0,
@@ -137,6 +155,24 @@ fn action_user_id(input: &Value) -> AppResult<AuthUserId> {
         .filter(|value| !value.is_empty())
         .map(|value| AuthUserId(value.to_owned()))
         .ok_or_else(|| AppError::new(ErrorCode::Validation, "user_id is required"))
+}
+
+fn optional_string(input: &Value, name: &str) -> Option<String> {
+    input
+        .get(name)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn optional_timestamp(input: &Value, name: &str) -> AppResult<Option<DateTime<Utc>>> {
+    let Some(value) = optional_string(input, name) else {
+        return Ok(None);
+    };
+    DateTime::parse_from_rfc3339(&value)
+        .map(|value| Some(value.with_timezone(&Utc)))
+        .map_err(|_| AppError::new(ErrorCode::Validation, format!("{name} must be RFC3339")))
 }
 
 fn unknown_entity(entity: &str) -> AppError {
@@ -158,6 +194,8 @@ fn user_to_value(user: &AuthUser) -> Value {
         "id": user.id.0,
         "created_at": user.created_at,
         "disabled_at": user.disabled_at,
+        "disabled_reason": user.disabled_reason,
+        "disabled_until": user.disabled_until,
     })
 }
 
@@ -183,11 +221,22 @@ mod tests {
             id: AuthUserId("usr_1".to_owned()),
             created_at: now,
             disabled_at: None,
+            disabled_reason: None,
+            disabled_until: None,
         });
         let object = value.as_object().expect("object");
         let mut keys = object.keys().collect::<Vec<_>>();
         keys.sort();
-        assert_eq!(keys, vec!["created_at", "disabled_at", "id"]);
+        assert_eq!(
+            keys,
+            vec![
+                "created_at",
+                "disabled_at",
+                "disabled_reason",
+                "disabled_until",
+                "id"
+            ]
+        );
     }
 
     #[test]

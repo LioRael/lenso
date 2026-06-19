@@ -21,8 +21,8 @@ pub async fn create_user_identity_in_tx(
 ) -> AppResult<AuthIdentity> {
     sqlx::query(
         r#"
-        insert into auth.users (id, created_at, disabled_at)
-        values ($1, $2, null)
+        insert into auth.users (id, created_at, disabled_at, disabled_reason, disabled_until)
+        values ($1, $2, null, null, null)
         "#,
     )
     .bind(&user_id.0)
@@ -64,7 +64,7 @@ pub async fn find_active_identity(
         join auth.users users on users.id = identities.user_id
         where identities.provider = $1
           and identities.provider_subject = $2
-          and users.disabled_at is null
+          and (users.disabled_at is null or users.disabled_until <= now())
         limit 1
         "#,
     )
@@ -102,7 +102,10 @@ pub async fn create_session_in_tx(
     let active_user_exists = sqlx::query_scalar::<_, bool>(
         r#"
         select exists(
-            select 1 from auth.users where id = $1 and disabled_at is null
+            select 1
+            from auth.users
+            where id = $1
+              and (disabled_at is null or disabled_until <= now())
         )
         "#,
     )

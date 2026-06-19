@@ -27,7 +27,7 @@ impl AuthActorResolver {
             where sessions.token_hash = $1
               and sessions.expires_at > now()
               and sessions.revoked_at is null
-              and users.disabled_at is null
+              and (users.disabled_at is null or users.disabled_until <= now())
             limit 1
             "#,
         )
