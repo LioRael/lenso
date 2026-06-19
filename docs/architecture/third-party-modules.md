@@ -123,7 +123,9 @@ modules. A representative shape:
       "route": "/data/billing",
       "package": {
         "name": "@vendor/lenso-billing-console",
-        "export": "billingConsoleModule"
+        "export": "billingConsoleModule",
+        "bundleUrl": "./console/billing-console.js",
+        "hostApi": "1"
       },
       "required_capabilities": ["billing.read"]
     }
@@ -133,9 +135,8 @@ modules. A representative shape:
 
 The host may cache the manifest, lint it through `platform-module`, and reject
 or degrade modules that request unsupported surfaces. `install.env` is written
-to the host `.env` by the CLI. `install.commands` are recorded in the local
-install plan and only executed when the operator passes
-`--run-install-commands`. `install.services` are written to
+to the host `.env` by the CLI. `install.commands` are executed only when the
+operator passes `--run-install-commands`. `install.services` are written to
 `.lenso/module-services.json`; the API and worker start those services before
 loading configured remote modules. Host-started services are tracked with
 lock/pid files next to `module-services.json` and are stopped when the owning
@@ -196,11 +197,12 @@ Current Runtime Console support includes:
 
 - workspace-installed console packages
 - package manifests derived into install metadata
-- module metadata showing missing frontend package install plans
+- module metadata showing missing frontend bundle registrations
 - low-friction remote install through `lenso module install <manifest-url>` and
   `lenso module marketplace install <manifest-url>`
-- remote module install CLI that writes local source configuration
-- console package apply-plan registration for requested package exports
+- remote module install CLI that writes local source configuration and console
+  extension registry entries
+- dynamic same-origin bundle loading from `/console/extensions/registry.json`
 - boundary checks that forbid package imports from host internals
 
 ## Deferred Support
@@ -237,17 +239,18 @@ lenso module marketplace install https://example.com/lenso/module/v1/manifest
 ```
 
 The default install path is user-driven: see a module, install from its
-manifest, install packages, restart the host, and use the module.
+manifest, restart the host, reload Runtime Console, and use the module.
 `module install` updates host-local remote module configuration, applies
-manifest-declared `install.env` values, records `install.commands`, writes
-`install.services`, writes an install receipt to `.lenso/module-installs.json`,
-and applies Runtime Console package registration when the manifest declares
-console packages. `module add` remains a compatibility alias for remote
-installs.
+manifest-declared `install.env` values, runs opted-in `install.commands`,
+writes `install.services`, writes an install receipt to
+`.lenso/module-installs.json`, copies declared console bundles to
+`.lenso/console/extensions`, and updates
+`.lenso/console/extensions/registry.json` when the manifest declares console
+packages with `bundleUrl`. `module add` remains a compatibility alias for
+remote installs.
 `module uninstall <name>` removes the host-local remote module source and any
-pending console package install-plan and install-receipt entry for that module;
-it leaves module data and already-installed Runtime Console package dependencies
-alone.
+console extension registry/install-receipt entry for that module; it leaves
+module data alone.
 
 `.lenso/module-catalog.json` is the optional discovery list behind Available
 Modules. A host can add entries with `lenso module catalog add <manifest-url>`.
@@ -271,8 +274,8 @@ lenso module install ./lenso.module.json --base-url https://example.com/lenso/mo
 ```
 
 The remote lane should generate a module package, not a host workspace member.
-Host installation should record source configuration and surface install plans
-without compiling third-party code into the application.
+Host installation should record source configuration and extension registry
+state without compiling third-party code into the application bundle.
 
 The first CLI install lane writes host-local state only:
 
@@ -281,18 +284,18 @@ The first CLI install lane writes host-local state only:
 - `.env`: appends or replaces `REMOTE_MODULES=<name>=<base_url>`.
 - `.lenso/module-installs.json`: records the module source and host-local writes
   so uninstall does not need to infer what was installed.
-- `.lenso/console-package-install-plan.json`: records requested Runtime Console
-  packages, exports, routes, and manual `pnpm add` commands to run in the
-  Runtime Console repository.
+- `.lenso/console/extensions/<module>/*.js`: copied third-party Runtime Console
+  bundles.
+- `.lenso/console/extensions/registry.json`: same-origin dynamic bundle registry
+  consumed by the hosted Runtime Console.
 
 Runtime Console can perform the same host-local install write through
 `POST /admin/data/available-modules/{module}/install`. The visual path is still
-an operator-reviewed install: it writes `.env` and the console package install
-plan, then reports restart/package follow-up state. It does not execute shell
-commands, install npm packages, or hot-load modules.
+an operator-reviewed install: it writes `.env`, copies declared console bundles,
+updates the extension registry, and reports restart/reload follow-up state. It
+does not install npm packages or compile third-party code into the official
+Runtime Console bundle.
 
-`lenso console-package apply-plan` consumes that plan and updates Runtime
-Console package dependencies, manifest exports, and module export mappings.
 `pnpm demo:remote-module-install` in the `lenso-runtime-console` repository runs
 the same flow against a temporary host fixture without mutating the working tree.
 The operator-facing walkthrough lives in

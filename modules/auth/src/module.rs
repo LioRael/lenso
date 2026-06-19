@@ -3,8 +3,9 @@ use crate::repositories::PostgresAuthUserRepository;
 use platform_core::AppContext;
 use platform_http::ApiOpenApiRouter;
 use platform_module::{
-    AdminSchema, EntitySchema, FieldSchema, FieldType, LinkedBinding, LinkedHttpContribution,
-    Module, ModuleHttpMethod, ModuleHttpRoute, ModuleManifest,
+    AdminSchema, ConsoleArea, ConsoleNavigation, ConsolePackage, ConsoleSurface,
+    ConsoleWorkspaceRef, EntitySchema, FieldSchema, FieldType, LinkedBinding,
+    LinkedHttpContribution, Module, ModuleHttpMethod, ModuleHttpRoute, ModuleManifest,
 };
 use std::sync::Arc;
 
@@ -60,11 +61,36 @@ pub fn user_schema() -> AdminSchema {
     }
 }
 
+pub fn console_surfaces() -> Vec<ConsoleSurface> {
+    vec![ConsoleSurface {
+        name: "auth".to_owned(),
+        label: "Auth".to_owned(),
+        area: ConsoleArea::Data,
+        route: "/data/auth".to_owned(),
+        package: ConsolePackage {
+            name: "@lenso/auth-console".to_owned(),
+            export: "authConsoleModule".to_owned(),
+        },
+        icon: Some("shield".to_owned()),
+        required_capabilities: vec![AUTH_USERS_READ.to_owned()],
+        navigation: Some(ConsoleNavigation {
+            workspace: ConsoleWorkspaceRef {
+                id: "auth".to_owned(),
+                label: "Auth".to_owned(),
+                icon: Some("shield".to_owned()),
+            },
+            group: None,
+            order: Some(50),
+        }),
+    }]
+}
+
 pub fn manifest() -> ModuleManifest {
     ModuleManifest::builder(MODULE_NAME)
         .capabilities(vec![AUTH_USERS_READ.to_owned()])
         .http_routes(http_routes())
         .admin(user_schema())
+        .console(console_surfaces())
         .build()
 }
 
@@ -102,6 +128,7 @@ mod tests {
             manifest.admin,
             Some(platform_module::AdminSurface::Schema(user_schema()))
         );
+        assert_eq!(manifest.console, console_surfaces());
 
         let lints = lint_module_manifest(ModuleSource::Linked, &manifest);
         assert!(

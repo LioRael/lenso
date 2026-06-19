@@ -432,6 +432,15 @@ async fn modules_endpoint_lists_linked_module_http_routes() {
     assert_eq!(auth["http_routes"][1]["method"], "POST");
     assert_eq!(auth["http_routes"][1]["path"], "/v1/auth/sessions/revoke");
     assert_eq!(auth["http_routes"][1]["display_name"], "Revoke Session");
+    assert_eq!(auth["console"][0]["name"], "auth");
+    assert_eq!(auth["console"][0]["area"], "data");
+    assert_eq!(auth["console"][0]["route"], "/data/auth");
+    assert_eq!(auth["console"][0]["package"]["name"], "@lenso/auth-console");
+    assert_eq!(auth["console"][0]["package"]["export"], "authConsoleModule");
+    assert_eq!(
+        auth["console"][0]["required_capabilities"],
+        serde_json::json!(["auth.users.read"])
+    );
 }
 
 #[tokio::test]
@@ -801,24 +810,16 @@ async fn available_modules_reports_local_install_state() {
         })
         .to_string(),
     );
-    let _install_plan = FileFixture::write(
-        ".lenso/console-package-install-plan.json",
+    let _console_registry = FileFixture::write(
+        ".lenso/console/extensions/registry.json",
         serde_json::json!({
             "version": 1,
-            "modules": [{
-                "baseUrl": "https://example.com/billing",
-                "consolePackages": [{
-                    "command": "pnpm add @vendor/lenso-billing-console",
-                    "exportName": "billingConsoleModule",
-                    "key": "@vendor/lenso-billing-console#billingConsoleModule",
-                    "packageName": "@vendor/lenso-billing-console",
-                    "requestedByModule": "billing",
-                    "route": "/data/billing",
-                    "status": "requires_manual_install"
-                }],
-                "manifestReference": "https://example.com/billing/manifest",
+            "bundles": [{
+                "entry": "/console/extensions/billing/billing-console.js",
+                "exportName": "billingConsoleModule",
+                "hostApi": "1",
                 "moduleName": "billing",
-                "restartRequired": true
+                "packageName": "@vendor/lenso-billing-console"
             }]
         })
         .to_string(),
@@ -873,7 +874,7 @@ async fn available_modules_reports_local_install_state() {
     );
     assert_eq!(
         install_state["consolePlan"]["planFile"],
-        ".lenso/console-package-install-plan.json"
+        ".lenso/console/extensions/registry.json"
     );
     assert_eq!(install_state["consolePlan"]["exists"], true);
     assert_eq!(install_state["consolePlan"]["readable"], true);
@@ -885,14 +886,21 @@ async fn available_modules_reports_local_install_state() {
         "@vendor/lenso-billing-console#billingConsoleModule"
     );
     assert_eq!(
-        install_state["consolePlan"]["packages"][0]["command"],
-        "pnpm add @vendor/lenso-billing-console"
+        install_state["consolePlan"]["packages"][0]["status"],
+        "installed"
     );
 }
 
 #[tokio::test]
-async fn available_module_install_writes_remote_source_and_console_plan() {
+async fn available_module_install_writes_remote_source_and_console_extension() {
     let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
+    let bundle_path = std::env::current_dir()
+        .expect("current dir")
+        .join(".lenso/fixtures/billing-console.js");
+    let _bundle = FileFixture::write(
+        &bundle_path,
+        b"export const billingConsoleModule = { id: 'billing', surfaces: [] };\n",
+    );
     let _catalog = FileFixture::write(
         ".lenso/module-catalog.json",
         serde_json::json!({
@@ -907,6 +915,7 @@ async fn available_module_install_writes_remote_source_and_console_plan() {
                 "consolePackages": [{
                     "packageName": "@vendor/lenso-billing-console",
                     "exportName": "billingConsoleModule",
+                    "bundleUrl": format!("file://{}", bundle_path.display()),
                     "route": "/data/billing"
                 }]
             }]
@@ -918,6 +927,9 @@ async fn available_module_install_writes_remote_source_and_console_plan() {
         "DATABASE_URL=postgres://localhost/lenso\nREMOTE_MODULES=crm=https://example.com/crm\n",
     );
     let _install_plan = FileFixture::remove(".lenso/console-package-install-plan.json");
+    let _console_registry = FileFixture::remove(".lenso/console/extensions/registry.json");
+    let _copied_bundle =
+        FileFixture::remove(".lenso/console/extensions/billing/billing-console.js");
     install_admin_module_metadata(vec![AdminModuleMetadata {
         module_name: "auth".to_owned(),
         source: ModuleSource::Linked,
@@ -970,27 +982,24 @@ async fn available_module_install_writes_remote_source_and_console_plan() {
         "{env_file}"
     );
 
-    let install_plan =
-        fs::read_to_string(".lenso/console-package-install-plan.json").expect("read install plan");
-    let install_plan_json: Value =
-        serde_json::from_str(&install_plan).expect("install plan is json");
-    assert_eq!(install_plan_json["version"], 1);
-    assert_eq!(install_plan_json["modules"][0]["moduleName"], "billing");
+    let console_registry =
+        fs::read_to_string(".lenso/console/extensions/registry.json").expect("read registry");
+    let console_registry_json: Value =
+        serde_json::from_str(&console_registry).expect("registry is json");
+    assert_eq!(console_registry_json["version"], 1);
     assert_eq!(
-        install_plan_json["modules"][0]["manifestReference"],
-        "https://example.com/billing/manifest"
+        console_registry_json["bundles"][0]["entry"],
+        "/console/extensions/billing/billing-console.js"
+    );
+    assert_eq!(console_registry_json["bundles"][0]["moduleName"], "billing");
+    assert_eq!(
+        console_registry_json["bundles"][0]["packageName"],
+        "@vendor/lenso-billing-console"
     );
     assert_eq!(
-        install_plan_json["modules"][0]["baseUrl"],
-        "https://example.com/billing"
-    );
-    assert_eq!(
-        install_plan_json["modules"][0]["consolePackages"][0]["command"],
-        "pnpm add @vendor/lenso-billing-console"
-    );
-    assert_eq!(
-        install_plan_json["modules"][0]["consolePackages"][0]["key"],
-        "@vendor/lenso-billing-console#billingConsoleModule"
+        fs::read_to_string(".lenso/console/extensions/billing/billing-console.js")
+            .expect("read copied bundle"),
+        "export const billingConsoleModule = { id: 'billing', surfaces: [] };\n"
     );
 }
 
@@ -1012,6 +1021,7 @@ async fn available_module_install_rejects_catalog_preflight_blockers() {
     );
     let _env = FileFixture::remove(".env");
     let _install_plan = FileFixture::remove(".lenso/console-package-install-plan.json");
+    let _console_registry = FileFixture::remove(".lenso/console/extensions/registry.json");
     install_admin_module_metadata(vec![]);
     let ctx = AppContext::new(
         AppConfig::from_env(),
@@ -1033,6 +1043,7 @@ async fn available_module_install_rejects_catalog_preflight_blockers() {
     assert_eq!(body["error"]["message"], "local-crm baseUrl is missing");
     assert!(!Path::new(".env").exists());
     assert!(!Path::new(".lenso/console-package-install-plan.json").exists());
+    assert!(!Path::new(".lenso/console/extensions/registry.json").exists());
 }
 
 #[tokio::test]
@@ -1098,7 +1109,7 @@ async fn available_linked_module_install_sets_demo_composition_profile() {
 }
 
 #[tokio::test]
-async fn available_remote_module_uninstall_removes_source_and_console_plan() {
+async fn available_remote_module_uninstall_removes_source_and_console_extension() {
     let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
     let _catalog = FileFixture::write(
         ".lenso/module-catalog.json",
@@ -1113,6 +1124,7 @@ async fn available_remote_module_uninstall_removes_source_and_console_plan() {
                 "consolePackages": [{
                     "packageName": "@vendor/lenso-billing-console",
                     "exportName": "billingConsoleModule",
+                    "bundleUrl": "https://example.com/billing/billing-console.js",
                     "route": "/data/billing"
                 }]
             }]
@@ -1148,6 +1160,33 @@ async fn available_remote_module_uninstall_removes_source_and_console_plan() {
             ]
         })
         .to_string(),
+    );
+    let _console_registry = FileFixture::write(
+        ".lenso/console/extensions/registry.json",
+        serde_json::json!({
+            "version": 1,
+            "bundles": [
+                {
+                    "entry": "/console/extensions/billing/billing-console.js",
+                    "exportName": "billingConsoleModule",
+                    "hostApi": "1",
+                    "moduleName": "billing",
+                    "packageName": "@vendor/lenso-billing-console"
+                },
+                {
+                    "entry": "/console/extensions/crm/crm-console.js",
+                    "exportName": "crmConsoleModule",
+                    "hostApi": "1",
+                    "moduleName": "crm",
+                    "packageName": "@vendor/lenso-crm-console"
+                }
+            ]
+        })
+        .to_string(),
+    );
+    let _copied_bundle = FileFixture::write(
+        ".lenso/console/extensions/billing/billing-console.js",
+        b"export const billingConsoleModule = { id: 'billing', surfaces: [] };\n",
     );
     install_admin_module_metadata(vec![AdminModuleMetadata {
         module_name: "billing".to_owned(),
@@ -1206,6 +1245,16 @@ async fn available_remote_module_uninstall_removes_source_and_console_plan() {
     );
     let env_file = fs::read_to_string(".env").expect("read env file");
     assert_eq!(env_file, "REMOTE_MODULES=crm=https://example.com/crm\n");
+    assert!(!Path::new(".lenso/console/extensions/billing/billing-console.js").exists());
+    let console_registry =
+        fs::read_to_string(".lenso/console/extensions/registry.json").expect("read registry");
+    let console_registry_json: Value =
+        serde_json::from_str(&console_registry).expect("registry is json");
+    assert_eq!(
+        console_registry_json["bundles"].as_array().unwrap().len(),
+        1
+    );
+    assert_eq!(console_registry_json["bundles"][0]["moduleName"], "crm");
     let install_plan =
         fs::read_to_string(".lenso/console-package-install-plan.json").expect("read install plan");
     let install_plan_json: Value =

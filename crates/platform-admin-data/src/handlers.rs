@@ -46,6 +46,8 @@ use std::time::Instant;
 
 const DEFAULT_LIMIT: i64 = 50;
 const MAX_LIMIT: i64 = 200;
+const CONSOLE_EXTENSION_REGISTRY_PATH: &str = ".lenso/console/extensions/registry.json";
+const CONSOLE_EXTENSION_ROUTE_PREFIX: &str = "/console/extensions";
 const HOST_CONSOLE_PACKAGE_API_VERSION: &str = "1";
 const HOST_LENSO_VERSION: &str = env!("CARGO_PKG_VERSION");
 const OFFICIAL_MODULE_CATALOG_REGISTRY_FILE: &str = "builtin:lenso-official-module-catalog";
@@ -176,7 +178,9 @@ pub(crate) async fn install_available_module(
     Path(module): Path<String>,
     HttpRequestContext(request_ctx): HttpRequestContext,
 ) -> Result<Json<AdminModuleInstallResponse>, ApiErrorResponse> {
-    install_available_module_response(module, &request_ctx).map(Json)
+    install_available_module_response(module, &request_ctx)
+        .await
+        .map(Json)
 }
 
 #[utoipa::path(
@@ -208,7 +212,7 @@ fn available_modules_response() -> AdminModuleRegistrySnapshotResponse {
     let install_state = AvailableModuleInstallStateContext::from_paths(
         &metadata,
         PathBuf::from(".env"),
-        PathBuf::from(".lenso/console-package-install-plan.json"),
+        PathBuf::from(CONSOLE_EXTENSION_REGISTRY_PATH),
     );
     if let Some(response) =
         module_catalog_file_response(PathBuf::from(".lenso/module-catalog.json"), &install_state)
@@ -229,7 +233,7 @@ fn available_modules_response() -> AdminModuleRegistrySnapshotResponse {
     )
 }
 
-fn install_available_module_response(
+async fn install_available_module_response(
     module_name: String,
     ctx: &RequestContext,
 ) -> Result<AdminModuleInstallResponse, ApiErrorResponse> {
@@ -243,17 +247,22 @@ fn install_available_module_response(
         .map_err(|error| install_error(error, ctx))?;
 
     let env_file_path = PathBuf::from(".env");
-    let console_plan_file_path = PathBuf::from(".lenso/console-package-install-plan.json");
+    let console_registry_file_path = PathBuf::from(CONSOLE_EXTENSION_REGISTRY_PATH);
+    write_runtime_console_extension_registry(
+        &console_registry_file_path,
+        &catalog_entry,
+        &base_url,
+    )
+    .await
+    .map_err(|error| install_error(error, ctx))?;
     write_remote_modules_env(&env_file_path, &catalog_entry.name, &base_url)
-        .map_err(|error| install_error(error, ctx))?;
-    write_console_package_install_plan(&console_plan_file_path, &catalog_entry, &base_url)
         .map_err(|error| install_error(error, ctx))?;
 
     let metadata = admin_module_metadata_snapshot().modules;
     let install_state = AvailableModuleInstallStateContext::from_paths(
         &metadata,
         &env_file_path,
-        &console_plan_file_path,
+        &console_registry_file_path,
     );
     let state = install_state.install_state(&catalog_entry.name);
     Ok(AdminModuleInstallResponse {
@@ -277,17 +286,25 @@ fn uninstall_available_module_response(
     }
 
     let env_file_path = PathBuf::from(".env");
-    let console_plan_file_path = PathBuf::from(".lenso/console-package-install-plan.json");
+    let console_registry_file_path = PathBuf::from(CONSOLE_EXTENSION_REGISTRY_PATH);
+    let legacy_console_plan_file_path = PathBuf::from(".lenso/console-package-install-plan.json");
     remove_remote_modules_env(&env_file_path, &catalog_entry.name)
         .map_err(|error| install_error(error, ctx))?;
-    remove_console_package_install_plan_module(&console_plan_file_path, &catalog_entry.name)
+    remove_runtime_console_extension_registry_module(
+        &console_registry_file_path,
+        &catalog_entry.name,
+    )
+    .map_err(|error| install_error(error, ctx))?;
+    remove_console_extension_module_dir(&catalog_entry.name)
+        .map_err(|error| install_error(error, ctx))?;
+    remove_console_package_install_plan_module(&legacy_console_plan_file_path, &catalog_entry.name)
         .map_err(|error| install_error(error, ctx))?;
 
     let metadata = admin_module_metadata_snapshot().modules;
     let install_state = AvailableModuleInstallStateContext::from_paths(
         &metadata,
         &env_file_path,
-        &console_plan_file_path,
+        &console_registry_file_path,
     );
     let state = install_state.install_state(&catalog_entry.name);
     Ok(AdminModuleInstallResponse {
@@ -321,7 +338,7 @@ fn install_linked_available_module_response(
     let install_state = AvailableModuleInstallStateContext::from_paths(
         &metadata,
         PathBuf::from(".env"),
-        PathBuf::from(".lenso/console-package-install-plan.json"),
+        PathBuf::from(CONSOLE_EXTENSION_REGISTRY_PATH),
     );
     let state = install_state.install_state_for_source(&catalog_entry.name, ModuleSource::Linked);
     Ok(AdminModuleInstallResponse {
@@ -344,7 +361,7 @@ fn uninstall_linked_available_module_response(
     let install_state = AvailableModuleInstallStateContext::from_paths(
         &metadata,
         PathBuf::from(".env"),
-        PathBuf::from(".lenso/console-package-install-plan.json"),
+        PathBuf::from(CONSOLE_EXTENSION_REGISTRY_PATH),
     );
     let state = install_state.install_state_for_source(&catalog_entry.name, ModuleSource::Linked);
     Ok(AdminModuleInstallResponse {
@@ -556,8 +573,16 @@ struct LocalModuleCatalogEntry {
 struct LocalModuleCatalogConsolePackage {
     package_name: String,
     export_name: String,
+    #[serde(default, alias = "bundle_url")]
+    bundle_url: Option<String>,
+    #[serde(default, alias = "host_api")]
+    host_api: Option<String>,
     #[serde(default)]
     route: Option<String>,
+    #[serde(default)]
+    required_capabilities: Vec<String>,
+    #[serde(default)]
+    version: Option<String>,
 }
 
 #[derive(Debug)]
@@ -621,6 +646,46 @@ struct LocalConsolePackageInstallPlanPackage {
     route: Option<String>,
     #[serde(default)]
     status: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalRuntimeConsoleBundleRegistry {
+    #[serde(default)]
+    bundles: Vec<LocalRuntimeConsoleBundle>,
+    #[serde(default = "default_console_package_install_plan_version")]
+    version: u8,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalRuntimeConsoleBundle {
+    entry: String,
+    export_name: String,
+    host_api: String,
+    #[serde(default)]
+    module_name: Option<String>,
+    package_name: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    required_capabilities: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    route: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    version: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct RuntimeConsoleBundleSpec {
+    bundle_url: String,
+    entry: String,
+    export_name: String,
+    host_api: String,
+    module_name: String,
+    package_name: String,
+    required_capabilities: Vec<String>,
+    route: Option<String>,
+    target_path: PathBuf,
+    version: Option<String>,
 }
 
 #[derive(Debug)]
@@ -896,11 +961,11 @@ fn unquote_env_value(value: &str) -> &str {
 }
 
 fn local_console_package_install_plan_state(
-    console_plan_file_path: impl AsRef<FsPath>,
+    console_registry_file_path: impl AsRef<FsPath>,
 ) -> LocalConsolePackageInstallPlanState {
-    let console_plan_file_path = console_plan_file_path.as_ref();
-    let plan_file = console_plan_file_path.display().to_string();
-    let source = match fs::read_to_string(console_plan_file_path) {
+    let console_registry_file_path = console_registry_file_path.as_ref();
+    let plan_file = console_registry_file_path.display().to_string();
+    let source = match fs::read_to_string(console_registry_file_path) {
         Ok(source) => source,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             return LocalConsolePackageInstallPlanState {
@@ -913,7 +978,7 @@ fn local_console_package_install_plan_state(
         Err(error) => {
             return LocalConsolePackageInstallPlanState {
                 error: Some(format!(
-                    "console package install plan could not be read: {error}"
+                    "runtime console extension registry could not be read: {error}"
                 )),
                 exists: true,
                 modules: HashMap::new(),
@@ -921,20 +986,45 @@ fn local_console_package_install_plan_state(
             };
         }
     };
-    match serde_json::from_str::<LocalConsolePackageInstallPlan>(&source) {
-        Ok(plan) => LocalConsolePackageInstallPlanState {
-            error: None,
-            exists: true,
-            modules: plan
-                .modules
-                .into_iter()
-                .map(|module| (module.module_name.clone(), module))
-                .collect(),
-            plan_file,
-        },
+    match serde_json::from_str::<LocalRuntimeConsoleBundleRegistry>(&source) {
+        Ok(registry) => {
+            let mut modules: HashMap<String, LocalConsolePackageInstallPlanModule> = HashMap::new();
+            for bundle in registry.bundles {
+                let Some(module_name) = bundle.module_name else {
+                    continue;
+                };
+                let key = format!("{}#{}", bundle.package_name, bundle.export_name);
+                let package = LocalConsolePackageInstallPlanPackage {
+                    command: None,
+                    export_name: bundle.export_name,
+                    key: Some(key),
+                    package_name: bundle.package_name,
+                    requested_by_module: Some(module_name.clone()),
+                    route: bundle.route,
+                    status: Some("installed".to_owned()),
+                };
+                modules
+                    .entry(module_name.clone())
+                    .or_insert_with(|| LocalConsolePackageInstallPlanModule {
+                        base_url: None,
+                        console_packages: Vec::new(),
+                        manifest_reference: None,
+                        module_name,
+                        restart_required: Some(true),
+                    })
+                    .console_packages
+                    .push(package);
+            }
+            LocalConsolePackageInstallPlanState {
+                error: None,
+                exists: true,
+                modules,
+                plan_file,
+            }
+        }
         Err(error) => LocalConsolePackageInstallPlanState {
             error: Some(format!(
-                "console package install plan could not be parsed: {error}"
+                "runtime console extension registry could not be parsed: {error}"
             )),
             exists: true,
             modules: HashMap::new(),
@@ -1258,76 +1348,241 @@ fn write_linked_module_enabled_env(
     })
 }
 
-fn write_console_package_install_plan(
-    console_plan_file_path: impl AsRef<FsPath>,
+async fn write_runtime_console_extension_registry(
+    console_registry_file_path: impl AsRef<FsPath>,
     entry: &LocalModuleCatalogEntry,
     base_url: &str,
 ) -> Result<(), AppError> {
-    let console_plan_file_path = console_plan_file_path.as_ref();
-    let mut plan = match fs::read_to_string(console_plan_file_path) {
-        Ok(source) => {
-            serde_json::from_str::<LocalConsolePackageInstallPlan>(&source).map_err(|error| {
+    let console_registry_file_path = console_registry_file_path.as_ref();
+    let specs = runtime_console_bundle_specs(console_registry_file_path, entry, base_url)?;
+    if specs.is_empty() {
+        return Ok(());
+    }
+
+    for spec in &specs {
+        let bytes = read_console_bundle_reference(&spec.bundle_url).await?;
+        if let Some(parent) = spec.target_path.parent() {
+            fs::create_dir_all(parent).map_err(|error| {
                 AppError::new(
-                    ErrorCode::Validation,
-                    format!("console package install plan could not be parsed: {error}"),
+                    ErrorCode::ExternalDependency,
+                    format!("console extension bundle directory could not be created: {error}"),
                 )
-            })?
+            })?;
         }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            LocalConsolePackageInstallPlan {
-                modules: vec![],
-                version: default_console_package_install_plan_version(),
-            }
-        }
-        Err(error) => {
-            return Err(AppError::new(
-                ErrorCode::ExternalDependency,
-                format!("console package install plan could not be read: {error}"),
-            ));
-        }
-    };
-    plan.version = 1;
-    plan.modules
-        .retain(|module| module.module_name != entry.name);
-    plan.modules.push(LocalConsolePackageInstallPlanModule {
-        base_url: Some(normalize_remote_base_url(base_url)),
-        console_packages: entry
-            .console_packages
-            .iter()
-            .map(|package| LocalConsolePackageInstallPlanPackage {
-                command: Some(format!("pnpm add {}", package.package_name)),
-                export_name: package.export_name.clone(),
-                key: Some(format!("{}#{}", package.package_name, package.export_name)),
-                package_name: package.package_name.clone(),
-                requested_by_module: Some(entry.name.clone()),
-                route: package.route.clone(),
-                status: Some("requires_manual_install".to_owned()),
-            })
-            .collect(),
-        manifest_reference: Some(entry.manifest_reference.clone()),
-        module_name: entry.name.clone(),
-        restart_required: Some(true),
-    });
-    if let Some(parent) = console_plan_file_path.parent() {
-        fs::create_dir_all(parent).map_err(|error| {
+        fs::write(&spec.target_path, bytes).map_err(|error| {
             AppError::new(
                 ErrorCode::ExternalDependency,
-                format!("console package install plan directory could not be created: {error}"),
+                format!("console extension bundle could not be written: {error}"),
             )
         })?;
     }
-    let source = serde_json::to_string_pretty(&plan)
+
+    let mut registry = read_runtime_console_extension_registry(console_registry_file_path)?;
+    registry.version = 1;
+    registry.bundles.retain(|bundle| {
+        bundle.module_name.as_deref() != Some(entry.name.as_str())
+            && !specs.iter().any(|spec| {
+                bundle.package_name == spec.package_name && bundle.export_name == spec.export_name
+            })
+    });
+    registry
+        .bundles
+        .extend(specs.into_iter().map(|spec| LocalRuntimeConsoleBundle {
+            entry: spec.entry,
+            export_name: spec.export_name,
+            host_api: spec.host_api,
+            module_name: Some(spec.module_name),
+            package_name: spec.package_name,
+            required_capabilities: spec.required_capabilities,
+            route: spec.route,
+            version: spec.version,
+        }));
+    write_runtime_console_extension_registry_file(console_registry_file_path, &registry)
+}
+
+fn runtime_console_bundle_specs(
+    console_registry_file_path: &FsPath,
+    entry: &LocalModuleCatalogEntry,
+    base_url: &str,
+) -> Result<Vec<RuntimeConsoleBundleSpec>, AppError> {
+    let module_slug = slugify(&entry.name);
+    entry
+        .console_packages
+        .iter()
+        .map(|package| {
+            let bundle_url = package.bundle_url.as_deref().ok_or_else(|| {
+                AppError::new(
+                    ErrorCode::Validation,
+                    format!(
+                        "{} console package {}#{} bundleUrl is missing",
+                        entry.name, package.package_name, package.export_name
+                    ),
+                )
+            })?;
+            let bundle_url = resolve_console_bundle_reference(bundle_url, base_url)?;
+            let file_name = console_bundle_file_name(&bundle_url, &package.export_name);
+            let target_path = console_registry_file_path
+                .parent()
+                .unwrap_or_else(|| FsPath::new(".lenso/console/extensions"))
+                .join(&module_slug)
+                .join(&file_name);
+            Ok(RuntimeConsoleBundleSpec {
+                bundle_url,
+                entry: format!("{CONSOLE_EXTENSION_ROUTE_PREFIX}/{module_slug}/{file_name}"),
+                export_name: package.export_name.clone(),
+                host_api: package
+                    .host_api
+                    .clone()
+                    .unwrap_or_else(|| HOST_CONSOLE_PACKAGE_API_VERSION.to_owned()),
+                module_name: entry.name.clone(),
+                package_name: package.package_name.clone(),
+                required_capabilities: package.required_capabilities.clone(),
+                route: package.route.clone(),
+                target_path,
+                version: package.version.clone(),
+            })
+        })
+        .collect()
+}
+
+fn resolve_console_bundle_reference(reference: &str, base_url: &str) -> Result<String, AppError> {
+    if reference.starts_with("http://")
+        || reference.starts_with("https://")
+        || reference.starts_with("file://")
+    {
+        return Ok(reference.to_owned());
+    }
+    let normalized_base = format!("{}/", base_url.trim_end_matches('/'));
+    let base = reqwest::Url::parse(&normalized_base).map_err(|error| {
+        AppError::new(
+            ErrorCode::Validation,
+            format!("console bundle base URL could not be parsed: {error}"),
+        )
+    })?;
+    base.join(reference)
+        .map(|url| url.to_string())
+        .map_err(|error| {
+            AppError::new(
+                ErrorCode::Validation,
+                format!("console bundle URL could not be resolved: {error}"),
+            )
+        })
+}
+
+fn console_bundle_file_name(bundle_url: &str, export_name: &str) -> String {
+    reqwest::Url::parse(bundle_url)
+        .ok()
+        .and_then(|url| {
+            url.path_segments()
+                .and_then(Iterator::last)
+                .filter(|segment| !segment.is_empty())
+                .map(ToOwned::to_owned)
+        })
+        .or_else(|| {
+            FsPath::new(bundle_url)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .map(ToOwned::to_owned)
+        })
+        .unwrap_or_else(|| format!("{}.js", slugify(export_name)))
+}
+
+async fn read_console_bundle_reference(reference: &str) -> Result<Vec<u8>, AppError> {
+    if reference.starts_with("http://") || reference.starts_with("https://") {
+        let response = reqwest::get(reference).await.map_err(|error| {
+            AppError::new(
+                ErrorCode::ExternalDependency,
+                format!("console bundle could not be fetched: {error}"),
+            )
+        })?;
+        if !response.status().is_success() {
+            return Err(AppError::new(
+                ErrorCode::ExternalDependency,
+                format!(
+                    "console bundle fetch failed: {} {}",
+                    response.status().as_u16(),
+                    response.status().canonical_reason().unwrap_or("")
+                ),
+            ));
+        }
+        return response
+            .bytes()
+            .await
+            .map(|bytes| bytes.to_vec())
+            .map_err(|error| {
+                AppError::new(
+                    ErrorCode::ExternalDependency,
+                    format!("console bundle bytes could not be read: {error}"),
+                )
+            });
+    }
+    let path = if let Some(file_path) = reference.strip_prefix("file://") {
+        PathBuf::from(file_path)
+    } else {
+        PathBuf::from(reference)
+    };
+    fs::read(&path).map_err(|error| {
+        AppError::new(
+            ErrorCode::ExternalDependency,
+            format!(
+                "console bundle {} could not be read: {error}",
+                path.display()
+            ),
+        )
+    })
+}
+
+fn read_runtime_console_extension_registry(
+    console_registry_file_path: &FsPath,
+) -> Result<LocalRuntimeConsoleBundleRegistry, AppError> {
+    match fs::read_to_string(console_registry_file_path) {
+        Ok(source) => {
+            serde_json::from_str::<LocalRuntimeConsoleBundleRegistry>(&source).map_err(|error| {
+                AppError::new(
+                    ErrorCode::Validation,
+                    format!("runtime console extension registry could not be parsed: {error}"),
+                )
+            })
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            Ok(LocalRuntimeConsoleBundleRegistry {
+                bundles: vec![],
+                version: 1,
+            })
+        }
+        Err(error) => Err(AppError::new(
+            ErrorCode::ExternalDependency,
+            format!("runtime console extension registry could not be read: {error}"),
+        )),
+    }
+}
+
+fn write_runtime_console_extension_registry_file(
+    console_registry_file_path: &FsPath,
+    registry: &LocalRuntimeConsoleBundleRegistry,
+) -> Result<(), AppError> {
+    if let Some(parent) = console_registry_file_path.parent() {
+        fs::create_dir_all(parent).map_err(|error| {
+            AppError::new(
+                ErrorCode::ExternalDependency,
+                format!(
+                    "runtime console extension registry directory could not be created: {error}"
+                ),
+            )
+        })?;
+    }
+    let source = serde_json::to_string_pretty(registry)
         .map(|source| format!("{source}\n"))
         .map_err(|error| {
             AppError::new(
                 ErrorCode::Internal,
-                format!("console package install plan could not be encoded: {error}"),
+                format!("runtime console extension registry could not be encoded: {error}"),
             )
         })?;
-    fs::write(console_plan_file_path, source).map_err(|error| {
+    fs::write(console_registry_file_path, source).map_err(|error| {
         AppError::new(
             ErrorCode::ExternalDependency,
-            format!("console package install plan could not be written: {error}"),
+            format!("runtime console extension registry could not be written: {error}"),
         )
     })
 }
@@ -1370,6 +1625,64 @@ fn remove_console_package_install_plan_module(
             format!("console package install plan could not be written: {error}"),
         )
     })
+}
+
+fn remove_runtime_console_extension_registry_module(
+    console_registry_file_path: impl AsRef<FsPath>,
+    module_name: &str,
+) -> Result<(), AppError> {
+    let console_registry_file_path = console_registry_file_path.as_ref();
+    let mut registry = match fs::read_to_string(console_registry_file_path) {
+        Ok(source) => {
+            serde_json::from_str::<LocalRuntimeConsoleBundleRegistry>(&source).map_err(|error| {
+                AppError::new(
+                    ErrorCode::Validation,
+                    format!("runtime console extension registry could not be parsed: {error}"),
+                )
+            })?
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(AppError::new(
+                ErrorCode::ExternalDependency,
+                format!("runtime console extension registry could not be read: {error}"),
+            ));
+        }
+    };
+    registry
+        .bundles
+        .retain(|bundle| bundle.module_name.as_deref() != Some(module_name));
+    write_runtime_console_extension_registry_file(console_registry_file_path, &registry)
+}
+
+fn remove_console_extension_module_dir(module_name: &str) -> Result<(), AppError> {
+    let path = PathBuf::from(".lenso/console/extensions").join(slugify(module_name));
+    match fs::remove_dir_all(&path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(AppError::new(
+            ErrorCode::ExternalDependency,
+            format!(
+                "runtime console extension directory {} could not be removed: {error}",
+                path.display()
+            ),
+        )),
+    }
+}
+
+fn slugify(value: &str) -> String {
+    let mut slug = String::new();
+    let mut previous_dash = false;
+    for character in value.chars() {
+        if character.is_ascii_alphanumeric() {
+            slug.push(character.to_ascii_lowercase());
+            previous_dash = false;
+        } else if !previous_dash {
+            slug.push('-');
+            previous_dash = true;
+        }
+    }
+    slug.trim_matches('-').to_owned()
 }
 
 #[derive(Debug)]

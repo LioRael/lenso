@@ -136,49 +136,18 @@ missing lifecycle pieces: dependency resolution, version compatibility,
 capability enforcement before route mounting, and failure UI when a package
 cannot be loaded.
 
-Do not add ad hoc dynamic imports, global objects, or direct host token access as
-a shortcut. Runtime Console package loading needs a versioned host API and
-explicit trust policy before it can accept third-party code.
+Do not add ad hoc global objects or direct host token access as a shortcut.
+Third-party Runtime Console package loading must go through the versioned host
+API and the host-owned same-origin extension registry.
 
-## Installation Request Contract
+## Installation Contract
 
-The Runtime Console may derive an installation plan from backend module
+The Runtime Console may show install and reload status from backend module
 metadata, but the browser must not install packages by itself. Installation is a
-host-owned operation.
-
-The frontend request shape is intentionally small:
-
-```ts
-type ConsolePackageInstallRequest = {
-  packageName: string;
-  exportName: string;
-  requestedByModule: string;
-  route: string;
-};
-```
-
-The corresponding result must report host policy, not just package-manager
-success:
-
-```ts
-type ConsolePackageInstallResult =
-  | { status: "not_configured"; message: string }
-  | { status: "rejected"; message: string }
-  | { status: "installed"; message: string };
-```
-
-The first implementation is a no-op installer that returns `not_configured`.
-That keeps missing package discovery and UI state testable without implying that
-the Runtime Console can mutate the workspace or install third-party code.
-
-The dev installer lane may return a manual command such as:
-
-```sh
-pnpm add @lenso/crm-console
-```
-
-That command is advisory. A developer still needs to review the package and add
-an explicit registry entry before the host can import it.
+host-owned operation: the CLI or admin API copies an already-built bundle into
+`.lenso/console/extensions/<module>/` and writes
+`.lenso/console/extensions/registry.json`. Installing a module is the operator's
+trust decision for that module's declared console bundle.
 
 ## Installed Package Registry
 
