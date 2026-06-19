@@ -14,7 +14,7 @@ script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 packages="$(sh "$script_dir/publish-crate-order.sh")"
 
 crate_version() {
-    cargo pkgid -p "$1" | sed 's/.*#//'
+    cargo pkgid -p "$1" | sed 's/.*#//' | sed 's/.*@//'
 }
 
 crate_version_exists() {
