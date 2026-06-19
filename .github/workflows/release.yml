@@ -57,6 +57,11 @@ jobs:
           repository: LioRael/lenso-runtime-console
           path: lenso-runtime-console
           ssh-key: ${{ secrets.LENSO_RUNTIME_CONSOLE_DEPLOY_KEY }}
+      - name: Checkout Auth Console package
+        uses: actions/checkout@v6
+        with:
+          repository: LioRael/lenso-auth-module
+          path: lenso-auth-module
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install just
