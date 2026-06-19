@@ -1343,7 +1343,7 @@ dependencies = [
 
 [[package]]
 name = "lenso"
-version = "0.3.4"
+version = "0.3.5"
 dependencies = [
  "anyhow",
  "axum",
@@ -1355,6 +1355,7 @@ dependencies = [
  "lenso-platform-http",
  "lenso-platform-module",
  "lenso-worker",
+ "tokio",
 ]
 
 [[package]]

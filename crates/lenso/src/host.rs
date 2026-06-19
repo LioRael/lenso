@@ -65,6 +65,10 @@ impl HostBuilder {
         run_api_from_env_with_composition(self.composition).await
     }
 
+    pub async fn run_api_with_embedded_worker_from_env(self) -> anyhow::Result<()> {
+        run_api_with_embedded_worker_from_env_with_composition(self.composition).await
+    }
+
     pub async fn run_worker_from_env(self) -> anyhow::Result<()> {
         run_worker_from_env_with_composition(self.composition).await
     }
@@ -82,6 +86,27 @@ pub async fn run_api_from_env() -> anyhow::Result<()> {
 /// Start the Lenso API host with additional host-owned linked modules.
 pub async fn run_api_from_env_with_composition(composition: HostComposition) -> anyhow::Result<()> {
     lenso_api::run_from_env_with_composition(composition).await
+}
+
+/// Start the Lenso API and worker in the same process.
+///
+/// This is intended for local and small single-node hosts. Run the API and
+/// worker as separate services when they need independent scaling or restarts.
+pub async fn run_api_with_embedded_worker_from_env() -> anyhow::Result<()> {
+    run_api_with_embedded_worker_from_env_with_composition(HostComposition::default()).await
+}
+
+/// Start the Lenso API and worker in the same process with additional
+/// host-owned linked modules.
+pub async fn run_api_with_embedded_worker_from_env_with_composition(
+    composition: HostComposition,
+) -> anyhow::Result<()> {
+    let api_composition = composition.clone();
+    tokio::try_join!(
+        lenso_api::run_from_env_with_composition(api_composition),
+        lenso_worker::run_from_env_with_composition(composition),
+    )?;
+    Ok(())
 }
 
 /// Start the Lenso worker from environment configuration.
@@ -148,5 +173,10 @@ mod tests {
                 }],
             ))
             .build();
+    }
+
+    #[test]
+    fn host_builder_exposes_embedded_worker_boot() {
+        let _future = HostBuilder::new().run_api_with_embedded_worker_from_env();
     }
 }
