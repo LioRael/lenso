@@ -1433,6 +1433,8 @@ dependencies = [
 [[package]]
 name = "lenso-module-auth"
 version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9dc72583de134339f1a7d4ab7442166a38725913b1b98808042ab8bcc8cd916d"
 dependencies = [
  "async-trait",
  "axum",
@@ -1451,6 +1453,8 @@ dependencies = [
 [[package]]
 name = "lenso-module-auth-password"
 version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9774891363deb3540c3902431e2d10ed194efd9aaf9b6bcfbb4604b5255cc7b5"
 dependencies = [
  "argon2",
  "async-trait",
