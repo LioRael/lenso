@@ -7,6 +7,8 @@ use serde_json::Value;
 use std::sync::Arc;
 
 const REVOKE_SESSION_ACTION: &str = "revoke_session";
+const DISABLE_USER_ACTION: &str = "disable_user";
+const ENABLE_USER_ACTION: &str = "enable_user";
 
 #[derive(Debug)]
 pub struct AuthAdminData {
@@ -104,9 +106,37 @@ impl AdminActionSource for AuthAdminData {
                     "revoked": revoked,
                 }))
             }
+            DISABLE_USER_ACTION => {
+                let user_id = action_user_id(&input)?;
+                let disabled = self
+                    .repository
+                    .set_user_disabled_at(&user_id, Some(Utc::now()))
+                    .await?;
+                Ok(serde_json::json!({
+                    "disabled": disabled,
+                    "user_id": user_id.0,
+                }))
+            }
+            ENABLE_USER_ACTION => {
+                let user_id = action_user_id(&input)?;
+                let enabled = self.repository.set_user_disabled_at(&user_id, None).await?;
+                Ok(serde_json::json!({
+                    "enabled": enabled,
+                    "user_id": user_id.0,
+                }))
+            }
             other => Err(unknown_action(other)),
         }
     }
+}
+
+fn action_user_id(input: &Value) -> AppResult<AuthUserId> {
+    input
+        .get("user_id")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(|value| AuthUserId(value.to_owned()))
+        .ok_or_else(|| AppError::new(ErrorCode::Validation, "user_id is required"))
 }
 
 fn unknown_entity(entity: &str) -> AppError {

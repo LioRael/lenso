@@ -154,3 +154,56 @@ async fn admin_action_revokes_auth_session() {
 
     db.cleanup().await;
 }
+
+#[tokio::test]
+async fn admin_action_disables_and_enables_auth_user() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let migrations = PLATFORM_MIGRATIONS
+        .iter()
+        .chain(RUNTIME_MIGRATIONS)
+        .chain(auth::migrations::AUTH_MIGRATIONS)
+        .copied()
+        .collect::<Vec<_>>();
+    apply_migrations(&db.pool, &migrations)
+        .await
+        .expect("migrations apply");
+
+    let repo = PostgresAuthUserRepository::new(db.pool.clone());
+    seed(&repo, "usr_disable").await;
+
+    let admin = AuthAdminData::new(Arc::new(repo));
+    let disabled = admin
+        .invoke(
+            "disable_user",
+            serde_json::json!({"user_id": "usr_disable"}),
+        )
+        .await
+        .expect("disable user");
+    assert_eq!(disabled["disabled"], true);
+    assert_eq!(disabled["user_id"], "usr_disable");
+
+    let one = admin
+        .get("users", "usr_disable")
+        .await
+        .expect("get disabled user")
+        .expect("user");
+    assert!(one["disabled_at"].as_str().is_some());
+
+    let enabled = admin
+        .invoke("enable_user", serde_json::json!({"user_id": "usr_disable"}))
+        .await
+        .expect("enable user");
+    assert_eq!(enabled["enabled"], true);
+    assert_eq!(enabled["user_id"], "usr_disable");
+
+    let one = admin
+        .get("users", "usr_disable")
+        .await
+        .expect("get enabled user")
+        .expect("user");
+    assert!(one["disabled_at"].is_null());
+
+    db.cleanup().await;
+}

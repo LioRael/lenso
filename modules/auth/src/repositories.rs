@@ -19,6 +19,11 @@ pub trait AuthUserRepository: std::fmt::Debug + Send + Sync {
         session_id: &str,
         revoked_at: DateTime<Utc>,
     ) -> AppResult<bool>;
+    async fn set_user_disabled_at(
+        &self,
+        user_id: &AuthUserId,
+        disabled_at: Option<DateTime<Utc>>,
+    ) -> AppResult<bool>;
 }
 
 #[derive(Debug, Clone)]
@@ -254,6 +259,27 @@ impl AuthUserRepository for PostgresAuthUserRepository {
         )
         .bind(session_id)
         .bind(revoked_at)
+        .execute(&self.pool)
+        .await
+        .map_err(map_sql_error)?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    async fn set_user_disabled_at(
+        &self,
+        user_id: &AuthUserId,
+        disabled_at: Option<DateTime<Utc>>,
+    ) -> AppResult<bool> {
+        let result = sqlx::query(
+            r#"
+            update auth.users
+            set disabled_at = $2
+            where id = $1
+            "#,
+        )
+        .bind(&user_id.0)
+        .bind(disabled_at)
         .execute(&self.pool)
         .await
         .map_err(map_sql_error)?;
