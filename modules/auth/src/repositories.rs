@@ -1,4 +1,4 @@
-use crate::models::{AuthSession, AuthUser, AuthUserId};
+use crate::models::{AuthSession, AuthSessionRecord, AuthUser, AuthUserId};
 use crate::resolver::session_token_hash;
 use chrono::{DateTime, Utc};
 use platform_core::{AppError, AppResult, DbPool, ErrorCode};
@@ -8,6 +8,12 @@ pub trait AuthUserRepository: std::fmt::Debug + Send + Sync {
     async fn insert(&self, user: &AuthUser) -> AppResult<()>;
     async fn find_by_id(&self, user_id: &AuthUserId) -> AppResult<Option<AuthUser>>;
     async fn list(&self, limit: i64, cursor: Option<&str>) -> AppResult<Vec<AuthUser>>;
+    async fn find_session_by_id(&self, session_id: &str) -> AppResult<Option<AuthSessionRecord>>;
+    async fn list_sessions(
+        &self,
+        limit: i64,
+        cursor: Option<&str>,
+    ) -> AppResult<Vec<AuthSessionRecord>>;
 }
 
 #[derive(Debug, Clone)]
@@ -172,9 +178,71 @@ impl AuthUserRepository for PostgresAuthUserRepository {
 
         Ok(rows.into_iter().map(user_from_row).collect())
     }
+
+    async fn find_session_by_id(&self, session_id: &str) -> AppResult<Option<AuthSessionRecord>> {
+        sqlx::query_as::<_, SessionRow>(
+            r#"
+            select id, user_id, created_at, expires_at, revoked_at
+            from auth.sessions
+            where id = $1
+            "#,
+        )
+        .bind(session_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map(|row| row.map(session_from_row))
+        .map_err(map_sql_error)
+    }
+
+    async fn list_sessions(
+        &self,
+        limit: i64,
+        cursor: Option<&str>,
+    ) -> AppResult<Vec<AuthSessionRecord>> {
+        let rows = match cursor {
+            Some(after) => {
+                sqlx::query_as::<_, SessionRow>(
+                    r#"
+                    select id, user_id, created_at, expires_at, revoked_at
+                    from auth.sessions
+                    where id > $1
+                    order by id asc
+                    limit $2
+                    "#,
+                )
+                .bind(after)
+                .bind(limit)
+                .fetch_all(&self.pool)
+                .await
+            }
+            None => {
+                sqlx::query_as::<_, SessionRow>(
+                    r#"
+                    select id, user_id, created_at, expires_at, revoked_at
+                    from auth.sessions
+                    order by id asc
+                    limit $1
+                    "#,
+                )
+                .bind(limit)
+                .fetch_all(&self.pool)
+                .await
+            }
+        }
+        .map_err(map_sql_error)?;
+
+        Ok(rows.into_iter().map(session_from_row).collect())
+    }
 }
 
 type UserRow = (String, DateTime<Utc>, Option<DateTime<Utc>>);
+type SessionRow = (
+    String,
+    String,
+    DateTime<Utc>,
+    DateTime<Utc>,
+    Option<DateTime<Utc>>,
+);
 
 fn user_from_row(row: UserRow) -> AuthUser {
     let (id, created_at, disabled_at) = row;
@@ -182,6 +250,17 @@ fn user_from_row(row: UserRow) -> AuthUser {
         id: AuthUserId(id),
         created_at,
         disabled_at,
+    }
+}
+
+fn session_from_row(row: SessionRow) -> AuthSessionRecord {
+    let (id, user_id, created_at, expires_at, revoked_at) = row;
+    AuthSessionRecord {
+        id,
+        user_id: AuthUserId(user_id),
+        created_at,
+        expires_at,
+        revoked_at,
     }
 }
 

@@ -432,15 +432,20 @@ async fn modules_endpoint_lists_linked_module_http_routes() {
     assert_eq!(auth["http_routes"][1]["method"], "POST");
     assert_eq!(auth["http_routes"][1]["path"], "/v1/auth/sessions/revoke");
     assert_eq!(auth["http_routes"][1]["display_name"], "Revoke Session");
-    assert_eq!(auth["console"][0]["name"], "auth");
+    assert_eq!(auth["console"].as_array().expect("console array").len(), 2);
+    assert_eq!(auth["console"][0]["name"], "sessions");
+    assert_eq!(auth["console"][0]["label"], "Sessions");
     assert_eq!(auth["console"][0]["area"], "data");
-    assert_eq!(auth["console"][0]["route"], "/data/auth");
+    assert_eq!(auth["console"][0]["route"], "/data/auth/sessions");
     assert_eq!(auth["console"][0]["package"]["name"], "@lenso/auth-console");
     assert_eq!(auth["console"][0]["package"]["export"], "authConsoleModule");
     assert_eq!(
         auth["console"][0]["required_capabilities"],
         serde_json::json!(["auth.users.read"])
     );
+    assert_eq!(auth["console"][1]["name"], "users");
+    assert_eq!(auth["console"][1]["label"], "Users");
+    assert_eq!(auth["console"][1]["route"], "/data/auth/users");
 }
 
 #[tokio::test]

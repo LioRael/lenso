@@ -18,3 +18,12 @@ pub struct AuthSession {
     pub token: String,
     pub expires_at: DateTime<Utc>,
 }
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AuthSessionRecord {
+    pub id: String,
+    pub user_id: AuthUserId,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+    pub revoked_at: Option<DateTime<Utc>>,
+}
