@@ -19,6 +19,9 @@ rm -rf "$dist_dir"
 mkdir -p "$(dirname -- "$dist_dir")"
 cp -R "$console_root/dist" "$dist_dir"
 mkdir -p "$extensions_dir"
+if [ -d "$console_root/dist/extensions" ]; then
+  cp -R "$console_root/dist/extensions/." "$extensions_dir"
+fi
 if [ ! -f "$extensions_dir/registry.json" ]; then
   printf '{"version":1,"bundles":[]}\n' >"$extensions_dir/registry.json"
 fi

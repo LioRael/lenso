@@ -334,6 +334,11 @@ fn install_linked_available_module_response(
         .map_err(|error| install_error(error, ctx))?;
     write_linked_module_enabled_env(PathBuf::from(".env"), &catalog_entry.name, true)
         .map_err(|error| install_error(error, ctx))?;
+    write_linked_runtime_console_extension_registry(
+        PathBuf::from(CONSOLE_EXTENSION_REGISTRY_PATH),
+        &catalog_entry,
+    )
+    .map_err(|error| install_error(error, ctx))?;
     let metadata = admin_module_metadata_snapshot().modules;
     let install_state = AvailableModuleInstallStateContext::from_paths(
         &metadata,
@@ -357,6 +362,11 @@ fn uninstall_linked_available_module_response(
 ) -> Result<AdminModuleInstallResponse, ApiErrorResponse> {
     write_linked_module_enabled_env(PathBuf::from(".env"), &catalog_entry.name, false)
         .map_err(|error| install_error(error, ctx))?;
+    remove_runtime_console_extension_registry_module(
+        PathBuf::from(CONSOLE_EXTENSION_REGISTRY_PATH),
+        &catalog_entry.name,
+    )
+    .map_err(|error| install_error(error, ctx))?;
     let metadata = admin_module_metadata_snapshot().modules;
     let install_state = AvailableModuleInstallStateContext::from_paths(
         &metadata,
@@ -575,6 +585,8 @@ struct LocalModuleCatalogConsolePackage {
     export_name: String,
     #[serde(default, alias = "bundle_url")]
     bundle_url: Option<String>,
+    #[serde(default)]
+    entry: Option<String>,
     #[serde(default, alias = "host_api")]
     host_api: Option<String>,
     #[serde(default)]
@@ -1346,6 +1358,58 @@ fn write_linked_module_enabled_env(
             format!("linked module env file could not be written: {error}"),
         )
     })
+}
+
+fn write_linked_runtime_console_extension_registry(
+    console_registry_file_path: impl AsRef<FsPath>,
+    entry: &LocalModuleCatalogEntry,
+) -> Result<(), AppError> {
+    let console_registry_file_path = console_registry_file_path.as_ref();
+    if entry.console_packages.is_empty() {
+        return Ok(());
+    }
+
+    let mut registry = read_runtime_console_extension_registry(console_registry_file_path)?;
+    registry.version = 1;
+    registry.bundles.retain(|bundle| {
+        bundle.module_name.as_deref() != Some(entry.name.as_str())
+            && !entry.console_packages.iter().any(|package| {
+                bundle.package_name == package.package_name
+                    && bundle.export_name == package.export_name
+            })
+    });
+    registry
+        .bundles
+        .extend(entry.console_packages.iter().map(|package| {
+            LocalRuntimeConsoleBundle {
+                entry: package
+                    .entry
+                    .clone()
+                    .unwrap_or_else(|| linked_console_package_entry(&entry.name, package)),
+                export_name: package.export_name.clone(),
+                host_api: package
+                    .host_api
+                    .clone()
+                    .unwrap_or_else(|| HOST_CONSOLE_PACKAGE_API_VERSION.to_owned()),
+                module_name: Some(entry.name.clone()),
+                package_name: package.package_name.clone(),
+                required_capabilities: package.required_capabilities.clone(),
+                route: package.route.clone(),
+                version: package.version.clone(),
+            }
+        }));
+    write_runtime_console_extension_registry_file(console_registry_file_path, &registry)
+}
+
+fn linked_console_package_entry(
+    module_name: &str,
+    package: &LocalModuleCatalogConsolePackage,
+) -> String {
+    format!(
+        "{CONSOLE_EXTENSION_ROUTE_PREFIX}/{}/{}.js",
+        slugify(module_name),
+        slugify(&package.export_name)
+    )
 }
 
 async fn write_runtime_console_extension_registry(
