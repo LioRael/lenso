@@ -1,4 +1,0 @@
-interface:
-  display_name: "Lenso Contracts SDK"
-  short_description: "Contract generation and TypeScript SDK workflow"
-  default_prompt: "Use $lenso-contracts-sdk to update Lenso contracts and generated SDK output correctly."

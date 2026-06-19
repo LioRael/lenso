@@ -1,4 +1,0 @@
-interface:
-  display_name: "Lenso Module Framework"
-  short_description: "Module framework architecture workflow"
-  default_prompt: "Use $lenso-module-framework to reason about this Lenso module framework change with the current architecture boundaries."

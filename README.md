@@ -30,7 +30,7 @@ wiring, live in [docs/repository-operations.md](docs/repository-operations.md).
 The first public Rust authoring surface is published on crates.io:
 
 ```sh
-cargo add lenso@0.1.0
+cargo add lenso@0.3.5
 ```
 
 The `lenso` crate is the public Rust facade for module-authoring declarations
@@ -83,7 +83,7 @@ First-time local setup lives in [docs/getting-started.md](docs/getting-started.m
 - `fixtures/`
   - `remote-module`: internal remote-module fixture for integration and protocol checks.
 - `contracts/`
-  - Generated and curated OpenAPI, JSON Schema, event, error, and runtime contracts.
+- Generated and curated OpenAPI, JSON Schema, and error contracts.
 - `tools/`
   - `generate-contracts`: writes committed contract artifacts from Rust sources.
   - `arch-check`: lightweight architecture rule checker.

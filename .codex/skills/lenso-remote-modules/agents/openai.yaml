@@ -1,4 +1,0 @@
-interface:
-  display_name: "Lenso Remote Modules"
-  short_description: "Remote module and proxy workflow"
-  default_prompt: "Use $lenso-remote-modules to implement this Lenso remote module change with the right boundaries."
