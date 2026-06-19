@@ -6,7 +6,7 @@ license = "MIT"
 description = "First-party password auth module for the Lenso backend framework."
 repository = "https://github.com/LioRael/lenso"
 homepage = "https://github.com/LioRael/lenso"
-categories = ["web-programming", "authentication"]
+categories = ["web-programming", "development-tools"]
 keywords = ["backend", "framework", "auth"]
 rust-version.workspace = true
 
