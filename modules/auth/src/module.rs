@@ -115,23 +115,55 @@ pub fn admin_surface() -> AdminDeclarativeSurface {
                 },
             }],
         }],
-        actions: vec![AdminAction {
-            name: "revoke_session".to_owned(),
-            label: "Revoke session".to_owned(),
-            capability: AUTH_USERS_READ.to_owned(),
-            input_schema: Some(AdminActionInputSchema {
-                fields: vec![AdminActionInputField {
-                    name: "session_id".to_owned(),
-                    label: "Session".to_owned(),
-                    field_type: FieldType::String,
-                    required: true,
-                    description: None,
-                }],
-            }),
-            confirmation: None,
-            danger_level: AdminActionDangerLevel::Medium,
-        }],
+        actions: vec![
+            action_with_string_input(
+                "revoke_session",
+                "Revoke session",
+                "session_id",
+                "Session",
+                AdminActionDangerLevel::Medium,
+            ),
+            action_with_string_input(
+                "disable_user",
+                "Disable user",
+                "user_id",
+                "User",
+                AdminActionDangerLevel::Medium,
+            ),
+            action_with_string_input(
+                "enable_user",
+                "Enable user",
+                "user_id",
+                "User",
+                AdminActionDangerLevel::Low,
+            ),
+        ],
         fallback_schema: Some(user_schema()),
+    }
+}
+
+fn action_with_string_input(
+    name: &str,
+    label: &str,
+    input_name: &str,
+    input_label: &str,
+    danger_level: AdminActionDangerLevel,
+) -> AdminAction {
+    AdminAction {
+        name: name.to_owned(),
+        label: label.to_owned(),
+        capability: AUTH_USERS_READ.to_owned(),
+        input_schema: Some(AdminActionInputSchema {
+            fields: vec![AdminActionInputField {
+                name: input_name.to_owned(),
+                label: input_label.to_owned(),
+                field_type: FieldType::String,
+                required: true,
+                description: None,
+            }],
+        }),
+        confirmation: None,
+        danger_level,
     }
 }
 
