@@ -33,56 +33,118 @@ pub fn http_routes() -> Vec<ModuleHttpRoute> {
 
 pub fn user_schema() -> AdminSchema {
     AdminSchema {
-        entities: vec![EntitySchema {
-            name: "users".to_owned(),
-            label: "Users".to_owned(),
-            read_capability: AUTH_USERS_READ.to_owned(),
-            fields: vec![
-                FieldSchema {
-                    name: "id".to_owned(),
-                    label: "ID".to_owned(),
-                    field_type: FieldType::String,
-                    nullable: false,
-                },
-                FieldSchema {
-                    name: "created_at".to_owned(),
-                    label: "Created".to_owned(),
-                    field_type: FieldType::Timestamp,
-                    nullable: false,
-                },
-                FieldSchema {
-                    name: "disabled_at".to_owned(),
-                    label: "Disabled".to_owned(),
-                    field_type: FieldType::Timestamp,
-                    nullable: true,
-                },
-            ],
-        }],
+        entities: vec![
+            EntitySchema {
+                name: "users".to_owned(),
+                label: "Users".to_owned(),
+                read_capability: AUTH_USERS_READ.to_owned(),
+                fields: vec![
+                    FieldSchema {
+                        name: "id".to_owned(),
+                        label: "ID".to_owned(),
+                        field_type: FieldType::String,
+                        nullable: false,
+                    },
+                    FieldSchema {
+                        name: "created_at".to_owned(),
+                        label: "Created".to_owned(),
+                        field_type: FieldType::Timestamp,
+                        nullable: false,
+                    },
+                    FieldSchema {
+                        name: "disabled_at".to_owned(),
+                        label: "Disabled".to_owned(),
+                        field_type: FieldType::Timestamp,
+                        nullable: true,
+                    },
+                ],
+            },
+            EntitySchema {
+                name: "sessions".to_owned(),
+                label: "Sessions".to_owned(),
+                read_capability: AUTH_USERS_READ.to_owned(),
+                fields: vec![
+                    FieldSchema {
+                        name: "id".to_owned(),
+                        label: "ID".to_owned(),
+                        field_type: FieldType::String,
+                        nullable: false,
+                    },
+                    FieldSchema {
+                        name: "user_id".to_owned(),
+                        label: "User".to_owned(),
+                        field_type: FieldType::String,
+                        nullable: false,
+                    },
+                    FieldSchema {
+                        name: "created_at".to_owned(),
+                        label: "Created".to_owned(),
+                        field_type: FieldType::Timestamp,
+                        nullable: false,
+                    },
+                    FieldSchema {
+                        name: "expires_at".to_owned(),
+                        label: "Expires".to_owned(),
+                        field_type: FieldType::Timestamp,
+                        nullable: false,
+                    },
+                    FieldSchema {
+                        name: "revoked_at".to_owned(),
+                        label: "Revoked".to_owned(),
+                        field_type: FieldType::Timestamp,
+                        nullable: true,
+                    },
+                ],
+            },
+        ],
+    }
+}
+
+fn auth_workspace() -> ConsoleWorkspaceRef {
+    ConsoleWorkspaceRef {
+        id: "auth".to_owned(),
+        label: "Auth".to_owned(),
+        icon: Some("shield".to_owned()),
     }
 }
 
 pub fn console_surfaces() -> Vec<ConsoleSurface> {
-    vec![ConsoleSurface {
-        name: "auth".to_owned(),
-        label: "Auth".to_owned(),
-        area: ConsoleArea::Data,
-        route: "/data/auth".to_owned(),
-        package: ConsolePackage {
-            name: "@lenso/auth-console".to_owned(),
-            export: "authConsoleModule".to_owned(),
-        },
-        icon: Some("shield".to_owned()),
-        required_capabilities: vec![AUTH_USERS_READ.to_owned()],
-        navigation: Some(ConsoleNavigation {
-            workspace: ConsoleWorkspaceRef {
-                id: "auth".to_owned(),
-                label: "Auth".to_owned(),
-                icon: Some("shield".to_owned()),
+    vec![
+        ConsoleSurface {
+            name: "sessions".to_owned(),
+            label: "Sessions".to_owned(),
+            area: ConsoleArea::Data,
+            route: "/data/auth/sessions".to_owned(),
+            package: ConsolePackage {
+                name: "@lenso/auth-console".to_owned(),
+                export: "authConsoleModule".to_owned(),
             },
-            group: None,
-            order: Some(50),
-        }),
-    }]
+            icon: Some("shield".to_owned()),
+            required_capabilities: vec![AUTH_USERS_READ.to_owned()],
+            navigation: Some(ConsoleNavigation {
+                workspace: auth_workspace(),
+                group: None,
+                order: Some(50),
+            }),
+        },
+        ConsoleSurface {
+            name: "users".to_owned(),
+            label: "Users".to_owned(),
+            area: ConsoleArea::Data,
+            route: "/data/auth/users".to_owned(),
+            package: ConsolePackage {
+                name: "@lenso/auth-console".to_owned(),
+                export: "authConsoleModule".to_owned(),
+            },
+            icon: Some("shield".to_owned()),
+            required_capabilities: vec![AUTH_USERS_READ.to_owned()],
+            navigation: Some(ConsoleNavigation {
+                workspace: auth_workspace(),
+                group: None,
+                order: Some(60),
+            }),
+        },
+    ]
 }
 
 pub fn manifest() -> ModuleManifest {

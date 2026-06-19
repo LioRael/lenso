@@ -1,7 +1,7 @@
 use auth::admin::AuthAdminData;
 use auth::models::{AuthUser, AuthUserId};
 use auth::repositories::{AuthUserRepository, PostgresAuthUserRepository};
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use platform_core::{PLATFORM_MIGRATIONS, apply_migrations};
 use platform_module::{AdminDataSource, AdminListQuery};
 use platform_runtime::RUNTIME_MIGRATIONS;
@@ -60,6 +60,49 @@ async fn admin_data_lists_auth_users_with_cursor_pagination() {
 
     let one = admin.get("users", "usr_a").await.expect("get");
     assert_eq!(one.expect("some")["id"], "usr_a");
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn admin_data_lists_auth_sessions_without_token_hashes() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let migrations = PLATFORM_MIGRATIONS
+        .iter()
+        .chain(RUNTIME_MIGRATIONS)
+        .chain(auth::migrations::AUTH_MIGRATIONS)
+        .copied()
+        .collect::<Vec<_>>();
+    apply_migrations(&db.pool, &migrations)
+        .await
+        .expect("migrations apply");
+
+    let repo = PostgresAuthUserRepository::new(db.pool.clone());
+    let now = Utc::now();
+    repo.create_dev_session(
+        AuthUserId("usr_sessions".to_owned()),
+        "sess_a".to_owned(),
+        "token_a".to_owned(),
+        now,
+        now + Duration::hours(1),
+    )
+    .await
+    .expect("session should be created");
+
+    let admin = AuthAdminData::new(Arc::new(repo));
+    let page = admin
+        .list("sessions", &AdminListQuery::new(10, None))
+        .await
+        .expect("list sessions");
+    assert_eq!(page.records.len(), 1);
+    assert_eq!(page.records[0]["id"], "sess_a");
+    assert_eq!(page.records[0]["user_id"], "usr_sessions");
+    assert!(page.records[0].get("token_hash").is_none());
+
+    let one = admin.get("sessions", "sess_a").await.expect("get session");
+    assert_eq!(one.expect("some")["id"], "sess_a");
 
     db.cleanup().await;
 }
