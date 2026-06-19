@@ -6,7 +6,7 @@ contracts.
 Install it from the release tag:
 
 ```sh
-cargo add lenso --git https://github.com/LioRael/lenso --tag v0.3.0
+cargo add lenso --git https://github.com/LioRael/lenso --tag v0.3.1
 ```
 
 The default facade exposes serializable module manifest declarations:
@@ -23,7 +23,7 @@ The default facade exposes serializable module manifest declarations:
 Enable the `host` feature for the narrow host boot facade:
 
 ```toml
-lenso = { git = "https://github.com/LioRael/lenso", tag = "v0.3.0", features = ["host"] }
+lenso = { git = "https://github.com/LioRael/lenso", tag = "v0.3.1", features = ["host"] }
 ```
 
 Application SQL, repositories, auth/session policy, CRUD shape, and Runtime

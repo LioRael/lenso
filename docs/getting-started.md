@@ -14,7 +14,7 @@ For a blank Rust module-authoring project outside this repository, install the
 Git-pinned facade crate instead:
 
 ```sh
-cargo add lenso --git https://github.com/LioRael/lenso --tag v0.3.0
+cargo add lenso --git https://github.com/LioRael/lenso --tag v0.3.1
 ```
 
 That crate exposes serializable module declarations and manifest linting. Local

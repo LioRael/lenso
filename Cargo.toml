@@ -64,8 +64,8 @@ utoipa = { version = "5.5", features = ["axum_extras", "chrono", "uuid"] }
 utoipa-axum = "0.2"
 uuid = { version = "1.23", features = ["serde", "v7"] }
 
-lenso = { path = "crates/lenso", version = "0.3.0" }
-lenso-contracts = { path = "crates/lenso-contracts", version = "0.3.0" }
+lenso = { path = "crates/lenso", version = "0.3.1" }
+lenso-contracts = { path = "crates/lenso-contracts", version = "0.3.1" }
 platform-core = { path = "crates/platform-core" }
 platform-admin = { path = "crates/platform-admin" }
 platform-admin-data = { path = "crates/platform-admin-data" }
