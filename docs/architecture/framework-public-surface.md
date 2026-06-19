@@ -68,6 +68,9 @@ The current host-facing surface is intentionally narrow:
 - `run_api_from_env_with_composition`, `run_worker_from_env_with_composition`,
   and `run_migrations_from_env_with_composition` for booting the three host
   entrypoints;
+- `run_api_with_embedded_worker_from_env_with_composition` for explicit
+  single-process local or small-host boot when independent worker scaling is
+  not needed;
 - `Migration` and `ModuleManifest` re-exports for starter module metadata;
 - `lenso::host::http` re-exports for linked HTTP handlers, including
   `OpenApiRouter`, `routes!`, `Path`, `JsonBody`, standard error response
