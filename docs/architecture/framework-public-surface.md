@@ -10,7 +10,7 @@ user needs to install before writing their own backend or module.
 The intended first-user flow is:
 
 ```sh
-cargo add lenso@0.3.0
+cargo add lenso --git https://github.com/LioRael/lenso --tag v0.3.0
 pnpm add @lenso/remote-module-kit@0.1.1
 ```
 
@@ -29,14 +29,14 @@ package boundary is the user-facing contract.
 Current registry baseline:
 
 - `lenso@0.2.1` is published on crates.io.
-- `lenso@0.3.0` is the next crates.io facade candidate.
+- `lenso@0.3.0` is the Git facade candidate for generated hosts.
 - `@lenso/remote-module-kit@0.1.1` is published from the Runtime Console
   repository.
 
 ## Rust Facade Crate
 
-The crates.io package named `lenso` is the public Rust facade crate. It should
-not expose the whole backend implementation.
+The Git-pinned `lenso` package is the public Rust facade crate. It should not
+expose the whole backend implementation.
 
 The first useful facade focuses on serializable module declarations:
 
@@ -58,18 +58,37 @@ until a stable external host-authoring API exists. Internal crates such as
 `lenso-bootstrap` should remain `publish = false` until a specific external use
 case justifies publishing them.
 
-Host application assembly is not part of the crates.io `lenso` facade until the
-host boot surface can be published without depending on internal workspace
-crates. The starter may use normal Rust crates such as `sqlx`, `serde`, `axum`,
-and `utoipa` directly for app-owned business code. App-owned SQL and CRUD code
-stay in the starter.
+Host application assembly is exposed through the narrow `lenso::host` facade.
+Keep that surface small: boot the API, worker, and migration runner, compose
+linked modules, and expose linked HTTP authoring helpers.
+
+The current host-facing surface is intentionally narrow:
+
+- `HostBuilder`, `HostComposition`, and `HostLinkedModule` for composing
+  host-owned linked modules;
+- `run_api_from_env_with_composition`, `run_worker_from_env_with_composition`,
+  and `run_migrations_from_env_with_composition` for booting the three host
+  entrypoints;
+- `Migration` and `ModuleManifest` re-exports for starter module metadata;
+- `lenso::host::http` re-exports for linked HTTP handlers, including
+  `OpenApiRouter`, `routes!`, `Path`, `JsonBody`, standard error response
+  helpers, `AppContext`, and `LinkedHttpContribution`.
+
+`lenso::host` should not grow a repository layer, query builder, CRUD framework,
+or auth/session abstraction just because the starter needs one example. The
+starter may use normal Rust crates such as `sqlx`, `serde`, `axum`, and
+`utoipa` directly for app-owned business code. Keep promoting only boot and HTTP
+authoring helpers that stay stable across real starter data slices. App-owned
+SQL and CRUD code stay in the starter.
 
 The starter host template lives in the standalone
 [`LioRael/lenso-cli`](https://github.com/LioRael/lenso-cli) repository and is
 the single source for the `lenso host init <dir>` scaffolder. It keeps the
-current API, worker, and migration entrypoints visible from a blank project.
-Treat new needs in that template as a signal for a separate host facade
-extraction.
+current API, worker, and migration entrypoints visible from a blank project
+while depending on the Git-pinned `lenso` package with the `host` feature. It
+uses Cargo's system-Git fetch mode so private repository credentials follow
+normal Git configuration. Treat new needs in that template as a signal for the
+next host facade extraction.
 
 ## Remote Module Kit
 
@@ -137,6 +156,6 @@ facade exists.
 3. Keep the standalone `lenso-cli` starter template as the host facade pressure
    test until its boot, migration, HTTP, and app-owned data slices stabilize.
 4. Leave app-owned SQL, repositories, CRUD shape, auth/session policy, and
-   console UI out of `lenso`.
+   console UI out of `lenso::host`.
 5. Grow the external examples repository without reintroducing sibling
    workspace dependencies.
