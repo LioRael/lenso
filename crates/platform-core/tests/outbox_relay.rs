@@ -2,8 +2,10 @@ use platform_core::{
     AppError, AppResult, ClaimedOutboxEvent, ErrorCode, EventDispatcher, OutboxRelay,
     PLATFORM_MIGRATIONS, apply_migrations,
 };
-use platform_testing::TestDatabase;
 use serde_json::json;
+
+mod support;
+use support::TestDatabase;
 
 #[tokio::test]
 async fn claim_does_not_double_claim_events() {

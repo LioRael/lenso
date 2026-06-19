@@ -11,10 +11,10 @@ URL, install it, restart services, and inspect the loaded module.
 - Docker for local Postgres.
 
 For a blank Rust module-authoring project outside this repository, install the
-Git-pinned facade crate instead:
+facade crate from crates.io:
 
 ```sh
-cargo add lenso --git https://github.com/LioRael/lenso --tag v0.3.1
+cargo add lenso@0.3.2
 ```
 
 That crate exposes serializable module declarations and manifest linting. Local
@@ -32,13 +32,12 @@ cargo run --bin migrate
 cargo run --bin api
 ```
 
-Run `cargo run --bin worker` in a second shell. The template depends on this
-backend repository's Git-pinned `lenso` package with the `host` feature enabled.
-`lenso::host` wraps the API, worker, migration boot helpers, and a narrow linked
-HTTP route authoring surface; generated hosts should pin it to a tag or commit
-for reproducible builds. The starter exposes `GET /v1/app/status` plus
-`GET`/`POST /v1/app/items` as the first host-owned linked routes and data
-surface.
+Run `cargo run --bin worker` in a second shell. The template depends on the
+crates.io `lenso` package with the `host` feature enabled. `lenso::host` wraps
+the API, worker, migration boot helpers, and a narrow linked HTTP route
+authoring surface; generated hosts should pin a crate version for reproducible
+builds. The starter exposes `GET /v1/app/status` plus `GET`/`POST
+/v1/app/items` as the first host-owned linked routes and data surface.
 Published `lenso-cli` builds include the prebuilt Runtime Console and copy it
 into generated hosts, so `cargo run --bin api` serves the console at
 `/console` without requiring Node.js or pnpm in the host project.

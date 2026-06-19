@@ -1,5 +1,7 @@
 use platform_core::{Migration, apply_migrations};
-use platform_testing::TestDatabase;
+
+mod support;
+use support::TestDatabase;
 
 #[tokio::test]
 async fn applies_multi_statement_migrations() {

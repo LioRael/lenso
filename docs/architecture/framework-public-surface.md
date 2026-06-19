@@ -10,7 +10,7 @@ user needs to install before writing their own backend or module.
 The intended first-user flow is:
 
 ```sh
-cargo add lenso --git https://github.com/LioRael/lenso --tag v0.3.1
+cargo add lenso@0.3.2 --features host
 pnpm add @lenso/remote-module-kit@0.1.1
 ```
 
@@ -28,14 +28,15 @@ package boundary is the user-facing contract.
 
 Current registry baseline:
 
-- `lenso@0.2.1` is published on crates.io.
-- `lenso@0.3.1` is the Git facade candidate for generated hosts.
+- `lenso@0.3.0` is published on crates.io without the `host` feature.
+- `lenso@0.3.2` is the crates.io facade candidate for generated hosts with the
+  `host` feature.
 - `@lenso/remote-module-kit@0.1.1` is published from the Runtime Console
   repository.
 
 ## Rust Facade Crate
 
-The Git-pinned `lenso` package is the public Rust facade crate. It should not
+The crates.io `lenso` package is the public Rust facade crate. It should not
 expose the whole backend implementation.
 
 The first useful facade focuses on serializable module declarations:
@@ -48,15 +49,13 @@ The first useful facade focuses on serializable module declarations:
 - console surface declarations.
 
 These declaration contracts live in `crates/lenso-contracts`, are re-exported
-by `crates/lenso`, and are re-exported by
-`crates/platform-module` for backend workspace compatibility. Behavior seams
-that depend on host internals, such as linked binding builders, admin data
-sources, and event/function registration contexts, remain in `platform-module`
-until a stable external host-authoring API exists. Internal crates such as
-`platform-core`, `platform-http`, `platform-runtime`, `platform-admin`,
-`platform-admin-data`, `platform-module-remote`, `platform-testing`, and
-`lenso-bootstrap` should remain `publish = false` until a specific external use
-case justifies publishing them.
+by `crates/lenso`, and are re-exported by `crates/platform-module` for backend
+workspace compatibility. Behavior seams that depend on host internals, such as
+linked binding builders, admin data sources, and event/function registration
+contexts, remain behind internal crates and are exposed to users through the
+narrow `lenso::host` facade. Those host dependency crates are published with
+Lenso-owned package names, such as `lenso-platform-core`, only so Cargo can
+resolve the `lenso/host` feature from crates.io.
 
 Host application assembly is exposed through the narrow `lenso::host` facade.
 Keep that surface small: boot the API, worker, and migration runner, compose
@@ -85,10 +84,8 @@ The starter host template lives in the standalone
 [`LioRael/lenso-cli`](https://github.com/LioRael/lenso-cli) repository and is
 the single source for the `lenso host init <dir>` scaffolder. It keeps the
 current API, worker, and migration entrypoints visible from a blank project
-while depending on the Git-pinned `lenso` package with the `host` feature. It
-uses Cargo's system-Git fetch mode so private repository credentials follow
-normal Git configuration. Treat new needs in that template as a signal for the
-next host facade extraction.
+while depending on the crates.io `lenso` package with the `host` feature. Treat
+new needs in that template as a signal for the next host facade extraction.
 
 ## Remote Module Kit
 

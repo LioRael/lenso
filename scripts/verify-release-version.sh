@@ -19,17 +19,9 @@ esac
 package_version="${version#v}"
 lenso_pkgid="$(cargo pkgid -p lenso)"
 lenso_crate_version="${lenso_pkgid##*#}"
-lenso_contracts_pkgid="$(cargo pkgid -p lenso-contracts)"
-lenso_contracts_version="${lenso_contracts_pkgid##*#}"
-
 if [ "$lenso_crate_version" != "$package_version" ]; then
     echo "lenso crate version $lenso_crate_version does not match $version" >&2
     exit 1
 fi
 
-if [ "$lenso_contracts_version" != "$package_version" ]; then
-    echo "lenso-contracts crate version $lenso_contracts_version does not match $version" >&2
-    exit 1
-fi
-
-echo "Release version $version matches lenso and lenso-contracts crate metadata."
+echo "Release version $version matches lenso crate metadata."
