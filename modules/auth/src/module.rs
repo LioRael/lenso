@@ -59,6 +59,18 @@ pub fn user_schema() -> AdminSchema {
                         field_type: FieldType::Timestamp,
                         nullable: true,
                     },
+                    FieldSchema {
+                        name: "disabled_reason".to_owned(),
+                        label: "Reason".to_owned(),
+                        field_type: FieldType::String,
+                        nullable: true,
+                    },
+                    FieldSchema {
+                        name: "disabled_until".to_owned(),
+                        label: "Until".to_owned(),
+                        field_type: FieldType::Timestamp,
+                        nullable: true,
+                    },
                 ],
             },
             EntitySchema {
@@ -123,13 +135,7 @@ pub fn admin_surface() -> AdminDeclarativeSurface {
                 "Session",
                 AdminActionDangerLevel::Medium,
             ),
-            action_with_string_input(
-                "disable_user",
-                "Disable user",
-                "user_id",
-                "User",
-                AdminActionDangerLevel::Medium,
-            ),
+            disable_user_action(),
             action_with_string_input(
                 "enable_user",
                 "Enable user",
@@ -164,6 +170,41 @@ fn action_with_string_input(
         }),
         confirmation: None,
         danger_level,
+    }
+}
+
+fn disable_user_action() -> AdminAction {
+    AdminAction {
+        name: "disable_user".to_owned(),
+        label: "Disable user".to_owned(),
+        capability: AUTH_USERS_READ.to_owned(),
+        input_schema: Some(AdminActionInputSchema {
+            fields: vec![
+                AdminActionInputField {
+                    name: "user_id".to_owned(),
+                    label: "User".to_owned(),
+                    field_type: FieldType::String,
+                    required: true,
+                    description: None,
+                },
+                AdminActionInputField {
+                    name: "reason".to_owned(),
+                    label: "Reason".to_owned(),
+                    field_type: FieldType::String,
+                    required: false,
+                    description: None,
+                },
+                AdminActionInputField {
+                    name: "disabled_until".to_owned(),
+                    label: "Until".to_owned(),
+                    field_type: FieldType::Timestamp,
+                    required: false,
+                    description: Some("RFC3339 timestamp; omit for permanent".to_owned()),
+                },
+            ],
+        }),
+        confirmation: None,
+        danger_level: AdminActionDangerLevel::Medium,
     }
 }
 
