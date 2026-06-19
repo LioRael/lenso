@@ -199,6 +199,8 @@ from `LENSO_CONSOLE_EXTENSIONS_DIR` (default `.lenso/console/extensions`); the
 Runtime Console reads
 `/console/extensions/registry.json` before creating its router and registers
 compatible bundle exports as `runtime_bundle` packages.
+Bundles that render React components must externalize React and the console host
+API to the stable same-origin host entries under `/console/extensions/host/*`.
 
 The first registry shape is deliberately small:
 

@@ -240,7 +240,7 @@ async fn install_available_module_response(
     let catalog_entry =
         find_installable_catalog_entry(&module_name).map_err(|error| install_error(error, ctx))?;
     if catalog_entry.source == "linked" {
-        return install_linked_available_module_response(catalog_entry, ctx);
+        return install_linked_available_module_response(catalog_entry, ctx).await;
     }
     let base_url = install_base_url(&catalog_entry).map_err(|error| install_error(error, ctx))?;
     validate_installable_catalog_entry(&catalog_entry, &base_url)
@@ -317,7 +317,7 @@ fn uninstall_available_module_response(
     })
 }
 
-fn install_linked_available_module_response(
+async fn install_linked_available_module_response(
     catalog_entry: LocalModuleCatalogEntry,
     ctx: &RequestContext,
 ) -> Result<AdminModuleInstallResponse, ApiErrorResponse> {
@@ -334,10 +334,11 @@ fn install_linked_available_module_response(
         .map_err(|error| install_error(error, ctx))?;
     write_linked_module_enabled_env(PathBuf::from(".env"), &catalog_entry.name, true)
         .map_err(|error| install_error(error, ctx))?;
-    write_linked_runtime_console_extension_registry(
+    write_linked_runtime_console_extensions(
         PathBuf::from(CONSOLE_EXTENSION_REGISTRY_PATH),
         &catalog_entry,
     )
+    .await
     .map_err(|error| install_error(error, ctx))?;
     let metadata = admin_module_metadata_snapshot().modules;
     let install_state = AvailableModuleInstallStateContext::from_paths(
@@ -1399,6 +1400,28 @@ fn write_linked_runtime_console_extension_registry(
             }
         }));
     write_runtime_console_extension_registry_file(console_registry_file_path, &registry)
+}
+
+async fn write_linked_runtime_console_extensions(
+    console_registry_file_path: impl AsRef<FsPath>,
+    entry: &LocalModuleCatalogEntry,
+) -> Result<(), AppError> {
+    if entry.console_packages.is_empty() {
+        return Ok(());
+    }
+    if entry
+        .console_packages
+        .iter()
+        .all(|package| package.bundle_url.is_some())
+    {
+        return write_runtime_console_extension_registry(
+            console_registry_file_path,
+            entry,
+            entry.base_url.as_deref().unwrap_or(""),
+        )
+        .await;
+    }
+    write_linked_runtime_console_extension_registry(console_registry_file_path, entry)
 }
 
 fn linked_console_package_entry(
