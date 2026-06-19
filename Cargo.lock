@@ -1387,7 +1387,16 @@ dependencies = [
 name = "lenso"
 version = "0.3.0"
 dependencies = [
+ "anyhow",
+ "axum",
+ "lenso-api",
+ "lenso-bootstrap",
  "lenso-contracts",
+ "lenso-migrate",
+ "lenso-worker",
+ "platform-core",
+ "platform-http",
+ "platform-module",
 ]
 
 [[package]]
