@@ -89,7 +89,7 @@ Most release-smoke failures are local setup issues:
 The first publishable scope is intentionally narrow:
 
 - Linked modules load through the app bootstrap composition root.
-- Remote modules install through `lenso module add <manifest-url>`.
+- Remote modules install through `lenso module install <manifest-url>`.
 - Remote module manifests can declare schema-admin, HTTP routes, runtime
   functions, and lifecycle activation jobs.
 - Runtime Console integration is provided by the separate
@@ -127,7 +127,7 @@ Use [release-notes-template.md](release-notes-template.md) for manual notes, or
 run:
 
 ```sh
-LENSO_RELEASE_VERSION=v0.3.1 just release-package
+LENSO_RELEASE_VERSION=vX.Y.Z just release-package
 ```
 
 The end-to-end release branch and GitHub Actions flow lives in

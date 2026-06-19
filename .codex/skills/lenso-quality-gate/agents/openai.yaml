@@ -1,4 +1,0 @@
-interface:
-  display_name: "Lenso Quality Gate"
-  short_description: "Verification and clean commit workflow for Lenso"
-  default_prompt: "Use $lenso-quality-gate to validate this Lenso change and prepare a clean commit."

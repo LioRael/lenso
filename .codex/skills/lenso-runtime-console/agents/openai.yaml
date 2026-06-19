@@ -1,4 +1,0 @@
-interface:
-  display_name: "Lenso Runtime Console"
-  short_description: "Runtime Console React workflow and checks"
-  default_prompt: "Use $lenso-runtime-console to implement this Runtime Console change with the right checks."
