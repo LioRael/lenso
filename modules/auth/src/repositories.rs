@@ -14,6 +14,11 @@ pub trait AuthUserRepository: std::fmt::Debug + Send + Sync {
         limit: i64,
         cursor: Option<&str>,
     ) -> AppResult<Vec<AuthSessionRecord>>;
+    async fn revoke_session_by_id(
+        &self,
+        session_id: &str,
+        revoked_at: DateTime<Utc>,
+    ) -> AppResult<bool>;
 }
 
 #[derive(Debug, Clone)]
@@ -232,6 +237,28 @@ impl AuthUserRepository for PostgresAuthUserRepository {
         .map_err(map_sql_error)?;
 
         Ok(rows.into_iter().map(session_from_row).collect())
+    }
+
+    async fn revoke_session_by_id(
+        &self,
+        session_id: &str,
+        revoked_at: DateTime<Utc>,
+    ) -> AppResult<bool> {
+        let result = sqlx::query(
+            r#"
+            update auth.sessions
+            set revoked_at = $2
+            where id = $1
+              and revoked_at is null
+            "#,
+        )
+        .bind(session_id)
+        .bind(revoked_at)
+        .execute(&self.pool)
+        .await
+        .map_err(map_sql_error)?;
+
+        Ok(result.rows_affected() > 0)
     }
 }
 

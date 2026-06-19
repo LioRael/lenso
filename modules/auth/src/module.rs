@@ -3,8 +3,10 @@ use crate::repositories::PostgresAuthUserRepository;
 use platform_core::AppContext;
 use platform_http::ApiOpenApiRouter;
 use platform_module::{
-    AdminSchema, ConsoleArea, ConsoleNavigation, ConsolePackage, ConsoleSurface,
-    ConsoleWorkspaceRef, EntitySchema, FieldSchema, FieldType, LinkedBinding,
+    AdminAction, AdminActionDangerLevel, AdminActionInputField, AdminActionInputSchema,
+    AdminDeclarativeComponent, AdminDeclarativePage, AdminDeclarativeSection,
+    AdminDeclarativeSurface, AdminSchema, ConsoleArea, ConsoleNavigation, ConsolePackage,
+    ConsoleSurface, ConsoleWorkspaceRef, EntitySchema, FieldSchema, FieldType, LinkedBinding,
     LinkedHttpContribution, Module, ModuleHttpMethod, ModuleHttpRoute, ModuleManifest,
 };
 use std::sync::Arc;
@@ -100,6 +102,39 @@ pub fn user_schema() -> AdminSchema {
     }
 }
 
+pub fn admin_surface() -> AdminDeclarativeSurface {
+    AdminDeclarativeSurface {
+        pages: vec![AdminDeclarativePage {
+            name: "sessions".to_owned(),
+            label: "Sessions".to_owned(),
+            sections: vec![AdminDeclarativeSection {
+                name: "sessions".to_owned(),
+                label: "Sessions".to_owned(),
+                component: AdminDeclarativeComponent::EntityTable {
+                    entity: "sessions".to_owned(),
+                },
+            }],
+        }],
+        actions: vec![AdminAction {
+            name: "revoke_session".to_owned(),
+            label: "Revoke session".to_owned(),
+            capability: AUTH_USERS_READ.to_owned(),
+            input_schema: Some(AdminActionInputSchema {
+                fields: vec![AdminActionInputField {
+                    name: "session_id".to_owned(),
+                    label: "Session".to_owned(),
+                    field_type: FieldType::String,
+                    required: true,
+                    description: None,
+                }],
+            }),
+            confirmation: None,
+            danger_level: AdminActionDangerLevel::Medium,
+        }],
+        fallback_schema: Some(user_schema()),
+    }
+}
+
 fn auth_workspace() -> ConsoleWorkspaceRef {
     ConsoleWorkspaceRef {
         id: "auth".to_owned(),
@@ -151,7 +186,7 @@ pub fn manifest() -> ModuleManifest {
     ModuleManifest::builder(MODULE_NAME)
         .capabilities(vec![AUTH_USERS_READ.to_owned()])
         .http_routes(http_routes())
-        .admin(user_schema())
+        .declarative_admin(admin_surface())
         .console(console_surfaces())
         .build()
 }
@@ -171,7 +206,10 @@ pub fn binding() -> LinkedBinding {
 
 pub fn module(ctx: &AppContext) -> Module {
     let repository = Arc::new(PostgresAuthUserRepository::new(ctx.db.clone()));
-    Module::linked(manifest(), binding()).with_admin_data(Arc::new(AuthAdminData::new(repository)))
+    let admin = Arc::new(AuthAdminData::new(repository));
+    Module::linked(manifest(), binding())
+        .with_admin_data(admin.clone())
+        .with_admin_actions(admin)
 }
 
 #[cfg(test)]
@@ -188,7 +226,9 @@ mod tests {
         assert_eq!(manifest.http_routes, http_routes());
         assert_eq!(
             manifest.admin,
-            Some(platform_module::AdminSurface::Schema(user_schema()))
+            Some(platform_module::AdminSurface::DeclarativeCustom(
+                admin_surface()
+            ))
         );
         assert_eq!(manifest.console, console_surfaces());
 

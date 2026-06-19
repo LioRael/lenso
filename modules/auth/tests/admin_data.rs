@@ -3,7 +3,7 @@ use auth::models::{AuthUser, AuthUserId};
 use auth::repositories::{AuthUserRepository, PostgresAuthUserRepository};
 use chrono::{Duration, Utc};
 use platform_core::{PLATFORM_MIGRATIONS, apply_migrations};
-use platform_module::{AdminDataSource, AdminListQuery};
+use platform_module::{AdminActionSource, AdminDataSource, AdminListQuery};
 use platform_runtime::RUNTIME_MIGRATIONS;
 use platform_testing::TestDatabase;
 use std::sync::Arc;
@@ -103,6 +103,54 @@ async fn admin_data_lists_auth_sessions_without_token_hashes() {
 
     let one = admin.get("sessions", "sess_a").await.expect("get session");
     assert_eq!(one.expect("some")["id"], "sess_a");
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn admin_action_revokes_auth_session() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let migrations = PLATFORM_MIGRATIONS
+        .iter()
+        .chain(RUNTIME_MIGRATIONS)
+        .chain(auth::migrations::AUTH_MIGRATIONS)
+        .copied()
+        .collect::<Vec<_>>();
+    apply_migrations(&db.pool, &migrations)
+        .await
+        .expect("migrations apply");
+
+    let repo = PostgresAuthUserRepository::new(db.pool.clone());
+    let now = Utc::now();
+    repo.create_dev_session(
+        AuthUserId("usr_revoke".to_owned()),
+        "sess_revoke".to_owned(),
+        "token_revoke".to_owned(),
+        now,
+        now + Duration::hours(1),
+    )
+    .await
+    .expect("session should be created");
+
+    let admin = AuthAdminData::new(Arc::new(repo));
+    let result = admin
+        .invoke(
+            "revoke_session",
+            serde_json::json!({"session_id": "sess_revoke"}),
+        )
+        .await
+        .expect("revoke session");
+    assert_eq!(result["revoked"], true);
+
+    let one = admin
+        .get("sessions", "sess_revoke")
+        .await
+        .expect("get session")
+        .expect("session");
+    assert!(one["revoked_at"].as_str().is_some());
+    assert!(one.get("token_hash").is_none());
 
     db.cleanup().await;
 }

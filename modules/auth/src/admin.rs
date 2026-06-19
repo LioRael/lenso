@@ -1,9 +1,12 @@
 use crate::models::{AuthSessionRecord, AuthUser, AuthUserId};
 use crate::repositories::AuthUserRepository;
+use chrono::Utc;
 use platform_core::{AppError, AppResult, ErrorCode};
-use platform_module::{AdminDataSource, AdminListQuery, AdminPage};
+use platform_module::{AdminActionSource, AdminDataSource, AdminListQuery, AdminPage};
 use serde_json::Value;
 use std::sync::Arc;
+
+const REVOKE_SESSION_ACTION: &str = "revoke_session";
 
 #[derive(Debug)]
 pub struct AuthAdminData {
@@ -80,10 +83,43 @@ impl AdminDataSource for AuthAdminData {
     }
 }
 
+#[async_trait::async_trait]
+impl AdminActionSource for AuthAdminData {
+    async fn invoke(&self, action: &str, input: Value) -> AppResult<Value> {
+        match action {
+            REVOKE_SESSION_ACTION => {
+                let session_id = input
+                    .get("session_id")
+                    .and_then(Value::as_str)
+                    .filter(|value| !value.is_empty())
+                    .ok_or_else(|| {
+                        AppError::new(ErrorCode::Validation, "session_id is required")
+                    })?;
+                let revoked = self
+                    .repository
+                    .revoke_session_by_id(session_id, Utc::now())
+                    .await?;
+                Ok(serde_json::json!({
+                    "session_id": session_id,
+                    "revoked": revoked,
+                }))
+            }
+            other => Err(unknown_action(other)),
+        }
+    }
+}
+
 fn unknown_entity(entity: &str) -> AppError {
     AppError::new(
         ErrorCode::NotFound,
         format!("unknown admin entity: {entity}"),
+    )
+}
+
+fn unknown_action(action: &str) -> AppError {
+    AppError::new(
+        ErrorCode::NotFound,
+        format!("unknown admin action: {action}"),
     )
 }
 
