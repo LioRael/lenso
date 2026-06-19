@@ -20,7 +20,7 @@ just release-check
 ## 2. Create A Release Branch
 
 ```sh
-git switch -c release/v0.3.0
+git switch -c release/v0.3.1
 ```
 
 Use the version you plan to publish. Keep the branch focused on release notes,
@@ -32,15 +32,15 @@ Build local release artifacts:
 
 ```sh
 just console-build
-LENSO_RELEASE_VERSION=v0.3.0 just release-package
+LENSO_RELEASE_VERSION=v0.3.1 just release-package
 ```
 
 This writes:
 
-- `dist/release/lenso-v0.3.0-release-notes.md`
-- `dist/release/lenso-v0.3.0-source.tar.gz`
-- `dist/release/lenso-v0.3.0-hosted.tar.gz` when `.lenso/console/dist` exists
-- `dist/release/lenso-v0.3.0-artifact-readme.md`
+- `dist/release/lenso-v0.3.1-release-notes.md`
+- `dist/release/lenso-v0.3.1-source.tar.gz`
+- `dist/release/lenso-v0.3.1-hosted.tar.gz` when `.lenso/console/dist` exists
+- `dist/release/lenso-v0.3.1-artifact-readme.md`
 
 The source archive is generated from `git archive HEAD`, so it contains committed
 source files and excludes local build output, `.git`, `target/`, and `dist/`.
@@ -53,7 +53,7 @@ console embedding.
 
 Open the `release` workflow in GitHub Actions and trigger it with:
 
-- `version`: `v0.3.0`
+- `version`: `v0.3.1`
 - `notes`: a short release summary
 - `publish_rust_crate`: `false`
 
@@ -79,9 +79,9 @@ The dry-run path does not upload package versions.
 After the dry-run workflow passes, trigger the same workflow again with the
 artifact you intend to publish:
 
-- `version`: `v0.3.0`
+- `version`: `v0.3.1`
 - `notes`: the release summary
-- `publish_rust_crate`: `true` to publish `lenso-contracts@0.3.0` to crates.io
+- `publish_rust_crate`: `true` to publish `lenso-contracts@0.3.1` to crates.io
 
 The publish path first repeats the full release and package gates, then uploads
 the selected artifact. If the secret is missing, the workflow stops before
@@ -97,8 +97,8 @@ and attaches the source package plus artifact README.
 After the publish workflow passes, verify the release:
 
 ```sh
-git rev-parse v0.3.0
-gh release view v0.3.0
+git rev-parse v0.3.1
+gh release view v0.3.1
 ```
 
 ## 8. Keep The First Release Narrow

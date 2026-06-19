@@ -10,7 +10,7 @@ user needs to install before writing their own backend or module.
 The intended first-user flow is:
 
 ```sh
-cargo add lenso --git https://github.com/LioRael/lenso --tag v0.3.0
+cargo add lenso --git https://github.com/LioRael/lenso --tag v0.3.1
 pnpm add @lenso/remote-module-kit@0.1.1
 ```
 
@@ -29,7 +29,7 @@ package boundary is the user-facing contract.
 Current registry baseline:
 
 - `lenso@0.2.1` is published on crates.io.
-- `lenso@0.3.0` is the Git facade candidate for generated hosts.
+- `lenso@0.3.1` is the Git facade candidate for generated hosts.
 - `@lenso/remote-module-kit@0.1.1` is published from the Runtime Console
   repository.
 
