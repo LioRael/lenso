@@ -3,9 +3,11 @@ use platform_core::{
     apply_migrations, insert_remote_http_proxy_call, remote_proxy_call_story_event_id,
     story_events::http_request_story_event_id,
 };
-use platform_testing::{SequentialIdGenerator, TestDatabase};
 use serde_json::json;
 use sqlx::Row;
+
+mod support;
+use support::{SequentialIdGenerator, TestDatabase};
 
 #[tokio::test]
 async fn remote_proxy_call_records_request_and_trace_context() {

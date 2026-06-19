@@ -1,10 +1,18 @@
 [package]
-name = "platform-http"
+name = "lenso-platform-http"
 version = "0.1.0"
 edition.workspace = true
-license.workspace = true
-publish.workspace = true
+license = "MIT"
+description = "HTTP primitives for the Lenso backend framework."
+repository = "https://github.com/LioRael/lenso"
+homepage = "https://github.com/LioRael/lenso"
+categories = ["web-programming", "development-tools"]
+keywords = ["backend", "framework", "http"]
 rust-version.workspace = true
+
+[lib]
+name = "platform_http"
+path = "src/lib.rs"
 
 [dependencies]
 async-trait.workspace = true

@@ -4,9 +4,11 @@ use platform_core::{
     PLATFORM_MIGRATIONS, PostgresRuntimeConfigProvider, RuntimeConfigProvider,
     RuntimeConfigRegistry, WorkerRuntimeConfig, apply_migrations,
 };
-use platform_testing::TestDatabase;
 use serde_json::json;
 use std::sync::Arc;
+
+mod support;
+use support::TestDatabase;
 
 #[tokio::test]
 async fn worker_config_round_trips_through_postgres() {

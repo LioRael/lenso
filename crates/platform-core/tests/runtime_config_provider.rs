@@ -4,9 +4,11 @@ use platform_core::{
     RuntimeConfigGeneratedValue, RuntimeConfigProvider, RuntimeConfigRegistry, RuntimeConfigScope,
     RuntimeConfigType, RuntimeConfigVisibilityCondition, apply_migrations,
 };
-use platform_testing::TestDatabase;
 use serde_json::json;
 use std::sync::Arc;
+
+mod support;
+use support::TestDatabase;
 
 fn registry() -> RuntimeConfigRegistry {
     RuntimeConfigRegistry::try_new(vec![RuntimeConfigDescriptor {

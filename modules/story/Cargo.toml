@@ -1,10 +1,18 @@
 [package]
-name = "story"
+name = "lenso-module-story"
 version = "0.1.0"
 edition.workspace = true
-license.workspace = true
-publish.workspace = true
+license = "MIT"
+description = "First-party runtime story module for the Lenso backend framework."
+repository = "https://github.com/LioRael/lenso"
+homepage = "https://github.com/LioRael/lenso"
+categories = ["web-programming", "development-tools"]
+keywords = ["backend", "framework", "modules"]
 rust-version.workspace = true
+
+[lib]
+name = "story"
+path = "src/lib.rs"
 
 [dependencies]
 axum.workspace = true

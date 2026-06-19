@@ -3,8 +3,8 @@ info:
   title: Lenso API
   description: Rust-first modular monolith API contract
   license:
-    name: UNLICENSED
-    identifier: UNLICENSED
+    name: MIT
+    identifier: MIT
   version: 1.0.0
 paths:
   /admin/config/descriptors:

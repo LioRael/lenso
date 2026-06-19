@@ -1,10 +1,18 @@
 [package]
-name = "platform-core"
+name = "lenso-platform-core"
 version = "0.1.0"
 edition.workspace = true
-license.workspace = true
-publish.workspace = true
+license = "MIT"
+description = "Core runtime primitives for the Lenso backend framework."
+repository = "https://github.com/LioRael/lenso"
+homepage = "https://github.com/LioRael/lenso"
+categories = ["web-programming", "development-tools"]
+keywords = ["backend", "framework", "runtime"]
 rust-version.workspace = true
+
+[lib]
+name = "platform_core"
+path = "src/lib.rs"
 
 [dependencies]
 lenso-contracts.workspace = true
@@ -25,9 +33,6 @@ tracing.workspace = true
 tracing-opentelemetry.workspace = true
 tracing-subscriber.workspace = true
 uuid.workspace = true
-
-[dev-dependencies]
-platform-testing.workspace = true
 
 [lints]
 workspace = true
