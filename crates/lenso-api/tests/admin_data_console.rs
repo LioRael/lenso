@@ -621,7 +621,7 @@ async fn available_modules_returns_remote_install_rows() {
     );
     assert_eq!(
         body["modules"][0]["hostCompatibility"]["lensoVersion"],
-        "0.1.1"
+        "0.1.2"
     );
     assert_eq!(body["modules"][0]["manifestStatus"], "ok");
     assert_eq!(body["modules"][0]["status"], "ready");
@@ -674,7 +674,8 @@ async fn available_modules_reads_official_catalog_when_no_local_catalog_exists()
     assert_eq!(body["catalog"]["modules"], 3);
     assert_eq!(body["modules"][0]["name"], "auth");
     assert_eq!(body["modules"][0]["source"], "linked");
-    assert_eq!(body["modules"][0]["catalogVersion"], "0.1.1");
+    assert_eq!(body["modules"][0]["catalogVersion"], "0.1.2");
+    assert_eq!(body["modules"][0]["consolePackageHints"], 1);
     assert_eq!(body["modules"][1]["name"], "auth-password");
     assert_eq!(body["modules"][1]["source"], "linked");
     assert_eq!(body["modules"][2]["name"], "remote-crm");
@@ -711,7 +712,7 @@ async fn available_modules_reads_local_module_catalog() {
                     "consolePackageApi": "1",
                     "lenso": {
                         "minVersion": "0.1.0",
-                        "maxVersion": "0.1.1"
+                        "maxVersion": "0.1.2"
                     }
                 },
                 "consolePackages": [{
@@ -1056,6 +1057,7 @@ async fn available_linked_module_install_sets_demo_composition_profile() {
     let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
     remove_module_catalog_fixture();
     let _env = FileFixture::write(".env", "DATABASE_URL=postgres://localhost/lenso\n");
+    let _console_registry = FileFixture::remove(".lenso/console/extensions/registry.json");
     install_admin_module_metadata(vec![]);
     let ctx = AppContext::new(
         AppConfig::from_env(),
@@ -1080,6 +1082,12 @@ async fn available_linked_module_install_sets_demo_composition_profile() {
     assert_eq!(body["linkedSource"]["configured"], true);
     assert_eq!(body["linkedSource"]["desiredEnabled"], true);
     assert_eq!(body["linkedSource"]["runningEnabled"], false);
+    assert_eq!(body["consolePlan"]["packageCount"], 1);
+    assert_eq!(
+        body["consolePlan"]["packages"][0]["key"],
+        "@lenso/auth-console#authConsoleModule"
+    );
+    assert_eq!(body["consolePlan"]["packages"][0]["status"], "installed");
     assert_eq!(
         body["linkedSource"]["restartReason"],
         "linked module enabled by env override; restart API and worker"
@@ -1089,6 +1097,24 @@ async fn available_linked_module_install_sets_demo_composition_profile() {
     assert!(env_file.contains("LENSO_COMPOSITION_PROFILE=demo\n"));
     assert!(env_file.contains("LENSO_MODULE_AUTH_ENABLED=true\n"));
     assert!(!env_file.contains("REMOTE_MODULES=auth"));
+    let console_registry =
+        fs::read_to_string(".lenso/console/extensions/registry.json").expect("read registry");
+    let console_registry_json: Value =
+        serde_json::from_str(&console_registry).expect("registry is json");
+    assert_eq!(console_registry_json["version"], 1);
+    assert_eq!(
+        console_registry_json["bundles"][0]["entry"],
+        "/console/extensions/auth/auth-console.js"
+    );
+    assert_eq!(console_registry_json["bundles"][0]["moduleName"], "auth");
+    assert_eq!(
+        console_registry_json["bundles"][0]["packageName"],
+        "@lenso/auth-console"
+    );
+    assert_eq!(
+        console_registry_json["bundles"][0]["requiredCapabilities"],
+        serde_json::json!(["auth.users.read"])
+    );
 
     let status_response = build_router(AppContext::new(
         AppConfig::from_env(),
@@ -1107,6 +1133,7 @@ async fn available_linked_module_install_sets_demo_composition_profile() {
         .expect("auth available module");
     assert_eq!(auth["installState"]["remoteSource"], Value::Null);
     assert_eq!(auth["installState"]["linkedSource"]["restartPending"], true);
+    assert_eq!(auth["installState"]["consolePlan"]["packageCount"], 1);
     assert_eq!(
         auth["installState"]["linkedSource"]["restartReason"],
         "linked module enabled by env override; restart API and worker"
@@ -1276,6 +1303,29 @@ async fn available_linked_module_uninstall_disables_module_env_override() {
         ".env",
         "LENSO_COMPOSITION_PROFILE=demo\nLENSO_MODULE_AUTH_ENABLED=true\n",
     );
+    let _console_registry = FileFixture::write(
+        ".lenso/console/extensions/registry.json",
+        serde_json::json!({
+            "version": 1,
+            "bundles": [
+                {
+                    "entry": "/console/extensions/auth/auth-console.js",
+                    "exportName": "authConsoleModule",
+                    "hostApi": "1",
+                    "moduleName": "auth",
+                    "packageName": "@lenso/auth-console"
+                },
+                {
+                    "entry": "/console/extensions/crm/crm-console.js",
+                    "exportName": "crmConsoleModule",
+                    "hostApi": "1",
+                    "moduleName": "crm",
+                    "packageName": "@vendor/crm-console"
+                }
+            ]
+        })
+        .to_string(),
+    );
     install_admin_module_metadata(vec![AdminModuleMetadata {
         module_name: "auth".to_owned(),
         source: ModuleSource::Linked,
@@ -1317,6 +1367,15 @@ async fn available_linked_module_uninstall_disables_module_env_override() {
     let env_file = fs::read_to_string(".env").expect("read env file");
     assert!(env_file.contains("LENSO_COMPOSITION_PROFILE=demo\n"));
     assert!(env_file.contains("LENSO_MODULE_AUTH_ENABLED=false\n"));
+    let console_registry =
+        fs::read_to_string(".lenso/console/extensions/registry.json").expect("read registry");
+    let console_registry_json: Value =
+        serde_json::from_str(&console_registry).expect("registry is json");
+    assert_eq!(
+        console_registry_json["bundles"].as_array().unwrap().len(),
+        1
+    );
+    assert_eq!(console_registry_json["bundles"][0]["moduleName"], "crm");
 
     let status_response = build_router(AppContext::new(
         AppConfig::from_env(),
@@ -1335,6 +1394,7 @@ async fn available_linked_module_uninstall_disables_module_env_override() {
         .expect("auth available module");
     assert_eq!(auth["installState"]["remoteSource"], Value::Null);
     assert_eq!(auth["installState"]["linkedSource"]["restartPending"], true);
+    assert_eq!(auth["installState"]["consolePlan"]["packageCount"], 0);
     assert_eq!(
         auth["installState"]["linkedSource"]["restartReason"],
         "linked module disabled by env override; restart API and worker"
@@ -1405,7 +1465,7 @@ async fn available_modules_marks_catalog_preflight_issues() {
     assert_eq!(body["issues"][0]["group"], "Compatibility");
     assert_eq!(
         body["issues"][0]["message"],
-        "billing requires Lenso >= 0.2.0; host is 0.1.1"
+        "billing requires Lenso >= 0.2.0; host is 0.1.2"
     );
     assert_eq!(body["issues"][1]["group"], "Catalog");
     assert_eq!(body["issues"][1]["message"], "local-crm baseUrl is missing");

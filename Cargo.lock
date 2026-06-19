@@ -1343,7 +1343,7 @@ dependencies = [
 
 [[package]]
 name = "lenso"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "anyhow",
  "axum",
@@ -1359,7 +1359,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-api"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1390,7 +1390,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-bootstrap"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "async-trait",
  "lenso-module-auth",
@@ -1421,7 +1421,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-migrate"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "lenso-bootstrap",
@@ -1432,7 +1432,9 @@ dependencies = [
 
 [[package]]
 name = "lenso-module-auth"
-version = "0.1.1"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9dc72583de134339f1a7d4ab7442166a38725913b1b98808042ab8bcc8cd916d"
 dependencies = [
  "async-trait",
  "axum",
@@ -1440,20 +1442,19 @@ dependencies = [
  "lenso-platform-core",
  "lenso-platform-http",
  "lenso-platform-module",
- "lenso-platform-runtime",
- "lenso-platform-testing",
  "serde",
  "serde_json",
  "sha2 0.11.0",
  "sqlx",
- "tokio",
  "tracing",
  "utoipa",
 ]
 
 [[package]]
 name = "lenso-module-auth-password"
-version = "0.1.0"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9774891363deb3540c3902431e2d10ed194efd9aaf9b6bcfbb4604b5255cc7b5"
 dependencies = [
  "argon2",
  "async-trait",
@@ -1468,7 +1469,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sqlx",
- "tokio",
  "utoipa",
 ]
 
@@ -1507,7 +1507,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-platform-admin-data"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "async-trait",
  "axum",
@@ -1630,7 +1630,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-worker"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "lenso-bootstrap",
