@@ -46,6 +46,16 @@ Install the running module into a local Lenso host:
 lenso module install http://127.0.0.1:4110/lenso/module/v1/manifest
 ```
 
+The examples repository also runs:
+
+```sh
+pnpm host-api-smoke:support-ticket
+```
+
+That smoke scaffolds a temporary host, installs the remote module through the
+real `lenso` CLI, and verifies loaded module metadata, schema-admin data, HTTP
+proxy calls, and Runtime Story evidence.
+
 ## What This Proves
 
 - A business capability can ship as a Lenso module.
