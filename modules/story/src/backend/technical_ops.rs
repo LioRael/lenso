@@ -164,11 +164,6 @@ fn remote_proxy_related_node_id(
     spans: &[TelemetrySpan],
     node_index: &RuntimeNodeIndex,
 ) -> Option<String> {
-    let remote_proxy_node_id = platform_core::remote_proxy_call_story_event_id(&call.id);
-    if node_index.contains(&remote_proxy_node_id) {
-        return Some(remote_proxy_node_id);
-    }
-
     if let Some(node_id) = call.span_id.as_deref().and_then(|span_id| {
         spans
             .iter()
@@ -183,6 +178,12 @@ fn remote_proxy_related_node_id(
         .iter()
         .filter(|span| remote_proxy_span_trace_id(span) == Some(trace_id))
         .find_map(|span| related_node_id(&span.attributes, node_index))
+        .or_else(|| {
+            let remote_proxy_node_id = platform_core::remote_proxy_call_story_event_id(&call.id);
+            node_index
+                .contains(&remote_proxy_node_id)
+                .then_some(remote_proxy_node_id)
+        })
 }
 
 fn remote_proxy_span_trace_id(span: &TelemetrySpan) -> Option<&str> {
@@ -530,4 +531,91 @@ pub(super) fn sort_technical_operations(data: &mut [AdminRuntimeTechnicalOperati
             .cmp(&right.started_at)
             .then_with(|| left.id.cmp(&right.id))
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeSet;
+
+    #[test]
+    fn remote_proxy_prefers_execution_span_over_proxy_node() {
+        let call = remote_proxy_call(
+            "rproxy_story_external",
+            Some("trace_story_remote_proxy"),
+            Some("span_without_matching_telemetry"),
+        );
+        let proxy_node_id = platform_core::remote_proxy_call_story_event_id(&call.id);
+        let node_index = RuntimeNodeIndex {
+            ids: BTreeSet::from(["fnrun_story".to_owned(), proxy_node_id]),
+        };
+        let spans = vec![telemetry_span(
+            "span_remote_proxy_trace_fallback",
+            serde_json::json!({
+                "lenso.correlation_id": "corr_story",
+                "lenso.story_id": "corr_story",
+                "lenso.function_run_id": "fnrun_story",
+                "otel.trace_id": "trace_story_remote_proxy",
+            }),
+        )];
+
+        assert_eq!(
+            remote_proxy_related_node_id(&call, &spans, &node_index).as_deref(),
+            Some("fnrun_story")
+        );
+    }
+
+    #[test]
+    fn remote_proxy_falls_back_to_proxy_node_without_execution_span() {
+        let call = remote_proxy_call("rproxy_story_external", Some("trace_remote_proxy"), None);
+        let proxy_node_id = platform_core::remote_proxy_call_story_event_id(&call.id);
+        let node_index = RuntimeNodeIndex {
+            ids: BTreeSet::from([proxy_node_id.clone()]),
+        };
+
+        assert_eq!(
+            remote_proxy_related_node_id(&call, &[], &node_index).as_deref(),
+            Some(proxy_node_id.as_str())
+        );
+    }
+
+    fn remote_proxy_call(
+        id: &str,
+        trace_id: Option<&str>,
+        span_id: Option<&str>,
+    ) -> AdminRemoteProxyCall {
+        AdminRemoteProxyCall {
+            id: id.to_owned(),
+            module_name: "remote-crm".to_owned(),
+            method: "GET".to_owned(),
+            declared_path: "/contacts/{id}".to_owned(),
+            remote_path: "/contacts/contact_1".to_owned(),
+            capability: Some("remote_crm.contacts.read".to_owned()),
+            remote_status: Some(200),
+            duration_ms: 125,
+            success: true,
+            error_code: None,
+            retryable: true,
+            request_id: format!("req_{id}"),
+            correlation_id: "corr_story".to_owned(),
+            trace_id: trace_id.map(ToOwned::to_owned),
+            span_id: span_id.map(ToOwned::to_owned),
+            occurred_at: parse_time("2026-05-31T00:00:02Z"),
+        }
+    }
+
+    fn telemetry_span(id: &str, attributes: Value) -> TelemetrySpan {
+        TelemetrySpan {
+            attributes,
+            ended_at: parse_time("2026-05-31T00:00:03Z"),
+            id: id.to_owned(),
+            name: "remote proxy remote-crm".to_owned(),
+            started_at: parse_time("2026-05-31T00:00:02Z"),
+            status: Some("ok".to_owned()),
+        }
+    }
+
+    fn parse_time(value: &str) -> DateTime<Utc> {
+        value.parse().expect("test timestamp should parse")
+    }
 }

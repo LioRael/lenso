@@ -21,7 +21,7 @@ Registry baseline as of the first release line:
 
 - `lenso@0.3.0` is published on crates.io without the `host` feature.
 - `lenso-contracts@0.3.1` is published on crates.io.
-- `lenso@0.3.5` is the current crates.io facade line with the `host`
+- `lenso@0.3.6` is the current crates.io facade line with the `host`
   dependency chain.
 - `lenso-cli` is owned by the standalone
   [`LioRael/lenso-cli`](https://github.com/LioRael/lenso-cli) repository.
@@ -36,7 +36,7 @@ project:
 | 1 | `lenso` crates.io crate | `0.3.0` | `lenso` | Already published without `host`; superseded by the staged host publish line. |
 | 2 | `lenso-contracts` crates.io crate | `0.3.1` | `lenso` | Shared declaration contracts used by the facade and platform crates. |
 | 3 | `lenso-platform-*`, `lenso-module-*`, and host service crates | `0.1.0` | `lenso` | Internal host dependency chain required for `lenso/host` on crates.io. |
-| 4 | `lenso` crates.io crate | `0.3.5` | `lenso` | Facade for current module-authoring contracts and the crates.io `host` feature. |
+| 4 | `lenso` crates.io crate | `0.3.6` | `lenso` | Facade for current module-authoring contracts and the crates.io `host` feature. |
 
 ## Backend Package Gate
 
