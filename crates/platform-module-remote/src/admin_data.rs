@@ -1,9 +1,9 @@
 use crate::config::RemoteModuleConfig;
 use crate::config::RemoteModuleTransport;
-use crate::protocol::{RemoteGetResponse, RemoteListResponse};
+use crate::protocol::{RemoteGetResponse, RemoteListResponse, RemoteQueryResponse};
 use crate::response::decode_json_response;
 use platform_core::{AppError, AppResult, ErrorCode};
-use platform_module::{AdminDataSource, AdminListQuery, AdminPage};
+use platform_module::{AdminDataSource, AdminListQuery, AdminPage, AdminQuerySource};
 use serde_json::Value;
 use std::time::Duration;
 
@@ -92,4 +92,41 @@ impl AdminDataSource for RemoteAdminDataSource {
             .await?
             .and_then(|response| response.record))
     }
+}
+
+#[async_trait::async_trait]
+impl AdminQuerySource for RemoteAdminDataSource {
+    async fn query(&self, query: &str) -> AppResult<Value> {
+        validate_admin_query_name(query)?;
+        if self.config.transport == RemoteModuleTransport::Grpc {
+            return crate::grpc::query_admin_value(&self.config, query)
+                .await
+                .map(|response| response.data);
+        }
+
+        let request = self.request(reqwest::Method::GET, &format!("admin/queries/{query}"));
+        let response = self
+            .send_json::<RemoteQueryResponse>(request)
+            .await?
+            .ok_or_else(|| AppError::new(ErrorCode::NotFound, "remote admin query not found"))?;
+        Ok(response.data)
+    }
+}
+
+fn validate_admin_query_name(query: &str) -> AppResult<()> {
+    let valid = !query.is_empty()
+        && query.chars().all(|character| {
+            character.is_ascii_alphanumeric()
+                || character == '.'
+                || character == '_'
+                || character == '-'
+        });
+    if valid {
+        return Ok(());
+    }
+
+    Err(AppError::new(
+        ErrorCode::Validation,
+        "remote admin query name must be a stable path segment",
+    ))
 }

@@ -26,6 +26,14 @@ pub trait AdminActionSource: std::fmt::Debug + Send + Sync {
     async fn invoke(&self, action: &str, input: Value) -> AppResult<Value>;
 }
 
+/// A module's read-only declarative query source. Query declarations stay in
+/// [`crate::AdminSurface`]; this seam only returns the JSON value to render.
+#[async_trait]
+pub trait AdminQuerySource: std::fmt::Debug + Send + Sync {
+    /// Execute a manifest-declared query by name.
+    async fn query(&self, query: &str) -> AppResult<Value>;
+}
+
 /// Structured query — fields reserved for future filter/sort without changing
 /// the method signature.
 #[derive(Debug, Clone)]

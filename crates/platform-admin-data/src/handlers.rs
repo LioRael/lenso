@@ -12,16 +12,17 @@ use crate::dto::{
     AdminModuleRegistrySnapshotManifestStatus, AdminModuleRegistrySnapshotModuleDto,
     AdminModuleRegistrySnapshotModuleStatus, AdminModuleRegistrySnapshotResponse,
     AdminModuleRegistrySnapshotStatus, AdminModuleRemoteSourceInstallStateDto, AdminModuleSchema,
-    AdminModuleSourceDiagnosticsDto, AdminModuleStatus, AdminRemoteModuleDiagnosticsDto,
-    AdminSchemaListResponse, AdminSchemaRefreshResponse,
+    AdminModuleSourceDiagnosticsDto, AdminModuleStatus, AdminQueryResponse,
+    AdminRemoteModuleDiagnosticsDto, AdminSchemaListResponse, AdminSchemaRefreshResponse,
 };
 use crate::{
     AdminModule, AdminModuleMetadata, AdminModuleMetadataRefreshModuleResult,
     AdminModuleMetadataRefreshModuleStatus, AdminModuleMetadataRefreshRecord,
     AdminModuleMetadataRefreshStatus, AdminModuleSourceDiagnostics, admin_metadata_refresher,
     admin_module_metadata_snapshot, admin_modules, admin_refresher, find_loaded_action_module,
-    find_loaded_module, install_admin_module_metadata, install_admin_modules,
-    record_admin_module_metadata_refresh_error, record_admin_module_metadata_refresh_success,
+    find_loaded_module, find_loaded_query_module, install_admin_module_metadata,
+    install_admin_modules, record_admin_module_metadata_refresh_error,
+    record_admin_module_metadata_refresh_success,
 };
 use axum::Json;
 use axum::extract::{Path, Query, State};
@@ -31,9 +32,10 @@ use platform_core::{
 };
 use platform_http::{AdminActor, ApiErrorResponse, ErrorResponse, HttpRequestContext};
 use platform_module::{
-    AdminActionConfirmation, AdminActionInputField, AdminActionInputSchema, AdminListQuery,
-    AdminSurface, FieldType, ModuleLoadStatus, ModuleManifestLint, ModuleManifestLintSeverity,
-    ModuleSource, lint_module_manifest_parts, module_capability_references,
+    AdminActionConfirmation, AdminActionInputField, AdminActionInputSchema,
+    AdminDeclarativeComponent, AdminListQuery, AdminSurface, FieldType, ModuleLoadStatus,
+    ModuleManifestLint, ModuleManifestLintSeverity, ModuleSource, lint_module_manifest_parts,
+    module_capability_references,
 };
 use serde::Deserialize;
 use serde::Serialize;
@@ -2451,6 +2453,50 @@ pub(crate) async fn invoke_action(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/admin/data/{module}/queries/{query}",
+    operation_id = "admin_data_query_value",
+    tag = "admin-data",
+    params(
+        ("module" = String, Path, description = "Module name, e.g. remote-crm"),
+        ("query" = String, Path, description = "Declared admin query name"),
+        ("authorization" = String, Header, description = "Development service bearer token"),
+    ),
+    responses(
+        (status = 200, description = "Query result", body = AdminQueryResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 404, description = "Unknown module or undeclared query", body = ErrorResponse, content_type = "application/json"),
+        (status = 502, description = "Query source is unavailable or failed", body = ErrorResponse, content_type = "application/json"),
+    )
+)]
+pub(crate) async fn query_value(
+    admin: AdminActor,
+    HttpRequestContext(request_ctx): HttpRequestContext,
+    Path((module, query)): Path<(String, String)>,
+) -> Result<Json<AdminQueryResponse>, ApiErrorResponse> {
+    let admin_module = find_loaded_query_module(&module, &request_ctx)?;
+    let declaration = declared_query(&admin_module, &query, &request_ctx)?;
+    ensure_query_capability(&admin, &declaration.capability, &request_ctx)?;
+    let query_source = admin_module.query_source.as_ref().ok_or_else(|| {
+        ApiErrorResponse::with_context(
+            AppError::new(
+                ErrorCode::ExternalDependency,
+                format!("module {module} has no admin query source"),
+            )
+            .retryable(),
+            &request_ctx,
+        )
+    })?;
+    let data = query_source
+        .query(&query)
+        .await
+        .map_err(|error| ApiErrorResponse::with_context(error, &request_ctx))?;
+
+    Ok(Json(AdminQueryResponse { data }))
+}
+
 #[derive(Debug, Clone)]
 struct DeclaredAction {
     label: String,
@@ -2487,6 +2533,47 @@ fn declared_action(
                 ctx,
             )
         })
+}
+
+#[derive(Debug, Clone)]
+struct DeclaredQuery {
+    capability: String,
+}
+
+fn declared_query(
+    module: &AdminModule,
+    query: &str,
+    ctx: &RequestContext,
+) -> Result<DeclaredQuery, ApiErrorResponse> {
+    let Some(AdminSurface::DeclarativeCustom(surface)) = module.admin.as_ref() else {
+        return Err(ApiErrorResponse::with_context(
+            AppError::new(ErrorCode::NotFound, format!("unknown query: {query}")),
+            ctx,
+        ));
+    };
+
+    for page in &surface.pages {
+        for section in &page.sections {
+            let AdminDeclarativeComponent::QueryValue {
+                capability,
+                query: declared,
+                ..
+            } = &section.component
+            else {
+                continue;
+            };
+            if declared == query {
+                return Ok(DeclaredQuery {
+                    capability: capability.clone(),
+                });
+            }
+        }
+    }
+
+    Err(ApiErrorResponse::with_context(
+        AppError::new(ErrorCode::NotFound, format!("unknown query: {query}")),
+        ctx,
+    ))
 }
 
 fn ensure_action_input(
@@ -2625,6 +2712,26 @@ fn ensure_action_capability(
             AppError::new(
                 ErrorCode::Forbidden,
                 format!("missing admin action capability: {capability}"),
+            ),
+            ctx,
+        )),
+    }
+}
+
+fn ensure_query_capability(
+    admin: &AdminActor,
+    capability: &str,
+    ctx: &RequestContext,
+) -> Result<(), ApiErrorResponse> {
+    match admin {
+        AdminActor::System => Ok(()),
+        AdminActor::Service { scopes, .. } if scopes.iter().any(|scope| scope == capability) => {
+            Ok(())
+        }
+        AdminActor::Service { .. } => Err(ApiErrorResponse::with_context(
+            AppError::new(
+                ErrorCode::Forbidden,
+                format!("missing admin query capability: {capability}"),
             ),
             ctx,
         )),

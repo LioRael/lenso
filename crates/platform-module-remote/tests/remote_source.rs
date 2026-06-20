@@ -1,8 +1,8 @@
 use axum::http::StatusCode;
 use axum::{Json, Router, routing::get, routing::post};
 use platform_module::{
-    AdminActionDangerLevel, AdminActionSource, AdminDataSource, AdminListQuery, AdminSurface,
-    FieldType, LifecycleActivationRunPolicy, LifecycleStartupCheckKind,
+    AdminActionDangerLevel, AdminActionSource, AdminDataSource, AdminListQuery, AdminQuerySource,
+    AdminSurface, FieldType, LifecycleActivationRunPolicy, LifecycleStartupCheckKind,
 };
 use platform_module_remote::{
     RemoteAdminActionSource, RemoteAdminDataSource, RemoteModuleConfig, RemoteModuleSource,
@@ -142,14 +142,26 @@ async fn declarative_manifest() -> Json<Value> {
             "pages": [{
                 "name": "overview",
                 "label": "Overview",
-                "sections": [{
-                    "name": "contacts",
-                    "label": "Contacts",
-                    "component": {
-                        "kind": "entity_table",
-                        "entity": "contacts"
+                "sections": [
+                    {
+                        "name": "health",
+                        "label": "Health",
+                        "component": {
+                            "kind": "query_value",
+                            "query": "health",
+                            "capability": "remote_crm.health.read",
+                            "value_path": "contacts"
+                        }
+                    },
+                    {
+                        "name": "contacts",
+                        "label": "Contacts",
+                        "component": {
+                            "kind": "entity_table",
+                            "entity": "contacts"
+                        }
                     }
-                }]
+                ]
             }],
             "actions": [{
                 "name": "sync_contacts",
@@ -179,7 +191,16 @@ async fn declarative_manifest() -> Json<Value> {
                 }]
             }
         },
-        "capabilities": ["remote_crm.contacts.read", "remote_crm.contacts.sync"]
+        "capabilities": ["remote_crm.contacts.read", "remote_crm.contacts.sync", "remote_crm.health.read"]
+    }))
+}
+
+async fn health() -> Json<Value> {
+    Json(json!({
+        "data": {
+            "contacts": 1,
+            "healthy": true
+        }
     }))
 }
 
@@ -371,6 +392,7 @@ async fn loads_declarative_custom_manifest_with_admin_data_source() {
     );
     assert!(module.admin_data.is_some());
     assert!(module.admin_actions.is_some());
+    assert!(module.admin_queries.is_some());
 }
 
 #[tokio::test]
@@ -388,6 +410,18 @@ async fn remote_admin_action_source_invokes_declared_action() {
 
     assert_eq!(output["synced"], true);
     assert_eq!(output["dry_run"], true);
+}
+
+#[tokio::test]
+async fn remote_admin_query_source_reads_declared_query() {
+    let base_url = spawn_server(Router::new().route("/admin/queries/health", get(health))).await;
+
+    let source =
+        RemoteAdminDataSource::new(RemoteModuleConfig::new("remote-crm", base_url)).unwrap();
+    let output = source.query("health").await.expect("query remote value");
+
+    assert_eq!(output["contacts"], 1);
+    assert_eq!(output["healthy"], true);
 }
 
 #[tokio::test]

@@ -3,7 +3,7 @@
   "modules": [
     {
       "name": "auth",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "source": "linked",
       "manifestReference": "builtin:auth",
       "summary": "Official linked authentication anchor for users, sessions, and actor resolution",
@@ -54,7 +54,7 @@
         "consolePackageApi": "1",
         "lenso": {
           "minVersion": "0.1.0",
-          "maxVersion": "0.1.2"
+          "maxVersion": "0.1.3"
         }
       },
       "consolePackages": [

@@ -589,6 +589,61 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /admin/data/{module}/queries/{query}:
+    get:
+      tags:
+      - admin-data
+      operationId: admin_data_query_value
+      parameters:
+      - name: module
+        in: path
+        description: Module name, e.g. remote-crm
+        required: true
+        schema:
+          type: string
+      - name: query
+        in: path
+        description: Declared admin query name
+        required: true
+        schema:
+          type: string
+      - name: authorization
+        in: header
+        description: Development service bearer token
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Query result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminQueryResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Unknown module or undeclared query
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Query source is unavailable or failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/data/{module}/{entity}:
     get:
       tags:
@@ -3002,6 +3057,23 @@ components:
               $ref: '#/components/schemas/AdminMetricBinding'
       - type: object
         required:
+        - query
+        - capability
+        - value_path
+        - kind
+        properties:
+          capability:
+            type: string
+          kind:
+            type: string
+            enum:
+            - query_value
+          query:
+            type: string
+          value_path:
+            type: string
+      - type: object
+        required:
         - entity
         - kind
         properties:
@@ -3860,6 +3932,13 @@ components:
             type: string
             enum:
             - invoke_action
+    AdminQueryResponse:
+      type: object
+      description: Response for `GET /admin/data/{module}/queries/{query}`.
+      required:
+      - data
+      properties:
+        data: {}
     AdminRemoteModuleDiagnosticsDto:
       type: object
       required:

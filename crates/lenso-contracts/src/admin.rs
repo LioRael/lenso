@@ -53,6 +53,11 @@ pub enum AdminDeclarativeComponent {
         #[serde(default)]
         metrics: Vec<AdminMetricBinding>,
     },
+    QueryValue {
+        query: String,
+        capability: String,
+        value_path: String,
+    },
     EntityTable {
         entity: String,
     },

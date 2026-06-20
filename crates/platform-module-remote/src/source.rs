@@ -6,7 +6,9 @@ use crate::protocol::RemoteManifestResponse;
 use crate::response::decode_json_response;
 use platform_core::error::ErrorDetail;
 use platform_core::{AppError, AppResult, ErrorCode};
-use platform_module::{AdminSurface, Module, ModuleHttpRoute};
+use platform_module::{
+    AdminDeclarativeComponent, AdminDeclarativeSurface, AdminSurface, Module, ModuleHttpRoute,
+};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -57,6 +59,10 @@ impl RemoteModuleSource {
             &manifest.admin,
             Some(AdminSurface::DeclarativeCustom(surface)) if !surface.actions.is_empty()
         );
+        let has_admin_queries = matches!(
+            &manifest.admin,
+            Some(AdminSurface::DeclarativeCustom(surface)) if has_query_value_component(surface)
+        );
         let mut module = Module::remote(manifest, Arc::new(binding));
         if has_admin_data {
             module =
@@ -65,6 +71,10 @@ impl RemoteModuleSource {
         if has_admin_actions {
             module = module
                 .with_admin_actions(Arc::new(RemoteAdminActionSource::new(self.config.clone())?));
+        }
+        if has_admin_queries {
+            module = module
+                .with_admin_queries(Arc::new(RemoteAdminDataSource::new(self.config.clone())?));
         }
         Ok(module)
     }
@@ -93,6 +103,17 @@ impl RemoteModuleSource {
             .await?
             .ok_or_else(|| AppError::new(ErrorCode::NotFound, "remote module manifest not found"))
     }
+}
+
+fn has_query_value_component(surface: &AdminDeclarativeSurface) -> bool {
+    surface.pages.iter().any(|page| {
+        page.sections.iter().any(|section| {
+            matches!(
+                section.component,
+                AdminDeclarativeComponent::QueryValue { .. }
+            )
+        })
+    })
 }
 
 fn validate_remote_http_routes(routes: &[ModuleHttpRoute]) -> AppResult<()> {

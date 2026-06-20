@@ -10,13 +10,17 @@
 //!   to its admin entities. [`AdminSchema`] is the declared admin surface data.
 //! - [`AdminActionSource`]: executable behavior for manifest-declared admin
 //!   actions.
+//! - [`AdminQuerySource`]: read-only behavior for manifest-declared admin
+//!   queries.
 
 mod admin_data;
 mod binding;
 mod linked;
 mod module;
 
-pub use admin_data::{AdminActionSource, AdminDataSource, AdminListQuery, AdminPage};
+pub use admin_data::{
+    AdminActionSource, AdminDataSource, AdminListQuery, AdminPage, AdminQuerySource,
+};
 pub use binding::{EventHandlerRegistrationContext, EventHandlerRuntimeContext, ModuleBinding};
 pub use lenso_contracts::{
     AdminAction, AdminActionConfirmation, AdminActionDangerLevel, AdminActionInputField,

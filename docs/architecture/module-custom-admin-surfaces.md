@@ -4,8 +4,9 @@ This note specifies the admin-surface direction for the module framework.
 `AdminSurface::Schema` is the generic data-admin surface. `EmbeddedCustom`
 currently has a first Runtime Console iframe renderer with origin checks,
 sandbox attributes, and no host bridge. `DeclarativeCustom` currently has a
-first host-rendered Runtime Console slice for `MetricStrip`, `EntityTable`, and
-`EntityDetail` components backed by `fallback_schema`.
+first host-rendered Runtime Console slice for `MetricStrip`, `QueryValue`,
+`EntityTable`, and `EntityDetail` components. Entity components are backed by
+`fallback_schema`; query values call host-owned read-only query endpoints.
 
 ## Why Two Custom Modes
 
@@ -58,7 +59,7 @@ Rules:
 - Declarative actions call host-defined admin action endpoints. They do not run
   module-provided frontend code.
 - Data reads may use `AdminDataSource` where the surface maps onto schema-admin
-  entities, or a later action/query protocol when it does not.
+  entities, or read-only `QueryValue` sections for non-entity JSON values.
 - `fallback_schema` lets the host render trusted entity tables/details and read
   records through `/admin/data/{module}/{entity}`. It does not make the module a
   generic `Schema` surface and does not list it in `/admin/data/schema`.
@@ -148,11 +149,11 @@ The loading source axis remains separate:
    checks and `sandbox` attributes, but no message bridge. Done for the Runtime
    Console Data page.
 4. Implement a small `DeclarativeCustom` renderer for one or two trusted
-   components. Done for `MetricStrip`, `EntityTable`, and `EntityDetail` on the
-   Runtime Console Data page. Entity tables/details are read-only and use
-   `AdminDataSource` through `/admin/data/{module}/{entity}` and
-   `/admin/data/{module}/{entity}/{id}` when `fallback_schema` declares the
-   entity.
+   components. Done for `MetricStrip`, `QueryValue`, `EntityTable`, and
+   `EntityDetail` on the Runtime Console Data page. Entity tables/details are
+   read-only and use `AdminDataSource` through `/admin/data/{module}/{entity}`
+   and `/admin/data/{module}/{entity}/{id}` when `fallback_schema` declares the
+   entity. Query values are read-only and use `/admin/data/{module}/queries/{query}`.
 5. Invoke declarative actions through host-owned admin action endpoints with
    manifest capability checks, remote protocol support, and Runtime Story /
    Technical Operations projection. Done for linked and remote action sources.

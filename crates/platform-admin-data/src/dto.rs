@@ -371,6 +371,12 @@ pub struct AdminDataDetailResponse {
     pub data: serde_json::Value,
 }
 
+/// Response for `GET /admin/data/{module}/queries/{query}`.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminQueryResponse {
+    pub data: serde_json::Value,
+}
+
 /// Request body for `POST /admin/data/{module}/actions/{action}`.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct AdminActionInvokeRequest {
