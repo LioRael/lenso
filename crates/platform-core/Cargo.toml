@@ -1,6 +1,6 @@
 [package]
 name = "lenso-platform-core"
-version = "0.1.0"
+version = "0.1.1"
 edition.workspace = true
 license = "MIT"
 description = "Core runtime primitives for the Lenso backend framework."
