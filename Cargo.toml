@@ -65,7 +65,7 @@ uuid = { version = "1.23", features = ["serde", "v7"] }
 
 lenso = { path = "crates/lenso", version = "0.3.6" }
 lenso-contracts = { path = "crates/lenso-contracts", version = "0.3.1" }
-platform-core = { package = "lenso-platform-core", path = "crates/platform-core", version = "0.1.0" }
+platform-core = { package = "lenso-platform-core", path = "crates/platform-core", version = "0.1.1" }
 platform-admin = { package = "lenso-platform-admin", path = "crates/platform-admin", version = "0.1.0" }
 platform-admin-data = { package = "lenso-platform-admin-data", path = "crates/platform-admin-data", version = "0.1.2" }
 platform-module = { package = "lenso-platform-module", path = "crates/platform-module", version = "0.1.0" }

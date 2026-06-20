@@ -141,6 +141,13 @@ Create local environment config:
 cp .env.example .env
 ```
 
+Module-local config belongs in env/static host config, not runtime-config DB
+overrides. Use `LENSO_MODULE_<MODULE>__<KEY>=<json-or-string>` for local values;
+for example `LENSO_MODULE_AUTH_PASSWORD__JWT_ISSUER=acme` is available to linked
+module code through `ctx.config.module_local_config("auth-password")`. Module
+load toggles remain `LENSO_MODULE_<MODULE>_ENABLED=false` and are also surfaced
+as restart-only runtime config for operator overrides.
+
 `REDIS_URL` is optional for the platform itself. The first-party auth module uses
 Redis only when its dependency is built with the `redis` feature and runtime
 config sets `auth.session_cache=redis`; otherwise session resolution reads

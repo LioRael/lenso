@@ -1,4 +1,5 @@
 use crate::error::{AppError, AppResult, ErrorDetail};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -43,6 +44,15 @@ impl AppConfig {
             console: ConsoleConfig::default(),
             modules: module_configs_from_env(),
         })
+    }
+
+    pub fn module_local_config<T: DeserializeOwned>(&self, module_name: &str) -> AppResult<T> {
+        let values = self
+            .modules
+            .get(module_name)
+            .map(|config| config.values.clone())
+            .unwrap_or_default();
+        decode_module_local_config(module_name, &values)
     }
 }
 
@@ -220,31 +230,97 @@ impl ModuleConfig {
     pub fn is_enabled(&self) -> bool {
         self.enabled.unwrap_or(true)
     }
+
+    pub fn local_config<T: DeserializeOwned>(&self, module_name: &str) -> AppResult<T> {
+        decode_module_local_config(module_name, &self.values)
+    }
 }
 
 fn module_configs_from_env() -> BTreeMap<String, ModuleConfig> {
-    std::env::vars()
-        .filter_map(|(key, value)| module_config_from_env_entry(&key, &value))
-        .collect()
+    let mut configs = BTreeMap::new();
+    for (key, value) in std::env::vars() {
+        if let Some((module_name, update)) = module_config_from_env_entry(&key, &value) {
+            merge_module_config(&mut configs, module_name, update);
+        }
+    }
+    configs
 }
 
 fn module_config_from_env_entry(key: &str, value: &str) -> Option<(String, ModuleConfig)> {
-    let module_name = key
-        .strip_prefix("LENSO_MODULE_")?
-        .strip_suffix("_ENABLED")?
-        .to_ascii_lowercase()
-        .replace('_', "-");
-    if module_name.is_empty() {
-        return None;
+    let rest = key.strip_prefix("LENSO_MODULE_")?;
+    if !rest.contains("__")
+        && let Some(module_name) = rest.strip_suffix("_ENABLED").and_then(module_env_name)
+    {
+        return Some((
+            module_name,
+            ModuleConfig {
+                enabled: Some(parse_bool_env(value)?),
+                values: BTreeMap::new(),
+            },
+        ));
     }
-    let enabled = parse_bool_env(value)?;
+
+    let (module_name, config_key) = rest.split_once("__")?;
+    let module_name = module_env_name(module_name)?;
+    let config_key = module_value_env_key(config_key)?;
+    let mut values = BTreeMap::new();
+    values.insert(config_key, parse_module_env_value(value));
     Some((
         module_name,
         ModuleConfig {
-            enabled: Some(enabled),
-            values: BTreeMap::new(),
+            enabled: None,
+            values,
         },
     ))
+}
+
+fn merge_module_config(
+    configs: &mut BTreeMap<String, ModuleConfig>,
+    module_name: String,
+    update: ModuleConfig,
+) {
+    let config = configs.entry(module_name).or_default();
+    if update.enabled.is_some() {
+        config.enabled = update.enabled;
+    }
+    config.values.extend(update.values);
+}
+
+fn module_env_name(value: &str) -> Option<String> {
+    let name = value
+        .trim_matches('_')
+        .to_ascii_lowercase()
+        .replace('_', "-");
+    (!name.is_empty()).then_some(name)
+}
+
+fn module_value_env_key(value: &str) -> Option<String> {
+    let key = value.trim_matches('_').to_ascii_lowercase();
+    (!key.is_empty()).then_some(key)
+}
+
+fn parse_module_env_value(value: &str) -> serde_json::Value {
+    let trimmed = value.trim();
+    serde_json::from_str(trimmed).unwrap_or_else(|_| serde_json::json!(trimmed))
+}
+
+fn decode_module_local_config<T: DeserializeOwned>(
+    module_name: &str,
+    values: &BTreeMap<String, serde_json::Value>,
+) -> AppResult<T> {
+    let object = values
+        .iter()
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect();
+    serde_json::from_value(serde_json::Value::Object(object)).map_err(|source| {
+        AppError::validation(
+            "Invalid module local configuration",
+            vec![ErrorDetail {
+                field: Some(format!("modules.{module_name}")),
+                reason: source.to_string(),
+            }],
+        )
+    })
 }
 
 fn parse_bool_env(value: &str) -> Option<bool> {
@@ -366,6 +442,7 @@ fn parse_remote_module_source(entry: &str) -> Option<RemoteModuleSourceConfig> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde::Deserialize;
 
     #[test]
     fn module_sources_default_to_demo_linked_profile() {
@@ -453,6 +530,77 @@ mod tests {
 
         assert_eq!(name, "auth-password");
         assert_eq!(config.enabled, Some(false));
+    }
+
+    #[test]
+    fn module_config_from_env_entry_parses_local_values() {
+        let (name, config) =
+            module_config_from_env_entry("LENSO_MODULE_AUTH_PASSWORD__JWT_TTL_HOURS", "12")
+                .expect("module local value env should parse");
+
+        assert_eq!(name, "auth-password");
+        assert_eq!(
+            config.values.get("jwt_ttl_hours"),
+            Some(&serde_json::json!(12))
+        );
+
+        let (_, config) =
+            module_config_from_env_entry("LENSO_MODULE_AUTH__PUBLIC_URL", "https://example.test")
+                .expect("module string value env should parse");
+        assert_eq!(
+            config.values.get("public_url"),
+            Some(&serde_json::json!("https://example.test"))
+        );
+
+        let (_, config) = module_config_from_env_entry("LENSO_MODULE_AUTH__ENABLED", "\"local\"")
+            .expect("module local enabled key should parse as a value");
+        assert_eq!(
+            config.values.get("enabled"),
+            Some(&serde_json::json!("local"))
+        );
+        assert_eq!(config.enabled, None);
+    }
+
+    #[test]
+    fn merge_module_config_keeps_enabled_and_values() {
+        let mut configs = BTreeMap::new();
+        let (_, enabled) = module_config_from_env_entry("LENSO_MODULE_AUTH_ENABLED", "false")
+            .expect("enabled parses");
+        let (_, local) = module_config_from_env_entry("LENSO_MODULE_AUTH__PUBLIC_URL", "\"/auth\"")
+            .expect("local value parses");
+
+        merge_module_config(&mut configs, "auth".to_owned(), enabled);
+        merge_module_config(&mut configs, "auth".to_owned(), local);
+
+        let config = configs.get("auth").expect("merged module config");
+        assert_eq!(config.enabled, Some(false));
+        assert_eq!(
+            config.values.get("public_url"),
+            Some(&serde_json::json!("/auth"))
+        );
+    }
+
+    #[derive(Debug, Deserialize, PartialEq)]
+    struct DemoModuleLocalConfig {
+        public_url: String,
+        #[serde(default)]
+        ttl_hours: u64,
+    }
+
+    #[test]
+    fn module_config_decodes_local_values() {
+        let (_, config) = module_config_from_env_entry("LENSO_MODULE_DEMO__PUBLIC_URL", "/demo")
+            .expect("local value parses");
+
+        let decoded: DemoModuleLocalConfig = config.local_config("demo").expect("decode config");
+
+        assert_eq!(
+            decoded,
+            DemoModuleLocalConfig {
+                public_url: "/demo".to_owned(),
+                ttl_hours: 0,
+            }
+        );
     }
 
     #[test]
