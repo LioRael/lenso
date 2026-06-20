@@ -1751,6 +1751,60 @@ async fn service_actor_can_list_remote_proxy_calls() {
 }
 
 #[tokio::test]
+async fn remote_proxy_call_history_is_story_fallback() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+    insert_remote_proxy_call(
+        &db.pool,
+        remote_proxy_fixture(
+            "rproxy_story_fallback",
+            "corr_remote_proxy_fallback",
+            "remote-crm",
+            true,
+            "2026-05-31T00:01:00Z",
+            None,
+        ),
+    )
+    .await;
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/stories/corr_remote_proxy_fallback")
+                .with_header("authorization", "Bearer dev-service:admin"),
+        )
+        .await
+        .expect("story fallback request should complete");
+    let status = response.status();
+    let body = json_body(response).await;
+
+    assert_eq!(status, StatusCode::OK, "story fallback body: {body}");
+    assert_eq!(
+        body["data"]["summary"]["correlation_id"],
+        "corr_remote_proxy_fallback"
+    );
+    assert_eq!(
+        body["data"]["summary"]["title"],
+        "remote-crm GET /contacts/{id}"
+    );
+    assert!(
+        body["data"]["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|node| {
+                node["id"] == "remoteproxy_rproxy_story_fallback"
+                    && node["type"] == "remote_proxy_call"
+                    && node["metadata"]["source_metadata"]["request_id"]
+                        == "req_rproxy_story_fallback"
+            })
+    );
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
 async fn service_actor_can_fetch_outbox_detail() {
     let Some(db) = TestDatabase::create().await else {
         return;

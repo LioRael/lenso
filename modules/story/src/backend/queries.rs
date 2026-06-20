@@ -34,6 +34,14 @@ pub(super) async fn fetch_story_rows(
                     updated_at
                 from platform.story_events
                 where ($1::text is null or correlation_id = $1)
+
+                union all
+
+                select
+                    correlation_id,
+                    occurred_at as updated_at
+                from platform.remote_http_proxy_calls
+                where ($1::text is null or correlation_id = $1)
             ) story_items
             group by correlation_id
             having ($2::timestamptz is null or max(updated_at) < $2)
@@ -99,6 +107,55 @@ pub(super) async fn fetch_story_rows(
                 metadata
             from platform.story_events
             where correlation_id in (select correlation_id from story_keys)
+
+            union all
+
+            select
+                'remote_proxy_call'::text as item_type,
+                'remoteproxy_' || id as id,
+                module_name || ' ' || method || ' ' || declared_path as name,
+                case when success then 'completed' else 'failed' end as status,
+                0::integer as attempts,
+                1::integer as max_attempts,
+                correlation_id,
+                request_id as causation_id,
+                module_name as service,
+                occurred_at as created_at,
+                occurred_at as started_at,
+                occurred_at + (duration_ms * interval '1 millisecond') as completed_at,
+                case
+                    when success then null
+                    when error_code is null then 'remote proxy call failed'
+                    else 'remote proxy call failed with ' || error_code
+                end as last_error,
+                jsonb_build_object(
+                    'remote_proxy_call_id', id,
+                    'module_name', module_name,
+                    'method', method,
+                    'declared_path', declared_path,
+                    'remote_path', remote_path,
+                    'capability', capability,
+                    'display_name', null,
+                    'story_title', null,
+                    'remote_status', remote_status,
+                    'duration_ms', duration_ms,
+                    'request_id', request_id,
+                    'trace_id', trace_id,
+                    'span_id', span_id,
+                    'success', success,
+                    'error_code', error_code,
+                    'retryable', retryable,
+                    'path_params', path_params,
+                    'error_details', error_details
+                ) as metadata
+            from platform.remote_http_proxy_calls proxy_calls
+            where correlation_id in (select correlation_id from story_keys)
+                and not exists (
+                    select 1
+                    from platform.story_events story_events
+                    where story_events.source_type = 'remote_proxy_call'
+                        and story_events.source_id = proxy_calls.id
+                )
         ) story_work
         order by correlation_id asc, created_at asc, id asc
         "#,
