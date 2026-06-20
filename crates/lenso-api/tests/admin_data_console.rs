@@ -14,8 +14,8 @@ use platform_module::{
     AdminAction, AdminActionConfirmation, AdminActionDangerLevel, AdminActionInputField,
     AdminActionInputSchema, AdminActionSource, AdminDataSource, AdminDeclarativeComponent,
     AdminDeclarativePage, AdminDeclarativeSection, AdminDeclarativeSurface, AdminListQuery,
-    AdminPage, AdminSchema, AdminSurface, EntitySchema, FieldSchema, FieldType, ModuleLoadStatus,
-    ModuleSource,
+    AdminPage, AdminQuerySource, AdminSchema, AdminSurface, EntitySchema, FieldSchema, FieldType,
+    ModuleLoadStatus, ModuleSource,
 };
 use platform_runtime::RUNTIME_MIGRATIONS;
 use platform_testing::TestDatabase;
@@ -130,6 +130,22 @@ impl AdminActionSource for StubActions {
     }
 }
 
+#[derive(Debug)]
+struct StubQueries;
+
+#[async_trait::async_trait]
+impl AdminQuerySource for StubQueries {
+    async fn query(&self, query: &str) -> platform_core::AppResult<Value> {
+        Ok(serde_json::json!({
+            "query": query,
+            "metrics": {
+                "contacts": 2,
+                "healthy": true
+            }
+        }))
+    }
+}
+
 fn stub_schema() -> AdminSchema {
     AdminSchema {
         entities: vec![EntitySchema {
@@ -151,13 +167,24 @@ fn stub_declarative_surface() -> AdminSurface {
         pages: vec![AdminDeclarativePage {
             name: "overview".to_owned(),
             label: "Overview".to_owned(),
-            sections: vec![AdminDeclarativeSection {
-                name: "contacts".to_owned(),
-                label: "Contacts".to_owned(),
-                component: AdminDeclarativeComponent::EntityTable {
-                    entity: "users".to_owned(),
+            sections: vec![
+                AdminDeclarativeSection {
+                    name: "health".to_owned(),
+                    label: "Health".to_owned(),
+                    component: AdminDeclarativeComponent::QueryValue {
+                        query: "health".to_owned(),
+                        capability: "remote_crm.health.read".to_owned(),
+                        value_path: "metrics.contacts".to_owned(),
+                    },
                 },
-            }],
+                AdminDeclarativeSection {
+                    name: "contacts".to_owned(),
+                    label: "Contacts".to_owned(),
+                    component: AdminDeclarativeComponent::EntityTable {
+                        entity: "users".to_owned(),
+                    },
+                },
+            ],
         }],
         actions: vec![
             AdminAction {
@@ -229,6 +256,7 @@ fn app() -> axum::Router {
         listed_in_schema: true,
         data_source: Some(Arc::new(StubUsers)),
         action_source: None,
+        query_source: None,
     }]);
     install_admin_module_metadata(vec![AdminModuleMetadata {
         module_name: "identity".to_owned(),
@@ -272,6 +300,14 @@ fn admin_get(path: &str) -> Request<Body> {
     Request::builder()
         .uri(path)
         .header("authorization", "Bearer dev-service:admin")
+        .body(Body::empty())
+        .expect("request builds")
+}
+
+fn admin_get_with_token(path: &str, token: &str) -> Request<Body> {
+    Request::builder()
+        .uri(path)
+        .header("authorization", format!("Bearer {token}"))
         .body(Body::empty())
         .expect("request builds")
 }
@@ -512,6 +548,7 @@ async fn admin_action_invocation_calls_declared_source() {
         listed_in_schema: false,
         data_source: Some(Arc::new(StubUsers)),
         action_source: Some(Arc::new(StubActions)),
+        query_source: None,
     }]);
     install_admin_module_metadata(vec![AdminModuleMetadata {
         module_name: "remote-crm".to_owned(),
@@ -548,6 +585,56 @@ async fn admin_action_invocation_calls_declared_source() {
     let json = json_body(response).await;
     assert_eq!(json["data"]["action"], "sync_contacts");
     assert_eq!(json["data"]["input"]["dry_run"], true);
+}
+
+#[tokio::test]
+async fn admin_query_invocation_calls_declared_source() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
+    install_admin_modules(vec![AdminModule {
+        module_name: "remote-crm".to_owned(),
+        source: ModuleSource::Remote,
+        load_status: ModuleLoadStatus::Loaded,
+        schema: stub_schema(),
+        admin: Some(stub_declarative_surface()),
+        listed_in_schema: false,
+        data_source: Some(Arc::new(StubUsers)),
+        action_source: Some(Arc::new(StubActions)),
+        query_source: Some(Arc::new(StubQueries)),
+    }]);
+    install_admin_module_metadata(vec![AdminModuleMetadata {
+        module_name: "remote-crm".to_owned(),
+        source: ModuleSource::Remote,
+        load_status: ModuleLoadStatus::Loaded,
+        http_routes: vec![],
+        runtime: None,
+        events: None,
+        lifecycle: None,
+        console: vec![],
+        story_display: vec![],
+        capabilities: vec!["remote_crm.health.read".to_owned()],
+        dependencies: vec![],
+        admin: Some(stub_declarative_surface()),
+        source_diagnostics: None,
+    }]);
+    let ctx = AppContext::new(
+        AppConfig::from_env(),
+        lazy_failing_db(),
+        Arc::new(LoggingEventPublisher),
+    );
+    let app = build_router(ctx);
+
+    let response = app
+        .oneshot(admin_get_with_token(
+            "/admin/data/remote-crm/queries/health",
+            "dev-service:admin:remote_crm.health.read",
+        ))
+        .await
+        .expect("request completes");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = json_body(response).await;
+    assert_eq!(json["data"]["query"], "health");
+    assert_eq!(json["data"]["metrics"]["contacts"], 2);
 }
 
 #[tokio::test]
@@ -621,7 +708,7 @@ async fn available_modules_returns_remote_install_rows() {
     );
     assert_eq!(
         body["modules"][0]["hostCompatibility"]["lensoVersion"],
-        "0.1.2"
+        "0.1.3"
     );
     assert_eq!(body["modules"][0]["manifestStatus"], "ok");
     assert_eq!(body["modules"][0]["status"], "ready");
@@ -674,7 +761,7 @@ async fn available_modules_reads_official_catalog_when_no_local_catalog_exists()
     assert_eq!(body["catalog"]["modules"], 3);
     assert_eq!(body["modules"][0]["name"], "auth");
     assert_eq!(body["modules"][0]["source"], "linked");
-    assert_eq!(body["modules"][0]["catalogVersion"], "0.1.2");
+    assert_eq!(body["modules"][0]["catalogVersion"], "0.1.3");
     assert_eq!(body["modules"][0]["consolePackageHints"], 1);
     assert_eq!(body["modules"][1]["name"], "auth-password");
     assert_eq!(body["modules"][1]["source"], "linked");
@@ -712,7 +799,7 @@ async fn available_modules_reads_local_module_catalog() {
                     "consolePackageApi": "1",
                     "lenso": {
                         "minVersion": "0.1.0",
-                        "maxVersion": "0.1.2"
+                        "maxVersion": "0.1.3"
                     }
                 },
                 "consolePackages": [{
@@ -1533,7 +1620,7 @@ async fn available_modules_marks_catalog_preflight_issues() {
     assert_eq!(body["issues"][0]["group"], "Compatibility");
     assert_eq!(
         body["issues"][0]["message"],
-        "billing requires Lenso >= 0.2.0; host is 0.1.2"
+        "billing requires Lenso >= 0.2.0; host is 0.1.3"
     );
     assert_eq!(body["issues"][1]["group"], "Catalog");
     assert_eq!(body["issues"][1]["message"], "local-crm baseUrl is missing");
@@ -1559,6 +1646,7 @@ async fn admin_action_invocation_requires_confirmation_phrase_when_declared() {
         listed_in_schema: false,
         data_source: Some(Arc::new(StubUsers)),
         action_source: Some(Arc::new(StubActions)),
+        query_source: None,
     }]);
     install_admin_module_metadata(vec![AdminModuleMetadata {
         module_name: "remote-crm".to_owned(),
@@ -1618,6 +1706,7 @@ async fn admin_action_invocation_validates_declared_input_schema() {
         listed_in_schema: false,
         data_source: Some(Arc::new(StubUsers)),
         action_source: Some(Arc::new(StubActions)),
+        query_source: None,
     }]);
     install_admin_module_metadata(vec![AdminModuleMetadata {
         module_name: "remote-crm".to_owned(),
@@ -1720,6 +1809,7 @@ async fn admin_action_invocation_records_story_and_technical_operation() {
         listed_in_schema: false,
         data_source: Some(Arc::new(StubUsers)),
         action_source: Some(Arc::new(StubActions)),
+        query_source: None,
     }]);
     install_admin_module_metadata(vec![AdminModuleMetadata {
         module_name: "remote-crm".to_owned(),
@@ -1874,6 +1964,7 @@ async fn admin_action_invocation_requires_declared_capability_scope() {
         listed_in_schema: false,
         data_source: Some(Arc::new(StubUsers)),
         action_source: Some(Arc::new(StubActions)),
+        query_source: None,
     }]);
     install_admin_module_metadata(vec![AdminModuleMetadata {
         module_name: "remote-crm".to_owned(),
@@ -1920,6 +2011,7 @@ async fn admin_action_invocation_rejects_unknown_action() {
         listed_in_schema: false,
         data_source: Some(Arc::new(StubUsers)),
         action_source: Some(Arc::new(StubActions)),
+        query_source: None,
     }]);
     install_admin_module_metadata(vec![AdminModuleMetadata {
         module_name: "remote-crm".to_owned(),
@@ -1967,6 +2059,7 @@ async fn unlisted_modules_can_read_records_without_schema_discovery() {
             listed_in_schema: true,
             data_source: Some(Arc::new(StubUsers)),
             action_source: None,
+            query_source: None,
         },
         AdminModule {
             module_name: "identity-declarative".to_owned(),
@@ -1977,6 +2070,7 @@ async fn unlisted_modules_can_read_records_without_schema_discovery() {
             listed_in_schema: false,
             data_source: Some(Arc::new(StubUsers)),
             action_source: None,
+            query_source: None,
         },
     ]);
     install_admin_module_metadata(vec![]);
@@ -2034,6 +2128,7 @@ async fn refresh_schema_replaces_installed_modules() {
         listed_in_schema: true,
         data_source: Some(Arc::new(StubUsers)),
         action_source: None,
+        query_source: None,
     }]);
     install_admin_module_refresh_fn(|| async {
         REFRESH_COUNT.fetch_add(1, Ordering::SeqCst);
@@ -2047,6 +2142,7 @@ async fn refresh_schema_replaces_installed_modules() {
                 listed_in_schema: true,
                 data_source: Some(Arc::new(StubUsers)),
                 action_source: None,
+                query_source: None,
             },
             AdminModule {
                 module_name: "remote-crm".to_owned(),
@@ -2059,6 +2155,7 @@ async fn refresh_schema_replaces_installed_modules() {
                 listed_in_schema: true,
                 data_source: None,
                 action_source: None,
+                query_source: None,
             },
         ])
     });
@@ -2184,6 +2281,7 @@ async fn refresh_modules_replaces_module_registry_metadata() {
         listed_in_schema: true,
         data_source: Some(Arc::new(StubUsers)),
         action_source: None,
+        query_source: None,
     }]);
     install_admin_module_metadata(vec![AdminModuleMetadata {
         module_name: "identity".to_owned(),

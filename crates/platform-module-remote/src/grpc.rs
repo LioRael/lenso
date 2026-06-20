@@ -1,10 +1,10 @@
 use crate::config::RemoteModuleConfig;
 use crate::protocol::{
     RemoteActionInvokeResponse, RemoteAdminActionInvokeRequest, RemoteAdminGetRequest,
-    RemoteAdminListRequest, RemoteEventHandleRequest, RemoteEventHandleResponse,
-    RemoteFunctionInvokeRequest, RemoteFunctionInvokeResponse, RemoteGetResponse,
-    RemoteHttpProxyInvokeRequest, RemoteHttpProxyInvokeResponse, RemoteListResponse,
-    RemoteManifestResponse,
+    RemoteAdminListRequest, RemoteAdminQueryRequest, RemoteEventHandleRequest,
+    RemoteEventHandleResponse, RemoteFunctionInvokeRequest, RemoteFunctionInvokeResponse,
+    RemoteGetResponse, RemoteHttpProxyInvokeRequest, RemoteHttpProxyInvokeResponse,
+    RemoteListResponse, RemoteManifestResponse, RemoteQueryResponse,
 };
 use platform_core::{AppError, AppResult, ErrorCode};
 use platform_module::AdminListQuery;
@@ -21,6 +21,7 @@ const GET_MANIFEST_PATH: &str = "/lenso.remote.v1.RemoteModule/GetManifest";
 const LIST_ADMIN_RECORDS_PATH: &str = "/lenso.remote.v1.RemoteModule/ListAdminRecords";
 const GET_ADMIN_RECORD_PATH: &str = "/lenso.remote.v1.RemoteModule/GetAdminRecord";
 const INVOKE_ADMIN_ACTION_PATH: &str = "/lenso.remote.v1.RemoteModule/InvokeAdminAction";
+const QUERY_ADMIN_VALUE_PATH: &str = "/lenso.remote.v1.RemoteModule/QueryAdminValue";
 const PROXY_HTTP_ROUTE_PATH: &str = "/lenso.remote.v1.RemoteModule/ProxyHttpRoute";
 const INVOKE_FUNCTION_PATH: &str = "/lenso.remote.v1.RemoteModule/InvokeFunction";
 const HANDLE_EVENT_PATH: &str = "/lenso.remote.v1.RemoteModule/HandleEvent";
@@ -92,6 +93,21 @@ pub(crate) async fn invoke_admin_action(
         &RemoteAdminActionInvokeRequest {
             action: action.to_owned(),
             input,
+        },
+    )
+    .await
+}
+
+pub(crate) async fn query_admin_value(
+    config: &RemoteModuleConfig,
+    query: &str,
+) -> AppResult<RemoteQueryResponse> {
+    unary_json(
+        config,
+        QUERY_ADMIN_VALUE_PATH,
+        "admin query",
+        &RemoteAdminQueryRequest {
+            query: query.to_owned(),
         },
     )
     .await
@@ -259,6 +275,7 @@ fn method_name(path: &str) -> &'static str {
         LIST_ADMIN_RECORDS_PATH => "ListAdminRecords",
         GET_ADMIN_RECORD_PATH => "GetAdminRecord",
         INVOKE_ADMIN_ACTION_PATH => "InvokeAdminAction",
+        QUERY_ADMIN_VALUE_PATH => "QueryAdminValue",
         PROXY_HTTP_ROUTE_PATH => "ProxyHttpRoute",
         INVOKE_FUNCTION_PATH => "InvokeFunction",
         HANDLE_EVENT_PATH => "HandleEvent",
@@ -335,6 +352,7 @@ mod tests {
         assert!(proto.contains("rpc ListAdminRecords"));
         assert!(proto.contains("rpc GetAdminRecord"));
         assert!(proto.contains("rpc InvokeAdminAction"));
+        assert!(proto.contains("rpc QueryAdminValue"));
         assert!(proto.contains("rpc ProxyHttpRoute"));
         assert!(proto.contains("rpc InvokeFunction"));
         assert!(proto.contains("rpc HandleEvent"));
@@ -391,6 +409,16 @@ mod tests {
             .expect("admin action invokes over grpc");
         assert_eq!(action_output["synced"], true);
         assert_eq!(action_output["dry_run"], true);
+
+        let query_output = module
+            .admin_queries
+            .as_ref()
+            .expect("grpc admin query source")
+            .query("health")
+            .await
+            .expect("admin query invokes over grpc");
+        assert_eq!(query_output["contacts"], 2);
+        assert_eq!(query_output["healthy"], true);
 
         let proxy_output = proxy_http_route(
             &config,
@@ -515,6 +543,7 @@ mod tests {
                 | LIST_ADMIN_RECORDS_PATH
                 | GET_ADMIN_RECORD_PATH
                 | INVOKE_ADMIN_ACTION_PATH
+                | QUERY_ADMIN_VALUE_PATH
                 | PROXY_HTTP_ROUTE_PATH
                 | INVOKE_FUNCTION_PATH
                 | HANDLE_EVENT_PATH => {
@@ -540,6 +569,7 @@ mod tests {
                         LIST_ADMIN_RECORDS_PATH => LIST_ADMIN_RECORDS_PATH,
                         GET_ADMIN_RECORD_PATH => GET_ADMIN_RECORD_PATH,
                         INVOKE_ADMIN_ACTION_PATH => INVOKE_ADMIN_ACTION_PATH,
+                        QUERY_ADMIN_VALUE_PATH => QUERY_ADMIN_VALUE_PATH,
                         PROXY_HTTP_ROUTE_PATH => PROXY_HTTP_ROUTE_PATH,
                         INVOKE_FUNCTION_PATH => INVOKE_FUNCTION_PATH,
                         HANDLE_EVENT_PATH => HANDLE_EVENT_PATH,
@@ -617,6 +647,17 @@ mod tests {
                 })
                 .expect("admin action response serializes")
             }
+            QUERY_ADMIN_VALUE_PATH => {
+                let request: RemoteAdminQueryRequest = serde_json::from_str(&request.payload_json)
+                    .map_err(|error| Status::invalid_argument(error.to_string()))?;
+                if request.query != "health" {
+                    return Err(Status::not_found("unknown query"));
+                }
+                serde_json::to_string(&RemoteQueryResponse {
+                    data: json!({"contacts": 2, "healthy": true}),
+                })
+                .expect("admin query response serializes")
+            }
             PROXY_HTTP_ROUTE_PATH => {
                 let request: RemoteHttpProxyInvokeRequest =
                     serde_json::from_str(&request.payload_json)
@@ -670,7 +711,19 @@ mod tests {
     fn manifest() -> ModuleManifest {
         ModuleManifest::builder("remote-grpc")
             .declarative_admin(AdminDeclarativeSurface {
-                pages: Vec::new(),
+                pages: vec![platform_module::AdminDeclarativePage {
+                    name: "overview".to_owned(),
+                    label: "Overview".to_owned(),
+                    sections: vec![platform_module::AdminDeclarativeSection {
+                        name: "health".to_owned(),
+                        label: "Health".to_owned(),
+                        component: platform_module::AdminDeclarativeComponent::QueryValue {
+                            query: "health".to_owned(),
+                            capability: "remote_grpc.health.read".to_owned(),
+                            value_path: "contacts".to_owned(),
+                        },
+                    }],
+                }],
                 actions: vec![AdminAction {
                     name: "sync_contacts".to_owned(),
                     label: "Sync contacts".to_owned(),

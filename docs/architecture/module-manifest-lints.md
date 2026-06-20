@@ -48,6 +48,7 @@ Console category mapping and tests in the same change.
 | `warning` | `admin.declarative.fallback_schema` | Declarative fallback schema declares no entities. |
 | `warning` | `admin.declarative.fallback_schema.{entity}` | Declarative fallback entity is missing read capability. |
 | `warning` | `admin.declarative.section.{section}` | Declarative section references an entity missing from `fallback_schema`. |
+| `warning` | `admin.declarative.query.{query}` | Declarative query value is missing a stable name, value path, or read capability. |
 | `warning` | `admin.embedded.runtime` | Embedded runtime is reserved by current host policy. |
 | `warning` | `admin.embedded.entry.url` | Embedded entry URL is not HTTPS outside local development. |
 | `warning` | `admin.embedded.entry.allowed_origins` | Embedded surface has no origin allowlist. |

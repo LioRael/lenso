@@ -54,6 +54,11 @@ pub struct RemoteActionInvokeResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoteQueryResponse {
+    pub data: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemoteAdminListRequest {
     pub entity: String,
     pub limit: i64,
@@ -70,6 +75,11 @@ pub struct RemoteAdminGetRequest {
 pub struct RemoteAdminActionInvokeRequest {
     pub action: String,
     pub input: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoteAdminQueryRequest {
+    pub query: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

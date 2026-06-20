@@ -6,8 +6,9 @@
 use platform_core::{AppError, ErrorCode, RequestContext, StoryDisplayDescriptor};
 use platform_http::{ApiErrorResponse, ApiOpenApiRouter, OpenApiRouter, routes};
 use platform_module::{
-    AdminActionSource, AdminDataSource, AdminSchema, AdminSurface, ConsoleSurface, EventSurface,
-    LifecycleSurface, ModuleHttpRoute, ModuleLoadStatus, ModuleSource, RuntimeSurface,
+    AdminActionSource, AdminDataSource, AdminQuerySource, AdminSchema, AdminSurface,
+    ConsoleSurface, EventSurface, LifecycleSurface, ModuleHttpRoute, ModuleLoadStatus,
+    ModuleSource, RuntimeSurface,
 };
 use std::sync::{Arc, OnceLock, RwLock};
 use std::time::Instant;
@@ -43,6 +44,8 @@ pub struct AdminModule {
     pub data_source: Option<Arc<dyn AdminDataSource>>,
     /// Live behavior for manifest-declared admin actions.
     pub action_source: Option<Arc<dyn AdminActionSource>>,
+    /// Live behavior for manifest-declared read-only queries.
+    pub query_source: Option<Arc<dyn AdminQuerySource>>,
 }
 
 /// One module's registry metadata, independent of whether schema-admin
@@ -441,6 +444,25 @@ fn find_loaded_action_module(
     }
 }
 
+fn find_loaded_query_module(
+    module: &str,
+    ctx: &RequestContext,
+) -> Result<AdminModule, ApiErrorResponse> {
+    let admin_module = find_module(module, ctx)?;
+    if matches!(admin_module.load_status, ModuleLoadStatus::Loaded) {
+        Ok(admin_module)
+    } else {
+        Err(ApiErrorResponse::with_context(
+            AppError::new(
+                ErrorCode::ExternalDependency,
+                format!("module {module} is not loaded"),
+            )
+            .retryable(),
+            ctx,
+        ))
+    }
+}
+
 /// The schema-admin router, mounted by the API app.
 pub fn router() -> ApiOpenApiRouter {
     OpenApiRouter::new()
@@ -453,6 +475,7 @@ pub fn router() -> ApiOpenApiRouter {
         .routes(routes!(list_schemas))
         .routes(routes!(refresh_schemas))
         .routes(routes!(invoke_action))
+        .routes(routes!(query_value))
         .routes(routes!(list_records))
         .routes(routes!(get_record))
 }

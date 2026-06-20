@@ -189,6 +189,7 @@ Current remote-module support includes:
 - remote manifest loading
 - schema-admin read data
 - schema, declarative custom, and embedded custom admin metadata
+- read-only declarative admin query values
 - declared host-owned HTTP proxy routes
 - remote runtime function execution through host-owned queues
 - persisted remote proxy calls and runtime-operation visibility

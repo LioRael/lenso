@@ -337,6 +337,7 @@ fn collect_admin_capability_references(
             collect_schema_capability_references("admin.schema", schema, references);
         }
         AdminSurface::DeclarativeCustom(surface) => {
+            collect_declarative_query_capability_references(surface, references);
             for action in &surface.actions {
                 if present(&action.capability) {
                     let action_subject = if present(&action.name) {
@@ -841,6 +842,17 @@ fn lint_admin_surface(admin: &AdminSurface, lints: &mut Vec<ModuleManifestLint>)
                                 });
                             }
                         }
+                        AdminDeclarativeComponent::QueryValue {
+                            capability,
+                            query,
+                            value_path,
+                        } => lint_query_value(
+                            section.name.as_str(),
+                            query,
+                            capability,
+                            value_path,
+                            lints,
+                        ),
                         AdminDeclarativeComponent::MetricStrip { .. } => {}
                     }
                 }
@@ -927,6 +939,71 @@ fn lint_schema_entities(prefix: &str, schema: &AdminSchema, lints: &mut Vec<Modu
                 suggestion: "Declare the capability required to read this entity.".to_owned(),
             });
         }
+    }
+}
+
+fn collect_declarative_query_capability_references(
+    surface: &AdminDeclarativeSurface,
+    references: &mut Vec<ModuleCapabilityReference>,
+) {
+    for page in &surface.pages {
+        for section in &page.sections {
+            let AdminDeclarativeComponent::QueryValue {
+                capability, query, ..
+            } = &section.component
+            else {
+                continue;
+            };
+            if present(capability) {
+                let subject = if present(query) {
+                    format!("admin.declarative.query.{query}")
+                } else {
+                    format!("admin.declarative.section.{}", section.name)
+                };
+                references.push(ModuleCapabilityReference {
+                    capability: capability.clone(),
+                    subject,
+                });
+            }
+        }
+    }
+}
+
+fn lint_query_value(
+    section_name: &str,
+    query: &str,
+    capability: &str,
+    value_path: &str,
+    lints: &mut Vec<ModuleManifestLint>,
+) {
+    let subject = if present(query) {
+        format!("admin.declarative.query.{query}")
+    } else {
+        format!("admin.declarative.section.{section_name}")
+    };
+    if !valid_runtime_function_name(query) {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Warning,
+            subject: subject.clone(),
+            message: "Declarative query name should be a stable path-safe identifier.".to_owned(),
+            suggestion: "Use ASCII letters, digits, dot, underscore, or hyphen.".to_owned(),
+        });
+    }
+    if !present(value_path) {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Warning,
+            subject: subject.clone(),
+            message: "Declarative query value is missing a value path.".to_owned(),
+            suggestion: "Set value_path to the JSON field rendered by this section.".to_owned(),
+        });
+    }
+    if !present(capability) {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Warning,
+            subject,
+            message: "Declarative query is missing a read capability.".to_owned(),
+            suggestion: "Declare the capability required to read this query.".to_owned(),
+        });
     }
 }
 

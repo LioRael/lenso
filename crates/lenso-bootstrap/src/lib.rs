@@ -921,7 +921,8 @@ fn admin_modules_from_modules(modules: Vec<Module>) -> Vec<AdminModule> {
             // `modules(ctx)` yields owned Modules — move the fields out.
             let data_source = module.admin_data;
             let action_source = module.admin_actions;
-            if data_source.is_none() && action_source.is_none() {
+            let query_source = module.admin_queries;
+            if data_source.is_none() && action_source.is_none() && query_source.is_none() {
                 return None;
             }
             let ModuleManifest { name, admin, .. } = module.manifest;
@@ -946,6 +947,7 @@ fn admin_modules_from_modules(modules: Vec<Module>) -> Vec<AdminModule> {
                 listed_in_schema,
                 data_source,
                 action_source,
+                query_source,
             })
         })
         .collect()
@@ -999,6 +1001,7 @@ fn failed_remote_admin_module(name: String, message: String) -> AdminModule {
         listed_in_schema: true,
         data_source: None,
         action_source: None,
+        query_source: None,
     }
 }
 

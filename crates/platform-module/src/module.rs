@@ -1,6 +1,6 @@
 //! A loaded module: serializable manifest + behavior binding + internal config.
 
-use crate::admin_data::{AdminActionSource, AdminDataSource};
+use crate::admin_data::{AdminActionSource, AdminDataSource, AdminQuerySource};
 use crate::binding::ModuleBinding;
 use crate::linked::{LinkedBinding, LinkedHttpContribution};
 use lenso_contracts::{ModuleManifest, ModuleSource};
@@ -25,6 +25,8 @@ pub struct Module {
     pub admin_data: Option<Arc<dyn AdminDataSource>>,
     /// Optional executable admin actions. Set via [`Module::with_admin_actions`].
     pub admin_actions: Option<Arc<dyn AdminActionSource>>,
+    /// Optional read-only declarative queries. Set via [`Module::with_admin_queries`].
+    pub admin_queries: Option<Arc<dyn AdminQuerySource>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,6 +51,7 @@ impl Module {
             runtime_config_groups: &[],
             admin_data: None,
             admin_actions: None,
+            admin_queries: None,
         }
     }
 
@@ -66,6 +69,7 @@ impl Module {
             runtime_config_groups: &[],
             admin_data: None,
             admin_actions: None,
+            admin_queries: None,
         }
     }
 
@@ -100,6 +104,13 @@ impl Module {
     #[must_use]
     pub fn with_admin_actions(mut self, actions: Arc<dyn AdminActionSource>) -> Self {
         self.admin_actions = Some(actions);
+        self
+    }
+
+    /// Attach declarative query behavior for manifest-declared queries.
+    #[must_use]
+    pub fn with_admin_queries(mut self, queries: Arc<dyn AdminQuerySource>) -> Self {
+        self.admin_queries = Some(queries);
         self
     }
 }
