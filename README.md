@@ -1,10 +1,21 @@
-# Lenso Backend Platform
+# Lenso
 
 [![CI](https://github.com/LioRael/lenso/actions/workflows/ci.yml/badge.svg)](https://github.com/LioRael/lenso/actions/workflows/ci.yml)
 
-Rust-first service-ready modular monolith scaffold with generated contracts.
+Agent-ready modular app framework for Rust business systems.
 
-The platform starts as one deployable backend system with clear module boundaries. Modules own product capabilities, platform crates provide shared service-kit foundations, the runtime handles durable background work, and contracts produce stable API/event artifacts. The Runtime Console lives in the sibling `lenso-runtime-console` repository and consumes this backend API.
+Start with one deployable backend. Add business modules. Get APIs, admin
+surfaces, runtime workflows, and operational visibility through the Runtime
+Console.
+
+Lenso is built for modular SaaS apps, internal platforms, vertical business
+systems, and agent-assisted module development. It gives humans and coding
+agents stable scaffolds, explicit module manifests, generated contracts,
+architecture checks, smoke checks, and a Runtime Console to verify that a module
+is connected.
+
+The platform is service-ready by design: build modular first, then move selected
+modules across process or service boundaries when those boundaries harden.
 
 ## Repository Set
 
@@ -24,6 +35,23 @@ framework/
 
 Repository operations notes, including branch protection and cross-repo CI
 wiring, live in [docs/repository-operations.md](docs/repository-operations.md).
+
+## Agent-Ready Module Demo
+
+Use the public skills and scaffolds to turn a product prompt into a verified
+module:
+
+```text
+Build a support ticket module for a Lenso app.
+```
+
+The intended loop is:
+
+```text
+lenso-start -> lenso-module-authoring -> lenso module create -> checks -> /console
+```
+
+See [docs/agent-ready-module-demo.md](docs/agent-ready-module-demo.md).
 
 ## Published Packages
 

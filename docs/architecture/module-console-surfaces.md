@@ -201,6 +201,10 @@ Runtime Console reads
 compatible bundle exports as `runtime_bundle` packages.
 Bundles that render React components must externalize React and the console host
 API to the stable same-origin host entries under `/console/extensions/host/*`.
+Console package styles should reference Lenso's Tailwind token contract at build
+time with `@reference "@lenso/runtime-console-api/theme.css"` when they need
+semantic utilities such as `bg-surface`; this is a build-time reference and must
+not be emitted as a second host theme.
 
 The first registry shape is deliberately small:
 
@@ -212,7 +216,8 @@ The first registry shape is deliberately small:
       "packageName": "@vendor/crm-console",
       "exportName": "crmConsoleModule",
       "entry": "/console/extensions/crm/entry.js",
-      "hostApi": "1"
+      "hostApi": "1",
+      "styles": ["/console/extensions/crm/entry.css"]
     }
   ]
 }
@@ -221,6 +226,8 @@ The first registry shape is deliberately small:
 Rules:
 
 - Bundle entries must be same-origin URLs served by the host.
+- Bundle styles, when present, must also be same-origin CSS assets served by the
+  host and are loaded before the JavaScript bundle import.
 - `hostApi` must match the Runtime Console host API version.
 - The exported value must be a `ConsoleModule`.
 - Unsupported host API versions, cross-origin entries, and malformed exports are
