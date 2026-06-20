@@ -7,8 +7,8 @@ use platform_admin_data::{
 };
 use platform_core::{
     AppConfig, AppContext, AuthConfig, DatabaseConfig, DbPool, HttpConfig, LoggingEventPublisher,
-    ModuleSourcesConfig, OutboxRelay, PLATFORM_MIGRATIONS, RemoteModuleSourceConfig, ServiceConfig,
-    TelemetryConfig, apply_migrations,
+    ModuleSourcesConfig, OutboxRelay, PLATFORM_MIGRATIONS, RedisConfig, RemoteModuleSourceConfig,
+    ServiceConfig, TelemetryConfig, apply_migrations,
 };
 use platform_runtime::{RUNTIME_MIGRATIONS, RuntimeWorker};
 use platform_testing::TestDatabase;
@@ -97,6 +97,7 @@ fn app_context_with_remote_modules_and_db(
             url: database_url,
             max_connections: 1,
         },
+        redis: RedisConfig::default(),
         http: HttpConfig::default(),
         telemetry: TelemetryConfig::default(),
         auth: AuthConfig::default(),

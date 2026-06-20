@@ -24,6 +24,7 @@ getrandom.workspace = true
 opentelemetry.workspace = true
 opentelemetry-otlp.workspace = true
 opentelemetry_sdk.workspace = true
+redis.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true

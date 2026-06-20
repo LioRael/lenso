@@ -9,6 +9,8 @@ pub const LENSO_COMPOSITION_PROFILE_ENV: &str = "LENSO_COMPOSITION_PROFILE";
 pub struct AppConfig {
     pub service: ServiceConfig,
     pub database: DatabaseConfig,
+    #[serde(default)]
+    pub redis: RedisConfig,
     pub http: HttpConfig,
     pub telemetry: TelemetryConfig,
     pub auth: AuthConfig,
@@ -34,6 +36,7 @@ impl AppConfig {
             )?,
             service,
             database: DatabaseConfig::from_env(),
+            redis: RedisConfig::from_env(),
             http: HttpConfig::default(),
             telemetry: TelemetryConfig::default(),
             auth: AuthConfig::default(),
@@ -73,6 +76,27 @@ impl DatabaseConfig {
                 .ok()
                 .and_then(|value| value.parse().ok())
                 .unwrap_or(10),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct RedisConfig {
+    pub url: Option<String>,
+}
+
+impl RedisConfig {
+    fn from_env() -> Self {
+        Self::from_url_value(std::env::var("REDIS_URL").ok().as_deref())
+    }
+
+    #[must_use]
+    pub fn from_url_value(value: Option<&str>) -> Self {
+        Self {
+            url: value
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned),
         }
     }
 }
@@ -429,5 +453,17 @@ mod tests {
 
         assert_eq!(name, "auth-password");
         assert_eq!(config.enabled, Some(false));
+    }
+
+    #[test]
+    fn redis_config_treats_empty_url_as_disabled() {
+        assert!(RedisConfig::from_url_value(None).url.is_none());
+        assert!(RedisConfig::from_url_value(Some("  ")).url.is_none());
+        assert_eq!(
+            RedisConfig::from_url_value(Some(" redis://localhost:6379/0 "))
+                .url
+                .as_deref(),
+            Some("redis://localhost:6379/0")
+        );
     }
 }

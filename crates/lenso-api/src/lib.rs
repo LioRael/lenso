@@ -5,7 +5,7 @@ use axum::middleware;
 use axum::response::Html;
 use platform_core::{
     AppConfig, AppContext, LoggingEventPublisher, PostgresRuntimeConfigProvider,
-    RuntimeConfigRegistry, Shutdown, connect_pool, telemetry,
+    RuntimeConfigRegistry, Shutdown, connect_pool, connect_redis, telemetry,
 };
 use platform_http::request_context_middleware;
 use std::net::SocketAddr;
@@ -30,7 +30,8 @@ pub async fn run_from_env_with_composition(
     telemetry::init(&config.telemetry)?;
 
     let db = connect_pool(&config.database).await?;
-    let mut ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
+    let redis = connect_redis(&config.redis).await?;
+    let mut ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher)).with_redis(redis);
 
     let descriptors =
         lenso_bootstrap::runtime_config_descriptors_with_composition(&ctx, &composition)

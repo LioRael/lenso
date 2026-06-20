@@ -48,6 +48,7 @@ use std::time::{Duration, Instant};
 const DEFAULT_MODULE_SERVICES_FILE: &str = ".lenso/module-services.json";
 const DEFAULT_REMOTE_SERVICE_READY_TIMEOUT_MS: u64 = 10_000;
 const REMOTE_SERVICE_TERMINATE_GRACE_MS: u64 = 800;
+const AUTH_SESSION_CACHE_MAX_TTL: Duration = Duration::from_secs(12 * 60 * 60);
 
 struct LinkedModuleEntry {
     module_name: &'static str,
@@ -333,9 +334,12 @@ pub fn auth_actor_resolver_for_context_with_composition(
         return Ok(None);
     }
 
-    let auth_resolver: Arc<dyn platform_core::ActorResolver> = Arc::new(
-        auth::resolver::AuthActorResolver::new(ctx.db.clone(), ctx.actor_resolver.clone()),
-    );
+    let auth_resolver: Arc<dyn platform_core::ActorResolver> =
+        Arc::new(auth::resolver::AuthActorResolver::new_with_session_cache(
+            ctx.db.clone(),
+            ctx.actor_resolver.clone(),
+            auth_session_cache(ctx)?,
+        ));
 
     let auth_password_enabled = linked_module_with_dependencies_enabled(
         ctx,
@@ -351,6 +355,29 @@ pub fn auth_actor_resolver_for_context_with_composition(
     }
 
     Ok(Some(auth_resolver))
+}
+
+fn auth_session_cache(
+    ctx: &AppContext,
+) -> platform_core::AppResult<Option<Arc<dyn auth::resolver::SessionCache>>> {
+    match auth::config::AuthRuntimeConfig::from_context(ctx).session_cache {
+        auth::config::SessionCacheMode::Database => Ok(None),
+        auth::config::SessionCacheMode::Redis => {
+            let Some(redis) = ctx.redis.clone() else {
+                return Err(AppError::validation(
+                    "Redis auth session cache is not configured",
+                    vec![ErrorDetail {
+                        field: Some("auth.session_cache".to_owned()),
+                        reason: "set REDIS_URL when auth.session_cache is redis".to_owned(),
+                    }],
+                ));
+            };
+            Ok(Some(Arc::new(auth::redis_cache::RedisSessionCache::new(
+                redis,
+                AUTH_SESSION_CACHE_MAX_TTL,
+            ))))
+        }
+    }
 }
 
 fn linked_module_entries_for_context(
@@ -2336,7 +2363,7 @@ mod tests {
     use async_trait::async_trait;
     use platform_core::{
         AppConfig, AuthConfig, DatabaseConfig, ErrorCode, ExecutionContext, HttpConfig,
-        LoggingEventPublisher, ModuleConfig, ModuleSourcesConfig, PLATFORM_MIGRATIONS,
+        LoggingEventPublisher, ModuleConfig, ModuleSourcesConfig, PLATFORM_MIGRATIONS, RedisConfig,
         RemoteModuleSourceConfig, RuntimeConfigProvider, RuntimeConfigRegistry,
         RuntimeConfigSnapshot, ServiceConfig, TelemetryConfig, apply_migrations,
     };
@@ -2728,6 +2755,31 @@ mod tests {
                 .expect("JWT resolver should be skipped until jwt_secret is configured")
                 .is_some()
         );
+    }
+
+    #[tokio::test]
+    async fn auth_actor_resolver_requires_redis_when_session_cache_is_redis() {
+        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build");
+        let config = test_config_with_database_url("postgres://localhost/lenso_test");
+        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
+        let registry =
+            RuntimeConfigRegistry::try_new(runtime_config_descriptors(&ctx).expect("descriptors"))
+                .expect("registry");
+        let mut stored = BTreeMap::new();
+        stored.insert(
+            ("*".to_owned(), "auth.session_cache".to_owned()),
+            json!("redis"),
+        );
+        let snapshot = RuntimeConfigSnapshot::resolve(&registry, "api", &stored);
+        let ctx = ctx.with_runtime_config_provider(Arc::new(TestRuntimeConfigProvider {
+            snapshot: Arc::new(snapshot),
+        }));
+
+        let error =
+            auth_actor_resolver_for_context(&ctx).expect_err("redis cache should require Redis");
+
+        assert_eq!(error.code, ErrorCode::Validation);
     }
 
     #[tokio::test]
@@ -3770,6 +3822,7 @@ mod tests {
                 url: database_url.into(),
                 max_connections: 5,
             },
+            redis: RedisConfig::default(),
             http: HttpConfig::default(),
             telemetry: TelemetryConfig::default(),
             auth: AuthConfig::default(),
