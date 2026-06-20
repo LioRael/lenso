@@ -52,6 +52,9 @@ lenso-start -> lenso-module-authoring -> lenso module create -> checks -> /conso
 ```
 
 See [docs/agent-ready-module-demo.md](docs/agent-ready-module-demo.md).
+The runnable example is guarded in
+[`LioRael/lenso-examples`](https://github.com/LioRael/lenso-examples) by module
+smoke checks and a real host API smoke.
 
 ## Published Packages
 
