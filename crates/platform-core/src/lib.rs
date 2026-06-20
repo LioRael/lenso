@@ -11,6 +11,7 @@ pub mod health;
 pub mod ids;
 pub mod migrations;
 pub mod outbox;
+pub mod redis;
 pub mod remote_proxy_calls;
 pub mod runtime_config;
 pub mod shutdown;
@@ -26,7 +27,7 @@ pub use admin_actions::{
 pub use clock::{Clock, SystemClock};
 pub use config::{
     AppConfig, AuthConfig, DEFAULT_LINKED_MODULE_PROFILE, DatabaseConfig, HttpConfig,
-    LENSO_COMPOSITION_PROFILE_ENV, LogFormat, ModuleConfig, ModuleSourcesConfig,
+    LENSO_COMPOSITION_PROFILE_ENV, LogFormat, ModuleConfig, ModuleSourcesConfig, RedisConfig,
     RemoteModuleSourceConfig, ServiceConfig, TelemetryConfig, is_local_development_environment,
     parse_cors_allowed_origins,
 };
@@ -49,6 +50,7 @@ pub use outbox::{
     ClaimedOutboxEvent, EventDispatcher, EventHandler, EventHandlerRegistry,
     LoggingEventDispatcher, OutboxEvent, OutboxPublisher, OutboxRelay, OutboxStatus,
 };
+pub use redis::{RedisConnection, connect_redis};
 pub use remote_proxy_calls::{
     RemoteHttpProxyCallRecord, insert_remote_http_proxy_call, remote_proxy_call_story_event_id,
 };

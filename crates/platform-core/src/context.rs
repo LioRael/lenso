@@ -158,6 +158,7 @@ impl RequestContext {
 pub struct AppContext {
     pub config: Arc<AppConfig>,
     pub db: DbPool,
+    pub redis: Option<crate::RedisConnection>,
     pub actor_resolver: Arc<dyn ActorResolver>,
     pub clock: Arc<dyn Clock>,
     pub ids: Arc<dyn IdGenerator>,
@@ -175,6 +176,7 @@ impl Debug for AppContext {
             .debug_struct("AppContext")
             .field("config", &self.config)
             .field("db", &"<pool>")
+            .field("redis", &self.redis.as_ref().map(|_| "<connection>"))
             .field("actor_resolver", &self.actor_resolver)
             .field("telemetry_spans", &self.telemetry_spans)
             .field("execution_logs", &self.execution_logs)
@@ -192,6 +194,7 @@ impl AppContext {
         Self {
             config: Arc::new(config),
             db,
+            redis: None,
             actor_resolver,
             clock: Arc::new(SystemClock),
             ids: Arc::new(UuidGenerator),
@@ -206,6 +209,11 @@ impl AppContext {
 
     pub fn with_actor_resolver(mut self, actor_resolver: Arc<dyn ActorResolver>) -> Self {
         self.actor_resolver = actor_resolver;
+        self
+    }
+
+    pub fn with_redis(mut self, redis: Option<crate::RedisConnection>) -> Self {
+        self.redis = redis;
         self
     }
 
