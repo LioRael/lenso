@@ -595,6 +595,8 @@ struct LocalModuleCatalogConsolePackage {
     #[serde(default)]
     required_capabilities: Vec<String>,
     #[serde(default)]
+    styles: Vec<String>,
+    #[serde(default)]
     version: Option<String>,
 }
 
@@ -683,6 +685,8 @@ struct LocalRuntimeConsoleBundle {
     required_capabilities: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     route: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    styles: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     version: Option<String>,
 }
@@ -697,8 +701,16 @@ struct RuntimeConsoleBundleSpec {
     package_name: String,
     required_capabilities: Vec<String>,
     route: Option<String>,
+    styles: Vec<RuntimeConsoleBundleStyleSpec>,
     target_path: PathBuf,
     version: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct RuntimeConsoleBundleStyleSpec {
+    entry: String,
+    source_url: String,
+    target_path: PathBuf,
 }
 
 #[derive(Debug)]
@@ -1396,6 +1408,7 @@ fn write_linked_runtime_console_extension_registry(
                 package_name: package.package_name.clone(),
                 required_capabilities: package.required_capabilities.clone(),
                 route: package.route.clone(),
+                styles: package.styles.clone(),
                 version: package.version.clone(),
             }
         }));
@@ -1462,6 +1475,23 @@ async fn write_runtime_console_extension_registry(
                 format!("console extension bundle could not be written: {error}"),
             )
         })?;
+        for style in &spec.styles {
+            let bytes = read_console_bundle_reference(&style.source_url).await?;
+            if let Some(parent) = style.target_path.parent() {
+                fs::create_dir_all(parent).map_err(|error| {
+                    AppError::new(
+                        ErrorCode::ExternalDependency,
+                        format!("console extension style directory could not be created: {error}"),
+                    )
+                })?;
+            }
+            fs::write(&style.target_path, bytes).map_err(|error| {
+                AppError::new(
+                    ErrorCode::ExternalDependency,
+                    format!("console extension style could not be written: {error}"),
+                )
+            })?;
+        }
     }
 
     let mut registry = read_runtime_console_extension_registry(console_registry_file_path)?;
@@ -1482,6 +1512,7 @@ async fn write_runtime_console_extension_registry(
             package_name: spec.package_name,
             required_capabilities: spec.required_capabilities,
             route: spec.route,
+            styles: spec.styles.into_iter().map(|style| style.entry).collect(),
             version: spec.version,
         }));
     write_runtime_console_extension_registry_file(console_registry_file_path, &registry)
@@ -1513,6 +1544,25 @@ fn runtime_console_bundle_specs(
                 .unwrap_or_else(|| FsPath::new(".lenso/console/extensions"))
                 .join(&module_slug)
                 .join(&file_name);
+            let styles = package
+                .styles
+                .iter()
+                .map(|style_reference| {
+                    let source_url = resolve_console_bundle_reference(style_reference, base_url)?;
+                    let file_name = console_style_file_name(&source_url, &package.export_name);
+                    Ok(RuntimeConsoleBundleStyleSpec {
+                        entry: format!(
+                            "{CONSOLE_EXTENSION_ROUTE_PREFIX}/{module_slug}/{file_name}"
+                        ),
+                        source_url,
+                        target_path: console_registry_file_path
+                            .parent()
+                            .unwrap_or_else(|| FsPath::new(".lenso/console/extensions"))
+                            .join(&module_slug)
+                            .join(file_name),
+                    })
+                })
+                .collect::<Result<Vec<_>, AppError>>()?;
             Ok(RuntimeConsoleBundleSpec {
                 bundle_url,
                 entry: format!("{CONSOLE_EXTENSION_ROUTE_PREFIX}/{module_slug}/{file_name}"),
@@ -1525,6 +1575,7 @@ fn runtime_console_bundle_specs(
                 package_name: package.package_name.clone(),
                 required_capabilities: package.required_capabilities.clone(),
                 route: package.route.clone(),
+                styles,
                 target_path,
                 version: package.version.clone(),
             })
@@ -1557,7 +1608,15 @@ fn resolve_console_bundle_reference(reference: &str, base_url: &str) -> Result<S
 }
 
 fn console_bundle_file_name(bundle_url: &str, export_name: &str) -> String {
-    reqwest::Url::parse(bundle_url)
+    console_asset_file_name(bundle_url, export_name, "js")
+}
+
+fn console_style_file_name(style_url: &str, export_name: &str) -> String {
+    console_asset_file_name(style_url, export_name, "css")
+}
+
+fn console_asset_file_name(asset_url: &str, export_name: &str, extension: &str) -> String {
+    reqwest::Url::parse(asset_url)
         .ok()
         .and_then(|url| {
             url.path_segments()
@@ -1566,12 +1625,12 @@ fn console_bundle_file_name(bundle_url: &str, export_name: &str) -> String {
                 .map(ToOwned::to_owned)
         })
         .or_else(|| {
-            FsPath::new(bundle_url)
+            FsPath::new(asset_url)
                 .file_name()
                 .and_then(|name| name.to_str())
                 .map(ToOwned::to_owned)
         })
-        .unwrap_or_else(|| format!("{}.js", slugify(export_name)))
+        .unwrap_or_else(|| format!("{}.{}", slugify(export_name), extension))
 }
 
 async fn read_console_bundle_reference(reference: &str) -> Result<Vec<u8>, AppError> {

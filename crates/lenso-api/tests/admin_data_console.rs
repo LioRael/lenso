@@ -907,6 +907,10 @@ async fn available_module_install_writes_remote_source_and_console_extension() {
         &bundle_path,
         b"export const billingConsoleModule = { id: 'billing', surfaces: [] };\n",
     );
+    let style_path = std::env::current_dir()
+        .expect("current dir")
+        .join(".lenso/fixtures/billing-console.css");
+    let _style = FileFixture::write(&style_path, b".billing-console{display:grid}\n");
     let _catalog = FileFixture::write(
         ".lenso/module-catalog.json",
         serde_json::json!({
@@ -922,6 +926,7 @@ async fn available_module_install_writes_remote_source_and_console_extension() {
                     "packageName": "@vendor/lenso-billing-console",
                     "exportName": "billingConsoleModule",
                     "bundleUrl": format!("file://{}", bundle_path.display()),
+                    "styles": [format!("file://{}", style_path.display())],
                     "route": "/data/billing"
                 }]
             }]
@@ -936,6 +941,8 @@ async fn available_module_install_writes_remote_source_and_console_extension() {
     let _console_registry = FileFixture::remove(".lenso/console/extensions/registry.json");
     let _copied_bundle =
         FileFixture::remove(".lenso/console/extensions/billing/billing-console.js");
+    let _copied_style =
+        FileFixture::remove(".lenso/console/extensions/billing/billing-console.css");
     install_admin_module_metadata(vec![AdminModuleMetadata {
         module_name: "auth".to_owned(),
         source: ModuleSource::Linked,
@@ -1003,9 +1010,18 @@ async fn available_module_install_writes_remote_source_and_console_extension() {
         "@vendor/lenso-billing-console"
     );
     assert_eq!(
+        console_registry_json["bundles"][0]["styles"],
+        serde_json::json!(["/console/extensions/billing/billing-console.css"])
+    );
+    assert_eq!(
         fs::read_to_string(".lenso/console/extensions/billing/billing-console.js")
             .expect("read copied bundle"),
         "export const billingConsoleModule = { id: 'billing', surfaces: [] };\n"
+    );
+    assert_eq!(
+        fs::read_to_string(".lenso/console/extensions/billing/billing-console.css")
+            .expect("read copied style"),
+        ".billing-console{display:grid}\n"
     );
 }
 
@@ -1055,9 +1071,47 @@ async fn available_module_install_rejects_catalog_preflight_blockers() {
 #[tokio::test]
 async fn available_linked_module_install_sets_demo_composition_profile() {
     let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
-    remove_module_catalog_fixture();
+    let bundle_path = std::env::current_dir()
+        .expect("current dir")
+        .join(".lenso/fixtures/auth-console.js");
+    let _bundle = FileFixture::write(
+        &bundle_path,
+        b"export const authConsoleModule = { id: 'auth', surfaces: [] };\n",
+    );
+    let style_path = std::env::current_dir()
+        .expect("current dir")
+        .join(".lenso/fixtures/auth-console.css");
+    let _style = FileFixture::write(&style_path, b".auth-console{display:grid}\n");
+    let _catalog = FileFixture::write(
+        ".lenso/module-catalog.json",
+        serde_json::json!({
+            "version": 1,
+            "modules": [{
+                "name": "auth",
+                "version": "0.1.2",
+                "source": "linked",
+                "manifestReference": "builtin:auth",
+                "summary": "Local auth fixture",
+                "capabilities": ["auth.users.read"],
+                "consolePackages": [{
+                    "packageName": "@lenso/auth-console",
+                    "exportName": "authConsoleModule",
+                    "bundleUrl": format!("file://{}", bundle_path.display()),
+                    "entry": "/console/extensions/auth/auth-console.js",
+                    "hostApi": "1",
+                    "route": "/data/auth/sessions",
+                    "requiredCapabilities": ["auth.users.read"],
+                    "styles": [format!("file://{}", style_path.display())],
+                    "version": "0.1.1"
+                }]
+            }]
+        })
+        .to_string(),
+    );
     let _env = FileFixture::write(".env", "DATABASE_URL=postgres://localhost/lenso\n");
     let _console_registry = FileFixture::remove(".lenso/console/extensions/registry.json");
+    let _copied_bundle = FileFixture::remove(".lenso/console/extensions/auth/auth-console.js");
+    let _copied_style = FileFixture::remove(".lenso/console/extensions/auth/auth-console.css");
     install_admin_module_metadata(vec![]);
     let ctx = AppContext::new(
         AppConfig::from_env(),
@@ -1114,6 +1168,20 @@ async fn available_linked_module_install_sets_demo_composition_profile() {
     assert_eq!(
         console_registry_json["bundles"][0]["requiredCapabilities"],
         serde_json::json!(["auth.users.read"])
+    );
+    assert_eq!(
+        console_registry_json["bundles"][0]["styles"],
+        serde_json::json!(["/console/extensions/auth/auth-console.css"])
+    );
+    assert_eq!(
+        fs::read_to_string(".lenso/console/extensions/auth/auth-console.js")
+            .expect("read copied bundle"),
+        "export const authConsoleModule = { id: 'auth', surfaces: [] };\n"
+    );
+    assert_eq!(
+        fs::read_to_string(".lenso/console/extensions/auth/auth-console.css")
+            .expect("read copied style"),
+        ".auth-console{display:grid}\n"
     );
 
     let status_response = build_router(AppContext::new(
