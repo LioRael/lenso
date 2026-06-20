@@ -109,6 +109,9 @@ First-time local setup lives in [docs/getting-started.md](docs/getting-started.m
   - `platform-testing`: shared test database helpers.
 - `modules/`
   - `auth`: host-owned authentication anchor and development session routes.
+    Session resolution defaults to Postgres and can opt into Redis by enabling
+    the auth module's `redis` feature, setting `REDIS_URL`, and setting runtime
+    config `auth.session_cache=redis`.
   - `auth-password`: first-party password provider for the auth anchor.
   - `story`: platform-owned Runtime Console story surface.
 - `fixtures/`
@@ -137,6 +140,23 @@ Create local environment config:
 ```sh
 cp .env.example .env
 ```
+
+`REDIS_URL` is optional for the platform itself. The first-party auth module uses
+Redis only when its dependency is built with the `redis` feature and runtime
+config sets `auth.session_cache=redis`; otherwise session resolution reads
+Postgres directly.
+
+Generated hosts can install that auth profile with:
+
+```sh
+lenso module install auth --profile redis-session-cache
+```
+
+The CLI applies the module descriptor profile, enabling the auth dependency's
+`redis` Cargo feature, writing `REDIS_URL=redis://localhost:6379/0` to `.env`,
+and recording the runtime default `auth.session_cache=redis` in
+`.lenso/runtime-config-defaults.json`. Provide a Redis service separately; the
+starter Docker Compose file only starts Postgres by default.
 
 Typical loop:
 
