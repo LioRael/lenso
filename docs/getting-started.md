@@ -44,6 +44,25 @@ into generated hosts, so `cargo run --bin api` serves the console at
 To refresh the hosted console later, upgrade `lenso-cli` and run
 `lenso host update-console` from the host project.
 
+## Enable Auth Redis Sessions In A Host
+
+Generated hosts can opt into Redis-backed auth session lookup through the auth
+module's install profile:
+
+```sh
+lenso module install auth --profile redis-session-cache
+```
+
+That descriptor-owned profile updates the host `Cargo.toml` so
+`lenso-module-auth` builds with `features = ["redis"]`, writes
+`REDIS_URL=redis://localhost:6379/0` to `.env`, and records the runtime default
+`auth.session_cache=redis` in `.lenso/runtime-config-defaults.json`.
+
+Redis is still an external service decision. The starter Docker Compose file
+starts Postgres only, so add or provide Redis before restarting the API and
+worker. If `auth.session_cache=redis` is active without `REDIS_URL`, host boot
+fails validation instead of silently falling back to Postgres.
+
 ## Configure Local Environment
 
 Start from the committed local defaults:
