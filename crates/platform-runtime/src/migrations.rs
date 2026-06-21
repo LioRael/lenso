@@ -13,4 +13,8 @@ pub const RUNTIME_MIGRATIONS: &[Migration] = &[
         name: "runtime/0003_add_function_runs_summary_index",
         sql: include_str!("../migrations/0003_add_function_runs_summary_index.sql"),
     },
+    Migration {
+        name: "runtime/0004_add_function_runs_story_indexes",
+        sql: include_str!("../migrations/0004_add_function_runs_story_indexes.sql"),
+    },
 ];

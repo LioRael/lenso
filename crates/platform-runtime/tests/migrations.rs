@@ -36,3 +36,41 @@ async fn runtime_migrations_create_function_runs_summary_index() {
 
     db.cleanup().await;
 }
+
+#[tokio::test]
+async fn runtime_migrations_create_function_runs_story_indexes() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+
+    apply_migrations(&db.pool, RUNTIME_MIGRATIONS)
+        .await
+        .expect("runtime migrations should apply");
+
+    let indexes: Vec<String> = sqlx::query_scalar(
+        r#"
+        select indexname
+        from pg_indexes
+        where schemaname = 'runtime'
+            and tablename = 'function_runs'
+            and indexname in (
+                'function_runs_story_correlation_idx',
+                'function_runs_story_updated_idx'
+            )
+        order by indexname
+        "#,
+    )
+    .fetch_all(&db.pool)
+    .await
+    .expect("story indexes should query");
+
+    assert_eq!(
+        indexes,
+        [
+            "function_runs_story_correlation_idx",
+            "function_runs_story_updated_idx"
+        ]
+    );
+
+    db.cleanup().await;
+}
