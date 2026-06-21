@@ -73,6 +73,41 @@ async fn platform_migrations_create_outbox_summary_index() {
 }
 
 #[tokio::test]
+async fn platform_migrations_create_outbox_story_indexes() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+
+    apply_migrations(&db.pool, platform_core::PLATFORM_MIGRATIONS)
+        .await
+        .expect("platform migrations should apply");
+
+    let indexes: Vec<String> = sqlx::query_scalar(
+        r#"
+        select indexname
+        from pg_indexes
+        where schemaname = 'platform'
+            and tablename = 'outbox'
+            and indexname in (
+                'outbox_story_correlation_idx',
+                'outbox_story_updated_idx'
+            )
+        order by indexname
+        "#,
+    )
+    .fetch_all(&db.pool)
+    .await
+    .expect("story indexes should query");
+
+    assert_eq!(
+        indexes,
+        ["outbox_story_correlation_idx", "outbox_story_updated_idx"]
+    );
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
 async fn platform_migrations_create_remote_http_proxy_calls_table() {
     let Some(db) = TestDatabase::create().await else {
         return;
