@@ -2,9 +2,11 @@ use crate::error::{AppError, AppResult, ErrorDetail};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::net::IpAddr;
 
 pub const DEFAULT_LINKED_MODULE_PROFILE: &str = "demo";
 pub const LENSO_COMPOSITION_PROFILE_ENV: &str = "LENSO_COMPOSITION_PROFILE";
+pub const LENSO_ALLOW_DEV_AUTH_ON_PUBLIC_BIND_ENV: &str = "LENSO_ALLOW_DEV_AUTH_ON_PUBLIC_BIND";
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AppConfig {
@@ -31,6 +33,8 @@ impl AppConfig {
     pub fn try_from_env() -> AppResult<Self> {
         let _ = dotenvy::dotenv();
         let service = ServiceConfig::default();
+        let http = HttpConfig::default();
+        validate_dev_auth_http_bind(&service, &http, dev_auth_public_bind_override_from_env())?;
         Ok(Self {
             module_sources: ModuleSourcesConfig::try_from_env_for_environment(
                 &service.environment,
@@ -38,7 +42,7 @@ impl AppConfig {
             service,
             database: DatabaseConfig::from_env(),
             redis: RedisConfig::from_env(),
-            http: HttpConfig::default(),
+            http,
             telemetry: TelemetryConfig::default(),
             auth: AuthConfig::default(),
             console: ConsoleConfig::default(),
@@ -124,7 +128,7 @@ pub struct HttpConfig {
 impl Default for HttpConfig {
     fn default() -> Self {
         Self {
-            host: std::env::var("HTTP_HOST").unwrap_or_else(|_| "0.0.0.0".to_owned()),
+            host: std::env::var("HTTP_HOST").unwrap_or_else(|_| "127.0.0.1".to_owned()),
             port: std::env::var("HTTP_PORT")
                 .ok()
                 .and_then(|value| value.parse().ok())
@@ -395,6 +399,44 @@ pub fn is_local_development_environment(environment: &str) -> bool {
     )
 }
 
+fn dev_auth_public_bind_override_from_env() -> bool {
+    std::env::var(LENSO_ALLOW_DEV_AUTH_ON_PUBLIC_BIND_ENV)
+        .ok()
+        .and_then(|value| parse_bool_env(&value))
+        .unwrap_or(false)
+}
+
+fn validate_dev_auth_http_bind(
+    service: &ServiceConfig,
+    http: &HttpConfig,
+    allow_public_bind: bool,
+) -> AppResult<()> {
+    if !is_local_development_environment(&service.environment)
+        || allow_public_bind
+        || is_loopback_http_host(&http.host)
+    {
+        return Ok(());
+    }
+
+    Err(AppError::validation(
+        "Development auth cannot listen on a public HTTP bind by default",
+        vec![ErrorDetail {
+            field: Some("HTTP_HOST".to_owned()),
+            reason: format!(
+                "set HTTP_HOST=127.0.0.1, set APP_ENV outside local development, or set {LENSO_ALLOW_DEV_AUTH_ON_PUBLIC_BIND_ENV}=true"
+            ),
+        }],
+    ))
+}
+
+fn is_loopback_http_host(host: &str) -> bool {
+    let host = host.trim().trim_start_matches('[').trim_end_matches(']');
+    host.eq_ignore_ascii_case("localhost")
+        || host
+            .parse::<IpAddr>()
+            .is_ok_and(|address| address.is_loopback())
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct RemoteModuleSourceConfig {
     pub name: String,
@@ -490,6 +532,43 @@ mod tests {
                 .reason
                 .contains("LENSO_COMPOSITION_PROFILE=core")
         );
+    }
+
+    #[test]
+    fn local_environment_rejects_public_http_bind_without_override() {
+        let service = ServiceConfig {
+            environment: "local".to_owned(),
+            ..ServiceConfig::default()
+        };
+        let http = HttpConfig {
+            host: "0.0.0.0".to_owned(),
+            ..HttpConfig::default()
+        };
+
+        let error = validate_dev_auth_http_bind(&service, &http, false)
+            .expect_err("public bind must be explicit in local env");
+
+        assert_eq!(error.code, crate::ErrorCode::Validation);
+        assert_eq!(error.details[0].field.as_deref(), Some("HTTP_HOST"));
+    }
+
+    #[test]
+    fn local_environment_allows_loopback_http_bind() {
+        let service = ServiceConfig {
+            environment: "local".to_owned(),
+            ..ServiceConfig::default()
+        };
+        let http = HttpConfig {
+            host: "127.0.0.1".to_owned(),
+            ..HttpConfig::default()
+        };
+
+        validate_dev_auth_http_bind(&service, &http, false).expect("loopback bind is local only");
+    }
+
+    #[test]
+    fn http_config_defaults_to_loopback_host() {
+        assert_eq!(HttpConfig::default().host, "127.0.0.1");
     }
 
     #[test]
