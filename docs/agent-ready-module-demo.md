@@ -56,6 +56,19 @@ That smoke scaffolds a temporary host, installs the remote module through the
 real `lenso` CLI, and verifies loaded module metadata, schema-admin data, HTTP
 proxy calls, and Runtime Story evidence.
 
+## Follow-On Proof
+
+After the support-ticket loop, `examples/account-profile` proves a module that
+depends on `auth` while owning profile, organization, and membership data. It
+also declares HTTP routes, an admin action, and schema-admin pages.
+
+From `lenso-examples`:
+
+```sh
+pnpm smoke:account-profile
+pnpm host-api-smoke:account-profile
+```
+
 ## What This Proves
 
 - A business capability can ship as a Lenso module.
