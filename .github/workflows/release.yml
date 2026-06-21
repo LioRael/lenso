@@ -41,6 +41,7 @@ jobs:
       APP_ENV: local
       DATABASE_URL: postgres://lenso:lenso@localhost:5432/lenso
       HTTP_HOST: 0.0.0.0
+      LENSO_ALLOW_DEV_AUTH_ON_PUBLIC_BIND: true
       HTTP_PORT: 3000
       LENSO_RELEASE_VERSION: ${{ inputs.version }}
       RUST_LOG: info,lenso=debug
