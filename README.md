@@ -61,7 +61,7 @@ smoke checks and a real host API smoke.
 The first public Rust authoring surface is published on crates.io:
 
 ```sh
-cargo add lenso@0.3.6
+cargo add lenso@0.3.8
 ```
 
 The `lenso` crate is the public Rust facade for module-authoring declarations
