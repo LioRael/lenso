@@ -3,7 +3,7 @@
 //! Enable the `host` feature to use these helpers.
 
 pub use crate::ModuleManifest;
-pub use lenso_bootstrap::{HostComposition, HostLinkedModule};
+pub use lenso_bootstrap::{HostComposition, HostLinkedModule, HostWiring};
 pub use platform_core::Migration;
 
 /// First-party linked modules that a host can opt into explicitly.
@@ -35,7 +35,8 @@ pub mod prelude {
         LinkedBinding, LinkedHttpContribution, ModuleHttpMethod, ModuleHttpRoute,
     };
     pub use crate::host::{
-        HostBuilder, HostComposition, HostLinkedModule, Migration, ModuleManifest, builtins,
+        HostBuilder, HostComposition, HostLinkedModule, HostWiring, Migration, ModuleManifest,
+        builtins,
     };
 }
 
