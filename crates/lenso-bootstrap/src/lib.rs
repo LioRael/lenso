@@ -2560,6 +2560,7 @@ mod tests {
                 proposed_device_id: Some("device_wiring".to_owned()),
                 created_at: now,
                 expires_at: now,
+                client: Default::default(),
             })
             .await
             .expect("wired policy should allow session");

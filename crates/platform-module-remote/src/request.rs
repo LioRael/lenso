@@ -231,6 +231,7 @@ mod tests {
             actor: Default::default(),
             tenant_id: None,
             causation_id: None,
+            client: Default::default(),
         }
     }
 

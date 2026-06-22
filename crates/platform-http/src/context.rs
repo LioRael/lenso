@@ -1,20 +1,23 @@
 use axum::body::Body;
+use axum::extract::ConnectInfo;
 use axum::extract::State;
 use axum::extract::{FromRequestParts, Request};
+use axum::http::header;
 use axum::http::header::HeaderName;
 use axum::http::request::Parts;
 use axum::middleware::Next;
 use axum::response::Response;
 use chrono::{DateTime, Utc};
 use platform_core::{
-    ActorResolutionRequest, AppContext, CorrelationId, IdGenerator, RequestContext, RequestId,
-    UuidGenerator, generate_trace_context,
+    ActorResolutionRequest, AppContext, ClientRequestMetadata, CorrelationId, IdGenerator,
+    RequestContext, RequestId, UuidGenerator, generate_trace_context,
     story_events::{
         HttpRequestStoryEventRecord, http_request_story_creation, http_request_story_event_id,
         insert_http_request_story_projection,
     },
     trace_context_from_traceparent,
 };
+use std::net::SocketAddr;
 use std::time::Instant;
 use tracing::Instrument;
 
@@ -58,6 +61,13 @@ pub async fn request_context_middleware(
         .unwrap_or_else(generate_trace_context);
     let method = request.method().clone();
     let path = request.uri().path().to_owned();
+    let client = ClientRequestMetadata {
+        ip: request
+            .extensions()
+            .get::<ConnectInfo<SocketAddr>>()
+            .map(|ConnectInfo(address)| address.ip().to_string()),
+        user_agent: header_value_by_name(request.headers(), header::USER_AGENT),
+    };
 
     let mut context = RequestContext {
         request_id: RequestId::new(request_id),
@@ -66,6 +76,7 @@ pub async fn request_context_middleware(
         actor,
         tenant_id: None,
         causation_id: None,
+        client,
     };
     context.causation_id = Some(http_request_story_event_id(&context));
 
@@ -180,6 +191,14 @@ fn header_value(headers: &axum::http::HeaderMap, name: &str) -> Option<String> {
         _ => unreachable!("known request context header"),
     });
 
+    headers
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn header_value_by_name(headers: &axum::http::HeaderMap, name: HeaderName) -> Option<String> {
     headers
         .get(name)
         .and_then(|value| value.to_str().ok())

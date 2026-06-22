@@ -1,17 +1,21 @@
 use axum::Router;
 use axum::body::Body;
+use axum::extract::ConnectInfo;
 use axum::extract::Request;
 use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
+use platform_core::config::ConsoleConfig;
 use platform_core::{
-    ActorContext, ActorResolutionRequest, ActorResolver, AppConfig, AppContext,
-    LoggingEventPublisher,
+    ActorContext, ActorResolutionRequest, ActorResolver, AppConfig, AppContext, AuthConfig,
+    DatabaseConfig, HttpConfig, LoggingEventPublisher, ModuleSourcesConfig, RedisConfig,
+    ServiceConfig, TelemetryConfig,
 };
 use platform_http::{HttpRequestContext, JsonBody};
 use serde::Deserialize;
 use serde_json::Value;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use tower::ServiceExt;
 
@@ -68,6 +72,27 @@ async fn provided_headers_are_preserved_in_request_context() {
     let body = json_body(response).await;
     assert_eq!(body["request_id"], "req-provided");
     assert_eq!(body["correlation_id"], "corr-provided");
+}
+
+#[tokio::test]
+async fn client_metadata_is_preserved_in_request_context() {
+    let mut request = Request::builder()
+        .uri("/context")
+        .header("user-agent", "LensoTest/1.0")
+        .body(Body::empty())
+        .expect("request should build");
+    request
+        .extensions_mut()
+        .insert(ConnectInfo(SocketAddr::from(([203, 0, 113, 7], 4242))));
+
+    let response = router()
+        .oneshot(request)
+        .await
+        .expect("request should complete");
+    let body = json_body(response).await;
+
+    assert_eq!(body["client"]["ip"], "203.0.113.7");
+    assert_eq!(body["client"]["user_agent"], "LensoTest/1.0");
 }
 
 #[tokio::test]
@@ -214,8 +239,27 @@ fn router_for_environment_with_actor_resolver(
     environment: &str,
     actor_resolver: Option<Arc<dyn ActorResolver>>,
 ) -> Router {
-    let mut config = AppConfig::from_env();
-    config.service.environment = environment.to_owned();
+    let config = AppConfig {
+        service: ServiceConfig {
+            name: "lenso-test".to_owned(),
+            environment: environment.to_owned(),
+        },
+        database: DatabaseConfig {
+            url: "postgres://localhost/lenso_test".to_owned(),
+            max_connections: 1,
+        },
+        redis: RedisConfig::default(),
+        http: HttpConfig {
+            host: "127.0.0.1".to_owned(),
+            port: 0,
+            cors_allowed_origins: Vec::new(),
+        },
+        telemetry: TelemetryConfig::default(),
+        auth: AuthConfig::default(),
+        console: ConsoleConfig::default(),
+        module_sources: ModuleSourcesConfig::default(),
+        modules: Default::default(),
+    };
     let mut ctx = AppContext::new(
         config,
         platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
@@ -240,6 +284,7 @@ async fn context_handler(HttpRequestContext(ctx): HttpRequestContext) -> impl In
         "request_id": ctx.request_id.0,
         "correlation_id": ctx.correlation_id.0,
         "actor": ctx.actor,
+        "client": ctx.client,
     }))
 }
 
