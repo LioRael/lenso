@@ -4,6 +4,7 @@ api_pkg := "lenso-api"
 worker_pkg := "lenso-worker"
 migrate_pkg := "lenso-migrate"
 compose_file := "infrastructure/local/docker-compose.yml"
+cli_root := "../lenso-cli"
 
 default:
     @just --list
@@ -68,6 +69,21 @@ console-api-qa:
 
 console-build:
     sh scripts/build-runtime-console.sh
+
+console-build-host host_root:
+    test -f "{{host_root}}/Cargo.toml"
+    LENSO_CONSOLE_DIST_DIR="{{host_root}}/.lenso/console/dist" LENSO_CONSOLE_EXTENSIONS_DIR="{{host_root}}/.lenso/console/extensions" just console-build
+
+console-build-cli:
+    LENSO_CLI_CONSOLE_DIR="{{cli_root}}/console" just console-build
+
+host-update-console host_root:
+    test -f "{{host_root}}/Cargo.toml"
+    cargo run --locked --manifest-path "{{cli_root}}/Cargo.toml" -- host update-console --repo-root "{{host_root}}"
+
+host-serve host_root:
+    test -f "{{host_root}}/Cargo.toml"
+    cargo run --locked --manifest-path "{{cli_root}}/Cargo.toml" -- serve --repo-root "{{host_root}}"
 
 # Local infrastructure
 db-up:
