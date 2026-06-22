@@ -388,14 +388,29 @@ fn disabled_linked_module_entries_for_context(
     )
 }
 
-fn host_linked_modules_for_config(
-    config: &platform_core::AppConfig,
+fn linked_profile_has_module(profile: CompositionProfile, module_name: &str) -> bool {
+    linked_module_entries(profile)
+        .iter()
+        .any(|entry| entry.module_name == module_name)
+}
+
+fn host_linked_modules_not_in_profile(
     composition: &HostComposition,
-) -> Vec<HostLinkedModule> {
+    profile: CompositionProfile,
+) -> impl Iterator<Item = HostLinkedModule> + '_ {
     composition
         .linked_modules()
         .iter()
         .cloned()
+        .filter(move |entry| !linked_profile_has_module(profile, entry.module_name))
+}
+
+fn host_linked_modules_for_config(
+    config: &platform_core::AppConfig,
+    composition: &HostComposition,
+    profile: CompositionProfile,
+) -> Vec<HostLinkedModule> {
+    host_linked_modules_not_in_profile(composition, profile)
         .filter(|entry| {
             linked_module_with_dependencies_enabled_from_config(
                 config,
@@ -409,11 +424,9 @@ fn host_linked_modules_for_config(
 fn host_linked_modules_for_context(
     ctx: &AppContext,
     composition: &HostComposition,
+    profile: CompositionProfile,
 ) -> Vec<HostLinkedModule> {
-    composition
-        .linked_modules()
-        .iter()
-        .cloned()
+    host_linked_modules_not_in_profile(composition, profile)
         .filter(|entry| {
             linked_module_with_dependencies_enabled(ctx, entry.module_name, entry.manifest)
         })
@@ -423,11 +436,9 @@ fn host_linked_modules_for_context(
 fn disabled_host_linked_modules_for_context(
     ctx: &AppContext,
     composition: &HostComposition,
+    profile: CompositionProfile,
 ) -> Vec<HostLinkedModule> {
-    composition
-        .linked_modules()
-        .iter()
-        .cloned()
+    host_linked_modules_not_in_profile(composition, profile)
         .filter(|entry| {
             linked_module_disabled_reason(ctx, entry.module_name, entry.manifest).is_some()
         })
@@ -442,8 +453,9 @@ pub fn host_wiring_for_context_with_composition(
     ctx: &AppContext,
     composition: &HostComposition,
 ) -> platform_core::AppResult<HostWiring> {
+    let profile = CompositionProfile::from_config(&ctx.config)?;
     let mut session_policies = Vec::new();
-    for module in host_linked_modules_for_context(ctx, composition) {
+    for module in host_linked_modules_for_context(ctx, composition, profile) {
         for extension in module.contributions::<auth::session_policy::AuthHostExtension>() {
             if let Some(factory) = extension.session_policy_factory() {
                 session_policies.push(factory(ctx));
@@ -483,9 +495,10 @@ pub fn modules_for_config_with_composition(
     ctx: &AppContext,
     composition: &HostComposition,
 ) -> platform_core::AppResult<Vec<Module>> {
+    let profile = CompositionProfile::from_config(&ctx.config)?;
     let mut modules = modules_for_config(ctx)?;
     modules.extend(
-        host_linked_modules_for_context(ctx, composition)
+        host_linked_modules_for_context(ctx, composition, profile)
             .into_iter()
             .map(|entry| load_host_linked_module(ctx, entry)),
     );
@@ -542,7 +555,8 @@ pub fn migrations_for_config_with_composition(
         .copied()
         .collect::<Vec<_>>();
 
-    if CompositionProfile::from_config(config)? == CompositionProfile::Demo {
+    let profile = CompositionProfile::from_config(config)?;
+    if profile == CompositionProfile::Demo {
         if linked_module_enabled_from_config(config, "auth") {
             migrations.extend(auth::migrations::AUTH_MIGRATIONS.iter().copied());
         }
@@ -559,7 +573,7 @@ pub fn migrations_for_config_with_composition(
         }
     }
 
-    for module in host_linked_modules_for_config(config, composition) {
+    for module in host_linked_modules_for_config(config, composition, profile) {
         migrations.extend(module.migrations.iter().copied());
     }
 
@@ -671,9 +685,10 @@ pub fn linked_runtime_function_declaration_sources_for_context_with_composition(
         Option<platform_module::RuntimeSurface>,
     )>,
 > {
+    let profile = CompositionProfile::from_config(&ctx.config)?;
     let mut sources = linked_runtime_function_declaration_sources_for_context(ctx)?;
     sources.extend(
-        host_linked_modules_for_context(ctx, composition)
+        host_linked_modules_for_context(ctx, composition, profile)
             .into_iter()
             .map(|entry| {
                 let manifest = (entry.manifest)();
@@ -780,9 +795,10 @@ pub fn linked_http_modules_for_context_with_composition(
     ctx: &AppContext,
     composition: &HostComposition,
 ) -> platform_core::AppResult<Vec<Module>> {
+    let profile = CompositionProfile::from_config(&ctx.config)?;
     let mut modules = linked_http_modules_for_context(ctx)?;
     modules.extend(
-        host_linked_modules_for_context(ctx, composition)
+        host_linked_modules_for_context(ctx, composition, profile)
             .into_iter()
             .filter_map(|entry| {
                 let http_binding = entry.http_binding?;
@@ -846,7 +862,7 @@ pub async fn load_admin_module_metadata_with_composition(
     let mut metadata =
         admin_metadata_from_modules(modules_for_config_with_composition(ctx, composition)?);
     metadata.extend(disabled_linked_admin_metadata(ctx)?);
-    metadata.extend(disabled_host_linked_admin_metadata(ctx, composition));
+    metadata.extend(disabled_host_linked_admin_metadata(ctx, composition)?);
 
     for remote in &ctx.config.module_sources.remote {
         let config = remote_module_config(remote);
@@ -1107,43 +1123,50 @@ fn disabled_linked_admin_metadata(
 fn disabled_host_linked_admin_metadata(
     ctx: &AppContext,
     composition: &HostComposition,
-) -> Vec<AdminModuleMetadata> {
-    disabled_host_linked_modules_for_context(ctx, composition)
-        .into_iter()
-        .map(|entry| {
-            let ModuleManifest {
-                name,
-                admin,
-                http_routes,
-                runtime,
-                events,
-                lifecycle,
-                console,
-                story_display,
-                capabilities,
-                dependencies,
-                ..
-            } = (entry.manifest)();
-            AdminModuleMetadata {
-                module_name: name,
-                source: ModuleSource::Linked,
-                load_status: ModuleLoadStatus::Error {
-                    message: linked_module_disabled_reason(ctx, entry.module_name, entry.manifest)
+) -> platform_core::AppResult<Vec<AdminModuleMetadata>> {
+    let profile = CompositionProfile::from_config(&ctx.config)?;
+    Ok(
+        disabled_host_linked_modules_for_context(ctx, composition, profile)
+            .into_iter()
+            .map(|entry| {
+                let ModuleManifest {
+                    name,
+                    admin,
+                    http_routes,
+                    runtime,
+                    events,
+                    lifecycle,
+                    console,
+                    story_display,
+                    capabilities,
+                    dependencies,
+                    ..
+                } = (entry.manifest)();
+                AdminModuleMetadata {
+                    module_name: name,
+                    source: ModuleSource::Linked,
+                    load_status: ModuleLoadStatus::Error {
+                        message: linked_module_disabled_reason(
+                            ctx,
+                            entry.module_name,
+                            entry.manifest,
+                        )
                         .unwrap_or_else(|| "module disabled by configuration".to_owned()),
-                },
-                http_routes,
-                runtime,
-                events,
-                lifecycle,
-                console,
-                story_display,
-                capabilities,
-                dependencies,
-                admin,
-                source_diagnostics: None,
-            }
-        })
-        .collect()
+                    },
+                    http_routes,
+                    runtime,
+                    events,
+                    lifecycle,
+                    console,
+                    story_display,
+                    capabilities,
+                    dependencies,
+                    admin,
+                    source_diagnostics: None,
+                }
+            })
+            .collect(),
+    )
 }
 
 fn remote_source_diagnostics(
@@ -2130,13 +2153,14 @@ pub fn install_default_story_display_catalog_with_composition(
     ctx: &AppContext,
     composition: &HostComposition,
 ) -> platform_core::AppResult<()> {
+    let profile = CompositionProfile::from_config(&ctx.config)?;
     if !linked_module_enabled(ctx, story::module::MODULE_NAME) {
         story::backend::install_default_story_display(Vec::new());
         return Ok(());
     }
     let mut descriptors = story_display_descriptors_for_context(ctx)?;
     descriptors.extend(
-        host_linked_modules_for_context(ctx, composition)
+        host_linked_modules_for_context(ctx, composition, profile)
             .into_iter()
             .flat_map(|entry| story_display_descriptors_from_manifest((entry.manifest)())),
     );
@@ -2247,27 +2271,24 @@ pub fn runtime_config_descriptors_with_composition(
                 restart_only: true,
                 description: "Whether this linked module is loaded on service startup.",
             });
-    let host_module_enabled_descriptors =
-        composition
-            .linked_modules()
-            .iter()
-            .map(|entry| RuntimeConfigDescriptor {
-                key: module_enabled_config_key(entry.module_name),
-                scope: RuntimeConfigScope::Shared,
-                group: Some("modules"),
-                section: None,
-                order: 10,
-                visible_when: None,
-                generated: None,
-                value_type: RuntimeConfigType::Bool,
-                default: serde_json::json!(linked_module_enabled_from_config(
-                    &ctx.config,
-                    entry.module_name
-                )),
-                editable: true,
-                restart_only: true,
-                description: "Whether this host linked module is loaded on service startup.",
-            });
+    let host_module_enabled_descriptors = host_linked_modules_not_in_profile(composition, profile)
+        .map(|entry| RuntimeConfigDescriptor {
+            key: module_enabled_config_key(entry.module_name),
+            scope: RuntimeConfigScope::Shared,
+            group: Some("modules"),
+            section: None,
+            order: 10,
+            visible_when: None,
+            generated: None,
+            value_type: RuntimeConfigType::Bool,
+            default: serde_json::json!(linked_module_enabled_from_config(
+                &ctx.config,
+                entry.module_name
+            )),
+            editable: true,
+            restart_only: true,
+            description: "Whether this host linked module is loaded on service startup.",
+        });
     let remote_module_enabled_descriptors =
         ctx.config
             .module_sources
@@ -2295,7 +2316,7 @@ pub fn runtime_config_descriptors_with_composition(
         .filter(|entry| linked_module_enabled_from_config(&ctx.config, entry.module_name))
         .map(|entry| (entry.load)(ctx))
         .chain(
-            host_linked_modules_for_config(&ctx.config, composition)
+            host_linked_modules_for_config(&ctx.config, composition, profile)
                 .into_iter()
                 .map(|entry| load_host_linked_module(ctx, entry)),
         )
@@ -2330,7 +2351,7 @@ pub fn runtime_config_group_descriptors_with_composition(
         .filter(|entry| linked_module_enabled_from_config(&ctx.config, entry.module_name))
         .map(|entry| (entry.load)(ctx))
         .chain(
-            host_linked_modules_for_config(&ctx.config, composition)
+            host_linked_modules_for_config(&ctx.config, composition, profile)
                 .into_iter()
                 .map(|entry| load_host_linked_module(ctx, entry)),
         )
@@ -2518,6 +2539,25 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert!(keys.iter().any(|key| key == "modules.billing.enabled"));
+    }
+
+    #[tokio::test]
+    async fn host_composition_skips_modules_already_in_linked_profile() {
+        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build");
+        let config = test_config_with_database_url("postgres://localhost/lenso_test");
+        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
+        let composition = HostComposition::new().with_linked_module(auth_linked_module());
+
+        let descriptors = runtime_config_descriptors_with_composition(&ctx, &composition)
+            .expect("host composition descriptors should load");
+        let auth_toggle_count = descriptors
+            .iter()
+            .filter(|descriptor| descriptor.key == "modules.auth.enabled")
+            .count();
+
+        assert_eq!(auth_toggle_count, 1);
+        RuntimeConfigRegistry::try_new(descriptors).expect("descriptors should be unique");
     }
 
     #[tokio::test]
