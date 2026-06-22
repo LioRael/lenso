@@ -179,6 +179,29 @@ Worker:
 just worker
 ```
 
+Runtime Console and CLI preview shortcuts:
+
+```sh
+# Hot reload the Console against the local API.
+cd ../lenso-runtime-console
+just console-api
+
+# Copy the current Console build into any generated host for /console preview.
+cd ../lenso
+just console-build-host <host-root>
+
+# Refresh the Console payload embedded by the local lenso-cli checkout.
+just console-build-cli
+just host-update-console <host-root>
+
+# Serve a generated host through the local lenso-cli checkout.
+just host-serve <host-root>
+```
+
+Use an absolute or relative path for `<host-root>`; it does not need to be a
+sibling directory. `LENSO_CONSOLE_BASE` stays inside the build script; host
+`.env` files do not need it.
+
 OpenTelemetry collector for local span export:
 
 ```sh
