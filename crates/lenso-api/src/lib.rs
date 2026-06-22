@@ -130,6 +130,7 @@ pub fn try_build_router_with_composition(
     {
         ctx = ctx.with_actor_resolver(actor_resolver);
     }
+    let host_wiring = lenso_bootstrap::host_wiring_for_context_with_composition(&ctx, composition)?;
     install_default_platform_admin_catalogs(&ctx, composition)?;
     let (router, document) =
         openapi::api_router_for_context_with_composition(&ctx, composition)?.split_for_parts();
@@ -149,6 +150,7 @@ pub fn try_build_router_with_composition(
             ServeDir::new(console_dist_dir).fallback(ServeFile::new(console_index)),
         )
         .layer(axum::Extension(document))
+        .layer(axum::Extension(host_wiring.auth_session_policy()))
         .layer(middleware::from_fn_with_state(
             ctx.clone(),
             request_context_middleware,

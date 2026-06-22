@@ -5404,6 +5404,10 @@ components:
       - identifier
       - password
       properties:
+        device_id:
+          type:
+          - string
+          - 'null'
         identifier:
           type: string
         password:
@@ -5414,6 +5418,10 @@ components:
       - identifier
       - password
       properties:
+        device_id:
+          type:
+          - string
+          - 'null'
         identifier:
           type: string
         password:

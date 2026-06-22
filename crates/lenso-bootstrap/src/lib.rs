@@ -28,6 +28,7 @@ use platform_core::{
     RuntimeConfigType, StoryDisplayDescriptor, StoryDisplaySource, TraceContext,
 };
 use platform_http::ApiOpenApiRouter;
+pub use platform_module::HostLinkedModule;
 use platform_module::{
     AdminSchema, AdminSurface, EventHandlerRegistrationContext, LifecycleActivationRunPolicy,
     LifecycleStartupCheckKind, LinkedBinding, Module, ModuleHttpMethod, ModuleLoadStatus,
@@ -64,54 +65,6 @@ const MODULES_CONFIG_GROUP: RuntimeConfigGroupDescriptor = RuntimeConfigGroupDes
     order: 10,
 };
 
-#[derive(Debug, Clone, Copy)]
-pub struct HostLinkedModule {
-    pub module_name: &'static str,
-    pub manifest: fn() -> ModuleManifest,
-    pub load: Option<fn(&AppContext) -> Module>,
-    pub http_binding: Option<fn() -> LinkedBinding>,
-    pub migrations: &'static [Migration],
-}
-
-impl HostLinkedModule {
-    #[must_use]
-    pub const fn manifest_only(
-        module_name: &'static str,
-        manifest: fn() -> ModuleManifest,
-        migrations: &'static [Migration],
-    ) -> Self {
-        Self {
-            module_name,
-            manifest,
-            load: None,
-            http_binding: None,
-            migrations,
-        }
-    }
-
-    #[must_use]
-    pub const fn linked(
-        module_name: &'static str,
-        manifest: fn() -> ModuleManifest,
-        load: fn(&AppContext) -> Module,
-        migrations: &'static [Migration],
-    ) -> Self {
-        Self {
-            module_name,
-            manifest,
-            load: Some(load),
-            http_binding: None,
-            migrations,
-        }
-    }
-
-    #[must_use]
-    pub const fn with_http_binding(mut self, http_binding: fn() -> LinkedBinding) -> Self {
-        self.http_binding = Some(http_binding);
-        self
-    }
-}
-
 #[derive(Debug, Clone, Default)]
 pub struct HostComposition {
     linked_modules: Vec<HostLinkedModule>,
@@ -136,6 +89,18 @@ impl HostComposition {
     #[must_use]
     pub fn linked_modules(&self) -> &[HostLinkedModule] {
         &self.linked_modules
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct HostWiring {
+    auth_session_policy: auth::session_policy::AuthSessionPolicyHandle,
+}
+
+impl HostWiring {
+    #[must_use]
+    pub fn auth_session_policy(&self) -> auth::session_policy::AuthSessionPolicyHandle {
+        self.auth_session_policy.clone()
     }
 }
 
@@ -207,7 +172,7 @@ fn linked_module_entries(profile: CompositionProfile) -> &'static [LinkedModuleE
 }
 
 #[must_use]
-pub const fn auth_linked_module() -> HostLinkedModule {
+pub fn auth_linked_module() -> HostLinkedModule {
     HostLinkedModule::linked(
         auth::module::MODULE_NAME,
         auth::module::manifest,
@@ -218,7 +183,7 @@ pub const fn auth_linked_module() -> HostLinkedModule {
 }
 
 #[must_use]
-pub const fn auth_password_linked_module() -> HostLinkedModule {
+pub fn auth_password_linked_module() -> HostLinkedModule {
     HostLinkedModule::linked(
         auth_password::module::MODULE_NAME,
         auth_password::module::manifest,
@@ -430,7 +395,7 @@ fn host_linked_modules_for_config(
     composition
         .linked_modules()
         .iter()
-        .copied()
+        .cloned()
         .filter(|entry| {
             linked_module_with_dependencies_enabled_from_config(
                 config,
@@ -448,7 +413,7 @@ fn host_linked_modules_for_context(
     composition
         .linked_modules()
         .iter()
-        .copied()
+        .cloned()
         .filter(|entry| {
             linked_module_with_dependencies_enabled(ctx, entry.module_name, entry.manifest)
         })
@@ -462,11 +427,33 @@ fn disabled_host_linked_modules_for_context(
     composition
         .linked_modules()
         .iter()
-        .copied()
+        .cloned()
         .filter(|entry| {
             linked_module_disabled_reason(ctx, entry.module_name, entry.manifest).is_some()
         })
         .collect()
+}
+
+pub fn host_wiring_for_context(ctx: &AppContext) -> platform_core::AppResult<HostWiring> {
+    host_wiring_for_context_with_composition(ctx, &HostComposition::default())
+}
+
+pub fn host_wiring_for_context_with_composition(
+    ctx: &AppContext,
+    composition: &HostComposition,
+) -> platform_core::AppResult<HostWiring> {
+    let mut session_policies = Vec::new();
+    for module in host_linked_modules_for_context(ctx, composition) {
+        for extension in module.contributions::<auth::session_policy::AuthHostExtension>() {
+            if let Some(factory) = extension.session_policy_factory() {
+                session_policies.push(factory(ctx));
+            }
+        }
+    }
+
+    Ok(HostWiring {
+        auth_session_policy: auth::session_policy::AuthSessionPolicyChain::handle(session_policies),
+    })
 }
 
 fn load_host_linked_module(ctx: &AppContext, entry: HostLinkedModule) -> Module {
@@ -2364,6 +2351,10 @@ pub fn runtime_config_group_descriptors_with_composition(
 mod tests {
     use super::*;
     use async_trait::async_trait;
+    use auth::models::AuthUserId;
+    use auth::session_policy::{
+        AuthHostExtension, AuthSessionPolicy, SessionCreateDecision, SessionCreateInput,
+    };
     use platform_core::{
         AppConfig, AuthConfig, DatabaseConfig, ErrorCode, ExecutionContext, HttpConfig,
         LoggingEventPublisher, ModuleConfig, ModuleSourcesConfig, PLATFORM_MIGRATIONS, RedisConfig,
@@ -2544,6 +2535,56 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert!(names.iter().any(|name| name == "billing"));
+    }
+
+    #[tokio::test]
+    async fn host_wiring_collects_auth_session_policy_contributions() {
+        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build");
+        let config = test_config_with_database_url("postgres://localhost/lenso_test");
+        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
+        let composition = HostComposition::new().with_linked_module(
+            test_host_linked_module()
+                .with_contribution(AuthHostExtension::session_policy(test_session_policy)),
+        );
+
+        let wiring = host_wiring_for_context_with_composition(&ctx, &composition)
+            .expect("host wiring should compose");
+        let now = ctx.clock.now();
+        let decision = wiring
+            .auth_session_policy()
+            .policy()
+            .before_session_create(&SessionCreateInput {
+                user_id: AuthUserId("usr_wiring".to_owned()),
+                session_id: "sess_wiring".to_owned(),
+                proposed_device_id: Some("device_wiring".to_owned()),
+                created_at: now,
+                expires_at: now,
+            })
+            .await
+            .expect("wired policy should allow session");
+
+        assert_eq!(decision.device_id.as_deref(), Some("device_from_wiring"));
+    }
+
+    fn test_session_policy(_ctx: &AppContext) -> Arc<dyn AuthSessionPolicy> {
+        Arc::new(TestSessionPolicy)
+    }
+
+    #[derive(Debug)]
+    struct TestSessionPolicy;
+
+    #[async_trait]
+    impl AuthSessionPolicy for TestSessionPolicy {
+        async fn before_session_create(
+            &self,
+            input: &SessionCreateInput,
+        ) -> platform_core::AppResult<SessionCreateDecision> {
+            assert_eq!(input.proposed_device_id.as_deref(), Some("device_wiring"));
+            Ok(SessionCreateDecision {
+                device_id: Some("device_from_wiring".to_owned()),
+            })
+        }
     }
 
     #[test]

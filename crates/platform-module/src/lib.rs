@@ -15,6 +15,7 @@
 
 mod admin_data;
 mod binding;
+mod host;
 mod linked;
 mod module;
 
@@ -22,6 +23,7 @@ pub use admin_data::{
     AdminActionSource, AdminDataSource, AdminListQuery, AdminPage, AdminQuerySource,
 };
 pub use binding::{EventHandlerRegistrationContext, EventHandlerRuntimeContext, ModuleBinding};
+pub use host::{HostContribution, HostLinkedModule};
 pub use lenso_contracts::{
     AdminAction, AdminActionConfirmation, AdminActionDangerLevel, AdminActionInputField,
     AdminActionInputSchema, AdminDeclarativeComponent, AdminDeclarativePage,
@@ -42,3 +44,37 @@ pub use linked::{
     LinkedBinding, LinkedBindingBuilder, LinkedHttpContribution, LinkedHttpRouteMerger,
 };
 pub use module::{Module, ModuleLoadStatus};
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use platform_core::{AppContext, Migration};
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct TestContribution(&'static str);
+
+    const TEST_MIGRATIONS: &[Migration] = &[Migration {
+        name: "test/0001_init",
+        sql: "select 1;",
+    }];
+
+    fn manifest() -> ModuleManifest {
+        ModuleManifest::builder("test").build()
+    }
+
+    fn module(_ctx: &AppContext) -> Module {
+        Module::linked(manifest(), LinkedBinding::builder().build())
+    }
+
+    #[test]
+    fn host_linked_module_keeps_typed_contributions() {
+        let linked_module = HostLinkedModule::linked("test", manifest, module, TEST_MIGRATIONS)
+            .with_contribution(TestContribution("wired"));
+
+        let contributions = linked_module
+            .contributions::<TestContribution>()
+            .collect::<Vec<_>>();
+
+        assert_eq!(contributions, vec![&TestContribution("wired")]);
+    }
+}
