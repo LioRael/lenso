@@ -98,17 +98,20 @@ pub async fn run_from_env_with_composition(
     let listener = tokio::net::TcpListener::bind(address).await?;
 
     let shutdown = ctx.shutdown.clone();
-    axum::serve(listener, app)
-        .with_graceful_shutdown(async move {
-            let mut shutdown_rx = shutdown.subscribe();
-            tokio::select! {
-                () = Shutdown::wait_for_signal() => {},
-                changed = shutdown_rx.changed() => {
-                    let _ = changed;
-                },
-            }
-        })
-        .await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(async move {
+        let mut shutdown_rx = shutdown.subscribe();
+        tokio::select! {
+            () = Shutdown::wait_for_signal() => {},
+            changed = shutdown_rx.changed() => {
+                let _ = changed;
+            },
+        }
+    })
+    .await?;
 
     Ok(())
 }

@@ -32,8 +32,8 @@ pub use config::{
     parse_cors_allowed_origins,
 };
 pub use context::{
-    ActorContext, ActorResolutionRequest, ActorResolver, AppContext, CorrelationId,
-    DevActorResolver, RequestContext, RequestId, TenantId, TraceContext,
+    ActorContext, ActorResolutionRequest, ActorResolver, AppContext, ClientRequestMetadata,
+    CorrelationId, DevActorResolver, RequestContext, RequestId, TenantId, TraceContext,
 };
 pub use db::{DbPool, connect_pool};
 pub use error::{AppError, AppResult, ErrorCode};

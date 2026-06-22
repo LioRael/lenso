@@ -131,6 +131,20 @@ fn parse_dev_actor_scopes(value: &str) -> (String, Vec<String>) {
     (id.to_owned(), scopes)
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(default)]
+pub struct ClientRequestMetadata {
+    pub ip: Option<String>,
+    pub user_agent: Option<String>,
+}
+
+impl ClientRequestMetadata {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.ip.is_none() && self.user_agent.is_none()
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RequestContext {
     pub request_id: RequestId,
@@ -139,6 +153,8 @@ pub struct RequestContext {
     pub actor: ActorContext,
     pub tenant_id: Option<TenantId>,
     pub causation_id: Option<String>,
+    #[serde(default)]
+    pub client: ClientRequestMetadata,
 }
 
 impl RequestContext {
@@ -150,6 +166,7 @@ impl RequestContext {
             actor: ActorContext::Anonymous,
             tenant_id: None,
             causation_id: None,
+            client: ClientRequestMetadata::default(),
         }
     }
 }
