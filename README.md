@@ -48,7 +48,7 @@ Build a support ticket module for a Lenso app.
 The intended loop is:
 
 ```text
-lenso-start -> lenso-module-authoring -> lenso module create -> checks -> /console
+lenso-business-planning -> lenso-start -> lenso-module-authoring -> lenso module create -> checks -> /console
 ```
 
 See [docs/agent-ready-module-demo.md](docs/agent-ready-module-demo.md).
@@ -61,7 +61,7 @@ smoke checks and real host API smokes.
 The first public Rust authoring surface is published on crates.io:
 
 ```sh
-cargo add lenso@0.3.8
+cargo add lenso@0.3.10
 ```
 
 The `lenso` crate is the public Rust facade for module-authoring declarations

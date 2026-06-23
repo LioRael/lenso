@@ -10,7 +10,7 @@ user needs to install before writing their own backend or module.
 The intended first-user flow is:
 
 ```sh
-cargo add lenso@0.3.8 --features host
+cargo add lenso@0.3.10 --features host
 pnpm add @lenso/remote-module-kit@0.1.1
 ```
 
