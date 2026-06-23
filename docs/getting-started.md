@@ -14,7 +14,7 @@ For a blank Rust module-authoring project outside this repository, install the
 facade crate from crates.io:
 
 ```sh
-cargo add lenso@0.3.8
+cargo add lenso@0.3.10
 ```
 
 That crate exposes serializable module declarations and manifest linting. Local
