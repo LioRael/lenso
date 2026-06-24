@@ -144,6 +144,7 @@ mod tests {
                         initial_delay_ms: 1000,
                     }),
                 }],
+                schedules: vec![],
             }),
             None,
         )
@@ -176,6 +177,7 @@ mod tests {
                     input_schema: None,
                     retry_policy: None,
                 }],
+                schedules: vec![],
             }),
             None,
         )

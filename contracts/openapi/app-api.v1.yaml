@@ -5537,6 +5537,27 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/RuntimeFunctionDeclaration'
+        schedules:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScheduledFunctionDeclaration'
+    ScheduledFunctionDeclaration:
+      type: object
+      required:
+      - name
+      - function_name
+      - cron
+      properties:
+        cron:
+          type: string
+          description: Standard 5-field cron expression in UTC.
+        function_name:
+          type: string
+          description: Runtime function enqueued when this schedule is due.
+        input: {}
+        name:
+          type: string
+          description: Stable schedule name scoped to the owning module.
     StoryDisplayDescriptorDto:
       type: object
       required:

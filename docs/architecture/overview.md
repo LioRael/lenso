@@ -96,7 +96,12 @@ The service kit should stay stable and small. It exists to remove boilerplate, n
 
 The runtime is embedded beside the modular monolith. It manages functions, triggers, queues, flows, retry policies, function run persistence, and execution metadata. It does not own business logic.
 
-Modules register runtime functions through their `ModuleBinding`. The worker app gets the module set from `lenso-bootstrap`, composes their runtime descriptors into a `FunctionRegistry`, registers module event handlers, runs the transactional outbox relay, and runs the runtime worker loop.
+Modules register runtime functions through their `ModuleBinding`. Modules may
+also declare UTC cron schedules for those functions in `ModuleManifest`.
+The worker app gets the module set from `lenso-bootstrap`, composes their
+runtime descriptors into a `FunctionRegistry`, schedules due function runs
+through host-owned runtime state, registers module event handlers, runs the
+transactional outbox relay, and runs the runtime worker loop.
 
 Current flow from a module event to runtime work:
 

@@ -1,10 +1,11 @@
+use lenso_contracts::CronSchedule;
 use platform_core::{
     ActorContext, AppError, AppResult, CorrelationId, ErrorCode, ExecutionContext,
     PLATFORM_MIGRATIONS, TraceContext, apply_migrations,
 };
 use platform_runtime::{
     EnqueueFunctionRequest, FunctionDefinition, FunctionRegistry, RUNTIME_MIGRATIONS, RetryPolicy,
-    RuntimeClient, RuntimeFunction, RuntimeWorker,
+    RuntimeClient, RuntimeFunction, RuntimeScheduler, RuntimeWorker, ScheduledFunctionDefinition,
 };
 use platform_testing::TestDatabase;
 use serde_json::{Value, json};
@@ -87,6 +88,79 @@ async fn enqueue_creates_function_run_row() {
     assert_eq!(row.3, 5);
     assert_eq!(row.4, "corr_1");
     assert_eq!(row.5["kind"], "user");
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn scheduler_enqueues_due_cron_function_once_per_match() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    apply_runtime_stack_migrations(&db).await;
+
+    let scheduler = RuntimeScheduler::new(db.pool.clone(), "worker-a");
+    let schedule = ScheduledFunctionDefinition {
+        schedule_key: "support-ticket:escalate-overdue".to_owned(),
+        module_name: "support-ticket".to_owned(),
+        schedule_name: "escalate-overdue".to_owned(),
+        function_name: "support_ticket.escalate_overdue.v1".to_owned(),
+        cron: "* * * * *".to_owned(),
+        schedule: CronSchedule::parse("* * * * *").expect("cron"),
+        input_json: json!({ "source": "schedule" }),
+        max_attempts: 3,
+    };
+
+    let not_due_yet = scheduler
+        .enqueue_due(std::slice::from_ref(&schedule))
+        .await
+        .expect("new schedule should initialize");
+    assert!(not_due_yet.is_empty());
+
+    sqlx::query(
+        r#"
+        update runtime.scheduled_functions
+        set next_run_at = now() - interval '1 minute'
+        where schedule_key = $1
+        "#,
+    )
+    .bind(&schedule.schedule_key)
+    .execute(&db.pool)
+    .await
+    .expect("schedule should become due");
+
+    let first = scheduler
+        .enqueue_due(std::slice::from_ref(&schedule))
+        .await
+        .expect("due schedule should enqueue");
+    let second = scheduler
+        .enqueue_due(std::slice::from_ref(&schedule))
+        .await
+        .expect("same cron match should not enqueue again");
+
+    assert_eq!(first.len(), 1);
+    assert!(second.is_empty());
+
+    let count: i64 =
+        sqlx::query_scalar("select count(*) from runtime.function_runs where function_name = $1")
+            .bind(&schedule.function_name)
+            .fetch_one(&db.pool)
+            .await
+            .expect("function run count should query");
+    assert_eq!(count, 1);
+
+    let next_run_delayed: bool = sqlx::query_scalar(
+        r#"
+        select next_run_at > now()
+        from runtime.scheduled_functions
+        where schedule_key = $1
+        "#,
+    )
+    .bind(&schedule.schedule_key)
+    .fetch_one(&db.pool)
+    .await
+    .expect("schedule state should query");
+    assert!(next_run_delayed);
 
     db.cleanup().await;
 }

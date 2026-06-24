@@ -757,6 +757,7 @@ mod tests {
                         initial_delay_ms: 100,
                     }),
                 }],
+                schedules: vec![],
             })
             .events(EventSurface {
                 handlers: vec![EventHandlerDeclaration {

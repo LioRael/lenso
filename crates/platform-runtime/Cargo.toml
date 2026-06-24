@@ -17,6 +17,7 @@ path = "src/lib.rs"
 [dependencies]
 async-trait.workspace = true
 chrono.workspace = true
+lenso-contracts.workspace = true
 platform-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true

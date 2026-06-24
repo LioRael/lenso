@@ -4,7 +4,9 @@ use platform_core::{
     PostgresRuntimeConfigProvider, RuntimeConfigRegistry, Shutdown, WorkerRuntimeConfig,
     connect_pool, telemetry,
 };
-use platform_runtime::{FunctionRegistry, RuntimeWorker};
+use platform_runtime::{
+    FunctionRegistry, RuntimeScheduler, RuntimeWorker, ScheduledFunctionDefinition,
+};
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::info;
@@ -52,16 +54,19 @@ pub async fn run_from_env_with_composition(
         lenso_bootstrap::enqueue_lifecycle_activation_jobs(&ctx, &modules, &registry)
             .await
             .context("failed to enqueue module lifecycle activation jobs")?;
+    let schedules = lenso_bootstrap::scheduled_functions(&modules, registry.as_ref())
+        .context("failed to collect scheduled runtime functions")?;
     let event_handlers =
         lenso_bootstrap::event_handlers_with_runtime_actions(&ctx, &modules, registry.clone());
 
     info!(
         functions = registry.all().count(),
         lifecycle_activation_jobs = activation_run_ids.len(),
+        scheduled_functions = schedules.len(),
         "starting worker"
     );
 
-    run_worker_loop(ctx.clone(), event_handlers, registry).await;
+    run_worker_loop(ctx.clone(), event_handlers, registry, schedules).await;
     Ok(())
 }
 
@@ -69,10 +74,12 @@ async fn run_worker_loop(
     ctx: AppContext,
     dispatcher: EventHandlerRegistry,
     registry: Arc<FunctionRegistry>,
+    schedules: Vec<ScheduledFunctionDefinition>,
 ) {
     let shutdown = ctx.shutdown.clone();
     let mut shutdown_rx = shutdown.subscribe();
     let relay = OutboxRelay::new(ctx.db.clone(), "worker-local");
+    let scheduler = RuntimeScheduler::new(ctx.db.clone(), "worker-local");
     let runtime_worker = RuntimeWorker::new(ctx.db.clone(), registry, "worker-local");
     loop {
         let cfg: WorkerRuntimeConfig = ctx
@@ -92,6 +99,19 @@ async fn run_worker_loop(
                 shutdown.signal();
             }
             () = tokio::time::sleep(Duration::from_millis(cfg.poll_interval_ms)) => {
+                match scheduler.enqueue_due(&schedules).await {
+                    Ok(run_ids) => {
+                        if !run_ids.is_empty() {
+                            tracing::debug!(
+                                scheduled_function_runs = run_ids.len(),
+                                "runtime scheduler tick"
+                            );
+                        }
+                    }
+                    Err(error) => {
+                        tracing::warn!(error = ?error, "runtime scheduler tick failed");
+                    }
+                }
                 match relay.relay_once(&dispatcher, batch_size).await {
                     Ok(count) => {
                         tracing::debug!(claimed_outbox_events = count, "outbox relay tick");

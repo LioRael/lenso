@@ -15,7 +15,8 @@ use crate::lifecycle::{
     LifecycleSurface,
 };
 use crate::module_source::ModuleSource;
-use crate::runtime::{RuntimeFunctionDeclaration, RuntimeSurface};
+use crate::runtime::{RuntimeFunctionDeclaration, RuntimeSurface, ScheduledFunctionDeclaration};
+use crate::validate_cron_expression;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use utoipa::ToSchema;
@@ -387,12 +388,12 @@ fn collect_schema_capability_references(
 }
 
 fn lint_runtime_surface(runtime: &RuntimeSurface, lints: &mut Vec<ModuleManifestLint>) {
-    if runtime.functions.is_empty() {
+    if runtime.functions.is_empty() && runtime.schedules.is_empty() {
         lints.push(ModuleManifestLint {
             severity: ModuleManifestLintSeverity::Warning,
-            subject: "runtime.functions".to_owned(),
-            message: "Runtime surface declares no functions.".to_owned(),
-            suggestion: "Add at least one function declaration or omit the runtime surface."
+            subject: "runtime".to_owned(),
+            message: "Runtime surface declares no functions or schedules.".to_owned(),
+            suggestion: "Add at least one runtime declaration or omit the runtime surface."
                 .to_owned(),
         });
         return;
@@ -401,6 +402,11 @@ fn lint_runtime_surface(runtime: &RuntimeSurface, lints: &mut Vec<ModuleManifest
     let mut names = HashSet::new();
     for function in &runtime.functions {
         lint_runtime_function(function, &mut names, lints);
+    }
+    let function_names = runtime_function_names(Some(runtime));
+    let mut schedule_names = HashSet::new();
+    for schedule in &runtime.schedules {
+        lint_scheduled_function(schedule, &function_names, &mut schedule_names, lints);
     }
 }
 
@@ -467,6 +473,77 @@ fn lint_runtime_function(
             subject: format!("{subject}.retry_policy"),
             message: "Runtime function retry policy declares zero attempts.".to_owned(),
             suggestion: "Set max_attempts to at least 1 or omit the retry policy.".to_owned(),
+        });
+    }
+}
+
+fn lint_scheduled_function(
+    schedule: &ScheduledFunctionDeclaration,
+    runtime_functions: &HashSet<String>,
+    names: &mut HashSet<String>,
+    lints: &mut Vec<ModuleManifestLint>,
+) {
+    let subject = if present(&schedule.name) {
+        format!("runtime.schedule.{}", schedule.name)
+    } else {
+        "runtime.schedule".to_owned()
+    };
+
+    if !present(&schedule.name) {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Error,
+            subject: subject.clone(),
+            message: "Scheduled runtime function is missing a name.".to_owned(),
+            suggestion: "Set a stable schedule name such as sync_contacts_hourly.".to_owned(),
+        });
+    } else if !valid_runtime_function_name(&schedule.name) {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Warning,
+            subject: subject.clone(),
+            message: "Scheduled runtime function name should be path-safe.".to_owned(),
+            suggestion: "Use ASCII letters, digits, dot, underscore, or hyphen.".to_owned(),
+        });
+    } else if !names.insert(schedule.name.clone()) {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Error,
+            subject: subject.clone(),
+            message: "Duplicate scheduled runtime function declaration.".to_owned(),
+            suggestion: "Keep one schedule declaration per schedule name.".to_owned(),
+        });
+    }
+
+    if !present(&schedule.cron) {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Error,
+            subject: format!("{subject}.cron"),
+            message: "Scheduled runtime function is missing a cron expression.".to_owned(),
+            suggestion: "Set cron to a standard 5-field UTC cron expression.".to_owned(),
+        });
+    } else if validate_cron_expression(&schedule.cron).is_err() {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Error,
+            subject: format!("{subject}.cron"),
+            message: "Scheduled runtime function cron expression is invalid.".to_owned(),
+            suggestion: "Use a standard 5-field expression such as */15 * * * *.".to_owned(),
+        });
+    }
+
+    if !present(&schedule.function_name) {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Error,
+            subject,
+            message: "Scheduled runtime function is missing a function name.".to_owned(),
+            suggestion: "Set function_name to a declared runtime function.".to_owned(),
+        });
+    } else if !runtime_functions.contains(&schedule.function_name) {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Error,
+            subject,
+            message: "Scheduled runtime function references an unknown runtime function."
+                .to_owned(),
+            suggestion:
+                "Declare the function in ModuleManifest.runtime.functions or remove the schedule."
+                    .to_owned(),
         });
     }
 }
@@ -1526,6 +1603,12 @@ mod tests {
                         initial_delay_ms: 1000,
                     }),
                 }],
+                schedules: vec![ScheduledFunctionDeclaration {
+                    name: "sync_contacts_hourly".to_owned(),
+                    function_name: "remote_crm.sync_contact.v1".to_owned(),
+                    cron: "0 * * * *".to_owned(),
+                    input: serde_json::json!({ "reason": "schedule" }),
+                }],
             })
             .build();
 
@@ -1537,6 +1620,7 @@ mod tests {
             "got {json}"
         );
         assert!(json.contains(r#""queue":"remote-crm""#), "got {json}");
+        assert!(json.contains(r#""schedules""#), "got {json}");
         let back: ModuleManifest = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(manifest, back);
     }
@@ -1673,6 +1757,7 @@ mod tests {
                         retry_policy: None,
                     },
                 ],
+                schedules: vec![],
             })
             .build();
 
@@ -1710,6 +1795,7 @@ mod tests {
                         initial_delay_ms: 500,
                     }),
                 }],
+                schedules: vec![],
             })
             .lifecycle(LifecycleSurface {
                 startup_checks: vec![LifecycleStartupCheckDeclaration {
@@ -1747,7 +1833,10 @@ mod tests {
     #[test]
     fn manifest_lint_flags_lifecycle_declarations_that_cannot_run() {
         let manifest = ModuleManifest::builder("remote-crm")
-            .runtime(RuntimeSurface { functions: vec![] })
+            .runtime(RuntimeSurface {
+                functions: vec![],
+                schedules: vec![],
+            })
             .lifecycle(LifecycleSurface {
                 startup_checks: vec![
                     LifecycleStartupCheckDeclaration {
@@ -1826,6 +1915,7 @@ mod tests {
                     input_schema: Some("remote_crm.warm_contact_cache.v1".to_owned()),
                     retry_policy: None,
                 }],
+                schedules: vec![],
             })
             .lifecycle(LifecycleSurface {
                 startup_checks: vec![],
@@ -1991,6 +2081,12 @@ mod tests {
                         initial_delay_ms: 1000,
                     }),
                 }],
+                schedules: vec![ScheduledFunctionDeclaration {
+                    name: "sync_contacts_hourly".to_owned(),
+                    function_name: "remote_crm.missing.v1".to_owned(),
+                    cron: "bad cron".to_owned(),
+                    input: serde_json::json!({}),
+                }],
             })
             .lifecycle(LifecycleSurface {
                 startup_checks: vec![LifecycleStartupCheckDeclaration {
@@ -2115,6 +2211,14 @@ mod tests {
                 (
                     ModuleManifestLintSeverity::Warning,
                     "runtime.function.remote_crm.sync_contact.v1.retry_policy".to_owned(),
+                ),
+                (
+                    ModuleManifestLintSeverity::Error,
+                    "runtime.schedule.sync_contacts_hourly.cron".to_owned(),
+                ),
+                (
+                    ModuleManifestLintSeverity::Error,
+                    "runtime.schedule.sync_contacts_hourly".to_owned(),
                 ),
             ],
         );

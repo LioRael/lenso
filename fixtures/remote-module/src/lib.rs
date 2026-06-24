@@ -817,6 +817,7 @@ fn runtime_surface() -> RuntimeSurface {
                 initial_delay_ms: 1000,
             }),
         }],
+        schedules: vec![],
     }
 }
 

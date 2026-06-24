@@ -28,6 +28,7 @@ use platform_core::{
     RuntimeConfigType, StoryDisplayDescriptor, StoryDisplaySource, TraceContext,
 };
 use platform_http::ApiOpenApiRouter;
+use platform_module::CronSchedule;
 pub use platform_module::HostLinkedModule;
 use platform_module::{
     AdminSchema, AdminSurface, EventHandlerRegistrationContext, LifecycleActivationRunPolicy,
@@ -37,6 +38,7 @@ use platform_module::{
 use platform_module_remote::{RemoteHttpProxyRegistry, RemoteModuleConfig, RemoteModuleSource};
 use platform_runtime::{
     EnqueueFunctionRequest, FunctionRegistry, RUNTIME_MIGRATIONS, RuntimeClient,
+    ScheduledFunctionDefinition,
 };
 use std::fs::{self, OpenOptions};
 use std::io::Write as _;
@@ -2022,6 +2024,77 @@ fn runtime_max_attempts_for_enqueue(max_attempts: u32) -> i32 {
     i32::try_from(max_attempts).unwrap_or(i32::MAX)
 }
 
+/// Build host-owned runtime schedules declared by loaded modules.
+pub fn scheduled_functions(
+    modules: &[Module],
+    registry: &FunctionRegistry,
+) -> platform_core::AppResult<Vec<ScheduledFunctionDefinition>> {
+    let mut schedules = Vec::new();
+
+    for module in modules {
+        if !matches!(module.load_status, ModuleLoadStatus::Loaded) {
+            continue;
+        }
+        let Some(runtime) = &module.manifest.runtime else {
+            continue;
+        };
+
+        for schedule in &runtime.schedules {
+            if schedule.name.trim().is_empty() {
+                return Err(AppError::new(
+                    ErrorCode::Validation,
+                    format!(
+                        "scheduled runtime function for module {} is missing a name",
+                        module.manifest.name
+                    ),
+                ));
+            }
+            if !module_declares_runtime_function(module, &schedule.function_name) {
+                return Err(AppError::new(
+                    ErrorCode::Validation,
+                    format!(
+                        "scheduled runtime function {}:{} references function {} not declared by module {}",
+                        module.manifest.name,
+                        schedule.name,
+                        schedule.function_name,
+                        module.manifest.name
+                    ),
+                ));
+            }
+            let Some(function) = registry.get(&schedule.function_name) else {
+                return Err(AppError::new(
+                    ErrorCode::Validation,
+                    format!(
+                        "scheduled runtime function {}:{} references missing function {}",
+                        module.manifest.name, schedule.name, schedule.function_name
+                    ),
+                ));
+            };
+            let parsed_schedule = CronSchedule::parse(&schedule.cron).map_err(|error| {
+                AppError::new(
+                    ErrorCode::Validation,
+                    format!(
+                        "scheduled runtime function {}:{} has invalid cron expression: {error}",
+                        module.manifest.name, schedule.name
+                    ),
+                )
+            })?;
+            schedules.push(ScheduledFunctionDefinition {
+                schedule_key: format!("{}:{}", module.manifest.name, schedule.name),
+                module_name: module.manifest.name.clone(),
+                schedule_name: schedule.name.clone(),
+                function_name: schedule.function_name.clone(),
+                cron: schedule.cron.clone(),
+                schedule: parsed_schedule,
+                input_json: schedule.input.clone(),
+                max_attempts: runtime_max_attempts_for_enqueue(function.retry_policy.max_attempts),
+            });
+        }
+    }
+
+    Ok(schedules)
+}
+
 /// Build an [`EventHandlerRegistry`] from every module's binding.
 #[must_use]
 pub fn event_handlers(modules: &[Module]) -> EventHandlerRegistry {
@@ -3762,6 +3835,7 @@ mod tests {
                         input_schema: None,
                         retry_policy: None,
                     }],
+                    schedules: vec![],
                 });
             }
             if !builder.capabilities.is_empty() {
