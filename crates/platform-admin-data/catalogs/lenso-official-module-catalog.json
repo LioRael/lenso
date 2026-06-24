@@ -40,6 +40,17 @@
       ]
     },
     {
+      "name": "auth-oidc",
+      "version": "0.1.0",
+      "source": "linked",
+      "manifestReference": "builtin:auth-oidc",
+      "summary": "Official linked OIDC provider for Runtime Console sign-in",
+      "capabilities": [],
+      "dependencies": [
+        "auth"
+      ]
+    },
+    {
       "name": "remote-crm",
       "version": "0.1.0",
       "source": "remote",

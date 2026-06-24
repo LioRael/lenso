@@ -758,25 +758,27 @@ async fn available_modules_reads_official_catalog_when_no_local_catalog_exists()
         body["catalog"]["registryFile"],
         "builtin:lenso-official-module-catalog"
     );
-    assert_eq!(body["catalog"]["modules"], 3);
+    assert_eq!(body["catalog"]["modules"], 4);
     assert_eq!(body["modules"][0]["name"], "auth");
     assert_eq!(body["modules"][0]["source"], "linked");
     assert_eq!(body["modules"][0]["catalogVersion"], "0.1.3");
     assert_eq!(body["modules"][0]["consolePackageHints"], 1);
     assert_eq!(body["modules"][1]["name"], "auth-password");
     assert_eq!(body["modules"][1]["source"], "linked");
-    assert_eq!(body["modules"][2]["name"], "remote-crm");
-    assert_eq!(body["modules"][2]["source"], "remote");
+    assert_eq!(body["modules"][2]["name"], "auth-oidc");
+    assert_eq!(body["modules"][2]["source"], "linked");
+    assert_eq!(body["modules"][3]["name"], "remote-crm");
+    assert_eq!(body["modules"][3]["source"], "remote");
     assert_eq!(
-        body["modules"][2]["manifestReference"],
+        body["modules"][3]["manifestReference"],
         "http://127.0.0.1:4100/lenso/module/v1/manifest"
     );
     assert_eq!(
-        body["modules"][2]["summary"],
+        body["modules"][3]["summary"],
         "Official CRM fixture module for exercising remote module installation"
     );
-    assert_eq!(body["modules"][2]["consolePackageHints"], 1);
-    assert_eq!(body["modules"][2]["status"], "ready");
+    assert_eq!(body["modules"][3]["consolePackageHints"], 1);
+    assert_eq!(body["modules"][3]["status"], "ready");
 }
 
 #[tokio::test]

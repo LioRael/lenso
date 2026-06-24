@@ -98,6 +98,32 @@ fn openapi_contains_auth_password_contract() {
 }
 
 #[test]
+fn openapi_contains_auth_oidc_contract() {
+    let document = openapi_document();
+    let value = serde_json::to_value(&document).expect("OpenAPI document should serialize");
+
+    let metadata = &value["paths"]["/.well-known/openid-configuration"]["get"];
+    assert_eq!(metadata["operationId"], "auth_oidc_provider_metadata");
+
+    let jwks = &value["paths"]["/.well-known/jwks.json"]["get"];
+    assert_eq!(jwks["operationId"], "auth_oidc_jwks");
+
+    let authorize = &value["paths"]["/oauth/authorize"]["get"];
+    assert_eq!(authorize["operationId"], "auth_oidc_authorize");
+
+    let token = &value["paths"]["/oauth/token"]["post"];
+    assert_eq!(token["operationId"], "auth_oidc_token");
+    assert_eq!(
+        token["requestBody"]["content"]["application/x-www-form-urlencoded"]["schema"]["$ref"],
+        "#/components/schemas/OidcTokenRequest"
+    );
+    assert_eq!(
+        token["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+        "#/components/schemas/OidcTokenResponse"
+    );
+}
+
+#[test]
 fn committed_openapi_artifact_matches_rust_source() {
     let generated =
         serde_json::to_value(openapi_document()).expect("OpenAPI document should serialize");
@@ -359,7 +385,8 @@ async fn served_core_profile_openapi_keeps_composed_auth_routes() {
     );
     let composition = lenso_bootstrap::HostComposition::new()
         .with_linked_module(lenso_bootstrap::auth_linked_module())
-        .with_linked_module(lenso_bootstrap::auth_password_linked_module());
+        .with_linked_module(lenso_bootstrap::auth_password_linked_module())
+        .with_linked_module(lenso_bootstrap::auth_oidc_linked_module());
     let app = lenso_api::try_build_router_with_composition(ctx, &composition)
         .expect("core profile auth composition router should build");
 
@@ -389,6 +416,8 @@ async fn served_core_profile_openapi_keeps_composed_auth_routes() {
 
     assert!(paths.contains_key("/v1/auth/dev/sessions"));
     assert!(paths.contains_key("/v1/auth/password/register"));
+    assert!(paths.contains_key("/.well-known/openid-configuration"));
+    assert!(paths.contains_key("/oauth/token"));
     assert!(tags.iter().any(|tag| tag["name"] == "auth"));
 }
 

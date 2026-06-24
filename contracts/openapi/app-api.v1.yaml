@@ -7,6 +7,54 @@ info:
     identifier: MIT
   version: 1.0.0
 paths:
+  /.well-known/jwks.json:
+    get:
+      tags:
+      - auth
+      operationId: auth_oidc_jwks
+      responses:
+        '200':
+          description: OIDC JSON Web Key Set
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OidcJwksResponse'
+        '404':
+          description: OIDC provider is not enabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Invalid OIDC provider configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /.well-known/openid-configuration:
+    get:
+      tags:
+      - auth
+      operationId: auth_oidc_provider_metadata
+      responses:
+        '200':
+          description: OIDC provider metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OidcProviderMetadataResponse'
+        '404':
+          description: OIDC provider is not enabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Invalid OIDC provider configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/config/descriptors:
     get:
       tags:
@@ -2537,6 +2585,117 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '502':
           description: Remote module request failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /oauth/authorize:
+    get:
+      tags:
+      - auth
+      operationId: auth_oidc_authorize
+      parameters:
+      - name: response_type
+        in: query
+        description: Must be `code`
+        required: true
+        schema:
+          type: string
+      - name: client_id
+        in: query
+        description: Registered OIDC client id
+        required: true
+        schema:
+          type: string
+      - name: redirect_uri
+        in: query
+        description: Registered redirect URI
+        required: true
+        schema:
+          type: string
+      - name: scope
+        in: query
+        description: Space-separated scopes including `openid`
+        required: true
+        schema:
+          type: string
+      - name: state
+        in: query
+        description: Opaque client state echoed to the redirect URI
+        required: false
+        schema:
+          type: string
+      - name: nonce
+        in: query
+        description: Opaque nonce stored with the authorization code
+        required: false
+        schema:
+          type: string
+      - name: code_challenge
+        in: query
+        description: PKCE S256 code challenge
+        required: true
+        schema:
+          type: string
+      - name: code_challenge_method
+        in: query
+        description: Must be `S256`
+        required: true
+        schema:
+          type: string
+      responses:
+        '303':
+          description: Redirects to the registered redirect URI with an authorization code
+        '400':
+          description: Request validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /oauth/token:
+    post:
+      tags:
+      - auth
+      operationId: auth_oidc_token
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/OidcTokenRequest'
+        required: true
+      responses:
+        '200':
+          description: OIDC token response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OidcTokenResponse'
+        '400':
+          description: Request validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Invalid authorization grant
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
           content:
             application/json:
               schema:
@@ -5385,6 +5544,112 @@ components:
       enum:
       - linked
       - remote
+    OidcJwksResponse:
+      type: object
+      required:
+      - keys
+      properties:
+        keys:
+          type: array
+          items: {}
+    OidcProviderMetadataResponse:
+      type: object
+      required:
+      - issuer
+      - authorization_endpoint
+      - token_endpoint
+      - jwks_uri
+      - response_types_supported
+      - subject_types_supported
+      - id_token_signing_alg_values_supported
+      - scopes_supported
+      - claims_supported
+      - code_challenge_methods_supported
+      - token_endpoint_auth_methods_supported
+      - lenso_console_client_id
+      properties:
+        authorization_endpoint:
+          type: string
+        claims_supported:
+          type: array
+          items:
+            type: string
+        code_challenge_methods_supported:
+          type: array
+          items:
+            type: string
+        id_token_signing_alg_values_supported:
+          type: array
+          items:
+            type: string
+        issuer:
+          type: string
+        jwks_uri:
+          type: string
+        lenso_console_client_id:
+          type: string
+        response_types_supported:
+          type: array
+          items:
+            type: string
+        scopes_supported:
+          type: array
+          items:
+            type: string
+        subject_types_supported:
+          type: array
+          items:
+            type: string
+        token_endpoint:
+          type: string
+        token_endpoint_auth_methods_supported:
+          type: array
+          items:
+            type: string
+    OidcTokenRequest:
+      type: object
+      properties:
+        client_id:
+          type:
+          - string
+          - 'null'
+        code:
+          type:
+          - string
+          - 'null'
+        code_verifier:
+          type:
+          - string
+          - 'null'
+        grant_type:
+          type:
+          - string
+          - 'null'
+        redirect_uri:
+          type:
+          - string
+          - 'null'
+    OidcTokenResponse:
+      type: object
+      required:
+      - access_token
+      - token_type
+      - expires_in
+      - id_token
+      - scope
+      properties:
+        access_token:
+          type: string
+        expires_in:
+          type: integer
+          format: int64
+          minimum: 0
+        id_token:
+          type: string
+        scope:
+          type: string
+        token_type:
+          type: string
     PageInfo:
       type: object
       required:

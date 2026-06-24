@@ -159,6 +159,12 @@ const DEMO_LINKED_MODULE_ENTRIES: &[LinkedModuleEntry] = &[
         http_binding: Some(auth_password::module::binding),
     },
     LinkedModuleEntry {
+        module_name: "auth-oidc",
+        manifest: auth_oidc::module::manifest,
+        load: auth_oidc::module::module,
+        http_binding: Some(auth_oidc::module::binding),
+    },
+    LinkedModuleEntry {
         module_name: "platform-story",
         manifest: story::module::manifest,
         load: story::module::module,
@@ -193,6 +199,17 @@ pub fn auth_password_linked_module() -> HostLinkedModule {
         auth_password::migrations::AUTH_PASSWORD_MIGRATIONS,
     )
     .with_http_binding(auth_password::module::binding)
+}
+
+#[must_use]
+pub fn auth_oidc_linked_module() -> HostLinkedModule {
+    HostLinkedModule::linked(
+        auth_oidc::module::MODULE_NAME,
+        auth_oidc::module::manifest,
+        auth_oidc::module::module,
+        auth_oidc::migrations::AUTH_OIDC_MIGRATIONS,
+    )
+    .with_http_binding(auth_oidc::module::binding)
 }
 
 fn linked_module_enabled_from_config(config: &platform_core::AppConfig, module_name: &str) -> bool {
@@ -573,6 +590,13 @@ pub fn migrations_for_config_with_composition(
                     .copied(),
             );
         }
+        if linked_module_with_dependencies_enabled_from_config(
+            config,
+            "auth-oidc",
+            auth_oidc::module::manifest,
+        ) {
+            migrations.extend(auth_oidc::migrations::AUTH_OIDC_MIGRATIONS.iter().copied());
+        }
     }
 
     for module in host_linked_modules_for_config(config, composition, profile) {
@@ -597,6 +621,7 @@ pub fn migrations_for_profile(profile: CompositionProfile) -> Vec<Migration> {
                 .iter()
                 .copied(),
         );
+        migrations.extend(auth_oidc::migrations::AUTH_OIDC_MIGRATIONS.iter().copied());
     }
 
     migrations
@@ -2509,7 +2534,15 @@ mod tests {
             .map(|manifest| manifest.name)
             .collect::<Vec<_>>();
 
-        assert_eq!(names, vec!["auth", "auth-password", "platform-story"]);
+        assert_eq!(
+            names,
+            vec![
+                auth::module::MODULE_NAME,
+                auth_password::module::MODULE_NAME,
+                auth_oidc::module::MODULE_NAME,
+                story::module::MODULE_NAME,
+            ]
+        );
     }
 
     #[test]
@@ -2555,6 +2588,11 @@ mod tests {
                 .iter()
                 .any(|name| name == &"auth-password/0001_create_auth_password_schema")
         );
+        assert!(
+            names
+                .iter()
+                .any(|name| name == &"auth-oidc/0001_create_auth_oidc_schema")
+        );
     }
 
     #[test]
@@ -2577,7 +2615,8 @@ mod tests {
         config.module_sources.linked_profile = "core".to_owned();
         let composition = HostComposition::new()
             .with_linked_module(auth_linked_module())
-            .with_linked_module(auth_password_linked_module());
+            .with_linked_module(auth_password_linked_module())
+            .with_linked_module(auth_oidc_linked_module());
 
         let names = migrations_for_config_with_composition(&config, &composition)
             .expect("host composition migrations should load")
@@ -2594,6 +2633,11 @@ mod tests {
             names
                 .iter()
                 .any(|name| name == &"auth-password/0001_create_auth_password_schema")
+        );
+        assert!(
+            names
+                .iter()
+                .any(|name| name == &"auth-oidc/0001_create_auth_oidc_schema")
         );
     }
 
@@ -2724,7 +2768,15 @@ mod tests {
             .map(|manifest| manifest.name)
             .collect::<Vec<_>>();
 
-        assert_eq!(names, vec!["auth", "auth-password", "platform-story"]);
+        assert_eq!(
+            names,
+            vec![
+                auth::module::MODULE_NAME,
+                auth_password::module::MODULE_NAME,
+                auth_oidc::module::MODULE_NAME,
+                story::module::MODULE_NAME,
+            ]
+        );
     }
 
     #[test]
@@ -2746,6 +2798,10 @@ mod tests {
                 LinkedHttpRouteOwner {
                     module_name: "auth-password".to_owned(),
                     public_prefixes: &["/v1/auth/password/"],
+                },
+                LinkedHttpRouteOwner {
+                    module_name: "auth-oidc".to_owned(),
+                    public_prefixes: &["/.well-known/", "/oauth/"],
                 },
                 LinkedHttpRouteOwner {
                     module_name: "platform-story".to_owned(),
@@ -2854,6 +2910,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert!(!names.iter().any(|name| name == "auth-password"));
+        assert!(!names.iter().any(|name| name == "auth-oidc"));
     }
 
     #[tokio::test]
@@ -2877,13 +2934,26 @@ mod tests {
             .iter()
             .find(|module| module.module_name == "auth-password")
             .expect("dependency-disabled provider should remain visible in metadata");
+        let auth_oidc = metadata
+            .iter()
+            .find(|module| module.module_name == "auth-oidc")
+            .expect("dependency-disabled provider should remain visible in metadata");
 
         assert_eq!(
             auth_password.dependencies,
             vec![auth::module::MODULE_NAME.to_owned()]
         );
+        assert_eq!(
+            auth_oidc.dependencies,
+            vec![auth::module::MODULE_NAME.to_owned()]
+        );
         assert!(matches!(
             &auth_password.load_status,
+            ModuleLoadStatus::Error { message }
+                if message == "module dependency disabled: auth"
+        ));
+        assert!(matches!(
+            &auth_oidc.load_status,
             ModuleLoadStatus::Error { message }
                 if message == "module dependency disabled: auth"
         ));
@@ -2960,7 +3030,7 @@ mod tests {
             .map(|module| module.manifest.name)
             .collect::<Vec<_>>();
 
-        assert_eq!(names, vec!["auth", "platform-story"]);
+        assert_eq!(names, vec!["auth", "auth-oidc", "platform-story"]);
     }
 
     #[tokio::test]
@@ -2988,14 +3058,17 @@ mod tests {
             .map(|module| module.manifest.name)
             .collect::<Vec<_>>();
 
-        assert_eq!(names, vec!["auth", "platform-story"]);
+        assert_eq!(names, vec!["auth", "auth-oidc", "platform-story"]);
         let linked_http_names = linked_http_modules_for_context(&ctx)
             .expect("linked HTTP modules should load")
             .into_iter()
             .map(|module| module.manifest.name)
             .collect::<Vec<_>>();
 
-        assert_eq!(linked_http_names, vec!["auth", "platform-story"]);
+        assert_eq!(
+            linked_http_names,
+            vec!["auth", "auth-oidc", "platform-story"]
+        );
     }
 
     #[tokio::test]
@@ -3022,7 +3095,14 @@ mod tests {
             .into_iter()
             .map(|module| module.manifest.name)
             .collect::<Vec<_>>();
-        assert_eq!(linked_http_names, vec!["auth", "auth-password"]);
+        assert_eq!(
+            linked_http_names,
+            vec![
+                auth::module::MODULE_NAME,
+                auth_password::module::MODULE_NAME,
+                auth_oidc::module::MODULE_NAME,
+            ]
+        );
 
         let metadata = load_admin_module_metadata(&ctx)
             .await
@@ -3069,6 +3149,12 @@ mod tests {
         }));
         assert!(keys.iter().any(|(key, group, restart_only, default)| {
             key == "modules.auth-password.enabled"
+                && *group == Some("modules")
+                && *restart_only
+                && default == &json!(true)
+        }));
+        assert!(keys.iter().any(|(key, group, restart_only, default)| {
+            key == "modules.auth-oidc.enabled"
                 && *group == Some("modules")
                 && *restart_only
                 && default == &json!(true)
@@ -3250,7 +3336,7 @@ mod tests {
             .map(|module| module.manifest.name)
             .collect::<Vec<_>>();
 
-        assert_eq!(names, vec!["auth", "platform-story"]);
+        assert_eq!(names, vec!["auth", "auth-oidc", "platform-story"]);
     }
 
     #[test]
@@ -3270,7 +3356,14 @@ mod tests {
             .map(|module| module.manifest.name)
             .collect::<Vec<_>>();
 
-        assert_eq!(names, vec!["auth", "auth-password"]);
+        assert_eq!(
+            names,
+            vec![
+                auth::module::MODULE_NAME,
+                auth_password::module::MODULE_NAME,
+                auth_oidc::module::MODULE_NAME,
+            ]
+        );
     }
 
     #[tokio::test]
@@ -3349,6 +3442,10 @@ mod tests {
                 LinkedHttpRouteOwner {
                     module_name: "auth-password".to_owned(),
                     public_prefixes: &["/v1/auth/password/"],
+                },
+                LinkedHttpRouteOwner {
+                    module_name: "auth-oidc".to_owned(),
+                    public_prefixes: &["/.well-known/", "/oauth/"],
                 },
                 LinkedHttpRouteOwner {
                     module_name: "platform-story".to_owned(),
