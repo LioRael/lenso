@@ -18,6 +18,7 @@ platform-admin-data.workspace = true
 platform-http.workspace = true
 platform-runtime.workspace = true
 auth.workspace = true
+auth-oidc.workspace = true
 auth-password.workspace = true
 story.workspace = true
 reqwest.workspace = true

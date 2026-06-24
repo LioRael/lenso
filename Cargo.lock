@@ -1441,6 +1441,7 @@ version = "0.1.4"
 dependencies = [
  "async-trait",
  "lenso-module-auth",
+ "lenso-module-auth-oidc",
  "lenso-module-auth-password",
  "lenso-module-story",
  "lenso-platform-admin-data",
@@ -1496,6 +1497,27 @@ dependencies = [
  "sha2 0.11.0",
  "sqlx",
  "tracing",
+ "utoipa",
+]
+
+[[package]]
+name = "lenso-module-auth-oidc"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf67d5e16a9c710eefe0e97db4f90e24467c7d4738b88c35afad68133e56b7e7"
+dependencies = [
+ "axum",
+ "chrono",
+ "getrandom 0.4.3",
+ "jsonwebtoken",
+ "lenso-module-auth",
+ "lenso-platform-core",
+ "lenso-platform-http",
+ "lenso-platform-module",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "sqlx",
  "utoipa",
 ]
 
