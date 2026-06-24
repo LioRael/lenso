@@ -64,12 +64,16 @@ Console category mapping and tests in the same change.
 | `warning` | `console.surface.{surface}.navigation.workspace.label` | Console workspace is missing an operator-facing label. |
 | `warning` | `console.surface.{surface}.navigation.group.id` | Console navigation group id is invalid. |
 | `warning` | `console.surface.{surface}.navigation.group.label` | Console navigation group is missing an operator-facing label. |
-| `warning` | `runtime.functions` | Runtime surface declares no functions. |
+| `warning` | `runtime` | Runtime surface declares no functions or schedules. |
 | `error` | `runtime.function` | Runtime function declaration is missing a name. |
 | `warning` | `runtime.function.{name}` | Runtime function name is not path-safe, queue is missing, or another declaration quality issue applies. |
 | `error` | `runtime.function.{name}` | Runtime function name is declared more than once. |
 | `warning` | `runtime.function.{name}.input_schema` | Runtime function input schema does not match the function name. |
 | `warning` | `runtime.function.{name}.retry_policy` | Runtime retry policy declares zero attempts. |
+| `error` | `runtime.schedule` | Scheduled runtime function is missing a name or function name. |
+| `warning` | `runtime.schedule.{name}` | Scheduled runtime function name is not path-safe. |
+| `error` | `runtime.schedule.{name}` | Scheduled runtime function name is duplicated or references an unknown runtime function. |
+| `error` | `runtime.schedule.{name}.cron` | Scheduled runtime function cron expression is missing or invalid. |
 | `warning` | `events.handlers` | Event surface declares no handlers. |
 | `error` | `events.handler` | Event handler declaration is missing a name. |
 | `warning` | `events.handler.{name}` | Event handler name is not path-safe. |

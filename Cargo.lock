@@ -1461,6 +1461,7 @@ dependencies = [
 name = "lenso-contracts"
 version = "0.3.2"
 dependencies = [
+ "chrono",
  "serde",
  "serde_json",
  "utoipa",
@@ -1656,6 +1657,7 @@ version = "0.1.1"
 dependencies = [
  "async-trait",
  "chrono",
+ "lenso-contracts",
  "lenso-platform-core",
  "lenso-platform-testing",
  "serde",

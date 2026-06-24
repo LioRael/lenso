@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use platform_core::{
     ActorContext, AppError, AppResult, CorrelationId, DbPool, ErrorCode, ExecutionContext,
-    ExecutionId, RuntimeSpanAttributes, TenantId, TraceContext, record_runtime_span_attributes,
-    trace_context_from_headers, trace_headers,
+    ExecutionId, RuntimeSpanAttributes, TenantId, TraceContext, db::DbTransaction,
+    record_runtime_span_attributes, trace_context_from_headers, trace_headers,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -143,6 +143,18 @@ impl RuntimeClient {
     }
 
     pub async fn enqueue_function(&self, request: EnqueueFunctionRequest) -> AppResult<String> {
+        let mut tx = self.pool.begin().await.map_err(map_runtime_error)?;
+        let run = self.enqueue_function_in_tx(&mut tx, request).await?;
+        tx.commit().await.map_err(map_runtime_error)?;
+        self.record_function_enqueued(&run).await;
+        Ok(run.id)
+    }
+
+    pub(crate) async fn enqueue_function_in_tx(
+        &self,
+        tx: &mut DbTransaction<'_>,
+        request: EnqueueFunctionRequest,
+    ) -> AppResult<EnqueuedFunctionRun> {
         let id = format!("fnrun_{}", Uuid::now_v7());
         let max_attempts = request.max_attempts.unwrap_or(3);
         let mut input_json = request.input_json;
@@ -172,16 +184,16 @@ impl RuntimeClient {
         async {
             sqlx::query(
                 r#"
-            insert into runtime.function_runs (
-                id,
-                function_name,
-                input_json,
-                max_attempts,
-                correlation_id,
-                actor
-            )
-            values ($1, $2, $3, $4, $5, $6)
-            "#,
+                insert into runtime.function_runs (
+                    id,
+                    function_name,
+                    input_json,
+                    max_attempts,
+                    correlation_id,
+                    actor
+                )
+                values ($1, $2, $3, $4, $5, $6)
+                "#,
             )
             .bind(&id)
             .bind(&request.function_name)
@@ -189,30 +201,38 @@ impl RuntimeClient {
             .bind(max_attempts)
             .bind(&request.correlation_id.0)
             .bind(serde_json::to_value(&request.actor).map_err(map_serde_error)?)
-            .execute(&self.pool)
+            .execute(&mut **tx)
             .await
             .map_err(map_runtime_error)
         }
         .instrument(span)
         .await?;
 
+        Ok(EnqueuedFunctionRun {
+            id,
+            function_name: request.function_name,
+            correlation_id: request.correlation_id.0,
+            trace: request.trace,
+            max_attempts,
+        })
+    }
+
+    pub(crate) async fn record_function_enqueued(&self, run: &EnqueuedFunctionRun) {
         self.record_function_execution_log(
             &FunctionLogContext {
-                id: id.clone(),
-                function_name: request.function_name,
-                correlation_id: request.correlation_id.0,
-                trace: request.trace,
+                id: run.id.clone(),
+                function_name: run.function_name.clone(),
+                correlation_id: run.correlation_id.clone(),
+                trace: run.trace.clone(),
             },
             ExecutionLogSeverity::Info,
             "Function run enqueued",
             serde_json::json!({
                 "attempt": 0,
-                "max_attempts": max_attempts,
+                "max_attempts": run.max_attempts,
             }),
         )
         .await;
-
-        Ok(id)
     }
 
     async fn record_function_execution_log(
@@ -236,6 +256,15 @@ impl RuntimeClient {
             );
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct EnqueuedFunctionRun {
+    pub id: String,
+    function_name: String,
+    correlation_id: String,
+    trace: TraceContext,
+    max_attempts: i32,
 }
 
 #[derive(Debug, Clone)]
@@ -932,7 +961,7 @@ fn attach_runtime_context_to_input(
     }
 }
 
-fn map_runtime_error(source: sqlx::Error) -> AppError {
+pub(crate) fn map_runtime_error(source: sqlx::Error) -> AppError {
     AppError::new(ErrorCode::Internal, "Runtime operation failed").with_source(source)
 }
 

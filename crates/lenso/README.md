@@ -60,6 +60,7 @@ let manifest = ModuleManifest::builder("example")
             input_schema: Some("example.refresh.v1".to_owned()),
             retry_policy: None,
         }],
+        schedules: vec![],
     })
     .build();
 

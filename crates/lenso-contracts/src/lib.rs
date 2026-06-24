@@ -7,6 +7,7 @@
 mod admin;
 mod admin_schema;
 mod console;
+mod cron;
 mod events;
 mod http;
 mod lifecycle;
@@ -26,6 +27,7 @@ pub use console::{
     ConsoleArea, ConsoleNavigation, ConsoleNavigationGroup, ConsolePackage, ConsoleSurface,
     ConsoleWorkspaceRef,
 };
+pub use cron::{CronParseError, CronSchedule, validate_cron_expression};
 pub use events::{EventHandlerDeclaration, EventSurface};
 pub use http::{
     ModuleHttpMethod, ModuleHttpRoute, ModuleRouteLint, ModuleRouteLintSeverity,
@@ -41,5 +43,8 @@ pub use manifest::{
     module_capability_references,
 };
 pub use module_source::ModuleSource;
-pub use runtime::{RuntimeFunctionDeclaration, RuntimeRetryPolicyDeclaration, RuntimeSurface};
+pub use runtime::{
+    RuntimeFunctionDeclaration, RuntimeRetryPolicyDeclaration, RuntimeSurface,
+    ScheduledFunctionDeclaration,
+};
 pub use story_display::{StoryDisplayDescriptor, StoryDisplaySource};

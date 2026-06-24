@@ -4,12 +4,15 @@
 //! carrying executable handlers. Loading sources decide how to bind them later.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use utoipa::ToSchema;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct RuntimeSurface {
     #[serde(default)]
     pub functions: Vec<RuntimeFunctionDeclaration>,
+    #[serde(default)]
+    pub schedules: Vec<ScheduledFunctionDeclaration>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -33,4 +36,16 @@ pub struct RuntimeFunctionDeclaration {
 pub struct RuntimeRetryPolicyDeclaration {
     pub max_attempts: u32,
     pub initial_delay_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct ScheduledFunctionDeclaration {
+    /// Stable schedule name scoped to the owning module.
+    pub name: String,
+    /// Runtime function enqueued when this schedule is due.
+    pub function_name: String,
+    /// Standard 5-field cron expression in UTC.
+    pub cron: String,
+    #[serde(default)]
+    pub input: Value,
 }
