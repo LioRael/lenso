@@ -238,7 +238,10 @@ async fn admin_actor_rejects_user_without_console_admin_scope() {
 
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
     let body = json_body(response).await;
-    assert_eq!(body["error"]["message"], "Console admin scope is required");
+    assert_eq!(
+        body["error"]["message"],
+        "missing console admin scope: console.admin"
+    );
 }
 
 #[tokio::test]

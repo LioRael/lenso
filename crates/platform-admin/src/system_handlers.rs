@@ -11,11 +11,30 @@ use std::time::Duration;
 
 const API_BINARY_NAME: &str = "lenso-api";
 const SIGNAL_DELAY: Duration = Duration::from_millis(100);
+const SYSTEM_CAPABILITY: &str = "*";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RestartLaunch {
     SelfSpawned,
     RequiresSupervisor,
+}
+
+#[utoipa::path(
+    get,
+    path = "/admin/context",
+    operation_id = "admin_context",
+    tag = "admin-system",
+    params(
+        ("authorization" = String, Header, description = "Development service bearer token"),
+    ),
+    responses(
+        (status = 200, description = "Current Runtime Console admin actor context", body = AdminContextResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 403, description = "Console admin scope is required", body = ErrorResponse, content_type = "application/json"),
+    )
+)]
+pub(crate) async fn get_admin_context(admin: AdminActor) -> Json<AdminContextResponse> {
+    Json(admin_context_response(admin))
 }
 
 #[utoipa::path(
@@ -67,6 +86,32 @@ pub(crate) async fn restart_service(
             requires_supervisor: launch == RestartLaunch::RequiresSupervisor,
         }),
     ))
+}
+
+fn admin_context_response(admin: AdminActor) -> AdminContextResponse {
+    match admin {
+        AdminActor::Service { service_id, scopes } => {
+            let capabilities = scopes.clone();
+            AdminContextResponse {
+                actor: AdminContextActor::Service { service_id },
+                scopes,
+                capabilities,
+            }
+        }
+        AdminActor::User { user_id, scopes } => {
+            let capabilities = scopes.clone();
+            AdminContextResponse {
+                actor: AdminContextActor::User { user_id },
+                scopes,
+                capabilities,
+            }
+        }
+        AdminActor::System => AdminContextResponse {
+            actor: AdminContextActor::System,
+            scopes: Vec::new(),
+            capabilities: vec![SYSTEM_CAPABILITY.to_owned()],
+        },
+    }
 }
 
 fn schedule_restart() -> std::io::Result<RestartLaunch> {
@@ -124,5 +169,38 @@ mod tests {
             schedule_restart().expect("restart schedule check"),
             RestartLaunch::RequiresSupervisor
         ));
+    }
+
+    #[test]
+    fn admin_context_preserves_user_scopes_as_capabilities() {
+        let response = admin_context_response(AdminActor::User {
+            user_id: "user-1".to_owned(),
+            scopes: vec!["console.admin".to_owned(), "auth.users.read".to_owned()],
+        });
+
+        assert_eq!(
+            response,
+            AdminContextResponse {
+                actor: AdminContextActor::User {
+                    user_id: "user-1".to_owned()
+                },
+                scopes: vec!["console.admin".to_owned(), "auth.users.read".to_owned()],
+                capabilities: vec!["console.admin".to_owned(), "auth.users.read".to_owned()],
+            }
+        );
+    }
+
+    #[test]
+    fn admin_context_marks_system_as_all_capabilities() {
+        let response = admin_context_response(AdminActor::System);
+
+        assert_eq!(
+            response,
+            AdminContextResponse {
+                actor: AdminContextActor::System,
+                scopes: Vec::new(),
+                capabilities: vec![SYSTEM_CAPABILITY.to_owned()],
+            }
+        );
     }
 }

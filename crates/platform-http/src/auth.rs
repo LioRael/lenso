@@ -137,7 +137,10 @@ where
                 Ok(Self::User { user_id, scopes })
             }
             ActorContext::User { .. } => Err(ApiErrorResponse::with_context(
-                AppError::new(ErrorCode::Forbidden, "Console admin scope is required"),
+                AppError::new(
+                    ErrorCode::Forbidden,
+                    format!("missing console admin scope: {CONSOLE_ADMIN_SCOPE}"),
+                ),
                 &ctx,
             )),
         }

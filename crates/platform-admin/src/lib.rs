@@ -226,6 +226,7 @@ fn enrich_function_run_detail(mut run: AdminFunctionRunDetail) -> AdminFunctionR
 
 pub fn router() -> ApiOpenApiRouter {
     OpenApiRouter::new()
+        .routes(routes!(get_admin_context))
         .routes(routes!(get_summary))
         .routes(routes!(get_heatmap))
         .routes(routes!(get_execution_technical_operations))
