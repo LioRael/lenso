@@ -63,20 +63,20 @@ utoipa = { version = "5.5", features = ["axum_extras", "chrono", "uuid"] }
 utoipa-axum = "0.2"
 uuid = { version = "1.23", features = ["serde", "v7"] }
 
-lenso = { path = "crates/lenso", version = "0.3.10" }
-lenso-contracts = { path = "crates/lenso-contracts", version = "0.3.2" }
+lenso = { path = "crates/lenso", version = "0.3.11" }
+lenso-contracts = { path = "crates/lenso-contracts", version = "0.3.3" }
 platform-core = { package = "lenso-platform-core", path = "crates/platform-core", version = "0.1.4" }
-platform-admin = { package = "lenso-platform-admin", path = "crates/platform-admin", version = "0.1.1" }
-platform-admin-data = { package = "lenso-platform-admin-data", path = "crates/platform-admin-data", version = "0.1.3" }
-platform-module = { package = "lenso-platform-module", path = "crates/platform-module", version = "0.1.2" }
-platform-module-remote = { package = "lenso-platform-module-remote", path = "crates/platform-module-remote", version = "0.1.1" }
+platform-admin = { package = "lenso-platform-admin", path = "crates/platform-admin", version = "0.1.2" }
+platform-admin-data = { package = "lenso-platform-admin-data", path = "crates/platform-admin-data", version = "0.1.4" }
+platform-module = { package = "lenso-platform-module", path = "crates/platform-module", version = "0.1.3" }
+platform-module-remote = { package = "lenso-platform-module-remote", path = "crates/platform-module-remote", version = "0.1.2" }
 platform-http = { package = "lenso-platform-http", path = "crates/platform-http", version = "0.1.2" }
-platform-runtime = { package = "lenso-platform-runtime", path = "crates/platform-runtime", version = "0.1.1" }
+platform-runtime = { package = "lenso-platform-runtime", path = "crates/platform-runtime", version = "0.1.2" }
 platform-testing = { package = "lenso-platform-testing", path = "crates/platform-testing", version = "0.1.1" }
-lenso-bootstrap = { path = "crates/lenso-bootstrap", version = "0.1.4" }
-lenso-api = { path = "crates/lenso-api", version = "0.1.5" }
-lenso-migrate = { path = "crates/lenso-migrate", version = "0.1.4" }
-lenso-worker = { path = "crates/lenso-worker", version = "0.1.4" }
+lenso-bootstrap = { path = "crates/lenso-bootstrap", version = "0.1.5" }
+lenso-api = { path = "crates/lenso-api", version = "0.1.6" }
+lenso-migrate = { path = "crates/lenso-migrate", version = "0.1.5" }
+lenso-worker = { path = "crates/lenso-worker", version = "0.1.5" }
 auth = { package = "lenso-module-auth", version = "0.1.5", features = ["redis"] }
 auth-oidc = { package = "lenso-module-auth-oidc", version = "0.1.0" }
 auth-password = { package = "lenso-module-auth-password", version = "0.1.6" }
