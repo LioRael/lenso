@@ -281,6 +281,37 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /admin/context:
+    get:
+      tags:
+      - admin-system
+      operationId: admin_context
+      parameters:
+      - name: authorization
+        in: header
+        description: Development service bearer token
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Current Runtime Console admin actor context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminContextResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Console admin scope is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/data/available-modules:
     get:
       tags:
@@ -3165,6 +3196,55 @@ components:
         unused_count:
           type: integer
           minimum: 0
+    AdminContextActor:
+      oneOf:
+      - type: object
+        required:
+        - service_id
+        - kind
+        properties:
+          kind:
+            type: string
+            enum:
+            - service
+          service_id:
+            type: string
+      - type: object
+        required:
+        - user_id
+        - kind
+        properties:
+          kind:
+            type: string
+            enum:
+            - user
+          user_id:
+            type: string
+      - type: object
+        required:
+        - kind
+        properties:
+          kind:
+            type: string
+            enum:
+            - system
+    AdminContextResponse:
+      type: object
+      required:
+      - actor
+      - scopes
+      - capabilities
+      properties:
+        actor:
+          $ref: '#/components/schemas/AdminContextActor'
+        capabilities:
+          type: array
+          items:
+            type: string
+        scopes:
+          type: array
+          items:
+            type: string
     AdminDataDetailResponse:
       type: object
       description: Response for `GET /admin/data/{module}/{entity}/{id}`.
