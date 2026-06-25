@@ -77,9 +77,9 @@ lenso-bootstrap = { path = "crates/lenso-bootstrap", version = "0.1.5" }
 lenso-api = { path = "crates/lenso-api", version = "0.1.6" }
 lenso-migrate = { path = "crates/lenso-migrate", version = "0.1.5" }
 lenso-worker = { path = "crates/lenso-worker", version = "0.1.5" }
-auth = { package = "lenso-module-auth", version = "0.1.5", features = ["redis"] }
+auth = { package = "lenso-module-auth", version = "0.1.6", features = ["redis"] }
 auth-oidc = { package = "lenso-module-auth-oidc", version = "0.1.0" }
-auth-password = { package = "lenso-module-auth-password", version = "0.1.6" }
+auth-password = { package = "lenso-module-auth-password", version = "0.1.7" }
 story = { package = "lenso-module-story", path = "modules/story", version = "0.1.1" }
 generate-contracts = { path = "tools/generate-contracts" }
 arch-check = { path = "tools/arch-check" }

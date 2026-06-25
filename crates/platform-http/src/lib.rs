@@ -6,7 +6,9 @@ pub mod json;
 pub mod responses;
 pub mod routes;
 
-pub use auth::{AdminActor, AuthenticatedActor, OptionalActor, ServiceActor, UserActor};
+pub use auth::{
+    AdminActor, AuthenticatedActor, CONSOLE_ADMIN_SCOPE, OptionalActor, ServiceActor, UserActor,
+};
 pub use context::{HttpRequestContext, request_context_middleware};
 pub use errors::ApiErrorBody as ErrorResponse;
 pub use errors::{ApiErrorBody, ApiErrorResponse, ErrorBody, IntoApiError, ValidationErrorDetail};

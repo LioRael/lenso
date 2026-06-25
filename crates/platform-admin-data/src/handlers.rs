@@ -2705,16 +2705,20 @@ fn ensure_action_capability(
 ) -> Result<(), ApiErrorResponse> {
     match admin {
         AdminActor::System => Ok(()),
-        AdminActor::Service { scopes, .. } if scopes.iter().any(|scope| scope == capability) => {
+        AdminActor::Service { scopes, .. } | AdminActor::User { scopes, .. }
+            if scopes.iter().any(|scope| scope == capability) =>
+        {
             Ok(())
         }
-        AdminActor::Service { .. } => Err(ApiErrorResponse::with_context(
-            AppError::new(
-                ErrorCode::Forbidden,
-                format!("missing admin action capability: {capability}"),
-            ),
-            ctx,
-        )),
+        AdminActor::Service { .. } | AdminActor::User { .. } => {
+            Err(ApiErrorResponse::with_context(
+                AppError::new(
+                    ErrorCode::Forbidden,
+                    format!("missing admin action capability: {capability}"),
+                ),
+                ctx,
+            ))
+        }
     }
 }
 
@@ -2725,16 +2729,20 @@ fn ensure_query_capability(
 ) -> Result<(), ApiErrorResponse> {
     match admin {
         AdminActor::System => Ok(()),
-        AdminActor::Service { scopes, .. } if scopes.iter().any(|scope| scope == capability) => {
+        AdminActor::Service { scopes, .. } | AdminActor::User { scopes, .. }
+            if scopes.iter().any(|scope| scope == capability) =>
+        {
             Ok(())
         }
-        AdminActor::Service { .. } => Err(ApiErrorResponse::with_context(
-            AppError::new(
-                ErrorCode::Forbidden,
-                format!("missing admin query capability: {capability}"),
-            ),
-            ctx,
-        )),
+        AdminActor::Service { .. } | AdminActor::User { .. } => {
+            Err(ApiErrorResponse::with_context(
+                AppError::new(
+                    ErrorCode::Forbidden,
+                    format!("missing admin query capability: {capability}"),
+                ),
+                ctx,
+            ))
+        }
     }
 }
 

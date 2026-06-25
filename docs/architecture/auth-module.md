@@ -84,14 +84,27 @@ The password provider stores provider-specific credential hashes in its own
 identities, and sessions, so the auth core remains the owner of those tables.
 
 The actor resolver accepts a bearer session token or `lenso_session` cookie,
-checks `auth.sessions`, and returns only:
+checks `auth.sessions`, and returns:
 
 ```text
 ActorContext::User { user_id, scopes: [] }
 ```
 
-Authorization, product profile lookup, tenant membership, and richer claims
-belong to the installing application or later focused auth slices.
+By default `scopes` is empty. Hosts that expose the Runtime Console through
+normal user login can set `auth.console_admin_user_scopes` to a JSON object that
+maps auth user ids to explicit scopes, for example:
+
+```json
+{
+  "usr_admin": ["console.admin", "auth.users.read", "identity.users.read"]
+}
+```
+
+`console.admin` is required before a user can enter admin HTTP endpoints; other
+capabilities are still checked per admin data query, action, or remote route.
+Authorization beyond these explicit Console scopes, product profile lookup,
+tenant membership, and richer claims belong to the installing application or
+later focused auth slices.
 
 ## Loading Model
 
