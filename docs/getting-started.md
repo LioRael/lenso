@@ -86,6 +86,11 @@ Development bearer tokens such as `Bearer dev-service:admin` are accepted only
 for local/development API environments. Do not use them as deployment
 credentials.
 
+In production, Runtime Console access uses the host's real auth path. Sign in
+with password auth or OIDC, then grant the auth user `console.admin` through
+`auth.console_admin_user_scopes`. Do not embed service tokens in a browser
+Console build.
+
 ## Run The Local Services
 
 Start Postgres and apply migrations:
