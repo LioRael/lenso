@@ -318,12 +318,15 @@ pub fn auth_actor_resolver_for_context_with_composition(
         return Ok(None);
     }
 
-    let auth_resolver: Arc<dyn platform_core::ActorResolver> =
-        Arc::new(auth::resolver::AuthActorResolver::new_with_session_cache(
+    let auth_config = auth::config::AuthRuntimeConfig::from_context(ctx);
+    let auth_resolver: Arc<dyn platform_core::ActorResolver> = Arc::new(
+        auth::resolver::AuthActorResolver::new_with_session_cache(
             ctx.db.clone(),
             ctx.actor_resolver.clone(),
-            auth_session_cache(ctx)?,
-        ));
+            auth_session_cache(ctx, auth_config.session_cache)?,
+        )
+        .with_user_scopes(auth_config.console_admin_user_scopes),
+    );
 
     let auth_password_enabled = linked_module_with_dependencies_enabled(
         ctx,
@@ -343,8 +346,9 @@ pub fn auth_actor_resolver_for_context_with_composition(
 
 fn auth_session_cache(
     ctx: &AppContext,
+    session_cache: auth::config::SessionCacheMode,
 ) -> platform_core::AppResult<Option<Arc<dyn auth::resolver::SessionCache>>> {
-    match auth::config::AuthRuntimeConfig::from_context(ctx).session_cache {
+    match session_cache {
         auth::config::SessionCacheMode::Database => Ok(None),
         auth::config::SessionCacheMode::Redis => {
             let Some(redis) = ctx.redis.clone() else {

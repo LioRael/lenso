@@ -12,7 +12,7 @@ use platform_core::{
     DatabaseConfig, HttpConfig, LoggingEventPublisher, ModuleSourcesConfig, RedisConfig,
     ServiceConfig, TelemetryConfig,
 };
-use platform_http::{HttpRequestContext, JsonBody};
+use platform_http::{AdminActor, CONSOLE_ADMIN_SCOPE, HttpRequestContext, JsonBody};
 use serde::Deserialize;
 use serde_json::Value;
 use std::net::SocketAddr;
@@ -198,6 +198,50 @@ async fn custom_actor_resolver_can_set_actor_context() {
 }
 
 #[tokio::test]
+async fn admin_actor_accepts_user_with_console_admin_scope() {
+    let response = router_with_actor_resolver(Arc::new(FixedActorResolver {
+        actor: ActorContext::User {
+            user_id: "usr_admin".to_owned(),
+            scopes: vec![CONSOLE_ADMIN_SCOPE.to_owned(), "auth.users.read".to_owned()],
+        },
+    }))
+    .oneshot(
+        Request::builder()
+            .uri("/admin-context")
+            .body(Body::empty())
+            .expect("request should build"),
+    )
+    .await
+    .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["actor"], "user:usr_admin");
+}
+
+#[tokio::test]
+async fn admin_actor_rejects_user_without_console_admin_scope() {
+    let response = router_with_actor_resolver(Arc::new(FixedActorResolver {
+        actor: ActorContext::User {
+            user_id: "usr_regular".to_owned(),
+            scopes: vec!["auth.users.read".to_owned()],
+        },
+    }))
+    .oneshot(
+        Request::builder()
+            .uri("/admin-context")
+            .body(Body::empty())
+            .expect("request should build"),
+    )
+    .await
+    .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    let body = json_body(response).await;
+    assert_eq!(body["error"]["message"], "Console admin scope is required");
+}
+
+#[tokio::test]
 async fn malformed_json_returns_standard_error_shape_with_request_context() {
     let response = router()
         .oneshot(
@@ -272,6 +316,7 @@ fn router_for_environment_with_actor_resolver(
 
     Router::new()
         .route("/context", get(context_handler))
+        .route("/admin-context", get(admin_context_handler))
         .route("/json", post(json_handler))
         .layer(middleware::from_fn_with_state(
             ctx,
@@ -286,6 +331,15 @@ async fn context_handler(HttpRequestContext(ctx): HttpRequestContext) -> impl In
         "actor": ctx.actor,
         "client": ctx.client,
     }))
+}
+
+async fn admin_context_handler(admin: AdminActor) -> impl IntoResponse {
+    let actor = match admin {
+        AdminActor::Service { service_id, .. } => format!("service:{service_id}"),
+        AdminActor::User { user_id, .. } => format!("user:{user_id}"),
+        AdminActor::System => "system".to_owned(),
+    };
+    axum::Json(serde_json::json!({ "actor": actor }))
 }
 
 async fn json_handler(JsonBody(input): JsonBody<JsonInput>) -> impl IntoResponse {
@@ -309,6 +363,18 @@ impl ActorResolver for StaticActorResolver {
             user_id: "user_from_resolver".to_owned(),
             scopes: vec!["auth.test".to_owned()],
         }
+    }
+}
+
+#[derive(Debug)]
+struct FixedActorResolver {
+    actor: ActorContext,
+}
+
+#[async_trait::async_trait]
+impl ActorResolver for FixedActorResolver {
+    async fn resolve_actor(&self, _request: ActorResolutionRequest) -> ActorContext {
+        self.actor.clone()
     }
 }
 

@@ -377,16 +377,20 @@ fn ensure_capability(
 
     match admin {
         AdminActor::System => Ok(()),
-        AdminActor::Service { scopes, .. } if scopes.iter().any(|scope| scope == capability) => {
+        AdminActor::Service { scopes, .. } | AdminActor::User { scopes, .. }
+            if scopes.iter().any(|scope| scope == capability) =>
+        {
             Ok(())
         }
-        AdminActor::Service { .. } => Err(ApiErrorResponse::with_context(
-            AppError::new(
-                ErrorCode::Forbidden,
-                format!("missing remote HTTP route capability: {capability}"),
-            ),
-            request_ctx,
-        )),
+        AdminActor::Service { .. } | AdminActor::User { .. } => {
+            Err(ApiErrorResponse::with_context(
+                AppError::new(
+                    ErrorCode::Forbidden,
+                    format!("missing remote HTTP route capability: {capability}"),
+                ),
+                request_ctx,
+            ))
+        }
     }
 }
 

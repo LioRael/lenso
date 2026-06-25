@@ -17,6 +17,7 @@ pub(crate) fn query_error(
 pub(crate) fn admin_audit_label(actor: &AdminActor) -> String {
     match actor {
         AdminActor::Service { service_id, .. } => format!("service:{service_id}"),
+        AdminActor::User { user_id, .. } => format!("user:{user_id}"),
         AdminActor::System => "system".to_owned(),
     }
 }

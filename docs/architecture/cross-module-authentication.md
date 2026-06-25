@@ -51,7 +51,7 @@ request extension and reject requests that do not match the required actor type.
 | `AuthenticatedActor(ActorContext)` | User, Service, System | 401 for Anonymous |
 | `UserActor { user_id, scopes }` | User only | 401 for Anonymous, 403 for Service/System |
 | `ServiceActor { service_id, scopes }` | Service only | 401 for Anonymous, 403 for User/System |
-| `AdminActor` (enum) | Service, System | 401 for Anonymous, 403 for User |
+| `AdminActor` (enum) | Service, System, User with `console.admin` | 401 for Anonymous, 403 for User without `console.admin` |
 
 ### Usage in handlers
 
@@ -73,6 +73,7 @@ use platform_http::auth::AdminActor;
 async fn admin_endpoint(actor: AdminActor) -> impl IntoResponse {
     match actor {
         AdminActor::Service { service_id, scopes } => { /* ... */ }
+        AdminActor::User { user_id, scopes } => { /* console.admin already checked */ }
         AdminActor::System => { /* ... */ }
     }
 }
@@ -106,8 +107,10 @@ capabilities: [
 ```
 
 For schema-admin reads, `AdminSchema.entities[].read_capability` gates access.
-The `AdminActor::Service` variant carries `scopes: Vec<String>`, and
-`platform-admin-data` checks them:
+`AdminActor::Service` and `AdminActor::User` carry `scopes: Vec<String>`, and
+`platform-admin-data` checks them. A user actor can only enter admin HTTP
+endpoints when its scopes include `console.admin`; per-action and per-query
+capabilities are still checked separately:
 
 ```rust
 // platform-admin-data/src/handlers.rs (simplified)

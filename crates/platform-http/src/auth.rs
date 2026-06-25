@@ -3,6 +3,8 @@ use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use platform_core::{ActorContext, AppError, ErrorCode};
 
+pub const CONSOLE_ADMIN_SCOPE: &str = "console.admin";
+
 #[derive(Debug, Clone)]
 pub struct OptionalActor(pub ActorContext);
 
@@ -25,6 +27,10 @@ pub struct ServiceActor {
 pub enum AdminActor {
     Service {
         service_id: String,
+        scopes: Vec<String>,
+    },
+    User {
+        user_id: String,
         scopes: Vec<String>,
     },
     System,
@@ -125,11 +131,13 @@ where
                 Ok(Self::Service { service_id, scopes })
             }
             ActorContext::System => Ok(Self::System),
+            ActorContext::User { user_id, scopes }
+                if scopes.iter().any(|scope| scope == CONSOLE_ADMIN_SCOPE) =>
+            {
+                Ok(Self::User { user_id, scopes })
+            }
             ActorContext::User { .. } => Err(ApiErrorResponse::with_context(
-                AppError::new(
-                    ErrorCode::Forbidden,
-                    "Service or system authentication is required",
-                ),
+                AppError::new(ErrorCode::Forbidden, "Console admin scope is required"),
                 &ctx,
             )),
         }
