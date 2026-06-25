@@ -31,7 +31,6 @@ last-mile docs, and blocking fixes only.
 Build local release artifacts:
 
 ```sh
-just console-build
 LENSO_RELEASE_VERSION=vX.Y.Z just release-package
 ```
 
@@ -39,15 +38,12 @@ This writes:
 
 - `dist/release/lenso-vX.Y.Z-release-notes.md`
 - `dist/release/lenso-vX.Y.Z-source.tar.gz`
-- `dist/release/lenso-vX.Y.Z-hosted.tar.gz` when `.lenso/console/dist` exists
 - `dist/release/lenso-vX.Y.Z-artifact-readme.md`
 
 The source archive is generated from `git archive HEAD`, so it contains committed
 source files and excludes local build output, `.git`, `target/`, and `dist/`.
-The hosted archive additionally includes the prebuilt Runtime Console under
-`.lenso/console/dist`, so users do not need Node.js or pnpm to serve `/console`.
-The standalone `lenso-cli` repository owns CLI release packaging and starter
-console embedding.
+The Runtime Console is published separately by `lenso-runtime-console` and
+installed into hosts with `lenso host update-console`.
 
 ## 4. Run The GitHub Workflow
 
@@ -68,8 +64,6 @@ README. The workflow starts a Postgres service for DB-backed checks.
 Before a real registry publish, configure these repository secrets in GitHub:
 
 - `CARGO_REGISTRY_TOKEN`: crates.io token with publish access to `lenso-contracts`.
-- `LENSO_RUNTIME_CONSOLE_DEPLOY_KEY`: read-only deploy key for
-  `LioRael/lenso-runtime-console`.
 
 Run the workflow once with `publish_rust_crate=false` before using the secret.
 The dry-run path does not upload package versions.

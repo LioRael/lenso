@@ -190,8 +190,7 @@ just console-api
 cd ../lenso
 just console-build-host <host-root>
 
-# Refresh the Console payload embedded by the local lenso-cli checkout.
-just console-build-cli
+# Install the latest released Console artifact into a generated host.
 just host-update-console <host-root>
 
 # Serve a generated host through the local lenso-cli checkout.

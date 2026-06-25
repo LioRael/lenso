@@ -27,6 +27,7 @@ cargo install lenso-cli
 lenso host init ../my-lenso-app
 cd ../my-lenso-app
 cp .env.example .env
+lenso host update-console
 docker compose up -d postgres
 cargo run --bin migrate
 cargo run --bin api
@@ -38,11 +39,9 @@ the API, worker, migration boot helpers, and a narrow linked HTTP route
 authoring surface; generated hosts should pin a crate version for reproducible
 builds. The starter exposes `GET /v1/app/status` plus `GET`/`POST
 /v1/app/items` as the first host-owned linked routes and data surface.
-Published `lenso-cli` builds include the prebuilt Runtime Console and copy it
-into generated hosts, so `cargo run --bin api` serves the console at
+`lenso host update-console` downloads the published Runtime Console artifact
+and installs it under `.lenso/console`, so `cargo run --bin api` serves
 `/console` without requiring Node.js or pnpm in the host project.
-To refresh the hosted console later, upgrade `lenso-cli` and run
-`lenso host update-console` from the host project.
 
 ## Enable Auth Redis Sessions In A Host
 
@@ -103,10 +102,10 @@ just api
 just worker
 ```
 
-Generated hosts serve the bundled Runtime Console at `/console` when they were
-created by a published CLI build. When developing this repository from source,
-run the Runtime Console from the sibling `../lenso-runtime-console` repository
-or run `just console-build` before packaging.
+Generated hosts serve the Runtime Console at `/console` after
+`lenso host update-console` installs it under `.lenso/console`. When developing
+this repository from source, run the Runtime Console from the sibling
+`../lenso-runtime-console` repository or run `just console-build-host <host-root>`.
 
 ## Install The Example Module Manually
 
