@@ -178,8 +178,8 @@ trusts and registers them.
 
 The API service hosts the Runtime Console from `LENSO_CONSOLE_DIST_DIR`
 (default `.lenso/console/dist`) under `/console/*`, with client-side route
-fallback to `index.html`. Runtime users should receive this directory as part
-of the service release artifact; they should not need Node.js, pnpm, or the
+fallback to `index.html`. Runtime users install this directory with
+`lenso host update-console`; they should not need Node.js, pnpm, or the
 frontend source repository.
 
 For local development or release packaging, build and install the hosted console

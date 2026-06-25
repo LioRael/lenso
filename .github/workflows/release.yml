@@ -47,44 +47,12 @@ jobs:
       RUST_LOG: info,lenso=debug
     steps:
       - uses: actions/checkout@v6
-      - name: Validate Runtime Console checkout secret
-        env:
-          LENSO_RUNTIME_CONSOLE_DEPLOY_KEY: ${{ secrets.LENSO_RUNTIME_CONSOLE_DEPLOY_KEY }}
-        run: |
-          test -n "$LENSO_RUNTIME_CONSOLE_DEPLOY_KEY" || { echo "LENSO_RUNTIME_CONSOLE_DEPLOY_KEY is required to checkout lenso-runtime-console" >&2; exit 1; }
-      - name: Checkout Runtime Console
-        uses: actions/checkout@v6
-        with:
-          repository: LioRael/lenso-runtime-console
-          path: lenso-runtime-console
-          ssh-key: ${{ secrets.LENSO_RUNTIME_CONSOLE_DEPLOY_KEY }}
-      - name: Checkout Auth Console package
-        uses: actions/checkout@v6
-        with:
-          repository: LioRael/lenso-auth-module
-          path: lenso-auth-module
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install just
         uses: extractions/setup-just@v4
-      - uses: pnpm/action-setup@v6
-        with:
-          package_json_file: lenso-runtime-console/package.json
-          run_install: false
-      - uses: actions/setup-node@v6
-        with:
-          cache: pnpm
-          cache-dependency-path: lenso-runtime-console/pnpm-lock.yaml
-          node-version: 24
       - name: Check release version
         run: just release-version-check
-      - name: Install Runtime Console dependencies
-        working-directory: lenso-runtime-console
-        run: pnpm install --frozen-lockfile
-      - name: Build hosted Runtime Console
-        env:
-          RUNTIME_CONSOLE_ROOT: lenso-runtime-console
-        run: just console-build
       - name: Run release gate
         run: just release-check
       - name: Run package publish preflight
@@ -118,12 +86,6 @@ jobs:
         with:
           name: lenso-${{ inputs.version }}-source
           path: dist/release/lenso-${{ inputs.version }}-source.tar.gz
-          if-no-files-found: error
-      - name: Upload hosted release package
-        uses: actions/upload-artifact@v7
-        with:
-          name: lenso-${{ inputs.version }}-hosted
-          path: dist/release/lenso-${{ inputs.version }}-hosted.tar.gz
           if-no-files-found: error
       - name: Upload artifact README
         uses: actions/upload-artifact@v7
