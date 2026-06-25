@@ -65,7 +65,7 @@
         "consolePackageApi": "1",
         "lenso": {
           "minVersion": "0.1.0",
-          "maxVersion": "0.1.5"
+          "maxVersion": "0.1.6"
         }
       },
       "consolePackages": [
