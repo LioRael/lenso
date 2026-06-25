@@ -128,7 +128,7 @@ pub struct HttpConfig {
 impl Default for HttpConfig {
     fn default() -> Self {
         Self {
-            host: std::env::var("HTTP_HOST").unwrap_or_else(|_| "127.0.0.1".to_owned()),
+            host: http_host_from_env_value(std::env::var("HTTP_HOST").ok()),
             port: std::env::var("HTTP_PORT")
                 .ok()
                 .and_then(|value| value.parse().ok())
@@ -139,6 +139,10 @@ impl Default for HttpConfig {
             ),
         }
     }
+}
+
+fn http_host_from_env_value(value: Option<String>) -> String {
+    value.unwrap_or_else(|| "127.0.0.1".to_owned())
 }
 
 fn default_cors_allowed_origins() -> Vec<String> {
@@ -567,8 +571,8 @@ mod tests {
     }
 
     #[test]
-    fn http_config_defaults_to_loopback_host() {
-        assert_eq!(HttpConfig::default().host, "127.0.0.1");
+    fn http_config_default_host_value_is_loopback() {
+        assert_eq!(http_host_from_env_value(None), "127.0.0.1");
     }
 
     #[test]
