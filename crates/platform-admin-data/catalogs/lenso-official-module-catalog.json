@@ -14,7 +14,7 @@
         {
           "packageName": "@lenso/auth-console",
           "exportName": "authConsoleModule",
-          "bundleUrl": "https://cdn.jsdelivr.net/npm/@lenso/auth-console@0.1.2/dist/auth-console.js",
+          "bundleUrl": "https://cdn.jsdelivr.net/npm/@lenso/auth-console@0.1.3/dist/auth-console.js",
           "entry": "/console/extensions/auth/auth-console.js",
           "hostApi": "1",
           "route": "/data/auth/sessions",
@@ -22,9 +22,9 @@
             "auth.users.read"
           ],
           "styles": [
-            "https://cdn.jsdelivr.net/npm/@lenso/auth-console@0.1.2/dist/auth-console.css"
+            "https://cdn.jsdelivr.net/npm/@lenso/auth-console@0.1.3/dist/auth-console.css"
           ],
-          "version": "0.1.2"
+          "version": "0.1.3"
         }
       ]
     },
@@ -65,7 +65,7 @@
         "consolePackageApi": "1",
         "lenso": {
           "minVersion": "0.1.0",
-          "maxVersion": "0.1.6"
+          "maxVersion": "0.1.7"
         }
       },
       "consolePackages": [
