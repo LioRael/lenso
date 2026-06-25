@@ -17,11 +17,22 @@ fn req(method: &str, uri: &str) -> Request<Body> {
 
 trait RequestExt {
     fn with_admin(self) -> Self;
+    fn with_scoped_admin(self) -> Self;
 }
 impl RequestExt for Request<Body> {
     fn with_admin(mut self) -> Self {
         self.headers_mut()
             .insert("authorization", "Bearer dev-service:admin".parse().unwrap());
+        self
+    }
+
+    fn with_scoped_admin(mut self) -> Self {
+        self.headers_mut().insert(
+            "authorization",
+            "Bearer dev-service:admin:runtime.stories.read,auth.users.read"
+                .parse()
+                .unwrap(),
+        );
         self
     }
 }
@@ -56,4 +67,30 @@ async fn restart_endpoint_signals_shutdown() {
         .expect("shutdown should be signaled")
         .expect("shutdown sender remains alive");
     assert!(*shutdown.borrow());
+}
+
+#[tokio::test]
+async fn context_endpoint_returns_admin_actor_capabilities() {
+    let db =
+        DbPool::connect_lazy("postgres://localhost/lenso_test").expect("lazy pool should build");
+    let ctx = AppContext::new(AppConfig::from_env(), db, Arc::new(LoggingEventPublisher));
+    let app = build_router(ctx);
+
+    let response = app
+        .oneshot(req("GET", "/admin/context").with_scoped_admin())
+        .await
+        .expect("request completes");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["actor"]["kind"], "service");
+    assert_eq!(body["actor"]["service_id"], "admin");
+    assert_eq!(
+        body["scopes"],
+        serde_json::json!(["runtime.stories.read", "auth.users.read"])
+    );
+    assert_eq!(
+        body["capabilities"],
+        serde_json::json!(["runtime.stories.read", "auth.users.read"])
+    );
 }

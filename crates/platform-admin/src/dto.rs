@@ -74,6 +74,21 @@ pub struct AdminServiceRestartResponse {
     pub requires_supervisor: bool,
 }
 
+#[derive(Debug, Serialize, ToSchema, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum AdminContextActor {
+    Service { service_id: String },
+    User { user_id: String },
+    System,
+}
+
+#[derive(Debug, Serialize, ToSchema, PartialEq, Eq)]
+pub struct AdminContextResponse {
+    pub actor: AdminContextActor,
+    pub scopes: Vec<String>,
+    pub capabilities: Vec<String>,
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct PageInfo {
     pub limit: i64,
