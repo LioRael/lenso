@@ -1389,7 +1389,7 @@ dependencies = [
 
 [[package]]
 name = "lenso"
-version = "0.3.12"
+version = "0.3.13"
 dependencies = [
  "anyhow",
  "axum",
@@ -1406,7 +1406,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-api"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1437,7 +1437,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-bootstrap"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "async-trait",
  "lenso-module-auth",
@@ -1470,7 +1470,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-migrate"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "anyhow",
  "lenso-bootstrap",
@@ -1578,7 +1578,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-platform-admin-data"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "async-trait",
  "axum",
@@ -1703,7 +1703,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-worker"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "anyhow",
  "lenso-bootstrap",

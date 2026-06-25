@@ -20,7 +20,7 @@ crate_version() {
 crate_version_exists() {
     crate="$1"
     version="$2"
-    curl -A 'lenso-release-publish' -fsS \
+    curl -A 'lenso-release-publish' -fsS --connect-timeout 10 --max-time 30 --retry 2 --retry-delay 2 \
         "https://crates.io/api/v1/crates/$crate/$version" >/dev/null 2>&1
 }
 

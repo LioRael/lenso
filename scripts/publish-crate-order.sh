@@ -10,8 +10,6 @@ lenso-platform-http
 lenso-platform-module
 lenso-platform-admin-data
 lenso-platform-module-remote
-lenso-module-auth
-lenso-module-auth-password
 lenso-module-story
 lenso-platform-admin
 lenso-bootstrap
