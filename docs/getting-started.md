@@ -87,8 +87,8 @@ for local/development API environments. Do not use them as deployment
 credentials.
 
 In production, Runtime Console access uses the host's real auth path. Sign in
-with password auth or OIDC, then grant the auth user `console.admin` through
-`auth.console_admin_user_scopes`. Do not embed service tokens in a browser
+with password auth or OIDC, then grant the auth user `console.admin` with
+`lenso console bootstrap-admin`. Do not embed service tokens in a browser
 Console build.
 
 ## Run The Local Services

@@ -204,7 +204,7 @@ sibling directory. `LENSO_CONSOLE_BASE` stays inside the build script; host
 Production Console access must use real auth, not development bearer tokens.
 With `APP_ENV=production`, `dev-user:*` and `dev-service:*` tokens are ignored.
 Browser users should sign in through password auth or OIDC, then receive
-`console.admin` through `auth.console_admin_user_scopes`.
+`console.admin` through `lenso console bootstrap-admin`.
 
 OpenTelemetry collector for local span export:
 

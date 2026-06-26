@@ -130,23 +130,15 @@ maps auth user ids to explicit scopes, for example:
 
 `console.admin` is required before a user can enter admin HTTP endpoints; other
 capabilities are still checked per admin data query, action, or remote route.
-For Runtime Console stories, add `runtime.stories.read`. Seed the first
-production Console admin directly in `config.setting_values` or through an
-already-authorized `/admin/config/*/auth.console_admin_user_scopes` write:
+For Runtime Console stories, add `runtime.stories.read`. Bootstrap the first
+production Console admin from the host root after the auth user exists:
 
-```sql
-insert into config.setting_values (service, key, value, updated_by)
-values (
-  '*',
-  'auth.console_admin_user_scopes',
-  '{"usr_admin":["console.admin","runtime.stories.read"]}'::jsonb,
-  'bootstrap'
-)
-on conflict (service, key) do update
-set value = excluded.value,
-    updated_at = now(),
-    updated_by = excluded.updated_by;
+```sh
+lenso console bootstrap-admin --user-id usr_admin --scope runtime.stories.read
 ```
+
+For password auth, `--identifier admin@example.com` can resolve the auth user id.
+Restart the API and worker after bootstrapping.
 
 Do not embed `dev-user`, `dev-service`, or other service bearer tokens in a
 browser Runtime Console build.
