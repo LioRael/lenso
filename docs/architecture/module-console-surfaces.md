@@ -179,7 +179,7 @@ trusts and registers them.
 The API service hosts the Runtime Console from `LENSO_CONSOLE_DIST_DIR`
 (default `.lenso/console/dist`) under `/console/*`, with client-side route
 fallback to `index.html`. Runtime users install this directory with
-`lenso host update-console`; they should not need Node.js, pnpm, or the
+`lenso console update`; they should not need Node.js, pnpm, or the
 frontend source repository.
 
 For local development or release packaging, build and install the hosted console
@@ -239,7 +239,7 @@ in the configured console extension directory.
 
 The local developer workflow is supported by:
 
-- `lenso console-package create <module>` (or the local
+- `lenso console package create <module>` (or the local
   `pnpm create:console-package <module>` alias): creates a workspace package
   skeleton, host registration entries, `console-surface.json`, and a Rust
   `console-surface.rs` snippet.
