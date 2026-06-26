@@ -83,6 +83,34 @@ The password provider stores provider-specific credential hashes in its own
 `auth_password` schema. It uses `auth::public` helpers to create auth users,
 identities, and sessions, so the auth core remains the owner of those tables.
 
+The `auth-oidc` provider exposes the host as an OIDC provider for the hosted
+Runtime Console:
+
+- `/.well-known/openid-configuration`
+- `/.well-known/jwks.json`
+- `/oauth/authorize`
+- `/oauth/token`
+
+It depends on `auth` and reuses the same auth sessions. A Console browser first
+signs in through password auth or an existing session cookie, then the OIDC
+authorization-code + PKCE flow issues an access token backed by `auth.sessions`.
+The normal auth resolver turns that access token back into
+`ActorContext::User { user_id, scopes }`.
+
+Enable it with module-local config on `auth-oidc`:
+
+```sh
+LENSO_MODULE_AUTH_OIDC__ENABLED=true
+LENSO_MODULE_AUTH_OIDC__ISSUER=https://app.example.com
+LENSO_MODULE_AUTH_OIDC__CONSOLE_REDIRECT_URIS='["https://app.example.com/console/oidc/callback"]'
+LENSO_MODULE_AUTH_OIDC__JWKS='{"keys":[...]}'
+LENSO_MODULE_AUTH_OIDC__ID_TOKEN_PRIVATE_KEY_PEM="$OIDC_SIGNING_KEY_PEM"
+```
+
+`console_client_id` defaults to `lenso-console`. Keep
+`id_token_private_key_pem` in the host secret store, and make `jwks` the public
+key set that matches it.
+
 The actor resolver accepts a bearer session token or `lenso_session` cookie,
 checks `auth.sessions`, and returns:
 
@@ -102,6 +130,26 @@ maps auth user ids to explicit scopes, for example:
 
 `console.admin` is required before a user can enter admin HTTP endpoints; other
 capabilities are still checked per admin data query, action, or remote route.
+For Runtime Console stories, add `runtime.stories.read`. Seed the first
+production Console admin directly in `config.setting_values` or through an
+already-authorized `/admin/config/*/auth.console_admin_user_scopes` write:
+
+```sql
+insert into config.setting_values (service, key, value, updated_by)
+values (
+  '*',
+  'auth.console_admin_user_scopes',
+  '{"usr_admin":["console.admin","runtime.stories.read"]}'::jsonb,
+  'bootstrap'
+)
+on conflict (service, key) do update
+set value = excluded.value,
+    updated_at = now(),
+    updated_by = excluded.updated_by;
+```
+
+Do not embed `dev-user`, `dev-service`, or other service bearer tokens in a
+browser Runtime Console build.
 Authorization beyond these explicit Console scopes, product profile lookup,
 tenant membership, and richer claims belong to the installing application or
 later focused auth slices.
