@@ -111,6 +111,32 @@ async fn dev_user_bearer_token_sets_user_actor_context() {
     let body = json_body(response).await;
     assert_eq!(body["actor"]["kind"], "user");
     assert_eq!(body["actor"]["user_id"], "user_123");
+    assert_eq!(body["actor"]["scopes"], serde_json::json!([]));
+}
+
+#[tokio::test]
+async fn dev_user_bearer_token_can_set_scopes() {
+    let response = router()
+        .oneshot(
+            Request::builder()
+                .uri("/context")
+                .header(
+                    "authorization",
+                    "Bearer dev-user:user_123:console.admin,runtime.stories.read",
+                )
+                .body(Body::empty())
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should complete");
+
+    let body = json_body(response).await;
+    assert_eq!(body["actor"]["kind"], "user");
+    assert_eq!(body["actor"]["user_id"], "user_123");
+    assert_eq!(
+        body["actor"]["scopes"],
+        serde_json::json!(["console.admin", "runtime.stories.read"])
+    );
 }
 
 #[tokio::test]

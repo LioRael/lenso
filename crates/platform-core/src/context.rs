@@ -104,11 +104,9 @@ fn parse_dev_bearer_actor(value: &str, environment: &str) -> Option<ActorContext
 
     let token = value.strip_prefix("Bearer ")?;
 
-    if let Some(user_id) = token.strip_prefix("dev-user:") {
-        return Some(ActorContext::User {
-            user_id: user_id.to_owned(),
-            scopes: Vec::new(),
-        });
+    if let Some(user_token) = token.strip_prefix("dev-user:") {
+        let (user_id, scopes) = parse_dev_actor_scopes(user_token);
+        return Some(ActorContext::User { user_id, scopes });
     }
 
     if let Some(service_token) = token.strip_prefix("dev-service:") {

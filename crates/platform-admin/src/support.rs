@@ -4,6 +4,8 @@ use chrono::{DateTime, Utc};
 use platform_core::{AppError, ErrorCode};
 use platform_http::{AdminActor, ApiErrorResponse};
 
+const RUNTIME_STORIES_READ_CAPABILITY: &str = "runtime.stories.read";
+
 pub(crate) fn query_error(
     source: sqlx::Error,
     request_ctx: &platform_core::RequestContext,
@@ -19,6 +21,45 @@ pub(crate) fn admin_audit_label(actor: &AdminActor) -> String {
         AdminActor::Service { service_id, .. } => format!("service:{service_id}"),
         AdminActor::User { user_id, .. } => format!("user:{user_id}"),
         AdminActor::System => "system".to_owned(),
+    }
+}
+
+pub(crate) fn ensure_runtime_read_capability(
+    admin: &AdminActor,
+    request_ctx: &platform_core::RequestContext,
+) -> Result<(), ApiErrorResponse> {
+    match admin {
+        AdminActor::System | AdminActor::Service { .. } => Ok(()),
+        AdminActor::User { scopes, .. }
+            if scopes
+                .iter()
+                .any(|scope| scope == RUNTIME_STORIES_READ_CAPABILITY) =>
+        {
+            Ok(())
+        }
+        AdminActor::User { .. } => Err(ApiErrorResponse::with_context(
+            AppError::new(
+                ErrorCode::Forbidden,
+                format!("missing runtime console capability: {RUNTIME_STORIES_READ_CAPABILITY}"),
+            ),
+            request_ctx,
+        )),
+    }
+}
+
+pub(crate) fn ensure_runtime_service_or_system(
+    admin: &AdminActor,
+    request_ctx: &platform_core::RequestContext,
+) -> Result<(), ApiErrorResponse> {
+    match admin {
+        AdminActor::Service { .. } | AdminActor::System => Ok(()),
+        AdminActor::User { .. } => Err(ApiErrorResponse::with_context(
+            AppError::new(
+                ErrorCode::Forbidden,
+                "Service or system authentication is required",
+            ),
+            request_ctx,
+        )),
     }
 }
 

@@ -2,15 +2,21 @@ use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
 use chrono::{DateTime, Utc};
 use lenso_api::build_router;
+use platform_core::config::ConsoleConfig;
 use platform_core::{
-    AppConfig, AppContext, DatabaseConfig, InMemoryTelemetrySpanProvider, LoggingEventPublisher,
-    ModuleSourcesConfig, PLATFORM_MIGRATIONS, TelemetrySpan, apply_migrations,
+    AppConfig, AppContext, AuthConfig, DatabaseConfig, HttpConfig, InMemoryTelemetrySpanProvider,
+    LoggingEventPublisher, ModuleSourcesConfig, PLATFORM_MIGRATIONS, RedisConfig, ServiceConfig,
+    TelemetryConfig, TelemetrySpan, apply_migrations,
 };
 use platform_runtime::RUNTIME_MIGRATIONS;
 use platform_testing::TestDatabase;
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use tower::ServiceExt;
+
+const CONSOLE_ADMIN_USER_AUTH: &str = "Bearer dev-user:user_123:console.admin";
+const RUNTIME_READ_USER_AUTH: &str = "Bearer dev-user:user_123:console.admin,runtime.stories.read";
 
 #[tokio::test]
 async fn admin_runtime_summary_requires_authentication() {
@@ -38,6 +44,27 @@ async fn admin_runtime_summary_rejects_user_actor() {
         .expect("request should complete");
 
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn admin_runtime_summary_rejects_console_user_without_runtime_read_capability() {
+    let app = auth_only_app();
+
+    let response = app
+        .clone()
+        .oneshot(
+            admin_get("/admin/runtime/summary")
+                .with_header("authorization", CONSOLE_ADMIN_USER_AUTH),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    let body = json_body(response).await;
+    assert_eq!(
+        body["error"]["message"],
+        "missing runtime console capability: runtime.stories.read"
+    );
 }
 
 #[tokio::test]
@@ -137,6 +164,26 @@ async fn admin_runtime_stories_rejects_user_actor() {
 }
 
 #[tokio::test]
+async fn admin_runtime_stories_rejects_console_user_without_runtime_read_capability() {
+    let app = auth_only_app();
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/stories")
+                .with_header("authorization", CONSOLE_ADMIN_USER_AUTH),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    let body = json_body(response).await;
+    assert_eq!(
+        body["error"]["message"],
+        "missing runtime console capability: runtime.stories.read"
+    );
+}
+
+#[tokio::test]
 async fn admin_runtime_story_detail_rejects_user_actor() {
     let app = auth_only_app();
 
@@ -179,6 +226,26 @@ async fn admin_runtime_heatmap_rejects_user_actor() {
 }
 
 #[tokio::test]
+async fn admin_runtime_outbox_retry_rejects_runtime_read_user_actor() {
+    let app = auth_only_app();
+
+    let response = app
+        .oneshot(
+            admin_post("/admin/runtime/outbox/evt_1/retry")
+                .with_header("authorization", RUNTIME_READ_USER_AUTH),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    let body = json_body(response).await;
+    assert_eq!(
+        body["error"]["message"],
+        "Service or system authentication is required"
+    );
+}
+
+#[tokio::test]
 async fn admin_runtime_function_retry_rejects_user_actor() {
     let app = auth_only_app();
 
@@ -191,6 +258,32 @@ async fn admin_runtime_function_retry_rejects_user_actor() {
         .expect("request should complete");
 
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn user_actor_with_runtime_read_capability_can_get_runtime_summary() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+    insert_outbox_event(&db.pool).await;
+    insert_function_run(&db.pool).await;
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/summary")
+                .with_header("authorization", RUNTIME_READ_USER_AUTH),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["status"], "healthy");
+    assert_eq!(body["outbox"]["pending"], 1);
+    assert_eq!(body["functions"]["pending"], 1);
+
+    db.cleanup().await;
 }
 
 #[tokio::test]
@@ -575,6 +668,31 @@ async fn service_actor_can_fetch_runtime_story_detail() {
     );
     assert!(body["data"]["nodes"][0].get("payload").is_none());
     assert!(body["data"]["nodes"][1].get("input_json").is_none());
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn user_actor_with_runtime_read_capability_can_fetch_runtime_story_detail() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+    insert_story_outbox_event(&db.pool).await;
+    insert_story_function_run(&db.pool).await;
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/stories/corr_story")
+                .with_header("authorization", RUNTIME_READ_USER_AUTH),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["data"]["summary"]["correlation_id"], "corr_story");
+    assert_eq!(body["data"]["nodes"].as_array().unwrap().len(), 2);
 
     db.cleanup().await;
 }
@@ -2211,11 +2329,26 @@ fn auth_only_app_for_environment(environment: &str) -> axum::Router {
 }
 
 fn test_app_config() -> AppConfig {
-    let mut config = AppConfig::from_env();
-    // ponytail: runtime console tests need built-in routes, not local .env module toggles.
-    config.module_sources = ModuleSourcesConfig::default();
-    config.modules.clear();
-    config
+    let mut http = HttpConfig::default();
+    http.host = "127.0.0.1".to_owned();
+
+    AppConfig {
+        service: ServiceConfig {
+            name: "lenso".to_owned(),
+            environment: "local".to_owned(),
+        },
+        database: DatabaseConfig {
+            url: "postgres://localhost/lenso_test".to_owned(),
+            max_connections: 5,
+        },
+        redis: RedisConfig::default(),
+        http,
+        telemetry: TelemetryConfig::default(),
+        auth: AuthConfig::default(),
+        console: ConsoleConfig::default(),
+        module_sources: ModuleSourcesConfig::default(),
+        modules: BTreeMap::new(),
+    }
 }
 
 fn install_runtime_function_declarations() {
