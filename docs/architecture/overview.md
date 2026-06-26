@@ -62,9 +62,27 @@ The service kit is split into a few crates:
 
 A thin composition root, `lenso-bootstrap`, sits above the service kit. It is the single place that enumerates the concrete modules, and both the API and the worker derive their module set from it. It pairs manifests, bindings, runtime config descriptors, story-display metadata, and admin data sources from concrete modules. It depends on the module crates, so it lives outside `platform-*` (those crates must not depend on concrete modules).
 
-Configured remote modules are loaded at startup through `platform-module-remote`. The current Remote slices support manifest loading, declared HTTP route metadata, schema-admin reads, admin surface metadata, host-owned HTTP proxying for declared GET, POST, PUT, PATCH, and DELETE routes, remote runtime functions, and remote event handlers. Third-party module packaging and ecosystem boundaries are specified in `docs/architecture/third-party-modules.md`. Route proxying is specified separately in `docs/architecture/module-remote-http-proxy.md`. Remote runtime execution and event-handler dispatch are scoped in `docs/architecture/module-remote-runtime.md`, with native gRPC transport scoped in `docs/architecture/module-remote-grpc.md`. Module install trust is operator-owned: the CLI accepts explicit manifest URLs, and official catalogs are curated at publication time without adding a separate host-side trust protocol.
+Configured service modules are loaded at startup through the Remote source in
+`platform-module-remote`. The microservice-facing shape is named in
+[`service-module-boundary.md`](service-module-boundary.md): a service module is
+a `Remote` module backed by an out-of-process service while the host keeps auth,
+runtime, retries, stories, and operator visibility. The current Remote slices
+support manifest loading, declared HTTP route metadata, schema-admin reads,
+admin surface metadata, host-owned HTTP proxying for declared GET, POST, PUT,
+PATCH, and DELETE routes, remote runtime functions, and remote event handlers.
+Third-party module packaging and ecosystem boundaries are specified in
+`docs/architecture/third-party-modules.md`. Route proxying is specified
+separately in `docs/architecture/module-remote-http-proxy.md`. Remote runtime
+execution and event-handler dispatch are scoped in
+`docs/architecture/module-remote-runtime.md`, with native gRPC transport scoped
+in `docs/architecture/module-remote-grpc.md`. Module install trust is
+operator-owned: the CLI accepts explicit manifest URLs, and official catalogs
+are curated at publication time without adding a separate host-side trust
+protocol. Linked modules that have hardened boundaries can follow
+[`linked-to-service-module.md`](linked-to-service-module.md) to preserve the
+manifest contract while moving implementation into a service process.
 
-The current remote-module checkpoint is intentionally narrow but complete for
+The current service-module checkpoint is intentionally narrow but complete for
 operator-visible HTTP proxying:
 
 - Remote manifests are loaded as the same `ModuleManifest` data contract used by

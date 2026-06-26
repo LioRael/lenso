@@ -17,11 +17,11 @@ pnpm add @lenso/remote-module-kit@0.1.1
 Not every project needs every package:
 
 - Rust linked-module authors use the `lenso` crate.
-- JavaScript or TypeScript remote-module authors use
+- JavaScript or TypeScript service-module authors use
   `@lenso/remote-module-kit`.
 - API consumers use the OpenAPI contract directly.
 - Application starters and example repositories compose those packages into a
-  runnable backend, worker, migration, Runtime Console, and remote module demo.
+  runnable backend, worker, migration, Runtime Console, and service module demo.
 
 The source repositories can stay organized around implementation ownership. The
 package boundary is the user-facing contract.
@@ -89,10 +89,11 @@ current API, worker, and migration entrypoints visible from a blank project
 while depending on the crates.io `lenso` package with the `host` feature. Treat
 new needs in that template as a signal for the next host facade extraction.
 
-## Remote Module Kit
+## Service Module Kit
 
-`@lenso/remote-module-kit` is the primary package for out-of-process module
-authors. It should provide:
+`@lenso/remote-module-kit` is the primary package for service modules: modules
+whose backend runs outside the host and is loaded through the Remote source. It
+should provide:
 
 - remote manifest types and builders;
 - a small development server for the Lenso module protocol;
@@ -113,8 +114,9 @@ exist.
 
 The first examples repository is
 [LioRael/lenso-examples](https://github.com/LioRael/lenso-examples). It starts
-with the JavaScript `hello-action` remote module and uses registry packages
-instead of sibling workspace paths.
+with the JavaScript `hello-action` service module and uses registry packages
+instead of sibling workspace paths. The support-ticket example is the preferred
+business-shaped service module path for first-user documentation.
 
 Grow examples only when:
 
@@ -133,7 +135,7 @@ for CI.
 
 A package, crate, command, or template should become public only when it has:
 
-- a clear target author: Rust linked-module author, remote-module author, API
+- a clear target author: Rust linked-module author, service-module author, API
   client author, or operator;
 - a minimal install command;
 - a stable import path or binary name;
@@ -149,7 +151,7 @@ facade exists.
 ## Near-Term Sequence
 
 1. Keep `@lenso/remote-module-kit` in the Runtime Console repository and grow it
-   as the remote-module authoring facade.
+   as the service-module authoring facade.
 2. Keep the crates.io `lenso` facade limited to stable module-authoring
    declarations until a host application API is intentionally designed.
 3. Keep the standalone `lenso-cli` starter template as the host facade pressure

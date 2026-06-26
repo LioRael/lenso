@@ -35,7 +35,7 @@ cargo run --bin worker
 - migration entrypoint
 - local Postgres
 - linked module wiring
-- remote module proxying
+- service module proxying
 
 ## Guardrails
 

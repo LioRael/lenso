@@ -52,14 +52,14 @@ just api
 just worker
 ```
 
-For the first-user backend flow, including a remote module fixture and
+For the first-user backend flow, including a service module fixture and
 Console-facing admin APIs, run:
 
 ```sh
 just first-user-smoke
 ```
 
-Verify Runtime Console and remote-module package behavior in the sibling
+Verify Runtime Console and service module package behavior in the sibling
 `lenso-runtime-console` repository.
 User-facing examples that install published packages live in
 [LioRael/lenso-examples](https://github.com/LioRael/lenso-examples).
@@ -77,7 +77,7 @@ Most release-smoke failures are local setup issues:
   `VITE_API_BASE_URL` for that shell.
 - `first-user-smoke` port defaults are busy: set `FIRST_USER_SMOKE_HTTP_PORT`
   or `FIRST_USER_SMOKE_REMOTE_MODULE_ADDR` for that shell.
-- The remote module manifest URL does not respond: start the module process and
+- The service module manifest URL does not respond: start the module process and
   open `/lenso/module/v1/manifest` in a browser or with `curl`.
 - `REMOTE_MODULES` changed but the module is not visible: restart the API,
   worker, and Runtime Console.

@@ -97,6 +97,140 @@ pub struct AdminModuleInstallStateDto {
 
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
+pub struct AdminServiceModuleLifecycleResponse {
+    pub version: u8,
+    pub status: AdminServiceModuleLifecycleStatus,
+    pub modules: Vec<AdminServiceModuleLifecycleModuleDto>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AdminServiceModuleLifecycleStatus {
+    Ready,
+    NeedsAttention,
+    Empty,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceModuleLifecycleModuleDto {
+    pub module_name: String,
+    pub status: AdminServiceModuleLifecycleModuleStatus,
+    pub installed: bool,
+    pub configured: bool,
+    pub loaded: bool,
+    pub restart_pending: bool,
+    pub base_url: Option<String>,
+    pub manifest_url: Option<String>,
+    pub manifest_status: AdminServiceModuleManifestStatus,
+    pub status_url: Option<String>,
+    pub service_status: AdminServiceModuleServiceStatusDto,
+    pub health_history: Vec<AdminServiceModuleHealthCheckDto>,
+    pub compatibility: AdminServiceModuleCompatibilityDto,
+    pub deployment: Option<AdminServiceModuleDeploymentDto>,
+    pub services: Vec<AdminServiceModuleLifecycleServiceDto>,
+    pub fixes: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceModuleHealthCheckDto {
+    pub module_name: String,
+    pub checked_at_unix_ms: u64,
+    pub status_url: String,
+    pub state: String,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AdminServiceModuleLifecycleModuleStatus {
+    Ready,
+    RestartPending,
+    ConfiguredNotLoaded,
+    ManifestUnreachable,
+    ServiceNotReady,
+    StaleState,
+    NotConfigured,
+}
+
+#[derive(Debug, Serialize, ToSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AdminServiceModuleManifestStatus {
+    Reachable,
+    Unreachable,
+    Skipped,
+    NotConfigured,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceModuleLifecycleServiceDto {
+    pub name: String,
+    pub ready_url: String,
+    pub ready: bool,
+    pub auto_start: bool,
+    pub lock_file: Option<String>,
+    pub pid_file: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceModuleServiceStatusDto {
+    pub checked: bool,
+    pub state: AdminServiceModuleServiceStatusState,
+    pub error: Option<String>,
+    pub checks: Vec<AdminServiceModuleServiceStatusCheckDto>,
+}
+
+#[derive(Debug, Serialize, ToSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AdminServiceModuleServiceStatusState {
+    Ready,
+    Degraded,
+    Starting,
+    Unreachable,
+    Unknown,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceModuleServiceStatusCheckDto {
+    pub name: String,
+    pub status: String,
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceModuleCompatibilityDto {
+    pub state: AdminServiceModuleCompatibilityState,
+    pub declared: Option<AdminModuleCompatibilityDto>,
+    pub host: AdminModuleHostCompatibilityDto,
+    pub issue: Option<String>,
+    pub fix: Option<String>,
+    pub override_allowed: bool,
+}
+
+#[derive(Debug, Serialize, ToSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AdminServiceModuleCompatibilityState {
+    Compatible,
+    Blocked,
+    Unknown,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceModuleDeploymentDto {
+    pub target: Option<String>,
+    #[serde(default)]
+    pub commands: Vec<String>,
+    pub compose_service: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct AdminModuleLinkedSourceInstallStateDto {
     pub env_file: String,
     pub configured: bool,
@@ -161,6 +295,9 @@ pub struct AdminModuleConsolePackagePlanPackageDto {
 pub struct AdminModuleCompatibilityDto {
     pub console_package_api: Option<String>,
     pub lenso: Option<AdminModuleLensoCompatibilityDto>,
+    pub remote_protocol_version: Option<String>,
+    #[serde(default)]
+    pub required_host_features: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]

@@ -601,6 +601,37 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /admin/data/service-modules:
+    get:
+      tags:
+      - admin-data
+      operationId: admin_data_service_modules
+      parameters:
+      - name: authorization
+        in: header
+        description: Development service bearer token
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Service module lifecycle state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminServiceModuleLifecycleResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/data/{module}/actions/{action}:
     post:
       tags:
@@ -3516,6 +3547,14 @@ components:
           oneOf:
           - type: 'null'
           - $ref: '#/components/schemas/AdminModuleLensoCompatibilityDto'
+        remoteProtocolVersion:
+          type:
+          - string
+          - 'null'
+        requiredHostFeatures:
+          type: array
+          items:
+            type: string
     AdminModuleConsolePackagePlanPackageDto:
       type: object
       required:
@@ -4991,6 +5030,241 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AdminModuleSchema'
+    AdminServiceModuleCompatibilityDto:
+      type: object
+      required:
+      - state
+      - host
+      - overrideAllowed
+      properties:
+        declared:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/AdminModuleCompatibilityDto'
+        fix:
+          type:
+          - string
+          - 'null'
+        host:
+          $ref: '#/components/schemas/AdminModuleHostCompatibilityDto'
+        issue:
+          type:
+          - string
+          - 'null'
+        overrideAllowed:
+          type: boolean
+        state:
+          $ref: '#/components/schemas/AdminServiceModuleCompatibilityState'
+    AdminServiceModuleCompatibilityState:
+      type: string
+      enum:
+      - compatible
+      - blocked
+      - unknown
+    AdminServiceModuleDeploymentDto:
+      type: object
+      properties:
+        commands:
+          type: array
+          items:
+            type: string
+        composeService:
+          type:
+          - string
+          - 'null'
+        target:
+          type:
+          - string
+          - 'null'
+    AdminServiceModuleHealthCheckDto:
+      type: object
+      required:
+      - moduleName
+      - checkedAtUnixMs
+      - statusUrl
+      - state
+      properties:
+        checkedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        error:
+          type:
+          - string
+          - 'null'
+        moduleName:
+          type: string
+        state:
+          type: string
+        statusUrl:
+          type: string
+    AdminServiceModuleLifecycleModuleDto:
+      type: object
+      required:
+      - moduleName
+      - status
+      - installed
+      - configured
+      - loaded
+      - restartPending
+      - manifestStatus
+      - serviceStatus
+      - healthHistory
+      - compatibility
+      - services
+      - fixes
+      properties:
+        baseUrl:
+          type:
+          - string
+          - 'null'
+        compatibility:
+          $ref: '#/components/schemas/AdminServiceModuleCompatibilityDto'
+        configured:
+          type: boolean
+        deployment:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/AdminServiceModuleDeploymentDto'
+        fixes:
+          type: array
+          items:
+            type: string
+        healthHistory:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminServiceModuleHealthCheckDto'
+        installed:
+          type: boolean
+        loaded:
+          type: boolean
+        manifestStatus:
+          $ref: '#/components/schemas/AdminServiceModuleManifestStatus'
+        manifestUrl:
+          type:
+          - string
+          - 'null'
+        moduleName:
+          type: string
+        restartPending:
+          type: boolean
+        serviceStatus:
+          $ref: '#/components/schemas/AdminServiceModuleServiceStatusDto'
+        services:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminServiceModuleLifecycleServiceDto'
+        status:
+          $ref: '#/components/schemas/AdminServiceModuleLifecycleModuleStatus'
+        statusUrl:
+          type:
+          - string
+          - 'null'
+    AdminServiceModuleLifecycleModuleStatus:
+      type: string
+      enum:
+      - ready
+      - restart_pending
+      - configured_not_loaded
+      - manifest_unreachable
+      - service_not_ready
+      - stale_state
+      - not_configured
+    AdminServiceModuleLifecycleResponse:
+      type: object
+      required:
+      - version
+      - status
+      - modules
+      properties:
+        modules:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminServiceModuleLifecycleModuleDto'
+        status:
+          $ref: '#/components/schemas/AdminServiceModuleLifecycleStatus'
+        version:
+          type: integer
+          format: int32
+          minimum: 0
+    AdminServiceModuleLifecycleServiceDto:
+      type: object
+      required:
+      - name
+      - readyUrl
+      - ready
+      - autoStart
+      properties:
+        autoStart:
+          type: boolean
+        lockFile:
+          type:
+          - string
+          - 'null'
+        name:
+          type: string
+        pidFile:
+          type:
+          - string
+          - 'null'
+        ready:
+          type: boolean
+        readyUrl:
+          type: string
+    AdminServiceModuleLifecycleStatus:
+      type: string
+      enum:
+      - ready
+      - needs_attention
+      - empty
+    AdminServiceModuleManifestStatus:
+      type: string
+      enum:
+      - reachable
+      - unreachable
+      - skipped
+      - not_configured
+    AdminServiceModuleServiceStatusCheckDto:
+      type: object
+      required:
+      - name
+      - status
+      properties:
+        detail:
+          type:
+          - string
+          - 'null'
+        name:
+          type: string
+        status:
+          type: string
+    AdminServiceModuleServiceStatusDto:
+      type: object
+      required:
+      - checked
+      - state
+      - checks
+      properties:
+        checked:
+          type: boolean
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminServiceModuleServiceStatusCheckDto'
+        error:
+          type:
+          - string
+          - 'null'
+        state:
+          $ref: '#/components/schemas/AdminServiceModuleServiceStatusState'
+    AdminServiceModuleServiceStatusState:
+      type: string
+      enum:
+      - ready
+      - degraded
+      - starting
+      - unreachable
+      - unknown
     AdminServiceRestartResponse:
       type: object
       required:

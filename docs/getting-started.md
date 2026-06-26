@@ -1,7 +1,7 @@
 # Getting Started
 
 This guide is the first-user happy path for running Lenso locally and installing
-a remote module. It avoids marketplace hardening flows; you choose a manifest
+a service module. It avoids marketplace hardening flows; you choose a manifest
 URL, install it, restart services, and inspect the loaded module.
 
 ## Prerequisites
@@ -112,7 +112,7 @@ Generated hosts serve the Runtime Console at `/console` after
 this repository from source, run the Runtime Console from the sibling
 `../lenso-runtime-console` repository or run `just console-build-host <host-root>`.
 
-## Install The Example Module Manually
+## Install The Example Service Module
 
 User-facing examples live in
 [LioRael/lenso-examples](https://github.com/LioRael/lenso-examples). This
@@ -125,13 +125,13 @@ Clone and start the example module in a separate checkout:
 git clone https://github.com/LioRael/lenso-examples ../lenso-examples
 ```
 
-Start the example module from the `lenso-examples` repository, then install its
-manifest here with the same command a user would run.
+Start the support-ticket service module from the `lenso-examples` repository,
+then install its manifest here with the same command a user would run.
 
 Install its manifest:
 
 ```sh
-lenso module install http://127.0.0.1:4100/lenso/module/v1/manifest
+lenso module install http://127.0.0.1:4110/lenso/module/v1/manifest
 ```
 
 Restart the local services and open the Runtime Console. The module should be

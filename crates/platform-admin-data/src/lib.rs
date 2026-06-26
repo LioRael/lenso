@@ -469,6 +469,7 @@ pub fn router() -> ApiOpenApiRouter {
         .routes(routes!(list_modules))
         .routes(routes!(refresh_modules))
         .routes(routes!(available_modules))
+        .routes(routes!(service_modules))
         .routes(routes!(install_available_module))
         .routes(routes!(uninstall_available_module))
         .routes(routes!(module_registry_snapshot))
