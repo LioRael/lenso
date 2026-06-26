@@ -4,7 +4,9 @@ use auth::session_policy::{
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
 use lenso_api::try_build_router_with_composition;
-use platform_core::{AppConfig, AppContext, LoggingEventPublisher, Migration, apply_migrations};
+use platform_core::{
+    AppConfig, AppContext, LoggingEventPublisher, Migration, ModuleSourcesConfig, apply_migrations,
+};
 use platform_module::{HostLinkedModule, ModuleManifest};
 use platform_testing::TestDatabase;
 use serde_json::{Value, json};
@@ -18,6 +20,8 @@ async fn api_projects_host_wiring_auth_session_policy_into_password_routes() {
     };
     let mut config = AppConfig::from_env();
     config.database.url = db.url.clone();
+    config.module_sources = ModuleSourcesConfig::default();
+    config.modules.clear();
     let composition =
         lenso_bootstrap::HostComposition::new().with_linked_module(policy_linked_module());
     let migrations = lenso_bootstrap::migrations_for_config_with_composition(&config, &composition)
