@@ -96,11 +96,13 @@ pub fn router() -> ApiOpenApiRouter {
     )
 )]
 async fn list_stories(
-    _admin: AdminActor,
+    admin: AdminActor,
     State(ctx): State<AppContext>,
     HttpRequestContext(request_ctx): HttpRequestContext,
     Query(query): Query<StoryQuery>,
 ) -> Result<Json<AdminRuntimeStoryListResponse>, ApiErrorResponse> {
+    ensure_story_read_capability(&admin, &request_ctx)?;
+
     let limit = normalized_limit(query.limit);
     let rows = fetch_story_rows(&ctx, &request_ctx, None, query.created_before, limit).await?;
     let stories = build_story_summaries(rows);
@@ -161,11 +163,13 @@ async fn list_stories(
     )
 )]
 async fn get_story(
-    _admin: AdminActor,
+    admin: AdminActor,
     State(ctx): State<AppContext>,
     HttpRequestContext(request_ctx): HttpRequestContext,
     Path(correlation_id): Path<String>,
 ) -> Result<Json<AdminRuntimeStoryDetailResponse>, ApiErrorResponse> {
+    ensure_story_read_capability(&admin, &request_ctx)?;
+
     let rows = fetch_story_rows(&ctx, &request_ctx, Some(&correlation_id), None, MAX_LIMIT).await?;
     if rows.is_empty() {
         return Err(ApiErrorResponse::with_context(
@@ -232,12 +236,14 @@ async fn get_story(
     )
 )]
 async fn get_story_heatmap(
-    _admin: AdminActor,
+    admin: AdminActor,
     State(ctx): State<AppContext>,
     HttpRequestContext(request_ctx): HttpRequestContext,
     Path(correlation_id): Path<String>,
     Query(query): Query<HeatmapQuery>,
 ) -> Result<Json<AdminRuntimeHeatmapResponse>, ApiErrorResponse> {
+    ensure_story_read_capability(&admin, &request_ctx)?;
+
     if !runtime_story_exists(&ctx, &request_ctx, &correlation_id).await? {
         return Err(story_not_found(&request_ctx, &correlation_id));
     }
@@ -312,11 +318,13 @@ async fn get_story_heatmap(
     )
 )]
 async fn get_story_technical_operations(
-    _admin: AdminActor,
+    admin: AdminActor,
     State(ctx): State<AppContext>,
     HttpRequestContext(request_ctx): HttpRequestContext,
     Path(correlation_id): Path<String>,
 ) -> Result<Json<AdminRuntimeTechnicalOperationListResponse>, ApiErrorResponse> {
+    ensure_story_read_capability(&admin, &request_ctx)?;
+
     let rows = fetch_story_rows(&ctx, &request_ctx, Some(&correlation_id), None, MAX_LIMIT).await?;
     if rows.is_empty() {
         return Err(story_not_found(&request_ctx, &correlation_id));

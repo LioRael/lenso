@@ -1,5 +1,27 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
+use crate::module::STORY_CONSOLE_CAPABILITY;
+
+pub(super) fn ensure_story_read_capability(
+    admin: &AdminActor,
+    request_ctx: &RequestContext,
+) -> Result<(), ApiErrorResponse> {
+    match admin {
+        AdminActor::System | AdminActor::Service { .. } => Ok(()),
+        AdminActor::User { scopes, .. }
+            if scopes.iter().any(|scope| scope == STORY_CONSOLE_CAPABILITY) =>
+        {
+            Ok(())
+        }
+        AdminActor::User { .. } => Err(ApiErrorResponse::with_context(
+            AppError::new(
+                ErrorCode::Forbidden,
+                format!("missing runtime console capability: {STORY_CONSOLE_CAPABILITY}"),
+            ),
+            request_ctx,
+        )),
+    }
+}
 
 pub(super) fn normalized_limit(limit: Option<i64>) -> i64 {
     limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT)

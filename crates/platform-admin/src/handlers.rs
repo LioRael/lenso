@@ -52,10 +52,12 @@ use platform_http::{AdminActor, ApiErrorResponse, ErrorResponse, HttpRequestCont
     )
 )]
 pub(crate) async fn get_summary(
-    _admin: AdminActor,
+    admin: AdminActor,
     State(ctx): State<AppContext>,
     HttpRequestContext(request_ctx): HttpRequestContext,
 ) -> Result<Json<AdminRuntimeSummaryResponse>, ApiErrorResponse> {
+    ensure_runtime_read_capability(&admin, &request_ctx)?;
+
     let outbox_row = sqlx::query_as::<_, SummaryCountRow>(
         r#"
         select
@@ -152,11 +154,13 @@ pub(crate) async fn get_summary(
     )
 )]
 pub(crate) async fn get_heatmap(
-    _admin: AdminActor,
+    admin: AdminActor,
     State(ctx): State<AppContext>,
     HttpRequestContext(request_ctx): HttpRequestContext,
     Query(query): Query<HeatmapQuery>,
 ) -> Result<Json<AdminRuntimeHeatmapResponse>, ApiErrorResponse> {
+    ensure_runtime_read_capability(&admin, &request_ctx)?;
+
     let limit = normalized_limit(query.limit);
     let bucket_seconds = normalized_bucket_seconds(query.bucket_seconds);
     let rows = fetch_heatmap_rows(&ctx, &request_ctx, &query, limit, bucket_seconds, None).await?;
@@ -434,11 +438,13 @@ fn sort_technical_operations(data: &mut [AdminRuntimeTechnicalOperation]) {
     )
 )]
 pub(crate) async fn get_execution_technical_operations(
-    _admin: AdminActor,
+    admin: AdminActor,
     State(ctx): State<AppContext>,
     HttpRequestContext(request_ctx): HttpRequestContext,
     Path(node_id): Path<String>,
 ) -> Result<Json<AdminRuntimeTechnicalOperationListResponse>, ApiErrorResponse> {
+    ensure_runtime_read_capability(&admin, &request_ctx)?;
+
     let node = fetch_runtime_node_ref(&ctx, &request_ctx, &node_id).await?;
     let query = match node.item_type.as_str() {
         "function" => TelemetrySpanQuery::by_function_run_id(&node.id),
@@ -513,11 +519,13 @@ pub(crate) async fn get_execution_technical_operations(
     )
 )]
 pub(crate) async fn get_execution_payload(
-    _admin: AdminActor,
+    admin: AdminActor,
     State(ctx): State<AppContext>,
     HttpRequestContext(request_ctx): HttpRequestContext,
     Path(node_id): Path<String>,
 ) -> Result<Json<AdminRuntimeExecutionPayloadResponse>, ApiErrorResponse> {
+    ensure_runtime_read_capability(&admin, &request_ctx)?;
+
     let node = fetch_runtime_node_ref(&ctx, &request_ctx, &node_id).await?;
     let data = match node.item_type.as_str() {
         "function" => {
@@ -587,12 +595,14 @@ pub(crate) async fn get_execution_payload(
     )
 )]
 pub(crate) async fn get_execution_logs(
-    _admin: AdminActor,
+    admin: AdminActor,
     State(ctx): State<AppContext>,
     HttpRequestContext(request_ctx): HttpRequestContext,
     Path(node_id): Path<String>,
     Query(query): Query<ExecutionLogQuery>,
 ) -> Result<Json<AdminRuntimeExecutionLogListResponse>, ApiErrorResponse> {
+    ensure_runtime_read_capability(&admin, &request_ctx)?;
+
     let node = fetch_runtime_node_ref(&ctx, &request_ctx, &node_id).await?;
     if node.item_type == "http_request" {
         return Ok(Json(AdminRuntimeExecutionLogListResponse {
@@ -665,11 +675,13 @@ pub(crate) async fn get_execution_logs(
     )
 )]
 pub(crate) async fn list_remote_proxy_calls(
-    _admin: AdminActor,
+    admin: AdminActor,
     State(ctx): State<AppContext>,
     HttpRequestContext(request_ctx): HttpRequestContext,
     Query(query): Query<RemoteProxyCallQuery>,
 ) -> Result<Json<AdminRemoteProxyCallListResponse>, ApiErrorResponse> {
+    ensure_runtime_read_capability(&admin, &request_ctx)?;
+
     let limit = normalized_limit(query.limit);
     let rows = sqlx::query(
         r#"
@@ -764,11 +776,13 @@ pub(crate) async fn list_remote_proxy_calls(
     )
 )]
 pub(crate) async fn list_admin_action_invocations(
-    _admin: AdminActor,
+    admin: AdminActor,
     State(ctx): State<AppContext>,
     HttpRequestContext(request_ctx): HttpRequestContext,
     Query(query): Query<AdminActionInvocationQuery>,
 ) -> Result<Json<AdminActionInvocationListResponse>, ApiErrorResponse> {
+    ensure_runtime_read_capability(&admin, &request_ctx)?;
+
     let limit = normalized_limit(query.limit);
     let rows = sqlx::query_as::<_, AdminActionInvocationTuple>(
         r#"
@@ -865,11 +879,13 @@ pub(crate) async fn list_admin_action_invocations(
     )
 )]
 pub(crate) async fn list_outbox(
-    _admin: AdminActor,
+    admin: AdminActor,
     State(ctx): State<AppContext>,
     HttpRequestContext(request_ctx): HttpRequestContext,
     Query(query): Query<OutboxQuery>,
 ) -> Result<Json<AdminOutboxListResponse>, ApiErrorResponse> {
+    ensure_runtime_read_capability(&admin, &request_ctx)?;
+
     let limit = normalized_limit(query.limit);
     let rows = sqlx::query_as::<_, OutboxAdminRow>(
         r#"
@@ -956,11 +972,13 @@ pub(crate) async fn list_outbox(
     )
 )]
 pub(crate) async fn list_function_runs(
-    _admin: AdminActor,
+    admin: AdminActor,
     State(ctx): State<AppContext>,
     HttpRequestContext(request_ctx): HttpRequestContext,
     Query(query): Query<FunctionRunQuery>,
 ) -> Result<Json<AdminFunctionRunListResponse>, ApiErrorResponse> {
+    ensure_runtime_read_capability(&admin, &request_ctx)?;
+
     let limit = normalized_limit(query.limit);
     let rows = sqlx::query_as::<_, FunctionRunAdminRow>(
         r#"
@@ -1058,11 +1076,13 @@ pub(crate) async fn list_function_runs(
     )
 )]
 pub(crate) async fn get_outbox_event(
-    _admin: AdminActor,
+    admin: AdminActor,
     State(ctx): State<AppContext>,
     HttpRequestContext(request_ctx): HttpRequestContext,
     Path(id): Path<String>,
 ) -> Result<Json<AdminOutboxEventDetail>, ApiErrorResponse> {
+    ensure_runtime_read_capability(&admin, &request_ctx)?;
+
     let row = fetch_outbox_event_detail(&ctx, &request_ctx, &id).await?;
     Ok(json(row))
 }
@@ -1116,11 +1136,13 @@ pub(crate) async fn get_outbox_event(
     )
 )]
 pub(crate) async fn get_function_run(
-    _admin: AdminActor,
+    admin: AdminActor,
     State(ctx): State<AppContext>,
     HttpRequestContext(request_ctx): HttpRequestContext,
     Path(id): Path<String>,
 ) -> Result<Json<AdminFunctionRunDetail>, ApiErrorResponse> {
+    ensure_runtime_read_capability(&admin, &request_ctx)?;
+
     let row = fetch_function_run_detail(&ctx, &request_ctx, &id).await?;
     Ok(json(row))
 }
@@ -1276,6 +1298,8 @@ pub(crate) async fn retry_outbox_event(
     HttpRequestContext(request_ctx): HttpRequestContext,
     Path(id): Path<String>,
 ) -> Result<Json<AdminOutboxEvent>, ApiErrorResponse> {
+    ensure_runtime_service_or_system(&admin, &request_ctx)?;
+
     let current = fetch_outbox_event(&ctx, &request_ctx, &id).await?;
     ensure_retryable_status("outbox event", &id, &current.status, &request_ctx)?;
 
@@ -1380,6 +1404,8 @@ pub(crate) async fn retry_function_run(
     HttpRequestContext(request_ctx): HttpRequestContext,
     Path(id): Path<String>,
 ) -> Result<Json<AdminFunctionRun>, ApiErrorResponse> {
+    ensure_runtime_service_or_system(&admin, &request_ctx)?;
+
     let current = fetch_function_run(&ctx, &request_ctx, &id).await?;
     ensure_retryable_status("function run", &id, &current.status, &request_ctx)?;
 
