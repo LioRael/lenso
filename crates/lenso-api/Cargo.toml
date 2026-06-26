@@ -36,6 +36,7 @@ auth-password.workspace = true
 platform-module.workspace = true
 platform-testing.workspace = true
 remote-module-fixture.workspace = true
+rsa.workspace = true
 serde_yaml.workspace = true
 tower = { workspace = true, features = ["util"] }
 

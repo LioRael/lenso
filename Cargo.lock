@@ -1424,6 +1424,7 @@ dependencies = [
  "lenso-platform-runtime",
  "lenso-platform-testing",
  "remote-module-fixture",
+ "rsa",
  "serde",
  "serde_json",
  "serde_yaml",
