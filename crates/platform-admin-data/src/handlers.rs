@@ -480,10 +480,22 @@ fn reconcile_service_provider_remote_source(
     metadata: Option<&AdminModuleMetadata>,
     remote_source: &mut AdminModuleRemoteSourceInstallStateDto,
 ) {
+    reconcile_service_provider_remote_source_base_url(
+        module_name,
+        metadata_remote_base_url(metadata).as_deref(),
+        remote_source,
+    );
+}
+
+fn reconcile_service_provider_remote_source_base_url(
+    module_name: &str,
+    running_module_base_url: Option<&str>,
+    remote_source: &mut AdminModuleRemoteSourceInstallStateDto,
+) {
     let Some(desired_base_url) = remote_source.desired_base_url.as_deref() else {
         return;
     };
-    let Some(running_module_base_url) = metadata_remote_base_url(metadata) else {
+    let Some(running_module_base_url) = running_module_base_url else {
         return;
     };
     if running_module_base_url == service_provider_module_base_url(desired_base_url, module_name) {
@@ -1561,6 +1573,18 @@ impl AvailableModuleInstallStateContext {
         }
     }
 
+    fn reconcile_service_provider_remote_source(
+        &self,
+        module_name: &str,
+        remote_source: &mut AdminModuleRemoteSourceInstallStateDto,
+    ) {
+        reconcile_service_provider_remote_source_base_url(
+            module_name,
+            self.running_base_urls.get(module_name).map(String::as_str),
+            remote_source,
+        );
+    }
+
     fn console_plan_state(&self, module_name: &str) -> AdminModuleConsolePackagePlanStateDto {
         let module_plan = self.console_plan.modules.get(module_name);
         let packages = module_plan
@@ -2013,7 +2037,14 @@ fn catalog_entry_install_state(
 ) -> AdminModuleInstallStateDto {
     let source = catalog_entry_source(&entry.source);
     let remote_source_name = catalog_entry_remote_source_name(entry);
-    install_state.install_state_for_remote_source(&entry.name, source, remote_source_name)
+    let mut state =
+        install_state.install_state_for_remote_source(&entry.name, source, remote_source_name);
+    if entry.source == "service"
+        && let Some(remote_source) = state.remote_source.as_mut()
+    {
+        install_state.reconcile_service_provider_remote_source(&entry.name, remote_source);
+    }
+    state
 }
 
 fn write_remote_modules_env(

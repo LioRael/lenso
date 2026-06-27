@@ -1202,6 +1202,89 @@ async fn available_modules_reads_local_module_catalog() {
 }
 
 #[tokio::test]
+async fn available_modules_reconciles_service_provider_source_after_restart() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
+    let _catalog = FileFixture::write(
+        ".lenso/module-catalog.json",
+        serde_json::json!({
+            "version": 1,
+            "modules": [{
+                "name": "support-ticket",
+                "version": "0.1.0",
+                "source": "service",
+                "providedBy": "support-suite-provider",
+                "serviceManifest": "http://127.0.0.1:4110/lenso/service/v1/manifest",
+                "manifestReference": "http://127.0.0.1:4110/lenso/service/v1/manifest",
+                "baseUrl": "http://127.0.0.1:4110/lenso/service/v1",
+                "summary": "Ticket intake, triage, and operations"
+            }]
+        })
+        .to_string(),
+    );
+    let _env = FileFixture::write(
+        ".env",
+        "REMOTE_MODULES=support-suite-provider=http://127.0.0.1:4110/lenso/service/v1\n",
+    );
+    install_admin_module_metadata(vec![AdminModuleMetadata {
+        module_name: "support-ticket".to_owned(),
+        source: ModuleSource::Remote,
+        load_status: ModuleLoadStatus::Loaded,
+        http_routes: vec![],
+        runtime: None,
+        events: None,
+        lifecycle: None,
+        console: vec![],
+        story_display: vec![],
+        capabilities: vec![],
+        dependencies: vec![],
+        admin: None,
+        source_diagnostics: Some(AdminModuleSourceDiagnostics::Remote(
+            AdminRemoteModuleDiagnostics {
+                transport: "http".to_owned(),
+                base_url: "http://127.0.0.1:4110/lenso/service/v1/modules/support-ticket"
+                    .to_owned(),
+                manifest_url:
+                    "http://127.0.0.1:4110/lenso/service/v1/modules/support-ticket/manifest"
+                        .to_owned(),
+                timeout_ms: 5000,
+                auth_configured: false,
+                load_duration_ms: Some(10),
+                last_checked_at: None,
+                last_load_error: None,
+            },
+        )),
+    }]);
+    let ctx = AppContext::new(
+        AppConfig::from_env(),
+        lazy_failing_db(),
+        Arc::new(LoggingEventPublisher),
+    );
+    let app = build_router(ctx);
+
+    let response = app
+        .oneshot(admin_get("/admin/data/available-modules"))
+        .await
+        .expect("available modules request completes");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    let module = &body["modules"][0];
+    assert_eq!(module["name"], "support-ticket");
+    assert_eq!(
+        module["installState"]["remoteSource"]["desiredBaseUrl"],
+        "http://127.0.0.1:4110/lenso/service/v1"
+    );
+    assert_eq!(
+        module["installState"]["remoteSource"]["runningBaseUrl"],
+        "http://127.0.0.1:4110/lenso/service/v1"
+    );
+    assert_eq!(
+        module["installState"]["remoteSource"]["restartPending"],
+        false
+    );
+}
+
+#[tokio::test]
 async fn available_modules_reports_local_install_state() {
     let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
     let _catalog = FileFixture::write(
