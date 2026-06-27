@@ -14,8 +14,8 @@ use platform_module::{
     AdminAction, AdminActionConfirmation, AdminActionDangerLevel, AdminActionInputField,
     AdminActionInputSchema, AdminActionSource, AdminDataSource, AdminDeclarativeComponent,
     AdminDeclarativePage, AdminDeclarativeSection, AdminDeclarativeSurface, AdminListQuery,
-    AdminPage, AdminQuerySource, AdminSchema, AdminSurface, EntitySchema, FieldSchema, FieldType,
-    ModuleLoadStatus, ModuleSource,
+    AdminPage, AdminQuerySource, AdminSchema, AdminSurface, EntitySchema, EventSurface,
+    FieldSchema, FieldType, ModuleHttpRoute, ModuleLoadStatus, ModuleSource, RuntimeSurface,
 };
 use platform_runtime::RUNTIME_MIGRATIONS;
 use platform_testing::TestDatabase;
@@ -959,6 +959,175 @@ async fn service_modules_merges_service_provider_source_into_provided_module() {
     assert_eq!(
         body["modules"][0]["baseUrl"],
         "http://127.0.0.1:4110/lenso/service/v1"
+    );
+}
+
+#[tokio::test]
+async fn service_modules_exposes_operations_for_provider_modules() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
+    let _env = FileFixture::write(
+        ".env",
+        "REMOTE_MODULES=support-suite-provider=http://127.0.0.1:4110/lenso/service/v1\n",
+    );
+    let _ledger = FileFixture::write(
+        ".lenso/module-installs.json",
+        serde_json::json!({
+            "version": 1,
+            "modules": [{
+                "moduleName": "support-ticket",
+                "source": "remote",
+                "service": {
+                    "name": "support-suite-provider"
+                }
+            }]
+        })
+        .to_string(),
+    );
+    let _health = FileFixture::remove(".lenso/service-health.json");
+    let _services = FileFixture::remove(".lenso/module-services.json");
+    let http_route: ModuleHttpRoute = serde_json::from_value(serde_json::json!({
+        "method": "GET",
+        "path": "/tickets",
+        "capability": "support_ticket.tickets.read",
+        "display_name": "List tickets",
+        "story_title": "Tickets listed",
+        "operation": {
+            "operationId": "support-ticket/http/list",
+            "summary": "List tickets through the service",
+            "safeProbe": {
+                "method": "GET",
+                "path": "/tickets",
+                "expectStatus": 200
+            }
+        }
+    }))
+    .expect("http route metadata");
+    let runtime: RuntimeSurface = serde_json::from_value(serde_json::json!({
+        "functions": [{
+            "name": "support-ticket.reindex.v1",
+            "version": 1,
+            "queue": "support-ticket"
+        }]
+    }))
+    .expect("runtime metadata");
+    let events: EventSurface = serde_json::from_value(serde_json::json!({
+        "handlers": [{
+            "name": "ticket-created-handler",
+            "event_name": "support_ticket.ticket_created.v1"
+        }]
+    }))
+    .expect("event metadata");
+    let action: AdminAction = serde_json::from_value(serde_json::json!({
+        "name": "assign_ticket",
+        "label": "Assign ticket",
+        "capability": "support_ticket.tickets.write"
+    }))
+    .expect("admin action metadata");
+    install_admin_module_metadata(vec![AdminModuleMetadata {
+        module_name: "support-ticket".to_owned(),
+        source: ModuleSource::Remote,
+        load_status: ModuleLoadStatus::Loaded,
+        http_routes: vec![http_route],
+        runtime: Some(runtime),
+        events: Some(events),
+        lifecycle: None,
+        console: vec![],
+        story_display: vec![],
+        capabilities: vec![],
+        dependencies: vec![],
+        admin: Some(AdminSurface::DeclarativeCustom(AdminDeclarativeSurface {
+            pages: vec![],
+            actions: vec![action],
+            fallback_schema: None,
+        })),
+        source_diagnostics: Some(AdminModuleSourceDiagnostics::Remote(
+            AdminRemoteModuleDiagnostics {
+                transport: "http".to_owned(),
+                base_url: "http://127.0.0.1:4110/lenso/service/v1/modules/support-ticket"
+                    .to_owned(),
+                manifest_url:
+                    "http://127.0.0.1:4110/lenso/service/v1/modules/support-ticket/manifest"
+                        .to_owned(),
+                timeout_ms: 5000,
+                auth_configured: false,
+                load_duration_ms: Some(10),
+                last_checked_at: None,
+                last_load_error: None,
+            },
+        )),
+    }]);
+    let ctx = AppContext::new(
+        AppConfig::from_env(),
+        lazy_failing_db(),
+        Arc::new(LoggingEventPublisher),
+    );
+    let app = build_router(ctx);
+
+    let response = app
+        .oneshot(admin_get("/admin/data/service-modules"))
+        .await
+        .expect("service modules request completes");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    let module = body["modules"]
+        .as_array()
+        .expect("modules array")
+        .iter()
+        .find(|module| module["moduleName"] == "support-ticket")
+        .expect("support ticket module");
+    let operations = module["operations"].as_array().expect("operations array");
+    assert_eq!(operations.len(), 4);
+
+    let http = operations
+        .iter()
+        .find(|operation| operation["kind"] == "http_route")
+        .expect("http operation");
+    assert_eq!(http["operationId"], "support-ticket/http/list");
+    assert_eq!(http["capability"], "support_ticket.tickets.read");
+    assert_eq!(http["safeProbe"], true);
+    assert_eq!(
+        http["links"]["remoteCalls"],
+        "/operations/remote-calls?module=support-ticket"
+    );
+    assert_eq!(http["links"]["story"], "/?q=support-suite-provider");
+    assert_eq!(
+        http["links"]["technicalOperations"],
+        "/operations?q=support-suite-provider"
+    );
+
+    let runtime = operations
+        .iter()
+        .find(|operation| operation["kind"] == "runtime_function")
+        .expect("runtime operation");
+    assert_eq!(
+        runtime["operationId"],
+        "support-ticket/runtime/support-ticket.reindex.v1"
+    );
+    assert_eq!(runtime["capability"], Value::Null);
+    assert_eq!(runtime["safeProbe"], false);
+
+    let event = operations
+        .iter()
+        .find(|operation| operation["kind"] == "event_handler")
+        .expect("event operation");
+    assert_eq!(
+        event["operationId"],
+        "support-ticket/event/ticket-created-handler"
+    );
+    assert_eq!(event["capability"], Value::Null);
+    assert_eq!(event["safeProbe"], false);
+
+    let action = operations
+        .iter()
+        .find(|operation| operation["kind"] == "admin_action")
+        .expect("admin action operation");
+    assert_eq!(action["operationId"], "support-ticket/action/assign_ticket");
+    assert_eq!(action["capability"], "support_ticket.tickets.write");
+    assert_eq!(action["safeProbe"], false);
+    assert_eq!(
+        action["nextAction"],
+        "add safeProbe metadata before active checks"
     );
 }
 

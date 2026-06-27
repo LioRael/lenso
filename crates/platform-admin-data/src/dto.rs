@@ -134,7 +134,43 @@ pub struct AdminServiceModuleLifecycleModuleDto {
     pub compatibility: AdminServiceModuleCompatibilityDto,
     pub deployment: Option<AdminServiceModuleDeploymentDto>,
     pub services: Vec<AdminServiceModuleLifecycleServiceDto>,
+    pub operations: Vec<AdminServiceOperationDto>,
     pub fixes: Vec<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AdminServiceOperationKindDto {
+    HttpRoute,
+    RuntimeFunction,
+    EventHandler,
+    AdminAction,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceOperationLinksDto {
+    pub remote_calls: Option<String>,
+    pub runtime: Option<String>,
+    pub story: String,
+    pub technical_operations: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceOperationDto {
+    pub operation_id: String,
+    pub provider_name: Option<String>,
+    pub module_name: String,
+    pub kind: AdminServiceOperationKindDto,
+    pub name: String,
+    pub method: Option<String>,
+    pub path: Option<String>,
+    pub capability: Option<String>,
+    pub summary: Option<String>,
+    pub safe_probe: bool,
+    pub links: AdminServiceOperationLinksDto,
+    pub next_action: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]

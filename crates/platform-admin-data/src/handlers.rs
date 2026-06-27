@@ -20,7 +20,8 @@ use crate::dto::{
     AdminServiceModuleLifecycleResponse, AdminServiceModuleLifecycleServiceDto,
     AdminServiceModuleLifecycleStatus, AdminServiceModuleManifestStatus,
     AdminServiceModuleServiceStatusCheckDto, AdminServiceModuleServiceStatusDto,
-    AdminServiceModuleServiceStatusState,
+    AdminServiceModuleServiceStatusState, AdminServiceOperationDto, AdminServiceOperationKindDto,
+    AdminServiceOperationLinksDto,
 };
 use crate::{
     AdminModule, AdminModuleMetadata, AdminModuleMetadataRefreshModuleResult,
@@ -40,9 +41,9 @@ use platform_core::{
 use platform_http::{AdminActor, ApiErrorResponse, ErrorResponse, HttpRequestContext};
 use platform_module::{
     AdminActionConfirmation, AdminActionInputField, AdminActionInputSchema,
-    AdminDeclarativeComponent, AdminListQuery, AdminSurface, FieldType, ModuleLoadStatus,
-    ModuleManifestLint, ModuleManifestLintSeverity, ModuleSource, lint_module_manifest_parts,
-    module_capability_references,
+    AdminDeclarativeComponent, AdminListQuery, AdminSurface, FieldType, ModuleHttpMethod,
+    ModuleLoadStatus, ModuleManifestLint, ModuleManifestLintSeverity, ModuleSource,
+    lint_module_manifest_parts, module_capability_references,
 };
 use serde::Deserialize;
 use serde::Serialize;
@@ -421,6 +422,7 @@ async fn service_module_lifecycle_module(
         record_service_module_health(module_name, status_url.as_deref(), &service_status);
     let compatibility = service_module_compatibility(module_name, install_receipt);
     let deployment = service_module_deployment(install_receipt);
+    let operations = service_module_operations(provider_name, module_name, metadata);
     let has_stale_state = services.iter().any(|service| {
         !service.ready && (service.lock_file.is_some() || service.pid_file.is_some())
     });
@@ -471,8 +473,182 @@ async fn service_module_lifecycle_module(
         compatibility,
         deployment,
         services,
+        operations,
         fixes,
     }
+}
+
+fn service_module_operations(
+    provider_name: Option<&str>,
+    module_name: &str,
+    metadata: Option<&AdminModuleMetadata>,
+) -> Vec<AdminServiceOperationDto> {
+    let Some(metadata) = metadata else {
+        return Vec::new();
+    };
+    let mut operations = Vec::new();
+
+    for route in &metadata.http_routes {
+        let method = module_http_method(route.method);
+        let safe_probe = route
+            .operation
+            .as_ref()
+            .is_some_and(|operation| operation.safe_probe.is_some());
+        operations.push(AdminServiceOperationDto {
+            operation_id: route
+                .operation
+                .as_ref()
+                .and_then(|operation| operation.operation_id.clone())
+                .unwrap_or_else(|| format!("{module_name}/http/{method}:{}", route.path)),
+            provider_name: provider_name.map(str::to_owned),
+            module_name: module_name.to_owned(),
+            kind: AdminServiceOperationKindDto::HttpRoute,
+            name: route
+                .display_name
+                .clone()
+                .unwrap_or_else(|| format!("{method} {}", route.path)),
+            method: Some(method),
+            path: Some(route.path.clone()),
+            capability: route.capability.clone(),
+            summary: route
+                .operation
+                .as_ref()
+                .and_then(|operation| operation.summary.clone())
+                .or_else(|| route.display_name.clone())
+                .or_else(|| route.story_title.clone()),
+            safe_probe,
+            links: service_module_operation_links(provider_name, module_name),
+            next_action: service_module_operation_next_action(safe_probe),
+        });
+    }
+
+    if let Some(runtime) = metadata.runtime.as_ref() {
+        for function in &runtime.functions {
+            let safe_probe = function
+                .operation
+                .as_ref()
+                .is_some_and(|operation| operation.safe_probe.is_some());
+            operations.push(AdminServiceOperationDto {
+                operation_id: function
+                    .operation
+                    .as_ref()
+                    .and_then(|operation| operation.operation_id.clone())
+                    .unwrap_or_else(|| format!("{module_name}/runtime/{}", function.name)),
+                provider_name: provider_name.map(str::to_owned),
+                module_name: module_name.to_owned(),
+                kind: AdminServiceOperationKindDto::RuntimeFunction,
+                name: function.name.clone(),
+                method: None,
+                path: None,
+                capability: None,
+                summary: function
+                    .operation
+                    .as_ref()
+                    .and_then(|operation| operation.summary.clone()),
+                safe_probe,
+                links: service_module_operation_links(provider_name, module_name),
+                next_action: service_module_operation_next_action(safe_probe),
+            });
+        }
+    }
+
+    if let Some(events) = metadata.events.as_ref() {
+        for handler in &events.handlers {
+            let safe_probe = handler
+                .operation
+                .as_ref()
+                .is_some_and(|operation| operation.safe_probe.is_some());
+            operations.push(AdminServiceOperationDto {
+                operation_id: handler
+                    .operation
+                    .as_ref()
+                    .and_then(|operation| operation.operation_id.clone())
+                    .unwrap_or_else(|| format!("{module_name}/event/{}", handler.name)),
+                provider_name: provider_name.map(str::to_owned),
+                module_name: module_name.to_owned(),
+                kind: AdminServiceOperationKindDto::EventHandler,
+                name: handler.name.clone(),
+                method: None,
+                path: None,
+                capability: None,
+                summary: handler
+                    .operation
+                    .as_ref()
+                    .and_then(|operation| operation.summary.clone())
+                    .or_else(|| Some(handler.event_name.clone())),
+                safe_probe,
+                links: service_module_operation_links(provider_name, module_name),
+                next_action: service_module_operation_next_action(safe_probe),
+            });
+        }
+    }
+
+    if let Some(AdminSurface::DeclarativeCustom(admin)) = metadata.admin.as_ref() {
+        for action in &admin.actions {
+            let safe_probe = action
+                .operation
+                .as_ref()
+                .is_some_and(|operation| operation.safe_probe.is_some());
+            operations.push(AdminServiceOperationDto {
+                operation_id: action
+                    .operation
+                    .as_ref()
+                    .and_then(|operation| operation.operation_id.clone())
+                    .unwrap_or_else(|| format!("{module_name}/action/{}", action.name)),
+                provider_name: provider_name.map(str::to_owned),
+                module_name: module_name.to_owned(),
+                kind: AdminServiceOperationKindDto::AdminAction,
+                name: action.name.clone(),
+                method: None,
+                path: None,
+                capability: Some(action.capability.clone()),
+                summary: action
+                    .operation
+                    .as_ref()
+                    .and_then(|operation| operation.summary.clone())
+                    .or_else(|| Some(action.label.clone())),
+                safe_probe,
+                links: service_module_operation_links(provider_name, module_name),
+                next_action: service_module_operation_next_action(safe_probe),
+            });
+        }
+    }
+
+    operations.sort_by(|left, right| left.operation_id.cmp(&right.operation_id));
+    operations
+}
+
+fn module_http_method(method: ModuleHttpMethod) -> String {
+    match method {
+        ModuleHttpMethod::Get => "GET".to_owned(),
+        ModuleHttpMethod::Post => "POST".to_owned(),
+        ModuleHttpMethod::Put => "PUT".to_owned(),
+        ModuleHttpMethod::Patch => "PATCH".to_owned(),
+        ModuleHttpMethod::Delete => "DELETE".to_owned(),
+        _ => format!("{method:?}").to_uppercase(),
+    }
+}
+
+fn service_module_operation_links(
+    provider_name: Option<&str>,
+    module_name: &str,
+) -> AdminServiceOperationLinksDto {
+    let query = provider_name.unwrap_or(module_name);
+    AdminServiceOperationLinksDto {
+        remote_calls: Some(format!("/operations/remote-calls?module={module_name}")),
+        runtime: Some(format!("/operations/functions?module={module_name}")),
+        story: format!("/?q={query}"),
+        technical_operations: format!("/operations?q={query}"),
+    }
+}
+
+fn service_module_operation_next_action(safe_probe: bool) -> String {
+    if safe_probe {
+        "run lenso service check for this operation"
+    } else {
+        "add safeProbe metadata before active checks"
+    }
+    .to_owned()
 }
 
 fn reconcile_service_provider_remote_source(

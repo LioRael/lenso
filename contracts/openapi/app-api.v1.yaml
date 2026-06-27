@@ -5124,6 +5124,7 @@ components:
       - healthHistory
       - compatibility
       - services
+      - operations
       - fixes
       properties:
         baseUrl:
@@ -5158,6 +5159,10 @@ components:
           - 'null'
         moduleName:
           type: string
+        operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminServiceOperationDto'
         providerName:
           type:
           - string
@@ -5281,6 +5286,76 @@ components:
       - starting
       - unreachable
       - unknown
+    AdminServiceOperationDto:
+      type: object
+      required:
+      - operationId
+      - moduleName
+      - kind
+      - name
+      - safeProbe
+      - links
+      - nextAction
+      properties:
+        capability:
+          type:
+          - string
+          - 'null'
+        kind:
+          $ref: '#/components/schemas/AdminServiceOperationKindDto'
+        links:
+          $ref: '#/components/schemas/AdminServiceOperationLinksDto'
+        method:
+          type:
+          - string
+          - 'null'
+        moduleName:
+          type: string
+        name:
+          type: string
+        nextAction:
+          type: string
+        operationId:
+          type: string
+        path:
+          type:
+          - string
+          - 'null'
+        providerName:
+          type:
+          - string
+          - 'null'
+        safeProbe:
+          type: boolean
+        summary:
+          type:
+          - string
+          - 'null'
+    AdminServiceOperationKindDto:
+      type: string
+      enum:
+      - http_route
+      - runtime_function
+      - event_handler
+      - admin_action
+    AdminServiceOperationLinksDto:
+      type: object
+      required:
+      - story
+      - technicalOperations
+      properties:
+        remoteCalls:
+          type:
+          - string
+          - 'null'
+        runtime:
+          type:
+          - string
+          - 'null'
+        story:
+          type: string
+        technicalOperations:
+          type: string
     AdminServiceRestartResponse:
       type: object
       required:
