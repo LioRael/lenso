@@ -7,6 +7,10 @@ use platform_module::{
 use platform_module_remote::{
     RemoteAdminActionSource, RemoteAdminDataSource, RemoteModuleConfig, RemoteModuleSource,
 };
+#[allow(dead_code)]
+#[path = "../src/protocol.rs"]
+mod protocol;
+use protocol::RemoteManifestEnvelope;
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
 
@@ -360,6 +364,73 @@ async fn loads_service_manifest_as_provider_with_modules() {
         format!("{base_url}/modules/support-ticket")
     );
     assert!(loaded[0].module.admin_data.is_some());
+}
+
+#[test]
+fn service_manifest_accepts_v6_provider_fields() {
+    let value = serde_json::json!({
+        "name": "support-suite-provider",
+        "version": "0.2.0",
+        "provider": {
+            "name": "support-suite-provider",
+            "vendor": "Lenso",
+            "summary": "Support workflow provider"
+        },
+        "compatibility": {
+            "remoteProtocolVersion": "1",
+            "requiredHostFeatures": ["service.status"]
+        },
+        "health": {
+            "readyUrl": "http://127.0.0.1:4110/lenso/service/v1/ready",
+            "statusUrl": "http://127.0.0.1:4110/lenso/service/v1/status"
+        },
+        "localProcess": {
+            "command": "pnpm --dir examples/support-ticket start",
+            "autoStart": true,
+            "readyTimeoutMs": 30000
+        },
+        "modules": [
+            {
+                "name": "support-ticket",
+                "version": "0.1.0",
+                "capabilities": ["support_ticket.tickets.read"]
+            }
+        ]
+    });
+
+    let envelope: RemoteManifestEnvelope = serde_json::from_value(value).unwrap();
+    let RemoteManifestEnvelope::Service(service) = envelope else {
+        panic!("expected service envelope");
+    };
+
+    assert_eq!(service.name, "support-suite-provider");
+    assert_eq!(service.version.as_deref(), Some("0.2.0"));
+    assert_eq!(
+        service.provider.as_ref().unwrap().vendor.as_deref(),
+        Some("Lenso")
+    );
+    assert_eq!(
+        service.health.as_ref().unwrap().ready_url.as_deref(),
+        Some("http://127.0.0.1:4110/lenso/service/v1/ready")
+    );
+    assert_eq!(service.modules[0].name, "support-ticket");
+}
+
+#[test]
+fn service_manifest_accepts_v5_shape() {
+    let value = serde_json::json!({
+        "name": "support-service",
+        "modules": [{ "name": "support-ticket", "version": "0.1.0" }]
+    });
+
+    let envelope: RemoteManifestEnvelope = serde_json::from_value(value).unwrap();
+    let RemoteManifestEnvelope::Service(service) = envelope else {
+        panic!("expected service envelope");
+    };
+
+    assert_eq!(service.name, "support-service");
+    assert!(service.provider.is_none());
+    assert_eq!(service.modules.len(), 1);
 }
 
 #[tokio::test]

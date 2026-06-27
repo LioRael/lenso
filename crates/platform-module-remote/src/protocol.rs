@@ -7,9 +7,106 @@ use std::collections::BTreeMap;
 pub type RemoteManifestResponse = ModuleManifest;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RemoteServiceManifestResponse {
     pub name: String,
+    #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default)]
+    pub provider: Option<RemoteServiceProviderMetadata>,
+    #[serde(default)]
+    pub compatibility: Option<RemoteServiceCompatibility>,
+    #[serde(default)]
+    pub config: Vec<RemoteServiceConfigField>,
+    #[serde(default)]
+    pub env: Vec<RemoteServiceEnvField>,
+    #[serde(default)]
+    pub health: Option<RemoteServiceHealth>,
+    #[serde(default)]
+    pub local_process: Option<RemoteServiceLocalProcess>,
     pub modules: Vec<ModuleManifest>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteServiceProviderMetadata {
+    pub name: String,
+    #[serde(default)]
+    pub vendor: Option<String>,
+    #[serde(default)]
+    pub summary: Option<String>,
+    #[serde(default)]
+    pub homepage: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteServiceCompatibility {
+    #[serde(default)]
+    pub remote_protocol_version: Option<String>,
+    #[serde(default)]
+    pub required_host_features: Vec<String>,
+    #[serde(default)]
+    pub sdk_language: Option<String>,
+    #[serde(default)]
+    pub sdk_version: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteServiceConfigField {
+    pub key: String,
+    #[serde(default)]
+    pub required: bool,
+    #[serde(default)]
+    pub default_value: Option<serde_json::Value>,
+    #[serde(default)]
+    pub secret: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteServiceEnvField {
+    pub name: String,
+    #[serde(default)]
+    pub required: bool,
+    #[serde(default)]
+    pub example: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteServiceHealth {
+    #[serde(default)]
+    pub manifest_url: Option<String>,
+    #[serde(default)]
+    pub ready_url: Option<String>,
+    #[serde(default)]
+    pub liveness_url: Option<String>,
+    #[serde(default)]
+    pub status_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteServiceLocalProcess {
+    pub command: String,
+    #[serde(default)]
+    pub cwd: Option<String>,
+    #[serde(default)]
+    pub env: BTreeMap<String, String>,
+    #[serde(default = "default_service_auto_start")]
+    pub auto_start: bool,
+    #[serde(default = "default_service_ready_timeout_ms")]
+    pub ready_timeout_ms: u64,
+}
+
+fn default_service_auto_start() -> bool {
+    true
+}
+
+fn default_service_ready_timeout_ms() -> u64 {
+    30_000
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
