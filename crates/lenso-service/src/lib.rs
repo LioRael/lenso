@@ -1,6 +1,7 @@
 use axum::{Json, Router, routing::get};
-use platform_module::ModuleManifest;
 use serde::{Deserialize, Serialize};
+
+pub use lenso_contracts::ModuleManifest;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

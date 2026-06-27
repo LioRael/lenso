@@ -1707,7 +1707,7 @@ name = "lenso-service"
 version = "0.1.0"
 dependencies = [
  "axum",
- "lenso-platform-module",
+ "lenso-contracts",
  "serde",
  "serde_json",
 ]
