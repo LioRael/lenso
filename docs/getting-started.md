@@ -137,7 +137,7 @@ lenso service install http://127.0.0.1:4110/lenso/service/v1/manifest
 
 Restart the local services and open the Runtime Console. The `support-ticket`
 module should be available through the Modules/Data surfaces, with
-`support-service` shown as its service provider.
+`support-suite-provider` shown as its service provider.
 
 Remote sources and Runtime Console package exports are loaded at process
 startup. After installing a module, restart the API, worker, and Runtime Console.

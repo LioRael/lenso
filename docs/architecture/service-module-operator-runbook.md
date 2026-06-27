@@ -56,7 +56,7 @@ The recommended proof path is the support-ticket service in
 ```sh
 pnpm start:support-ticket
 lenso service install http://127.0.0.1:4110/lenso/service/v1/manifest
-lenso service doctor support-ticket --json
+lenso service doctor support-suite-provider --json
 ```
 
 Use `pnpm host-api-smoke:support-ticket` for the one full host proof when

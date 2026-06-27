@@ -298,17 +298,21 @@ pub struct AdminModuleConsolePackagePlanPackageDto {
 #[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AdminModuleCompatibilityDto {
+    #[serde(alias = "console_package_api")]
     pub console_package_api: Option<String>,
     pub lenso: Option<AdminModuleLensoCompatibilityDto>,
+    #[serde(alias = "remote_protocol_version")]
     pub remote_protocol_version: Option<String>,
-    #[serde(default)]
+    #[serde(default, alias = "required_host_features")]
     pub required_host_features: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AdminModuleLensoCompatibilityDto {
+    #[serde(alias = "min_version")]
     pub min_version: Option<String>,
+    #[serde(alias = "max_version")]
     pub max_version: Option<String>,
 }
 

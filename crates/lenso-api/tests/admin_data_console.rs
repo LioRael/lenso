@@ -2092,6 +2092,17 @@ async fn available_modules_marks_catalog_preflight_issues() {
                     "manifestReference": "./lenso.module.json"
                 },
                 {
+                    "name": "ts-service",
+                    "version": "0.1.0",
+                    "source": "service",
+                    "manifestReference": "https://example.com/ts-service/manifest",
+                    "baseUrl": "https://example.com/ts-service",
+                    "compatibility": {
+                        "remote_protocol_version": "99",
+                        "required_host_features": ["service.status"]
+                    }
+                },
+                {
                     "name": "old-billing",
                     "version": "0.1.0",
                     "source": "remote",
@@ -2123,8 +2134,8 @@ async fn available_modules_marks_catalog_preflight_issues() {
     assert_eq!(response.status(), StatusCode::OK);
     let body = json_body(response).await;
     assert_eq!(body["status"], "failed");
-    assert_eq!(body["catalog"]["modules"], 3);
-    assert_eq!(body["issues"].as_array().expect("issues array").len(), 2);
+    assert_eq!(body["catalog"]["modules"], 4);
+    assert_eq!(body["issues"].as_array().expect("issues array").len(), 3);
     assert_eq!(body["issues"][0]["group"], "Compatibility");
     assert_eq!(
         body["issues"][0]["message"],
@@ -2132,12 +2143,18 @@ async fn available_modules_marks_catalog_preflight_issues() {
     );
     assert_eq!(body["issues"][1]["group"], "Catalog");
     assert_eq!(body["issues"][1]["message"], "local-crm baseUrl is missing");
+    assert_eq!(body["issues"][2]["group"], "Compatibility");
+    assert_eq!(
+        body["issues"][2]["message"],
+        "ts-service requires remote protocol 99; host supports 1"
+    );
     assert_eq!(body["modules"][0]["status"], "needs_attention");
     assert_eq!(body["modules"][1]["status"], "needs_attention");
-    assert_eq!(body["modules"][2]["status"], "archived");
-    assert_eq!(body["modules"][2]["manifestStatus"], "archived");
+    assert_eq!(body["modules"][2]["status"], "needs_attention");
+    assert_eq!(body["modules"][3]["status"], "archived");
+    assert_eq!(body["modules"][3]["manifestStatus"], "archived");
     assert_eq!(
-        body["modules"][2]["archiveReason"],
+        body["modules"][3]["archiveReason"],
         "replaced by billing-v2"
     );
 }
