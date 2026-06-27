@@ -326,7 +326,7 @@ paths:
           type: string
       responses:
         '200':
-          description: Available remote modules for marketplace install
+          description: Available catalog services and linked modules
           content:
             application/json:
               schema:
@@ -351,7 +351,7 @@ paths:
       parameters:
       - name: module
         in: path
-        description: Available remote module name
+        description: Available catalog entry name
         required: true
         schema:
           type: string
@@ -363,7 +363,7 @@ paths:
           type: string
       responses:
         '200':
-          description: Remote module install state written to host-local files
+          description: Catalog install state written to host-local files
           content:
             application/json:
               schema:
@@ -448,7 +448,7 @@ paths:
           type: string
       responses:
         '200':
-          description: Legacy alias for available remote modules
+          description: Legacy alias for available catalog services
           content:
             application/json:
               schema:
@@ -615,7 +615,7 @@ paths:
           type: string
       responses:
         '200':
-          description: Service module lifecycle state
+          description: Service provider lifecycle state
           content:
             application/json:
               schema:
@@ -3647,8 +3647,8 @@ components:
     AdminModuleInstallResponse:
       type: object
       description: |-
-        Response for visually installing an available remote module from the
-        marketplace catalog.
+        Response for visually installing an available service or linked module from
+        the curated catalog.
       required:
       - moduleName
       - manifestReference
@@ -4005,7 +4005,7 @@ components:
       type: object
       description: |-
         Response for `GET /admin/data/available-modules`: a read-only list of
-        remote modules that can be installed from their manifest URL.
+        catalog entries that can be installed from their manifest URL.
       required:
       - version
       - status
