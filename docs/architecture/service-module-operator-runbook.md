@@ -10,6 +10,7 @@ policy, runtime queues, Runtime Story, Remote Calls, and Technical Operations.
 ```sh
 lenso service list
 lenso service status <provider> <service>
+lenso service logs <provider> <service> --tail 100
 lenso service export --module <provider> --format compose
 lenso service doctor <module> --json
 ```
@@ -18,6 +19,7 @@ If the service is not running:
 
 ```sh
 lenso service start <provider> <service>
+lenso service logs <provider> <service> --tail 100
 ```
 
 After installing or changing a service source, restart the API and worker so
@@ -31,7 +33,7 @@ the host reloads `REMOTE_MODULES` and `.lenso/module-services.json`.
 | `restart_pending` | Desired config changed after the current API/worker process started. | Doctor shows desired vs running source. | Modules shows restart pending. | Restart API and worker. |
 | `configured_not_loaded` | The host has a configured source but did not load module metadata. | Doctor source exists; module metadata absent. | Modules shows configured but not loaded. | Restart; then inspect manifest errors. |
 | `manifest_unreachable` | The host cannot fetch the module manifest. | Doctor manifest status is unreachable. | Modules shows manifest unreachable. | Start the service or fix the base URL. |
-| `service_not_ready` | A declared service process is not passing its ready URL. | `lenso service status <provider> <service>` | Modules shows service not ready. | Start the service or inspect logs. |
+| `service_not_ready` | A declared service process is not passing its ready URL. | `lenso service status <provider> <service>` and `lenso service logs <provider> <service> --tail 100` | Modules shows service not ready. | Start the service or inspect local logs. |
 | `stale_state` | Lock or pid files exist but the ready URL is failing. | Doctor lists lock or pid paths. | Modules shows stale state. | Stop the service, then remove stale files if needed. |
 | `not_configured` | The host has no service source for the module. | Doctor has no source entry. | Module is absent or install state is empty. | Install the manifest or add `REMOTE_MODULES`. |
 
@@ -39,6 +41,11 @@ Services can also declare `compatibility`, `statusUrl` or `statusPath`,
 `deployment`, and `install.services` metadata. The host records standard
 status checks in `.lenso/service-health.json` and Console shows the recent
 health history without taking over process orchestration.
+
+Local logs are only captured for services started by `lenso service start` or
+host-started managed services. They live under
+`.lenso/service-logs/<provider>/<service>.log` in the host repo and are not a
+deployment log store.
 
 ## Boundaries
 
