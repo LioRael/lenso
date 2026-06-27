@@ -1,7 +1,12 @@
 use axum::{Json, Router, routing::get};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub use lenso_contracts::ModuleManifest;
+
+pub const SERVICE_CONTRACT_SCHEMA_JSON: &str =
+    include_str!("../schemas/lenso-service.v1.schema.json");
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -28,6 +33,55 @@ pub struct ServiceProvider {
     pub homepage: Option<String>,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceCompatibility {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_protocol_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub required_host_features: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sdk_language: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sdk_version: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceConfigField {
+    pub key: String,
+    #[serde(default)]
+    pub required: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_value: Option<Value>,
+    #[serde(default)]
+    pub secret: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceEnvField {
+    pub name: String,
+    #[serde(default)]
+    pub required: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub example: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceLocalProcess {
+    pub command: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub env: BTreeMap<String, String>,
+    #[serde(default = "default_service_auto_start")]
+    pub auto_start: bool,
+    #[serde(default = "default_service_ready_timeout_ms")]
+    pub ready_timeout_ms: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServiceContract {
@@ -37,7 +91,15 @@ pub struct ServiceContract {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider: Option<ServiceProvider>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compatibility: Option<ServiceCompatibility>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub config: Vec<ServiceConfigField>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub env: Vec<ServiceEnvField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub health: Option<ServiceHealth>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_process: Option<ServiceLocalProcess>,
     pub modules: Vec<ModuleManifest>,
 }
 
@@ -48,7 +110,11 @@ impl ServiceContract {
             name: name.into(),
             version: None,
             provider: None,
+            compatibility: None,
+            config: Vec::new(),
+            env: Vec::new(),
             health: None,
+            local_process: None,
             modules,
         }
     }
@@ -66,8 +132,32 @@ impl ServiceContract {
     }
 
     #[must_use]
+    pub fn compatibility(mut self, compatibility: ServiceCompatibility) -> Self {
+        self.compatibility = Some(compatibility);
+        self
+    }
+
+    #[must_use]
+    pub fn config(mut self, config: Vec<ServiceConfigField>) -> Self {
+        self.config = config;
+        self
+    }
+
+    #[must_use]
+    pub fn env(mut self, env: Vec<ServiceEnvField>) -> Self {
+        self.env = env;
+        self
+    }
+
+    #[must_use]
     pub fn health(mut self, health: ServiceHealth) -> Self {
         self.health = Some(health);
+        self
+    }
+
+    #[must_use]
+    pub fn local_process(mut self, local_process: ServiceLocalProcess) -> Self {
+        self.local_process = Some(local_process);
         self
     }
 }
@@ -83,4 +173,287 @@ pub fn health_router() -> Router {
             "/lenso/service/v1/status",
             get(|| async { Json(serde_json::json!({"state": "ready"})) }),
         )
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServiceContractIssue {
+    pub path: String,
+    pub message: String,
+}
+
+impl ServiceContractIssue {
+    fn new(path: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            message: message.into(),
+        }
+    }
+}
+
+#[must_use]
+pub fn validate_service_contract_value(value: &Value) -> Vec<ServiceContractIssue> {
+    let Some(object) = value.as_object() else {
+        return vec![ServiceContractIssue::new(
+            "$",
+            "service contract must be an object",
+        )];
+    };
+
+    let mut issues = Vec::new();
+    require_non_empty_string(object.get("name"), "$.name", &mut issues);
+    if let Some(version) = object.get("version") {
+        require_non_empty_string(Some(version), "$.version", &mut issues);
+    }
+    validate_provider(object.get("provider"), &mut issues);
+    validate_named_fields_array(object.get("config"), "$.config", "key", &mut issues);
+    validate_named_fields_array(object.get("env"), "$.env", "name", &mut issues);
+    validate_string_array(
+        object
+            .get("requiredEnv")
+            .or_else(|| object.get("required_env")),
+        "$.requiredEnv",
+        &mut issues,
+    );
+    validate_compatibility(object.get("compatibility"), &mut issues);
+    validate_local_process(
+        object
+            .get("localProcess")
+            .or_else(|| object.get("local_process")),
+        "$.localProcess",
+        &mut issues,
+    );
+    validate_install(object.get("install"), &mut issues);
+    validate_modules(object.get("modules"), &mut issues);
+    issues
+}
+
+fn validate_provider(value: Option<&Value>, issues: &mut Vec<ServiceContractIssue>) {
+    let Some(value) = value else {
+        return;
+    };
+    if !value.is_object() {
+        issues.push(ServiceContractIssue::new(
+            "$.provider",
+            "provider must be an object",
+        ));
+        return;
+    }
+    require_non_empty_string(value.get("name"), "$.provider.name", issues);
+}
+
+fn validate_compatibility(value: Option<&Value>, issues: &mut Vec<ServiceContractIssue>) {
+    let Some(value) = value else {
+        return;
+    };
+    let Some(object) = value.as_object() else {
+        issues.push(ServiceContractIssue::new(
+            "$.compatibility",
+            "compatibility must be an object",
+        ));
+        return;
+    };
+    validate_string_array(
+        object
+            .get("requiredHostFeatures")
+            .or_else(|| object.get("required_host_features")),
+        "$.compatibility.requiredHostFeatures",
+        issues,
+    );
+}
+
+fn validate_named_fields_array(
+    value: Option<&Value>,
+    path: &str,
+    name_field: &str,
+    issues: &mut Vec<ServiceContractIssue>,
+) {
+    let Some(value) = value else {
+        return;
+    };
+    let Some(array) = value.as_array() else {
+        issues.push(ServiceContractIssue::new(path, "field must be an array"));
+        return;
+    };
+    for (index, item) in array.iter().enumerate() {
+        if !item.is_object() {
+            issues.push(ServiceContractIssue::new(
+                format!("{path}[{index}]"),
+                "entry must be an object",
+            ));
+            continue;
+        }
+        require_non_empty_string(
+            item.get(name_field),
+            &format!("{path}[{index}].{name_field}"),
+            issues,
+        );
+    }
+}
+
+fn validate_local_process(
+    value: Option<&Value>,
+    path: &str,
+    issues: &mut Vec<ServiceContractIssue>,
+) {
+    let Some(value) = value else {
+        return;
+    };
+    if !value.is_object() {
+        issues.push(ServiceContractIssue::new(
+            path,
+            "localProcess must be an object",
+        ));
+        return;
+    }
+    require_non_empty_string(value.get("command"), &format!("{path}.command"), issues);
+}
+
+fn validate_install(value: Option<&Value>, issues: &mut Vec<ServiceContractIssue>) {
+    let Some(value) = value else {
+        return;
+    };
+    let Some(object) = value.as_object() else {
+        issues.push(ServiceContractIssue::new(
+            "$.install",
+            "install must be an object",
+        ));
+        return;
+    };
+    let Some(services) = object.get("services") else {
+        return;
+    };
+    let Some(array) = services.as_array() else {
+        issues.push(ServiceContractIssue::new(
+            "$.install.services",
+            "install services must be an array",
+        ));
+        return;
+    };
+    for (index, service) in array.iter().enumerate() {
+        if !service.is_object() {
+            issues.push(ServiceContractIssue::new(
+                format!("$.install.services[{index}]"),
+                "service must be an object",
+            ));
+            continue;
+        }
+        require_non_empty_string(
+            service.get("name"),
+            &format!("$.install.services[{index}].name"),
+            issues,
+        );
+        require_non_empty_string(
+            service.get("command"),
+            &format!("$.install.services[{index}].command"),
+            issues,
+        );
+    }
+}
+
+fn validate_modules(value: Option<&Value>, issues: &mut Vec<ServiceContractIssue>) {
+    let Some(value) = value else {
+        issues.push(ServiceContractIssue::new(
+            "$.modules",
+            "modules must be an array",
+        ));
+        return;
+    };
+    let Some(array) = value.as_array() else {
+        issues.push(ServiceContractIssue::new(
+            "$.modules",
+            "modules must be an array",
+        ));
+        return;
+    };
+    if array.is_empty() {
+        issues.push(ServiceContractIssue::new(
+            "$.modules",
+            "modules must not be empty",
+        ));
+        return;
+    }
+
+    let mut names = BTreeSet::new();
+    for (index, module) in array.iter().enumerate() {
+        let Some(object) = module.as_object() else {
+            issues.push(ServiceContractIssue::new(
+                format!("$.modules[{index}]"),
+                "module must be an object",
+            ));
+            continue;
+        };
+        let Some(module_name) = non_empty_string(
+            object.get("name"),
+            &format!("$.modules[{index}].name"),
+            issues,
+        ) else {
+            continue;
+        };
+        if !names.insert(module_name.to_owned()) {
+            issues.push(ServiceContractIssue::new(
+                format!("$.modules[{index}].name"),
+                format!("module `{module_name}` is declared more than once"),
+            ));
+        }
+        validate_string_array(
+            object.get("capabilities"),
+            &format!("$.modules[{index}].capabilities"),
+            issues,
+        );
+        validate_string_array(
+            object.get("dependencies"),
+            &format!("$.modules[{index}].dependencies"),
+            issues,
+        );
+    }
+}
+
+fn validate_string_array(
+    value: Option<&Value>,
+    path: &str,
+    issues: &mut Vec<ServiceContractIssue>,
+) {
+    let Some(value) = value else {
+        return;
+    };
+    let Some(array) = value.as_array() else {
+        issues.push(ServiceContractIssue::new(path, "field must be an array"));
+        return;
+    };
+    for (index, item) in array.iter().enumerate() {
+        require_non_empty_string(Some(item), &format!("{path}[{index}]"), issues);
+    }
+}
+
+fn require_non_empty_string(
+    value: Option<&Value>,
+    path: &str,
+    issues: &mut Vec<ServiceContractIssue>,
+) {
+    let _ = non_empty_string(value, path, issues);
+}
+
+fn non_empty_string<'a>(
+    value: Option<&'a Value>,
+    path: &str,
+    issues: &mut Vec<ServiceContractIssue>,
+) -> Option<&'a str> {
+    match value.and_then(Value::as_str).map(str::trim) {
+        Some(value) if !value.is_empty() => Some(value),
+        _ => {
+            issues.push(ServiceContractIssue::new(
+                path,
+                "field must be a non-empty string",
+            ));
+            None
+        }
+    }
+}
+
+const fn default_service_auto_start() -> bool {
+    true
+}
+
+const fn default_service_ready_timeout_ms() -> u64 {
+    30_000
 }

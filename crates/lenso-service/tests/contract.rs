@@ -1,4 +1,8 @@
-use lenso_service::{ModuleManifest, ServiceContract, ServiceHealth, ServiceProvider};
+use lenso_service::{
+    ModuleManifest, SERVICE_CONTRACT_SCHEMA_JSON, ServiceCompatibility, ServiceContract,
+    ServiceHealth, ServiceLocalProcess, ServiceProvider, validate_service_contract_value,
+};
+use serde_json::json;
 
 #[test]
 fn service_contract_serializes_provider_and_modules() {
@@ -17,10 +21,23 @@ fn service_contract_serializes_provider_and_modules() {
         summary: Some("Support workflow provider".to_owned()),
         homepage: None,
     })
+    .compatibility(ServiceCompatibility {
+        remote_protocol_version: Some("1".to_owned()),
+        required_host_features: vec!["service.status".to_owned()],
+        sdk_language: Some("rust".to_owned()),
+        sdk_version: Some("0.1.0".to_owned()),
+    })
     .health(ServiceHealth {
         ready_url: Some("http://127.0.0.1:4110/lenso/service/v1/ready".to_owned()),
         status_url: Some("http://127.0.0.1:4110/lenso/service/v1/status".to_owned()),
         ..ServiceHealth::default()
+    })
+    .local_process(ServiceLocalProcess {
+        command: "cargo run".to_owned(),
+        cwd: None,
+        env: Default::default(),
+        auto_start: true,
+        ready_timeout_ms: 30_000,
     });
 
     let value = serde_json::to_value(contract).unwrap();
@@ -28,6 +45,7 @@ fn service_contract_serializes_provider_and_modules() {
     assert_eq!(value["name"], "support-suite-provider");
     assert_eq!(value["version"], "0.2.0");
     assert_eq!(value["provider"]["vendor"], "Lenso");
+    assert_eq!(value["compatibility"]["remoteProtocolVersion"], "1");
     assert_eq!(
         value["health"]["readyUrl"],
         "http://127.0.0.1:4110/lenso/service/v1/ready"
@@ -43,4 +61,43 @@ fn service_contract_serializes_provider_and_modules() {
     assert!(!provider.contains_key("homepage"));
     assert!(!health.contains_key("manifestUrl"));
     assert!(!health.contains_key("livenessUrl"));
+    assert!(validate_service_contract_value(&value).is_empty());
+}
+
+#[test]
+fn service_contract_schema_is_packaged_with_the_sdk() {
+    let schema: serde_json::Value = serde_json::from_str(SERVICE_CONTRACT_SCHEMA_JSON).unwrap();
+
+    assert_eq!(schema["title"], "LensoServiceContract");
+    assert_eq!(schema["required"], json!(["name", "modules"]));
+}
+
+#[test]
+fn service_contract_validation_reports_paths() {
+    let issues = validate_service_contract_value(&json!({
+        "name": "",
+        "install": {
+            "services": [
+                { "name": "support-suite-provider" }
+            ]
+        },
+        "modules": [
+            {
+                "name": "support-ticket",
+                "capabilities": ["support_ticket.read", 42]
+            },
+            {
+                "name": "support-ticket"
+            }
+        ]
+    }));
+
+    let paths = issues
+        .iter()
+        .map(|issue| issue.path.as_str())
+        .collect::<Vec<_>>();
+    assert!(paths.contains(&"$.name"));
+    assert!(paths.contains(&"$.install.services[0].command"));
+    assert!(paths.contains(&"$.modules[0].capabilities[1]"));
+    assert!(paths.contains(&"$.modules[1].name"));
 }
