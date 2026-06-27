@@ -59,6 +59,7 @@ let manifest = ModuleManifest::builder("example")
             queue: "example".to_owned(),
             input_schema: Some("example.refresh.v1".to_owned()),
             retry_policy: None,
+            operation: None,
         }],
         schedules: vec![],
     })

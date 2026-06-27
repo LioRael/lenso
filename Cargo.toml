@@ -89,6 +89,9 @@ arch-check = { path = "tools/arch-check" }
 remote-module-fixture = { path = "fixtures/remote-module" }
 
 [patch.crates-io]
+lenso-module-auth = { path = "../lenso-auth-module/crates/auth" }
+lenso-module-auth-oidc = { path = "../lenso-auth-module/crates/auth-oidc" }
+lenso-module-auth-password = { path = "../lenso-auth-module/crates/auth-password" }
 lenso-contracts = { path = "crates/lenso-contracts" }
 lenso-platform-core = { path = "crates/platform-core" }
 lenso-platform-http = { path = "crates/platform-http" }

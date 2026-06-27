@@ -3042,6 +3042,10 @@ components:
           type: string
         name:
           type: string
+        operation:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ServiceOperationMetadata'
     AdminActionConfirmation:
       type: object
       required:
@@ -5712,6 +5716,10 @@ components:
         name:
           type: string
           description: Stable handler name used by remote loading sources as the invoke path.
+        operation:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ServiceOperationMetadata'
     EventSurface:
       type: object
       properties:
@@ -5875,6 +5883,10 @@ components:
           description: Compact label used when this route appears as a runtime story node.
         method:
           $ref: '#/components/schemas/ModuleHttpMethod'
+        operation:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ServiceOperationMetadata'
         path:
           type: string
           description: Module-local path, e.g. `/contacts` or `/contacts/{id}`.
@@ -6132,6 +6144,10 @@ components:
         name:
           type: string
           description: Stable function name used by `runtime.function_runs`.
+        operation:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ServiceOperationMetadata'
         queue:
           type: string
           description: Queue name the host should use when registering the function.
@@ -6189,6 +6205,57 @@ components:
         name:
           type: string
           description: Stable schedule name scoped to the owning module.
+    ServiceOperationIdempotency:
+      type: string
+      enum:
+      - none
+      - idempotent
+      - requires_key
+    ServiceOperationMetadata:
+      type: object
+      properties:
+        idempotency:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ServiceOperationIdempotency'
+        inputSchema: {}
+        operationId:
+          type:
+          - string
+          - 'null'
+        outputSchema: {}
+        safeProbe:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ServiceOperationSafeProbe'
+        summary:
+          type:
+          - string
+          - 'null'
+        timeoutMs:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+    ServiceOperationSafeProbe:
+      type: object
+      properties:
+        expectStatus:
+          type:
+          - integer
+          - 'null'
+          format: int32
+          minimum: 0
+        input: {}
+        method:
+          type:
+          - string
+          - 'null'
+        path:
+          type:
+          - string
+          - 'null'
     StoryDisplayDescriptorDto:
       type: object
       required:
