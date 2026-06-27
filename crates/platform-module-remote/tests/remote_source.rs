@@ -380,6 +380,17 @@ fn service_manifest_accepts_v6_provider_fields() {
             "remoteProtocolVersion": "1",
             "requiredHostFeatures": ["service.status"]
         },
+        "config": [{
+            "key": "SUPPORT_API_TOKEN",
+            "required": true,
+            "defaultValue": { "from": "vault" },
+            "secret": true
+        }],
+        "env": [{
+            "name": "SUPPORT_BASE_URL",
+            "required": true,
+            "example": "https://support.example.test"
+        }],
         "health": {
             "readyUrl": "http://127.0.0.1:4110/lenso/service/v1/ready",
             "statusUrl": "http://127.0.0.1:4110/lenso/service/v1/status"
@@ -409,10 +420,33 @@ fn service_manifest_accepts_v6_provider_fields() {
         service.provider.as_ref().unwrap().vendor.as_deref(),
         Some("Lenso")
     );
+    let compatibility = service.compatibility.as_ref().unwrap();
+    assert_eq!(compatibility.remote_protocol_version.as_deref(), Some("1"));
+    assert_eq!(compatibility.required_host_features, ["service.status"]);
+    assert_eq!(service.config[0].key, "SUPPORT_API_TOKEN");
+    assert!(service.config[0].required);
+    assert_eq!(
+        service.config[0].default_value.as_ref(),
+        Some(&serde_json::json!({ "from": "vault" }))
+    );
+    assert!(service.config[0].secret);
+    assert_eq!(service.env[0].name, "SUPPORT_BASE_URL");
+    assert!(service.env[0].required);
+    assert_eq!(
+        service.env[0].example.as_deref(),
+        Some("https://support.example.test")
+    );
     assert_eq!(
         service.health.as_ref().unwrap().ready_url.as_deref(),
         Some("http://127.0.0.1:4110/lenso/service/v1/ready")
     );
+    let local_process = service.local_process.as_ref().unwrap();
+    assert_eq!(
+        local_process.command,
+        "pnpm --dir examples/support-ticket start"
+    );
+    assert!(local_process.auto_start);
+    assert_eq!(local_process.ready_timeout_ms, 30_000);
     assert_eq!(service.modules[0].name, "support-ticket");
 }
 
@@ -431,6 +465,27 @@ fn service_manifest_accepts_v5_shape() {
     assert_eq!(service.name, "support-service");
     assert!(service.provider.is_none());
     assert_eq!(service.modules.len(), 1);
+}
+
+#[test]
+fn service_manifest_accepts_local_process_defaults() {
+    let value = serde_json::json!({
+        "name": "support-service",
+        "localProcess": {
+            "command": "pnpm start"
+        },
+        "modules": [{ "name": "support-ticket", "version": "0.1.0" }]
+    });
+
+    let envelope: RemoteManifestEnvelope = serde_json::from_value(value).unwrap();
+    let RemoteManifestEnvelope::Service(service) = envelope else {
+        panic!("expected service envelope");
+    };
+
+    let local_process = service.local_process.unwrap();
+    assert_eq!(local_process.command, "pnpm start");
+    assert!(local_process.auto_start);
+    assert_eq!(local_process.ready_timeout_ms, 30_000);
 }
 
 #[tokio::test]
