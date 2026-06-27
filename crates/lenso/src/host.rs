@@ -151,6 +151,7 @@ mod tests {
                 capability: None,
                 display_name: Some("App Status".to_owned()),
                 story_title: Some("App Status".to_owned()),
+                operation: None,
             }])
             .build()
     }

@@ -204,6 +204,7 @@ fn stub_declarative_surface() -> AdminSurface {
                 }),
                 confirmation: None,
                 danger_level: AdminActionDangerLevel::Low,
+                operation: None,
             },
             AdminAction {
                 name: "danger_sync".to_owned(),
@@ -215,6 +216,7 @@ fn stub_declarative_surface() -> AdminSurface {
                     required_phrase: Some("SYNC".to_owned()),
                 }),
                 danger_level: AdminActionDangerLevel::High,
+                operation: None,
             },
             AdminAction {
                 name: "validated_sync".to_owned(),
@@ -240,6 +242,7 @@ fn stub_declarative_surface() -> AdminSurface {
                 }),
                 confirmation: None,
                 danger_level: AdminActionDangerLevel::Low,
+                operation: None,
             },
         ],
         fallback_schema: Some(stub_schema()),

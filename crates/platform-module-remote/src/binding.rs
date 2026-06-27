@@ -143,6 +143,7 @@ mod tests {
                         max_attempts: 3,
                         initial_delay_ms: 1000,
                     }),
+                    operation: None,
                 }],
                 schedules: vec![],
             }),
@@ -176,6 +177,7 @@ mod tests {
                     queue: "remote-crm".to_owned(),
                     input_schema: None,
                     retry_policy: None,
+                    operation: None,
                 }],
                 schedules: vec![],
             }),
@@ -195,6 +197,7 @@ mod tests {
                 handlers: vec![EventHandlerDeclaration {
                     name: "sync_contact_on_user_registered".to_owned(),
                     event_name: "identity.user_registered.v1".to_owned(),
+                    operation: None,
                 }],
             }),
         )
@@ -215,6 +218,7 @@ mod tests {
                 handlers: vec![EventHandlerDeclaration {
                     name: "sync/contact".to_owned(),
                     event_name: "identity.user_registered.v1".to_owned(),
+                    operation: None,
                 }],
             }),
         )

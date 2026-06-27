@@ -1567,6 +1567,7 @@ mod tests {
                     capability: Some("remote_crm.contacts.read".to_owned()),
                     display_name: Some("List Contacts".to_owned()),
                     story_title: Some("List Contacts".to_owned()),
+                    operation: None,
                 },
                 ModuleHttpRoute {
                     method: ModuleHttpMethod::Post,
@@ -1574,6 +1575,7 @@ mod tests {
                     capability: Some("remote_crm.contacts.write".to_owned()),
                     display_name: None,
                     story_title: None,
+                    operation: None,
                 },
             ])
             .build();
@@ -1602,6 +1604,7 @@ mod tests {
                         max_attempts: 3,
                         initial_delay_ms: 1000,
                     }),
+                    operation: None,
                 }],
                 schedules: vec![ScheduledFunctionDeclaration {
                     name: "sync_contacts_hourly".to_owned(),
@@ -1632,6 +1635,7 @@ mod tests {
                 handlers: vec![EventHandlerDeclaration {
                     name: "sync_contact_on_user_registered".to_owned(),
                     event_name: "identity.user_registered.v1".to_owned(),
+                    operation: None,
                 }],
             })
             .build();
@@ -1741,6 +1745,7 @@ mod tests {
                             max_attempts: 0,
                             initial_delay_ms: 1000,
                         }),
+                        operation: None,
                     },
                     RuntimeFunctionDeclaration {
                         name: "remote_crm.sync_contact.v1".to_owned(),
@@ -1748,6 +1753,7 @@ mod tests {
                         queue: "remote-crm".to_owned(),
                         input_schema: Some("remote_crm.sync_contact.input.v1".to_owned()),
                         retry_policy: None,
+                        operation: None,
                     },
                     RuntimeFunctionDeclaration {
                         name: "remote_crm.sync_contact.v1".to_owned(),
@@ -1755,6 +1761,7 @@ mod tests {
                         queue: "remote-crm".to_owned(),
                         input_schema: Some("remote_crm.sync_contact.v1".to_owned()),
                         retry_policy: None,
+                        operation: None,
                     },
                 ],
                 schedules: vec![],
@@ -1794,6 +1801,7 @@ mod tests {
                         max_attempts: 2,
                         initial_delay_ms: 500,
                     }),
+                    operation: None,
                 }],
                 schedules: vec![],
             })
@@ -1914,6 +1922,7 @@ mod tests {
                     queue: "remote-crm".to_owned(),
                     input_schema: Some("remote_crm.warm_contact_cache.v1".to_owned()),
                     retry_policy: None,
+                    operation: None,
                 }],
                 schedules: vec![],
             })
@@ -1974,6 +1983,7 @@ mod tests {
                 capability: Some("remote_crm.contacts.read".to_owned()),
                 display_name: Some("Fetch Contact".to_owned()),
                 story_title: Some("Fetch Contact".to_owned()),
+                operation: None,
             }])
             .declarative_admin(AdminDeclarativeSurface {
                 pages: vec![AdminDeclarativePage {
@@ -1994,6 +2004,7 @@ mod tests {
                     input_schema: None,
                     confirmation: None,
                     danger_level: AdminActionDangerLevel::Low,
+                    operation: None,
                 }],
                 fallback_schema: Some(AdminSchema {
                     entities: vec![crate::EntitySchema {
@@ -2044,6 +2055,7 @@ mod tests {
                     capability: None,
                     display_name: None,
                     story_title: None,
+                    operation: None,
                 },
                 ModuleHttpRoute {
                     method: ModuleHttpMethod::Get,
@@ -2051,6 +2063,7 @@ mod tests {
                     capability: None,
                     display_name: None,
                     story_title: None,
+                    operation: None,
                 },
             ])
             .embedded_admin(AdminEmbeddedSurface {
@@ -2080,6 +2093,7 @@ mod tests {
                         max_attempts: 0,
                         initial_delay_ms: 1000,
                     }),
+                    operation: None,
                 }],
                 schedules: vec![ScheduledFunctionDeclaration {
                     name: "sync_contacts_hourly".to_owned(),

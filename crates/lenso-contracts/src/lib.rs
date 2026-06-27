@@ -13,6 +13,7 @@ mod http;
 mod lifecycle;
 mod manifest;
 mod module_source;
+pub mod operation;
 mod runtime;
 mod story_display;
 
@@ -43,6 +44,9 @@ pub use manifest::{
     module_capability_references,
 };
 pub use module_source::ModuleSource;
+pub use operation::{
+    ServiceOperationIdempotency, ServiceOperationMetadata, ServiceOperationSafeProbe,
+};
 pub use runtime::{
     RuntimeFunctionDeclaration, RuntimeRetryPolicyDeclaration, RuntimeSurface,
     ScheduledFunctionDeclaration,

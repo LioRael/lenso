@@ -30,6 +30,8 @@ pub struct RuntimeFunctionDeclaration {
     /// enforcement and may clamp values when behavior registration is added.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retry_policy: Option<RuntimeRetryPolicyDeclaration>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation: Option<crate::ServiceOperationMetadata>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]

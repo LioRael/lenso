@@ -3950,6 +3950,7 @@ mod tests {
                         queue: "test".to_owned(),
                         input_schema: None,
                         retry_policy: None,
+                        operation: None,
                     }],
                     schedules: vec![],
                 });
