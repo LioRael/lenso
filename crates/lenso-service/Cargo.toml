@@ -1,0 +1,20 @@
+[package]
+name = "lenso-service"
+version = "0.1.0"
+edition.workspace = true
+license = "MIT"
+description = "Rust helpers for building Lenso service providers."
+repository = "https://github.com/LioRael/lenso"
+homepage = "https://github.com/LioRael/lenso"
+categories = ["web-programming", "development-tools"]
+keywords = ["backend", "framework", "services"]
+rust-version.workspace = true
+
+[dependencies]
+axum.workspace = true
+platform-module.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true
