@@ -115,6 +115,7 @@ pub enum AdminServiceModuleLifecycleStatus {
 #[serde(rename_all = "camelCase")]
 pub struct AdminServiceModuleLifecycleModuleDto {
     pub module_name: String,
+    pub provider_name: Option<String>,
     pub status: AdminServiceModuleLifecycleModuleStatus,
     pub installed: bool,
     pub configured: bool,

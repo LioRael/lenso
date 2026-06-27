@@ -949,6 +949,7 @@ async fn service_modules_merges_service_provider_source_into_provided_module() {
     assert_eq!(body["status"], "ready");
     assert_eq!(body["modules"].as_array().unwrap().len(), 1);
     assert_eq!(body["modules"][0]["moduleName"], "support-ticket");
+    assert_eq!(body["modules"][0]["providerName"], "support-service");
     assert_eq!(body["modules"][0]["status"], "ready");
     assert_eq!(body["modules"][0]["configured"], true);
     assert_eq!(body["modules"][0]["loaded"], true);

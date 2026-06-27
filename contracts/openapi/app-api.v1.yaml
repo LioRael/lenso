@@ -5146,6 +5146,10 @@ components:
           - 'null'
         moduleName:
           type: string
+        providerName:
+          type:
+          - string
+          - 'null'
         restartPending:
           type: boolean
         serviceStatus:

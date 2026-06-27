@@ -456,6 +456,7 @@ async fn service_module_lifecycle_module(
 
     AdminServiceModuleLifecycleModuleDto {
         module_name: module_name.to_owned(),
+        provider_name: provider_name.map(str::to_owned),
         status,
         installed,
         configured,
