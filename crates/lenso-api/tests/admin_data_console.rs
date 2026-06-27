@@ -1069,15 +1069,20 @@ async fn available_modules_reads_official_catalog_when_no_local_catalog_exists()
     assert_eq!(body["modules"][1]["source"], "linked");
     assert_eq!(body["modules"][2]["name"], "auth-oidc");
     assert_eq!(body["modules"][2]["source"], "linked");
-    assert_eq!(body["modules"][3]["name"], "support-service");
+    assert_eq!(body["modules"][3]["name"], "support-ticket");
     assert_eq!(body["modules"][3]["source"], "remote");
+    assert_eq!(body["modules"][3]["providedBy"], "support-suite-provider");
+    assert_eq!(
+        body["modules"][3]["serviceManifest"],
+        "http://127.0.0.1:4110/lenso/service/v1/manifest"
+    );
     assert_eq!(
         body["modules"][3]["manifestReference"],
         "http://127.0.0.1:4110/lenso/service/v1/manifest"
     );
     assert_eq!(
         body["modules"][3]["summary"],
-        "Support ticket service provider for Lenso agent-ready demos"
+        "Ticket intake, triage, and operations"
     );
     assert_eq!(body["modules"][3]["consolePackageHints"], 0);
     assert_eq!(body["modules"][3]["status"], "ready");

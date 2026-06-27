@@ -1217,6 +1217,10 @@ struct LocalModuleCatalogEntry {
     version: String,
     source: String,
     manifest_reference: String,
+    #[serde(default, rename = "providedBy")]
+    provided_by: Option<String>,
+    #[serde(default, rename = "serviceManifest")]
+    service_manifest: Option<String>,
     #[serde(default)]
     summary: Option<String>,
     #[serde(default)]
@@ -2684,6 +2688,8 @@ fn module_catalog_entry_module(
         source,
         catalog_version: entry.version.clone(),
         manifest_reference: entry.manifest_reference,
+        provided_by: entry.provided_by,
+        service_manifest: entry.service_manifest,
         summary: entry.summary,
         base_url: entry.base_url,
         capabilities: entry.capabilities,
@@ -2883,6 +2889,8 @@ fn module_registry_snapshot_module(
         source: module.source,
         catalog_version: "unknown".to_owned(),
         manifest_reference,
+        provided_by: None,
+        service_manifest: None,
         summary: None,
         base_url,
         capabilities,

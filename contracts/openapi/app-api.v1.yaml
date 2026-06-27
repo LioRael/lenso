@@ -3987,6 +3987,14 @@ components:
           - 'null'
         name:
           type: string
+        providedBy:
+          type:
+          - string
+          - 'null'
+        serviceManifest:
+          type:
+          - string
+          - 'null'
         source:
           $ref: '#/components/schemas/ModuleSource'
         status:

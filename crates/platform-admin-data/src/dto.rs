@@ -71,6 +71,10 @@ pub struct AdminModuleRegistrySnapshotModuleDto {
     pub source: ModuleSource,
     pub catalog_version: String,
     pub manifest_reference: String,
+    #[serde(default, rename = "providedBy")]
+    pub provided_by: Option<String>,
+    #[serde(default, rename = "serviceManifest")]
+    pub service_manifest: Option<String>,
     pub summary: Option<String>,
     pub base_url: Option<String>,
     pub capabilities: Vec<String>,
