@@ -1703,6 +1703,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "lenso-service"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "lenso-platform-module",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "lenso-worker"
 version = "0.1.9"
 dependencies = [
