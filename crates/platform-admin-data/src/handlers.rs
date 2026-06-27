@@ -909,7 +909,8 @@ async fn install_available_module_response(
     )
     .await
     .map_err(|error| install_error(error, ctx))?;
-    write_remote_modules_env(&env_file_path, &catalog_entry.name, &base_url)
+    let remote_source_name = catalog_entry_remote_source_name(&catalog_entry).to_owned();
+    write_remote_modules_env(&env_file_path, &remote_source_name, &base_url)
         .map_err(|error| install_error(error, ctx))?;
 
     let metadata = admin_module_metadata_snapshot().modules;
@@ -918,7 +919,7 @@ async fn install_available_module_response(
         &env_file_path,
         &console_registry_file_path,
     );
-    let state = install_state.install_state(&catalog_entry.name);
+    let state = catalog_entry_install_state(&catalog_entry, &install_state);
     Ok(AdminModuleInstallResponse {
         module_name: catalog_entry.name,
         manifest_reference: catalog_entry.manifest_reference,
@@ -942,7 +943,8 @@ fn uninstall_available_module_response(
     let env_file_path = PathBuf::from(".env");
     let console_registry_file_path = PathBuf::from(CONSOLE_EXTENSION_REGISTRY_PATH);
     let legacy_console_plan_file_path = PathBuf::from(".lenso/console-package-install-plan.json");
-    remove_remote_modules_env(&env_file_path, &catalog_entry.name)
+    let remote_source_name = catalog_entry_remote_source_name(&catalog_entry).to_owned();
+    remove_remote_modules_env(&env_file_path, &remote_source_name)
         .map_err(|error| install_error(error, ctx))?;
     remove_runtime_console_extension_registry_module(
         &console_registry_file_path,
@@ -960,7 +962,7 @@ fn uninstall_available_module_response(
         &env_file_path,
         &console_registry_file_path,
     );
-    let state = install_state.install_state(&catalog_entry.name);
+    let state = catalog_entry_install_state(&catalog_entry, &install_state);
     Ok(AdminModuleInstallResponse {
         module_name: catalog_entry.name,
         manifest_reference: catalog_entry.manifest_reference,
@@ -1502,6 +1504,15 @@ impl AvailableModuleInstallStateContext {
         module_name: &str,
         source: ModuleSource,
     ) -> AdminModuleInstallStateDto {
+        self.install_state_for_remote_source(module_name, source, module_name)
+    }
+
+    fn install_state_for_remote_source(
+        &self,
+        module_name: &str,
+        source: ModuleSource,
+        remote_source_name: &str,
+    ) -> AdminModuleInstallStateDto {
         AdminModuleInstallStateDto {
             module_registered: self.registered_modules.contains(module_name),
             linked_source: match source {
@@ -1510,8 +1521,8 @@ impl AvailableModuleInstallStateContext {
             },
             remote_source: match source {
                 ModuleSource::Linked => None,
-                ModuleSource::Remote => Some(self.remote_source_state(module_name)),
-                _ => Some(self.remote_source_state(module_name)),
+                ModuleSource::Remote => Some(self.remote_source_state(remote_source_name)),
+                _ => Some(self.remote_source_state(remote_source_name)),
             },
             console_plan: self.console_plan_state(module_name),
         }
@@ -1982,6 +1993,27 @@ fn install_base_url(entry: &LocalModuleCatalogEntry) -> Result<String, AppError>
         ErrorCode::Validation,
         format!("{} baseUrl is missing", entry.name),
     ))
+}
+
+fn catalog_entry_remote_source_name(entry: &LocalModuleCatalogEntry) -> &str {
+    if entry.source == "service" {
+        return entry
+            .provided_by
+            .as_deref()
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .unwrap_or(&entry.name);
+    }
+    &entry.name
+}
+
+fn catalog_entry_install_state(
+    entry: &LocalModuleCatalogEntry,
+    install_state: &AvailableModuleInstallStateContext,
+) -> AdminModuleInstallStateDto {
+    let source = catalog_entry_source(&entry.source);
+    let remote_source_name = catalog_entry_remote_source_name(entry);
+    install_state.install_state_for_remote_source(&entry.name, source, remote_source_name)
 }
 
 fn write_remote_modules_env(
@@ -2676,6 +2708,7 @@ fn module_catalog_entry_module(
     install_state: &AvailableModuleInstallStateContext,
 ) -> AdminModuleRegistrySnapshotModuleDto {
     let source = catalog_entry_source(&entry.source);
+    let state = catalog_entry_install_state(&entry, install_state);
     let archived = entry.archived_at.is_some();
     let name = entry.name;
     let needs_attention = !archived
@@ -2705,7 +2738,7 @@ fn module_catalog_entry_module(
             AdminModuleRegistrySnapshotManifestStatus::Ok
         },
         manifest_version: if archived { None } else { Some(entry.version) },
-        install_state: install_state.install_state_for_source(&name, source),
+        install_state: state,
         status: if archived {
             AdminModuleRegistrySnapshotModuleStatus::Archived
         } else if needs_attention {
