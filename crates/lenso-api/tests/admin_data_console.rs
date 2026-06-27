@@ -1225,6 +1225,12 @@ async fn available_modules_reconciles_service_provider_source_after_restart() {
         ".env",
         "REMOTE_MODULES=support-suite-provider=http://127.0.0.1:4110/lenso/service/v1\n",
     );
+    let ctx = AppContext::new(
+        AppConfig::from_env(),
+        lazy_failing_db(),
+        Arc::new(LoggingEventPublisher),
+    );
+    let app = build_router(ctx);
     install_admin_module_metadata(vec![AdminModuleMetadata {
         module_name: "support-ticket".to_owned(),
         source: ModuleSource::Remote,
@@ -1254,12 +1260,6 @@ async fn available_modules_reconciles_service_provider_source_after_restart() {
             },
         )),
     }]);
-    let ctx = AppContext::new(
-        AppConfig::from_env(),
-        lazy_failing_db(),
-        Arc::new(LoggingEventPublisher),
-    );
-    let app = build_router(ctx);
 
     let response = app
         .oneshot(admin_get("/admin/data/available-modules"))
