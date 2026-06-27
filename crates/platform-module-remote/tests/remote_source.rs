@@ -94,6 +94,32 @@ async fn manifest_with_invalid_http_route() -> Json<Value> {
     }))
 }
 
+async fn service_manifest() -> Json<Value> {
+    Json(json!({
+        "name": "support-service",
+        "protocol": "lenso.service.v1",
+        "modules": [{
+            "name": "support-ticket",
+            "story_display": [],
+            "admin": {
+                "kind": "schema",
+                "entities": [{
+                    "name": "tickets",
+                    "label": "Tickets",
+                    "fields": [],
+                    "read_capability": "support_ticket.tickets.read"
+                }]
+            },
+            "http_routes": [{
+                "method": "GET",
+                "path": "/tickets/{id}",
+                "capability": "support_ticket.tickets.read"
+            }],
+            "capabilities": ["support_ticket.tickets.read"]
+        }]
+    }))
+}
+
 async fn contacts() -> Json<Value> {
     Json(json!({
         "records": [{ "id": "contact_1", "email": "sam@example.com" }],
@@ -314,6 +340,26 @@ async fn loads_manifest_and_attaches_admin_data_source() {
         Some(AdminSurface::Schema(_))
     ));
     assert!(module.admin_data.is_some());
+}
+
+#[tokio::test]
+async fn loads_service_manifest_as_provider_with_modules() {
+    let base_url = spawn_server(Router::new().route("/manifest", get(service_manifest))).await;
+
+    let config = RemoteModuleConfig::new("support-service", base_url.clone());
+    let loaded = RemoteModuleSource::new(config)
+        .expect("remote source")
+        .load_all()
+        .await
+        .expect("service manifest should load");
+
+    assert_eq!(loaded.len(), 1);
+    assert_eq!(loaded[0].module.manifest.name, "support-ticket");
+    assert_eq!(
+        loaded[0].config.base_url,
+        format!("{base_url}/modules/support-ticket")
+    );
+    assert!(loaded[0].module.admin_data.is_some());
 }
 
 #[tokio::test]

@@ -143,7 +143,7 @@ pub(crate) async fn refresh_modules(
     tag = "admin-data",
     params(("authorization" = String, Header, description = "Development service bearer token")),
     responses(
-        (status = 200, description = "Legacy alias for available remote modules", body = AdminModuleRegistrySnapshotResponse, content_type = "application/json"),
+        (status = 200, description = "Legacy alias for available catalog services", body = AdminModuleRegistrySnapshotResponse, content_type = "application/json"),
         (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
         (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
     )
@@ -162,7 +162,7 @@ pub(crate) async fn module_registry_snapshot(
     tag = "admin-data",
     params(("authorization" = String, Header, description = "Development service bearer token")),
     responses(
-        (status = 200, description = "Available remote modules for marketplace install", body = AdminModuleRegistrySnapshotResponse, content_type = "application/json"),
+        (status = 200, description = "Available catalog services and linked modules", body = AdminModuleRegistrySnapshotResponse, content_type = "application/json"),
         (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
         (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
     )
@@ -181,7 +181,7 @@ pub(crate) async fn available_modules(
     tag = "admin-data",
     params(("authorization" = String, Header, description = "Development service bearer token")),
     responses(
-        (status = 200, description = "Service module lifecycle state", body = AdminServiceModuleLifecycleResponse, content_type = "application/json"),
+        (status = 200, description = "Service provider lifecycle state", body = AdminServiceModuleLifecycleResponse, content_type = "application/json"),
         (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
         (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
     )
@@ -207,11 +207,11 @@ pub(crate) async fn service_modules(
     operation_id = "admin_data_install_available_module",
     tag = "admin-data",
     params(
-        ("module" = String, Path, description = "Available remote module name"),
+        ("module" = String, Path, description = "Available catalog entry name"),
         ("authorization" = String, Header, description = "Development service bearer token"),
     ),
     responses(
-        (status = 200, description = "Remote module install state written to host-local files", body = AdminModuleInstallResponse, content_type = "application/json"),
+        (status = 200, description = "Catalog install state written to host-local files", body = AdminModuleInstallResponse, content_type = "application/json"),
         (status = 400, description = "Catalog entry cannot be installed", body = ErrorResponse, content_type = "application/json"),
         (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
         (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
@@ -289,11 +289,44 @@ async fn service_module_lifecycle_response(
         .filter(|module| matches!(module.source, ModuleSource::Remote))
         .map(|module| (module.module_name.clone(), module))
         .collect::<HashMap<_, _>>();
+    let provider_names_by_module = installed_modules
+        .iter()
+        .filter_map(|(module_name, receipt)| {
+            receipt
+                .service
+                .as_ref()
+                .and_then(|service| service.name.as_deref())
+                .filter(|provider_name| !provider_name.trim().is_empty())
+                .map(|provider_name| (module_name.clone(), provider_name.trim().to_owned()))
+        })
+        .collect::<HashMap<_, _>>();
+    let represented_provider_names = provider_names_by_module
+        .values()
+        .cloned()
+        .collect::<HashSet<_>>();
     let mut module_names = HashSet::new();
     module_names.extend(installed_modules.keys().cloned());
-    module_names.extend(install_state.remote_sources.modules.keys().cloned());
-    module_names.extend(install_state.running_base_urls.keys().cloned());
-    module_names.extend(services_by_module.keys().cloned());
+    module_names.extend(
+        install_state
+            .remote_sources
+            .modules
+            .keys()
+            .filter(|module_name| !represented_provider_names.contains(*module_name))
+            .cloned(),
+    );
+    module_names.extend(
+        install_state
+            .running_base_urls
+            .keys()
+            .filter(|module_name| !represented_provider_names.contains(*module_name))
+            .cloned(),
+    );
+    module_names.extend(
+        services_by_module
+            .keys()
+            .filter(|module_name| !represented_provider_names.contains(*module_name))
+            .cloned(),
+    );
     module_names.extend(metadata_by_name.keys().cloned());
     let mut module_names = module_names.into_iter().collect::<Vec<_>>();
     module_names.sort();
@@ -304,13 +337,16 @@ async fn service_module_lifecycle_response(
         .ok();
     let mut modules = Vec::new();
     for module_name in module_names {
+        let provider_name = provider_names_by_module.get(&module_name);
         modules.push(
             service_module_lifecycle_module(
                 &module_name,
+                provider_name.map(String::as_str),
                 &install_state,
                 installed_modules.get(&module_name),
                 services_by_module
                     .get(&module_name)
+                    .or_else(|| provider_name.and_then(|name| services_by_module.get(name)))
                     .cloned()
                     .unwrap_or_default(),
                 metadata_by_name.get(&module_name).copied(),
@@ -338,13 +374,17 @@ async fn service_module_lifecycle_response(
 
 async fn service_module_lifecycle_module(
     module_name: &str,
+    provider_name: Option<&str>,
     install_state: &AvailableModuleInstallStateContext,
     install_receipt: Option<&LocalModuleInstallLedgerModule>,
     service_specs: Vec<LocalModuleServiceSpec>,
     metadata: Option<&AdminModuleMetadata>,
     client: Option<&reqwest::Client>,
 ) -> AdminServiceModuleLifecycleModuleDto {
-    let remote_source = install_state.remote_source_state(module_name);
+    let mut remote_source = install_state.remote_source_state(provider_name.unwrap_or(module_name));
+    if provider_name.is_some() {
+        reconcile_service_provider_remote_source(module_name, metadata, &mut remote_source);
+    }
     let loaded =
         metadata.is_some_and(|module| matches!(module.load_status, ModuleLoadStatus::Loaded));
     let installed = install_receipt.is_some();
@@ -370,7 +410,12 @@ async fn service_module_lifecycle_module(
     } else {
         service_module_manifest_status(metadata, manifest_url.as_deref(), client).await
     };
-    let services = service_module_lifecycle_services(module_name, &service_specs, client).await;
+    let services = service_module_lifecycle_services(
+        provider_name.unwrap_or(module_name),
+        &service_specs,
+        client,
+    )
+    .await;
     let service_status = service_module_status_summary(status_url.as_deref(), client).await;
     let health_history =
         record_service_module_health(module_name, status_url.as_deref(), &service_status);
@@ -405,7 +450,7 @@ async fn service_module_lifecycle_module(
     } else if loaded && (configured || installed || remote_source.running_base_url.is_some()) {
         AdminServiceModuleLifecycleModuleStatus::Ready
     } else {
-        fixes.push("install the service module or add it to REMOTE_MODULES".to_owned());
+        fixes.push("install the service or add its provider to REMOTE_MODULES".to_owned());
         AdminServiceModuleLifecycleModuleStatus::NotConfigured
     };
 
@@ -427,6 +472,39 @@ async fn service_module_lifecycle_module(
         services,
         fixes,
     }
+}
+
+fn reconcile_service_provider_remote_source(
+    module_name: &str,
+    metadata: Option<&AdminModuleMetadata>,
+    remote_source: &mut AdminModuleRemoteSourceInstallStateDto,
+) {
+    let Some(desired_base_url) = remote_source.desired_base_url.as_deref() else {
+        return;
+    };
+    let Some(running_module_base_url) = metadata_remote_base_url(metadata) else {
+        return;
+    };
+    if running_module_base_url == service_provider_module_base_url(desired_base_url, module_name) {
+        remote_source.running_base_url = Some(normalize_remote_base_url(desired_base_url));
+        remote_source.restart_pending = false;
+        remote_source.restart_reason = None;
+    }
+}
+
+fn metadata_remote_base_url(metadata: Option<&AdminModuleMetadata>) -> Option<String> {
+    metadata.and_then(|module| match module.source_diagnostics.as_ref()? {
+        AdminModuleSourceDiagnostics::Remote(remote) => {
+            Some(normalize_remote_base_url(&remote.base_url))
+        }
+    })
+}
+
+fn service_provider_module_base_url(base_url: &str, module_name: &str) -> String {
+    format!(
+        "{}/modules/{module_name}",
+        normalize_remote_base_url(base_url)
+    )
 }
 
 fn service_module_status_url(
@@ -1100,9 +1178,8 @@ fn module_registry_snapshot_response(
         })
         .map(|module| AdminModuleRegistrySnapshotIssueDto {
             group: "Manifest".to_owned(),
-            message: format!("{} service module metadata needs attention", module.name),
-            fix: "refresh module metadata and verify service module manifest configuration"
-                .to_owned(),
+            message: format!("{} service metadata needs attention", module.name),
+            fix: "refresh module metadata and verify service manifest configuration".to_owned(),
         })
         .collect::<Vec<_>>();
 
@@ -1223,6 +1300,8 @@ struct LocalModuleInstallLedgerModule {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct LocalServiceModuleMetadata {
+    #[serde(default)]
+    name: Option<String>,
     #[serde(default)]
     deployment: Option<AdminServiceModuleDeploymentDto>,
     #[serde(default, alias = "status_path")]
@@ -1713,13 +1792,13 @@ fn remote_source_restart_reason(
 ) -> Option<String> {
     match (desired_base_url, running_base_url) {
         (Some(_), None) => {
-            Some("service module source configured in .env but not loaded".to_owned())
+            Some("service provider source configured in .env but not loaded".to_owned())
         }
         (None, Some(_)) => {
-            Some("service module source removed from .env but still loaded".to_owned())
+            Some("service provider source removed from .env but still loaded".to_owned())
         }
         (Some(desired), Some(running)) if desired != running => {
-            Some("REMOTE_MODULES base URL differs from loaded service module metadata".to_owned())
+            Some("REMOTE_MODULES base URL differs from loaded service provider metadata".to_owned())
         }
         _ => None,
     }
@@ -1862,10 +1941,10 @@ fn validate_installable_catalog_entry(
             format!("available module {} is archived", entry.name),
         ));
     }
-    if entry.source != "remote" {
+    if !matches!(entry.source.as_str(), "remote" | "service") {
         return Err(AppError::new(
             ErrorCode::Validation,
-            "only remote available modules can be installed visually",
+            "only service catalog entries can be installed visually",
         ));
     }
     if base_url.is_empty() {
@@ -2732,7 +2811,7 @@ fn module_compatibility_issue(
                 message: format!(
                     "{module_name} requires remote protocol {remote_protocol_version}; host supports {HOST_REMOTE_PROTOCOL_VERSION}"
                 ),
-                fix: format!("install a compatible {module_name} service module release"),
+                fix: format!("install a compatible {module_name} service release"),
             });
         }
     }
@@ -2745,9 +2824,7 @@ fn module_compatibility_issue(
         return Some(AdminModuleRegistrySnapshotIssueDto {
             group: "Compatibility".to_owned(),
             message: format!("{module_name} requires unsupported host feature {feature}"),
-            fix: format!(
-                "upgrade Lenso or install a compatible {module_name} service module release"
-            ),
+            fix: format!("upgrade Lenso or install a compatible {module_name} service release"),
         });
     }
 

@@ -1,27 +1,28 @@
-# Service Module Boundary
+# Service Boundary
 
 This note names the microservice-facing boundary that already exists in Lenso.
 It is intentionally smaller than a general microservice platform.
 
 ## Definition
 
-A service module is a `Remote` module whose backend runs outside the host
-process and is loaded through the same `ModuleManifest` contract as linked
-modules.
+A service is an independently running backend process that provides one or more
+Lenso modules. The host connects to the service through `REMOTE_MODULES`, reads
+the service manifest, and then loads the modules declared inside it.
 
 ```text
-service module = ModuleManifest + remote protocol endpoint + optional managed service process
+service = service manifest + one or more module manifests + optional managed service process
+module = business capability declared inside a service or linked into the host
 ```
 
-The host may start the module process from `.lenso/module-services.json`, or it
+The host may start the service process from `.lenso/module-services.json`, or it
 may connect to an already-running service through `REMOTE_MODULES`. Either way,
-the module remains a Lenso module, not a peer runtime.
+the service is not a peer runtime; the host remains the control plane.
 
 ## Host Responsibilities
 
 The host owns:
 
-- module source configuration and manifest loading;
+- service source configuration and manifest loading;
 - caller auth, capability checks, request limits, and header policy;
 - runtime queues, retries, outbox claims, story records, and technical
   operations;
@@ -31,13 +32,14 @@ The host owns:
 For operator commands and status meanings, use
 [`service-module-operator-runbook.md`](service-module-operator-runbook.md).
 
-## Module Responsibilities
+## Service Responsibilities
 
-The service module owns:
+The service owns:
 
 - its implementation language, process, storage, and deployment package;
-- the service module protocol endpoint;
-- declared HTTP routes, admin surfaces, runtime functions, and event handlers;
+- the service protocol endpoint;
+- the modules it provides;
+- declared module HTTP routes, admin surfaces, runtime functions, and event handlers;
 - module-local authorization and validation as defense in depth.
 
 It must not claim host runtime rows, consume host outbox rows directly, write
@@ -52,7 +54,7 @@ Grow this boundary in this order:
 3. document linked-module extraction through
    [`linked-to-service-module.md`](linked-to-service-module.md);
 4. make catalog install and uninstall safer;
-5. add deployment examples for independently running service modules.
+5. add deployment examples for independently running services.
 
 Defer service discovery, gateways, service mesh, distributed transactions,
 schema registry, and orchestration until real extracted modules need them.

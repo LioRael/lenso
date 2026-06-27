@@ -29,14 +29,15 @@ publication.
 
 ## Default Source
 
-Third-party ecosystem modules should default to service modules, implemented as
-the existing `Remote` source.
+Third-party ecosystem capabilities should default to services: independently
+running providers that expose one or more modules through the existing `Remote`
+source.
 
 `Linked` modules are for first-party application code, framework fixtures, and
 local project-owned modules that intentionally compile into the host. They can
 use `modules/<name>` and `crates/lenso-bootstrap` registration.
 
-Service modules are the right default for external contributors because they are
+Services are the right default for external contributors because they are
 language-independent, can be versioned and deployed separately, and keep the
 host free of third-party code execution.
 
@@ -46,12 +47,12 @@ permission, and packaging rules.
 
 ## Contributor Package Shape
 
-A third-party module package should be understandable without cloning a Lenso
+A third-party service package should be understandable without cloning a Lenso
 host application:
 
 ```text
-lenso-billing/
-  lenso.module.json
+lenso-billing-service/
+  lenso.service.json
   backend/
     src/
     openapi.yaml
@@ -67,25 +68,27 @@ lenso-billing/
   README.md
 ```
 
-The exact backend language is not prescribed. The module must expose the remote
-module protocol that `platform-module-remote` expects.
+The exact backend language is not prescribed. The service must expose the
+service manifest and module protocol endpoints that `platform-module-remote`
+expects.
 
 ## Manifest Contract
 
-The module manifest is the source of truth for install-time inspection. A remote
-module should expose it through the remote module protocol at a stable base URL
-such as `https://example.com/lenso/module/v1`:
+The service manifest is the source of truth for install-time inspection. A
+service should expose it at a stable base URL such as
+`https://example.com/lenso/service/v1`:
 
 ```text
-GET /lenso/module/v1/manifest
+GET /lenso/service/v1/manifest
 ```
 
-The manifest should map to the same `ModuleManifest` data model used by linked
-modules. A representative shape:
+The service manifest contains one or more module manifests. A representative
+shape:
 
 ```json
 {
-  "name": "billing",
+  "protocol": "lenso.service.v1",
+  "name": "billing-service",
   "version": "0.1.0",
   "capabilities": ["billing.read", "billing.write"],
   "http_routes": [],
@@ -110,7 +113,7 @@ modules. A representative shape:
         "name": "billing-api",
         "command": "pnpm --dir ../lenso-billing/backend dev",
         "cwd": ".",
-        "readyUrl": "https://billing.example.com/lenso/module/v1/manifest",
+        "readyUrl": "https://billing.example.com/lenso/service/v1/status",
         "readyTimeoutMs": 10000,
         "autoStart": true
       }
@@ -139,7 +142,7 @@ or degrade modules that request unsupported surfaces. `install.env` is written
 to the host `.env` by the CLI. `install.commands` are executed only when the
 operator passes `--run-install-commands`. `install.services` are written to
 `.lenso/module-services.json`; the API and worker start those services before
-loading configured service modules. Host-started services are tracked with
+loading configured services. Host-started services are tracked with
 lock/pid files next to `module-services.json` and are stopped when the owning
 API/worker process exits; services that are already ready before startup are
 treated as external and are not stopped by the host.
@@ -180,12 +183,12 @@ The host is responsible for:
 - admin action authorization and projection
 - console package installation and registry resolution
 
-Service modules must not write host runtime tables, consume host outbox rows,
+Services must not write host runtime tables, consume host outbox rows,
 receive caller bearer tokens, or claim host-owned story/function-run records.
 
 ## Current Support
 
-Current service-module support includes:
+Current service support includes:
 
 - remote manifest loading
 - schema-admin read data
@@ -200,9 +203,8 @@ Current Runtime Console support includes:
 - workspace-installed console packages
 - package manifests derived into install metadata
 - module metadata showing missing frontend bundle registrations
-- low-friction service install through `lenso module install <manifest-url>` and
-  `lenso module marketplace install <manifest-url>`
-- service module install CLI that writes local source configuration and console
+- low-friction service install through `lenso service install <manifest-url>`
+- service install CLI that writes local source configuration and console
   extension registry entries
 - dynamic same-origin bundle loading from `/console/extensions/registry.json`
 - boundary checks that forbid package imports from host internals
@@ -230,27 +232,25 @@ The local scaffold command is optimized for project-owned linked modules:
 lenso module create billing --with-console
 ```
 
-Third-party scaffolding uses a separate service-module lane:
+Third-party scaffolding uses a separate service lane:
 
 ```sh
-lenso module create billing --remote --output-dir ../module-packages
-lenso module catalog add https://example.com/lenso/module/v1/manifest
-lenso module install https://example.com/lenso/module/v1/manifest
+lenso module catalog add https://example.com/lenso/service/v1/manifest
+lenso service install https://example.com/lenso/service/v1/manifest
 lenso module uninstall billing
-lenso module marketplace install https://example.com/lenso/module/v1/manifest
 ```
 
-The default install path is user-driven: see a module, install from its
-manifest, restart the host, reload Runtime Console, and use the module.
-`module install` updates host-local service module configuration, applies
+The default install path is user-driven: see a service, install from its
+manifest, restart the host, reload Runtime Console, and use its modules.
+`service install` updates host-local service configuration, applies
 manifest-declared `install.env` values, runs opted-in `install.commands`,
 writes `install.services`, writes an install receipt to
 `.lenso/module-installs.json`, copies declared console bundles to
 `.lenso/console/extensions`, and updates
 `.lenso/console/extensions/registry.json` when the manifest declares console
-packages with `bundleUrl`. `module add` remains a compatibility alias for
-service module installs.
-`module uninstall <name>` removes the host-local service module source and any
+packages with `bundleUrl`. `module install <manifest-url>` remains a
+compatibility path for legacy remote module manifests.
+`module uninstall <name>` removes the host-local service source and any
 console extension registry/install-receipt entry for that module; it leaves
 module data alone.
 
@@ -263,8 +263,8 @@ and archived catalog entries; official catalogs are curated at publication time,
 while arbitrary catalog entries remain operator-selected.
 
 When a host has no local catalog, Available Modules preserves the current loaded
-service-module view if any service modules are already configured. If neither a
-local catalog nor loaded service modules exist, the API falls back to the
+service view if any services are already configured. If neither a
+local catalog nor loaded services exist, the API falls back to the
 read-only `builtin:lenso-official-module-catalog` so a fresh host has an
 official discovery source without fetching remote marketplace state.
 
@@ -272,10 +272,10 @@ If the manifest is installed from a local file or non-protocol URL, pass the
 runtime module base URL explicitly:
 
 ```sh
-lenso module install ./lenso.module.json --base-url https://example.com/lenso/module/v1
+lenso service install ./lenso.service.json --base-url https://example.com/lenso/service/v1
 ```
 
-The service-module lane should generate a module package, not a host workspace
+The service lane should generate a service package, not a host workspace
 member.
 Host installation should record source configuration and extension registry
 state without compiling third-party code into the application bundle.

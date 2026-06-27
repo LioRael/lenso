@@ -1,8 +1,9 @@
 # Getting Started
 
 This guide is the first-user happy path for running Lenso locally and installing
-a service module. It avoids marketplace hardening flows; you choose a manifest
-URL, install it, restart services, and inspect the loaded module.
+a service that provides a module. It avoids marketplace hardening flows; you
+choose a manifest URL, install it, restart services, and inspect the loaded
+module.
 
 ## Prerequisites
 
@@ -112,31 +113,31 @@ Generated hosts serve the Runtime Console at `/console` after
 this repository from source, run the Runtime Console from the sibling
 `../lenso-runtime-console` repository or run `just console-build-host <host-root>`.
 
-## Install The Example Service Module
+## Install The Example Service
 
 User-facing examples live in
 [LioRael/lenso-examples](https://github.com/LioRael/lenso-examples). This
 backend repository does not ship JavaScript example modules or manage their
 package dependencies.
 
-Clone and start the example module in a separate checkout:
+Clone and start the example service in a separate checkout:
 
 ```sh
 git clone https://github.com/LioRael/lenso-examples ../lenso-examples
 ```
 
-Start the support-ticket service module from the `lenso-examples` repository,
+Start the support-ticket service from the `lenso-examples` repository,
 then install its manifest here with the same command a user would run.
 
 Install its manifest:
 
 ```sh
-lenso module install http://127.0.0.1:4110/lenso/module/v1/manifest
+lenso service install http://127.0.0.1:4110/lenso/service/v1/manifest
 ```
 
-Restart the local services and open the Runtime Console. The module should be
-available through the Modules/Data surfaces and its remote calls should appear
-in operations views after use.
+Restart the local services and open the Runtime Console. The `support-ticket`
+module should be available through the Modules/Data surfaces, with
+`support-service` shown as its service provider.
 
 Remote sources and Runtime Console package exports are loaded at process
 startup. After installing a module, restart the API, worker, and Runtime Console.

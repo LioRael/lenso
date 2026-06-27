@@ -62,10 +62,10 @@ The service kit is split into a few crates:
 
 A thin composition root, `lenso-bootstrap`, sits above the service kit. It is the single place that enumerates the concrete modules, and both the API and the worker derive their module set from it. It pairs manifests, bindings, runtime config descriptors, story-display metadata, and admin data sources from concrete modules. It depends on the module crates, so it lives outside `platform-*` (those crates must not depend on concrete modules).
 
-Configured service modules are loaded at startup through the Remote source in
+Configured services are loaded at startup through the Remote source in
 `platform-module-remote`. The microservice-facing shape is named in
-[`service-module-boundary.md`](service-module-boundary.md): a service module is
-a `Remote` module backed by an out-of-process service while the host keeps auth,
+[`service-module-boundary.md`](service-module-boundary.md): a service is an
+out-of-process provider for one or more modules while the host keeps auth,
 runtime, retries, stories, and operator visibility. The current Remote slices
 support manifest loading, declared HTTP route metadata, schema-admin reads,
 admin surface metadata, host-owned HTTP proxying for declared GET, POST, PUT,
@@ -82,7 +82,7 @@ protocol. Linked modules that have hardened boundaries can follow
 [`linked-to-service-module.md`](linked-to-service-module.md) to preserve the
 manifest contract while moving implementation into a service process.
 
-The current service-module checkpoint is intentionally narrow but complete for
+The current service checkpoint is intentionally narrow but complete for
 operator-visible HTTP proxying:
 
 - Remote manifests are loaded as the same `ModuleManifest` data contract used by

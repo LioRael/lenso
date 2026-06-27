@@ -6,6 +6,19 @@ use std::collections::BTreeMap;
 
 pub type RemoteManifestResponse = ModuleManifest;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoteServiceManifestResponse {
+    pub name: String,
+    pub modules: Vec<ModuleManifest>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum RemoteManifestEnvelope {
+    Service(RemoteServiceManifestResponse),
+    Module(ModuleManifest),
+}
+
 /// Standard error response shape for the remote module protocol.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemoteErrorEnvelope {

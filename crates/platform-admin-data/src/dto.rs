@@ -32,7 +32,7 @@ pub struct AdminModuleMetadataListResponse {
 }
 
 /// Response for `GET /admin/data/available-modules`: a read-only list of
-/// remote modules that can be installed from their manifest URL.
+/// catalog entries that can be installed from their manifest URL.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AdminModuleRegistrySnapshotResponse {
     pub version: u8,
@@ -266,8 +266,8 @@ pub struct AdminModuleConsolePackagePlanStateDto {
     pub packages: Vec<AdminModuleConsolePackagePlanPackageDto>,
 }
 
-/// Response for visually installing an available remote module from the
-/// marketplace catalog.
+/// Response for visually installing an available service or linked module from
+/// the curated catalog.
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AdminModuleInstallResponse {

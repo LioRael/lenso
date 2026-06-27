@@ -7,9 +7,7 @@
       "source": "linked",
       "manifestReference": "builtin:auth",
       "summary": "Official linked authentication anchor for users, sessions, and actor resolution",
-      "capabilities": [
-        "auth.users.read"
-      ],
+      "capabilities": ["auth.users.read"],
       "consolePackages": [
         {
           "packageName": "@lenso/auth-console",
@@ -18,9 +16,7 @@
           "entry": "/console/extensions/auth/auth-console.js",
           "hostApi": "1",
           "route": "/data/auth/sessions",
-          "requiredCapabilities": [
-            "auth.users.read"
-          ],
+          "requiredCapabilities": ["auth.users.read"],
           "styles": [
             "https://cdn.jsdelivr.net/npm/@lenso/auth-console@0.1.3/dist/auth-console.css"
           ],
@@ -35,9 +31,7 @@
       "manifestReference": "builtin:auth-password",
       "summary": "Official linked password authentication provider for registration and login",
       "capabilities": [],
-      "dependencies": [
-        "auth"
-      ]
+      "dependencies": ["auth"]
     },
     {
       "name": "auth-oidc",
@@ -46,35 +40,58 @@
       "manifestReference": "builtin:auth-oidc",
       "summary": "Official linked OIDC provider for Runtime Console sign-in",
       "capabilities": [],
-      "dependencies": [
-        "auth"
-      ]
+      "dependencies": ["auth"]
     },
     {
-      "name": "remote-crm",
+      "name": "support-service",
       "version": "0.1.0",
-      "source": "remote",
-      "manifestReference": "http://127.0.0.1:4100/lenso/module/v1/manifest",
-      "baseUrl": "http://127.0.0.1:4100/lenso/module/v1",
-      "summary": "Official CRM fixture module for exercising remote module installation",
+      "source": "service",
+      "manifestReference": "http://127.0.0.1:4110/lenso/service/v1/manifest",
+      "baseUrl": "http://127.0.0.1:4110/lenso/service/v1",
+      "summary": "Support ticket service provider for Lenso agent-ready demos",
       "capabilities": [
-        "remote_crm.contacts.read",
-        "remote_crm.contacts.sync"
+        "support_ticket.tickets.read",
+        "support_ticket.tickets.write",
+        "support_ticket.tickets.escalate"
       ],
       "compatibility": {
         "consolePackageApi": "1",
+        "remoteProtocolVersion": "1",
+        "requiredHostFeatures": ["service.status"],
         "lenso": {
           "minVersion": "0.1.0",
           "maxVersion": "0.1.7"
         }
       },
-      "consolePackages": [
+      "deployment": {
+        "commands": ["pnpm --dir examples/support-ticket start"],
+        "target": "container-paas"
+      },
+      "install": {
+        "services": [
+          {
+            "command": "pnpm --dir examples/support-ticket start",
+            "name": "support-service"
+          }
+        ]
+      },
+      "modules": [
         {
-          "packageName": "@lenso/remote-crm-console",
-          "exportName": "remoteCrmConsoleModule",
-          "route": "/data/remote-crm"
+          "name": "support-ticket",
+          "version": "0.1.0",
+          "capabilities": [
+            "support_ticket.tickets.read",
+            "support_ticket.tickets.write",
+            "support_ticket.tickets.escalate"
+          ]
         }
-      ]
+      ],
+      "service": {
+        "requiredEnv": ["PORT"],
+        "statusPath": "/lenso/service/v1/status",
+        "statusUrl": "http://127.0.0.1:4110/lenso/service/v1/status",
+        "transports": ["http"]
+      }
     }
   ]
 }

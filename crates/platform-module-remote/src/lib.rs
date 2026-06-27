@@ -33,4 +33,4 @@ pub use router::{
     RemoteHttpProxyResponse, RemoteHttpProxyStatus, install_remote_http_proxy_registry, router,
 };
 pub use runtime::RemoteRuntimeFunction;
-pub use source::RemoteModuleSource;
+pub use source::{LoadedRemoteModule, RemoteModuleSource};

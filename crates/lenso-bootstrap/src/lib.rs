@@ -556,7 +556,13 @@ pub async fn load_modules_with_composition(
             continue;
         }
         let source = RemoteModuleSource::new(remote_module_config(remote))?;
-        loaded.push(source.load().await?);
+        loaded.extend(
+            source
+                .load_all()
+                .await?
+                .into_iter()
+                .map(|loaded| loaded.module),
+        );
     }
 
     Ok(loaded)
@@ -865,8 +871,10 @@ pub async fn load_admin_modules_with_composition(
             continue;
         }
         let source = RemoteModuleSource::new(remote_module_config(remote))?;
-        match source.load().await {
-            Ok(module) => admin_modules.extend(admin_modules_from_modules(vec![module])),
+        match source.load_all().await {
+            Ok(modules) => admin_modules.extend(admin_modules_from_modules(
+                modules.into_iter().map(|loaded| loaded.module).collect(),
+            )),
             Err(error) => admin_modules.push(failed_remote_admin_module(
                 remote.name.clone(),
                 error.public_message,
@@ -904,14 +912,19 @@ pub async fn load_admin_module_metadata_with_composition(
         let checked_at = current_timestamp();
         let source = RemoteModuleSource::new(config.clone())?;
         let load_started = Instant::now();
-        match source.load().await {
-            Ok(module) => metadata.extend(remote_admin_metadata_from_module(
-                module,
-                &config,
-                checked_at,
-                Some(duration_ms(load_started)),
-                None,
-            )),
+        match source.load_all().await {
+            Ok(modules) => {
+                let load_duration_ms = Some(duration_ms(load_started));
+                for loaded in modules {
+                    metadata.extend(remote_admin_metadata_from_module(
+                        loaded.module,
+                        &loaded.config,
+                        checked_at.clone(),
+                        load_duration_ms,
+                        None,
+                    ));
+                }
+            }
             Err(error) => metadata.push(failed_remote_admin_metadata(
                 &config,
                 Some(checked_at),
@@ -936,9 +949,11 @@ pub async fn load_remote_http_proxy_registry(
         }
         let config = remote_module_config(remote);
         let source = RemoteModuleSource::new(config.clone())?;
-        if let Ok(module) = source.load().await {
-            remote_modules.push(module);
-            remote_configs.push(config);
+        if let Ok(modules) = source.load_all().await {
+            for loaded in modules {
+                remote_configs.push(loaded.config);
+                remote_modules.push(loaded.module);
+            }
         }
     }
 

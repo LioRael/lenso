@@ -1,6 +1,6 @@
 # Agent-Ready Module Demo
 
-This demo is the public proof point for Lenso's agent-ready service-module
+This demo is the public proof point for Lenso's agent-ready service
 workflow:
 
 ```text
@@ -17,7 +17,8 @@ repository path.
    module boundaries are still unclear.
 2. Use `lenso-start` to pick the right public path.
 3. Use `lenso-module-authoring` for an in-host linked module, or
-   `lenso-remote-module-authoring` for an out-of-process service module.
+   `lenso-remote-module-authoring` for an out-of-process service that provides
+   one or more modules.
 4. Scaffold the module:
 
 ```sh
@@ -43,10 +44,10 @@ pnpm smoke:support-ticket
 pnpm start:support-ticket
 ```
 
-Install the running module into a local Lenso host:
+Install the running service into a local Lenso host:
 
 ```sh
-lenso module install http://127.0.0.1:4110/lenso/module/v1/manifest
+lenso service install http://127.0.0.1:4110/lenso/service/v1/manifest
 ```
 
 The examples repository also runs:
@@ -55,7 +56,7 @@ The examples repository also runs:
 pnpm host-api-smoke:support-ticket
 ```
 
-That smoke scaffolds a temporary host, installs the service module through the
+That smoke scaffolds a temporary host, installs the service through the
 real `lenso` CLI, and verifies loaded module metadata, schema-admin data, HTTP
 proxy calls, and Runtime Story evidence.
 
@@ -78,8 +79,8 @@ pnpm host-api-smoke:account-profile
 - The module declares its backend and console shape through explicit manifests.
 - Agents have stable rails: scaffolds, skills, contracts, checks, and Console
   verification.
-- Teams can start in one deployable system and extract hardened modules as
-  independently running service modules later.
+- Teams can start in one deployable system and extract hardened module
+  boundaries into independently running services later.
 
 ## Keep Out
 
