@@ -124,6 +124,9 @@ so users can later run `lenso module install billing`. The CLI validates that
 the release name and version are provided by the target service manifest, then
 writes `moduleRelease` provenance into `.lenso/module-installs.json` next to
 the normal service/package receipt.
+Operators can inspect the release before install with
+`lenso module release inspect <module-release.json>` or fail the command on
+missing install inputs with `lenso module release check <module-release.json>`.
 The package command writes these release files under
 `modules/<module>/lenso.module-release.json`.
 When a release points at a local service package artifact, pass `--base-url`
