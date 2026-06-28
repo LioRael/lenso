@@ -52,7 +52,11 @@ host application:
 
 ```text
 lenso-billing-service/
+  lenso.service-package.json
   lenso.service.json
+  modules/
+    billing/
+      lenso.module-release.json
   backend/
     src/
     openapi.yaml
@@ -71,6 +75,63 @@ lenso-billing-service/
 The exact backend language is not prescribed. The service must expose the
 service manifest and module protocol endpoints that `platform-module-remote`
 expects.
+
+`lenso.service-package.json` is the V9 delivery manifest for handoff to
+catalog, release, and deployment tooling. It is intentionally small:
+
+```json
+{
+  "protocol": "lenso.service-package.v1",
+  "name": "billing-service",
+  "version": "0.1.0",
+  "serviceManifest": "lenso.service.json",
+  "modules": ["billing"]
+}
+```
+
+The host may install the package file directly, but the CLI resolves it to
+`lenso.service.json` before writing host-local state. The package manifest
+records which provider and modules are inside the artifact; it does not make
+the service a peer runtime and does not grant trust by itself.
+Generate it, plus per-module release artifacts, with:
+
+```sh
+lenso service package --manifest https://example.com/lenso/service/v1/manifest
+```
+
+`lenso.module-release.json` is the V10 module release channel. It is not a new
+runtime source; it is the business-module entrypoint that resolves to the
+provider service package or service manifest:
+
+```json
+{
+  "protocol": "lenso.module-release.v1",
+  "name": "billing",
+  "version": "0.1.0",
+  "source": "service",
+  "provider": {
+    "name": "billing-service",
+    "servicePackage": "lenso.service-package.json"
+  },
+  "capabilities": ["billing.read", "billing.write"],
+  "dependencies": []
+}
+```
+
+Install a module release with `lenso module install <module-release.json>`.
+Add it to a local catalog with `lenso module catalog add <module-release.json>`
+so users can later run `lenso module install billing`. The CLI validates that
+the release name and version are provided by the target service manifest, then
+writes `moduleRelease` provenance into `.lenso/module-installs.json` next to
+the normal service/package receipt.
+Operators can inspect the release before install with
+`lenso module release inspect <module-release.json>` or fail the command on
+missing install inputs with `lenso module release check <module-release.json>`.
+The package command writes these release files under
+`modules/<module>/lenso.module-release.json`.
+When a release points at a local service package artifact, pass `--base-url`
+to `module install` or `module catalog add` so the host records the runtime
+service endpoint rather than the artifact path.
 
 ## Manifest Contract
 
@@ -235,13 +296,16 @@ lenso module create billing --with-console
 Third-party scaffolding uses a separate service lane:
 
 ```sh
-lenso module catalog add https://example.com/lenso/service/v1/manifest
+lenso module catalog add https://example.com/releases/billing/lenso.module-release.json
+lenso module install billing
 lenso service install https://example.com/lenso/service/v1/manifest
 lenso module uninstall billing
 ```
 
-The default install path is user-driven: see a service, install from its
-manifest, restart the host, reload Runtime Console, and use its modules.
+The default install path is user-driven: see a module release, install the
+business module, restart the host, reload Runtime Console, and use the module.
+Provider operators can still install or upgrade the service directly with
+`lenso service install <manifest-or-package>`.
 `service install` updates host-local service configuration, applies
 manifest-declared `install.env` values, runs opted-in `install.commands`,
 writes `install.services`, writes an install receipt to

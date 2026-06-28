@@ -896,6 +896,18 @@ async fn service_modules_merges_service_provider_source_into_provided_module() {
                 "service": {
                     "name": "support-service",
                     "statusPath": "/lenso/service/v1/status"
+                },
+                "moduleRelease": {
+                    "manifestReference": "../support/lenso.module-release.json",
+                    "manifestSnapshot": {
+                        "protocol": "lenso.module-release.v1",
+                        "name": "support-ticket",
+                        "version": "0.2.0",
+                        "provider": {
+                            "name": "support-service",
+                            "servicePackage": "../support/lenso.service-package.json"
+                        }
+                    }
                 }
             }]
         })
@@ -959,6 +971,18 @@ async fn service_modules_merges_service_provider_source_into_provided_module() {
     assert_eq!(
         body["modules"][0]["baseUrl"],
         "http://127.0.0.1:4110/lenso/service/v1"
+    );
+    assert_eq!(
+        body["modules"][0]["moduleRelease"]["manifestReference"],
+        "../support/lenso.module-release.json"
+    );
+    assert_eq!(
+        body["modules"][0]["moduleRelease"]["providerName"],
+        "support-service"
+    );
+    assert_eq!(
+        body["modules"][0]["moduleRelease"]["servicePackage"],
+        "../support/lenso.service-package.json"
     );
 }
 
@@ -1374,6 +1398,58 @@ async fn available_modules_reads_local_module_catalog() {
 }
 
 #[tokio::test]
+async fn available_modules_exposes_module_release_catalog_metadata() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
+    let _catalog = FileFixture::write(
+        ".lenso/module-catalog.json",
+        serde_json::json!({
+            "version": 1,
+            "modules": [{
+                "protocol": "lenso.module-release.v1",
+                "name": "support-ticket",
+                "version": "0.2.0",
+                "source": "service",
+                "manifestReference": "../support/lenso.module-release.json",
+                "summary": "Ticket intake, triage, and operations",
+                "provider": {
+                    "name": "support-suite-provider",
+                    "servicePackage": "../support/lenso.service-package.json"
+                }
+            }]
+        })
+        .to_string(),
+    );
+    let ctx = AppContext::new(
+        AppConfig::from_env(),
+        lazy_failing_db(),
+        Arc::new(LoggingEventPublisher),
+    );
+    let app = build_router(ctx);
+
+    let response = app
+        .oneshot(admin_get("/admin/data/available-modules"))
+        .await
+        .expect("available modules request completes");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    let module = &body["modules"][0];
+    assert_eq!(module["name"], "support-ticket");
+    assert_eq!(
+        module["moduleRelease"]["manifestReference"],
+        "../support/lenso.module-release.json"
+    );
+    assert_eq!(
+        module["moduleRelease"]["providerName"],
+        "support-suite-provider"
+    );
+    assert_eq!(
+        module["moduleRelease"]["servicePackage"],
+        "../support/lenso.service-package.json"
+    );
+}
+
+#[tokio::test]
 async fn available_modules_reconciles_service_provider_source_after_restart() {
     let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
     let _catalog = FileFixture::write(
@@ -1729,6 +1805,7 @@ async fn available_service_module_install_writes_provider_remote_source() {
     assert_eq!(response.status(), StatusCode::OK);
     let body = json_body(response).await;
     assert_eq!(body["moduleName"], "support-ticket");
+    assert_eq!(body["moduleRelease"], Value::Null);
     assert_eq!(body["remoteSource"]["configured"], true);
     assert_eq!(
         body["remoteSource"]["desiredBaseUrl"],
@@ -1742,6 +1819,99 @@ async fn available_service_module_install_writes_provider_remote_source() {
         "{env_file}"
     );
     assert!(!env_file.contains("support-ticket=http://127.0.0.1:4110"));
+}
+
+#[tokio::test]
+async fn available_module_release_install_writes_provider_receipt() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
+    let _catalog = FileFixture::write(
+        ".lenso/module-catalog.json",
+        serde_json::json!({
+            "version": 1,
+            "modules": [{
+                "name": "support-ticket",
+                "version": "0.1.0",
+                "protocol": "lenso.module-release.v1",
+                "source": "service",
+                "manifestReference": "dist/lenso-service/support-suite-provider/modules/support-ticket/lenso.module-release.json",
+                "baseUrl": "http://127.0.0.1:4110/lenso/service/v1",
+                "provider": {
+                    "name": "support-suite-provider",
+                    "serviceManifest": "http://127.0.0.1:4110/lenso/service/v1/manifest"
+                },
+                "capabilities": ["support_ticket.tickets.read"]
+            }]
+        })
+        .to_string(),
+    );
+    let _env = FileFixture::write(".env", "REMOTE_MODULES=crm=https://example.com/crm\n");
+    let _ledger = FileFixture::remove(".lenso/module-installs.json");
+    let _console_registry = FileFixture::remove(".lenso/console/extensions/registry.json");
+    install_admin_module_metadata(vec![]);
+    let ctx = AppContext::new(
+        AppConfig::from_env(),
+        lazy_failing_db(),
+        Arc::new(LoggingEventPublisher),
+    );
+    let app = build_router(ctx);
+
+    let response = app
+        .oneshot(admin_post_json(
+            "/admin/data/available-modules/support-ticket/install",
+            "{}",
+        ))
+        .await
+        .expect("install request completes");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["moduleName"], "support-ticket");
+    assert_eq!(
+        body["moduleRelease"]["manifestReference"],
+        "dist/lenso-service/support-suite-provider/modules/support-ticket/lenso.module-release.json"
+    );
+    assert_eq!(
+        body["moduleRelease"]["providerName"],
+        "support-suite-provider"
+    );
+    assert_eq!(body["remoteSource"]["configured"], true);
+    assert_eq!(
+        body["remoteSource"]["desiredBaseUrl"],
+        "http://127.0.0.1:4110/lenso/service/v1"
+    );
+    let env_file = fs::read_to_string(".env").expect("read env file");
+    assert!(
+        env_file.contains(
+            "REMOTE_MODULES=crm=https://example.com/crm,support-suite-provider=http://127.0.0.1:4110/lenso/service/v1\n"
+        ),
+        "{env_file}"
+    );
+    assert!(!env_file.contains("support-ticket=http://127.0.0.1:4110"));
+
+    let ledger_source =
+        fs::read_to_string(".lenso/module-installs.json").expect("read module install ledger");
+    let ledger: Value = serde_json::from_str(&ledger_source).expect("ledger is json");
+    assert_eq!(ledger["modules"][0]["moduleName"], "support-ticket");
+    assert_eq!(
+        ledger["modules"][0]["service"]["name"],
+        "support-suite-provider"
+    );
+    assert_eq!(
+        ledger["modules"][0]["service"]["manifestReference"],
+        "http://127.0.0.1:4110/lenso/service/v1/manifest"
+    );
+    assert_eq!(
+        ledger["modules"][0]["moduleRelease"]["manifestReference"],
+        "dist/lenso-service/support-suite-provider/modules/support-ticket/lenso.module-release.json"
+    );
+    assert_eq!(
+        ledger["modules"][0]["moduleRelease"]["manifestSnapshot"]["provider"]["name"],
+        "support-suite-provider"
+    );
+    assert_eq!(
+        ledger["modules"][0]["moduleRelease"]["manifestSnapshot"]["capabilities"],
+        serde_json::json!(["support_ticket.tickets.read"])
+    );
 }
 
 #[tokio::test]
@@ -2107,6 +2277,38 @@ async fn available_service_module_uninstall_removes_provider_remote_source() {
     );
     let _console_registry = FileFixture::remove(".lenso/console/extensions/registry.json");
     let _install_plan = FileFixture::remove(".lenso/console-package-install-plan.json");
+    let _ledger = FileFixture::write(
+        ".lenso/module-installs.json",
+        serde_json::json!({
+            "version": 1,
+            "modules": [
+                {
+                    "moduleName": "crm",
+                    "source": "remote"
+                },
+                {
+                    "moduleName": "support-ticket",
+                    "source": "remote",
+                    "service": {
+                        "name": "support-suite-provider"
+                    },
+                    "moduleRelease": {
+                        "manifestReference": "dist/lenso-service/support-suite-provider/modules/support-ticket/lenso.module-release.json",
+                        "manifestSnapshot": {
+                            "protocol": "lenso.module-release.v1",
+                            "name": "support-ticket",
+                            "version": "0.1.0",
+                            "source": "service",
+                            "provider": {
+                                "name": "support-suite-provider"
+                            }
+                        }
+                    }
+                }
+            ]
+        })
+        .to_string(),
+    );
     install_admin_module_metadata(vec![]);
     let ctx = AppContext::new(
         AppConfig::from_env(),
@@ -2128,6 +2330,11 @@ async fn available_service_module_uninstall_removes_provider_remote_source() {
     assert_eq!(body["remoteSource"]["configured"], false);
     let env_file = fs::read_to_string(".env").expect("read env file");
     assert_eq!(env_file, "REMOTE_MODULES=crm=https://example.com/crm\n");
+    let ledger_source =
+        fs::read_to_string(".lenso/module-installs.json").expect("read module install ledger");
+    let ledger: Value = serde_json::from_str(&ledger_source).expect("ledger is json");
+    assert_eq!(ledger["modules"].as_array().unwrap().len(), 1);
+    assert_eq!(ledger["modules"][0]["moduleName"], "crm");
 }
 
 #[tokio::test]

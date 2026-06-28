@@ -71,7 +71,12 @@ support manifest loading, declared HTTP route metadata, schema-admin reads,
 admin surface metadata, host-owned HTTP proxying for declared GET, POST, PUT,
 PATCH, and DELETE routes, remote runtime functions, and remote event handlers.
 Third-party module packaging and ecosystem boundaries are specified in
-`docs/architecture/third-party-modules.md`. Route proxying is specified
+`docs/architecture/third-party-modules.md`; V9 service packages add a small
+`lenso.service-package.v1` artifact around `lenso.service.json` for release and
+handoff tooling, and V10 module releases add a `lenso.module-release.v1`
+business-module entrypoint that resolves to a provider service/package while
+the Host still consumes the service manifest.
+Route proxying is specified
 separately in `docs/architecture/module-remote-http-proxy.md`. Remote runtime
 execution and event-handler dispatch are scoped in
 `docs/architecture/module-remote-runtime.md`, with native gRPC transport scoped

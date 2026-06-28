@@ -75,6 +75,8 @@ pub struct AdminModuleRegistrySnapshotModuleDto {
     pub provided_by: Option<String>,
     #[serde(default, rename = "serviceManifest")]
     pub service_manifest: Option<String>,
+    #[serde(default, rename = "moduleRelease")]
+    pub module_release: Option<AdminModuleReleaseDto>,
     pub summary: Option<String>,
     pub base_url: Option<String>,
     pub capabilities: Vec<String>,
@@ -97,6 +99,17 @@ pub struct AdminModuleInstallStateDto {
     pub linked_source: Option<AdminModuleLinkedSourceInstallStateDto>,
     pub remote_source: Option<AdminModuleRemoteSourceInstallStateDto>,
     pub console_plan: AdminModuleConsolePackagePlanStateDto,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminModuleReleaseDto {
+    pub manifest_reference: String,
+    pub name: Option<String>,
+    pub version: Option<String>,
+    pub provider_name: Option<String>,
+    pub service_package: Option<String>,
+    pub service_manifest: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -135,6 +148,7 @@ pub struct AdminServiceModuleLifecycleModuleDto {
     pub deployment: Option<AdminServiceModuleDeploymentDto>,
     pub services: Vec<AdminServiceModuleLifecycleServiceDto>,
     pub operations: Vec<AdminServiceOperationDto>,
+    pub module_release: Option<AdminModuleReleaseDto>,
     pub fixes: Vec<String>,
 }
 
@@ -314,6 +328,7 @@ pub struct AdminModuleConsolePackagePlanStateDto {
 pub struct AdminModuleInstallResponse {
     pub module_name: String,
     pub manifest_reference: String,
+    pub module_release: Option<AdminModuleReleaseDto>,
     pub linked_source: Option<AdminModuleLinkedSourceInstallStateDto>,
     pub remote_source: Option<AdminModuleRemoteSourceInstallStateDto>,
     pub console_plan: AdminModuleConsolePackagePlanStateDto,
