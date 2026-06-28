@@ -9,10 +9,10 @@ surfaces, runtime workflows, and operational visibility through the Runtime
 Console.
 
 Lenso is built for modular SaaS apps, internal platforms, vertical business
-systems, and agent-assisted module development. It gives humans and coding
-agents stable scaffolds, explicit module manifests, generated contracts,
-architecture checks, smoke checks, and a Runtime Console to verify that a module
-is connected.
+systems, independently running services, and agent-assisted module development. It gives
+humans and coding agents stable scaffolds, explicit module manifests, generated
+contracts, architecture checks, smoke checks, and a Runtime Console to verify
+that a module is connected.
 
 The platform is service-ready by design: build modular first, then move selected
 modules across process or service boundaries when those boundaries harden.
@@ -80,7 +80,11 @@ worker, migration, and local Postgres shape. New starters use
 
 ## Architecture Overview
 
-- Modular monolith first: modules run in-process today and can later be extracted behind HTTP, gRPC, or event boundaries.
+- Modular monolith first: linked modules run in-process and can later be
+  extracted behind independently running services over HTTP, gRPC, or event boundaries
+  ([guide](docs/architecture/linked-to-service-module.md)).
+- Services: independently running backends that provide one or more modules and
+  are observed by the host.
 - Rust first: API, worker, migrations, platform crates, modules, contract generators, and architecture checks are Rust workspace members.
 - Explicit SQL and Postgres: no custom ORM, no hidden database magic.
 - Transactional outbox: module writes and emitted events commit atomically.

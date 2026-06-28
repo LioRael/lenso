@@ -7,6 +7,10 @@ use platform_module::{
 use platform_module_remote::{
     RemoteAdminActionSource, RemoteAdminDataSource, RemoteModuleConfig, RemoteModuleSource,
 };
+#[allow(dead_code)]
+#[path = "../src/protocol.rs"]
+mod protocol;
+use protocol::RemoteManifestEnvelope;
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
 
@@ -91,6 +95,32 @@ async fn manifest_with_invalid_http_route() -> Json<Value> {
             "path": "https://crm.example.test/contacts"
         }],
         "capabilities": []
+    }))
+}
+
+async fn service_manifest() -> Json<Value> {
+    Json(json!({
+        "name": "support-service",
+        "protocol": "lenso.service.v1",
+        "modules": [{
+            "name": "support-ticket",
+            "story_display": [],
+            "admin": {
+                "kind": "schema",
+                "entities": [{
+                    "name": "tickets",
+                    "label": "Tickets",
+                    "fields": [],
+                    "read_capability": "support_ticket.tickets.read"
+                }]
+            },
+            "http_routes": [{
+                "method": "GET",
+                "path": "/tickets/{id}",
+                "capability": "support_ticket.tickets.read"
+            }],
+            "capabilities": ["support_ticket.tickets.read"]
+        }]
     }))
 }
 
@@ -314,6 +344,148 @@ async fn loads_manifest_and_attaches_admin_data_source() {
         Some(AdminSurface::Schema(_))
     ));
     assert!(module.admin_data.is_some());
+}
+
+#[tokio::test]
+async fn loads_service_manifest_as_provider_with_modules() {
+    let base_url = spawn_server(Router::new().route("/manifest", get(service_manifest))).await;
+
+    let config = RemoteModuleConfig::new("support-service", base_url.clone());
+    let loaded = RemoteModuleSource::new(config)
+        .expect("remote source")
+        .load_all()
+        .await
+        .expect("service manifest should load");
+
+    assert_eq!(loaded.len(), 1);
+    assert_eq!(loaded[0].module.manifest.name, "support-ticket");
+    assert_eq!(
+        loaded[0].config.base_url,
+        format!("{base_url}/modules/support-ticket")
+    );
+    assert!(loaded[0].module.admin_data.is_some());
+}
+
+#[test]
+fn service_manifest_accepts_v6_provider_fields() {
+    let value = serde_json::json!({
+        "name": "support-suite-provider",
+        "version": "0.2.0",
+        "provider": {
+            "name": "support-suite-provider",
+            "vendor": "Lenso",
+            "summary": "Support workflow provider"
+        },
+        "compatibility": {
+            "remoteProtocolVersion": "1",
+            "requiredHostFeatures": ["service.status"]
+        },
+        "config": [{
+            "key": "SUPPORT_API_TOKEN",
+            "required": true,
+            "defaultValue": { "from": "vault" },
+            "secret": true
+        }],
+        "env": [{
+            "name": "SUPPORT_BASE_URL",
+            "required": true,
+            "example": "https://support.example.test"
+        }],
+        "health": {
+            "readyUrl": "http://127.0.0.1:4110/lenso/service/v1/ready",
+            "statusUrl": "http://127.0.0.1:4110/lenso/service/v1/status"
+        },
+        "localProcess": {
+            "command": "pnpm --dir examples/support-ticket start",
+            "autoStart": true,
+            "readyTimeoutMs": 30000
+        },
+        "modules": [
+            {
+                "name": "support-ticket",
+                "version": "0.1.0",
+                "capabilities": ["support_ticket.tickets.read"]
+            }
+        ]
+    });
+
+    let envelope: RemoteManifestEnvelope = serde_json::from_value(value).unwrap();
+    let RemoteManifestEnvelope::Service(service) = envelope else {
+        panic!("expected service envelope");
+    };
+
+    assert_eq!(service.name, "support-suite-provider");
+    assert_eq!(service.version.as_deref(), Some("0.2.0"));
+    assert_eq!(
+        service.provider.as_ref().unwrap().vendor.as_deref(),
+        Some("Lenso")
+    );
+    let compatibility = service.compatibility.as_ref().unwrap();
+    assert_eq!(compatibility.remote_protocol_version.as_deref(), Some("1"));
+    assert_eq!(compatibility.required_host_features, ["service.status"]);
+    assert_eq!(service.config[0].key, "SUPPORT_API_TOKEN");
+    assert!(service.config[0].required);
+    assert_eq!(
+        service.config[0].default_value.as_ref(),
+        Some(&serde_json::json!({ "from": "vault" }))
+    );
+    assert!(service.config[0].secret);
+    assert_eq!(service.env[0].name, "SUPPORT_BASE_URL");
+    assert!(service.env[0].required);
+    assert_eq!(
+        service.env[0].example.as_deref(),
+        Some("https://support.example.test")
+    );
+    assert_eq!(
+        service.health.as_ref().unwrap().ready_url.as_deref(),
+        Some("http://127.0.0.1:4110/lenso/service/v1/ready")
+    );
+    let local_process = service.local_process.as_ref().unwrap();
+    assert_eq!(
+        local_process.command,
+        "pnpm --dir examples/support-ticket start"
+    );
+    assert!(local_process.auto_start);
+    assert_eq!(local_process.ready_timeout_ms, 30_000);
+    assert_eq!(service.modules[0].name, "support-ticket");
+}
+
+#[test]
+fn service_manifest_accepts_v5_shape() {
+    let value = serde_json::json!({
+        "name": "support-service",
+        "modules": [{ "name": "support-ticket", "version": "0.1.0" }]
+    });
+
+    let envelope: RemoteManifestEnvelope = serde_json::from_value(value).unwrap();
+    let RemoteManifestEnvelope::Service(service) = envelope else {
+        panic!("expected service envelope");
+    };
+
+    assert_eq!(service.name, "support-service");
+    assert!(service.provider.is_none());
+    assert_eq!(service.modules.len(), 1);
+}
+
+#[test]
+fn service_manifest_accepts_local_process_defaults() {
+    let value = serde_json::json!({
+        "name": "support-service",
+        "localProcess": {
+            "command": "pnpm start"
+        },
+        "modules": [{ "name": "support-ticket", "version": "0.1.0" }]
+    });
+
+    let envelope: RemoteManifestEnvelope = serde_json::from_value(value).unwrap();
+    let RemoteManifestEnvelope::Service(service) = envelope else {
+        panic!("expected service envelope");
+    };
+
+    let local_process = service.local_process.unwrap();
+    assert_eq!(local_process.command, "pnpm start");
+    assert!(local_process.auto_start);
+    assert_eq!(local_process.ready_timeout_ms, 30_000);
 }
 
 #[tokio::test]

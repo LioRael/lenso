@@ -2,7 +2,7 @@ use crate::admin_action::RemoteAdminActionSource;
 use crate::admin_data::RemoteAdminDataSource;
 use crate::binding::RemoteBinding;
 use crate::config::{RemoteModuleConfig, RemoteModuleTransport};
-use crate::protocol::RemoteManifestResponse;
+use crate::protocol::{RemoteManifestEnvelope, RemoteManifestResponse};
 use crate::response::decode_json_response;
 use platform_core::error::ErrorDetail;
 use platform_core::{AppError, AppResult, ErrorCode};
@@ -16,6 +16,12 @@ use std::time::Duration;
 pub struct RemoteModuleSource {
     client: reqwest::Client,
     config: RemoteModuleConfig,
+}
+
+#[derive(Debug)]
+pub struct LoadedRemoteModule {
+    pub module: Module,
+    pub config: RemoteModuleConfig,
 }
 
 impl RemoteModuleSource {
@@ -33,19 +39,69 @@ impl RemoteModuleSource {
     }
 
     pub async fn load(&self) -> AppResult<Module> {
-        let manifest = self.fetch_manifest().await?;
-        if manifest.name != self.config.name {
-            return Err(AppError::new(
-                ErrorCode::Internal,
-                format!(
-                    "remote module manifest name '{}' does not match configured name '{}'",
-                    manifest.name, self.config.name
-                ),
-            ));
+        let mut loaded = self.load_all().await?;
+        if loaded.len() == 1 {
+            return Ok(loaded.remove(0).module);
         }
+        loaded
+            .into_iter()
+            .find(|loaded| loaded.module.manifest.name == self.config.name)
+            .map(|loaded| loaded.module)
+            .ok_or_else(|| {
+                AppError::new(
+                    ErrorCode::Internal,
+                    format!(
+                        "remote service '{}' did not provide a module named '{}'",
+                        self.config.name, self.config.name
+                    ),
+                )
+            })
+    }
+
+    pub async fn load_all(&self) -> AppResult<Vec<LoadedRemoteModule>> {
+        match self.fetch_manifest().await? {
+            RemoteManifestEnvelope::Module(manifest) => {
+                if manifest.name != self.config.name {
+                    return Err(AppError::new(
+                        ErrorCode::Internal,
+                        format!(
+                            "remote module manifest name '{}' does not match configured name '{}'",
+                            manifest.name, self.config.name
+                        ),
+                    ));
+                }
+                Ok(vec![self.load_module(manifest, self.config.clone())?])
+            }
+            RemoteManifestEnvelope::Service(service) => {
+                if service.name != self.config.name {
+                    return Err(AppError::new(
+                        ErrorCode::Internal,
+                        format!(
+                            "remote service manifest name '{}' does not match configured name '{}'",
+                            service.name, self.config.name
+                        ),
+                    ));
+                }
+                service
+                    .modules
+                    .into_iter()
+                    .map(|manifest| {
+                        let config = self.config.for_service_module(&manifest.name);
+                        self.load_module(manifest, config)
+                    })
+                    .collect()
+            }
+        }
+    }
+
+    fn load_module(
+        &self,
+        manifest: RemoteManifestResponse,
+        config: RemoteModuleConfig,
+    ) -> AppResult<LoadedRemoteModule> {
         validate_remote_http_routes(&manifest.http_routes)?;
         let binding = RemoteBinding::from_surfaces(
-            self.config.clone(),
+            config.clone(),
             manifest.runtime.as_ref(),
             manifest.events.as_ref(),
         )?;
@@ -65,23 +121,24 @@ impl RemoteModuleSource {
         );
         let mut module = Module::remote(manifest, Arc::new(binding));
         if has_admin_data {
-            module =
-                module.with_admin_data(Arc::new(RemoteAdminDataSource::new(self.config.clone())?));
+            module = module.with_admin_data(Arc::new(RemoteAdminDataSource::new(config.clone())?));
         }
         if has_admin_actions {
-            module = module
-                .with_admin_actions(Arc::new(RemoteAdminActionSource::new(self.config.clone())?));
+            module =
+                module.with_admin_actions(Arc::new(RemoteAdminActionSource::new(config.clone())?));
         }
         if has_admin_queries {
-            module = module
-                .with_admin_queries(Arc::new(RemoteAdminDataSource::new(self.config.clone())?));
+            module =
+                module.with_admin_queries(Arc::new(RemoteAdminDataSource::new(config.clone())?));
         }
-        Ok(module)
+        Ok(LoadedRemoteModule { module, config })
     }
 
-    async fn fetch_manifest(&self) -> AppResult<RemoteManifestResponse> {
+    async fn fetch_manifest(&self) -> AppResult<RemoteManifestEnvelope> {
         if self.config.transport == RemoteModuleTransport::Grpc {
-            return crate::grpc::fetch_manifest(&self.config).await;
+            return crate::grpc::fetch_manifest(&self.config)
+                .await
+                .map(RemoteManifestEnvelope::Module);
         }
 
         let request = self

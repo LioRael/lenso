@@ -8,6 +8,7 @@ members = [
     "crates/lenso-migrate",
     "crates/lenso-worker",
     "crates/lenso-bootstrap",
+    "crates/lenso-service",
     "crates/platform-admin",
     "crates/platform-admin-data",
     "crates/platform-core",
@@ -78,6 +79,7 @@ lenso-bootstrap = { path = "crates/lenso-bootstrap", version = "0.1.9" }
 lenso-api = { path = "crates/lenso-api", version = "0.1.10" }
 lenso-migrate = { path = "crates/lenso-migrate", version = "0.1.9" }
 lenso-worker = { path = "crates/lenso-worker", version = "0.1.9" }
+lenso-service = { path = "crates/lenso-service", version = "0.1.0" }
 auth = { package = "lenso-module-auth", version = "0.1.6", features = ["redis"] }
 auth-oidc = { package = "lenso-module-auth-oidc", version = "0.1.0" }
 auth-password = { package = "lenso-module-auth-password", version = "0.1.7" }
@@ -87,6 +89,9 @@ arch-check = { path = "tools/arch-check" }
 remote-module-fixture = { path = "fixtures/remote-module" }
 
 [patch.crates-io]
+lenso-module-auth = { git = "https://github.com/LioRael/lenso-auth-module.git", branch = "chore/lenso-v8-operation-contract" }
+lenso-module-auth-oidc = { git = "https://github.com/LioRael/lenso-auth-module.git", branch = "chore/lenso-v8-operation-contract" }
+lenso-module-auth-password = { git = "https://github.com/LioRael/lenso-auth-module.git", branch = "chore/lenso-v8-operation-contract" }
 lenso-contracts = { path = "crates/lenso-contracts" }
 lenso-platform-core = { path = "crates/platform-core" }
 lenso-platform-http = { path = "crates/platform-http" }

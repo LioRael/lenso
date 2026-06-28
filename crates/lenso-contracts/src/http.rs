@@ -36,6 +36,8 @@ pub struct ModuleHttpRoute {
     /// Optional story title for direct requests to this route.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub story_title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation: Option<crate::ServiceOperationMetadata>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -170,6 +172,7 @@ mod tests {
             capability: None,
             display_name: None,
             story_title: None,
+            operation: None,
         }
     }
 

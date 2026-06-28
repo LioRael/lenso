@@ -37,6 +37,16 @@ impl RemoteModuleConfig {
         self.timeout_ms = timeout_ms;
         self
     }
+
+    #[must_use]
+    pub fn for_service_module(&self, module_name: &str) -> Self {
+        let mut config = self.clone();
+        config.name = module_name.to_owned();
+        if config.transport == RemoteModuleTransport::HttpJson {
+            config.base_url = format!("{}/modules/{module_name}", self.base_url);
+        }
+        config
+    }
 }
 
 fn normalize_base_url(base_url: String) -> (RemoteModuleTransport, String) {

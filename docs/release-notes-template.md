@@ -14,8 +14,9 @@
 ## First Release Scope
 
 - Linked modules load through the app bootstrap composition root.
-- Remote modules install through `lenso module install <manifest-url>`.
-- Remote module manifests can declare schema-admin, HTTP routes, runtime
+- Services install through `lenso service install <service-manifest-url>` and
+  provide modules to the host.
+- Service-provided modules can declare schema-admin, HTTP routes, runtime
   functions, and lifecycle activation jobs.
 - Runtime Console integration is provided by the separate
   `lenso-runtime-console` repository.
@@ -33,6 +34,6 @@ just check
 
 - Local service smoke requires Postgres and separate API, worker, and Console
   shells.
-- Remote module install is decentralized and low-friction.
+- Service install is manifest-based and low-friction.
 - Publisher trust, registry review, install history, doctor flows, bundle
   import/export, provenance, and signatures are not release blockers.

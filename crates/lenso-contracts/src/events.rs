@@ -19,4 +19,6 @@ pub struct EventHandlerDeclaration {
     /// Stable event name consumed from `platform.outbox`, e.g.
     /// `identity.user_registered.v1`.
     pub event_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation: Option<crate::ServiceOperationMetadata>,
 }

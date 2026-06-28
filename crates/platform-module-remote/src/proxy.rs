@@ -219,6 +219,7 @@ mod tests {
             capability: Some("remote_crm.contacts.read".to_owned()),
             display_name: None,
             story_title: None,
+            operation: None,
         }
     }
 

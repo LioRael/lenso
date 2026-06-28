@@ -11,17 +11,17 @@ The intended first-user flow is:
 
 ```sh
 cargo add lenso@0.3.16 --features host
+pnpm add @lenso/service-kit@0.1.0
 pnpm add @lenso/remote-module-kit@0.1.1
 ```
 
 Not every project needs every package:
 
 - Rust linked-module authors use the `lenso` crate.
-- JavaScript or TypeScript remote-module authors use
-  `@lenso/remote-module-kit`.
+- JavaScript or TypeScript service authors use `@lenso/service-kit`.
 - API consumers use the OpenAPI contract directly.
 - Application starters and example repositories compose those packages into a
-  runnable backend, worker, migration, Runtime Console, and remote module demo.
+  runnable backend, worker, migration, Runtime Console, and service demo.
 
 The source repositories can stay organized around implementation ownership. The
 package boundary is the user-facing contract.
@@ -30,8 +30,9 @@ Current registry baseline:
 
 - `lenso@0.3.16` is the crates.io facade line for generated hosts with the
   `host` feature.
-- `@lenso/remote-module-kit@0.1.1` is published from the Runtime Console
-  repository.
+- `@lenso/service-kit@0.1.0` is published from the Runtime Console repository.
+- `@lenso/remote-module-kit` remains as the compatibility package for the old
+  single remote-module entrypoint.
 
 ## Rust Facade Crate
 
@@ -89,13 +90,14 @@ current API, worker, and migration entrypoints visible from a blank project
 while depending on the crates.io `lenso` package with the `host` feature. Treat
 new needs in that template as a signal for the next host facade extraction.
 
-## Remote Module Kit
+## Service Kit
 
-`@lenso/remote-module-kit` is the primary package for out-of-process module
-authors. It should provide:
+`@lenso/service-kit` is the primary package for services: independently running
+backends that provide one or more modules to the host. It
+should provide:
 
-- remote manifest types and builders;
-- a small development server for the Lenso module protocol;
+- service and module manifest types and builders;
+- a small development server for the Lenso service protocol;
 - helpers for schema-admin data, HTTP routes, runtime functions, and event
   handlers;
 - stable request and response envelopes that match the host protocol.
@@ -103,7 +105,7 @@ authors. It should provide:
 Examples must not depend on a sibling `file:` path into
 `../lenso-runtime-console`. Before examples move into an external repository,
 this package needs a clean build output, declarations, package metadata, and
-`npm pack --dry-run` coverage.
+`pnpm pack --dry-run` coverage.
 
 ## Starter And Examples
 
@@ -113,17 +115,19 @@ exist.
 
 The first examples repository is
 [LioRael/lenso-examples](https://github.com/LioRael/lenso-examples). It starts
-with the JavaScript `hello-action` remote module and uses registry packages
-instead of sibling workspace paths.
+with JavaScript service providers such as `hello-service`,
+`account-profile-service`, and `support-service`, and uses registry packages
+instead of sibling workspace paths. The support-ticket example is the preferred
+business-shaped service path for first-user documentation.
 
 Grow examples only when:
 
-- `@lenso/remote-module-kit` is installed from npm or an explicitly documented
+- `@lenso/service-kit` is installed from npm or an explicitly documented
   local override;
 - Rust examples either depend on the public `lenso` facade crate or explicitly
   vendor fixture-only code;
-- example CI can start a module, fetch `/lenso/module/v1/manifest`, and run a
-  smoke check without this monorepo.
+- example CI can start a service, fetch `/lenso/service/v1/manifest`, and run a
+  focused check without this monorepo.
 
 The backend repository should still keep minimal fixtures for integration tests
 and contract coverage. External examples are for users; internal fixtures are
@@ -133,7 +137,7 @@ for CI.
 
 A package, crate, command, or template should become public only when it has:
 
-- a clear target author: Rust linked-module author, remote-module author, API
+- a clear target author: Rust linked-module author, service author, API
   client author, or operator;
 - a minimal install command;
 - a stable import path or binary name;
@@ -148,8 +152,8 @@ facade exists.
 
 ## Near-Term Sequence
 
-1. Keep `@lenso/remote-module-kit` in the Runtime Console repository and grow it
-   as the remote-module authoring facade.
+1. Keep `@lenso/service-kit` in the Runtime Console repository and grow it as
+   the service authoring facade.
 2. Keep the crates.io `lenso` facade limited to stable module-authoring
    declarations until a host application API is intentionally designed.
 3. Keep the standalone `lenso-cli` starter template as the host facade pressure

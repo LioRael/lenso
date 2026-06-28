@@ -52,14 +52,14 @@ just api
 just worker
 ```
 
-For the first-user backend flow, including a remote module fixture and
+For the first-user backend flow, including a service fixture and
 Console-facing admin APIs, run:
 
 ```sh
 just first-user-smoke
 ```
 
-Verify Runtime Console and remote-module package behavior in the sibling
+Verify Runtime Console and service package behavior in the sibling
 `lenso-runtime-console` repository.
 User-facing examples that install published packages live in
 [LioRael/lenso-examples](https://github.com/LioRael/lenso-examples).
@@ -77,8 +77,8 @@ Most release-smoke failures are local setup issues:
   `VITE_API_BASE_URL` for that shell.
 - `first-user-smoke` port defaults are busy: set `FIRST_USER_SMOKE_HTTP_PORT`
   or `FIRST_USER_SMOKE_REMOTE_MODULE_ADDR` for that shell.
-- The remote module manifest URL does not respond: start the module process and
-  open `/lenso/module/v1/manifest` in a browser or with `curl`.
+- The service manifest URL does not respond: start the service process and open
+  `/lenso/service/v1/manifest` in a browser or with `curl`.
 - `REMOTE_MODULES` changed but the module is not visible: restart the API,
   worker, and Runtime Console.
 - OTLP collector is not running: unset `OTEL_EXPORTER_OTLP_ENDPOINT` for normal
@@ -89,8 +89,9 @@ Most release-smoke failures are local setup issues:
 The first publishable scope is intentionally narrow:
 
 - Linked modules load through the app bootstrap composition root.
-- Remote modules install through `lenso module install <manifest-url>`.
-- Remote module manifests can declare schema-admin, HTTP routes, runtime
+- Services install through `lenso service install <service-manifest-url>` and
+  provide modules to the host.
+- Service-provided modules can declare schema-admin, HTTP routes, runtime
   functions, and lifecycle activation jobs.
 - Runtime Console integration is provided by the separate
   `lenso-runtime-console` repository.

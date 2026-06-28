@@ -97,10 +97,10 @@ gh release view vX.Y.Z
 
 ## 8. Keep The First Release Narrow
 
-The first release should ship the installable module happy path:
+The first release should ship the installable service happy path:
 
 ```sh
-lenso module install <manifest-url>
+lenso service install <service-manifest-url>
 ```
 
 Do not block this release on centralized marketplace features such as publisher

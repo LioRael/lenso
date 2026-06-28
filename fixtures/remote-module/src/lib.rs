@@ -255,6 +255,7 @@ async fn declarative_manifest() -> Json<ModuleManifest> {
                         required_phrase: Some("SYNC".to_owned()),
                     }),
                     danger_level: AdminActionDangerLevel::Medium,
+                    operation: None,
                 }],
                 fallback_schema: Some(contacts_schema()),
             })
@@ -738,6 +739,7 @@ fn contact_http_routes() -> Vec<ModuleHttpRoute> {
             capability: Some("remote_crm.contacts.read".to_owned()),
             display_name: Some("List Contacts".to_owned()),
             story_title: Some("List Contacts".to_owned()),
+            operation: None,
         },
         ModuleHttpRoute {
             method: ModuleHttpMethod::Post,
@@ -745,6 +747,7 @@ fn contact_http_routes() -> Vec<ModuleHttpRoute> {
             capability: Some("remote_crm.contacts.read".to_owned()),
             display_name: Some("Create Contact".to_owned()),
             story_title: Some("Create Contact".to_owned()),
+            operation: None,
         },
         ModuleHttpRoute {
             method: ModuleHttpMethod::Get,
@@ -752,6 +755,7 @@ fn contact_http_routes() -> Vec<ModuleHttpRoute> {
             capability: Some("remote_crm.contacts.read".to_owned()),
             display_name: Some("Fetch Contact".to_owned()),
             story_title: Some("Fetch Contact".to_owned()),
+            operation: None,
         },
         ModuleHttpRoute {
             method: ModuleHttpMethod::Put,
@@ -759,6 +763,7 @@ fn contact_http_routes() -> Vec<ModuleHttpRoute> {
             capability: Some("remote_crm.contacts.read".to_owned()),
             display_name: Some("Replace Contact".to_owned()),
             story_title: Some("Replace Contact".to_owned()),
+            operation: None,
         },
         ModuleHttpRoute {
             method: ModuleHttpMethod::Patch,
@@ -766,6 +771,7 @@ fn contact_http_routes() -> Vec<ModuleHttpRoute> {
             capability: Some("remote_crm.contacts.read".to_owned()),
             display_name: Some("Update Contact".to_owned()),
             story_title: Some("Update Contact".to_owned()),
+            operation: None,
         },
         ModuleHttpRoute {
             method: ModuleHttpMethod::Delete,
@@ -773,6 +779,7 @@ fn contact_http_routes() -> Vec<ModuleHttpRoute> {
             capability: Some("remote_crm.contacts.read".to_owned()),
             display_name: Some("Delete Contact".to_owned()),
             story_title: Some("Delete Contact".to_owned()),
+            operation: None,
         },
         ModuleHttpRoute {
             method: ModuleHttpMethod::Delete,
@@ -780,6 +787,7 @@ fn contact_http_routes() -> Vec<ModuleHttpRoute> {
             capability: Some("remote_crm.contacts.read".to_owned()),
             display_name: Some("Purge Contact".to_owned()),
             story_title: Some("Purge Contact".to_owned()),
+            operation: None,
         },
         ModuleHttpRoute {
             method: ModuleHttpMethod::Get,
@@ -787,6 +795,7 @@ fn contact_http_routes() -> Vec<ModuleHttpRoute> {
             capability: Some("remote_crm.contacts.read".to_owned()),
             display_name: Some("Fetch Text Fixture".to_owned()),
             story_title: Some("Fetch Text Fixture".to_owned()),
+            operation: None,
         },
         ModuleHttpRoute {
             method: ModuleHttpMethod::Get,
@@ -794,6 +803,7 @@ fn contact_http_routes() -> Vec<ModuleHttpRoute> {
             capability: Some("remote_crm.contacts.read".to_owned()),
             display_name: Some("Fetch Oversized Fixture".to_owned()),
             story_title: Some("Fetch Oversized Fixture".to_owned()),
+            operation: None,
         },
         ModuleHttpRoute {
             method: ModuleHttpMethod::Get,
@@ -801,6 +811,7 @@ fn contact_http_routes() -> Vec<ModuleHttpRoute> {
             capability: Some("remote_crm.contacts.read".to_owned()),
             display_name: Some("Fetch Slow Fixture".to_owned()),
             story_title: Some("Fetch Slow Fixture".to_owned()),
+            operation: None,
         },
     ]
 }
@@ -816,6 +827,7 @@ fn runtime_surface() -> RuntimeSurface {
                 max_attempts: 3,
                 initial_delay_ms: 1000,
             }),
+            operation: None,
         }],
         schedules: vec![],
     }
@@ -826,6 +838,7 @@ fn event_surface() -> EventSurface {
         handlers: vec![EventHandlerDeclaration {
             name: REMOTE_USER_REGISTERED_HANDLER.to_owned(),
             event_name: IDENTITY_USER_REGISTERED_EVENT.to_owned(),
+            operation: None,
         }],
     }
 }

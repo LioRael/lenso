@@ -16,6 +16,7 @@ pub fn http_routes() -> Vec<ModuleHttpRoute> {
             capability: Some(STORY_CONSOLE_CAPABILITY.to_owned()),
             display_name: Some("List Runtime Stories".to_owned()),
             story_title: Some("Runtime Stories".to_owned()),
+            operation: None,
         },
         ModuleHttpRoute {
             method: ModuleHttpMethod::Get,
@@ -23,6 +24,7 @@ pub fn http_routes() -> Vec<ModuleHttpRoute> {
             capability: Some(STORY_CONSOLE_CAPABILITY.to_owned()),
             display_name: Some("Runtime Story Detail".to_owned()),
             story_title: Some("Runtime Story Detail".to_owned()),
+            operation: None,
         },
         ModuleHttpRoute {
             method: ModuleHttpMethod::Get,
@@ -30,6 +32,7 @@ pub fn http_routes() -> Vec<ModuleHttpRoute> {
             capability: Some(STORY_CONSOLE_CAPABILITY.to_owned()),
             display_name: Some("Runtime Story Heatmap".to_owned()),
             story_title: Some("Runtime Story Heatmap".to_owned()),
+            operation: None,
         },
         ModuleHttpRoute {
             method: ModuleHttpMethod::Get,
@@ -37,6 +40,7 @@ pub fn http_routes() -> Vec<ModuleHttpRoute> {
             capability: Some(STORY_CONSOLE_CAPABILITY.to_owned()),
             display_name: Some("Runtime Story Technical Operations".to_owned()),
             story_title: Some("Runtime Story Technical Operations".to_owned()),
+            operation: None,
         },
     ]
 }

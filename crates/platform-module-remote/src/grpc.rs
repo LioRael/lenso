@@ -731,6 +731,7 @@ mod tests {
                     input_schema: None,
                     confirmation: None,
                     danger_level: AdminActionDangerLevel::Low,
+                    operation: None,
                 }],
                 fallback_schema: Some(AdminSchema {
                     entities: vec![EntitySchema {
@@ -756,6 +757,7 @@ mod tests {
                         max_attempts: 3,
                         initial_delay_ms: 100,
                     }),
+                    operation: None,
                 }],
                 schedules: vec![],
             })
@@ -763,6 +765,7 @@ mod tests {
                 handlers: vec![EventHandlerDeclaration {
                     name: "sync_contact_on_user_registered".to_owned(),
                     event_name: "identity.user_registered.v1".to_owned(),
+                    operation: None,
                 }],
             })
             .build()

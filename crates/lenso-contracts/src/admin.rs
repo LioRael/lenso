@@ -83,6 +83,8 @@ pub struct AdminAction {
     pub confirmation: Option<AdminActionConfirmation>,
     #[serde(default, skip_serializing_if = "AdminActionDangerLevel::is_low")]
     pub danger_level: AdminActionDangerLevel,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation: Option<crate::ServiceOperationMetadata>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -213,6 +215,7 @@ mod tests {
                 input_schema: None,
                 confirmation: None,
                 danger_level: AdminActionDangerLevel::Low,
+                operation: None,
             }],
             fallback_schema: Some(fallback_schema()),
         });

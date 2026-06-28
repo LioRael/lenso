@@ -14,6 +14,14 @@ use crate::dto::{
     AdminModuleRegistrySnapshotStatus, AdminModuleRemoteSourceInstallStateDto, AdminModuleSchema,
     AdminModuleSourceDiagnosticsDto, AdminModuleStatus, AdminQueryResponse,
     AdminRemoteModuleDiagnosticsDto, AdminSchemaListResponse, AdminSchemaRefreshResponse,
+    AdminServiceModuleCompatibilityDto, AdminServiceModuleCompatibilityState,
+    AdminServiceModuleDeploymentDto, AdminServiceModuleHealthCheckDto,
+    AdminServiceModuleLifecycleModuleDto, AdminServiceModuleLifecycleModuleStatus,
+    AdminServiceModuleLifecycleResponse, AdminServiceModuleLifecycleServiceDto,
+    AdminServiceModuleLifecycleStatus, AdminServiceModuleManifestStatus,
+    AdminServiceModuleServiceStatusCheckDto, AdminServiceModuleServiceStatusDto,
+    AdminServiceModuleServiceStatusState, AdminServiceOperationDto, AdminServiceOperationKindDto,
+    AdminServiceOperationLinksDto,
 };
 use crate::{
     AdminModule, AdminModuleMetadata, AdminModuleMetadataRefreshModuleResult,
@@ -33,9 +41,9 @@ use platform_core::{
 use platform_http::{AdminActor, ApiErrorResponse, ErrorResponse, HttpRequestContext};
 use platform_module::{
     AdminActionConfirmation, AdminActionInputField, AdminActionInputSchema,
-    AdminDeclarativeComponent, AdminListQuery, AdminSurface, FieldType, ModuleLoadStatus,
-    ModuleManifestLint, ModuleManifestLintSeverity, ModuleSource, lint_module_manifest_parts,
-    module_capability_references,
+    AdminDeclarativeComponent, AdminListQuery, AdminSurface, FieldType, ModuleHttpMethod,
+    ModuleLoadStatus, ModuleManifestLint, ModuleManifestLintSeverity, ModuleSource,
+    lint_module_manifest_parts, module_capability_references,
 };
 use serde::Deserialize;
 use serde::Serialize;
@@ -44,7 +52,7 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path as FsPath, PathBuf};
-use std::time::Instant;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 const DEFAULT_LIMIT: i64 = 50;
 const MAX_LIMIT: i64 = 200;
@@ -52,9 +60,18 @@ const CONSOLE_EXTENSION_REGISTRY_PATH: &str = ".lenso/console/extensions/registr
 const CONSOLE_EXTENSION_ROUTE_PREFIX: &str = "/console/extensions";
 const HOST_CONSOLE_PACKAGE_API_VERSION: &str = "1";
 const HOST_LENSO_VERSION: &str = env!("CARGO_PKG_VERSION");
+const HOST_REMOTE_PROTOCOL_VERSION: &str = "1";
+const MODULE_INSTALL_LEDGER_PATH: &str = ".lenso/module-installs.json";
+const MODULE_SERVICES_PATH: &str = ".lenso/module-services.json";
+const SERVICE_MODULE_HEALTH_PATH: &str = ".lenso/service-health.json";
 const OFFICIAL_MODULE_CATALOG_REGISTRY_FILE: &str = "builtin:lenso-official-module-catalog";
 const OFFICIAL_MODULE_CATALOG_SOURCE: &str =
     include_str!("../catalogs/lenso-official-module-catalog.json");
+const SUPPORTED_SERVICE_MODULE_FEATURES: &[&str] = &[
+    "console.package-api.1",
+    "service.lifecycle",
+    "service.status",
+];
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct DataListQuery {
@@ -127,7 +144,7 @@ pub(crate) async fn refresh_modules(
     tag = "admin-data",
     params(("authorization" = String, Header, description = "Development service bearer token")),
     responses(
-        (status = 200, description = "Legacy alias for available remote modules", body = AdminModuleRegistrySnapshotResponse, content_type = "application/json"),
+        (status = 200, description = "Legacy alias for available catalog services", body = AdminModuleRegistrySnapshotResponse, content_type = "application/json"),
         (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
         (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
     )
@@ -146,7 +163,7 @@ pub(crate) async fn module_registry_snapshot(
     tag = "admin-data",
     params(("authorization" = String, Header, description = "Development service bearer token")),
     responses(
-        (status = 200, description = "Available remote modules for marketplace install", body = AdminModuleRegistrySnapshotResponse, content_type = "application/json"),
+        (status = 200, description = "Available catalog services and linked modules", body = AdminModuleRegistrySnapshotResponse, content_type = "application/json"),
         (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
         (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
     )
@@ -159,16 +176,43 @@ pub(crate) async fn available_modules(
 }
 
 #[utoipa::path(
+    get,
+    path = "/admin/data/service-modules",
+    operation_id = "admin_data_service_modules",
+    tag = "admin-data",
+    params(("authorization" = String, Header, description = "Development service bearer token")),
+    responses(
+        (status = 200, description = "Service provider lifecycle state", body = AdminServiceModuleLifecycleResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+    )
+)]
+pub(crate) async fn service_modules(
+    _admin: AdminActor,
+    HttpRequestContext(_request_ctx): HttpRequestContext,
+) -> Result<Json<AdminServiceModuleLifecycleResponse>, ApiErrorResponse> {
+    let metadata = admin_module_metadata_snapshot().modules;
+    let install_state = AvailableModuleInstallStateContext::from_paths(
+        &metadata,
+        PathBuf::from(".env"),
+        PathBuf::from(CONSOLE_EXTENSION_REGISTRY_PATH),
+    );
+    Ok(Json(
+        service_module_lifecycle_response(metadata, install_state).await,
+    ))
+}
+
+#[utoipa::path(
     post,
     path = "/admin/data/available-modules/{module}/install",
     operation_id = "admin_data_install_available_module",
     tag = "admin-data",
     params(
-        ("module" = String, Path, description = "Available remote module name"),
+        ("module" = String, Path, description = "Available catalog entry name"),
         ("authorization" = String, Header, description = "Development service bearer token"),
     ),
     responses(
-        (status = 200, description = "Remote module install state written to host-local files", body = AdminModuleInstallResponse, content_type = "application/json"),
+        (status = 200, description = "Catalog install state written to host-local files", body = AdminModuleInstallResponse, content_type = "application/json"),
         (status = 400, description = "Catalog entry cannot be installed", body = ErrorResponse, content_type = "application/json"),
         (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
         (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
@@ -235,6 +279,802 @@ fn available_modules_response() -> AdminModuleRegistrySnapshotResponse {
     )
 }
 
+async fn service_module_lifecycle_response(
+    metadata: Vec<AdminModuleMetadata>,
+    install_state: AvailableModuleInstallStateContext,
+) -> AdminServiceModuleLifecycleResponse {
+    let installed_modules = local_installed_remote_modules(MODULE_INSTALL_LEDGER_PATH);
+    let services_by_module = local_module_services(MODULE_SERVICES_PATH);
+    let metadata_by_name = metadata
+        .iter()
+        .filter(|module| matches!(module.source, ModuleSource::Remote))
+        .map(|module| (module.module_name.clone(), module))
+        .collect::<HashMap<_, _>>();
+    let provider_names_by_module = installed_modules
+        .iter()
+        .filter_map(|(module_name, receipt)| {
+            receipt
+                .service
+                .as_ref()
+                .and_then(|service| service.name.as_deref())
+                .filter(|provider_name| !provider_name.trim().is_empty())
+                .map(|provider_name| (module_name.clone(), provider_name.trim().to_owned()))
+        })
+        .collect::<HashMap<_, _>>();
+    let represented_provider_names = provider_names_by_module
+        .values()
+        .cloned()
+        .collect::<HashSet<_>>();
+    let mut module_names = HashSet::new();
+    module_names.extend(installed_modules.keys().cloned());
+    module_names.extend(
+        install_state
+            .remote_sources
+            .modules
+            .keys()
+            .filter(|module_name| !represented_provider_names.contains(*module_name))
+            .cloned(),
+    );
+    module_names.extend(
+        install_state
+            .running_base_urls
+            .keys()
+            .filter(|module_name| !represented_provider_names.contains(*module_name))
+            .cloned(),
+    );
+    module_names.extend(
+        services_by_module
+            .keys()
+            .filter(|module_name| !represented_provider_names.contains(*module_name))
+            .cloned(),
+    );
+    module_names.extend(metadata_by_name.keys().cloned());
+    let mut module_names = module_names.into_iter().collect::<Vec<_>>();
+    module_names.sort();
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_millis(800))
+        .build()
+        .ok();
+    let mut modules = Vec::new();
+    for module_name in module_names {
+        let provider_name = provider_names_by_module.get(&module_name);
+        modules.push(
+            service_module_lifecycle_module(
+                &module_name,
+                provider_name.map(String::as_str),
+                &install_state,
+                installed_modules.get(&module_name),
+                services_by_module
+                    .get(&module_name)
+                    .or_else(|| provider_name.and_then(|name| services_by_module.get(name)))
+                    .cloned()
+                    .unwrap_or_default(),
+                metadata_by_name.get(&module_name).copied(),
+                client.as_ref(),
+            )
+            .await,
+        );
+    }
+    let status = if modules.is_empty() {
+        AdminServiceModuleLifecycleStatus::Empty
+    } else if modules
+        .iter()
+        .all(|module| module.status == AdminServiceModuleLifecycleModuleStatus::Ready)
+    {
+        AdminServiceModuleLifecycleStatus::Ready
+    } else {
+        AdminServiceModuleLifecycleStatus::NeedsAttention
+    };
+    AdminServiceModuleLifecycleResponse {
+        version: 1,
+        status,
+        modules,
+    }
+}
+
+async fn service_module_lifecycle_module(
+    module_name: &str,
+    provider_name: Option<&str>,
+    install_state: &AvailableModuleInstallStateContext,
+    install_receipt: Option<&LocalModuleInstallLedgerModule>,
+    service_specs: Vec<LocalModuleServiceSpec>,
+    metadata: Option<&AdminModuleMetadata>,
+    client: Option<&reqwest::Client>,
+) -> AdminServiceModuleLifecycleModuleDto {
+    let mut remote_source = install_state.remote_source_state(provider_name.unwrap_or(module_name));
+    if provider_name.is_some() {
+        reconcile_service_provider_remote_source(module_name, metadata, &mut remote_source);
+    }
+    let loaded =
+        metadata.is_some_and(|module| matches!(module.load_status, ModuleLoadStatus::Loaded));
+    let installed = install_receipt.is_some();
+    let configured = remote_source.configured;
+    let base_url = remote_source
+        .desired_base_url
+        .clone()
+        .or_else(|| remote_source.running_base_url.clone())
+        .or_else(|| {
+            metadata.and_then(|module| match module.source_diagnostics.as_ref()? {
+                AdminModuleSourceDiagnostics::Remote(remote) => {
+                    Some(normalize_remote_base_url(&remote.base_url))
+                }
+            })
+        });
+    let manifest_url = base_url.as_deref().and_then(remote_module_manifest_url);
+    let status_url = service_module_status_url(
+        base_url.as_deref(),
+        install_receipt.and_then(|receipt| receipt.service.as_ref()),
+    );
+    let manifest_status = if base_url.is_some() && manifest_url.is_none() {
+        AdminServiceModuleManifestStatus::Skipped
+    } else {
+        service_module_manifest_status(metadata, manifest_url.as_deref(), client).await
+    };
+    let services = service_module_lifecycle_services(
+        provider_name.unwrap_or(module_name),
+        &service_specs,
+        client,
+    )
+    .await;
+    let service_status = service_module_status_summary(status_url.as_deref(), client).await;
+    let health_history =
+        record_service_module_health(module_name, status_url.as_deref(), &service_status);
+    let compatibility = service_module_compatibility(module_name, install_receipt);
+    let deployment = service_module_deployment(install_receipt);
+    let operations = service_module_operations(provider_name, module_name, metadata);
+    let has_stale_state = services.iter().any(|service| {
+        !service.ready && (service.lock_file.is_some() || service.pid_file.is_some())
+    });
+    let has_service_not_ready = services.iter().any(|service| !service.ready);
+    let mut fixes = Vec::new();
+    let status = if has_stale_state {
+        fixes
+            .push("restart API/worker; remove stale lock/pid files if it remains stuck".to_owned());
+        AdminServiceModuleLifecycleModuleStatus::StaleState
+    } else if remote_source.restart_pending {
+        fixes.push(
+            remote_source
+                .restart_reason
+                .clone()
+                .unwrap_or_else(|| "restart API and worker".to_owned()),
+        );
+        AdminServiceModuleLifecycleModuleStatus::RestartPending
+    } else if configured && !loaded {
+        fixes.push("restart API and worker, then inspect manifest errors".to_owned());
+        AdminServiceModuleLifecycleModuleStatus::ConfiguredNotLoaded
+    } else if manifest_status == AdminServiceModuleManifestStatus::Unreachable {
+        fixes.push("start the service or fix REMOTE_MODULES".to_owned());
+        AdminServiceModuleLifecycleModuleStatus::ManifestUnreachable
+    } else if has_service_not_ready {
+        fixes.push("start the declared service or inspect process logs".to_owned());
+        AdminServiceModuleLifecycleModuleStatus::ServiceNotReady
+    } else if loaded && (configured || installed || remote_source.running_base_url.is_some()) {
+        AdminServiceModuleLifecycleModuleStatus::Ready
+    } else {
+        fixes.push("install the service or add its provider to REMOTE_MODULES".to_owned());
+        AdminServiceModuleLifecycleModuleStatus::NotConfigured
+    };
+
+    AdminServiceModuleLifecycleModuleDto {
+        module_name: module_name.to_owned(),
+        provider_name: provider_name.map(str::to_owned),
+        status,
+        installed,
+        configured,
+        loaded,
+        restart_pending: remote_source.restart_pending,
+        base_url,
+        manifest_url,
+        manifest_status,
+        status_url,
+        service_status,
+        health_history,
+        compatibility,
+        deployment,
+        services,
+        operations,
+        fixes,
+    }
+}
+
+fn service_module_operations(
+    provider_name: Option<&str>,
+    module_name: &str,
+    metadata: Option<&AdminModuleMetadata>,
+) -> Vec<AdminServiceOperationDto> {
+    let Some(metadata) = metadata else {
+        return Vec::new();
+    };
+    let mut operations = Vec::new();
+
+    for route in &metadata.http_routes {
+        let method = module_http_method(route.method);
+        let safe_probe = route
+            .operation
+            .as_ref()
+            .is_some_and(|operation| operation.safe_probe.is_some());
+        operations.push(AdminServiceOperationDto {
+            operation_id: route
+                .operation
+                .as_ref()
+                .and_then(|operation| operation.operation_id.clone())
+                .unwrap_or_else(|| format!("{module_name}/http/{method}:{}", route.path)),
+            provider_name: provider_name.map(str::to_owned),
+            module_name: module_name.to_owned(),
+            kind: AdminServiceOperationKindDto::HttpRoute,
+            name: route
+                .display_name
+                .clone()
+                .unwrap_or_else(|| format!("{method} {}", route.path)),
+            method: Some(method),
+            path: Some(route.path.clone()),
+            capability: route.capability.clone(),
+            summary: route
+                .operation
+                .as_ref()
+                .and_then(|operation| operation.summary.clone())
+                .or_else(|| route.display_name.clone())
+                .or_else(|| route.story_title.clone()),
+            safe_probe,
+            links: service_module_operation_links(provider_name, module_name),
+            next_action: service_module_operation_next_action(safe_probe),
+        });
+    }
+
+    if let Some(runtime) = metadata.runtime.as_ref() {
+        for function in &runtime.functions {
+            let safe_probe = function
+                .operation
+                .as_ref()
+                .is_some_and(|operation| operation.safe_probe.is_some());
+            operations.push(AdminServiceOperationDto {
+                operation_id: function
+                    .operation
+                    .as_ref()
+                    .and_then(|operation| operation.operation_id.clone())
+                    .unwrap_or_else(|| format!("{module_name}/runtime/{}", function.name)),
+                provider_name: provider_name.map(str::to_owned),
+                module_name: module_name.to_owned(),
+                kind: AdminServiceOperationKindDto::RuntimeFunction,
+                name: function.name.clone(),
+                method: None,
+                path: None,
+                capability: None,
+                summary: function
+                    .operation
+                    .as_ref()
+                    .and_then(|operation| operation.summary.clone()),
+                safe_probe,
+                links: service_module_operation_links(provider_name, module_name),
+                next_action: service_module_operation_next_action(safe_probe),
+            });
+        }
+    }
+
+    if let Some(events) = metadata.events.as_ref() {
+        for handler in &events.handlers {
+            let safe_probe = handler
+                .operation
+                .as_ref()
+                .is_some_and(|operation| operation.safe_probe.is_some());
+            operations.push(AdminServiceOperationDto {
+                operation_id: handler
+                    .operation
+                    .as_ref()
+                    .and_then(|operation| operation.operation_id.clone())
+                    .unwrap_or_else(|| format!("{module_name}/event/{}", handler.name)),
+                provider_name: provider_name.map(str::to_owned),
+                module_name: module_name.to_owned(),
+                kind: AdminServiceOperationKindDto::EventHandler,
+                name: handler.name.clone(),
+                method: None,
+                path: None,
+                capability: None,
+                summary: handler
+                    .operation
+                    .as_ref()
+                    .and_then(|operation| operation.summary.clone())
+                    .or_else(|| Some(handler.event_name.clone())),
+                safe_probe,
+                links: service_module_operation_links(provider_name, module_name),
+                next_action: service_module_operation_next_action(safe_probe),
+            });
+        }
+    }
+
+    if let Some(AdminSurface::DeclarativeCustom(admin)) = metadata.admin.as_ref() {
+        for action in &admin.actions {
+            let safe_probe = action
+                .operation
+                .as_ref()
+                .is_some_and(|operation| operation.safe_probe.is_some());
+            operations.push(AdminServiceOperationDto {
+                operation_id: action
+                    .operation
+                    .as_ref()
+                    .and_then(|operation| operation.operation_id.clone())
+                    .unwrap_or_else(|| format!("{module_name}/action/{}", action.name)),
+                provider_name: provider_name.map(str::to_owned),
+                module_name: module_name.to_owned(),
+                kind: AdminServiceOperationKindDto::AdminAction,
+                name: action.name.clone(),
+                method: None,
+                path: None,
+                capability: Some(action.capability.clone()),
+                summary: action
+                    .operation
+                    .as_ref()
+                    .and_then(|operation| operation.summary.clone())
+                    .or_else(|| Some(action.label.clone())),
+                safe_probe,
+                links: service_module_operation_links(provider_name, module_name),
+                next_action: service_module_operation_next_action(safe_probe),
+            });
+        }
+    }
+
+    operations.sort_by(|left, right| left.operation_id.cmp(&right.operation_id));
+    operations
+}
+
+fn module_http_method(method: ModuleHttpMethod) -> String {
+    match method {
+        ModuleHttpMethod::Get => "GET".to_owned(),
+        ModuleHttpMethod::Post => "POST".to_owned(),
+        ModuleHttpMethod::Put => "PUT".to_owned(),
+        ModuleHttpMethod::Patch => "PATCH".to_owned(),
+        ModuleHttpMethod::Delete => "DELETE".to_owned(),
+        _ => format!("{method:?}").to_uppercase(),
+    }
+}
+
+fn service_module_operation_links(
+    provider_name: Option<&str>,
+    module_name: &str,
+) -> AdminServiceOperationLinksDto {
+    let query = provider_name.unwrap_or(module_name);
+    AdminServiceOperationLinksDto {
+        remote_calls: Some(format!("/operations/remote-calls?module={module_name}")),
+        runtime: Some(format!("/operations/functions?module={module_name}")),
+        story: format!("/?q={query}"),
+        technical_operations: format!("/operations?q={query}"),
+    }
+}
+
+fn service_module_operation_next_action(safe_probe: bool) -> String {
+    if safe_probe {
+        "run lenso service check for this operation"
+    } else {
+        "add safeProbe metadata before active checks"
+    }
+    .to_owned()
+}
+
+fn reconcile_service_provider_remote_source(
+    module_name: &str,
+    metadata: Option<&AdminModuleMetadata>,
+    remote_source: &mut AdminModuleRemoteSourceInstallStateDto,
+) {
+    reconcile_service_provider_remote_source_base_url(
+        module_name,
+        metadata_remote_base_url(metadata).as_deref(),
+        remote_source,
+    );
+}
+
+fn reconcile_service_provider_remote_source_base_url(
+    module_name: &str,
+    running_module_base_url: Option<&str>,
+    remote_source: &mut AdminModuleRemoteSourceInstallStateDto,
+) {
+    let Some(desired_base_url) = remote_source.desired_base_url.as_deref() else {
+        return;
+    };
+    let Some(running_module_base_url) = running_module_base_url else {
+        return;
+    };
+    if running_module_base_url == service_provider_module_base_url(desired_base_url, module_name) {
+        remote_source.running_base_url = Some(normalize_remote_base_url(desired_base_url));
+        remote_source.restart_pending = false;
+        remote_source.restart_reason = None;
+    }
+}
+
+fn metadata_remote_base_url(metadata: Option<&AdminModuleMetadata>) -> Option<String> {
+    metadata.and_then(|module| match module.source_diagnostics.as_ref()? {
+        AdminModuleSourceDiagnostics::Remote(remote) => {
+            Some(normalize_remote_base_url(&remote.base_url))
+        }
+    })
+}
+
+fn service_provider_module_base_url(base_url: &str, module_name: &str) -> String {
+    format!(
+        "{}/modules/{module_name}",
+        normalize_remote_base_url(base_url)
+    )
+}
+
+fn service_module_status_url(
+    base_url: Option<&str>,
+    service: Option<&LocalServiceModuleMetadata>,
+) -> Option<String> {
+    let service = service?;
+    if let Some(status_url) = service
+        .status_url
+        .as_deref()
+        .filter(|url| !url.trim().is_empty())
+    {
+        return Some(status_url.trim().to_owned());
+    }
+    let base_url = base_url?;
+    let base_url = base_url.trim().trim_end_matches('/');
+    if !(base_url.starts_with("http://") || base_url.starts_with("https://")) {
+        return None;
+    }
+    let path = service
+        .status_path
+        .as_deref()
+        .filter(|path| !path.trim().is_empty())
+        .unwrap_or("status");
+    if path.starts_with("http://") || path.starts_with("https://") {
+        return Some(path.to_owned());
+    }
+    let base = reqwest::Url::parse(&format!("{base_url}/")).ok()?;
+    base.join(path).ok().map(|url| url.to_string())
+}
+
+async fn service_module_status_summary(
+    status_url: Option<&str>,
+    client: Option<&reqwest::Client>,
+) -> AdminServiceModuleServiceStatusDto {
+    let Some(status_url) = status_url else {
+        return service_module_status_unknown(false, None);
+    };
+    let Some(client) = client else {
+        return service_module_status_unknown(false, None);
+    };
+    let response = match client.get(status_url).send().await {
+        Ok(response) => response,
+        Err(error) => {
+            return AdminServiceModuleServiceStatusDto {
+                checked: true,
+                state: AdminServiceModuleServiceStatusState::Unreachable,
+                error: Some(error.to_string()),
+                checks: Vec::new(),
+            };
+        }
+    };
+    if !response.status().is_success() {
+        return AdminServiceModuleServiceStatusDto {
+            checked: true,
+            state: AdminServiceModuleServiceStatusState::Unreachable,
+            error: Some(format!(
+                "status endpoint returned HTTP {}",
+                response.status()
+            )),
+            checks: Vec::new(),
+        };
+    }
+    let body = match response.json::<Value>().await {
+        Ok(body) => body,
+        Err(error) => {
+            return AdminServiceModuleServiceStatusDto {
+                checked: true,
+                state: AdminServiceModuleServiceStatusState::Unreachable,
+                error: Some(format!("status endpoint returned invalid JSON: {error}")),
+                checks: Vec::new(),
+            };
+        }
+    };
+    AdminServiceModuleServiceStatusDto {
+        checked: true,
+        state: service_module_status_state(body.get("state").and_then(Value::as_str)),
+        error: None,
+        checks: service_module_status_checks(&body),
+    }
+}
+
+fn service_module_status_unknown(
+    checked: bool,
+    error: Option<String>,
+) -> AdminServiceModuleServiceStatusDto {
+    AdminServiceModuleServiceStatusDto {
+        checked,
+        state: AdminServiceModuleServiceStatusState::Unknown,
+        error,
+        checks: Vec::new(),
+    }
+}
+
+fn service_module_status_state(value: Option<&str>) -> AdminServiceModuleServiceStatusState {
+    match value.unwrap_or("ready") {
+        "ready" => AdminServiceModuleServiceStatusState::Ready,
+        "degraded" => AdminServiceModuleServiceStatusState::Degraded,
+        "starting" => AdminServiceModuleServiceStatusState::Starting,
+        "unreachable" => AdminServiceModuleServiceStatusState::Unreachable,
+        _ => AdminServiceModuleServiceStatusState::Unknown,
+    }
+}
+
+fn service_module_status_checks(body: &Value) -> Vec<AdminServiceModuleServiceStatusCheckDto> {
+    body.get("checks")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|check| {
+            Some(AdminServiceModuleServiceStatusCheckDto {
+                name: check.get("name")?.as_str()?.to_owned(),
+                status: check.get("status")?.as_str()?.to_owned(),
+                detail: check
+                    .get("detail")
+                    .and_then(Value::as_str)
+                    .map(ToOwned::to_owned),
+            })
+        })
+        .collect()
+}
+
+fn service_module_compatibility(
+    module_name: &str,
+    install_receipt: Option<&LocalModuleInstallLedgerModule>,
+) -> AdminServiceModuleCompatibilityDto {
+    let declared = install_receipt.and_then(|receipt| receipt.compatibility.clone());
+    let issue = module_compatibility_issue(module_name, declared.as_ref());
+    let override_allowed = issue.is_some();
+    let issue_message = issue.as_ref().map(|issue| issue.message.clone());
+    let issue_fix = issue.map(|issue| issue.fix);
+    AdminServiceModuleCompatibilityDto {
+        state: if override_allowed {
+            AdminServiceModuleCompatibilityState::Blocked
+        } else if declared.is_some() {
+            AdminServiceModuleCompatibilityState::Compatible
+        } else {
+            AdminServiceModuleCompatibilityState::Unknown
+        },
+        declared,
+        host: host_module_compatibility(),
+        issue: issue_message,
+        fix: issue_fix,
+        override_allowed,
+    }
+}
+
+fn service_module_deployment(
+    install_receipt: Option<&LocalModuleInstallLedgerModule>,
+) -> Option<AdminServiceModuleDeploymentDto> {
+    install_receipt.and_then(|receipt| {
+        receipt.deployment.clone().or_else(|| {
+            receipt
+                .service
+                .as_ref()
+                .and_then(|service| service.deployment.clone())
+        })
+    })
+}
+
+fn record_service_module_health(
+    module_name: &str,
+    status_url: Option<&str>,
+    status: &AdminServiceModuleServiceStatusDto,
+) -> Vec<AdminServiceModuleHealthCheckDto> {
+    let path = FsPath::new(SERVICE_MODULE_HEALTH_PATH);
+    let mut file = read_service_module_health_file(path);
+    if status.checked
+        && let Some(status_url) = status_url
+    {
+        file.records.push(AdminServiceModuleHealthCheckDto {
+            module_name: module_name.to_owned(),
+            checked_at_unix_ms: current_unix_ms(),
+            status_url: status_url.to_owned(),
+            state: service_module_status_state_label(&status.state).to_owned(),
+            error: status.error.clone(),
+        });
+        if file.records.len() > 200 {
+            let overflow = file.records.len() - 200;
+            file.records.drain(0..overflow);
+        }
+        let _ = write_service_module_health_file(path, &file);
+    }
+    file.records
+        .into_iter()
+        .rev()
+        .filter(|record| record.module_name == module_name)
+        .take(20)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect()
+}
+
+fn read_service_module_health_file(path: &FsPath) -> LocalServiceModuleHealthFile {
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|source| serde_json::from_str::<LocalServiceModuleHealthFile>(&source).ok())
+        .unwrap_or(LocalServiceModuleHealthFile {
+            records: Vec::new(),
+            version: 1,
+        })
+}
+
+fn write_service_module_health_file(
+    path: &FsPath,
+    file: &LocalServiceModuleHealthFile,
+) -> Result<(), std::io::Error> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let bytes = serde_json::to_vec_pretty(file).map_err(std::io::Error::other)?;
+    fs::write(path, bytes)
+}
+
+fn current_unix_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)
+        .unwrap_or_default()
+}
+
+fn service_module_status_state_label(state: &AdminServiceModuleServiceStatusState) -> &'static str {
+    match state {
+        AdminServiceModuleServiceStatusState::Ready => "ready",
+        AdminServiceModuleServiceStatusState::Degraded => "degraded",
+        AdminServiceModuleServiceStatusState::Starting => "starting",
+        AdminServiceModuleServiceStatusState::Unreachable => "unreachable",
+        AdminServiceModuleServiceStatusState::Unknown => "unknown",
+    }
+}
+
+async fn service_module_manifest_status(
+    metadata: Option<&AdminModuleMetadata>,
+    manifest_url: Option<&str>,
+    client: Option<&reqwest::Client>,
+) -> AdminServiceModuleManifestStatus {
+    if let Some(module) = metadata
+        && let Some(AdminModuleSourceDiagnostics::Remote(remote)) =
+            module.source_diagnostics.as_ref()
+        && matches!(module.load_status, ModuleLoadStatus::Loaded)
+    {
+        return if remote.last_load_error.is_none() {
+            AdminServiceModuleManifestStatus::Reachable
+        } else {
+            AdminServiceModuleManifestStatus::Unreachable
+        };
+    }
+    let Some(manifest_url) = manifest_url else {
+        return AdminServiceModuleManifestStatus::NotConfigured;
+    };
+    let Some(client) = client else {
+        return AdminServiceModuleManifestStatus::Skipped;
+    };
+    if remote_service_ready(client, manifest_url).await {
+        AdminServiceModuleManifestStatus::Reachable
+    } else {
+        AdminServiceModuleManifestStatus::Unreachable
+    }
+}
+
+async fn service_module_lifecycle_services(
+    module_name: &str,
+    services: &[LocalModuleServiceSpec],
+    client: Option<&reqwest::Client>,
+) -> Vec<AdminServiceModuleLifecycleServiceDto> {
+    let state_dir = FsPath::new(MODULE_SERVICES_PATH)
+        .parent()
+        .unwrap_or_else(|| FsPath::new("."));
+    let mut items = Vec::new();
+    for service in services {
+        let ready = match client {
+            Some(client) => remote_service_ready(client, &service.ready_url).await,
+            None => false,
+        };
+        let lock_file_path =
+            remote_module_service_state_path(state_dir, module_name, service, "lock");
+        let pid_file_path =
+            remote_module_service_state_path(state_dir, module_name, service, "pid");
+        items.push(AdminServiceModuleLifecycleServiceDto {
+            name: service.name.clone(),
+            ready_url: service.ready_url.clone(),
+            ready,
+            auto_start: service.auto_start,
+            lock_file: lock_file_path
+                .exists()
+                .then(|| lock_file_path.display().to_string()),
+            pid_file: pid_file_path
+                .exists()
+                .then(|| pid_file_path.display().to_string()),
+        });
+    }
+    items
+}
+
+fn local_installed_remote_modules(
+    path: impl AsRef<FsPath>,
+) -> HashMap<String, LocalModuleInstallLedgerModule> {
+    let Ok(source) = fs::read_to_string(path) else {
+        return HashMap::new();
+    };
+    let Ok(ledger) = serde_json::from_str::<LocalModuleInstallLedger>(&source) else {
+        return HashMap::new();
+    };
+    ledger
+        .modules
+        .into_iter()
+        .filter(|module| module.source.as_deref().unwrap_or("remote") == "remote")
+        .map(|module| (module.module_name.clone(), module))
+        .collect()
+}
+
+fn local_module_services(path: impl AsRef<FsPath>) -> HashMap<String, Vec<LocalModuleServiceSpec>> {
+    let Ok(source) = fs::read_to_string(path) else {
+        return HashMap::new();
+    };
+    let Ok(file) = serde_json::from_str::<LocalModuleServicesFile>(&source) else {
+        return HashMap::new();
+    };
+    file.modules
+        .into_iter()
+        .map(|module| (module.module_name, module.services))
+        .collect()
+}
+
+fn remote_module_manifest_url(base_url: &str) -> Option<String> {
+    let base_url = base_url.trim().trim_end_matches('/');
+    if !(base_url.starts_with("http://") || base_url.starts_with("https://")) {
+        return None;
+    }
+    Some(if base_url.ends_with("/manifest") {
+        base_url.to_owned()
+    } else {
+        format!("{base_url}/manifest")
+    })
+}
+
+async fn remote_service_ready(client: &reqwest::Client, url: &str) -> bool {
+    client
+        .get(url)
+        .send()
+        .await
+        .is_ok_and(|response| response.status().is_success())
+}
+
+fn remote_module_service_state_path(
+    services_state_dir: &FsPath,
+    module_name: &str,
+    service: &LocalModuleServiceSpec,
+    extension: &str,
+) -> PathBuf {
+    services_state_dir.join(format!(
+        "remote-{}-{}.{}",
+        remote_module_service_state_segment(module_name),
+        remote_module_service_state_segment(&service.name),
+        extension
+    ))
+}
+
+fn remote_module_service_state_segment(value: &str) -> String {
+    let mut segment = String::new();
+    let mut previous_dash = false;
+    for character in value.chars() {
+        if character.is_ascii_alphanumeric() {
+            segment.push(character.to_ascii_lowercase());
+            previous_dash = false;
+        } else if !segment.is_empty() && !previous_dash {
+            segment.push('-');
+            previous_dash = true;
+        }
+    }
+    while segment.ends_with('-') {
+        segment.pop();
+    }
+    if segment.is_empty() {
+        "service".to_owned()
+    } else {
+        segment
+    }
+}
+
 async fn install_available_module_response(
     module_name: String,
     ctx: &RequestContext,
@@ -257,7 +1097,8 @@ async fn install_available_module_response(
     )
     .await
     .map_err(|error| install_error(error, ctx))?;
-    write_remote_modules_env(&env_file_path, &catalog_entry.name, &base_url)
+    let remote_source_name = catalog_entry_remote_source_name(&catalog_entry).to_owned();
+    write_remote_modules_env(&env_file_path, &remote_source_name, &base_url)
         .map_err(|error| install_error(error, ctx))?;
 
     let metadata = admin_module_metadata_snapshot().modules;
@@ -266,7 +1107,7 @@ async fn install_available_module_response(
         &env_file_path,
         &console_registry_file_path,
     );
-    let state = install_state.install_state(&catalog_entry.name);
+    let state = catalog_entry_install_state(&catalog_entry, &install_state);
     Ok(AdminModuleInstallResponse {
         module_name: catalog_entry.name,
         manifest_reference: catalog_entry.manifest_reference,
@@ -290,7 +1131,8 @@ fn uninstall_available_module_response(
     let env_file_path = PathBuf::from(".env");
     let console_registry_file_path = PathBuf::from(CONSOLE_EXTENSION_REGISTRY_PATH);
     let legacy_console_plan_file_path = PathBuf::from(".lenso/console-package-install-plan.json");
-    remove_remote_modules_env(&env_file_path, &catalog_entry.name)
+    let remote_source_name = catalog_entry_remote_source_name(&catalog_entry).to_owned();
+    remove_remote_modules_env(&env_file_path, &remote_source_name)
         .map_err(|error| install_error(error, ctx))?;
     remove_runtime_console_extension_registry_module(
         &console_registry_file_path,
@@ -308,7 +1150,7 @@ fn uninstall_available_module_response(
         &env_file_path,
         &console_registry_file_path,
     );
-    let state = install_state.install_state(&catalog_entry.name);
+    let state = catalog_entry_install_state(&catalog_entry, &install_state);
     Ok(AdminModuleInstallResponse {
         module_name: catalog_entry.name,
         manifest_reference: catalog_entry.manifest_reference,
@@ -527,8 +1369,8 @@ fn module_registry_snapshot_response(
         })
         .map(|module| AdminModuleRegistrySnapshotIssueDto {
             group: "Manifest".to_owned(),
-            message: format!("{} remote module metadata needs attention", module.name),
-            fix: "refresh module metadata and verify remote manifest configuration".to_owned(),
+            message: format!("{} service metadata needs attention", module.name),
+            fix: "refresh module metadata and verify service manifest configuration".to_owned(),
         })
         .collect::<Vec<_>>();
 
@@ -565,6 +1407,10 @@ struct LocalModuleCatalogEntry {
     version: String,
     source: String,
     manifest_reference: String,
+    #[serde(default, rename = "providedBy")]
+    provided_by: Option<String>,
+    #[serde(default, rename = "serviceManifest")]
+    service_manifest: Option<String>,
     #[serde(default)]
     summary: Option<String>,
     #[serde(default)]
@@ -623,6 +1469,81 @@ struct LocalRemoteModulesEnvState {
     env_file: String,
     error: Option<String>,
     modules: HashMap<String, String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalModuleInstallLedger {
+    #[serde(default)]
+    modules: Vec<LocalModuleInstallLedgerModule>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalModuleInstallLedgerModule {
+    module_name: String,
+    #[serde(default)]
+    source: Option<String>,
+    #[serde(default)]
+    compatibility: Option<AdminModuleCompatibilityDto>,
+    #[serde(default)]
+    deployment: Option<AdminServiceModuleDeploymentDto>,
+    #[serde(default)]
+    service: Option<LocalServiceModuleMetadata>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalServiceModuleMetadata {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    deployment: Option<AdminServiceModuleDeploymentDto>,
+    #[serde(default, alias = "status_path")]
+    status_path: Option<String>,
+    #[serde(default, alias = "status_url")]
+    status_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalModuleServicesFile {
+    #[serde(default)]
+    modules: Vec<LocalModuleServiceState>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalServiceModuleHealthFile {
+    #[serde(default)]
+    records: Vec<AdminServiceModuleHealthCheckDto>,
+    #[serde(default = "default_service_module_health_version")]
+    version: u8,
+}
+
+const fn default_service_module_health_version() -> u8 {
+    1
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalModuleServiceState {
+    module_name: String,
+    #[serde(default)]
+    services: Vec<LocalModuleServiceSpec>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalModuleServiceSpec {
+    name: String,
+    ready_url: String,
+    #[serde(default = "default_service_auto_start")]
+    auto_start: bool,
+}
+
+const fn default_service_auto_start() -> bool {
+    true
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -771,6 +1692,15 @@ impl AvailableModuleInstallStateContext {
         module_name: &str,
         source: ModuleSource,
     ) -> AdminModuleInstallStateDto {
+        self.install_state_for_remote_source(module_name, source, module_name)
+    }
+
+    fn install_state_for_remote_source(
+        &self,
+        module_name: &str,
+        source: ModuleSource,
+        remote_source_name: &str,
+    ) -> AdminModuleInstallStateDto {
         AdminModuleInstallStateDto {
             module_registered: self.registered_modules.contains(module_name),
             linked_source: match source {
@@ -779,8 +1709,8 @@ impl AvailableModuleInstallStateContext {
             },
             remote_source: match source {
                 ModuleSource::Linked => None,
-                ModuleSource::Remote => Some(self.remote_source_state(module_name)),
-                _ => Some(self.remote_source_state(module_name)),
+                ModuleSource::Remote => Some(self.remote_source_state(remote_source_name)),
+                _ => Some(self.remote_source_state(remote_source_name)),
             },
             console_plan: self.console_plan_state(module_name),
         }
@@ -817,6 +1747,18 @@ impl AvailableModuleInstallStateContext {
             restart_reason,
             error: self.remote_sources.error.clone(),
         }
+    }
+
+    fn reconcile_service_provider_remote_source(
+        &self,
+        module_name: &str,
+        remote_source: &mut AdminModuleRemoteSourceInstallStateDto,
+    ) {
+        reconcile_service_provider_remote_source_base_url(
+            module_name,
+            self.running_base_urls.get(module_name).map(String::as_str),
+            remote_source,
+        );
     }
 
     fn console_plan_state(&self, module_name: &str) -> AdminModuleConsolePackagePlanStateDto {
@@ -1065,10 +2007,14 @@ fn remote_source_restart_reason(
     running_base_url: Option<&str>,
 ) -> Option<String> {
     match (desired_base_url, running_base_url) {
-        (Some(_), None) => Some("remote source configured in .env but not loaded".to_owned()),
-        (None, Some(_)) => Some("remote source removed from .env but still loaded".to_owned()),
+        (Some(_), None) => {
+            Some("service provider source configured in .env but not loaded".to_owned())
+        }
+        (None, Some(_)) => {
+            Some("service provider source removed from .env but still loaded".to_owned())
+        }
         (Some(desired), Some(running)) if desired != running => {
-            Some("REMOTE_MODULES base URL differs from running module metadata".to_owned())
+            Some("REMOTE_MODULES base URL differs from loaded service provider metadata".to_owned())
         }
         _ => None,
     }
@@ -1211,10 +2157,10 @@ fn validate_installable_catalog_entry(
             format!("available module {} is archived", entry.name),
         ));
     }
-    if entry.source != "remote" {
+    if !matches!(entry.source.as_str(), "remote" | "service") {
         return Err(AppError::new(
             ErrorCode::Validation,
-            "only remote available modules can be installed visually",
+            "only service catalog entries can be installed visually",
         ));
     }
     if base_url.is_empty() {
@@ -1247,6 +2193,34 @@ fn install_base_url(entry: &LocalModuleCatalogEntry) -> Result<String, AppError>
         ErrorCode::Validation,
         format!("{} baseUrl is missing", entry.name),
     ))
+}
+
+fn catalog_entry_remote_source_name(entry: &LocalModuleCatalogEntry) -> &str {
+    if entry.source == "service" {
+        return entry
+            .provided_by
+            .as_deref()
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .unwrap_or(&entry.name);
+    }
+    &entry.name
+}
+
+fn catalog_entry_install_state(
+    entry: &LocalModuleCatalogEntry,
+    install_state: &AvailableModuleInstallStateContext,
+) -> AdminModuleInstallStateDto {
+    let source = catalog_entry_source(&entry.source);
+    let remote_source_name = catalog_entry_remote_source_name(entry);
+    let mut state =
+        install_state.install_state_for_remote_source(&entry.name, source, remote_source_name);
+    if entry.source == "service"
+        && let Some(remote_source) = state.remote_source.as_mut()
+    {
+        install_state.reconcile_service_provider_remote_source(&entry.name, remote_source);
+    }
+    state
 }
 
 fn write_remote_modules_env(
@@ -1941,6 +2915,7 @@ fn module_catalog_entry_module(
     install_state: &AvailableModuleInstallStateContext,
 ) -> AdminModuleRegistrySnapshotModuleDto {
     let source = catalog_entry_source(&entry.source);
+    let state = catalog_entry_install_state(&entry, install_state);
     let archived = entry.archived_at.is_some();
     let name = entry.name;
     let needs_attention = !archived
@@ -1953,6 +2928,8 @@ fn module_catalog_entry_module(
         source,
         catalog_version: entry.version.clone(),
         manifest_reference: entry.manifest_reference,
+        provided_by: entry.provided_by,
+        service_manifest: entry.service_manifest,
         summary: entry.summary,
         base_url: entry.base_url,
         capabilities: entry.capabilities,
@@ -1968,7 +2945,7 @@ fn module_catalog_entry_module(
             AdminModuleRegistrySnapshotManifestStatus::Ok
         },
         manifest_version: if archived { None } else { Some(entry.version) },
-        install_state: install_state.install_state_for_source(&name, source),
+        install_state: state,
         status: if archived {
             AdminModuleRegistrySnapshotModuleStatus::Archived
         } else if needs_attention {
@@ -2074,6 +3051,30 @@ fn module_compatibility_issue(
         }
     }
 
+    if let Some(remote_protocol_version) = compatibility.remote_protocol_version.as_ref() {
+        if remote_protocol_version != HOST_REMOTE_PROTOCOL_VERSION {
+            return Some(AdminModuleRegistrySnapshotIssueDto {
+                group: "Compatibility".to_owned(),
+                message: format!(
+                    "{module_name} requires remote protocol {remote_protocol_version}; host supports {HOST_REMOTE_PROTOCOL_VERSION}"
+                ),
+                fix: format!("install a compatible {module_name} service release"),
+            });
+        }
+    }
+
+    if let Some(feature) = compatibility
+        .required_host_features
+        .iter()
+        .find(|feature| !SUPPORTED_SERVICE_MODULE_FEATURES.contains(&feature.as_str()))
+    {
+        return Some(AdminModuleRegistrySnapshotIssueDto {
+            group: "Compatibility".to_owned(),
+            message: format!("{module_name} requires unsupported host feature {feature}"),
+            fix: format!("upgrade Lenso or install a compatible {module_name} service release"),
+        });
+    }
+
     None
 }
 
@@ -2128,6 +3129,8 @@ fn module_registry_snapshot_module(
         source: module.source,
         catalog_version: "unknown".to_owned(),
         manifest_reference,
+        provided_by: None,
+        service_manifest: None,
         summary: None,
         base_url,
         capabilities,
@@ -2792,6 +3795,7 @@ mod tests {
                 capability: None,
                 display_name: Some("Fetch Contact".to_owned()),
                 story_title: Some("Fetch Contact".to_owned()),
+                operation: None,
             }],
             runtime: None,
             events: None,
@@ -2837,6 +3841,7 @@ mod tests {
                 capability: Some("remote_crm.contacts.read".to_owned()),
                 display_name: Some("Fetch Contact".to_owned()),
                 story_title: Some("Fetch Contact".to_owned()),
+                operation: None,
             }],
             runtime: None,
             events: None,
