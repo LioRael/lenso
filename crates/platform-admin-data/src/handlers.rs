@@ -1102,6 +1102,13 @@ async fn install_available_module_response(
     let remote_source_name = catalog_entry_remote_source_name(&catalog_entry).to_owned();
     write_remote_modules_env(&env_file_path, &remote_source_name, &base_url)
         .map_err(|error| install_error(error, ctx))?;
+    write_available_module_install_ledger(
+        PathBuf::from(MODULE_INSTALL_LEDGER_PATH),
+        &catalog_entry,
+        &remote_source_name,
+        &base_url,
+    )
+    .map_err(|error| install_error(error, ctx))?;
 
     let metadata = admin_module_metadata_snapshot().modules;
     let install_state = AvailableModuleInstallStateContext::from_paths(
@@ -1145,6 +1152,11 @@ fn uninstall_available_module_response(
         .map_err(|error| install_error(error, ctx))?;
     remove_console_package_install_plan_module(&legacy_console_plan_file_path, &catalog_entry.name)
         .map_err(|error| install_error(error, ctx))?;
+    remove_module_install_ledger_module(
+        PathBuf::from(MODULE_INSTALL_LEDGER_PATH),
+        &catalog_entry.name,
+    )
+    .map_err(|error| install_error(error, ctx))?;
 
     let metadata = admin_module_metadata_snapshot().modules;
     let install_state = AvailableModuleInstallStateContext::from_paths(
@@ -2210,6 +2222,19 @@ fn install_base_url(entry: &LocalModuleCatalogEntry) -> Result<String, AppError>
     if let Some(base_url) = entry.base_url.as_ref() {
         return Ok(normalize_remote_base_url(base_url));
     }
+    if let Some(service_manifest) = entry
+        .provider
+        .as_ref()
+        .and_then(|provider| provider.service_manifest.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        && is_http_manifest_reference(service_manifest)
+    {
+        return Ok(service_manifest
+            .strip_suffix("/manifest")
+            .unwrap_or(service_manifest)
+            .to_owned());
+    }
     if is_http_manifest_reference(&entry.manifest_reference) {
         return Ok(entry
             .manifest_reference
@@ -2230,6 +2255,14 @@ fn catalog_entry_remote_source_name(entry: &LocalModuleCatalogEntry) -> &str {
             .as_deref()
             .map(str::trim)
             .filter(|name| !name.is_empty())
+            .or_else(|| {
+                entry
+                    .provider
+                    .as_ref()
+                    .and_then(|provider| provider.name.as_deref())
+                    .map(str::trim)
+                    .filter(|name| !name.is_empty())
+            })
             .unwrap_or(&entry.name);
     }
     &entry.name
@@ -2818,6 +2851,245 @@ fn remove_console_extension_module_dir(module_name: &str) -> Result<(), AppError
             ),
         )),
     }
+}
+
+fn write_available_module_install_ledger(
+    ledger_path: impl AsRef<FsPath>,
+    entry: &LocalModuleCatalogEntry,
+    remote_source_name: &str,
+    base_url: &str,
+) -> Result<(), AppError> {
+    let ledger_path = ledger_path.as_ref();
+    let ledger = read_module_install_ledger_value(ledger_path)?;
+    let receipt = available_module_install_ledger_entry(entry, remote_source_name, base_url);
+    let ledger = upsert_module_install_ledger_entry_value(ledger, receipt)?;
+    write_module_install_ledger_value(ledger_path, &ledger)
+}
+
+fn remove_module_install_ledger_module(
+    ledger_path: impl AsRef<FsPath>,
+    module_name: &str,
+) -> Result<(), AppError> {
+    let ledger_path = ledger_path.as_ref();
+    let mut ledger = match fs::read_to_string(ledger_path) {
+        Ok(source) => serde_json::from_str::<Value>(&source).map_err(|error| {
+            AppError::new(
+                ErrorCode::Validation,
+                format!("module install ledger could not be parsed: {error}"),
+            )
+        })?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(AppError::new(
+                ErrorCode::ExternalDependency,
+                format!("module install ledger could not be read: {error}"),
+            ));
+        }
+    };
+    let modules = ledger
+        .get_mut("modules")
+        .and_then(Value::as_array_mut)
+        .ok_or_else(|| {
+            AppError::new(
+                ErrorCode::Validation,
+                "module install ledger modules must be an array",
+            )
+        })?;
+    let original_len = modules.len();
+    modules.retain(|module| module.get("moduleName").and_then(Value::as_str) != Some(module_name));
+    if modules.len() == original_len {
+        return Ok(());
+    }
+    let next = serde_json::json!({ "modules": modules.clone(), "version": 1 });
+    write_module_install_ledger_value(ledger_path, &next)
+}
+
+fn read_module_install_ledger_value(ledger_path: &FsPath) -> Result<Value, AppError> {
+    match fs::read_to_string(ledger_path) {
+        Ok(source) => serde_json::from_str::<Value>(&source).map_err(|error| {
+            AppError::new(
+                ErrorCode::Validation,
+                format!("module install ledger could not be parsed: {error}"),
+            )
+        }),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            Ok(serde_json::json!({ "modules": [], "version": 1 }))
+        }
+        Err(error) => Err(AppError::new(
+            ErrorCode::ExternalDependency,
+            format!("module install ledger could not be read: {error}"),
+        )),
+    }
+}
+
+fn upsert_module_install_ledger_entry_value(
+    mut ledger: Value,
+    receipt: Value,
+) -> Result<Value, AppError> {
+    let module_name = receipt
+        .get("moduleName")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            AppError::new(
+                ErrorCode::Internal,
+                "module install ledger receipt moduleName is required",
+            )
+        })?
+        .to_owned();
+    let modules = ledger
+        .get_mut("modules")
+        .and_then(Value::as_array_mut)
+        .ok_or_else(|| {
+            AppError::new(
+                ErrorCode::Validation,
+                "module install ledger modules must be an array",
+            )
+        })?;
+    modules.retain(|module| {
+        module.get("moduleName").and_then(Value::as_str) != Some(module_name.as_str())
+    });
+    modules.push(receipt);
+    Ok(serde_json::json!({ "modules": modules.clone(), "version": 1 }))
+}
+
+fn write_module_install_ledger_value(ledger_path: &FsPath, ledger: &Value) -> Result<(), AppError> {
+    if let Some(parent) = ledger_path.parent() {
+        fs::create_dir_all(parent).map_err(|error| {
+            AppError::new(
+                ErrorCode::ExternalDependency,
+                format!("module install ledger directory could not be created: {error}"),
+            )
+        })?;
+    }
+    let source = serde_json::to_string_pretty(ledger)
+        .map(|source| format!("{source}\n"))
+        .map_err(|error| {
+            AppError::new(
+                ErrorCode::Internal,
+                format!("module install ledger could not be encoded: {error}"),
+            )
+        })?;
+    fs::write(ledger_path, source).map_err(|error| {
+        AppError::new(
+            ErrorCode::ExternalDependency,
+            format!("module install ledger could not be written: {error}"),
+        )
+    })
+}
+
+fn available_module_install_ledger_entry(
+    entry: &LocalModuleCatalogEntry,
+    remote_source_name: &str,
+    base_url: &str,
+) -> Value {
+    let base_url = normalize_remote_base_url(base_url);
+    let mut receipt = serde_json::json!({
+        "baseUrl": base_url,
+        "enabled": true,
+        "install": {
+            "commands": [],
+            "consolePackages": entry.console_packages.len(),
+            "env": [],
+            "services": []
+        },
+        "manifestReference": entry.manifest_reference,
+        "moduleName": entry.name,
+        "source": "remote",
+        "writes": available_module_install_writes(entry),
+    });
+    if entry.source == "service" || remote_source_name != entry.name {
+        receipt["service"] = serde_json::json!({
+            "baseUrl": base_url,
+            "manifestReference": entry
+                .service_manifest
+                .as_deref()
+                .or_else(|| {
+                    entry
+                        .provider
+                        .as_ref()
+                        .and_then(|provider| provider.service_manifest.as_deref())
+                })
+                .unwrap_or(&entry.manifest_reference),
+            "name": remote_source_name,
+        });
+    }
+    if let Some(compatibility) = &entry.compatibility
+        && let Ok(compatibility) = serde_json::to_value(compatibility)
+    {
+        receipt["compatibility"] = compatibility;
+    }
+    if let Some(module_release) = module_release_receipt_from_catalog_entry(entry) {
+        receipt["moduleRelease"] = module_release;
+    }
+    receipt
+}
+
+fn available_module_install_writes(entry: &LocalModuleCatalogEntry) -> Vec<Value> {
+    let mut writes = vec![serde_json::json!({
+        "kind": "env",
+        "key": "REMOTE_MODULES",
+        "path": ".env",
+    })];
+    if !entry.console_packages.is_empty() {
+        writes.push(serde_json::json!({
+            "kind": "consoleExtensionRegistry",
+            "path": CONSOLE_EXTENSION_REGISTRY_PATH,
+        }));
+    }
+    writes
+}
+
+fn module_release_receipt_from_catalog_entry(entry: &LocalModuleCatalogEntry) -> Option<Value> {
+    Some(serde_json::json!({
+        "manifestReference": entry.manifest_reference,
+        "manifestSnapshot": module_release_snapshot_from_catalog_entry(entry)?,
+    }))
+}
+
+fn module_release_snapshot_from_catalog_entry(entry: &LocalModuleCatalogEntry) -> Option<Value> {
+    if entry.protocol.as_deref() != Some("lenso.module-release.v1") {
+        return None;
+    }
+    let provider = entry.provider.as_ref()?;
+    let provider_name = provider.name.as_deref()?.trim();
+    if provider_name.is_empty() {
+        return None;
+    }
+    let mut provider_snapshot = serde_json::json!({ "name": provider_name });
+    if let Some(service_package) = provider
+        .service_package
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        provider_snapshot["servicePackage"] = serde_json::json!(service_package);
+    }
+    if let Some(service_manifest) = provider
+        .service_manifest
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        provider_snapshot["serviceManifest"] = serde_json::json!(service_manifest);
+    }
+
+    let mut snapshot = serde_json::json!({
+        "name": entry.name,
+        "protocol": "lenso.module-release.v1",
+        "provider": provider_snapshot,
+        "source": "service",
+        "version": entry.version,
+    });
+    if let Some(summary) = entry.summary.as_deref() {
+        snapshot["summary"] = serde_json::json!(summary);
+    }
+    if let Some(base_url) = entry.base_url.as_deref() {
+        snapshot["baseUrl"] = serde_json::json!(base_url);
+    }
+    if !entry.capabilities.is_empty() {
+        snapshot["capabilities"] = serde_json::json!(entry.capabilities);
+    }
+    Some(snapshot)
 }
 
 fn slugify(value: &str) -> String {
