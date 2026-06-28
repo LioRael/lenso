@@ -3669,6 +3669,10 @@ components:
           type: string
         moduleName:
           type: string
+        moduleRelease:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/AdminModuleReleaseDto'
         remoteSource:
           oneOf:
           - type: 'null'

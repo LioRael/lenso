@@ -1118,6 +1118,7 @@ async fn install_available_module_response(
     );
     let state = catalog_entry_install_state(&catalog_entry, &install_state);
     Ok(AdminModuleInstallResponse {
+        module_release: module_release_from_catalog_entry(&catalog_entry),
         module_name: catalog_entry.name,
         manifest_reference: catalog_entry.manifest_reference,
         linked_source: state.linked_source,
@@ -1166,6 +1167,7 @@ fn uninstall_available_module_response(
     );
     let state = catalog_entry_install_state(&catalog_entry, &install_state);
     Ok(AdminModuleInstallResponse {
+        module_release: module_release_from_catalog_entry(&catalog_entry),
         module_name: catalog_entry.name,
         manifest_reference: catalog_entry.manifest_reference,
         linked_source: state.linked_source,
@@ -1206,6 +1208,7 @@ async fn install_linked_available_module_response(
     );
     let state = install_state.install_state_for_source(&catalog_entry.name, ModuleSource::Linked);
     Ok(AdminModuleInstallResponse {
+        module_release: None,
         module_name: catalog_entry.name,
         manifest_reference: catalog_entry.manifest_reference,
         linked_source: state.linked_source,
@@ -1234,6 +1237,7 @@ fn uninstall_linked_available_module_response(
     );
     let state = install_state.install_state_for_source(&catalog_entry.name, ModuleSource::Linked);
     Ok(AdminModuleInstallResponse {
+        module_release: None,
         module_name: catalog_entry.name,
         manifest_reference: catalog_entry.manifest_reference,
         linked_source: state.linked_source,

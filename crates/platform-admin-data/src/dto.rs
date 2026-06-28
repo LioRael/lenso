@@ -328,6 +328,7 @@ pub struct AdminModuleConsolePackagePlanStateDto {
 pub struct AdminModuleInstallResponse {
     pub module_name: String,
     pub manifest_reference: String,
+    pub module_release: Option<AdminModuleReleaseDto>,
     pub linked_source: Option<AdminModuleLinkedSourceInstallStateDto>,
     pub remote_source: Option<AdminModuleRemoteSourceInstallStateDto>,
     pub console_plan: AdminModuleConsolePackagePlanStateDto,

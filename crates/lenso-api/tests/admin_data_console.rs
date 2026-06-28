@@ -1805,6 +1805,7 @@ async fn available_service_module_install_writes_provider_remote_source() {
     assert_eq!(response.status(), StatusCode::OK);
     let body = json_body(response).await;
     assert_eq!(body["moduleName"], "support-ticket");
+    assert_eq!(body["moduleRelease"], Value::Null);
     assert_eq!(body["remoteSource"]["configured"], true);
     assert_eq!(
         body["remoteSource"]["desiredBaseUrl"],
@@ -1865,6 +1866,14 @@ async fn available_module_release_install_writes_provider_receipt() {
     assert_eq!(response.status(), StatusCode::OK);
     let body = json_body(response).await;
     assert_eq!(body["moduleName"], "support-ticket");
+    assert_eq!(
+        body["moduleRelease"]["manifestReference"],
+        "dist/lenso-service/support-suite-provider/modules/support-ticket/lenso.module-release.json"
+    );
+    assert_eq!(
+        body["moduleRelease"]["providerName"],
+        "support-suite-provider"
+    );
     assert_eq!(body["remoteSource"]["configured"], true);
     assert_eq!(
         body["remoteSource"]["desiredBaseUrl"],
