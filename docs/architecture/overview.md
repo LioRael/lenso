@@ -73,7 +73,8 @@ PATCH, and DELETE routes, remote runtime functions, and remote event handlers.
 Third-party module packaging and ecosystem boundaries are specified in
 `docs/architecture/third-party-modules.md`; V9 service packages add a small
 `lenso.service-package.v1` artifact around `lenso.service.json` for release and
-handoff tooling, while host installation still consumes the service manifest.
+handoff tooling, while the CLI still resolves installation to the service
+manifest the host consumes.
 Route proxying is specified
 separately in `docs/architecture/module-remote-http-proxy.md`. Remote runtime
 execution and event-handler dispatch are scoped in

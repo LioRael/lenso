@@ -86,9 +86,10 @@ catalog, release, and deployment tooling. It is intentionally small:
 }
 ```
 
-The host still installs from `lenso.service.json` or a service manifest URL.
-The package manifest records which provider and modules are inside the artifact;
-it does not make the service a peer runtime and does not grant trust by itself.
+The host may install the package file directly, but the CLI resolves it to
+`lenso.service.json` before writing host-local state. The package manifest
+records which provider and modules are inside the artifact; it does not make
+the service a peer runtime and does not grant trust by itself.
 Generate it with:
 
 ```sh
