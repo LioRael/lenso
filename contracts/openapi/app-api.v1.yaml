@@ -3989,6 +3989,10 @@ components:
           type:
           - string
           - 'null'
+        moduleRelease:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/AdminModuleReleaseDto'
         name:
           type: string
         providedBy:
@@ -4046,6 +4050,33 @@ components:
       enum:
       - passed
       - failed
+    AdminModuleReleaseDto:
+      type: object
+      required:
+      - manifestReference
+      properties:
+        manifestReference:
+          type: string
+        name:
+          type:
+          - string
+          - 'null'
+        providerName:
+          type:
+          - string
+          - 'null'
+        serviceManifest:
+          type:
+          - string
+          - 'null'
+        servicePackage:
+          type:
+          - string
+          - 'null'
+        version:
+          type:
+          - string
+          - 'null'
     AdminModuleRemoteSourceInstallStateDto:
       type: object
       required:
@@ -5159,6 +5190,10 @@ components:
           - 'null'
         moduleName:
           type: string
+        moduleRelease:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/AdminModuleReleaseDto'
         operations:
           type: array
           items:

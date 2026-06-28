@@ -54,6 +54,9 @@ host application:
 lenso-billing-service/
   lenso.service-package.json
   lenso.service.json
+  modules/
+    billing/
+      lenso.module-release.json
   backend/
     src/
     openapi.yaml
@@ -90,7 +93,7 @@ The host may install the package file directly, but the CLI resolves it to
 `lenso.service.json` before writing host-local state. The package manifest
 records which provider and modules are inside the artifact; it does not make
 the service a peer runtime and does not grant trust by itself.
-Generate it with:
+Generate it, plus per-module release artifacts, with:
 
 ```sh
 lenso service package --manifest https://example.com/lenso/service/v1/manifest
@@ -121,6 +124,11 @@ so users can later run `lenso module install billing`. The CLI validates that
 the release name and version are provided by the target service manifest, then
 writes `moduleRelease` provenance into `.lenso/module-installs.json` next to
 the normal service/package receipt.
+The package command writes these release files under
+`modules/<module>/lenso.module-release.json`.
+When a release points at a local service package artifact, pass `--base-url`
+to `module install` or `module catalog add` so the host records the runtime
+service endpoint rather than the artifact path.
 
 ## Manifest Contract
 

@@ -7,10 +7,13 @@ pub use lenso_contracts::ModuleManifest;
 
 pub const SERVICE_CONTRACT_PROTOCOL: &str = "lenso.service.v1";
 pub const SERVICE_PACKAGE_PROTOCOL: &str = "lenso.service-package.v1";
+pub const MODULE_RELEASE_PROTOCOL: &str = "lenso.module-release.v1";
 pub const SERVICE_CONTRACT_SCHEMA_JSON: &str =
     include_str!("../schemas/lenso-service.v1.schema.json");
 pub const SERVICE_PACKAGE_SCHEMA_JSON: &str =
     include_str!("../schemas/lenso-service-package.v1.schema.json");
+pub const MODULE_RELEASE_SCHEMA_JSON: &str =
+    include_str!("../schemas/lenso-module-release.v1.schema.json");
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -128,6 +131,75 @@ impl ServicePackage {
             service_manifest: "lenso.service.json".to_owned(),
             modules,
         }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModuleReleaseProvider {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub service_package: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub service_manifest: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModuleRelease {
+    pub protocol: String,
+    pub name: String,
+    pub version: String,
+    pub source: String,
+    pub provider: ModuleReleaseProvider,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub capabilities: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dependencies: Vec<String>,
+}
+
+impl ModuleRelease {
+    #[must_use]
+    pub fn new(
+        name: impl Into<String>,
+        version: impl Into<String>,
+        provider_name: impl Into<String>,
+    ) -> Self {
+        Self {
+            protocol: MODULE_RELEASE_PROTOCOL.to_owned(),
+            name: name.into(),
+            version: version.into(),
+            source: "service".to_owned(),
+            provider: ModuleReleaseProvider {
+                name: provider_name.into(),
+                service_package: Some("lenso.service-package.json".to_owned()),
+                service_manifest: None,
+            },
+            summary: None,
+            capabilities: Vec::new(),
+            dependencies: Vec::new(),
+        }
+    }
+
+    #[must_use]
+    pub fn capabilities(mut self, capabilities: Vec<String>) -> Self {
+        self.capabilities = capabilities;
+        self
+    }
+
+    #[must_use]
+    pub fn dependencies(mut self, dependencies: Vec<String>) -> Self {
+        self.dependencies = dependencies;
+        self
+    }
+
+    #[must_use]
+    pub fn service_manifest(mut self, service_manifest: impl Into<String>) -> Self {
+        self.provider.service_package = None;
+        self.provider.service_manifest = Some(service_manifest.into());
+        self
     }
 }
 
@@ -287,6 +359,74 @@ pub fn validate_service_package_value(value: &Value) -> Vec<ServiceContractIssue
     );
     validate_service_package_modules(object.get("modules"), &mut issues);
     issues
+}
+
+#[must_use]
+pub fn validate_module_release_value(value: &Value) -> Vec<ServiceContractIssue> {
+    let Some(object) = value.as_object() else {
+        return vec![ServiceContractIssue::new(
+            "$",
+            "module release must be an object",
+        )];
+    };
+
+    let mut issues = Vec::new();
+    match object.get("protocol").and_then(Value::as_str) {
+        Some(MODULE_RELEASE_PROTOCOL) => {}
+        Some(_) => issues.push(ServiceContractIssue::new(
+            "$.protocol",
+            format!("protocol must be `{MODULE_RELEASE_PROTOCOL}`"),
+        )),
+        None => issues.push(ServiceContractIssue::new(
+            "$.protocol",
+            "field must be a non-empty string",
+        )),
+    }
+    require_non_empty_string(object.get("name"), "$.name", &mut issues);
+    require_non_empty_string(object.get("version"), "$.version", &mut issues);
+    match object.get("source").and_then(Value::as_str) {
+        Some("service") => {}
+        _ => issues.push(ServiceContractIssue::new(
+            "$.source",
+            "source must be `service`",
+        )),
+    }
+    validate_module_release_provider(object.get("provider"), &mut issues);
+    validate_string_array(object.get("capabilities"), "$.capabilities", &mut issues);
+    validate_string_array(object.get("dependencies"), "$.dependencies", &mut issues);
+    issues
+}
+
+fn validate_module_release_provider(value: Option<&Value>, issues: &mut Vec<ServiceContractIssue>) {
+    let Some(value) = value else {
+        issues.push(ServiceContractIssue::new(
+            "$.provider",
+            "provider must be an object",
+        ));
+        return;
+    };
+    let Some(object) = value.as_object() else {
+        issues.push(ServiceContractIssue::new(
+            "$.provider",
+            "provider must be an object",
+        ));
+        return;
+    };
+    require_non_empty_string(object.get("name"), "$.provider.name", issues);
+    if object
+        .get("servicePackage")
+        .or_else(|| object.get("service_package"))
+        .or_else(|| object.get("serviceManifest"))
+        .or_else(|| object.get("service_manifest"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .is_none_or(str::is_empty)
+    {
+        issues.push(ServiceContractIssue::new(
+            "$.provider.servicePackage",
+            "field must be a non-empty string",
+        ));
+    }
 }
 
 fn validate_provider(value: Option<&Value>, issues: &mut Vec<ServiceContractIssue>) {
@@ -606,6 +746,71 @@ mod tests {
                 .map(|issue| issue.path.as_str())
                 .collect::<Vec<_>>(),
             vec!["$.protocol", "$.modules[1]", "$.modules[2]"]
+        );
+    }
+
+    #[test]
+    fn module_release_new_uses_v1_protocol() {
+        let release = ModuleRelease::new("support-ticket", "0.2.0", "support-suite-provider")
+            .capabilities(vec!["support_ticket.tickets.read".to_owned()])
+            .dependencies(vec!["auth".to_owned()]);
+        let value = serde_json::to_value(release).unwrap();
+
+        assert_eq!(value["protocol"], MODULE_RELEASE_PROTOCOL);
+        assert_eq!(value["source"], "service");
+        assert_eq!(
+            value["provider"]["servicePackage"],
+            "lenso.service-package.json"
+        );
+        assert_eq!(
+            value["capabilities"],
+            json!(["support_ticket.tickets.read"])
+        );
+        assert_eq!(value["dependencies"], json!(["auth"]));
+    }
+
+    #[test]
+    fn valid_module_release_has_no_issues() {
+        let issues = validate_module_release_value(&json!({
+            "protocol": "lenso.module-release.v1",
+            "name": "support-ticket",
+            "version": "0.2.0",
+            "source": "service",
+            "provider": {
+                "name": "support-suite-provider",
+                "serviceManifest": "https://example.test/lenso/service/v1/manifest"
+            },
+            "capabilities": ["support_ticket.tickets.read"]
+        }));
+
+        assert!(issues.is_empty(), "{issues:?}");
+    }
+
+    #[test]
+    fn invalid_module_release_reports_protocol_source_provider_and_capabilities() {
+        let issues = validate_module_release_value(&json!({
+            "protocol": "remote-module",
+            "name": "",
+            "version": "",
+            "source": "remote",
+            "provider": { "name": "" },
+            "capabilities": ["support_ticket.read", 42]
+        }));
+
+        assert_eq!(
+            issues
+                .iter()
+                .map(|issue| issue.path.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "$.protocol",
+                "$.name",
+                "$.version",
+                "$.source",
+                "$.provider.name",
+                "$.provider.servicePackage",
+                "$.capabilities[1]"
+            ]
         );
     }
 }

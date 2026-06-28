@@ -11,17 +11,17 @@ use crate::dto::{
     AdminModuleRegistrySnapshotCatalogDto, AdminModuleRegistrySnapshotIssueDto,
     AdminModuleRegistrySnapshotManifestStatus, AdminModuleRegistrySnapshotModuleDto,
     AdminModuleRegistrySnapshotModuleStatus, AdminModuleRegistrySnapshotResponse,
-    AdminModuleRegistrySnapshotStatus, AdminModuleRemoteSourceInstallStateDto, AdminModuleSchema,
-    AdminModuleSourceDiagnosticsDto, AdminModuleStatus, AdminQueryResponse,
-    AdminRemoteModuleDiagnosticsDto, AdminSchemaListResponse, AdminSchemaRefreshResponse,
-    AdminServiceModuleCompatibilityDto, AdminServiceModuleCompatibilityState,
-    AdminServiceModuleDeploymentDto, AdminServiceModuleHealthCheckDto,
-    AdminServiceModuleLifecycleModuleDto, AdminServiceModuleLifecycleModuleStatus,
-    AdminServiceModuleLifecycleResponse, AdminServiceModuleLifecycleServiceDto,
-    AdminServiceModuleLifecycleStatus, AdminServiceModuleManifestStatus,
-    AdminServiceModuleServiceStatusCheckDto, AdminServiceModuleServiceStatusDto,
-    AdminServiceModuleServiceStatusState, AdminServiceOperationDto, AdminServiceOperationKindDto,
-    AdminServiceOperationLinksDto,
+    AdminModuleRegistrySnapshotStatus, AdminModuleReleaseDto,
+    AdminModuleRemoteSourceInstallStateDto, AdminModuleSchema, AdminModuleSourceDiagnosticsDto,
+    AdminModuleStatus, AdminQueryResponse, AdminRemoteModuleDiagnosticsDto,
+    AdminSchemaListResponse, AdminSchemaRefreshResponse, AdminServiceModuleCompatibilityDto,
+    AdminServiceModuleCompatibilityState, AdminServiceModuleDeploymentDto,
+    AdminServiceModuleHealthCheckDto, AdminServiceModuleLifecycleModuleDto,
+    AdminServiceModuleLifecycleModuleStatus, AdminServiceModuleLifecycleResponse,
+    AdminServiceModuleLifecycleServiceDto, AdminServiceModuleLifecycleStatus,
+    AdminServiceModuleManifestStatus, AdminServiceModuleServiceStatusCheckDto,
+    AdminServiceModuleServiceStatusDto, AdminServiceModuleServiceStatusState,
+    AdminServiceOperationDto, AdminServiceOperationKindDto, AdminServiceOperationLinksDto,
 };
 use crate::{
     AdminModule, AdminModuleMetadata, AdminModuleMetadataRefreshModuleResult,
@@ -423,6 +423,7 @@ async fn service_module_lifecycle_module(
     let compatibility = service_module_compatibility(module_name, install_receipt);
     let deployment = service_module_deployment(install_receipt);
     let operations = service_module_operations(provider_name, module_name, metadata);
+    let module_release = install_receipt.and_then(module_release_from_receipt);
     let has_stale_state = services.iter().any(|service| {
         !service.ready && (service.lock_file.is_some() || service.pid_file.is_some())
     });
@@ -474,6 +475,7 @@ async fn service_module_lifecycle_module(
         deployment,
         services,
         operations,
+        module_release,
         fixes,
     }
 }
@@ -1407,6 +1409,10 @@ struct LocalModuleCatalogEntry {
     version: String,
     source: String,
     manifest_reference: String,
+    #[serde(default)]
+    protocol: Option<String>,
+    #[serde(default)]
+    provider: Option<LocalModuleReleaseProvider>,
     #[serde(default, rename = "providedBy")]
     provided_by: Option<String>,
     #[serde(default, rename = "serviceManifest")]
@@ -1425,6 +1431,17 @@ struct LocalModuleCatalogEntry {
     archived_at: Option<String>,
     #[serde(default)]
     archive_reason: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalModuleReleaseProvider {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default, alias = "service_package")]
+    service_package: Option<String>,
+    #[serde(default, alias = "service_manifest")]
+    service_manifest: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -1490,6 +1507,17 @@ struct LocalModuleInstallLedgerModule {
     deployment: Option<AdminServiceModuleDeploymentDto>,
     #[serde(default)]
     service: Option<LocalServiceModuleMetadata>,
+    #[serde(default)]
+    module_release: Option<LocalModuleReleaseReceipt>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalModuleReleaseReceipt {
+    #[serde(default)]
+    manifest_reference: Option<String>,
+    #[serde(default)]
+    manifest_snapshot: Option<Value>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -2917,6 +2945,7 @@ fn module_catalog_entry_module(
     let source = catalog_entry_source(&entry.source);
     let state = catalog_entry_install_state(&entry, install_state);
     let archived = entry.archived_at.is_some();
+    let module_release = module_release_from_catalog_entry(&entry);
     let name = entry.name;
     let needs_attention = !archived
         && ((matches!(source, ModuleSource::Remote)
@@ -2930,6 +2959,7 @@ fn module_catalog_entry_module(
         manifest_reference: entry.manifest_reference,
         provided_by: entry.provided_by,
         service_manifest: entry.service_manifest,
+        module_release,
         summary: entry.summary,
         base_url: entry.base_url,
         capabilities: entry.capabilities,
@@ -2954,6 +2984,69 @@ fn module_catalog_entry_module(
             AdminModuleRegistrySnapshotModuleStatus::Ready
         },
     }
+}
+
+fn module_release_from_catalog_entry(
+    entry: &LocalModuleCatalogEntry,
+) -> Option<AdminModuleReleaseDto> {
+    (entry.protocol.as_deref() == Some("lenso.module-release.v1")).then(|| AdminModuleReleaseDto {
+        manifest_reference: entry.manifest_reference.clone(),
+        name: Some(entry.name.clone()),
+        version: Some(entry.version.clone()),
+        provider_name: entry
+            .provider
+            .as_ref()
+            .and_then(|provider| provider.name.clone()),
+        service_package: entry
+            .provider
+            .as_ref()
+            .and_then(|provider| provider.service_package.clone()),
+        service_manifest: entry
+            .provider
+            .as_ref()
+            .and_then(|provider| provider.service_manifest.clone()),
+    })
+}
+
+fn module_release_from_receipt(
+    receipt: &LocalModuleInstallLedgerModule,
+) -> Option<AdminModuleReleaseDto> {
+    let module_release = receipt.module_release.as_ref()?;
+    let snapshot = module_release.manifest_snapshot.as_ref();
+    let provider = snapshot
+        .and_then(|snapshot| snapshot.get("provider"))
+        .and_then(Value::as_object);
+    Some(AdminModuleReleaseDto {
+        manifest_reference: module_release.manifest_reference.clone()?,
+        name: snapshot
+            .and_then(|snapshot| snapshot.get("name"))
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned),
+        version: snapshot
+            .and_then(|snapshot| snapshot.get("version"))
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned),
+        provider_name: provider
+            .and_then(|provider| provider.get("name"))
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned),
+        service_package: provider
+            .and_then(|provider| {
+                provider
+                    .get("servicePackage")
+                    .or_else(|| provider.get("service_package"))
+            })
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned),
+        service_manifest: provider
+            .and_then(|provider| {
+                provider
+                    .get("serviceManifest")
+                    .or_else(|| provider.get("service_manifest"))
+            })
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned),
+    })
 }
 
 fn catalog_entry_source(source: &str) -> ModuleSource {
@@ -3131,6 +3224,7 @@ fn module_registry_snapshot_module(
         manifest_reference,
         provided_by: None,
         service_manifest: None,
+        module_release: None,
         summary: None,
         base_url,
         capabilities,

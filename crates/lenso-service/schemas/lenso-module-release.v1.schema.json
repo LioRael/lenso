@@ -1,0 +1,70 @@
+{
+  "$id": "https://contracts.lenso.local/modules/lenso-module-release.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LensoModuleRelease",
+  "type": "object",
+  "required": ["protocol", "name", "version", "source", "provider"],
+  "additionalProperties": true,
+  "properties": {
+    "protocol": {
+      "type": "string",
+      "const": "lenso.module-release.v1"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source": {
+      "type": "string",
+      "const": "service"
+    },
+    "provider": {
+      "type": "object",
+      "required": ["name"],
+      "anyOf": [
+        {
+          "required": ["servicePackage"]
+        },
+        {
+          "required": ["serviceManifest"]
+        }
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "servicePackage": {
+          "type": "string",
+          "minLength": 1
+        },
+        "serviceManifest": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "summary": {
+      "type": "string"
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "dependencies": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}

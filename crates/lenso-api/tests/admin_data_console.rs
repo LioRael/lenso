@@ -896,6 +896,18 @@ async fn service_modules_merges_service_provider_source_into_provided_module() {
                 "service": {
                     "name": "support-service",
                     "statusPath": "/lenso/service/v1/status"
+                },
+                "moduleRelease": {
+                    "manifestReference": "../support/lenso.module-release.json",
+                    "manifestSnapshot": {
+                        "protocol": "lenso.module-release.v1",
+                        "name": "support-ticket",
+                        "version": "0.2.0",
+                        "provider": {
+                            "name": "support-service",
+                            "servicePackage": "../support/lenso.service-package.json"
+                        }
+                    }
                 }
             }]
         })
@@ -959,6 +971,18 @@ async fn service_modules_merges_service_provider_source_into_provided_module() {
     assert_eq!(
         body["modules"][0]["baseUrl"],
         "http://127.0.0.1:4110/lenso/service/v1"
+    );
+    assert_eq!(
+        body["modules"][0]["moduleRelease"]["manifestReference"],
+        "../support/lenso.module-release.json"
+    );
+    assert_eq!(
+        body["modules"][0]["moduleRelease"]["providerName"],
+        "support-service"
+    );
+    assert_eq!(
+        body["modules"][0]["moduleRelease"]["servicePackage"],
+        "../support/lenso.service-package.json"
     );
 }
 
@@ -1371,6 +1395,58 @@ async fn available_modules_reads_local_module_catalog() {
     );
     assert_eq!(body["modules"][0]["consolePackageHints"], 1);
     assert!(body["modules"][0].get("installPolicy").is_none());
+}
+
+#[tokio::test]
+async fn available_modules_exposes_module_release_catalog_metadata() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
+    let _catalog = FileFixture::write(
+        ".lenso/module-catalog.json",
+        serde_json::json!({
+            "version": 1,
+            "modules": [{
+                "protocol": "lenso.module-release.v1",
+                "name": "support-ticket",
+                "version": "0.2.0",
+                "source": "service",
+                "manifestReference": "../support/lenso.module-release.json",
+                "summary": "Ticket intake, triage, and operations",
+                "provider": {
+                    "name": "support-suite-provider",
+                    "servicePackage": "../support/lenso.service-package.json"
+                }
+            }]
+        })
+        .to_string(),
+    );
+    let ctx = AppContext::new(
+        AppConfig::from_env(),
+        lazy_failing_db(),
+        Arc::new(LoggingEventPublisher),
+    );
+    let app = build_router(ctx);
+
+    let response = app
+        .oneshot(admin_get("/admin/data/available-modules"))
+        .await
+        .expect("available modules request completes");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    let module = &body["modules"][0];
+    assert_eq!(module["name"], "support-ticket");
+    assert_eq!(
+        module["moduleRelease"]["manifestReference"],
+        "../support/lenso.module-release.json"
+    );
+    assert_eq!(
+        module["moduleRelease"]["providerName"],
+        "support-suite-provider"
+    );
+    assert_eq!(
+        module["moduleRelease"]["servicePackage"],
+        "../support/lenso.service-package.json"
+    );
 }
 
 #[tokio::test]
