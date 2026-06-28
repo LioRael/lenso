@@ -5,8 +5,12 @@ use std::collections::{BTreeMap, BTreeSet};
 
 pub use lenso_contracts::ModuleManifest;
 
+pub const SERVICE_CONTRACT_PROTOCOL: &str = "lenso.service.v1";
+pub const SERVICE_PACKAGE_PROTOCOL: &str = "lenso.service-package.v1";
 pub const SERVICE_CONTRACT_SCHEMA_JSON: &str =
     include_str!("../schemas/lenso-service.v1.schema.json");
+pub const SERVICE_PACKAGE_SCHEMA_JSON: &str =
+    include_str!("../schemas/lenso-service-package.v1.schema.json");
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -101,6 +105,30 @@ pub struct ServiceContract {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub local_process: Option<ServiceLocalProcess>,
     pub modules: Vec<ModuleManifest>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServicePackage {
+    pub protocol: String,
+    pub name: String,
+    pub version: String,
+    pub service_manifest: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub modules: Vec<String>,
+}
+
+impl ServicePackage {
+    #[must_use]
+    pub fn new(name: impl Into<String>, version: impl Into<String>, modules: Vec<String>) -> Self {
+        Self {
+            protocol: SERVICE_PACKAGE_PROTOCOL.to_owned(),
+            name: name.into(),
+            version: version.into(),
+            service_manifest: "lenso.service.json".to_owned(),
+            modules,
+        }
+    }
 }
 
 impl ServiceContract {
@@ -224,6 +252,40 @@ pub fn validate_service_contract_value(value: &Value) -> Vec<ServiceContractIssu
     );
     validate_install(object.get("install"), &mut issues);
     validate_modules(object.get("modules"), &mut issues);
+    issues
+}
+
+#[must_use]
+pub fn validate_service_package_value(value: &Value) -> Vec<ServiceContractIssue> {
+    let Some(object) = value.as_object() else {
+        return vec![ServiceContractIssue::new(
+            "$",
+            "service package must be an object",
+        )];
+    };
+
+    let mut issues = Vec::new();
+    match object.get("protocol").and_then(Value::as_str) {
+        Some(SERVICE_PACKAGE_PROTOCOL) => {}
+        Some(_) => issues.push(ServiceContractIssue::new(
+            "$.protocol",
+            format!("protocol must be `{SERVICE_PACKAGE_PROTOCOL}`"),
+        )),
+        None => issues.push(ServiceContractIssue::new(
+            "$.protocol",
+            "field must be a non-empty string",
+        )),
+    }
+    require_non_empty_string(object.get("name"), "$.name", &mut issues);
+    require_non_empty_string(object.get("version"), "$.version", &mut issues);
+    require_non_empty_string(
+        object
+            .get("serviceManifest")
+            .or_else(|| object.get("service_manifest")),
+        "$.serviceManifest",
+        &mut issues,
+    );
+    validate_service_package_modules(object.get("modules"), &mut issues);
     issues
 }
 
@@ -408,6 +470,44 @@ fn validate_modules(value: Option<&Value>, issues: &mut Vec<ServiceContractIssue
     }
 }
 
+fn validate_service_package_modules(value: Option<&Value>, issues: &mut Vec<ServiceContractIssue>) {
+    let Some(value) = value else {
+        issues.push(ServiceContractIssue::new(
+            "$.modules",
+            "modules must be an array",
+        ));
+        return;
+    };
+    let Some(array) = value.as_array() else {
+        issues.push(ServiceContractIssue::new(
+            "$.modules",
+            "modules must be an array",
+        ));
+        return;
+    };
+    if array.is_empty() {
+        issues.push(ServiceContractIssue::new(
+            "$.modules",
+            "modules must not be empty",
+        ));
+        return;
+    }
+    let mut names = BTreeSet::new();
+    for (index, module) in array.iter().enumerate() {
+        let Some(module_name) =
+            non_empty_string(Some(module), &format!("$.modules[{index}]"), issues)
+        else {
+            continue;
+        };
+        if !names.insert(module_name.to_owned()) {
+            issues.push(ServiceContractIssue::new(
+                format!("$.modules[{index}]"),
+                format!("module `{module_name}` is declared more than once"),
+            ));
+        }
+    }
+}
+
 fn validate_string_array(
     value: Option<&Value>,
     path: &str,
@@ -456,4 +556,56 @@ const fn default_service_auto_start() -> bool {
 
 const fn default_service_ready_timeout_ms() -> u64 {
     30_000
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn service_package_new_uses_v1_protocol() {
+        let package = ServicePackage::new(
+            "support-suite-provider",
+            "0.2.0",
+            vec!["support-ticket".to_owned()],
+        );
+        let value = serde_json::to_value(package).unwrap();
+
+        assert_eq!(value["protocol"], SERVICE_PACKAGE_PROTOCOL);
+        assert_eq!(value["serviceManifest"], "lenso.service.json");
+        assert_eq!(value["modules"], json!(["support-ticket"]));
+    }
+
+    #[test]
+    fn valid_service_package_has_no_issues() {
+        let issues = validate_service_package_value(&json!({
+            "protocol": "lenso.service-package.v1",
+            "name": "support-suite-provider",
+            "version": "0.2.0",
+            "serviceManifest": "lenso.service.json",
+            "modules": ["support-ticket", "support-inbox"]
+        }));
+
+        assert!(issues.is_empty(), "{issues:?}");
+    }
+
+    #[test]
+    fn invalid_service_package_reports_protocol_and_modules() {
+        let issues = validate_service_package_value(&json!({
+            "protocol": "remote-module",
+            "name": "support-suite-provider",
+            "version": "0.2.0",
+            "serviceManifest": "lenso.service.json",
+            "modules": ["support-ticket", "support-ticket", ""]
+        }));
+
+        assert_eq!(
+            issues
+                .iter()
+                .map(|issue| issue.path.as_str())
+                .collect::<Vec<_>>(),
+            vec!["$.protocol", "$.modules[1]", "$.modules[2]"]
+        );
+    }
 }

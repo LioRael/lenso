@@ -52,6 +52,7 @@ host application:
 
 ```text
 lenso-billing-service/
+  lenso.service-package.json
   lenso.service.json
   backend/
     src/
@@ -71,6 +72,28 @@ lenso-billing-service/
 The exact backend language is not prescribed. The service must expose the
 service manifest and module protocol endpoints that `platform-module-remote`
 expects.
+
+`lenso.service-package.json` is the V9 delivery manifest for handoff to
+catalog, release, and deployment tooling. It is intentionally small:
+
+```json
+{
+  "protocol": "lenso.service-package.v1",
+  "name": "billing-service",
+  "version": "0.1.0",
+  "serviceManifest": "lenso.service.json",
+  "modules": ["billing"]
+}
+```
+
+The host still installs from `lenso.service.json` or a service manifest URL.
+The package manifest records which provider and modules are inside the artifact;
+it does not make the service a peer runtime and does not grant trust by itself.
+Generate it with:
+
+```sh
+lenso service package --manifest https://example.com/lenso/service/v1/manifest
+```
 
 ## Manifest Contract
 
