@@ -12,6 +12,7 @@ The intended first-user flow is:
 ```sh
 cargo add lenso@0.3.16 --features host
 pnpm add @lenso/service-kit@0.1.0
+pnpm add @lenso/remote-module-kit@0.1.1
 ```
 
 Not every project needs every package:
