@@ -96,6 +96,32 @@ Generate it with:
 lenso service package --manifest https://example.com/lenso/service/v1/manifest
 ```
 
+`lenso.module-release.json` is the V10 module release channel. It is not a new
+runtime source; it is the business-module entrypoint that resolves to the
+provider service package or service manifest:
+
+```json
+{
+  "protocol": "lenso.module-release.v1",
+  "name": "billing",
+  "version": "0.1.0",
+  "source": "service",
+  "provider": {
+    "name": "billing-service",
+    "servicePackage": "lenso.service-package.json"
+  },
+  "capabilities": ["billing.read", "billing.write"],
+  "dependencies": []
+}
+```
+
+Install a module release with `lenso module install <module-release.json>`.
+Add it to a local catalog with `lenso module catalog add <module-release.json>`
+so users can later run `lenso module install billing`. The CLI validates that
+the release name and version are provided by the target service manifest, then
+writes `moduleRelease` provenance into `.lenso/module-installs.json` next to
+the normal service/package receipt.
+
 ## Manifest Contract
 
 The service manifest is the source of truth for install-time inspection. A
@@ -259,13 +285,16 @@ lenso module create billing --with-console
 Third-party scaffolding uses a separate service lane:
 
 ```sh
-lenso module catalog add https://example.com/lenso/service/v1/manifest
+lenso module catalog add https://example.com/releases/billing/lenso.module-release.json
+lenso module install billing
 lenso service install https://example.com/lenso/service/v1/manifest
 lenso module uninstall billing
 ```
 
-The default install path is user-driven: see a service, install from its
-manifest, restart the host, reload Runtime Console, and use its modules.
+The default install path is user-driven: see a module release, install the
+business module, restart the host, reload Runtime Console, and use the module.
+Provider operators can still install or upgrade the service directly with
+`lenso service install <manifest-or-package>`.
 `service install` updates host-local service configuration, applies
 manifest-declared `install.env` values, runs opted-in `install.commands`,
 writes `install.services`, writes an install receipt to
