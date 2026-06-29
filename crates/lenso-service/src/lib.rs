@@ -58,7 +58,25 @@ pub struct ServiceEnvironment {
     pub config: Option<KubernetesDeploymentConfig>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+impl ServiceEnvironment {
+    #[must_use]
+    pub fn kubernetes(name: impl Into<String>, service_name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            service_name: service_name.into(),
+            target: ServiceDeploymentTarget::Kubernetes,
+            namespace: None,
+            kube_context: None,
+            image: None,
+            public_base_url: None,
+            manifest_reference: None,
+            release_track: None,
+            config: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KubernetesDeploymentConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -81,6 +99,31 @@ pub struct KubernetesDeploymentConfig {
     pub disruption_budget: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network_policy: Option<bool>,
+}
+
+impl KubernetesDeploymentConfig {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    #[must_use]
+    pub fn port(mut self, port: u16) -> Self {
+        self.port = Some(port);
+        self
+    }
+
+    #[must_use]
+    pub fn replicas(mut self, replicas: u32) -> Self {
+        self.replicas = Some(replicas);
+        self
+    }
+
+    #[must_use]
+    pub fn ingress_host(mut self, ingress_host: impl Into<String>) -> Self {
+        self.ingress_host = Some(ingress_host.into());
+        self
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -1507,27 +1550,18 @@ mod tests {
         let file = ServiceEnvironmentsFile {
             version: 1,
             environments: vec![ServiceEnvironment {
-                name: "staging".to_owned(),
-                service_name: "support-suite-provider".to_owned(),
-                target: ServiceDeploymentTarget::Kubernetes,
                 namespace: Some("lenso-staging".to_owned()),
                 kube_context: Some("staging".to_owned()),
                 image: Some("ghcr.io/acme/support-suite-provider:0.4.0".to_owned()),
                 public_base_url: Some("https://support-staging.example.com".to_owned()),
-                manifest_reference: None,
                 release_track: Some("staging".to_owned()),
-                config: Some(KubernetesDeploymentConfig {
-                    replicas: Some(2),
-                    port: Some(4110),
-                    ingress_host: Some("support-staging.example.com".to_owned()),
-                    cpu_request: None,
-                    memory_request: None,
-                    cpu_limit: None,
-                    memory_limit: None,
-                    autoscaling: Some(true),
-                    disruption_budget: Some(true),
-                    network_policy: Some(false),
-                }),
+                config: Some(
+                    KubernetesDeploymentConfig::new()
+                        .replicas(2)
+                        .port(4110)
+                        .ingress_host("support-staging.example.com"),
+                ),
+                ..ServiceEnvironment::kubernetes("staging", "support-suite-provider")
             }],
         };
 
