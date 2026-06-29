@@ -148,6 +148,10 @@ pub struct AdminServiceModuleLifecycleModuleDto {
     pub compatibility: AdminServiceModuleCompatibilityDto,
     pub config: AdminServiceModuleConfigDto,
     pub deployment: Option<AdminServiceModuleDeploymentDto>,
+    pub environments: Vec<AdminServiceEnvironmentDto>,
+    pub deployments: Vec<AdminServiceDeploymentObservationDto>,
+    pub deployment_drift: Option<String>,
+    pub deployment_next_action: Option<String>,
     pub services: Vec<AdminServiceModuleLifecycleServiceDto>,
     pub operations: Vec<AdminServiceOperationDto>,
     pub module_release: Option<AdminModuleReleaseDto>,
@@ -161,6 +165,10 @@ pub struct AdminServiceModuleLifecycleModuleDto {
 pub struct AdminServiceReleaseRecordDto {
     pub id: Option<String>,
     pub service_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub environment: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
     pub applied_at_unix_ms: Option<u64>,
     pub risk: String,
     pub current_version: Option<String>,
@@ -169,6 +177,65 @@ pub struct AdminServiceReleaseRecordDto {
     pub candidate_manifest_reference: Option<String>,
     pub candidate_package_reference: Option<String>,
     pub rollback_target: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceEnvironmentDto {
+    pub name: String,
+    pub service_name: String,
+    pub target: String,
+    pub namespace: Option<String>,
+    pub kube_context: Option<String>,
+    pub image: Option<String>,
+    pub public_base_url: Option<String>,
+    pub manifest_reference: Option<String>,
+    pub release_track: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceDeploymentObservationDto {
+    pub service_name: String,
+    pub environment: String,
+    pub target: String,
+    pub observed_at_unix_ms: Option<u64>,
+    pub state: String,
+    pub drift: String,
+    pub cluster: Option<AdminKubernetesDeploymentObservationDto>,
+    pub host: Option<AdminServiceDeploymentHostObservationDto>,
+    pub checks: Vec<AdminServiceDeploymentCheckDto>,
+    pub next_action: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminKubernetesDeploymentObservationDto {
+    pub namespace: Option<String>,
+    pub deployment: Option<String>,
+    pub ready_replicas: Option<u32>,
+    pub desired_replicas: Option<u32>,
+    pub available_replicas: Option<u32>,
+    pub image: Option<String>,
+    pub release_id: Option<String>,
+    pub manifest_reference: Option<String>,
+    pub service_endpoint: Option<String>,
+    pub ingress_host: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceDeploymentHostObservationDto {
+    pub release_id: Option<String>,
+    pub candidate_version: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceDeploymentCheckDto {
+    pub name: String,
+    pub status: String,
+    pub detail: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

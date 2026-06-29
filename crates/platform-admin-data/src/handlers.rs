@@ -1,11 +1,11 @@
 use crate::dto::{
     AdminActionInvocationDto, AdminActionInvokeRequest, AdminActionInvokeResponse,
     AdminCapabilityIssueDto, AdminCapabilitySummaryDto, AdminDataDetailResponse,
-    AdminDataListResponse, AdminDataPageInfo, AdminModuleActivationState,
-    AdminModuleCompatibilityDto, AdminModuleConsolePackagePlanPackageDto,
-    AdminModuleConsolePackagePlanStateDto, AdminModuleGovernanceDto,
-    AdminModuleHostCompatibilityDto, AdminModuleInstallResponse, AdminModuleInstallStateDto,
-    AdminModuleLinkedSourceInstallStateDto, AdminModuleMetadataDto,
+    AdminDataListResponse, AdminDataPageInfo, AdminKubernetesDeploymentObservationDto,
+    AdminModuleActivationState, AdminModuleCompatibilityDto,
+    AdminModuleConsolePackagePlanPackageDto, AdminModuleConsolePackagePlanStateDto,
+    AdminModuleGovernanceDto, AdminModuleHostCompatibilityDto, AdminModuleInstallResponse,
+    AdminModuleInstallStateDto, AdminModuleLinkedSourceInstallStateDto, AdminModuleMetadataDto,
     AdminModuleMetadataListResponse, AdminModuleRefreshModuleResultDto,
     AdminModuleRefreshModuleStatusDto, AdminModuleRefreshRecordDto, AdminModuleRefreshStatusDto,
     AdminModuleRegistrySnapshotCatalogDto, AdminModuleRegistrySnapshotIssueDto,
@@ -14,7 +14,9 @@ use crate::dto::{
     AdminModuleRegistrySnapshotStatus, AdminModuleReleaseDto,
     AdminModuleRemoteSourceInstallStateDto, AdminModuleSchema, AdminModuleSourceDiagnosticsDto,
     AdminModuleStatus, AdminQueryResponse, AdminRemoteModuleDiagnosticsDto,
-    AdminSchemaListResponse, AdminSchemaRefreshResponse, AdminServiceModuleCompatibilityDto,
+    AdminSchemaListResponse, AdminSchemaRefreshResponse, AdminServiceDeploymentCheckDto,
+    AdminServiceDeploymentHostObservationDto, AdminServiceDeploymentObservationDto,
+    AdminServiceEnvironmentDto, AdminServiceModuleCompatibilityDto,
     AdminServiceModuleCompatibilityState, AdminServiceModuleConfigDto,
     AdminServiceModuleDeploymentDto, AdminServiceModuleHealthCheckDto,
     AdminServiceModuleLifecycleModuleDto, AdminServiceModuleLifecycleModuleStatus,
@@ -65,6 +67,8 @@ const HOST_REMOTE_PROTOCOL_VERSION: &str = "1";
 const MODULE_INSTALL_LEDGER_PATH: &str = ".lenso/module-installs.json";
 const MODULE_SERVICES_PATH: &str = ".lenso/module-services.json";
 const SERVICE_RELEASE_LEDGER_PATH: &str = ".lenso/service-releases.json";
+const SERVICE_ENVIRONMENTS_PATH: &str = ".lenso/service-environments.json";
+const SERVICE_DEPLOYMENTS_PATH: &str = ".lenso/service-deployments.json";
 const SERVICE_MODULE_HEALTH_PATH: &str = ".lenso/service-health.json";
 const OFFICIAL_MODULE_CATALOG_REGISTRY_FILE: &str = "builtin:lenso-official-module-catalog";
 const OFFICIAL_MODULE_CATALOG_SOURCE: &str =
@@ -288,6 +292,8 @@ async fn service_module_lifecycle_response(
     let installed_modules = local_installed_remote_modules(MODULE_INSTALL_LEDGER_PATH);
     let services_by_module = local_module_services(MODULE_SERVICES_PATH);
     let release_history_by_service = local_service_release_history(SERVICE_RELEASE_LEDGER_PATH);
+    let environments_by_service = local_service_environments(SERVICE_ENVIRONMENTS_PATH);
+    let deployments_by_service = local_service_deployments(SERVICE_DEPLOYMENTS_PATH);
     let metadata_by_name = metadata
         .iter()
         .filter(|module| matches!(module.source, ModuleSource::Remote))
@@ -358,6 +364,16 @@ async fn service_module_lifecycle_response(
                     .or_else(|| release_history_by_service.get(&module_name))
                     .cloned()
                     .unwrap_or_default(),
+                environments_by_service
+                    .get(provider_name.map(String::as_str).unwrap_or(&module_name))
+                    .or_else(|| environments_by_service.get(&module_name))
+                    .cloned()
+                    .unwrap_or_default(),
+                deployments_by_service
+                    .get(provider_name.map(String::as_str).unwrap_or(&module_name))
+                    .or_else(|| deployments_by_service.get(&module_name))
+                    .cloned()
+                    .unwrap_or_default(),
                 metadata_by_name.get(&module_name).copied(),
                 client.as_ref(),
             )
@@ -388,6 +404,8 @@ async fn service_module_lifecycle_module(
     install_receipt: Option<&LocalModuleInstallLedgerModule>,
     service_specs: Vec<LocalModuleServiceSpec>,
     release_history: Vec<AdminServiceReleaseRecordDto>,
+    environments: Vec<AdminServiceEnvironmentDto>,
+    deployments: Vec<AdminServiceDeploymentObservationDto>,
     metadata: Option<&AdminModuleMetadata>,
     client: Option<&reqwest::Client>,
 ) -> AdminServiceModuleLifecycleModuleDto {
@@ -432,6 +450,12 @@ async fn service_module_lifecycle_module(
     let compatibility = service_module_compatibility(module_name, install_receipt);
     let config = service_module_config(install_receipt, install_state);
     let deployment = service_module_deployment(install_receipt);
+    let deployment_drift = deployments
+        .first()
+        .map(|deployment| deployment.drift.clone());
+    let deployment_next_action = deployments
+        .first()
+        .and_then(|deployment| deployment.next_action.clone());
     let operations = service_module_operations(provider_name, module_name, metadata);
     let module_release = install_receipt.and_then(module_release_from_receipt);
     let latest_release = release_history.first().cloned();
@@ -494,6 +518,10 @@ async fn service_module_lifecycle_module(
         compatibility,
         config,
         deployment,
+        environments,
+        deployments,
+        deployment_drift,
+        deployment_next_action,
         services,
         operations,
         module_release,
@@ -1089,11 +1117,157 @@ fn local_service_release_history(
     releases_by_service
 }
 
+fn local_service_environments(
+    path: impl AsRef<FsPath>,
+) -> HashMap<String, Vec<AdminServiceEnvironmentDto>> {
+    let Ok(source) = fs::read_to_string(path) else {
+        return HashMap::new();
+    };
+    let Ok(file) = serde_json::from_str::<Value>(&source) else {
+        return HashMap::new();
+    };
+    let mut environments_by_service: HashMap<String, Vec<AdminServiceEnvironmentDto>> =
+        HashMap::new();
+    for environment in file
+        .get("environments")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let Some(environment) = service_environment_from_value(environment) else {
+            continue;
+        };
+        environments_by_service
+            .entry(environment.service_name.clone())
+            .or_default()
+            .push(environment);
+    }
+    for environments in environments_by_service.values_mut() {
+        environments.sort_by(|left, right| left.name.cmp(&right.name));
+    }
+    environments_by_service
+}
+
+fn local_service_deployments(
+    path: impl AsRef<FsPath>,
+) -> HashMap<String, Vec<AdminServiceDeploymentObservationDto>> {
+    let Ok(source) = fs::read_to_string(path) else {
+        return HashMap::new();
+    };
+    let Ok(file) = serde_json::from_str::<Value>(&source) else {
+        return HashMap::new();
+    };
+    let mut deployments_by_service: HashMap<String, Vec<AdminServiceDeploymentObservationDto>> =
+        HashMap::new();
+    for observation in file
+        .get("observations")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let Some(observation) = service_deployment_from_value(observation) else {
+            continue;
+        };
+        deployments_by_service
+            .entry(observation.service_name.clone())
+            .or_default()
+            .push(observation);
+    }
+    for deployments in deployments_by_service.values_mut() {
+        deployments.sort_by(|left, right| right.observed_at_unix_ms.cmp(&left.observed_at_unix_ms));
+    }
+    deployments_by_service
+}
+
+fn service_environment_from_value(value: &Value) -> Option<AdminServiceEnvironmentDto> {
+    Some(AdminServiceEnvironmentDto {
+        name: json_string(value, "name")?,
+        service_name: json_string(value, "serviceName")?,
+        target: json_string(value, "target").unwrap_or_else(|| "kubernetes".to_owned()),
+        namespace: json_string(value, "namespace"),
+        kube_context: json_string(value, "kubeContext"),
+        image: json_string(value, "image"),
+        public_base_url: json_string(value, "publicBaseUrl"),
+        manifest_reference: json_string(value, "manifestReference"),
+        release_track: json_string(value, "releaseTrack"),
+    })
+}
+
+fn service_deployment_from_value(value: &Value) -> Option<AdminServiceDeploymentObservationDto> {
+    Some(AdminServiceDeploymentObservationDto {
+        service_name: json_string(value, "serviceName")?,
+        environment: json_string(value, "environment")?,
+        target: json_string(value, "target").unwrap_or_else(|| "kubernetes".to_owned()),
+        observed_at_unix_ms: value.get("observedAtUnixMs").and_then(Value::as_u64),
+        state: json_string(value, "state").unwrap_or_else(|| "unknown".to_owned()),
+        drift: json_string(value, "drift").unwrap_or_else(|| "unknown".to_owned()),
+        cluster: value.get("cluster").map(kubernetes_deployment_from_value),
+        host: value.get("host").map(service_deployment_host_from_value),
+        checks: value
+            .get("checks")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(service_deployment_check_from_value)
+            .collect(),
+        next_action: json_string(value, "nextAction"),
+    })
+}
+
+fn kubernetes_deployment_from_value(value: &Value) -> AdminKubernetesDeploymentObservationDto {
+    AdminKubernetesDeploymentObservationDto {
+        namespace: json_string(value, "namespace"),
+        deployment: json_string(value, "deployment"),
+        ready_replicas: json_u32(value, "readyReplicas"),
+        desired_replicas: json_u32(value, "desiredReplicas"),
+        available_replicas: json_u32(value, "availableReplicas"),
+        image: json_string(value, "image"),
+        release_id: json_string(value, "releaseId"),
+        manifest_reference: json_string(value, "manifestReference"),
+        service_endpoint: json_string(value, "serviceEndpoint"),
+        ingress_host: json_string(value, "ingressHost"),
+    }
+}
+
+fn service_deployment_host_from_value(value: &Value) -> AdminServiceDeploymentHostObservationDto {
+    AdminServiceDeploymentHostObservationDto {
+        release_id: json_string(value, "releaseId"),
+        candidate_version: json_string(value, "candidateVersion"),
+    }
+}
+
+fn service_deployment_check_from_value(value: &Value) -> Option<AdminServiceDeploymentCheckDto> {
+    Some(AdminServiceDeploymentCheckDto {
+        name: json_string(value, "name")?,
+        status: json_string(value, "status")?,
+        detail: json_string(value, "detail"),
+    })
+}
+
+fn json_string(value: &Value, key: &str) -> Option<String> {
+    value.get(key).and_then(Value::as_str).map(str::to_owned)
+}
+
+fn json_u32(value: &Value, key: &str) -> Option<u32> {
+    value
+        .get(key)
+        .and_then(Value::as_u64)
+        .and_then(|value| u32::try_from(value).ok())
+}
+
 fn service_release_record_from_value(value: &Value) -> Option<AdminServiceReleaseRecordDto> {
     let service_name = value.get("serviceName").and_then(Value::as_str)?.to_owned();
     Some(AdminServiceReleaseRecordDto {
         id: value.get("id").and_then(Value::as_str).map(str::to_owned),
         service_name,
+        environment: value
+            .pointer("/environment/name")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        target: value
+            .pointer("/environment/target")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
         applied_at_unix_ms: value.get("appliedAtUnixMs").and_then(Value::as_u64),
         risk: value
             .get("risk")
