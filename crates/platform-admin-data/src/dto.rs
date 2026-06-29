@@ -202,10 +202,31 @@ pub struct AdminServiceDeploymentObservationDto {
     pub observed_at_unix_ms: Option<u64>,
     pub state: String,
     pub drift: String,
+    pub operator: Option<AdminServiceDeploymentOperatorObservationDto>,
     pub cluster: Option<AdminKubernetesDeploymentObservationDto>,
     pub host: Option<AdminServiceDeploymentHostObservationDto>,
     pub checks: Vec<AdminServiceDeploymentCheckDto>,
     pub next_action: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceDeploymentOperatorObservationDto {
+    pub resource: Option<String>,
+    pub namespace: Option<String>,
+    pub observed_generation: Option<u64>,
+    pub conditions: Vec<AdminServiceDeploymentOperatorConditionDto>,
+}
+
+#[derive(Clone, Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceDeploymentOperatorConditionDto {
+    #[serde(rename = "type")]
+    pub type_: Option<String>,
+    pub status: Option<String>,
+    pub reason: Option<String>,
+    pub message: Option<String>,
+    pub last_transition_time: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, ToSchema)]

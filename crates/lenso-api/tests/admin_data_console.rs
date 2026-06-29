@@ -956,6 +956,123 @@ async fn service_modules_include_service_environment_and_deployment_state() {
 }
 
 #[tokio::test]
+async fn service_modules_include_operator_managed_deployment_state() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
+    let _env = FileFixture::write(".env", "REMOTE_MODULES=billing=grpc://example.com:50051\n");
+    let _ledger = FileFixture::remove(".lenso/module-installs.json");
+    let _services = FileFixture::remove(".lenso/module-services.json");
+    let _release_ledger = FileFixture::write(
+        ".lenso/service-releases.json",
+        serde_json::json!({
+            "version": 1,
+            "releases": [{
+                "id": "rel_staging",
+                "serviceName": "billing",
+                "appliedAtUnixMs": 200,
+                "risk": "safe",
+                "environment": {
+                    "name": "staging",
+                    "target": "operator",
+                    "namespace": "lenso-staging",
+                    "image": "ghcr.io/acme/billing:0.3.0"
+                },
+                "candidate": { "version": "0.3.0" }
+            }]
+        })
+        .to_string(),
+    );
+    let _environments = FileFixture::write(
+        ".lenso/service-environments.json",
+        serde_json::json!({
+            "version": 1,
+            "environments": [{
+                "name": "staging",
+                "serviceName": "billing",
+                "target": "operator",
+                "namespace": "lenso-staging",
+                "image": "ghcr.io/acme/billing:0.3.0",
+                "manifestReference": "https://billing.example.com/lenso/service/v1/manifest"
+            }]
+        })
+        .to_string(),
+    );
+    let _deployments = FileFixture::write(
+        ".lenso/service-deployments.json",
+        serde_json::json!({
+            "version": 1,
+            "observations": [{
+                "serviceName": "billing",
+                "environment": "staging",
+                "target": "operator",
+                "observedAtUnixMs": 300,
+                "state": "ready",
+                "drift": "in_sync",
+                "operator": {
+                    "resource": "billing",
+                    "namespace": "lenso-staging",
+                    "observedGeneration": 3,
+                    "conditions": [{
+                        "type": "Ready",
+                        "status": "True",
+                        "reason": "DeploymentAvailable",
+                        "message": "2/2 replicas are ready.",
+                        "lastTransitionTime": "2026-06-29T00:00:00Z"
+                    }]
+                },
+                "cluster": {
+                    "namespace": "lenso-staging",
+                    "deployment": "billing",
+                    "readyReplicas": 2,
+                    "desiredReplicas": 2,
+                    "availableReplicas": 2,
+                    "image": "ghcr.io/acme/billing:0.3.0",
+                    "releaseId": "rel_staging"
+                },
+                "host": {
+                    "releaseId": "rel_staging",
+                    "candidateVersion": "0.3.0"
+                },
+                "checks": [{
+                    "name": "operator_reconcile",
+                    "status": "ok",
+                    "detail": "LensoServiceProvider/billing is ready"
+                }],
+                "nextAction": "monitor operator conditions, Remote Calls, and Runtime Story"
+            }]
+        })
+        .to_string(),
+    );
+    install_admin_module_metadata(vec![]);
+    let ctx = AppContext::new(
+        AppConfig::from_env(),
+        lazy_failing_db(),
+        Arc::new(LoggingEventPublisher),
+    );
+    let app = build_router(ctx);
+
+    let response = app
+        .oneshot(admin_get("/admin/data/service-modules"))
+        .await
+        .expect("service modules request completes");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    let module = &body["modules"][0];
+    assert_eq!(module["environments"][0]["target"], "operator");
+    assert_eq!(module["deployments"][0]["target"], "operator");
+    assert_eq!(module["deployments"][0]["operator"]["resource"], "billing");
+    assert_eq!(
+        module["deployments"][0]["operator"]["observedGeneration"],
+        3
+    );
+    assert_eq!(
+        module["deployments"][0]["operator"]["conditions"][0]["reason"],
+        "DeploymentAvailable"
+    );
+    assert_eq!(module["deployments"][0]["cluster"]["availableReplicas"], 2);
+}
+
+#[tokio::test]
 async fn service_modules_marks_stale_state_from_lock_file() {
     let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
     let _env = FileFixture::write(".env", "REMOTE_MODULES=billing=grpc://example.com:50051\n");

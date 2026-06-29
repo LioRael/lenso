@@ -16,6 +16,7 @@ use crate::dto::{
     AdminModuleStatus, AdminQueryResponse, AdminRemoteModuleDiagnosticsDto,
     AdminSchemaListResponse, AdminSchemaRefreshResponse, AdminServiceDeploymentCheckDto,
     AdminServiceDeploymentHostObservationDto, AdminServiceDeploymentObservationDto,
+    AdminServiceDeploymentOperatorConditionDto, AdminServiceDeploymentOperatorObservationDto,
     AdminServiceEnvironmentDto, AdminServiceModuleCompatibilityDto,
     AdminServiceModuleCompatibilityState, AdminServiceModuleConfigDto,
     AdminServiceModuleDeploymentDto, AdminServiceModuleHealthCheckDto,
@@ -1201,6 +1202,7 @@ fn service_deployment_from_value(value: &Value) -> Option<AdminServiceDeployment
         observed_at_unix_ms: value.get("observedAtUnixMs").and_then(Value::as_u64),
         state: json_string(value, "state").unwrap_or_else(|| "unknown".to_owned()),
         drift: json_string(value, "drift").unwrap_or_else(|| "unknown".to_owned()),
+        operator: value.get("operator").map(operator_deployment_from_value),
         cluster: value.get("cluster").map(kubernetes_deployment_from_value),
         host: value.get("host").map(service_deployment_host_from_value),
         checks: value
@@ -1212,6 +1214,31 @@ fn service_deployment_from_value(value: &Value) -> Option<AdminServiceDeployment
             .collect(),
         next_action: json_string(value, "nextAction"),
     })
+}
+
+fn operator_deployment_from_value(value: &Value) -> AdminServiceDeploymentOperatorObservationDto {
+    AdminServiceDeploymentOperatorObservationDto {
+        resource: json_string(value, "resource"),
+        namespace: json_string(value, "namespace"),
+        observed_generation: value.get("observedGeneration").and_then(Value::as_u64),
+        conditions: value
+            .get("conditions")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .map(operator_condition_from_value)
+            .collect(),
+    }
+}
+
+fn operator_condition_from_value(value: &Value) -> AdminServiceDeploymentOperatorConditionDto {
+    AdminServiceDeploymentOperatorConditionDto {
+        type_: json_string(value, "type"),
+        status: json_string(value, "status"),
+        reason: json_string(value, "reason"),
+        message: json_string(value, "message"),
+        last_transition_time: json_string(value, "lastTransitionTime"),
+    }
 }
 
 fn kubernetes_deployment_from_value(value: &Value) -> AdminKubernetesDeploymentObservationDto {
