@@ -7,12 +7,15 @@ pub use lenso_contracts::ModuleManifest;
 
 pub const SERVICE_CONTRACT_PROTOCOL: &str = "lenso.service.v1";
 pub const SERVICE_PACKAGE_PROTOCOL: &str = "lenso.service-package.v1";
+pub const SERVICE_WORKSPACE_PROTOCOL: &str = "lenso.service-workspace.v1";
 pub const MODULE_CONTRACT_PROTOCOL: &str = "lenso.module.v1";
 pub const MODULE_RELEASE_PROTOCOL: &str = "lenso.module-release.v1";
 pub const SERVICE_CONTRACT_SCHEMA_JSON: &str =
     include_str!("../schemas/lenso-service.v1.schema.json");
 pub const SERVICE_PACKAGE_SCHEMA_JSON: &str =
     include_str!("../schemas/lenso-service-package.v1.schema.json");
+pub const SERVICE_WORKSPACE_SCHEMA_JSON: &str =
+    include_str!("../schemas/lenso-service-workspace.v1.schema.json");
 pub const MODULE_CONTRACT_SCHEMA_JSON: &str =
     include_str!("../schemas/lenso-module.v1.schema.json");
 pub const MODULE_RELEASE_SCHEMA_JSON: &str =
@@ -90,6 +93,107 @@ pub struct ServiceLocalProcess {
     pub auto_start: bool,
     #[serde(default = "default_service_ready_timeout_ms")]
     pub ready_timeout_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceWorkspace {
+    pub protocol: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub services: Vec<ServiceWorkspaceService>,
+}
+
+impl ServiceWorkspace {
+    #[must_use]
+    pub fn new(services: Vec<ServiceWorkspaceService>) -> Self {
+        Self {
+            protocol: SERVICE_WORKSPACE_PROTOCOL.to_owned(),
+            services,
+        }
+    }
+}
+
+#[must_use]
+pub fn service_workspace_to_module_services(
+    workspace: &ServiceWorkspace,
+) -> ServiceWorkspaceModuleServicesFile {
+    ServiceWorkspaceModuleServicesFile {
+        version: 1,
+        modules: workspace
+            .services
+            .iter()
+            .map(|service| ServiceWorkspaceModuleServices {
+                module_name: service.name.clone(),
+                services: vec![ServiceWorkspaceProcess {
+                    name: service.name.clone(),
+                    command: service.command.clone(),
+                    cwd: service.cwd.clone(),
+                    ready_url: service.ready_url.clone(),
+                    auto_start: service.auto_start,
+                    ready_timeout_ms: service.ready_timeout_ms,
+                }],
+            })
+            .collect(),
+    }
+}
+
+#[must_use]
+pub fn service_workspace_base_url(service: &ServiceWorkspaceService) -> Option<String> {
+    service_base_url_from_ready_url(&service.ready_url)
+        .or_else(|| service_base_url_from_manifest_url(&service.manifest))
+}
+
+#[must_use]
+pub fn service_base_url_from_ready_url(ready_url: &str) -> Option<String> {
+    service_base_url_from_url_suffix(ready_url, &["/status", "/ready", "/health", "/healthz"])
+}
+
+#[must_use]
+pub fn service_base_url_from_manifest_url(manifest_url: &str) -> Option<String> {
+    service_base_url_from_url_suffix(manifest_url, &["/manifest"])
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceWorkspaceService {
+    pub name: String,
+    pub lang: String,
+    pub cwd: String,
+    #[serde(default = "default_service_manifest")]
+    pub manifest: String,
+    pub command: String,
+    pub ready_url: String,
+    #[serde(default = "default_service_auto_start")]
+    pub auto_start: bool,
+    #[serde(default = "default_workspace_service_ready_timeout_ms")]
+    pub ready_timeout_ms: u64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub modules: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceWorkspaceProcess {
+    pub name: String,
+    pub command: String,
+    pub cwd: String,
+    pub ready_url: String,
+    pub auto_start: bool,
+    pub ready_timeout_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceWorkspaceModuleServices {
+    pub module_name: String,
+    pub services: Vec<ServiceWorkspaceProcess>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceWorkspaceModuleServicesFile {
+    pub version: u64,
+    pub modules: Vec<ServiceWorkspaceModuleServices>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -419,6 +523,31 @@ pub fn validate_service_package_value(value: &Value) -> Vec<ServiceContractIssue
         &mut issues,
     );
     validate_service_package_modules(object.get("modules"), &mut issues);
+    issues
+}
+
+#[must_use]
+pub fn validate_service_workspace_value(value: &Value) -> Vec<ServiceContractIssue> {
+    let Some(object) = value.as_object() else {
+        return vec![ServiceContractIssue::new(
+            "$",
+            "service workspace must be an object",
+        )];
+    };
+
+    let mut issues = Vec::new();
+    match object.get("protocol").and_then(Value::as_str) {
+        Some(SERVICE_WORKSPACE_PROTOCOL) => {}
+        Some(_) => issues.push(ServiceContractIssue::new(
+            "$.protocol",
+            format!("protocol must be `{SERVICE_WORKSPACE_PROTOCOL}`"),
+        )),
+        None => issues.push(ServiceContractIssue::new(
+            "$.protocol",
+            "field must be a non-empty string",
+        )),
+    }
+    validate_workspace_services(object.get("services"), &mut issues);
     issues
 }
 
@@ -765,6 +894,72 @@ fn validate_service_package_modules(value: Option<&Value>, issues: &mut Vec<Serv
     }
 }
 
+fn validate_workspace_services(value: Option<&Value>, issues: &mut Vec<ServiceContractIssue>) {
+    let Some(value) = value else {
+        return;
+    };
+    let Some(array) = value.as_array() else {
+        issues.push(ServiceContractIssue::new(
+            "$.services",
+            "services must be an array",
+        ));
+        return;
+    };
+    let mut names = BTreeSet::new();
+    for (index, service) in array.iter().enumerate() {
+        let Some(object) = service.as_object() else {
+            issues.push(ServiceContractIssue::new(
+                format!("$.services[{index}]"),
+                "service must be an object",
+            ));
+            continue;
+        };
+        let name = non_empty_string(
+            object.get("name"),
+            &format!("$.services[{index}].name"),
+            issues,
+        );
+        if let Some(name) = name {
+            if !names.insert(name.to_owned()) {
+                issues.push(ServiceContractIssue::new(
+                    format!("$.services[{index}].name"),
+                    format!("service `{name}` is declared more than once"),
+                ));
+            }
+        }
+        require_non_empty_string(
+            object.get("lang"),
+            &format!("$.services[{index}].lang"),
+            issues,
+        );
+        require_non_empty_string(
+            object.get("cwd"),
+            &format!("$.services[{index}].cwd"),
+            issues,
+        );
+        require_non_empty_string(
+            object.get("manifest"),
+            &format!("$.services[{index}].manifest"),
+            issues,
+        );
+        require_non_empty_string(
+            object.get("command"),
+            &format!("$.services[{index}].command"),
+            issues,
+        );
+        require_non_empty_string(
+            object.get("readyUrl").or_else(|| object.get("ready_url")),
+            &format!("$.services[{index}].readyUrl"),
+            issues,
+        );
+        validate_string_array(
+            object.get("modules"),
+            &format!("$.services[{index}].modules"),
+            issues,
+        );
+    }
+}
+
 fn validate_string_array(
     value: Option<&Value>,
     path: &str,
@@ -807,12 +1002,40 @@ fn non_empty_string<'a>(
     }
 }
 
+fn service_base_url_from_url_suffix(value: &str, suffixes: &[&str]) -> Option<String> {
+    let value = value.trim();
+    if !(value.starts_with("http://") || value.starts_with("https://")) {
+        return None;
+    }
+    let value = strip_query_fragment(value).trim_end_matches('/');
+    suffixes.iter().find_map(|suffix| {
+        value
+            .strip_suffix(suffix)
+            .map(|base_url| base_url.trim_end_matches('/'))
+            .map(ToOwned::to_owned)
+    })
+}
+
+fn strip_query_fragment(value: &str) -> &str {
+    let query_index = value.find('?').unwrap_or(value.len());
+    let fragment_index = value.find('#').unwrap_or(value.len());
+    &value[..query_index.min(fragment_index)]
+}
+
 const fn default_service_auto_start() -> bool {
     true
 }
 
 const fn default_service_ready_timeout_ms() -> u64 {
     30_000
+}
+
+const fn default_workspace_service_ready_timeout_ms() -> u64 {
+    10_000
+}
+
+fn default_service_manifest() -> String {
+    "lenso.service.json".to_owned()
 }
 
 #[cfg(test)]
@@ -863,6 +1086,113 @@ mod tests {
                 .map(|issue| issue.path.as_str())
                 .collect::<Vec<_>>(),
             vec!["$.protocol", "$.modules[1]", "$.modules[2]"]
+        );
+    }
+
+    #[test]
+    fn valid_service_workspace_has_no_issues() {
+        let issues = validate_service_workspace_value(&json!({
+            "protocol": "lenso.service-workspace.v1",
+            "services": [
+                {
+                    "name": "support-suite-provider",
+                    "lang": "ts",
+                    "cwd": "services/support-suite-provider",
+                    "manifest": "lenso.service.json",
+                    "command": "pnpm start",
+                    "readyUrl": "http://127.0.0.1:4110/lenso/service/v1/status",
+                    "modules": ["support-ticket"]
+                }
+            ]
+        }));
+
+        assert!(issues.is_empty(), "{issues:?}");
+    }
+
+    #[test]
+    fn service_workspace_exports_module_service_start_file() {
+        let workspace = ServiceWorkspace::new(vec![ServiceWorkspaceService {
+            name: "support-suite-provider".to_owned(),
+            lang: "ts".to_owned(),
+            cwd: "services/support-suite-provider".to_owned(),
+            manifest: "lenso.service.json".to_owned(),
+            command: "pnpm start".to_owned(),
+            ready_url: "http://127.0.0.1:4110/lenso/service/v1/status".to_owned(),
+            auto_start: true,
+            ready_timeout_ms: 10_000,
+            modules: vec!["support-ticket".to_owned()],
+        }]);
+
+        let value = serde_json::to_value(service_workspace_to_module_services(&workspace)).unwrap();
+
+        assert_eq!(value["version"], 1);
+        assert_eq!(value["modules"][0]["moduleName"], "support-suite-provider");
+        assert_eq!(value["modules"][0]["services"][0]["command"], "pnpm start");
+        assert_eq!(
+            value["modules"][0]["services"][0]["readyUrl"],
+            "http://127.0.0.1:4110/lenso/service/v1/status"
+        );
+    }
+
+    #[test]
+    fn service_workspace_infers_service_base_url() {
+        assert_eq!(
+            service_base_url_from_ready_url(
+                "http://127.0.0.1:4110/lenso/service/v1/status?probe=1"
+            )
+            .as_deref(),
+            Some("http://127.0.0.1:4110/lenso/service/v1")
+        );
+        assert_eq!(
+            service_base_url_from_manifest_url("http://127.0.0.1:4110/lenso/service/v1/manifest")
+                .as_deref(),
+            Some("http://127.0.0.1:4110/lenso/service/v1")
+        );
+        assert_eq!(
+            service_workspace_base_url(&ServiceWorkspaceService {
+                name: "support-suite-provider".to_owned(),
+                lang: "ts".to_owned(),
+                cwd: "services/support-suite-provider".to_owned(),
+                manifest: "lenso.service.json".to_owned(),
+                command: "pnpm start".to_owned(),
+                ready_url: "http://127.0.0.1:4110/lenso/service/v1/ready".to_owned(),
+                auto_start: true,
+                ready_timeout_ms: 10_000,
+                modules: vec!["support-ticket".to_owned()],
+            })
+            .as_deref(),
+            Some("http://127.0.0.1:4110/lenso/service/v1")
+        );
+        assert!(service_base_url_from_ready_url("not a url").is_none());
+    }
+
+    #[test]
+    fn invalid_service_workspace_reports_service_paths() {
+        let issues = validate_service_workspace_value(&json!({
+            "protocol": "lenso.workspace",
+            "services": [
+                {
+                    "name": "",
+                    "modules": ["support-ticket", 42]
+                }
+            ]
+        }));
+
+        assert_eq!(
+            issues
+                .iter()
+                .map(|issue| issue.path.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "$.protocol",
+                "$.services[0].name",
+                "$.services[0].lang",
+                "$.services[0].cwd",
+                "$.services[0].manifest",
+                "$.services[0].command",
+                "$.services[0].readyUrl",
+                "$.services[0].modules[1]"
+            ]
         );
     }
 

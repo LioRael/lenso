@@ -89,7 +89,7 @@ Most release-smoke failures are local setup issues:
 The first publishable scope is intentionally narrow:
 
 - Linked modules load through the app bootstrap composition root.
-- Services install through `lenso service install <service-manifest-url>` and
+- Services install through `lenso service install <service-name-or-manifest>` and
   provide modules to the host.
 - Service-provided modules can declare schema-admin, HTTP routes, runtime
   functions, and lifecycle activation jobs.

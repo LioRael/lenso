@@ -100,7 +100,7 @@ gh release view vX.Y.Z
 The first release should ship the installable service happy path:
 
 ```sh
-lenso service install <service-manifest-url>
+lenso service install <service-name-or-manifest>
 ```
 
 Do not block this release on centralized marketplace features such as publisher
