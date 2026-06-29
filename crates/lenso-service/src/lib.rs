@@ -22,6 +22,154 @@ pub const MODULE_CONTRACT_SCHEMA_JSON: &str =
 pub const MODULE_RELEASE_SCHEMA_JSON: &str =
     include_str!("../schemas/lenso-module-release.v1.schema.json");
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ServiceDeploymentTarget {
+    Kubernetes,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceEnvironmentsFile {
+    pub version: u64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub environments: Vec<ServiceEnvironment>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceEnvironment {
+    pub name: String,
+    pub service_name: String,
+    pub target: ServiceDeploymentTarget,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub namespace: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kube_context: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub public_base_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manifest_reference: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub release_track: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config: Option<KubernetesDeploymentConfig>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KubernetesDeploymentConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replicas: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub port: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ingress_host: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cpu_request: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_request: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cpu_limit: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_limit: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub autoscaling: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disruption_budget: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_policy: Option<bool>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ServiceDeploymentState {
+    Ready,
+    Progressing,
+    Failed,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ServiceDeploymentDrift {
+    InSync,
+    HostAhead,
+    ClusterAhead,
+    ImageDrift,
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceDeploymentsFile {
+    pub version: u64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub observations: Vec<ServiceDeploymentObservation>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceDeploymentObservation {
+    pub service_name: String,
+    pub environment: String,
+    pub target: ServiceDeploymentTarget,
+    pub observed_at_unix_ms: u64,
+    pub state: ServiceDeploymentState,
+    pub drift: ServiceDeploymentDrift,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cluster: Option<KubernetesDeploymentObservation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<ServiceDeploymentHostObservation>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub checks: Vec<ServiceDeploymentCheck>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_action: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KubernetesDeploymentObservation {
+    pub namespace: String,
+    pub deployment: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ready_replicas: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub desired_replicas: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub available_replicas: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub release_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manifest_reference: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub service_endpoint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ingress_host: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceDeploymentHostObservation {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub release_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub candidate_version: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceDeploymentCheck {
+    pub name: String,
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServiceHealth {
@@ -1352,6 +1500,96 @@ mod tests {
             .risk,
             ServiceReleaseRisk::Blocked
         );
+    }
+
+    #[test]
+    fn service_environment_round_trips_kubernetes_target() {
+        let file = ServiceEnvironmentsFile {
+            version: 1,
+            environments: vec![ServiceEnvironment {
+                name: "staging".to_owned(),
+                service_name: "support-suite-provider".to_owned(),
+                target: ServiceDeploymentTarget::Kubernetes,
+                namespace: Some("lenso-staging".to_owned()),
+                kube_context: Some("staging".to_owned()),
+                image: Some("ghcr.io/acme/support-suite-provider:0.4.0".to_owned()),
+                public_base_url: Some("https://support-staging.example.com".to_owned()),
+                manifest_reference: None,
+                release_track: Some("staging".to_owned()),
+                config: Some(KubernetesDeploymentConfig {
+                    replicas: Some(2),
+                    port: Some(4110),
+                    ingress_host: Some("support-staging.example.com".to_owned()),
+                    cpu_request: None,
+                    memory_request: None,
+                    cpu_limit: None,
+                    memory_limit: None,
+                    autoscaling: Some(true),
+                    disruption_budget: Some(true),
+                    network_policy: Some(false),
+                }),
+            }],
+        };
+
+        let value = serde_json::to_value(&file).unwrap();
+        assert_eq!(value["environments"][0]["target"], "kubernetes");
+        assert_eq!(
+            value["environments"][0]["serviceName"],
+            "support-suite-provider"
+        );
+        assert_eq!(
+            value["environments"][0]["config"]["ingressHost"],
+            "support-staging.example.com"
+        );
+
+        let round_trip: ServiceEnvironmentsFile = serde_json::from_value(value).unwrap();
+        assert_eq!(round_trip, file);
+    }
+
+    #[test]
+    fn service_deployment_observation_uses_stable_state_names() {
+        let observation = ServiceDeploymentObservation {
+            service_name: "support-suite-provider".to_owned(),
+            environment: "staging".to_owned(),
+            target: ServiceDeploymentTarget::Kubernetes,
+            observed_at_unix_ms: 1_803_744_000_000,
+            state: ServiceDeploymentState::Ready,
+            drift: ServiceDeploymentDrift::InSync,
+            cluster: Some(KubernetesDeploymentObservation {
+                namespace: "lenso-staging".to_owned(),
+                deployment: "support-suite-provider".to_owned(),
+                ready_replicas: Some(2),
+                desired_replicas: Some(2),
+                available_replicas: Some(2),
+                image: Some("ghcr.io/acme/support-suite-provider:0.4.0".to_owned()),
+                release_id: Some("rel_staging".to_owned()),
+                manifest_reference: Some(
+                    "https://support-staging.example.com/lenso/service/v1/manifest".to_owned(),
+                ),
+                service_endpoint: Some(
+                    "support-suite-provider.lenso-staging.svc.cluster.local".to_owned(),
+                ),
+                ingress_host: Some("support-staging.example.com".to_owned()),
+            }),
+            host: Some(ServiceDeploymentHostObservation {
+                release_id: Some("rel_staging".to_owned()),
+                candidate_version: Some("0.4.0".to_owned()),
+            }),
+            checks: vec![ServiceDeploymentCheck {
+                name: "deployment_rollout".to_owned(),
+                status: "ok".to_owned(),
+                detail: Some("2/2 replicas ready".to_owned()),
+            }],
+            next_action: Some("monitor rollout and Remote Calls".to_owned()),
+        };
+
+        let value = serde_json::to_value(&observation).unwrap();
+        assert_eq!(value["state"], "ready");
+        assert_eq!(value["drift"], "in_sync");
+        assert_eq!(value["cluster"]["readyReplicas"], 2);
+
+        let round_trip: ServiceDeploymentObservation = serde_json::from_value(value).unwrap();
+        assert_eq!(round_trip, observation);
     }
 
     #[test]
