@@ -80,6 +80,12 @@ const SUPPORTED_SERVICE_MODULE_FEATURES: &[&str] = &[
     "service.status",
 ];
 
+#[derive(Default)]
+struct LocalServiceDeploymentState {
+    current_by_service: HashMap<String, Vec<AdminServiceDeploymentObservationDto>>,
+    history_by_service: HashMap<String, Vec<AdminServiceDeploymentObservationDto>>,
+}
+
 #[derive(Debug, Deserialize)]
 pub(crate) struct DataListQuery {
     pub limit: Option<i64>,
@@ -294,7 +300,7 @@ async fn service_module_lifecycle_response(
     let services_by_module = local_module_services(MODULE_SERVICES_PATH);
     let release_history_by_service = local_service_release_history(SERVICE_RELEASE_LEDGER_PATH);
     let environments_by_service = local_service_environments(SERVICE_ENVIRONMENTS_PATH);
-    let deployments_by_service = local_service_deployments(SERVICE_DEPLOYMENTS_PATH);
+    let deployment_state = local_service_deployments(SERVICE_DEPLOYMENTS_PATH);
     let metadata_by_name = metadata
         .iter()
         .filter(|module| matches!(module.source, ModuleSource::Remote))
@@ -370,9 +376,16 @@ async fn service_module_lifecycle_response(
                     .or_else(|| environments_by_service.get(&module_name))
                     .cloned()
                     .unwrap_or_default(),
-                deployments_by_service
+                deployment_state
+                    .current_by_service
                     .get(provider_name.map(String::as_str).unwrap_or(&module_name))
-                    .or_else(|| deployments_by_service.get(&module_name))
+                    .or_else(|| deployment_state.current_by_service.get(&module_name))
+                    .cloned()
+                    .unwrap_or_default(),
+                deployment_state
+                    .history_by_service
+                    .get(provider_name.map(String::as_str).unwrap_or(&module_name))
+                    .or_else(|| deployment_state.history_by_service.get(&module_name))
                     .cloned()
                     .unwrap_or_default(),
                 metadata_by_name.get(&module_name).copied(),
@@ -407,6 +420,7 @@ async fn service_module_lifecycle_module(
     release_history: Vec<AdminServiceReleaseRecordDto>,
     environments: Vec<AdminServiceEnvironmentDto>,
     deployments: Vec<AdminServiceDeploymentObservationDto>,
+    deployment_history: Vec<AdminServiceDeploymentObservationDto>,
     metadata: Option<&AdminModuleMetadata>,
     client: Option<&reqwest::Client>,
 ) -> AdminServiceModuleLifecycleModuleDto {
@@ -521,6 +535,7 @@ async fn service_module_lifecycle_module(
         deployment,
         environments,
         deployments,
+        deployment_history,
         deployment_drift,
         deployment_next_action,
         services,
@@ -1149,30 +1164,36 @@ fn local_service_environments(
     environments_by_service
 }
 
-fn local_service_deployments(
-    path: impl AsRef<FsPath>,
-) -> HashMap<String, Vec<AdminServiceDeploymentObservationDto>> {
+fn local_service_deployments(path: impl AsRef<FsPath>) -> LocalServiceDeploymentState {
     let Ok(source) = fs::read_to_string(path) else {
-        return HashMap::new();
+        return LocalServiceDeploymentState::default();
     };
     let Ok(file) = serde_json::from_str::<Value>(&source) else {
-        return HashMap::new();
+        return LocalServiceDeploymentState::default();
     };
-    let mut deployments_by_service: HashMap<String, Vec<AdminServiceDeploymentObservationDto>> =
-        HashMap::new();
+    LocalServiceDeploymentState {
+        current_by_service: service_deployments_by_service(&file, "observations"),
+        history_by_service: service_deployments_by_service(&file, "history"),
+    }
+}
+
+fn service_deployments_by_service(
+    file: &Value,
+    key: &str,
+) -> HashMap<String, Vec<AdminServiceDeploymentObservationDto>> {
+    let mut deployments_by_service = HashMap::new();
     for observation in file
-        .get("observations")
+        .get(key)
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
     {
-        let Some(observation) = service_deployment_from_value(observation) else {
-            continue;
-        };
-        deployments_by_service
-            .entry(observation.service_name.clone())
-            .or_default()
-            .push(observation);
+        if let Some(observation) = service_deployment_from_value(observation) {
+            deployments_by_service
+                .entry(observation.service_name.clone())
+                .or_insert_with(Vec::new)
+                .push(observation);
+        }
     }
     for deployments in deployments_by_service.values_mut() {
         deployments.sort_by(|left, right| right.observed_at_unix_ms.cmp(&left.observed_at_unix_ms));

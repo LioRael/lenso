@@ -150,6 +150,7 @@ pub struct AdminServiceModuleLifecycleModuleDto {
     pub deployment: Option<AdminServiceModuleDeploymentDto>,
     pub environments: Vec<AdminServiceEnvironmentDto>,
     pub deployments: Vec<AdminServiceDeploymentObservationDto>,
+    pub deployment_history: Vec<AdminServiceDeploymentObservationDto>,
     pub deployment_drift: Option<String>,
     pub deployment_next_action: Option<String>,
     pub services: Vec<AdminServiceModuleLifecycleServiceDto>,

@@ -896,7 +896,7 @@ async fn service_modules_include_service_environment_and_deployment_state() {
     let _deployments = FileFixture::write(
         ".lenso/service-deployments.json",
         serde_json::json!({
-            "version": 1,
+            "version": 2,
             "observations": [{
                 "serviceName": "billing",
                 "environment": "staging",
@@ -921,6 +921,23 @@ async fn service_modules_include_service_environment_and_deployment_state() {
                     "status": "ok",
                     "detail": "2/2 replicas ready"
                 }],
+                "nextAction": "monitor rollout and Remote Calls"
+            }],
+            "history": [{
+                "serviceName": "billing",
+                "environment": "staging",
+                "target": "kubernetes",
+                "observedAtUnixMs": 100,
+                "state": "progressing",
+                "drift": "host_ahead",
+                "nextAction": "wait for rollout or inspect Kubernetes deployment"
+            }, {
+                "serviceName": "billing",
+                "environment": "staging",
+                "target": "kubernetes",
+                "observedAtUnixMs": 300,
+                "state": "ready",
+                "drift": "in_sync",
                 "nextAction": "monitor rollout and Remote Calls"
             }]
         })
@@ -948,6 +965,8 @@ async fn service_modules_include_service_environment_and_deployment_state() {
     assert_eq!(module["environments"][0]["namespace"], "lenso-staging");
     assert_eq!(module["deployments"][0]["state"], "ready");
     assert_eq!(module["deployments"][0]["cluster"]["readyReplicas"], 2);
+    assert_eq!(module["deploymentHistory"][0]["state"], "ready");
+    assert_eq!(module["deploymentHistory"][1]["state"], "progressing");
     assert_eq!(module["deploymentDrift"], "in_sync");
     assert_eq!(
         module["deploymentNextAction"],
