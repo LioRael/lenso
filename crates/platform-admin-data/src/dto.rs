@@ -151,7 +151,24 @@ pub struct AdminServiceModuleLifecycleModuleDto {
     pub services: Vec<AdminServiceModuleLifecycleServiceDto>,
     pub operations: Vec<AdminServiceOperationDto>,
     pub module_release: Option<AdminModuleReleaseDto>,
+    pub latest_release: Option<AdminServiceReleaseRecordDto>,
+    pub release_history: Vec<AdminServiceReleaseRecordDto>,
     pub fixes: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceReleaseRecordDto {
+    pub id: Option<String>,
+    pub service_name: String,
+    pub applied_at_unix_ms: Option<u64>,
+    pub risk: String,
+    pub current_version: Option<String>,
+    pub candidate_version: Option<String>,
+    pub current_manifest_reference: Option<String>,
+    pub candidate_manifest_reference: Option<String>,
+    pub candidate_package_reference: Option<String>,
+    pub rollback_target: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

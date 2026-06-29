@@ -22,7 +22,7 @@ use crate::dto::{
     AdminServiceModuleLifecycleStatus, AdminServiceModuleManifestStatus,
     AdminServiceModuleServiceStatusCheckDto, AdminServiceModuleServiceStatusDto,
     AdminServiceModuleServiceStatusState, AdminServiceOperationDto, AdminServiceOperationKindDto,
-    AdminServiceOperationLinksDto,
+    AdminServiceOperationLinksDto, AdminServiceReleaseRecordDto,
 };
 use crate::{
     AdminModule, AdminModuleMetadata, AdminModuleMetadataRefreshModuleResult,
@@ -64,6 +64,7 @@ const HOST_LENSO_VERSION: &str = env!("CARGO_PKG_VERSION");
 const HOST_REMOTE_PROTOCOL_VERSION: &str = "1";
 const MODULE_INSTALL_LEDGER_PATH: &str = ".lenso/module-installs.json";
 const MODULE_SERVICES_PATH: &str = ".lenso/module-services.json";
+const SERVICE_RELEASE_LEDGER_PATH: &str = ".lenso/service-releases.json";
 const SERVICE_MODULE_HEALTH_PATH: &str = ".lenso/service-health.json";
 const OFFICIAL_MODULE_CATALOG_REGISTRY_FILE: &str = "builtin:lenso-official-module-catalog";
 const OFFICIAL_MODULE_CATALOG_SOURCE: &str =
@@ -286,6 +287,7 @@ async fn service_module_lifecycle_response(
 ) -> AdminServiceModuleLifecycleResponse {
     let installed_modules = local_installed_remote_modules(MODULE_INSTALL_LEDGER_PATH);
     let services_by_module = local_module_services(MODULE_SERVICES_PATH);
+    let release_history_by_service = local_service_release_history(SERVICE_RELEASE_LEDGER_PATH);
     let metadata_by_name = metadata
         .iter()
         .filter(|module| matches!(module.source, ModuleSource::Remote))
@@ -351,6 +353,11 @@ async fn service_module_lifecycle_response(
                     .or_else(|| provider_name.and_then(|name| services_by_module.get(name)))
                     .cloned()
                     .unwrap_or_default(),
+                release_history_by_service
+                    .get(provider_name.map(String::as_str).unwrap_or(&module_name))
+                    .or_else(|| release_history_by_service.get(&module_name))
+                    .cloned()
+                    .unwrap_or_default(),
                 metadata_by_name.get(&module_name).copied(),
                 client.as_ref(),
             )
@@ -380,6 +387,7 @@ async fn service_module_lifecycle_module(
     install_state: &AvailableModuleInstallStateContext,
     install_receipt: Option<&LocalModuleInstallLedgerModule>,
     service_specs: Vec<LocalModuleServiceSpec>,
+    release_history: Vec<AdminServiceReleaseRecordDto>,
     metadata: Option<&AdminModuleMetadata>,
     client: Option<&reqwest::Client>,
 ) -> AdminServiceModuleLifecycleModuleDto {
@@ -426,6 +434,7 @@ async fn service_module_lifecycle_module(
     let deployment = service_module_deployment(install_receipt);
     let operations = service_module_operations(provider_name, module_name, metadata);
     let module_release = install_receipt.and_then(module_release_from_receipt);
+    let latest_release = release_history.first().cloned();
     let has_stale_state = services.iter().any(|service| {
         !service.ready && (service.lock_file.is_some() || service.pid_file.is_some())
     });
@@ -488,6 +497,8 @@ async fn service_module_lifecycle_module(
         services,
         operations,
         module_release,
+        latest_release,
+        release_history,
         fixes,
     }
 }
@@ -1044,6 +1055,82 @@ fn local_installed_remote_modules(
         .filter(|module| module.source.as_deref().unwrap_or("remote") == "remote")
         .map(|module| (module.module_name.clone(), module))
         .collect()
+}
+
+fn local_service_release_history(
+    path: impl AsRef<FsPath>,
+) -> HashMap<String, Vec<AdminServiceReleaseRecordDto>> {
+    let Ok(source) = fs::read_to_string(path) else {
+        return HashMap::new();
+    };
+    let Ok(ledger) = serde_json::from_str::<Value>(&source) else {
+        return HashMap::new();
+    };
+    let mut releases_by_service: HashMap<String, Vec<AdminServiceReleaseRecordDto>> =
+        HashMap::new();
+    for release in ledger
+        .get("releases")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let Some(record) = service_release_record_from_value(release) else {
+            continue;
+        };
+        releases_by_service
+            .entry(record.service_name.clone())
+            .or_default()
+            .push(record);
+    }
+    for releases in releases_by_service.values_mut() {
+        releases.sort_by(|left, right| right.applied_at_unix_ms.cmp(&left.applied_at_unix_ms));
+        releases.truncate(5);
+    }
+    releases_by_service
+}
+
+fn service_release_record_from_value(value: &Value) -> Option<AdminServiceReleaseRecordDto> {
+    let service_name = value.get("serviceName").and_then(Value::as_str)?.to_owned();
+    Some(AdminServiceReleaseRecordDto {
+        id: value.get("id").and_then(Value::as_str).map(str::to_owned),
+        service_name,
+        applied_at_unix_ms: value.get("appliedAtUnixMs").and_then(Value::as_u64),
+        risk: value
+            .get("risk")
+            .and_then(Value::as_str)
+            .unwrap_or("safe")
+            .to_owned(),
+        current_version: value
+            .pointer("/current/version")
+            .and_then(Value::as_str)
+            .filter(|version| !version.trim().is_empty())
+            .map(str::to_owned),
+        candidate_version: value
+            .pointer("/candidate/version")
+            .and_then(Value::as_str)
+            .filter(|version| !version.trim().is_empty())
+            .map(str::to_owned),
+        current_manifest_reference: value
+            .pointer("/current/manifestReference")
+            .and_then(Value::as_str)
+            .filter(|reference| !reference.trim().is_empty())
+            .map(str::to_owned),
+        candidate_manifest_reference: value
+            .pointer("/candidate/manifestReference")
+            .and_then(Value::as_str)
+            .filter(|reference| !reference.trim().is_empty())
+            .map(str::to_owned),
+        candidate_package_reference: value
+            .pointer("/candidate/packageReference")
+            .and_then(Value::as_str)
+            .filter(|reference| !reference.trim().is_empty())
+            .map(str::to_owned),
+        rollback_target: value
+            .get("rollbackTarget")
+            .and_then(Value::as_str)
+            .filter(|reference| !reference.trim().is_empty())
+            .map(str::to_owned),
+    })
 }
 
 fn local_module_services(path: impl AsRef<FsPath>) -> HashMap<String, Vec<LocalModuleServiceSpec>> {

@@ -8,6 +8,7 @@ pub use lenso_contracts::ModuleManifest;
 pub const SERVICE_CONTRACT_PROTOCOL: &str = "lenso.service.v1";
 pub const SERVICE_PACKAGE_PROTOCOL: &str = "lenso.service-package.v1";
 pub const SERVICE_WORKSPACE_PROTOCOL: &str = "lenso.service-workspace.v1";
+pub const SERVICE_RELEASE_PLAN_PROTOCOL: &str = "lenso.service-release-plan.v1";
 pub const MODULE_CONTRACT_PROTOCOL: &str = "lenso.module.v1";
 pub const MODULE_RELEASE_PROTOCOL: &str = "lenso.module-release.v1";
 pub const SERVICE_CONTRACT_SCHEMA_JSON: &str =
@@ -194,6 +195,125 @@ pub struct ServiceWorkspaceModuleServices {
 pub struct ServiceWorkspaceModuleServicesFile {
     pub version: u64,
     pub modules: Vec<ServiceWorkspaceModuleServices>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ServiceReleaseRisk {
+    Safe,
+    NeedsAttention,
+    Breaking,
+    Blocked,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceReleaseChangeSet {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub added: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub removed: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceReleaseModuleChangeSet {
+    pub module: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub added: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub removed: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceReleaseDiff {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub capabilities: Vec<ServiceReleaseModuleChangeSet>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub compatibility_changed: bool,
+    #[serde(default)]
+    pub config: ServiceReleaseChangeSet,
+    #[serde(default)]
+    pub env: ServiceReleaseChangeSet,
+    #[serde(default)]
+    pub modules: ServiceReleaseChangeSet,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub operations: Vec<ServiceReleaseModuleChangeSet>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceReleaseManifestSummary {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    pub manifest_reference: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package_reference: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_reference: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub modules: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compatibility_issue: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceReleasePolicyIssue {
+    pub code: String,
+    pub level: ServiceReleaseRisk,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceReleasePolicy {
+    pub risk: ServiceReleaseRisk,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub issues: Vec<ServiceReleasePolicyIssue>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceReleasePlan {
+    pub protocol: String,
+    pub service: BTreeMap<String, String>,
+    pub current: ServiceReleaseManifestSummary,
+    pub candidate: ServiceReleaseManifestSummary,
+    pub diff: ServiceReleaseDiff,
+    pub policy: ServiceReleasePolicy,
+    pub restart_required: bool,
+    pub next_action: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at_unix_ms: Option<u64>,
+}
+
+impl ServiceReleasePlan {
+    #[must_use]
+    pub fn new(
+        service_name: impl Into<String>,
+        current: ServiceReleaseManifestSummary,
+        candidate: ServiceReleaseManifestSummary,
+        diff: ServiceReleaseDiff,
+    ) -> Self {
+        let policy =
+            evaluate_service_release_policy(&diff, candidate.compatibility_issue.as_deref());
+        let mut service = BTreeMap::new();
+        service.insert("name".to_owned(), service_name.into());
+        Self {
+            protocol: SERVICE_RELEASE_PLAN_PROTOCOL.to_owned(),
+            service,
+            current,
+            candidate,
+            restart_required: service_release_restart_required(&diff),
+            next_action: service_release_next_action(policy.risk).to_owned(),
+            diff,
+            policy,
+            created_at_unix_ms: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -424,6 +544,112 @@ impl ServiceContract {
     pub fn local_process(mut self, local_process: ServiceLocalProcess) -> Self {
         self.local_process = Some(local_process);
         self
+    }
+}
+
+#[must_use]
+pub fn evaluate_service_release_policy(
+    diff: &ServiceReleaseDiff,
+    compatibility_issue: Option<&str>,
+) -> ServiceReleasePolicy {
+    let mut issues = Vec::new();
+    if let Some(issue) = compatibility_issue {
+        issues.push(ServiceReleasePolicyIssue {
+            code: "host_incompatible".to_owned(),
+            level: ServiceReleaseRisk::Blocked,
+            message: issue.to_owned(),
+        });
+    } else if diff.compatibility_changed {
+        issues.push(ServiceReleasePolicyIssue {
+            code: "compatibility_changed".to_owned(),
+            level: ServiceReleaseRisk::NeedsAttention,
+            message: "Service compatibility metadata changed; review host support before applying."
+                .to_owned(),
+        });
+    }
+    for module in &diff.modules.removed {
+        issues.push(ServiceReleasePolicyIssue {
+            code: "module_removed".to_owned(),
+            level: ServiceReleaseRisk::Breaking,
+            message: format!("Module `{module}` is removed by this release."),
+        });
+    }
+    for env in &diff.env.added {
+        issues.push(ServiceReleasePolicyIssue {
+            code: "env_added".to_owned(),
+            level: ServiceReleaseRisk::NeedsAttention,
+            message: format!("Environment value `{env}` is newly required by this release."),
+        });
+    }
+    for config in &diff.config.added {
+        issues.push(ServiceReleasePolicyIssue {
+            code: "config_added".to_owned(),
+            level: ServiceReleaseRisk::NeedsAttention,
+            message: format!("Runtime config `{config}` is newly declared by this release."),
+        });
+    }
+    for change in &diff.capabilities {
+        for capability in &change.removed {
+            issues.push(ServiceReleasePolicyIssue {
+                code: "capability_removed".to_owned(),
+                level: ServiceReleaseRisk::Breaking,
+                message: format!(
+                    "Capability `{capability}` is removed from module `{}`.",
+                    change.module
+                ),
+            });
+        }
+    }
+    for change in &diff.operations {
+        for operation in &change.removed {
+            issues.push(ServiceReleasePolicyIssue {
+                code: "operation_removed".to_owned(),
+                level: ServiceReleaseRisk::Breaking,
+                message: format!(
+                    "Operation `{operation}` is removed from module `{}`.",
+                    change.module
+                ),
+            });
+        }
+    }
+    let risk = issues
+        .iter()
+        .map(|issue| issue.level)
+        .max_by_key(|risk| service_release_risk_rank(*risk))
+        .unwrap_or(ServiceReleaseRisk::Safe);
+    ServiceReleasePolicy { risk, issues }
+}
+
+#[must_use]
+pub fn service_release_restart_required(diff: &ServiceReleaseDiff) -> bool {
+    diff.compatibility_changed
+        || !diff.modules.added.is_empty()
+        || !diff.modules.removed.is_empty()
+        || !diff.env.added.is_empty()
+        || !diff.env.removed.is_empty()
+        || !diff.config.added.is_empty()
+        || !diff.config.removed.is_empty()
+        || diff
+            .capabilities
+            .iter()
+            .any(|change| !change.added.is_empty() || !change.removed.is_empty())
+        || diff
+            .operations
+            .iter()
+            .any(|change| !change.added.is_empty() || !change.removed.is_empty())
+}
+
+#[must_use]
+pub fn service_release_next_action(risk: ServiceReleaseRisk) -> &'static str {
+    match risk {
+        ServiceReleaseRisk::Safe => "Run `lenso service release apply <plan.json>` when ready.",
+        ServiceReleaseRisk::NeedsAttention => {
+            "Review required env/config, then run `lenso service release apply <plan.json>`."
+        }
+        ServiceReleaseRisk::Breaking => {
+            "Review removed modules, capabilities, or operations before applying."
+        }
+        ServiceReleaseRisk::Blocked => "Fix blocked policy issues before applying this release.",
     }
 }
 
@@ -1022,6 +1248,19 @@ fn strip_query_fragment(value: &str) -> &str {
     &value[..query_index.min(fragment_index)]
 }
 
+const fn service_release_risk_rank(risk: ServiceReleaseRisk) -> u8 {
+    match risk {
+        ServiceReleaseRisk::Safe => 0,
+        ServiceReleaseRisk::NeedsAttention => 1,
+        ServiceReleaseRisk::Breaking => 2,
+        ServiceReleaseRisk::Blocked => 3,
+    }
+}
+
+const fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 const fn default_service_auto_start() -> bool {
     true
 }
@@ -1055,6 +1294,64 @@ mod tests {
         assert_eq!(value["protocol"], SERVICE_PACKAGE_PROTOCOL);
         assert_eq!(value["serviceManifest"], "lenso.service.json");
         assert_eq!(value["modules"], json!(["support-ticket"]));
+    }
+
+    #[test]
+    fn service_release_plan_uses_delivery_policy() {
+        let diff = ServiceReleaseDiff {
+            capabilities: vec![ServiceReleaseModuleChangeSet {
+                module: "support-ticket".to_owned(),
+                added: Vec::new(),
+                removed: vec!["support_ticket.tickets.write".to_owned()],
+            }],
+            config: ServiceReleaseChangeSet {
+                added: vec!["support.mode".to_owned()],
+                removed: Vec::new(),
+            },
+            env: ServiceReleaseChangeSet {
+                added: vec!["SUPPORT_API_KEY".to_owned()],
+                removed: Vec::new(),
+            },
+            operations: vec![ServiceReleaseModuleChangeSet {
+                module: "support-ticket".to_owned(),
+                added: Vec::new(),
+                removed: vec!["route:DELETE /tickets/{id}".to_owned()],
+            }],
+            ..ServiceReleaseDiff::default()
+        };
+        let current = ServiceReleaseManifestSummary {
+            name: "support-suite-provider".to_owned(),
+            version: Some("0.1.0".to_owned()),
+            manifest_reference: "./support/v1/lenso.service.json".to_owned(),
+            package_reference: None,
+            input_reference: None,
+            modules: vec!["support-ticket".to_owned()],
+            compatibility_issue: None,
+        };
+        let candidate = ServiceReleaseManifestSummary {
+            name: "support-suite-provider".to_owned(),
+            version: Some("0.2.0".to_owned()),
+            manifest_reference: "./support/v2/lenso.service.json".to_owned(),
+            package_reference: Some("./support/v2/lenso.service-package.json".to_owned()),
+            input_reference: None,
+            modules: vec!["support-ticket".to_owned()],
+            compatibility_issue: None,
+        };
+
+        let plan = ServiceReleasePlan::new("support-suite-provider", current, candidate, diff);
+        let value = serde_json::to_value(plan).unwrap();
+
+        assert_eq!(value["protocol"], SERVICE_RELEASE_PLAN_PROTOCOL);
+        assert_eq!(value["policy"]["risk"], "breaking");
+        assert_eq!(value["restartRequired"], true);
+        assert_eq!(
+            evaluate_service_release_policy(
+                &ServiceReleaseDiff::default(),
+                Some("remote protocol is newer"),
+            )
+            .risk,
+            ServiceReleaseRisk::Blocked
+        );
     }
 
     #[test]

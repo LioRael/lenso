@@ -5112,6 +5112,28 @@ components:
       - compatible
       - blocked
       - unknown
+    AdminServiceModuleConfigDto:
+      type: object
+      required:
+      - envFile
+      - requiredEnv
+      - configuredEnv
+      - missingEnv
+      properties:
+        configuredEnv:
+          type: array
+          items:
+            type: string
+        envFile:
+          type: string
+        missingEnv:
+          type: array
+          items:
+            type: string
+        requiredEnv:
+          type: array
+          items:
+            type: string
     AdminServiceModuleDeploymentDto:
       type: object
       properties:
@@ -5162,8 +5184,10 @@ components:
       - serviceStatus
       - healthHistory
       - compatibility
+      - config
       - services
       - operations
+      - releaseHistory
       - fixes
       properties:
         baseUrl:
@@ -5172,6 +5196,8 @@ components:
           - 'null'
         compatibility:
           $ref: '#/components/schemas/AdminServiceModuleCompatibilityDto'
+        config:
+          $ref: '#/components/schemas/AdminServiceModuleConfigDto'
         configured:
           type: boolean
         deployment:
@@ -5188,6 +5214,10 @@ components:
             $ref: '#/components/schemas/AdminServiceModuleHealthCheckDto'
         installed:
           type: boolean
+        latestRelease:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/AdminServiceReleaseRecordDto'
         loaded:
           type: boolean
         manifestStatus:
@@ -5210,6 +5240,10 @@ components:
           type:
           - string
           - 'null'
+        releaseHistory:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminServiceReleaseRecordDto'
         restartPending:
           type: boolean
         serviceStatus:
@@ -5228,6 +5262,7 @@ components:
       type: string
       enum:
       - ready
+      - missing_config
       - restart_pending
       - configured_not_loaded
       - manifest_unreachable
@@ -5398,6 +5433,50 @@ components:
         story:
           type: string
         technicalOperations:
+          type: string
+    AdminServiceReleaseRecordDto:
+      type: object
+      required:
+      - serviceName
+      - risk
+      properties:
+        appliedAtUnixMs:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        candidateManifestReference:
+          type:
+          - string
+          - 'null'
+        candidatePackageReference:
+          type:
+          - string
+          - 'null'
+        candidateVersion:
+          type:
+          - string
+          - 'null'
+        currentManifestReference:
+          type:
+          - string
+          - 'null'
+        currentVersion:
+          type:
+          - string
+          - 'null'
+        id:
+          type:
+          - string
+          - 'null'
+        risk:
+          type: string
+        rollbackTarget:
+          type:
+          - string
+          - 'null'
+        serviceName:
           type: string
     AdminServiceRestartResponse:
       type: object

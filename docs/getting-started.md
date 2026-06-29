@@ -135,6 +135,20 @@ Install its manifest:
 lenso service install http://127.0.0.1:4110/lenso/service/v1/manifest
 ```
 
+When the provider is already installed and you want to roll a packaged update,
+plan it before applying it:
+
+```sh
+lenso service release plan support-suite-provider \
+  ../lenso-examples/dist/lenso-service/support-suite-provider/lenso.service-package.json \
+  --output .lenso/support-suite-provider.release-plan.json
+lenso service policy check .lenso/support-suite-provider.release-plan.json --fail-on breaking
+lenso service release apply .lenso/support-suite-provider.release-plan.json
+```
+
+The apply step records `.lenso/service-releases.json`; Console Services shows
+the latest release risk and recent provider history.
+
 Restart the local services and open the Runtime Console. The `support-ticket`
 module should be available through the Modules/Data surfaces, with
 `support-suite-provider` shown as its service provider.

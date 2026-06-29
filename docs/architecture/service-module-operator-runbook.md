@@ -48,6 +48,21 @@ host-started managed services. They live under
 `.lenso/service-logs/<provider>/<service>.log` in the host repo and are not a
 deployment log store.
 
+Provider upgrades should go through a release plan when the service is already
+installed:
+
+```sh
+lenso service release plan <provider> <manifest-or-package> --output .lenso/<provider>.release-plan.json
+lenso service policy check .lenso/<provider>.release-plan.json --fail-on breaking
+lenso service release apply .lenso/<provider>.release-plan.json
+```
+
+The plan records current and candidate manifest references, module/capability
+and operation diffs, env/config changes, risk, restart requirement, and next
+action. Apply writes `.lenso/service-releases.json`; Console Services renders
+the latest release and the recent provider history next to health, lifecycle,
+operations, and config state.
+
 ## Boundaries
 
 The service may own its process, language, deployment package, and module-local

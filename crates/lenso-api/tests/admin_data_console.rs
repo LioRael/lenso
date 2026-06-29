@@ -778,6 +778,80 @@ async fn service_modules_marks_restart_pending_from_env_source() {
 }
 
 #[tokio::test]
+async fn service_modules_include_service_release_history() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
+    let _env = FileFixture::write(".env", "REMOTE_MODULES=billing=grpc://example.com:50051\n");
+    let _ledger = FileFixture::remove(".lenso/module-installs.json");
+    let _services = FileFixture::remove(".lenso/module-services.json");
+    let _release_ledger = FileFixture::write(
+        ".lenso/service-releases.json",
+        serde_json::json!({
+            "version": 1,
+            "releases": [
+                {
+                    "id": "rel_old",
+                    "serviceName": "billing",
+                    "appliedAtUnixMs": 100,
+                    "risk": "safe",
+                    "current": {
+                        "version": "0.1.0",
+                        "manifestReference": "./billing/v1/lenso.service.json"
+                    },
+                    "candidate": {
+                        "version": "0.2.0",
+                        "manifestReference": "./billing/v2/lenso.service.json",
+                        "packageReference": "./billing/v2/lenso.service-package.json"
+                    },
+                    "rollbackTarget": "./billing/v1/lenso.service.json"
+                },
+                {
+                    "id": "rel_new",
+                    "serviceName": "billing",
+                    "appliedAtUnixMs": 200,
+                    "risk": "breaking",
+                    "current": {
+                        "version": "0.2.0",
+                        "manifestReference": "./billing/v2/lenso.service.json"
+                    },
+                    "candidate": {
+                        "version": "0.3.0",
+                        "manifestReference": "./billing/v3/lenso.service.json"
+                    },
+                    "rollbackTarget": "./billing/v2/lenso.service.json"
+                }
+            ]
+        })
+        .to_string(),
+    );
+    install_admin_module_metadata(vec![]);
+    let ctx = AppContext::new(
+        AppConfig::from_env(),
+        lazy_failing_db(),
+        Arc::new(LoggingEventPublisher),
+    );
+    let app = build_router(ctx);
+
+    let response = app
+        .oneshot(admin_get("/admin/data/service-modules"))
+        .await
+        .expect("service modules request completes");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    let module = &body["modules"][0];
+    assert_eq!(module["moduleName"], "billing");
+    assert_eq!(module["latestRelease"]["id"], "rel_new");
+    assert_eq!(module["latestRelease"]["risk"], "breaking");
+    assert_eq!(module["latestRelease"]["candidateVersion"], "0.3.0");
+    assert_eq!(module["releaseHistory"].as_array().unwrap().len(), 2);
+    assert_eq!(module["releaseHistory"][1]["id"], "rel_old");
+    assert_eq!(
+        module["releaseHistory"][1]["candidatePackageReference"],
+        "./billing/v2/lenso.service-package.json"
+    );
+}
+
+#[tokio::test]
 async fn service_modules_marks_stale_state_from_lock_file() {
     let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
     let _env = FileFixture::write(".env", "REMOTE_MODULES=billing=grpc://example.com:50051\n");
