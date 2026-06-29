@@ -7,11 +7,14 @@ pub use lenso_contracts::ModuleManifest;
 
 pub const SERVICE_CONTRACT_PROTOCOL: &str = "lenso.service.v1";
 pub const SERVICE_PACKAGE_PROTOCOL: &str = "lenso.service-package.v1";
+pub const MODULE_CONTRACT_PROTOCOL: &str = "lenso.module.v1";
 pub const MODULE_RELEASE_PROTOCOL: &str = "lenso.module-release.v1";
 pub const SERVICE_CONTRACT_SCHEMA_JSON: &str =
     include_str!("../schemas/lenso-service.v1.schema.json");
 pub const SERVICE_PACKAGE_SCHEMA_JSON: &str =
     include_str!("../schemas/lenso-service-package.v1.schema.json");
+pub const MODULE_CONTRACT_SCHEMA_JSON: &str =
+    include_str!("../schemas/lenso-module.v1.schema.json");
 pub const MODULE_RELEASE_SCHEMA_JSON: &str =
     include_str!("../schemas/lenso-module-release.v1.schema.json");
 
@@ -136,6 +139,61 @@ impl ServicePackage {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ModuleContract {
+    pub protocol: String,
+    pub name: String,
+    pub version: String,
+    pub source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub capabilities: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dependencies: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manifest: Option<ModuleManifest>,
+}
+
+impl ModuleContract {
+    #[must_use]
+    pub fn new(
+        name: impl Into<String>,
+        version: impl Into<String>,
+        source: impl Into<String>,
+    ) -> Self {
+        Self {
+            protocol: MODULE_CONTRACT_PROTOCOL.to_owned(),
+            name: name.into(),
+            version: version.into(),
+            source: source.into(),
+            summary: None,
+            capabilities: Vec::new(),
+            dependencies: Vec::new(),
+            manifest: None,
+        }
+    }
+
+    #[must_use]
+    pub fn manifest(mut self, manifest: ModuleManifest) -> Self {
+        self.manifest = Some(manifest);
+        self
+    }
+
+    #[must_use]
+    pub fn capabilities(mut self, capabilities: Vec<String>) -> Self {
+        self.capabilities = capabilities;
+        self
+    }
+
+    #[must_use]
+    pub fn dependencies(mut self, dependencies: Vec<String>) -> Self {
+        self.dependencies = dependencies;
+        self
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ModuleReleaseProvider {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -151,7 +209,8 @@ pub struct ModuleRelease {
     pub name: String,
     pub version: String,
     pub source: String,
-    pub provider: ModuleReleaseProvider,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<ModuleReleaseProvider>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub summary: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -172,11 +231,11 @@ impl ModuleRelease {
             name: name.into(),
             version: version.into(),
             source: "service".to_owned(),
-            provider: ModuleReleaseProvider {
+            provider: Some(ModuleReleaseProvider {
                 name: provider_name.into(),
                 service_package: Some("lenso.service-package.json".to_owned()),
                 service_manifest: None,
-            },
+            }),
             summary: None,
             capabilities: Vec::new(),
             dependencies: Vec::new(),
@@ -197,8 +256,10 @@ impl ModuleRelease {
 
     #[must_use]
     pub fn service_manifest(mut self, service_manifest: impl Into<String>) -> Self {
-        self.provider.service_package = None;
-        self.provider.service_manifest = Some(service_manifest.into());
+        if let Some(provider) = &mut self.provider {
+            provider.service_package = None;
+            provider.service_manifest = Some(service_manifest.into());
+        }
         self
     }
 }
@@ -362,6 +423,43 @@ pub fn validate_service_package_value(value: &Value) -> Vec<ServiceContractIssue
 }
 
 #[must_use]
+pub fn validate_module_contract_value(value: &Value) -> Vec<ServiceContractIssue> {
+    let Some(object) = value.as_object() else {
+        return vec![ServiceContractIssue::new(
+            "$",
+            "module contract must be an object",
+        )];
+    };
+
+    let mut issues = Vec::new();
+    match object.get("protocol").and_then(Value::as_str) {
+        Some(MODULE_CONTRACT_PROTOCOL) => {}
+        Some(_) => issues.push(ServiceContractIssue::new(
+            "$.protocol",
+            format!("protocol must be `{MODULE_CONTRACT_PROTOCOL}`"),
+        )),
+        None => issues.push(ServiceContractIssue::new(
+            "$.protocol",
+            "field must be a non-empty string",
+        )),
+    }
+    require_non_empty_string(object.get("name"), "$.name", &mut issues);
+    require_non_empty_string(object.get("version"), "$.version", &mut issues);
+    validate_module_artifact_source(object.get("source"), "$.source", &mut issues);
+    validate_string_array(object.get("capabilities"), "$.capabilities", &mut issues);
+    validate_string_array(object.get("dependencies"), "$.dependencies", &mut issues);
+    if let Some(manifest) = object.get("manifest")
+        && !manifest.is_object()
+    {
+        issues.push(ServiceContractIssue::new(
+            "$.manifest",
+            "manifest must be an object",
+        ));
+    }
+    issues
+}
+
+#[must_use]
 pub fn validate_module_release_value(value: &Value) -> Vec<ServiceContractIssue> {
     let Some(object) = value.as_object() else {
         return vec![ServiceContractIssue::new(
@@ -384,17 +482,36 @@ pub fn validate_module_release_value(value: &Value) -> Vec<ServiceContractIssue>
     }
     require_non_empty_string(object.get("name"), "$.name", &mut issues);
     require_non_empty_string(object.get("version"), "$.version", &mut issues);
-    match object.get("source").and_then(Value::as_str) {
-        Some("service") => {}
-        _ => issues.push(ServiceContractIssue::new(
-            "$.source",
-            "source must be `service`",
-        )),
+    let source = object.get("source").and_then(Value::as_str);
+    validate_module_artifact_source(object.get("source"), "$.source", &mut issues);
+    match source {
+        Some("service") => validate_module_release_provider(object.get("provider"), &mut issues),
+        Some("linked" | "bundled") if object.get("provider").is_some() => {
+            validate_module_release_provider(object.get("provider"), &mut issues);
+        }
+        _ => {}
     }
-    validate_module_release_provider(object.get("provider"), &mut issues);
     validate_string_array(object.get("capabilities"), "$.capabilities", &mut issues);
     validate_string_array(object.get("dependencies"), "$.dependencies", &mut issues);
     issues
+}
+
+fn validate_module_artifact_source(
+    value: Option<&Value>,
+    path: &str,
+    issues: &mut Vec<ServiceContractIssue>,
+) {
+    match value.and_then(Value::as_str) {
+        Some("service" | "linked" | "bundled") => {}
+        Some(_) => issues.push(ServiceContractIssue::new(
+            path,
+            "source must be `service`, `linked`, or `bundled`",
+        )),
+        None => issues.push(ServiceContractIssue::new(
+            path,
+            "field must be a non-empty string",
+        )),
+    }
 }
 
 fn validate_module_release_provider(value: Option<&Value>, issues: &mut Vec<ServiceContractIssue>) {
@@ -750,6 +867,50 @@ mod tests {
     }
 
     #[test]
+    fn module_contract_new_uses_v1_protocol() {
+        let contract = ModuleContract::new("support-ticket", "0.2.0", "linked")
+            .capabilities(vec!["support_ticket.tickets.read".to_owned()])
+            .dependencies(vec!["auth".to_owned()]);
+        let value = serde_json::to_value(contract).unwrap();
+
+        assert_eq!(value["protocol"], MODULE_CONTRACT_PROTOCOL);
+        assert_eq!(value["source"], "linked");
+        assert_eq!(
+            value["capabilities"],
+            json!(["support_ticket.tickets.read"])
+        );
+        assert_eq!(value["dependencies"], json!(["auth"]));
+        assert!(validate_module_contract_value(&value).is_empty());
+    }
+
+    #[test]
+    fn invalid_module_contract_reports_protocol_source_and_arrays() {
+        let issues = validate_module_contract_value(&json!({
+            "protocol": "lenso.module",
+            "name": "",
+            "version": "",
+            "source": "remote",
+            "capabilities": ["support_ticket.read", 42],
+            "manifest": []
+        }));
+
+        assert_eq!(
+            issues
+                .iter()
+                .map(|issue| issue.path.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "$.protocol",
+                "$.name",
+                "$.version",
+                "$.source",
+                "$.capabilities[1]",
+                "$.manifest"
+            ]
+        );
+    }
+
+    #[test]
     fn module_release_new_uses_v1_protocol() {
         let release = ModuleRelease::new("support-ticket", "0.2.0", "support-suite-provider")
             .capabilities(vec!["support_ticket.tickets.read".to_owned()])
@@ -787,6 +948,19 @@ mod tests {
     }
 
     #[test]
+    fn linked_module_release_does_not_require_provider() {
+        let issues = validate_module_release_value(&json!({
+            "protocol": "lenso.module-release.v1",
+            "name": "auth-password",
+            "version": "0.2.0",
+            "source": "linked",
+            "capabilities": ["auth.password.login"]
+        }));
+
+        assert!(issues.is_empty(), "{issues:?}");
+    }
+
+    #[test]
     fn invalid_module_release_reports_protocol_source_provider_and_capabilities() {
         let issues = validate_module_release_value(&json!({
             "protocol": "remote-module",
@@ -807,8 +981,6 @@ mod tests {
                 "$.name",
                 "$.version",
                 "$.source",
-                "$.provider.name",
-                "$.provider.servicePackage",
                 "$.capabilities[1]"
             ]
         );

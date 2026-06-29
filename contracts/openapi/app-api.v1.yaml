@@ -4077,6 +4077,10 @@ components:
           type:
           - string
           - 'null'
+        source:
+          type:
+          - string
+          - 'null'
         version:
           type:
           - string

@@ -73,9 +73,11 @@ PATCH, and DELETE routes, remote runtime functions, and remote event handlers.
 Third-party module packaging and ecosystem boundaries are specified in
 `docs/architecture/third-party-modules.md`; V9 service packages add a small
 `lenso.service-package.v1` artifact around `lenso.service.json` for release and
-handoff tooling, and V10 module releases add a `lenso.module-release.v1`
-business-module entrypoint that resolves to a provider service/package while
-the Host still consumes the service manifest.
+handoff tooling, V10 module releases add a `lenso.module-release.v1`
+business-module entrypoint, and V11 adds a `lenso.module.v1` module contract so
+linked, bundled, and service-provided modules share the same product-level
+contract language. `lenso module install` remains the main module install
+surface; `lenso service install` is the lower-level provider/process surface.
 Route proxying is specified
 separately in `docs/architecture/module-remote-http-proxy.md`. Remote runtime
 execution and event-handler dispatch are scoped in

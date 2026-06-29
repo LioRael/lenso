@@ -85,6 +85,9 @@ worker, migration, and local Postgres shape. New starters use
   ([guide](docs/architecture/linked-to-service-module.md)).
 - Services: independently running backends that provide one or more modules and
   are observed by the host.
+- Modules: business capabilities installed through `lenso module install`.
+  A module may resolve to linked Rust code, a service-provided module, a
+  bundled host capability, or a future sandbox package.
 - Rust first: API, worker, migrations, platform crates, modules, contract generators, and architecture checks are Rust workspace members.
 - Explicit SQL and Postgres: no custom ORM, no hidden database magic.
 - Transactional outbox: module writes and emitted events commit atomically.
@@ -92,6 +95,12 @@ worker, migration, and local Postgres shape. New starters use
 - Contract layer: Rust-authored OpenAPI and JSON Schema artifacts are committed.
 
 More detail lives in [docs/architecture/overview.md](docs/architecture/overview.md). Hard rules live in [docs/architecture/rules.md](docs/architecture/rules.md).
+
+`lenso module install` is the primary business-capability entrypoint. It may
+enable linked code or resolve a `lenso.module-release.json` to a provider
+service. `lenso service install` remains the lower-level provider/process
+operation for operators who want to connect a service before enabling one of
+its modules.
 
 First-time local setup lives in [docs/getting-started.md](docs/getting-started.md).
 

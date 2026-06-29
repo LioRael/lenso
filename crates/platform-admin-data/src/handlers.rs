@@ -3054,36 +3054,37 @@ fn module_release_snapshot_from_catalog_entry(entry: &LocalModuleCatalogEntry) -
     if entry.protocol.as_deref() != Some("lenso.module-release.v1") {
         return None;
     }
-    let provider = entry.provider.as_ref()?;
-    let provider_name = provider.name.as_deref()?.trim();
-    if provider_name.is_empty() {
-        return None;
-    }
-    let mut provider_snapshot = serde_json::json!({ "name": provider_name });
-    if let Some(service_package) = provider
-        .service_package
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        provider_snapshot["servicePackage"] = serde_json::json!(service_package);
-    }
-    if let Some(service_manifest) = provider
-        .service_manifest
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        provider_snapshot["serviceManifest"] = serde_json::json!(service_manifest);
-    }
 
     let mut snapshot = serde_json::json!({
         "name": entry.name,
         "protocol": "lenso.module-release.v1",
-        "provider": provider_snapshot,
-        "source": "service",
+        "source": entry.source,
         "version": entry.version,
     });
+    if let Some(provider) = entry.provider.as_ref() {
+        let provider_name = provider.name.as_deref()?.trim();
+        if provider_name.is_empty() {
+            return None;
+        }
+        let mut provider_snapshot = serde_json::json!({ "name": provider_name });
+        if let Some(service_package) = provider
+            .service_package
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            provider_snapshot["servicePackage"] = serde_json::json!(service_package);
+        }
+        if let Some(service_manifest) = provider
+            .service_manifest
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            provider_snapshot["serviceManifest"] = serde_json::json!(service_manifest);
+        }
+        snapshot["provider"] = provider_snapshot;
+    }
     if let Some(summary) = entry.summary.as_deref() {
         snapshot["summary"] = serde_json::json!(summary);
     }
@@ -3269,6 +3270,7 @@ fn module_release_from_catalog_entry(
         manifest_reference: entry.manifest_reference.clone(),
         name: Some(entry.name.clone()),
         version: Some(entry.version.clone()),
+        source: Some(entry.source.clone()),
         provider_name: entry
             .provider
             .as_ref()
@@ -3302,6 +3304,11 @@ fn module_release_from_receipt(
             .and_then(|snapshot| snapshot.get("version"))
             .and_then(Value::as_str)
             .map(ToOwned::to_owned),
+        source: snapshot
+            .and_then(|snapshot| snapshot.get("source"))
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned)
+            .or_else(|| receipt.source.clone()),
         provider_name: provider
             .and_then(|provider| provider.get("name"))
             .and_then(Value::as_str)
