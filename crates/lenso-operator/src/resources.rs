@@ -20,7 +20,7 @@ use k8s_openapi::{
         policy::v1::{PodDisruptionBudget, PodDisruptionBudgetSpec},
     },
     apimachinery::pkg::{
-        apis::meta::v1::{LabelSelector, ObjectMeta},
+        apis::meta::v1::{LabelSelector, ObjectMeta, OwnerReference},
         util::intstr::IntOrString,
     },
 };
@@ -272,8 +272,20 @@ fn metadata(
         namespace: provider.namespace(),
         labels: Some(labels),
         annotations: Some(annotations),
+        owner_references: owner_references(provider),
         ..ObjectMeta::default()
     }
+}
+
+fn owner_references(provider: &LensoServiceProvider) -> Option<Vec<OwnerReference>> {
+    Some(vec![OwnerReference {
+        api_version: "lenso.dev/v1alpha1".to_owned(),
+        kind: "LensoServiceProvider".to_owned(),
+        name: provider.name_any(),
+        uid: provider.metadata.uid.clone()?,
+        controller: Some(true),
+        block_owner_deletion: Some(true),
+    }])
 }
 
 fn stable_labels(provider: &LensoServiceProvider) -> BTreeMap<String, String> {

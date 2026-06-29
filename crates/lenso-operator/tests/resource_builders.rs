@@ -30,6 +30,11 @@ fn deployment_has_labels_annotations_probes_and_env_from() {
         annotations["lenso.dev/manifest-reference"],
         "oci://example/payments:v1"
     );
+    let owner = &deployment.metadata.owner_references.as_ref().unwrap()[0];
+    assert_eq!(owner.kind, "LensoServiceProvider");
+    assert_eq!(owner.name, "payments");
+    assert_eq!(owner.uid, "provider-uid");
+    assert_eq!(owner.controller, Some(true));
 
     let template_spec = deployment.spec.unwrap().template.spec.unwrap();
     let container = &template_spec.containers[0];
@@ -241,5 +246,6 @@ fn provider() -> LensoServiceProvider {
         },
     );
     provider.metadata.namespace = Some("lenso-system".to_owned());
+    provider.metadata.uid = Some("provider-uid".to_owned());
     provider
 }
