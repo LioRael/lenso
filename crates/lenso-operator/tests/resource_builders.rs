@@ -1,5 +1,5 @@
 use k8s_openapi::{
-    api::apps::v1::{Deployment, DeploymentStatus},
+    api::apps::v1::{Deployment, DeploymentSpec, DeploymentStatus},
     apimachinery::pkg::util::intstr::IntOrString,
 };
 use kube::ResourceExt;
@@ -139,20 +139,29 @@ fn optional_resources_follow_spec_flags() {
     assert_eq!(hpa_spec.min_replicas, Some(2));
     assert_eq!(hpa_spec.max_replicas, 5);
 
+    let deployment = build_deployment(&provider).unwrap();
+    assert_eq!(deployment.spec.unwrap().replicas, None);
+
     let pdb = build_pod_disruption_budget(&provider).unwrap().unwrap();
     assert_eq!(pdb.spec.unwrap().min_available, Some(IntOrString::Int(1)));
 
     let network_policy = build_network_policy(&provider).unwrap().unwrap();
+    let network_policy_spec = network_policy.spec.unwrap();
     assert_eq!(
-        network_policy
-            .spec
-            .unwrap()
+        network_policy_spec
             .pod_selector
             .unwrap()
             .match_labels
             .unwrap()["app.kubernetes.io/name"],
         "payments"
     );
+    let ingress_rule = &network_policy_spec.ingress.unwrap()[0];
+    let ingress_port = &ingress_rule.ports.as_ref().unwrap()[0];
+    assert_eq!(
+        ingress_port.port,
+        Some(IntOrString::String("http".to_owned()))
+    );
+    assert_eq!(ingress_port.protocol.as_deref(), Some("TCP"));
 }
 
 #[test]
@@ -198,6 +207,11 @@ fn status_helpers_reflect_deployment_readiness() {
     assert_eq!(progressing.state, LensoServiceProviderState::Progressing);
     assert_eq!(progressing.conditions[0].reason, "DeploymentProgressing");
 
+    let hpa_scaled_deployment = deployment_with_desired_and_ready_replicas(&provider, 5, 5);
+    let hpa_ready = deployment_status_to_provider_status(&provider, Some(&hpa_scaled_deployment));
+    assert_eq!(hpa_ready.state, LensoServiceProviderState::Ready);
+    assert_eq!(hpa_ready.desired_replicas, Some(5));
+
     let failed = invalid_spec_status(&provider, "port must be valid");
     assert_eq!(failed.state, LensoServiceProviderState::Failed);
     assert_eq!(failed.conditions[0].reason, "SpecInvalid");
@@ -212,12 +226,24 @@ fn deployment_with_ready_replicas(
     provider: &LensoServiceProvider,
     ready_replicas: i32,
 ) -> Deployment {
+    deployment_with_desired_and_ready_replicas(provider, provider.spec.replicas, ready_replicas)
+}
+
+fn deployment_with_desired_and_ready_replicas(
+    provider: &LensoServiceProvider,
+    desired_replicas: i32,
+    ready_replicas: i32,
+) -> Deployment {
     let mut deployment = Deployment::default();
     deployment.metadata.name = Some(provider.name_any());
+    deployment.spec = Some(DeploymentSpec {
+        replicas: Some(desired_replicas),
+        ..DeploymentSpec::default()
+    });
     deployment.status = Some(DeploymentStatus {
         available_replicas: Some(ready_replicas),
         ready_replicas: Some(ready_replicas),
-        replicas: Some(provider.spec.replicas),
+        replicas: Some(desired_replicas),
         ..DeploymentStatus::default()
     });
     deployment

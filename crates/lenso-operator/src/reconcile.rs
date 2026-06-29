@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{fmt::Debug, sync::Arc, time::Duration};
 
 use futures::TryStreamExt;
 use k8s_openapi::api::{
@@ -11,12 +11,13 @@ use k8s_openapi::api::{
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
 use kube::{
     Api, Client, Resource, ResourceExt,
-    api::{Patch, PatchParams},
+    api::{DeleteParams, Patch, PatchParams},
     runtime::{Controller, controller::Action, watcher},
 };
+use serde::de::DeserializeOwned;
 use serde_json::json;
 use thiserror::Error;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::{
     crd::{
@@ -87,7 +88,7 @@ pub fn deployment_status_to_provider_status(
     provider: &LensoServiceProvider,
     deployment: Option<&Deployment>,
 ) -> LensoServiceProviderStatus {
-    let desired_replicas = provider.spec.replicas;
+    let fallback_desired_replicas = provider.spec.replicas;
     let observed_generation = provider.meta().generation;
     let base = LensoServiceProviderStatus {
         state: LensoServiceProviderState::Unknown,
@@ -95,7 +96,7 @@ pub fn deployment_status_to_provider_status(
         observed_release_id: provider.spec.release_id.clone(),
         observed_image: Some(provider.spec.image.clone()),
         ready_replicas: Some(0),
-        desired_replicas: Some(desired_replicas),
+        desired_replicas: Some(fallback_desired_replicas),
         available_replicas: Some(0),
         manifest_reference: provider.spec.manifest_reference.clone(),
         conditions: Vec::new(),
@@ -117,8 +118,15 @@ pub fn deployment_status_to_provider_status(
     let available = status
         .and_then(|status| status.available_replicas)
         .unwrap_or(0);
+    let desired_replicas = deployment
+        .spec
+        .as_ref()
+        .and_then(|spec| spec.replicas)
+        .or_else(|| status.and_then(|status| status.replicas))
+        .unwrap_or(fallback_desired_replicas);
     let base = LensoServiceProviderStatus {
         ready_replicas: Some(ready),
+        desired_replicas: Some(desired_replicas),
         available_replicas: Some(available),
         ..base
     };
@@ -240,24 +248,82 @@ async fn apply_desired(
         ingress_api(client, provider)?
             .patch(&name, &params, &Patch::Apply(&ingress))
             .await?;
+    } else {
+        delete_optional_resource_if_owned(ingress_api(client, provider)?, provider, &name).await?;
     }
     if let Some(hpa) = desired.hpa {
         hpa_api(client, provider)?
             .patch(&name, &params, &Patch::Apply(&hpa))
             .await?;
+    } else {
+        delete_optional_resource_if_owned(hpa_api(client, provider)?, provider, &name).await?;
     }
     if let Some(pdb) = desired.pdb {
         pdb_api(client, provider)?
             .patch(&name, &params, &Patch::Apply(&pdb))
             .await?;
+    } else {
+        delete_optional_resource_if_owned(pdb_api(client, provider)?, provider, &name).await?;
     }
     if let Some(network_policy) = desired.network_policy {
         network_policy_api(client, provider)?
             .patch(&name, &params, &Patch::Apply(&network_policy))
             .await?;
+    } else {
+        delete_optional_resource_if_owned(network_policy_api(client, provider)?, provider, &name)
+            .await?;
     }
 
     Ok(())
+}
+
+async fn delete_optional_resource_if_owned<K>(
+    api: Api<K>,
+    provider: &LensoServiceProvider,
+    name: &str,
+) -> Result<(), ReconcileError>
+where
+    K: Clone + Debug + DeserializeOwned + Resource<DynamicType = ()>,
+{
+    let Some(resource) = api.get_opt(name).await? else {
+        return Ok(());
+    };
+
+    if !resource_owned_by_provider(&resource, provider) {
+        warn!(
+            name,
+            provider = %provider.name_any(),
+            "leaving optional resource because it is not owned by LensoServiceProvider"
+        );
+        return Ok(());
+    }
+
+    match api.delete(name, &DeleteParams::default()).await {
+        Ok(_) => Ok(()),
+        Err(kube::Error::Api(response)) if response.code == 404 => Ok(()),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn resource_owned_by_provider<K>(resource: &K, provider: &LensoServiceProvider) -> bool
+where
+    K: Resource<DynamicType = ()>,
+{
+    let Some(provider_uid) = provider.meta().uid.as_deref() else {
+        return false;
+    };
+    resource
+        .meta()
+        .owner_references
+        .as_ref()
+        .into_iter()
+        .flatten()
+        .any(|owner| {
+            owner.api_version == "lenso.dev/v1alpha1"
+                && owner.kind == "LensoServiceProvider"
+                && owner.name == provider.name_any()
+                && owner.uid == provider_uid
+        })
 }
 
 async fn patch_status(
@@ -342,4 +408,86 @@ fn with_condition(
         last_transition_time: Time(k8s_openapi::jiff::Timestamp::now()),
     }];
     status
+}
+
+#[cfg(test)]
+mod tests {
+    use k8s_openapi::{
+        api::networking::v1::Ingress, apimachinery::pkg::apis::meta::v1::OwnerReference,
+    };
+
+    use super::*;
+    use crate::{LensoServiceProvider, LensoServiceProviderSpec, crd::LensoServiceProviderState};
+
+    #[test]
+    fn provider_status_uses_deployment_desired_replicas() {
+        let provider = provider();
+        let deployment = Deployment {
+            spec: Some(k8s_openapi::api::apps::v1::DeploymentSpec {
+                replicas: Some(5),
+                ..Default::default()
+            }),
+            status: Some(k8s_openapi::api::apps::v1::DeploymentStatus {
+                available_replicas: Some(5),
+                ready_replicas: Some(5),
+                replicas: Some(5),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let status = deployment_status_to_provider_status(&provider, Some(&deployment));
+
+        assert_eq!(status.state, LensoServiceProviderState::Ready);
+        assert_eq!(status.desired_replicas, Some(5));
+        assert_eq!(status.ready_replicas, Some(5));
+    }
+
+    #[test]
+    fn resource_ownership_requires_matching_provider_uid() {
+        let provider = provider();
+        let owned = ingress_with_owner("provider-uid");
+        let unowned = ingress_with_owner("other-uid");
+
+        assert!(resource_owned_by_provider(&owned, &provider));
+        assert!(!resource_owned_by_provider(&unowned, &provider));
+        assert!(!resource_owned_by_provider(&Ingress::default(), &provider));
+    }
+
+    fn ingress_with_owner(uid: &str) -> Ingress {
+        let mut ingress = Ingress::default();
+        ingress.metadata.owner_references = Some(vec![OwnerReference {
+            api_version: "lenso.dev/v1alpha1".to_owned(),
+            kind: "LensoServiceProvider".to_owned(),
+            name: "payments".to_owned(),
+            uid: uid.to_owned(),
+            controller: Some(true),
+            block_owner_deletion: Some(true),
+        }]);
+        ingress
+    }
+
+    fn provider() -> LensoServiceProvider {
+        let mut provider = LensoServiceProvider::new(
+            "payments",
+            LensoServiceProviderSpec {
+                service_name: "payments".to_owned(),
+                environment: "prod".to_owned(),
+                image: "ghcr.io/lenso/payments:v1".to_owned(),
+                release_id: Some("rel-1".to_owned()),
+                manifest_reference: None,
+                modules: vec![],
+                replicas: 2,
+                port: 8080,
+                env_from: None,
+                ingress: None,
+                autoscaling: None,
+                disruption_budget: None,
+                network_policy: None,
+            },
+        );
+        provider.metadata.namespace = Some("lenso-system".to_owned());
+        provider.metadata.uid = Some("provider-uid".to_owned());
+        provider
+    }
 }

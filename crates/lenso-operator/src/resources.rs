@@ -14,8 +14,8 @@ use k8s_openapi::{
         },
         networking::v1::{
             HTTPIngressPath, HTTPIngressRuleValue, Ingress, IngressBackend, IngressRule,
-            IngressServiceBackend, IngressSpec, NetworkPolicy, NetworkPolicySpec,
-            ServiceBackendPort,
+            IngressServiceBackend, IngressSpec, NetworkPolicy, NetworkPolicyIngressRule,
+            NetworkPolicyPort, NetworkPolicySpec, ServiceBackendPort,
         },
         policy::v1::{PodDisruptionBudget, PodDisruptionBudgetSpec},
     },
@@ -40,7 +40,11 @@ pub fn build_deployment(provider: &LensoServiceProvider) -> Result<Deployment> {
     Ok(Deployment {
         metadata: metadata(provider, labels.clone(), annotations.clone()),
         spec: Some(DeploymentSpec {
-            replicas: Some(provider.spec.replicas),
+            replicas: if autoscaling_enabled(provider) {
+                None
+            } else {
+                Some(provider.spec.replicas)
+            },
             selector: LabelSelector {
                 match_labels: Some(selector),
                 ..LabelSelector::default()
@@ -230,6 +234,14 @@ pub fn build_network_policy(provider: &LensoServiceProvider) -> Result<Option<Ne
                 match_labels: Some(selector_labels(provider)),
                 ..LabelSelector::default()
             }),
+            ingress: Some(vec![NetworkPolicyIngressRule {
+                from: None,
+                ports: Some(vec![NetworkPolicyPort {
+                    port: Some(IntOrString::String(HTTP_PORT_NAME.to_owned())),
+                    protocol: Some("TCP".to_owned()),
+                    ..NetworkPolicyPort::default()
+                }]),
+            }]),
             policy_types: Some(vec!["Ingress".to_owned()]),
             ..NetworkPolicySpec::default()
         }),
@@ -256,6 +268,14 @@ fn validate_spec(provider: &LensoServiceProvider) -> Result<()> {
     );
     ensure!(provider.spec.replicas >= 0, "replicas must not be negative");
     Ok(())
+}
+
+fn autoscaling_enabled(provider: &LensoServiceProvider) -> bool {
+    provider
+        .spec
+        .autoscaling
+        .as_ref()
+        .is_some_and(|autoscaling| autoscaling.enabled)
 }
 
 fn resource_name(provider: &LensoServiceProvider) -> String {
