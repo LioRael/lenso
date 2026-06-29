@@ -15,13 +15,14 @@ use crate::dto::{
     AdminModuleRemoteSourceInstallStateDto, AdminModuleSchema, AdminModuleSourceDiagnosticsDto,
     AdminModuleStatus, AdminQueryResponse, AdminRemoteModuleDiagnosticsDto,
     AdminSchemaListResponse, AdminSchemaRefreshResponse, AdminServiceModuleCompatibilityDto,
-    AdminServiceModuleCompatibilityState, AdminServiceModuleDeploymentDto,
-    AdminServiceModuleHealthCheckDto, AdminServiceModuleLifecycleModuleDto,
-    AdminServiceModuleLifecycleModuleStatus, AdminServiceModuleLifecycleResponse,
-    AdminServiceModuleLifecycleServiceDto, AdminServiceModuleLifecycleStatus,
-    AdminServiceModuleManifestStatus, AdminServiceModuleServiceStatusCheckDto,
-    AdminServiceModuleServiceStatusDto, AdminServiceModuleServiceStatusState,
-    AdminServiceOperationDto, AdminServiceOperationKindDto, AdminServiceOperationLinksDto,
+    AdminServiceModuleCompatibilityState, AdminServiceModuleConfigDto,
+    AdminServiceModuleDeploymentDto, AdminServiceModuleHealthCheckDto,
+    AdminServiceModuleLifecycleModuleDto, AdminServiceModuleLifecycleModuleStatus,
+    AdminServiceModuleLifecycleResponse, AdminServiceModuleLifecycleServiceDto,
+    AdminServiceModuleLifecycleStatus, AdminServiceModuleManifestStatus,
+    AdminServiceModuleServiceStatusCheckDto, AdminServiceModuleServiceStatusDto,
+    AdminServiceModuleServiceStatusState, AdminServiceOperationDto, AdminServiceOperationKindDto,
+    AdminServiceOperationLinksDto,
 };
 use crate::{
     AdminModule, AdminModuleMetadata, AdminModuleMetadataRefreshModuleResult,
@@ -421,6 +422,7 @@ async fn service_module_lifecycle_module(
     let health_history =
         record_service_module_health(module_name, status_url.as_deref(), &service_status);
     let compatibility = service_module_compatibility(module_name, install_receipt);
+    let config = service_module_config(install_receipt, install_state);
     let deployment = service_module_deployment(install_receipt);
     let operations = service_module_operations(provider_name, module_name, metadata);
     let module_release = install_receipt.and_then(module_release_from_receipt);
@@ -429,10 +431,19 @@ async fn service_module_lifecycle_module(
     });
     let has_service_not_ready = services.iter().any(|service| !service.ready);
     let mut fixes = Vec::new();
+    let host_started = service_specs.iter().any(|service| service.auto_start);
+    let has_missing_config = host_started && !config.missing_env.is_empty();
     let status = if has_stale_state {
         fixes
             .push("restart API/worker; remove stale lock/pid files if it remains stuck".to_owned());
         AdminServiceModuleLifecycleModuleStatus::StaleState
+    } else if has_missing_config {
+        fixes.push(format!(
+            "set missing service env in {}: {}",
+            config.env_file,
+            config.missing_env.join(", ")
+        ));
+        AdminServiceModuleLifecycleModuleStatus::MissingConfig
     } else if remote_source.restart_pending {
         fixes.push(
             remote_source
@@ -472,6 +483,7 @@ async fn service_module_lifecycle_module(
         service_status,
         health_history,
         compatibility,
+        config,
         deployment,
         services,
         operations,
@@ -840,6 +852,32 @@ fn service_module_compatibility(
         issue: issue_message,
         fix: issue_fix,
         override_allowed,
+    }
+}
+
+fn service_module_config(
+    install_receipt: Option<&LocalModuleInstallLedgerModule>,
+    install_state: &AvailableModuleInstallStateContext,
+) -> AdminServiceModuleConfigDto {
+    let required_env = install_receipt
+        .and_then(|receipt| receipt.service.as_ref())
+        .map(|service| service.required_env.clone())
+        .unwrap_or_default();
+    let configured_env = required_env
+        .iter()
+        .filter(|key| install_state.remote_sources.keys.contains(*key))
+        .cloned()
+        .collect::<Vec<_>>();
+    let missing_env = required_env
+        .iter()
+        .filter(|key| !install_state.remote_sources.keys.contains(*key))
+        .cloned()
+        .collect::<Vec<_>>();
+    AdminServiceModuleConfigDto {
+        env_file: install_state.remote_sources.env_file.clone(),
+        required_env,
+        configured_env,
+        missing_env,
     }
 }
 
@@ -1501,6 +1539,7 @@ struct LocalLinkedModulesEnvState {
 struct LocalRemoteModulesEnvState {
     env_file: String,
     error: Option<String>,
+    keys: HashSet<String>,
     modules: HashMap<String, String>,
 }
 
@@ -1543,6 +1582,8 @@ struct LocalServiceModuleMetadata {
     name: Option<String>,
     #[serde(default)]
     deployment: Option<AdminServiceModuleDeploymentDto>,
+    #[serde(default, alias = "required_env")]
+    required_env: Vec<String>,
     #[serde(default, alias = "status_path")]
     status_path: Option<String>,
     #[serde(default, alias = "status_url")]
@@ -1846,6 +1887,7 @@ fn local_remote_modules_env_state(env_file_path: impl AsRef<FsPath>) -> LocalRem
             return LocalRemoteModulesEnvState {
                 env_file,
                 error: None,
+                keys: HashSet::new(),
                 modules: HashMap::new(),
             };
         }
@@ -1853,6 +1895,7 @@ fn local_remote_modules_env_state(env_file_path: impl AsRef<FsPath>) -> LocalRem
             return LocalRemoteModulesEnvState {
                 env_file,
                 error: Some(format!("remote module env file could not be read: {error}")),
+                keys: HashSet::new(),
                 modules: HashMap::new(),
             };
         }
@@ -1860,8 +1903,24 @@ fn local_remote_modules_env_state(env_file_path: impl AsRef<FsPath>) -> LocalRem
     LocalRemoteModulesEnvState {
         env_file,
         error: None,
+        keys: parse_env_keys_source(&source),
         modules: parse_remote_modules_env_source(&source),
     }
+}
+
+fn parse_env_keys_source(source: &str) -> HashSet<String> {
+    source
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                return None;
+            }
+            let line = line.strip_prefix("export ").unwrap_or(line);
+            let (key, _) = line.split_once('=')?;
+            Some(key.trim().to_owned()).filter(|key| !key.is_empty())
+        })
+        .collect()
 }
 
 fn local_linked_modules_env_state(env_file_path: impl AsRef<FsPath>) -> LocalLinkedModulesEnvState {

@@ -34,6 +34,7 @@ the host reloads `REMOTE_MODULES` and `.lenso/module-services.json`.
 | `configured_not_loaded` | The host has a configured source but did not load module metadata. | Doctor source exists; module metadata absent. | Modules shows configured but not loaded. | Restart; then inspect manifest errors. |
 | `manifest_unreachable` | The host cannot fetch the module manifest. | Doctor manifest status is unreachable. | Modules shows manifest unreachable. | Start the service or fix the base URL. |
 | `service_not_ready` | A declared service process is not passing its ready URL. | `lenso service status <provider> <service>` and `lenso service logs <provider> <service> --tail 100` | Modules shows service not ready. | Start the service or inspect local logs. |
+| `missing_config` | A host-started service declares required env that is absent from `.env`. | `lenso service verify <manifest> --env-file .env --json` | Services shows missing config. | Set the env value and restart API/worker. |
 | `stale_state` | Lock or pid files exist but the ready URL is failing. | Doctor lists lock or pid paths. | Modules shows stale state. | Stop the service, then remove stale files if needed. |
 | `not_configured` | The host has no service source for the module. | Doctor has no source entry. | Module is absent or install state is empty. | Install the manifest or add `REMOTE_MODULES`. |
 

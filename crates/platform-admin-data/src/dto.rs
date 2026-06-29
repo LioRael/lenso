@@ -146,6 +146,7 @@ pub struct AdminServiceModuleLifecycleModuleDto {
     pub service_status: AdminServiceModuleServiceStatusDto,
     pub health_history: Vec<AdminServiceModuleHealthCheckDto>,
     pub compatibility: AdminServiceModuleCompatibilityDto,
+    pub config: AdminServiceModuleConfigDto,
     pub deployment: Option<AdminServiceModuleDeploymentDto>,
     pub services: Vec<AdminServiceModuleLifecycleServiceDto>,
     pub operations: Vec<AdminServiceOperationDto>,
@@ -202,12 +203,22 @@ pub struct AdminServiceModuleHealthCheckDto {
 #[serde(rename_all = "snake_case")]
 pub enum AdminServiceModuleLifecycleModuleStatus {
     Ready,
+    MissingConfig,
     RestartPending,
     ConfiguredNotLoaded,
     ManifestUnreachable,
     ServiceNotReady,
     StaleState,
     NotConfigured,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceModuleConfigDto {
+    pub env_file: String,
+    pub required_env: Vec<String>,
+    pub configured_env: Vec<String>,
+    pub missing_env: Vec<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema, PartialEq, Eq)]

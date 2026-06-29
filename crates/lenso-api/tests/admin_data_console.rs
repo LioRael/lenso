@@ -824,6 +824,69 @@ async fn service_modules_marks_stale_state_from_lock_file() {
 }
 
 #[tokio::test]
+async fn service_modules_marks_missing_config_for_host_started_service() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
+    let _env = FileFixture::write(".env", "REMOTE_MODULES=billing=grpc://example.com:50051\n");
+    let _ledger = FileFixture::write(
+        ".lenso/module-installs.json",
+        serde_json::json!({
+            "version": 1,
+            "modules": [{
+                "moduleName": "billing",
+                "source": "remote",
+                "service": {
+                    "name": "billing",
+                    "requiredEnv": ["BILLING_API_KEY"]
+                }
+            }]
+        })
+        .to_string(),
+    );
+    let _services = FileFixture::write(
+        ".lenso/module-services.json",
+        serde_json::json!({
+            "version": 1,
+            "modules": [{
+                "moduleName": "billing",
+                "services": [{
+                    "name": "api",
+                    "command": "pnpm dev",
+                    "readyUrl": "http://127.0.0.1:9/readyz",
+                    "autoStart": true
+                }]
+            }]
+        })
+        .to_string(),
+    );
+    install_admin_module_metadata(vec![]);
+    let ctx = AppContext::new(
+        AppConfig::from_env(),
+        lazy_failing_db(),
+        Arc::new(LoggingEventPublisher),
+    );
+    let app = build_router(ctx);
+
+    let response = app
+        .oneshot(admin_get("/admin/data/service-modules"))
+        .await
+        .expect("service modules request completes");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    let module = &body["modules"][0];
+    assert_eq!(module["moduleName"], "billing");
+    assert_eq!(module["status"], "missing_config");
+    assert_eq!(
+        module["config"]["requiredEnv"],
+        serde_json::json!(["BILLING_API_KEY"])
+    );
+    assert_eq!(
+        module["config"]["missingEnv"],
+        serde_json::json!(["BILLING_API_KEY"])
+    );
+}
+
+#[tokio::test]
 async fn service_modules_marks_loaded_remote_ready() {
     let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
     let _env = FileFixture::write(
@@ -1185,6 +1248,7 @@ async fn service_modules_exposes_release_status_and_deployment_metadata() {
                 },
                 "service": {
                     "name": "api",
+                    "requiredEnv": ["SUPPORT_API_KEY"],
                     "statusUrl": "http://127.0.0.1:9/lenso/module/v1/status",
                     "transports": ["http"],
                     "version": "0.1.0"
@@ -1219,6 +1283,14 @@ async fn service_modules_exposes_release_status_and_deployment_metadata() {
     assert_eq!(module["serviceStatus"]["state"], "unreachable");
     assert_eq!(module["healthHistory"][0]["state"], "unreachable");
     assert_eq!(module["compatibility"]["state"], "compatible");
+    assert_eq!(
+        module["config"]["requiredEnv"],
+        serde_json::json!(["SUPPORT_API_KEY"])
+    );
+    assert_eq!(
+        module["config"]["missingEnv"],
+        serde_json::json!(["SUPPORT_API_KEY"])
+    );
     assert_eq!(module["deployment"]["target"], "container-paas");
 }
 
