@@ -646,7 +646,7 @@ fn service_module_operation_links(
 
 fn service_module_operation_next_action(safe_probe: bool) -> String {
     if safe_probe {
-        "run lenso service check for this operation"
+        "run lenso service verify for this operation"
     } else {
         "add safeProbe metadata before active checks"
     }

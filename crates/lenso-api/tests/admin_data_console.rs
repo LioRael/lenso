@@ -1119,6 +1119,10 @@ async fn service_modules_exposes_operations_for_provider_modules() {
         http["links"]["technicalOperations"],
         "/operations?q=support-suite-provider"
     );
+    assert_eq!(
+        http["nextAction"],
+        "run lenso service verify for this operation"
+    );
 
     let runtime = operations
         .iter()
