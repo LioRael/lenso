@@ -9,6 +9,7 @@ members = [
     "crates/lenso-worker",
     "crates/lenso-bootstrap",
     "crates/lenso-service",
+    "crates/lenso-operator",
     "crates/platform-admin",
     "crates/platform-admin-data",
     "crates/platform-core",
