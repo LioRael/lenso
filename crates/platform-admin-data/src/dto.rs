@@ -107,6 +107,7 @@ pub struct AdminModuleReleaseDto {
     pub manifest_reference: String,
     pub name: Option<String>,
     pub version: Option<String>,
+    pub source: Option<String>,
     pub provider_name: Option<String>,
     pub service_package: Option<String>,
     pub service_manifest: Option<String>,

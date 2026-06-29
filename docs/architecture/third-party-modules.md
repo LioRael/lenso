@@ -56,6 +56,7 @@ lenso-billing-service/
   lenso.service.json
   modules/
     billing/
+      lenso.module.json
       lenso.module-release.json
   backend/
     src/
@@ -99,9 +100,9 @@ Generate it, plus per-module release artifacts, with:
 lenso service package --manifest https://example.com/lenso/service/v1/manifest
 ```
 
-`lenso.module-release.json` is the V10 module release channel. It is not a new
-runtime source; it is the business-module entrypoint that resolves to the
-provider service package or service manifest:
+`lenso.module-release.json` is the module release channel. It is not a new
+runtime source; it is the business-module entrypoint. A release may point to a
+provider service, linked Rust code, or a bundled host capability:
 
 ```json
 {
@@ -118,12 +119,39 @@ provider service package or service manifest:
 }
 ```
 
+The same release protocol can describe linked modules:
+
+```json
+{
+  "protocol": "lenso.module-release.v1",
+  "name": "auth-password",
+  "version": "0.1.0",
+  "source": "linked",
+  "capabilities": ["auth.password.login"],
+  "dependencies": ["auth"]
+}
+```
+
+`lenso.module.v1` is the standalone module contract. It names the business
+capability before release/provider concerns:
+
+```json
+{
+  "protocol": "lenso.module.v1",
+  "name": "support-ticket",
+  "version": "0.1.0",
+  "source": "service",
+  "capabilities": ["support_ticket.tickets.read"]
+}
+```
+
 Install a module release with `lenso module install <module-release.json>`.
 Add it to a local catalog with `lenso module catalog add <module-release.json>`
 so users can later run `lenso module install billing`. The CLI validates that
-the release name and version are provided by the target service manifest, then
-writes `moduleRelease` provenance into `.lenso/module-installs.json` next to
-the normal service/package receipt.
+service releases are provided by the target service manifest, then writes
+`moduleRelease` provenance into `.lenso/module-installs.json` next to the normal
+service/package receipt. Linked releases enable linked code through the same
+module install surface.
 Operators can inspect the release before install with
 `lenso module release inspect <module-release.json>` or fail the command on
 missing install inputs with `lenso module release check <module-release.json>`.

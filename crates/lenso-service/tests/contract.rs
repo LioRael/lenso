@@ -1,6 +1,7 @@
 use lenso_service::{
-    MODULE_RELEASE_SCHEMA_JSON, ModuleManifest, SERVICE_CONTRACT_SCHEMA_JSON, ServiceCompatibility,
-    ServiceContract, ServiceHealth, ServiceLocalProcess, ServiceProvider,
+    MODULE_CONTRACT_SCHEMA_JSON, MODULE_RELEASE_SCHEMA_JSON, ModuleContract, ModuleManifest,
+    SERVICE_CONTRACT_SCHEMA_JSON, ServiceCompatibility, ServiceContract, ServiceHealth,
+    ServiceLocalProcess, ServiceProvider, validate_module_contract_value,
     validate_service_contract_value,
 };
 use serde_json::json;
@@ -80,8 +81,34 @@ fn module_release_schema_is_packaged_with_the_sdk() {
     assert_eq!(schema["title"], "LensoModuleRelease");
     assert_eq!(
         schema["required"],
-        json!(["protocol", "name", "version", "source", "provider"])
+        json!(["protocol", "name", "version", "source"])
     );
+}
+
+#[test]
+fn module_contract_schema_is_packaged_with_the_sdk() {
+    let schema: serde_json::Value = serde_json::from_str(MODULE_CONTRACT_SCHEMA_JSON).unwrap();
+
+    assert_eq!(schema["title"], "LensoModuleContract");
+    assert_eq!(
+        schema["required"],
+        json!(["protocol", "name", "version", "source"])
+    );
+}
+
+#[test]
+fn module_contract_serializes_standalone_module_shape() {
+    let contract = ModuleContract::new("support-ticket", "0.2.0", "linked").manifest(
+        ModuleManifest::builder("support-ticket")
+            .capabilities(vec!["support_ticket.tickets.read".to_owned()])
+            .build(),
+    );
+    let value = serde_json::to_value(contract).unwrap();
+
+    assert_eq!(value["protocol"], "lenso.module.v1");
+    assert_eq!(value["source"], "linked");
+    assert_eq!(value["manifest"]["name"], "support-ticket");
+    assert!(validate_module_contract_value(&value).is_empty());
 }
 
 #[test]

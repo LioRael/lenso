@@ -3,8 +3,23 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "LensoModuleRelease",
   "type": "object",
-  "required": ["protocol", "name", "version", "source", "provider"],
+  "required": ["protocol", "name", "version", "source"],
   "additionalProperties": true,
+  "allOf": [
+    {
+      "if": {
+        "required": ["source"],
+        "properties": {
+          "source": {
+            "const": "service"
+          }
+        }
+      },
+      "then": {
+        "required": ["provider"]
+      }
+    }
+  ],
   "properties": {
     "protocol": {
       "type": "string",
@@ -20,7 +35,7 @@
     },
     "source": {
       "type": "string",
-      "const": "service"
+      "enum": ["linked", "service", "bundled"]
     },
     "provider": {
       "type": "object",

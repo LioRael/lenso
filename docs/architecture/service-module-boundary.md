@@ -18,6 +18,13 @@ The host may start the service process from `.lenso/module-services.json`, or it
 may connect to an already-running service through `REMOTE_MODULES`. Either way,
 the service is not a peer runtime; the host remains the control plane.
 
+V11 keeps `lenso module install` as the user-facing module entrypoint. A module
+release can now describe a `service`, `linked`, or `bundled` source. Service
+releases resolve to provider service packages or manifests; linked releases
+enable Rust code already available to the host. `lenso service install` is still
+valid, but it means "connect this provider process", not "enable every module it
+contains".
+
 ## Host Responsibilities
 
 The host owns:

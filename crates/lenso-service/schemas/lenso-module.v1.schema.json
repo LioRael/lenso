@@ -1,0 +1,46 @@
+{
+  "$id": "https://contracts.lenso.local/modules/lenso-module.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LensoModuleContract",
+  "type": "object",
+  "required": ["protocol", "name", "version", "source"],
+  "additionalProperties": true,
+  "properties": {
+    "protocol": {
+      "type": "string",
+      "const": "lenso.module.v1"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source": {
+      "type": "string",
+      "enum": ["linked", "service", "bundled"]
+    },
+    "summary": {
+      "type": "string"
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "dependencies": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "manifest": {
+      "type": "object"
+    }
+  }
+}
