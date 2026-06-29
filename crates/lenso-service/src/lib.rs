@@ -113,6 +113,46 @@ impl ServiceWorkspace {
     }
 }
 
+#[must_use]
+pub fn service_workspace_to_module_services(
+    workspace: &ServiceWorkspace,
+) -> ServiceWorkspaceModuleServicesFile {
+    ServiceWorkspaceModuleServicesFile {
+        version: 1,
+        modules: workspace
+            .services
+            .iter()
+            .map(|service| ServiceWorkspaceModuleServices {
+                module_name: service.name.clone(),
+                services: vec![ServiceWorkspaceProcess {
+                    name: service.name.clone(),
+                    command: service.command.clone(),
+                    cwd: service.cwd.clone(),
+                    ready_url: service.ready_url.clone(),
+                    auto_start: service.auto_start,
+                    ready_timeout_ms: service.ready_timeout_ms,
+                }],
+            })
+            .collect(),
+    }
+}
+
+#[must_use]
+pub fn service_workspace_base_url(service: &ServiceWorkspaceService) -> Option<String> {
+    service_base_url_from_ready_url(&service.ready_url)
+        .or_else(|| service_base_url_from_manifest_url(&service.manifest))
+}
+
+#[must_use]
+pub fn service_base_url_from_ready_url(ready_url: &str) -> Option<String> {
+    service_base_url_from_url_suffix(ready_url, &["/status", "/ready", "/health", "/healthz"])
+}
+
+#[must_use]
+pub fn service_base_url_from_manifest_url(manifest_url: &str) -> Option<String> {
+    service_base_url_from_url_suffix(manifest_url, &["/manifest"])
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServiceWorkspaceService {
@@ -129,6 +169,31 @@ pub struct ServiceWorkspaceService {
     pub ready_timeout_ms: u64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub modules: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceWorkspaceProcess {
+    pub name: String,
+    pub command: String,
+    pub cwd: String,
+    pub ready_url: String,
+    pub auto_start: bool,
+    pub ready_timeout_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceWorkspaceModuleServices {
+    pub module_name: String,
+    pub services: Vec<ServiceWorkspaceProcess>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceWorkspaceModuleServicesFile {
+    pub version: u64,
+    pub modules: Vec<ServiceWorkspaceModuleServices>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -937,6 +1002,26 @@ fn non_empty_string<'a>(
     }
 }
 
+fn service_base_url_from_url_suffix(value: &str, suffixes: &[&str]) -> Option<String> {
+    let value = value.trim();
+    if !(value.starts_with("http://") || value.starts_with("https://")) {
+        return None;
+    }
+    let value = strip_query_fragment(value).trim_end_matches('/');
+    suffixes.iter().find_map(|suffix| {
+        value
+            .strip_suffix(suffix)
+            .map(|base_url| base_url.trim_end_matches('/'))
+            .map(ToOwned::to_owned)
+    })
+}
+
+fn strip_query_fragment(value: &str) -> &str {
+    let query_index = value.find('?').unwrap_or(value.len());
+    let fragment_index = value.find('#').unwrap_or(value.len());
+    &value[..query_index.min(fragment_index)]
+}
+
 const fn default_service_auto_start() -> bool {
     true
 }
@@ -1022,6 +1107,63 @@ mod tests {
         }));
 
         assert!(issues.is_empty(), "{issues:?}");
+    }
+
+    #[test]
+    fn service_workspace_exports_module_service_start_file() {
+        let workspace = ServiceWorkspace::new(vec![ServiceWorkspaceService {
+            name: "support-suite-provider".to_owned(),
+            lang: "ts".to_owned(),
+            cwd: "services/support-suite-provider".to_owned(),
+            manifest: "lenso.service.json".to_owned(),
+            command: "pnpm start".to_owned(),
+            ready_url: "http://127.0.0.1:4110/lenso/service/v1/status".to_owned(),
+            auto_start: true,
+            ready_timeout_ms: 10_000,
+            modules: vec!["support-ticket".to_owned()],
+        }]);
+
+        let value = serde_json::to_value(service_workspace_to_module_services(&workspace)).unwrap();
+
+        assert_eq!(value["version"], 1);
+        assert_eq!(value["modules"][0]["moduleName"], "support-suite-provider");
+        assert_eq!(value["modules"][0]["services"][0]["command"], "pnpm start");
+        assert_eq!(
+            value["modules"][0]["services"][0]["readyUrl"],
+            "http://127.0.0.1:4110/lenso/service/v1/status"
+        );
+    }
+
+    #[test]
+    fn service_workspace_infers_service_base_url() {
+        assert_eq!(
+            service_base_url_from_ready_url(
+                "http://127.0.0.1:4110/lenso/service/v1/status?probe=1"
+            )
+            .as_deref(),
+            Some("http://127.0.0.1:4110/lenso/service/v1")
+        );
+        assert_eq!(
+            service_base_url_from_manifest_url("http://127.0.0.1:4110/lenso/service/v1/manifest")
+                .as_deref(),
+            Some("http://127.0.0.1:4110/lenso/service/v1")
+        );
+        assert_eq!(
+            service_workspace_base_url(&ServiceWorkspaceService {
+                name: "support-suite-provider".to_owned(),
+                lang: "ts".to_owned(),
+                cwd: "services/support-suite-provider".to_owned(),
+                manifest: "lenso.service.json".to_owned(),
+                command: "pnpm start".to_owned(),
+                ready_url: "http://127.0.0.1:4110/lenso/service/v1/ready".to_owned(),
+                auto_start: true,
+                ready_timeout_ms: 10_000,
+                modules: vec!["support-ticket".to_owned()],
+            })
+            .as_deref(),
+            Some("http://127.0.0.1:4110/lenso/service/v1")
+        );
+        assert!(service_base_url_from_ready_url("not a url").is_none());
     }
 
     #[test]

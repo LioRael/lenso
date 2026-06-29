@@ -87,7 +87,9 @@ worker, migration, and local Postgres shape. New starters use
   are observed by the host.
 - Service Workspace: local development control plane in `lenso.workspace.json`;
   `lenso service create` registers Rust/TS providers there, and
-  `lenso service dev` starts them before the host.
+  `lenso service dev` starts them before the host. Workspace tools also check
+  provider readiness and read older `.lenso/services.json` files during
+  migration.
 - Modules: business capabilities installed through `lenso module install`.
   A module may resolve to linked Rust code, a service-provided module, a
   bundled host capability, or a future sandbox package.
