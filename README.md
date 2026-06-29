@@ -85,6 +85,9 @@ worker, migration, and local Postgres shape. New starters use
   ([guide](docs/architecture/linked-to-service-module.md)).
 - Services: independently running backends that provide one or more modules and
   are observed by the host.
+- Service Workspace: local development control plane in `lenso.workspace.json`;
+  `lenso service create` registers Rust/TS providers there, and
+  `lenso service dev` starts them before the host.
 - Modules: business capabilities installed through `lenso module install`.
   A module may resolve to linked Rust code, a service-provided module, a
   bundled host capability, or a future sandbox package.

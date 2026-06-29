@@ -1,8 +1,9 @@
 use lenso_service::{
     MODULE_CONTRACT_SCHEMA_JSON, MODULE_RELEASE_SCHEMA_JSON, ModuleContract, ModuleManifest,
-    SERVICE_CONTRACT_SCHEMA_JSON, ServiceCompatibility, ServiceContract, ServiceHealth,
-    ServiceLocalProcess, ServiceProvider, validate_module_contract_value,
-    validate_service_contract_value,
+    SERVICE_CONTRACT_SCHEMA_JSON, SERVICE_WORKSPACE_SCHEMA_JSON, ServiceCompatibility,
+    ServiceContract, ServiceHealth, ServiceLocalProcess, ServiceProvider, ServiceWorkspace,
+    ServiceWorkspaceService, validate_module_contract_value, validate_service_contract_value,
+    validate_service_workspace_value,
 };
 use serde_json::json;
 
@@ -94,6 +95,38 @@ fn module_contract_schema_is_packaged_with_the_sdk() {
         schema["required"],
         json!(["protocol", "name", "version", "source"])
     );
+}
+
+#[test]
+fn service_workspace_schema_is_packaged_with_the_sdk() {
+    let schema: serde_json::Value = serde_json::from_str(SERVICE_WORKSPACE_SCHEMA_JSON).unwrap();
+
+    assert_eq!(schema["title"], "LensoServiceWorkspace");
+    assert_eq!(schema["required"], json!(["protocol"]));
+}
+
+#[test]
+fn service_workspace_serializes_local_services() {
+    let workspace = ServiceWorkspace::new(vec![ServiceWorkspaceService {
+        auto_start: true,
+        command: "pnpm start".to_owned(),
+        cwd: "services/support-suite-provider".to_owned(),
+        lang: "ts".to_owned(),
+        manifest: "lenso.service.json".to_owned(),
+        modules: vec!["support-ticket".to_owned()],
+        name: "support-suite-provider".to_owned(),
+        ready_timeout_ms: 10_000,
+        ready_url: "http://127.0.0.1:4110/lenso/service/v1/status".to_owned(),
+    }]);
+    let value = serde_json::to_value(workspace).unwrap();
+
+    assert_eq!(value["protocol"], "lenso.service-workspace.v1");
+    assert_eq!(value["services"][0]["name"], "support-suite-provider");
+    assert_eq!(
+        value["services"][0]["readyUrl"],
+        "http://127.0.0.1:4110/lenso/service/v1/status"
+    );
+    assert!(validate_service_workspace_value(&value).is_empty());
 }
 
 #[test]

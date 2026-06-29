@@ -1,0 +1,67 @@
+{
+  "$id": "https://contracts.lenso.local/services/lenso-service-workspace.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LensoServiceWorkspace",
+  "type": "object",
+  "required": ["protocol"],
+  "additionalProperties": true,
+  "properties": {
+    "protocol": {
+      "type": "string",
+      "const": "lenso.service-workspace.v1"
+    },
+    "services": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/service"
+      }
+    }
+  },
+  "$defs": {
+    "service": {
+      "type": "object",
+      "required": ["name", "lang", "cwd", "manifest", "command", "readyUrl"],
+      "additionalProperties": true,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lang": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cwd": {
+          "type": "string",
+          "minLength": 1
+        },
+        "manifest": {
+          "type": "string",
+          "minLength": 1
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "readyUrl": {
+          "type": "string",
+          "minLength": 1
+        },
+        "autoStart": {
+          "type": "boolean"
+        },
+        "readyTimeoutMs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "modules": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}
