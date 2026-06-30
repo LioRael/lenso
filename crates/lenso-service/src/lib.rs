@@ -9,6 +9,7 @@ pub const SERVICE_CONTRACT_PROTOCOL: &str = "lenso.service.v1";
 pub const SERVICE_PACKAGE_PROTOCOL: &str = "lenso.service-package.v1";
 pub const SERVICE_WORKSPACE_PROTOCOL: &str = "lenso.service-workspace.v1";
 pub const SERVICE_RELEASE_PLAN_PROTOCOL: &str = "lenso.service-release-plan.v1";
+pub const SERVICE_SYSTEM_PROTOCOL: &str = "lenso.system.v1";
 pub const MODULE_CONTRACT_PROTOCOL: &str = "lenso.module.v1";
 pub const MODULE_RELEASE_PROTOCOL: &str = "lenso.module-release.v1";
 pub const SERVICE_CONTRACT_SCHEMA_JSON: &str =
@@ -17,6 +18,7 @@ pub const SERVICE_PACKAGE_SCHEMA_JSON: &str =
     include_str!("../schemas/lenso-service-package.v1.schema.json");
 pub const SERVICE_WORKSPACE_SCHEMA_JSON: &str =
     include_str!("../schemas/lenso-service-workspace.v1.schema.json");
+pub const SERVICE_SYSTEM_SCHEMA_JSON: &str = include_str!("../schemas/lenso-system.v1.schema.json");
 pub const MODULE_CONTRACT_SCHEMA_JSON: &str =
     include_str!("../schemas/lenso-module.v1.schema.json");
 pub const MODULE_RELEASE_SCHEMA_JSON: &str =
@@ -386,6 +388,326 @@ pub struct ServiceWorkspaceModuleServices {
 pub struct ServiceWorkspaceModuleServicesFile {
     pub version: u64,
     pub modules: Vec<ServiceWorkspaceModuleServices>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceSystem {
+    pub protocol: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub environments: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub services: Vec<ServiceSystemService>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub modules: Vec<ServiceSystemModule>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dependencies: Vec<ServiceSystemDependency>,
+}
+
+impl ServiceSystem {
+    #[must_use]
+    pub fn new(name: impl Into<String>) -> Self {
+        Self {
+            protocol: SERVICE_SYSTEM_PROTOCOL.to_owned(),
+            name: name.into(),
+            environments: Vec::new(),
+            services: Vec::new(),
+            modules: Vec::new(),
+            dependencies: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceSystemService {
+    pub name: String,
+    pub target: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub modules: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manifest: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceSystemModule {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub install_to: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub capabilities: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dependencies: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceSystemDependency {
+    pub from: String,
+    pub capability: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceSystemGraph {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub environments: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub services: Vec<ServiceSystemGraphService>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub modules: Vec<ServiceSystemGraphModule>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dependencies: Vec<ServiceSystemGraphDependency>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub issues: Vec<ServiceSystemGraphIssue>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceSystemGraphService {
+    pub name: String,
+    pub target: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub modules: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceSystemGraphModule {
+    pub name: String,
+    pub owner: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub capabilities: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dependencies: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceSystemGraphDependency {
+    pub from: String,
+    pub capability: String,
+    pub state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceSystemGraphIssue {
+    pub code: String,
+    pub message: String,
+}
+
+#[must_use]
+pub fn service_system_graph(system: &ServiceSystem) -> ServiceSystemGraph {
+    let services_by_name = system
+        .services
+        .iter()
+        .map(|service| (service.name.as_str(), service))
+        .collect::<BTreeMap<_, _>>();
+    let modules_by_name = system
+        .modules
+        .iter()
+        .map(|module| (module.name.as_str(), module))
+        .collect::<BTreeMap<_, _>>();
+    let mut module_owner = BTreeMap::new();
+    let mut issues = Vec::new();
+    for service in &system.services {
+        for module_name in &service.modules {
+            if !modules_by_name.contains_key(module_name.as_str()) {
+                issues.push(ServiceSystemGraphIssue {
+                    code: "module_not_declared".to_owned(),
+                    message: format!(
+                        "Service `{}` references undeclared module `{module_name}`.",
+                        service.name
+                    ),
+                });
+            }
+            if let Some(existing) = module_owner.insert(module_name.as_str(), service.name.as_str())
+            {
+                issues.push(ServiceSystemGraphIssue {
+                    code: "module_owned_twice".to_owned(),
+                    message: format!(
+                        "Module `{module_name}` is assigned to both `{existing}` and `{}`.",
+                        service.name
+                    ),
+                });
+            }
+        }
+    }
+    for module in &system.modules {
+        if let Some(service_name) = module
+            .install_to
+            .as_deref()
+            .and_then(|install_to| install_to.strip_prefix("service:"))
+            && !services_by_name.contains_key(service_name)
+        {
+            issues.push(ServiceSystemGraphIssue {
+                code: "install_target_missing".to_owned(),
+                message: format!(
+                    "Module `{}` installs to missing service `{service_name}`.",
+                    module.name
+                ),
+            });
+        }
+    }
+
+    let capability_owners = service_system_capability_owners(system, &module_owner);
+    let mut dependencies = Vec::new();
+    for module in &system.modules {
+        let from = service_system_module_owner(module, &module_owner);
+        for capability in &module.dependencies {
+            dependencies.push(service_system_dependency_edge(
+                from,
+                capability,
+                capability_owners
+                    .get(capability.as_str())
+                    .map(Vec::as_slice),
+            ));
+        }
+    }
+    for dependency in &system.dependencies {
+        if let Some(to) = dependency.to.as_deref() {
+            let target_exists =
+                services_by_name.contains_key(to) || modules_by_name.contains_key(to);
+            let target_has_capability = service_system_target_owns_capability(
+                to,
+                &dependency.capability,
+                &capability_owners,
+                &modules_by_name,
+            );
+            dependencies.push(ServiceSystemGraphDependency {
+                from: dependency.from.clone(),
+                capability: dependency.capability.clone(),
+                state: if !target_exists {
+                    "unresolved".to_owned()
+                } else if target_has_capability {
+                    "resolved".to_owned()
+                } else {
+                    "missing_capability".to_owned()
+                },
+                to: Some(to.to_owned()),
+            });
+        } else {
+            dependencies.push(service_system_dependency_edge(
+                &dependency.from,
+                &dependency.capability,
+                capability_owners
+                    .get(dependency.capability.as_str())
+                    .map(Vec::as_slice),
+            ));
+        }
+    }
+    for dependency in &dependencies {
+        if dependency.state != "resolved" {
+            issues.push(ServiceSystemGraphIssue {
+                code: format!("dependency_{}", dependency.state),
+                message: format!(
+                    "`{}` depends on `{}`, but it is {}.",
+                    dependency.from, dependency.capability, dependency.state
+                ),
+            });
+        }
+    }
+
+    ServiceSystemGraph {
+        name: system.name.clone(),
+        environments: system.environments.clone(),
+        services: system
+            .services
+            .iter()
+            .map(|service| ServiceSystemGraphService {
+                name: service.name.clone(),
+                target: service.target.clone(),
+                modules: service.modules.clone(),
+            })
+            .collect(),
+        modules: system
+            .modules
+            .iter()
+            .map(|module| ServiceSystemGraphModule {
+                name: module.name.clone(),
+                owner: service_system_module_owner(module, &module_owner).to_owned(),
+                capabilities: module.capabilities.clone(),
+                dependencies: module.dependencies.clone(),
+            })
+            .collect(),
+        dependencies,
+        issues,
+    }
+}
+
+fn service_system_install_owner(module: &ServiceSystemModule) -> Option<&str> {
+    let install_to = module.install_to.as_deref()?;
+    install_to.strip_prefix("service:").or(Some(install_to))
+}
+
+fn service_system_module_owner<'a>(
+    module: &'a ServiceSystemModule,
+    module_owner: &BTreeMap<&'a str, &'a str>,
+) -> &'a str {
+    module_owner
+        .get(module.name.as_str())
+        .copied()
+        .or_else(|| service_system_install_owner(module))
+        .unwrap_or("host")
+}
+
+fn service_system_capability_owners<'a>(
+    system: &'a ServiceSystem,
+    module_owner: &BTreeMap<&'a str, &'a str>,
+) -> BTreeMap<&'a str, Vec<&'a str>> {
+    let mut owners: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    for module in &system.modules {
+        let owner = service_system_module_owner(module, module_owner);
+        for capability in &module.capabilities {
+            owners.entry(capability.as_str()).or_default().push(owner);
+        }
+    }
+    owners
+}
+
+fn service_system_target_owns_capability(
+    target: &str,
+    capability: &str,
+    capability_owners: &BTreeMap<&str, Vec<&str>>,
+    modules_by_name: &BTreeMap<&str, &ServiceSystemModule>,
+) -> bool {
+    capability_owners
+        .get(capability)
+        .is_some_and(|owners| owners.iter().any(|owner| *owner == target))
+        || modules_by_name.get(target).is_some_and(|module| {
+            module
+                .capabilities
+                .iter()
+                .any(|provided| provided == capability)
+        })
+}
+
+fn service_system_dependency_edge(
+    from: &str,
+    capability: &str,
+    owners: Option<&[&str]>,
+) -> ServiceSystemGraphDependency {
+    let (state, to) = match owners {
+        Some(owners) if owners.len() == 1 => ("resolved", Some(owners[0].to_owned())),
+        Some(owners) if owners.len() > 1 => ("ambiguous", Some(owners.join(","))),
+        _ => ("unresolved", None),
+    };
+    ServiceSystemGraphDependency {
+        from: from.to_owned(),
+        capability: capability.to_owned(),
+        state: state.to_owned(),
+        to,
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -969,6 +1291,35 @@ pub fn validate_service_workspace_value(value: &Value) -> Vec<ServiceContractIss
 }
 
 #[must_use]
+pub fn validate_service_system_value(value: &Value) -> Vec<ServiceContractIssue> {
+    let Some(object) = value.as_object() else {
+        return vec![ServiceContractIssue::new(
+            "$",
+            "service system must be an object",
+        )];
+    };
+
+    let mut issues = Vec::new();
+    match object.get("protocol").and_then(Value::as_str) {
+        Some(SERVICE_SYSTEM_PROTOCOL) => {}
+        Some(_) => issues.push(ServiceContractIssue::new(
+            "$.protocol",
+            format!("protocol must be `{SERVICE_SYSTEM_PROTOCOL}`"),
+        )),
+        None => issues.push(ServiceContractIssue::new(
+            "$.protocol",
+            "field must be a non-empty string",
+        )),
+    }
+    require_non_empty_string(object.get("name"), "$.name", &mut issues);
+    validate_string_array(object.get("environments"), "$.environments", &mut issues);
+    validate_system_services(object.get("services"), &mut issues);
+    validate_system_modules(object.get("modules"), &mut issues);
+    validate_system_dependencies(object.get("dependencies"), &mut issues);
+    issues
+}
+
+#[must_use]
 pub fn validate_module_contract_value(value: &Value) -> Vec<ServiceContractIssue> {
     let Some(object) = value.as_object() else {
         return vec![ServiceContractIssue::new(
@@ -1374,6 +1725,136 @@ fn validate_workspace_services(value: Option<&Value>, issues: &mut Vec<ServiceCo
             &format!("$.services[{index}].modules"),
             issues,
         );
+    }
+}
+
+fn validate_system_services(value: Option<&Value>, issues: &mut Vec<ServiceContractIssue>) {
+    let Some(value) = value else {
+        return;
+    };
+    let Some(array) = value.as_array() else {
+        issues.push(ServiceContractIssue::new(
+            "$.services",
+            "services must be an array",
+        ));
+        return;
+    };
+    let mut names = BTreeSet::new();
+    for (index, service) in array.iter().enumerate() {
+        let Some(object) = service.as_object() else {
+            issues.push(ServiceContractIssue::new(
+                format!("$.services[{index}]"),
+                "service must be an object",
+            ));
+            continue;
+        };
+        if let Some(name) = non_empty_string(
+            object.get("name"),
+            &format!("$.services[{index}].name"),
+            issues,
+        ) && !names.insert(name.to_owned())
+        {
+            issues.push(ServiceContractIssue::new(
+                format!("$.services[{index}].name"),
+                format!("service `{name}` is declared more than once"),
+            ));
+        }
+        require_non_empty_string(
+            object.get("target"),
+            &format!("$.services[{index}].target"),
+            issues,
+        );
+        validate_string_array(
+            object.get("modules"),
+            &format!("$.services[{index}].modules"),
+            issues,
+        );
+    }
+}
+
+fn validate_system_modules(value: Option<&Value>, issues: &mut Vec<ServiceContractIssue>) {
+    let Some(value) = value else {
+        return;
+    };
+    let Some(array) = value.as_array() else {
+        issues.push(ServiceContractIssue::new(
+            "$.modules",
+            "modules must be an array",
+        ));
+        return;
+    };
+    let mut names = BTreeSet::new();
+    for (index, module) in array.iter().enumerate() {
+        let Some(object) = module.as_object() else {
+            issues.push(ServiceContractIssue::new(
+                format!("$.modules[{index}]"),
+                "module must be an object",
+            ));
+            continue;
+        };
+        if let Some(name) = non_empty_string(
+            object.get("name"),
+            &format!("$.modules[{index}].name"),
+            issues,
+        ) && !names.insert(name.to_owned())
+        {
+            issues.push(ServiceContractIssue::new(
+                format!("$.modules[{index}].name"),
+                format!("module `{name}` is declared more than once"),
+            ));
+        }
+        if let Some(install_to) = object.get("installTo").or_else(|| object.get("install_to")) {
+            require_non_empty_string(
+                Some(install_to),
+                &format!("$.modules[{index}].installTo"),
+                issues,
+            );
+        }
+        validate_string_array(
+            object.get("capabilities"),
+            &format!("$.modules[{index}].capabilities"),
+            issues,
+        );
+        validate_string_array(
+            object.get("dependencies"),
+            &format!("$.modules[{index}].dependencies"),
+            issues,
+        );
+    }
+}
+
+fn validate_system_dependencies(value: Option<&Value>, issues: &mut Vec<ServiceContractIssue>) {
+    let Some(value) = value else {
+        return;
+    };
+    let Some(array) = value.as_array() else {
+        issues.push(ServiceContractIssue::new(
+            "$.dependencies",
+            "dependencies must be an array",
+        ));
+        return;
+    };
+    for (index, dependency) in array.iter().enumerate() {
+        let Some(object) = dependency.as_object() else {
+            issues.push(ServiceContractIssue::new(
+                format!("$.dependencies[{index}]"),
+                "dependency must be an object",
+            ));
+            continue;
+        };
+        require_non_empty_string(
+            object.get("from"),
+            &format!("$.dependencies[{index}].from"),
+            issues,
+        );
+        require_non_empty_string(
+            object.get("capability"),
+            &format!("$.dependencies[{index}].capability"),
+            issues,
+        );
+        if let Some(to) = object.get("to") {
+            require_non_empty_string(Some(to), &format!("$.dependencies[{index}].to"), issues);
+        }
     }
 }
 

@@ -25,7 +25,9 @@ use crate::dto::{
     AdminServiceModuleLifecycleStatus, AdminServiceModuleManifestStatus,
     AdminServiceModuleServiceStatusCheckDto, AdminServiceModuleServiceStatusDto,
     AdminServiceModuleServiceStatusState, AdminServiceOperationDto, AdminServiceOperationKindDto,
-    AdminServiceOperationLinksDto, AdminServiceReleaseRecordDto,
+    AdminServiceOperationLinksDto, AdminServiceReleaseRecordDto, AdminServiceSystemDependencyDto,
+    AdminServiceSystemIssueDto, AdminServiceSystemModuleDto, AdminServiceSystemResponse,
+    AdminServiceSystemServiceDto, AdminServiceSystemStatus,
 };
 use crate::{
     AdminModule, AdminModuleMetadata, AdminModuleMetadataRefreshModuleResult,
@@ -71,6 +73,7 @@ const SERVICE_RELEASE_LEDGER_PATH: &str = ".lenso/service-releases.json";
 const SERVICE_ENVIRONMENTS_PATH: &str = ".lenso/service-environments.json";
 const SERVICE_DEPLOYMENTS_PATH: &str = ".lenso/service-deployments.json";
 const SERVICE_MODULE_HEALTH_PATH: &str = ".lenso/service-health.json";
+const SERVICE_SYSTEM_PATH: &str = "lenso.system.json";
 const OFFICIAL_MODULE_CATALOG_REGISTRY_FILE: &str = "builtin:lenso-official-module-catalog";
 const OFFICIAL_MODULE_CATALOG_SOURCE: &str =
     include_str!("../catalogs/lenso-official-module-catalog.json");
@@ -216,6 +219,27 @@ pub(crate) async fn service_modules(
 }
 
 #[utoipa::path(
+    get,
+    path = "/admin/data/service-system",
+    operation_id = "admin_data_service_system",
+    tag = "admin-data",
+    params(("authorization" = String, Header, description = "Development service bearer token")),
+    responses(
+        (status = 200, description = "Service system graph", body = AdminServiceSystemResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+    )
+)]
+pub(crate) async fn service_system(
+    _admin: AdminActor,
+    HttpRequestContext(_request_ctx): HttpRequestContext,
+) -> Result<Json<AdminServiceSystemResponse>, ApiErrorResponse> {
+    Ok(Json(service_system_response(FsPath::new(
+        SERVICE_SYSTEM_PATH,
+    ))))
+}
+
+#[utoipa::path(
     post,
     path = "/admin/data/available-modules/{module}/install",
     operation_id = "admin_data_install_available_module",
@@ -290,6 +314,115 @@ fn available_modules_response() -> AdminModuleRegistrySnapshotResponse {
         OFFICIAL_MODULE_CATALOG_SOURCE,
         &install_state,
     )
+}
+
+fn service_system_response(path: &FsPath) -> AdminServiceSystemResponse {
+    if !path.exists() {
+        return AdminServiceSystemResponse {
+            dependencies: Vec::new(),
+            environments: Vec::new(),
+            issues: Vec::new(),
+            modules: Vec::new(),
+            name: None,
+            services: Vec::new(),
+            status: AdminServiceSystemStatus::Empty,
+            system_file: path.to_string_lossy().into_owned(),
+            version: 1,
+        };
+    }
+    let source = match fs::read_to_string(path) {
+        Ok(source) => source,
+        Err(error) => {
+            return service_system_error_response(path, "read_error", error.to_string());
+        }
+    };
+    let system = match serde_json::from_str::<lenso_service::ServiceSystem>(&source) {
+        Ok(system) => system,
+        Err(error) => {
+            return service_system_error_response(path, "parse_error", error.to_string());
+        }
+    };
+    if system.protocol != lenso_service::SERVICE_SYSTEM_PROTOCOL {
+        return service_system_error_response(
+            path,
+            "unsupported_protocol",
+            format!(
+                "protocol must be `{}`",
+                lenso_service::SERVICE_SYSTEM_PROTOCOL
+            ),
+        );
+    }
+    let graph = lenso_service::service_system_graph(&system);
+    let issues = graph
+        .issues
+        .into_iter()
+        .map(|issue| AdminServiceSystemIssueDto {
+            code: issue.code,
+            message: issue.message,
+        })
+        .collect::<Vec<_>>();
+    AdminServiceSystemResponse {
+        dependencies: graph
+            .dependencies
+            .into_iter()
+            .map(|dependency| AdminServiceSystemDependencyDto {
+                capability: dependency.capability,
+                from: dependency.from,
+                state: dependency.state,
+                to: dependency.to,
+            })
+            .collect(),
+        environments: graph.environments,
+        modules: graph
+            .modules
+            .into_iter()
+            .map(|module| AdminServiceSystemModuleDto {
+                capabilities: module.capabilities,
+                dependencies: module.dependencies,
+                name: module.name,
+                owner: module.owner,
+            })
+            .collect(),
+        name: Some(graph.name),
+        services: graph
+            .services
+            .into_iter()
+            .map(|service| AdminServiceSystemServiceDto {
+                modules: service.modules,
+                name: service.name,
+                target: service.target,
+            })
+            .collect(),
+        status: if issues.is_empty() {
+            AdminServiceSystemStatus::Ready
+        } else {
+            AdminServiceSystemStatus::NeedsAttention
+        },
+        system_file: path.to_string_lossy().into_owned(),
+        version: 1,
+        issues,
+    }
+}
+
+fn service_system_error_response(
+    path: &FsPath,
+    code: impl Into<String>,
+    message: impl Into<String>,
+) -> AdminServiceSystemResponse {
+    AdminServiceSystemResponse {
+        dependencies: Vec::new(),
+        environments: Vec::new(),
+        issues: vec![AdminServiceSystemIssueDto {
+            code: code.into(),
+            message: message.into(),
+        }],
+        modules: Vec::new(),
+        name: None,
+        services: Vec::new(),
+        status: AdminServiceSystemStatus::NeedsAttention,
+        system_file: path.to_string_lossy().into_owned(),
+        version: 1,
+    }
 }
 
 async fn service_module_lifecycle_response(
@@ -4643,6 +4776,56 @@ mod tests {
                 .any(|issue| { issue.subject == "capability.reference.console.surface.contacts" })
         );
         assert_eq!(modules[0].console.len(), 1);
+    }
+
+    #[test]
+    fn service_system_response_is_empty_without_manifest() {
+        let path =
+            std::env::temp_dir().join(format!("missing-lenso-system-{}.json", current_unix_ms()));
+
+        let response = service_system_response(&path);
+
+        assert!(matches!(response.status, AdminServiceSystemStatus::Empty));
+        assert!(response.services.is_empty());
+    }
+
+    #[test]
+    fn service_system_response_maps_graph() {
+        let path = std::env::temp_dir().join(format!("lenso-system-{}.json", current_unix_ms()));
+        fs::write(
+            &path,
+            serde_json::json!({
+                "protocol": "lenso.system.v1",
+                "name": "support-platform",
+                "environments": ["local"],
+                "services": [
+                    { "name": "support", "target": "local", "modules": ["support-ticket"] },
+                    { "name": "billing", "target": "kubernetes", "modules": ["invoice"] }
+                ],
+                "modules": [
+                    {
+                        "name": "support-ticket",
+                        "installTo": "service:support",
+                        "dependencies": ["billing.invoice.read"]
+                    },
+                    {
+                        "name": "invoice",
+                        "installTo": "service:billing",
+                        "capabilities": ["billing.invoice.read"]
+                    }
+                ]
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let response = service_system_response(&path);
+
+        assert!(matches!(response.status, AdminServiceSystemStatus::Ready));
+        assert_eq!(response.name.as_deref(), Some("support-platform"));
+        assert_eq!(response.dependencies[0].to.as_deref(), Some("billing"));
+
+        let _ = fs::remove_file(path);
     }
 }
 

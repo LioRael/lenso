@@ -632,6 +632,37 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /admin/data/service-system:
+    get:
+      tags:
+      - admin-data
+      operationId: admin_data_service_system
+      parameters:
+      - name: authorization
+        in: header
+        description: Development service bearer token
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Service system graph
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminServiceSystemResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/data/{module}/actions/{action}:
     post:
       tags:
@@ -5725,6 +5756,118 @@ components:
           type: string
         status:
           type: string
+    AdminServiceSystemDependencyDto:
+      type: object
+      required:
+      - from
+      - capability
+      - state
+      properties:
+        capability:
+          type: string
+        from:
+          type: string
+        state:
+          type: string
+        to:
+          type:
+          - string
+          - 'null'
+    AdminServiceSystemIssueDto:
+      type: object
+      required:
+      - code
+      - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+    AdminServiceSystemModuleDto:
+      type: object
+      required:
+      - name
+      - owner
+      - capabilities
+      - dependencies
+      properties:
+        capabilities:
+          type: array
+          items:
+            type: string
+        dependencies:
+          type: array
+          items:
+            type: string
+        name:
+          type: string
+        owner:
+          type: string
+    AdminServiceSystemResponse:
+      type: object
+      required:
+      - version
+      - status
+      - systemFile
+      - environments
+      - services
+      - modules
+      - dependencies
+      - issues
+      properties:
+        dependencies:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminServiceSystemDependencyDto'
+        environments:
+          type: array
+          items:
+            type: string
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminServiceSystemIssueDto'
+        modules:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminServiceSystemModuleDto'
+        name:
+          type:
+          - string
+          - 'null'
+        services:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminServiceSystemServiceDto'
+        status:
+          $ref: '#/components/schemas/AdminServiceSystemStatus'
+        systemFile:
+          type: string
+        version:
+          type: integer
+          format: int32
+          minimum: 0
+    AdminServiceSystemServiceDto:
+      type: object
+      required:
+      - name
+      - target
+      - modules
+      properties:
+        modules:
+          type: array
+          items:
+            type: string
+        name:
+          type: string
+        target:
+          type: string
+    AdminServiceSystemStatus:
+      type: string
+      enum:
+      - ready
+      - needs_attention
+      - empty
     AdminSurface:
       oneOf:
       - allOf:

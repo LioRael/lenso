@@ -2060,6 +2060,7 @@ dependencies = [
  "lenso-platform-core",
  "lenso-platform-http",
  "lenso-platform-module",
+ "lenso-service",
  "reqwest",
  "serde",
  "serde_json",
