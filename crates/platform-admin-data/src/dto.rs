@@ -177,6 +177,37 @@ pub struct AdminServiceSystemIssueDto {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceSystemDriftResponse {
+    pub version: u8,
+    pub status: AdminServiceSystemDriftStatus,
+    pub system_file: String,
+    pub graph_issues: Vec<AdminServiceSystemIssueDto>,
+    pub drifts: Vec<AdminServiceSystemDriftDto>,
+    pub commands: Vec<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AdminServiceSystemDriftStatus {
+    Ready,
+    Drifted,
+    NeedsAttention,
+    Empty,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceSystemDriftDto {
+    pub code: String,
+    pub severity: String,
+    pub resource: String,
+    pub name: String,
+    pub message: String,
+    pub command: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AdminServiceModuleLifecycleStatus {
     Ready,

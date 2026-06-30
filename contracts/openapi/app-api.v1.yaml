@@ -663,6 +663,37 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /admin/data/service-system/drift:
+    get:
+      tags:
+      - admin-data
+      operationId: admin_data_service_system_drift
+      parameters:
+      - name: authorization
+        in: header
+        description: Development service bearer token
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Service system drift against host-local state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminServiceSystemDriftResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/data/{module}/actions/{action}:
     post:
       tags:
@@ -5773,6 +5804,66 @@ components:
           type:
           - string
           - 'null'
+    AdminServiceSystemDriftDto:
+      type: object
+      required:
+      - code
+      - severity
+      - resource
+      - name
+      - message
+      properties:
+        code:
+          type: string
+        command:
+          type:
+          - string
+          - 'null'
+        message:
+          type: string
+        name:
+          type: string
+        resource:
+          type: string
+        severity:
+          type: string
+    AdminServiceSystemDriftResponse:
+      type: object
+      required:
+      - version
+      - status
+      - systemFile
+      - graphIssues
+      - drifts
+      - commands
+      properties:
+        commands:
+          type: array
+          items:
+            type: string
+        drifts:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminServiceSystemDriftDto'
+        graphIssues:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminServiceSystemIssueDto'
+        status:
+          $ref: '#/components/schemas/AdminServiceSystemDriftStatus'
+        systemFile:
+          type: string
+        version:
+          type: integer
+          format: int32
+          minimum: 0
+    AdminServiceSystemDriftStatus:
+      type: string
+      enum:
+      - ready
+      - drifted
+      - needs_attention
+      - empty
     AdminServiceSystemIssueDto:
       type: object
       required:

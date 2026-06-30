@@ -99,11 +99,21 @@ Inspect it before wiring release and deployment automation:
 ```sh
 lenso system graph --system-file lenso.system.json
 lenso system plan --system-file lenso.system.json --check
+lenso system diff --system-file lenso.system.json --check
+lenso system apply --system-file lenso.system.json --dry-run
+lenso system doctor --system-file lenso.system.json
 ```
 
 `system plan` produces setup commands only for existing lower-level surfaces,
 such as `lenso service workspace add` and `lenso service env add`. It does not
 invent install commands that the host cannot execute yet.
+
+V19 adds system drift and safe apply. `system diff` compares the graph to
+host-local `.lenso` state: module installs, service-start state, service
+environments, deployment observations, and service release records. `system
+apply` writes only safe local files: `.lenso/module-services.json` and
+`.lenso/service-environments.json`. It does not install modules, deploy to
+Kubernetes, mutate an operator resource, or apply a service release.
 
 ## Console And API
 
@@ -116,6 +126,16 @@ GET /admin/data/service-system
 The endpoint reads `lenso.system.json`, returns `empty` when the file is
 missing, `needs_attention` when it cannot be parsed or has unresolved graph
 edges, and `ready` when the graph is coherent.
+
+V19 also exposes:
+
+```text
+GET /admin/data/service-system/drift
+```
+
+The drift endpoint compares the declared system to host-local state and returns
+`ready`, `drifted`, `needs_attention`, or `empty` with next commands for the
+operator.
 
 Runtime Console uses the response on the Services page so operators can see the
 system name, service count, module count, dependency count, environment lanes,

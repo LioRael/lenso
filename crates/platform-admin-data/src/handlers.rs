@@ -26,6 +26,7 @@ use crate::dto::{
     AdminServiceModuleServiceStatusCheckDto, AdminServiceModuleServiceStatusDto,
     AdminServiceModuleServiceStatusState, AdminServiceOperationDto, AdminServiceOperationKindDto,
     AdminServiceOperationLinksDto, AdminServiceReleaseRecordDto, AdminServiceSystemDependencyDto,
+    AdminServiceSystemDriftDto, AdminServiceSystemDriftResponse, AdminServiceSystemDriftStatus,
     AdminServiceSystemIssueDto, AdminServiceSystemModuleDto, AdminServiceSystemResponse,
     AdminServiceSystemServiceDto, AdminServiceSystemStatus,
 };
@@ -240,6 +241,27 @@ pub(crate) async fn service_system(
 }
 
 #[utoipa::path(
+    get,
+    path = "/admin/data/service-system/drift",
+    operation_id = "admin_data_service_system_drift",
+    tag = "admin-data",
+    params(("authorization" = String, Header, description = "Development service bearer token")),
+    responses(
+        (status = 200, description = "Service system drift against host-local state", body = AdminServiceSystemDriftResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+    )
+)]
+pub(crate) async fn service_system_drift(
+    _admin: AdminActor,
+    HttpRequestContext(_request_ctx): HttpRequestContext,
+) -> Result<Json<AdminServiceSystemDriftResponse>, ApiErrorResponse> {
+    Ok(Json(service_system_drift_response(FsPath::new(
+        SERVICE_SYSTEM_PATH,
+    ))))
+}
+
+#[utoipa::path(
     post,
     path = "/admin/data/available-modules/{module}/install",
     operation_id = "admin_data_install_available_module",
@@ -423,6 +445,182 @@ fn service_system_error_response(
         system_file: path.to_string_lossy().into_owned(),
         version: 1,
     }
+}
+
+fn service_system_drift_response(path: &FsPath) -> AdminServiceSystemDriftResponse {
+    service_system_drift_response_from_paths(
+        path,
+        FsPath::new(MODULE_INSTALL_LEDGER_PATH),
+        FsPath::new(MODULE_SERVICES_PATH),
+        FsPath::new(SERVICE_ENVIRONMENTS_PATH),
+        FsPath::new(SERVICE_DEPLOYMENTS_PATH),
+        FsPath::new(SERVICE_RELEASE_LEDGER_PATH),
+    )
+}
+
+fn service_system_drift_response_from_paths(
+    path: &FsPath,
+    module_installs_path: &FsPath,
+    module_services_path: &FsPath,
+    service_environments_path: &FsPath,
+    service_deployments_path: &FsPath,
+    service_releases_path: &FsPath,
+) -> AdminServiceSystemDriftResponse {
+    let system = service_system_response(path);
+    if matches!(system.status, AdminServiceSystemStatus::Empty) {
+        return AdminServiceSystemDriftResponse {
+            commands: Vec::new(),
+            drifts: Vec::new(),
+            graph_issues: Vec::new(),
+            status: AdminServiceSystemDriftStatus::Empty,
+            system_file: system.system_file,
+            version: 1,
+        };
+    }
+
+    let installed_modules = local_installed_modules(module_installs_path);
+    let configured_services = local_configured_services(module_services_path);
+    let environments = local_service_environments(service_environments_path);
+    let deployments = local_service_deployments(service_deployments_path);
+    let releases = local_service_release_history(service_releases_path);
+    let mut drifts = Vec::new();
+
+    for service in &system.services {
+        if !configured_services.contains(&service.name) {
+            drifts.push(AdminServiceSystemDriftDto {
+                code: "service_not_configured".to_owned(),
+                command: Some("lenso system apply".to_owned()),
+                message: format!("Service `{}` is declared but not configured.", service.name),
+                name: service.name.clone(),
+                resource: "service".to_owned(),
+                severity: "warning".to_owned(),
+            });
+        }
+        if matches!(service.target.as_str(), "kubernetes" | "operator") {
+            let service_envs = environments.get(&service.name).cloned().unwrap_or_default();
+            let service_deployments = deployments
+                .current_by_service
+                .get(&service.name)
+                .cloned()
+                .unwrap_or_default();
+            let service_releases = releases.get(&service.name).cloned().unwrap_or_default();
+            for environment in &system.environments {
+                if !service_envs.iter().any(|state| state.name == *environment) {
+                    drifts.push(AdminServiceSystemDriftDto {
+                        code: "service_env_missing".to_owned(),
+                        command: Some("lenso system apply".to_owned()),
+                        message: format!(
+                            "Service `{}` has no `{environment}` environment state.",
+                            service.name
+                        ),
+                        name: service_environment_key(&service.name, environment),
+                        resource: "environment".to_owned(),
+                        severity: "warning".to_owned(),
+                    });
+                    continue;
+                }
+                if !service_deployments
+                    .iter()
+                    .any(|state| state.environment == *environment)
+                {
+                    drifts.push(AdminServiceSystemDriftDto {
+                        code: "deployment_state_missing".to_owned(),
+                        command: Some(format!(
+                            "lenso service deploy status {} --env {} --source {} --write-state",
+                            service.name, environment, service.target
+                        )),
+                        message: format!(
+                            "Service `{}` has `{environment}` env state but no deployment observation.",
+                            service.name
+                        ),
+                        name: service_environment_key(&service.name, environment),
+                        resource: "deployment".to_owned(),
+                        severity: "info".to_owned(),
+                    });
+                }
+                if !service_releases
+                    .iter()
+                    .any(|release| release.environment.as_deref() == Some(environment.as_str()))
+                {
+                    drifts.push(AdminServiceSystemDriftDto {
+                        code: "release_state_missing".to_owned(),
+                        command: Some(format!(
+                            "lenso service release plan {} <manifest-or-package> --env {} --output release-plan.json",
+                            service.name, environment
+                        )),
+                        message: format!(
+                            "Service `{}` has no `{environment}` release record.",
+                            service.name
+                        ),
+                        name: service_environment_key(&service.name, environment),
+                        resource: "release".to_owned(),
+                        severity: "info".to_owned(),
+                    });
+                }
+            }
+        }
+    }
+    for module in &system.modules {
+        if !installed_modules.contains(&module.name) {
+            drifts.push(AdminServiceSystemDriftDto {
+                code: "module_not_installed".to_owned(),
+                command: Some(format!("lenso module install {}", module.name)),
+                message: format!("Module `{}` is declared but not installed.", module.name),
+                name: module.name.clone(),
+                resource: "module".to_owned(),
+                severity: "warning".to_owned(),
+            });
+        }
+    }
+    let mut commands = drifts
+        .iter()
+        .filter_map(|drift| drift.command.clone())
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    commands.sort();
+    let status = if !system.issues.is_empty() {
+        AdminServiceSystemDriftStatus::NeedsAttention
+    } else if !drifts.is_empty() {
+        AdminServiceSystemDriftStatus::Drifted
+    } else {
+        AdminServiceSystemDriftStatus::Ready
+    };
+    AdminServiceSystemDriftResponse {
+        commands,
+        drifts,
+        graph_issues: system.issues,
+        status,
+        system_file: system.system_file,
+        version: 1,
+    }
+}
+
+fn local_installed_modules(path: impl AsRef<FsPath>) -> HashSet<String> {
+    let Ok(source) = fs::read_to_string(path) else {
+        return HashSet::new();
+    };
+    let Ok(ledger) = serde_json::from_str::<LocalModuleInstallLedger>(&source) else {
+        return HashSet::new();
+    };
+    ledger
+        .modules
+        .into_iter()
+        .map(|module| module.module_name)
+        .collect()
+}
+
+fn local_configured_services(path: impl AsRef<FsPath>) -> HashSet<String> {
+    local_module_services(path)
+        .into_iter()
+        .flat_map(|(module_name, services)| {
+            std::iter::once(module_name).chain(services.into_iter().map(|service| service.name))
+        })
+        .collect()
+}
+
+fn service_environment_key(service: &str, environment: &str) -> String {
+    format!("{service}/{environment}")
 }
 
 async fn service_module_lifecycle_response(
@@ -4826,6 +5024,51 @@ mod tests {
         assert_eq!(response.dependencies[0].to.as_deref(), Some("billing"));
 
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn service_system_drift_reports_missing_host_state() {
+        let root = std::env::temp_dir().join(format!("lenso-system-drift-{}", current_unix_ms()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("lenso.system.json");
+        fs::write(
+            &path,
+            serde_json::json!({
+                "protocol": "lenso.system.v1",
+                "name": "support-platform",
+                "environments": ["staging"],
+                "services": [
+                    { "name": "support", "target": "operator", "modules": ["support-ticket"] }
+                ],
+                "modules": [
+                    { "name": "support-ticket", "installTo": "service:support" }
+                ]
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let response = service_system_drift_response_from_paths(
+            &path,
+            &root.join("module-installs.json"),
+            &root.join("module-services.json"),
+            &root.join("service-environments.json"),
+            &root.join("service-deployments.json"),
+            &root.join("service-releases.json"),
+        );
+
+        assert_eq!(response.status, AdminServiceSystemDriftStatus::Drifted);
+        assert!(
+            response
+                .drifts
+                .iter()
+                .any(|drift| { drift.code == "service_not_configured" && drift.name == "support" })
+        );
+        assert!(response.drifts.iter().any(|drift| {
+            drift.code == "module_not_installed" && drift.name == "support-ticket"
+        }));
+        let _ = fs::remove_dir_all(root);
     }
 }
 
