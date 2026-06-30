@@ -208,6 +208,38 @@ pub struct AdminServiceSystemDriftDto {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceSystemReleaseTrainResponse {
+    pub version: u8,
+    pub status: AdminServiceSystemReleaseTrainStatus,
+    pub releases: Vec<AdminServiceSystemReleaseRecordDto>,
+    pub commands: Vec<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AdminServiceSystemReleaseTrainStatus {
+    Ready,
+    NeedsAttention,
+    Empty,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceSystemReleaseRecordDto {
+    pub id: String,
+    pub kind: String,
+    pub system_name: String,
+    pub environment: String,
+    pub status: String,
+    pub policy_risk: String,
+    pub applied_at_unix_ms: Option<u64>,
+    pub services: usize,
+    pub modules: usize,
+    pub rollback_available: bool,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AdminServiceModuleLifecycleStatus {
     Ready,

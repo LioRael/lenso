@@ -102,6 +102,10 @@ lenso system plan --system-file lenso.system.json --check
 lenso system diff --system-file lenso.system.json --check
 lenso system apply --system-file lenso.system.json --dry-run
 lenso system doctor --system-file lenso.system.json
+lenso system release plan --env staging --output system-release-staging.json
+lenso system release check system-release-staging.json
+lenso system release apply system-release-staging.json
+lenso system release promote --from staging --to prod --output system-release-prod.json
 ```
 
 `system plan` produces setup commands only for existing lower-level surfaces,
@@ -114,6 +118,13 @@ environments, deployment observations, and service release records. `system
 apply` writes only safe local files: `.lenso/module-services.json` and
 `.lenso/service-environments.json`. It does not install modules, deploy to
 Kubernetes, mutate an operator resource, or apply a service release.
+
+V20 adds system release trains. `lenso.system-release.v1` records one
+environment-scoped system change set: graph snapshot, affected services,
+affected modules, drift precheck, policy result, rollback availability, and
+next commands. Applying a system release writes only
+`.lenso/system-releases.json`; service release plans, module installs, and
+Kubernetes/operator deploys stay explicit commands.
 
 ## Console And API
 
@@ -136,6 +147,15 @@ GET /admin/data/service-system/drift
 The drift endpoint compares the declared system to host-local state and returns
 `ready`, `drifted`, `needs_attention`, or `empty` with next commands for the
 operator.
+
+V20 also exposes:
+
+```text
+GET /admin/data/service-system/release-train
+```
+
+The release-train endpoint reads `.lenso/system-releases.json` and returns the
+latest applied system releases plus the next promotion/history commands.
 
 Runtime Console uses the response on the Services page so operators can see the
 system name, service count, module count, dependency count, environment lanes,

@@ -694,6 +694,37 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /admin/data/service-system/release-train:
+    get:
+      tags:
+      - admin-data
+      operationId: admin_data_service_system_release_train
+      parameters:
+      - name: authorization
+        in: header
+        description: Development service bearer token
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Applied system release train history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminServiceSystemReleaseTrainResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/data/{module}/actions/{action}:
     post:
       tags:
@@ -5894,6 +5925,73 @@ components:
           type: string
         owner:
           type: string
+    AdminServiceSystemReleaseRecordDto:
+      type: object
+      required:
+      - id
+      - kind
+      - systemName
+      - environment
+      - status
+      - policyRisk
+      - services
+      - modules
+      - rollbackAvailable
+      properties:
+        appliedAtUnixMs:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        environment:
+          type: string
+        id:
+          type: string
+        kind:
+          type: string
+        modules:
+          type: integer
+          minimum: 0
+        policyRisk:
+          type: string
+        rollbackAvailable:
+          type: boolean
+        services:
+          type: integer
+          minimum: 0
+        status:
+          type: string
+        systemName:
+          type: string
+    AdminServiceSystemReleaseTrainResponse:
+      type: object
+      required:
+      - version
+      - status
+      - releases
+      - commands
+      properties:
+        commands:
+          type: array
+          items:
+            type: string
+        releases:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminServiceSystemReleaseRecordDto'
+        status:
+          $ref: '#/components/schemas/AdminServiceSystemReleaseTrainStatus'
+        version:
+          type: integer
+          format: int32
+          minimum: 0
+    AdminServiceSystemReleaseTrainStatus:
+      type: string
+      enum:
+      - ready
+      - needs_attention
+      - empty
     AdminServiceSystemResponse:
       type: object
       required:
