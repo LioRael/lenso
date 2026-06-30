@@ -72,5 +72,5 @@ Runtime Story evidence without adding a service mesh, gateway, or orchestrator.
 
 Use [`service-module-operator-runbook.md`](service-module-operator-runbook.md)
 when the extracted service reports `restart_pending`,
-`configured_not_loaded`, `manifest_unreachable`, `service_not_ready`, or
-`stale_state`.
+`configured_not_loaded`, `manifest_unreachable`, `service_not_ready`,
+`missing_config`, or `stale_state`.

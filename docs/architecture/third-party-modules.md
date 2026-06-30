@@ -161,6 +161,26 @@ When a release points at a local service package artifact, pass `--base-url`
 to `module install` or `module catalog add` so the host records the runtime
 service endpoint rather than the artifact path.
 
+`lenso.service-release-plan.v1` is the operator upgrade channel for an
+already-installed provider. It compares the installed service manifest snapshot
+with a candidate manifest or service package, evaluates built-in policy, and
+can later apply the same candidate:
+
+```sh
+lenso service release plan billing-service ./dist/lenso-service/billing-service/lenso.service-package.json \
+  --output .lenso/billing-service.release-plan.json
+lenso service policy check .lenso/billing-service.release-plan.json --fail-on breaking
+lenso service release apply .lenso/billing-service.release-plan.json
+```
+
+The policy gate treats removed modules, capabilities, routes, runtime
+functions, event handlers, and admin actions as `breaking`; new required env or
+runtime config as `needs_attention`; and host protocol incompatibility as
+`blocked`. Apply records `.lenso/service-releases.json`; Console Services uses
+that ledger to show latest release risk and recent release history. This is
+separate from `lenso module install`: modules remain installable business
+capabilities, while service releases are provider operations.
+
 ## Manifest Contract
 
 The service manifest is the source of truth for install-time inspection. A
