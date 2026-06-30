@@ -3524,6 +3524,55 @@ components:
             $ref: '#/components/schemas/AdminRuntimeFunctionRunItem'
         page:
           $ref: '#/components/schemas/PageInfo'
+    AdminKubernetesDeploymentObservationDto:
+      type: object
+      properties:
+        availableReplicas:
+          type:
+          - integer
+          - 'null'
+          format: int32
+          minimum: 0
+        deployment:
+          type:
+          - string
+          - 'null'
+        desiredReplicas:
+          type:
+          - integer
+          - 'null'
+          format: int32
+          minimum: 0
+        image:
+          type:
+          - string
+          - 'null'
+        ingressHost:
+          type:
+          - string
+          - 'null'
+        manifestReference:
+          type:
+          - string
+          - 'null'
+        namespace:
+          type:
+          - string
+          - 'null'
+        readyReplicas:
+          type:
+          - integer
+          - 'null'
+          format: int32
+          minimum: 0
+        releaseId:
+          type:
+          - string
+          - 'null'
+        serviceEndpoint:
+          type:
+          - string
+          - 'null'
     AdminMetricBinding:
       type: object
       required:
@@ -5081,6 +5130,160 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AdminModuleSchema'
+    AdminServiceDeploymentCheckDto:
+      type: object
+      required:
+      - name
+      - status
+      properties:
+        detail:
+          type:
+          - string
+          - 'null'
+        name:
+          type: string
+        status:
+          type: string
+    AdminServiceDeploymentHostObservationDto:
+      type: object
+      properties:
+        candidateVersion:
+          type:
+          - string
+          - 'null'
+        releaseId:
+          type:
+          - string
+          - 'null'
+    AdminServiceDeploymentObservationDto:
+      type: object
+      required:
+      - serviceName
+      - environment
+      - target
+      - state
+      - drift
+      - checks
+      properties:
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminServiceDeploymentCheckDto'
+        cluster:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/AdminKubernetesDeploymentObservationDto'
+        drift:
+          type: string
+        environment:
+          type: string
+        host:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/AdminServiceDeploymentHostObservationDto'
+        nextAction:
+          type:
+          - string
+          - 'null'
+        observedAtUnixMs:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        operator:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/AdminServiceDeploymentOperatorObservationDto'
+        serviceName:
+          type: string
+        state:
+          type: string
+        target:
+          type: string
+    AdminServiceDeploymentOperatorConditionDto:
+      type: object
+      properties:
+        lastTransitionTime:
+          type:
+          - string
+          - 'null'
+        message:
+          type:
+          - string
+          - 'null'
+        reason:
+          type:
+          - string
+          - 'null'
+        status:
+          type:
+          - string
+          - 'null'
+        type:
+          type:
+          - string
+          - 'null'
+    AdminServiceDeploymentOperatorObservationDto:
+      type: object
+      required:
+      - conditions
+      properties:
+        conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminServiceDeploymentOperatorConditionDto'
+        namespace:
+          type:
+          - string
+          - 'null'
+        observedGeneration:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        resource:
+          type:
+          - string
+          - 'null'
+    AdminServiceEnvironmentDto:
+      type: object
+      required:
+      - name
+      - serviceName
+      - target
+      properties:
+        image:
+          type:
+          - string
+          - 'null'
+        kubeContext:
+          type:
+          - string
+          - 'null'
+        manifestReference:
+          type:
+          - string
+          - 'null'
+        name:
+          type: string
+        namespace:
+          type:
+          - string
+          - 'null'
+        publicBaseUrl:
+          type:
+          - string
+          - 'null'
+        releaseTrack:
+          type:
+          - string
+          - 'null'
+        serviceName:
+          type: string
+        target:
+          type: string
     AdminServiceModuleCompatibilityDto:
       type: object
       required:
@@ -5185,6 +5388,9 @@ components:
       - healthHistory
       - compatibility
       - config
+      - environments
+      - deployments
+      - deploymentHistory
       - services
       - operations
       - releaseHistory
@@ -5204,6 +5410,26 @@ components:
           oneOf:
           - type: 'null'
           - $ref: '#/components/schemas/AdminServiceModuleDeploymentDto'
+        deploymentDrift:
+          type:
+          - string
+          - 'null'
+        deploymentHistory:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminServiceDeploymentObservationDto'
+        deploymentNextAction:
+          type:
+          - string
+          - 'null'
+        deployments:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminServiceDeploymentObservationDto'
+        environments:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminServiceEnvironmentDto'
         fixes:
           type: array
           items:
@@ -5466,6 +5692,10 @@ components:
           type:
           - string
           - 'null'
+        environment:
+          type:
+          - string
+          - 'null'
         id:
           type:
           - string
@@ -5478,6 +5708,10 @@ components:
           - 'null'
         serviceName:
           type: string
+        target:
+          type:
+          - string
+          - 'null'
     AdminServiceRestartResponse:
       type: object
       required:
