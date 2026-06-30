@@ -240,6 +240,37 @@ pub struct AdminServiceSystemReleaseRecordDto {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceSystemRunbooksResponse {
+    pub version: u8,
+    pub status: AdminServiceSystemRunbooksStatus,
+    pub runbooks: Vec<AdminServiceSystemRunbookDto>,
+    pub commands: Vec<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AdminServiceSystemRunbooksStatus {
+    Ready,
+    NeedsAttention,
+    Empty,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceSystemRunbookDto {
+    pub id: String,
+    pub release_id: String,
+    pub system_name: String,
+    pub environment: String,
+    pub status: String,
+    pub active: bool,
+    pub recorded_at_unix_ms: Option<u64>,
+    pub steps: usize,
+    pub current_step: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AdminServiceModuleLifecycleStatus {
     Ready,

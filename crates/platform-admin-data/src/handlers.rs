@@ -29,7 +29,8 @@ use crate::dto::{
     AdminServiceSystemDriftDto, AdminServiceSystemDriftResponse, AdminServiceSystemDriftStatus,
     AdminServiceSystemIssueDto, AdminServiceSystemModuleDto, AdminServiceSystemReleaseRecordDto,
     AdminServiceSystemReleaseTrainResponse, AdminServiceSystemReleaseTrainStatus,
-    AdminServiceSystemResponse, AdminServiceSystemServiceDto, AdminServiceSystemStatus,
+    AdminServiceSystemResponse, AdminServiceSystemRunbookDto, AdminServiceSystemRunbooksResponse,
+    AdminServiceSystemRunbooksStatus, AdminServiceSystemServiceDto, AdminServiceSystemStatus,
 };
 use crate::{
     AdminModule, AdminModuleMetadata, AdminModuleMetadataRefreshModuleResult,
@@ -77,6 +78,7 @@ const SERVICE_DEPLOYMENTS_PATH: &str = ".lenso/service-deployments.json";
 const SERVICE_MODULE_HEALTH_PATH: &str = ".lenso/service-health.json";
 const SERVICE_SYSTEM_PATH: &str = "lenso.system.json";
 const SYSTEM_RELEASES_PATH: &str = ".lenso/system-releases.json";
+const SYSTEM_RUNBOOKS_PATH: &str = ".lenso/system-runbooks.json";
 const OFFICIAL_MODULE_CATALOG_REGISTRY_FILE: &str = "builtin:lenso-official-module-catalog";
 const OFFICIAL_MODULE_CATALOG_SOURCE: &str =
     include_str!("../catalogs/lenso-official-module-catalog.json");
@@ -281,6 +283,27 @@ pub(crate) async fn service_system_release_train(
 ) -> Result<Json<AdminServiceSystemReleaseTrainResponse>, ApiErrorResponse> {
     Ok(Json(service_system_release_train_response(FsPath::new(
         SYSTEM_RELEASES_PATH,
+    ))))
+}
+
+#[utoipa::path(
+    get,
+    path = "/admin/data/service-system/runbooks",
+    operation_id = "admin_data_service_system_runbooks",
+    tag = "admin-data",
+    params(("authorization" = String, Header, description = "Development service bearer token")),
+    responses(
+        (status = 200, description = "System runbook history", body = AdminServiceSystemRunbooksResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+    )
+)]
+pub(crate) async fn service_system_runbooks(
+    _admin: AdminActor,
+    HttpRequestContext(_request_ctx): HttpRequestContext,
+) -> Result<Json<AdminServiceSystemRunbooksResponse>, ApiErrorResponse> {
+    Ok(Json(service_system_runbooks_response(FsPath::new(
+        SYSTEM_RUNBOOKS_PATH,
     ))))
 }
 
@@ -735,6 +758,96 @@ fn system_release_record_from_value(value: &Value) -> Option<AdminServiceSystemR
             .and_then(Value::as_str)
             .unwrap_or("system")
             .to_owned(),
+    })
+}
+
+fn service_system_runbooks_response(path: &FsPath) -> AdminServiceSystemRunbooksResponse {
+    let Ok(source) = fs::read_to_string(path) else {
+        return AdminServiceSystemRunbooksResponse {
+            commands: vec![
+                "lenso system runbook generate system-release.json --output system-runbook.json"
+                    .to_owned(),
+            ],
+            runbooks: Vec::new(),
+            status: AdminServiceSystemRunbooksStatus::Empty,
+            version: 1,
+        };
+    };
+    let Ok(file) = serde_json::from_str::<Value>(&source) else {
+        return AdminServiceSystemRunbooksResponse {
+            commands: vec!["fix .lenso/system-runbooks.json".to_owned()],
+            runbooks: Vec::new(),
+            status: AdminServiceSystemRunbooksStatus::NeedsAttention,
+            version: 1,
+        };
+    };
+    let mut runbooks = file
+        .get("runbooks")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(system_runbook_record_from_value)
+        .collect::<Vec<_>>();
+    runbooks.sort_by(|left, right| {
+        right
+            .recorded_at_unix_ms
+            .unwrap_or(0)
+            .cmp(&left.recorded_at_unix_ms.unwrap_or(0))
+    });
+    runbooks.truncate(10);
+    let status = if runbooks.is_empty() {
+        AdminServiceSystemRunbooksStatus::Empty
+    } else if runbooks
+        .iter()
+        .any(|runbook| matches!(runbook.status.as_str(), "blocked" | "failed"))
+    {
+        AdminServiceSystemRunbooksStatus::NeedsAttention
+    } else {
+        AdminServiceSystemRunbooksStatus::Ready
+    };
+    AdminServiceSystemRunbooksResponse {
+        commands: vec![
+            "lenso system runbook history".to_owned(),
+            "lenso system runbook doctor".to_owned(),
+        ],
+        runbooks,
+        status,
+        version: 1,
+    }
+}
+
+fn system_runbook_record_from_value(value: &Value) -> Option<AdminServiceSystemRunbookDto> {
+    let steps = value
+        .get("steps")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let current_step = steps
+        .iter()
+        .find(|step| {
+            step.get("status")
+                .and_then(Value::as_str)
+                .is_none_or(|status| status != "done")
+        })
+        .and_then(|step| step.get("title").and_then(Value::as_str))
+        .map(str::to_owned);
+    Some(AdminServiceSystemRunbookDto {
+        active: value
+            .get("active")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        current_step,
+        environment: value.get("environment")?.as_str()?.to_owned(),
+        id: value.get("id")?.as_str()?.to_owned(),
+        recorded_at_unix_ms: value.get("recordedAtUnixMs").and_then(Value::as_u64),
+        release_id: value.get("releaseId")?.as_str()?.to_owned(),
+        status: value
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown")
+            .to_owned(),
+        steps: steps.len(),
+        system_name: value.get("systemName")?.as_str()?.to_owned(),
     })
 }
 
@@ -5218,6 +5331,44 @@ mod tests {
         assert_eq!(response.status, AdminServiceSystemReleaseTrainStatus::Ready);
         assert_eq!(response.releases[0].id, "sysrel_staging_1");
         assert_eq!(response.releases[0].services, 1);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn service_system_runbooks_reads_active_runbook() {
+        let root = std::env::temp_dir().join(format!("lenso-system-runbook-{}", current_unix_ms()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("system-runbooks.json");
+        fs::write(
+            &path,
+            serde_json::json!({
+                "runbooks": [{
+                    "active": true,
+                    "environment": "staging",
+                    "id": "sysrun_staging_1",
+                    "releaseId": "sysrel_staging_1",
+                    "status": "ready",
+                    "steps": [
+                        { "id": "check-release", "kind": "evidence", "status": "pending", "title": "Check system release" }
+                    ],
+                    "systemName": "support-platform"
+                }],
+                "version": 1
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let response = service_system_runbooks_response(&path);
+
+        assert_eq!(response.status, AdminServiceSystemRunbooksStatus::Ready);
+        assert_eq!(response.runbooks[0].id, "sysrun_staging_1");
+        assert_eq!(response.runbooks[0].steps, 1);
+        assert_eq!(
+            response.runbooks[0].current_step.as_deref(),
+            Some("Check system release")
+        );
         let _ = fs::remove_dir_all(root);
     }
 }

@@ -725,6 +725,37 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /admin/data/service-system/runbooks:
+    get:
+      tags:
+      - admin-data
+      operationId: admin_data_service_system_runbooks
+      parameters:
+      - name: authorization
+        in: header
+        description: Development service bearer token
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: System runbook history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminServiceSystemRunbooksResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/data/{module}/actions/{action}:
     post:
       tags:
@@ -6036,6 +6067,70 @@ components:
           type: integer
           format: int32
           minimum: 0
+    AdminServiceSystemRunbookDto:
+      type: object
+      required:
+      - id
+      - releaseId
+      - systemName
+      - environment
+      - status
+      - active
+      - steps
+      properties:
+        active:
+          type: boolean
+        currentStep:
+          type:
+          - string
+          - 'null'
+        environment:
+          type: string
+        id:
+          type: string
+        recordedAtUnixMs:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        releaseId:
+          type: string
+        status:
+          type: string
+        steps:
+          type: integer
+          minimum: 0
+        systemName:
+          type: string
+    AdminServiceSystemRunbooksResponse:
+      type: object
+      required:
+      - version
+      - status
+      - runbooks
+      - commands
+      properties:
+        commands:
+          type: array
+          items:
+            type: string
+        runbooks:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminServiceSystemRunbookDto'
+        status:
+          $ref: '#/components/schemas/AdminServiceSystemRunbooksStatus'
+        version:
+          type: integer
+          format: int32
+          minimum: 0
+    AdminServiceSystemRunbooksStatus:
+      type: string
+      enum:
+      - ready
+      - needs_attention
+      - empty
     AdminServiceSystemServiceDto:
       type: object
       required:

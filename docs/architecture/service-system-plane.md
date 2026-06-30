@@ -106,6 +106,8 @@ lenso system release plan --env staging --output system-release-staging.json
 lenso system release check system-release-staging.json
 lenso system release apply system-release-staging.json
 lenso system release promote --from staging --to prod --output system-release-prod.json
+lenso system runbook generate system-release-staging.json --output system-runbook-staging.json
+lenso system runbook record system-runbook-staging.json
 ```
 
 `system plan` produces setup commands only for existing lower-level surfaces,
@@ -125,6 +127,13 @@ affected modules, drift precheck, policy result, rollback availability, and
 next commands. Applying a system release writes only
 `.lenso/system-releases.json`; service release plans, module installs, and
 Kubernetes/operator deploys stay explicit commands.
+
+V21 adds system runbooks. `lenso.system-runbook.v1` is generated from a system
+release plan and turns the release into ordered operator steps: release policy
+check, service release preparation, deployment evidence, and final release
+recording. Recording a runbook writes only `.lenso/system-runbooks.json`.
+Runbook JSON is a generated control-plane artifact, not a module authoring
+surface.
 
 ## Console And API
 
@@ -156,6 +165,15 @@ GET /admin/data/service-system/release-train
 
 The release-train endpoint reads `.lenso/system-releases.json` and returns the
 latest applied system releases plus the next promotion/history commands.
+
+V21 also exposes:
+
+```text
+GET /admin/data/service-system/runbooks
+```
+
+The runbooks endpoint reads `.lenso/system-runbooks.json` and returns active or
+recent runbooks, the current step, and the next operator commands.
 
 Runtime Console uses the response on the Services page so operators can see the
 system name, service count, module count, dependency count, environment lanes,
