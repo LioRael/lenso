@@ -333,6 +333,38 @@ pub struct AdminLaunchpadIssueDto {
     pub command: Option<String>,
 }
 
+/// Response for `GET /admin/data/launchpad/doctor`: latest local developer doctor snapshot.
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminLaunchpadDoctorResponse {
+    pub version: u8,
+    pub status: AdminLaunchpadDoctorStatus,
+    pub doctor_file: String,
+    pub checked_at_unix_ms: Option<u64>,
+    pub live: bool,
+    pub checks: Vec<AdminLaunchpadDoctorCheckDto>,
+    pub next_command: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AdminLaunchpadDoctorStatus {
+    Ready,
+    NeedsAttention,
+    Failed,
+    Empty,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminLaunchpadDoctorCheckDto {
+    pub id: String,
+    pub label: String,
+    pub status: String,
+    pub message: String,
+    pub command: Option<String>,
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AdminServiceModuleLifecycleStatus {

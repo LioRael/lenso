@@ -465,6 +465,37 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /admin/data/launchpad/doctor:
+    get:
+      tags:
+      - admin-data
+      operationId: admin_data_launchpad_doctor
+      parameters:
+      - name: authorization
+        in: header
+        description: Development service bearer token
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Launchpad developer doctor state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminLaunchpadDoctorResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/data/module-registry/snapshot:
     get:
       tags:
@@ -3745,6 +3776,67 @@ components:
           - 'null'
         status:
           type: string
+    AdminLaunchpadDoctorCheckDto:
+      type: object
+      required:
+      - id
+      - label
+      - status
+      - message
+      properties:
+        command:
+          type:
+          - string
+          - 'null'
+        id:
+          type: string
+        label:
+          type: string
+        message:
+          type: string
+        status:
+          type: string
+    AdminLaunchpadDoctorResponse:
+      type: object
+      description: 'Response for `GET /admin/data/launchpad/doctor`: latest local developer doctor snapshot.'
+      required:
+      - version
+      - status
+      - doctorFile
+      - live
+      - checks
+      properties:
+        checkedAtUnixMs:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminLaunchpadDoctorCheckDto'
+        doctorFile:
+          type: string
+        live:
+          type: boolean
+        nextCommand:
+          type:
+          - string
+          - 'null'
+        status:
+          $ref: '#/components/schemas/AdminLaunchpadDoctorStatus'
+        version:
+          type: integer
+          format: int32
+          minimum: 0
+    AdminLaunchpadDoctorStatus:
+      type: string
+      enum:
+      - ready
+      - needs_attention
+      - failed
+      - empty
     AdminLaunchpadIssueDto:
       type: object
       required:

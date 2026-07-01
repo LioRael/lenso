@@ -2,7 +2,8 @@ use crate::dto::{
     AdminActionInvocationDto, AdminActionInvokeRequest, AdminActionInvokeResponse,
     AdminCapabilityIssueDto, AdminCapabilitySummaryDto, AdminDataDetailResponse,
     AdminDataListResponse, AdminDataPageInfo, AdminKubernetesDeploymentObservationDto,
-    AdminLaunchpadChecklistItemDto, AdminLaunchpadIssueDto, AdminLaunchpadModuleDto,
+    AdminLaunchpadChecklistItemDto, AdminLaunchpadDoctorCheckDto, AdminLaunchpadDoctorResponse,
+    AdminLaunchpadDoctorStatus, AdminLaunchpadIssueDto, AdminLaunchpadModuleDto,
     AdminLaunchpadResponse, AdminLaunchpadServiceDto, AdminLaunchpadStatus,
     AdminModuleActivationState, AdminModuleCompatibilityDto,
     AdminModuleConsolePackagePlanPackageDto, AdminModuleConsolePackagePlanStateDto,
@@ -80,6 +81,7 @@ const SERVICE_DEPLOYMENTS_PATH: &str = ".lenso/service-deployments.json";
 const SERVICE_MODULE_HEALTH_PATH: &str = ".lenso/service-health.json";
 const SERVICE_SYSTEM_PATH: &str = "lenso.system.json";
 const LAUNCHPAD_PATH: &str = ".lenso/launchpad.json";
+const DEV_DOCTOR_PATH: &str = ".lenso/dev-doctor.json";
 const SYSTEM_RELEASES_PATH: &str = ".lenso/system-releases.json";
 const SYSTEM_RUNBOOKS_PATH: &str = ".lenso/system-runbooks.json";
 const OFFICIAL_MODULE_CATALOG_REGISTRY_FILE: &str = "builtin:lenso-official-module-catalog";
@@ -327,6 +329,27 @@ pub(crate) async fn launchpad(
     HttpRequestContext(_request_ctx): HttpRequestContext,
 ) -> Result<Json<AdminLaunchpadResponse>, ApiErrorResponse> {
     Ok(Json(launchpad_response(FsPath::new(LAUNCHPAD_PATH))))
+}
+
+#[utoipa::path(
+    get,
+    path = "/admin/data/launchpad/doctor",
+    operation_id = "admin_data_launchpad_doctor",
+    tag = "admin-data",
+    params(("authorization" = String, Header, description = "Development service bearer token")),
+    responses(
+        (status = 200, description = "Launchpad developer doctor state", body = AdminLaunchpadDoctorResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+    )
+)]
+pub(crate) async fn launchpad_doctor(
+    _admin: AdminActor,
+    HttpRequestContext(_request_ctx): HttpRequestContext,
+) -> Result<Json<AdminLaunchpadDoctorResponse>, ApiErrorResponse> {
+    Ok(Json(launchpad_doctor_response(FsPath::new(
+        DEV_DOCTOR_PATH,
+    ))))
 }
 
 #[utoipa::path(
@@ -1045,6 +1068,94 @@ fn launchpad_commands_from_value(value: Option<&Value>) -> Vec<String> {
                 .map(str::to_owned)
         })
         .collect()
+}
+
+fn launchpad_doctor_response(path: &FsPath) -> AdminLaunchpadDoctorResponse {
+    let doctor_file = path.to_string_lossy().to_string();
+    let Ok(source) = fs::read_to_string(path) else {
+        return AdminLaunchpadDoctorResponse {
+            checked_at_unix_ms: None,
+            checks: Vec::new(),
+            doctor_file,
+            live: false,
+            next_command: Some("lenso dev doctor --write-state".to_owned()),
+            status: AdminLaunchpadDoctorStatus::Empty,
+            version: 1,
+        };
+    };
+    let Ok(file) = serde_json::from_str::<Value>(&source) else {
+        return AdminLaunchpadDoctorResponse {
+            checked_at_unix_ms: None,
+            checks: vec![AdminLaunchpadDoctorCheckDto {
+                command: Some("fix .lenso/dev-doctor.json".to_owned()),
+                id: "dev-doctor-parse".to_owned(),
+                label: "Dev doctor state".to_owned(),
+                message: "Dev doctor state could not be parsed.".to_owned(),
+                status: "failed".to_owned(),
+            }],
+            doctor_file,
+            live: false,
+            next_command: Some("fix .lenso/dev-doctor.json".to_owned()),
+            status: AdminLaunchpadDoctorStatus::Failed,
+            version: 1,
+        };
+    };
+    let checks = file
+        .get("checks")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(launchpad_doctor_check_from_value)
+        .collect::<Vec<_>>();
+    let status = match file.get("status").and_then(Value::as_str) {
+        Some("ready") => AdminLaunchpadDoctorStatus::Ready,
+        Some("needs_attention") => AdminLaunchpadDoctorStatus::NeedsAttention,
+        Some("failed") => AdminLaunchpadDoctorStatus::Failed,
+        _ if checks.is_empty() => AdminLaunchpadDoctorStatus::Empty,
+        _ if checks
+            .iter()
+            .any(|check| check.status == "failed" || check.status == "needs_attention") =>
+        {
+            AdminLaunchpadDoctorStatus::NeedsAttention
+        }
+        _ => AdminLaunchpadDoctorStatus::Ready,
+    };
+    let next_command = file
+        .get("nextCommand")
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+        .or_else(|| checks.iter().find_map(|check| check.command.clone()));
+
+    AdminLaunchpadDoctorResponse {
+        checked_at_unix_ms: file.get("checkedAtUnixMs").and_then(Value::as_u64),
+        checks,
+        doctor_file,
+        live: file.get("live").and_then(Value::as_bool).unwrap_or(false),
+        next_command,
+        status,
+        version: 1,
+    }
+}
+
+fn launchpad_doctor_check_from_value(value: &Value) -> Option<AdminLaunchpadDoctorCheckDto> {
+    Some(AdminLaunchpadDoctorCheckDto {
+        command: value
+            .get("command")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        id: value.get("id")?.as_str()?.to_owned(),
+        label: value.get("label")?.as_str()?.to_owned(),
+        message: value
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned(),
+        status: value
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown")
+            .to_owned(),
+    })
 }
 
 async fn service_module_lifecycle_response(
@@ -5632,6 +5743,42 @@ mod tests {
         assert_eq!(response.services.len(), 1);
         assert_eq!(response.modules.len(), 1);
         assert_eq!(response.next_command.as_deref(), Some("lenso dev up"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn launchpad_doctor_response_reads_state() {
+        let root =
+            std::env::temp_dir().join(format!("lenso-launchpad-doctor-{}", current_unix_ms()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join(".lenso")).unwrap();
+        let path = root.join(".lenso/dev-doctor.json");
+        fs::write(
+            &path,
+            serde_json::json!({
+                "protocol": "lenso.dev-doctor.v1",
+                "status": "ready",
+                "checkedAtUnixMs": 1782903144460_u64,
+                "live": false,
+                "checks": [{
+                    "id": "env",
+                    "label": ".env file",
+                    "status": "passed",
+                    "message": ".env exists",
+                    "command": null
+                }]
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let response = launchpad_doctor_response(&path);
+
+        assert_eq!(response.status, AdminLaunchpadDoctorStatus::Ready);
+        assert_eq!(response.checked_at_unix_ms, Some(1782903144460));
+        assert!(!response.live);
+        assert_eq!(response.checks.len(), 1);
+        assert_eq!(response.next_command, None);
         let _ = fs::remove_dir_all(root);
     }
 }
