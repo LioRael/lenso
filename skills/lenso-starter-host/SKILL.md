@@ -31,8 +31,9 @@ For a generated app with a reusable capability pack:
 
 ```sh
 lenso capability init support-sla --dir ./capabilities/support-sla --lang ts --for-blueprint support-desk
-lenso capability check ./capabilities/support-sla
-lenso app compose ./acme-support --blueprint support-desk --pack ./capabilities/support-sla --apply
+lenso capability library add ./capabilities/support-sla
+lenso capability fit support-sla --repo-root .
+lenso app compose ./acme-support --blueprint support-desk --pack support-sla --apply
 ```
 
 Use separate processes only when debugging service boundaries:
@@ -74,7 +75,7 @@ When creating or fixing a starter host, leave:
 - the scaffolded project path
 - the command used to start it
 - the `lenso app next` or `lenso app explain` result when the host is a composed app
-- the `lenso capability check <pack-dir>` result when the host was composed with a capability pack
+- the `lenso capability fit <pack>` result when the host was composed with a capability pack
 - the URL for `/console` when the API is running
 - one focused check result
 
