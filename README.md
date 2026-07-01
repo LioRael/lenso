@@ -2,11 +2,12 @@
 
 [![CI](https://github.com/LioRael/lenso/actions/workflows/ci.yml/badge.svg)](https://github.com/LioRael/lenso/actions/workflows/ci.yml)
 
-Agent-ready modular app framework for Rust business systems.
+The Rust app framework for business systems that outgrow plain Axum.
 
-Start with one deployable backend. Add business modules. Get APIs, admin
-surfaces, runtime workflows, and operational visibility through the Runtime
-Console.
+Use Axum when you need HTTP routing. Star Lenso when you need the
+business-system rails around it: a runnable host, modules, migrations, admin
+APIs, Runtime Console, generated contracts, smoke checks, and a path to split
+services later.
 
 Lenso is built for modular SaaS apps, internal platforms, vertical business
 systems, independently running services, and agent-assisted module development. It gives
@@ -16,6 +17,26 @@ that a module is connected.
 
 The platform is service-ready by design: build modular first, then move selected
 modules across process or service boundaries when those boundaries harden.
+
+## Why not Axum + yourself?
+
+Axum is the HTTP layer. Lenso keeps Axum, then adds the boring
+business-system rails around it:
+
+- host starter with API, worker, migrations, Postgres, and bundled Console;
+- module manifests for routes, data, actions, lifecycle, and admin surfaces;
+- Runtime Console evidence for module state, runtime stories, and install status;
+- generated contracts, manifest lints, smoke checks, and release gates;
+- service-backed modules when a boundary is ready to leave the host.
+
+The public proof point is intentionally concrete:
+
+```text
+Build a support ticket module for a Lenso app.
+```
+
+That path should end with generated code, passing checks, and visible evidence
+in `/console`, not just a scaffold that compiles.
 
 ## Repository Set
 
