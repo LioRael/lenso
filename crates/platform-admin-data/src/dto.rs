@@ -476,6 +476,7 @@ pub struct AdminLaunchpadCompositionDto {
     pub applied_packs: Vec<String>,
     pub pending_packs: Vec<String>,
     pub capability_packs: Vec<AdminLaunchpadCapabilityPackDto>,
+    pub pack_fit: Vec<AdminLaunchpadPackFitDto>,
     pub service_actions: Vec<AdminLaunchpadCompositionActionDto>,
     pub agent_actions: Vec<AdminLaunchpadCompositionActionDto>,
 }
@@ -489,6 +490,16 @@ pub struct AdminLaunchpadCapabilityPackDto {
     pub modules: Vec<String>,
     pub services: Vec<String>,
     pub next_command: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminLaunchpadPackFitDto {
+    pub name: String,
+    pub path: String,
+    pub status: String,
+    pub issues: Vec<String>,
+    pub command: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

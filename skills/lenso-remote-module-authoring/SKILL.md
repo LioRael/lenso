@@ -33,8 +33,9 @@ pack around it before composing the host:
 
 ```sh
 lenso capability init support-sla --dir ./capabilities/support-sla --lang ts --for-blueprint support-desk
-lenso capability check ./capabilities/support-sla
-lenso app compose ./acme-support --blueprint support-desk --pack ./capabilities/support-sla --apply
+lenso capability library add ./capabilities/support-sla
+lenso capability fit support-sla --repo-root .
+lenso app compose ./acme-support --blueprint support-desk --pack support-sla --apply
 ```
 
 ## Host Boundaries
@@ -55,7 +56,7 @@ For a service, leave:
 - install instructions using `lenso service install <manifest-url>`
 - lifecycle instructions using `lenso service list`, `lenso service status <provider> <service>`, and `lenso service doctor <module> --json`
 - composed-app instructions using `lenso app next`, `lenso app explain`, and `lenso agent task --from-app-plan "add the requested business behavior"` when the service is part of an App Composer flow
-- capability-pack instructions using `lenso capability check <pack-dir>` and `lenso agent task --for-capability <pack> "add the requested business behavior"` when the service ships as part of a pack
+- capability-pack instructions using `lenso capability library add <pack-dir>`, `lenso capability fit <pack> --repo-root .`, and `lenso agent task --for-capability <pack> "add the requested business behavior"` when the service ships as part of a pack
 - a manifest `install.services` declaration when the service has a local process command
 - one package or focused check that proves the service can run outside the host
 - Console expectations: Modules should show the provided module installed / configured / ready, with Remote Calls and Runtime Story staying host-owned
