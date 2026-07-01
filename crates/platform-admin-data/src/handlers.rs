@@ -7,12 +7,13 @@ use crate::dto::{
     AdminLaunchpadChecklistItemDto, AdminLaunchpadCompositionActionDto,
     AdminLaunchpadCompositionDto, AdminLaunchpadDoctorCheckDto, AdminLaunchpadDoctorResponse,
     AdminLaunchpadDoctorStatus, AdminLaunchpadIssueDto, AdminLaunchpadModuleDto,
-    AdminLaunchpadProofCheckDto, AdminLaunchpadProofDriftDto, AdminLaunchpadProofResponse,
-    AdminLaunchpadProofStatus, AdminLaunchpadResponse, AdminLaunchpadServiceDto,
-    AdminLaunchpadStatus, AdminModuleActivationState, AdminModuleCompatibilityDto,
-    AdminModuleConsolePackagePlanPackageDto, AdminModuleConsolePackagePlanStateDto,
-    AdminModuleGovernanceDto, AdminModuleHostCompatibilityDto, AdminModuleInstallResponse,
-    AdminModuleInstallStateDto, AdminModuleLinkedSourceInstallStateDto, AdminModuleMetadataDto,
+    AdminLaunchpadPackFitDto, AdminLaunchpadProofCheckDto, AdminLaunchpadProofDriftDto,
+    AdminLaunchpadProofResponse, AdminLaunchpadProofStatus, AdminLaunchpadResponse,
+    AdminLaunchpadServiceDto, AdminLaunchpadStatus, AdminModuleActivationState,
+    AdminModuleCompatibilityDto, AdminModuleConsolePackagePlanPackageDto,
+    AdminModuleConsolePackagePlanStateDto, AdminModuleGovernanceDto,
+    AdminModuleHostCompatibilityDto, AdminModuleInstallResponse, AdminModuleInstallStateDto,
+    AdminModuleLinkedSourceInstallStateDto, AdminModuleMetadataDto,
     AdminModuleMetadataListResponse, AdminModuleRefreshModuleResultDto,
     AdminModuleRefreshModuleStatusDto, AdminModuleRefreshRecordDto, AdminModuleRefreshStatusDto,
     AdminModuleRegistrySnapshotCatalogDto, AdminModuleRegistrySnapshotIssueDto,
@@ -1495,6 +1496,13 @@ fn launchpad_composition_from_value(value: Option<&Value>) -> Option<AdminLaunch
             .map(str::to_owned),
         pending_addons: json_string_list(value, "pendingAddons"),
         pending_packs: json_string_list(value, "pendingPacks"),
+        pack_fit: value
+            .get("packFit")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(launchpad_pack_fit_from_value)
+            .collect(),
         protocol: value
             .get("protocol")
             .and_then(Value::as_str)
@@ -1509,6 +1517,23 @@ fn launchpad_composition_from_value(value: Option<&Value>) -> Option<AdminLaunch
             .flatten()
             .filter_map(launchpad_composition_action_from_value)
             .collect(),
+    })
+}
+
+fn launchpad_pack_fit_from_value(value: &Value) -> Option<AdminLaunchpadPackFitDto> {
+    Some(AdminLaunchpadPackFitDto {
+        command: value
+            .get("command")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        issues: json_string_list(value, "issues"),
+        name: value.get("name")?.as_str()?.to_owned(),
+        path: value.get("path")?.as_str()?.to_owned(),
+        status: value
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or("ready")
+            .to_owned(),
     })
 }
 
@@ -6310,6 +6335,13 @@ mod tests {
                         "services": ["support-sla-provider/api"],
                         "nextCommand": "lenso capability check ../capabilities/support-sla"
                     }],
+                    "packFit": [{
+                        "name": "support-sla",
+                        "path": "../capabilities/support-sla",
+                        "status": "ready",
+                        "issues": [],
+                        "command": "lenso app compose --pack support-sla"
+                    }],
                     "serviceActions": [{
                         "id": "service:check:customer-profile",
                         "kind": "service_check",
@@ -6337,6 +6369,11 @@ mod tests {
         assert_eq!(composition.pending_addons, vec!["customer-profile"]);
         assert_eq!(composition.pending_packs, vec!["support-sla"]);
         assert_eq!(composition.capability_packs[0].name, "support-sla");
+        assert_eq!(composition.pack_fit[0].status, "ready");
+        assert_eq!(
+            composition.pack_fit[0].command.as_deref(),
+            Some("lenso app compose --pack support-sla")
+        );
         assert_eq!(
             composition.capability_packs[0].next_command.as_deref(),
             Some("lenso capability check ../capabilities/support-sla")
