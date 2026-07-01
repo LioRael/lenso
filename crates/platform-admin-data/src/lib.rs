@@ -477,6 +477,7 @@ pub fn router() -> ApiOpenApiRouter {
         .routes(routes!(launchpad))
         .routes(routes!(launchpad_doctor))
         .routes(routes!(launchpad_proof))
+        .routes(routes!(launchpad_change_plan))
         .routes(routes!(install_available_module))
         .routes(routes!(uninstall_available_module))
         .routes(routes!(module_registry_snapshot))

@@ -2,7 +2,8 @@ use crate::dto::{
     AdminActionInvocationDto, AdminActionInvokeRequest, AdminActionInvokeResponse,
     AdminCapabilityIssueDto, AdminCapabilitySummaryDto, AdminDataDetailResponse,
     AdminDataListResponse, AdminDataPageInfo, AdminKubernetesDeploymentObservationDto,
-    AdminLaunchpadAddonDto, AdminLaunchpadChecklistItemDto, AdminLaunchpadDoctorCheckDto,
+    AdminLaunchpadAddonDto, AdminLaunchpadChangePlanItemDto, AdminLaunchpadChangePlanResponse,
+    AdminLaunchpadChangePlanStatus, AdminLaunchpadChecklistItemDto, AdminLaunchpadDoctorCheckDto,
     AdminLaunchpadDoctorResponse, AdminLaunchpadDoctorStatus, AdminLaunchpadIssueDto,
     AdminLaunchpadModuleDto, AdminLaunchpadProofCheckDto, AdminLaunchpadProofDriftDto,
     AdminLaunchpadProofResponse, AdminLaunchpadProofStatus, AdminLaunchpadResponse,
@@ -85,6 +86,7 @@ const SERVICE_SYSTEM_PATH: &str = "lenso.system.json";
 const LAUNCHPAD_PATH: &str = ".lenso/launchpad.json";
 const DEV_DOCTOR_PATH: &str = ".lenso/dev-doctor.json";
 const APP_PROOF_PATH: &str = ".lenso/app-proof.json";
+const APP_CHANGE_PLAN_PATH: &str = ".lenso/app-change-plan.json";
 const SYSTEM_RELEASES_PATH: &str = ".lenso/system-releases.json";
 const SYSTEM_RUNBOOKS_PATH: &str = ".lenso/system-runbooks.json";
 const OFFICIAL_MODULE_CATALOG_REGISTRY_FILE: &str = "builtin:lenso-official-module-catalog";
@@ -372,6 +374,27 @@ pub(crate) async fn launchpad_proof(
     HttpRequestContext(_request_ctx): HttpRequestContext,
 ) -> Result<Json<AdminLaunchpadProofResponse>, ApiErrorResponse> {
     Ok(Json(launchpad_proof_response(FsPath::new(APP_PROOF_PATH))))
+}
+
+#[utoipa::path(
+    get,
+    path = "/admin/data/launchpad/change-plan",
+    operation_id = "admin_data_launchpad_change_plan",
+    tag = "admin-data",
+    params(("authorization" = String, Header, description = "Development service bearer token")),
+    responses(
+        (status = 200, description = "Launchpad app change plan state", body = AdminLaunchpadChangePlanResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+    )
+)]
+pub(crate) async fn launchpad_change_plan(
+    _admin: AdminActor,
+    HttpRequestContext(_request_ctx): HttpRequestContext,
+) -> Result<Json<AdminLaunchpadChangePlanResponse>, ApiErrorResponse> {
+    Ok(Json(launchpad_change_plan_response(FsPath::new(
+        APP_CHANGE_PLAN_PATH,
+    ))))
 }
 
 #[utoipa::path(
@@ -1350,6 +1373,133 @@ fn launchpad_proof_status_from_value(
         }
         _ if checks.is_empty() => AdminLaunchpadProofStatus::Empty,
         _ => AdminLaunchpadProofStatus::Ready,
+    }
+}
+
+fn launchpad_change_plan_response(path: &FsPath) -> AdminLaunchpadChangePlanResponse {
+    let plan_file = path.to_string_lossy().to_string();
+    let Ok(source) = fs::read_to_string(path) else {
+        return AdminLaunchpadChangePlanResponse {
+            addons: Vec::new(),
+            blocked: Vec::new(),
+            blueprint: None,
+            changes: Vec::new(),
+            generated_at_unix_ms: None,
+            issues: Vec::new(),
+            next_command: Some("lenso app plan --write-plan".to_owned()),
+            plan_file,
+            project_name: None,
+            proof_status: None,
+            status: AdminLaunchpadChangePlanStatus::Empty,
+            version: 1,
+        };
+    };
+    let Ok(file) = serde_json::from_str::<Value>(&source) else {
+        return AdminLaunchpadChangePlanResponse {
+            addons: Vec::new(),
+            blocked: Vec::new(),
+            blueprint: None,
+            changes: Vec::new(),
+            generated_at_unix_ms: None,
+            issues: vec![AdminLaunchpadIssueDto {
+                code: "app_change_plan_parse_error".to_owned(),
+                command: Some("lenso app plan --write-plan".to_owned()),
+                message: "App change plan could not be parsed.".to_owned(),
+            }],
+            next_command: Some("lenso app plan --write-plan".to_owned()),
+            plan_file,
+            project_name: None,
+            proof_status: None,
+            status: AdminLaunchpadChangePlanStatus::Failed,
+            version: 1,
+        };
+    };
+
+    let changes = file
+        .get("changes")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(launchpad_change_plan_item_from_value)
+        .collect::<Vec<_>>();
+    let blocked = file
+        .get("blocked")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(launchpad_change_plan_item_from_value)
+        .collect::<Vec<_>>();
+    let status = launchpad_change_plan_status_from_value(
+        file.get("status").and_then(Value::as_str),
+        &changes,
+        &blocked,
+    );
+    let next_command = file
+        .get("nextCommand")
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+        .or_else(|| blocked.iter().find_map(|item| item.command.clone()))
+        .or_else(|| changes.iter().find_map(|item| item.command.clone()));
+
+    AdminLaunchpadChangePlanResponse {
+        addons: json_string_list(&file, "addons"),
+        blocked,
+        blueprint: file
+            .get("blueprint")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        changes,
+        generated_at_unix_ms: file.get("generatedAtUnixMs").and_then(Value::as_u64),
+        issues: Vec::new(),
+        next_command,
+        plan_file,
+        project_name: file
+            .get("projectName")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        proof_status: file
+            .get("proofStatus")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        status,
+        version: 1,
+    }
+}
+
+fn launchpad_change_plan_item_from_value(value: &Value) -> Option<AdminLaunchpadChangePlanItemDto> {
+    Some(AdminLaunchpadChangePlanItemDto {
+        action: value.get("action")?.as_str()?.to_owned(),
+        command: value
+            .get("command")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        id: value.get("id")?.as_str()?.to_owned(),
+        kind: value.get("kind")?.as_str()?.to_owned(),
+        message: value
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned(),
+        name: value.get("name")?.as_str()?.to_owned(),
+        safe: value.get("safe").and_then(Value::as_bool).unwrap_or(false),
+    })
+}
+
+fn launchpad_change_plan_status_from_value(
+    status: Option<&str>,
+    changes: &[AdminLaunchpadChangePlanItemDto],
+    blocked: &[AdminLaunchpadChangePlanItemDto],
+) -> AdminLaunchpadChangePlanStatus {
+    match status {
+        Some("ready") => AdminLaunchpadChangePlanStatus::Ready,
+        Some("changes") => AdminLaunchpadChangePlanStatus::Changes,
+        Some("blocked") => AdminLaunchpadChangePlanStatus::Blocked,
+        Some("needs_setup") => AdminLaunchpadChangePlanStatus::NeedsSetup,
+        Some("failed") => AdminLaunchpadChangePlanStatus::Failed,
+        Some("empty") => AdminLaunchpadChangePlanStatus::Empty,
+        _ if !blocked.is_empty() => AdminLaunchpadChangePlanStatus::Blocked,
+        _ if !changes.is_empty() => AdminLaunchpadChangePlanStatus::Changes,
+        _ => AdminLaunchpadChangePlanStatus::Ready,
     }
 }
 
@@ -6031,6 +6181,71 @@ mod tests {
         assert!(response.drifts.is_empty());
         assert_eq!(response.next_command, None);
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn launchpad_change_plan_response_reads_changes() {
+        let root = std::env::temp_dir().join(format!("lenso-change-plan-{}", current_unix_ms()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join(".lenso")).unwrap();
+        let path = root.join(".lenso/app-change-plan.json");
+        fs::write(
+            &path,
+            serde_json::json!({
+                "protocol": "lenso.app-change-plan.v1",
+                "status": "changes",
+                "generatedAtUnixMs": 1782903144460_u64,
+                "projectName": "support-desk",
+                "blueprint": "support-desk",
+                "addons": ["support-sla"],
+                "proofStatus": "drifted",
+                "changes": [{
+                    "id": "workspace-service-support-api",
+                    "kind": "workspace-service",
+                    "name": "support-api",
+                    "action": "restore-workspace-service",
+                    "safe": true,
+                    "message": "support-api is missing from lenso.workspace.json",
+                    "command": "lenso app apply .lenso/app-change-plan.json"
+                }],
+                "blocked": [],
+                "nextCommand": "lenso app apply .lenso/app-change-plan.json"
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let response = launchpad_change_plan_response(&path);
+
+        assert_eq!(response.status, AdminLaunchpadChangePlanStatus::Changes);
+        assert_eq!(response.generated_at_unix_ms, Some(1782903144460));
+        assert_eq!(response.project_name.as_deref(), Some("support-desk"));
+        assert_eq!(response.proof_status.as_deref(), Some("drifted"));
+        assert_eq!(response.changes.len(), 1);
+        assert!(response.changes[0].safe);
+        assert!(response.blocked.is_empty());
+        assert_eq!(
+            response.next_command.as_deref(),
+            Some("lenso app apply .lenso/app-change-plan.json")
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn launchpad_change_plan_response_is_empty_without_file() {
+        let path = std::env::temp_dir().join(format!(
+            "missing-lenso-change-plan-{}.json",
+            current_unix_ms()
+        ));
+
+        let response = launchpad_change_plan_response(&path);
+
+        assert_eq!(response.status, AdminLaunchpadChangePlanStatus::Empty);
+        assert!(response.changes.is_empty());
+        assert_eq!(
+            response.next_command.as_deref(),
+            Some("lenso app plan --write-plan")
+        );
     }
 }
 

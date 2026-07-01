@@ -465,6 +465,37 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /admin/data/launchpad/change-plan:
+    get:
+      tags:
+      - admin-data
+      operationId: admin_data_launchpad_change_plan
+      parameters:
+      - name: authorization
+        in: header
+        description: Development service bearer token
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Launchpad app change plan state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminLaunchpadChangePlanResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/data/launchpad/doctor:
     get:
       tags:
@@ -3813,6 +3844,99 @@ components:
             type: string
         status:
           type: string
+    AdminLaunchpadChangePlanItemDto:
+      type: object
+      required:
+      - id
+      - kind
+      - name
+      - action
+      - safe
+      - message
+      properties:
+        action:
+          type: string
+        command:
+          type:
+          - string
+          - 'null'
+        id:
+          type: string
+        kind:
+          type: string
+        message:
+          type: string
+        name:
+          type: string
+        safe:
+          type: boolean
+    AdminLaunchpadChangePlanResponse:
+      type: object
+      description: 'Response for `GET /admin/data/launchpad/change-plan`: latest generated app change plan.'
+      required:
+      - version
+      - status
+      - planFile
+      - addons
+      - changes
+      - blocked
+      - issues
+      properties:
+        addons:
+          type: array
+          items:
+            type: string
+        blocked:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminLaunchpadChangePlanItemDto'
+        blueprint:
+          type:
+          - string
+          - 'null'
+        changes:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminLaunchpadChangePlanItemDto'
+        generatedAtUnixMs:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminLaunchpadIssueDto'
+        nextCommand:
+          type:
+          - string
+          - 'null'
+        planFile:
+          type: string
+        projectName:
+          type:
+          - string
+          - 'null'
+        proofStatus:
+          type:
+          - string
+          - 'null'
+        status:
+          $ref: '#/components/schemas/AdminLaunchpadChangePlanStatus'
+        version:
+          type: integer
+          format: int32
+          minimum: 0
+    AdminLaunchpadChangePlanStatus:
+      type: string
+      enum:
+      - ready
+      - changes
+      - blocked
+      - needs_setup
+      - failed
+      - empty
     AdminLaunchpadChecklistItemDto:
       type: object
       required:

@@ -422,6 +422,47 @@ pub struct AdminLaunchpadProofDriftDto {
     pub command: Option<String>,
 }
 
+/// Response for `GET /admin/data/launchpad/change-plan`: latest generated app change plan.
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminLaunchpadChangePlanResponse {
+    pub version: u8,
+    pub status: AdminLaunchpadChangePlanStatus,
+    pub plan_file: String,
+    pub generated_at_unix_ms: Option<u64>,
+    pub project_name: Option<String>,
+    pub blueprint: Option<String>,
+    pub addons: Vec<String>,
+    pub proof_status: Option<String>,
+    pub changes: Vec<AdminLaunchpadChangePlanItemDto>,
+    pub blocked: Vec<AdminLaunchpadChangePlanItemDto>,
+    pub next_command: Option<String>,
+    pub issues: Vec<AdminLaunchpadIssueDto>,
+}
+
+#[derive(Debug, Serialize, ToSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AdminLaunchpadChangePlanStatus {
+    Ready,
+    Changes,
+    Blocked,
+    NeedsSetup,
+    Failed,
+    Empty,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminLaunchpadChangePlanItemDto {
+    pub id: String,
+    pub kind: String,
+    pub name: String,
+    pub action: String,
+    pub safe: bool,
+    pub message: String,
+    pub command: Option<String>,
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AdminServiceModuleLifecycleStatus {
