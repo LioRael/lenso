@@ -44,6 +44,7 @@ For a service, leave:
 - declared HTTP routes, runtime functions, event handlers, actions, query values, or custom surfaces that are actually served
 - install instructions using `lenso service install <manifest-url>`
 - lifecycle instructions using `lenso service list`, `lenso service status <provider> <service>`, and `lenso service doctor <module> --json`
+- composed-app instructions using `lenso app next`, `lenso app explain`, and `lenso agent task --from-app-plan "add the requested business behavior"` when the service is part of an App Composer flow
 - a manifest `install.services` declaration when the service has a local process command
 - one package or focused check that proves the service can run outside the host
 - Console expectations: Modules should show the provided module installed / configured / ready, with Remote Calls and Runtime Story staying host-owned

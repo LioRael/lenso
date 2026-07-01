@@ -3,7 +3,8 @@ use crate::dto::{
     AdminCapabilityIssueDto, AdminCapabilitySummaryDto, AdminDataDetailResponse,
     AdminDataListResponse, AdminDataPageInfo, AdminKubernetesDeploymentObservationDto,
     AdminLaunchpadAddonDto, AdminLaunchpadChangePlanItemDto, AdminLaunchpadChangePlanResponse,
-    AdminLaunchpadChangePlanStatus, AdminLaunchpadChecklistItemDto, AdminLaunchpadDoctorCheckDto,
+    AdminLaunchpadChangePlanStatus, AdminLaunchpadChecklistItemDto,
+    AdminLaunchpadCompositionActionDto, AdminLaunchpadCompositionDto, AdminLaunchpadDoctorCheckDto,
     AdminLaunchpadDoctorResponse, AdminLaunchpadDoctorStatus, AdminLaunchpadIssueDto,
     AdminLaunchpadModuleDto, AdminLaunchpadProofCheckDto, AdminLaunchpadProofDriftDto,
     AdminLaunchpadProofResponse, AdminLaunchpadProofStatus, AdminLaunchpadResponse,
@@ -1384,6 +1385,7 @@ fn launchpad_change_plan_response(path: &FsPath) -> AdminLaunchpadChangePlanResp
             blocked: Vec::new(),
             blueprint: None,
             changes: Vec::new(),
+            composition: None,
             generated_at_unix_ms: None,
             issues: Vec::new(),
             next_command: Some("lenso app plan --write-plan".to_owned()),
@@ -1400,6 +1402,7 @@ fn launchpad_change_plan_response(path: &FsPath) -> AdminLaunchpadChangePlanResp
             blocked: Vec::new(),
             blueprint: None,
             changes: Vec::new(),
+            composition: None,
             generated_at_unix_ms: None,
             issues: vec![AdminLaunchpadIssueDto {
                 code: "app_change_plan_parse_error".to_owned(),
@@ -1449,6 +1452,7 @@ fn launchpad_change_plan_response(path: &FsPath) -> AdminLaunchpadChangePlanResp
             .and_then(Value::as_str)
             .map(str::to_owned),
         changes,
+        composition: launchpad_composition_from_value(file.get("composition")),
         generated_at_unix_ms: file.get("generatedAtUnixMs").and_then(Value::as_u64),
         issues: Vec::new(),
         next_command,
@@ -1464,6 +1468,57 @@ fn launchpad_change_plan_response(path: &FsPath) -> AdminLaunchpadChangePlanResp
         status,
         version: 1,
     }
+}
+
+fn launchpad_composition_from_value(value: Option<&Value>) -> Option<AdminLaunchpadCompositionDto> {
+    let value = value?;
+    Some(AdminLaunchpadCompositionDto {
+        agent_actions: value
+            .get("agentActions")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(launchpad_composition_action_from_value)
+            .collect(),
+        applied_addons: json_string_list(value, "appliedAddons"),
+        intent: value
+            .get("intent")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        pending_addons: json_string_list(value, "pendingAddons"),
+        protocol: value
+            .get("protocol")
+            .and_then(Value::as_str)
+            .unwrap_or("lenso.app-composition.v1")
+            .to_owned(),
+        requested_addons: json_string_list(value, "requestedAddons"),
+        service_actions: value
+            .get("serviceActions")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(launchpad_composition_action_from_value)
+            .collect(),
+    })
+}
+
+fn launchpad_composition_action_from_value(
+    value: &Value,
+) -> Option<AdminLaunchpadCompositionActionDto> {
+    Some(AdminLaunchpadCompositionActionDto {
+        command: value
+            .get("command")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        id: value.get("id")?.as_str()?.to_owned(),
+        kind: value.get("kind")?.as_str()?.to_owned(),
+        label: value.get("label")?.as_str()?.to_owned(),
+        status: value
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or("recommended")
+            .to_owned(),
+    })
 }
 
 fn launchpad_change_plan_item_from_value(value: &Value) -> Option<AdminLaunchpadChangePlanItemDto> {
@@ -6209,7 +6264,22 @@ mod tests {
                     "command": "lenso app apply .lenso/app-change-plan.json"
                 }],
                 "blocked": [],
-                "nextCommand": "lenso app apply .lenso/app-change-plan.json"
+                "nextCommand": "lenso app apply .lenso/app-change-plan.json",
+                "composition": {
+                    "protocol": "lenso.app-composition.v1",
+                    "intent": "support desk with SLA",
+                    "requestedAddons": ["support-sla", "customer-profile"],
+                    "appliedAddons": ["support-sla"],
+                    "pendingAddons": ["customer-profile"],
+                    "serviceActions": [{
+                        "id": "service:check:customer-profile",
+                        "kind": "service_check",
+                        "label": "Check customer-profile service readiness",
+                        "command": "lenso service workspace check customer-profile",
+                        "status": "recommended"
+                    }],
+                    "agentActions": []
+                }
             })
             .to_string(),
         )
@@ -6224,6 +6294,12 @@ mod tests {
         assert_eq!(response.changes.len(), 1);
         assert!(response.changes[0].safe);
         assert!(response.blocked.is_empty());
+        let composition = response.composition.expect("composition");
+        assert_eq!(composition.pending_addons, vec!["customer-profile"]);
+        assert_eq!(
+            composition.service_actions[0].command.as_deref(),
+            Some("lenso service workspace check customer-profile")
+        );
         assert_eq!(
             response.next_command.as_deref(),
             Some("lenso app apply .lenso/app-change-plan.json")

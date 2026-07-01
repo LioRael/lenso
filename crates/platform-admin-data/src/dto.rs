@@ -437,6 +437,7 @@ pub struct AdminLaunchpadChangePlanResponse {
     pub changes: Vec<AdminLaunchpadChangePlanItemDto>,
     pub blocked: Vec<AdminLaunchpadChangePlanItemDto>,
     pub next_command: Option<String>,
+    pub composition: Option<AdminLaunchpadCompositionDto>,
     pub issues: Vec<AdminLaunchpadIssueDto>,
 }
 
@@ -461,6 +462,28 @@ pub struct AdminLaunchpadChangePlanItemDto {
     pub safe: bool,
     pub message: String,
     pub command: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminLaunchpadCompositionDto {
+    pub protocol: String,
+    pub intent: Option<String>,
+    pub requested_addons: Vec<String>,
+    pub applied_addons: Vec<String>,
+    pub pending_addons: Vec<String>,
+    pub service_actions: Vec<AdminLaunchpadCompositionActionDto>,
+    pub agent_actions: Vec<AdminLaunchpadCompositionActionDto>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminLaunchpadCompositionActionDto {
+    pub id: String,
+    pub kind: String,
+    pub label: String,
+    pub command: Option<String>,
+    pub status: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
