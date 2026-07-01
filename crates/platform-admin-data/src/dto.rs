@@ -377,6 +377,51 @@ pub struct AdminLaunchpadDoctorCheckDto {
     pub command: Option<String>,
 }
 
+/// Response for `GET /admin/data/launchpad/proof`: latest generated App Proof snapshot.
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminLaunchpadProofResponse {
+    pub version: u8,
+    pub status: AdminLaunchpadProofStatus,
+    pub proof_file: String,
+    pub checked_at_unix_ms: Option<u64>,
+    pub project_name: Option<String>,
+    pub blueprint: Option<String>,
+    pub addons: Vec<String>,
+    pub checks: Vec<AdminLaunchpadProofCheckDto>,
+    pub drifts: Vec<AdminLaunchpadProofDriftDto>,
+    pub next_command: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AdminLaunchpadProofStatus {
+    Ready,
+    Drifted,
+    NeedsAttention,
+    Failed,
+    Empty,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminLaunchpadProofCheckDto {
+    pub id: String,
+    pub label: String,
+    pub status: String,
+    pub message: String,
+    pub command: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminLaunchpadProofDriftDto {
+    pub resource: String,
+    pub name: String,
+    pub message: String,
+    pub command: Option<String>,
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AdminServiceModuleLifecycleStatus {

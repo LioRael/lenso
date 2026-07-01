@@ -4,11 +4,13 @@ use crate::dto::{
     AdminDataListResponse, AdminDataPageInfo, AdminKubernetesDeploymentObservationDto,
     AdminLaunchpadAddonDto, AdminLaunchpadChecklistItemDto, AdminLaunchpadDoctorCheckDto,
     AdminLaunchpadDoctorResponse, AdminLaunchpadDoctorStatus, AdminLaunchpadIssueDto,
-    AdminLaunchpadModuleDto, AdminLaunchpadResponse, AdminLaunchpadServiceDto,
-    AdminLaunchpadStatus, AdminModuleActivationState, AdminModuleCompatibilityDto,
-    AdminModuleConsolePackagePlanPackageDto, AdminModuleConsolePackagePlanStateDto,
-    AdminModuleGovernanceDto, AdminModuleHostCompatibilityDto, AdminModuleInstallResponse,
-    AdminModuleInstallStateDto, AdminModuleLinkedSourceInstallStateDto, AdminModuleMetadataDto,
+    AdminLaunchpadModuleDto, AdminLaunchpadProofCheckDto, AdminLaunchpadProofDriftDto,
+    AdminLaunchpadProofResponse, AdminLaunchpadProofStatus, AdminLaunchpadResponse,
+    AdminLaunchpadServiceDto, AdminLaunchpadStatus, AdminModuleActivationState,
+    AdminModuleCompatibilityDto, AdminModuleConsolePackagePlanPackageDto,
+    AdminModuleConsolePackagePlanStateDto, AdminModuleGovernanceDto,
+    AdminModuleHostCompatibilityDto, AdminModuleInstallResponse, AdminModuleInstallStateDto,
+    AdminModuleLinkedSourceInstallStateDto, AdminModuleMetadataDto,
     AdminModuleMetadataListResponse, AdminModuleRefreshModuleResultDto,
     AdminModuleRefreshModuleStatusDto, AdminModuleRefreshRecordDto, AdminModuleRefreshStatusDto,
     AdminModuleRegistrySnapshotCatalogDto, AdminModuleRegistrySnapshotIssueDto,
@@ -82,6 +84,7 @@ const SERVICE_MODULE_HEALTH_PATH: &str = ".lenso/service-health.json";
 const SERVICE_SYSTEM_PATH: &str = "lenso.system.json";
 const LAUNCHPAD_PATH: &str = ".lenso/launchpad.json";
 const DEV_DOCTOR_PATH: &str = ".lenso/dev-doctor.json";
+const APP_PROOF_PATH: &str = ".lenso/app-proof.json";
 const SYSTEM_RELEASES_PATH: &str = ".lenso/system-releases.json";
 const SYSTEM_RUNBOOKS_PATH: &str = ".lenso/system-runbooks.json";
 const OFFICIAL_MODULE_CATALOG_REGISTRY_FILE: &str = "builtin:lenso-official-module-catalog";
@@ -350,6 +353,25 @@ pub(crate) async fn launchpad_doctor(
     Ok(Json(launchpad_doctor_response(FsPath::new(
         DEV_DOCTOR_PATH,
     ))))
+}
+
+#[utoipa::path(
+    get,
+    path = "/admin/data/launchpad/proof",
+    operation_id = "admin_data_launchpad_proof",
+    tag = "admin-data",
+    params(("authorization" = String, Header, description = "Development service bearer token")),
+    responses(
+        (status = 200, description = "Launchpad App Proof state", body = AdminLaunchpadProofResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+    )
+)]
+pub(crate) async fn launchpad_proof(
+    _admin: AdminActor,
+    HttpRequestContext(_request_ctx): HttpRequestContext,
+) -> Result<Json<AdminLaunchpadProofResponse>, ApiErrorResponse> {
+    Ok(Json(launchpad_proof_response(FsPath::new(APP_PROOF_PATH))))
 }
 
 #[utoipa::path(
@@ -1187,6 +1209,148 @@ fn launchpad_doctor_check_from_value(value: &Value) -> Option<AdminLaunchpadDoct
             .unwrap_or("unknown")
             .to_owned(),
     })
+}
+
+fn launchpad_proof_response(path: &FsPath) -> AdminLaunchpadProofResponse {
+    let proof_file = path.to_string_lossy().to_string();
+    let Ok(source) = fs::read_to_string(path) else {
+        return AdminLaunchpadProofResponse {
+            addons: Vec::new(),
+            blueprint: None,
+            checked_at_unix_ms: None,
+            checks: Vec::new(),
+            drifts: Vec::new(),
+            next_command: Some("lenso app verify --write-proof".to_owned()),
+            project_name: None,
+            proof_file,
+            status: AdminLaunchpadProofStatus::Empty,
+            version: 1,
+        };
+    };
+    let Ok(file) = serde_json::from_str::<Value>(&source) else {
+        return AdminLaunchpadProofResponse {
+            addons: Vec::new(),
+            blueprint: None,
+            checked_at_unix_ms: None,
+            checks: vec![AdminLaunchpadProofCheckDto {
+                command: Some("fix .lenso/app-proof.json".to_owned()),
+                id: "app-proof-parse".to_owned(),
+                label: "App Proof state".to_owned(),
+                message: "App Proof state could not be parsed.".to_owned(),
+                status: "failed".to_owned(),
+            }],
+            drifts: Vec::new(),
+            next_command: Some("fix .lenso/app-proof.json".to_owned()),
+            project_name: None,
+            proof_file,
+            status: AdminLaunchpadProofStatus::Failed,
+            version: 1,
+        };
+    };
+    let checks = file
+        .get("checks")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(launchpad_proof_check_from_value)
+        .collect::<Vec<_>>();
+    let drifts = file
+        .get("drifts")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(launchpad_proof_drift_from_value)
+        .collect::<Vec<_>>();
+    let status = launchpad_proof_status_from_value(
+        file.get("status").and_then(Value::as_str),
+        &checks,
+        &drifts,
+    );
+    let next_command = file
+        .get("nextCommand")
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+        .or_else(|| drifts.iter().find_map(|drift| drift.command.clone()))
+        .or_else(|| checks.iter().find_map(|check| check.command.clone()));
+
+    AdminLaunchpadProofResponse {
+        addons: json_string_list(&file, "addons"),
+        blueprint: file
+            .get("blueprint")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        checked_at_unix_ms: file.get("checkedAtUnixMs").and_then(Value::as_u64),
+        checks,
+        drifts,
+        next_command,
+        project_name: file
+            .get("projectName")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        proof_file,
+        status,
+        version: 1,
+    }
+}
+
+fn launchpad_proof_check_from_value(value: &Value) -> Option<AdminLaunchpadProofCheckDto> {
+    Some(AdminLaunchpadProofCheckDto {
+        command: value
+            .get("command")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        id: value.get("id")?.as_str()?.to_owned(),
+        label: value.get("label")?.as_str()?.to_owned(),
+        message: value
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned(),
+        status: value
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown")
+            .to_owned(),
+    })
+}
+
+fn launchpad_proof_drift_from_value(value: &Value) -> Option<AdminLaunchpadProofDriftDto> {
+    Some(AdminLaunchpadProofDriftDto {
+        command: value
+            .get("command")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        message: value
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned(),
+        name: value.get("name")?.as_str()?.to_owned(),
+        resource: value.get("resource")?.as_str()?.to_owned(),
+    })
+}
+
+fn launchpad_proof_status_from_value(
+    status: Option<&str>,
+    checks: &[AdminLaunchpadProofCheckDto],
+    drifts: &[AdminLaunchpadProofDriftDto],
+) -> AdminLaunchpadProofStatus {
+    match status {
+        Some("ready") => AdminLaunchpadProofStatus::Ready,
+        Some("drifted") => AdminLaunchpadProofStatus::Drifted,
+        Some("needs_attention") => AdminLaunchpadProofStatus::NeedsAttention,
+        Some("failed") => AdminLaunchpadProofStatus::Failed,
+        Some("empty") => AdminLaunchpadProofStatus::Empty,
+        _ if !drifts.is_empty() => AdminLaunchpadProofStatus::Drifted,
+        _ if checks.iter().any(|check| check.status == "failed") => {
+            AdminLaunchpadProofStatus::Failed
+        }
+        _ if checks.iter().any(|check| check.status == "needs_attention") => {
+            AdminLaunchpadProofStatus::NeedsAttention
+        }
+        _ if checks.is_empty() => AdminLaunchpadProofStatus::Empty,
+        _ => AdminLaunchpadProofStatus::Ready,
+    }
 }
 
 async fn service_module_lifecycle_response(
@@ -5822,6 +5986,49 @@ mod tests {
         assert_eq!(response.checked_at_unix_ms, Some(1782903144460));
         assert!(!response.live);
         assert_eq!(response.checks.len(), 1);
+        assert_eq!(response.next_command, None);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn launchpad_proof_response_reads_state() {
+        let root =
+            std::env::temp_dir().join(format!("lenso-launchpad-proof-{}", current_unix_ms()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join(".lenso")).unwrap();
+        let path = root.join(".lenso/app-proof.json");
+        fs::write(
+            &path,
+            serde_json::json!({
+                "protocol": "lenso.app-proof.v1",
+                "status": "ready",
+                "checkedAtUnixMs": 1782903144460_u64,
+                "projectName": "support-desk",
+                "blueprint": "support-desk",
+                "addons": ["support-sla"],
+                "checks": [{
+                    "id": "launchpad",
+                    "label": "Launchpad state",
+                    "status": "passed",
+                    "message": ".lenso/launchpad.json exists",
+                    "command": null
+                }],
+                "drifts": [],
+                "nextCommand": null
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let response = launchpad_proof_response(&path);
+
+        assert_eq!(response.status, AdminLaunchpadProofStatus::Ready);
+        assert_eq!(response.checked_at_unix_ms, Some(1782903144460));
+        assert_eq!(response.project_name.as_deref(), Some("support-desk"));
+        assert_eq!(response.blueprint.as_deref(), Some("support-desk"));
+        assert_eq!(response.addons, vec!["support-sla"]);
+        assert_eq!(response.checks.len(), 1);
+        assert!(response.drifts.is_empty());
         assert_eq!(response.next_command, None);
         let _ = fs::remove_dir_all(root);
     }

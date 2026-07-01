@@ -496,6 +496,37 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /admin/data/launchpad/proof:
+    get:
+      tags:
+      - admin-data
+      operationId: admin_data_launchpad_proof
+      parameters:
+      - name: authorization
+        in: header
+        description: Development service bearer token
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Launchpad App Proof state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminLaunchpadProofResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/data/module-registry/snapshot:
     get:
       tags:
@@ -3889,6 +3920,100 @@ components:
           type:
           - string
           - 'null'
+    AdminLaunchpadProofCheckDto:
+      type: object
+      required:
+      - id
+      - label
+      - status
+      - message
+      properties:
+        command:
+          type:
+          - string
+          - 'null'
+        id:
+          type: string
+        label:
+          type: string
+        message:
+          type: string
+        status:
+          type: string
+    AdminLaunchpadProofDriftDto:
+      type: object
+      required:
+      - resource
+      - name
+      - message
+      properties:
+        command:
+          type:
+          - string
+          - 'null'
+        message:
+          type: string
+        name:
+          type: string
+        resource:
+          type: string
+    AdminLaunchpadProofResponse:
+      type: object
+      description: 'Response for `GET /admin/data/launchpad/proof`: latest generated App Proof snapshot.'
+      required:
+      - version
+      - status
+      - proofFile
+      - addons
+      - checks
+      - drifts
+      properties:
+        addons:
+          type: array
+          items:
+            type: string
+        blueprint:
+          type:
+          - string
+          - 'null'
+        checkedAtUnixMs:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminLaunchpadProofCheckDto'
+        drifts:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminLaunchpadProofDriftDto'
+        nextCommand:
+          type:
+          - string
+          - 'null'
+        projectName:
+          type:
+          - string
+          - 'null'
+        proofFile:
+          type: string
+        status:
+          $ref: '#/components/schemas/AdminLaunchpadProofStatus'
+        version:
+          type: integer
+          format: int32
+          minimum: 0
+    AdminLaunchpadProofStatus:
+      type: string
+      enum:
+      - ready
+      - drifted
+      - needs_attention
+      - failed
+      - empty
     AdminLaunchpadResponse:
       type: object
       description: 'Response for `GET /admin/data/launchpad`: generated first-run app state.'
