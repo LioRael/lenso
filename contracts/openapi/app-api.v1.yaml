@@ -3759,6 +3759,29 @@ components:
           type:
           - string
           - 'null'
+    AdminLaunchpadAddonDto:
+      type: object
+      required:
+      - name
+      - label
+      - status
+      - services
+      - modules
+      properties:
+        label:
+          type: string
+        modules:
+          type: array
+          items:
+            type: string
+        name:
+          type: string
+        services:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
     AdminLaunchpadChecklistItemDto:
       type: object
       required:
@@ -3876,9 +3899,15 @@ components:
       - services
       - modules
       - checklist
+      - addons
+      - supportedAddons
       - commands
       - issues
       properties:
+        addons:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminLaunchpadAddonDto'
         blueprint:
           type:
           - string
@@ -3919,6 +3948,10 @@ components:
           type:
           - string
           - 'null'
+        supportedAddons:
+          type: array
+          items:
+            type: string
         version:
           type: integer
           format: int32

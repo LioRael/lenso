@@ -2,10 +2,10 @@ use crate::dto::{
     AdminActionInvocationDto, AdminActionInvokeRequest, AdminActionInvokeResponse,
     AdminCapabilityIssueDto, AdminCapabilitySummaryDto, AdminDataDetailResponse,
     AdminDataListResponse, AdminDataPageInfo, AdminKubernetesDeploymentObservationDto,
-    AdminLaunchpadChecklistItemDto, AdminLaunchpadDoctorCheckDto, AdminLaunchpadDoctorResponse,
-    AdminLaunchpadDoctorStatus, AdminLaunchpadIssueDto, AdminLaunchpadModuleDto,
-    AdminLaunchpadResponse, AdminLaunchpadServiceDto, AdminLaunchpadStatus,
-    AdminModuleActivationState, AdminModuleCompatibilityDto,
+    AdminLaunchpadAddonDto, AdminLaunchpadChecklistItemDto, AdminLaunchpadDoctorCheckDto,
+    AdminLaunchpadDoctorResponse, AdminLaunchpadDoctorStatus, AdminLaunchpadIssueDto,
+    AdminLaunchpadModuleDto, AdminLaunchpadResponse, AdminLaunchpadServiceDto,
+    AdminLaunchpadStatus, AdminModuleActivationState, AdminModuleCompatibilityDto,
     AdminModuleConsolePackagePlanPackageDto, AdminModuleConsolePackagePlanStateDto,
     AdminModuleGovernanceDto, AdminModuleHostCompatibilityDto, AdminModuleInstallResponse,
     AdminModuleInstallStateDto, AdminModuleLinkedSourceInstallStateDto, AdminModuleMetadataDto,
@@ -900,6 +900,7 @@ fn launchpad_response(path: &FsPath) -> AdminLaunchpadResponse {
     let launchpad_file = path.to_string_lossy().to_string();
     let Ok(source) = fs::read_to_string(path) else {
         return AdminLaunchpadResponse {
+            addons: Vec::new(),
             blueprint: None,
             checklist: Vec::new(),
             commands: vec!["lenso app create support-desk --blueprint support-desk".to_owned()],
@@ -911,11 +912,13 @@ fn launchpad_response(path: &FsPath) -> AdminLaunchpadResponse {
             services: Vec::new(),
             status: AdminLaunchpadStatus::Empty,
             summary: None,
+            supported_addons: Vec::new(),
             version: 1,
         };
     };
     let Ok(file) = serde_json::from_str::<Value>(&source) else {
         return AdminLaunchpadResponse {
+            addons: Vec::new(),
             blueprint: None,
             checklist: Vec::new(),
             commands: vec!["fix .lenso/launchpad.json".to_owned()],
@@ -931,6 +934,7 @@ fn launchpad_response(path: &FsPath) -> AdminLaunchpadResponse {
             services: Vec::new(),
             status: AdminLaunchpadStatus::NeedsAttention,
             summary: None,
+            supported_addons: Vec::new(),
             version: 1,
         };
     };
@@ -956,6 +960,13 @@ fn launchpad_response(path: &FsPath) -> AdminLaunchpadResponse {
         .flatten()
         .filter_map(launchpad_checklist_item_from_value)
         .collect::<Vec<_>>();
+    let addons = file
+        .get("addons")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(launchpad_addon_from_value)
+        .collect::<Vec<_>>();
     let mut commands = launchpad_commands_from_value(file.get("commands"));
     if commands.is_empty() {
         commands.push("lenso dev up".to_owned());
@@ -980,6 +991,7 @@ fn launchpad_response(path: &FsPath) -> AdminLaunchpadResponse {
     };
 
     AdminLaunchpadResponse {
+        addons,
         blueprint: file
             .get("blueprint")
             .and_then(Value::as_str)
@@ -1000,6 +1012,7 @@ fn launchpad_response(path: &FsPath) -> AdminLaunchpadResponse {
             .get("summary")
             .and_then(Value::as_str)
             .map(str::to_owned),
+        supported_addons: json_string_list(&file, "supportedAddons"),
         version: 1,
     }
 }
@@ -1051,6 +1064,24 @@ fn launchpad_checklist_item_from_value(value: &Value) -> Option<AdminLaunchpadCh
             .get("status")
             .and_then(Value::as_str)
             .unwrap_or("pending")
+            .to_owned(),
+    })
+}
+
+fn launchpad_addon_from_value(value: &Value) -> Option<AdminLaunchpadAddonDto> {
+    Some(AdminLaunchpadAddonDto {
+        label: value
+            .get("label")
+            .and_then(Value::as_str)
+            .unwrap_or_else(|| value.get("name").and_then(Value::as_str).unwrap_or("addon"))
+            .to_owned(),
+        modules: json_string_list(value, "modules"),
+        name: value.get("name")?.as_str()?.to_owned(),
+        services: json_string_list(value, "services"),
+        status: value
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or("configured")
             .to_owned(),
     })
 }
@@ -5729,7 +5760,15 @@ mod tests {
                     "label": "Run services and host locally",
                     "status": "next",
                     "nextCommand": "lenso dev up"
-                }]
+                }],
+                "addons": [{
+                    "name": "support-sla",
+                    "label": "Support SLA",
+                    "status": "configured",
+                    "services": ["support-sla"],
+                    "modules": ["support-sla"]
+                }],
+                "supportedAddons": ["support-sla", "notifications"]
             })
             .to_string(),
         )
@@ -5742,6 +5781,11 @@ mod tests {
         assert_eq!(response.blueprint.as_deref(), Some("support-desk"));
         assert_eq!(response.services.len(), 1);
         assert_eq!(response.modules.len(), 1);
+        assert_eq!(response.addons.len(), 1);
+        assert_eq!(
+            response.supported_addons,
+            vec!["support-sla", "notifications"]
+        );
         assert_eq!(response.next_command.as_deref(), Some("lenso dev up"));
         let _ = fs::remove_dir_all(root);
     }

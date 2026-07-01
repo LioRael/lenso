@@ -283,6 +283,8 @@ pub struct AdminLaunchpadResponse {
     pub services: Vec<AdminLaunchpadServiceDto>,
     pub modules: Vec<AdminLaunchpadModuleDto>,
     pub checklist: Vec<AdminLaunchpadChecklistItemDto>,
+    pub addons: Vec<AdminLaunchpadAddonDto>,
+    pub supported_addons: Vec<String>,
     pub commands: Vec<String>,
     pub next_command: Option<String>,
     pub issues: Vec<AdminLaunchpadIssueDto>,
@@ -331,6 +333,16 @@ pub struct AdminLaunchpadIssueDto {
     pub code: String,
     pub message: String,
     pub command: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminLaunchpadAddonDto {
+    pub name: String,
+    pub label: String,
+    pub status: String,
+    pub services: Vec<String>,
+    pub modules: Vec<String>,
 }
 
 /// Response for `GET /admin/data/launchpad/doctor`: latest local developer doctor snapshot.
