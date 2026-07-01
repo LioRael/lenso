@@ -270,6 +270,69 @@ pub struct AdminServiceSystemRunbookDto {
     pub current_step: Option<String>,
 }
 
+/// Response for `GET /admin/data/launchpad`: generated first-run app state.
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminLaunchpadResponse {
+    pub version: u8,
+    pub status: AdminLaunchpadStatus,
+    pub launchpad_file: String,
+    pub project_name: Option<String>,
+    pub blueprint: Option<String>,
+    pub summary: Option<String>,
+    pub services: Vec<AdminLaunchpadServiceDto>,
+    pub modules: Vec<AdminLaunchpadModuleDto>,
+    pub checklist: Vec<AdminLaunchpadChecklistItemDto>,
+    pub commands: Vec<String>,
+    pub next_command: Option<String>,
+    pub issues: Vec<AdminLaunchpadIssueDto>,
+}
+
+#[derive(Debug, Serialize, ToSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AdminLaunchpadStatus {
+    Ready,
+    NeedsAttention,
+    Empty,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminLaunchpadServiceDto {
+    pub name: String,
+    pub role: Option<String>,
+    pub language: Option<String>,
+    pub cwd: Option<String>,
+    pub command: Option<String>,
+    pub ready_url: Option<String>,
+    pub modules: Vec<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminLaunchpadModuleDto {
+    pub name: String,
+    pub owner_service: Option<String>,
+    pub capability: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminLaunchpadChecklistItemDto {
+    pub id: String,
+    pub label: String,
+    pub status: String,
+    pub next_command: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminLaunchpadIssueDto {
+    pub code: String,
+    pub message: String,
+    pub command: Option<String>,
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AdminServiceModuleLifecycleStatus {

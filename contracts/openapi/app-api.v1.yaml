@@ -434,6 +434,37 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /admin/data/launchpad:
+    get:
+      tags:
+      - admin-data
+      operationId: admin_data_launchpad
+      parameters:
+      - name: authorization
+        in: header
+        description: Development service bearer token
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Launchpad first-run state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminLaunchpadResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/data/module-registry/snapshot:
     get:
       tags:
@@ -3697,6 +3728,147 @@ components:
           type:
           - string
           - 'null'
+    AdminLaunchpadChecklistItemDto:
+      type: object
+      required:
+      - id
+      - label
+      - status
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        nextCommand:
+          type:
+          - string
+          - 'null'
+        status:
+          type: string
+    AdminLaunchpadIssueDto:
+      type: object
+      required:
+      - code
+      - message
+      properties:
+        code:
+          type: string
+        command:
+          type:
+          - string
+          - 'null'
+        message:
+          type: string
+    AdminLaunchpadModuleDto:
+      type: object
+      required:
+      - name
+      properties:
+        capability:
+          type:
+          - string
+          - 'null'
+        name:
+          type: string
+        ownerService:
+          type:
+          - string
+          - 'null'
+    AdminLaunchpadResponse:
+      type: object
+      description: 'Response for `GET /admin/data/launchpad`: generated first-run app state.'
+      required:
+      - version
+      - status
+      - launchpadFile
+      - services
+      - modules
+      - checklist
+      - commands
+      - issues
+      properties:
+        blueprint:
+          type:
+          - string
+          - 'null'
+        checklist:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminLaunchpadChecklistItemDto'
+        commands:
+          type: array
+          items:
+            type: string
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminLaunchpadIssueDto'
+        launchpadFile:
+          type: string
+        modules:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminLaunchpadModuleDto'
+        nextCommand:
+          type:
+          - string
+          - 'null'
+        projectName:
+          type:
+          - string
+          - 'null'
+        services:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminLaunchpadServiceDto'
+        status:
+          $ref: '#/components/schemas/AdminLaunchpadStatus'
+        summary:
+          type:
+          - string
+          - 'null'
+        version:
+          type: integer
+          format: int32
+          minimum: 0
+    AdminLaunchpadServiceDto:
+      type: object
+      required:
+      - name
+      - modules
+      properties:
+        command:
+          type:
+          - string
+          - 'null'
+        cwd:
+          type:
+          - string
+          - 'null'
+        language:
+          type:
+          - string
+          - 'null'
+        modules:
+          type: array
+          items:
+            type: string
+        name:
+          type: string
+        readyUrl:
+          type:
+          - string
+          - 'null'
+        role:
+          type:
+          - string
+          - 'null'
+    AdminLaunchpadStatus:
+      type: string
+      enum:
+      - ready
+      - needs_attention
+      - empty
     AdminMetricBinding:
       type: object
       required:
