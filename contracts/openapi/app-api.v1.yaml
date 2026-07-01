@@ -3898,6 +3898,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AdminLaunchpadChangePlanItemDto'
+        composition:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/AdminLaunchpadCompositionDto'
         generatedAtUnixMs:
           type:
           - integer
@@ -3954,6 +3958,62 @@ components:
           - 'null'
         status:
           type: string
+    AdminLaunchpadCompositionActionDto:
+      type: object
+      required:
+      - id
+      - kind
+      - label
+      - status
+      properties:
+        command:
+          type:
+          - string
+          - 'null'
+        id:
+          type: string
+        kind:
+          type: string
+        label:
+          type: string
+        status:
+          type: string
+    AdminLaunchpadCompositionDto:
+      type: object
+      required:
+      - protocol
+      - requestedAddons
+      - appliedAddons
+      - pendingAddons
+      - serviceActions
+      - agentActions
+      properties:
+        agentActions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminLaunchpadCompositionActionDto'
+        appliedAddons:
+          type: array
+          items:
+            type: string
+        intent:
+          type:
+          - string
+          - 'null'
+        pendingAddons:
+          type: array
+          items:
+            type: string
+        protocol:
+          type: string
+        requestedAddons:
+          type: array
+          items:
+            type: string
+        serviceActions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminLaunchpadCompositionActionDto'
     AdminLaunchpadDoctorCheckDto:
       type: object
       required:
