@@ -19,6 +19,14 @@ cp .env.example .env
 lenso serve
 ```
 
+For a generated business app, prefer the App Composer path:
+
+```sh
+lenso app compose ./acme-support --blueprint support-desk --addon support-sla --apply
+lenso app next
+lenso app explain
+```
+
 Use separate processes only when debugging service boundaries:
 
 ```sh
@@ -56,6 +64,7 @@ When creating or fixing a starter host, leave:
 
 - the scaffolded project path
 - the command used to start it
+- the `lenso app next` or `lenso app explain` result when the host is a composed app
 - the URL for `/console` when the API is running
 - one focused check result
 

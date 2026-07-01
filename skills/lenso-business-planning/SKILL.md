@@ -32,7 +32,8 @@ Do not ask for exhaustive product requirements before giving a path.
 4. Decide whether each new module should stay linked in Rust or be provided by a service.
 5. Sketch the required declarations: manifest, HTTP routes, schema-admin data, admin actions, runtime functions, events, lifecycle jobs, console surfaces, config, and dependencies.
 6. Identify cross-module collaboration through declared dependencies, events, host-owned queues, remote HTTP/proxy surfaces, or public APIs.
-7. Leave the next concrete command and follow-up skill.
+7. When a built-in blueprint fits, leave `lenso app compose ./acme-support --blueprint support-desk --addon support-sla --apply`, then `lenso app next`, `lenso app explain`, and `lenso agent task --from-app-plan "add the requested business behavior"`.
+8. Leave the next concrete command and follow-up skill.
 
 ## Boundary Heuristics
 
@@ -65,6 +66,7 @@ For a clarified plan, return:
 Use these follow-up routes:
 
 - blank host -> `lenso host init <dir>` -> `lenso-starter-host`
+- composed app -> `lenso app compose ./acme-support --blueprint support-desk --addon support-sla --apply` -> `lenso app next`
 - in-host module -> `lenso module create <name>` -> `lenso-module-authoring`
 - service -> `@lenso/service-kit` -> `lenso-remote-module-authoring` -> service lifecycle checks
 - API client or integration check -> committed OpenAPI contract -> `lenso-api-client`
