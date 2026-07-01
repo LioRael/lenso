@@ -122,6 +122,155 @@ pub struct AdminServiceModuleLifecycleResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceSystemResponse {
+    pub version: u8,
+    pub status: AdminServiceSystemStatus,
+    pub system_file: String,
+    pub name: Option<String>,
+    pub environments: Vec<String>,
+    pub services: Vec<AdminServiceSystemServiceDto>,
+    pub modules: Vec<AdminServiceSystemModuleDto>,
+    pub dependencies: Vec<AdminServiceSystemDependencyDto>,
+    pub issues: Vec<AdminServiceSystemIssueDto>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AdminServiceSystemStatus {
+    Ready,
+    NeedsAttention,
+    Empty,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceSystemServiceDto {
+    pub name: String,
+    pub target: String,
+    pub modules: Vec<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceSystemModuleDto {
+    pub name: String,
+    pub owner: String,
+    pub capabilities: Vec<String>,
+    pub dependencies: Vec<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceSystemDependencyDto {
+    pub from: String,
+    pub capability: String,
+    pub state: String,
+    pub to: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceSystemIssueDto {
+    pub code: String,
+    pub message: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceSystemDriftResponse {
+    pub version: u8,
+    pub status: AdminServiceSystemDriftStatus,
+    pub system_file: String,
+    pub graph_issues: Vec<AdminServiceSystemIssueDto>,
+    pub drifts: Vec<AdminServiceSystemDriftDto>,
+    pub commands: Vec<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AdminServiceSystemDriftStatus {
+    Ready,
+    Drifted,
+    NeedsAttention,
+    Empty,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceSystemDriftDto {
+    pub code: String,
+    pub severity: String,
+    pub resource: String,
+    pub name: String,
+    pub message: String,
+    pub command: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceSystemReleaseTrainResponse {
+    pub version: u8,
+    pub status: AdminServiceSystemReleaseTrainStatus,
+    pub releases: Vec<AdminServiceSystemReleaseRecordDto>,
+    pub commands: Vec<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AdminServiceSystemReleaseTrainStatus {
+    Ready,
+    NeedsAttention,
+    Empty,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceSystemReleaseRecordDto {
+    pub id: String,
+    pub kind: String,
+    pub system_name: String,
+    pub environment: String,
+    pub status: String,
+    pub policy_risk: String,
+    pub applied_at_unix_ms: Option<u64>,
+    pub services: usize,
+    pub modules: usize,
+    pub rollback_available: bool,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceSystemRunbooksResponse {
+    pub version: u8,
+    pub status: AdminServiceSystemRunbooksStatus,
+    pub runbooks: Vec<AdminServiceSystemRunbookDto>,
+    pub commands: Vec<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AdminServiceSystemRunbooksStatus {
+    Ready,
+    NeedsAttention,
+    Empty,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceSystemRunbookDto {
+    pub id: String,
+    pub release_id: String,
+    pub system_name: String,
+    pub environment: String,
+    pub status: String,
+    pub active: bool,
+    pub recorded_at_unix_ms: Option<u64>,
+    pub steps: usize,
+    pub current_step: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AdminServiceModuleLifecycleStatus {
     Ready,

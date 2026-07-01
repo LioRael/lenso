@@ -17,6 +17,7 @@ path = "src/lib.rs"
 [dependencies]
 async-trait.workspace = true
 axum.workspace = true
+lenso-service.workspace = true
 platform-core.workspace = true
 platform-http.workspace = true
 platform-module.workspace = true

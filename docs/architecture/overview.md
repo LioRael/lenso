@@ -78,6 +78,10 @@ business-module entrypoint, and V11 adds a `lenso.module.v1` module contract so
 linked, bundled, and service-provided modules share the same product-level
 contract language. `lenso module install` remains the main module install
 surface; `lenso service install` is the lower-level provider/process surface.
+V18 adds a system-level graph in
+[`service-system-plane.md`](service-system-plane.md): `lenso.system.json`
+connects services, modules, environments, and capability dependencies without
+turning Kubernetes into a hard requirement.
 Route proxying is specified
 separately in `docs/architecture/module-remote-http-proxy.md`. Remote runtime
 execution and event-handler dispatch are scoped in

@@ -1,8 +1,10 @@
 use lenso_service::{
     MODULE_CONTRACT_SCHEMA_JSON, MODULE_RELEASE_SCHEMA_JSON, ModuleContract, ModuleManifest,
-    SERVICE_CONTRACT_SCHEMA_JSON, SERVICE_WORKSPACE_SCHEMA_JSON, ServiceCompatibility,
-    ServiceContract, ServiceHealth, ServiceLocalProcess, ServiceProvider, ServiceWorkspace,
-    ServiceWorkspaceService, validate_module_contract_value, validate_service_contract_value,
+    SERVICE_CONTRACT_SCHEMA_JSON, SERVICE_SYSTEM_SCHEMA_JSON, SERVICE_WORKSPACE_SCHEMA_JSON,
+    ServiceCompatibility, ServiceContract, ServiceHealth, ServiceLocalProcess, ServiceProvider,
+    ServiceSystem, ServiceSystemDependency, ServiceSystemModule, ServiceSystemService,
+    ServiceWorkspace, ServiceWorkspaceService, service_system_graph,
+    validate_module_contract_value, validate_service_contract_value, validate_service_system_value,
     validate_service_workspace_value,
 };
 use serde_json::json;
@@ -106,6 +108,14 @@ fn service_workspace_schema_is_packaged_with_the_sdk() {
 }
 
 #[test]
+fn service_system_schema_is_packaged_with_the_sdk() {
+    let schema: serde_json::Value = serde_json::from_str(SERVICE_SYSTEM_SCHEMA_JSON).unwrap();
+
+    assert_eq!(schema["title"], "LensoServiceSystem");
+    assert_eq!(schema["required"], json!(["protocol", "name"]));
+}
+
+#[test]
 fn service_workspace_serializes_local_services() {
     let workspace = ServiceWorkspace::new(vec![ServiceWorkspaceService {
         auto_start: true,
@@ -127,6 +137,109 @@ fn service_workspace_serializes_local_services() {
         "http://127.0.0.1:4110/lenso/service/v1/status"
     );
     assert!(validate_service_workspace_value(&value).is_empty());
+}
+
+#[test]
+fn service_system_serializes_services_modules_and_dependencies() {
+    let mut system = ServiceSystem::new("support-platform");
+    system.environments = vec!["local".to_owned(), "staging".to_owned(), "prod".to_owned()];
+    system.services = vec![
+        ServiceSystemService {
+            cwd: Some("services/support".to_owned()),
+            manifest: Some("lenso.service.json".to_owned()),
+            modules: vec!["support-ticket".to_owned()],
+            name: "support".to_owned(),
+            target: "local".to_owned(),
+        },
+        ServiceSystemService {
+            cwd: None,
+            manifest: None,
+            modules: vec!["invoice".to_owned()],
+            name: "billing".to_owned(),
+            target: "kubernetes".to_owned(),
+        },
+    ];
+    system.modules = vec![
+        ServiceSystemModule {
+            capabilities: vec!["support.ticket.read".to_owned()],
+            dependencies: vec!["billing.invoice.read".to_owned()],
+            install_to: Some("service:support".to_owned()),
+            name: "support-ticket".to_owned(),
+        },
+        ServiceSystemModule {
+            capabilities: vec!["billing.invoice.read".to_owned()],
+            dependencies: Vec::new(),
+            install_to: Some("service:billing".to_owned()),
+            name: "invoice".to_owned(),
+        },
+    ];
+    system.dependencies = vec![ServiceSystemDependency {
+        capability: "billing.invoice.read".to_owned(),
+        from: "support".to_owned(),
+        to: Some("billing".to_owned()),
+    }];
+
+    let value = serde_json::to_value(&system).unwrap();
+    assert_eq!(value["protocol"], "lenso.system.v1");
+    assert_eq!(value["services"][0]["modules"][0], "support-ticket");
+    assert!(validate_service_system_value(&value).is_empty());
+
+    let graph = service_system_graph(&system);
+    assert_eq!(graph.name, "support-platform");
+    assert_eq!(graph.modules[0].owner, "support");
+    assert_eq!(graph.dependencies[0].state, "resolved");
+    assert!(graph.issues.is_empty());
+}
+
+#[test]
+fn service_system_graph_reports_unresolved_dependencies() {
+    let mut system = ServiceSystem::new("support-platform");
+    system.services = vec![ServiceSystemService {
+        cwd: None,
+        manifest: None,
+        modules: vec!["support-ticket".to_owned()],
+        name: "support".to_owned(),
+        target: "local".to_owned(),
+    }];
+    system.modules = vec![ServiceSystemModule {
+        capabilities: Vec::new(),
+        dependencies: vec!["billing.invoice.read".to_owned()],
+        install_to: Some("service:support".to_owned()),
+        name: "support-ticket".to_owned(),
+    }];
+
+    let graph = service_system_graph(&system);
+
+    assert_eq!(graph.dependencies[0].state, "unresolved");
+    assert_eq!(graph.issues[0].code, "dependency_unresolved");
+}
+
+#[test]
+fn service_system_graph_checks_explicit_target_capabilities() {
+    let mut system = ServiceSystem::new("support-platform");
+    system.services = vec![ServiceSystemService {
+        cwd: None,
+        manifest: None,
+        modules: vec!["billing".to_owned()],
+        name: "billing-service".to_owned(),
+        target: "external".to_owned(),
+    }];
+    system.modules = vec![ServiceSystemModule {
+        capabilities: vec!["billing.invoice.read".to_owned()],
+        dependencies: Vec::new(),
+        install_to: Some("service:billing-service".to_owned()),
+        name: "billing".to_owned(),
+    }];
+    system.dependencies = vec![ServiceSystemDependency {
+        capability: "billing.invoice.write".to_owned(),
+        from: "support-service".to_owned(),
+        to: Some("billing-service".to_owned()),
+    }];
+
+    let graph = service_system_graph(&system);
+
+    assert_eq!(graph.dependencies[0].state, "missing_capability");
+    assert_eq!(graph.issues[0].code, "dependency_missing_capability");
 }
 
 #[test]
@@ -172,4 +285,32 @@ fn service_contract_validation_reports_paths() {
     assert!(paths.contains(&"$.install.services[0].command"));
     assert!(paths.contains(&"$.modules[0].capabilities[1]"));
     assert!(paths.contains(&"$.modules[1].name"));
+}
+
+#[test]
+fn service_system_validation_reports_paths() {
+    let issues = validate_service_system_value(&json!({
+        "protocol": "lenso.system.v1",
+        "name": "",
+        "services": [
+            { "name": "support", "target": "local", "modules": ["support-ticket"] },
+            { "name": "support", "target": "" }
+        ],
+        "modules": [
+            { "name": "support-ticket", "installTo": "service:support", "dependencies": [42] }
+        ],
+        "dependencies": [
+            { "from": "support" }
+        ]
+    }));
+    let paths = issues
+        .iter()
+        .map(|issue| issue.path.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(paths.contains(&"$.name"));
+    assert!(paths.contains(&"$.services[1].name"));
+    assert!(paths.contains(&"$.services[1].target"));
+    assert!(paths.contains(&"$.modules[0].dependencies[0]"));
+    assert!(paths.contains(&"$.dependencies[0].capability"));
 }

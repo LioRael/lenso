@@ -632,6 +632,130 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /admin/data/service-system:
+    get:
+      tags:
+      - admin-data
+      operationId: admin_data_service_system
+      parameters:
+      - name: authorization
+        in: header
+        description: Development service bearer token
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Service system graph
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminServiceSystemResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/data/service-system/drift:
+    get:
+      tags:
+      - admin-data
+      operationId: admin_data_service_system_drift
+      parameters:
+      - name: authorization
+        in: header
+        description: Development service bearer token
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Service system drift against host-local state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminServiceSystemDriftResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/data/service-system/release-train:
+    get:
+      tags:
+      - admin-data
+      operationId: admin_data_service_system_release_train
+      parameters:
+      - name: authorization
+        in: header
+        description: Development service bearer token
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Applied system release train history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminServiceSystemReleaseTrainResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/data/service-system/runbooks:
+    get:
+      tags:
+      - admin-data
+      operationId: admin_data_service_system_runbooks
+      parameters:
+      - name: authorization
+        in: header
+        description: Development service bearer token
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: System runbook history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminServiceSystemRunbooksResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/data/{module}/actions/{action}:
     post:
       tags:
@@ -5725,6 +5849,309 @@ components:
           type: string
         status:
           type: string
+    AdminServiceSystemDependencyDto:
+      type: object
+      required:
+      - from
+      - capability
+      - state
+      properties:
+        capability:
+          type: string
+        from:
+          type: string
+        state:
+          type: string
+        to:
+          type:
+          - string
+          - 'null'
+    AdminServiceSystemDriftDto:
+      type: object
+      required:
+      - code
+      - severity
+      - resource
+      - name
+      - message
+      properties:
+        code:
+          type: string
+        command:
+          type:
+          - string
+          - 'null'
+        message:
+          type: string
+        name:
+          type: string
+        resource:
+          type: string
+        severity:
+          type: string
+    AdminServiceSystemDriftResponse:
+      type: object
+      required:
+      - version
+      - status
+      - systemFile
+      - graphIssues
+      - drifts
+      - commands
+      properties:
+        commands:
+          type: array
+          items:
+            type: string
+        drifts:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminServiceSystemDriftDto'
+        graphIssues:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminServiceSystemIssueDto'
+        status:
+          $ref: '#/components/schemas/AdminServiceSystemDriftStatus'
+        systemFile:
+          type: string
+        version:
+          type: integer
+          format: int32
+          minimum: 0
+    AdminServiceSystemDriftStatus:
+      type: string
+      enum:
+      - ready
+      - drifted
+      - needs_attention
+      - empty
+    AdminServiceSystemIssueDto:
+      type: object
+      required:
+      - code
+      - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+    AdminServiceSystemModuleDto:
+      type: object
+      required:
+      - name
+      - owner
+      - capabilities
+      - dependencies
+      properties:
+        capabilities:
+          type: array
+          items:
+            type: string
+        dependencies:
+          type: array
+          items:
+            type: string
+        name:
+          type: string
+        owner:
+          type: string
+    AdminServiceSystemReleaseRecordDto:
+      type: object
+      required:
+      - id
+      - kind
+      - systemName
+      - environment
+      - status
+      - policyRisk
+      - services
+      - modules
+      - rollbackAvailable
+      properties:
+        appliedAtUnixMs:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        environment:
+          type: string
+        id:
+          type: string
+        kind:
+          type: string
+        modules:
+          type: integer
+          minimum: 0
+        policyRisk:
+          type: string
+        rollbackAvailable:
+          type: boolean
+        services:
+          type: integer
+          minimum: 0
+        status:
+          type: string
+        systemName:
+          type: string
+    AdminServiceSystemReleaseTrainResponse:
+      type: object
+      required:
+      - version
+      - status
+      - releases
+      - commands
+      properties:
+        commands:
+          type: array
+          items:
+            type: string
+        releases:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminServiceSystemReleaseRecordDto'
+        status:
+          $ref: '#/components/schemas/AdminServiceSystemReleaseTrainStatus'
+        version:
+          type: integer
+          format: int32
+          minimum: 0
+    AdminServiceSystemReleaseTrainStatus:
+      type: string
+      enum:
+      - ready
+      - needs_attention
+      - empty
+    AdminServiceSystemResponse:
+      type: object
+      required:
+      - version
+      - status
+      - systemFile
+      - environments
+      - services
+      - modules
+      - dependencies
+      - issues
+      properties:
+        dependencies:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminServiceSystemDependencyDto'
+        environments:
+          type: array
+          items:
+            type: string
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminServiceSystemIssueDto'
+        modules:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminServiceSystemModuleDto'
+        name:
+          type:
+          - string
+          - 'null'
+        services:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminServiceSystemServiceDto'
+        status:
+          $ref: '#/components/schemas/AdminServiceSystemStatus'
+        systemFile:
+          type: string
+        version:
+          type: integer
+          format: int32
+          minimum: 0
+    AdminServiceSystemRunbookDto:
+      type: object
+      required:
+      - id
+      - releaseId
+      - systemName
+      - environment
+      - status
+      - active
+      - steps
+      properties:
+        active:
+          type: boolean
+        currentStep:
+          type:
+          - string
+          - 'null'
+        environment:
+          type: string
+        id:
+          type: string
+        recordedAtUnixMs:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        releaseId:
+          type: string
+        status:
+          type: string
+        steps:
+          type: integer
+          minimum: 0
+        systemName:
+          type: string
+    AdminServiceSystemRunbooksResponse:
+      type: object
+      required:
+      - version
+      - status
+      - runbooks
+      - commands
+      properties:
+        commands:
+          type: array
+          items:
+            type: string
+        runbooks:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminServiceSystemRunbookDto'
+        status:
+          $ref: '#/components/schemas/AdminServiceSystemRunbooksStatus'
+        version:
+          type: integer
+          format: int32
+          minimum: 0
+    AdminServiceSystemRunbooksStatus:
+      type: string
+      enum:
+      - ready
+      - needs_attention
+      - empty
+    AdminServiceSystemServiceDto:
+      type: object
+      required:
+      - name
+      - target
+      - modules
+      properties:
+        modules:
+          type: array
+          items:
+            type: string
+        name:
+          type: string
+        target:
+          type: string
+    AdminServiceSystemStatus:
+      type: string
+      enum:
+      - ready
+      - needs_attention
+      - empty
     AdminSurface:
       oneOf:
       - allOf:

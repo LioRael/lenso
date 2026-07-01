@@ -25,7 +25,12 @@ use crate::dto::{
     AdminServiceModuleLifecycleStatus, AdminServiceModuleManifestStatus,
     AdminServiceModuleServiceStatusCheckDto, AdminServiceModuleServiceStatusDto,
     AdminServiceModuleServiceStatusState, AdminServiceOperationDto, AdminServiceOperationKindDto,
-    AdminServiceOperationLinksDto, AdminServiceReleaseRecordDto,
+    AdminServiceOperationLinksDto, AdminServiceReleaseRecordDto, AdminServiceSystemDependencyDto,
+    AdminServiceSystemDriftDto, AdminServiceSystemDriftResponse, AdminServiceSystemDriftStatus,
+    AdminServiceSystemIssueDto, AdminServiceSystemModuleDto, AdminServiceSystemReleaseRecordDto,
+    AdminServiceSystemReleaseTrainResponse, AdminServiceSystemReleaseTrainStatus,
+    AdminServiceSystemResponse, AdminServiceSystemRunbookDto, AdminServiceSystemRunbooksResponse,
+    AdminServiceSystemRunbooksStatus, AdminServiceSystemServiceDto, AdminServiceSystemStatus,
 };
 use crate::{
     AdminModule, AdminModuleMetadata, AdminModuleMetadataRefreshModuleResult,
@@ -71,6 +76,9 @@ const SERVICE_RELEASE_LEDGER_PATH: &str = ".lenso/service-releases.json";
 const SERVICE_ENVIRONMENTS_PATH: &str = ".lenso/service-environments.json";
 const SERVICE_DEPLOYMENTS_PATH: &str = ".lenso/service-deployments.json";
 const SERVICE_MODULE_HEALTH_PATH: &str = ".lenso/service-health.json";
+const SERVICE_SYSTEM_PATH: &str = "lenso.system.json";
+const SYSTEM_RELEASES_PATH: &str = ".lenso/system-releases.json";
+const SYSTEM_RUNBOOKS_PATH: &str = ".lenso/system-runbooks.json";
 const OFFICIAL_MODULE_CATALOG_REGISTRY_FILE: &str = "builtin:lenso-official-module-catalog";
 const OFFICIAL_MODULE_CATALOG_SOURCE: &str =
     include_str!("../catalogs/lenso-official-module-catalog.json");
@@ -216,6 +224,90 @@ pub(crate) async fn service_modules(
 }
 
 #[utoipa::path(
+    get,
+    path = "/admin/data/service-system",
+    operation_id = "admin_data_service_system",
+    tag = "admin-data",
+    params(("authorization" = String, Header, description = "Development service bearer token")),
+    responses(
+        (status = 200, description = "Service system graph", body = AdminServiceSystemResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+    )
+)]
+pub(crate) async fn service_system(
+    _admin: AdminActor,
+    HttpRequestContext(_request_ctx): HttpRequestContext,
+) -> Result<Json<AdminServiceSystemResponse>, ApiErrorResponse> {
+    Ok(Json(service_system_response(FsPath::new(
+        SERVICE_SYSTEM_PATH,
+    ))))
+}
+
+#[utoipa::path(
+    get,
+    path = "/admin/data/service-system/drift",
+    operation_id = "admin_data_service_system_drift",
+    tag = "admin-data",
+    params(("authorization" = String, Header, description = "Development service bearer token")),
+    responses(
+        (status = 200, description = "Service system drift against host-local state", body = AdminServiceSystemDriftResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+    )
+)]
+pub(crate) async fn service_system_drift(
+    _admin: AdminActor,
+    HttpRequestContext(_request_ctx): HttpRequestContext,
+) -> Result<Json<AdminServiceSystemDriftResponse>, ApiErrorResponse> {
+    Ok(Json(service_system_drift_response(FsPath::new(
+        SERVICE_SYSTEM_PATH,
+    ))))
+}
+
+#[utoipa::path(
+    get,
+    path = "/admin/data/service-system/release-train",
+    operation_id = "admin_data_service_system_release_train",
+    tag = "admin-data",
+    params(("authorization" = String, Header, description = "Development service bearer token")),
+    responses(
+        (status = 200, description = "Applied system release train history", body = AdminServiceSystemReleaseTrainResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+    )
+)]
+pub(crate) async fn service_system_release_train(
+    _admin: AdminActor,
+    HttpRequestContext(_request_ctx): HttpRequestContext,
+) -> Result<Json<AdminServiceSystemReleaseTrainResponse>, ApiErrorResponse> {
+    Ok(Json(service_system_release_train_response(FsPath::new(
+        SYSTEM_RELEASES_PATH,
+    ))))
+}
+
+#[utoipa::path(
+    get,
+    path = "/admin/data/service-system/runbooks",
+    operation_id = "admin_data_service_system_runbooks",
+    tag = "admin-data",
+    params(("authorization" = String, Header, description = "Development service bearer token")),
+    responses(
+        (status = 200, description = "System runbook history", body = AdminServiceSystemRunbooksResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+    )
+)]
+pub(crate) async fn service_system_runbooks(
+    _admin: AdminActor,
+    HttpRequestContext(_request_ctx): HttpRequestContext,
+) -> Result<Json<AdminServiceSystemRunbooksResponse>, ApiErrorResponse> {
+    Ok(Json(service_system_runbooks_response(FsPath::new(
+        SYSTEM_RUNBOOKS_PATH,
+    ))))
+}
+
+#[utoipa::path(
     post,
     path = "/admin/data/available-modules/{module}/install",
     operation_id = "admin_data_install_available_module",
@@ -290,6 +382,473 @@ fn available_modules_response() -> AdminModuleRegistrySnapshotResponse {
         OFFICIAL_MODULE_CATALOG_SOURCE,
         &install_state,
     )
+}
+
+fn service_system_response(path: &FsPath) -> AdminServiceSystemResponse {
+    if !path.exists() {
+        return AdminServiceSystemResponse {
+            dependencies: Vec::new(),
+            environments: Vec::new(),
+            issues: Vec::new(),
+            modules: Vec::new(),
+            name: None,
+            services: Vec::new(),
+            status: AdminServiceSystemStatus::Empty,
+            system_file: path.to_string_lossy().into_owned(),
+            version: 1,
+        };
+    }
+    let source = match fs::read_to_string(path) {
+        Ok(source) => source,
+        Err(error) => {
+            return service_system_error_response(path, "read_error", error.to_string());
+        }
+    };
+    let system = match serde_json::from_str::<lenso_service::ServiceSystem>(&source) {
+        Ok(system) => system,
+        Err(error) => {
+            return service_system_error_response(path, "parse_error", error.to_string());
+        }
+    };
+    if system.protocol != lenso_service::SERVICE_SYSTEM_PROTOCOL {
+        return service_system_error_response(
+            path,
+            "unsupported_protocol",
+            format!(
+                "protocol must be `{}`",
+                lenso_service::SERVICE_SYSTEM_PROTOCOL
+            ),
+        );
+    }
+    let graph = lenso_service::service_system_graph(&system);
+    let issues = graph
+        .issues
+        .into_iter()
+        .map(|issue| AdminServiceSystemIssueDto {
+            code: issue.code,
+            message: issue.message,
+        })
+        .collect::<Vec<_>>();
+    AdminServiceSystemResponse {
+        dependencies: graph
+            .dependencies
+            .into_iter()
+            .map(|dependency| AdminServiceSystemDependencyDto {
+                capability: dependency.capability,
+                from: dependency.from,
+                state: dependency.state,
+                to: dependency.to,
+            })
+            .collect(),
+        environments: graph.environments,
+        modules: graph
+            .modules
+            .into_iter()
+            .map(|module| AdminServiceSystemModuleDto {
+                capabilities: module.capabilities,
+                dependencies: module.dependencies,
+                name: module.name,
+                owner: module.owner,
+            })
+            .collect(),
+        name: Some(graph.name),
+        services: graph
+            .services
+            .into_iter()
+            .map(|service| AdminServiceSystemServiceDto {
+                modules: service.modules,
+                name: service.name,
+                target: service.target,
+            })
+            .collect(),
+        status: if issues.is_empty() {
+            AdminServiceSystemStatus::Ready
+        } else {
+            AdminServiceSystemStatus::NeedsAttention
+        },
+        system_file: path.to_string_lossy().into_owned(),
+        version: 1,
+        issues,
+    }
+}
+
+fn service_system_error_response(
+    path: &FsPath,
+    code: impl Into<String>,
+    message: impl Into<String>,
+) -> AdminServiceSystemResponse {
+    AdminServiceSystemResponse {
+        dependencies: Vec::new(),
+        environments: Vec::new(),
+        issues: vec![AdminServiceSystemIssueDto {
+            code: code.into(),
+            message: message.into(),
+        }],
+        modules: Vec::new(),
+        name: None,
+        services: Vec::new(),
+        status: AdminServiceSystemStatus::NeedsAttention,
+        system_file: path.to_string_lossy().into_owned(),
+        version: 1,
+    }
+}
+
+fn service_system_drift_response(path: &FsPath) -> AdminServiceSystemDriftResponse {
+    service_system_drift_response_from_paths(
+        path,
+        FsPath::new(MODULE_INSTALL_LEDGER_PATH),
+        FsPath::new(MODULE_SERVICES_PATH),
+        FsPath::new(SERVICE_ENVIRONMENTS_PATH),
+        FsPath::new(SERVICE_DEPLOYMENTS_PATH),
+        FsPath::new(SERVICE_RELEASE_LEDGER_PATH),
+    )
+}
+
+fn service_system_drift_response_from_paths(
+    path: &FsPath,
+    module_installs_path: &FsPath,
+    module_services_path: &FsPath,
+    service_environments_path: &FsPath,
+    service_deployments_path: &FsPath,
+    service_releases_path: &FsPath,
+) -> AdminServiceSystemDriftResponse {
+    let system = service_system_response(path);
+    if matches!(system.status, AdminServiceSystemStatus::Empty) {
+        return AdminServiceSystemDriftResponse {
+            commands: Vec::new(),
+            drifts: Vec::new(),
+            graph_issues: Vec::new(),
+            status: AdminServiceSystemDriftStatus::Empty,
+            system_file: system.system_file,
+            version: 1,
+        };
+    }
+
+    let installed_modules = local_installed_modules(module_installs_path);
+    let configured_services = local_configured_services(module_services_path);
+    let environments = local_service_environments(service_environments_path);
+    let deployments = local_service_deployments(service_deployments_path);
+    let releases = local_service_release_history(service_releases_path);
+    let mut drifts = Vec::new();
+
+    for service in &system.services {
+        if !configured_services.contains(&service.name) {
+            drifts.push(AdminServiceSystemDriftDto {
+                code: "service_not_configured".to_owned(),
+                command: Some("lenso system apply".to_owned()),
+                message: format!("Service `{}` is declared but not configured.", service.name),
+                name: service.name.clone(),
+                resource: "service".to_owned(),
+                severity: "warning".to_owned(),
+            });
+        }
+        if matches!(service.target.as_str(), "kubernetes" | "operator") {
+            let service_envs = environments.get(&service.name).cloned().unwrap_or_default();
+            let service_deployments = deployments
+                .current_by_service
+                .get(&service.name)
+                .cloned()
+                .unwrap_or_default();
+            let service_releases = releases.get(&service.name).cloned().unwrap_or_default();
+            for environment in &system.environments {
+                if !service_envs.iter().any(|state| state.name == *environment) {
+                    drifts.push(AdminServiceSystemDriftDto {
+                        code: "service_env_missing".to_owned(),
+                        command: Some("lenso system apply".to_owned()),
+                        message: format!(
+                            "Service `{}` has no `{environment}` environment state.",
+                            service.name
+                        ),
+                        name: service_environment_key(&service.name, environment),
+                        resource: "environment".to_owned(),
+                        severity: "warning".to_owned(),
+                    });
+                    continue;
+                }
+                if !service_deployments
+                    .iter()
+                    .any(|state| state.environment == *environment)
+                {
+                    drifts.push(AdminServiceSystemDriftDto {
+                        code: "deployment_state_missing".to_owned(),
+                        command: Some(format!(
+                            "lenso service deploy status {} --env {} --source {} --write-state",
+                            service.name, environment, service.target
+                        )),
+                        message: format!(
+                            "Service `{}` has `{environment}` env state but no deployment observation.",
+                            service.name
+                        ),
+                        name: service_environment_key(&service.name, environment),
+                        resource: "deployment".to_owned(),
+                        severity: "info".to_owned(),
+                    });
+                }
+                if !service_releases
+                    .iter()
+                    .any(|release| release.environment.as_deref() == Some(environment.as_str()))
+                {
+                    drifts.push(AdminServiceSystemDriftDto {
+                        code: "release_state_missing".to_owned(),
+                        command: Some(format!(
+                            "lenso service release plan {} <manifest-or-package> --env {} --output release-plan.json",
+                            service.name, environment
+                        )),
+                        message: format!(
+                            "Service `{}` has no `{environment}` release record.",
+                            service.name
+                        ),
+                        name: service_environment_key(&service.name, environment),
+                        resource: "release".to_owned(),
+                        severity: "info".to_owned(),
+                    });
+                }
+            }
+        }
+    }
+    for module in &system.modules {
+        if !installed_modules.contains(&module.name) {
+            drifts.push(AdminServiceSystemDriftDto {
+                code: "module_not_installed".to_owned(),
+                command: Some(format!("lenso module install {}", module.name)),
+                message: format!("Module `{}` is declared but not installed.", module.name),
+                name: module.name.clone(),
+                resource: "module".to_owned(),
+                severity: "warning".to_owned(),
+            });
+        }
+    }
+    let mut commands = drifts
+        .iter()
+        .filter_map(|drift| drift.command.clone())
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    commands.sort();
+    let status = if !system.issues.is_empty() {
+        AdminServiceSystemDriftStatus::NeedsAttention
+    } else if !drifts.is_empty() {
+        AdminServiceSystemDriftStatus::Drifted
+    } else {
+        AdminServiceSystemDriftStatus::Ready
+    };
+    AdminServiceSystemDriftResponse {
+        commands,
+        drifts,
+        graph_issues: system.issues,
+        status,
+        system_file: system.system_file,
+        version: 1,
+    }
+}
+
+fn local_installed_modules(path: impl AsRef<FsPath>) -> HashSet<String> {
+    let Ok(source) = fs::read_to_string(path) else {
+        return HashSet::new();
+    };
+    let Ok(ledger) = serde_json::from_str::<LocalModuleInstallLedger>(&source) else {
+        return HashSet::new();
+    };
+    ledger
+        .modules
+        .into_iter()
+        .map(|module| module.module_name)
+        .collect()
+}
+
+fn local_configured_services(path: impl AsRef<FsPath>) -> HashSet<String> {
+    local_module_services(path)
+        .into_iter()
+        .flat_map(|(module_name, services)| {
+            std::iter::once(module_name).chain(services.into_iter().map(|service| service.name))
+        })
+        .collect()
+}
+
+fn service_environment_key(service: &str, environment: &str) -> String {
+    format!("{service}/{environment}")
+}
+
+fn service_system_release_train_response(path: &FsPath) -> AdminServiceSystemReleaseTrainResponse {
+    let Ok(source) = fs::read_to_string(path) else {
+        return AdminServiceSystemReleaseTrainResponse {
+            commands: vec![
+                "lenso system release plan --env staging --output system-release.json".to_owned(),
+            ],
+            releases: Vec::new(),
+            status: AdminServiceSystemReleaseTrainStatus::Empty,
+            version: 1,
+        };
+    };
+    let Ok(file) = serde_json::from_str::<Value>(&source) else {
+        return AdminServiceSystemReleaseTrainResponse {
+            commands: vec!["fix .lenso/system-releases.json".to_owned()],
+            releases: Vec::new(),
+            status: AdminServiceSystemReleaseTrainStatus::NeedsAttention,
+            version: 1,
+        };
+    };
+    let mut releases = file
+        .get("releases")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(system_release_record_from_value)
+        .collect::<Vec<_>>();
+    releases.sort_by(|left, right| {
+        right
+            .applied_at_unix_ms
+            .unwrap_or(0)
+            .cmp(&left.applied_at_unix_ms.unwrap_or(0))
+    });
+    releases.truncate(10);
+    let status = if releases.is_empty() {
+        AdminServiceSystemReleaseTrainStatus::Empty
+    } else if releases.iter().any(|release| release.status == "blocked") {
+        AdminServiceSystemReleaseTrainStatus::NeedsAttention
+    } else {
+        AdminServiceSystemReleaseTrainStatus::Ready
+    };
+    AdminServiceSystemReleaseTrainResponse {
+        commands: vec![
+            "lenso system release history".to_owned(),
+            "lenso system release promote --from staging --to prod --output system-release-prod.json"
+                .to_owned(),
+        ],
+        releases,
+        status,
+        version: 1,
+    }
+}
+
+fn system_release_record_from_value(value: &Value) -> Option<AdminServiceSystemReleaseRecordDto> {
+    Some(AdminServiceSystemReleaseRecordDto {
+        applied_at_unix_ms: value.get("appliedAtUnixMs").and_then(Value::as_u64),
+        environment: value.get("environment")?.as_str()?.to_owned(),
+        id: value.get("id")?.as_str()?.to_owned(),
+        kind: value
+            .get("kind")
+            .and_then(Value::as_str)
+            .unwrap_or("release")
+            .to_owned(),
+        modules: value
+            .get("modules")
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len),
+        policy_risk: value
+            .pointer("/policy/risk")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown")
+            .to_owned(),
+        rollback_available: value
+            .get("rollbackAvailable")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        services: value
+            .get("services")
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len),
+        status: value
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown")
+            .to_owned(),
+        system_name: value
+            .get("systemName")
+            .and_then(Value::as_str)
+            .unwrap_or("system")
+            .to_owned(),
+    })
+}
+
+fn service_system_runbooks_response(path: &FsPath) -> AdminServiceSystemRunbooksResponse {
+    let Ok(source) = fs::read_to_string(path) else {
+        return AdminServiceSystemRunbooksResponse {
+            commands: vec![
+                "lenso system runbook generate system-release.json --output system-runbook.json"
+                    .to_owned(),
+            ],
+            runbooks: Vec::new(),
+            status: AdminServiceSystemRunbooksStatus::Empty,
+            version: 1,
+        };
+    };
+    let Ok(file) = serde_json::from_str::<Value>(&source) else {
+        return AdminServiceSystemRunbooksResponse {
+            commands: vec!["fix .lenso/system-runbooks.json".to_owned()],
+            runbooks: Vec::new(),
+            status: AdminServiceSystemRunbooksStatus::NeedsAttention,
+            version: 1,
+        };
+    };
+    let mut runbooks = file
+        .get("runbooks")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(system_runbook_record_from_value)
+        .collect::<Vec<_>>();
+    runbooks.sort_by(|left, right| {
+        right
+            .recorded_at_unix_ms
+            .unwrap_or(0)
+            .cmp(&left.recorded_at_unix_ms.unwrap_or(0))
+    });
+    runbooks.truncate(10);
+    let status = if runbooks.is_empty() {
+        AdminServiceSystemRunbooksStatus::Empty
+    } else if runbooks
+        .iter()
+        .any(|runbook| matches!(runbook.status.as_str(), "blocked" | "failed"))
+    {
+        AdminServiceSystemRunbooksStatus::NeedsAttention
+    } else {
+        AdminServiceSystemRunbooksStatus::Ready
+    };
+    AdminServiceSystemRunbooksResponse {
+        commands: vec![
+            "lenso system runbook history".to_owned(),
+            "lenso system runbook doctor".to_owned(),
+        ],
+        runbooks,
+        status,
+        version: 1,
+    }
+}
+
+fn system_runbook_record_from_value(value: &Value) -> Option<AdminServiceSystemRunbookDto> {
+    let steps = value
+        .get("steps")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let current_step = steps
+        .iter()
+        .find(|step| {
+            step.get("status")
+                .and_then(Value::as_str)
+                .is_none_or(|status| status != "done")
+        })
+        .and_then(|step| step.get("title").and_then(Value::as_str))
+        .map(str::to_owned);
+    Some(AdminServiceSystemRunbookDto {
+        active: value
+            .get("active")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        current_step,
+        environment: value.get("environment")?.as_str()?.to_owned(),
+        id: value.get("id")?.as_str()?.to_owned(),
+        recorded_at_unix_ms: value.get("recordedAtUnixMs").and_then(Value::as_u64),
+        release_id: value.get("releaseId")?.as_str()?.to_owned(),
+        status: value
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown")
+            .to_owned(),
+        steps: steps.len(),
+        system_name: value.get("systemName")?.as_str()?.to_owned(),
+    })
 }
 
 async fn service_module_lifecycle_response(
@@ -4643,6 +5202,174 @@ mod tests {
                 .any(|issue| { issue.subject == "capability.reference.console.surface.contacts" })
         );
         assert_eq!(modules[0].console.len(), 1);
+    }
+
+    #[test]
+    fn service_system_response_is_empty_without_manifest() {
+        let path =
+            std::env::temp_dir().join(format!("missing-lenso-system-{}.json", current_unix_ms()));
+
+        let response = service_system_response(&path);
+
+        assert!(matches!(response.status, AdminServiceSystemStatus::Empty));
+        assert!(response.services.is_empty());
+    }
+
+    #[test]
+    fn service_system_response_maps_graph() {
+        let path = std::env::temp_dir().join(format!("lenso-system-{}.json", current_unix_ms()));
+        fs::write(
+            &path,
+            serde_json::json!({
+                "protocol": "lenso.system.v1",
+                "name": "support-platform",
+                "environments": ["local"],
+                "services": [
+                    { "name": "support", "target": "local", "modules": ["support-ticket"] },
+                    { "name": "billing", "target": "kubernetes", "modules": ["invoice"] }
+                ],
+                "modules": [
+                    {
+                        "name": "support-ticket",
+                        "installTo": "service:support",
+                        "dependencies": ["billing.invoice.read"]
+                    },
+                    {
+                        "name": "invoice",
+                        "installTo": "service:billing",
+                        "capabilities": ["billing.invoice.read"]
+                    }
+                ]
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let response = service_system_response(&path);
+
+        assert!(matches!(response.status, AdminServiceSystemStatus::Ready));
+        assert_eq!(response.name.as_deref(), Some("support-platform"));
+        assert_eq!(response.dependencies[0].to.as_deref(), Some("billing"));
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn service_system_drift_reports_missing_host_state() {
+        let root = std::env::temp_dir().join(format!("lenso-system-drift-{}", current_unix_ms()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("lenso.system.json");
+        fs::write(
+            &path,
+            serde_json::json!({
+                "protocol": "lenso.system.v1",
+                "name": "support-platform",
+                "environments": ["staging"],
+                "services": [
+                    { "name": "support", "target": "operator", "modules": ["support-ticket"] }
+                ],
+                "modules": [
+                    { "name": "support-ticket", "installTo": "service:support" }
+                ]
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let response = service_system_drift_response_from_paths(
+            &path,
+            &root.join("module-installs.json"),
+            &root.join("module-services.json"),
+            &root.join("service-environments.json"),
+            &root.join("service-deployments.json"),
+            &root.join("service-releases.json"),
+        );
+
+        assert_eq!(response.status, AdminServiceSystemDriftStatus::Drifted);
+        assert!(
+            response
+                .drifts
+                .iter()
+                .any(|drift| { drift.code == "service_not_configured" && drift.name == "support" })
+        );
+        assert!(response.drifts.iter().any(|drift| {
+            drift.code == "module_not_installed" && drift.name == "support-ticket"
+        }));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn service_system_release_train_reads_history() {
+        let root = std::env::temp_dir().join(format!("lenso-system-release-{}", current_unix_ms()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("system-releases.json");
+        fs::write(
+            &path,
+            serde_json::json!({
+                "releases": [{
+                    "appliedAtUnixMs": 1772300000000u64,
+                    "environment": "staging",
+                    "id": "sysrel_staging_1",
+                    "kind": "release",
+                    "modules": ["support-ticket"],
+                    "policy": { "risk": "safe" },
+                    "rollbackAvailable": true,
+                    "services": [{ "name": "support", "target": "operator" }],
+                    "status": "ready",
+                    "systemName": "support-platform"
+                }],
+                "version": 1
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let response = service_system_release_train_response(&path);
+
+        assert_eq!(response.status, AdminServiceSystemReleaseTrainStatus::Ready);
+        assert_eq!(response.releases[0].id, "sysrel_staging_1");
+        assert_eq!(response.releases[0].services, 1);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn service_system_runbooks_reads_active_runbook() {
+        let root = std::env::temp_dir().join(format!("lenso-system-runbook-{}", current_unix_ms()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("system-runbooks.json");
+        fs::write(
+            &path,
+            serde_json::json!({
+                "runbooks": [{
+                    "active": true,
+                    "environment": "staging",
+                    "id": "sysrun_staging_1",
+                    "releaseId": "sysrel_staging_1",
+                    "status": "ready",
+                    "steps": [
+                        { "id": "check-release", "kind": "evidence", "status": "pending", "title": "Check system release" }
+                    ],
+                    "systemName": "support-platform"
+                }],
+                "version": 1
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let response = service_system_runbooks_response(&path);
+
+        assert_eq!(response.status, AdminServiceSystemRunbooksStatus::Ready);
+        assert_eq!(response.runbooks[0].id, "sysrun_staging_1");
+        assert_eq!(response.runbooks[0].steps, 1);
+        assert_eq!(
+            response.runbooks[0].current_step.as_deref(),
+            Some("Check system release")
+        );
+        let _ = fs::remove_dir_all(root);
     }
 }
 
