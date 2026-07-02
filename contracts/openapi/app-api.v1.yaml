@@ -3844,6 +3844,33 @@ components:
             type: string
         status:
           type: string
+    AdminLaunchpadCapabilityPackDto:
+      type: object
+      required:
+      - name
+      - path
+      - status
+      - modules
+      - services
+      properties:
+        modules:
+          type: array
+          items:
+            type: string
+        name:
+          type: string
+        nextCommand:
+          type:
+          - string
+          - 'null'
+        path:
+          type: string
+        services:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
     AdminLaunchpadChangePlanItemDto:
       type: object
       required:
@@ -3985,6 +4012,11 @@ components:
       - requestedAddons
       - appliedAddons
       - pendingAddons
+      - requestedPacks
+      - appliedPacks
+      - pendingPacks
+      - capabilityPacks
+      - packFit
       - serviceActions
       - agentActions
       properties:
@@ -3996,17 +4028,37 @@ components:
           type: array
           items:
             type: string
+        appliedPacks:
+          type: array
+          items:
+            type: string
+        capabilityPacks:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminLaunchpadCapabilityPackDto'
         intent:
           type:
           - string
           - 'null'
+        packFit:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminLaunchpadPackFitDto'
         pendingAddons:
+          type: array
+          items:
+            type: string
+        pendingPacks:
           type: array
           items:
             type: string
         protocol:
           type: string
         requestedAddons:
+          type: array
+          items:
+            type: string
+        requestedPacks:
           type: array
           items:
             type: string
@@ -4104,6 +4156,28 @@ components:
           type:
           - string
           - 'null'
+    AdminLaunchpadPackFitDto:
+      type: object
+      required:
+      - name
+      - path
+      - status
+      - issues
+      properties:
+        command:
+          type:
+          - string
+          - 'null'
+        issues:
+          type: array
+          items:
+            type: string
+        name:
+          type: string
+        path:
+          type: string
+        status:
+          type: string
     AdminLaunchpadProofCheckDto:
       type: object
       required:
