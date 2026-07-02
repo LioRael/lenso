@@ -4016,6 +4016,7 @@ components:
       - appliedPacks
       - pendingPacks
       - capabilityPacks
+      - packFit
       - serviceActions
       - agentActions
       properties:
@@ -4039,6 +4040,10 @@ components:
           type:
           - string
           - 'null'
+        packFit:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminLaunchpadPackFitDto'
         pendingAddons:
           type: array
           items:
@@ -4151,6 +4156,28 @@ components:
           type:
           - string
           - 'null'
+    AdminLaunchpadPackFitDto:
+      type: object
+      required:
+      - name
+      - path
+      - status
+      - issues
+      properties:
+        command:
+          type:
+          - string
+          - 'null'
+        issues:
+          type: array
+          items:
+            type: string
+        name:
+          type: string
+        path:
+          type: string
+        status:
+          type: string
     AdminLaunchpadProofCheckDto:
       type: object
       required:
