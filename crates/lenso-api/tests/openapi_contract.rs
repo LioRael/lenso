@@ -56,6 +56,30 @@ fn openapi_contains_auth_dev_session_contract() {
 }
 
 #[test]
+fn openapi_contains_auth_anonymous_contract() {
+    let document = openapi_document();
+    let value = serde_json::to_value(&document).expect("OpenAPI document should serialize");
+
+    let login = &value["paths"]["/v1/auth/anonymous/login"]["post"];
+    assert_eq!(login["operationId"], "auth_anonymous_login");
+    assert_eq!(
+        login["requestBody"]["content"]["application/json"]["schema"]["$ref"],
+        "#/components/schemas/AnonymousSignInRequest"
+    );
+    assert_eq!(
+        login["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+        "#/components/schemas/AnonymousSessionResponse"
+    );
+
+    for status in ["400", "500"] {
+        assert_eq!(
+            login["responses"][status]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/ErrorResponse"
+        );
+    }
+}
+
+#[test]
 fn openapi_contains_auth_password_contract() {
     let document = openapi_document();
     let value = serde_json::to_value(&document).expect("OpenAPI document should serialize");
@@ -121,6 +145,30 @@ fn openapi_contains_auth_oidc_contract() {
         token["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
         "#/components/schemas/OidcTokenResponse"
     );
+}
+
+#[test]
+fn openapi_contains_auth_github_contract() {
+    let document = openapi_document();
+    let value = serde_json::to_value(&document).expect("OpenAPI document should serialize");
+
+    let start = &value["paths"]["/v1/auth/github/start"]["get"];
+    assert_eq!(start["operationId"], "auth_github_start");
+
+    let callback = &value["paths"]["/v1/auth/github/callback"]["get"];
+    assert_eq!(callback["operationId"], "auth_github_callback");
+}
+
+#[test]
+fn openapi_contains_auth_google_contract() {
+    let document = openapi_document();
+    let value = serde_json::to_value(&document).expect("OpenAPI document should serialize");
+
+    let start = &value["paths"]["/v1/auth/google/start"]["get"];
+    assert_eq!(start["operationId"], "auth_google_start");
+
+    let callback = &value["paths"]["/v1/auth/google/callback"]["get"];
+    assert_eq!(callback["operationId"], "auth_google_callback");
 }
 
 #[test]
@@ -364,6 +412,7 @@ async fn served_core_profile_openapi_omits_demo_auth_paths_after_demo_document_a
         .expect("OpenAPI tags should be an array");
 
     assert!(!paths.contains_key("/v1/auth/dev/sessions"));
+    assert!(!paths.contains_key("/v1/auth/anonymous/login"));
     assert!(!paths.contains_key("/v1/auth/password/register"));
     assert!(!tags.iter().any(|tag| tag["name"] == "auth"));
 }
@@ -385,7 +434,11 @@ async fn served_core_profile_openapi_keeps_composed_auth_routes() {
     );
     let composition = lenso_bootstrap::HostComposition::new()
         .with_linked_module(lenso_bootstrap::auth_linked_module())
+        .with_linked_module(lenso_bootstrap::auth_anonymous_linked_module())
+        .with_linked_module(lenso_bootstrap::auth_oauth_linked_module())
         .with_linked_module(lenso_bootstrap::auth_password_linked_module())
+        .with_linked_module(lenso_bootstrap::auth_github_linked_module())
+        .with_linked_module(lenso_bootstrap::auth_google_linked_module())
         .with_linked_module(lenso_bootstrap::auth_oidc_linked_module());
     let app = lenso_api::try_build_router_with_composition(ctx, &composition)
         .expect("core profile auth composition router should build");
@@ -415,7 +468,10 @@ async fn served_core_profile_openapi_keeps_composed_auth_routes() {
         .expect("OpenAPI tags should be an array");
 
     assert!(paths.contains_key("/v1/auth/dev/sessions"));
+    assert!(paths.contains_key("/v1/auth/anonymous/login"));
     assert!(paths.contains_key("/v1/auth/password/register"));
+    assert!(paths.contains_key("/v1/auth/github/start"));
+    assert!(paths.contains_key("/v1/auth/google/start"));
     assert!(paths.contains_key("/.well-known/openid-configuration"));
     assert!(paths.contains_key("/oauth/token"));
     assert!(tags.iter().any(|tag| tag["name"] == "auth"));

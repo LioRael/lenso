@@ -83,6 +83,16 @@ The password provider stores provider-specific credential hashes in its own
 `auth_password` schema. It uses `auth::public` helpers to create auth users,
 identities, and sessions, so the auth core remains the owner of those tables.
 
+The `auth-anonymous` provider creates an auth user, an `anonymous` identity, and
+a normal `auth.sessions` row without collecting PII:
+
+- `POST /v1/auth/anonymous/login` creates an anonymous session.
+- `auth.users.is_anonymous` marks whether the user still has only anonymous
+  credentials.
+- Provider modules can call `auth::public::link_identity_to_anonymous_user_in_tx`
+  to bind a real credential to the same auth user, which keeps downstream
+  module data attached to the same `auth_user_id`.
+
 The `auth-oidc` provider exposes the host as an OIDC provider for the hosted
 Runtime Console:
 

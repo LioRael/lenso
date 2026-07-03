@@ -153,10 +153,34 @@ const DEMO_LINKED_MODULE_ENTRIES: &[LinkedModuleEntry] = &[
         http_binding: Some(auth::module::binding),
     },
     LinkedModuleEntry {
+        module_name: "auth-anonymous",
+        manifest: auth_anonymous::module::manifest,
+        load: auth_anonymous::module::module,
+        http_binding: Some(auth_anonymous::module::binding),
+    },
+    LinkedModuleEntry {
+        module_name: "auth-oauth",
+        manifest: auth_oauth::module::manifest,
+        load: auth_oauth::module::module,
+        http_binding: None,
+    },
+    LinkedModuleEntry {
         module_name: "auth-password",
         manifest: auth_password::module::manifest,
         load: auth_password::module::module,
         http_binding: Some(auth_password::module::binding),
+    },
+    LinkedModuleEntry {
+        module_name: "auth-github",
+        manifest: auth_github::module::manifest,
+        load: auth_github::module::module,
+        http_binding: Some(auth_github::module::binding),
+    },
+    LinkedModuleEntry {
+        module_name: "auth-google",
+        manifest: auth_google::module::manifest,
+        load: auth_google::module::module,
+        http_binding: Some(auth_google::module::binding),
     },
     LinkedModuleEntry {
         module_name: "auth-oidc",
@@ -191,6 +215,17 @@ pub fn auth_linked_module() -> HostLinkedModule {
 }
 
 #[must_use]
+pub fn auth_anonymous_linked_module() -> HostLinkedModule {
+    HostLinkedModule::linked(
+        auth_anonymous::module::MODULE_NAME,
+        auth_anonymous::module::manifest,
+        auth_anonymous::module::module,
+        auth_anonymous::migrations::AUTH_ANONYMOUS_MIGRATIONS,
+    )
+    .with_http_binding(auth_anonymous::module::binding)
+}
+
+#[must_use]
 pub fn auth_password_linked_module() -> HostLinkedModule {
     HostLinkedModule::linked(
         auth_password::module::MODULE_NAME,
@@ -199,6 +234,38 @@ pub fn auth_password_linked_module() -> HostLinkedModule {
         auth_password::migrations::AUTH_PASSWORD_MIGRATIONS,
     )
     .with_http_binding(auth_password::module::binding)
+}
+
+#[must_use]
+pub fn auth_oauth_linked_module() -> HostLinkedModule {
+    HostLinkedModule::linked(
+        auth_oauth::module::MODULE_NAME,
+        auth_oauth::module::manifest,
+        auth_oauth::module::module,
+        auth_oauth::migrations::AUTH_OAUTH_MIGRATIONS,
+    )
+}
+
+#[must_use]
+pub fn auth_github_linked_module() -> HostLinkedModule {
+    HostLinkedModule::linked(
+        auth_github::module::MODULE_NAME,
+        auth_github::module::manifest,
+        auth_github::module::module,
+        auth_github::migrations::AUTH_GITHUB_MIGRATIONS,
+    )
+    .with_http_binding(auth_github::module::binding)
+}
+
+#[must_use]
+pub fn auth_google_linked_module() -> HostLinkedModule {
+    HostLinkedModule::linked(
+        auth_google::module::MODULE_NAME,
+        auth_google::module::manifest,
+        auth_google::module::module,
+        auth_google::migrations::AUTH_GOOGLE_MIGRATIONS,
+    )
+    .with_http_binding(auth_google::module::binding)
 }
 
 #[must_use]
@@ -591,11 +658,44 @@ pub fn migrations_for_config_with_composition(
         }
         if linked_module_with_dependencies_enabled_from_config(
             config,
+            "auth-oauth",
+            auth_oauth::module::manifest,
+        ) {
+            migrations.extend(
+                auth_oauth::migrations::AUTH_OAUTH_MIGRATIONS
+                    .iter()
+                    .copied(),
+            );
+        }
+        if linked_module_with_dependencies_enabled_from_config(
+            config,
             "auth-password",
             auth_password::module::manifest,
         ) {
             migrations.extend(
                 auth_password::migrations::AUTH_PASSWORD_MIGRATIONS
+                    .iter()
+                    .copied(),
+            );
+        }
+        if linked_module_with_dependencies_enabled_from_config(
+            config,
+            "auth-github",
+            auth_github::module::manifest,
+        ) {
+            migrations.extend(
+                auth_github::migrations::AUTH_GITHUB_MIGRATIONS
+                    .iter()
+                    .copied(),
+            );
+        }
+        if linked_module_with_dependencies_enabled_from_config(
+            config,
+            "auth-google",
+            auth_google::module::manifest,
+        ) {
+            migrations.extend(
+                auth_google::migrations::AUTH_GOOGLE_MIGRATIONS
                     .iter()
                     .copied(),
             );
@@ -627,7 +727,22 @@ pub fn migrations_for_profile(profile: CompositionProfile) -> Vec<Migration> {
     if profile == CompositionProfile::Demo {
         migrations.extend(auth::migrations::AUTH_MIGRATIONS.iter().copied());
         migrations.extend(
+            auth_oauth::migrations::AUTH_OAUTH_MIGRATIONS
+                .iter()
+                .copied(),
+        );
+        migrations.extend(
             auth_password::migrations::AUTH_PASSWORD_MIGRATIONS
+                .iter()
+                .copied(),
+        );
+        migrations.extend(
+            auth_github::migrations::AUTH_GITHUB_MIGRATIONS
+                .iter()
+                .copied(),
+        );
+        migrations.extend(
+            auth_google::migrations::AUTH_GOOGLE_MIGRATIONS
                 .iter()
                 .copied(),
         );
@@ -1014,6 +1129,8 @@ fn admin_metadata_from_modules(modules: Vec<Module>) -> Vec<AdminModuleMetadata>
                 events,
                 lifecycle,
                 console,
+                console_slots,
+                console_contributions,
                 story_display,
                 capabilities,
                 dependencies,
@@ -1028,6 +1145,8 @@ fn admin_metadata_from_modules(modules: Vec<Module>) -> Vec<AdminModuleMetadata>
                 events,
                 lifecycle,
                 console,
+                console_slots,
+                console_contributions,
                 story_display,
                 capabilities,
                 dependencies,
@@ -1092,6 +1211,8 @@ fn failed_remote_admin_metadata(
         events: None,
         lifecycle: None,
         console: Vec::new(),
+        console_slots: Vec::new(),
+        console_contributions: Vec::new(),
         story_display: Vec::new(),
         capabilities: Vec::new(),
         dependencies: Vec::new(),
@@ -1117,6 +1238,8 @@ fn disabled_remote_admin_metadata(config: &RemoteModuleConfig) -> AdminModuleMet
         events: None,
         lifecycle: None,
         console: Vec::new(),
+        console_slots: Vec::new(),
+        console_contributions: Vec::new(),
         story_display: Vec::new(),
         capabilities: Vec::new(),
         dependencies: Vec::new(),
@@ -1139,6 +1262,8 @@ fn disabled_linked_admin_metadata(
                 events,
                 lifecycle,
                 console,
+                console_slots,
+                console_contributions,
                 story_display,
                 capabilities,
                 dependencies,
@@ -1156,6 +1281,8 @@ fn disabled_linked_admin_metadata(
                 events,
                 lifecycle,
                 console,
+                console_slots,
+                console_contributions,
                 story_display,
                 capabilities,
                 dependencies,
@@ -1183,6 +1310,8 @@ fn disabled_host_linked_admin_metadata(
                     events,
                     lifecycle,
                     console,
+                    console_slots,
+                    console_contributions,
                     story_display,
                     capabilities,
                     dependencies,
@@ -1204,6 +1333,8 @@ fn disabled_host_linked_admin_metadata(
                     events,
                     lifecycle,
                     console,
+                    console_slots,
+                    console_contributions,
                     story_display,
                     capabilities,
                     dependencies,
@@ -2557,7 +2688,11 @@ mod tests {
             names,
             vec![
                 auth::module::MODULE_NAME,
+                auth_anonymous::module::MODULE_NAME,
+                auth_oauth::module::MODULE_NAME,
                 auth_password::module::MODULE_NAME,
+                auth_github::module::MODULE_NAME,
+                auth_google::module::MODULE_NAME,
                 auth_oidc::module::MODULE_NAME,
                 story::module::MODULE_NAME,
             ]
@@ -2587,6 +2722,9 @@ mod tests {
         assert!(names.iter().any(|name| name.starts_with("platform/")));
         assert!(names.iter().any(|name| name.starts_with("runtime/")));
         assert!(!names.iter().any(|name| name.starts_with("auth/")));
+        assert!(!names.iter().any(|name| name.starts_with("auth-oauth/")));
+        assert!(!names.iter().any(|name| name.starts_with("auth-github/")));
+        assert!(!names.iter().any(|name| name.starts_with("auth-google/")));
         assert!(!names.iter().any(|name| name.starts_with("auth-password/")));
     }
 
@@ -2605,7 +2743,22 @@ mod tests {
         assert!(
             names
                 .iter()
+                .any(|name| name == &"auth-oauth/0001_create_auth_oauth_schema")
+        );
+        assert!(
+            names
+                .iter()
                 .any(|name| name == &"auth-password/0001_create_auth_password_schema")
+        );
+        assert!(
+            names
+                .iter()
+                .any(|name| name == &"auth-github/0001_create_auth_github_schema")
+        );
+        assert!(
+            names
+                .iter()
+                .any(|name| name == &"auth-google/0001_create_auth_google_schema")
         );
         assert!(
             names
@@ -2634,7 +2787,10 @@ mod tests {
         config.module_sources.linked_profile = "core".to_owned();
         let composition = HostComposition::new()
             .with_linked_module(auth_linked_module())
+            .with_linked_module(auth_oauth_linked_module())
             .with_linked_module(auth_password_linked_module())
+            .with_linked_module(auth_github_linked_module())
+            .with_linked_module(auth_google_linked_module())
             .with_linked_module(auth_oidc_linked_module());
 
         let names = migrations_for_config_with_composition(&config, &composition)
@@ -2651,7 +2807,22 @@ mod tests {
         assert!(
             names
                 .iter()
+                .any(|name| name == &"auth-oauth/0001_create_auth_oauth_schema")
+        );
+        assert!(
+            names
+                .iter()
                 .any(|name| name == &"auth-password/0001_create_auth_password_schema")
+        );
+        assert!(
+            names
+                .iter()
+                .any(|name| name == &"auth-github/0001_create_auth_github_schema")
+        );
+        assert!(
+            names
+                .iter()
+                .any(|name| name == &"auth-google/0001_create_auth_google_schema")
         );
         assert!(
             names
@@ -2791,7 +2962,11 @@ mod tests {
             names,
             vec![
                 auth::module::MODULE_NAME,
+                auth_anonymous::module::MODULE_NAME,
+                auth_oauth::module::MODULE_NAME,
                 auth_password::module::MODULE_NAME,
+                auth_github::module::MODULE_NAME,
+                auth_google::module::MODULE_NAME,
                 auth_oidc::module::MODULE_NAME,
                 story::module::MODULE_NAME,
             ]
@@ -2815,8 +2990,20 @@ mod tests {
                     public_prefixes: &["/v1/auth/dev/", "/v1/auth/sessions/"],
                 },
                 LinkedHttpRouteOwner {
+                    module_name: "auth-anonymous".to_owned(),
+                    public_prefixes: &["/v1/auth/anonymous/"],
+                },
+                LinkedHttpRouteOwner {
                     module_name: "auth-password".to_owned(),
                     public_prefixes: &["/v1/auth/password/"],
+                },
+                LinkedHttpRouteOwner {
+                    module_name: "auth-github".to_owned(),
+                    public_prefixes: &["/v1/auth/github/"],
+                },
+                LinkedHttpRouteOwner {
+                    module_name: "auth-google".to_owned(),
+                    public_prefixes: &["/v1/auth/google/"],
                 },
                 LinkedHttpRouteOwner {
                     module_name: "auth-oidc".to_owned(),
@@ -2909,7 +3096,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn auth_password_requires_auth_module() {
+    async fn auth_linked_providers_require_auth_module() {
         let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
             .expect("lazy pool should build");
         let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
@@ -2928,12 +3115,98 @@ mod tests {
             .map(|module| module.manifest.name)
             .collect::<Vec<_>>();
 
+        assert!(!names.iter().any(|name| name == "auth-oauth"));
+        assert!(!names.iter().any(|name| name == "auth-anonymous"));
         assert!(!names.iter().any(|name| name == "auth-password"));
+        assert!(!names.iter().any(|name| name == "auth-github"));
+        assert!(!names.iter().any(|name| name == "auth-google"));
         assert!(!names.iter().any(|name| name == "auth-oidc"));
     }
 
     #[tokio::test]
-    async fn auth_password_dependency_status_is_visible_in_metadata() {
+    async fn auth_github_requires_oauth_substrate() {
+        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build");
+        let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
+        config.modules.insert(
+            auth_oauth::module::MODULE_NAME.to_owned(),
+            ModuleConfig {
+                enabled: Some(false),
+                values: BTreeMap::new(),
+            },
+        );
+        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
+
+        let names = modules_for_config(&ctx)
+            .expect("demo profile")
+            .into_iter()
+            .map(|module| module.manifest.name)
+            .collect::<Vec<_>>();
+
+        assert!(!names.iter().any(|name| name == "auth-oauth"));
+        assert!(!names.iter().any(|name| name == "auth-github"));
+        assert!(!names.iter().any(|name| name == "auth-google"));
+        assert!(names.iter().any(|name| name == "auth-password"));
+        assert!(names.iter().any(|name| name == "auth-oidc"));
+
+        let metadata = load_admin_module_metadata(&ctx)
+            .await
+            .expect("module metadata should load");
+        let auth_github = metadata
+            .iter()
+            .find(|module| module.module_name == "auth-github")
+            .expect("dependency-disabled GitHub provider should remain visible in metadata");
+
+        assert!(matches!(
+            &auth_github.load_status,
+            ModuleLoadStatus::Error { message }
+                if message == "module dependency disabled: auth-oauth"
+        ));
+    }
+
+    #[tokio::test]
+    async fn auth_google_requires_oauth_substrate() {
+        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build");
+        let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
+        config.modules.insert(
+            auth_oauth::module::MODULE_NAME.to_owned(),
+            ModuleConfig {
+                enabled: Some(false),
+                values: BTreeMap::new(),
+            },
+        );
+        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
+
+        let names = modules_for_config(&ctx)
+            .expect("demo profile")
+            .into_iter()
+            .map(|module| module.manifest.name)
+            .collect::<Vec<_>>();
+
+        assert!(!names.iter().any(|name| name == "auth-oauth"));
+        assert!(!names.iter().any(|name| name == "auth-github"));
+        assert!(!names.iter().any(|name| name == "auth-google"));
+        assert!(names.iter().any(|name| name == "auth-password"));
+        assert!(names.iter().any(|name| name == "auth-oidc"));
+
+        let metadata = load_admin_module_metadata(&ctx)
+            .await
+            .expect("module metadata should load");
+        let auth_google = metadata
+            .iter()
+            .find(|module| module.module_name == "auth-google")
+            .expect("dependency-disabled Google provider should remain visible in metadata");
+
+        assert!(matches!(
+            &auth_google.load_status,
+            ModuleLoadStatus::Error { message }
+                if message == "module dependency disabled: auth-oauth"
+        ));
+    }
+
+    #[tokio::test]
+    async fn auth_provider_dependency_status_is_visible_in_metadata() {
         let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
             .expect("lazy pool should build");
         let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
@@ -2949,9 +3222,25 @@ mod tests {
         let metadata = load_admin_module_metadata(&ctx)
             .await
             .expect("module metadata should load");
+        let auth_oauth = metadata
+            .iter()
+            .find(|module| module.module_name == "auth-oauth")
+            .expect("dependency-disabled substrate should remain visible in metadata");
+        let auth_anonymous = metadata
+            .iter()
+            .find(|module| module.module_name == "auth-anonymous")
+            .expect("dependency-disabled provider should remain visible in metadata");
         let auth_password = metadata
             .iter()
             .find(|module| module.module_name == "auth-password")
+            .expect("dependency-disabled provider should remain visible in metadata");
+        let auth_github = metadata
+            .iter()
+            .find(|module| module.module_name == "auth-github")
+            .expect("dependency-disabled provider should remain visible in metadata");
+        let auth_google = metadata
+            .iter()
+            .find(|module| module.module_name == "auth-google")
             .expect("dependency-disabled provider should remain visible in metadata");
         let auth_oidc = metadata
             .iter()
@@ -2959,15 +3248,57 @@ mod tests {
             .expect("dependency-disabled provider should remain visible in metadata");
 
         assert_eq!(
+            auth_oauth.dependencies,
+            vec![auth::module::MODULE_NAME.to_owned()]
+        );
+        assert_eq!(
+            auth_anonymous.dependencies,
+            vec![auth::module::MODULE_NAME.to_owned()]
+        );
+        assert_eq!(
             auth_password.dependencies,
             vec![auth::module::MODULE_NAME.to_owned()]
+        );
+        assert_eq!(
+            auth_github.dependencies,
+            vec![
+                auth::module::MODULE_NAME.to_owned(),
+                auth_oauth::module::MODULE_NAME.to_owned()
+            ]
+        );
+        assert_eq!(
+            auth_google.dependencies,
+            vec![
+                auth::module::MODULE_NAME.to_owned(),
+                auth_oauth::module::MODULE_NAME.to_owned()
+            ]
         );
         assert_eq!(
             auth_oidc.dependencies,
             vec![auth::module::MODULE_NAME.to_owned()]
         );
         assert!(matches!(
+            &auth_oauth.load_status,
+            ModuleLoadStatus::Error { message }
+                if message == "module dependency disabled: auth"
+        ));
+        assert!(matches!(
+            &auth_anonymous.load_status,
+            ModuleLoadStatus::Error { message }
+                if message == "module dependency disabled: auth"
+        ));
+        assert!(matches!(
             &auth_password.load_status,
+            ModuleLoadStatus::Error { message }
+                if message == "module dependency disabled: auth"
+        ));
+        assert!(matches!(
+            &auth_github.load_status,
+            ModuleLoadStatus::Error { message }
+                if message == "module dependency disabled: auth"
+        ));
+        assert!(matches!(
+            &auth_google.load_status,
             ModuleLoadStatus::Error { message }
                 if message == "module dependency disabled: auth"
         ));
@@ -3049,7 +3380,18 @@ mod tests {
             .map(|module| module.manifest.name)
             .collect::<Vec<_>>();
 
-        assert_eq!(names, vec!["auth", "auth-oidc", "platform-story"]);
+        assert_eq!(
+            names,
+            vec![
+                "auth",
+                "auth-anonymous",
+                "auth-oauth",
+                "auth-github",
+                "auth-google",
+                "auth-oidc",
+                "platform-story"
+            ]
+        );
     }
 
     #[tokio::test]
@@ -3077,7 +3419,18 @@ mod tests {
             .map(|module| module.manifest.name)
             .collect::<Vec<_>>();
 
-        assert_eq!(names, vec!["auth", "auth-oidc", "platform-story"]);
+        assert_eq!(
+            names,
+            vec![
+                "auth",
+                "auth-anonymous",
+                "auth-oauth",
+                "auth-github",
+                "auth-google",
+                "auth-oidc",
+                "platform-story"
+            ]
+        );
         let linked_http_names = linked_http_modules_for_context(&ctx)
             .expect("linked HTTP modules should load")
             .into_iter()
@@ -3086,7 +3439,14 @@ mod tests {
 
         assert_eq!(
             linked_http_names,
-            vec!["auth", "auth-oidc", "platform-story"]
+            vec![
+                "auth",
+                "auth-anonymous",
+                "auth-github",
+                "auth-google",
+                "auth-oidc",
+                "platform-story"
+            ]
         );
     }
 
@@ -3118,7 +3478,10 @@ mod tests {
             linked_http_names,
             vec![
                 auth::module::MODULE_NAME,
+                auth_anonymous::module::MODULE_NAME,
                 auth_password::module::MODULE_NAME,
+                auth_github::module::MODULE_NAME,
+                auth_google::module::MODULE_NAME,
                 auth_oidc::module::MODULE_NAME,
             ]
         );
@@ -3167,7 +3530,31 @@ mod tests {
                 && default == &json!(true)
         }));
         assert!(keys.iter().any(|(key, group, restart_only, default)| {
+            key == "modules.auth-anonymous.enabled"
+                && *group == Some("modules")
+                && *restart_only
+                && default == &json!(true)
+        }));
+        assert!(keys.iter().any(|(key, group, restart_only, default)| {
             key == "modules.auth-password.enabled"
+                && *group == Some("modules")
+                && *restart_only
+                && default == &json!(true)
+        }));
+        assert!(keys.iter().any(|(key, group, restart_only, default)| {
+            key == "modules.auth-oauth.enabled"
+                && *group == Some("modules")
+                && *restart_only
+                && default == &json!(true)
+        }));
+        assert!(keys.iter().any(|(key, group, restart_only, default)| {
+            key == "modules.auth-github.enabled"
+                && *group == Some("modules")
+                && *restart_only
+                && default == &json!(true)
+        }));
+        assert!(keys.iter().any(|(key, group, restart_only, default)| {
+            key == "modules.auth-google.enabled"
                 && *group == Some("modules")
                 && *restart_only
                 && default == &json!(true)
@@ -3336,6 +3723,21 @@ mod tests {
                 .iter()
                 .any(|name| name == &"auth/0001_create_auth_schema")
         );
+        assert!(
+            names
+                .iter()
+                .any(|name| name == &"auth-oauth/0001_create_auth_oauth_schema")
+        );
+        assert!(
+            names
+                .iter()
+                .any(|name| name == &"auth-github/0001_create_auth_github_schema")
+        );
+        assert!(
+            names
+                .iter()
+                .any(|name| name == &"auth-google/0001_create_auth_google_schema")
+        );
     }
 
     #[test]
@@ -3355,7 +3757,17 @@ mod tests {
             .map(|module| module.manifest.name)
             .collect::<Vec<_>>();
 
-        assert_eq!(names, vec!["auth", "auth-oidc", "platform-story"]);
+        assert_eq!(
+            names,
+            vec![
+                "auth",
+                "auth-anonymous",
+                "auth-github",
+                "auth-google",
+                "auth-oidc",
+                "platform-story"
+            ]
+        );
     }
 
     #[test]
@@ -3379,7 +3791,10 @@ mod tests {
             names,
             vec![
                 auth::module::MODULE_NAME,
+                auth_anonymous::module::MODULE_NAME,
                 auth_password::module::MODULE_NAME,
+                auth_github::module::MODULE_NAME,
+                auth_google::module::MODULE_NAME,
                 auth_oidc::module::MODULE_NAME,
             ]
         );
@@ -3459,8 +3874,20 @@ mod tests {
                     public_prefixes: &["/v1/auth/dev/", "/v1/auth/sessions/"],
                 },
                 LinkedHttpRouteOwner {
+                    module_name: "auth-anonymous".to_owned(),
+                    public_prefixes: &["/v1/auth/anonymous/"],
+                },
+                LinkedHttpRouteOwner {
                     module_name: "auth-password".to_owned(),
                     public_prefixes: &["/v1/auth/password/"],
+                },
+                LinkedHttpRouteOwner {
+                    module_name: "auth-github".to_owned(),
+                    public_prefixes: &["/v1/auth/github/"],
+                },
+                LinkedHttpRouteOwner {
+                    module_name: "auth-google".to_owned(),
+                    public_prefixes: &["/v1/auth/google/"],
                 },
                 LinkedHttpRouteOwner {
                     module_name: "auth-oidc".to_owned(),

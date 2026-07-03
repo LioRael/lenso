@@ -25,8 +25,10 @@ pub use admin::{
 };
 pub use admin_schema::{AdminSchema, EntitySchema, FieldSchema, FieldType};
 pub use console::{
-    ConsoleArea, ConsoleNavigation, ConsoleNavigationGroup, ConsolePackage, ConsoleSurface,
-    ConsoleWorkspaceRef,
+    ConsoleActionInputBinding, ConsoleActionInputValue, ConsoleArea, ConsoleContribution,
+    ConsoleContributionAction, ConsoleContributionKind, ConsoleNavigation, ConsoleNavigationGroup,
+    ConsolePackage, ConsoleSlot, ConsoleSlotContext, ConsoleSlotContextField,
+    ConsoleSlotContextFieldType, ConsoleSurface, ConsoleWorkspaceRef,
 };
 pub use cron::{CronParseError, CronSchedule, validate_cron_expression};
 pub use events::{EventHandlerDeclaration, EventSurface};
