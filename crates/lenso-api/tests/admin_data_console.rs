@@ -1666,26 +1666,33 @@ async fn available_modules_reads_official_catalog_when_no_local_catalog_exists()
         body["catalog"]["registryFile"],
         "builtin:lenso-official-module-catalog"
     );
-    assert_eq!(body["catalog"]["modules"], 8);
+    assert_eq!(body["catalog"]["modules"], 9);
     assert_eq!(body["modules"][0]["name"], "auth");
     assert_eq!(body["modules"][0]["source"], "linked");
     assert_eq!(body["modules"][0]["catalogVersion"], "0.1.4");
     assert_eq!(body["modules"][0]["consolePackageHints"], 1);
     assert_eq!(body["modules"][1]["name"], "auth-oauth");
     assert_eq!(body["modules"][1]["source"], "linked");
+    assert_eq!(body["modules"][1]["consolePackageHints"], 1);
     assert_eq!(body["modules"][2]["name"], "auth-anonymous");
     assert_eq!(body["modules"][2]["source"], "linked");
     assert_eq!(body["modules"][3]["name"], "auth-password");
     assert_eq!(body["modules"][3]["source"], "linked");
-    assert_eq!(body["modules"][4]["name"], "auth-github");
+    assert_eq!(body["modules"][4]["name"], "auth-device");
     assert_eq!(body["modules"][4]["source"], "linked");
-    assert_eq!(body["modules"][5]["name"], "auth-google");
+    assert_eq!(body["modules"][4]["consolePackageHints"], 1);
+    assert_eq!(body["modules"][5]["name"], "auth-github");
     assert_eq!(body["modules"][5]["source"], "linked");
-    assert_eq!(body["modules"][6]["name"], "auth-oidc");
+    assert_eq!(body["modules"][5]["consolePackageHints"], 1);
+    assert_eq!(body["modules"][6]["name"], "auth-google");
     assert_eq!(body["modules"][6]["source"], "linked");
-    assert_eq!(body["modules"][7]["name"], "support-ticket");
-    assert_eq!(body["modules"][7]["source"], "remote");
-    assert_eq!(body["modules"][7]["providedBy"], "support-suite-provider");
+    assert_eq!(body["modules"][6]["consolePackageHints"], 1);
+    assert_eq!(body["modules"][7]["name"], "auth-oidc");
+    assert_eq!(body["modules"][7]["source"], "linked");
+    assert_eq!(body["modules"][7]["consolePackageHints"], 1);
+    assert_eq!(body["modules"][8]["name"], "support-ticket");
+    assert_eq!(body["modules"][8]["source"], "remote");
+    assert_eq!(body["modules"][8]["providedBy"], "support-suite-provider");
     let support_ticket = body["modules"]
         .as_array()
         .expect("available modules is an array")
