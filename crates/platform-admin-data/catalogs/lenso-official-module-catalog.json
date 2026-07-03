@@ -31,7 +31,22 @@
       "manifestReference": "builtin:auth-oauth",
       "summary": "Official linked OAuth client substrate for provider login flows",
       "capabilities": [],
-      "dependencies": ["auth"]
+      "dependencies": ["auth"],
+      "consolePackages": [
+        {
+          "packageName": "@lenso/auth-provider-console",
+          "exportName": "authProviderConsoleModule",
+          "bundleUrl": "https://cdn.jsdelivr.net/npm/@lenso/auth-provider-console@0.1.0/dist/auth-provider-console.js",
+          "entry": "/console/extensions/auth-oauth/auth-provider-console.js",
+          "hostApi": "1",
+          "route": "/data/auth/providers",
+          "requiredCapabilities": [],
+          "styles": [
+            "https://cdn.jsdelivr.net/npm/@lenso/auth-provider-console@0.1.0/dist/auth-provider-console.css"
+          ],
+          "version": "0.1.0"
+        }
+      ]
     },
     {
       "name": "auth-anonymous",
@@ -52,13 +67,52 @@
       "dependencies": ["auth"]
     },
     {
+      "name": "auth-device",
+      "version": "0.1.1",
+      "source": "linked",
+      "manifestReference": "builtin:auth-device",
+      "summary": "Official linked auth device policy module for remembered devices and session device metadata",
+      "capabilities": ["auth_device.devices.read"],
+      "dependencies": ["auth"],
+      "consolePackages": [
+        {
+          "packageName": "@lenso/auth-device-console",
+          "exportName": "authDeviceConsoleModule",
+          "bundleUrl": "https://cdn.jsdelivr.net/npm/@lenso/auth-device-console@0.1.0/dist/auth-device-console.js",
+          "entry": "/console/extensions/auth-device/auth-device-console.js",
+          "hostApi": "1",
+          "route": "/data/auth/devices",
+          "requiredCapabilities": ["auth_device.devices.read"],
+          "styles": [
+            "https://cdn.jsdelivr.net/npm/@lenso/auth-device-console@0.1.0/dist/auth-device-console.css"
+          ],
+          "version": "0.1.0"
+        }
+      ]
+    },
+    {
       "name": "auth-github",
       "version": "0.1.0",
       "source": "linked",
       "manifestReference": "builtin:auth-github",
       "summary": "Official linked GitHub OAuth authentication provider",
       "capabilities": [],
-      "dependencies": ["auth", "auth-oauth"]
+      "dependencies": ["auth", "auth-oauth"],
+      "consolePackages": [
+        {
+          "packageName": "@lenso/auth-provider-console",
+          "exportName": "authProviderConsoleModule",
+          "bundleUrl": "https://cdn.jsdelivr.net/npm/@lenso/auth-provider-console@0.1.0/dist/auth-provider-console.js",
+          "entry": "/console/extensions/auth-github/auth-provider-console.js",
+          "hostApi": "1",
+          "route": "/data/auth/providers/github",
+          "requiredCapabilities": [],
+          "styles": [
+            "https://cdn.jsdelivr.net/npm/@lenso/auth-provider-console@0.1.0/dist/auth-provider-console.css"
+          ],
+          "version": "0.1.0"
+        }
+      ]
     },
     {
       "name": "auth-google",
@@ -67,7 +121,22 @@
       "manifestReference": "builtin:auth-google",
       "summary": "Official linked Google OAuth/OIDC authentication provider",
       "capabilities": [],
-      "dependencies": ["auth", "auth-oauth"]
+      "dependencies": ["auth", "auth-oauth"],
+      "consolePackages": [
+        {
+          "packageName": "@lenso/auth-provider-console",
+          "exportName": "authProviderConsoleModule",
+          "bundleUrl": "https://cdn.jsdelivr.net/npm/@lenso/auth-provider-console@0.1.0/dist/auth-provider-console.js",
+          "entry": "/console/extensions/auth-google/auth-provider-console.js",
+          "hostApi": "1",
+          "route": "/data/auth/providers/google",
+          "requiredCapabilities": [],
+          "styles": [
+            "https://cdn.jsdelivr.net/npm/@lenso/auth-provider-console@0.1.0/dist/auth-provider-console.css"
+          ],
+          "version": "0.1.0"
+        }
+      ]
     },
     {
       "name": "auth-oidc",
@@ -76,7 +145,22 @@
       "manifestReference": "builtin:auth-oidc",
       "summary": "Official linked OIDC provider for Runtime Console sign-in",
       "capabilities": [],
-      "dependencies": ["auth"]
+      "dependencies": ["auth"],
+      "consolePackages": [
+        {
+          "packageName": "@lenso/auth-provider-console",
+          "exportName": "authProviderConsoleModule",
+          "bundleUrl": "https://cdn.jsdelivr.net/npm/@lenso/auth-provider-console@0.1.0/dist/auth-provider-console.js",
+          "entry": "/console/extensions/auth-oidc/auth-provider-console.js",
+          "hostApi": "1",
+          "route": "/data/auth/providers/oidc",
+          "requiredCapabilities": [],
+          "styles": [
+            "https://cdn.jsdelivr.net/npm/@lenso/auth-provider-console@0.1.0/dist/auth-provider-console.css"
+          ],
+          "version": "0.1.0"
+        }
+      ]
     },
     {
       "name": "support-ticket",
