@@ -7,7 +7,10 @@ use crate::admin::{
     AdminEmbeddedSurface, AdminPermission, AdminSurface,
 };
 use crate::admin_schema::AdminSchema;
-use crate::console::ConsoleSurface;
+use crate::console::{
+    ConsoleActionInputValue, ConsoleContribution, ConsoleContributionAction, ConsoleSlot,
+    ConsoleSurface,
+};
 use crate::events::{EventHandlerDeclaration, EventSurface};
 use crate::http::{ModuleHttpMethod, ModuleHttpRoute, lint_module_http_routes};
 use crate::lifecycle::{
@@ -65,6 +68,14 @@ pub struct ModuleManifest {
     #[serde(default)]
     pub console: Vec<ConsoleSurface>,
 
+    /// Declared Runtime Console extension slots owned by host or module surfaces.
+    #[serde(default)]
+    pub console_slots: Vec<ConsoleSlot>,
+
+    /// Declared Runtime Console slot contributions attached to host or module-owned surfaces.
+    #[serde(default)]
+    pub console_contributions: Vec<ConsoleContribution>,
+
     /// RESERVED SEAM — capabilities the module declares (perms/tenancy).
     #[serde(default)]
     pub capabilities: Vec<String>,
@@ -88,6 +99,8 @@ impl ModuleManifest {
                 events: None,
                 lifecycle: None,
                 console: Vec::new(),
+                console_slots: Vec::new(),
+                console_contributions: Vec::new(),
                 capabilities: Vec::new(),
                 dependencies: Vec::new(),
             },
@@ -130,6 +143,8 @@ pub fn lint_module_manifest(
         manifest.events.as_ref(),
         manifest.lifecycle.as_ref(),
         &manifest.console,
+        &manifest.console_slots,
+        &manifest.console_contributions,
         &manifest.capabilities,
         &manifest.dependencies,
     )
@@ -144,6 +159,8 @@ pub fn lint_module_manifest_parts(
     events: Option<&EventSurface>,
     lifecycle: Option<&LifecycleSurface>,
     console: &[ConsoleSurface],
+    console_slots: &[ConsoleSlot],
+    console_contributions: &[ConsoleContribution],
     capabilities: &[String],
     dependencies: &[String],
 ) -> Vec<ModuleManifestLint> {
@@ -208,6 +225,7 @@ pub fn lint_module_manifest_parts(
         http_routes,
         lifecycle,
         console,
+        console_contributions,
         capabilities,
         &mut lints,
     );
@@ -226,6 +244,8 @@ pub fn lint_module_manifest_parts(
         lint_lifecycle_surface(lifecycle, runtime, capabilities, &mut lints);
     }
     lint_console_surfaces(console, &mut lints);
+    lint_console_slots(console_slots, &mut lints);
+    lint_console_contributions(console_contributions, &mut lints);
     lints.extend(runtime_lints);
 
     if lints.is_empty() {
@@ -245,6 +265,7 @@ pub fn module_capability_references(
     http_routes: &[ModuleHttpRoute],
     lifecycle: Option<&LifecycleSurface>,
     console: &[ConsoleSurface],
+    console_contributions: &[ConsoleContribution],
 ) -> Vec<ModuleCapabilityReference> {
     let mut references = Vec::new();
 
@@ -292,6 +313,22 @@ pub fn module_capability_references(
         }
     }
 
+    for contribution in console_contributions {
+        let subject = if present(&contribution.target) {
+            format!("console.contribution.{}", contribution.target)
+        } else {
+            "console.contribution".to_owned()
+        };
+        for capability in &contribution.required_capabilities {
+            if present(capability) {
+                references.push(ModuleCapabilityReference {
+                    capability: capability.clone(),
+                    subject: subject.clone(),
+                });
+            }
+        }
+    }
+
     references
 }
 
@@ -300,6 +337,7 @@ fn lint_capability_references(
     http_routes: &[ModuleHttpRoute],
     lifecycle: Option<&LifecycleSurface>,
     console: &[ConsoleSurface],
+    console_contributions: &[ConsoleContribution],
     capabilities: &[String],
     lints: &mut Vec<ModuleManifestLint>,
 ) {
@@ -308,7 +346,13 @@ fn lint_capability_references(
         .map(String::as_str)
         .collect::<HashSet<_>>();
 
-    for reference in module_capability_references(admin, http_routes, lifecycle, console) {
+    for reference in module_capability_references(
+        admin,
+        http_routes,
+        lifecycle,
+        console,
+        console_contributions,
+    ) {
         // Lifecycle startup checks already produce a lifecycle-specific lint with
         // the check context and required/optional semantics.
         if reference.subject.starts_with("lifecycle.") {
@@ -826,6 +870,248 @@ fn lint_console_surfaces(console: &[ConsoleSurface], lints: &mut Vec<ModuleManif
     }
 }
 
+fn lint_console_slots(console_slots: &[ConsoleSlot], lints: &mut Vec<ModuleManifestLint>) {
+    let mut slots = HashSet::new();
+
+    for slot in console_slots {
+        let subject = if present(&slot.id) {
+            format!("console.slot.{}", slot.id)
+        } else {
+            "console.slot".to_owned()
+        };
+
+        if !present(&slot.id) {
+            lints.push(ModuleManifestLint {
+                severity: ModuleManifestLintSeverity::Error,
+                subject: subject.clone(),
+                message: "Console slot is missing an id.".to_owned(),
+                suggestion: "Set a stable dotted slot id such as auth.users.detail.actions."
+                    .to_owned(),
+            });
+        } else if !valid_console_slot_target(&slot.id) {
+            lints.push(ModuleManifestLint {
+                severity: ModuleManifestLintSeverity::Warning,
+                subject: subject.clone(),
+                message: "Console slot id should be a path-safe dotted id.".to_owned(),
+                suggestion: "Use ASCII letters, digits, dot, underscore, or hyphen.".to_owned(),
+            });
+        } else if !slots.insert((slot.id.clone(), slot.version)) {
+            lints.push(ModuleManifestLint {
+                severity: ModuleManifestLintSeverity::Error,
+                subject: subject.clone(),
+                message: "Duplicate console slot declaration.".to_owned(),
+                suggestion: "Keep one declaration per console slot id and version.".to_owned(),
+            });
+        }
+
+        if slot.version == 0 {
+            lints.push(ModuleManifestLint {
+                severity: ModuleManifestLintSeverity::Error,
+                subject: format!("{subject}.version"),
+                message: "Console slot version must be greater than zero.".to_owned(),
+                suggestion: "Start slot contracts at version 1.".to_owned(),
+            });
+        }
+
+        if !present(&slot.label) {
+            lints.push(ModuleManifestLint {
+                severity: ModuleManifestLintSeverity::Warning,
+                subject: format!("{subject}.label"),
+                message: "Console slot is missing an operator-facing label.".to_owned(),
+                suggestion: "Set a short label such as User detail actions.".to_owned(),
+            });
+        }
+
+        if slot.accepts.is_empty() {
+            lints.push(ModuleManifestLint {
+                severity: ModuleManifestLintSeverity::Warning,
+                subject: format!("{subject}.accepts"),
+                message: "Console slot declares no accepted contribution kinds.".to_owned(),
+                suggestion: "Declare at least one accepted kind such as admin_action.".to_owned(),
+            });
+        }
+
+        let mut context_names = HashSet::new();
+        for context in &slot.context {
+            let context_subject = if present(&context.name) {
+                format!("{subject}.context.{}", context.name)
+            } else {
+                format!("{subject}.context")
+            };
+            if !present(&context.name) {
+                lints.push(ModuleManifestLint {
+                    severity: ModuleManifestLintSeverity::Error,
+                    subject: context_subject.clone(),
+                    message: "Console slot context is missing a name.".to_owned(),
+                    suggestion: "Set a stable context name such as selected_user.".to_owned(),
+                });
+            } else if !valid_slot_context_segment(&context.name) {
+                lints.push(ModuleManifestLint {
+                    severity: ModuleManifestLintSeverity::Warning,
+                    subject: context_subject.clone(),
+                    message: "Console slot context name should be path-safe.".to_owned(),
+                    suggestion: "Use ASCII letters, digits, underscore, or hyphen.".to_owned(),
+                });
+            } else if !context_names.insert(context.name.clone()) {
+                lints.push(ModuleManifestLint {
+                    severity: ModuleManifestLintSeverity::Error,
+                    subject: context_subject.clone(),
+                    message: "Duplicate console slot context declaration.".to_owned(),
+                    suggestion: "Keep one declaration per slot context name.".to_owned(),
+                });
+            }
+
+            let mut field_names = HashSet::new();
+            for field in &context.fields {
+                let field_subject = if present(&field.name) {
+                    format!("{context_subject}.field.{}", field.name)
+                } else {
+                    format!("{context_subject}.field")
+                };
+                if !present(&field.name) {
+                    lints.push(ModuleManifestLint {
+                        severity: ModuleManifestLintSeverity::Error,
+                        subject: field_subject.clone(),
+                        message: "Console slot context field is missing a name.".to_owned(),
+                        suggestion: "Set a stable field name such as id.".to_owned(),
+                    });
+                } else if !valid_slot_context_segment(&field.name) {
+                    lints.push(ModuleManifestLint {
+                        severity: ModuleManifestLintSeverity::Warning,
+                        subject: field_subject.clone(),
+                        message: "Console slot context field should be path-safe.".to_owned(),
+                        suggestion: "Use ASCII letters, digits, underscore, or hyphen.".to_owned(),
+                    });
+                } else if !field_names.insert(field.name.clone()) {
+                    lints.push(ModuleManifestLint {
+                        severity: ModuleManifestLintSeverity::Error,
+                        subject: field_subject,
+                        message: "Duplicate console slot context field declaration.".to_owned(),
+                        suggestion: "Keep one declaration per context field name.".to_owned(),
+                    });
+                }
+            }
+        }
+    }
+}
+
+fn lint_console_contributions(
+    contributions: &[ConsoleContribution],
+    lints: &mut Vec<ModuleManifestLint>,
+) {
+    for contribution in contributions {
+        let subject = if present(&contribution.target) {
+            format!("console.contribution.{}", contribution.target)
+        } else {
+            "console.contribution".to_owned()
+        };
+
+        if !present(&contribution.target) {
+            lints.push(ModuleManifestLint {
+                severity: ModuleManifestLintSeverity::Error,
+                subject: subject.clone(),
+                message: "Console contribution is missing a target slot.".to_owned(),
+                suggestion: "Set a stable slot target such as auth.users.detail.actions."
+                    .to_owned(),
+            });
+        } else if !valid_console_slot_target(&contribution.target) {
+            lints.push(ModuleManifestLint {
+                severity: ModuleManifestLintSeverity::Warning,
+                subject: subject.clone(),
+                message: "Console contribution target should be a path-safe dotted slot id."
+                    .to_owned(),
+                suggestion: "Use ASCII letters, digits, dot, underscore, or hyphen.".to_owned(),
+            });
+        }
+
+        if contribution.target_version == 0 {
+            lints.push(ModuleManifestLint {
+                severity: ModuleManifestLintSeverity::Error,
+                subject: format!("{subject}.target_version"),
+                message: "Console contribution target version must be greater than zero."
+                    .to_owned(),
+                suggestion: "Set target_version to the slot contract version, usually 1."
+                    .to_owned(),
+            });
+        }
+
+        if !present(&contribution.label) {
+            lints.push(ModuleManifestLint {
+                severity: ModuleManifestLintSeverity::Warning,
+                subject: format!("{subject}.label"),
+                message: "Console contribution is missing an operator-facing label.".to_owned(),
+                suggestion: "Set a short action label such as Reset password.".to_owned(),
+            });
+        }
+
+        match &contribution.action {
+            ConsoleContributionAction::AdminAction {
+                module,
+                name,
+                input_bindings,
+            } => {
+                if !present(module) {
+                    lints.push(ModuleManifestLint {
+                        severity: ModuleManifestLintSeverity::Error,
+                        subject: format!("{subject}.action.module"),
+                        message: "Console contribution action is missing a module name.".to_owned(),
+                        suggestion: "Set the module that owns the admin action.".to_owned(),
+                    });
+                }
+                if !present(name) {
+                    lints.push(ModuleManifestLint {
+                        severity: ModuleManifestLintSeverity::Error,
+                        subject: format!("{subject}.action.name"),
+                        message: "Console contribution action is missing an action name."
+                            .to_owned(),
+                        suggestion: "Set the admin action name declared by that module.".to_owned(),
+                    });
+                }
+                for binding in input_bindings {
+                    if !present(&binding.input) {
+                        lints.push(ModuleManifestLint {
+                            severity: ModuleManifestLintSeverity::Error,
+                            subject: format!("{subject}.action.input_binding"),
+                            message:
+                                "Console contribution action binding is missing an input name."
+                                    .to_owned(),
+                            suggestion: "Set the input field that receives the bound value."
+                                .to_owned(),
+                        });
+                    }
+                    match &binding.value {
+                        ConsoleActionInputValue::SlotContext { path } => {
+                            if !present(path) {
+                                lints.push(ModuleManifestLint {
+                                    severity: ModuleManifestLintSeverity::Error,
+                                    subject: format!("{subject}.action.input_binding.path"),
+                                    message:
+                                        "Console contribution slot-context binding is missing a path."
+                                            .to_owned(),
+                                    suggestion:
+                                        "Set a slot context path such as selected_user.id."
+                                            .to_owned(),
+                                });
+                            } else if !valid_slot_context_path(path) {
+                                lints.push(ModuleManifestLint {
+                                    severity: ModuleManifestLintSeverity::Warning,
+                                    subject: format!("{subject}.action.input_binding.path"),
+                                    message:
+                                        "Console contribution slot-context path should be path-safe."
+                                            .to_owned(),
+                                    suggestion:
+                                        "Use dot-separated context fields such as selected_user.id."
+                                            .to_owned(),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 const HOST_SYSTEM_CONSOLE_WORKSPACE_ID: &str = "system";
 
 fn lint_console_navigation(
@@ -884,13 +1170,14 @@ fn lint_admin_surface(admin: &AdminSurface, lints: &mut Vec<ModuleManifestLint>)
     match admin {
         AdminSurface::Schema(schema) => lint_schema_entities("admin.schema", schema, lints),
         AdminSurface::DeclarativeCustom(surface) => {
-            if surface.pages.is_empty() {
+            if surface.pages.is_empty() && surface.actions.is_empty() {
                 lints.push(ModuleManifestLint {
                     severity: ModuleManifestLintSeverity::Warning,
                     subject: "admin.declarative.pages".to_owned(),
-                    message: "Declarative admin surface declares no pages.".to_owned(),
-                    suggestion: "Add at least one page or omit the declarative admin surface."
-                        .to_owned(),
+                    message: "Declarative admin surface declares no pages or actions.".to_owned(),
+                    suggestion:
+                        "Add at least one page/action or omit the declarative admin surface."
+                            .to_owned(),
                 });
             }
             if let Some(schema) = &surface.fallback_schema {
@@ -1128,6 +1415,28 @@ fn valid_console_surface_name(value: &str) -> bool {
         })
 }
 
+fn valid_console_slot_target(value: &str) -> bool {
+    present(value)
+        && value.contains('.')
+        && value.chars().all(|character| {
+            character.is_ascii_alphanumeric()
+                || character == '.'
+                || character == '_'
+                || character == '-'
+        })
+}
+
+fn valid_slot_context_path(value: &str) -> bool {
+    present(value) && value.split('.').all(valid_slot_context_segment)
+}
+
+fn valid_slot_context_segment(value: &str) -> bool {
+    present(value)
+        && value.chars().all(|character| {
+            character.is_ascii_alphanumeric() || character == '_' || character == '-'
+        })
+}
+
 fn valid_console_navigation_id(value: &str) -> bool {
     valid_console_surface_name(value)
 }
@@ -1236,6 +1545,23 @@ impl ModuleManifestBuilder {
         self
     }
 
+    /// Attach Runtime Console extension slot declarations.
+    #[must_use]
+    pub fn console_slots(mut self, console_slots: Vec<ConsoleSlot>) -> Self {
+        self.manifest.console_slots = console_slots;
+        self
+    }
+
+    /// Attach trusted Runtime Console slot contribution declarations.
+    #[must_use]
+    pub fn console_contributions(
+        mut self,
+        console_contributions: Vec<ConsoleContribution>,
+    ) -> Self {
+        self.manifest.console_contributions = console_contributions;
+        self
+    }
+
     /// Finish building.
     #[must_use]
     pub fn build(self) -> ModuleManifest {
@@ -1252,7 +1578,10 @@ mod tests {
     };
     use crate::{
         AdminEmbeddedEntry, AdminEmbeddedRuntime, AdminEmbeddedSurface, AdminSandboxPolicy,
-        ConsoleArea, ConsolePackage, ConsoleSurface, EventHandlerDeclaration, EventSurface,
+        ConsoleActionInputBinding, ConsoleActionInputValue, ConsoleArea, ConsoleContribution,
+        ConsoleContributionAction, ConsoleContributionKind, ConsolePackage, ConsoleSlot,
+        ConsoleSlotContext, ConsoleSlotContextField, ConsoleSlotContextFieldType, ConsoleSurface,
+        EventHandlerDeclaration, EventSurface,
     };
     use crate::{
         LifecycleActivationJobDeclaration, LifecycleActivationRunPolicy,
@@ -1306,6 +1635,108 @@ mod tests {
         let back: ModuleManifest = serde_json::from_str(&json).expect("deserialize");
 
         assert_eq!(manifest, back);
+    }
+
+    #[test]
+    fn manifest_with_console_contribution_round_trips_through_json() {
+        let contribution = ConsoleContribution {
+            target: "auth.users.detail.actions".to_owned(),
+            target_version: 1,
+            label: "Reset password".to_owned(),
+            action: ConsoleContributionAction::AdminAction {
+                module: "auth-password".to_owned(),
+                name: "reset_password".to_owned(),
+                input_bindings: vec![ConsoleActionInputBinding {
+                    input: "user_id".to_owned(),
+                    value: ConsoleActionInputValue::SlotContext {
+                        path: "selected_user.id".to_owned(),
+                    },
+                }],
+            },
+            icon: Some("key-round".to_owned()),
+            required_capabilities: vec!["auth_password.credentials.write".to_owned()],
+        };
+        let manifest = ModuleManifest::builder("auth-password")
+            .capabilities(vec!["auth_password.credentials.write".to_owned()])
+            .console_contributions(vec![contribution.clone()])
+            .build();
+
+        let json = serde_json::to_string(&manifest).expect("serialize");
+        assert!(json.contains(r#""console_contributions""#), "got {json}");
+        assert!(
+            json.contains(r#""target":"auth.users.detail.actions""#),
+            "got {json}"
+        );
+        assert!(json.contains(r#""target_version":1"#), "got {json}");
+        assert!(json.contains(r#""kind":"admin_action""#), "got {json}");
+        assert!(json.contains(r#""kind":"slot_context""#), "got {json}");
+
+        let back: ModuleManifest = serde_json::from_str(&json).expect("deserialize");
+
+        assert_eq!(back.console_contributions, vec![contribution]);
+    }
+
+    #[test]
+    fn manifest_with_console_slot_round_trips_through_json() {
+        let slot = ConsoleSlot {
+            id: "auth.users.detail.actions".to_owned(),
+            version: 1,
+            label: "User detail actions".to_owned(),
+            accepts: vec![ConsoleContributionKind::AdminAction],
+            context: vec![ConsoleSlotContext {
+                name: "selected_user".to_owned(),
+                fields: vec![ConsoleSlotContextField {
+                    name: "id".to_owned(),
+                    field_type: ConsoleSlotContextFieldType::String,
+                    required: true,
+                }],
+            }],
+        };
+        let manifest = ModuleManifest::builder("auth")
+            .console_slots(vec![slot.clone()])
+            .build();
+
+        let json = serde_json::to_string(&manifest).expect("serialize");
+        assert!(json.contains(r#""console_slots""#), "got {json}");
+        assert!(
+            json.contains(r#""id":"auth.users.detail.actions""#),
+            "got {json}"
+        );
+        assert!(json.contains(r#""accepts":["admin_action"]"#), "got {json}");
+
+        let back: ModuleManifest = serde_json::from_str(&json).expect("deserialize");
+
+        assert_eq!(back.console_slots, vec![slot]);
+    }
+
+    #[test]
+    fn console_contribution_capability_references_are_linted() {
+        let manifest = ModuleManifest::builder("auth-password")
+            .console_contributions(vec![ConsoleContribution {
+                target: "auth.users.detail.actions".to_owned(),
+                target_version: 1,
+                label: "Reset password".to_owned(),
+                action: ConsoleContributionAction::AdminAction {
+                    module: "auth-password".to_owned(),
+                    name: "reset_password".to_owned(),
+                    input_bindings: vec![ConsoleActionInputBinding {
+                        input: "user_id".to_owned(),
+                        value: ConsoleActionInputValue::SlotContext {
+                            path: "selected_user.id".to_owned(),
+                        },
+                    }],
+                },
+                icon: None,
+                required_capabilities: vec!["auth_password.credentials.write".to_owned()],
+            }])
+            .build();
+
+        let lints = lint_module_manifest(ModuleSource::Linked, &manifest);
+
+        assert!(lints.iter().any(|lint| {
+            lint.subject == "capability.reference.console.contribution.auth.users.detail.actions"
+                && lint.message == "Capability reference is not declared by the module."
+        }));
     }
 
     #[test]

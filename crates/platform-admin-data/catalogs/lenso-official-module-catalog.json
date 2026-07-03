@@ -25,6 +25,24 @@
       ]
     },
     {
+      "name": "auth-oauth",
+      "version": "0.1.0",
+      "source": "linked",
+      "manifestReference": "builtin:auth-oauth",
+      "summary": "Official linked OAuth client substrate for provider login flows",
+      "capabilities": [],
+      "dependencies": ["auth"]
+    },
+    {
+      "name": "auth-anonymous",
+      "version": "0.1.0",
+      "source": "linked",
+      "manifestReference": "builtin:auth-anonymous",
+      "summary": "Official linked anonymous authentication provider for guest sessions and later account upgrade",
+      "capabilities": [],
+      "dependencies": ["auth"]
+    },
+    {
       "name": "auth-password",
       "version": "0.1.1",
       "source": "linked",
@@ -32,6 +50,24 @@
       "summary": "Official linked password authentication provider for registration and login",
       "capabilities": [],
       "dependencies": ["auth"]
+    },
+    {
+      "name": "auth-github",
+      "version": "0.1.0",
+      "source": "linked",
+      "manifestReference": "builtin:auth-github",
+      "summary": "Official linked GitHub OAuth authentication provider",
+      "capabilities": [],
+      "dependencies": ["auth", "auth-oauth"]
+    },
+    {
+      "name": "auth-google",
+      "version": "0.1.0",
+      "source": "linked",
+      "manifestReference": "builtin:auth-google",
+      "summary": "Official linked Google OAuth/OIDC authentication provider",
+      "capabilities": [],
+      "dependencies": ["auth", "auth-oauth"]
     },
     {
       "name": "auth-oidc",

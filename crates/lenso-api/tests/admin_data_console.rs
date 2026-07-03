@@ -270,6 +270,8 @@ fn app() -> axum::Router {
         events: None,
         lifecycle: None,
         console: vec![],
+        console_slots: Vec::new(),
+        console_contributions: Vec::new(),
         story_display: vec![],
         capabilities: vec![],
         dependencies: vec![],
@@ -562,6 +564,8 @@ async fn admin_action_invocation_calls_declared_source() {
         events: None,
         lifecycle: None,
         console: vec![],
+        console_slots: Vec::new(),
+        console_contributions: Vec::new(),
         story_display: vec![],
         capabilities: vec!["remote_crm.contacts.sync".to_owned()],
         dependencies: vec![],
@@ -613,6 +617,8 @@ async fn admin_query_invocation_calls_declared_source() {
         events: None,
         lifecycle: None,
         console: vec![],
+        console_slots: Vec::new(),
+        console_contributions: Vec::new(),
         story_display: vec![],
         capabilities: vec!["remote_crm.health.read".to_owned()],
         dependencies: vec![],
@@ -654,6 +660,8 @@ async fn available_modules_returns_remote_install_rows() {
         events: None,
         lifecycle: None,
         console: vec![],
+        console_slots: Vec::new(),
+        console_contributions: Vec::new(),
         story_display: vec![],
         capabilities: vec!["billing.read".to_owned()],
         dependencies: vec![],
@@ -1218,6 +1226,8 @@ async fn service_modules_marks_loaded_remote_ready() {
         events: None,
         lifecycle: None,
         console: vec![],
+        console_slots: Vec::new(),
+        console_contributions: Vec::new(),
         story_display: vec![],
         capabilities: vec![],
         dependencies: vec![],
@@ -1301,6 +1311,8 @@ async fn service_modules_merges_service_provider_source_into_provided_module() {
         events: None,
         lifecycle: None,
         console: vec![],
+        console_slots: Vec::new(),
+        console_contributions: Vec::new(),
         story_display: vec![],
         capabilities: vec![],
         dependencies: vec![],
@@ -1433,6 +1445,8 @@ async fn service_modules_exposes_operations_for_provider_modules() {
         events: Some(events),
         lifecycle: None,
         console: vec![],
+        console_slots: Vec::new(),
+        console_contributions: Vec::new(),
         story_display: vec![],
         capabilities: vec![],
         dependencies: vec![],
@@ -1625,6 +1639,8 @@ async fn available_modules_reads_official_catalog_when_no_local_catalog_exists()
         events: None,
         lifecycle: None,
         console: vec![],
+        console_slots: Vec::new(),
+        console_contributions: Vec::new(),
         story_display: vec![],
         capabilities: vec![],
         dependencies: vec![],
@@ -1650,40 +1666,54 @@ async fn available_modules_reads_official_catalog_when_no_local_catalog_exists()
         body["catalog"]["registryFile"],
         "builtin:lenso-official-module-catalog"
     );
-    assert_eq!(body["catalog"]["modules"], 4);
+    assert_eq!(body["catalog"]["modules"], 8);
     assert_eq!(body["modules"][0]["name"], "auth");
     assert_eq!(body["modules"][0]["source"], "linked");
     assert_eq!(body["modules"][0]["catalogVersion"], "0.1.4");
     assert_eq!(body["modules"][0]["consolePackageHints"], 1);
-    assert_eq!(body["modules"][1]["name"], "auth-password");
+    assert_eq!(body["modules"][1]["name"], "auth-oauth");
     assert_eq!(body["modules"][1]["source"], "linked");
-    assert_eq!(body["modules"][2]["name"], "auth-oidc");
+    assert_eq!(body["modules"][2]["name"], "auth-anonymous");
     assert_eq!(body["modules"][2]["source"], "linked");
-    assert_eq!(body["modules"][3]["name"], "support-ticket");
-    assert_eq!(body["modules"][3]["source"], "remote");
-    assert_eq!(body["modules"][3]["providedBy"], "support-suite-provider");
+    assert_eq!(body["modules"][3]["name"], "auth-password");
+    assert_eq!(body["modules"][3]["source"], "linked");
+    assert_eq!(body["modules"][4]["name"], "auth-github");
+    assert_eq!(body["modules"][4]["source"], "linked");
+    assert_eq!(body["modules"][5]["name"], "auth-google");
+    assert_eq!(body["modules"][5]["source"], "linked");
+    assert_eq!(body["modules"][6]["name"], "auth-oidc");
+    assert_eq!(body["modules"][6]["source"], "linked");
+    assert_eq!(body["modules"][7]["name"], "support-ticket");
+    assert_eq!(body["modules"][7]["source"], "remote");
+    assert_eq!(body["modules"][7]["providedBy"], "support-suite-provider");
+    let support_ticket = body["modules"]
+        .as_array()
+        .expect("available modules is an array")
+        .iter()
+        .find(|module| module["name"] == "support-ticket")
+        .expect("official catalog includes support-ticket");
     assert_eq!(
-        body["modules"][3]["serviceManifest"],
+        support_ticket["serviceManifest"],
         "http://127.0.0.1:4110/lenso/service/v1/manifest"
     );
     assert_eq!(
-        body["modules"][3]["manifestReference"],
+        support_ticket["manifestReference"],
         "http://127.0.0.1:4110/lenso/service/v1/manifest"
     );
     assert_eq!(
-        body["modules"][3]["summary"],
+        support_ticket["summary"],
         "Ticket intake, triage, and operations"
     );
-    assert_eq!(body["modules"][3]["consolePackageHints"], 0);
+    assert_eq!(support_ticket["consolePackageHints"], 0);
     assert_eq!(
-        body["modules"][3]["installState"]["remoteSource"]["desiredBaseUrl"],
+        support_ticket["installState"]["remoteSource"]["desiredBaseUrl"],
         "http://127.0.0.1:4110/lenso/service/v1"
     );
     assert_eq!(
-        body["modules"][3]["installState"]["remoteSource"]["configured"],
+        support_ticket["installState"]["remoteSource"]["configured"],
         true
     );
-    assert_eq!(body["modules"][3]["status"], "ready");
+    assert_eq!(support_ticket["status"], "ready");
 }
 
 #[tokio::test]
@@ -1728,6 +1758,8 @@ async fn available_modules_reads_local_module_catalog() {
         events: None,
         lifecycle: None,
         console: vec![],
+        console_slots: Vec::new(),
+        console_contributions: Vec::new(),
         story_display: vec![],
         capabilities: vec![],
         dependencies: vec![],
@@ -1878,6 +1910,8 @@ async fn available_modules_reconciles_service_provider_source_after_restart() {
         events: None,
         lifecycle: None,
         console: vec![],
+        console_slots: Vec::new(),
+        console_contributions: Vec::new(),
         story_display: vec![],
         capabilities: vec![],
         dependencies: vec![],
@@ -1972,6 +2006,8 @@ async fn available_modules_reports_local_install_state() {
         events: None,
         lifecycle: None,
         console: vec![],
+        console_slots: Vec::new(),
+        console_contributions: Vec::new(),
         story_display: vec![],
         capabilities: vec![],
         dependencies: vec![],
@@ -2081,6 +2117,8 @@ async fn available_module_install_writes_remote_source_and_console_extension() {
         events: None,
         lifecycle: None,
         console: vec![],
+        console_slots: Vec::new(),
+        console_contributions: Vec::new(),
         story_display: vec![],
         capabilities: vec![],
         dependencies: vec![],
@@ -2576,6 +2614,8 @@ async fn available_remote_module_uninstall_removes_source_and_console_extension(
         events: None,
         lifecycle: None,
         console: vec![],
+        console_slots: Vec::new(),
+        console_contributions: Vec::new(),
         story_display: vec![],
         capabilities: vec![],
         dependencies: vec![],
@@ -2767,6 +2807,8 @@ async fn available_linked_module_uninstall_disables_module_env_override() {
         events: None,
         lifecycle: None,
         console: vec![],
+        console_slots: Vec::new(),
+        console_contributions: Vec::new(),
         story_display: vec![],
         capabilities: vec![],
         dependencies: vec![],
@@ -2951,6 +2993,8 @@ async fn admin_action_invocation_requires_confirmation_phrase_when_declared() {
         events: None,
         lifecycle: None,
         console: vec![],
+        console_slots: Vec::new(),
+        console_contributions: Vec::new(),
         story_display: vec![],
         capabilities: vec!["remote_crm.contacts.sync".to_owned()],
         dependencies: vec![],
@@ -3011,6 +3055,8 @@ async fn admin_action_invocation_validates_declared_input_schema() {
         events: None,
         lifecycle: None,
         console: vec![],
+        console_slots: Vec::new(),
+        console_contributions: Vec::new(),
         story_display: vec![],
         capabilities: vec!["remote_crm.contacts.sync".to_owned()],
         dependencies: vec![],
@@ -3114,6 +3160,8 @@ async fn admin_action_invocation_records_story_and_technical_operation() {
         events: None,
         lifecycle: None,
         console: vec![],
+        console_slots: Vec::new(),
+        console_contributions: Vec::new(),
         story_display: vec![],
         capabilities: vec!["remote_crm.contacts.sync".to_owned()],
         dependencies: vec![],
@@ -3269,6 +3317,8 @@ async fn admin_action_invocation_requires_declared_capability_scope() {
         events: None,
         lifecycle: None,
         console: vec![],
+        console_slots: Vec::new(),
+        console_contributions: Vec::new(),
         story_display: vec![],
         capabilities: vec!["remote_crm.contacts.sync".to_owned()],
         dependencies: vec![],
@@ -3316,6 +3366,8 @@ async fn admin_action_invocation_rejects_unknown_action() {
         events: None,
         lifecycle: None,
         console: vec![],
+        console_slots: Vec::new(),
+        console_contributions: Vec::new(),
         story_display: vec![],
         capabilities: vec!["remote_crm.contacts.sync".to_owned()],
         dependencies: vec![],
@@ -3464,6 +3516,8 @@ async fn refresh_schema_replaces_installed_modules() {
                 events: None,
                 lifecycle: None,
                 console: vec![],
+                console_slots: Vec::new(),
+                console_contributions: Vec::new(),
                 story_display: vec![StoryDisplayDescriptor {
                     source: StoryDisplaySource::ExecutionName {
                         name: "identity.create_user".to_owned(),
@@ -3487,6 +3541,8 @@ async fn refresh_schema_replaces_installed_modules() {
                 events: None,
                 lifecycle: None,
                 console: vec![],
+                console_slots: Vec::new(),
+                console_contributions: Vec::new(),
                 story_display: vec![],
                 capabilities: vec![],
                 dependencies: vec![],
@@ -3586,6 +3642,8 @@ async fn refresh_modules_replaces_module_registry_metadata() {
         events: None,
         lifecycle: None,
         console: vec![],
+        console_slots: Vec::new(),
+        console_contributions: Vec::new(),
         story_display: vec![],
         capabilities: vec![],
         dependencies: vec![],
@@ -3603,6 +3661,8 @@ async fn refresh_modules_replaces_module_registry_metadata() {
             events: None,
             lifecycle: None,
             console: vec![],
+            console_slots: Vec::new(),
+            console_contributions: Vec::new(),
             story_display: vec![StoryDisplayDescriptor {
                 source: StoryDisplaySource::ExecutionName {
                     name: "notifications.send_welcome_email.v1".to_owned(),
@@ -3687,6 +3747,8 @@ async fn refresh_modules_records_error_without_dropping_snapshot() {
         events: None,
         lifecycle: None,
         console: vec![],
+        console_slots: Vec::new(),
+        console_contributions: Vec::new(),
         story_display: vec![],
         capabilities: vec![],
         dependencies: vec![],

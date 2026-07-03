@@ -3010,6 +3010,63 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /v1/auth/anonymous/login:
+    post:
+      tags:
+      - auth
+      operationId: auth_anonymous_login
+      parameters:
+      - name: x-request-id
+        in: header
+        description: Optional caller-provided request identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      - name: x-correlation-id
+        in: header
+        description: Optional caller-provided correlation identifier
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+      requestBody:
+        description: Create an anonymous auth session
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnonymousSignInRequest'
+        required: true
+      responses:
+        '200':
+          description: Anonymous session created
+          headers:
+            x-correlation-id:
+              schema:
+                type: string
+              description: Correlation identifier shared across related work
+            x-request-id:
+              schema:
+                type: string
+              description: Request identifier for this HTTP request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnonymousSessionResponse'
+        '400':
+          description: Request validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /v1/auth/dev/sessions:
     post:
       tags:
@@ -3063,6 +3120,138 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Development sessions are only available in local environments
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/auth/github/callback:
+    get:
+      tags:
+      - auth
+      operationId: auth_github_callback
+      parameters:
+      - name: code
+        in: query
+        description: Temporary GitHub OAuth code
+        required: false
+        schema:
+          type: string
+      - name: state
+        in: query
+        description: OAuth state returned by GitHub
+        required: false
+        schema:
+          type: string
+      responses:
+        '303':
+          description: Creates a Lenso session and redirects to the original return path
+        '400':
+          description: Request validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Invalid GitHub authorization grant
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/auth/github/start:
+    get:
+      tags:
+      - auth
+      operationId: auth_github_start
+      parameters:
+      - name: return_to
+        in: query
+        description: Safe relative path to redirect to after login
+        required: false
+        schema:
+          type: string
+      responses:
+        '303':
+          description: Redirects to GitHub OAuth authorization
+        '400':
+          description: Request validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/auth/google/callback:
+    get:
+      tags:
+      - auth
+      operationId: auth_google_callback
+      parameters:
+      - name: code
+        in: query
+        description: Temporary Google OAuth code
+        required: false
+        schema:
+          type: string
+      - name: state
+        in: query
+        description: OAuth state returned by Google
+        required: false
+        schema:
+          type: string
+      responses:
+        '303':
+          description: Creates a Lenso session and redirects to the original return path
+        '400':
+          description: Request validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Invalid Google authorization grant
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/auth/google/start:
+    get:
+      tags:
+      - auth
+      operationId: auth_google_start
+      parameters:
+      - name: return_to
+        in: query
+        description: Safe relative path to redirect to after login
+        required: false
+        schema:
+          type: string
+      responses:
+        '303':
+          description: Redirects to Google OAuth authorization
+        '400':
+          description: Request validation failed
           content:
             application/json:
               schema:
@@ -4597,6 +4786,8 @@ components:
       - status
       - http_routes
       - console
+      - console_slots
+      - console_contributions
       - governance
       - manifest_lints
       - story_display
@@ -4615,6 +4806,14 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ConsoleSurface'
+        console_contributions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConsoleContribution'
+        console_slots:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConsoleSlot'
         dependencies:
           type: array
           items:
@@ -6875,6 +7074,33 @@ components:
 
         `Schema` is implemented today. Custom surface variants are data contracts
         only until the Runtime Console implements their renderers/policies.
+    AnonymousSessionResponse:
+      type: object
+      required:
+      - user_id
+      - session_id
+      - token
+      - expires_at
+      - is_anonymous
+      properties:
+        expires_at:
+          type: string
+          format: date-time
+        is_anonymous:
+          type: boolean
+        session_id:
+          type: string
+        token:
+          type: string
+        user_id:
+          type: string
+    AnonymousSignInRequest:
+      type: object
+      properties:
+        device_id:
+          type:
+          - string
+          - 'null'
     ConfigAuditDto:
       type: object
       description: One audit entry.
@@ -7064,6 +7290,29 @@ components:
           - string
           - 'null'
         value: {}
+    ConsoleActionInputBinding:
+      type: object
+      required:
+      - input
+      - value
+      properties:
+        input:
+          type: string
+        value:
+          $ref: '#/components/schemas/ConsoleActionInputValue'
+    ConsoleActionInputValue:
+      oneOf:
+      - type: object
+        required:
+        - path
+        - kind
+        properties:
+          kind:
+            type: string
+            enum:
+            - slot_context
+          path:
+            type: string
     ConsoleArea:
       type: string
       enum:
@@ -7071,6 +7320,56 @@ components:
       - operations
       - data
       - configuration
+    ConsoleContribution:
+      type: object
+      required:
+      - target
+      - target_version
+      - label
+      - action
+      properties:
+        action:
+          $ref: '#/components/schemas/ConsoleContributionAction'
+        icon:
+          type:
+          - string
+          - 'null'
+        label:
+          type: string
+        required_capabilities:
+          type: array
+          items:
+            type: string
+        target:
+          type: string
+        target_version:
+          type: integer
+          format: int32
+          minimum: 0
+    ConsoleContributionAction:
+      oneOf:
+      - type: object
+        required:
+        - module
+        - name
+        - kind
+        properties:
+          input_bindings:
+            type: array
+            items:
+              $ref: '#/components/schemas/ConsoleActionInputBinding'
+          kind:
+            type: string
+            enum:
+            - admin_action
+          module:
+            type: string
+          name:
+            type: string
+    ConsoleContributionKind:
+      type: string
+      enum:
+      - admin_action
     ConsoleNavigation:
       type: object
       required:
@@ -7116,6 +7415,59 @@ components:
           type: string
         name:
           type: string
+    ConsoleSlot:
+      type: object
+      required:
+      - id
+      - version
+      - label
+      properties:
+        accepts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConsoleContributionKind'
+        context:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConsoleSlotContext'
+        id:
+          type: string
+        label:
+          type: string
+        version:
+          type: integer
+          format: int32
+          minimum: 0
+    ConsoleSlotContext:
+      type: object
+      required:
+      - name
+      properties:
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConsoleSlotContextField'
+        name:
+          type: string
+    ConsoleSlotContextField:
+      type: object
+      required:
+      - name
+      - field_type
+      properties:
+        field_type:
+          $ref: '#/components/schemas/ConsoleSlotContextFieldType'
+        name:
+          type: string
+        required:
+          type: boolean
+    ConsoleSlotContextFieldType:
+      type: string
+      enum:
+      - string
+      - boolean
+      - number
+      - timestamp
     ConsoleSurface:
       type: object
       required:

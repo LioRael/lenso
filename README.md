@@ -151,7 +151,11 @@ First-time local setup lives in [docs/getting-started.md](docs/getting-started.m
     Session resolution defaults to Postgres and can opt into Redis by enabling
     the auth module's `redis` feature, setting `REDIS_URL`, and setting runtime
     config `auth.session_cache=redis`.
+  - `auth-oauth`: reusable OAuth client flow substrate for provider modules.
+  - `auth-anonymous`: first-party anonymous provider for guest sessions.
   - `auth-password`: first-party password provider for the auth anchor.
+  - `auth-github`: first-party GitHub OAuth provider built on `auth-oauth`.
+  - `auth-google`: first-party Google OAuth/OIDC provider built on `auth-oauth`.
   - `story`: platform-owned Runtime Console story surface.
 - `fixtures/`
   - `remote-module`: internal remote-module fixture for integration and protocol checks.

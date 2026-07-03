@@ -3006,6 +3006,8 @@ fn metadata_response_modules(modules: Vec<AdminModuleMetadata>) -> Vec<AdminModu
                 m.events.as_ref(),
                 m.lifecycle.as_ref(),
                 &m.console,
+                &m.console_slots,
+                &m.console_contributions,
                 &m.capabilities,
                 &m.dependencies,
             );
@@ -3020,6 +3022,8 @@ fn metadata_response_modules(modules: Vec<AdminModuleMetadata>) -> Vec<AdminModu
                 events: m.events.clone(),
                 lifecycle: m.lifecycle.clone(),
                 console: m.console.clone(),
+                console_slots: m.console_slots.clone(),
+                console_contributions: m.console_contributions.clone(),
                 governance: module_governance(m, &manifest_lints),
                 manifest_lints,
                 story_display: m
@@ -5266,6 +5270,7 @@ fn module_governance(
         &module.http_routes,
         module.lifecycle.as_ref(),
         &module.console,
+        &module.console_contributions,
     );
     let declared = module
         .capabilities
@@ -5853,9 +5858,10 @@ fn elapsed_ms(started: Instant) -> i64 {
 mod tests {
     use super::*;
     use platform_module::{
-        AdminSchema, AdminSurface, ConsoleArea, ConsolePackage, ConsoleSurface, EntitySchema,
-        LifecycleActivationJobDeclaration, LifecycleActivationRunPolicy, LifecycleSurface,
-        ModuleHttpMethod, ModuleHttpRoute, ModuleSource,
+        AdminSchema, AdminSurface, ConsoleActionInputBinding, ConsoleActionInputValue, ConsoleArea,
+        ConsoleContribution, ConsoleContributionAction, ConsolePackage, ConsoleSurface,
+        EntitySchema, LifecycleActivationJobDeclaration, LifecycleActivationRunPolicy,
+        LifecycleSurface, ModuleHttpMethod, ModuleHttpRoute, ModuleSource,
     };
 
     #[test]
@@ -5885,6 +5891,8 @@ mod tests {
                 }],
             }),
             console: Vec::new(),
+            console_slots: Vec::new(),
+            console_contributions: Vec::new(),
             story_display: Vec::new(),
             capabilities: Vec::new(),
             dependencies: vec!["auth".to_owned()],
@@ -5934,6 +5942,24 @@ mod tests {
                 required_capabilities: vec!["remote_crm.contacts.read".to_owned()],
                 navigation: None,
             }],
+            console_slots: Vec::new(),
+            console_contributions: vec![ConsoleContribution {
+                target: "auth.users.detail.actions".to_owned(),
+                target_version: 1,
+                label: "Reset password".to_owned(),
+                action: ConsoleContributionAction::AdminAction {
+                    module: "auth-password".to_owned(),
+                    name: "reset_password".to_owned(),
+                    input_bindings: vec![ConsoleActionInputBinding {
+                        input: "user_id".to_owned(),
+                        value: ConsoleActionInputValue::SlotContext {
+                            path: "selected_user.id".to_owned(),
+                        },
+                    }],
+                },
+                icon: Some("key-round".to_owned()),
+                required_capabilities: vec!["auth_password.credentials.write".to_owned()],
+            }],
             story_display: Vec::new(),
             capabilities: vec!["remote_crm.contacts.write".to_owned()],
             dependencies: Vec::new(),
@@ -5955,8 +5981,8 @@ mod tests {
             AdminModuleActivationState::NeedsAttention
         );
         assert_eq!(governance.capability_summary.declared_count, 1);
-        assert_eq!(governance.capability_summary.referenced_count, 1);
-        assert_eq!(governance.capability_summary.missing_count, 3);
+        assert_eq!(governance.capability_summary.referenced_count, 2);
+        assert_eq!(governance.capability_summary.missing_count, 4);
         assert_eq!(governance.capability_summary.unused_count, 1);
         assert_eq!(
             governance.capability_issues[0].capability,
@@ -5973,6 +5999,16 @@ mod tests {
                 .any(|issue| { issue.subject == "capability.reference.console.surface.contacts" })
         );
         assert_eq!(modules[0].console.len(), 1);
+        assert_eq!(modules[0].console_contributions.len(), 1);
+        assert!(modules[0].manifest_lints.iter().any(|lint| {
+            lint.subject == "capability.reference.console.contribution.auth.users.detail.actions"
+                && lint.message == "Capability reference is not declared by the module."
+        }));
+        assert!(governance.capability_issues.iter().any(|issue| {
+            issue.capability == "auth_password.credentials.write"
+                && issue.subject
+                    == "capability.reference.console.contribution.auth.users.detail.actions"
+        }));
     }
 
     #[test]
