@@ -94,13 +94,13 @@ arch-check = { path = "tools/arch-check" }
 remote-module-fixture = { path = "fixtures/remote-module" }
 
 [patch.crates-io]
-lenso-module-auth = { path = "../lenso-auth-module/crates/auth" }
-lenso-module-auth-anonymous = { path = "../lenso-auth-module/crates/auth-anonymous" }
-lenso-module-auth-github = { path = "../lenso-auth-module/crates/auth-github" }
-lenso-module-auth-google = { path = "../lenso-auth-module/crates/auth-google" }
-lenso-module-auth-oauth = { path = "../lenso-auth-module/crates/auth-oauth" }
-lenso-module-auth-oidc = { path = "../lenso-auth-module/crates/auth-oidc" }
-lenso-module-auth-password = { path = "../lenso-auth-module/crates/auth-password" }
+lenso-module-auth = { git = "https://github.com/LioRael/lenso-auth-module.git", branch = "main" }
+lenso-module-auth-anonymous = { git = "https://github.com/LioRael/lenso-auth-module.git", branch = "main" }
+lenso-module-auth-github = { git = "https://github.com/LioRael/lenso-auth-module.git", branch = "main" }
+lenso-module-auth-google = { git = "https://github.com/LioRael/lenso-auth-module.git", branch = "main" }
+lenso-module-auth-oauth = { git = "https://github.com/LioRael/lenso-auth-module.git", branch = "main" }
+lenso-module-auth-oidc = { git = "https://github.com/LioRael/lenso-auth-module.git", branch = "main" }
+lenso-module-auth-password = { git = "https://github.com/LioRael/lenso-auth-module.git", branch = "main" }
 lenso-contracts = { path = "crates/lenso-contracts" }
 lenso-platform-core = { path = "crates/platform-core" }
 lenso-platform-http = { path = "crates/platform-http" }

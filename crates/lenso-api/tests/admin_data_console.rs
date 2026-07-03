@@ -490,7 +490,7 @@ async fn modules_endpoint_lists_linked_module_http_routes() {
 }
 
 #[tokio::test]
-async fn modules_endpoint_lists_auth_password_admin_action() {
+async fn modules_endpoint_lists_linked_modules_without_admin_surfaces() {
     let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
     let ctx = AppContext::new(
         app_config_with_default_modules(),
@@ -522,16 +522,7 @@ async fn modules_endpoint_lists_auth_password_admin_action() {
     assert_eq!(auth_password["error"], Value::Null);
     assert_eq!(auth_password["runtime"], Value::Null);
     assert_eq!(auth_password["dependencies"], serde_json::json!(["auth"]));
-    assert_eq!(auth_password["admin"]["kind"], "declarative_custom");
-    assert_eq!(auth_password["admin"]["pages"], serde_json::json!([]));
-    let actions = auth_password["admin"]["actions"]
-        .as_array()
-        .expect("auth-password admin actions");
-    assert_eq!(actions.len(), 1);
-    assert_eq!(actions[0]["name"], "reset_password");
-    assert_eq!(actions[0]["label"], "Reset password");
-    assert_eq!(actions[0]["capability"], "auth_password.credentials.write");
-    assert_eq!(actions[0]["danger_level"], "medium");
+    assert_eq!(auth_password["admin"], Value::Null);
 }
 
 #[tokio::test]
