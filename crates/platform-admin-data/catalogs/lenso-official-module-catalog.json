@@ -163,6 +163,36 @@
       ]
     },
     {
+      "name": "organization",
+      "version": "0.1.0",
+      "source": "linked",
+      "manifestReference": "builtin:organization",
+      "summary": "Official linked organization, membership, role, and invitation module",
+      "capabilities": [
+        "organization.read",
+        "organization.manage",
+        "organization.members.manage",
+        "organization.roles.manage",
+        "organization.invitations.manage"
+      ],
+      "dependencies": ["auth"],
+      "consolePackages": [
+        {
+          "packageName": "@lenso/organization-console",
+          "exportName": "organizationConsoleModule",
+          "bundleUrl": "https://cdn.jsdelivr.net/npm/@lenso/organization-console@0.1.0/dist/organization-console.js",
+          "entry": "/console/extensions/organization/organization-console.js",
+          "hostApi": "1",
+          "route": "/data/organization",
+          "requiredCapabilities": ["organization.read"],
+          "styles": [
+            "https://cdn.jsdelivr.net/npm/@lenso/organization-console@0.1.0/dist/organization-console.css"
+          ],
+          "version": "0.1.0"
+        }
+      ]
+    },
+    {
       "name": "support-ticket",
       "version": "0.1.0",
       "source": "service",
