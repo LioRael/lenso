@@ -1666,7 +1666,7 @@ async fn available_modules_reads_official_catalog_when_no_local_catalog_exists()
         body["catalog"]["registryFile"],
         "builtin:lenso-official-module-catalog"
     );
-    assert_eq!(body["catalog"]["modules"], 10);
+    assert_eq!(body["catalog"]["modules"], 11);
     let modules = body["modules"]
         .as_array()
         .expect("available modules is an array");
@@ -1740,18 +1740,26 @@ async fn available_modules_reads_official_catalog_when_no_local_catalog_exists()
         "Official linked organization, membership, role, and invitation module"
     );
 
+    let audit_log = modules
+        .iter()
+        .find(|module| module["name"] == "audit-log")
+        .expect("official catalog includes audit-log");
+    assert_eq!(audit_log["source"], "linked");
+    assert_eq!(audit_log["manifestReference"], "builtin:audit-log");
+    assert_eq!(audit_log["catalogVersion"], "0.1.0");
+    assert_eq!(audit_log["consolePackageHints"], 0);
+    assert_eq!(audit_log["capabilities"][0], "audit_log.events.read");
+    assert_eq!(
+        audit_log["summary"],
+        "Official linked audit event storage and schema-admin read surface"
+    );
+
     let support_ticket = modules
         .iter()
         .find(|module| module["name"] == "support-ticket")
         .expect("official catalog includes support-ticket");
     assert_eq!(support_ticket["source"], "remote");
     assert_eq!(support_ticket["providedBy"], "support-suite-provider");
-    let support_ticket = body["modules"]
-        .as_array()
-        .expect("available modules is an array")
-        .iter()
-        .find(|module| module["name"] == "support-ticket")
-        .expect("official catalog includes support-ticket");
     assert_eq!(
         support_ticket["serviceManifest"],
         "http://127.0.0.1:4110/lenso/service/v1/manifest"
