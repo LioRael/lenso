@@ -128,6 +128,12 @@ service. `lenso service install` remains the lower-level provider/process
 operation for operators who want to connect a service before enabling one of
 its modules.
 
+A small first-party proof path is `audit-log`: install it by name from the
+official catalog, refresh the hosted Console, then inspect the module in
+`/console/modules?module=audit-log` and its generic admin data in `/console/data`.
+The module declares the `audit_log.events.read` data capability and surfaces
+Audit Events through the Console's Data Surfaces panel.
+
 First-time local setup lives in [docs/getting-started.md](docs/getting-started.md).
 
 ## Repository Layout

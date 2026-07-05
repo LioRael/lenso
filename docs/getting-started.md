@@ -44,6 +44,26 @@ builds. The starter exposes `GET /v1/app/status` plus `GET`/`POST
 and installs it under `.lenso/console`, so `cargo run --bin api` serves
 `/console` without requiring Node.js or pnpm in the host project.
 
+## Try The Audit Log Module
+
+For a minimal first-party module smoke in a generated host, install
+`audit-log` by name from the official catalog before starting the app:
+
+```sh
+lenso host init ../my-lenso-audit-app
+cd ../my-lenso-audit-app
+cp .env.example .env
+lenso module install audit-log
+lenso console update
+lenso serve
+```
+
+Open `http://127.0.0.1:3000/console/modules?module=audit-log` and confirm the
+module detail shows the Data Surfaces panel with Audit Events. Open
+`http://127.0.0.1:3000/console/data` to inspect the same module data through the
+generic admin-data view. The module declares `audit_log.events.read`; grant that
+scope to real Console users when they need to read audit event rows.
+
 ## Enable Auth Redis Sessions In A Host
 
 Generated hosts can opt into Redis-backed auth session lookup through the auth
