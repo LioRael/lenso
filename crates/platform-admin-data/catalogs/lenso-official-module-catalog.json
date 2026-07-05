@@ -193,6 +193,14 @@
       ]
     },
     {
+      "name": "audit-log",
+      "version": "0.1.0",
+      "source": "linked",
+      "manifestReference": "builtin:audit-log",
+      "summary": "Official linked audit event storage and schema-admin read surface",
+      "capabilities": ["audit_log.events.read"]
+    },
+    {
       "name": "support-ticket",
       "version": "0.1.0",
       "source": "service",
