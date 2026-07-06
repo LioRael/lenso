@@ -12,6 +12,7 @@ pub mod builtins {
         auth_anonymous_linked_module as auth_anonymous, auth_github_linked_module as auth_github,
         auth_google_linked_module as auth_google, auth_linked_module as auth,
         auth_oauth_linked_module as auth_oauth, auth_password_linked_module as auth_password,
+        auth_phone_linked_module as auth_phone,
     };
 }
 

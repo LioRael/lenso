@@ -171,6 +171,12 @@ const DEMO_LINKED_MODULE_ENTRIES: &[LinkedModuleEntry] = &[
         http_binding: Some(auth_password::module::binding),
     },
     LinkedModuleEntry {
+        module_name: "auth-phone",
+        manifest: auth_phone::module::manifest,
+        load: auth_phone::module::module,
+        http_binding: Some(auth_phone::module::binding),
+    },
+    LinkedModuleEntry {
         module_name: "auth-github",
         manifest: auth_github::module::manifest,
         load: auth_github::module::module,
@@ -234,6 +240,17 @@ pub fn auth_password_linked_module() -> HostLinkedModule {
         auth_password::migrations::AUTH_PASSWORD_MIGRATIONS,
     )
     .with_http_binding(auth_password::module::binding)
+}
+
+#[must_use]
+pub fn auth_phone_linked_module() -> HostLinkedModule {
+    HostLinkedModule::linked(
+        auth_phone::module::MODULE_NAME,
+        auth_phone::module::manifest,
+        auth_phone::module::module,
+        auth_phone::migrations::AUTH_PHONE_MIGRATIONS,
+    )
+    .with_http_binding(auth_phone::module::binding)
 }
 
 #[must_use]
@@ -680,6 +697,17 @@ pub fn migrations_for_config_with_composition(
         }
         if linked_module_with_dependencies_enabled_from_config(
             config,
+            "auth-phone",
+            auth_phone::module::manifest,
+        ) {
+            migrations.extend(
+                auth_phone::migrations::AUTH_PHONE_MIGRATIONS
+                    .iter()
+                    .copied(),
+            );
+        }
+        if linked_module_with_dependencies_enabled_from_config(
+            config,
             "auth-github",
             auth_github::module::manifest,
         ) {
@@ -733,6 +761,11 @@ pub fn migrations_for_profile(profile: CompositionProfile) -> Vec<Migration> {
         );
         migrations.extend(
             auth_password::migrations::AUTH_PASSWORD_MIGRATIONS
+                .iter()
+                .copied(),
+        );
+        migrations.extend(
+            auth_phone::migrations::AUTH_PHONE_MIGRATIONS
                 .iter()
                 .copied(),
         );
@@ -2691,6 +2724,7 @@ mod tests {
                 auth_anonymous::module::MODULE_NAME,
                 auth_oauth::module::MODULE_NAME,
                 auth_password::module::MODULE_NAME,
+                auth_phone::module::MODULE_NAME,
                 auth_github::module::MODULE_NAME,
                 auth_google::module::MODULE_NAME,
                 auth_oidc::module::MODULE_NAME,
@@ -2726,6 +2760,7 @@ mod tests {
         assert!(!names.iter().any(|name| name.starts_with("auth-github/")));
         assert!(!names.iter().any(|name| name.starts_with("auth-google/")));
         assert!(!names.iter().any(|name| name.starts_with("auth-password/")));
+        assert!(!names.iter().any(|name| name.starts_with("auth-phone/")));
     }
 
     #[test]
@@ -2749,6 +2784,11 @@ mod tests {
             names
                 .iter()
                 .any(|name| name == &"auth-password/0001_create_auth_password_schema")
+        );
+        assert!(
+            names
+                .iter()
+                .any(|name| name == &"auth-phone/0001_create_auth_phone_schema")
         );
         assert!(
             names
@@ -2789,6 +2829,7 @@ mod tests {
             .with_linked_module(auth_linked_module())
             .with_linked_module(auth_oauth_linked_module())
             .with_linked_module(auth_password_linked_module())
+            .with_linked_module(auth_phone_linked_module())
             .with_linked_module(auth_github_linked_module())
             .with_linked_module(auth_google_linked_module())
             .with_linked_module(auth_oidc_linked_module());
@@ -2817,6 +2858,11 @@ mod tests {
         assert!(
             names
                 .iter()
+                .any(|name| name == &"auth-phone/0001_create_auth_phone_schema")
+        );
+        assert!(
+            names
+                .iter()
                 .any(|name| name == &"auth-github/0001_create_auth_github_schema")
         );
         assert!(
@@ -2828,6 +2874,68 @@ mod tests {
             names
                 .iter()
                 .any(|name| name == &"auth-oidc/0001_create_auth_oidc_schema")
+        );
+    }
+
+    #[tokio::test]
+    async fn auth_phone_linked_module_declares_routes_runtime_config_and_migrations() {
+        let linked = auth_phone_linked_module();
+        let manifest = (linked.manifest)();
+        let binding = linked
+            .http_binding
+            .expect("auth-phone should expose HTTP binding")();
+        let module =
+            (linked
+                .load
+                .expect("auth-phone should load as linked module"))(&AppContext::new(
+                test_config_with_database_url("postgres://localhost/lenso_test"),
+                platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+                    .expect("lazy pool should build"),
+                Arc::new(LoggingEventPublisher),
+            ));
+
+        assert_eq!(linked.module_name, auth_phone::module::MODULE_NAME);
+        assert_eq!(manifest.name, auth_phone::module::MODULE_NAME);
+        assert_eq!(
+            manifest.dependencies,
+            vec![auth::module::MODULE_NAME.to_owned()]
+        );
+        assert!(
+            manifest
+                .http_routes
+                .iter()
+                .any(|route| route.path == "/v1/auth/phone/otp/start")
+        );
+        assert!(
+            manifest
+                .http_routes
+                .iter()
+                .any(|route| route.path == "/v1/auth/phone/password/login")
+        );
+        assert_eq!(
+            binding
+                .http
+                .expect("auth-phone HTTP contribution")
+                .public_prefixes,
+            &["/v1/auth/phone/"]
+        );
+        assert!(
+            linked
+                .migrations
+                .iter()
+                .any(|migration| migration.name == "auth-phone/0001_create_auth_phone_schema")
+        );
+        assert!(
+            module
+                .runtime_config
+                .iter()
+                .any(|descriptor| descriptor.key == "auth-phone.otp_code_length")
+        );
+        assert!(
+            module
+                .runtime_config_groups
+                .iter()
+                .any(|group| group.id == "auth-phone.otp")
         );
     }
 
@@ -2965,6 +3073,7 @@ mod tests {
                 auth_anonymous::module::MODULE_NAME,
                 auth_oauth::module::MODULE_NAME,
                 auth_password::module::MODULE_NAME,
+                auth_phone::module::MODULE_NAME,
                 auth_github::module::MODULE_NAME,
                 auth_google::module::MODULE_NAME,
                 auth_oidc::module::MODULE_NAME,
@@ -2996,6 +3105,10 @@ mod tests {
                 LinkedHttpRouteOwner {
                     module_name: "auth-password".to_owned(),
                     public_prefixes: &["/v1/auth/password/"],
+                },
+                LinkedHttpRouteOwner {
+                    module_name: "auth-phone".to_owned(),
+                    public_prefixes: &["/v1/auth/phone/"],
                 },
                 LinkedHttpRouteOwner {
                     module_name: "auth-github".to_owned(),
@@ -3118,6 +3231,7 @@ mod tests {
         assert!(!names.iter().any(|name| name == "auth-oauth"));
         assert!(!names.iter().any(|name| name == "auth-anonymous"));
         assert!(!names.iter().any(|name| name == "auth-password"));
+        assert!(!names.iter().any(|name| name == "auth-phone"));
         assert!(!names.iter().any(|name| name == "auth-github"));
         assert!(!names.iter().any(|name| name == "auth-google"));
         assert!(!names.iter().any(|name| name == "auth-oidc"));
@@ -3147,6 +3261,7 @@ mod tests {
         assert!(!names.iter().any(|name| name == "auth-github"));
         assert!(!names.iter().any(|name| name == "auth-google"));
         assert!(names.iter().any(|name| name == "auth-password"));
+        assert!(names.iter().any(|name| name == "auth-phone"));
         assert!(names.iter().any(|name| name == "auth-oidc"));
 
         let metadata = load_admin_module_metadata(&ctx)
@@ -3188,6 +3303,7 @@ mod tests {
         assert!(!names.iter().any(|name| name == "auth-github"));
         assert!(!names.iter().any(|name| name == "auth-google"));
         assert!(names.iter().any(|name| name == "auth-password"));
+        assert!(names.iter().any(|name| name == "auth-phone"));
         assert!(names.iter().any(|name| name == "auth-oidc"));
 
         let metadata = load_admin_module_metadata(&ctx)
@@ -3234,6 +3350,10 @@ mod tests {
             .iter()
             .find(|module| module.module_name == "auth-password")
             .expect("dependency-disabled provider should remain visible in metadata");
+        let auth_phone = metadata
+            .iter()
+            .find(|module| module.module_name == "auth-phone")
+            .expect("dependency-disabled provider should remain visible in metadata");
         let auth_github = metadata
             .iter()
             .find(|module| module.module_name == "auth-github")
@@ -3257,6 +3377,10 @@ mod tests {
         );
         assert_eq!(
             auth_password.dependencies,
+            vec![auth::module::MODULE_NAME.to_owned()]
+        );
+        assert_eq!(
+            auth_phone.dependencies,
             vec![auth::module::MODULE_NAME.to_owned()]
         );
         assert_eq!(
@@ -3289,6 +3413,11 @@ mod tests {
         ));
         assert!(matches!(
             &auth_password.load_status,
+            ModuleLoadStatus::Error { message }
+                if message == "module dependency disabled: auth"
+        ));
+        assert!(matches!(
+            &auth_phone.load_status,
             ModuleLoadStatus::Error { message }
                 if message == "module dependency disabled: auth"
         ));
@@ -3386,6 +3515,7 @@ mod tests {
                 "auth",
                 "auth-anonymous",
                 "auth-oauth",
+                "auth-phone",
                 "auth-github",
                 "auth-google",
                 "auth-oidc",
@@ -3425,6 +3555,7 @@ mod tests {
                 "auth",
                 "auth-anonymous",
                 "auth-oauth",
+                "auth-phone",
                 "auth-github",
                 "auth-google",
                 "auth-oidc",
@@ -3442,6 +3573,7 @@ mod tests {
             vec![
                 "auth",
                 "auth-anonymous",
+                "auth-phone",
                 "auth-github",
                 "auth-google",
                 "auth-oidc",
@@ -3480,6 +3612,7 @@ mod tests {
                 auth::module::MODULE_NAME,
                 auth_anonymous::module::MODULE_NAME,
                 auth_password::module::MODULE_NAME,
+                auth_phone::module::MODULE_NAME,
                 auth_github::module::MODULE_NAME,
                 auth_google::module::MODULE_NAME,
                 auth_oidc::module::MODULE_NAME,
@@ -3542,6 +3675,12 @@ mod tests {
                 && default == &json!(true)
         }));
         assert!(keys.iter().any(|(key, group, restart_only, default)| {
+            key == "modules.auth-phone.enabled"
+                && *group == Some("modules")
+                && *restart_only
+                && default == &json!(true)
+        }));
+        assert!(keys.iter().any(|(key, group, restart_only, default)| {
             key == "modules.auth-oauth.enabled"
                 && *group == Some("modules")
                 && *restart_only
@@ -3590,6 +3729,8 @@ mod tests {
         assert!(groups.contains(&("auth-password.hashing", "Password Hashing")));
         assert!(groups.contains(&("auth-password.tokens", "Tokens")));
         assert!(!groups.iter().any(|(id, _)| *id == "auth-password.jwt"));
+        assert!(groups.contains(&("auth-phone.otp", "Phone OTP")));
+        assert!(groups.contains(&("auth-phone.password", "Phone Password")));
     }
 
     #[tokio::test]
@@ -3721,6 +3862,11 @@ mod tests {
         assert!(
             names
                 .iter()
+                .any(|name| name == &"auth-phone/0001_create_auth_phone_schema")
+        );
+        assert!(
+            names
+                .iter()
                 .any(|name| name == &"auth/0001_create_auth_schema")
         );
         assert!(
@@ -3762,6 +3908,7 @@ mod tests {
             vec![
                 "auth",
                 "auth-anonymous",
+                "auth-phone",
                 "auth-github",
                 "auth-google",
                 "auth-oidc",
@@ -3793,6 +3940,7 @@ mod tests {
                 auth::module::MODULE_NAME,
                 auth_anonymous::module::MODULE_NAME,
                 auth_password::module::MODULE_NAME,
+                auth_phone::module::MODULE_NAME,
                 auth_github::module::MODULE_NAME,
                 auth_google::module::MODULE_NAME,
                 auth_oidc::module::MODULE_NAME,
@@ -3880,6 +4028,10 @@ mod tests {
                 LinkedHttpRouteOwner {
                     module_name: "auth-password".to_owned(),
                     public_prefixes: &["/v1/auth/password/"],
+                },
+                LinkedHttpRouteOwner {
+                    module_name: "auth-phone".to_owned(),
+                    public_prefixes: &["/v1/auth/phone/"],
                 },
                 LinkedHttpRouteOwner {
                     module_name: "auth-github".to_owned(),

@@ -1874,6 +1874,7 @@ dependencies = [
  "lenso-bootstrap",
  "lenso-module-auth",
  "lenso-module-auth-password",
+ "lenso-module-auth-phone",
  "lenso-platform-admin",
  "lenso-platform-admin-data",
  "lenso-platform-core",
@@ -1907,6 +1908,7 @@ dependencies = [
  "lenso-module-auth-oauth",
  "lenso-module-auth-oidc",
  "lenso-module-auth-password",
+ "lenso-module-auth-phone",
  "lenso-module-story",
  "lenso-platform-admin-data",
  "lenso-platform-core",
@@ -1946,7 +1948,6 @@ dependencies = [
 [[package]]
 name = "lenso-module-auth"
 version = "0.1.6"
-source = "git+https://github.com/LioRael/lenso-auth-module.git?branch=main#7447137707494e26de037d70d0a211597cffbc03"
 dependencies = [
  "async-trait",
  "axum",
@@ -1967,7 +1968,6 @@ dependencies = [
 [[package]]
 name = "lenso-module-auth-anonymous"
 version = "0.1.0"
-source = "git+https://github.com/LioRael/lenso-auth-module.git?branch=main#7447137707494e26de037d70d0a211597cffbc03"
 dependencies = [
  "axum",
  "chrono",
@@ -1984,7 +1984,6 @@ dependencies = [
 [[package]]
 name = "lenso-module-auth-github"
 version = "0.1.0"
-source = "git+https://github.com/LioRael/lenso-auth-module.git?branch=main#7447137707494e26de037d70d0a211597cffbc03"
 dependencies = [
  "async-trait",
  "axum",
@@ -2005,7 +2004,6 @@ dependencies = [
 [[package]]
 name = "lenso-module-auth-google"
 version = "0.1.0"
-source = "git+https://github.com/LioRael/lenso-auth-module.git?branch=main#7447137707494e26de037d70d0a211597cffbc03"
 dependencies = [
  "async-trait",
  "axum",
@@ -2026,7 +2024,6 @@ dependencies = [
 [[package]]
 name = "lenso-module-auth-oauth"
 version = "0.1.0"
-source = "git+https://github.com/LioRael/lenso-auth-module.git?branch=main#7447137707494e26de037d70d0a211597cffbc03"
 dependencies = [
  "chrono",
  "getrandom 0.4.3",
@@ -2040,7 +2037,6 @@ dependencies = [
 [[package]]
 name = "lenso-module-auth-oidc"
 version = "0.1.0"
-source = "git+https://github.com/LioRael/lenso-auth-module.git?branch=main#7447137707494e26de037d70d0a211597cffbc03"
 dependencies = [
  "axum",
  "chrono",
@@ -2060,7 +2056,6 @@ dependencies = [
 [[package]]
 name = "lenso-module-auth-password"
 version = "0.1.7"
-source = "git+https://github.com/LioRael/lenso-auth-module.git?branch=main#7447137707494e26de037d70d0a211597cffbc03"
 dependencies = [
  "argon2",
  "async-trait",
@@ -2074,6 +2069,26 @@ dependencies = [
  "lenso-platform-module",
  "serde",
  "serde_json",
+ "sqlx",
+ "utoipa",
+]
+
+[[package]]
+name = "lenso-module-auth-phone"
+version = "0.1.0"
+dependencies = [
+ "argon2",
+ "async-trait",
+ "axum",
+ "chrono",
+ "getrandom 0.4.3",
+ "lenso-module-auth",
+ "lenso-platform-core",
+ "lenso-platform-http",
+ "lenso-platform-module",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
  "sqlx",
  "utoipa",
 ]

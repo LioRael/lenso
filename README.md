@@ -160,6 +160,7 @@ First-time local setup lives in [docs/getting-started.md](docs/getting-started.m
   - `auth-oauth`: reusable OAuth client flow substrate for provider modules.
   - `auth-anonymous`: first-party anonymous provider for guest sessions.
   - `auth-password`: first-party password provider for the auth anchor.
+  - `auth-phone`: first-party phone OTP and phone password provider for the auth anchor.
   - `auth-github`: first-party GitHub OAuth provider built on `auth-oauth`.
   - `auth-google`: first-party Google OAuth/OIDC provider built on `auth-oauth`.
   - `story`: platform-owned Runtime Console story surface.
@@ -196,6 +197,10 @@ for example `LENSO_MODULE_AUTH_PASSWORD__JWT_ISSUER=acme` is available to linked
 module code through `ctx.config.module_local_config("auth-password")`. Module
 load toggles remain `LENSO_MODULE_<MODULE>_ENABLED=false` and are also surfaced
 as restart-only runtime config for operator overrides.
+
+`auth-phone` also keeps OTP secrets in module-local config. Set
+`LENSO_MODULE_AUTH_PHONE__OTP_SECRET=<secret>` outside local development; the
+secret is intentionally not exposed as editable runtime config.
 
 `REDIS_URL` is optional for the platform itself. The first-party auth module uses
 Redis only when its dependency is built with the `redis` feature and runtime

@@ -490,7 +490,7 @@ async fn modules_endpoint_lists_linked_module_http_routes() {
 }
 
 #[tokio::test]
-async fn modules_endpoint_lists_linked_modules_without_admin_surfaces() {
+async fn modules_endpoint_lists_auth_password_admin_action_contribution() {
     let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
     let ctx = AppContext::new(
         app_config_with_default_modules(),
@@ -522,7 +522,92 @@ async fn modules_endpoint_lists_linked_modules_without_admin_surfaces() {
     assert_eq!(auth_password["error"], Value::Null);
     assert_eq!(auth_password["runtime"], Value::Null);
     assert_eq!(auth_password["dependencies"], serde_json::json!(["auth"]));
-    assert_eq!(auth_password["admin"], Value::Null);
+    assert_eq!(auth_password["admin"]["kind"], "declarative_custom");
+    assert_eq!(
+        auth_password["admin"]["actions"][0]["name"],
+        "reset_password"
+    );
+    assert_eq!(
+        auth_password["admin"]["actions"][0]["danger_level"],
+        "medium"
+    );
+    assert_eq!(
+        auth_password["console_contributions"][0]["action"],
+        serde_json::json!({
+            "kind": "admin_action",
+            "module": "auth-password",
+            "name": "reset_password",
+            "input_bindings": [
+                {
+                    "input": "user_id",
+                    "value": {
+                        "kind": "slot_context",
+                        "path": "selected_user.id"
+                    }
+                }
+            ]
+        })
+    );
+}
+
+#[tokio::test]
+async fn modules_endpoint_lists_auth_phone_admin_action_contribution() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
+    let ctx = AppContext::new(
+        app_config_with_default_modules(),
+        lazy_failing_db(),
+        Arc::new(LoggingEventPublisher),
+    );
+    install_admin_modules(lenso_bootstrap::admin_modules(&ctx));
+    install_admin_module_metadata(
+        lenso_bootstrap::load_admin_module_metadata(&ctx)
+            .await
+            .expect("admin module metadata loads"),
+    );
+    let app = build_router(ctx);
+
+    let response = app
+        .oneshot(admin_get("/admin/data/modules"))
+        .await
+        .expect("request completes");
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = json_body(response).await;
+    let auth_phone = json["modules"]
+        .as_array()
+        .expect("modules array")
+        .iter()
+        .find(|module| module["module_name"] == "auth-phone")
+        .expect("auth-phone module metadata");
+    assert_eq!(auth_phone["source"], "linked");
+    assert_eq!(auth_phone["status"], "loaded");
+    assert_eq!(auth_phone["dependencies"], serde_json::json!(["auth"]));
+    assert_eq!(
+        auth_phone["capabilities"],
+        serde_json::json!(["auth_phone.credentials.write"])
+    );
+    assert_eq!(auth_phone["admin"]["kind"], "declarative_custom");
+    assert_eq!(
+        auth_phone["admin"]["actions"][0]["name"],
+        "reset_phone_password"
+    );
+    assert_eq!(auth_phone["admin"]["actions"][0]["danger_level"], "medium");
+    assert_eq!(
+        auth_phone["console_contributions"][0]["action"],
+        serde_json::json!({
+            "kind": "admin_action",
+            "module": "auth-phone",
+            "name": "reset_phone_password",
+            "input_bindings": [
+                {
+                    "input": "user_id",
+                    "value": {
+                        "kind": "slot_context",
+                        "path": "selected_user.id"
+                    }
+                }
+            ]
+        })
+    );
 }
 
 #[tokio::test]
@@ -1666,7 +1751,7 @@ async fn available_modules_reads_official_catalog_when_no_local_catalog_exists()
         body["catalog"]["registryFile"],
         "builtin:lenso-official-module-catalog"
     );
-    assert_eq!(body["catalog"]["modules"], 11);
+    assert_eq!(body["catalog"]["modules"], 12);
     let modules = body["modules"]
         .as_array()
         .expect("available modules is an array");
@@ -1697,6 +1782,13 @@ async fn available_modules_reads_official_catalog_when_no_local_catalog_exists()
         .find(|module| module["name"] == "auth-password")
         .expect("official catalog includes auth-password");
     assert_eq!(auth_password["source"], "linked");
+
+    let auth_phone = modules
+        .iter()
+        .find(|module| module["name"] == "auth-phone")
+        .expect("official catalog includes auth-phone");
+    assert_eq!(auth_phone["source"], "linked");
+    assert_eq!(auth_phone["manifestReference"], "builtin:auth-phone");
 
     let auth_device = modules
         .iter()

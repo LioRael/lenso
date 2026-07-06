@@ -24,6 +24,7 @@ auth-google.workspace = true
 auth-oauth.workspace = true
 auth-oidc.workspace = true
 auth-password.workspace = true
+auth-phone.workspace = true
 story.workspace = true
 reqwest.workspace = true
 serde_json.workspace = true
