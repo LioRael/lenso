@@ -1948,6 +1948,7 @@ dependencies = [
 [[package]]
 name = "lenso-module-auth"
 version = "0.1.6"
+source = "git+https://github.com/LioRael/lenso-auth-module.git?branch=main#ef402789bd3639e64542a80ace1d04e7fb6d4220"
 dependencies = [
  "async-trait",
  "axum",
@@ -1968,6 +1969,7 @@ dependencies = [
 [[package]]
 name = "lenso-module-auth-anonymous"
 version = "0.1.0"
+source = "git+https://github.com/LioRael/lenso-auth-module.git?branch=main#ef402789bd3639e64542a80ace1d04e7fb6d4220"
 dependencies = [
  "axum",
  "chrono",
@@ -1984,6 +1986,7 @@ dependencies = [
 [[package]]
 name = "lenso-module-auth-github"
 version = "0.1.0"
+source = "git+https://github.com/LioRael/lenso-auth-module.git?branch=main#ef402789bd3639e64542a80ace1d04e7fb6d4220"
 dependencies = [
  "async-trait",
  "axum",
@@ -2004,6 +2007,7 @@ dependencies = [
 [[package]]
 name = "lenso-module-auth-google"
 version = "0.1.0"
+source = "git+https://github.com/LioRael/lenso-auth-module.git?branch=main#ef402789bd3639e64542a80ace1d04e7fb6d4220"
 dependencies = [
  "async-trait",
  "axum",
@@ -2024,6 +2028,7 @@ dependencies = [
 [[package]]
 name = "lenso-module-auth-oauth"
 version = "0.1.0"
+source = "git+https://github.com/LioRael/lenso-auth-module.git?branch=main#ef402789bd3639e64542a80ace1d04e7fb6d4220"
 dependencies = [
  "chrono",
  "getrandom 0.4.3",
@@ -2037,6 +2042,7 @@ dependencies = [
 [[package]]
 name = "lenso-module-auth-oidc"
 version = "0.1.0"
+source = "git+https://github.com/LioRael/lenso-auth-module.git?branch=main#ef402789bd3639e64542a80ace1d04e7fb6d4220"
 dependencies = [
  "axum",
  "chrono",
@@ -2056,6 +2062,7 @@ dependencies = [
 [[package]]
 name = "lenso-module-auth-password"
 version = "0.1.7"
+source = "git+https://github.com/LioRael/lenso-auth-module.git?branch=main#ef402789bd3639e64542a80ace1d04e7fb6d4220"
 dependencies = [
  "argon2",
  "async-trait",
@@ -2076,6 +2083,7 @@ dependencies = [
 [[package]]
 name = "lenso-module-auth-phone"
 version = "0.1.0"
+source = "git+https://github.com/LioRael/lenso-auth-module.git?branch=main#ef402789bd3639e64542a80ace1d04e7fb6d4220"
 dependencies = [
  "async-trait",
  "axum",
