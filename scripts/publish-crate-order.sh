@@ -8,6 +8,7 @@ lenso-platform-testing
 lenso-platform-runtime
 lenso-platform-http
 lenso-platform-module
+lenso-service
 lenso-platform-admin-data
 lenso-platform-module-remote
 lenso-module-story
