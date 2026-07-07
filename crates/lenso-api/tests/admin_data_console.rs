@@ -2542,7 +2542,7 @@ async fn available_module_install_rejects_catalog_preflight_blockers() {
 
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     let body = json_body(response).await;
-    assert_eq!(body["error"]["message"], "local-crm baseUrl is missing");
+    assert_eq!(body["detail"], "local-crm baseUrl is missing");
     assert!(!Path::new(".env").exists());
     assert!(!Path::new(".lenso/console-package-install-plan.json").exists());
     assert!(!Path::new(".lenso/console/extensions/registry.json").exists());
@@ -3244,9 +3244,9 @@ async fn admin_action_invocation_validates_declared_input_schema() {
         .expect("request completes");
     assert_eq!(missing_required.status(), StatusCode::BAD_REQUEST);
     let missing_body = json_body(missing_required).await;
-    assert_eq!(missing_body["error"]["code"], "validation_failed");
+    assert_eq!(missing_body["code"], "validation_failed");
     assert_eq!(
-        missing_body["error"]["message"],
+        missing_body["detail"],
         "admin action input field `limit` is required"
     );
 
@@ -3262,7 +3262,7 @@ async fn admin_action_invocation_validates_declared_input_schema() {
     assert_eq!(wrong_type.status(), StatusCode::BAD_REQUEST);
     let wrong_type_body = json_body(wrong_type).await;
     assert_eq!(
-        wrong_type_body["error"]["message"],
+        wrong_type_body["detail"],
         "admin action input field `limit` must be an integer"
     );
 
@@ -3278,7 +3278,7 @@ async fn admin_action_invocation_validates_declared_input_schema() {
     assert_eq!(undeclared_field.status(), StatusCode::BAD_REQUEST);
     let undeclared_field_body = json_body(undeclared_field).await;
     assert_eq!(
-        undeclared_field_body["error"]["message"],
+        undeclared_field_body["detail"],
         "admin action input field `unexpected` is not declared"
     );
 

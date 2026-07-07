@@ -51,26 +51,38 @@ fn error_response_schema() -> Value {
         "$id": "https://contracts.lenso.local/errors/error-response.v1.schema.json",
         "title": "ErrorResponse",
         "type": "object",
-        "required": ["error"],
+        "required": [
+            "type",
+            "title",
+            "status",
+            "detail",
+            "code",
+            "request_id",
+            "correlation_id",
+            "errors"
+        ],
         "properties": {
-            "error": {
-                "type": "object",
-                "required": ["code", "message", "request_id", "correlation_id", "details"],
-                "properties": {
-                    "code": { "type": "string" },
-                    "message": { "type": "string" },
-                    "request_id": { "type": ["string", "null"] },
-                    "correlation_id": { "type": ["string", "null"] },
-                    "details": {
-                        "type": "array",
-                        "items": { "$ref": "#/$defs/ValidationErrorDetail" }
-                    }
-                },
-                "additionalProperties": false
+            "type": {
+                "type": "string",
+                "format": "uri-reference"
+            },
+            "title": { "type": "string" },
+            "status": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 599
+            },
+            "detail": { "type": "string" },
+            "code": { "type": "string" },
+            "request_id": { "type": ["string", "null"] },
+            "correlation_id": { "type": ["string", "null"] },
+            "errors": {
+                "type": "array",
+                "items": { "$ref": "#/$defs/ProblemErrorDetail" }
             }
         },
         "$defs": {
-            "ValidationErrorDetail": {
+            "ProblemErrorDetail": {
                 "type": "object",
                 "required": ["field", "reason"],
                 "properties": {

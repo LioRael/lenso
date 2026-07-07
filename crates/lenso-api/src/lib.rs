@@ -135,8 +135,9 @@ pub fn try_build_router_with_composition(
     }
     let host_wiring = lenso_bootstrap::host_wiring_for_context_with_composition(&ctx, composition)?;
     install_default_platform_admin_catalogs(&ctx, composition)?;
-    let (router, document) =
+    let (router, mut document) =
         openapi::api_router_for_context_with_composition(&ctx, composition)?.split_for_parts();
+    openapi::normalize_error_response_content_types(&mut document);
     let document = Arc::new(document);
     let console_dist_dir = ctx.config.console.dist_dir.clone();
     let console_index = PathBuf::from(&console_dist_dir).join("index.html");

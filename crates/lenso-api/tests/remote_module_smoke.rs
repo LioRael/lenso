@@ -191,7 +191,7 @@ async fn json_body(response: axum::response::Response) -> Value {
 }
 
 fn error_detail_reason<'a>(body: &'a Value, field: &str) -> Option<&'a str> {
-    body["error"]["details"]
+    body["errors"]
         .as_array()?
         .iter()
         .find(|detail| detail["field"] == field)
@@ -549,9 +549,9 @@ async fn remote_http_proxy_forwards_declared_get_routes() {
         .expect("remote missing request completes");
     assert_eq!(remote_missing.status(), StatusCode::NOT_FOUND);
     let remote_missing = json_body(remote_missing).await;
-    assert_eq!(remote_missing["error"]["code"], "not_found");
+    assert_eq!(remote_missing["code"], "not_found");
     assert_eq!(
-        remote_missing["error"]["message"],
+        remote_missing["detail"],
         "contact contact_404 was not found"
     );
     assert_eq!(
@@ -1189,9 +1189,9 @@ async fn remote_http_proxy_rejects_unsafe_get_responses() {
         .expect("text fixture request completes");
     assert_eq!(text_response.status(), StatusCode::BAD_GATEWAY);
     let text_error = json_body(text_response).await;
-    assert_eq!(text_error["error"]["code"], "external_dependency_failure");
+    assert_eq!(text_error["code"], "external_dependency_failure");
     assert!(
-        text_error["error"]["message"]
+        text_error["detail"]
             .as_str()
             .expect("error message")
             .contains("content-type was not JSON")
@@ -1226,12 +1226,9 @@ async fn remote_http_proxy_rejects_unsafe_get_responses() {
         .expect("oversized fixture request completes");
     assert_eq!(oversized_response.status(), StatusCode::BAD_GATEWAY);
     let oversized_error = json_body(oversized_response).await;
-    assert_eq!(
-        oversized_error["error"]["code"],
-        "external_dependency_failure"
-    );
+    assert_eq!(oversized_error["code"], "external_dependency_failure");
     assert!(
-        oversized_error["error"]["message"]
+        oversized_error["detail"]
             .as_str()
             .expect("error message")
             .contains("response body exceeded")
@@ -1259,9 +1256,9 @@ async fn remote_http_proxy_uses_configured_remote_timeout() {
         .expect("slow fixture request completes");
     assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
     let body = json_body(response).await;
-    assert_eq!(body["error"]["code"], "external_dependency_failure");
+    assert_eq!(body["code"], "external_dependency_failure");
     assert!(
-        body["error"]["message"]
+        body["detail"]
             .as_str()
             .expect("error message")
             .contains("remote HTTP proxy request failed")
@@ -1335,9 +1332,9 @@ async fn remote_http_proxy_forwards_declared_post_routes() {
         .expect("non-json request completes");
     assert_eq!(non_json.status(), StatusCode::BAD_REQUEST);
     let non_json_body = json_body(non_json).await;
-    assert_eq!(non_json_body["error"]["code"], "validation_failed");
+    assert_eq!(non_json_body["code"], "validation_failed");
     assert!(
-        non_json_body["error"]["message"]
+        non_json_body["detail"]
             .as_str()
             .expect("error message")
             .contains("request content-type was not JSON")
@@ -1354,9 +1351,9 @@ async fn remote_http_proxy_forwards_declared_post_routes() {
         .expect("oversized request completes");
     assert_eq!(oversized.status(), StatusCode::BAD_REQUEST);
     let oversized_body = json_body(oversized).await;
-    assert_eq!(oversized_body["error"]["code"], "validation_failed");
+    assert_eq!(oversized_body["code"], "validation_failed");
     assert!(
-        oversized_body["error"]["message"]
+        oversized_body["detail"]
             .as_str()
             .expect("error message")
             .contains("request body exceeded")
@@ -1426,9 +1423,9 @@ async fn remote_http_proxy_forwards_declared_put_and_patch_routes() {
         .expect("non-json put request completes");
     assert_eq!(non_json.status(), StatusCode::BAD_REQUEST);
     let non_json_body = json_body(non_json).await;
-    assert_eq!(non_json_body["error"]["code"], "validation_failed");
+    assert_eq!(non_json_body["code"], "validation_failed");
     assert!(
-        non_json_body["error"]["message"]
+        non_json_body["detail"]
             .as_str()
             .expect("error message")
             .contains("request content-type was not JSON")
@@ -1494,9 +1491,9 @@ async fn remote_http_proxy_forwards_declared_delete_routes() {
         .expect("delete body request completes");
     assert_eq!(body_rejected.status(), StatusCode::BAD_REQUEST);
     let body_rejected = json_body(body_rejected).await;
-    assert_eq!(body_rejected["error"]["code"], "validation_failed");
+    assert_eq!(body_rejected["code"], "validation_failed");
     assert!(
-        body_rejected["error"]["message"]
+        body_rejected["detail"]
             .as_str()
             .expect("error message")
             .contains("DELETE request body must be empty")
@@ -1584,7 +1581,7 @@ async fn failed_remote_module_load_is_reported_in_schema() {
         .expect("list request completes");
     assert_eq!(list_response.status(), StatusCode::BAD_GATEWAY);
     let body = json_body(list_response).await;
-    assert_eq!(body["error"]["message"], "module remote-crm is not loaded");
+    assert_eq!(body["detail"], "module remote-crm is not loaded");
 }
 
 #[tokio::test]

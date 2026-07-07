@@ -29,8 +29,8 @@ enum RestartLaunch {
     ),
     responses(
         (status = 200, description = "Current Runtime Console admin actor context", body = AdminContextResponse, content_type = "application/json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 403, description = "Console admin scope is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 403, description = "Console admin scope is required", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
 pub(crate) async fn get_admin_context(admin: AdminActor) -> Json<AdminContextResponse> {
@@ -47,8 +47,8 @@ pub(crate) async fn get_admin_context(admin: AdminActor) -> Json<AdminContextRes
     ),
     responses(
         (status = 202, description = "Service restart requested", body = AdminServiceRestartResponse, content_type = "application/json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
 pub(crate) async fn restart_service(

@@ -79,19 +79,19 @@ pub fn router() -> ApiOpenApiRouter {
             status = 401,
             description = "Authentication is required",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 403,
             description = "Service or system authentication is required",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 500,
             description = "Internal server error",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         )
     )
 )]
@@ -140,25 +140,25 @@ async fn list_stories(
             status = 401,
             description = "Authentication is required",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 403,
             description = "Service or system authentication is required",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 404,
             description = "Runtime story not found",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 500,
             description = "Internal server error",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         )
     )
 )]
@@ -213,25 +213,25 @@ async fn get_story(
             status = 401,
             description = "Authentication is required",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 403,
             description = "Service or system authentication is required",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 404,
             description = "Runtime story not found",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 500,
             description = "Internal server error",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         )
     )
 )]
@@ -295,25 +295,25 @@ async fn get_story_heatmap(
             status = 401,
             description = "Authentication is required",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 403,
             description = "Service or system authentication is required",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 404,
             description = "Runtime story not found",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 500,
             description = "Internal server error",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         )
     )
 )]
