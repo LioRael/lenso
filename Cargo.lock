@@ -2077,12 +2077,12 @@ dependencies = [
 name = "lenso-module-auth-phone"
 version = "0.1.0"
 dependencies = [
- "argon2",
  "async-trait",
  "axum",
  "chrono",
  "getrandom 0.4.3",
  "lenso-module-auth",
+ "lenso-module-auth-password",
  "lenso-platform-core",
  "lenso-platform-http",
  "lenso-platform-module",

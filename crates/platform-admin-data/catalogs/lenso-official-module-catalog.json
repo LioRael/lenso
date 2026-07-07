@@ -73,7 +73,7 @@
       "manifestReference": "builtin:auth-phone",
       "summary": "Official linked phone authentication provider for SMS OTP and phone password login",
       "capabilities": ["auth_phone.credentials.write"],
-      "dependencies": ["auth"]
+      "dependencies": ["auth", "auth-password"]
     },
     {
       "name": "auth-device",

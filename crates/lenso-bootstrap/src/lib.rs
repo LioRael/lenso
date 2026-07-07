@@ -3381,7 +3381,10 @@ mod tests {
         );
         assert_eq!(
             auth_phone.dependencies,
-            vec![auth::module::MODULE_NAME.to_owned()]
+            vec![
+                auth::module::MODULE_NAME.to_owned(),
+                auth_password::module::MODULE_NAME.to_owned(),
+            ]
         );
         assert_eq!(
             auth_github.dependencies,
@@ -3730,7 +3733,7 @@ mod tests {
         assert!(groups.contains(&("auth-password.tokens", "Tokens")));
         assert!(!groups.iter().any(|(id, _)| *id == "auth-password.jwt"));
         assert!(groups.contains(&("auth-phone.otp", "Phone OTP")));
-        assert!(groups.contains(&("auth-phone.password", "Phone Password")));
+        assert!(!groups.iter().any(|(id, _)| *id == "auth-phone.password"));
     }
 
     #[tokio::test]

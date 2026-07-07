@@ -8278,6 +8278,10 @@ components:
       properties:
         challenge_id:
           type: string
+        debug_code:
+          type:
+          - string
+          - 'null'
         expires_at:
           type: string
           format: date-time

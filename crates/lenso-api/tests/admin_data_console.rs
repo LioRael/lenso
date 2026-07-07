@@ -580,7 +580,10 @@ async fn modules_endpoint_lists_auth_phone_admin_action_contribution() {
         .expect("auth-phone module metadata");
     assert_eq!(auth_phone["source"], "linked");
     assert_eq!(auth_phone["status"], "loaded");
-    assert_eq!(auth_phone["dependencies"], serde_json::json!(["auth"]));
+    assert_eq!(
+        auth_phone["dependencies"],
+        serde_json::json!(["auth", "auth-password"])
+    );
     assert_eq!(
         auth_phone["capabilities"],
         serde_json::json!(["auth_phone.credentials.write"])
