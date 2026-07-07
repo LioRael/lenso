@@ -122,6 +122,84 @@ fn openapi_contains_auth_password_contract() {
 }
 
 #[test]
+fn openapi_contains_auth_phone_contract() {
+    let document = openapi_document();
+    let value = serde_json::to_value(&document).expect("OpenAPI document should serialize");
+
+    let start = &value["paths"]["/v1/auth/phone/otp/start"]["post"];
+    assert_eq!(start["operationId"], "auth_phone_otp_start");
+    assert_eq!(
+        start["requestBody"]["content"]["application/json"]["schema"]["$ref"],
+        "#/components/schemas/PhoneOtpStartRequest"
+    );
+    assert_eq!(
+        start["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+        "#/components/schemas/PhoneOtpStartResponse"
+    );
+
+    for status in ["400", "500"] {
+        assert_eq!(
+            start["responses"][status]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/ErrorResponse"
+        );
+    }
+
+    let verify = &value["paths"]["/v1/auth/phone/otp/verify"]["post"];
+    assert_eq!(verify["operationId"], "auth_phone_otp_verify");
+    assert_eq!(
+        verify["requestBody"]["content"]["application/json"]["schema"]["$ref"],
+        "#/components/schemas/PhoneOtpVerifyRequest"
+    );
+    assert_eq!(
+        verify["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+        "#/components/schemas/PhoneSessionResponse"
+    );
+
+    for status in ["400", "401", "500"] {
+        assert_eq!(
+            verify["responses"][status]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/ErrorResponse"
+        );
+    }
+
+    let set_password = &value["paths"]["/v1/auth/phone/password/set"]["post"];
+    assert_eq!(set_password["operationId"], "auth_phone_password_set");
+    assert_eq!(
+        set_password["requestBody"]["content"]["application/json"]["schema"]["$ref"],
+        "#/components/schemas/PhonePasswordSetRequest"
+    );
+    assert_eq!(
+        set_password["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+        "#/components/schemas/PhonePasswordUpdatedResponse"
+    );
+
+    for status in ["400", "401", "403", "500"] {
+        assert_eq!(
+            set_password["responses"][status]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/ErrorResponse"
+        );
+    }
+
+    let login = &value["paths"]["/v1/auth/phone/password/login"]["post"];
+    assert_eq!(login["operationId"], "auth_phone_password_login");
+    assert_eq!(
+        login["requestBody"]["content"]["application/json"]["schema"]["$ref"],
+        "#/components/schemas/PhonePasswordLoginRequest"
+    );
+    assert_eq!(
+        login["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+        "#/components/schemas/PhoneSessionResponse"
+    );
+
+    for status in ["400", "401", "429", "500"] {
+        assert_eq!(
+            login["responses"][status]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/ErrorResponse"
+        );
+    }
+}
+
+#[test]
 fn openapi_contains_auth_oidc_contract() {
     let document = openapi_document();
     let value = serde_json::to_value(&document).expect("OpenAPI document should serialize");
@@ -437,6 +515,7 @@ async fn served_core_profile_openapi_keeps_composed_auth_routes() {
         .with_linked_module(lenso_bootstrap::auth_anonymous_linked_module())
         .with_linked_module(lenso_bootstrap::auth_oauth_linked_module())
         .with_linked_module(lenso_bootstrap::auth_password_linked_module())
+        .with_linked_module(lenso_bootstrap::auth_phone_linked_module())
         .with_linked_module(lenso_bootstrap::auth_github_linked_module())
         .with_linked_module(lenso_bootstrap::auth_google_linked_module())
         .with_linked_module(lenso_bootstrap::auth_oidc_linked_module());
@@ -470,6 +549,8 @@ async fn served_core_profile_openapi_keeps_composed_auth_routes() {
     assert!(paths.contains_key("/v1/auth/dev/sessions"));
     assert!(paths.contains_key("/v1/auth/anonymous/login"));
     assert!(paths.contains_key("/v1/auth/password/register"));
+    assert!(paths.contains_key("/v1/auth/phone/otp/start"));
+    assert!(paths.contains_key("/v1/auth/phone/password/login"));
     assert!(paths.contains_key("/v1/auth/github/start"));
     assert!(paths.contains_key("/v1/auth/google/start"));
     assert!(paths.contains_key("/.well-known/openid-configuration"));

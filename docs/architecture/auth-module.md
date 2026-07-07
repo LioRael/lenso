@@ -59,7 +59,7 @@ Today `auth` is a linked module registered by `crates/lenso-bootstrap`:
 
 - Product hosts should use `LENSO_COMPOSITION_PROFILE=core` and explicitly add
   `builtins::auth()` plus provider modules such as `builtins::auth_password()`
-  to their host composition.
+  or `builtins::auth_phone()` to their host composition.
 - The `demo` linked profile enables it by default.
 - `modules.auth.enabled = false` disables its migrations, HTTP routes, admin
   data, and actor resolver install.
@@ -70,7 +70,7 @@ The current HTTP surface is intentionally small:
 - `POST /v1/auth/dev/sessions` creates a local-development session for a user id.
 - `POST /v1/auth/sessions/revoke` revokes the current bearer or cookie session.
 
-The first provider is the separate linked `auth-password` module:
+The password provider is the separate linked `auth-password` module:
 
 - `modules.auth-password.enabled = false` disables the password provider.
 - It depends on `auth`; if `auth` is disabled, `auth-password` is not installed.
@@ -82,6 +82,27 @@ The first provider is the separate linked `auth-password` module:
 The password provider stores provider-specific credential hashes in its own
 `auth_password` schema. It uses `auth::public` helpers to create auth users,
 identities, and sessions, so the auth core remains the owner of those tables.
+
+The phone provider is the separate linked `auth-phone` module:
+
+- `modules.auth-phone.enabled = false` disables the phone provider.
+- It depends on `auth`; if `auth` is disabled, `auth-phone` is not installed.
+- Its `ModuleManifest.dependencies` declares `["auth"]`, and
+  `/admin/data/modules` exposes that dependency for diagnostics and installers.
+- `POST /v1/auth/phone/otp/start` starts a phone OTP challenge.
+- `POST /v1/auth/phone/otp/verify` verifies an OTP and creates a session.
+- `POST /v1/auth/phone/password/set` sets or replaces the current phone
+  identity's password.
+- `POST /v1/auth/phone/password/login` creates a session for a phone password
+  identity.
+
+The phone provider stores provider-specific identities, OTP challenges,
+password hashes, and password failure counters in its own `auth_phone` schema.
+OTP policy and password length are editable runtime config under
+`auth-phone.otp` and `auth-phone.password`; OTP secrets stay in module-local
+host config, for example `LENSO_MODULE_AUTH_PHONE__OTP_SECRET=<secret>`.
+Outside local development, OTP start and verify fail closed if no module-local
+secret is configured.
 
 The `auth-anonymous` provider creates an auth user, an `anonymous` identity, and
 a normal `auth.sessions` row without collecting PII:
@@ -160,6 +181,6 @@ later focused auth slices.
 
 Keep core auth linked/in-process for now. Session resolution is a host trust
 boundary and runs on every request. First-party linked provider modules can sit
-beside it, as `auth-password` does. Remote modules may later provide external
-provider connectors, but they should not own host sessions or receive caller
-bearer tokens.
+beside it, as `auth-password` and `auth-phone` do. Remote modules may later
+provide external provider connectors, but they should not own host sessions or
+receive caller bearer tokens.
