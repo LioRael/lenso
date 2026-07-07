@@ -8335,6 +8335,19 @@ components:
       properties:
         updated:
           type: boolean
+    PhoneSessionPrimaryIdentifier:
+      type: object
+      required:
+      - kind
+      - country_code
+      - masked_national_number
+      properties:
+        country_code:
+          type: string
+        kind:
+          type: string
+        masked_national_number:
+          type: string
     PhoneSessionResponse:
       type: object
       required:
@@ -8342,10 +8355,13 @@ components:
       - session_id
       - token
       - expires_at
+      - primary_identifier
       properties:
         expires_at:
           type: string
           format: date-time
+        primary_identifier:
+          $ref: '#/components/schemas/PhoneSessionPrimaryIdentifier'
         session_id:
           type: string
         token:
