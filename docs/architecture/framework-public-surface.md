@@ -10,7 +10,7 @@ user needs to install before writing their own backend or module.
 The intended first-user flow is:
 
 ```sh
-cargo add lenso@0.3.16 --features host
+cargo add lenso@0.3.17 --features host
 pnpm add @lenso/service-kit@0.1.0
 pnpm add @lenso/remote-module-kit@0.1.1
 ```
@@ -28,7 +28,7 @@ package boundary is the user-facing contract.
 
 Current registry baseline:
 
-- `lenso@0.3.16` is the crates.io facade line for generated hosts with the
+- `lenso@0.3.17` is the crates.io facade line for generated hosts with the
   `host` feature.
 - `@lenso/service-kit@0.1.0` is published from the Runtime Console repository.
 - `@lenso/remote-module-kit` remains as the compatibility package for the old
