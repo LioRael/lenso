@@ -35,19 +35,19 @@ use platform_http::{AdminActor, ApiErrorResponse, ErrorResponse, HttpRequestCont
             status = 401,
             description = "Authentication is required",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 403,
             description = "Service or system authentication is required",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 500,
             description = "Internal server error",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         )
     )
 )]
@@ -137,19 +137,19 @@ pub(crate) async fn get_summary(
             status = 401,
             description = "Authentication is required",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 403,
             description = "Service or system authentication is required",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 500,
             description = "Internal server error",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         )
     )
 )]
@@ -415,25 +415,25 @@ fn sort_technical_operations(data: &mut [AdminRuntimeTechnicalOperation]) {
             status = 401,
             description = "Authentication is required",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 403,
             description = "Service or system authentication is required",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 404,
             description = "Runtime execution node not found",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 500,
             description = "Internal server error",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         )
     )
 )]
@@ -496,25 +496,25 @@ pub(crate) async fn get_execution_technical_operations(
             status = 401,
             description = "Authentication is required",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 403,
             description = "Service or system authentication is required",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 404,
             description = "Runtime execution node not found",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 500,
             description = "Internal server error",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         )
     )
 )]
@@ -572,25 +572,25 @@ pub(crate) async fn get_execution_payload(
             status = 401,
             description = "Authentication is required",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 403,
             description = "Service or system authentication is required",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 404,
             description = "Runtime execution node not found",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 500,
             description = "Internal server error",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         )
     )
 )]
@@ -658,19 +658,19 @@ pub(crate) async fn get_execution_logs(
             status = 401,
             description = "Authentication is required",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 403,
             description = "Service or system authentication is required",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 500,
             description = "Internal server error",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         )
     )
 )]
@@ -759,19 +759,19 @@ pub(crate) async fn list_remote_proxy_calls(
             status = 401,
             description = "Authentication is required",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 403,
             description = "Service or system authentication is required",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 500,
             description = "Internal server error",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         )
     )
 )]
@@ -862,19 +862,19 @@ pub(crate) async fn list_admin_action_invocations(
             status = 401,
             description = "Authentication is required",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 403,
             description = "Service or system authentication is required",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 500,
             description = "Internal server error",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         )
     )
 )]
@@ -955,19 +955,19 @@ pub(crate) async fn list_outbox(
             status = 401,
             description = "Authentication is required",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 403,
             description = "Service or system authentication is required",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 500,
             description = "Internal server error",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         )
     )
 )]
@@ -1053,25 +1053,25 @@ pub(crate) async fn list_function_runs(
             status = 401,
             description = "Authentication is required",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 403,
             description = "Service or system authentication is required",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 404,
             description = "Outbox event was not found",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 500,
             description = "Internal server error",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         )
     )
 )]
@@ -1113,25 +1113,25 @@ pub(crate) async fn get_outbox_event(
             status = 401,
             description = "Authentication is required",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 403,
             description = "Service or system authentication is required",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 404,
             description = "Function run was not found",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 500,
             description = "Internal server error",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         )
     )
 )]
@@ -1264,31 +1264,31 @@ pub(crate) async fn fetch_story_event_detail(
             status = 401,
             description = "Authentication is required",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 403,
             description = "Service or system authentication is required",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 404,
             description = "Outbox event was not found",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 409,
             description = "Outbox event status cannot be retried",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 500,
             description = "Internal server error",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         )
     )
 )]
@@ -1370,31 +1370,31 @@ pub(crate) async fn retry_outbox_event(
             status = 401,
             description = "Authentication is required",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 403,
             description = "Service or system authentication is required",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 404,
             description = "Function run was not found",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 409,
             description = "Function run status cannot be retried",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         ),
         (
             status = 500,
             description = "Internal server error",
             body = ErrorResponse,
-            content_type = "application/json"
+            content_type = "application/problem+json"
         )
     )
 )]

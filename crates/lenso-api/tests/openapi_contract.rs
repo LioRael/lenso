@@ -17,6 +17,10 @@ fn app_config_with_default_modules() -> AppConfig {
     config
 }
 
+fn error_schema_ref<'a>(operation: &'a serde_json::Value, status: &str) -> &'a serde_json::Value {
+    &operation["responses"][status]["content"]["application/problem+json"]["schema"]["$ref"]
+}
+
 #[test]
 fn openapi_contains_auth_dev_session_contract() {
     let document = openapi_document();
@@ -35,7 +39,7 @@ fn openapi_contains_auth_dev_session_contract() {
 
     for status in ["400", "403", "500"] {
         assert_eq!(
-            operation["responses"][status]["content"]["application/json"]["schema"]["$ref"],
+            error_schema_ref(operation, status),
             "#/components/schemas/ErrorResponse"
         );
     }
@@ -49,7 +53,7 @@ fn openapi_contains_auth_dev_session_contract() {
 
     for status in ["401", "500"] {
         assert_eq!(
-            revoke["responses"][status]["content"]["application/json"]["schema"]["$ref"],
+            error_schema_ref(revoke, status),
             "#/components/schemas/ErrorResponse"
         );
     }
@@ -73,7 +77,7 @@ fn openapi_contains_auth_anonymous_contract() {
 
     for status in ["400", "500"] {
         assert_eq!(
-            login["responses"][status]["content"]["application/json"]["schema"]["$ref"],
+            error_schema_ref(login, status),
             "#/components/schemas/ErrorResponse"
         );
     }
@@ -97,7 +101,7 @@ fn openapi_contains_auth_password_contract() {
 
     for status in ["400", "409", "500"] {
         assert_eq!(
-            register["responses"][status]["content"]["application/json"]["schema"]["$ref"],
+            error_schema_ref(register, status),
             "#/components/schemas/ErrorResponse"
         );
     }
@@ -115,7 +119,7 @@ fn openapi_contains_auth_password_contract() {
 
     for status in ["400", "401", "500"] {
         assert_eq!(
-            login["responses"][status]["content"]["application/json"]["schema"]["$ref"],
+            error_schema_ref(login, status),
             "#/components/schemas/ErrorResponse"
         );
     }
@@ -139,7 +143,7 @@ fn openapi_contains_auth_phone_contract() {
 
     for status in ["400", "500"] {
         assert_eq!(
-            start["responses"][status]["content"]["application/json"]["schema"]["$ref"],
+            error_schema_ref(start, status),
             "#/components/schemas/ErrorResponse"
         );
     }
@@ -157,7 +161,7 @@ fn openapi_contains_auth_phone_contract() {
 
     for status in ["400", "401", "500"] {
         assert_eq!(
-            verify["responses"][status]["content"]["application/json"]["schema"]["$ref"],
+            error_schema_ref(verify, status),
             "#/components/schemas/ErrorResponse"
         );
     }
@@ -175,7 +179,7 @@ fn openapi_contains_auth_phone_contract() {
 
     for status in ["400", "401", "403", "500"] {
         assert_eq!(
-            set_password["responses"][status]["content"]["application/json"]["schema"]["$ref"],
+            error_schema_ref(set_password, status),
             "#/components/schemas/ErrorResponse"
         );
     }
@@ -193,7 +197,7 @@ fn openapi_contains_auth_phone_contract() {
 
     for status in ["400", "401", "429", "500"] {
         assert_eq!(
-            login["responses"][status]["content"]["application/json"]["schema"]["$ref"],
+            error_schema_ref(login, status),
             "#/components/schemas/ErrorResponse"
         );
     }

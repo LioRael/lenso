@@ -264,10 +264,7 @@ async fn admin_actor_rejects_user_without_console_admin_scope() {
 
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
     let body = json_body(response).await;
-    assert_eq!(
-        body["error"]["message"],
-        "missing console admin scope: console.admin"
-    );
+    assert_eq!(body["detail"], "missing console admin scope: console.admin");
 }
 
 #[tokio::test]
@@ -289,11 +286,11 @@ async fn malformed_json_returns_standard_error_shape_with_request_context() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
     let body = json_body(response).await;
-    assert_eq!(body["error"]["code"], "validation_failed");
-    assert_eq!(body["error"]["message"], "Request validation failed");
-    assert_eq!(body["error"]["request_id"], "req-json");
-    assert_eq!(body["error"]["correlation_id"], "corr-json");
-    assert!(!body["error"]["details"].as_array().unwrap().is_empty());
+    assert_eq!(body["code"], "validation_failed");
+    assert_eq!(body["detail"], "Request validation failed");
+    assert_eq!(body["request_id"], "req-json");
+    assert_eq!(body["correlation_id"], "corr-json");
+    assert!(!body["errors"].as_array().unwrap().is_empty());
 }
 
 fn router() -> Router {

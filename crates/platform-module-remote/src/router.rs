@@ -100,10 +100,10 @@ fn remote_http_proxy_registry() -> Arc<RemoteHttpProxyRegistry> {
     ),
     responses(
         (status = 200, description = "Remote route forwarded through the host.", body = RemoteHttpProxyResponse, content_type = "application/json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 403, description = "Service/system authentication or declared capability is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 404, description = "No configured remote route matched", body = ErrorResponse, content_type = "application/json"),
-        (status = 502, description = "Remote module request failed", body = ErrorResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 403, description = "Service/system authentication or declared capability is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 404, description = "No configured remote route matched", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 502, description = "Remote module request failed", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
 async fn proxy_get(
@@ -148,11 +148,11 @@ async fn proxy_get(
     ),
     responses(
         (status = 200, description = "Remote route forwarded through the host.", body = RemoteHttpProxyResponse, content_type = "application/json"),
-        (status = 400, description = "Request body policy rejected the request", body = ErrorResponse, content_type = "application/json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 403, description = "Service/system authentication or declared capability is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 404, description = "No configured remote route matched", body = ErrorResponse, content_type = "application/json"),
-        (status = 502, description = "Remote module request failed", body = ErrorResponse, content_type = "application/json"),
+        (status = 400, description = "Request body policy rejected the request", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 403, description = "Service/system authentication or declared capability is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 404, description = "No configured remote route matched", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 502, description = "Remote module request failed", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
 async fn proxy_post(
@@ -193,11 +193,11 @@ async fn proxy_post(
     ),
     responses(
         (status = 200, description = "Remote route forwarded through the host.", body = RemoteHttpProxyResponse, content_type = "application/json"),
-        (status = 400, description = "Request body policy rejected the request", body = ErrorResponse, content_type = "application/json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 403, description = "Service/system authentication or declared capability is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 404, description = "No configured remote route matched", body = ErrorResponse, content_type = "application/json"),
-        (status = 502, description = "Remote module request failed", body = ErrorResponse, content_type = "application/json"),
+        (status = 400, description = "Request body policy rejected the request", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 403, description = "Service/system authentication or declared capability is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 404, description = "No configured remote route matched", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 502, description = "Remote module request failed", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
 async fn proxy_put(
@@ -238,11 +238,11 @@ async fn proxy_put(
     ),
     responses(
         (status = 200, description = "Remote route forwarded through the host.", body = RemoteHttpProxyResponse, content_type = "application/json"),
-        (status = 400, description = "Request body policy rejected the request", body = ErrorResponse, content_type = "application/json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 403, description = "Service/system authentication or declared capability is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 404, description = "No configured remote route matched", body = ErrorResponse, content_type = "application/json"),
-        (status = 502, description = "Remote module request failed", body = ErrorResponse, content_type = "application/json"),
+        (status = 400, description = "Request body policy rejected the request", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 403, description = "Service/system authentication or declared capability is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 404, description = "No configured remote route matched", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 502, description = "Remote module request failed", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
 async fn proxy_patch(
@@ -278,11 +278,11 @@ async fn proxy_patch(
     ),
     responses(
         (status = 200, description = "Remote route forwarded through the host.", body = RemoteHttpProxyResponse, content_type = "application/json"),
-        (status = 400, description = "Request body policy rejected the request", body = ErrorResponse, content_type = "application/json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 403, description = "Service/system authentication or declared capability is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 404, description = "No configured remote route matched", body = ErrorResponse, content_type = "application/json"),
-        (status = 502, description = "Remote module request failed", body = ErrorResponse, content_type = "application/json"),
+        (status = 400, description = "Request body policy rejected the request", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 403, description = "Service/system authentication or declared capability is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 404, description = "No configured remote route matched", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 502, description = "Remote module request failed", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
 async fn proxy_delete(

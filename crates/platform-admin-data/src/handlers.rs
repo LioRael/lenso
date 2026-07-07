@@ -120,8 +120,8 @@ pub(crate) struct DataListQuery {
     params(("authorization" = String, Header, description = "Development service bearer token")),
     responses(
         (status = 200, description = "All module registry metadata", body = AdminModuleMetadataListResponse, content_type = "application/json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
 pub(crate) async fn list_modules(
@@ -139,9 +139,9 @@ pub(crate) async fn list_modules(
     params(("authorization" = String, Header, description = "Development service bearer token")),
     responses(
         (status = 200, description = "Module registry metadata snapshot after refresh", body = AdminModuleMetadataListResponse, content_type = "application/json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 502, description = "Module registry refresh is unavailable", body = ErrorResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 502, description = "Module registry refresh is unavailable", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
 pub(crate) async fn refresh_modules(
@@ -178,8 +178,8 @@ pub(crate) async fn refresh_modules(
     params(("authorization" = String, Header, description = "Development service bearer token")),
     responses(
         (status = 200, description = "Legacy alias for available catalog services", body = AdminModuleRegistrySnapshotResponse, content_type = "application/json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
 pub(crate) async fn module_registry_snapshot(
@@ -197,8 +197,8 @@ pub(crate) async fn module_registry_snapshot(
     params(("authorization" = String, Header, description = "Development service bearer token")),
     responses(
         (status = 200, description = "Available catalog services and linked modules", body = AdminModuleRegistrySnapshotResponse, content_type = "application/json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
 pub(crate) async fn available_modules(
@@ -216,8 +216,8 @@ pub(crate) async fn available_modules(
     params(("authorization" = String, Header, description = "Development service bearer token")),
     responses(
         (status = 200, description = "Service provider lifecycle state", body = AdminServiceModuleLifecycleResponse, content_type = "application/json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
 pub(crate) async fn service_modules(
@@ -243,8 +243,8 @@ pub(crate) async fn service_modules(
     params(("authorization" = String, Header, description = "Development service bearer token")),
     responses(
         (status = 200, description = "Service system graph", body = AdminServiceSystemResponse, content_type = "application/json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
 pub(crate) async fn service_system(
@@ -264,8 +264,8 @@ pub(crate) async fn service_system(
     params(("authorization" = String, Header, description = "Development service bearer token")),
     responses(
         (status = 200, description = "Service system drift against host-local state", body = AdminServiceSystemDriftResponse, content_type = "application/json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
 pub(crate) async fn service_system_drift(
@@ -285,8 +285,8 @@ pub(crate) async fn service_system_drift(
     params(("authorization" = String, Header, description = "Development service bearer token")),
     responses(
         (status = 200, description = "Applied system release train history", body = AdminServiceSystemReleaseTrainResponse, content_type = "application/json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
 pub(crate) async fn service_system_release_train(
@@ -306,8 +306,8 @@ pub(crate) async fn service_system_release_train(
     params(("authorization" = String, Header, description = "Development service bearer token")),
     responses(
         (status = 200, description = "System runbook history", body = AdminServiceSystemRunbooksResponse, content_type = "application/json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
 pub(crate) async fn service_system_runbooks(
@@ -327,8 +327,8 @@ pub(crate) async fn service_system_runbooks(
     params(("authorization" = String, Header, description = "Development service bearer token")),
     responses(
         (status = 200, description = "Launchpad first-run state", body = AdminLaunchpadResponse, content_type = "application/json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
 pub(crate) async fn launchpad(
@@ -346,8 +346,8 @@ pub(crate) async fn launchpad(
     params(("authorization" = String, Header, description = "Development service bearer token")),
     responses(
         (status = 200, description = "Launchpad developer doctor state", body = AdminLaunchpadDoctorResponse, content_type = "application/json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
 pub(crate) async fn launchpad_doctor(
@@ -367,8 +367,8 @@ pub(crate) async fn launchpad_doctor(
     params(("authorization" = String, Header, description = "Development service bearer token")),
     responses(
         (status = 200, description = "Launchpad App Proof state", body = AdminLaunchpadProofResponse, content_type = "application/json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
 pub(crate) async fn launchpad_proof(
@@ -386,8 +386,8 @@ pub(crate) async fn launchpad_proof(
     params(("authorization" = String, Header, description = "Development service bearer token")),
     responses(
         (status = 200, description = "Launchpad app change plan state", body = AdminLaunchpadChangePlanResponse, content_type = "application/json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
 pub(crate) async fn launchpad_change_plan(
@@ -410,10 +410,10 @@ pub(crate) async fn launchpad_change_plan(
     ),
     responses(
         (status = 200, description = "Catalog install state written to host-local files", body = AdminModuleInstallResponse, content_type = "application/json"),
-        (status = 400, description = "Catalog entry cannot be installed", body = ErrorResponse, content_type = "application/json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 404, description = "Unknown available module", body = ErrorResponse, content_type = "application/json"),
+        (status = 400, description = "Catalog entry cannot be installed", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 404, description = "Unknown available module", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
 pub(crate) async fn install_available_module(
@@ -437,9 +437,9 @@ pub(crate) async fn install_available_module(
     ),
     responses(
         (status = 200, description = "Module install state removed from host-local files", body = AdminModuleInstallResponse, content_type = "application/json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 404, description = "Unknown available module", body = ErrorResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 404, description = "Unknown available module", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
 pub(crate) async fn uninstall_available_module(
@@ -2936,8 +2936,8 @@ fn install_error(error: AppError, ctx: &RequestContext) -> ApiErrorResponse {
     params(("authorization" = String, Header, description = "Development service bearer token")),
     responses(
         (status = 200, description = "All admin-capable modules' schemas", body = AdminSchemaListResponse, content_type = "application/json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
 pub(crate) async fn list_schemas(
@@ -2957,9 +2957,9 @@ pub(crate) async fn list_schemas(
     params(("authorization" = String, Header, description = "Development service bearer token")),
     responses(
         (status = 200, description = "Refreshed admin-capable modules' schemas", body = AdminSchemaRefreshResponse, content_type = "application/json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 502, description = "Admin module refresh is unavailable or failed", body = ErrorResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 502, description = "Admin module refresh is unavailable or failed", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
 pub(crate) async fn refresh_schemas(
@@ -5451,11 +5451,11 @@ fn load_error_message(status: &ModuleLoadStatus) -> Option<String> {
     request_body = AdminActionInvokeRequest,
     responses(
         (status = 200, description = "Action result", body = AdminActionInvokeResponse, content_type = "application/json"),
-        (status = 400, description = "Request validation failed", body = ErrorResponse, content_type = "application/json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 404, description = "Unknown module or undeclared action", body = ErrorResponse, content_type = "application/json"),
-        (status = 502, description = "Action source is unavailable or failed", body = ErrorResponse, content_type = "application/json"),
+        (status = 400, description = "Request validation failed", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 404, description = "Unknown module or undeclared action", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 502, description = "Action source is unavailable or failed", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
 pub(crate) async fn invoke_action(
@@ -5548,10 +5548,10 @@ pub(crate) async fn invoke_action(
     ),
     responses(
         (status = 200, description = "Query result", body = AdminQueryResponse, content_type = "application/json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 404, description = "Unknown module or undeclared query", body = ErrorResponse, content_type = "application/json"),
-        (status = 502, description = "Query source is unavailable or failed", body = ErrorResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 404, description = "Unknown module or undeclared query", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 502, description = "Query source is unavailable or failed", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
 pub(crate) async fn query_value(
@@ -6457,8 +6457,8 @@ mod tests {
     ),
     responses(
         (status = 200, description = "A page of records", body = AdminDataListResponse, content_type = "application/json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 404, description = "Unknown module or entity", body = ErrorResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 404, description = "Unknown module or entity", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
 pub(crate) async fn list_records(
@@ -6501,8 +6501,8 @@ pub(crate) async fn list_records(
     ),
     responses(
         (status = 200, description = "One record", body = AdminDataDetailResponse, content_type = "application/json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 404, description = "Unknown module/entity or record not found", body = ErrorResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 404, description = "Unknown module/entity or record not found", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
 pub(crate) async fn get_record(

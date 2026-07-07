@@ -1,5 +1,5 @@
 use axum::Json;
-use axum::http::{HeaderValue, StatusCode};
+use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use platform_core::{AppError, ErrorCode, RequestContext};
 use serde::Serialize;
@@ -7,21 +7,21 @@ use utoipa::ToSchema;
 
 #[derive(Debug, Serialize, ToSchema)]
 #[schema(as = ErrorResponse)]
-pub struct ApiErrorBody {
-    pub error: ErrorBody,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct ErrorBody {
+pub struct ProblemDetails {
+    #[serde(rename = "type")]
+    pub problem_type: String,
+    pub title: String,
+    #[schema(minimum = 100, maximum = 599)]
+    pub status: u16,
+    pub detail: String,
     pub code: String,
-    pub message: String,
     pub request_id: Option<String>,
     pub correlation_id: Option<String>,
-    pub details: Vec<ValidationErrorDetail>,
+    pub errors: Vec<ProblemErrorDetail>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub struct ValidationErrorDetail {
+pub struct ProblemErrorDetail {
     pub field: Option<String>,
     pub reason: String,
 }
@@ -85,26 +85,49 @@ impl IntoResponse for ApiErrorResponse {
             correlation_id = correlation_id.as_deref().unwrap_or(""),
             "HTTP request failed"
         );
-        let body = ApiErrorBody {
-            error: ErrorBody {
-                code: error.code.as_str().to_owned(),
-                message: error.public_message,
-                request_id,
-                correlation_id,
-                details: error
-                    .details
-                    .into_iter()
-                    .map(|detail| ValidationErrorDetail {
-                        field: detail.field,
-                        reason: detail.reason,
-                    })
-                    .collect(),
-            },
+        let code = error.code;
+        let body = ProblemDetails {
+            problem_type: problem_type(code),
+            title: problem_title(code).to_owned(),
+            status: status.as_u16(),
+            detail: error.public_message,
+            code: code.as_str().to_owned(),
+            request_id,
+            correlation_id,
+            errors: error
+                .details
+                .into_iter()
+                .map(|detail| ProblemErrorDetail {
+                    field: detail.field,
+                    reason: detail.reason,
+                })
+                .collect(),
         };
         let mut response = (status, Json(body)).into_response();
-        if let Ok(value) = HeaderValue::from_str(error.code.as_str()) {
+        response.headers_mut().insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("application/problem+json"),
+        );
+        if let Ok(value) = HeaderValue::from_str(code.as_str()) {
             response.headers_mut().insert("x-lenso-error-code", value);
         }
         response
     }
+}
+
+fn problem_title(code: ErrorCode) -> &'static str {
+    match code {
+        ErrorCode::Validation => "Validation failed",
+        ErrorCode::Unauthorized => "Unauthorized",
+        ErrorCode::Forbidden => "Forbidden",
+        ErrorCode::NotFound => "Not found",
+        ErrorCode::Conflict => "Conflict",
+        ErrorCode::RateLimited => "Rate limited",
+        ErrorCode::ExternalDependency => "External dependency failure",
+        ErrorCode::Internal => "Internal error",
+    }
+}
+
+fn problem_type(code: ErrorCode) -> String {
+    format!("https://lenso.dev/problems/{}", code.as_str())
 }

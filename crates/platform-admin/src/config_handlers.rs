@@ -28,8 +28,8 @@ const ADMIN_CONFIG_SERVICE_KEY: &str = "api";
     ),
     responses(
         (status = 200, description = "Registered config descriptors", body = ConfigDescriptorListResponse, content_type = "application/json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
 pub(crate) async fn list_config_descriptors(
@@ -92,8 +92,8 @@ fn visibility_condition_dto(
     ),
     responses(
         (status = 200, description = "Effective config values", body = ConfigValueListResponse, content_type = "application/json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
 pub(crate) async fn list_config_values(
@@ -173,11 +173,11 @@ fn source_label(source: RuntimeConfigSource) -> String {
     request_body = ConfigWriteRequest,
     responses(
         (status = 200, description = "Value written", body = ConfigWriteResponse, content_type = "application/json"),
-        (status = 400, description = "Value failed validation", body = ErrorResponse, content_type = "application/json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 403, description = "Config key is not editable", body = ErrorResponse, content_type = "application/json"),
-        (status = 404, description = "Unknown config key", body = ErrorResponse, content_type = "application/json"),
-        (status = 500, description = "Internal server error", body = ErrorResponse, content_type = "application/json"),
+        (status = 400, description = "Value failed validation", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 403, description = "Config key is not editable", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 404, description = "Unknown config key", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 500, description = "Internal server error", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
 pub(crate) async fn put_config_value(
@@ -266,9 +266,9 @@ pub(crate) async fn put_config_value(
     ),
     responses(
         (status = 200, description = "Value reset to default", body = ConfigWriteResponse, content_type = "application/json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 404, description = "Unknown config key", body = ErrorResponse, content_type = "application/json"),
-        (status = 500, description = "Internal server error", body = ErrorResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 404, description = "Unknown config key", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 500, description = "Internal server error", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
 pub(crate) async fn delete_config_value(
@@ -323,8 +323,8 @@ pub(crate) async fn delete_config_value(
     ),
     responses(
         (status = 200, description = "Audit history", body = ConfigAuditListResponse, content_type = "application/json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/json"),
-        (status = 500, description = "Internal server error", body = ErrorResponse, content_type = "application/json"),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 500, description = "Internal server error", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
 pub(crate) async fn get_config_audit(

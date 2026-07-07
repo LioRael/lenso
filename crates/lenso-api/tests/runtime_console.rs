@@ -62,7 +62,7 @@ async fn admin_runtime_summary_rejects_console_user_without_runtime_read_capabil
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
     let body = json_body(response).await;
     assert_eq!(
-        body["error"]["message"],
+        body["detail"],
         "missing runtime console capability: runtime.stories.read"
     );
 }
@@ -178,7 +178,7 @@ async fn admin_runtime_stories_rejects_console_user_without_runtime_read_capabil
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
     let body = json_body(response).await;
     assert_eq!(
-        body["error"]["message"],
+        body["detail"],
         "missing runtime console capability: runtime.stories.read"
     );
 }
@@ -240,7 +240,7 @@ async fn admin_runtime_outbox_retry_rejects_runtime_read_user_actor() {
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
     let body = json_body(response).await;
     assert_eq!(
-        body["error"]["message"],
+        body["detail"],
         "Service or system authentication is required"
     );
 }
@@ -1530,7 +1530,7 @@ async fn unknown_runtime_story_returns_not_found() {
 
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
     let body = json_body(response).await;
-    assert_eq!(body["error"]["code"], "not_found");
+    assert_eq!(body["code"], "not_found");
 
     db.cleanup().await;
 }
@@ -1707,7 +1707,7 @@ async fn unknown_runtime_story_heatmap_returns_not_found() {
 
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
     let body = json_body(response).await;
-    assert_eq!(body["error"]["code"], "not_found");
+    assert_eq!(body["code"], "not_found");
 
     db.cleanup().await;
 }
@@ -1974,7 +1974,7 @@ async fn unknown_outbox_detail_returns_not_found() {
 
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
     let body = json_body(response).await;
-    assert_eq!(body["error"]["code"], "not_found");
+    assert_eq!(body["code"], "not_found");
 
     db.cleanup().await;
 }
@@ -2032,7 +2032,7 @@ async fn retry_pending_outbox_event_returns_conflict() {
 
     assert_eq!(response.status(), StatusCode::CONFLICT);
     let body = json_body(response).await;
-    assert_eq!(body["error"]["code"], "conflict");
+    assert_eq!(body["code"], "conflict");
 
     db.cleanup().await;
 }
@@ -2135,7 +2135,7 @@ async fn retry_unknown_function_run_returns_not_found() {
 
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
     let body = json_body(response).await;
-    assert_eq!(body["error"]["code"], "not_found");
+    assert_eq!(body["code"], "not_found");
 
     db.cleanup().await;
 }

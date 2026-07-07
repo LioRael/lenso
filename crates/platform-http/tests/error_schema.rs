@@ -1,8 +1,8 @@
-use platform_http::{ErrorResponse, ValidationErrorDetail};
+use platform_http::{ErrorResponse, ProblemErrorDetail};
 use utoipa::OpenApi;
 
 #[derive(OpenApi)]
-#[openapi(components(schemas(ErrorResponse, ValidationErrorDetail)))]
+#[openapi(components(schemas(ErrorResponse, ProblemErrorDetail)))]
 struct ErrorSchemaApi;
 
 #[test]
@@ -12,13 +12,13 @@ fn error_response_schema_is_exportable() {
     let schemas = &value["components"]["schemas"];
 
     assert!(schemas["ErrorResponse"].is_object());
-    assert!(schemas["ValidationErrorDetail"].is_object());
+    assert!(schemas["ProblemErrorDetail"].is_object());
     assert_eq!(
-        schemas["ErrorResponse"]["properties"]["error"]["$ref"],
-        "#/components/schemas/ErrorBody"
+        schemas["ErrorResponse"]["properties"]["type"]["type"],
+        "string"
     );
     assert_eq!(
-        schemas["ValidationErrorDetail"]["properties"]["reason"]["type"],
+        schemas["ProblemErrorDetail"]["properties"]["reason"]["type"],
         "string"
     );
 }

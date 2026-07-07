@@ -22,13 +22,13 @@ paths:
         '404':
           description: OIDC provider is not enabled
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Invalid OIDC provider configuration
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /.well-known/openid-configuration:
@@ -46,13 +46,13 @@ paths:
         '404':
           description: OIDC provider is not enabled
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Invalid OIDC provider configuration
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/config/descriptors:
@@ -77,13 +77,13 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/config/values:
@@ -108,13 +108,13 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/config/{service}/{key}:
@@ -157,31 +157,31 @@ paths:
         '400':
           description: Value failed validation
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Config key is not editable
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Unknown config key
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
     delete:
@@ -217,19 +217,19 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Unknown config key
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/config/{service}/{key}/audit:
@@ -272,13 +272,13 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/context:
@@ -303,13 +303,13 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Console admin scope is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/data/available-modules:
@@ -334,13 +334,13 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/data/available-modules/{module}/install:
@@ -371,25 +371,25 @@ paths:
         '400':
           description: Catalog entry cannot be installed
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Unknown available module
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
     delete:
@@ -419,19 +419,19 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Unknown available module
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/data/launchpad:
@@ -456,13 +456,13 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/data/launchpad/change-plan:
@@ -487,13 +487,13 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/data/launchpad/doctor:
@@ -518,13 +518,13 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/data/launchpad/proof:
@@ -549,13 +549,13 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/data/module-registry/snapshot:
@@ -580,13 +580,13 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/data/modules:
@@ -611,13 +611,13 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/data/modules/refresh:
@@ -642,19 +642,19 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '502':
           description: Module registry refresh is unavailable
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/data/schema:
@@ -679,13 +679,13 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/data/schema/refresh:
@@ -710,19 +710,19 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '502':
           description: Admin module refresh is unavailable or failed
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/data/service-modules:
@@ -747,13 +747,13 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/data/service-system:
@@ -778,13 +778,13 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/data/service-system/drift:
@@ -809,13 +809,13 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/data/service-system/release-train:
@@ -840,13 +840,13 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/data/service-system/runbooks:
@@ -871,13 +871,13 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/data/{module}/actions/{action}:
@@ -920,31 +920,31 @@ paths:
         '400':
           description: Request validation failed
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Unknown module or undeclared action
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '502':
           description: Action source is unavailable or failed
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/data/{module}/queries/{query}:
@@ -981,25 +981,25 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Unknown module or undeclared query
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '502':
           description: Query source is unavailable or failed
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/data/{module}/{entity}:
@@ -1049,13 +1049,13 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Unknown module or entity
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/data/{module}/{entity}/{id}:
@@ -1098,13 +1098,13 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Unknown module/entity or record not found
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/runtime/admin-actions:
@@ -1205,19 +1205,19 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/runtime/executions/{node_id}/logs:
@@ -1285,25 +1285,25 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Runtime execution node not found
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/runtime/executions/{node_id}/payload:
@@ -1359,25 +1359,25 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Runtime execution node not found
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/runtime/executions/{node_id}/technical-operations:
@@ -1433,25 +1433,25 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Runtime execution node not found
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/runtime/functions:
@@ -1531,19 +1531,19 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/runtime/functions/{id}:
@@ -1599,25 +1599,25 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Function run was not found
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/runtime/functions/{id}/retry:
@@ -1673,31 +1673,31 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Function run was not found
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '409':
           description: Function run status cannot be retried
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/runtime/heatmap:
@@ -1792,19 +1792,19 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/runtime/outbox:
@@ -1884,19 +1884,19 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/runtime/outbox/{id}:
@@ -1952,25 +1952,25 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Outbox event was not found
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/runtime/outbox/{id}/retry:
@@ -2026,31 +2026,31 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Outbox event was not found
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '409':
           description: Outbox event status cannot be retried
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/runtime/remote-proxy-calls:
@@ -2137,19 +2137,19 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/runtime/stories:
@@ -2211,19 +2211,19 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/runtime/stories/{correlation_id}:
@@ -2279,25 +2279,25 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Runtime story not found
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/runtime/stories/{correlation_id}/heatmap:
@@ -2398,25 +2398,25 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Runtime story not found
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/runtime/stories/{correlation_id}/technical-operations:
@@ -2472,25 +2472,25 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Runtime story not found
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/runtime/summary:
@@ -2540,19 +2540,19 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /admin/system/restart:
@@ -2577,13 +2577,13 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service or system authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /modules/{module}/http/{*path}:
@@ -2620,25 +2620,25 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service/system authentication or declared capability is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No configured remote route matched
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '502':
           description: Remote module request failed
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
     put:
@@ -2680,31 +2680,31 @@ paths:
         '400':
           description: Request body policy rejected the request
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service/system authentication or declared capability is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No configured remote route matched
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '502':
           description: Remote module request failed
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
     post:
@@ -2746,31 +2746,31 @@ paths:
         '400':
           description: Request body policy rejected the request
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service/system authentication or declared capability is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No configured remote route matched
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '502':
           description: Remote module request failed
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
     delete:
@@ -2806,31 +2806,31 @@ paths:
         '400':
           description: Request body policy rejected the request
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service/system authentication or declared capability is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No configured remote route matched
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '502':
           description: Remote module request failed
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
     patch:
@@ -2872,31 +2872,31 @@ paths:
         '400':
           description: Request body policy rejected the request
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Service/system authentication or declared capability is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No configured remote route matched
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '502':
           description: Remote module request failed
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /oauth/authorize:
@@ -2959,19 +2959,19 @@ paths:
         '400':
           description: Request validation failed
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /oauth/token:
@@ -2995,19 +2995,19 @@ paths:
         '400':
           description: Request validation failed
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Invalid authorization grant
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /v1/auth/anonymous/login:
@@ -3058,13 +3058,13 @@ paths:
         '400':
           description: Request validation failed
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /v1/auth/dev/sessions:
@@ -3115,19 +3115,19 @@ paths:
         '400':
           description: Request validation failed
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Development sessions are only available in local environments
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /v1/auth/github/callback:
@@ -3154,19 +3154,19 @@ paths:
         '400':
           description: Request validation failed
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Invalid GitHub authorization grant
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /v1/auth/github/start:
@@ -3187,13 +3187,13 @@ paths:
         '400':
           description: Request validation failed
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /v1/auth/google/callback:
@@ -3220,19 +3220,19 @@ paths:
         '400':
           description: Request validation failed
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Invalid Google authorization grant
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /v1/auth/google/start:
@@ -3253,13 +3253,13 @@ paths:
         '400':
           description: Request validation failed
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /v1/auth/password/login:
@@ -3310,19 +3310,19 @@ paths:
         '400':
           description: Request validation failed
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Invalid identifier or password
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /v1/auth/password/register:
@@ -3373,19 +3373,19 @@ paths:
         '400':
           description: Request validation failed
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '409':
           description: Identifier already exists
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /v1/auth/phone/otp/start:
@@ -3436,13 +3436,13 @@ paths:
         '400':
           description: Request validation failed
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /v1/auth/phone/otp/verify:
@@ -3497,19 +3497,19 @@ paths:
         '400':
           description: Request validation failed
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Invalid or expired phone OTP
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /v1/auth/phone/password/login:
@@ -3564,25 +3564,25 @@ paths:
         '400':
           description: Request validation failed
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Invalid phone or password
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Too many phone password login attempts
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /v1/auth/phone/password/set:
@@ -3649,25 +3649,25 @@ paths:
         '400':
           description: Request validation failed
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Authenticated phone identity is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /v1/auth/sessions/revoke:
@@ -3727,13 +3727,13 @@ paths:
         '401':
           description: Authentication is required
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 components:
@@ -7844,12 +7844,15 @@ components:
           description: |-
             Capability required to read this entity. Declared now; gated only
             coarsely (AdminActor) this step. Fine-grained RBAC is a later spec.
-    ErrorBody:
+    ErrorResponse:
       type: object
       required:
+      - type
+      - title
+      - status
+      - detail
       - code
-      - message
-      - details
+      - errors
       properties:
         code:
           type: string
@@ -7857,23 +7860,25 @@ components:
           type:
           - string
           - 'null'
-        details:
+        detail:
+          type: string
+        errors:
           type: array
           items:
-            $ref: '#/components/schemas/ValidationErrorDetail'
-        message:
-          type: string
+            $ref: '#/components/schemas/ProblemErrorDetail'
         request_id:
           type:
           - string
           - 'null'
-    ErrorResponse:
-      type: object
-      required:
-      - error
-      properties:
-        error:
-          $ref: '#/components/schemas/ErrorBody'
+        status:
+          type: integer
+          format: int32
+          maximum: 599
+          minimum: 100
+        title:
+          type: string
+        type:
+          type: string
     EventHandlerDeclaration:
       type: object
       required:
@@ -8347,6 +8352,17 @@ components:
           type: string
         user_id:
           type: string
+    ProblemErrorDetail:
+      type: object
+      required:
+      - reason
+      properties:
+        field:
+          type:
+          - string
+          - 'null'
+        reason:
+          type: string
     RemoteHttpProxyResponse:
       type: object
       required:
@@ -8557,17 +8573,6 @@ components:
             type: string
           path:
             type: string
-    ValidationErrorDetail:
-      type: object
-      required:
-      - reason
-      properties:
-        field:
-          type:
-          - string
-          - 'null'
-        reason:
-          type: string
 tags:
 - name: auth
   description: Auth module development session APIs
