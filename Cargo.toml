@@ -67,11 +67,11 @@ utoipa-axum = "0.2"
 uuid = { version = "1.23", features = ["serde", "v7"] }
 
 lenso = { path = "crates/lenso", version = "0.3.17" }
-lenso-contracts = { path = "crates/lenso-contracts", version = "0.3.3" }
+lenso-contracts = { path = "crates/lenso-contracts", version = "0.3.4" }
 platform-core = { package = "lenso-platform-core", path = "crates/platform-core", version = "0.1.5" }
 platform-admin = { package = "lenso-platform-admin", path = "crates/platform-admin", version = "0.1.5" }
 platform-admin-data = { package = "lenso-platform-admin-data", path = "crates/platform-admin-data", version = "0.1.8" }
-platform-module = { package = "lenso-platform-module", path = "crates/platform-module", version = "0.1.4" }
+platform-module = { package = "lenso-platform-module", path = "crates/platform-module", version = "0.1.5" }
 platform-module-remote = { package = "lenso-platform-module-remote", path = "crates/platform-module-remote", version = "0.1.4" }
 platform-http = { package = "lenso-platform-http", path = "crates/platform-http", version = "0.1.4" }
 platform-runtime = { package = "lenso-platform-runtime", path = "crates/platform-runtime", version = "0.1.2" }
