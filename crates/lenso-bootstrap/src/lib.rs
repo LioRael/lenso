@@ -2898,7 +2898,10 @@ mod tests {
         assert_eq!(manifest.name, auth_phone::module::MODULE_NAME);
         assert_eq!(
             manifest.dependencies,
-            vec![auth::module::MODULE_NAME.to_owned()]
+            vec![
+                auth::module::MODULE_NAME.to_owned(),
+                auth_password::module::MODULE_NAME.to_owned(),
+            ]
         );
         assert!(
             manifest
@@ -3518,7 +3521,6 @@ mod tests {
                 "auth",
                 "auth-anonymous",
                 "auth-oauth",
-                "auth-phone",
                 "auth-github",
                 "auth-google",
                 "auth-oidc",
@@ -3558,7 +3560,6 @@ mod tests {
                 "auth",
                 "auth-anonymous",
                 "auth-oauth",
-                "auth-phone",
                 "auth-github",
                 "auth-google",
                 "auth-oidc",
@@ -3576,7 +3577,6 @@ mod tests {
             vec![
                 "auth",
                 "auth-anonymous",
-                "auth-phone",
                 "auth-github",
                 "auth-google",
                 "auth-oidc",
@@ -3862,11 +3862,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert!(!names.iter().any(|name| name.starts_with("auth-password/")));
-        assert!(
-            names
-                .iter()
-                .any(|name| name == &"auth-phone/0001_create_auth_phone_schema")
-        );
+        assert!(!names.iter().any(|name| name.starts_with("auth-phone/")));
         assert!(
             names
                 .iter()
@@ -3911,7 +3907,6 @@ mod tests {
             vec![
                 "auth",
                 "auth-anonymous",
-                "auth-phone",
                 "auth-github",
                 "auth-google",
                 "auth-oidc",
