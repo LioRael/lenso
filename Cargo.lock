@@ -1926,7 +1926,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-contracts"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "chrono",
  "serde",
@@ -2215,7 +2215,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-platform-module"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "async-trait",
  "lenso-contracts",
