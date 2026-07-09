@@ -6462,13 +6462,14 @@ mod tests {
     )
 )]
 pub(crate) async fn list_records(
-    _admin: AdminActor,
+    admin: AdminActor,
     HttpRequestContext(request_ctx): HttpRequestContext,
     Path((module, entity)): Path<(String, String)>,
     Query(query): Query<DataListQuery>,
 ) -> Result<Json<AdminDataListResponse>, ApiErrorResponse> {
     let admin_module = find_loaded_module(&module, &request_ctx)?;
-    ensure_entity(&admin_module, &entity, &request_ctx)?;
+    let entity_schema = find_entity(&admin_module, &entity, &request_ctx)?;
+    ensure_entity_read_capability(&admin, &entity_schema.read_capability, &request_ctx)?;
 
     let limit = query.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
     let page = admin_module
@@ -6506,12 +6507,13 @@ pub(crate) async fn list_records(
     )
 )]
 pub(crate) async fn get_record(
-    _admin: AdminActor,
+    admin: AdminActor,
     HttpRequestContext(request_ctx): HttpRequestContext,
     Path((module, entity, id)): Path<(String, String, String)>,
 ) -> Result<Json<AdminDataDetailResponse>, ApiErrorResponse> {
     let admin_module = find_loaded_module(&module, &request_ctx)?;
-    ensure_entity(&admin_module, &entity, &request_ctx)?;
+    let entity_schema = find_entity(&admin_module, &entity, &request_ctx)?;
+    ensure_entity_read_capability(&admin, &entity_schema.read_capability, &request_ctx)?;
 
     match admin_module
         .data_source
@@ -6529,17 +6531,44 @@ pub(crate) async fn get_record(
     }
 }
 
-fn ensure_entity(
-    module: &AdminModule,
+fn find_entity<'a>(
+    module: &'a AdminModule,
     entity: &str,
     ctx: &RequestContext,
+) -> Result<&'a platform_module::EntitySchema, ApiErrorResponse> {
+    module
+        .schema
+        .entities
+        .iter()
+        .find(|candidate| candidate.name == entity)
+        .ok_or_else(|| {
+            ApiErrorResponse::with_context(
+                AppError::new(ErrorCode::NotFound, format!("unknown entity: {entity}")),
+                ctx,
+            )
+        })
+}
+
+fn ensure_entity_read_capability(
+    admin: &AdminActor,
+    capability: &str,
+    ctx: &RequestContext,
 ) -> Result<(), ApiErrorResponse> {
-    if module.schema.entities.iter().any(|e| e.name == entity) {
-        Ok(())
-    } else {
-        Err(ApiErrorResponse::with_context(
-            AppError::new(ErrorCode::NotFound, format!("unknown entity: {entity}")),
-            ctx,
-        ))
+    match admin {
+        AdminActor::System => Ok(()),
+        AdminActor::Service { scopes, .. } | AdminActor::User { scopes, .. }
+            if scopes.iter().any(|scope| scope == capability) =>
+        {
+            Ok(())
+        }
+        AdminActor::Service { .. } | AdminActor::User { .. } => {
+            Err(ApiErrorResponse::with_context(
+                AppError::new(
+                    ErrorCode::Forbidden,
+                    format!("missing admin data capability: {capability}"),
+                ),
+                ctx,
+            ))
+        }
     }
 }

@@ -7,7 +7,11 @@
       "source": "linked",
       "manifestReference": "builtin:auth",
       "summary": "Official linked authentication anchor for users, sessions, and actor resolution",
-      "capabilities": ["auth.users.read"],
+      "capabilities": [
+        "auth.users.read",
+        "auth.users.manage",
+        "auth.sessions.revoke"
+      ],
       "consolePackages": [
         {
           "packageName": "@lenso/auth-console",
