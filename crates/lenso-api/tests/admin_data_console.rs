@@ -853,7 +853,7 @@ async fn available_modules_returns_remote_install_rows() {
     );
     assert_eq!(
         body["modules"][0]["hostCompatibility"]["lensoVersion"],
-        "0.1.8"
+        "0.1.9"
     );
     assert_eq!(body["modules"][0]["manifestStatus"], "ok");
     assert_eq!(body["modules"][0]["status"], "ready");
@@ -1873,7 +1873,7 @@ async fn available_modules_reads_official_catalog_when_no_local_catalog_exists()
         .expect("official catalog includes organization");
     assert_eq!(organization["source"], "linked");
     assert_eq!(organization["manifestReference"], "builtin:organization");
-    assert_eq!(organization["catalogVersion"], "0.1.0");
+    assert_eq!(organization["catalogVersion"], "0.1.1");
     assert_eq!(organization["consolePackageHints"], 1);
     assert_eq!(organization["capabilities"][0], "organization.read");
     assert_eq!(
@@ -1945,7 +1945,7 @@ async fn available_modules_reads_local_module_catalog() {
                     "consolePackageApi": "1",
                     "lenso": {
                         "minVersion": "0.1.0",
-                        "maxVersion": "0.1.8"
+                        "maxVersion": "0.1.9"
                     }
                 },
                 "consolePackages": [{
@@ -3159,7 +3159,7 @@ async fn available_modules_marks_catalog_preflight_issues() {
     assert_eq!(body["issues"][0]["group"], "Compatibility");
     assert_eq!(
         body["issues"][0]["message"],
-        "billing requires Lenso >= 0.2.0; host is 0.1.8"
+        "billing requires Lenso >= 0.2.0; host is 0.1.9"
     );
     assert_eq!(body["issues"][1]["group"], "Catalog");
     assert_eq!(body["issues"][1]["message"], "local-crm baseUrl is missing");
