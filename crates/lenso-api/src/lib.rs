@@ -1,6 +1,6 @@
 use anyhow::Context as _;
 use axum::Router;
-use axum::http::{HeaderValue, Method, header};
+use axum::http::{HeaderName, HeaderValue, Method, header};
 use axum::middleware;
 use axum::response::Html;
 use platform_core::{
@@ -193,8 +193,24 @@ fn install_platform_admin_catalogs(metadata: &[platform_admin_data::AdminModuleM
     );
 }
 
-async fn scalar_docs() -> Html<&'static str> {
-    Html(SCALAR_DOCS_HTML)
+async fn scalar_docs() -> ([(HeaderName, HeaderValue); 3], Html<&'static str>) {
+    (
+        [
+            (
+                HeaderName::from_static("content-security-policy"),
+                HeaderValue::from_static(SCALAR_DOCS_CSP),
+            ),
+            (
+                HeaderName::from_static("referrer-policy"),
+                HeaderValue::from_static("no-referrer"),
+            ),
+            (
+                HeaderName::from_static("x-content-type-options"),
+                HeaderValue::from_static("nosniff"),
+            ),
+        ],
+        Html(SCALAR_DOCS_HTML),
+    )
 }
 
 async fn serve_openapi(
@@ -225,13 +241,15 @@ fn cors_layer(ctx: &AppContext) -> CorsLayer {
         .allow_headers([header::ACCEPT, header::AUTHORIZATION, header::CONTENT_TYPE])
 }
 
+const SCALAR_DOCS_CSP: &str = "default-src 'none'; script-src https://cdn.jsdelivr.net 'sha256-wT12sSim/cr/4i3SfCUXmSC76WSRp+uWevWj0uNZ/vU='; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data: https:; font-src 'self' data: https:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+
 const SCALAR_DOCS_HTML: &str = r##"<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Lenso API Docs</title>
-    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.62.5" integrity="sha384-jVBCKhcCfx34USN27x4iQK1SBNdL/HxKq3KuBAxTS4WPaP5w80K4fjpwB+DezJL5" crossorigin="anonymous"></script>
     <style>
       body {
         margin: 0;
@@ -240,12 +258,7 @@ const SCALAR_DOCS_HTML: &str = r##"<!doctype html>
   </head>
   <body>
     <div id="app"></div>
-    <script>
-      Scalar.createApiReference("#app", {
-        url: "/openapi.json",
-        theme: "default",
-      });
-    </script>
+    <script>Scalar.createApiReference("#app",{url:"/openapi.json",theme:"default"});</script>
   </body>
 </html>
 "##;

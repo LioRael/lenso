@@ -647,11 +647,42 @@ async fn scalar_docs_route_serves_openapi_reference() {
         .expect("content type should be valid");
     assert!(content_type.starts_with("text/html"));
 
+    assert_eq!(
+        response
+            .headers()
+            .get("content-security-policy")
+            .and_then(|value| value.to_str().ok()),
+        Some(
+            "default-src 'none'; script-src https://cdn.jsdelivr.net 'sha256-wT12sSim/cr/4i3SfCUXmSC76WSRp+uWevWj0uNZ/vU='; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data: https:; font-src 'self' data: https:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+        )
+    );
+    assert_eq!(
+        response
+            .headers()
+            .get("referrer-policy")
+            .and_then(|value| value.to_str().ok()),
+        Some("no-referrer")
+    );
+    assert_eq!(
+        response
+            .headers()
+            .get("x-content-type-options")
+            .and_then(|value| value.to_str().ok()),
+        Some("nosniff")
+    );
+
     let bytes = to_bytes(response.into_body(), usize::MAX)
         .await
         .expect("body should read");
     let body = String::from_utf8(bytes.to_vec()).expect("body should be utf-8");
 
-    assert!(body.contains("@scalar/api-reference"));
-    assert!(body.contains("url: \"/openapi.json\""));
+    assert!(body.contains("@scalar/api-reference@1.62.5"));
+    assert!(
+        body.contains("sha384-jVBCKhcCfx34USN27x4iQK1SBNdL/HxKq3KuBAxTS4WPaP5w80K4fjpwB+DezJL5")
+    );
+    assert!(body.contains("crossorigin=\"anonymous\""));
+    assert!(!body.contains("https://cdn.jsdelivr.net/npm/@scalar/api-reference\""));
+    assert!(body.contains(
+        "Scalar.createApiReference(\"#app\",{url:\"/openapi.json\",theme:\"default\"});"
+    ));
 }

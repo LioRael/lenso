@@ -1,7 +1,9 @@
 use crate::config::RemoteModuleConfig;
 use crate::config::RemoteModuleTransport;
 use crate::protocol::RemoteActionInvokeResponse;
-use crate::response::decode_json_response;
+use crate::response::{
+    MAX_REMOTE_JSON_RESPONSE_BYTES, ResponseBodyPolicy, decode_json_response_with_policy,
+};
 use platform_core::{AppError, AppResult, ErrorCode};
 use platform_module::AdminActionSource;
 use serde_json::Value;
@@ -63,12 +65,18 @@ impl AdminActionSource for RemoteAdminActionSource {
                 .retryable()
             })?;
 
-        let envelope =
-            decode_json_response::<RemoteActionInvokeResponse>(response, "admin action", true)
-                .await?
-                .ok_or_else(|| {
-                    AppError::new(ErrorCode::NotFound, "remote admin action not found")
-                })?;
+        let envelope = decode_json_response_with_policy::<RemoteActionInvokeResponse>(
+            response,
+            "admin action",
+            true,
+            ResponseBodyPolicy {
+                max_bytes: Some(MAX_REMOTE_JSON_RESPONSE_BYTES),
+                require_json_content_type: true,
+                allow_empty_success: false,
+            },
+        )
+        .await?
+        .ok_or_else(|| AppError::new(ErrorCode::NotFound, "remote admin action not found"))?;
         Ok(envelope.result)
     }
 }

@@ -6,7 +6,7 @@ contracts.
 Install it from crates.io:
 
 ```sh
-cargo add lenso@0.3.17
+cargo add lenso@0.3.18
 ```
 
 The default facade exposes serializable module manifest declarations:
@@ -23,7 +23,7 @@ The default facade exposes serializable module manifest declarations:
 Enable the `host` feature for the narrow host boot facade:
 
 ```toml
-lenso = { version = "0.3.17", features = ["host"] }
+lenso = { version = "0.3.18", features = ["host"] }
 ```
 
 Application SQL, repositories, auth/session policy, CRUD shape, and Runtime

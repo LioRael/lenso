@@ -3,7 +3,9 @@ use crate::admin_data::RemoteAdminDataSource;
 use crate::binding::RemoteBinding;
 use crate::config::{RemoteModuleConfig, RemoteModuleTransport};
 use crate::protocol::{RemoteManifestEnvelope, RemoteManifestResponse};
-use crate::response::decode_json_response;
+use crate::response::{
+    MAX_REMOTE_JSON_RESPONSE_BYTES, ResponseBodyPolicy, decode_json_response_with_policy,
+};
 use platform_core::error::ErrorDetail;
 use platform_core::{AppError, AppResult, ErrorCode};
 use platform_module::{
@@ -156,9 +158,18 @@ impl RemoteModuleSource {
             .retryable()
         })?;
 
-        decode_json_response(response, "manifest", false)
-            .await?
-            .ok_or_else(|| AppError::new(ErrorCode::NotFound, "remote module manifest not found"))
+        decode_json_response_with_policy(
+            response,
+            "manifest",
+            false,
+            ResponseBodyPolicy {
+                max_bytes: Some(MAX_REMOTE_JSON_RESPONSE_BYTES),
+                require_json_content_type: true,
+                allow_empty_success: false,
+            },
+        )
+        .await?
+        .ok_or_else(|| AppError::new(ErrorCode::NotFound, "remote module manifest not found"))
     }
 }
 
@@ -197,6 +208,7 @@ fn validate_remote_http_routes(routes: &[ModuleHttpRoute]) -> AppResult<()> {
 fn is_valid_remote_http_route_path(path: &str) -> bool {
     path.starts_with('/')
         && !path.starts_with("//")
+        && !path.contains('\\')
         && !path.contains("://")
         && !path.contains('?')
         && !path.contains('#')
@@ -204,4 +216,24 @@ fn is_valid_remote_http_route_path(path: &str) -> bool {
             .split('/')
             .skip(1)
             .all(|segment| !segment.is_empty() && segment != "." && segment != "..")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use platform_module::{ModuleHttpMethod, ModuleHttpRoute};
+
+    #[test]
+    fn manifest_routes_reject_backslashes() {
+        let route = ModuleHttpRoute {
+            method: ModuleHttpMethod::Get,
+            path: "/contacts\\..\\admin".to_owned(),
+            capability: Some("remote_crm.contacts.read".to_owned()),
+            display_name: None,
+            story_title: None,
+            operation: None,
+        };
+
+        assert!(validate_remote_http_routes(&[route]).is_err());
+    }
 }

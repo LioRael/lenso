@@ -617,7 +617,10 @@ async fn modules_endpoint_lists_auth_phone_admin_action_contribution() {
 async fn list_records_returns_stub_data() {
     let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
     let response = app()
-        .oneshot(admin_get("/admin/data/identity/users"))
+        .oneshot(admin_get_with_token(
+            "/admin/data/identity/users",
+            "dev-service:admin:identity.users.read",
+        ))
         .await
         .expect("request completes");
     assert_eq!(response.status(), StatusCode::OK);
@@ -627,6 +630,49 @@ async fn list_records_returns_stub_data() {
     let json: Value = serde_json::from_slice(&bytes).expect("json");
     assert_eq!(json["data"][0]["id"], "usr_1");
     assert_eq!(json["data"][0]["email"], "a@example.com");
+}
+
+#[tokio::test]
+async fn entity_read_capability_gates_list_and_detail_records() {
+    let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
+
+    let missing_list = app()
+        .oneshot(admin_get_with_token(
+            "/admin/data/identity/users",
+            "dev-service:admin",
+        ))
+        .await
+        .expect("request completes");
+    assert_eq!(missing_list.status(), StatusCode::FORBIDDEN);
+    assert_eq!(json_body(missing_list).await["code"], "forbidden");
+
+    let missing_detail = app()
+        .oneshot(admin_get_with_token(
+            "/admin/data/identity/users/usr_1",
+            "dev-service:admin",
+        ))
+        .await
+        .expect("request completes");
+    assert_eq!(missing_detail.status(), StatusCode::FORBIDDEN);
+    assert_eq!(json_body(missing_detail).await["code"], "forbidden");
+
+    let scoped_list = app()
+        .oneshot(admin_get_with_token(
+            "/admin/data/identity/users",
+            "dev-service:admin:identity.users.read",
+        ))
+        .await
+        .expect("request completes");
+    assert_eq!(scoped_list.status(), StatusCode::OK);
+
+    let scoped_detail = app()
+        .oneshot(admin_get_with_token(
+            "/admin/data/identity/users/usr_1",
+            "dev-service:admin:identity.users.read",
+        ))
+        .await
+        .expect("request completes");
+    assert_eq!(scoped_detail.status(), StatusCode::OK);
 }
 
 #[tokio::test]
@@ -807,7 +853,7 @@ async fn available_modules_returns_remote_install_rows() {
     );
     assert_eq!(
         body["modules"][0]["hostCompatibility"]["lensoVersion"],
-        "0.1.8"
+        "0.1.9"
     );
     assert_eq!(body["modules"][0]["manifestStatus"], "ok");
     assert_eq!(body["modules"][0]["status"], "ready");
@@ -1827,7 +1873,7 @@ async fn available_modules_reads_official_catalog_when_no_local_catalog_exists()
         .expect("official catalog includes organization");
     assert_eq!(organization["source"], "linked");
     assert_eq!(organization["manifestReference"], "builtin:organization");
-    assert_eq!(organization["catalogVersion"], "0.1.0");
+    assert_eq!(organization["catalogVersion"], "0.1.1");
     assert_eq!(organization["consolePackageHints"], 1);
     assert_eq!(organization["capabilities"][0], "organization.read");
     assert_eq!(
@@ -1899,7 +1945,7 @@ async fn available_modules_reads_local_module_catalog() {
                     "consolePackageApi": "1",
                     "lenso": {
                         "minVersion": "0.1.0",
-                        "maxVersion": "0.1.8"
+                        "maxVersion": "0.1.9"
                     }
                 },
                 "consolePackages": [{
@@ -3113,7 +3159,7 @@ async fn available_modules_marks_catalog_preflight_issues() {
     assert_eq!(body["issues"][0]["group"], "Compatibility");
     assert_eq!(
         body["issues"][0]["message"],
-        "billing requires Lenso >= 0.2.0; host is 0.1.8"
+        "billing requires Lenso >= 0.2.0; host is 0.1.9"
     );
     assert_eq!(body["issues"][1]["group"], "Catalog");
     assert_eq!(body["issues"][1]["message"], "local-crm baseUrl is missing");
@@ -3605,7 +3651,10 @@ async fn unlisted_modules_can_read_records_without_schema_discovery() {
     );
 
     let list_response = app
-        .oneshot(admin_get("/admin/data/identity-declarative/users"))
+        .oneshot(admin_get_with_token(
+            "/admin/data/identity-declarative/users",
+            "dev-service:admin:identity.users.read",
+        ))
         .await
         .expect("list request completes");
     assert_eq!(list_response.status(), StatusCode::OK);

@@ -1848,7 +1848,7 @@ dependencies = [
 
 [[package]]
 name = "lenso"
-version = "0.3.17"
+version = "0.3.18"
 dependencies = [
  "anyhow",
  "axum",
@@ -1865,7 +1865,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-api"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1898,7 +1898,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-bootstrap"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "async-trait",
  "lenso-module-auth",
@@ -1947,8 +1947,9 @@ dependencies = [
 
 [[package]]
 name = "lenso-module-auth"
-version = "0.1.7"
-source = "git+https://github.com/LioRael/lenso-auth-module.git?branch=main#a02136198641815712456bc600c796d561f0d397"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fea5e91f403d7542b8c95e24ab0c8de07d3baa66720c5e43f5c38d606de77fb4"
 dependencies = [
  "async-trait",
  "axum",
@@ -1969,7 +1970,8 @@ dependencies = [
 [[package]]
 name = "lenso-module-auth-anonymous"
 version = "0.1.0"
-source = "git+https://github.com/LioRael/lenso-auth-module.git?branch=main#a02136198641815712456bc600c796d561f0d397"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "98130ca591ac38894a472a8d5e4f14087e25187096c29d79e4509d6099b1e6b9"
 dependencies = [
  "axum",
  "chrono",
@@ -1986,7 +1988,8 @@ dependencies = [
 [[package]]
 name = "lenso-module-auth-github"
 version = "0.1.0"
-source = "git+https://github.com/LioRael/lenso-auth-module.git?branch=main#a02136198641815712456bc600c796d561f0d397"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fc81948f1235da136685c717b4f97a70c32deee4d07ed9844d37841166fa1078"
 dependencies = [
  "async-trait",
  "axum",
@@ -2007,7 +2010,8 @@ dependencies = [
 [[package]]
 name = "lenso-module-auth-google"
 version = "0.1.0"
-source = "git+https://github.com/LioRael/lenso-auth-module.git?branch=main#a02136198641815712456bc600c796d561f0d397"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "edcaa9619f5b2fccdbebc07ba42c4980886451d0f9b6d4588a188d8eb959a185"
 dependencies = [
  "async-trait",
  "axum",
@@ -2027,8 +2031,9 @@ dependencies = [
 
 [[package]]
 name = "lenso-module-auth-oauth"
-version = "0.1.0"
-source = "git+https://github.com/LioRael/lenso-auth-module.git?branch=main#a02136198641815712456bc600c796d561f0d397"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6f0d2af2374018745726f758bf0ac33033e814bbf1e93d9394ea013c61715048"
 dependencies = [
  "chrono",
  "getrandom 0.4.3",
@@ -2042,7 +2047,8 @@ dependencies = [
 [[package]]
 name = "lenso-module-auth-oidc"
 version = "0.1.1"
-source = "git+https://github.com/LioRael/lenso-auth-module.git?branch=main#a02136198641815712456bc600c796d561f0d397"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0c80ecc415c98206b4f7638a0554d999bf6d8969fe5f202cce11bed906d1e52"
 dependencies = [
  "axum",
  "chrono",
@@ -2061,8 +2067,9 @@ dependencies = [
 
 [[package]]
 name = "lenso-module-auth-password"
-version = "0.1.8"
-source = "git+https://github.com/LioRael/lenso-auth-module.git?branch=main#a02136198641815712456bc600c796d561f0d397"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cbeec0e2a35519bf2962cfb9073aa8961e594a5692a63bea843e9d71bf586cc8"
 dependencies = [
  "argon2",
  "async-trait",
@@ -2082,8 +2089,9 @@ dependencies = [
 
 [[package]]
 name = "lenso-module-auth-phone"
-version = "0.1.0"
-source = "git+https://github.com/LioRael/lenso-auth-module.git?branch=main#a02136198641815712456bc600c796d561f0d397"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e30c9dab07d19659753085f49ac32d31e68ced60d5d4a027eac0dc85c2c519d9"
 dependencies = [
  "async-trait",
  "axum",
@@ -2154,7 +2162,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-platform-admin-data"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "async-trait",
  "axum",
@@ -2229,7 +2237,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-platform-module-remote"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "async-trait",
  "axum",

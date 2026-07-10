@@ -427,7 +427,10 @@ async fn remote_module_fixture_is_visible_through_admin_data_api() {
 
     let list_response = app
         .clone()
-        .oneshot(admin_get("/admin/data/remote-crm/contacts?limit=2"))
+        .oneshot(service_get(
+            "/admin/data/remote-crm/contacts?limit=2",
+            "dev-service:admin:remote_crm.contacts.read",
+        ))
         .await
         .expect("list request completes");
     assert_eq!(list_response.status(), StatusCode::OK);
@@ -437,7 +440,10 @@ async fn remote_module_fixture_is_visible_through_admin_data_api() {
     assert_eq!(list["page"]["next_cursor"], "contact_2");
 
     let detail_response = app
-        .oneshot(admin_get("/admin/data/remote-crm/contacts/contact_2"))
+        .oneshot(service_get(
+            "/admin/data/remote-crm/contacts/contact_2",
+            "dev-service:admin:remote_crm.contacts.read",
+        ))
         .await
         .expect("detail request completes");
     assert_eq!(detail_response.status(), StatusCode::OK);
@@ -1687,8 +1693,9 @@ async fn custom_remote_modules_are_visible_through_metadata_api() {
 
     let declarative_list_response = app
         .clone()
-        .oneshot(admin_get(
+        .oneshot(service_get(
             "/admin/data/remote-crm-declarative/contacts?limit=2",
+            "dev-service:admin:remote_crm.contacts.read",
         ))
         .await
         .expect("declarative list request completes");
