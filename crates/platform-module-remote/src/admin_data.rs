@@ -1,7 +1,9 @@
 use crate::config::RemoteModuleConfig;
 use crate::config::RemoteModuleTransport;
 use crate::protocol::{RemoteGetResponse, RemoteListResponse, RemoteQueryResponse};
-use crate::response::decode_json_response;
+use crate::response::{
+    MAX_REMOTE_JSON_RESPONSE_BYTES, ResponseBodyPolicy, decode_json_response_with_policy,
+};
 use platform_core::{AppError, AppResult, ErrorCode};
 use platform_module::{AdminDataSource, AdminListQuery, AdminPage, AdminQuerySource};
 use serde_json::Value;
@@ -51,7 +53,17 @@ impl RemoteAdminDataSource {
             .retryable()
         })?;
 
-        decode_json_response(response, "admin data", true).await
+        decode_json_response_with_policy(
+            response,
+            "admin data",
+            true,
+            ResponseBodyPolicy {
+                max_bytes: Some(MAX_REMOTE_JSON_RESPONSE_BYTES),
+                require_json_content_type: true,
+                allow_empty_success: false,
+            },
+        )
+        .await
     }
 }
 

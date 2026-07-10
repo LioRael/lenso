@@ -3,7 +3,7 @@ use crate::protocol::{RemoteErrorEnvelope, RemoteHttpProxyInvokeRequest};
 use crate::request::{
     ProxyRequestBody, apply_grpc_proxy_request_policy, apply_proxy_request_policy,
 };
-use crate::response::ResponseBodyPolicy;
+use crate::response::{MAX_REMOTE_JSON_RESPONSE_BYTES, ResponseBodyPolicy};
 use crate::{RemoteHttpProxyMatch, RemoteHttpProxyRegistry};
 use axum::Json;
 use axum::body::{Body, Bytes, to_bytes};
@@ -11,7 +11,8 @@ use axum::extract::{Path, State};
 use axum::http::{HeaderMap, Request};
 use platform_core::error::ErrorDetail;
 use platform_core::{
-    AppContext, AppError, ErrorCode, RemoteHttpProxyCallRecord, insert_remote_http_proxy_call,
+    AppContext, AppError, AppResult, ErrorCode, RemoteHttpProxyCallRecord,
+    insert_remote_http_proxy_call,
 };
 use platform_http::{
     AdminActor, ApiErrorResponse, ApiOpenApiRouter, ErrorResponse, HttpRequestContext,
@@ -26,7 +27,6 @@ use std::time::{Duration, Instant};
 use utoipa::ToSchema;
 
 static REMOTE_HTTP_PROXY_REGISTRY: OnceLock<RwLock<Arc<RemoteHttpProxyRegistry>>> = OnceLock::new();
-const MAX_PROXY_RESPONSE_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_PROXY_DELETE_REQUEST_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -485,7 +485,9 @@ async fn forward_http_json_proxy_request(
                 request_ctx,
             )
         })?;
-    let outbound = client.request(reqwest_method(request.method), remote_url(matched));
+    let remote_url =
+        remote_url(matched).map_err(|error| ApiErrorResponse::with_context(error, request_ctx))?;
+    let outbound = client.request(reqwest_method(request.method), remote_url);
     let outbound = apply_proxy_request_policy(
         outbound,
         request.method,
@@ -524,7 +526,7 @@ async fn forward_http_json_proxy_request(
         "HTTP proxy",
         false,
         ResponseBodyPolicy {
-            max_bytes: Some(MAX_PROXY_RESPONSE_BYTES),
+            max_bytes: Some(MAX_REMOTE_JSON_RESPONSE_BYTES),
             require_json_content_type: true,
             allow_empty_success: request.method == ModuleHttpMethod::Delete,
         },
@@ -757,12 +759,49 @@ fn push_error_detail(error: &mut AppError, field: &'static str, reason: impl Int
     });
 }
 
-fn remote_url(matched: &RemoteHttpProxyMatch) -> String {
-    format!(
-        "{}/{}",
-        matched.base_url.trim_end_matches('/'),
-        matched.remote_path.trim_start_matches('/')
-    )
+fn remote_url(matched: &RemoteHttpProxyMatch) -> AppResult<reqwest::Url> {
+    let remote_path_is_safe = matched.remote_path.starts_with('/')
+        && !matched.remote_path.starts_with("//")
+        && !matched.remote_path.contains('\\')
+        && !matched.remote_path.contains("://")
+        && !matched.remote_path.contains('?')
+        && !matched.remote_path.contains('#')
+        && matched
+            .remote_path
+            .split('/')
+            .skip(1)
+            .all(|segment| !segment.is_empty() && segment != "." && segment != "..");
+    if !remote_path_is_safe {
+        return Err(AppError::new(
+            ErrorCode::Validation,
+            "remote HTTP route path is unsafe",
+        ));
+    }
+
+    let mut base = reqwest::Url::parse(&matched.base_url).map_err(|error| {
+        AppError::new(
+            ErrorCode::Validation,
+            format!("configured remote base URL is invalid: {error}"),
+        )
+    })?;
+    if !base.path().ends_with('/') {
+        base.set_path(&format!("{}/", base.path()));
+    }
+    let joined = base
+        .join(matched.remote_path.trim_start_matches('/'))
+        .map_err(|error| {
+            AppError::new(
+                ErrorCode::Validation,
+                format!("remote HTTP route path is invalid: {error}"),
+            )
+        })?;
+    if joined.origin() != base.origin() || !joined.path().starts_with(base.path()) {
+        return Err(AppError::new(
+            ErrorCode::Validation,
+            "remote HTTP route escapes configured base URL",
+        ));
+    }
+    Ok(joined)
 }
 
 fn reqwest_method(method: ModuleHttpMethod) -> reqwest::Method {
@@ -902,9 +941,26 @@ mod tests {
     #[test]
     fn remote_url_joins_base_and_remote_path_once() {
         assert_eq!(
-            remote_url(&matched(ModuleHttpMethod::Get)),
+            remote_url(&matched(ModuleHttpMethod::Get))
+                .unwrap()
+                .as_str(),
             "http://127.0.0.1:4100/lenso/module/v1/contacts/contact_1"
         );
+    }
+
+    #[test]
+    fn remote_url_rejects_prefix_and_backslash_escapes() {
+        for path in [
+            "/../admin",
+            "/contacts/./contact_1",
+            "/contacts\\..\\admin",
+            "//evil.example/admin",
+            "https://evil.example/admin",
+        ] {
+            let mut unsafe_match = matched(ModuleHttpMethod::Get);
+            unsafe_match.remote_path = path.to_owned();
+            assert!(remote_url(&unsafe_match).is_err(), "accepted {path}");
+        }
     }
 
     #[test]

@@ -4,19 +4,7 @@ use platform_core::{AppError, AppResult, ErrorCode};
 use reqwest::header::CONTENT_TYPE;
 use reqwest::{Response, StatusCode};
 
-pub(crate) async fn decode_json_response<T: serde::de::DeserializeOwned>(
-    response: Response,
-    operation: &str,
-    not_found_as_none: bool,
-) -> AppResult<Option<T>> {
-    decode_json_response_with_policy(
-        response,
-        operation,
-        not_found_as_none,
-        ResponseBodyPolicy::default(),
-    )
-    .await
-}
+pub(crate) const MAX_REMOTE_JSON_RESPONSE_BYTES: u64 = 4 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct ResponseBodyPolicy {
@@ -41,18 +29,7 @@ pub(crate) async fn decode_json_response_with_policy<T: serde::de::DeserializeOw
         None
     };
 
-    let body = response.bytes().await.map_err(|error| {
-        AppError::new(
-            ErrorCode::ExternalDependency,
-            format!("remote {operation} response body could not be read: {error}"),
-        )
-        .retryable()
-    })?;
-    if let Some(max_bytes) = policy.max_bytes
-        && body.len() as u64 > max_bytes
-    {
-        return Err(response_too_large(operation, body.len() as u64, max_bytes));
-    }
+    let body = read_response_body(response, operation, policy.max_bytes).await?;
 
     if status.is_success() {
         if policy.allow_empty_success && status == StatusCode::NO_CONTENT && body.is_empty() {
@@ -80,6 +57,30 @@ pub(crate) async fn decode_json_response_with_policy<T: serde::de::DeserializeOw
     }
 
     Err(fallback_status_error(status, operation))
+}
+
+async fn read_response_body(
+    mut response: Response,
+    operation: &str,
+    max_bytes: Option<u64>,
+) -> AppResult<Vec<u8>> {
+    let mut body = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(|error| {
+        AppError::new(
+            ErrorCode::ExternalDependency,
+            format!("remote {operation} response body could not be read: {error}"),
+        )
+        .retryable()
+    })? {
+        let next_len = body.len() as u64 + chunk.len() as u64;
+        if let Some(max_bytes) = max_bytes
+            && next_len > max_bytes
+        {
+            return Err(response_too_large(operation, next_len, max_bytes));
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
 }
 
 fn ensure_content_length(response: &Response, operation: &str, max_bytes: u64) -> AppResult<()> {
@@ -211,5 +212,55 @@ fn error_code_from_status(status: StatusCode) -> ErrorCode {
         StatusCode::CONFLICT => ErrorCode::Conflict,
         StatusCode::TOO_MANY_REQUESTS => ErrorCode::RateLimited,
         _ => ErrorCode::ExternalDependency,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    #[tokio::test]
+    async fn chunked_response_larger_than_policy_is_rejected() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind test server");
+        let address = listener.local_addr().expect("test server address");
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept request");
+            let mut request = [0_u8; 1024];
+            let _ = stream.read(&mut request);
+            stream
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ntransfer-encoding: chunked\r\nconnection: close\r\n\r\n",
+                )
+                .expect("write response headers");
+            let chunk = vec![b'x'; 64 * 1024];
+            for _ in 0..65 {
+                stream
+                    .write_all(format!("{:X}\r\n", chunk.len()).as_bytes())
+                    .expect("write chunk length");
+                stream.write_all(&chunk).expect("write chunk");
+                stream.write_all(b"\r\n").expect("write chunk terminator");
+            }
+            let _ = stream.write_all(b"0\r\n\r\n");
+        });
+
+        let response = reqwest::get(format!("http://{address}"))
+            .await
+            .expect("response");
+        let error = decode_json_response_with_policy::<serde_json::Value>(
+            response,
+            "chunked test",
+            false,
+            ResponseBodyPolicy {
+                max_bytes: Some(MAX_REMOTE_JSON_RESPONSE_BYTES),
+                require_json_content_type: true,
+                allow_empty_success: false,
+            },
+        )
+        .await
+        .expect_err("chunked body must exceed the policy limit");
+
+        assert!(error.to_string().contains("exceeded"));
     }
 }

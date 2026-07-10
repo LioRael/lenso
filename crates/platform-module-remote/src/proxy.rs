@@ -180,6 +180,7 @@ fn normalize_request_path(path: &str) -> Option<String> {
 fn normalized_segments(path: &str) -> Option<Vec<&str>> {
     if !path.starts_with('/')
         || path.starts_with("//")
+        || path.contains('\\')
         || path.contains("://")
         || path.contains('?')
         || path.contains('#')
@@ -421,6 +422,9 @@ mod tests {
             "contacts/contact_1",
             "//contacts/contact_1",
             "/contacts/../secret",
+            "/contacts/..\\admin",
+            "/contacts\\..\\admin",
+            "/contacts/\\evil.example",
             "/contacts/contact_1?x=1",
             "/contacts/contact_1#frag",
         ] {
