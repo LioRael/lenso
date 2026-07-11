@@ -1,10 +1,12 @@
 use lenso_service::{
-    MODULE_CONTRACT_SCHEMA_JSON, MODULE_RELEASE_SCHEMA_JSON, ModuleContract, ModuleManifest,
-    SERVICE_CONTRACT_SCHEMA_JSON, SERVICE_SYSTEM_SCHEMA_JSON, SERVICE_WORKSPACE_SCHEMA_JSON,
-    ServiceCompatibility, ServiceContract, ServiceHealth, ServiceLocalProcess, ServiceProvider,
-    ServiceSystem, ServiceSystemDependency, ServiceSystemModule, ServiceSystemService,
-    ServiceWorkspace, ServiceWorkspaceService, service_system_graph,
-    validate_module_contract_value, validate_service_contract_value, validate_service_system_value,
+    ContractArtifactCheckErrorCode, ContractArtifactKind, ContractOwner, ContractSemanticKind,
+    LEGACY_CONTRACT_FIXTURES, MODULE_CONTRACT_SCHEMA_JSON, MODULE_RELEASE_SCHEMA_JSON,
+    ModuleContract, ModuleManifest, SERVICE_CONTRACT_SCHEMA_JSON, SERVICE_SYSTEM_SCHEMA_JSON,
+    SERVICE_WORKSPACE_SCHEMA_JSON, ServiceCompatibility, ServiceContract, ServiceHealth,
+    ServiceLocalProcess, ServiceProvider, ServiceSystem, ServiceSystemDependency,
+    ServiceSystemModule, ServiceSystemService, ServiceWorkspace, ServiceWorkspaceService,
+    check_contract_artifact_value, service_system_graph, validate_module_contract_value,
+    validate_service_contract_value, validate_service_system_value,
     validate_service_workspace_value,
 };
 use serde_json::json;
@@ -47,6 +49,7 @@ fn service_contract_serializes_provider_and_modules() {
 
     let value = serde_json::to_value(contract).unwrap();
 
+    assert_eq!(value["protocol"], "lenso.service.v1");
     assert_eq!(value["name"], "support-suite-provider");
     assert_eq!(value["version"], "0.2.0");
     assert_eq!(value["provider"]["vendor"], "Lenso");
@@ -75,6 +78,20 @@ fn service_contract_schema_is_packaged_with_the_sdk() {
 
     assert_eq!(schema["title"], "LensoServiceContract");
     assert_eq!(schema["required"], json!(["name", "modules"]));
+}
+
+#[test]
+fn protocol_less_legacy_service_contract_remains_compatible() {
+    let mut source: serde_json::Value =
+        serde_json::from_str(LEGACY_CONTRACT_FIXTURES[0].json).unwrap();
+    source.as_object_mut().unwrap().remove("protocol");
+    let original = source.clone();
+
+    assert!(validate_service_contract_value(&source).is_empty());
+    let contract: ServiceContract = serde_json::from_value(source.clone()).unwrap();
+
+    assert_eq!(contract.protocol, "lenso.service.v1");
+    assert_eq!(source, original);
 }
 
 #[test]
@@ -313,4 +330,127 @@ fn service_system_validation_reports_paths() {
     assert!(paths.contains(&"$.services[1].target"));
     assert!(paths.contains(&"$.modules[0].dependencies[0]"));
     assert!(paths.contains(&"$.dependencies[0].capability"));
+}
+
+#[test]
+fn legacy_contract_fixture_matrix_normalizes_to_provider_semantics() {
+    assert_eq!(LEGACY_CONTRACT_FIXTURES.len(), 2);
+
+    for fixture in LEGACY_CONTRACT_FIXTURES {
+        let source: serde_json::Value = serde_json::from_str(fixture.json).unwrap();
+        let original = source.clone();
+        let check = check_contract_artifact_value(&source).unwrap();
+
+        assert_eq!(check.detected_protocol, fixture.protocol);
+        assert_eq!(check.semantic_kind, fixture.semantic_kind);
+        assert_eq!(check.provider_semantics.auth_owner, ContractOwner::Host);
+        assert_eq!(
+            check.provider_semantics.proxy_policy_owner,
+            ContractOwner::Host
+        );
+        assert_eq!(check.provider_semantics.retry_owner, ContractOwner::Host);
+        assert_eq!(
+            check.provider_semantics.runtime_queue_owner,
+            ContractOwner::Host
+        );
+        assert_eq!(check.provider_semantics.outbox_owner, ContractOwner::Host);
+        assert_eq!(check.provider_semantics.story_owner, ContractOwner::Host);
+        assert_eq!(
+            source, original,
+            "normalization must not rewrite the source"
+        );
+    }
+
+    let service = check_contract_artifact_value(
+        &serde_json::from_str(LEGACY_CONTRACT_FIXTURES[0].json).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(service.artifact_kind, ContractArtifactKind::Service);
+    assert_eq!(service.semantic_kind, ContractSemanticKind::Provider);
+    assert_eq!(
+        service.provider_semantics.providers,
+        ["support-suite-provider"]
+    );
+
+    let system = check_contract_artifact_value(
+        &serde_json::from_str(LEGACY_CONTRACT_FIXTURES[1].json).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(system.artifact_kind, ContractArtifactKind::System);
+    assert_eq!(system.semantic_kind, ContractSemanticKind::ProviderSystem);
+    assert_eq!(
+        system.provider_semantics.providers,
+        ["support-suite-provider"]
+    );
+}
+
+#[test]
+fn contract_artifact_check_is_machine_readable() {
+    let source: serde_json::Value = serde_json::from_str(LEGACY_CONTRACT_FIXTURES[0].json).unwrap();
+    let value = serde_json::to_value(check_contract_artifact_value(&source).unwrap()).unwrap();
+
+    assert_eq!(value["detectedProtocol"], "lenso.service.v1");
+    assert_eq!(value["artifactKind"], "service");
+    assert_eq!(value["semanticKind"], "provider");
+    assert_eq!(value["providerSemantics"]["authOwner"], "host");
+    assert_eq!(value["providerSemantics"]["proxyPolicyOwner"], "host");
+    assert_eq!(value["providerSemantics"]["retryOwner"], "host");
+    assert_eq!(value["providerSemantics"]["runtimeQueueOwner"], "host");
+    assert_eq!(value["providerSemantics"]["outboxOwner"], "host");
+    assert_eq!(value["providerSemantics"]["storyOwner"], "host");
+}
+
+#[test]
+fn contract_artifact_check_rejects_ambiguous_protocols_with_next_action() {
+    let error = check_contract_artifact_value(&json!({
+        "name": "support-suite-provider",
+        "modules": []
+    }))
+    .unwrap_err();
+
+    assert_eq!(
+        error.code,
+        ContractArtifactCheckErrorCode::AmbiguousProtocol
+    );
+    assert_eq!(error.path, "$.protocol");
+    assert_eq!(
+        error.next_action,
+        "Set `protocol` to a supported Provider-era artifact protocol."
+    );
+    assert_eq!(
+        serde_json::to_value(&error).unwrap()["code"],
+        "ambiguous_protocol"
+    );
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&error.to_string()).unwrap()["code"],
+        "ambiguous_protocol"
+    );
+}
+
+#[test]
+fn contract_artifact_check_rejects_unsupported_protocols_with_next_action() {
+    let error = check_contract_artifact_value(&json!({
+        "protocol": "lenso.service.v99",
+        "name": "future-service",
+        "modules": []
+    }))
+    .unwrap_err();
+
+    assert_eq!(
+        error.code,
+        ContractArtifactCheckErrorCode::UnsupportedProtocol
+    );
+    assert_eq!(error.path, "$.protocol");
+    assert_eq!(
+        error.next_action,
+        "Use a supported protocol or upgrade Lenso for this artifact version."
+    );
+    assert_eq!(
+        serde_json::to_value(&error).unwrap()["code"],
+        "unsupported_protocol"
+    );
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&error.to_string()).unwrap()["code"],
+        "unsupported_protocol"
+    );
 }

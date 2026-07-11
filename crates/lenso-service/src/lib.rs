@@ -23,6 +23,110 @@ pub const MODULE_CONTRACT_SCHEMA_JSON: &str =
     include_str!("../schemas/lenso-module.v1.schema.json");
 pub const MODULE_RELEASE_SCHEMA_JSON: &str =
     include_str!("../schemas/lenso-module-release.v1.schema.json");
+pub const LEGACY_SERVICE_V1_FIXTURE_JSON: &str =
+    include_str!("../fixtures/contracts/v1/service-provider.json");
+pub const LEGACY_SYSTEM_V1_FIXTURE_JSON: &str =
+    include_str!("../fixtures/contracts/v1/system-provider.json");
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContractArtifactKind {
+    Service,
+    System,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContractSemanticKind {
+    Provider,
+    ProviderSystem,
+}
+
+impl ContractSemanticKind {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Provider => "provider",
+            Self::ProviderSystem => "provider_system",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContractOwner {
+    Host,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderSemantics {
+    pub providers: Vec<String>,
+    pub auth_owner: ContractOwner,
+    pub proxy_policy_owner: ContractOwner,
+    pub retry_owner: ContractOwner,
+    pub runtime_queue_owner: ContractOwner,
+    pub outbox_owner: ContractOwner,
+    pub story_owner: ContractOwner,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContractArtifactCheck {
+    pub detected_protocol: String,
+    pub artifact_kind: ContractArtifactKind,
+    pub semantic_kind: ContractSemanticKind,
+    pub provider_semantics: ProviderSemantics,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContractArtifactCheckErrorCode {
+    AmbiguousProtocol,
+    UnsupportedProtocol,
+    InvalidArtifact,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContractArtifactCheckError {
+    pub code: ContractArtifactCheckErrorCode,
+    pub path: String,
+    pub message: String,
+    pub next_action: String,
+}
+
+impl std::fmt::Display for ContractArtifactCheckError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let payload = serde_json::to_string(self).map_err(|_| std::fmt::Error)?;
+        formatter.write_str(&payload)
+    }
+}
+
+impl std::error::Error for ContractArtifactCheckError {}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ContractFixture {
+    pub name: &'static str,
+    pub protocol: &'static str,
+    pub semantic_kind: ContractSemanticKind,
+    pub json: &'static str,
+}
+
+pub const LEGACY_CONTRACT_FIXTURES: &[ContractFixture] = &[
+    ContractFixture {
+        name: "service-provider-v1",
+        protocol: SERVICE_CONTRACT_PROTOCOL,
+        semantic_kind: ContractSemanticKind::Provider,
+        json: LEGACY_SERVICE_V1_FIXTURE_JSON,
+    },
+    ContractFixture {
+        name: "system-provider-v1",
+        protocol: SERVICE_SYSTEM_PROTOCOL,
+        semantic_kind: ContractSemanticKind::ProviderSystem,
+        json: LEGACY_SYSTEM_V1_FIXTURE_JSON,
+    },
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -832,6 +936,8 @@ impl ServiceReleasePlan {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServiceContract {
+    #[serde(default = "default_service_contract_protocol")]
+    pub protocol: String,
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
@@ -1005,6 +1111,7 @@ impl ServiceContract {
     #[must_use]
     pub fn new(name: impl Into<String>, modules: Vec<ModuleManifest>) -> Self {
         Self {
+            protocol: SERVICE_CONTRACT_PROTOCOL.to_owned(),
             name: name.into(),
             version: None,
             provider: None,
@@ -1058,6 +1165,10 @@ impl ServiceContract {
         self.local_process = Some(local_process);
         self
     }
+}
+
+fn default_service_contract_protocol() -> String {
+    SERVICE_CONTRACT_PROTOCOL.to_owned()
 }
 
 #[must_use]
@@ -1194,6 +1305,103 @@ impl ServiceContractIssue {
     }
 }
 
+/// Checks a versioned Provider-era contract artifact and projects its semantic meaning.
+///
+/// The returned read model is separate from the source JSON so compatibility checks never
+/// rewrite a legacy artifact or reinterpret Provider declarations as Autonomous Services.
+pub fn check_contract_artifact_value(
+    value: &Value,
+) -> Result<ContractArtifactCheck, ContractArtifactCheckError> {
+    let Some(object) = value.as_object() else {
+        return Err(ambiguous_protocol_error(
+            "artifact must be an object with an explicit versioned protocol",
+        ));
+    };
+    let Some(protocol) = object
+        .get("protocol")
+        .and_then(Value::as_str)
+        .filter(|protocol| !protocol.trim().is_empty())
+    else {
+        return Err(ambiguous_protocol_error(
+            "artifact protocol is required to determine its semantic kind",
+        ));
+    };
+
+    let (artifact_kind, semantic_kind, issues) = match protocol {
+        SERVICE_CONTRACT_PROTOCOL => (
+            ContractArtifactKind::Service,
+            ContractSemanticKind::Provider,
+            validate_service_contract_value(value),
+        ),
+        SERVICE_SYSTEM_PROTOCOL => (
+            ContractArtifactKind::System,
+            ContractSemanticKind::ProviderSystem,
+            validate_service_system_value(value),
+        ),
+        _ => {
+            return Err(ContractArtifactCheckError {
+                code: ContractArtifactCheckErrorCode::UnsupportedProtocol,
+                path: "$.protocol".to_owned(),
+                message: format!("unsupported artifact protocol `{protocol}`"),
+                next_action: "Use a supported protocol or upgrade Lenso for this artifact version."
+                    .to_owned(),
+            });
+        }
+    };
+
+    if let Some(issue) = issues.first() {
+        return Err(ContractArtifactCheckError {
+            code: ContractArtifactCheckErrorCode::InvalidArtifact,
+            path: issue.path.clone(),
+            message: issue.message.clone(),
+            next_action: "Fix the reported contract field and run the check again.".to_owned(),
+        });
+    }
+
+    let mut providers: Vec<String> = match artifact_kind {
+        ContractArtifactKind::Service => object
+            .get("name")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned)
+            .into_iter()
+            .collect(),
+        ContractArtifactKind::System => object
+            .get("services")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|service| service.get("name").and_then(Value::as_str))
+            .map(ToOwned::to_owned)
+            .collect(),
+    };
+    providers.sort();
+    providers.dedup();
+
+    Ok(ContractArtifactCheck {
+        detected_protocol: protocol.to_owned(),
+        artifact_kind,
+        semantic_kind,
+        provider_semantics: ProviderSemantics {
+            providers,
+            auth_owner: ContractOwner::Host,
+            proxy_policy_owner: ContractOwner::Host,
+            retry_owner: ContractOwner::Host,
+            runtime_queue_owner: ContractOwner::Host,
+            outbox_owner: ContractOwner::Host,
+            story_owner: ContractOwner::Host,
+        },
+    })
+}
+
+fn ambiguous_protocol_error(message: &str) -> ContractArtifactCheckError {
+    ContractArtifactCheckError {
+        code: ContractArtifactCheckErrorCode::AmbiguousProtocol,
+        path: "$.protocol".to_owned(),
+        message: message.to_owned(),
+        next_action: "Set `protocol` to a supported Provider-era artifact protocol.".to_owned(),
+    }
+}
+
 #[must_use]
 pub fn validate_service_contract_value(value: &Value) -> Vec<ServiceContractIssue> {
     let Some(object) = value.as_object() else {
@@ -1204,6 +1412,19 @@ pub fn validate_service_contract_value(value: &Value) -> Vec<ServiceContractIssu
     };
 
     let mut issues = Vec::new();
+    if let Some(protocol) = object.get("protocol") {
+        match protocol.as_str() {
+            Some(SERVICE_CONTRACT_PROTOCOL) => {}
+            Some(_) => issues.push(ServiceContractIssue::new(
+                "$.protocol",
+                format!("protocol must be `{SERVICE_CONTRACT_PROTOCOL}`"),
+            )),
+            None => issues.push(ServiceContractIssue::new(
+                "$.protocol",
+                "field must be a non-empty string",
+            )),
+        }
+    }
     require_non_empty_string(object.get("name"), "$.name", &mut issues);
     if let Some(version) = object.get("version") {
         require_non_empty_string(Some(version), "$.version", &mut issues);
