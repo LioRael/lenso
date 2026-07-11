@@ -1,0 +1,39 @@
+core:changelogs:
+  - content: "---\npackages:\n  lenso-service:\n    type: patch\n---\n\n### Features\n\nPreserve Service v1 and System v1 artifacts as Host-managed Provider semantics\nthrough one version-aware public contract check.\n"
+    filename: release.md
+    v: 0.0.0
+core:packages:
+  - id: cargo:lenso-api
+    updated: true
+  - id: cargo:lenso
+    updated: true
+  - id: cargo:lenso-bootstrap
+    updated: true
+  - changelogIds:
+      - release.md
+    id: cargo:lenso-service
+    updated: true
+  - id: cargo:lenso-contracts
+    updated: false
+  - id: cargo:lenso-worker
+    updated: true
+  - id: cargo:lenso-platform-admin
+    updated: false
+  - id: cargo:lenso-migrate
+    updated: true
+  - id: cargo:lenso-platform-admin-data
+    updated: true
+  - id: cargo:lenso-platform-core
+    updated: false
+  - id: cargo:lenso-platform-module-remote
+    updated: false
+  - id: cargo:lenso-platform-http
+    updated: false
+  - id: cargo:lenso-platform-testing
+    updated: false
+  - id: cargo:lenso-platform-module
+    updated: false
+  - id: cargo:lenso-platform-runtime
+    updated: false
+  - id: cargo:lenso-module-story
+    updated: false

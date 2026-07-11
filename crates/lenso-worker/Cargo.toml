@@ -1,6 +1,6 @@
 [package]
 name = "lenso-worker"
-version = "0.1.10"
+version = "0.1.11"
 edition.workspace = true
 license = "MIT"
 description = "Background worker for the Lenso host runtime."
