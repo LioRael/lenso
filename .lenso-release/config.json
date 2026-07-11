@@ -1,0 +1,18 @@
+{
+  "schema": "lenso.repository-config.v1",
+  "repository": "LioRael/lenso",
+  "ignore": [
+    "@lenso/framework-release-workspace",
+    "arch-check",
+    "cargo:arch-check",
+    "cargo:generate-contracts",
+    "cargo:lenso-operator",
+    "cargo:otel-smoke",
+    "cargo:remote-module-fixture",
+    "generate-contracts",
+    "lenso-operator",
+    "npm:@lenso/framework-release-workspace",
+    "otel-smoke",
+    "remote-module-fixture"
+  ]
+}

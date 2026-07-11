@@ -9,6 +9,7 @@ homepage = "https://github.com/LioRael/lenso"
 categories = ["web-programming", "development-tools"]
 keywords = ["backend", "framework", "kubernetes"]
 rust-version.workspace = true
+publish = false
 
 [dependencies]
 anyhow.workspace = true
