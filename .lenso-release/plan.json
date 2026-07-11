@@ -1,13 +1,13 @@
 {
   "schema": "lenso.release-plan.v1",
   "repository": "LioRael/lenso",
-  "sourceCommit": "f2d89c4def4175faaed88d01b2172f9f76995b4c",
+  "sourceCommit": "edf949a18549e5e4d938d957d8b6f583c5b4576a",
   "tegamiVersion": "1.2.5",
   "publisher": {
     "workflow": ".github/workflows/publish.yml",
     "workflowSha256": "sha256:ccc5fa40fcd1285b4ee0761a0fc1a58b7239c4cc78fb26a95f4c474f6108e20b",
-    "sharedRevision": "99c0227321f9445777c14d43411b5c64e5d87902",
-    "sharedBundleSha256": "sha256:7a8030de19b3bf752d95d2b8a019151cfa25cd4a9bc61e9819e732324d77bf62",
+    "sharedRevision": "51cd4dd6bfc4de5c8065edd117f6ecbdc94bd73c",
+    "sharedBundleSha256": "sha256:d998ae02a644b659c261176d7b78c6fe3298b482edd32e419fa7b45cec37c8c8",
     "runner": "ubuntu-24.04",
     "node": "24.18.0",
     "npm": "11.7.0",
@@ -81,10 +81,34 @@
       "userFacing": true,
       "dependencies": [
         {
+          "id": "cargo:lenso-api",
+          "requirement": "^0.1.13",
+          "resolvedVersion": "0.1.13",
+          "source": "plan"
+        },
+        {
+          "id": "cargo:lenso-bootstrap",
+          "requirement": "^0.1.12",
+          "resolvedVersion": "0.1.12",
+          "source": "plan"
+        },
+        {
           "id": "cargo:lenso-contracts",
           "requirement": "^0.3.4",
           "resolvedVersion": "0.3.4",
           "source": "registry"
+        },
+        {
+          "id": "cargo:lenso-migrate",
+          "requirement": "^0.1.11",
+          "resolvedVersion": "0.1.11",
+          "source": "plan"
+        },
+        {
+          "id": "cargo:lenso-worker",
+          "requirement": "^0.1.11",
+          "resolvedVersion": "0.1.11",
+          "source": "plan"
         }
       ]
     },
@@ -325,5 +349,5 @@
       ]
     }
   ],
-  "planId": "sha256:d6fcf06536d631b11ecfd3873fa92ed42f6196e5709b3c70fae5cb89b4e0f642"
+  "planId": "sha256:552bdf03f1bd5a349ac7d5731e28aac85affccbf4840ca2c47d54545e7e3b09b"
 }
