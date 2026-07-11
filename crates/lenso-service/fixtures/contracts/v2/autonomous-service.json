@@ -1,0 +1,17 @@
+{
+  "protocol": "lenso.service.v2",
+  "serviceId": "support",
+  "version": "1.0.0",
+  "workloads": [
+    { "workloadId": "support-api", "serviceId": "support", "role": "api" },
+    { "workloadId": "support-worker", "serviceId": "support", "role": "worker" },
+    { "workloadId": "support-migrate", "serviceId": "support", "role": "migration" },
+    { "workloadId": "support-indexer", "serviceId": "support", "role": "indexer" }
+  ],
+  "modules": ["support-ticket", "support-sla"],
+  "stores": [
+    { "storeId": "primary", "serviceId": "support" }
+  ],
+  "tenancyMode": "required",
+  "operatingRegions": ["cn-east-1"]
+}

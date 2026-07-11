@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 pub use lenso_contracts::ModuleManifest;
 
 pub const SERVICE_CONTRACT_PROTOCOL: &str = "lenso.service.v1";
+pub const AUTONOMOUS_SERVICE_PROTOCOL: &str = "lenso.service.v2";
 pub const SERVICE_PACKAGE_PROTOCOL: &str = "lenso.service-package.v1";
 pub const SERVICE_WORKSPACE_PROTOCOL: &str = "lenso.service-workspace.v1";
 pub const SERVICE_RELEASE_PLAN_PROTOCOL: &str = "lenso.service-release-plan.v1";
@@ -14,6 +15,8 @@ pub const MODULE_CONTRACT_PROTOCOL: &str = "lenso.module.v1";
 pub const MODULE_RELEASE_PROTOCOL: &str = "lenso.module-release.v1";
 pub const SERVICE_CONTRACT_SCHEMA_JSON: &str =
     include_str!("../schemas/lenso-service.v1.schema.json");
+pub const SERVICE_V2_CONTRACT_SCHEMA_JSON: &str =
+    include_str!("../schemas/lenso-service.v2.schema.json");
 pub const SERVICE_PACKAGE_SCHEMA_JSON: &str =
     include_str!("../schemas/lenso-service-package.v1.schema.json");
 pub const SERVICE_WORKSPACE_SCHEMA_JSON: &str =
@@ -27,6 +30,8 @@ pub const LEGACY_SERVICE_V1_FIXTURE_JSON: &str =
     include_str!("../fixtures/contracts/v1/service-provider.json");
 pub const LEGACY_SYSTEM_V1_FIXTURE_JSON: &str =
     include_str!("../fixtures/contracts/v1/system-provider.json");
+pub const AUTONOMOUS_SERVICE_V2_FIXTURE_JSON: &str =
+    include_str!("../fixtures/contracts/v2/autonomous-service.json");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -40,6 +45,7 @@ pub enum ContractArtifactKind {
 pub enum ContractSemanticKind {
     Provider,
     ProviderSystem,
+    AutonomousService,
 }
 
 impl ContractSemanticKind {
@@ -48,6 +54,7 @@ impl ContractSemanticKind {
         match self {
             Self::Provider => "provider",
             Self::ProviderSystem => "provider_system",
+            Self::AutonomousService => "autonomous_service",
         }
     }
 }
@@ -76,7 +83,17 @@ pub struct ContractArtifactCheck {
     pub detected_protocol: String,
     pub artifact_kind: ContractArtifactKind,
     pub semantic_kind: ContractSemanticKind,
-    pub provider_semantics: ProviderSemantics,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_semantics: Option<ProviderSemantics>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub autonomous_service: Option<AutonomousServiceSummary>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutonomousServiceSummary {
+    pub service_id: String,
+    pub workloads: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -933,6 +950,171 @@ impl ServiceReleasePlan {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ServiceTenancyMode {
+    None,
+    Optional,
+    Required,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum WorkloadRole {
+    Api,
+    Worker,
+    Migration,
+    Other(String),
+}
+
+impl WorkloadRole {
+    pub const API: Self = Self::Api;
+    pub const WORKER: Self = Self::Worker;
+    pub const MIGRATION: Self = Self::Migration;
+
+    #[must_use]
+    pub fn new(role: impl Into<String>) -> Self {
+        match role.into().as_str() {
+            "api" => Self::Api,
+            "worker" => Self::Worker,
+            "migration" => Self::Migration,
+            role => Self::Other(role.to_owned()),
+        }
+    }
+
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Api => "api",
+            Self::Worker => "worker",
+            Self::Migration => "migration",
+            Self::Other(role) => role,
+        }
+    }
+}
+
+impl Serialize for WorkloadRole {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for WorkloadRole {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        String::deserialize(deserializer).map(Self::new)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutonomousServiceWorkload {
+    pub workload_id: String,
+    pub service_id: String,
+    pub role: WorkloadRole,
+}
+
+impl AutonomousServiceWorkload {
+    #[must_use]
+    pub fn new(
+        workload_id: impl Into<String>,
+        service_id: impl Into<String>,
+        role: WorkloadRole,
+    ) -> Self {
+        Self {
+            workload_id: workload_id.into(),
+            service_id: service_id.into(),
+            role,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutonomousServiceStore {
+    pub store_id: String,
+    pub service_id: String,
+}
+
+impl AutonomousServiceStore {
+    #[must_use]
+    pub fn new(store_id: impl Into<String>, service_id: impl Into<String>) -> Self {
+        Self {
+            store_id: store_id.into(),
+            service_id: service_id.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutonomousServiceContract {
+    pub protocol: String,
+    pub service_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    pub workloads: Vec<AutonomousServiceWorkload>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub modules: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stores: Vec<AutonomousServiceStore>,
+    pub tenancy_mode: ServiceTenancyMode,
+    pub operating_regions: Vec<String>,
+}
+
+impl AutonomousServiceContract {
+    #[must_use]
+    pub fn new(
+        service_id: impl Into<String>,
+        workloads: Vec<AutonomousServiceWorkload>,
+        tenancy_mode: ServiceTenancyMode,
+        operating_regions: Vec<String>,
+    ) -> Self {
+        Self {
+            protocol: AUTONOMOUS_SERVICE_PROTOCOL.to_owned(),
+            service_id: service_id.into(),
+            version: None,
+            workloads,
+            modules: Vec::new(),
+            stores: Vec::new(),
+            tenancy_mode,
+            operating_regions,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AutonomousServiceIssueCode {
+    InvalidProtocol,
+    InvalidServiceIdentity,
+    InvalidWorkloadIdentity,
+    WorkloadOwnerMismatch,
+    DuplicateWorkloadIdentity,
+    InvalidWorkloadRole,
+    InvalidModuleIdentity,
+    DuplicateModuleIdentity,
+    InvalidStoreIdentity,
+    StoreOwnerMismatch,
+    DuplicateStoreIdentity,
+    InvalidTenancyMode,
+    InvalidOperatingRegion,
+    DuplicateOperatingRegion,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutonomousServiceIssue {
+    pub code: AutonomousServiceIssueCode,
+    pub path: String,
+    pub message: String,
+    pub next_action: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServiceContract {
@@ -1327,6 +1509,43 @@ pub fn check_contract_artifact_value(
         ));
     };
 
+    if protocol == AUTONOMOUS_SERVICE_PROTOCOL {
+        let issues = validate_autonomous_service_contract_value(value);
+        if let Some(issue) = issues.first() {
+            return Err(ContractArtifactCheckError {
+                code: ContractArtifactCheckErrorCode::InvalidArtifact,
+                path: issue.path.clone(),
+                message: format!(
+                    "{}: {}",
+                    serde_json::to_value(issue.code).unwrap_or_default(),
+                    issue.message
+                ),
+                next_action: issue.next_action.clone(),
+            });
+        }
+        let contract: AutonomousServiceContract =
+            serde_json::from_value(value.clone()).map_err(|error| ContractArtifactCheckError {
+                code: ContractArtifactCheckErrorCode::InvalidArtifact,
+                path: "$".to_owned(),
+                message: error.to_string(),
+                next_action: "Fix the reported contract field and run the check again.".to_owned(),
+            })?;
+        return Ok(ContractArtifactCheck {
+            detected_protocol: protocol.to_owned(),
+            artifact_kind: ContractArtifactKind::Service,
+            semantic_kind: ContractSemanticKind::AutonomousService,
+            provider_semantics: None,
+            autonomous_service: Some(AutonomousServiceSummary {
+                service_id: contract.service_id,
+                workloads: contract
+                    .workloads
+                    .into_iter()
+                    .map(|workload| workload.workload_id)
+                    .collect(),
+            }),
+        });
+    }
+
     let (artifact_kind, semantic_kind, issues) = match protocol {
         SERVICE_CONTRACT_PROTOCOL => (
             ContractArtifactKind::Service,
@@ -1381,7 +1600,7 @@ pub fn check_contract_artifact_value(
         detected_protocol: protocol.to_owned(),
         artifact_kind,
         semantic_kind,
-        provider_semantics: ProviderSemantics {
+        provider_semantics: Some(ProviderSemantics {
             providers,
             auth_owner: ContractOwner::Host,
             proxy_policy_owner: ContractOwner::Host,
@@ -1389,7 +1608,8 @@ pub fn check_contract_artifact_value(
             runtime_queue_owner: ContractOwner::Host,
             outbox_owner: ContractOwner::Host,
             story_owner: ContractOwner::Host,
-        },
+        }),
+        autonomous_service: None,
     })
 }
 
@@ -1399,6 +1619,262 @@ fn ambiguous_protocol_error(message: &str) -> ContractArtifactCheckError {
         path: "$.protocol".to_owned(),
         message: message.to_owned(),
         next_action: "Set `protocol` to a supported Provider-era artifact protocol.".to_owned(),
+    }
+}
+
+#[must_use]
+pub fn validate_autonomous_service_contract(
+    contract: &AutonomousServiceContract,
+) -> Vec<AutonomousServiceIssue> {
+    validate_autonomous_service_contract_value(
+        &serde_json::to_value(contract).expect("AutonomousServiceContract must serialize"),
+    )
+}
+
+#[must_use]
+pub fn validate_autonomous_service_contract_value(value: &Value) -> Vec<AutonomousServiceIssue> {
+    let mut issues = Vec::new();
+    let Some(object) = value.as_object() else {
+        push_autonomous_issue(
+            &mut issues,
+            AutonomousServiceIssueCode::InvalidServiceIdentity,
+            "$",
+            "service contract must be an object",
+            "Use a JSON object for the Service declaration.",
+        );
+        return issues;
+    };
+    if object.get("protocol").and_then(Value::as_str) != Some(AUTONOMOUS_SERVICE_PROTOCOL) {
+        push_autonomous_issue(
+            &mut issues,
+            AutonomousServiceIssueCode::InvalidProtocol,
+            "$.protocol",
+            "protocol must be `lenso.service.v2`",
+            "Set `protocol` to `lenso.service.v2`.",
+        );
+    }
+    let service_id = object
+        .get("serviceId")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    if service_id.trim().is_empty() {
+        push_autonomous_issue(
+            &mut issues,
+            AutonomousServiceIssueCode::InvalidServiceIdentity,
+            "$.serviceId",
+            "serviceId must be a non-empty string",
+            "Assign one stable logical Service identity.",
+        );
+    }
+    let mut workload_ids = BTreeSet::new();
+    match object.get("workloads").and_then(Value::as_array) {
+        Some(workloads) if !workloads.is_empty() => {
+            for (index, workload) in workloads.iter().enumerate() {
+                let path = format!("$.workloads[{index}]");
+                let id = workload
+                    .get("workloadId")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                if id.trim().is_empty() {
+                    push_autonomous_issue(
+                        &mut issues,
+                        AutonomousServiceIssueCode::InvalidWorkloadIdentity,
+                        format!("{path}.workloadId"),
+                        "workloadId must be a non-empty string",
+                        "Assign a unique identity to this Workload.",
+                    );
+                } else if !workload_ids.insert(id) {
+                    push_autonomous_issue(
+                        &mut issues,
+                        AutonomousServiceIssueCode::DuplicateWorkloadIdentity,
+                        format!("{path}.workloadId"),
+                        "workloadId must be unique within the Service",
+                        "Rename this Workload so each workloadId is unique.",
+                    );
+                }
+                if workload.get("serviceId").and_then(Value::as_str) != Some(service_id) {
+                    push_autonomous_issue(
+                        &mut issues,
+                        AutonomousServiceIssueCode::WorkloadOwnerMismatch,
+                        format!("{path}.serviceId"),
+                        "Workload owner must match the enclosing serviceId",
+                        "Set the Workload serviceId to the enclosing Service identity.",
+                    );
+                }
+                if workload
+                    .get("role")
+                    .and_then(Value::as_str)
+                    .is_none_or(|role| role.trim().is_empty())
+                {
+                    push_autonomous_issue(
+                        &mut issues,
+                        AutonomousServiceIssueCode::InvalidWorkloadRole,
+                        format!("{path}.role"),
+                        "role must be a non-empty string",
+                        "Use `api`, `worker`, `migration`, or a stable extension role.",
+                    );
+                }
+            }
+        }
+        _ => push_autonomous_issue(
+            &mut issues,
+            AutonomousServiceIssueCode::InvalidWorkloadIdentity,
+            "$.workloads",
+            "workloads must contain at least one Workload",
+            "Declare at least one API, Worker, Migration, or extension Workload.",
+        ),
+    }
+    validate_owned_identities(
+        object.get("stores"),
+        "stores",
+        "storeId",
+        service_id,
+        AutonomousServiceIssueCode::InvalidStoreIdentity,
+        AutonomousServiceIssueCode::StoreOwnerMismatch,
+        AutonomousServiceIssueCode::DuplicateStoreIdentity,
+        &mut issues,
+    );
+    validate_unique_strings(
+        object.get("modules"),
+        "modules",
+        AutonomousServiceIssueCode::InvalidModuleIdentity,
+        AutonomousServiceIssueCode::DuplicateModuleIdentity,
+        &mut issues,
+    );
+    match object.get("tenancyMode").and_then(Value::as_str) {
+        Some("none" | "optional" | "required") => {}
+        _ => push_autonomous_issue(
+            &mut issues,
+            AutonomousServiceIssueCode::InvalidTenancyMode,
+            "$.tenancyMode",
+            "tenancyMode must be `none`, `optional`, or `required`",
+            "Choose one supported Tenancy Mode.",
+        ),
+    }
+    validate_unique_strings(
+        object.get("operatingRegions"),
+        "operatingRegions",
+        AutonomousServiceIssueCode::InvalidOperatingRegion,
+        AutonomousServiceIssueCode::DuplicateOperatingRegion,
+        &mut issues,
+    );
+    if object
+        .get("operatingRegions")
+        .and_then(Value::as_array)
+        .is_none_or(Vec::is_empty)
+    {
+        push_autonomous_issue(
+            &mut issues,
+            AutonomousServiceIssueCode::InvalidOperatingRegion,
+            "$.operatingRegions",
+            "at least one Operating Region is required",
+            "Declare at least one logical Operating Region.",
+        );
+    }
+    issues
+}
+
+fn push_autonomous_issue(
+    issues: &mut Vec<AutonomousServiceIssue>,
+    code: AutonomousServiceIssueCode,
+    path: impl Into<String>,
+    message: impl Into<String>,
+    next_action: impl Into<String>,
+) {
+    issues.push(AutonomousServiceIssue {
+        code,
+        path: path.into(),
+        message: message.into(),
+        next_action: next_action.into(),
+    });
+}
+
+fn validate_unique_strings(
+    value: Option<&Value>,
+    field: &str,
+    invalid: AutonomousServiceIssueCode,
+    duplicate: AutonomousServiceIssueCode,
+    issues: &mut Vec<AutonomousServiceIssue>,
+) {
+    let Some(values) = value.and_then(Value::as_array) else {
+        return;
+    };
+    let mut seen = BTreeSet::new();
+    for (index, value) in values.iter().enumerate() {
+        let path = format!("$.{field}[{index}]");
+        let Some(identity) = value
+            .as_str()
+            .filter(|identity| !identity.trim().is_empty())
+        else {
+            push_autonomous_issue(
+                issues,
+                invalid,
+                path,
+                format!("{field} identity must be a non-empty string"),
+                format!("Assign a non-empty {field} identity."),
+            );
+            continue;
+        };
+        if !seen.insert(identity) {
+            push_autonomous_issue(
+                issues,
+                duplicate,
+                path,
+                format!("{field} identities must be unique"),
+                format!("Remove or rename the duplicate {field} identity."),
+            );
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn validate_owned_identities(
+    value: Option<&Value>,
+    field: &str,
+    identity_field: &str,
+    service_id: &str,
+    invalid: AutonomousServiceIssueCode,
+    owner_mismatch: AutonomousServiceIssueCode,
+    duplicate: AutonomousServiceIssueCode,
+    issues: &mut Vec<AutonomousServiceIssue>,
+) {
+    let Some(values) = value.and_then(Value::as_array) else {
+        return;
+    };
+    let mut seen = BTreeSet::new();
+    for (index, value) in values.iter().enumerate() {
+        let base = format!("$.{field}[{index}]");
+        let identity = value
+            .get(identity_field)
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        if identity.trim().is_empty() {
+            push_autonomous_issue(
+                issues,
+                invalid,
+                format!("{base}.{identity_field}"),
+                "identity must be a non-empty string",
+                "Assign a stable logical identity.",
+            );
+        }
+        if value.get("serviceId").and_then(Value::as_str) != Some(service_id) {
+            push_autonomous_issue(
+                issues,
+                owner_mismatch,
+                format!("{base}.serviceId"),
+                "owner must match the enclosing serviceId",
+                "Set serviceId to the enclosing Service identity.",
+            );
+        }
+        if !identity.is_empty() && !seen.insert(identity) {
+            push_autonomous_issue(
+                issues,
+                duplicate,
+                format!("{base}.{identity_field}"),
+                "identity must be unique within the Service",
+                "Rename the duplicate identity.",
+            );
+        }
     }
 }
 

@@ -1,0 +1,107 @@
+{
+  "$defs": {
+    "store": {
+      "additionalProperties": false,
+      "properties": {
+        "serviceId": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "storeId": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "storeId",
+        "serviceId"
+      ],
+      "type": "object"
+    },
+    "workload": {
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "serviceId": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "workloadId": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "workloadId",
+        "serviceId",
+        "role"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://contracts.lenso.local/services/lenso-service.v2.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "modules": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "operatingRegions": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "protocol": {
+      "const": "lenso.service.v2"
+    },
+    "serviceId": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "stores": {
+      "items": {
+        "$ref": "#/$defs/store"
+      },
+      "type": "array"
+    },
+    "tenancyMode": {
+      "enum": [
+        "none",
+        "optional",
+        "required"
+      ]
+    },
+    "version": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "workloads": {
+      "items": {
+        "$ref": "#/$defs/workload"
+      },
+      "minItems": 1,
+      "type": "array"
+    }
+  },
+  "required": [
+    "protocol",
+    "serviceId",
+    "workloads",
+    "tenancyMode",
+    "operatingRegions"
+  ],
+  "title": "LensoAutonomousServiceContract",
+  "type": "object"
+}
