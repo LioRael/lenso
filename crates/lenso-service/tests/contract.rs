@@ -596,7 +596,7 @@ fn contract_artifact_check_rejects_ambiguous_protocols_with_next_action() {
     assert_eq!(error.path, "$.protocol");
     assert_eq!(
         error.next_action,
-        "Set `protocol` to a supported Provider-era artifact protocol."
+        "Set `protocol` to a supported Provider-era protocol or `lenso.service.v2`."
     );
     assert_eq!(
         serde_json::to_value(&error).unwrap()["code"],

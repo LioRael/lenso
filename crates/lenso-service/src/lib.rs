@@ -1530,7 +1530,7 @@ impl ServiceContractIssue {
     }
 }
 
-/// Checks a versioned Provider-era contract artifact and projects its semantic meaning.
+/// Checks a versioned Provider or Autonomous Service artifact and projects its meaning.
 ///
 /// The returned read model is separate from the source JSON so compatibility checks never
 /// rewrite a legacy artifact or reinterpret Provider declarations as Autonomous Services.
@@ -1661,7 +1661,8 @@ fn ambiguous_protocol_error(message: &str) -> ContractArtifactCheckError {
         code: ContractArtifactCheckErrorCode::AmbiguousProtocol,
         path: "$.protocol".to_owned(),
         message: message.to_owned(),
-        next_action: "Set `protocol` to a supported Provider-era artifact protocol.".to_owned(),
+        next_action: "Set `protocol` to a supported Provider-era protocol or `lenso.service.v2`."
+            .to_owned(),
     }
 }
 
