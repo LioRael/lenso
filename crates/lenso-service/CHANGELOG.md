@@ -1,8 +1,4 @@
----
-packages:
-  lenso-service:
-    type: patch
----
+## lenso-service@0.1.1
 
 ### Features
 
