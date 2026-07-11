@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package lenso.support.v1;
+
+service SupportService {
+  rpc GetSla(GetSlaRequest) returns (GetSlaResponse);
+}
+
+message GetSlaRequest {
+  string ticket_id = 1;
+}
+
+message GetSlaResponse {
+  uint64 remaining_seconds = 1;
+}

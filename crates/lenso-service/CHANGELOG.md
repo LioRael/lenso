@@ -2,6 +2,9 @@
 
 ### Features
 
+Declare versioned OpenAPI, Protobuf, Event, Config, and Reliability Contract
+artifacts owned by an Autonomous Service v2, with deterministic public validation.
+
 Publish the versioned `lenso.context.v1` common context types, validation,
 fixture, and JSON Schema.
 

@@ -2,15 +2,21 @@ use lenso_service::{
     AUTONOMOUS_SERVICE_V2_FIXTURE_JSON, AutonomousServiceContract, AutonomousServiceIssueCode,
     AutonomousServiceStore, AutonomousServiceWorkload, COMMON_CONTEXT_V1_FIXTURE_JSON,
     COMMON_CONTEXT_V1_SCHEMA_JSON, CommonContextContract, CommonContextIssueCode,
-    ContractArtifactCheckErrorCode, ContractArtifactKind, ContractOwner, ContractSemanticKind,
-    LEGACY_CONTRACT_FIXTURES, MODULE_CONTRACT_SCHEMA_JSON, MODULE_RELEASE_SCHEMA_JSON,
-    ModuleContract, ModuleManifest, SERVICE_CONTRACT_SCHEMA_JSON, SERVICE_SYSTEM_SCHEMA_JSON,
-    SERVICE_V2_CONTRACT_SCHEMA_JSON, SERVICE_WORKSPACE_SCHEMA_JSON, ServiceCompatibility,
-    ServiceContract, ServiceHealth, ServiceLocalProcess, ServiceProvider, ServiceSystem,
+    CommonContextRequirement, ConfigActivation, ConfigContract, ConfigFieldContract,
+    ConfigMutability, ConfigScope, ContractArtifactCheckErrorCode, ContractArtifactKind,
+    ContractContextRequirements, ContractOwner, ContractSemanticKind, EventArtifactFormat,
+    EventArtifactReference, EventContractArtifact, LEGACY_CONTRACT_FIXTURES,
+    MODULE_CONTRACT_SCHEMA_JSON, MODULE_RELEASE_SCHEMA_JSON, ModuleContract, ModuleManifest,
+    ReliabilityContract, SERVICE_CONTRACT_SCHEMA_JSON, SERVICE_SYSTEM_SCHEMA_JSON,
+    SERVICE_V2_CONTRACT_SCHEMA_JSON, SERVICE_WORKSPACE_SCHEMA_JSON, SchemaArtifactReference,
+    ServiceArtifactFormat, ServiceArtifactReference, ServiceCompatibility, ServiceContract,
+    ServiceContractArtifact, ServiceHealth, ServiceLocalProcess, ServiceProvider, ServiceSystem,
     ServiceSystemDependency, ServiceSystemModule, ServiceSystemService, ServiceTenancyMode,
     ServiceWorkspace, ServiceWorkspaceService, WorkloadRole, check_contract_artifact_value,
-    service_system_graph, validate_module_contract_value, validate_service_contract_value,
-    validate_service_system_value, validate_service_workspace_value,
+    check_contract_artifact_value_with_artifacts, service_system_graph,
+    validate_autonomous_service_artifact_references, validate_module_contract_value,
+    validate_service_contract_value, validate_service_system_value,
+    validate_service_workspace_value,
 };
 use serde_json::json;
 
@@ -163,8 +169,249 @@ fn autonomous_service_v2_fixture_round_trips_through_the_public_contract() {
     assert_eq!(contract.workloads[1].role, WorkloadRole::WORKER);
     assert_eq!(contract.workloads[2].role, WorkloadRole::MIGRATION);
     assert_eq!(contract.workloads[3].role.as_str(), "indexer");
+    assert_eq!(contract.service_contracts.len(), 2);
+    assert_eq!(
+        contract.service_contracts[0].artifact.format,
+        ServiceArtifactFormat::Openapi
+    );
+    assert_eq!(
+        contract.service_contracts[1].artifact.format,
+        ServiceArtifactFormat::Protobuf
+    );
+    assert_eq!(contract.event_contracts.len(), 1);
+    assert_eq!(contract.config_contract.as_ref().unwrap().fields.len(), 2);
+    assert_eq!(
+        contract
+            .reliability_contract
+            .as_ref()
+            .unwrap()
+            .availability_target,
+        "99.9%"
+    );
     assert_eq!(serde_json::to_value(&contract).unwrap(), source);
     assert!(lenso_service::validate_autonomous_service_contract(&contract).is_empty());
+}
+
+#[test]
+fn autonomous_service_v2_public_types_declare_owned_contract_artifacts() {
+    let mut service = AutonomousServiceContract::new(
+        "support",
+        vec![AutonomousServiceWorkload::new(
+            "support-api",
+            "support",
+            WorkloadRole::API,
+        )],
+        ServiceTenancyMode::Required,
+        vec!["cn-east-1".to_owned()],
+    );
+    service.modules = vec!["support-ticket".to_owned()];
+    service.service_contracts = vec![ServiceContractArtifact::new(
+        "support-api",
+        "support-ticket",
+        "v1",
+        ServiceTenancyMode::Required,
+        ServiceArtifactReference::new(
+            ServiceArtifactFormat::Openapi,
+            "contracts/openapi/support.v1.yaml",
+        ),
+    )];
+    service.service_contracts[0].context =
+        ContractContextRequirements::new(vec![CommonContextRequirement::Tenant]);
+    service.event_contracts = vec![EventContractArtifact::new(
+        "ticket-opened",
+        "support-ticket",
+        "v1",
+        ServiceTenancyMode::Required,
+        EventArtifactReference::new(
+            EventArtifactFormat::JsonSchema,
+            "contracts/events/support/support.ticket-opened.v1.schema.json",
+        ),
+    )];
+    service.event_contracts[0].context =
+        ContractContextRequirements::new(vec![CommonContextRequirement::Story]);
+    service.config_contract = Some(ConfigContract::new(
+        "support-config",
+        "v1",
+        SchemaArtifactReference::new("contracts/config/support.v1.schema.json"),
+        vec![ConfigFieldContract {
+            path: "notifications.webhook".to_owned(),
+            shape: "uri".to_owned(),
+            sensitive: true,
+            scope: ConfigScope::Service,
+            mutability: ConfigMutability::Mutable,
+            activation: ConfigActivation::Hot,
+        }],
+    ));
+    let mut reliability = ReliabilityContract::new(
+        "support-reliability",
+        "v1",
+        SchemaArtifactReference::new("contracts/reliability/support.v1.schema.json"),
+        "99.9%",
+        "43m per 30d",
+    );
+    reliability.health_semantics = vec!["ready means serving traffic".to_owned()];
+    reliability.degraded_modes = vec!["queue notifications".to_owned()];
+    reliability.rollout_safety = vec!["rollback on elevated errors".to_owned()];
+    service.reliability_contract = Some(reliability);
+
+    assert!(lenso_service::validate_autonomous_service_contract(&service).is_empty());
+    let value = serde_json::to_value(service).unwrap();
+    assert_eq!(
+        value["serviceContracts"][0]["artifact"]["format"],
+        "openapi"
+    );
+    assert_eq!(
+        value["eventContracts"][0]["artifact"]["format"],
+        "json_schema"
+    );
+    assert_eq!(value["configContract"]["fields"][0]["activation"], "hot");
+    assert_eq!(value["reliabilityContract"]["availabilityTarget"], "99.9%");
+}
+
+#[test]
+fn autonomous_service_v2_contract_artifact_failures_are_deterministic() {
+    let mut source: serde_json::Value =
+        serde_json::from_str(AUTONOMOUS_SERVICE_V2_FIXTURE_JSON).unwrap();
+    source["serviceContracts"] = json!([
+        {
+            "contractId": "support-api",
+            "moduleId": "missing-module",
+            "version": "v1",
+            "tenancyMode": "required",
+            "artifact": {"format": "asyncapi", "path": "contracts/api.yaml"},
+            "context": {"protocol": "lenso.context.v1", "required": []}
+        },
+        {
+            "contractId": "support-api",
+            "moduleId": "support-ticket",
+            "version": "v2",
+            "tenancyMode": "required",
+            "artifact": {"format": "openapi", "path": ""},
+            "context": {"protocol": "lenso.context.v1", "required": []}
+        }
+    ]);
+
+    let issues = lenso_service::validate_autonomous_service_contract_value(&source);
+    assert_eq!(
+        issues
+            .iter()
+            .map(|issue| (issue.code, issue.path.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            (
+                AutonomousServiceIssueCode::UnsupportedArtifactFormat,
+                "$.serviceContracts[0].artifact.format"
+            ),
+            (
+                AutonomousServiceIssueCode::UnresolvedModuleReference,
+                "$.serviceContracts[0].moduleId"
+            ),
+            (
+                AutonomousServiceIssueCode::DuplicateContractIdentity,
+                "$.serviceContracts[1].contractId"
+            ),
+            (
+                AutonomousServiceIssueCode::InvalidArtifactReference,
+                "$.serviceContracts[1].artifact.path"
+            ),
+        ]
+    );
+    assert!(issues.iter().all(|issue| !issue.next_action.is_empty()));
+}
+
+#[test]
+fn autonomous_service_v2_reports_unresolved_packaged_artifacts() {
+    let source: serde_json::Value =
+        serde_json::from_str(AUTONOMOUS_SERVICE_V2_FIXTURE_JSON).unwrap();
+    let available = [
+        "contracts/openapi/support.v1.yaml",
+        "contracts/protobuf/support.v1.proto",
+        "contracts/events/support/support.ticket-opened.v1.schema.json",
+        "contracts/config/support.v1.schema.json",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect();
+
+    let issues = validate_autonomous_service_artifact_references(&source, &available);
+    assert_eq!(issues.len(), 1);
+    assert_eq!(
+        issues[0].code,
+        AutonomousServiceIssueCode::UnresolvedArtifactReference
+    );
+    assert_eq!(issues[0].path, "$.reliabilityContract.artifact.path");
+    assert!(!issues[0].next_action.is_empty());
+    let error = check_contract_artifact_value_with_artifacts(&source, &available).unwrap_err();
+    assert_eq!(
+        error.code,
+        ContractArtifactCheckErrorCode::UnresolvedArtifactReference
+    );
+}
+
+#[test]
+fn autonomous_service_v2_fixture_references_packaged_contract_files() {
+    let source: serde_json::Value =
+        serde_json::from_str(AUTONOMOUS_SERVICE_V2_FIXTURE_JSON).unwrap();
+    let repository = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let paths = [
+        source["serviceContracts"][0]["artifact"]["path"]
+            .as_str()
+            .unwrap(),
+        source["serviceContracts"][1]["artifact"]["path"]
+            .as_str()
+            .unwrap(),
+        source["eventContracts"][0]["artifact"]["path"]
+            .as_str()
+            .unwrap(),
+        source["configContract"]["artifact"]["path"]
+            .as_str()
+            .unwrap(),
+        source["reliabilityContract"]["artifact"]["path"]
+            .as_str()
+            .unwrap(),
+    ];
+    assert!(paths.iter().all(|path| repository.join(path).is_file()));
+    let available = paths.into_iter().map(str::to_owned).collect();
+    assert!(check_contract_artifact_value_with_artifacts(&source, &available).is_ok());
+}
+
+#[test]
+fn autonomous_service_v2_rejects_malformed_config_and_reliability_contracts() {
+    let mut source: serde_json::Value =
+        serde_json::from_str(AUTONOMOUS_SERVICE_V2_FIXTURE_JSON).unwrap();
+    source["configContract"]["fields"][0]["scope"] = json!("global");
+    source["configContract"]["fields"][1]["path"] = json!("sla.defaultHours");
+    source["reliabilityContract"]["availabilityTarget"] = json!("");
+
+    let issues = lenso_service::validate_autonomous_service_contract_value(&source);
+    assert_eq!(
+        issues.iter().map(|issue| issue.code).collect::<Vec<_>>(),
+        [
+            AutonomousServiceIssueCode::InvalidConfigContract,
+            AutonomousServiceIssueCode::DuplicateConfigField,
+            AutonomousServiceIssueCode::InvalidReliabilityContract,
+        ]
+    );
+    assert!(issues.iter().all(|issue| !issue.next_action.is_empty()));
+}
+
+#[test]
+fn module_identity_survives_provider_to_autonomous_service_declarations() {
+    let module_id = "support-ticket";
+    let linked = ModuleManifest::builder(module_id).build();
+    let provider = ServiceContract::new("support-provider", vec![linked.clone()]);
+    let autonomous: AutonomousServiceContract =
+        serde_json::from_str(AUTONOMOUS_SERVICE_V2_FIXTURE_JSON).unwrap();
+
+    assert_eq!(linked.name, module_id);
+    assert_eq!(provider.modules[0].name, linked.name);
+    assert!(autonomous.modules.iter().any(|module| module == module_id));
+    let contract = autonomous
+        .service_contracts
+        .iter()
+        .find(|contract| contract.contract_id == "support-http")
+        .unwrap();
+    assert_eq!(contract.module_id, linked.name);
 }
 
 #[test]
@@ -244,7 +491,12 @@ fn autonomous_service_v2_schema_and_artifact_check_agree() {
     );
     assert_eq!(check.semantic_kind, ContractSemanticKind::AutonomousService);
     assert_eq!(check.detected_protocol, "lenso.service.v2");
-    assert!(check.autonomous_service.is_some());
+    let summary = check.autonomous_service.unwrap();
+    assert_eq!(summary.modules, ["support-sla", "support-ticket"]);
+    assert_eq!(summary.service_contracts, ["support-grpc", "support-http"]);
+    assert_eq!(summary.event_contracts, ["ticket-opened"]);
+    assert!(summary.has_config_contract);
+    assert!(summary.has_reliability_contract);
     assert!(check.provider_semantics.is_none());
 }
 

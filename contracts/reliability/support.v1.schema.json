@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.lenso.local/reliability/support.v1.schema.json",
+  "title": "SupportReliabilityV1",
+  "type": "object",
+  "required": ["availabilityTarget", "latencyTargetMs", "errorBudget"],
+  "properties": {
+    "availabilityTarget": { "type": "string", "minLength": 1 },
+    "latencyTargetMs": { "type": "integer", "minimum": 0 },
+    "errorBudget": { "type": "string", "minLength": 1 }
+  },
+  "additionalProperties": true
+}

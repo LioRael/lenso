@@ -526,6 +526,11 @@ pub struct ContractArtifactCheck {
 pub struct AutonomousServiceSummary {
     pub service_id: String,
     pub workloads: Vec<String>,
+    pub modules: Vec<String>,
+    pub service_contracts: Vec<String>,
+    pub event_contracts: Vec<String>,
+    pub has_config_contract: bool,
+    pub has_reliability_contract: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -550,6 +555,15 @@ pub enum ContractArtifactCheckErrorCode {
     InvalidTenancyMode,
     InvalidOperatingRegion,
     DuplicateOperatingRegion,
+    InvalidContractIdentity,
+    DuplicateContractIdentity,
+    UnresolvedModuleReference,
+    InvalidArtifactReference,
+    UnresolvedArtifactReference,
+    UnsupportedArtifactFormat,
+    InvalidConfigContract,
+    DuplicateConfigField,
+    InvalidReliabilityContract,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1488,6 +1502,260 @@ pub struct AutonomousServiceStore {
     pub service_id: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ServiceArtifactFormat {
+    Openapi,
+    Protobuf,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EventArtifactFormat {
+    JsonSchema,
+    Protobuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ServiceArtifactReference {
+    pub format: ServiceArtifactFormat,
+    pub path: String,
+}
+
+impl ServiceArtifactReference {
+    #[must_use]
+    pub fn new(format: ServiceArtifactFormat, path: impl Into<String>) -> Self {
+        Self {
+            format,
+            path: path.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EventArtifactReference {
+    pub format: EventArtifactFormat,
+    pub path: String,
+}
+
+impl EventArtifactReference {
+    #[must_use]
+    pub fn new(format: EventArtifactFormat, path: impl Into<String>) -> Self {
+        Self {
+            format,
+            path: path.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SchemaArtifactReference {
+    pub path: String,
+}
+
+impl SchemaArtifactReference {
+    #[must_use]
+    pub fn new(path: impl Into<String>) -> Self {
+        Self { path: path.into() }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CommonContextRequirement {
+    Story,
+    Trace,
+    ServicePrincipal,
+    DelegatedActor,
+    Tenant,
+    Deadline,
+    IdempotencyKey,
+    Causation,
+    Region,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ContractContextRequirements {
+    pub protocol: String,
+    pub required: Vec<CommonContextRequirement>,
+}
+
+impl ContractContextRequirements {
+    #[must_use]
+    pub fn new(required: Vec<CommonContextRequirement>) -> Self {
+        Self {
+            protocol: COMMON_CONTEXT_PROTOCOL.to_owned(),
+            required,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ServiceContractArtifact {
+    pub contract_id: String,
+    pub module_id: String,
+    pub version: String,
+    pub tenancy_mode: ServiceTenancyMode,
+    pub artifact: ServiceArtifactReference,
+    pub context: ContractContextRequirements,
+}
+
+impl ServiceContractArtifact {
+    #[must_use]
+    pub fn new(
+        contract_id: impl Into<String>,
+        module_id: impl Into<String>,
+        version: impl Into<String>,
+        tenancy_mode: ServiceTenancyMode,
+        artifact: ServiceArtifactReference,
+    ) -> Self {
+        Self {
+            contract_id: contract_id.into(),
+            module_id: module_id.into(),
+            version: version.into(),
+            tenancy_mode,
+            artifact,
+            context: ContractContextRequirements::new(Vec::new()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EventContractArtifact {
+    pub contract_id: String,
+    pub module_id: String,
+    pub version: String,
+    pub tenancy_mode: ServiceTenancyMode,
+    pub artifact: EventArtifactReference,
+    pub context: ContractContextRequirements,
+}
+
+impl EventContractArtifact {
+    #[must_use]
+    pub fn new(
+        contract_id: impl Into<String>,
+        module_id: impl Into<String>,
+        version: impl Into<String>,
+        tenancy_mode: ServiceTenancyMode,
+        artifact: EventArtifactReference,
+    ) -> Self {
+        Self {
+            contract_id: contract_id.into(),
+            module_id: module_id.into(),
+            version: version.into(),
+            tenancy_mode,
+            artifact,
+            context: ContractContextRequirements::new(Vec::new()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConfigScope {
+    Service,
+    Region,
+    Tenant,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConfigMutability {
+    Immutable,
+    Mutable,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConfigActivation {
+    Hot,
+    Restart,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ConfigFieldContract {
+    pub path: String,
+    pub shape: String,
+    pub sensitive: bool,
+    pub scope: ConfigScope,
+    pub mutability: ConfigMutability,
+    pub activation: ConfigActivation,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ConfigContract {
+    pub contract_id: String,
+    pub version: String,
+    pub artifact: SchemaArtifactReference,
+    pub fields: Vec<ConfigFieldContract>,
+}
+
+impl ConfigContract {
+    #[must_use]
+    pub fn new(
+        contract_id: impl Into<String>,
+        version: impl Into<String>,
+        artifact: SchemaArtifactReference,
+        fields: Vec<ConfigFieldContract>,
+    ) -> Self {
+        Self {
+            contract_id: contract_id.into(),
+            version: version.into(),
+            artifact,
+            fields,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReliabilityContract {
+    pub contract_id: String,
+    pub version: String,
+    pub artifact: SchemaArtifactReference,
+    pub availability_target: String,
+    pub latency_target_ms: u64,
+    pub dependency_criticality: BTreeMap<String, String>,
+    pub health_semantics: Vec<String>,
+    pub degraded_modes: Vec<String>,
+    pub backlog_limit: u64,
+    pub error_budget: String,
+    pub rollout_safety: Vec<String>,
+}
+
+impl ReliabilityContract {
+    #[must_use]
+    pub fn new(
+        contract_id: impl Into<String>,
+        version: impl Into<String>,
+        artifact: SchemaArtifactReference,
+        availability_target: impl Into<String>,
+        error_budget: impl Into<String>,
+    ) -> Self {
+        Self {
+            contract_id: contract_id.into(),
+            version: version.into(),
+            artifact,
+            availability_target: availability_target.into(),
+            latency_target_ms: 0,
+            dependency_criticality: BTreeMap::new(),
+            health_semantics: Vec::new(),
+            degraded_modes: Vec::new(),
+            backlog_limit: 0,
+            error_budget: error_budget.into(),
+            rollout_safety: Vec::new(),
+        }
+    }
+}
+
 impl AutonomousServiceStore {
     #[must_use]
     pub fn new(store_id: impl Into<String>, service_id: impl Into<String>) -> Self {
@@ -1510,6 +1778,14 @@ pub struct AutonomousServiceContract {
     pub modules: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub stores: Vec<AutonomousServiceStore>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub service_contracts: Vec<ServiceContractArtifact>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub event_contracts: Vec<EventContractArtifact>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config_contract: Option<ConfigContract>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reliability_contract: Option<ReliabilityContract>,
     pub tenancy_mode: ServiceTenancyMode,
     pub operating_regions: Vec<String>,
 }
@@ -1529,6 +1805,10 @@ impl AutonomousServiceContract {
             workloads,
             modules: Vec::new(),
             stores: Vec::new(),
+            service_contracts: Vec::new(),
+            event_contracts: Vec::new(),
+            config_contract: None,
+            reliability_contract: None,
             tenancy_mode,
             operating_regions,
         }
@@ -1554,6 +1834,15 @@ pub enum AutonomousServiceIssueCode {
     InvalidTenancyMode,
     InvalidOperatingRegion,
     DuplicateOperatingRegion,
+    InvalidContractIdentity,
+    DuplicateContractIdentity,
+    UnresolvedModuleReference,
+    InvalidArtifactReference,
+    UnresolvedArtifactReference,
+    UnsupportedArtifactFormat,
+    InvalidConfigContract,
+    DuplicateConfigField,
+    InvalidReliabilityContract,
 }
 
 impl From<AutonomousServiceIssueCode> for ContractArtifactCheckErrorCode {
@@ -1577,6 +1866,25 @@ impl From<AutonomousServiceIssueCode> for ContractArtifactCheckErrorCode {
             AutonomousServiceIssueCode::InvalidTenancyMode => Self::InvalidTenancyMode,
             AutonomousServiceIssueCode::InvalidOperatingRegion => Self::InvalidOperatingRegion,
             AutonomousServiceIssueCode::DuplicateOperatingRegion => Self::DuplicateOperatingRegion,
+            AutonomousServiceIssueCode::InvalidContractIdentity => Self::InvalidContractIdentity,
+            AutonomousServiceIssueCode::DuplicateContractIdentity => {
+                Self::DuplicateContractIdentity
+            }
+            AutonomousServiceIssueCode::UnresolvedModuleReference => {
+                Self::UnresolvedModuleReference
+            }
+            AutonomousServiceIssueCode::InvalidArtifactReference => Self::InvalidArtifactReference,
+            AutonomousServiceIssueCode::UnresolvedArtifactReference => {
+                Self::UnresolvedArtifactReference
+            }
+            AutonomousServiceIssueCode::UnsupportedArtifactFormat => {
+                Self::UnsupportedArtifactFormat
+            }
+            AutonomousServiceIssueCode::InvalidConfigContract => Self::InvalidConfigContract,
+            AutonomousServiceIssueCode::DuplicateConfigField => Self::DuplicateConfigField,
+            AutonomousServiceIssueCode::InvalidReliabilityContract => {
+                Self::InvalidReliabilityContract
+            }
         }
     }
 }
@@ -2017,6 +2325,21 @@ pub fn check_contract_artifact_value(
                     workloads.sort();
                     workloads
                 },
+                modules: sorted_unique(contract.modules),
+                service_contracts: sorted_unique(
+                    contract
+                        .service_contracts
+                        .into_iter()
+                        .map(|contract| contract.contract_id),
+                ),
+                event_contracts: sorted_unique(
+                    contract
+                        .event_contracts
+                        .into_iter()
+                        .map(|contract| contract.contract_id),
+                ),
+                has_config_contract: contract.config_contract.is_some(),
+                has_reliability_contract: contract.reliability_contract.is_some(),
             }),
         });
     }
@@ -2088,6 +2411,33 @@ pub fn check_contract_artifact_value(
     })
 }
 
+/// Checks an artifact and resolves its owned contract files against a packaged path set.
+pub fn check_contract_artifact_value_with_artifacts(
+    value: &Value,
+    available_paths: &BTreeSet<String>,
+) -> Result<ContractArtifactCheck, ContractArtifactCheckError> {
+    let check = check_contract_artifact_value(value)?;
+    if check.semantic_kind == ContractSemanticKind::AutonomousService
+        && let Some(issue) =
+            validate_autonomous_service_artifact_references(value, available_paths).first()
+    {
+        return Err(ContractArtifactCheckError {
+            code: issue.code.into(),
+            path: issue.path.clone(),
+            message: issue.message.clone(),
+            next_action: issue.next_action.clone(),
+        });
+    }
+    Ok(check)
+}
+
+fn sorted_unique(values: impl IntoIterator<Item = String>) -> Vec<String> {
+    let mut values = values.into_iter().collect::<Vec<_>>();
+    values.sort();
+    values.dedup();
+    values
+}
+
 fn ambiguous_protocol_error(message: &str) -> ContractArtifactCheckError {
     ContractArtifactCheckError {
         code: ContractArtifactCheckErrorCode::AmbiguousProtocol,
@@ -2130,6 +2480,10 @@ pub fn validate_autonomous_service_contract_value(value: &Value) -> Vec<Autonomo
             "workloads",
             "modules",
             "stores",
+            "serviceContracts",
+            "eventContracts",
+            "configContract",
+            "reliabilityContract",
             "tenancyMode",
             "operatingRegions",
         ],
@@ -2253,6 +2607,31 @@ pub fn validate_autonomous_service_contract_value(value: &Value) -> Vec<Autonomo
         AutonomousServiceIssueCode::DuplicateModuleIdentity,
         &mut issues,
     );
+    let module_ids = object
+        .get("modules")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect::<BTreeSet<_>>();
+    validate_contract_artifacts(
+        object.get("serviceContracts"),
+        "serviceContracts",
+        &["openapi", "protobuf"],
+        true,
+        &module_ids,
+        &mut issues,
+    );
+    validate_contract_artifacts(
+        object.get("eventContracts"),
+        "eventContracts",
+        &["json_schema", "protobuf"],
+        true,
+        &module_ids,
+        &mut issues,
+    );
+    validate_config_contract(object.get("configContract"), &mut issues);
+    validate_reliability_contract(object.get("reliabilityContract"), &mut issues);
     match object.get("tenancyMode").and_then(Value::as_str) {
         Some("none" | "optional" | "required") => {}
         _ => push_autonomous_issue(
@@ -2284,6 +2663,480 @@ pub fn validate_autonomous_service_contract_value(value: &Value) -> Vec<Autonomo
         );
     }
     issues
+}
+
+/// Resolves every owned contract artifact against paths packaged by a caller such as the CLI.
+#[must_use]
+pub fn validate_autonomous_service_artifact_references(
+    value: &Value,
+    available_paths: &BTreeSet<String>,
+) -> Vec<AutonomousServiceIssue> {
+    let mut issues = Vec::new();
+    for field in ["serviceContracts", "eventContracts"] {
+        for (index, contract) in value
+            .get(field)
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .enumerate()
+        {
+            validate_available_artifact_path(
+                contract
+                    .get("artifact")
+                    .and_then(|artifact| artifact.get("path")),
+                format!("$.{field}[{index}].artifact.path"),
+                available_paths,
+                &mut issues,
+            );
+        }
+    }
+    for field in ["configContract", "reliabilityContract"] {
+        if let Some(contract) = value.get(field) {
+            validate_available_artifact_path(
+                contract
+                    .get("artifact")
+                    .and_then(|artifact| artifact.get("path")),
+                format!("$.{field}.artifact.path"),
+                available_paths,
+                &mut issues,
+            );
+        }
+    }
+    issues
+}
+
+fn validate_available_artifact_path(
+    value: Option<&Value>,
+    path: String,
+    available_paths: &BTreeSet<String>,
+    issues: &mut Vec<AutonomousServiceIssue>,
+) {
+    if let Some(reference) = value.and_then(Value::as_str)
+        && is_repository_relative_artifact_path(reference)
+        && !available_paths.contains(reference)
+    {
+        push_autonomous_issue(
+            issues,
+            AutonomousServiceIssueCode::UnresolvedArtifactReference,
+            path,
+            format!("artifact `{reference}` is not present in the package"),
+            "Package the referenced artifact or correct its repository-relative path.",
+        );
+    }
+}
+
+fn validate_contract_artifacts(
+    value: Option<&Value>,
+    field: &str,
+    formats: &[&str],
+    has_tenancy: bool,
+    module_ids: &BTreeSet<&str>,
+    issues: &mut Vec<AutonomousServiceIssue>,
+) {
+    let Some(values) = value.and_then(Value::as_array) else {
+        if value.is_some() {
+            push_autonomous_issue(
+                issues,
+                AutonomousServiceIssueCode::InvalidContractIdentity,
+                format!("$.{field}"),
+                "contract declarations must be an array",
+                "Declare contract artifacts as an array.",
+            );
+        }
+        return;
+    };
+    let mut identities = BTreeSet::new();
+    for (index, value) in values.iter().enumerate() {
+        let base = format!("$.{field}[{index}]");
+        let Some(object) = value.as_object() else {
+            push_autonomous_issue(
+                issues,
+                AutonomousServiceIssueCode::InvalidContractIdentity,
+                &base,
+                "contract declaration must be an object",
+                "Declare a versioned contract object.",
+            );
+            continue;
+        };
+        let mut allowed = vec!["contractId", "moduleId", "version", "artifact", "context"];
+        if has_tenancy {
+            allowed.push("tenancyMode");
+        }
+        validate_unknown_fields(object, &base, &allowed, issues);
+        let contract_id = object
+            .get("contractId")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let version = object.get("version").and_then(Value::as_str).unwrap_or("");
+        if contract_id.trim().is_empty() || version.trim().is_empty() {
+            let field_name = if contract_id.trim().is_empty() {
+                "contractId"
+            } else {
+                "version"
+            };
+            push_autonomous_issue(
+                issues,
+                AutonomousServiceIssueCode::InvalidContractIdentity,
+                format!("{base}.{field_name}"),
+                "contractId and version must be non-empty strings",
+                "Assign a stable contractId and Contract Version.",
+            );
+        }
+        let artifact = object.get("artifact");
+        let format = artifact
+            .and_then(|value| value.get("format"))
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        if !formats.contains(&format) {
+            push_autonomous_issue(
+                issues,
+                AutonomousServiceIssueCode::UnsupportedArtifactFormat,
+                format!("{base}.artifact.format"),
+                format!("unsupported artifact format `{format}`"),
+                format!("Use one supported format: {}.", formats.join(", ")),
+            );
+        }
+        let module_id = object.get("moduleId").and_then(Value::as_str).unwrap_or("");
+        if !module_ids.contains(module_id) {
+            push_autonomous_issue(
+                issues,
+                AutonomousServiceIssueCode::UnresolvedModuleReference,
+                format!("{base}.moduleId"),
+                "moduleId does not resolve to an owned Module",
+                "Reference one Module identity declared in `modules`.",
+            );
+        }
+        if !contract_id.is_empty() && !identities.insert(contract_id) {
+            push_autonomous_issue(
+                issues,
+                AutonomousServiceIssueCode::DuplicateContractIdentity,
+                format!("{base}.contractId"),
+                "contractId must be unique within its contract kind",
+                "Remove or rename the duplicate contractId.",
+            );
+        }
+        if artifact
+            .and_then(|value| value.get("path"))
+            .and_then(Value::as_str)
+            .is_none_or(|path| !is_repository_relative_artifact_path(path))
+        {
+            push_autonomous_issue(
+                issues,
+                AutonomousServiceIssueCode::InvalidArtifactReference,
+                format!("{base}.artifact.path"),
+                "artifact path must be a non-empty string",
+                "Reference a packaged contract artifact using a repository-relative path.",
+            );
+        }
+        if let Some(artifact) = artifact.and_then(Value::as_object) {
+            validate_unknown_fields(
+                artifact,
+                &format!("{base}.artifact"),
+                &["format", "path"],
+                issues,
+            );
+        }
+        if has_tenancy
+            && !matches!(
+                object.get("tenancyMode").and_then(Value::as_str),
+                Some("none" | "optional" | "required")
+            )
+        {
+            push_autonomous_issue(
+                issues,
+                AutonomousServiceIssueCode::InvalidTenancyMode,
+                format!("{base}.tenancyMode"),
+                "tenancyMode must be `none`, `optional`, or `required`",
+                "Choose one supported Tenancy Mode for this Service Contract.",
+            );
+        }
+        validate_context_requirements(object.get("context"), &base, issues);
+    }
+}
+
+fn validate_context_requirements(
+    value: Option<&Value>,
+    base: &str,
+    issues: &mut Vec<AutonomousServiceIssue>,
+) {
+    let supported = [
+        "story",
+        "trace",
+        "service_principal",
+        "delegated_actor",
+        "tenant",
+        "deadline",
+        "idempotency_key",
+        "causation",
+        "region",
+    ];
+    let valid = value.and_then(Value::as_object).is_some_and(|context| {
+        context.get("protocol").and_then(Value::as_str) == Some(COMMON_CONTEXT_PROTOCOL)
+            && context
+                .get("required")
+                .and_then(Value::as_array)
+                .is_some_and(|required| {
+                    let values = required
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .collect::<BTreeSet<_>>();
+                    values.len() == required.len()
+                        && values.iter().all(|value| supported.contains(value))
+                })
+    });
+    if !valid {
+        push_autonomous_issue(
+            issues,
+            AutonomousServiceIssueCode::InvalidContractIdentity,
+            format!("{base}.context"),
+            "context must reference `lenso.context.v1` with unique supported requirements",
+            "Declare the common context required by this contract.",
+        );
+    }
+    if let Some(context) = value.and_then(Value::as_object) {
+        validate_unknown_fields(
+            context,
+            &format!("{base}.context"),
+            &["protocol", "required"],
+            issues,
+        );
+    }
+}
+
+fn is_repository_relative_artifact_path(path: &str) -> bool {
+    let path = std::path::Path::new(path);
+    !path.as_os_str().is_empty()
+        && !path.is_absolute()
+        && !path
+            .components()
+            .any(|part| matches!(part, std::path::Component::ParentDir))
+        && !path.to_string_lossy().contains("://")
+}
+
+fn validate_config_contract(value: Option<&Value>, issues: &mut Vec<AutonomousServiceIssue>) {
+    let Some(value) = value else {
+        return;
+    };
+    let Some(object) = value.as_object() else {
+        push_autonomous_issue(
+            issues,
+            AutonomousServiceIssueCode::InvalidConfigContract,
+            "$.configContract",
+            "configContract must be an object",
+            "Declare one versioned Config Contract object.",
+        );
+        return;
+    };
+    validate_unknown_fields(
+        object,
+        "$.configContract",
+        &["contractId", "version", "artifact", "fields"],
+        issues,
+    );
+    validate_service_owned_contract_header(object, "$.configContract", issues);
+    if object
+        .get("version")
+        .and_then(Value::as_str)
+        .is_none_or(|v| v.trim().is_empty())
+    {
+        push_autonomous_issue(
+            issues,
+            AutonomousServiceIssueCode::InvalidConfigContract,
+            "$.configContract.version",
+            "Config Contract version must be a non-empty string",
+            "Assign a stable Config Contract Version.",
+        );
+    }
+    let Some(fields) = object.get("fields").and_then(Value::as_array) else {
+        push_autonomous_issue(
+            issues,
+            AutonomousServiceIssueCode::InvalidConfigContract,
+            "$.configContract.fields",
+            "Config Contract fields must be an array",
+            "Declare configuration field requirements.",
+        );
+        return;
+    };
+    let mut paths = BTreeSet::new();
+    for (index, field) in fields.iter().enumerate() {
+        let base = format!("$.configContract.fields[{index}]");
+        let Some(object) = field.as_object() else {
+            push_autonomous_issue(
+                issues,
+                AutonomousServiceIssueCode::InvalidConfigContract,
+                &base,
+                "Config field must be an object",
+                "Declare all Config field requirements in an object.",
+            );
+            continue;
+        };
+        validate_unknown_fields(
+            object,
+            &base,
+            &[
+                "path",
+                "shape",
+                "sensitive",
+                "scope",
+                "mutability",
+                "activation",
+            ],
+            issues,
+        );
+        let path = object.get("path").and_then(Value::as_str).unwrap_or("");
+        let valid = !path.trim().is_empty()
+            && object
+                .get("shape")
+                .and_then(Value::as_str)
+                .is_some_and(|v| !v.trim().is_empty())
+            && object.get("sensitive").is_some_and(Value::is_boolean)
+            && matches!(
+                object.get("scope").and_then(Value::as_str),
+                Some("service" | "region" | "tenant")
+            )
+            && matches!(
+                object.get("mutability").and_then(Value::as_str),
+                Some("immutable" | "mutable")
+            )
+            && matches!(
+                object.get("activation").and_then(Value::as_str),
+                Some("hot" | "restart")
+            );
+        if !valid {
+            push_autonomous_issue(
+                issues,
+                AutonomousServiceIssueCode::InvalidConfigContract,
+                &base,
+                "Config field must declare path, shape, sensitivity, scope, mutability, and activation",
+                "Complete every Config Contract field declaration using supported values.",
+            );
+        }
+        if !path.is_empty() && !paths.insert(path) {
+            push_autonomous_issue(
+                issues,
+                AutonomousServiceIssueCode::DuplicateConfigField,
+                format!("{base}.path"),
+                "Config field path must be unique",
+                "Remove the duplicate Config field path.",
+            );
+        }
+    }
+}
+
+fn validate_reliability_contract(value: Option<&Value>, issues: &mut Vec<AutonomousServiceIssue>) {
+    let Some(value) = value else {
+        return;
+    };
+    let Some(object) = value.as_object() else {
+        push_autonomous_issue(
+            issues,
+            AutonomousServiceIssueCode::InvalidReliabilityContract,
+            "$.reliabilityContract",
+            "reliabilityContract must be an object",
+            "Declare one versioned Reliability Contract object.",
+        );
+        return;
+    };
+    validate_unknown_fields(
+        object,
+        "$.reliabilityContract",
+        &[
+            "contractId",
+            "version",
+            "artifact",
+            "availabilityTarget",
+            "latencyTargetMs",
+            "dependencyCriticality",
+            "healthSemantics",
+            "degradedModes",
+            "backlogLimit",
+            "errorBudget",
+            "rolloutSafety",
+        ],
+        issues,
+    );
+    validate_service_owned_contract_header(object, "$.reliabilityContract", issues);
+    if object
+        .get("version")
+        .and_then(Value::as_str)
+        .is_none_or(|v| v.trim().is_empty())
+        || object
+            .get("availabilityTarget")
+            .and_then(Value::as_str)
+            .is_none_or(|v| v.trim().is_empty())
+        || !object.get("latencyTargetMs").is_some_and(Value::is_u64)
+        || !object
+            .get("dependencyCriticality")
+            .and_then(Value::as_object)
+            .is_some_and(|dependencies| {
+                dependencies.values().all(|value| {
+                    matches!(value.as_str(), Some("critical" | "degradable" | "optional"))
+                })
+            })
+        || !is_string_array(object.get("healthSemantics"))
+        || !is_string_array(object.get("degradedModes"))
+        || !object.get("backlogLimit").is_some_and(Value::is_u64)
+        || object
+            .get("errorBudget")
+            .and_then(Value::as_str)
+            .is_none_or(str::is_empty)
+        || !is_string_array(object.get("rolloutSafety"))
+    {
+        push_autonomous_issue(
+            issues,
+            AutonomousServiceIssueCode::InvalidReliabilityContract,
+            "$.reliabilityContract",
+            "Reliability Contract must declare availability, latency, dependencies, health, degradation, backlog, error budget, and rollout safety",
+            "Declare whole-Service reliability expectations using supported values.",
+        );
+    }
+}
+
+fn is_string_array(value: Option<&Value>) -> bool {
+    value.and_then(Value::as_array).is_some_and(|values| {
+        values
+            .iter()
+            .all(|value| value.as_str().is_some_and(|value| !value.trim().is_empty()))
+    })
+}
+
+fn validate_service_owned_contract_header(
+    object: &serde_json::Map<String, Value>,
+    base: &str,
+    issues: &mut Vec<AutonomousServiceIssue>,
+) {
+    for field in ["contractId", "version"] {
+        if object
+            .get(field)
+            .and_then(Value::as_str)
+            .is_none_or(|value| value.trim().is_empty())
+        {
+            push_autonomous_issue(
+                issues,
+                AutonomousServiceIssueCode::InvalidContractIdentity,
+                format!("{base}.{field}"),
+                format!("{field} must be a non-empty string"),
+                "Assign a stable contract identity and version.",
+            );
+        }
+    }
+    if object
+        .get("artifact")
+        .and_then(|artifact| artifact.get("path"))
+        .and_then(Value::as_str)
+        .is_none_or(|path| !is_repository_relative_artifact_path(path))
+    {
+        push_autonomous_issue(
+            issues,
+            AutonomousServiceIssueCode::InvalidArtifactReference,
+            format!("{base}.artifact.path"),
+            "artifact path must be repository-relative without traversal",
+            "Reference a packaged contract artifact using a repository-relative path.",
+        );
+    }
+    if let Some(artifact) = object.get("artifact").and_then(Value::as_object) {
+        validate_unknown_fields(artifact, &format!("{base}.artifact"), &["path"], issues);
+    }
 }
 
 fn push_autonomous_issue(
