@@ -24,6 +24,12 @@ check:
 release-check:
     just check
 
+release-plan:
+    pnpm release:plan
+
+release-plan-check:
+    pnpm release:intent-check
+
 release-version-check:
     sh scripts/verify-release-version.sh
 

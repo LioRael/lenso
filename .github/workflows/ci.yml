@@ -11,9 +11,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@f2b2b233b538f500472c7274c7012f57857d8ce0
+        with:
+          run_install: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24.18.0
+          cache: pnpm
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install just
         uses: extractions/setup-just@v4
       - name: Run quality gates
         run: just ci
+      - name: Verify reviewed release plan and packages
+        if: ${{ startsWith(github.head_ref, 'release/') }}
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+          node scripts/release-plan.mjs --verify
+          just package-readiness
+          jq -r '.packages[].id | select(startswith("cargo:")) | sub("^cargo:"; "")' .lenso-release/plan.json |
+            while read -r package; do cargo package --locked --allow-dirty -p "$package"; done

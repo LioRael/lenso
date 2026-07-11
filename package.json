@@ -1,0 +1,14 @@
+{
+  "name": "@lenso/framework-release-workspace",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "release:intent-check": "node scripts/release-plan.mjs --check-intent",
+    "release:plan": "node scripts/release-plan.mjs",
+    "release:verify": "just release-check && node scripts/release-plan.mjs --verify"
+  },
+  "devDependencies": {
+    "tegami": "1.2.5"
+  },
+  "packageManager": "pnpm@11.7.0"
+}
