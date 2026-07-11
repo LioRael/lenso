@@ -1,15 +1,201 @@
 use lenso_service::{
-    ContractArtifactCheckErrorCode, ContractArtifactKind, ContractOwner, ContractSemanticKind,
-    LEGACY_CONTRACT_FIXTURES, MODULE_CONTRACT_SCHEMA_JSON, MODULE_RELEASE_SCHEMA_JSON,
-    ModuleContract, ModuleManifest, SERVICE_CONTRACT_SCHEMA_JSON, SERVICE_SYSTEM_SCHEMA_JSON,
+    AUTONOMOUS_SERVICE_V2_FIXTURE_JSON, AutonomousServiceContract, AutonomousServiceIssueCode,
+    AutonomousServiceStore, AutonomousServiceWorkload, ContractArtifactCheckErrorCode,
+    ContractArtifactKind, ContractOwner, ContractSemanticKind, LEGACY_CONTRACT_FIXTURES,
+    MODULE_CONTRACT_SCHEMA_JSON, MODULE_RELEASE_SCHEMA_JSON, ModuleContract, ModuleManifest,
+    SERVICE_CONTRACT_SCHEMA_JSON, SERVICE_SYSTEM_SCHEMA_JSON, SERVICE_V2_CONTRACT_SCHEMA_JSON,
     SERVICE_WORKSPACE_SCHEMA_JSON, ServiceCompatibility, ServiceContract, ServiceHealth,
     ServiceLocalProcess, ServiceProvider, ServiceSystem, ServiceSystemDependency,
-    ServiceSystemModule, ServiceSystemService, ServiceWorkspace, ServiceWorkspaceService,
-    check_contract_artifact_value, service_system_graph, validate_module_contract_value,
-    validate_service_contract_value, validate_service_system_value,
+    ServiceSystemModule, ServiceSystemService, ServiceTenancyMode, ServiceWorkspace,
+    ServiceWorkspaceService, WorkloadRole, check_contract_artifact_value, service_system_graph,
+    validate_module_contract_value, validate_service_contract_value, validate_service_system_value,
     validate_service_workspace_value,
 };
 use serde_json::json;
+
+#[test]
+fn autonomous_service_v2_fixture_round_trips_through_the_public_contract() {
+    let source: serde_json::Value =
+        serde_json::from_str(AUTONOMOUS_SERVICE_V2_FIXTURE_JSON).unwrap();
+    let contract: AutonomousServiceContract = serde_json::from_value(source.clone()).unwrap();
+
+    assert_eq!(contract.service_id, "support");
+    assert_eq!(contract.workloads.len(), 4);
+    assert_eq!(contract.workloads[0].role, WorkloadRole::API);
+    assert_eq!(contract.workloads[1].role, WorkloadRole::WORKER);
+    assert_eq!(contract.workloads[2].role, WorkloadRole::MIGRATION);
+    assert_eq!(contract.workloads[3].role.as_str(), "indexer");
+    assert_eq!(serde_json::to_value(&contract).unwrap(), source);
+    assert!(lenso_service::validate_autonomous_service_contract(&contract).is_empty());
+}
+
+#[test]
+fn autonomous_service_v2_identity_is_independent_of_runtime_topology() {
+    let service = AutonomousServiceContract::new(
+        "support",
+        vec![AutonomousServiceWorkload::new(
+            "support-api",
+            "support",
+            WorkloadRole::API,
+        )],
+        ServiceTenancyMode::Required,
+        vec!["cn-east-1".to_owned()],
+    );
+    let identity = service.service_id.clone();
+    let mut changed_topology = service.clone();
+    changed_topology
+        .workloads
+        .push(AutonomousServiceWorkload::new(
+            "support-worker",
+            "support",
+            WorkloadRole::WORKER,
+        ));
+    changed_topology.operating_regions = vec!["cn-east-1".to_owned(), "cn-north-1".to_owned()];
+
+    assert_eq!(changed_topology.service_id, identity);
+}
+
+#[test]
+fn autonomous_service_v2_validation_has_stable_codes_and_next_actions() {
+    let mut service = AutonomousServiceContract::new(
+        "support",
+        vec![
+            AutonomousServiceWorkload::new("api", "billing", WorkloadRole::API),
+            AutonomousServiceWorkload::new("api", "support", WorkloadRole::WORKER),
+        ],
+        ServiceTenancyMode::Optional,
+        vec![
+            "cn-east-1".to_owned(),
+            "cn-east-1".to_owned(),
+            "".to_owned(),
+        ],
+    );
+    service.stores = vec![
+        AutonomousServiceStore::new("primary", "support"),
+        AutonomousServiceStore::new("primary", "billing"),
+    ];
+
+    let issues = lenso_service::validate_autonomous_service_contract(&service);
+    let codes = issues.iter().map(|issue| issue.code).collect::<Vec<_>>();
+
+    assert_eq!(
+        codes,
+        vec![
+            AutonomousServiceIssueCode::WorkloadOwnerMismatch,
+            AutonomousServiceIssueCode::DuplicateWorkloadIdentity,
+            AutonomousServiceIssueCode::StoreOwnerMismatch,
+            AutonomousServiceIssueCode::DuplicateStoreIdentity,
+            AutonomousServiceIssueCode::DuplicateOperatingRegion,
+            AutonomousServiceIssueCode::InvalidOperatingRegion,
+        ]
+    );
+    assert!(issues.iter().all(|issue| !issue.next_action.is_empty()));
+}
+
+#[test]
+fn autonomous_service_v2_schema_and_artifact_check_agree() {
+    let schema: serde_json::Value = serde_json::from_str(SERVICE_V2_CONTRACT_SCHEMA_JSON).unwrap();
+    let source: serde_json::Value =
+        serde_json::from_str(AUTONOMOUS_SERVICE_V2_FIXTURE_JSON).unwrap();
+    let check = check_contract_artifact_value(&source).unwrap();
+
+    assert_eq!(schema["title"], "LensoAutonomousServiceContract");
+    assert_eq!(
+        schema["properties"]["protocol"]["const"],
+        "lenso.service.v2"
+    );
+    assert_eq!(check.semantic_kind, ContractSemanticKind::AutonomousService);
+    assert_eq!(check.detected_protocol, "lenso.service.v2");
+    assert!(check.autonomous_service.is_some());
+    assert!(check.provider_semantics.is_none());
+}
+
+#[test]
+fn autonomous_service_v2_raw_validation_rejects_invalid_tenancy_deterministically() {
+    let mut source: serde_json::Value =
+        serde_json::from_str(AUTONOMOUS_SERVICE_V2_FIXTURE_JSON).unwrap();
+    source["tenancyMode"] = json!("sometimes");
+
+    let issues = lenso_service::validate_autonomous_service_contract_value(&source);
+    assert_eq!(issues.len(), 1);
+    assert_eq!(
+        issues[0].code,
+        AutonomousServiceIssueCode::InvalidTenancyMode
+    );
+    assert_eq!(issues[0].path, "$.tenancyMode");
+    assert_eq!(
+        serde_json::to_value(&issues).unwrap()[0],
+        json!({
+            "code": "invalid_tenancy_mode",
+            "path": "$.tenancyMode",
+            "message": "tenancyMode must be `none`, `optional`, or `required`",
+            "nextAction": "Choose one supported Tenancy Mode."
+        })
+    );
+}
+
+#[test]
+fn autonomous_service_v2_check_rejects_schema_unknown_topology_fields() {
+    let mut source: serde_json::Value =
+        serde_json::from_str(AUTONOMOUS_SERVICE_V2_FIXTURE_JSON).unwrap();
+    source["endpoints"] = json!(["https://support.example"]);
+    source["workloads"][0]["instances"] = json!(3);
+    source["stores"][0]["deploymentTarget"] = json!("kubernetes");
+
+    let issues = lenso_service::validate_autonomous_service_contract_value(&source);
+    assert_eq!(issues.len(), 3);
+    assert!(issues.iter().all(|issue| {
+        issue.code == AutonomousServiceIssueCode::UnknownField && !issue.next_action.is_empty()
+    }));
+
+    let error = check_contract_artifact_value(&source).unwrap_err();
+    assert_eq!(
+        serde_json::to_value(error).unwrap()["code"],
+        "unknown_field"
+    );
+}
+
+#[test]
+fn autonomous_service_v2_check_uses_specific_validation_code_and_sorted_output() {
+    let mut source: serde_json::Value =
+        serde_json::from_str(AUTONOMOUS_SERVICE_V2_FIXTURE_JSON).unwrap();
+    source["workloads"].as_array_mut().unwrap().reverse();
+    let check = check_contract_artifact_value(&source).unwrap();
+    assert_eq!(
+        check.autonomous_service.unwrap().workloads,
+        [
+            "support-api",
+            "support-indexer",
+            "support-migrate",
+            "support-worker"
+        ]
+    );
+
+    source["tenancyMode"] = json!("sometimes");
+    let error = check_contract_artifact_value(&source).unwrap_err();
+    let output = serde_json::to_value(error).unwrap();
+    assert_eq!(output["code"], "invalid_tenancy_mode");
+    assert_eq!(output["path"], "$.tenancyMode");
+    assert_eq!(output["nextAction"], "Choose one supported Tenancy Mode.");
+}
+
+#[test]
+fn autonomous_service_v2_check_rejects_empty_optional_version() {
+    let mut source: serde_json::Value =
+        serde_json::from_str(AUTONOMOUS_SERVICE_V2_FIXTURE_JSON).unwrap();
+    source["version"] = json!("");
+
+    let error = check_contract_artifact_value(&source).unwrap_err();
+    assert_eq!(
+        serde_json::to_value(error).unwrap(),
+        json!({
+            "code": "invalid_version",
+            "path": "$.version",
+            "message": "version must be a non-empty string when present",
+            "nextAction": "Set a non-empty Service version or remove the optional field."
+        })
+    );
+}
 
 #[test]
 fn service_contract_serializes_provider_and_modules() {
@@ -340,21 +526,16 @@ fn legacy_contract_fixture_matrix_normalizes_to_provider_semantics() {
         let source: serde_json::Value = serde_json::from_str(fixture.json).unwrap();
         let original = source.clone();
         let check = check_contract_artifact_value(&source).unwrap();
+        let provider_semantics = check.provider_semantics.as_ref().unwrap();
 
         assert_eq!(check.detected_protocol, fixture.protocol);
         assert_eq!(check.semantic_kind, fixture.semantic_kind);
-        assert_eq!(check.provider_semantics.auth_owner, ContractOwner::Host);
-        assert_eq!(
-            check.provider_semantics.proxy_policy_owner,
-            ContractOwner::Host
-        );
-        assert_eq!(check.provider_semantics.retry_owner, ContractOwner::Host);
-        assert_eq!(
-            check.provider_semantics.runtime_queue_owner,
-            ContractOwner::Host
-        );
-        assert_eq!(check.provider_semantics.outbox_owner, ContractOwner::Host);
-        assert_eq!(check.provider_semantics.story_owner, ContractOwner::Host);
+        assert_eq!(provider_semantics.auth_owner, ContractOwner::Host);
+        assert_eq!(provider_semantics.proxy_policy_owner, ContractOwner::Host);
+        assert_eq!(provider_semantics.retry_owner, ContractOwner::Host);
+        assert_eq!(provider_semantics.runtime_queue_owner, ContractOwner::Host);
+        assert_eq!(provider_semantics.outbox_owner, ContractOwner::Host);
+        assert_eq!(provider_semantics.story_owner, ContractOwner::Host);
         assert_eq!(
             source, original,
             "normalization must not rewrite the source"
@@ -368,7 +549,7 @@ fn legacy_contract_fixture_matrix_normalizes_to_provider_semantics() {
     assert_eq!(service.artifact_kind, ContractArtifactKind::Service);
     assert_eq!(service.semantic_kind, ContractSemanticKind::Provider);
     assert_eq!(
-        service.provider_semantics.providers,
+        service.provider_semantics.unwrap().providers,
         ["support-suite-provider"]
     );
 
@@ -379,7 +560,7 @@ fn legacy_contract_fixture_matrix_normalizes_to_provider_semantics() {
     assert_eq!(system.artifact_kind, ContractArtifactKind::System);
     assert_eq!(system.semantic_kind, ContractSemanticKind::ProviderSystem);
     assert_eq!(
-        system.provider_semantics.providers,
+        system.provider_semantics.unwrap().providers,
         ["support-suite-provider"]
     );
 }
@@ -415,7 +596,7 @@ fn contract_artifact_check_rejects_ambiguous_protocols_with_next_action() {
     assert_eq!(error.path, "$.protocol");
     assert_eq!(
         error.next_action,
-        "Set `protocol` to a supported Provider-era artifact protocol."
+        "Set `protocol` to a supported Provider-era protocol or `lenso.service.v2`."
     );
     assert_eq!(
         serde_json::to_value(&error).unwrap()["code"],

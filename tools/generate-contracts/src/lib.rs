@@ -12,12 +12,21 @@ pub fn generate_contracts() -> anyhow::Result<()> {
         "contracts/errors/error-response.v1.schema.json",
         &error_response_schema(),
     )?;
+    write_json(
+        "contracts/services/lenso-service.v2.schema.json",
+        &generated_autonomous_service_schema(),
+    )?;
 
     Ok(())
 }
 
 pub fn generated_error_response_schema() -> Value {
     error_response_schema()
+}
+
+pub fn generated_autonomous_service_schema() -> Value {
+    serde_json::from_str(lenso_service::SERVICE_V2_CONTRACT_SCHEMA_JSON)
+        .expect("packaged Autonomous Service schema must be valid JSON")
 }
 
 fn write_yaml(path: impl AsRef<Path>, value: &impl serde::Serialize) -> anyhow::Result<()> {

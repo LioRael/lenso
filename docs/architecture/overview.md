@@ -84,6 +84,14 @@ connects legacy Providers, modules, environments, and capability dependencies
 without turning Kubernetes into a hard requirement. The `lenso.service.v1` and
 `lenso.system.v1` protocols keep this Host-managed Provider meaning; they are
 not Autonomous Service declarations.
+The separate `lenso.service.v2` protocol is the first contract-only Autonomous
+Service boundary. It gives a logical Service a stable `serviceId` independent
+of its Workload count or deployment topology, and declares its API, Worker,
+Migration, or extension Workloads alongside owned Modules, logical Service
+Stores, Tenancy Mode, and Operating Regions. Its authoritative fixture and
+packaged schema live in `crates/lenso-service`; `just generate` publishes the
+matching committed schema under `contracts/services/`. This slice adds no
+Autonomous Service runtime behavior.
 Route proxying is specified
 separately in `docs/architecture/module-remote-http-proxy.md`. Remote runtime
 execution and event-handler dispatch are scoped in
