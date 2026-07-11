@@ -23,6 +23,16 @@
       "type": "array",
       "items": { "$ref": "#/$defs/store" }
     },
+    "serviceContracts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/serviceContract" }
+    },
+    "eventContracts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/eventContract" }
+    },
+    "configContract": { "$ref": "#/$defs/configContract" },
+    "reliabilityContract": { "$ref": "#/$defs/reliabilityContract" },
     "tenancyMode": { "enum": ["none", "optional", "required"] },
     "operatingRegions": {
       "type": "array",
@@ -49,6 +59,111 @@
       "properties": {
         "storeId": { "type": "string", "minLength": 1 },
         "serviceId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "serviceContract": {
+      "type": "object",
+      "required": ["contractId", "moduleId", "version", "tenancyMode", "artifact", "context"],
+      "additionalProperties": false,
+      "properties": {
+        "contractId": { "type": "string", "minLength": 1 },
+        "moduleId": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "tenancyMode": { "enum": ["none", "optional", "required"] },
+        "artifact": { "$ref": "#/$defs/serviceArtifact" },
+        "context": { "$ref": "#/$defs/contextRequirements" }
+      }
+    },
+    "eventContract": {
+      "type": "object",
+      "required": ["contractId", "moduleId", "version", "tenancyMode", "artifact", "context"],
+      "additionalProperties": false,
+      "properties": {
+        "contractId": { "type": "string", "minLength": 1 },
+        "moduleId": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "tenancyMode": { "enum": ["none", "optional", "required"] },
+        "artifact": { "$ref": "#/$defs/eventArtifact" },
+        "context": { "$ref": "#/$defs/contextRequirements" }
+      }
+    },
+    "serviceArtifact": {
+      "type": "object",
+      "required": ["format", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "format": { "enum": ["openapi", "protobuf"] },
+        "path": { "type": "string", "minLength": 1 }
+      }
+    },
+    "eventArtifact": {
+      "type": "object",
+      "required": ["format", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "format": { "enum": ["json_schema", "protobuf"] },
+        "path": { "type": "string", "minLength": 1 }
+      }
+    },
+    "contextRequirements": {
+      "type": "object",
+      "required": ["protocol", "required"],
+      "additionalProperties": false,
+      "properties": {
+        "protocol": { "const": "lenso.context.v1" },
+        "required": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "enum": ["story", "trace", "service_principal", "delegated_actor", "tenant", "deadline", "idempotency_key", "causation", "region"] }
+        }
+      }
+    },
+    "schemaArtifact": {
+      "type": "object",
+      "required": ["path"],
+      "additionalProperties": false,
+      "properties": { "path": { "type": "string", "minLength": 1 } }
+    },
+    "configContract": {
+      "type": "object",
+      "required": ["contractId", "version", "artifact", "fields"],
+      "additionalProperties": false,
+      "properties": {
+        "contractId": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "artifact": { "$ref": "#/$defs/schemaArtifact" },
+        "fields": { "type": "array", "items": { "$ref": "#/$defs/configField" } }
+      }
+    },
+    "configField": {
+      "type": "object",
+      "required": ["path", "shape", "sensitive", "scope", "mutability", "activation"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "shape": { "type": "string", "minLength": 1 },
+        "sensitive": { "type": "boolean" },
+        "scope": { "enum": ["service", "region", "tenant"] },
+        "mutability": { "enum": ["immutable", "mutable"] },
+        "activation": { "enum": ["hot", "restart"] }
+      }
+    },
+    "reliabilityContract": {
+      "type": "object",
+      "required": ["contractId", "version", "artifact", "availabilityTarget", "latencyTargetMs", "dependencyCriticality", "healthSemantics", "degradedModes", "backlogLimit", "errorBudget", "rolloutSafety"],
+      "additionalProperties": false,
+      "properties": {
+        "contractId": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "artifact": { "$ref": "#/$defs/schemaArtifact" },
+        "availabilityTarget": { "type": "string", "minLength": 1 },
+        "latencyTargetMs": { "type": "integer", "minimum": 0 },
+        "dependencyCriticality": { "type": "object", "additionalProperties": { "enum": ["critical", "degradable", "optional"] } },
+        "healthSemantics": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "degradedModes": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "backlogLimit": { "type": "integer", "minimum": 0 },
+        "errorBudget": { "type": "string", "minLength": 1 },
+        "rolloutSafety": { "type": "array", "items": { "type": "string", "minLength": 1 } }
       }
     }
   }

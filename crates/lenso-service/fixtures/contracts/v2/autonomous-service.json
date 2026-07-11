@@ -12,6 +12,56 @@
   "stores": [
     { "storeId": "primary", "serviceId": "support" }
   ],
+  "serviceContracts": [
+    {
+      "contractId": "support-http",
+      "moduleId": "support-ticket",
+      "version": "v1",
+      "tenancyMode": "required",
+      "artifact": { "format": "openapi", "path": "contracts/openapi/support.v1.yaml" },
+      "context": { "protocol": "lenso.context.v1", "required": ["story", "trace", "service_principal", "tenant", "deadline", "idempotency_key"] }
+    },
+    {
+      "contractId": "support-grpc",
+      "moduleId": "support-sla",
+      "version": "v1",
+      "tenancyMode": "required",
+      "artifact": { "format": "protobuf", "path": "contracts/protobuf/support.v1.proto" },
+      "context": { "protocol": "lenso.context.v1", "required": ["trace", "service_principal", "tenant", "deadline"] }
+    }
+  ],
+  "eventContracts": [
+    {
+      "contractId": "ticket-opened",
+      "moduleId": "support-ticket",
+      "version": "v1",
+      "tenancyMode": "required",
+      "artifact": { "format": "json_schema", "path": "contracts/events/support/support.ticket-opened.v1.schema.json" },
+      "context": { "protocol": "lenso.context.v1", "required": ["story", "trace", "service_principal", "tenant", "causation", "region"] }
+    }
+  ],
+  "configContract": {
+    "contractId": "support-config",
+    "version": "v1",
+    "artifact": { "path": "contracts/config/support.v1.schema.json" },
+    "fields": [
+      { "path": "sla.defaultHours", "shape": "positive_integer", "sensitive": false, "scope": "service", "mutability": "mutable", "activation": "hot" },
+      { "path": "notifications.webhookSecret", "shape": "secret_reference", "sensitive": true, "scope": "tenant", "mutability": "mutable", "activation": "restart" }
+    ]
+  },
+  "reliabilityContract": {
+    "contractId": "support-reliability",
+    "version": "v1",
+    "artifact": { "path": "contracts/reliability/support.v1.schema.json" },
+    "availabilityTarget": "99.9%",
+    "latencyTargetMs": 300,
+    "dependencyCriticality": { "notification-gateway": "degradable" },
+    "healthSemantics": ["ready means requests can be served"],
+    "degradedModes": ["queue notifications while gateway is unavailable"],
+    "backlogLimit": 10000,
+    "errorBudget": "43m per 30d",
+    "rolloutSafety": ["rollback when error rate exceeds 2% for 5m"]
+  },
   "tenancyMode": "required",
   "operatingRegions": ["cn-east-1"]
 }

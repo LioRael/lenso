@@ -92,6 +92,8 @@ Stores, Tenancy Mode, and Operating Regions. Its authoritative fixture and
 packaged schema live in `crates/lenso-service`; `just generate` publishes the
 matching committed schema under `contracts/services/`. This slice adds no
 Autonomous Service runtime behavior.
+Its versioned Service, Event, Config, and Reliability Contract declarations are
+specified in [`autonomous-service-contract-artifacts.md`](autonomous-service-contract-artifacts.md).
 The separate [`lenso.context.v1`](common-context-contracts.md) envelope
 publishes Story, trace, identity, tenant, deadline, idempotency, causation, and
 region declarations without adding runtime propagation or enforcement.

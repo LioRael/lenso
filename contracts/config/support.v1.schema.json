@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.lenso.local/config/support.v1.schema.json",
+  "title": "SupportConfigV1",
+  "type": "object",
+  "properties": {
+    "sla.defaultHours": { "type": "integer", "minimum": 1 },
+    "notifications.webhookSecret": { "type": "string", "minLength": 1 }
+  },
+  "additionalProperties": false
+}
