@@ -851,9 +851,16 @@ async fn available_modules_returns_remote_install_rows() {
         body["modules"][0]["hostCompatibility"]["consolePackageApi"],
         "1"
     );
-    assert_eq!(
-        body["modules"][0]["hostCompatibility"]["lensoVersion"],
-        "0.1.9"
+    let host_version = body["modules"][0]["hostCompatibility"]["lensoVersion"]
+        .as_str()
+        .expect("host compatibility includes the current Lenso version");
+    assert!(
+        host_version
+            .split('.')
+            .map(str::parse::<u64>)
+            .collect::<Result<Vec<_>, _>>()
+            .is_ok_and(|components| components.len() == 3),
+        "host Lenso version must be a numeric semver: {host_version}"
     );
     assert_eq!(body["modules"][0]["manifestStatus"], "ok");
     assert_eq!(body["modules"][0]["status"], "ready");
@@ -1945,7 +1952,7 @@ async fn available_modules_reads_local_module_catalog() {
                     "consolePackageApi": "1",
                     "lenso": {
                         "minVersion": "0.1.0",
-                        "maxVersion": "0.1.9"
+                        "maxVersion": "0.999.0"
                     }
                 },
                 "consolePackages": [{
@@ -3157,9 +3164,12 @@ async fn available_modules_marks_catalog_preflight_issues() {
     assert_eq!(body["catalog"]["modules"], 4);
     assert_eq!(body["issues"].as_array().expect("issues array").len(), 3);
     assert_eq!(body["issues"][0]["group"], "Compatibility");
+    let host_version = body["modules"][0]["hostCompatibility"]["lensoVersion"]
+        .as_str()
+        .expect("host compatibility includes the current Lenso version");
     assert_eq!(
         body["issues"][0]["message"],
-        "billing requires Lenso >= 0.2.0; host is 0.1.9"
+        format!("billing requires Lenso >= 0.2.0; host is {host_version}")
     );
     assert_eq!(body["issues"][1]["group"], "Catalog");
     assert_eq!(body["issues"][1]["message"], "local-crm baseUrl is missing");
