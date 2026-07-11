@@ -102,6 +102,21 @@ pub enum ContractArtifactCheckErrorCode {
     AmbiguousProtocol,
     UnsupportedProtocol,
     InvalidArtifact,
+    UnknownField,
+    InvalidProtocol,
+    InvalidServiceIdentity,
+    InvalidWorkloadIdentity,
+    WorkloadOwnerMismatch,
+    DuplicateWorkloadIdentity,
+    InvalidWorkloadRole,
+    InvalidModuleIdentity,
+    DuplicateModuleIdentity,
+    InvalidStoreIdentity,
+    StoreOwnerMismatch,
+    DuplicateStoreIdentity,
+    InvalidTenancyMode,
+    InvalidOperatingRegion,
+    DuplicateOperatingRegion,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1011,7 +1026,7 @@ impl<'de> Deserialize<'de> for WorkloadRole {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AutonomousServiceWorkload {
     pub workload_id: String,
     pub service_id: String,
@@ -1034,7 +1049,7 @@ impl AutonomousServiceWorkload {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AutonomousServiceStore {
     pub store_id: String,
     pub service_id: String,
@@ -1051,7 +1066,7 @@ impl AutonomousServiceStore {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AutonomousServiceContract {
     pub protocol: String,
     pub service_id: String,
@@ -1090,6 +1105,7 @@ impl AutonomousServiceContract {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AutonomousServiceIssueCode {
+    UnknownField,
     InvalidProtocol,
     InvalidServiceIdentity,
     InvalidWorkloadIdentity,
@@ -1104,6 +1120,30 @@ pub enum AutonomousServiceIssueCode {
     InvalidTenancyMode,
     InvalidOperatingRegion,
     DuplicateOperatingRegion,
+}
+
+impl From<AutonomousServiceIssueCode> for ContractArtifactCheckErrorCode {
+    fn from(code: AutonomousServiceIssueCode) -> Self {
+        match code {
+            AutonomousServiceIssueCode::UnknownField => Self::UnknownField,
+            AutonomousServiceIssueCode::InvalidProtocol => Self::InvalidProtocol,
+            AutonomousServiceIssueCode::InvalidServiceIdentity => Self::InvalidServiceIdentity,
+            AutonomousServiceIssueCode::InvalidWorkloadIdentity => Self::InvalidWorkloadIdentity,
+            AutonomousServiceIssueCode::WorkloadOwnerMismatch => Self::WorkloadOwnerMismatch,
+            AutonomousServiceIssueCode::DuplicateWorkloadIdentity => {
+                Self::DuplicateWorkloadIdentity
+            }
+            AutonomousServiceIssueCode::InvalidWorkloadRole => Self::InvalidWorkloadRole,
+            AutonomousServiceIssueCode::InvalidModuleIdentity => Self::InvalidModuleIdentity,
+            AutonomousServiceIssueCode::DuplicateModuleIdentity => Self::DuplicateModuleIdentity,
+            AutonomousServiceIssueCode::InvalidStoreIdentity => Self::InvalidStoreIdentity,
+            AutonomousServiceIssueCode::StoreOwnerMismatch => Self::StoreOwnerMismatch,
+            AutonomousServiceIssueCode::DuplicateStoreIdentity => Self::DuplicateStoreIdentity,
+            AutonomousServiceIssueCode::InvalidTenancyMode => Self::InvalidTenancyMode,
+            AutonomousServiceIssueCode::InvalidOperatingRegion => Self::InvalidOperatingRegion,
+            AutonomousServiceIssueCode::DuplicateOperatingRegion => Self::DuplicateOperatingRegion,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1513,13 +1553,9 @@ pub fn check_contract_artifact_value(
         let issues = validate_autonomous_service_contract_value(value);
         if let Some(issue) = issues.first() {
             return Err(ContractArtifactCheckError {
-                code: ContractArtifactCheckErrorCode::InvalidArtifact,
+                code: issue.code.into(),
                 path: issue.path.clone(),
-                message: format!(
-                    "{}: {}",
-                    serde_json::to_value(issue.code).unwrap_or_default(),
-                    issue.message
-                ),
+                message: issue.message.clone(),
                 next_action: issue.next_action.clone(),
             });
         }
@@ -1537,11 +1573,15 @@ pub fn check_contract_artifact_value(
             provider_semantics: None,
             autonomous_service: Some(AutonomousServiceSummary {
                 service_id: contract.service_id,
-                workloads: contract
-                    .workloads
-                    .into_iter()
-                    .map(|workload| workload.workload_id)
-                    .collect(),
+                workloads: {
+                    let mut workloads = contract
+                        .workloads
+                        .into_iter()
+                        .map(|workload| workload.workload_id)
+                        .collect::<Vec<_>>();
+                    workloads.sort();
+                    workloads
+                },
             }),
         });
     }
@@ -1644,6 +1684,21 @@ pub fn validate_autonomous_service_contract_value(value: &Value) -> Vec<Autonomo
         );
         return issues;
     };
+    validate_unknown_fields(
+        object,
+        "$",
+        &[
+            "protocol",
+            "serviceId",
+            "version",
+            "workloads",
+            "modules",
+            "stores",
+            "tenancyMode",
+            "operatingRegions",
+        ],
+        &mut issues,
+    );
     if object.get("protocol").and_then(Value::as_str) != Some(AUTONOMOUS_SERVICE_PROTOCOL) {
         push_autonomous_issue(
             &mut issues,
@@ -1671,6 +1726,14 @@ pub fn validate_autonomous_service_contract_value(value: &Value) -> Vec<Autonomo
         Some(workloads) if !workloads.is_empty() => {
             for (index, workload) in workloads.iter().enumerate() {
                 let path = format!("$.workloads[{index}]");
+                if let Some(object) = workload.as_object() {
+                    validate_unknown_fields(
+                        object,
+                        &path,
+                        &["workloadId", "serviceId", "role"],
+                        &mut issues,
+                    );
+                }
                 let id = workload
                     .get("workloadId")
                     .and_then(Value::as_str)
@@ -1789,6 +1852,28 @@ fn push_autonomous_issue(
     });
 }
 
+fn validate_unknown_fields(
+    object: &serde_json::Map<String, Value>,
+    path: &str,
+    allowed: &[&str],
+    issues: &mut Vec<AutonomousServiceIssue>,
+) {
+    let mut unknown = object
+        .keys()
+        .filter(|key| !allowed.contains(&key.as_str()))
+        .collect::<Vec<_>>();
+    unknown.sort();
+    for field in unknown {
+        push_autonomous_issue(
+            issues,
+            AutonomousServiceIssueCode::UnknownField,
+            format!("{path}.{field}"),
+            format!("unknown field `{field}`"),
+            "Remove the field or upgrade to a contract version that declares it.",
+        );
+    }
+}
+
 fn validate_unique_strings(
     value: Option<&Value>,
     field: &str,
@@ -1844,6 +1929,9 @@ fn validate_owned_identities(
     let mut seen = BTreeSet::new();
     for (index, value) in values.iter().enumerate() {
         let base = format!("$.{field}[{index}]");
+        if let Some(object) = value.as_object() {
+            validate_unknown_fields(object, &base, &[identity_field, "serviceId"], issues);
+        }
         let identity = value
             .get(identity_field)
             .and_then(Value::as_str)

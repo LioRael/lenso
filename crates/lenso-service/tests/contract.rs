@@ -135,6 +135,51 @@ fn autonomous_service_v2_raw_validation_rejects_invalid_tenancy_deterministicall
 }
 
 #[test]
+fn autonomous_service_v2_check_rejects_schema_unknown_topology_fields() {
+    let mut source: serde_json::Value =
+        serde_json::from_str(AUTONOMOUS_SERVICE_V2_FIXTURE_JSON).unwrap();
+    source["endpoints"] = json!(["https://support.example"]);
+    source["workloads"][0]["instances"] = json!(3);
+    source["stores"][0]["deploymentTarget"] = json!("kubernetes");
+
+    let issues = lenso_service::validate_autonomous_service_contract_value(&source);
+    assert_eq!(issues.len(), 3);
+    assert!(issues.iter().all(|issue| {
+        issue.code == AutonomousServiceIssueCode::UnknownField && !issue.next_action.is_empty()
+    }));
+
+    let error = check_contract_artifact_value(&source).unwrap_err();
+    assert_eq!(
+        serde_json::to_value(error).unwrap()["code"],
+        "unknown_field"
+    );
+}
+
+#[test]
+fn autonomous_service_v2_check_uses_specific_validation_code_and_sorted_output() {
+    let mut source: serde_json::Value =
+        serde_json::from_str(AUTONOMOUS_SERVICE_V2_FIXTURE_JSON).unwrap();
+    source["workloads"].as_array_mut().unwrap().reverse();
+    let check = check_contract_artifact_value(&source).unwrap();
+    assert_eq!(
+        check.autonomous_service.unwrap().workloads,
+        [
+            "support-api",
+            "support-indexer",
+            "support-migrate",
+            "support-worker"
+        ]
+    );
+
+    source["tenancyMode"] = json!("sometimes");
+    let error = check_contract_artifact_value(&source).unwrap_err();
+    let output = serde_json::to_value(error).unwrap();
+    assert_eq!(output["code"], "invalid_tenancy_mode");
+    assert_eq!(output["path"], "$.tenancyMode");
+    assert_eq!(output["nextAction"], "Choose one supported Tenancy Mode.");
+}
+
+#[test]
 fn service_contract_serializes_provider_and_modules() {
     let contract = ServiceContract::new(
         "support-suite-provider",
