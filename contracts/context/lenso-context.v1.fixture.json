@@ -1,0 +1,74 @@
+{
+  "causation": {
+    "causationId": "request_01",
+    "correlationId": "operation_01"
+  },
+  "deadline": {
+    "expiresAtUnixMs": 1783824600000
+  },
+  "delegatedActor": {
+    "audiences": [
+      "support-api"
+    ],
+    "delegationId": "delegation_01",
+    "expiresAtUnixMs": 1783824900000,
+    "issuer": "https://identity.example.com",
+    "permissions": [
+      "support.cases.create"
+    ],
+    "proof": {
+      "algorithm": "EdDSA",
+      "signature": "base64url-signature-delegation",
+      "verificationMethod": "https://identity.example.com/keys/delegation-01"
+    },
+    "subject": "user_01"
+  },
+  "idempotencyKey": {
+    "scope": "support.cases.create",
+    "value": "create-case-01"
+  },
+  "protocol": "lenso.context.v1",
+  "region": {
+    "failureDomain": "cn-east-1a",
+    "operatingRegion": "cn-east-1"
+  },
+  "servicePrincipal": {
+    "audiences": [
+      "support-api"
+    ],
+    "credentialId": "credential_01",
+    "expiresAtUnixMs": 1783825200000,
+    "issuer": "https://identity.example.com",
+    "proof": {
+      "algorithm": "EdDSA",
+      "signature": "base64url-signature-service",
+      "verificationMethod": "https://identity.example.com/keys/workload-01"
+    },
+    "subject": "spiffe://example.com/service/support"
+  },
+  "story": {
+    "segmentId": "segment_support_api_01",
+    "storyId": "story_support_case_01"
+  },
+  "tenant": {
+    "audiences": [
+      "support-api"
+    ],
+    "claimId": "tenant_claim_01",
+    "expiresAtUnixMs": 1783824900000,
+    "issuer": "https://identity.example.com",
+    "proof": {
+      "algorithm": "EdDSA",
+      "signature": "base64url-signature-tenant",
+      "verificationMethod": "https://identity.example.com/keys/tenant-01"
+    },
+    "tenantId": "tenant_01"
+  },
+  "trace": {
+    "baggage": {
+      "diagnostic.sample": "true"
+    },
+    "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+    "tracestate": "vendor=opaque"
+  }
+}

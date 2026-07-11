@@ -1,17 +1,155 @@
 use lenso_service::{
     AUTONOMOUS_SERVICE_V2_FIXTURE_JSON, AutonomousServiceContract, AutonomousServiceIssueCode,
-    AutonomousServiceStore, AutonomousServiceWorkload, ContractArtifactCheckErrorCode,
-    ContractArtifactKind, ContractOwner, ContractSemanticKind, LEGACY_CONTRACT_FIXTURES,
-    MODULE_CONTRACT_SCHEMA_JSON, MODULE_RELEASE_SCHEMA_JSON, ModuleContract, ModuleManifest,
-    SERVICE_CONTRACT_SCHEMA_JSON, SERVICE_SYSTEM_SCHEMA_JSON, SERVICE_V2_CONTRACT_SCHEMA_JSON,
-    SERVICE_WORKSPACE_SCHEMA_JSON, ServiceCompatibility, ServiceContract, ServiceHealth,
-    ServiceLocalProcess, ServiceProvider, ServiceSystem, ServiceSystemDependency,
-    ServiceSystemModule, ServiceSystemService, ServiceTenancyMode, ServiceWorkspace,
-    ServiceWorkspaceService, WorkloadRole, check_contract_artifact_value, service_system_graph,
-    validate_module_contract_value, validate_service_contract_value, validate_service_system_value,
-    validate_service_workspace_value,
+    AutonomousServiceStore, AutonomousServiceWorkload, COMMON_CONTEXT_V1_FIXTURE_JSON,
+    COMMON_CONTEXT_V1_SCHEMA_JSON, CommonContextContract, CommonContextIssueCode,
+    ContractArtifactCheckErrorCode, ContractArtifactKind, ContractOwner, ContractSemanticKind,
+    LEGACY_CONTRACT_FIXTURES, MODULE_CONTRACT_SCHEMA_JSON, MODULE_RELEASE_SCHEMA_JSON,
+    ModuleContract, ModuleManifest, SERVICE_CONTRACT_SCHEMA_JSON, SERVICE_SYSTEM_SCHEMA_JSON,
+    SERVICE_V2_CONTRACT_SCHEMA_JSON, SERVICE_WORKSPACE_SCHEMA_JSON, ServiceCompatibility,
+    ServiceContract, ServiceHealth, ServiceLocalProcess, ServiceProvider, ServiceSystem,
+    ServiceSystemDependency, ServiceSystemModule, ServiceSystemService, ServiceTenancyMode,
+    ServiceWorkspace, ServiceWorkspaceService, WorkloadRole, check_contract_artifact_value,
+    service_system_graph, validate_module_contract_value, validate_service_contract_value,
+    validate_service_system_value, validate_service_workspace_value,
 };
 use serde_json::json;
+
+#[test]
+fn common_context_v1_fixture_round_trips_through_the_public_contract() {
+    let source: serde_json::Value = serde_json::from_str(COMMON_CONTEXT_V1_FIXTURE_JSON).unwrap();
+    let contract: CommonContextContract = serde_json::from_value(source.clone()).unwrap();
+
+    assert_eq!(contract.story.story_id, "story_support_case_01");
+    assert_eq!(
+        contract.trace.traceparent,
+        "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+    );
+    assert_eq!(
+        contract.service_principal.subject,
+        "spiffe://example.com/service/support"
+    );
+    assert_eq!(contract.delegated_actor.subject, "user_01");
+    assert_eq!(contract.tenant.tenant_id, "tenant_01");
+    assert_eq!(contract.idempotency_key.value, "create-case-01");
+    assert_eq!(contract.causation.causation_id, "request_01");
+    assert_eq!(contract.region.operating_region, "cn-east-1");
+    assert_eq!(serde_json::to_value(&contract).unwrap(), source);
+    assert!(lenso_service::validate_common_context_contract(&contract).is_empty());
+}
+
+#[test]
+fn common_context_v1_rejects_authorization_claims_from_baggage() {
+    let mut source: serde_json::Value =
+        serde_json::from_str(COMMON_CONTEXT_V1_FIXTURE_JSON).unwrap();
+    source["trace"]["baggage"] = json!({
+        "auth.actor": "user_from_baggage",
+        "actorSubject": "user_from_camel_case_baggage",
+        "tenantId": "tenant_from_camel_case_baggage",
+        "x-tenant": "tenant_from_baggage"
+    });
+
+    let issues = lenso_service::validate_common_context_contract_value(&source);
+    assert_eq!(issues.len(), 4);
+    assert_eq!(issues[0].code, CommonContextIssueCode::UntrustedActorClaim);
+    assert_eq!(issues[0].path, "$.trace.baggage.actorSubject");
+    assert_eq!(issues[1].code, CommonContextIssueCode::UntrustedActorClaim);
+    assert_eq!(issues[1].path, "$.trace.baggage.auth.actor");
+    assert_eq!(issues[2].code, CommonContextIssueCode::UntrustedTenantClaim);
+    assert_eq!(issues[2].path, "$.trace.baggage.tenantId");
+    assert_eq!(issues[3].code, CommonContextIssueCode::UntrustedTenantClaim);
+    assert_eq!(issues[3].path, "$.trace.baggage.x-tenant");
+    assert!(issues.iter().all(|issue| !issue.next_action.is_empty()));
+}
+
+#[test]
+fn common_context_v1_allows_non_authorization_baggage() {
+    let mut source: serde_json::Value =
+        serde_json::from_str(COMMON_CONTEXT_V1_FIXTURE_JSON).unwrap();
+    source["trace"]["baggage"] = json!({
+        "workflow.id": "workflow_01",
+        "vendor.routing": "canary",
+        "experiment": "context-v1"
+    });
+
+    assert!(lenso_service::validate_common_context_contract_value(&source).is_empty());
+}
+
+#[test]
+fn common_context_v1_validates_the_receiving_audience() {
+    let contract: CommonContextContract =
+        serde_json::from_str(COMMON_CONTEXT_V1_FIXTURE_JSON).unwrap();
+
+    assert!(
+        lenso_service::validate_common_context_contract_for_audience(&contract, "support-api")
+            .is_empty()
+    );
+    let issues =
+        lenso_service::validate_common_context_contract_for_audience(&contract, "billing-api");
+    assert_eq!(issues.len(), 3);
+    assert!(
+        issues
+            .iter()
+            .all(|issue| issue.code == CommonContextIssueCode::AudienceMismatch)
+    );
+}
+
+#[test]
+fn common_context_v1_requires_bounded_delegated_permissions() {
+    let mut source: serde_json::Value =
+        serde_json::from_str(COMMON_CONTEXT_V1_FIXTURE_JSON).unwrap();
+    source["delegatedActor"]["permissions"] = json!([]);
+
+    let issues = lenso_service::validate_common_context_contract_value(&source);
+    assert_eq!(issues.len(), 1);
+    assert_eq!(
+        issues[0].code,
+        CommonContextIssueCode::InvalidDelegatedActorContext
+    );
+    assert_eq!(issues[0].path, "$.delegatedActor.permissions");
+    assert_eq!(
+        issues[0].next_action,
+        "Declare at least one permission narrowed for this delegation."
+    );
+}
+
+#[test]
+fn common_context_v1_keeps_identifiers_and_identity_boundaries_distinct() {
+    let source: serde_json::Value = serde_json::from_str(COMMON_CONTEXT_V1_FIXTURE_JSON).unwrap();
+
+    assert_ne!(source["story"]["storyId"], source["trace"]["traceparent"]);
+    assert_ne!(
+        source["idempotencyKey"]["value"],
+        source["causation"]["causationId"]
+    );
+    assert_ne!(
+        source["region"]["operatingRegion"],
+        source["servicePrincipal"]["subject"]
+    );
+}
+
+#[test]
+fn common_context_v1_schema_covers_every_context_contract() {
+    let schema: serde_json::Value = serde_json::from_str(COMMON_CONTEXT_V1_SCHEMA_JSON).unwrap();
+
+    assert_eq!(schema["title"], "LensoCommonContextContract");
+    assert_eq!(
+        schema["properties"]["protocol"]["const"],
+        "lenso.context.v1"
+    );
+    for field in [
+        "story",
+        "trace",
+        "servicePrincipal",
+        "delegatedActor",
+        "tenant",
+        "deadline",
+        "idempotencyKey",
+        "causation",
+        "region",
+    ] {
+        assert!(schema["properties"].get(field).is_some(), "missing {field}");
+    }
+}
 
 #[test]
 fn autonomous_service_v2_fixture_round_trips_through_the_public_contract() {

@@ -16,6 +16,18 @@ pub fn generate_contracts() -> anyhow::Result<()> {
         "contracts/services/lenso-service.v2.schema.json",
         &generated_autonomous_service_schema(),
     )?;
+    write_json(
+        "contracts/context/lenso-context.v1.schema.json",
+        &generated_common_context_schema(),
+    )?;
+    write_json(
+        "contracts/context/lenso-context.v1.fixture.json",
+        &generated_common_context_fixture(),
+    )?;
+    write_text(
+        "docs/architecture/common-context-contracts.md",
+        generated_common_context_glossary(),
+    )?;
 
     Ok(())
 }
@@ -27,6 +39,20 @@ pub fn generated_error_response_schema() -> Value {
 pub fn generated_autonomous_service_schema() -> Value {
     serde_json::from_str(lenso_service::SERVICE_V2_CONTRACT_SCHEMA_JSON)
         .expect("packaged Autonomous Service schema must be valid JSON")
+}
+
+pub fn generated_common_context_schema() -> Value {
+    serde_json::from_str(lenso_service::COMMON_CONTEXT_V1_SCHEMA_JSON)
+        .expect("packaged common context schema must be valid JSON")
+}
+
+pub fn generated_common_context_fixture() -> Value {
+    serde_json::from_str(lenso_service::COMMON_CONTEXT_V1_FIXTURE_JSON)
+        .expect("packaged common context fixture must be valid JSON")
+}
+
+pub fn generated_common_context_glossary() -> &'static str {
+    lenso_service::COMMON_CONTEXT_GLOSSARY_MARKDOWN
 }
 
 fn write_yaml(path: impl AsRef<Path>, value: &impl serde::Serialize) -> anyhow::Result<()> {
@@ -44,6 +70,12 @@ fn write_json(path: impl AsRef<Path>, value: &Value) -> anyhow::Result<()> {
         serde_json::to_string_pretty(value).context("contract should serialize as json")?
     );
     fs::write(path, rendered).with_context(|| format!("failed to write {}", path.display()))
+}
+
+fn write_text(path: impl AsRef<Path>, value: &str) -> anyhow::Result<()> {
+    let path = path.as_ref();
+    ensure_parent(path)?;
+    fs::write(path, value).with_context(|| format!("failed to write {}", path.display()))
 }
 
 fn ensure_parent(path: &Path) -> anyhow::Result<()> {

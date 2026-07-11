@@ -92,6 +92,9 @@ Stores, Tenancy Mode, and Operating Regions. Its authoritative fixture and
 packaged schema live in `crates/lenso-service`; `just generate` publishes the
 matching committed schema under `contracts/services/`. This slice adds no
 Autonomous Service runtime behavior.
+The separate [`lenso.context.v1`](common-context-contracts.md) envelope
+publishes Story, trace, identity, tenant, deadline, idempotency, causation, and
+region declarations without adding runtime propagation or enforcement.
 Route proxying is specified
 separately in `docs/architecture/module-remote-http-proxy.md`. Remote runtime
 execution and event-handler dispatch are scoped in

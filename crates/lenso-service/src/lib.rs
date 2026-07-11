@@ -7,6 +7,7 @@ pub use lenso_contracts::ModuleManifest;
 
 pub const SERVICE_CONTRACT_PROTOCOL: &str = "lenso.service.v1";
 pub const AUTONOMOUS_SERVICE_PROTOCOL: &str = "lenso.service.v2";
+pub const COMMON_CONTEXT_PROTOCOL: &str = "lenso.context.v1";
 pub const SERVICE_PACKAGE_PROTOCOL: &str = "lenso.service-package.v1";
 pub const SERVICE_WORKSPACE_PROTOCOL: &str = "lenso.service-workspace.v1";
 pub const SERVICE_RELEASE_PLAN_PROTOCOL: &str = "lenso.service-release-plan.v1";
@@ -17,6 +18,8 @@ pub const SERVICE_CONTRACT_SCHEMA_JSON: &str =
     include_str!("../schemas/lenso-service.v1.schema.json");
 pub const SERVICE_V2_CONTRACT_SCHEMA_JSON: &str =
     include_str!("../schemas/lenso-service.v2.schema.json");
+pub const COMMON_CONTEXT_V1_SCHEMA_JSON: &str =
+    include_str!("../schemas/lenso-context.v1.schema.json");
 pub const SERVICE_PACKAGE_SCHEMA_JSON: &str =
     include_str!("../schemas/lenso-service-package.v1.schema.json");
 pub const SERVICE_WORKSPACE_SCHEMA_JSON: &str =
@@ -32,6 +35,435 @@ pub const LEGACY_SYSTEM_V1_FIXTURE_JSON: &str =
     include_str!("../fixtures/contracts/v1/system-provider.json");
 pub const AUTONOMOUS_SERVICE_V2_FIXTURE_JSON: &str =
     include_str!("../fixtures/contracts/v2/autonomous-service.json");
+pub const COMMON_CONTEXT_V1_FIXTURE_JSON: &str =
+    include_str!("../fixtures/contracts/v1/common-context.json");
+pub const COMMON_CONTEXT_GLOSSARY_MARKDOWN: &str =
+    include_str!("../docs/common-context-contracts.md");
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct StoryContext {
+    pub story_id: String,
+    pub segment_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TraceContext {
+    pub traceparent: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tracestate: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub baggage: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ContextClaimProof {
+    pub verification_method: String,
+    pub algorithm: String,
+    pub signature: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ServicePrincipal {
+    pub issuer: String,
+    pub subject: String,
+    pub audiences: Vec<String>,
+    pub expires_at_unix_ms: u64,
+    pub credential_id: String,
+    pub proof: ContextClaimProof,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DelegatedActorContext {
+    pub issuer: String,
+    pub subject: String,
+    pub audiences: Vec<String>,
+    pub permissions: Vec<String>,
+    pub expires_at_unix_ms: u64,
+    pub delegation_id: String,
+    pub proof: ContextClaimProof,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TenantContext {
+    pub issuer: String,
+    pub tenant_id: String,
+    pub audiences: Vec<String>,
+    pub expires_at_unix_ms: u64,
+    pub claim_id: String,
+    pub proof: ContextClaimProof,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DeadlineContext {
+    pub expires_at_unix_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct IdempotencyKeyContext {
+    pub value: String,
+    pub scope: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CausationContext {
+    pub causation_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub correlation_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RegionContext {
+    pub operating_region: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_domain: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CommonContextContract {
+    pub protocol: String,
+    pub story: StoryContext,
+    pub trace: TraceContext,
+    pub service_principal: ServicePrincipal,
+    pub delegated_actor: DelegatedActorContext,
+    pub tenant: TenantContext,
+    pub deadline: DeadlineContext,
+    pub idempotency_key: IdempotencyKeyContext,
+    pub causation: CausationContext,
+    pub region: RegionContext,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CommonContextIssueCode {
+    InvalidProtocol,
+    InvalidStoryContext,
+    InvalidTraceContext,
+    InvalidServicePrincipal,
+    InvalidDelegatedActorContext,
+    InvalidTenantContext,
+    InvalidDeadline,
+    InvalidIdempotencyKey,
+    InvalidCausation,
+    InvalidRegion,
+    UntrustedActorClaim,
+    UntrustedTenantClaim,
+    AudienceMismatch,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommonContextIssue {
+    pub code: CommonContextIssueCode,
+    pub path: String,
+    pub message: String,
+    pub next_action: String,
+}
+
+#[must_use]
+pub fn validate_common_context_contract(
+    contract: &CommonContextContract,
+) -> Vec<CommonContextIssue> {
+    validate_common_context_contract_value(
+        &serde_json::to_value(contract).expect("CommonContextContract must serialize"),
+    )
+}
+
+#[must_use]
+pub fn validate_common_context_contract_for_audience(
+    contract: &CommonContextContract,
+    expected_audience: &str,
+) -> Vec<CommonContextIssue> {
+    let mut issues = validate_common_context_contract(contract);
+    for (field, audiences) in [
+        ("servicePrincipal", &contract.service_principal.audiences),
+        ("delegatedActor", &contract.delegated_actor.audiences),
+        ("tenant", &contract.tenant.audiences),
+    ] {
+        if !audiences
+            .iter()
+            .any(|audience| audience == expected_audience)
+        {
+            push_common_context_issue(
+                &mut issues,
+                CommonContextIssueCode::AudienceMismatch,
+                format!("$.{field}.audiences"),
+                format!("claim is not intended for audience `{expected_audience}`"),
+                "Reject the context or obtain a claim issued for this receiving audience.",
+            );
+        }
+    }
+    issues
+}
+
+#[must_use]
+pub fn validate_common_context_contract_value(value: &Value) -> Vec<CommonContextIssue> {
+    let mut issues = Vec::new();
+    if value.get("protocol").and_then(Value::as_str) != Some(COMMON_CONTEXT_PROTOCOL) {
+        push_common_context_issue(
+            &mut issues,
+            CommonContextIssueCode::InvalidProtocol,
+            "$.protocol",
+            "protocol must be `lenso.context.v1`",
+            "Set `protocol` to `lenso.context.v1`.",
+        );
+    }
+    validate_required_strings(
+        value,
+        "story",
+        &["storyId", "segmentId"],
+        CommonContextIssueCode::InvalidStoryContext,
+        &mut issues,
+    );
+    validate_required_strings(
+        value,
+        "trace",
+        &["traceparent"],
+        CommonContextIssueCode::InvalidTraceContext,
+        &mut issues,
+    );
+    validate_verifiable_claim(
+        value,
+        "servicePrincipal",
+        "subject",
+        "credentialId",
+        CommonContextIssueCode::InvalidServicePrincipal,
+        &mut issues,
+    );
+    validate_verifiable_claim(
+        value,
+        "delegatedActor",
+        "subject",
+        "delegationId",
+        CommonContextIssueCode::InvalidDelegatedActorContext,
+        &mut issues,
+    );
+    if value
+        .pointer("/delegatedActor/permissions")
+        .and_then(Value::as_array)
+        .is_none_or(|items| {
+            items.is_empty()
+                || items
+                    .iter()
+                    .any(|item| item.as_str().is_none_or(|text| text.trim().is_empty()))
+        })
+    {
+        push_common_context_issue(
+            &mut issues,
+            CommonContextIssueCode::InvalidDelegatedActorContext,
+            "$.delegatedActor.permissions",
+            "permissions must contain non-empty delegated permissions",
+            "Declare at least one permission narrowed for this delegation.",
+        );
+    }
+    validate_verifiable_claim(
+        value,
+        "tenant",
+        "tenantId",
+        "claimId",
+        CommonContextIssueCode::InvalidTenantContext,
+        &mut issues,
+    );
+    validate_positive_integer(
+        value,
+        "deadline",
+        "expiresAtUnixMs",
+        CommonContextIssueCode::InvalidDeadline,
+        &mut issues,
+    );
+    validate_required_strings(
+        value,
+        "idempotencyKey",
+        &["value", "scope"],
+        CommonContextIssueCode::InvalidIdempotencyKey,
+        &mut issues,
+    );
+    validate_required_strings(
+        value,
+        "causation",
+        &["causationId"],
+        CommonContextIssueCode::InvalidCausation,
+        &mut issues,
+    );
+    validate_required_strings(
+        value,
+        "region",
+        &["operatingRegion"],
+        CommonContextIssueCode::InvalidRegion,
+        &mut issues,
+    );
+
+    if let Some(baggage) = value.pointer("/trace/baggage").and_then(Value::as_object) {
+        let mut keys = baggage.keys().collect::<Vec<_>>();
+        keys.sort();
+        for key in keys {
+            let normalized = key.to_ascii_lowercase();
+            let words = normalized
+                .split(|character: char| !character.is_ascii_alphanumeric())
+                .collect::<Vec<_>>();
+            let compact = words.join("");
+            let (code, claim) = if words.contains(&"tenant") || compact.starts_with("tenant") {
+                (
+                    CommonContextIssueCode::UntrustedTenantClaim,
+                    "tenant authorization",
+                )
+            } else if words.iter().any(|word| {
+                matches!(
+                    *word,
+                    "actor"
+                        | "auth"
+                        | "user"
+                        | "enduser"
+                        | "permission"
+                        | "permissions"
+                        | "role"
+                        | "delegation"
+                        | "subject"
+                        | "audience"
+                )
+            }) || [
+                "actor",
+                "authz",
+                "userrole",
+                "enduserid",
+                "permission",
+                "delegatedactor",
+                "subject",
+                "audience",
+            ]
+            .iter()
+            .any(|prefix| compact.starts_with(prefix))
+            {
+                (
+                    CommonContextIssueCode::UntrustedActorClaim,
+                    "actor authorization",
+                )
+            } else {
+                continue;
+            };
+            push_common_context_issue(
+                &mut issues,
+                code,
+                format!("$.trace.baggage.{key}"),
+                format!("OpenTelemetry Baggage must not supply {claim} claims"),
+                "Remove the Baggage entry and use the signed, audience-bounded context claim.",
+            );
+        }
+    }
+    issues
+}
+
+fn validate_verifiable_claim(
+    value: &Value,
+    field: &str,
+    subject: &str,
+    claim_id: &str,
+    code: CommonContextIssueCode,
+    issues: &mut Vec<CommonContextIssue>,
+) {
+    validate_required_strings(value, field, &["issuer", subject, claim_id], code, issues);
+    validate_required_strings(
+        value,
+        &format!("{field}/proof"),
+        &["verificationMethod", "algorithm", "signature"],
+        code,
+        issues,
+    );
+    let path = format!("/{field}/audiences");
+    if value
+        .pointer(&path)
+        .and_then(Value::as_array)
+        .is_none_or(|items| {
+            items.is_empty()
+                || items
+                    .iter()
+                    .any(|item| item.as_str().is_none_or(|text| text.trim().is_empty()))
+        })
+    {
+        push_common_context_issue(
+            issues,
+            code,
+            format!("$.{field}.audiences"),
+            "audiences must contain non-empty audience identifiers",
+            "Declare at least one intended receiving Service or Workload audience.",
+        );
+    }
+    validate_positive_integer(value, field, "expiresAtUnixMs", code, issues);
+}
+
+fn validate_required_strings(
+    value: &Value,
+    field: &str,
+    names: &[&str],
+    code: CommonContextIssueCode,
+    issues: &mut Vec<CommonContextIssue>,
+) {
+    let json_path = field.replace('/', ".");
+    for name in names {
+        let pointer = format!("/{field}/{name}");
+        if value
+            .pointer(&pointer)
+            .and_then(Value::as_str)
+            .is_none_or(|text| text.trim().is_empty())
+        {
+            push_common_context_issue(
+                issues,
+                code,
+                format!("$.{json_path}.{name}"),
+                format!("{name} must be a non-empty string"),
+                format!("Set a non-empty `{name}` value."),
+            );
+        }
+    }
+}
+
+fn validate_positive_integer(
+    value: &Value,
+    field: &str,
+    name: &str,
+    code: CommonContextIssueCode,
+    issues: &mut Vec<CommonContextIssue>,
+) {
+    let pointer = format!("/{field}/{name}");
+    if value
+        .pointer(&pointer)
+        .and_then(Value::as_u64)
+        .is_none_or(|number| number == 0)
+    {
+        push_common_context_issue(
+            issues,
+            code,
+            format!("$.{field}.{name}"),
+            format!("{name} must be a positive integer"),
+            format!("Set `{name}` to an absolute Unix timestamp in milliseconds."),
+        );
+    }
+}
+
+fn push_common_context_issue(
+    issues: &mut Vec<CommonContextIssue>,
+    code: CommonContextIssueCode,
+    path: impl Into<String>,
+    message: impl Into<String>,
+    next_action: impl Into<String>,
+) {
+    issues.push(CommonContextIssue {
+        code,
+        path: path.into(),
+        message: message.into(),
+        next_action: next_action.into(),
+    });
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

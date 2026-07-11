@@ -23,3 +23,29 @@ fn committed_autonomous_service_schema_matches_generator() {
         generate_contracts::generated_autonomous_service_schema()
     );
 }
+
+#[test]
+fn committed_common_context_schema_matches_generator() {
+    let committed: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/context/lenso-context.v1.schema.json"
+    ))
+    .expect("committed common context schema should parse");
+
+    assert_eq!(
+        committed,
+        generate_contracts::generated_common_context_schema()
+    );
+}
+
+#[test]
+fn committed_common_context_fixture_matches_generator() {
+    let committed: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/context/lenso-context.v1.fixture.json"
+    ))
+    .expect("committed common context fixture should parse");
+
+    assert_eq!(
+        committed,
+        generate_contracts::generated_common_context_fixture()
+    );
+}
