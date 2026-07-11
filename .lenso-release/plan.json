@@ -1,13 +1,13 @@
 {
   "schema": "lenso.release-plan.v1",
   "repository": "LioRael/lenso",
-  "sourceCommit": "07ca9cabafe6b50d8cf813d65f5a84da71fb2db2",
+  "sourceCommit": "f2d89c4def4175faaed88d01b2172f9f76995b4c",
   "tegamiVersion": "1.2.5",
   "publisher": {
     "workflow": ".github/workflows/publish.yml",
     "workflowSha256": "sha256:ccc5fa40fcd1285b4ee0761a0fc1a58b7239c4cc78fb26a95f4c474f6108e20b",
-    "sharedRevision": "07ebc1f8d22b0b29e812a55607b92a463dfaf5ed",
-    "sharedBundleSha256": "sha256:e19c2e09c4baddb9519fc4b9c8c700130adfa2369c38a13637f2c7a09e4cda59",
+    "sharedRevision": "99c0227321f9445777c14d43411b5c64e5d87902",
+    "sharedBundleSha256": "sha256:7a8030de19b3bf752d95d2b8a019151cfa25cd4a9bc61e9819e732324d77bf62",
     "runner": "ubuntu-24.04",
     "node": "24.18.0",
     "npm": "11.7.0",
@@ -325,5 +325,5 @@
       ]
     }
   ],
-  "planId": "sha256:b2ed531af9a5b3770a6e4d95e791ca96cb92a0d8de927d4da241f7a41ac19488"
+  "planId": "sha256:d6fcf06536d631b11ecfd3873fa92ed42f6196e5709b3c70fae5cb89b4e0f642"
 }
