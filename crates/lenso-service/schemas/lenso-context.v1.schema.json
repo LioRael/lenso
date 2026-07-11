@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lenso.dev/contracts/lenso-context.v1.schema.json",
+  "title": "LensoCommonContextContract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocol", "story", "trace", "servicePrincipal", "delegatedActor", "tenant", "deadline", "idempotencyKey", "causation", "region"],
+  "properties": {
+    "protocol": { "const": "lenso.context.v1" },
+    "story": { "$ref": "#/$defs/storyContext" },
+    "trace": { "$ref": "#/$defs/traceContext" },
+    "servicePrincipal": { "$ref": "#/$defs/servicePrincipal" },
+    "delegatedActor": { "$ref": "#/$defs/delegatedActorContext" },
+    "tenant": { "$ref": "#/$defs/tenantContext" },
+    "deadline": { "$ref": "#/$defs/deadline" },
+    "idempotencyKey": { "$ref": "#/$defs/idempotencyKey" },
+    "causation": { "$ref": "#/$defs/causation" },
+    "region": { "$ref": "#/$defs/region" }
+  },
+  "$defs": {
+    "nonEmptyString": { "type": "string", "minLength": 1 },
+    "nonEmptyStrings": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/nonEmptyString" } },
+    "storyContext": {
+      "type": "object", "additionalProperties": false,
+      "required": ["storyId", "segmentId"],
+      "properties": { "storyId": { "$ref": "#/$defs/nonEmptyString" }, "segmentId": { "$ref": "#/$defs/nonEmptyString" } }
+    },
+    "traceContext": {
+      "type": "object", "additionalProperties": false,
+      "required": ["traceparent"],
+      "properties": {
+        "traceparent": { "$ref": "#/$defs/nonEmptyString" },
+        "tracestate": { "$ref": "#/$defs/nonEmptyString" },
+        "baggage": { "type": "object", "additionalProperties": { "type": "string" } }
+      }
+    },
+    "servicePrincipal": {
+      "type": "object", "additionalProperties": false,
+      "required": ["issuer", "subject", "audiences", "expiresAtUnixMs", "credentialId", "proof"],
+      "properties": {
+        "issuer": { "$ref": "#/$defs/nonEmptyString" }, "subject": { "$ref": "#/$defs/nonEmptyString" },
+        "audiences": { "$ref": "#/$defs/nonEmptyStrings" }, "expiresAtUnixMs": { "type": "integer", "minimum": 1 },
+        "credentialId": { "$ref": "#/$defs/nonEmptyString" }, "proof": { "$ref": "#/$defs/claimProof" }
+      }
+    },
+    "delegatedActorContext": {
+      "type": "object", "additionalProperties": false,
+      "required": ["issuer", "subject", "audiences", "permissions", "expiresAtUnixMs", "delegationId", "proof"],
+      "properties": {
+        "issuer": { "$ref": "#/$defs/nonEmptyString" }, "subject": { "$ref": "#/$defs/nonEmptyString" },
+        "audiences": { "$ref": "#/$defs/nonEmptyStrings" }, "permissions": { "$ref": "#/$defs/nonEmptyStrings" },
+        "expiresAtUnixMs": { "type": "integer", "minimum": 1 }, "delegationId": { "$ref": "#/$defs/nonEmptyString" },
+        "proof": { "$ref": "#/$defs/claimProof" }
+      }
+    },
+    "tenantContext": {
+      "type": "object", "additionalProperties": false,
+      "required": ["issuer", "tenantId", "audiences", "expiresAtUnixMs", "claimId", "proof"],
+      "properties": {
+        "issuer": { "$ref": "#/$defs/nonEmptyString" }, "tenantId": { "$ref": "#/$defs/nonEmptyString" },
+        "audiences": { "$ref": "#/$defs/nonEmptyStrings" }, "expiresAtUnixMs": { "type": "integer", "minimum": 1 },
+        "claimId": { "$ref": "#/$defs/nonEmptyString" }, "proof": { "$ref": "#/$defs/claimProof" }
+      }
+    },
+    "claimProof": {
+      "type": "object", "additionalProperties": false,
+      "required": ["verificationMethod", "algorithm", "signature"],
+      "properties": {
+        "verificationMethod": { "$ref": "#/$defs/nonEmptyString" },
+        "algorithm": { "$ref": "#/$defs/nonEmptyString" },
+        "signature": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "deadline": {
+      "type": "object", "additionalProperties": false, "required": ["expiresAtUnixMs"],
+      "properties": { "expiresAtUnixMs": { "type": "integer", "minimum": 1 } }
+    },
+    "idempotencyKey": {
+      "type": "object", "additionalProperties": false, "required": ["value", "scope"],
+      "properties": { "value": { "$ref": "#/$defs/nonEmptyString" }, "scope": { "$ref": "#/$defs/nonEmptyString" } }
+    },
+    "causation": {
+      "type": "object", "additionalProperties": false, "required": ["causationId"],
+      "properties": { "causationId": { "$ref": "#/$defs/nonEmptyString" }, "correlationId": { "$ref": "#/$defs/nonEmptyString" } }
+    },
+    "region": {
+      "type": "object", "additionalProperties": false, "required": ["operatingRegion"],
+      "properties": { "operatingRegion": { "$ref": "#/$defs/nonEmptyString" }, "failureDomain": { "$ref": "#/$defs/nonEmptyString" } }
+    }
+  }
+}

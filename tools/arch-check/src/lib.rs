@@ -214,6 +214,10 @@ pub fn check_contract_artifacts_fresh(root: &Path) -> anyhow::Result<()> {
     let error_schema = read_json(root.join("contracts/errors/error-response.v1.schema.json"))?;
     let autonomous_service_schema =
         read_json(root.join("contracts/services/lenso-service.v2.schema.json"))?;
+    let common_context_schema =
+        read_json(root.join("contracts/context/lenso-context.v1.schema.json"))?;
+    let common_context_fixture =
+        read_json(root.join("contracts/context/lenso-context.v1.fixture.json"))?;
     let mut violations = Vec::new();
     if openapi != generated_openapi {
         violations.push("contracts/openapi/app-api.v1.yaml is stale".to_owned());
@@ -223,6 +227,17 @@ pub fn check_contract_artifacts_fresh(root: &Path) -> anyhow::Result<()> {
     }
     if autonomous_service_schema != generate_contracts::generated_autonomous_service_schema() {
         violations.push("contracts/services/lenso-service.v2.schema.json is stale".to_owned());
+    }
+    if common_context_schema != generate_contracts::generated_common_context_schema() {
+        violations.push("contracts/context/lenso-context.v1.schema.json is stale".to_owned());
+    }
+    if common_context_fixture != generate_contracts::generated_common_context_fixture() {
+        violations.push("contracts/context/lenso-context.v1.fixture.json is stale".to_owned());
+    }
+    let glossary = fs::read_to_string(root.join("docs/architecture/common-context-contracts.md"))
+        .context("common context glossary should be readable")?;
+    if glossary != generate_contracts::generated_common_context_glossary() {
+        violations.push("docs/architecture/common-context-contracts.md is stale".to_owned());
     }
 
     ensure_empty(violations, "contract artifacts must match Rust sources")

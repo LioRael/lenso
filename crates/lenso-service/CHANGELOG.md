@@ -1,3 +1,10 @@
+## Unreleased
+
+### Features
+
+Publish the versioned `lenso.context.v1` common context types, validation,
+fixture, and JSON Schema.
+
 ## lenso-service@0.1.1
 
 ### Features

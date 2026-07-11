@@ -1,0 +1,283 @@
+{
+  "$defs": {
+    "causation": {
+      "additionalProperties": false,
+      "properties": {
+        "causationId": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "correlationId": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      },
+      "required": [
+        "causationId"
+      ],
+      "type": "object"
+    },
+    "claimProof": {
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "signature": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "verificationMethod": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      },
+      "required": [
+        "verificationMethod",
+        "algorithm",
+        "signature"
+      ],
+      "type": "object"
+    },
+    "deadline": {
+      "additionalProperties": false,
+      "properties": {
+        "expiresAtUnixMs": {
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "expiresAtUnixMs"
+      ],
+      "type": "object"
+    },
+    "delegatedActorContext": {
+      "additionalProperties": false,
+      "properties": {
+        "audiences": {
+          "$ref": "#/$defs/nonEmptyStrings"
+        },
+        "delegationId": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "expiresAtUnixMs": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "issuer": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "permissions": {
+          "$ref": "#/$defs/nonEmptyStrings"
+        },
+        "proof": {
+          "$ref": "#/$defs/claimProof"
+        },
+        "subject": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      },
+      "required": [
+        "issuer",
+        "subject",
+        "audiences",
+        "permissions",
+        "expiresAtUnixMs",
+        "delegationId",
+        "proof"
+      ],
+      "type": "object"
+    },
+    "idempotencyKey": {
+      "additionalProperties": false,
+      "properties": {
+        "scope": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "value": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      },
+      "required": [
+        "value",
+        "scope"
+      ],
+      "type": "object"
+    },
+    "nonEmptyString": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "nonEmptyStrings": {
+      "items": {
+        "$ref": "#/$defs/nonEmptyString"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "region": {
+      "additionalProperties": false,
+      "properties": {
+        "failureDomain": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "operatingRegion": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      },
+      "required": [
+        "operatingRegion"
+      ],
+      "type": "object"
+    },
+    "servicePrincipal": {
+      "additionalProperties": false,
+      "properties": {
+        "audiences": {
+          "$ref": "#/$defs/nonEmptyStrings"
+        },
+        "credentialId": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "expiresAtUnixMs": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "issuer": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "proof": {
+          "$ref": "#/$defs/claimProof"
+        },
+        "subject": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      },
+      "required": [
+        "issuer",
+        "subject",
+        "audiences",
+        "expiresAtUnixMs",
+        "credentialId",
+        "proof"
+      ],
+      "type": "object"
+    },
+    "storyContext": {
+      "additionalProperties": false,
+      "properties": {
+        "segmentId": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "storyId": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      },
+      "required": [
+        "storyId",
+        "segmentId"
+      ],
+      "type": "object"
+    },
+    "tenantContext": {
+      "additionalProperties": false,
+      "properties": {
+        "audiences": {
+          "$ref": "#/$defs/nonEmptyStrings"
+        },
+        "claimId": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "expiresAtUnixMs": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "issuer": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "proof": {
+          "$ref": "#/$defs/claimProof"
+        },
+        "tenantId": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      },
+      "required": [
+        "issuer",
+        "tenantId",
+        "audiences",
+        "expiresAtUnixMs",
+        "claimId",
+        "proof"
+      ],
+      "type": "object"
+    },
+    "traceContext": {
+      "additionalProperties": false,
+      "properties": {
+        "baggage": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "traceparent": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "tracestate": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      },
+      "required": [
+        "traceparent"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://lenso.dev/contracts/lenso-context.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "causation": {
+      "$ref": "#/$defs/causation"
+    },
+    "deadline": {
+      "$ref": "#/$defs/deadline"
+    },
+    "delegatedActor": {
+      "$ref": "#/$defs/delegatedActorContext"
+    },
+    "idempotencyKey": {
+      "$ref": "#/$defs/idempotencyKey"
+    },
+    "protocol": {
+      "const": "lenso.context.v1"
+    },
+    "region": {
+      "$ref": "#/$defs/region"
+    },
+    "servicePrincipal": {
+      "$ref": "#/$defs/servicePrincipal"
+    },
+    "story": {
+      "$ref": "#/$defs/storyContext"
+    },
+    "tenant": {
+      "$ref": "#/$defs/tenantContext"
+    },
+    "trace": {
+      "$ref": "#/$defs/traceContext"
+    }
+  },
+  "required": [
+    "protocol",
+    "story",
+    "trace",
+    "servicePrincipal",
+    "delegatedActor",
+    "tenant",
+    "deadline",
+    "idempotencyKey",
+    "causation",
+    "region"
+  ],
+  "title": "LensoCommonContextContract",
+  "type": "object"
+}
