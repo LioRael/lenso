@@ -80,8 +80,10 @@ contract language. `lenso module install` remains the main module install
 surface; `lenso service install` is the lower-level provider/process surface.
 V18 adds a system-level graph in
 [`service-system-plane.md`](service-system-plane.md): `lenso.system.json`
-connects services, modules, environments, and capability dependencies without
-turning Kubernetes into a hard requirement.
+connects legacy Providers, modules, environments, and capability dependencies
+without turning Kubernetes into a hard requirement. The `lenso.service.v1` and
+`lenso.system.v1` protocols keep this Host-managed Provider meaning; they are
+not Autonomous Service declarations.
 Route proxying is specified
 separately in `docs/architecture/module-remote-http-proxy.md`. Remote runtime
 execution and event-handler dispatch are scoped in
@@ -93,8 +95,9 @@ protocol. Linked modules that have hardened boundaries can follow
 [`linked-to-service-module.md`](linked-to-service-module.md) to preserve the
 manifest contract while moving implementation into a service process.
 
-The current service checkpoint is intentionally narrow but complete for
-operator-visible HTTP proxying:
+The current Provider checkpoint is intentionally narrow but complete for
+operator-visible HTTP proxying. Authentication, proxy policy, retries, runtime
+queues, Outbox delivery, and Story evidence remain Host-owned:
 
 - Remote manifests are loaded as the same `ModuleManifest` data contract used by
   linked modules.

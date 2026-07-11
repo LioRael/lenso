@@ -1,0 +1,25 @@
+{
+  "protocol": "lenso.service.v1",
+  "name": "support-suite-provider",
+  "version": "0.1.0",
+  "compatibility": {
+    "remoteProtocolVersion": "1",
+    "requiredHostFeatures": [
+      "service.status"
+    ]
+  },
+  "health": {
+    "manifestUrl": "http://127.0.0.1:4110/lenso/service/v1/manifest",
+    "readyUrl": "http://127.0.0.1:4110/lenso/service/v1/ready"
+  },
+  "modules": [
+    {
+      "name": "support-ticket",
+      "version": "0.1.0",
+      "capabilities": [
+        "support_ticket.tickets.read",
+        "support_ticket.tickets.write"
+      ]
+    }
+  ]
+}

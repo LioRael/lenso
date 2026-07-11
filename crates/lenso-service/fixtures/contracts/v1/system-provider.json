@@ -1,0 +1,28 @@
+{
+  "protocol": "lenso.system.v1",
+  "name": "support-platform",
+  "environments": [
+    "local",
+    "staging"
+  ],
+  "services": [
+    {
+      "name": "support-suite-provider",
+      "target": "local",
+      "modules": [
+        "support-ticket"
+      ],
+      "manifest": "http://127.0.0.1:4110/lenso/service/v1/manifest"
+    }
+  ],
+  "modules": [
+    {
+      "name": "support-ticket",
+      "installTo": "service:support-suite-provider",
+      "capabilities": [
+        "support_ticket.tickets.read",
+        "support_ticket.tickets.write"
+      ]
+    }
+  ]
+}

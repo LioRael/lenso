@@ -4,35 +4,49 @@ V18 adds a system-level manifest for teams that have moved past one provider
 or one module, but still want Lenso to stay Kubernetes-optional.
 
 The system plane is declared in `lenso.system.json` with protocol
-`lenso.system.v1`. It is not a new runtime and it does not replace module or
-service install state. It is a planning and visibility contract that names:
+`lenso.system.v1`. This protocol is the legacy Provider-era System declaration;
+its `services` collection contains Provider processes, not Autonomous Services.
+It is not a new runtime and it does not replace module or Provider install
+state. It is a planning and visibility contract that names:
 
-- services: independently running provider processes;
+- providers: independently running processes represented by the legacy
+  `services` field;
 - modules: business capabilities installed into the host or provided by a
-  service;
-- dependencies: capability edges between modules or services;
+  Provider;
+- dependencies: capability edges between Modules or Providers;
 - environments: local, staging, prod, or any operator-owned deployment lane.
 
 ## Boundary
 
-Lenso keeps the service/module split explicit:
+Lenso keeps the legacy Provider/Module split explicit:
 
 ```text
-service = remote process, SDK, deployment package, and service manifest
-module = business capability contract used by the host and Console
-system = graph that explains how services and modules form one product system
+Provider = Host-managed remote process, SDK, package, and v1 manifest
+Module = business capability contract used by the Host and Runtime Console
+System v1 = graph that explains how Providers and Modules form one product system
 ```
 
 `lenso.service.json`, service packages, service workspaces, release plans, and
-deployment state still describe providers and their process lifecycle.
+deployment state with protocol `lenso.service.v1` describe Providers and their
+process lifecycle. They do not claim the data, runtime, lifecycle, or release
+ownership of an Autonomous Service.
 `lenso.module.json` and module releases still describe business capability
 installation. `lenso.system.json` sits above both so operators can understand
-which service owns which module and which capability edges cross service
+which Provider exposes which Module and which capability edges cross process
 boundaries.
 
-The host remains the control plane. A system manifest must not give services
-permission to write host runtime tables, consume the host outbox, bypass
-capability checks, or receive browser bearer tokens.
+The Host remains the control plane. A v1 System manifest must not give Providers
+permission to write Host runtime tables, consume the Host Outbox, bypass
+capability checks, or receive browser bearer tokens. Authentication, proxy
+policy, retries, runtime queues, Outbox delivery, and Story evidence remain
+Host-owned.
+
+The public `lenso-service` contract check reports both the detected protocol and
+its semantic kind. It normalizes `lenso.service.v1` to `provider` and
+`lenso.system.v1` to `provider_system` in a separate read model; it never
+rewrites the source artifact. Unsupported or missing protocols return stable
+machine-readable codes and a next action. Backend, CLI, and Runtime Console
+consumers should use that shared result instead of inferring v1 semantics.
 
 ## Manifest Shape
 
