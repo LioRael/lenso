@@ -104,6 +104,7 @@ pub enum ContractArtifactCheckErrorCode {
     InvalidArtifact,
     UnknownField,
     InvalidProtocol,
+    InvalidVersion,
     InvalidServiceIdentity,
     InvalidWorkloadIdentity,
     WorkloadOwnerMismatch,
@@ -1107,6 +1108,7 @@ impl AutonomousServiceContract {
 pub enum AutonomousServiceIssueCode {
     UnknownField,
     InvalidProtocol,
+    InvalidVersion,
     InvalidServiceIdentity,
     InvalidWorkloadIdentity,
     WorkloadOwnerMismatch,
@@ -1127,6 +1129,7 @@ impl From<AutonomousServiceIssueCode> for ContractArtifactCheckErrorCode {
         match code {
             AutonomousServiceIssueCode::UnknownField => Self::UnknownField,
             AutonomousServiceIssueCode::InvalidProtocol => Self::InvalidProtocol,
+            AutonomousServiceIssueCode::InvalidVersion => Self::InvalidVersion,
             AutonomousServiceIssueCode::InvalidServiceIdentity => Self::InvalidServiceIdentity,
             AutonomousServiceIssueCode::InvalidWorkloadIdentity => Self::InvalidWorkloadIdentity,
             AutonomousServiceIssueCode::WorkloadOwnerMismatch => Self::WorkloadOwnerMismatch,
@@ -1719,6 +1722,19 @@ pub fn validate_autonomous_service_contract_value(value: &Value) -> Vec<Autonomo
             "$.serviceId",
             "serviceId must be a non-empty string",
             "Assign one stable logical Service identity.",
+        );
+    }
+    if object.get("version").is_some_and(|version| {
+        version
+            .as_str()
+            .is_none_or(|version| version.trim().is_empty())
+    }) {
+        push_autonomous_issue(
+            &mut issues,
+            AutonomousServiceIssueCode::InvalidVersion,
+            "$.version",
+            "version must be a non-empty string when present",
+            "Set a non-empty Service version or remove the optional field.",
         );
     }
     let mut workload_ids = BTreeSet::new();

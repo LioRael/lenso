@@ -180,6 +180,24 @@ fn autonomous_service_v2_check_uses_specific_validation_code_and_sorted_output()
 }
 
 #[test]
+fn autonomous_service_v2_check_rejects_empty_optional_version() {
+    let mut source: serde_json::Value =
+        serde_json::from_str(AUTONOMOUS_SERVICE_V2_FIXTURE_JSON).unwrap();
+    source["version"] = json!("");
+
+    let error = check_contract_artifact_value(&source).unwrap_err();
+    assert_eq!(
+        serde_json::to_value(error).unwrap(),
+        json!({
+            "code": "invalid_version",
+            "path": "$.version",
+            "message": "version must be a non-empty string when present",
+            "nextAction": "Set a non-empty Service version or remove the optional field."
+        })
+    );
+}
+
+#[test]
 fn service_contract_serializes_provider_and_modules() {
     let contract = ServiceContract::new(
         "support-suite-provider",
