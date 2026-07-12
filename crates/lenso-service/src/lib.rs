@@ -1,4 +1,5 @@
 use axum::{Json, Router, routing::get};
+use prost::Message;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -44,6 +45,1318 @@ pub const COMMON_CONTEXT_V1_FIXTURE_JSON: &str =
     include_str!("../fixtures/contracts/v1/common-context.json");
 pub const COMMON_CONTEXT_GLOSSARY_MARKDOWN: &str =
     include_str!("../docs/common-context-contracts.md");
+pub const REQUEST_RESPONSE_COMPATIBILITY_MARKDOWN: &str =
+    include_str!("../docs/request-response-compatibility.md");
+pub const REQUEST_RESPONSE_COMPATIBILITY_SAFE_FIXTURE_JSON: &str =
+    include_str!("../fixtures/compatibility/request-response/safe.json");
+pub const REQUEST_RESPONSE_COMPATIBILITY_NEEDS_ATTENTION_FIXTURE_JSON: &str =
+    include_str!("../fixtures/compatibility/request-response/needs-attention.json");
+pub const REQUEST_RESPONSE_COMPATIBILITY_BREAKING_FIXTURE_JSON: &str =
+    include_str!("../fixtures/compatibility/request-response/breaking.json");
+pub const REQUEST_RESPONSE_COMPATIBILITY_BLOCKED_FIXTURE_JSON: &str =
+    include_str!("../fixtures/compatibility/request-response/blocked.json");
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CompatibilityFixture {
+    pub name: &'static str,
+    pub json: &'static str,
+}
+
+pub const REQUEST_RESPONSE_COMPATIBILITY_FIXTURES: &[CompatibilityFixture] = &[
+    CompatibilityFixture {
+        name: "safe",
+        json: REQUEST_RESPONSE_COMPATIBILITY_SAFE_FIXTURE_JSON,
+    },
+    CompatibilityFixture {
+        name: "needs_attention",
+        json: REQUEST_RESPONSE_COMPATIBILITY_NEEDS_ATTENTION_FIXTURE_JSON,
+    },
+    CompatibilityFixture {
+        name: "breaking",
+        json: REQUEST_RESPONSE_COMPATIBILITY_BREAKING_FIXTURE_JSON,
+    },
+    CompatibilityFixture {
+        name: "blocked",
+        json: REQUEST_RESPONSE_COMPATIBILITY_BLOCKED_FIXTURE_JSON,
+    },
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RequestResponseCompatibilityCategory {
+    Safe,
+    NeedsAttention,
+    Breaking,
+    Blocked,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RequestResponseContractKind {
+    ProviderProtocol,
+    ServiceContract,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestResponseCompatibilityReason {
+    pub code: String,
+    pub path: String,
+    pub message: String,
+    pub next_action: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestResponseCompatibilityResult {
+    pub category: RequestResponseCompatibilityCategory,
+    pub contract_kind: RequestResponseContractKind,
+    pub contract_id: String,
+    pub changed_version: String,
+    pub producers: Vec<String>,
+    pub consumers: Vec<String>,
+    pub reasons: Vec<RequestResponseCompatibilityReason>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestResponseCanonicalizationError {
+    pub code: String,
+    pub path: String,
+    pub message: String,
+    pub next_action: String,
+}
+
+/// Converts a raw OpenAPI JSON value into the canonical operation shape consumed by the
+/// compatibility evaluator. YAML callers should deserialize to `serde_json::Value` first.
+pub fn canonicalize_openapi_request_response(
+    document: &Value,
+) -> Result<Value, Vec<RequestResponseCanonicalizationError>> {
+    if !document
+        .get("openapi")
+        .and_then(Value::as_str)
+        .is_some_and(|version| version.starts_with("3.0.") || version.starts_with("3.1."))
+    {
+        return Err(vec![canonicalization_error(
+            "openapi_protocol_unsupported",
+            "$.openapi",
+            "Only OpenAPI 3.0 and 3.1 documents are supported.",
+            "Generate a complete OpenAPI 3.0 or 3.1 document before comparing contracts.",
+        )]);
+    }
+    let mut reference_errors = Vec::new();
+    validate_openapi_references(document, document, "$", &mut reference_errors);
+    if !reference_errors.is_empty() {
+        return Err(reference_errors);
+    }
+    let Some(version) = document
+        .get("info")
+        .and_then(|info| info.get("version"))
+        .and_then(Value::as_str)
+        .filter(|version| !version.is_empty())
+    else {
+        return Err(vec![canonicalization_error(
+            "openapi_version_missing",
+            "$.info.version",
+            "OpenAPI info.version is required.",
+            "Set info.version to the authoritative contract version.",
+        )]);
+    };
+    let Some(paths) = document.get("paths").and_then(Value::as_object) else {
+        return Err(vec![canonicalization_error(
+            "openapi_paths_missing",
+            "$.paths",
+            "OpenAPI paths must be an object.",
+            "Generate a complete OpenAPI document with request-response paths.",
+        )]);
+    };
+    let mut operations = serde_json::Map::new();
+    let mut errors = Vec::new();
+    for (path, path_item) in paths {
+        let Some(path_item) = path_item.as_object() else {
+            continue;
+        };
+        for method in [
+            "get", "put", "post", "delete", "patch", "head", "options", "trace",
+        ] {
+            let Some(operation) = path_item.get(method).and_then(Value::as_object) else {
+                continue;
+            };
+            let operation_id = operation
+                .get("operationId")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+                .unwrap_or_else(|| format!("{} {}", method.to_ascii_uppercase(), path));
+            let declared_parameters = path_item
+                .get("parameters")
+                .and_then(Value::as_array)
+                .map_or(0, Vec::len)
+                + operation
+                    .get("parameters")
+                    .and_then(Value::as_array)
+                    .map_or(0, Vec::len);
+            let parameters = canonicalize_openapi_parameters(document, path_item, operation);
+            if declared_parameters > 0 && parameters.is_none() {
+                errors.push(canonicalization_error(
+                    "openapi_parameter_unverifiable",
+                    format!("$.paths.{path}.{method}.parameters"),
+                    "An OpenAPI parameter cannot be canonicalized.",
+                    "Resolve parameter references and provide name, location, and schema metadata.",
+                ));
+                continue;
+            }
+            let request = operation
+                .get("requestBody")
+                .and_then(|body| {
+                    let mut schema = canonicalize_openapi_content(document, body.get("content")?)?;
+                    if let Some(object) = schema.as_object_mut() {
+                        object.insert(
+                            "x-lenso-request-body-required".to_owned(),
+                            Value::Bool(
+                                body.get("required")
+                                    .and_then(Value::as_bool)
+                                    .unwrap_or(false),
+                            ),
+                        );
+                        if let Some(parameters) = &parameters {
+                            object.insert("x-lenso-parameters".to_owned(), parameters.clone());
+                        }
+                    }
+                    Some(schema)
+                })
+                .or(parameters);
+            let declared_success_responses = operation
+                .get("responses")
+                .and_then(Value::as_object)
+                .into_iter()
+                .flatten()
+                .filter(|(status, _)| status.starts_with('2'))
+                .count();
+            let responses = operation
+                .get("responses")
+                .and_then(Value::as_object)
+                .into_iter()
+                .flatten()
+                .filter(|(status, _)| status.starts_with('2'))
+                .filter_map(|(status, response)| {
+                    canonicalize_openapi_response(document, response)
+                        .map(|schema| (status.clone(), schema))
+                })
+                .collect::<serde_json::Map<_, _>>();
+            if responses.len() != declared_success_responses {
+                errors.push(canonicalization_error(
+                    "openapi_response_unverifiable",
+                    format!("$.paths.{path}.{method}.responses"),
+                    "A successful OpenAPI response cannot be canonicalized.",
+                    "Use one explicit media type per response and provide a valid schema.",
+                ));
+                continue;
+            }
+            let response_statuses = responses.keys().cloned().collect::<Vec<_>>();
+            let response = (!responses.is_empty()).then(|| {
+                serde_json::json!({
+                    "type": "object",
+                    "required": response_statuses,
+                    "properties": responses,
+                })
+            });
+            let (Some(request), Some(response)) = (request, response) else {
+                errors.push(canonicalization_error(
+                    "openapi_operation_schema_missing",
+                    format!("$.paths.{path}.{method}"),
+                    "A request-response operation needs request and success response schemas.",
+                    "Declare requestBody and a 2xx response schema for this operation.",
+                ));
+                continue;
+            };
+            if operations.contains_key(&operation_id) {
+                errors.push(canonicalization_error(
+                    "openapi_operation_id_duplicate",
+                    format!("$.paths.{path}.{method}.operationId"),
+                    "OpenAPI operationId values must be unique.",
+                    "Assign a unique stable operationId before comparing contracts.",
+                ));
+                continue;
+            }
+            operations.insert(
+                operation_id,
+                serde_json::json!({
+                    "method": method,
+                    "path": path,
+                    "request": request,
+                    "response": response,
+                }),
+            );
+        }
+    }
+    if operations.is_empty() {
+        errors.push(canonicalization_error(
+            "openapi_operations_missing",
+            "$.paths",
+            "No verifiable request-response operations were found.",
+            "Declare at least one operation with request and success response schemas.",
+        ));
+    }
+    if !errors.is_empty() {
+        return Err(errors);
+    }
+    Ok(serde_json::json!({ "format": "openapi", "version": version, "operations": operations }))
+}
+
+/// Converts a binary Protobuf `FileDescriptorSet` into the canonical operation shape.
+pub fn canonicalize_protobuf_request_response(
+    version: &str,
+    descriptor_bytes: &[u8],
+) -> Result<Value, Vec<RequestResponseCanonicalizationError>> {
+    if version.is_empty() {
+        return Err(vec![canonicalization_error(
+            "protobuf_version_missing",
+            "$.version",
+            "The Protobuf contract version is required.",
+            "Provide the authoritative Protobuf contract version.",
+        )]);
+    }
+    let descriptor = prost_types::FileDescriptorSet::decode(descriptor_bytes).map_err(|error| {
+        vec![canonicalization_error(
+            "protobuf_descriptor_invalid",
+            "$",
+            format!("Invalid FileDescriptorSet: {error}"),
+            "Generate a binary descriptor set with protoc --descriptor_set_out.",
+        )]
+    })?;
+    let descriptor_errors = validate_supported_protobuf_descriptor(&descriptor);
+    if !descriptor_errors.is_empty() {
+        return Err(descriptor_errors);
+    }
+    let mut messages = BTreeMap::new();
+    for file in &descriptor.file {
+        let package = file.package.as_deref().unwrap_or_default();
+        collect_protobuf_messages(package, "", &file.message_type, &mut messages);
+    }
+    let mut operations = serde_json::Map::new();
+    for file in &descriptor.file {
+        let package = file.package.as_deref().unwrap_or_default();
+        for service in &file.service {
+            let service_name = service.name.as_deref().unwrap_or("Service");
+            for method in &service.method {
+                let method_name = method.name.as_deref().unwrap_or("Method");
+                let operation_id = [package, service_name, method_name]
+                    .into_iter()
+                    .filter(|part| !part.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(".");
+                let request_type = method
+                    .input_type
+                    .as_deref()
+                    .map(|name| name.trim_start_matches('.'));
+                let response_type = method
+                    .output_type
+                    .as_deref()
+                    .map(|name| name.trim_start_matches('.'));
+                let request = method.input_type.as_deref().and_then(|name| {
+                    expand_protobuf_message(
+                        name.trim_start_matches('.'),
+                        &messages,
+                        &mut BTreeSet::new(),
+                    )
+                });
+                let response = method.output_type.as_deref().and_then(|name| {
+                    expand_protobuf_message(
+                        name.trim_start_matches('.'),
+                        &messages,
+                        &mut BTreeSet::new(),
+                    )
+                });
+                let (Some(mut request), Some(mut response)) = (request, response) else {
+                    return Err(vec![canonicalization_error(
+                        "protobuf_message_unresolved",
+                        format!("$.operations.{operation_id}"),
+                        "RPC input or output message is missing from the descriptor set.",
+                        "Include imports when generating the FileDescriptorSet and retry.",
+                    )]);
+                };
+                let syntax = file.syntax.as_deref().unwrap_or("proto2");
+                for (schema, message_name) in [
+                    (&mut request, request_type.unwrap_or_default()),
+                    (&mut response, response_type.unwrap_or_default()),
+                ] {
+                    if let Some(object) = schema.as_object_mut() {
+                        object.insert("message".to_owned(), Value::String(message_name.to_owned()));
+                        object.insert("syntax".to_owned(), Value::String(syntax.to_owned()));
+                    }
+                }
+                operations.insert(
+                    operation_id,
+                    serde_json::json!({ "request": request, "response": response }),
+                );
+            }
+        }
+    }
+    if operations.is_empty() {
+        return Err(vec![canonicalization_error(
+            "protobuf_operations_missing",
+            "$",
+            "No verifiable Protobuf RPC operations were found.",
+            "Include at least one service RPC in the FileDescriptorSet.",
+        )]);
+    }
+    Ok(serde_json::json!({ "format": "protobuf", "version": version, "operations": operations }))
+}
+
+fn canonicalize_openapi_content(document: &Value, content: &Value) -> Option<Value> {
+    let content = content.as_object()?;
+    if content.len() != 1 {
+        return None;
+    }
+    let (media_type, media) = content.iter().next()?;
+    let mut primary = resolve_openapi_schema(document, media.get("schema")?, &mut BTreeSet::new());
+    if let Some(object) = primary.as_object_mut() {
+        object.insert(
+            "x-lenso-media-type".to_owned(),
+            Value::String(media_type.clone()),
+        );
+        Some(primary)
+    } else {
+        Some(serde_json::json!({
+            "allOf": [primary],
+            "x-lenso-media-type": media_type,
+        }))
+    }
+}
+
+fn canonicalize_openapi_response(document: &Value, response: &Value) -> Option<Value> {
+    let mut schema = match response.get("content") {
+        None => serde_json::json!({
+            "type": "null",
+            "x-lenso-no-content": true,
+        }),
+        Some(content) if content.as_object().is_some_and(serde_json::Map::is_empty) => {
+            serde_json::json!({
+                "type": "null",
+                "x-lenso-no-content": true,
+            })
+        }
+        Some(content) => canonicalize_openapi_content(document, content)?,
+    };
+    let headers = response
+        .get("headers")
+        .and_then(Value::as_object)
+        .into_iter()
+        .flatten()
+        .map(|(name, header)| {
+            (
+                name.clone(),
+                resolve_openapi_schema(document, header, &mut BTreeSet::new()),
+            )
+        })
+        .collect::<serde_json::Map<_, _>>();
+    if let Some(object) = schema.as_object_mut() {
+        object.insert(
+            "x-lenso-response-headers".to_owned(),
+            Value::Object(headers),
+        );
+    }
+    Some(schema)
+}
+
+fn validate_openapi_references(
+    document: &Value,
+    value: &Value,
+    path: &str,
+    errors: &mut Vec<RequestResponseCanonicalizationError>,
+) {
+    match value {
+        Value::Object(object) => {
+            if let Some(reference) = object.get("$ref").and_then(Value::as_str) {
+                let resolved = reference
+                    .strip_prefix('#')
+                    .and_then(|pointer| document.pointer(pointer));
+                if resolved.is_none() {
+                    errors.push(canonicalization_error(
+                        "openapi_reference_unverifiable",
+                        format!("{path}.$ref"),
+                        format!("OpenAPI reference `{reference}` cannot be resolved locally."),
+                        "Bundle external references and fix unresolved pointers before comparing contracts.",
+                    ));
+                }
+            }
+            for (key, child) in object {
+                validate_openapi_references(document, child, &format!("{path}.{key}"), errors);
+            }
+        }
+        Value::Array(values) => {
+            for (index, child) in values.iter().enumerate() {
+                validate_openapi_references(document, child, &format!("{path}[{index}]"), errors);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn canonicalize_openapi_parameters(
+    document: &Value,
+    path_item: &serde_json::Map<String, Value>,
+    operation: &serde_json::Map<String, Value>,
+) -> Option<Value> {
+    let parameters = path_item
+        .get("parameters")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .chain(
+            operation
+                .get("parameters")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten(),
+        )
+        .collect::<Vec<_>>();
+    if parameters.is_empty() {
+        return Some(serde_json::json!({ "type": "object", "properties": {} }));
+    }
+    let mut properties = serde_json::Map::new();
+    let mut required = BTreeSet::new();
+    for parameter in parameters {
+        let parameter = resolve_openapi_schema(document, parameter, &mut BTreeSet::new());
+        let name = parameter.get("name").and_then(Value::as_str)?;
+        let schema = parameter.get("schema")?;
+        let mut schema = resolve_openapi_schema(document, schema, &mut BTreeSet::new());
+        if let Some(object) = schema.as_object_mut() {
+            for key in ["in", "style", "explode", "allowEmptyValue", "allowReserved"] {
+                if let Some(value) = parameter.get(key) {
+                    object.insert(format!("x-lenso-parameter-{key}"), value.clone());
+                }
+            }
+        }
+        properties.insert(name.to_owned(), schema);
+        if parameter
+            .get("required")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        {
+            required.insert(name.to_owned());
+        }
+    }
+    Some(serde_json::json!({
+        "type": "object",
+        "required": required,
+        "properties": properties,
+    }))
+}
+
+fn resolve_openapi_schema(document: &Value, schema: &Value, seen: &mut BTreeSet<String>) -> Value {
+    if let Some(reference) = schema.get("$ref").and_then(Value::as_str) {
+        if !seen.insert(reference.to_owned()) {
+            return serde_json::json!({ "$ref": reference, "recursive": true });
+        }
+        let resolved = reference
+            .strip_prefix('#')
+            .and_then(|pointer| document.pointer(pointer))
+            .map(|value| resolve_openapi_schema(document, value, seen));
+        seen.remove(reference);
+        if let Some(mut resolved) = resolved {
+            if let (Some(target), Some(source)) = (resolved.as_object_mut(), schema.as_object()) {
+                for (key, value) in source {
+                    if key != "$ref" {
+                        target.insert(key.clone(), resolve_openapi_schema(document, value, seen));
+                    }
+                }
+            }
+            return resolved;
+        }
+    }
+    match schema {
+        Value::Array(values) => Value::Array(
+            values
+                .iter()
+                .map(|value| resolve_openapi_schema(document, value, seen))
+                .collect(),
+        ),
+        Value::Object(object) => Value::Object(
+            object
+                .iter()
+                .map(|(key, value)| (key.clone(), resolve_openapi_schema(document, value, seen)))
+                .collect(),
+        ),
+        _ => schema.clone(),
+    }
+}
+
+fn collect_protobuf_messages(
+    package: &str,
+    parent: &str,
+    descriptors: &[prost_types::DescriptorProto],
+    messages: &mut BTreeMap<String, Value>,
+) {
+    for descriptor in descriptors {
+        let name = descriptor.name.as_deref().unwrap_or("Message");
+        let local_name = if parent.is_empty() {
+            name.to_owned()
+        } else {
+            format!("{parent}.{name}")
+        };
+        let full_name = if package.is_empty() {
+            local_name.clone()
+        } else {
+            format!("{package}.{local_name}")
+        };
+        let fields = descriptor.field.iter().map(|field| {
+            let field_type = field.type_name.clone().unwrap_or_else(|| format!("{:?}", field.r#type.and_then(|value| prost_types::field_descriptor_proto::Type::try_from(value).ok())));
+            let label = field.label.and_then(|value| prost_types::field_descriptor_proto::Label::try_from(value).ok()).map(|label| format!("{label:?}").to_ascii_lowercase()).unwrap_or_else(|| "optional".to_owned());
+            serde_json::json!({ "number": field.number.unwrap_or_default(), "name": field.name.clone().unwrap_or_default(), "jsonName": field.json_name, "type": field_type, "label": label })
+        }).collect::<Vec<_>>();
+        messages.insert(full_name, serde_json::json!({ "fields": fields }));
+        collect_protobuf_messages(package, &local_name, &descriptor.nested_type, messages);
+    }
+}
+
+fn validate_supported_protobuf_descriptor(
+    descriptor: &prost_types::FileDescriptorSet,
+) -> Vec<RequestResponseCanonicalizationError> {
+    let mut errors = Vec::new();
+    for (file_index, file) in descriptor.file.iter().enumerate() {
+        if !matches!(
+            file.syntax.as_deref().unwrap_or("proto2"),
+            "proto2" | "proto3"
+        ) {
+            errors.push(unsupported_protobuf_feature(
+                format!("$.file[{file_index}].syntax"),
+                "Protobuf editions or unknown syntax",
+            ));
+        }
+        if !file.enum_type.is_empty() {
+            errors.push(unsupported_protobuf_feature(
+                format!("$.file[{file_index}].enumType"),
+                "enum definitions",
+            ));
+        }
+        validate_supported_protobuf_messages(
+            &file.message_type,
+            &format!("$.file[{file_index}].messageType"),
+            &mut errors,
+        );
+        for (service_index, service) in file.service.iter().enumerate() {
+            for (method_index, method) in service.method.iter().enumerate() {
+                if method.client_streaming.unwrap_or(false)
+                    || method.server_streaming.unwrap_or(false)
+                    || method.options.is_some()
+                {
+                    errors.push(unsupported_protobuf_feature(
+                        format!(
+                            "$.file[{file_index}].service[{service_index}].method[{method_index}]"
+                        ),
+                        "streaming RPCs or method options",
+                    ));
+                }
+            }
+        }
+    }
+    errors
+}
+
+fn validate_supported_protobuf_messages(
+    messages: &[prost_types::DescriptorProto],
+    path: &str,
+    errors: &mut Vec<RequestResponseCanonicalizationError>,
+) {
+    for (message_index, message) in messages.iter().enumerate() {
+        let message_path = format!("{path}[{message_index}]");
+        if !message.enum_type.is_empty()
+            || !message.oneof_decl.is_empty()
+            || message.options.is_some()
+        {
+            errors.push(unsupported_protobuf_feature(
+                &message_path,
+                "enum, oneof, map, or message options",
+            ));
+        }
+        for (field_index, field) in message.field.iter().enumerate() {
+            let is_enum = field
+                .r#type
+                .and_then(|value| prost_types::field_descriptor_proto::Type::try_from(value).ok())
+                == Some(prost_types::field_descriptor_proto::Type::Enum);
+            if is_enum
+                || field.oneof_index.is_some()
+                || field.proto3_optional.unwrap_or(false)
+                || field.default_value.is_some()
+                || field.options.is_some()
+            {
+                errors.push(unsupported_protobuf_feature(
+                    format!("{message_path}.field[{field_index}]"),
+                    "enum, oneof, proto3 optional, defaults, or field options",
+                ));
+            }
+        }
+        validate_supported_protobuf_messages(
+            &message.nested_type,
+            &format!("{message_path}.nestedType"),
+            errors,
+        );
+    }
+}
+
+fn unsupported_protobuf_feature(
+    path: impl Into<String>,
+    feature: &str,
+) -> RequestResponseCanonicalizationError {
+    canonicalization_error(
+        "protobuf_feature_unverifiable",
+        path,
+        format!("Compatibility for {feature} is not yet structurally verifiable."),
+        "Review this Protobuf change manually or use only currently supported descriptor features.",
+    )
+}
+
+fn expand_protobuf_message(
+    name: &str,
+    messages: &BTreeMap<String, Value>,
+    seen: &mut BTreeSet<String>,
+) -> Option<Value> {
+    let canonical_name = name.trim_start_matches('.');
+    let message = messages.get(canonical_name)?;
+    if !seen.insert(canonical_name.to_owned()) {
+        return Some(serde_json::json!({
+            "message": canonical_name,
+            "recursive": true,
+        }));
+    }
+    let mut expanded = message.clone();
+    if let Some(fields) = expanded.get_mut("fields").and_then(Value::as_array_mut) {
+        for field in fields {
+            let Some(field_type) = field.get("type").and_then(Value::as_str) else {
+                continue;
+            };
+            if let Some(schema) = expand_protobuf_message(field_type, messages, seen) {
+                field["type"] = serde_json::json!({
+                    "message": field_type.trim_start_matches('.'),
+                    "schema": schema,
+                });
+            }
+        }
+    }
+    seen.remove(canonical_name);
+    Some(expanded)
+}
+
+fn canonicalization_error(
+    code: impl Into<String>,
+    path: impl Into<String>,
+    message: impl Into<String>,
+    next_action: impl Into<String>,
+) -> RequestResponseCanonicalizationError {
+    RequestResponseCanonicalizationError {
+        code: code.into(),
+        path: path.into(),
+        message: message.into(),
+        next_action: next_action.into(),
+    }
+}
+
+/// Compares canonical OpenAPI or Protobuf request/response operation shapes.
+///
+/// The input is deliberately JSON so the public library and CLI can call the same evaluator.
+/// `operations` is keyed by stable operation or RPC name. OpenAPI request/response values are
+/// JSON Schemas; Protobuf values contain descriptor-like `fields` arrays keyed by field number.
+#[must_use]
+pub fn evaluate_request_response_compatibility(
+    input: &Value,
+) -> RequestResponseCompatibilityResult {
+    evaluate_request_response_compatibility_inner(None, input)
+}
+
+#[must_use]
+pub fn evaluate_request_response_compatibility_in_system(
+    system: &Value,
+    input: &Value,
+) -> RequestResponseCompatibilityResult {
+    evaluate_request_response_compatibility_inner(Some(system), input)
+}
+
+fn evaluate_request_response_compatibility_inner(
+    system: Option<&Value>,
+    input: &Value,
+) -> RequestResponseCompatibilityResult {
+    let raw_contract_kind = input.get("contractKind").and_then(Value::as_str);
+    let contract_kind = match raw_contract_kind {
+        Some("provider_protocol") => RequestResponseContractKind::ProviderProtocol,
+        _ => RequestResponseContractKind::ServiceContract,
+    };
+    let prefix = match contract_kind {
+        RequestResponseContractKind::ProviderProtocol => "provider_protocol_",
+        RequestResponseContractKind::ServiceContract => "service_contract_",
+    };
+    let mut result = RequestResponseCompatibilityResult {
+        category: RequestResponseCompatibilityCategory::Safe,
+        contract_kind,
+        contract_id: input
+            .get("contractId")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned(),
+        changed_version: input
+            .get("changedVersion")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned(),
+        producers: Vec::new(),
+        consumers: Vec::new(),
+        reasons: Vec::new(),
+    };
+    if !matches!(
+        raw_contract_kind,
+        Some("provider_protocol" | "service_contract")
+    ) {
+        compatibility_reason(
+            &mut result,
+            RequestResponseCompatibilityCategory::Blocked,
+            "relationship_unverifiable",
+            "$.contractKind",
+            "The request-response contract kind is missing or unsupported.",
+            "Declare `provider_protocol` or `service_contract` explicitly.",
+        );
+    }
+    if let Some(system) = system {
+        resolve_system_v2_relationships(system, input, &mut result);
+    }
+    if result.contract_id.is_empty()
+        || result.changed_version.is_empty()
+        || result.producers.is_empty()
+        || result.consumers.is_empty()
+    {
+        compatibility_reason(
+            &mut result,
+            RequestResponseCompatibilityCategory::Blocked,
+            "relationship_unverifiable",
+            "$",
+            "Contract identity, changed version, Producer, and Consumer relationships must all be verifiable.",
+            "Resolve the contract and System graph references before evaluating compatibility.",
+        );
+    }
+    let before = input.get("before");
+    let after = input.get("after");
+    let before_version = before
+        .and_then(|value| value.get("version"))
+        .and_then(Value::as_str);
+    let after_version = after
+        .and_then(|value| value.get("version"))
+        .and_then(Value::as_str);
+    if before_version.is_none()
+        || after_version.is_none()
+        || after_version != Some(result.changed_version.as_str())
+        || before_version == after_version
+    {
+        compatibility_reason(
+            &mut result,
+            RequestResponseCompatibilityCategory::Blocked,
+            &format!("{prefix}artifact_version_unverifiable"),
+            "$.after.version",
+            "Both artifact versions must be explicit, different, and the candidate must match changedVersion.",
+            "Provide authoritative before and after artifact versions and retry.",
+        );
+    }
+    let before_format = before
+        .and_then(|value| value.get("format"))
+        .and_then(Value::as_str);
+    let after_format = after
+        .and_then(|value| value.get("format"))
+        .and_then(Value::as_str);
+    if before_format != after_format || !matches!(before_format, Some("openapi" | "protobuf")) {
+        compatibility_reason(
+            &mut result,
+            RequestResponseCompatibilityCategory::Blocked,
+            &format!("{prefix}artifact_unverifiable"),
+            "$.before.format",
+            "Both artifacts must use the same supported request-response format.",
+            "Provide canonical OpenAPI or Protobuf artifacts in the same format.",
+        );
+    } else if let (Some(before_operations), Some(after_operations)) = (
+        before
+            .and_then(|value| value.get("operations"))
+            .and_then(Value::as_object),
+        after
+            .and_then(|value| value.get("operations"))
+            .and_then(Value::as_object),
+    ) {
+        for (operation, old) in before_operations {
+            let Some(new) = after_operations.get(operation) else {
+                compatibility_reason(
+                    &mut result,
+                    RequestResponseCompatibilityCategory::Breaking,
+                    &format!("{prefix}operation_removed"),
+                    &format!("$.after.operations.{operation}"),
+                    "A request-response operation was removed.",
+                    "Restore the operation or coordinate a new contract version with every Consumer.",
+                );
+                continue;
+            };
+            match before_format {
+                Some("openapi") => {
+                    compare_openapi_operation(&mut result, prefix, operation, old, new)
+                }
+                Some("protobuf") => {
+                    compare_protobuf_operation(&mut result, prefix, operation, old, new)
+                }
+                _ => {}
+            }
+        }
+    } else {
+        compatibility_reason(
+            &mut result,
+            RequestResponseCompatibilityCategory::Blocked,
+            &format!("{prefix}artifact_unverifiable"),
+            "$.before.operations",
+            "Both artifacts must expose canonical operations.",
+            "Generate canonical operation shapes from both artifacts and retry.",
+        );
+    }
+    if result.reasons.is_empty() {
+        compatibility_reason(
+            &mut result,
+            RequestResponseCompatibilityCategory::Safe,
+            &format!("{prefix}backward_compatible"),
+            "$",
+            "All known Producer and Consumer request-response relationships remain compatible.",
+            "Publish the changed version and monitor known Consumers.",
+        );
+    }
+    result.reasons.sort();
+    result.reasons.dedup();
+    result
+}
+
+fn resolve_system_v2_relationships(
+    system: &Value,
+    input: &Value,
+    result: &mut RequestResponseCompatibilityResult,
+) {
+    if system_v2_graph(system).is_err() {
+        return;
+    }
+    let Some(contract) = system
+        .get("contracts")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .find(|contract| {
+            contract.get("contractId").and_then(Value::as_str) == Some(&result.contract_id)
+        })
+    else {
+        return;
+    };
+    let Some(producer_kind) = contract.get("producerKind").and_then(Value::as_str) else {
+        return;
+    };
+    let Some(producer_id) = contract.get("producerId").and_then(Value::as_str) else {
+        return;
+    };
+    let resolved_kind = if producer_kind == "provider" {
+        RequestResponseContractKind::ProviderProtocol
+    } else {
+        RequestResponseContractKind::ServiceContract
+    };
+    let graph_version = contract.get("version").and_then(Value::as_str);
+    let graph_format = contract
+        .get("artifact")
+        .and_then(|artifact| artifact.get("format"))
+        .and_then(Value::as_str);
+    let baseline_version = input
+        .get("before")
+        .and_then(|artifact| artifact.get("version"))
+        .and_then(Value::as_str);
+    let baseline_format = input
+        .get("before")
+        .and_then(|artifact| artifact.get("format"))
+        .and_then(Value::as_str);
+    if resolved_kind != result.contract_kind
+        || graph_version != baseline_version
+        || graph_format != baseline_format
+    {
+        compatibility_reason(
+            result,
+            RequestResponseCompatibilityCategory::Blocked,
+            "relationship_unverifiable",
+            "$.before",
+            "The declared contract kind, baseline version, or format does not match the resolved System graph contract.",
+            "Use the contract kind, version, and artifact format declared by the authoritative System graph.",
+        );
+        return;
+    }
+    result.producers = vec![format!("{producer_kind}:{producer_id}")];
+    result.consumers = system
+        .get("consumers")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|consumer| {
+            consumer.get("contractId").and_then(Value::as_str) == Some(&result.contract_id)
+        })
+        .filter_map(|consumer| {
+            Some(format!(
+                "{}:{}",
+                consumer.get("ownerKind")?.as_str()?,
+                consumer.get("ownerId")?.as_str()?
+            ))
+        })
+        .collect();
+    result.consumers.sort();
+    result.consumers.dedup();
+}
+
+fn compare_openapi_operation(
+    result: &mut RequestResponseCompatibilityResult,
+    prefix: &str,
+    operation: &str,
+    old: &Value,
+    new: &Value,
+) {
+    if old.get("method") != new.get("method") || old.get("path") != new.get("path") {
+        compatibility_reason(
+            result,
+            RequestResponseCompatibilityCategory::Breaking,
+            &format!("{prefix}operation_transport_changed"),
+            &format!("$.after.operations.{operation}"),
+            "The HTTP method or path for an existing operation changed.",
+            "Restore the previous method and path or coordinate a new contract version with every Consumer.",
+        );
+    }
+    compare_json_schema(
+        result,
+        prefix,
+        operation,
+        "request",
+        old.get("request"),
+        new.get("request"),
+        true,
+    );
+    compare_json_schema(
+        result,
+        prefix,
+        operation,
+        "response",
+        old.get("response"),
+        new.get("response"),
+        false,
+    );
+}
+
+fn compare_json_schema(
+    result: &mut RequestResponseCompatibilityResult,
+    prefix: &str,
+    operation: &str,
+    direction: &str,
+    old: Option<&Value>,
+    new: Option<&Value>,
+    request: bool,
+) {
+    let path = format!("$.after.operations.{operation}.{direction}");
+    let (Some(old), Some(new)) = (old, new) else {
+        compatibility_reason(
+            result,
+            RequestResponseCompatibilityCategory::Blocked,
+            &format!("{prefix}{direction}_schema_unverifiable"),
+            &path,
+            "The request or response schema is missing.",
+            "Provide both canonical schemas before evaluating compatibility.",
+        );
+        return;
+    };
+    if old.get("type") != new.get("type") {
+        compatibility_reason(
+            result,
+            RequestResponseCompatibilityCategory::Breaking,
+            &format!("{prefix}{direction}_type_changed"),
+            &path,
+            "The request or response type changed.",
+            "Restore the previous type or coordinate a new contract version with affected Consumers.",
+        );
+    }
+    if request
+        && !old
+            .get("x-lenso-request-body-required")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        && new
+            .get("x-lenso-request-body-required")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+    {
+        compatibility_reason(
+            result,
+            RequestResponseCompatibilityCategory::Breaking,
+            &format!("{prefix}request_body_became_required"),
+            &path,
+            "An optional request body became required.",
+            "Keep the request body optional or coordinate the change with every Consumer.",
+        );
+    }
+    let old_required = string_set(old.get("required"));
+    let new_required = string_set(new.get("required"));
+    let old_properties = old.get("properties").and_then(Value::as_object);
+    let new_properties = new.get("properties").and_then(Value::as_object);
+    if let (Some(old_properties), Some(new_properties)) = (old_properties, new_properties) {
+        if request {
+            for field in new_required.difference(&old_required) {
+                compatibility_reason(
+                    result,
+                    RequestResponseCompatibilityCategory::Breaking,
+                    &format!("{prefix}request_required_field_added"),
+                    &format!("{path}.properties.{field}"),
+                    "A new required request field rejects requests from existing Consumers.",
+                    "Make the field optional or coordinate the required request change with every Consumer.",
+                );
+            }
+        } else {
+            for field in old_required.difference(&new_required) {
+                compatibility_reason(
+                    result,
+                    RequestResponseCompatibilityCategory::Breaking,
+                    &format!("{prefix}response_required_field_became_optional"),
+                    &format!("{path}.properties.{field}"),
+                    "A response field required by existing Consumers may now be omitted.",
+                    "Keep the response field required or coordinate a new contract version with affected Consumers.",
+                );
+            }
+            for field in old_properties
+                .keys()
+                .filter(|field| !new_properties.contains_key(*field))
+            {
+                compatibility_reason(
+                    result,
+                    RequestResponseCompatibilityCategory::Breaking,
+                    &format!("{prefix}response_field_removed"),
+                    &format!("{path}.properties.{field}"),
+                    "A response field used by existing Consumers was removed.",
+                    "Restore the response field or coordinate a new contract version with affected Consumers.",
+                );
+            }
+        }
+        for (field, old_field) in old_properties {
+            if let Some(new_field) = new_properties.get(field) {
+                if old_field.get("type") != new_field.get("type") {
+                    compatibility_reason(
+                        result,
+                        RequestResponseCompatibilityCategory::Breaking,
+                        &format!("{prefix}{direction}_field_type_changed"),
+                        &format!("{path}.properties.{field}"),
+                        "A field type changed.",
+                        "Restore the previous field type or introduce a new field and version.",
+                    );
+                } else if old_field != new_field {
+                    compatibility_reason(
+                        result,
+                        RequestResponseCompatibilityCategory::NeedsAttention,
+                        &format!("{prefix}{direction}_field_constraints_changed"),
+                        &format!("{path}.properties.{field}"),
+                        "A field constraint changed and compatibility cannot be proven structurally.",
+                        "Review enum, range, format, and composition constraints with affected owners.",
+                    );
+                }
+            }
+        }
+        let old_constraints = schema_constraints(old);
+        let new_constraints = schema_constraints(new);
+        if old_constraints != new_constraints {
+            compatibility_reason(
+                result,
+                RequestResponseCompatibilityCategory::NeedsAttention,
+                &format!("{prefix}{direction}_constraints_changed"),
+                &path,
+                "Schema-level constraints changed and require semantic review.",
+                "Review the changed constraints with affected Producer and Consumer owners.",
+            );
+        }
+    } else if old != new {
+        compatibility_reason(
+            result,
+            RequestResponseCompatibilityCategory::NeedsAttention,
+            &format!("{prefix}{direction}_schema_not_structurally_proven"),
+            &path,
+            "The schema change cannot be proven compatible from object properties.",
+            "Review the schema constraints with affected Producer and Consumer owners.",
+        );
+    }
+}
+
+fn compare_protobuf_operation(
+    result: &mut RequestResponseCompatibilityResult,
+    prefix: &str,
+    operation: &str,
+    old: &Value,
+    new: &Value,
+) {
+    for direction in ["request", "response"] {
+        let old_message = old.get(direction);
+        let new_message = new.get(direction);
+        for attribute in ["message", "syntax"] {
+            if old_message.and_then(|value| value.get(attribute))
+                != new_message.and_then(|value| value.get(attribute))
+            {
+                compatibility_reason(
+                    result,
+                    RequestResponseCompatibilityCategory::NeedsAttention,
+                    &format!("{prefix}protobuf_{attribute}_changed"),
+                    &format!("$.after.operations.{operation}.{direction}.{attribute}"),
+                    "Protobuf message identity or language semantics changed.",
+                    "Review generated clients and presence/default semantics with affected owners.",
+                );
+            }
+        }
+        let path = format!("$.after.operations.{operation}.{direction}.fields");
+        let old_fields = protobuf_fields(old.get(direction));
+        let new_fields = protobuf_fields(new.get(direction));
+        let (Some(old_fields), Some(new_fields)) = (old_fields, new_fields) else {
+            compatibility_reason(
+                result,
+                RequestResponseCompatibilityCategory::Blocked,
+                &format!("{prefix}protobuf_descriptor_unverifiable"),
+                &path,
+                "The Protobuf field descriptors are missing or invalid.",
+                "Generate descriptor-based canonical fields for both contract versions.",
+            );
+            continue;
+        };
+        for (number, old_field) in &old_fields {
+            let Some(new_field) = new_fields.get(number) else {
+                if direction == "response" {
+                    compatibility_reason(
+                        result,
+                        RequestResponseCompatibilityCategory::Breaking,
+                        &format!("{prefix}protobuf_response_field_removed"),
+                        &format!("{path}.{number}"),
+                        "A response field number was removed.",
+                        "Restore or reserve the field and coordinate a new response contract version.",
+                    );
+                } else {
+                    compatibility_reason(
+                        result,
+                        RequestResponseCompatibilityCategory::NeedsAttention,
+                        &format!("{prefix}protobuf_request_field_removed"),
+                        &format!("{path}.{number}"),
+                        "A request field number was removed and its semantic handling cannot be proven.",
+                        "Reserve the removed number and confirm all Producers tolerate the old wire field.",
+                    );
+                }
+                continue;
+            };
+            if old_field.get("type") != new_field.get("type") {
+                compatibility_reason(
+                    result,
+                    RequestResponseCompatibilityCategory::Breaking,
+                    &format!("{prefix}protobuf_field_type_changed"),
+                    &format!("{path}.{number}"),
+                    "A Protobuf field number changed wire type.",
+                    "Restore the wire-compatible type or allocate a new field number.",
+                );
+            }
+            if old_field.get("name") != new_field.get("name") {
+                compatibility_reason(
+                    result,
+                    RequestResponseCompatibilityCategory::NeedsAttention,
+                    &format!("{prefix}protobuf_field_renamed"),
+                    &format!("{path}.{number}"),
+                    "A Protobuf field kept its number but changed source name.",
+                    "Review generated clients and JSON mappings before publishing.",
+                );
+            }
+            if old_field.get("label") != new_field.get("label") {
+                let category = if new_field.get("label").and_then(Value::as_str) == Some("required")
+                {
+                    RequestResponseCompatibilityCategory::Breaking
+                } else {
+                    RequestResponseCompatibilityCategory::NeedsAttention
+                };
+                compatibility_reason(
+                    result,
+                    category,
+                    &format!("{prefix}protobuf_field_label_changed"),
+                    &format!("{path}.{number}"),
+                    "A Protobuf field cardinality changed.",
+                    "Restore the previous label or coordinate the cardinality change with affected owners.",
+                );
+            }
+            if old_field.get("jsonName") != new_field.get("jsonName") {
+                compatibility_reason(
+                    result,
+                    RequestResponseCompatibilityCategory::NeedsAttention,
+                    &format!("{prefix}protobuf_json_name_changed"),
+                    &format!("{path}.{number}"),
+                    "A Protobuf field JSON name changed.",
+                    "Review JSON-transcoded Consumers before publishing the changed contract.",
+                );
+            }
+        }
+        for (number, new_field) in &new_fields {
+            if !old_fields.contains_key(number)
+                && new_field.get("label").and_then(Value::as_str) == Some("required")
+            {
+                compatibility_reason(
+                    result,
+                    RequestResponseCompatibilityCategory::Breaking,
+                    &format!("{prefix}protobuf_required_field_added"),
+                    &format!("{path}.{number}"),
+                    "A required Protobuf field was added.",
+                    "Make the field optional or coordinate a new contract version with every affected owner.",
+                );
+            }
+        }
+    }
+}
+
+fn compatibility_reason(
+    result: &mut RequestResponseCompatibilityResult,
+    category: RequestResponseCompatibilityCategory,
+    code: &str,
+    path: &str,
+    message: &str,
+    next_action: &str,
+) {
+    result.category = result.category.max(category);
+    result.reasons.push(RequestResponseCompatibilityReason {
+        code: code.to_owned(),
+        path: path.to_owned(),
+        message: message.to_owned(),
+        next_action: next_action.to_owned(),
+    });
+}
+
+fn string_set(value: Option<&Value>) -> BTreeSet<String> {
+    value
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::to_owned)
+        .collect()
+}
+
+fn schema_constraints(schema: &Value) -> BTreeMap<String, Value> {
+    schema
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter(|(key, _)| {
+            !matches!(
+                key.as_str(),
+                "type"
+                    | "properties"
+                    | "required"
+                    | "description"
+                    | "default"
+                    | "title"
+                    | "examples"
+            )
+        })
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect()
+}
+
+fn protobuf_fields(value: Option<&Value>) -> Option<BTreeMap<u64, Value>> {
+    let fields = value?.get("fields")?.as_array()?;
+    fields
+        .iter()
+        .map(|field| Some((field.get("number")?.as_u64()?, field.clone())))
+        .collect()
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

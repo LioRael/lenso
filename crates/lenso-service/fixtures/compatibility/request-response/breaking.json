@@ -1,0 +1,7 @@
+{
+  "contractKind": "service_contract",
+  "contractId": "support-http.v1",
+  "changedVersion": "v2",
+  "before": {"format": "openapi", "version": "v1", "operations": {"getTicket": {"request": {"type": "object", "properties": {}}, "response": {"type": "object", "required": ["id", "status"], "properties": {"id": {"type": "string"}, "status": {"type": "string"}}}}}},
+  "after": {"format": "openapi", "version": "v2", "operations": {"getTicket": {"request": {"type": "object", "required": ["tenantId"], "properties": {"tenantId": {"type": "string"}}}, "response": {"type": "object", "required": ["id"], "properties": {"id": {"type": "string"}}}}}}
+}

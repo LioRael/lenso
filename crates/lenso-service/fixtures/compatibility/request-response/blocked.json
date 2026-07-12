@@ -1,0 +1,7 @@
+{
+  "contractKind": "service_contract",
+  "contractId": "missing-contract",
+  "changedVersion": "v2",
+  "before": {"format": "openapi", "version": "v1", "operations": {}},
+  "after": {"format": "openapi", "version": "v2", "operations": {}}
+}

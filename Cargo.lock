@@ -2293,6 +2293,8 @@ version = "0.1.2"
 dependencies = [
  "axum",
  "lenso-contracts",
+ "prost",
+ "prost-types",
  "serde",
  "serde_json",
 ]
