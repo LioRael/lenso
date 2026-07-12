@@ -1,0 +1,231 @@
+{
+  "$defs": {
+    "artifact": {
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "enum": [
+            "openapi",
+            "protobuf",
+            "json_schema",
+            "config",
+            "reliability"
+          ]
+        },
+        "path": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "required": [
+        "format",
+        "path"
+      ],
+      "type": "object"
+    },
+    "consumer": {
+      "additionalProperties": false,
+      "properties": {
+        "consumerId": {
+          "$ref": "#/$defs/id"
+        },
+        "contractId": {
+          "$ref": "#/$defs/id"
+        },
+        "ownerId": {
+          "$ref": "#/$defs/id"
+        },
+        "ownerKind": {
+          "enum": [
+            "host",
+            "provider",
+            "autonomous_service"
+          ]
+        },
+        "tenancyMode": {
+          "$ref": "#/$defs/tenancy"
+        }
+      },
+      "required": [
+        "consumerId",
+        "ownerKind",
+        "ownerId",
+        "contractId",
+        "tenancyMode"
+      ],
+      "type": "object"
+    },
+    "contract": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "$ref": "#/$defs/artifact"
+        },
+        "contractId": {
+          "$ref": "#/$defs/id"
+        },
+        "producerId": {
+          "$ref": "#/$defs/id"
+        },
+        "producerKind": {
+          "enum": [
+            "provider",
+            "autonomous_service"
+          ]
+        },
+        "tenancyMode": {
+          "$ref": "#/$defs/tenancy"
+        },
+        "version": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "required": [
+        "contractId",
+        "version",
+        "producerKind",
+        "producerId",
+        "artifact",
+        "tenancyMode"
+      ],
+      "type": "object"
+    },
+    "host": {
+      "additionalProperties": false,
+      "properties": {
+        "hostId": {
+          "$ref": "#/$defs/id"
+        },
+        "modules": {
+          "$ref": "#/$defs/modules"
+        }
+      },
+      "required": [
+        "hostId",
+        "modules"
+      ],
+      "type": "object"
+    },
+    "id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "modules": {
+      "items": {
+        "$ref": "#/$defs/id"
+      },
+      "type": "array"
+    },
+    "provider": {
+      "additionalProperties": false,
+      "properties": {
+        "modules": {
+          "$ref": "#/$defs/modules"
+        },
+        "providerId": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "required": [
+        "providerId",
+        "modules"
+      ],
+      "type": "object"
+    },
+    "service": {
+      "additionalProperties": false,
+      "properties": {
+        "modules": {
+          "$ref": "#/$defs/modules"
+        },
+        "serviceId": {
+          "$ref": "#/$defs/id"
+        },
+        "workloads": {
+          "items": {
+            "$ref": "#/$defs/workload"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "serviceId",
+        "modules",
+        "workloads"
+      ],
+      "type": "object"
+    },
+    "tenancy": {
+      "enum": [
+        "none",
+        "optional",
+        "required"
+      ]
+    },
+    "workload": {
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "$ref": "#/$defs/id"
+        },
+        "workloadId": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "required": [
+        "workloadId",
+        "role"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://contracts.lenso.local/services/lenso-system.v2.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "autonomousServices": {
+      "items": {
+        "$ref": "#/$defs/service"
+      },
+      "type": "array"
+    },
+    "consumers": {
+      "items": {
+        "$ref": "#/$defs/consumer"
+      },
+      "type": "array"
+    },
+    "contracts": {
+      "items": {
+        "$ref": "#/$defs/contract"
+      },
+      "type": "array"
+    },
+    "host": {
+      "$ref": "#/$defs/host"
+    },
+    "protocol": {
+      "const": "lenso.system.v2"
+    },
+    "providers": {
+      "items": {
+        "$ref": "#/$defs/provider"
+      },
+      "type": "array"
+    },
+    "systemId": {
+      "$ref": "#/$defs/id"
+    }
+  },
+  "required": [
+    "protocol",
+    "systemId",
+    "host",
+    "providers",
+    "autonomousServices",
+    "contracts",
+    "consumers"
+  ],
+  "title": "LensoMixedTopologySystem",
+  "type": "object"
+}

@@ -25,6 +25,21 @@ fn committed_autonomous_service_schema_matches_generator() {
 }
 
 #[test]
+fn committed_system_v2_artifacts_match_generator() {
+    let schema: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/services/lenso-system.v2.schema.json"
+    ))
+    .expect("committed System v2 schema should parse");
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/services/lenso-system.v2.fixture.json"
+    ))
+    .expect("committed System v2 fixture should parse");
+
+    assert_eq!(schema, generate_contracts::generated_system_v2_schema());
+    assert_eq!(fixture, generate_contracts::generated_system_v2_fixture());
+}
+
+#[test]
 fn committed_common_context_schema_matches_generator() {
     let committed: serde_json::Value = serde_json::from_str(include_str!(
         "../../../contracts/context/lenso-context.v1.schema.json"

@@ -1,0 +1,59 @@
+{
+  "$id": "https://contracts.lenso.local/services/lenso-system.v2.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LensoMixedTopologySystem",
+  "type": "object",
+  "required": ["protocol", "systemId", "host", "providers", "autonomousServices", "contracts", "consumers"],
+  "additionalProperties": false,
+  "properties": {
+    "protocol": { "const": "lenso.system.v2" },
+    "systemId": { "$ref": "#/$defs/id" },
+    "host": { "$ref": "#/$defs/host" },
+    "providers": { "type": "array", "items": { "$ref": "#/$defs/provider" } },
+    "autonomousServices": { "type": "array", "items": { "$ref": "#/$defs/service" } },
+    "contracts": { "type": "array", "items": { "$ref": "#/$defs/contract" } },
+    "consumers": { "type": "array", "items": { "$ref": "#/$defs/consumer" } }
+  },
+  "$defs": {
+    "id": { "type": "string", "minLength": 1 },
+    "modules": { "type": "array", "items": { "$ref": "#/$defs/id" } },
+    "tenancy": { "enum": ["none", "optional", "required"] },
+    "host": {
+      "type": "object", "required": ["hostId", "modules"], "additionalProperties": false,
+      "properties": { "hostId": { "$ref": "#/$defs/id" }, "modules": { "$ref": "#/$defs/modules" } }
+    },
+    "provider": {
+      "type": "object", "required": ["providerId", "modules"], "additionalProperties": false,
+      "properties": { "providerId": { "$ref": "#/$defs/id" }, "modules": { "$ref": "#/$defs/modules" } }
+    },
+    "service": {
+      "type": "object", "required": ["serviceId", "modules", "workloads"], "additionalProperties": false,
+      "properties": {
+        "serviceId": { "$ref": "#/$defs/id" }, "modules": { "$ref": "#/$defs/modules" },
+        "workloads": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/workload" } }
+      }
+    },
+    "workload": {
+      "type": "object", "required": ["workloadId", "role"], "additionalProperties": false,
+      "properties": { "workloadId": { "$ref": "#/$defs/id" }, "role": { "$ref": "#/$defs/id" } }
+    },
+    "artifact": {
+      "type": "object", "required": ["format", "path"], "additionalProperties": false,
+      "properties": { "format": { "enum": ["openapi", "protobuf", "json_schema", "config", "reliability"] }, "path": { "$ref": "#/$defs/id" } }
+    },
+    "contract": {
+      "type": "object", "required": ["contractId", "version", "producerKind", "producerId", "artifact", "tenancyMode"], "additionalProperties": false,
+      "properties": {
+        "contractId": { "$ref": "#/$defs/id" }, "version": { "$ref": "#/$defs/id" }, "producerKind": { "enum": ["provider", "autonomous_service"] },
+        "producerId": { "$ref": "#/$defs/id" }, "artifact": { "$ref": "#/$defs/artifact" }, "tenancyMode": { "$ref": "#/$defs/tenancy" }
+      }
+    },
+    "consumer": {
+      "type": "object", "required": ["consumerId", "ownerKind", "ownerId", "contractId", "tenancyMode"], "additionalProperties": false,
+      "properties": {
+        "consumerId": { "$ref": "#/$defs/id" }, "ownerKind": { "enum": ["host", "provider", "autonomous_service"] },
+        "ownerId": { "$ref": "#/$defs/id" }, "contractId": { "$ref": "#/$defs/id" }, "tenancyMode": { "$ref": "#/$defs/tenancy" }
+      }
+    }
+  }
+}

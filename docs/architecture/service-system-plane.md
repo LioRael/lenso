@@ -16,6 +16,19 @@ state. It is a planning and visibility contract that names:
 - dependencies: capability edges between Modules or Providers;
 - environments: local, staging, prod, or any operator-owned deployment lane.
 
+`lenso.system.v2` is the mixed-topology successor. It keeps Provider-era
+semantics intact while adding explicit Host, Provider, Autonomous Service,
+Module, Workload, Producer, and Consumer kinds. Contract relationships carry
+versioned artifact references and tenancy requirements. The graph projection
+canonicalizes collections so logically equivalent source ordering produces
+identical machine JSON.
+
+System v2 validation reports stable codes and next actions for missing
+ownership, unresolved references, ambiguous kinds, and incompatible Producer
+and Consumer tenancy requirements. Public checks identify the protocol as
+`lenso.system.v2` and its semantic kind as `mixed_system`; System v1 continues
+to normalize to `provider_system` through its compatibility adapter.
+
 ## Boundary
 
 Lenso keeps the legacy Provider/Module split explicit:
@@ -40,6 +53,11 @@ permission to write Host runtime tables, consume the Host Outbox, bypass
 capability checks, or receive browser bearer tokens. Authentication, proxy
 policy, retries, runtime queues, Outbox delivery, and Story evidence remain
 Host-owned.
+
+Neither System protocol is part of the Data Plane. Applications do not read a
+System artifact to route requests, authorize callers, publish events, or
+execute Workloads. It remains declarative input for checks, graphs, plans,
+projections, and compatibility review.
 
 The public `lenso-service` contract check reports both the detected protocol and
 its semantic kind. It normalizes `lenso.service.v1` to `provider` and

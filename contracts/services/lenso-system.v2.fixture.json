@@ -1,0 +1,77 @@
+{
+  "autonomousServices": [
+    {
+      "modules": [
+        "support-ticket",
+        "support-sla"
+      ],
+      "serviceId": "support",
+      "workloads": [
+        {
+          "role": "api",
+          "workloadId": "support-api"
+        },
+        {
+          "role": "worker",
+          "workloadId": "support-worker"
+        }
+      ]
+    }
+  ],
+  "consumers": [
+    {
+      "consumerId": "support-host-support-api",
+      "contractId": "support-http.v1",
+      "ownerId": "support-host",
+      "ownerKind": "host",
+      "tenancyMode": "required"
+    },
+    {
+      "consumerId": "support-notifications",
+      "contractId": "notification-events.v1",
+      "ownerId": "support",
+      "ownerKind": "autonomous_service",
+      "tenancyMode": "required"
+    }
+  ],
+  "contracts": [
+    {
+      "artifact": {
+        "format": "openapi",
+        "path": "contracts/openapi/support.v1.yaml"
+      },
+      "contractId": "support-http.v1",
+      "producerId": "support",
+      "producerKind": "autonomous_service",
+      "tenancyMode": "required",
+      "version": "v1"
+    },
+    {
+      "artifact": {
+        "format": "json_schema",
+        "path": "contracts/events/notification.v1.schema.json"
+      },
+      "contractId": "notification-events.v1",
+      "producerId": "notification-provider",
+      "producerKind": "provider",
+      "tenancyMode": "optional",
+      "version": "v1"
+    }
+  ],
+  "host": {
+    "hostId": "support-host",
+    "modules": [
+      "auth"
+    ]
+  },
+  "protocol": "lenso.system.v2",
+  "providers": [
+    {
+      "modules": [
+        "notification-gateway"
+      ],
+      "providerId": "notification-provider"
+    }
+  ],
+  "systemId": "support-platform"
+}

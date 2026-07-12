@@ -6,19 +6,134 @@ use lenso_service::{
     ConfigMutability, ConfigScope, ContractArtifactCheckErrorCode, ContractArtifactKind,
     ContractContextRequirements, ContractOwner, ContractSemanticKind, EventArtifactFormat,
     EventArtifactReference, EventContractArtifact, LEGACY_CONTRACT_FIXTURES,
-    MODULE_CONTRACT_SCHEMA_JSON, MODULE_RELEASE_SCHEMA_JSON, ModuleContract, ModuleManifest,
-    ReliabilityContract, SERVICE_CONTRACT_SCHEMA_JSON, SERVICE_SYSTEM_SCHEMA_JSON,
-    SERVICE_V2_CONTRACT_SCHEMA_JSON, SERVICE_WORKSPACE_SCHEMA_JSON, SchemaArtifactReference,
-    ServiceArtifactFormat, ServiceArtifactReference, ServiceCompatibility, ServiceContract,
-    ServiceContractArtifact, ServiceHealth, ServiceLocalProcess, ServiceProvider, ServiceSystem,
-    ServiceSystemDependency, ServiceSystemModule, ServiceSystemService, ServiceTenancyMode,
-    ServiceWorkspace, ServiceWorkspaceService, WorkloadRole, check_contract_artifact_value,
-    check_contract_artifact_value_with_artifacts, service_system_graph,
+    MIXED_SYSTEM_V2_FIXTURE_JSON, MODULE_CONTRACT_SCHEMA_JSON, MODULE_RELEASE_SCHEMA_JSON,
+    ModuleContract, ModuleManifest, ReliabilityContract, SERVICE_CONTRACT_SCHEMA_JSON,
+    SERVICE_SYSTEM_SCHEMA_JSON, SERVICE_V2_CONTRACT_SCHEMA_JSON, SERVICE_WORKSPACE_SCHEMA_JSON,
+    SYSTEM_V2_CONTRACT_SCHEMA_JSON, SchemaArtifactReference, ServiceArtifactFormat,
+    ServiceArtifactReference, ServiceCompatibility, ServiceContract, ServiceContractArtifact,
+    ServiceHealth, ServiceLocalProcess, ServiceProvider, ServiceSystem, ServiceSystemDependency,
+    ServiceSystemModule, ServiceSystemService, ServiceTenancyMode, ServiceWorkspace,
+    ServiceWorkspaceService, WorkloadRole, check_contract_artifact_value,
+    check_contract_artifact_value_with_artifacts, service_system_graph, system_v2_graph,
     validate_autonomous_service_artifact_references, validate_module_contract_value,
     validate_service_contract_value, validate_service_system_value,
     validate_service_workspace_value,
 };
 use serde_json::json;
+
+#[test]
+fn mixed_system_v2_fixture_builds_a_deterministic_explicit_graph() {
+    let source: serde_json::Value = serde_json::from_str(MIXED_SYSTEM_V2_FIXTURE_JSON).unwrap();
+    let check = check_contract_artifact_value(&source).unwrap();
+    assert_eq!(check.detected_protocol, "lenso.system.v2");
+    assert_eq!(check.semantic_kind, ContractSemanticKind::MixedSystem);
+
+    let graph = system_v2_graph(&source).unwrap();
+    assert_eq!(graph.artifact_protocol, "lenso.system.v2");
+    assert_eq!(graph.semantic_kind, ContractSemanticKind::MixedSystem);
+    for kind in [
+        "host",
+        "provider",
+        "autonomous_service",
+        "module",
+        "workload",
+        "producer",
+        "consumer",
+    ] {
+        assert!(
+            graph.nodes.iter().any(|node| node.kind == kind),
+            "missing {kind}"
+        );
+    }
+    assert!(graph.issues.is_empty());
+
+    let mut reordered = source.clone();
+    for field in ["providers", "autonomousServices", "contracts", "consumers"] {
+        reordered[field].as_array_mut().unwrap().reverse();
+    }
+    reordered["host"]["modules"]
+        .as_array_mut()
+        .unwrap()
+        .reverse();
+    for service in reordered["autonomousServices"].as_array_mut().unwrap() {
+        service["modules"].as_array_mut().unwrap().reverse();
+        service["workloads"].as_array_mut().unwrap().reverse();
+    }
+    assert_eq!(
+        serde_json::to_string(&graph).unwrap(),
+        serde_json::to_string(&system_v2_graph(&reordered).unwrap()).unwrap()
+    );
+}
+
+#[test]
+fn system_v2_validation_has_stable_actionable_boundary_codes() {
+    let source: serde_json::Value = serde_json::from_str(MIXED_SYSTEM_V2_FIXTURE_JSON).unwrap();
+    let cases = [
+        ("missing_ownership", json!(null), "missing_ownership"),
+        (
+            "unresolved_reference",
+            json!("missing-contract"),
+            "unresolved_reference",
+        ),
+        ("ambiguous_kind", json!("service"), "ambiguous_kind"),
+        (
+            "incompatible_tenancy",
+            json!("none"),
+            "incompatible_tenancy",
+        ),
+    ];
+
+    for (case, replacement, expected_code) in cases {
+        let mut invalid = source.clone();
+        match case {
+            "missing_ownership" => invalid["autonomousServices"][0]["modules"] = replacement,
+            "unresolved_reference" => invalid["consumers"][0]["contractId"] = replacement,
+            "ambiguous_kind" => invalid["consumers"][0]["ownerKind"] = replacement,
+            "incompatible_tenancy" => invalid["consumers"][0]["tenancyMode"] = replacement,
+            _ => unreachable!(),
+        }
+        let error = system_v2_graph(&invalid).unwrap_err();
+        assert_eq!(error[0].code, expected_code);
+        assert!(!error[0].next_action.is_empty());
+    }
+}
+
+#[test]
+fn system_v2_validation_is_deterministic_and_requires_a_mixed_topology() {
+    let source: serde_json::Value = serde_json::from_str(MIXED_SYSTEM_V2_FIXTURE_JSON).unwrap();
+    let mut invalid = source.clone();
+    invalid["consumers"][0]["contractId"] = json!("missing-z");
+    invalid["consumers"][1]["contractId"] = json!("missing-a");
+    let mut reordered = invalid.clone();
+    reordered["consumers"].as_array_mut().unwrap().reverse();
+    assert_eq!(
+        system_v2_graph(&invalid).unwrap_err(),
+        system_v2_graph(&reordered).unwrap_err()
+    );
+
+    for field in ["providers", "autonomousServices", "contracts", "consumers"] {
+        let mut missing = source.clone();
+        missing.as_object_mut().unwrap().remove(field);
+        assert!(system_v2_graph(&missing).unwrap_err().iter().any(|issue| {
+            issue.code == "missing_ownership" && issue.path == format!("$.{field}")
+        }));
+    }
+
+    let mut colliding = source;
+    colliding["providers"][0]["providerId"] = json!("support-host");
+    assert!(
+        system_v2_graph(&colliding)
+            .unwrap_err()
+            .iter()
+            .any(|issue| issue.code == "ambiguous_kind")
+    );
+}
+
+#[test]
+fn system_v2_schema_is_packaged_with_the_sdk() {
+    let schema: serde_json::Value = serde_json::from_str(SYSTEM_V2_CONTRACT_SCHEMA_JSON).unwrap();
+    assert_eq!(schema["properties"]["protocol"]["const"], "lenso.system.v2");
+}
 
 #[test]
 fn common_context_v1_fixture_round_trips_through_the_public_contract() {
