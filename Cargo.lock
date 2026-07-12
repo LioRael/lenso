@@ -1903,12 +1903,14 @@ dependencies = [
 name = "lenso-autonomous-service"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
  "chrono",
  "http",
  "http-body-util",
  "lenso-platform-core",
  "lenso-platform-http",
+ "lenso-platform-runtime",
  "lenso-platform-testing",
  "lenso-service",
  "serde",
