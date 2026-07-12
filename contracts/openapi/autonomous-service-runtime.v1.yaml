@@ -136,7 +136,9 @@ components:
       - workloadId
       - storeId
       - migrationWorkloadId
+      - workerWorkloadId
       - phase
+      - workerPhase
       properties:
         migrationWorkloadId:
           type: string
@@ -145,6 +147,10 @@ components:
         serviceId:
           type: string
         storeId:
+          type: string
+        workerPhase:
+          $ref: '#/components/schemas/RuntimePhase'
+        workerWorkloadId:
           type: string
         workloadId:
           type: string

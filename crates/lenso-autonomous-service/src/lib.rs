@@ -10,10 +10,14 @@ use axum::{
 use lenso_service::{
     AutonomousServiceContract, WorkloadRole, validate_autonomous_service_contract,
 };
-use platform_core::{Migration, apply_migrations};
+use platform_core::{EventHandlerRegistry, Migration, OutboxRelay, apply_migrations};
+use platform_runtime::{FunctionRegistry, RuntimeWorker};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use std::sync::{Arc, RwLock};
+use std::{
+    sync::{Arc, RwLock},
+    time::Duration,
+};
 use utoipa::{OpenApi, ToSchema};
 use utoipa_axum::{router::OpenApiRouter, routes};
 use uuid::Uuid;
@@ -53,6 +57,7 @@ pub struct ValidatedServiceRuntime {
     pub service_id: String,
     pub api_workload_id: String,
     pub migration_workload_id: String,
+    pub worker_workload_id: String,
     pub store_id: String,
 }
 
@@ -65,20 +70,29 @@ pub enum RuntimeErrorCode {
     MissingMigrationWorkload,
     AmbiguousApiWorkload,
     AmbiguousMigrationWorkload,
+    MissingWorkerWorkload,
+    AmbiguousWorkerWorkload,
     MissingStore,
     StoreOwnerMismatch,
     StoreAlreadyOwned,
     StoreOwnershipCheckFailed,
     MigrationFailed,
     ApiServeFailed,
+    WorkerRunFailed,
     MissingConfigValue,
     InvalidConfigValue,
 }
 
-pub const SERVICE_RUNTIME_MIGRATIONS: &[Migration] = &[Migration {
-    name: "autonomous-service/0001_create_story_segments",
-    sql: include_str!("../migrations/0001_create_story_segments.sql"),
-}];
+pub const SERVICE_RUNTIME_MIGRATIONS: &[Migration] = &[
+    Migration {
+        name: "autonomous-service/0001_create_story_segments",
+        sql: include_str!("../migrations/0001_create_story_segments.sql"),
+    },
+    Migration {
+        name: "autonomous-service/0002_create_worker_runtime",
+        sql: include_str!("../migrations/0002_create_worker_runtime.sql"),
+    },
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -94,6 +108,7 @@ pub enum RuntimePhase {
 pub struct ServiceRuntimeState {
     identity: Arc<ServiceRuntimeIdentity>,
     phase: Arc<RwLock<RuntimePhase>>,
+    worker_phase: Arc<RwLock<RuntimePhase>>,
     pool: Option<PgPool>,
 }
 
@@ -103,6 +118,7 @@ struct ServiceRuntimeIdentity {
     api_workload_id: String,
     store_id: String,
     migration_workload_id: String,
+    worker_workload_id: String,
 }
 
 impl ServiceRuntimeState {
@@ -112,6 +128,7 @@ impl ServiceRuntimeState {
         api_workload_id: impl Into<String>,
         store_id: impl Into<String>,
         migration_workload_id: impl Into<String>,
+        worker_workload_id: impl Into<String>,
     ) -> Self {
         Self {
             identity: Arc::new(ServiceRuntimeIdentity {
@@ -119,8 +136,10 @@ impl ServiceRuntimeState {
                 api_workload_id: api_workload_id.into(),
                 store_id: store_id.into(),
                 migration_workload_id: migration_workload_id.into(),
+                worker_workload_id: worker_workload_id.into(),
             }),
             phase: Arc::new(RwLock::new(RuntimePhase::Starting)),
+            worker_phase: Arc::new(RwLock::new(RuntimePhase::Starting)),
             pool: None,
         }
     }
@@ -131,8 +150,15 @@ impl ServiceRuntimeState {
         api_workload_id: impl Into<String>,
         store_id: impl Into<String>,
         migration_workload_id: impl Into<String>,
+        worker_workload_id: impl Into<String>,
     ) -> Self {
-        let state = Self::starting(service_id, api_workload_id, store_id, migration_workload_id);
+        let state = Self::starting(
+            service_id,
+            api_workload_id,
+            store_id,
+            migration_workload_id,
+            worker_workload_id,
+        );
         state.set_phase(RuntimePhase::Ready);
         state
     }
@@ -151,6 +177,21 @@ impl ServiceRuntimeState {
     pub fn phase(&self) -> RuntimePhase {
         *self.phase.read().expect("runtime phase lock poisoned")
     }
+
+    #[must_use]
+    pub fn worker_phase(&self) -> RuntimePhase {
+        *self
+            .worker_phase
+            .read()
+            .expect("worker phase lock poisoned")
+    }
+
+    fn set_worker_phase(&self, phase: RuntimePhase) {
+        *self
+            .worker_phase
+            .write()
+            .expect("worker phase lock poisoned") = phase;
+    }
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -160,7 +201,9 @@ pub struct RuntimeHealth {
     pub workload_id: String,
     pub store_id: String,
     pub migration_workload_id: String,
+    pub worker_workload_id: String,
     pub phase: RuntimePhase,
+    pub worker_phase: RuntimePhase,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -182,6 +225,7 @@ pub async fn prepare_runtime(
         &validated.api_workload_id,
         &validated.store_id,
         &validated.migration_workload_id,
+        &validated.worker_workload_id,
     )
     .with_store(pool.clone());
     if let Err(error) = apply_migrations(&pool, SERVICE_RUNTIME_MIGRATIONS).await {
@@ -196,6 +240,34 @@ pub async fn prepare_runtime(
         ));
     }
     claim_store_ownership(&pool, &validated).await?;
+    if let Err(error) = apply_migrations(&pool, platform_core::PLATFORM_MIGRATIONS).await {
+        state.set_phase(RuntimePhase::Failed);
+        return Err(runtime_error(
+            RuntimeErrorCode::MigrationFailed,
+            format!(
+                "Service-owned platform migration failed: {}",
+                error.public_message
+            ),
+            format!(
+                "Verify Store `{}` platform migration compatibility, then restart Service `{}`.",
+                validated.store_id, validated.service_id
+            ),
+        ));
+    }
+    if let Err(error) = apply_migrations(&pool, platform_runtime::RUNTIME_MIGRATIONS).await {
+        state.set_phase(RuntimePhase::Failed);
+        return Err(runtime_error(
+            RuntimeErrorCode::MigrationFailed,
+            format!(
+                "Service-owned runtime migration failed: {}",
+                error.public_message
+            ),
+            format!(
+                "Verify Store `{}` runtime migration compatibility, then restart Service `{}`.",
+                validated.store_id, validated.service_id
+            ),
+        ));
+    }
     if let Err(error) = apply_migrations(&pool, module_migrations).await {
         state.set_phase(RuntimePhase::Failed);
         return Err(runtime_error(
@@ -211,7 +283,195 @@ pub async fn prepare_runtime(
         ));
     }
     state.set_phase(RuntimePhase::Ready);
+    state.set_worker_phase(RuntimePhase::Ready);
     Ok(state)
+}
+
+/// Releases claims owned by this Service's Worker Workload without touching other workers.
+pub async fn release_worker_claims(
+    state: &ServiceRuntimeState,
+) -> Result<(), platform_core::AppError> {
+    let pool = state.pool.as_ref().ok_or_else(|| {
+        platform_core::AppError::new(
+            platform_core::ErrorCode::ExternalDependency,
+            "Service Store is not available",
+        )
+    })?;
+    let worker_id = format!(
+        "{}/{}",
+        state.identity.service_id, state.identity.worker_workload_id
+    );
+    let mut transaction = pool.begin().await.map_err(worker_store_error)?;
+    sqlx::query(
+        r#"
+        update platform.outbox
+        set status = 'pending', locked_at = null, locked_by = null
+        where status = 'processing' and locked_by = $1
+        "#,
+    )
+    .bind(&worker_id)
+    .execute(&mut *transaction)
+    .await
+    .map_err(worker_store_error)?;
+    sqlx::query(
+        r#"
+        update runtime.function_runs
+        set status = 'pending', locked_at = null, locked_by = null, updated_at = now()
+        where status = 'processing' and locked_by = $1
+        "#,
+    )
+    .bind(&worker_id)
+    .execute(&mut *transaction)
+    .await
+    .map_err(worker_store_error)?;
+    transaction.commit().await.map_err(worker_store_error)?;
+    Ok(())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ServiceWorkerConfig {
+    pub poll_interval: Duration,
+    pub batch_size: i64,
+}
+
+impl Default for ServiceWorkerConfig {
+    fn default() -> Self {
+        Self {
+            poll_interval: Duration::from_millis(500),
+            batch_size: 25,
+        }
+    }
+}
+
+/// Runs the Service-owned Worker Workload until the shared Service shutdown is signalled.
+pub async fn run_worker(
+    state: ServiceRuntimeState,
+    function_registry: Arc<FunctionRegistry>,
+    event_handlers: EventHandlerRegistry,
+    config: ServiceWorkerConfig,
+    shutdown: platform_core::Shutdown,
+) -> Result<(), platform_core::AppError> {
+    let pool = state.pool.clone().ok_or_else(|| {
+        platform_core::AppError::new(
+            platform_core::ErrorCode::ExternalDependency,
+            "Service Store is not available",
+        )
+    })?;
+    let worker_id = format!(
+        "{}/{}",
+        state.identity.service_id, state.identity.worker_workload_id
+    );
+    persist_worker_phase(&state, RuntimePhase::Ready).await?;
+    let relay = OutboxRelay::new(pool.clone(), &worker_id);
+    let worker = RuntimeWorker::new(pool, function_registry, &worker_id);
+    let mut receiver = shutdown.subscribe();
+
+    loop {
+        tokio::select! {
+            changed = receiver.changed() => {
+                if changed.is_err() || *receiver.borrow() {
+                    break;
+                }
+            }
+            () = tokio::time::sleep(config.poll_interval) => {
+                relay.relay_once(&event_handlers, config.batch_size).await?;
+                worker.claim_and_run_batch(config.batch_size).await?;
+                project_background_story_segments(&state).await?;
+            }
+        }
+    }
+
+    persist_worker_phase(&state, RuntimePhase::Stopping).await?;
+    release_worker_claims(&state).await?;
+    project_background_story_segments(&state).await?;
+    persist_worker_phase(&state, RuntimePhase::Stopped).await?;
+    Ok(())
+}
+
+async fn persist_worker_phase(
+    state: &ServiceRuntimeState,
+    phase: RuntimePhase,
+) -> Result<(), platform_core::AppError> {
+    state.set_worker_phase(phase);
+    let pool = state.pool.as_ref().ok_or_else(|| {
+        platform_core::AppError::new(
+            platform_core::ErrorCode::ExternalDependency,
+            "Service Store is not available",
+        )
+    })?;
+    sqlx::query(
+        r#"
+        insert into platform.service_worker_health (service_id, workload_id, phase)
+        values ($1, $2, $3)
+        on conflict (service_id, workload_id) do update
+        set phase = excluded.phase, updated_at = now()
+        "#,
+    )
+    .bind(&state.identity.service_id)
+    .bind(&state.identity.worker_workload_id)
+    .bind(format!("{phase:?}").to_lowercase())
+    .execute(pool)
+    .await
+    .map_err(worker_store_error)?;
+    Ok(())
+}
+
+async fn project_background_story_segments(
+    state: &ServiceRuntimeState,
+) -> Result<(), platform_core::AppError> {
+    let pool = state.pool.as_ref().ok_or_else(|| {
+        platform_core::AppError::new(
+            platform_core::ErrorCode::ExternalDependency,
+            "Service Store is not available",
+        )
+    })?;
+    sqlx::query(
+        r#"
+        insert into platform.service_story_segments (
+            segment_id, service_id, workload_id, operation, status, started_at, completed_at
+        )
+        select
+            concat('function:', id, ':', status, ':', attempts), $1, $2,
+            concat('function ', function_name), status,
+            coalesce(started_at, created_at), coalesce(completed_at, updated_at)
+        from runtime.function_runs
+        where status in ('completed', 'failed', 'dead')
+        on conflict (segment_id) do nothing
+        "#,
+    )
+    .bind(&state.identity.service_id)
+    .bind(&state.identity.worker_workload_id)
+    .execute(pool)
+    .await
+    .map_err(worker_store_error)?;
+    sqlx::query(
+        r#"
+        insert into platform.service_story_segments (
+            segment_id, service_id, workload_id, operation, status, started_at, completed_at
+        )
+        select
+            concat('event:', id, ':', status, ':', attempts), $1, $2,
+            concat('event ', event_name), status,
+            created_at, coalesce(published_at, available_at)
+        from platform.outbox
+        where status in ('published', 'failed', 'dead')
+        on conflict (segment_id) do nothing
+        "#,
+    )
+    .bind(&state.identity.service_id)
+    .bind(&state.identity.worker_workload_id)
+    .execute(pool)
+    .await
+    .map_err(worker_store_error)?;
+    Ok(())
+}
+
+fn worker_store_error(error: sqlx::Error) -> platform_core::AppError {
+    platform_core::AppError::new(
+        platform_core::ErrorCode::Internal,
+        "Service Worker Store operation failed",
+    )
+    .with_source(error)
 }
 
 /// Boots Migration and API Workloads directly from one Service v2 definition.
@@ -249,6 +509,90 @@ pub async fn boot(
         })
 }
 
+/// Boots API, Migration, and Worker Workloads under one Service identity.
+pub async fn boot_with_worker(
+    contract: &AutonomousServiceContract,
+    config: &ServiceRuntimeConfig,
+    pool: PgPool,
+    module_migrations: &[Migration],
+    business: OpenApiRouter<ServiceRuntimeState>,
+    function_registry: Arc<FunctionRegistry>,
+    event_handlers: EventHandlerRegistry,
+    worker_config: ServiceWorkerConfig,
+    listener: tokio::net::TcpListener,
+    shutdown: platform_core::Shutdown,
+) -> Result<(), ServiceBootFailure> {
+    let state = prepare_runtime(contract, config, pool, module_migrations)
+        .await
+        .map_err(|error| ServiceBootFailure {
+            health: failed_runtime_health(contract, config),
+            error,
+        })?;
+    let api_state = state.clone();
+    let worker_state = state.clone();
+    let api_shutdown = shutdown.clone();
+    let worker_shutdown = shutdown.clone();
+    let api = serve(listener, business, api_state, api_shutdown);
+    let worker = run_worker(
+        worker_state,
+        function_registry,
+        event_handlers,
+        worker_config,
+        worker_shutdown,
+    );
+    tokio::pin!(api);
+    tokio::pin!(worker);
+
+    tokio::select! {
+        result = &mut api => {
+            shutdown.signal();
+            let worker_result = worker.await;
+            result.map_err(|error| api_boot_failure(&state, error))?;
+            worker_result.map_err(|error| worker_boot_failure(&state, error))?;
+        }
+        result = &mut worker => {
+            shutdown.signal();
+            let api_result = api.await;
+            result.map_err(|error| worker_boot_failure(&state, error))?;
+            api_result.map_err(|error| api_boot_failure(&state, error))?;
+        }
+    }
+    Ok(())
+}
+
+fn api_boot_failure(state: &ServiceRuntimeState, error: std::io::Error) -> ServiceBootFailure {
+    state.set_phase(RuntimePhase::Failed);
+    ServiceBootFailure {
+        health: runtime_health(state),
+        error: runtime_error(
+            RuntimeErrorCode::ApiServeFailed,
+            format!("API Workload failed: {error}"),
+            format!(
+                "Verify the API listener for Service `{}` and restart it.",
+                state.identity.service_id
+            ),
+        ),
+    }
+}
+
+fn worker_boot_failure(
+    state: &ServiceRuntimeState,
+    error: platform_core::AppError,
+) -> ServiceBootFailure {
+    state.set_worker_phase(RuntimePhase::Failed);
+    ServiceBootFailure {
+        health: runtime_health(state),
+        error: runtime_error(
+            RuntimeErrorCode::WorkerRunFailed,
+            format!("Worker Workload failed: {}", error.public_message),
+            format!(
+                "Verify the Service Store and Worker registrations for Service `{}`, then restart it.",
+                state.identity.service_id
+            ),
+        ),
+    }
+}
+
 fn failed_runtime_health(
     contract: &AutonomousServiceContract,
     config: &ServiceRuntimeConfig,
@@ -268,7 +612,9 @@ fn failed_runtime_health(
         workload_id: workload(WorkloadRole::API),
         store_id: config.store_id.clone(),
         migration_workload_id: workload(WorkloadRole::MIGRATION),
+        worker_workload_id: workload(WorkloadRole::WORKER),
         phase: RuntimePhase::Failed,
+        worker_phase: RuntimePhase::Failed,
     }
 }
 
@@ -430,7 +776,9 @@ fn runtime_health(state: &ServiceRuntimeState) -> RuntimeHealth {
         workload_id: state.identity.api_workload_id.clone(),
         store_id: state.identity.store_id.clone(),
         migration_workload_id: state.identity.migration_workload_id.clone(),
+        worker_workload_id: state.identity.worker_workload_id.clone(),
         phase: state.phase(),
+        worker_phase: state.worker_phase(),
     }
 }
 
@@ -572,6 +920,7 @@ pub fn validate_runtime(
 
     let api_workload_id = one_workload(contract, WorkloadRole::API)?;
     let migration_workload_id = one_workload(contract, WorkloadRole::MIGRATION)?;
+    let worker_workload_id = one_workload(contract, WorkloadRole::WORKER)?;
     let store = contract
         .stores
         .iter()
@@ -603,6 +952,7 @@ pub fn validate_runtime(
         service_id: contract.service_id.clone(),
         api_workload_id,
         migration_workload_id,
+        worker_workload_id,
         store_id: store.store_id.clone(),
     })
 }
@@ -683,7 +1033,17 @@ fn one_workload(
             "Service has more than one Migration Workload",
             "Declare exactly one Migration Workload for this runtime profile.",
         )),
-        _ => unreachable!("runtime validates only API and Migration roles"),
+        (WorkloadRole::Worker, []) => Err(runtime_error(
+            RuntimeErrorCode::MissingWorkerWorkload,
+            "Service has no Worker Workload",
+            "Declare exactly one Worker Workload in the Service v2 definition.",
+        )),
+        (WorkloadRole::Worker, _) => Err(runtime_error(
+            RuntimeErrorCode::AmbiguousWorkerWorkload,
+            "Service has more than one Worker Workload",
+            "Declare exactly one Worker Workload for this runtime profile.",
+        )),
+        _ => unreachable!("runtime validates only API, Migration, and Worker roles"),
     }
 }
 
@@ -724,6 +1084,7 @@ mod tests {
                     "support",
                     WorkloadRole::MIGRATION,
                 ),
+                AutonomousServiceWorkload::new("support-worker", "support", WorkloadRole::WORKER),
             ],
             ServiceTenancyMode::None,
             vec!["local".to_owned()],
@@ -743,6 +1104,7 @@ mod tests {
         assert_eq!(runtime.service_id, "support");
         assert_eq!(runtime.api_workload_id, "support-api");
         assert_eq!(runtime.migration_workload_id, "support-migrate");
+        assert_eq!(runtime.worker_workload_id, "support-worker");
         assert_eq!(runtime.store_id, "primary");
     }
 
@@ -793,8 +1155,13 @@ mod tests {
 
     #[tokio::test]
     async fn public_health_surfaces_report_service_readiness() {
-        let state =
-            ServiceRuntimeState::ready("support", "support-api", "primary", "support-migrate");
+        let state = ServiceRuntimeState::ready(
+            "support",
+            "support-api",
+            "primary",
+            "support-migrate",
+            "support-worker",
+        );
         let app = service_router(
             OpenApiRouter::new().route("/tickets", get(|| async { "ok" })),
             state,
@@ -834,8 +1201,13 @@ mod tests {
 
     #[tokio::test]
     async fn shutdown_transitions_service_to_stopped() {
-        let state =
-            ServiceRuntimeState::ready("support", "support-api", "primary", "support-migrate");
+        let state = ServiceRuntimeState::ready(
+            "support",
+            "support-api",
+            "primary",
+            "support-migrate",
+            "support-worker",
+        );
         let shutdown = platform_core::Shutdown::new();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let task_state = state.clone();

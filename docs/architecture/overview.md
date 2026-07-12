@@ -91,12 +91,13 @@ Migration, or extension Workloads alongside owned Modules, logical Service
 Stores, Tenancy Mode, and Operating Regions. Its authoritative fixture and
 packaged schema live in `crates/lenso-service`; `just generate` publishes the
 matching committed schema under `contracts/services/`.
-`crates/lenso-autonomous-service` supplies the first Host-independent runtime
-profile for definitions containing one API and one Migration Workload. It
+`crates/lenso-autonomous-service` supplies the Host-independent runtime profile
+for definitions containing API, Migration, and Worker Workloads. It
 validates Service, Workload, Store, and declared configuration coherence before
 startup; applies platform, module, and Service-local Story Segment migrations
-to the explicitly injected Service Store; mounts Service-owned health and local
-evidence surfaces; and performs deterministic shutdown phase transitions.
+to the explicitly injected Service Store; runs Service-owned function queues
+and transactional Outbox relay; mounts Service-owned health and local evidence
+surfaces; and performs deterministic shutdown and claim release transitions.
 Business routes and migrations remain injected Module contributions. This
 runtime does not call the Host or Provider boot paths and does not reinterpret
 Provider v1 artifacts.
