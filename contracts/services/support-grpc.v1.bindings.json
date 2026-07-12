@@ -1,0 +1,28 @@
+{
+  "contractId": "support-grpc",
+  "operations": [
+    {
+      "idempotency": "idempotent",
+      "operationId": "GetSla",
+      "path": "/lenso.services.support.v1.SupportService/GetSla",
+      "requestType": ".lenso.services.support.v1.GetSlaRequest",
+      "responseType": ".lenso.services.support.v1.SlaResponse"
+    },
+    {
+      "idempotency": "unknown",
+      "operationId": "ProbeSla",
+      "path": "/lenso.services.support.v1.SupportService/ProbeSla",
+      "requestType": ".lenso.services.support.v1.ProbeSlaRequest",
+      "responseType": ".lenso.services.support.v1.SlaResponse"
+    },
+    {
+      "idempotency": "requires_key",
+      "operationId": "UpdateSla",
+      "path": "/lenso.services.support.v1.SupportService/UpdateSla",
+      "requestType": ".lenso.services.support.v1.UpdateSlaRequest",
+      "responseType": ".lenso.services.support.v1.SlaResponse"
+    }
+  ],
+  "serviceName": "lenso.services.support.v1.SupportService",
+  "version": "v1"
+}

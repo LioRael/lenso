@@ -557,13 +557,13 @@ pub struct RetryDecision {
     pub reason: &'static str,
 }
 impl RetryDecision {
-    fn yes() -> Self {
+    pub(crate) fn yes() -> Self {
         Self {
             should_retry: true,
             reason: "declared_safe_retry",
         }
     }
-    fn no(reason: &'static str) -> Self {
+    pub(crate) fn no(reason: &'static str) -> Self {
         Self {
             should_retry: false,
             reason,

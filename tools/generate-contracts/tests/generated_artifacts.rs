@@ -51,6 +51,21 @@ fn committed_direct_http_bindings_match_generator() {
 }
 
 #[test]
+fn committed_direct_grpc_artifacts_match_generator() {
+    let proto = include_str!("../../../contracts/services/support-grpc.v1.proto");
+    let bindings: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/services/support-grpc.v1.bindings.json"
+    ))
+    .expect("committed direct gRPC bindings should parse");
+
+    assert_eq!(proto, lenso_service::DIRECT_GRPC_PROTO_V1_FIXTURE);
+    assert_eq!(
+        bindings,
+        generate_contracts::generated_direct_grpc_bindings()
+    );
+}
+
+#[test]
 fn committed_system_v2_artifacts_match_generator() {
     let schema: serde_json::Value = serde_json::from_str(include_str!(
         "../../../contracts/services/lenso-system.v2.schema.json"

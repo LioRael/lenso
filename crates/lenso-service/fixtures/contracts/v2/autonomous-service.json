@@ -26,8 +26,8 @@
       "moduleId": "support-sla",
       "version": "v1",
       "tenancyMode": "required",
-      "artifact": { "format": "protobuf", "path": "contracts/protobuf/support.v1.proto" },
-      "context": { "protocol": "lenso.context.v1", "required": ["trace", "service_principal", "tenant", "deadline"] }
+      "artifact": { "format": "protobuf", "path": "contracts/services/support-grpc.v1.proto" },
+      "context": { "protocol": "lenso.context.v1", "required": ["trace", "service_principal", "tenant", "deadline", "idempotency_key"] }
     }
   ],
   "eventContracts": [

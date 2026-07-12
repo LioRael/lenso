@@ -216,6 +216,11 @@ pub fn check_contract_artifacts_fresh(root: &Path) -> anyhow::Result<()> {
         read_json(root.join("contracts/services/lenso-service.v2.schema.json"))?;
     let direct_http_bindings =
         read_json(root.join("contracts/services/support-http.v1.bindings.json"))?;
+    let direct_grpc_proto =
+        fs::read_to_string(root.join("contracts/services/support-grpc.v1.proto"))
+            .context("direct gRPC Protobuf contract should be readable")?;
+    let direct_grpc_bindings =
+        read_json(root.join("contracts/services/support-grpc.v1.bindings.json"))?;
     let system_v2_schema = read_json(root.join("contracts/services/lenso-system.v2.schema.json"))?;
     let system_v2_fixture =
         read_json(root.join("contracts/services/lenso-system.v2.fixture.json"))?;
@@ -237,6 +242,12 @@ pub fn check_contract_artifacts_fresh(root: &Path) -> anyhow::Result<()> {
     }
     if direct_http_bindings != generate_contracts::generated_direct_http_bindings() {
         violations.push("contracts/services/support-http.v1.bindings.json is stale".to_owned());
+    }
+    if direct_grpc_proto != generate_contracts::generated_direct_grpc_proto() {
+        violations.push("contracts/services/support-grpc.v1.proto is stale".to_owned());
+    }
+    if direct_grpc_bindings != generate_contracts::generated_direct_grpc_bindings() {
+        violations.push("contracts/services/support-grpc.v1.bindings.json is stale".to_owned());
     }
     if system_v2_schema != generate_contracts::generated_system_v2_schema() {
         violations.push("contracts/services/lenso-system.v2.schema.json is stale".to_owned());
