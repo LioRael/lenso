@@ -2320,11 +2320,15 @@ name = "lenso-service"
 version = "0.1.2"
 dependencies = [
  "axum",
+ "http",
  "lenso-contracts",
  "prost",
  "prost-types",
+ "reqwest",
  "serde",
  "serde_json",
+ "serde_yaml",
+ "tokio",
 ]
 
 [[package]]

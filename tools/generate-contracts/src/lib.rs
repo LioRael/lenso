@@ -21,6 +21,10 @@ pub fn generate_contracts() -> anyhow::Result<()> {
         &generated_autonomous_service_schema(),
     )?;
     write_json(
+        "contracts/services/support-http.v1.bindings.json",
+        &generated_direct_http_bindings(),
+    )?;
+    write_json(
         "contracts/services/lenso-system.v2.schema.json",
         &generated_system_v2_schema(),
     )?;
@@ -63,6 +67,16 @@ pub fn generated_error_response_schema() -> Value {
 pub fn generated_autonomous_service_schema() -> Value {
     serde_json::from_str(lenso_service::SERVICE_V2_CONTRACT_SCHEMA_JSON)
         .expect("packaged Autonomous Service schema must be valid JSON")
+}
+
+pub fn generated_direct_http_bindings() -> Value {
+    let openapi: Value = serde_yaml::from_str(lenso_service::DIRECT_HTTP_OPENAPI_V1_FIXTURE_YAML)
+        .expect("packaged direct HTTP OpenAPI fixture must be valid YAML");
+    serde_json::to_value(
+        lenso_service::generate_direct_http_bindings("support-http", "v1", &openapi)
+            .expect("packaged direct HTTP OpenAPI fixture must generate bindings"),
+    )
+    .expect("direct HTTP bindings must serialize")
 }
 
 pub fn generated_system_v2_schema() -> Value {
