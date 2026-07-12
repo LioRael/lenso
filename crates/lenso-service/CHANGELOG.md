@@ -1,4 +1,4 @@
-## Unreleased
+## lenso-service@0.1.2
 
 ### Features
 
