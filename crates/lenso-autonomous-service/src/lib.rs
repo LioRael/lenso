@@ -160,6 +160,7 @@ impl ServiceRuntimeState {
             worker_workload_id,
         );
         state.set_phase(RuntimePhase::Ready);
+        state.set_worker_phase(RuntimePhase::Ready);
         state
     }
 
@@ -191,6 +192,22 @@ impl ServiceRuntimeState {
             .worker_phase
             .write()
             .expect("worker phase lock poisoned") = phase;
+    }
+
+    fn store(&self) -> Result<&PgPool, platform_core::AppError> {
+        self.pool.as_ref().ok_or_else(|| {
+            platform_core::AppError::new(
+                platform_core::ErrorCode::ExternalDependency,
+                "Service Store is not available",
+            )
+        })
+    }
+
+    fn worker_id(&self) -> String {
+        format!(
+            "{}/{}",
+            self.identity.service_id, self.identity.worker_workload_id
+        )
     }
 }
 
@@ -283,7 +300,6 @@ pub async fn prepare_runtime(
         ));
     }
     state.set_phase(RuntimePhase::Ready);
-    state.set_worker_phase(RuntimePhase::Ready);
     Ok(state)
 }
 
@@ -291,16 +307,8 @@ pub async fn prepare_runtime(
 pub async fn release_worker_claims(
     state: &ServiceRuntimeState,
 ) -> Result<(), platform_core::AppError> {
-    let pool = state.pool.as_ref().ok_or_else(|| {
-        platform_core::AppError::new(
-            platform_core::ErrorCode::ExternalDependency,
-            "Service Store is not available",
-        )
-    })?;
-    let worker_id = format!(
-        "{}/{}",
-        state.identity.service_id, state.identity.worker_workload_id
-    );
+    let pool = state.store()?;
+    let worker_id = state.worker_id();
     let mut transaction = pool.begin().await.map_err(worker_store_error)?;
     sqlx::query(
         r#"
@@ -351,41 +359,57 @@ pub async fn run_worker(
     config: ServiceWorkerConfig,
     shutdown: platform_core::Shutdown,
 ) -> Result<(), platform_core::AppError> {
-    let pool = state.pool.clone().ok_or_else(|| {
-        platform_core::AppError::new(
-            platform_core::ErrorCode::ExternalDependency,
-            "Service Store is not available",
-        )
-    })?;
-    let worker_id = format!(
-        "{}/{}",
-        state.identity.service_id, state.identity.worker_workload_id
-    );
+    let pool = state.store()?.clone();
+    let worker_id = state.worker_id();
     persist_worker_phase(&state, RuntimePhase::Ready).await?;
     let relay = OutboxRelay::new(pool.clone(), &worker_id);
     let worker = RuntimeWorker::new(pool, function_registry, &worker_id);
     let mut receiver = shutdown.subscribe();
 
-    loop {
+    let run_result = loop {
         tokio::select! {
             changed = receiver.changed() => {
                 if changed.is_err() || *receiver.borrow() {
-                    break;
+                    break Ok(());
                 }
             }
             () = tokio::time::sleep(config.poll_interval) => {
-                relay.relay_once(&event_handlers, config.batch_size).await?;
-                worker.claim_and_run_batch(config.batch_size).await?;
-                project_background_story_segments(&state).await?;
+                if let Err(error) = relay.relay_once(&event_handlers, config.batch_size).await {
+                    break Err(error);
+                }
+                if let Err(error) = worker.claim_and_run_batch(config.batch_size).await {
+                    break Err(error);
+                }
+                if let Err(error) = project_background_story_segments(&state).await {
+                    break Err(error);
+                }
             }
         }
-    }
+    };
 
-    persist_worker_phase(&state, RuntimePhase::Stopping).await?;
-    release_worker_claims(&state).await?;
-    project_background_story_segments(&state).await?;
-    persist_worker_phase(&state, RuntimePhase::Stopped).await?;
-    Ok(())
+    let mut result = run_result;
+    record_cleanup_result(
+        &mut result,
+        persist_worker_phase(&state, RuntimePhase::Stopping).await,
+    );
+    record_cleanup_result(&mut result, release_worker_claims(&state).await);
+    record_cleanup_result(&mut result, project_background_story_segments(&state).await);
+    let final_phase = if result.is_ok() {
+        RuntimePhase::Stopped
+    } else {
+        RuntimePhase::Failed
+    };
+    record_cleanup_result(&mut result, persist_worker_phase(&state, final_phase).await);
+    result
+}
+
+fn record_cleanup_result(
+    result: &mut Result<(), platform_core::AppError>,
+    cleanup: Result<(), platform_core::AppError>,
+) {
+    if result.is_ok() {
+        *result = cleanup;
+    }
 }
 
 async fn persist_worker_phase(
@@ -393,12 +417,7 @@ async fn persist_worker_phase(
     phase: RuntimePhase,
 ) -> Result<(), platform_core::AppError> {
     state.set_worker_phase(phase);
-    let pool = state.pool.as_ref().ok_or_else(|| {
-        platform_core::AppError::new(
-            platform_core::ErrorCode::ExternalDependency,
-            "Service Store is not available",
-        )
-    })?;
+    let pool = state.store()?;
     sqlx::query(
         r#"
         insert into platform.service_worker_health (service_id, workload_id, phase)
@@ -419,12 +438,7 @@ async fn persist_worker_phase(
 async fn project_background_story_segments(
     state: &ServiceRuntimeState,
 ) -> Result<(), platform_core::AppError> {
-    let pool = state.pool.as_ref().ok_or_else(|| {
-        platform_core::AppError::new(
-            platform_core::ErrorCode::ExternalDependency,
-            "Service Store is not available",
-        )
-    })?;
+    let pool = state.store()?;
     sqlx::query(
         r#"
         insert into platform.service_story_segments (
@@ -484,29 +498,19 @@ pub async fn boot(
     listener: tokio::net::TcpListener,
     shutdown: platform_core::Shutdown,
 ) -> Result<(), ServiceBootFailure> {
-    let state = prepare_runtime(contract, config, pool, module_migrations)
-        .await
-        .map_err(|error| ServiceBootFailure {
-            health: failed_runtime_health(contract, config),
-            error,
-        })?;
-    let failure_state = state.clone();
-    serve(listener, business, state, shutdown)
-        .await
-        .map_err(|error| {
-            failure_state.set_phase(RuntimePhase::Failed);
-            ServiceBootFailure {
-                health: runtime_health(&failure_state),
-                error: runtime_error(
-                    RuntimeErrorCode::ApiServeFailed,
-                    format!("API Workload failed: {error}"),
-                    format!(
-                        "Verify the API listener for Service `{}` and restart it.",
-                        contract.service_id
-                    ),
-                ),
-            }
-        })
+    boot_with_worker(
+        contract,
+        config,
+        pool,
+        module_migrations,
+        business,
+        Arc::new(FunctionRegistry::default()),
+        EventHandlerRegistry::default(),
+        ServiceWorkerConfig::default(),
+        listener,
+        shutdown,
+    )
+    .await
 }
 
 /// Boots API, Migration, and Worker Workloads under one Service identity.
@@ -745,7 +749,10 @@ async fn liveness(State(state): State<ServiceRuntimeState>) -> (StatusCode, Json
 
 #[utoipa::path(get, path = "/health/ready", responses((status = 200, body = RuntimeHealth), (status = 503, body = RuntimeHealth)), tag = "service-runtime")]
 async fn readiness(State(state): State<ServiceRuntimeState>) -> (StatusCode, Json<RuntimeHealth>) {
-    health_response(&state, state.phase() == RuntimePhase::Ready)
+    health_response(
+        &state,
+        state.phase() == RuntimePhase::Ready && state.worker_phase() == RuntimePhase::Ready,
+    )
 }
 
 #[utoipa::path(get, path = "/health/startup", responses((status = 200, body = RuntimeHealth), (status = 503, body = RuntimeHealth)), tag = "service-runtime")]
@@ -807,13 +814,9 @@ pub struct StorySegment {
 async fn story_segments(
     State(state): State<ServiceRuntimeState>,
 ) -> Result<Json<Vec<StorySegment>>, platform_http::ApiErrorResponse> {
-    let Some(pool) = &state.pool else {
-        return Err(platform_core::AppError::new(
-            platform_core::ErrorCode::ExternalDependency,
-            "Service Store is not available",
-        )
-        .into());
-    };
+    let pool = state
+        .store()
+        .map_err(platform_http::ApiErrorResponse::from)?;
     sqlx::query_as::<_, StorySegment>(
         r#"
         select segment_id, service_id, workload_id, operation, status, started_at, completed_at
@@ -1187,6 +1190,30 @@ mod tests {
 
         assert_eq!(live.status(), StatusCode::OK);
         assert_eq!(ready.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn public_readiness_fails_when_worker_is_failed() {
+        let state = ServiceRuntimeState::ready(
+            "support",
+            "support-api",
+            "primary",
+            "support-migrate",
+            "support-worker",
+        );
+        state.set_worker_phase(super::RuntimePhase::Failed);
+        let app = service_router(OpenApiRouter::new(), state);
+
+        let ready = app
+            .oneshot(
+                Request::get("/health/ready")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(ready.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 
     #[test]
