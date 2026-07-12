@@ -1,0 +1,1 @@
+{"contractId":"support-config","changedVersion":"v2","affectedReferences":["autonomous_service:support"],"before":{"version":"v1","fields":[]},"after":{"version":"v2"}}

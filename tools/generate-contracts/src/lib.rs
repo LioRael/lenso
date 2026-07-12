@@ -36,6 +36,14 @@ pub fn generate_contracts() -> anyhow::Result<()> {
         "docs/architecture/common-context-contracts.md",
         generated_common_context_glossary(),
     )?;
+    write_text(
+        "docs/architecture/contract-compatibility.md",
+        generated_contract_compatibility(),
+    )?;
+    write_json(
+        "contracts/compatibility/contract-compatibility.v1.json",
+        &generated_contract_compatibility_matrix(),
+    )?;
 
     Ok(())
 }
@@ -71,6 +79,43 @@ pub fn generated_common_context_fixture() -> Value {
 
 pub fn generated_common_context_glossary() -> &'static str {
     lenso_service::COMMON_CONTEXT_GLOSSARY_MARKDOWN
+}
+
+pub fn generated_contract_compatibility() -> &'static str {
+    lenso_service::CONTRACT_COMPATIBILITY_MARKDOWN
+}
+
+pub fn generated_contract_compatibility_matrix() -> Value {
+    let mut rows = Vec::new();
+    for (kind, fixtures, evaluate) in [
+        (
+            "event_contract",
+            lenso_service::EVENT_COMPATIBILITY_FIXTURES,
+            lenso_service::evaluate_event_compatibility
+                as fn(&Value) -> lenso_service::ContractCompatibilityResult,
+        ),
+        (
+            "config_contract",
+            lenso_service::CONFIG_COMPATIBILITY_FIXTURES,
+            lenso_service::evaluate_config_compatibility
+                as fn(&Value) -> lenso_service::ContractCompatibilityResult,
+        ),
+        (
+            "reliability_contract",
+            lenso_service::RELIABILITY_COMPATIBILITY_FIXTURES,
+            lenso_service::evaluate_reliability_compatibility
+                as fn(&Value) -> lenso_service::ContractCompatibilityResult,
+        ),
+    ] {
+        for fixture in fixtures {
+            let input: Value = serde_json::from_str(fixture.json)
+                .expect("compatibility fixture must be valid JSON");
+            rows.push(
+                json!({"contractKind": kind, "name": fixture.name, "result": evaluate(&input)}),
+            );
+        }
+    }
+    Value::Array(rows)
 }
 
 fn write_yaml(path: impl AsRef<Path>, value: &impl serde::Serialize) -> anyhow::Result<()> {

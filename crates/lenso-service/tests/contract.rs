@@ -226,6 +226,162 @@ fn request_response_compatibility_reports_kind_version_and_affected_relationship
 }
 
 #[test]
+fn event_compatibility_golden_pairs_cover_every_public_category() {
+    use lenso_service::{
+        CompatibilityCategory, ContractCompatibilityKind, EVENT_COMPATIBILITY_FIXTURES,
+        evaluate_event_compatibility,
+    };
+
+    let expected = [
+        CompatibilityCategory::Safe,
+        CompatibilityCategory::NeedsAttention,
+        CompatibilityCategory::Breaking,
+        CompatibilityCategory::Blocked,
+    ];
+    assert_eq!(EVENT_COMPATIBILITY_FIXTURES.len(), expected.len());
+    for (fixture, category) in EVENT_COMPATIBILITY_FIXTURES.iter().zip(expected) {
+        let input = serde_json::from_str(fixture.json).unwrap();
+        let result = evaluate_event_compatibility(&input);
+        assert_eq!(result.category, category, "{}", fixture.name);
+        assert_eq!(
+            result.contract_kind,
+            ContractCompatibilityKind::EventContract
+        );
+        assert!(!result.affected_references.is_empty());
+        assert!(result.reasons.iter().all(|reason| {
+            !reason.code.is_empty() && !reason.path.is_empty() && !reason.next_action.is_empty()
+        }));
+    }
+}
+
+#[test]
+fn config_and_reliability_compatibility_are_distinguishable_and_conservative() {
+    use lenso_service::{
+        CompatibilityCategory, ContractCompatibilityKind, evaluate_config_compatibility,
+        evaluate_reliability_compatibility,
+    };
+
+    let config = json!({
+        "contractId": "support-config", "changedVersion": "v2",
+        "affectedReferences": ["autonomous_service:support"],
+        "before": {"version": "v1", "fields": [{"path": "token", "shape": "string", "required": false, "sensitive": true, "scope": "service", "mutability": "mutable", "activation": "hot"}]},
+        "after": {"version": "v2", "fields": [{"path": "token", "shape": "string", "required": true, "sensitive": false, "scope": "tenant", "mutability": "immutable", "activation": "restart"}]}
+    });
+    let config_result = evaluate_config_compatibility(&config);
+    assert_eq!(
+        config_result.contract_kind,
+        ContractCompatibilityKind::ConfigContract
+    );
+    assert_eq!(config_result.category, CompatibilityCategory::Breaking);
+    assert_eq!(
+        config_result
+            .reasons
+            .iter()
+            .map(|reason| reason.code.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "config_activation_changed",
+            "config_mutability_restricted",
+            "config_required_value_added",
+            "config_scope_changed",
+            "config_sensitivity_weakened"
+        ]
+    );
+
+    let reliability = json!({
+        "contractId": "support-reliability", "changedVersion": "v2",
+        "affectedReferences": ["autonomous_service:support"],
+        "before": {"version": "v1", "availabilityTarget": "99.9%", "degradedModes": ["queue"]},
+        "after": {"version": "v2", "availabilityTarget": "99.9%", "degradedModes": ["reject"]}
+    });
+    let reliability_result = evaluate_reliability_compatibility(&reliability);
+    assert_eq!(
+        reliability_result.contract_kind,
+        ContractCompatibilityKind::ReliabilityContract
+    );
+    assert_eq!(
+        reliability_result.category,
+        CompatibilityCategory::NeedsAttention
+    );
+    assert!(reliability_result.reasons.iter().all(|reason| {
+        reason.message.contains("declaration") || reason.message.contains("runtime")
+    }));
+}
+
+#[test]
+fn config_and_reliability_golden_pairs_cover_every_public_category() {
+    use lenso_service::{
+        CONFIG_COMPATIBILITY_FIXTURES, CompatibilityCategory, ContractCompatibilityResult,
+        RELIABILITY_COMPATIBILITY_FIXTURES, evaluate_config_compatibility,
+        evaluate_reliability_compatibility,
+    };
+    let expected = [
+        CompatibilityCategory::Safe,
+        CompatibilityCategory::NeedsAttention,
+        CompatibilityCategory::Breaking,
+        CompatibilityCategory::Blocked,
+    ];
+    for (fixtures, evaluate) in [
+        (
+            CONFIG_COMPATIBILITY_FIXTURES,
+            evaluate_config_compatibility as fn(&serde_json::Value) -> ContractCompatibilityResult,
+        ),
+        (
+            RELIABILITY_COMPATIBILITY_FIXTURES,
+            evaluate_reliability_compatibility
+                as fn(&serde_json::Value) -> ContractCompatibilityResult,
+        ),
+    ] {
+        assert_eq!(fixtures.len(), expected.len());
+        for (fixture, category) in fixtures.iter().zip(expected) {
+            let input = serde_json::from_str(fixture.json).unwrap();
+            let result = evaluate(&input);
+            assert_eq!(result.category, category, "{}", fixture.name);
+            assert!(!result.reasons.is_empty());
+            assert!(result.reasons.iter().all(|reason| {
+                !reason.code.is_empty() && !reason.path.is_empty() && !reason.next_action.is_empty()
+            }));
+        }
+    }
+}
+
+#[test]
+fn compatibility_checks_do_not_guess_safe_for_uncovered_directions() {
+    use lenso_service::{
+        CompatibilityCategory, evaluate_config_compatibility, evaluate_event_compatibility,
+        evaluate_reliability_compatibility,
+    };
+    let base = |before, after| json!({"contractId":"contract","changedVersion":"v2","affectedReferences":["owner:support"],"before":before,"after":after});
+
+    let added_required = base(
+        json!({"version":"v1","fields":[]}),
+        json!({"version":"v2","fields":[{"path":"token","shape":"string","required":true,"sensitive":true,"scope":"service","mutability":"mutable","activation":"hot"}]}),
+    );
+    assert_eq!(
+        evaluate_config_compatibility(&added_required).category,
+        CompatibilityCategory::Breaking
+    );
+
+    let weakened = base(
+        json!({"version":"v1","availabilityTarget":"99.99%"}),
+        json!({"version":"v2","availabilityTarget":"99.9%"}),
+    );
+    assert_eq!(
+        evaluate_reliability_compatibility(&weakened).category,
+        CompatibilityCategory::NeedsAttention
+    );
+
+    let protobuf = base(
+        json!({"format":"protobuf","version":"v1","fields":[{"number":1,"name":"id","type":"string"}]}),
+        json!({"format":"protobuf","version":"v2","fields":[{"number":1,"name":"id","type":"int64"}]}),
+    );
+    assert_eq!(
+        evaluate_event_compatibility(&protobuf).category,
+        CompatibilityCategory::Breaking
+    );
+}
+
+#[test]
 fn request_response_compatibility_is_canonical_and_never_guesses_safe() {
     use lenso_service::{
         RequestResponseCompatibilityCategory, evaluate_request_response_compatibility,
