@@ -84,14 +84,22 @@ connects legacy Providers, modules, environments, and capability dependencies
 without turning Kubernetes into a hard requirement. The `lenso.service.v1` and
 `lenso.system.v1` protocols keep this Host-managed Provider meaning; they are
 not Autonomous Service declarations.
-The separate `lenso.service.v2` protocol is the first contract-only Autonomous
-Service boundary. It gives a logical Service a stable `serviceId` independent
+The separate `lenso.service.v2` protocol is the Autonomous Service boundary. It
+gives a logical Service a stable `serviceId` independent
 of its Workload count or deployment topology, and declares its API, Worker,
 Migration, or extension Workloads alongside owned Modules, logical Service
 Stores, Tenancy Mode, and Operating Regions. Its authoritative fixture and
 packaged schema live in `crates/lenso-service`; `just generate` publishes the
-matching committed schema under `contracts/services/`. This slice adds no
-Autonomous Service runtime behavior.
+matching committed schema under `contracts/services/`.
+`crates/lenso-autonomous-service` supplies the first Host-independent runtime
+profile for definitions containing one API and one Migration Workload. It
+validates Service, Workload, Store, and declared configuration coherence before
+startup; applies platform, module, and Service-local Story Segment migrations
+to the explicitly injected Service Store; mounts Service-owned health and local
+evidence surfaces; and performs deterministic shutdown phase transitions.
+Business routes and migrations remain injected Module contributions. This
+runtime does not call the Host or Provider boot paths and does not reinterpret
+Provider v1 artifacts.
 Its versioned Service, Event, Config, and Reliability Contract declarations are
 specified in [`autonomous-service-contract-artifacts.md`](autonomous-service-contract-artifacts.md).
 The separate [`lenso.context.v1`](common-context-contracts.md) envelope

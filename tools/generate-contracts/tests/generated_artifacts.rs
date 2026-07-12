@@ -12,6 +12,19 @@ fn committed_error_schema_matches_generator() {
 }
 
 #[test]
+fn committed_autonomous_service_runtime_openapi_matches_generator() {
+    let committed: serde_yaml::Value = serde_yaml::from_str(include_str!(
+        "../../../contracts/openapi/autonomous-service-runtime.v1.yaml"
+    ))
+    .expect("committed Autonomous Service runtime OpenAPI should parse");
+    let generated =
+        serde_yaml::to_value(generate_contracts::generated_autonomous_service_runtime_openapi())
+            .expect("generated Autonomous Service runtime OpenAPI should serialize");
+
+    assert_eq!(committed, generated);
+}
+
+#[test]
 fn committed_autonomous_service_schema_matches_generator() {
     let committed: serde_json::Value = serde_json::from_str(include_str!(
         "../../../contracts/services/lenso-service.v2.schema.json"
