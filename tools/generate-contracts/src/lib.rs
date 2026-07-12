@@ -24,6 +24,14 @@ pub fn generate_contracts() -> anyhow::Result<()> {
         "contracts/services/support-http.v1.bindings.json",
         &generated_direct_http_bindings(),
     )?;
+    write_text(
+        "contracts/services/support-grpc.v1.proto",
+        lenso_service::DIRECT_GRPC_PROTO_V1_FIXTURE,
+    )?;
+    write_json(
+        "contracts/services/support-grpc.v1.bindings.json",
+        &generated_direct_grpc_bindings(),
+    )?;
     write_json(
         "contracts/services/lenso-system.v2.schema.json",
         &generated_system_v2_schema(),
@@ -77,6 +85,23 @@ pub fn generated_direct_http_bindings() -> Value {
             .expect("packaged direct HTTP OpenAPI fixture must generate bindings"),
     )
     .expect("direct HTTP bindings must serialize")
+}
+
+pub fn generated_direct_grpc_bindings() -> Value {
+    serde_json::to_value(
+        lenso_service::generate_direct_grpc_bindings(
+            "support-grpc",
+            "v1",
+            lenso_service::DIRECT_GRPC_PROTO_V1_FIXTURE,
+            lenso_service::DIRECT_GRPC_DESCRIPTOR_V1,
+        )
+        .expect("packaged direct gRPC Protobuf fixture must generate bindings"),
+    )
+    .expect("direct gRPC bindings must serialize")
+}
+
+pub fn generated_direct_grpc_proto() -> &'static str {
+    lenso_service::DIRECT_GRPC_PROTO_V1_FIXTURE
 }
 
 pub fn generated_system_v2_schema() -> Value {

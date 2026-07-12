@@ -891,7 +891,7 @@ fn autonomous_service_v2_reports_unresolved_packaged_artifacts() {
         serde_json::from_str(AUTONOMOUS_SERVICE_V2_FIXTURE_JSON).unwrap();
     let available = [
         "contracts/openapi/support.v1.yaml",
-        "contracts/protobuf/support.v1.proto",
+        "contracts/services/support-grpc.v1.proto",
         "contracts/events/support/support.ticket-opened.v1.schema.json",
         "contracts/config/support.v1.schema.json",
     ]

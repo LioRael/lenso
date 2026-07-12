@@ -106,6 +106,12 @@ specified in [`autonomous-service-contract-artifacts.md`](autonomous-service-con
 The separate [`lenso.context.v1`](common-context-contracts.md) envelope
 publishes Story, trace, identity, tenant, deadline, idempotency, causation, and
 region declarations without adding runtime propagation or enforcement.
+Autonomous Service callers can execute versioned OpenAPI contracts through the
+direct HTTP bindings or versioned Protobuf contracts through generated direct
+gRPC bindings. Both resolve logical Service References, preserve one absolute
+deadline and declared Idempotency Key semantics, and use the same
+protocol-neutral initial Call Policy reason codes while retaining native
+transport failures.
 Route proxying is specified
 separately in `docs/architecture/module-remote-http-proxy.md`. Remote runtime
 execution and event-handler dispatch are scoped in

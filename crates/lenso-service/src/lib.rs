@@ -4,9 +4,18 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
+mod direct_grpc;
 mod direct_http;
 mod endpoint_resolution;
 
+pub mod support_grpc_v1 {
+    tonic::include_proto!("lenso.services.support.v1");
+}
+
+pub use direct_grpc::{
+    DirectGrpcBindings, DirectGrpcCallError, DirectGrpcClient, DirectGrpcEvidence,
+    DirectGrpcOperation, DirectGrpcResponse, GrpcIdempotency, generate_direct_grpc_bindings,
+};
 pub use direct_http::{
     DirectHttpBindings, DirectHttpCall, DirectHttpCallError, DirectHttpClient, DirectHttpEvidence,
     DirectHttpOperation, DirectHttpRequest, DirectHttpResponse, DirectHttpServerBinding,
@@ -56,6 +65,10 @@ pub const AUTONOMOUS_SERVICE_V2_FIXTURE_JSON: &str =
     include_str!("../fixtures/contracts/v2/autonomous-service.json");
 pub const DIRECT_HTTP_OPENAPI_V1_FIXTURE_YAML: &str =
     include_str!("../fixtures/contracts/v2/support-http.v1.yaml");
+pub const DIRECT_GRPC_PROTO_V1_FIXTURE: &str =
+    include_str!("../fixtures/contracts/v2/support-grpc.v1.proto");
+pub const DIRECT_GRPC_DESCRIPTOR_V1: &[u8] =
+    tonic::include_file_descriptor_set!("support_descriptor");
 pub const MIXED_SYSTEM_V2_FIXTURE_JSON: &str =
     include_str!("../fixtures/contracts/v2/mixed-system.json");
 pub const COMMON_CONTEXT_V1_FIXTURE_JSON: &str =
@@ -1426,13 +1439,16 @@ fn validate_supported_protobuf_descriptor(
             for (method_index, method) in service.method.iter().enumerate() {
                 if method.client_streaming.unwrap_or(false)
                     || method.server_streaming.unwrap_or(false)
-                    || method.options.is_some()
+                    || method.options.as_ref().is_some_and(|options| {
+                        options.deprecated.unwrap_or(false)
+                            || !options.uninterpreted_option.is_empty()
+                    })
                 {
                     errors.push(unsupported_protobuf_feature(
                         format!(
                             "$.file[{file_index}].service[{service_index}].method[{method_index}]"
                         ),
-                        "streaming RPCs or method options",
+                        "streaming RPCs or unsupported method options",
                     ));
                 }
             }
