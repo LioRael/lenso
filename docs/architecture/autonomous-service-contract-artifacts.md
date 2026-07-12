@@ -44,3 +44,6 @@ to Modules the Service does not own. Callers that know the packaged file set can
 `validate_autonomous_service_artifact_references` to reject unresolved paths. Every issue has a
 stable code, deterministic JSON path, and next action. The packaged schema, committed generated
 schema, and v2 fixture describe the same surface.
+
+Compatibility evolution is defined in the generated
+[`contract-compatibility.md`](contract-compatibility.md) reference and its packaged golden pairs.

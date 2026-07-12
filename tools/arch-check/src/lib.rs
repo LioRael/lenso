@@ -221,6 +221,8 @@ pub fn check_contract_artifacts_fresh(root: &Path) -> anyhow::Result<()> {
         read_json(root.join("contracts/context/lenso-context.v1.schema.json"))?;
     let common_context_fixture =
         read_json(root.join("contracts/context/lenso-context.v1.fixture.json"))?;
+    let compatibility_matrix =
+        read_json(root.join("contracts/compatibility/contract-compatibility.v1.json"))?;
     let mut violations = Vec::new();
     if openapi != generated_openapi {
         violations.push("contracts/openapi/app-api.v1.yaml is stale".to_owned());
@@ -243,10 +245,20 @@ pub fn check_contract_artifacts_fresh(root: &Path) -> anyhow::Result<()> {
     if common_context_fixture != generate_contracts::generated_common_context_fixture() {
         violations.push("contracts/context/lenso-context.v1.fixture.json is stale".to_owned());
     }
+    if compatibility_matrix != generate_contracts::generated_contract_compatibility_matrix() {
+        violations
+            .push("contracts/compatibility/contract-compatibility.v1.json is stale".to_owned());
+    }
     let glossary = fs::read_to_string(root.join("docs/architecture/common-context-contracts.md"))
         .context("common context glossary should be readable")?;
     if glossary != generate_contracts::generated_common_context_glossary() {
         violations.push("docs/architecture/common-context-contracts.md is stale".to_owned());
+    }
+    let compatibility =
+        fs::read_to_string(root.join("docs/architecture/contract-compatibility.md"))
+            .context("contract compatibility documentation should be readable")?;
+    if compatibility != generate_contracts::generated_contract_compatibility() {
+        violations.push("docs/architecture/contract-compatibility.md is stale".to_owned());
     }
 
     ensure_empty(violations, "contract artifacts must match Rust sources")

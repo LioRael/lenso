@@ -55,6 +55,31 @@ pub const REQUEST_RESPONSE_COMPATIBILITY_BREAKING_FIXTURE_JSON: &str =
     include_str!("../fixtures/compatibility/request-response/breaking.json");
 pub const REQUEST_RESPONSE_COMPATIBILITY_BLOCKED_FIXTURE_JSON: &str =
     include_str!("../fixtures/compatibility/request-response/blocked.json");
+pub const EVENT_COMPATIBILITY_SAFE_FIXTURE_JSON: &str =
+    include_str!("../fixtures/compatibility/event/safe.json");
+pub const EVENT_COMPATIBILITY_NEEDS_ATTENTION_FIXTURE_JSON: &str =
+    include_str!("../fixtures/compatibility/event/needs-attention.json");
+pub const EVENT_COMPATIBILITY_BREAKING_FIXTURE_JSON: &str =
+    include_str!("../fixtures/compatibility/event/breaking.json");
+pub const EVENT_COMPATIBILITY_BLOCKED_FIXTURE_JSON: &str =
+    include_str!("../fixtures/compatibility/event/blocked.json");
+pub const CONFIG_COMPATIBILITY_SAFE_FIXTURE_JSON: &str =
+    include_str!("../fixtures/compatibility/config/safe.json");
+pub const CONFIG_COMPATIBILITY_NEEDS_ATTENTION_FIXTURE_JSON: &str =
+    include_str!("../fixtures/compatibility/config/needs-attention.json");
+pub const CONFIG_COMPATIBILITY_BREAKING_FIXTURE_JSON: &str =
+    include_str!("../fixtures/compatibility/config/breaking.json");
+pub const CONFIG_COMPATIBILITY_BLOCKED_FIXTURE_JSON: &str =
+    include_str!("../fixtures/compatibility/config/blocked.json");
+pub const RELIABILITY_COMPATIBILITY_SAFE_FIXTURE_JSON: &str =
+    include_str!("../fixtures/compatibility/reliability/safe.json");
+pub const RELIABILITY_COMPATIBILITY_NEEDS_ATTENTION_FIXTURE_JSON: &str =
+    include_str!("../fixtures/compatibility/reliability/needs-attention.json");
+pub const RELIABILITY_COMPATIBILITY_BREAKING_FIXTURE_JSON: &str =
+    include_str!("../fixtures/compatibility/reliability/breaking.json");
+pub const RELIABILITY_COMPATIBILITY_BLOCKED_FIXTURE_JSON: &str =
+    include_str!("../fixtures/compatibility/reliability/blocked.json");
+pub const CONTRACT_COMPATIBILITY_MARKDOWN: &str = include_str!("../docs/contract-compatibility.md");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CompatibilityFixture {
@@ -80,6 +105,751 @@ pub const REQUEST_RESPONSE_COMPATIBILITY_FIXTURES: &[CompatibilityFixture] = &[
         json: REQUEST_RESPONSE_COMPATIBILITY_BLOCKED_FIXTURE_JSON,
     },
 ];
+
+pub const EVENT_COMPATIBILITY_FIXTURES: &[CompatibilityFixture] = &[
+    CompatibilityFixture {
+        name: "safe",
+        json: EVENT_COMPATIBILITY_SAFE_FIXTURE_JSON,
+    },
+    CompatibilityFixture {
+        name: "needs_attention",
+        json: EVENT_COMPATIBILITY_NEEDS_ATTENTION_FIXTURE_JSON,
+    },
+    CompatibilityFixture {
+        name: "breaking",
+        json: EVENT_COMPATIBILITY_BREAKING_FIXTURE_JSON,
+    },
+    CompatibilityFixture {
+        name: "blocked",
+        json: EVENT_COMPATIBILITY_BLOCKED_FIXTURE_JSON,
+    },
+];
+pub const CONFIG_COMPATIBILITY_FIXTURES: &[CompatibilityFixture] = &[
+    CompatibilityFixture {
+        name: "safe",
+        json: CONFIG_COMPATIBILITY_SAFE_FIXTURE_JSON,
+    },
+    CompatibilityFixture {
+        name: "needs_attention",
+        json: CONFIG_COMPATIBILITY_NEEDS_ATTENTION_FIXTURE_JSON,
+    },
+    CompatibilityFixture {
+        name: "breaking",
+        json: CONFIG_COMPATIBILITY_BREAKING_FIXTURE_JSON,
+    },
+    CompatibilityFixture {
+        name: "blocked",
+        json: CONFIG_COMPATIBILITY_BLOCKED_FIXTURE_JSON,
+    },
+];
+pub const RELIABILITY_COMPATIBILITY_FIXTURES: &[CompatibilityFixture] = &[
+    CompatibilityFixture {
+        name: "safe",
+        json: RELIABILITY_COMPATIBILITY_SAFE_FIXTURE_JSON,
+    },
+    CompatibilityFixture {
+        name: "needs_attention",
+        json: RELIABILITY_COMPATIBILITY_NEEDS_ATTENTION_FIXTURE_JSON,
+    },
+    CompatibilityFixture {
+        name: "breaking",
+        json: RELIABILITY_COMPATIBILITY_BREAKING_FIXTURE_JSON,
+    },
+    CompatibilityFixture {
+        name: "blocked",
+        json: RELIABILITY_COMPATIBILITY_BLOCKED_FIXTURE_JSON,
+    },
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompatibilityCategory {
+    Safe,
+    NeedsAttention,
+    Breaking,
+    Blocked,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContractCompatibilityKind {
+    EventContract,
+    ConfigContract,
+    ReliabilityContract,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompatibilityReason {
+    pub code: String,
+    pub path: String,
+    pub message: String,
+    pub next_action: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContractCompatibilityResult {
+    pub category: CompatibilityCategory,
+    pub contract_kind: ContractCompatibilityKind,
+    pub contract_id: String,
+    pub changed_version: String,
+    pub affected_references: Vec<String>,
+    pub reasons: Vec<CompatibilityReason>,
+}
+
+#[must_use]
+pub fn evaluate_event_compatibility(input: &Value) -> ContractCompatibilityResult {
+    let mut result = compatibility_result(input, ContractCompatibilityKind::EventContract);
+    let before = valid_candidate(input, &mut result);
+    let after = input.get("after");
+    let formats = before
+        .and_then(|v| v.get("format"))
+        .zip(after.and_then(|v| v.get("format")));
+    if !matches!(formats, Some((a, b)) if a == b && matches!(a.as_str(), Some("json_schema" | "protobuf")))
+    {
+        add_contract_reason(
+            &mut result,
+            CompatibilityCategory::Blocked,
+            "event_artifact_unverifiable",
+            "$.before.format",
+            "Event artifacts must use the same supported transport-independent format.",
+            "Provide canonical JSON Schema or Protobuf event artifacts; broker choice is not part of this comparison.",
+        );
+    } else if formats.is_some_and(|(a, _)| a == "json_schema") {
+        compare_event_json_schema(
+            &mut result,
+            before.and_then(|v| v.get("schema")),
+            after.and_then(|v| v.get("schema")),
+        );
+    } else {
+        compare_event_protobuf(&mut result, before, after);
+    }
+    finish_contract_result(
+        &mut result,
+        "event_backward_compatible",
+        "The business event remains compatible for the affected references.",
+        "Publish the new event version and monitor Consumers.",
+    );
+    result
+}
+
+#[must_use]
+pub fn evaluate_config_compatibility(input: &Value) -> ContractCompatibilityResult {
+    let mut result = compatibility_result(input, ContractCompatibilityKind::ConfigContract);
+    let before = valid_candidate(input, &mut result);
+    let after = input.get("after");
+    let old_fields = indexed_values(before.and_then(|v| v.get("fields")), "path");
+    let new_fields = indexed_values(after.and_then(|v| v.get("fields")), "path");
+    if old_fields.is_none() || new_fields.is_none() {
+        add_contract_reason(
+            &mut result,
+            CompatibilityCategory::Blocked,
+            "config_fields_unverifiable",
+            "$.after.fields",
+            "Config field declarations are missing or ambiguous.",
+            "Provide unique field paths in both Config Contract versions.",
+        );
+    } else if let (Some(old_fields), Some(new_fields)) = (old_fields, new_fields) {
+        if !old_fields.values().all(valid_config_field)
+            || !new_fields.values().all(valid_config_field)
+        {
+            add_contract_reason(
+                &mut result,
+                CompatibilityCategory::Blocked,
+                "config_field_declaration_unverifiable",
+                "$.after.fields",
+                "A Config field dimension is missing or unsupported.",
+                "Provide required, sensitivity, scope, mutability, and activation metadata for every field.",
+            );
+        }
+        for (path, old) in &old_fields {
+            let Some(new) = new_fields.get(path) else {
+                add_contract_reason(
+                    &mut result,
+                    CompatibilityCategory::Breaking,
+                    "config_field_removed",
+                    &format!("$.after.fields.{path}"),
+                    "A declared configuration value was removed.",
+                    "Restore the field or coordinate migration with affected operators.",
+                );
+                continue;
+            };
+            config_change(
+                &mut result,
+                path,
+                old,
+                new,
+                "shape",
+                "config_shape_changed",
+                CompatibilityCategory::Breaking,
+                "The configuration value shape changed.",
+            );
+            if !old
+                .get("required")
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+                && new
+                    .get("required")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false)
+            {
+                add_contract_reason(
+                    &mut result,
+                    CompatibilityCategory::Breaking,
+                    "config_required_value_added",
+                    &format!("$.after.fields.{path}.required"),
+                    "An optional configuration value became required.",
+                    "Keep it optional or provide a migration and activation plan.",
+                );
+            }
+            if old
+                .get("required")
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+                && !new
+                    .get("required")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false)
+            {
+                add_contract_reason(
+                    &mut result,
+                    CompatibilityCategory::NeedsAttention,
+                    "config_required_value_relaxed",
+                    &format!("$.after.fields.{path}.required"),
+                    "A required configuration value became optional.",
+                    "Review default and absence semantics with affected operators.",
+                );
+            }
+            if old.get("sensitive") == Some(&Value::Bool(true))
+                && new.get("sensitive") == Some(&Value::Bool(false))
+            {
+                add_contract_reason(
+                    &mut result,
+                    CompatibilityCategory::Breaking,
+                    "config_sensitivity_weakened",
+                    &format!("$.after.fields.{path}.sensitive"),
+                    "A sensitive value is no longer declared sensitive.",
+                    "Restore sensitivity before exposing or persisting the value.",
+                );
+            }
+            if old.get("sensitive") == Some(&Value::Bool(false))
+                && new.get("sensitive") == Some(&Value::Bool(true))
+            {
+                add_contract_reason(
+                    &mut result,
+                    CompatibilityCategory::NeedsAttention,
+                    "config_sensitivity_strengthened",
+                    &format!("$.after.fields.{path}.sensitive"),
+                    "A configuration value is newly declared sensitive.",
+                    "Verify storage, display, logging, and secret-provider handling before activation.",
+                );
+            }
+            config_change(
+                &mut result,
+                path,
+                old,
+                new,
+                "scope",
+                "config_scope_changed",
+                CompatibilityCategory::Breaking,
+                "The configuration ownership scope changed.",
+            );
+            if old.get("mutability").and_then(Value::as_str) == Some("mutable")
+                && new.get("mutability").and_then(Value::as_str) == Some("immutable")
+            {
+                add_contract_reason(
+                    &mut result,
+                    CompatibilityCategory::Breaking,
+                    "config_mutability_restricted",
+                    &format!("$.after.fields.{path}.mutability"),
+                    "A mutable value became immutable.",
+                    "Preserve mutability or provide a replacement and migration path.",
+                );
+            } else {
+                config_change(
+                    &mut result,
+                    path,
+                    old,
+                    new,
+                    "mutability",
+                    "config_mutability_changed",
+                    CompatibilityCategory::NeedsAttention,
+                    "Configuration mutability changed.",
+                );
+            }
+            config_change(
+                &mut result,
+                path,
+                old,
+                new,
+                "activation",
+                "config_activation_changed",
+                CompatibilityCategory::NeedsAttention,
+                "Configuration activation requirements changed.",
+            );
+        }
+        for (path, new) in new_fields
+            .iter()
+            .filter(|(path, _)| !old_fields.contains_key(*path))
+        {
+            let (category, code, message) = if new
+                .get("required")
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+            {
+                (
+                    CompatibilityCategory::Breaking,
+                    "config_required_value_added",
+                    "A new required configuration value was added.",
+                )
+            } else {
+                (
+                    CompatibilityCategory::Safe,
+                    "config_optional_value_added",
+                    "A new optional configuration value was added.",
+                )
+            };
+            add_contract_reason(
+                &mut result,
+                category,
+                code,
+                &format!("$.after.fields.{path}"),
+                message,
+                "Provide the value when required and retain activation guidance for operators.",
+            );
+        }
+    }
+    finish_contract_result(
+        &mut result,
+        "config_backward_compatible",
+        "The Config Contract remains compatible for the affected references.",
+        "Publish the Config Contract and retain the activation evidence.",
+    );
+    result
+}
+
+#[must_use]
+pub fn evaluate_reliability_compatibility(input: &Value) -> ContractCompatibilityResult {
+    let mut result = compatibility_result(input, ContractCompatibilityKind::ReliabilityContract);
+    let before = valid_candidate(input, &mut result);
+    let after = input.get("after");
+    if let (Some(old), Some(new)) = (
+        before.and_then(Value::as_object),
+        after.and_then(Value::as_object),
+    ) {
+        for key in ["availabilityTarget", "latencyTargetMs"] {
+            if old.get(key) != new.get(key) {
+                let tightened = reliability_target_tightened(key, old.get(key), new.get(key));
+                let category = if tightened {
+                    CompatibilityCategory::Breaking
+                } else {
+                    CompatibilityCategory::NeedsAttention
+                };
+                let code = if tightened {
+                    "reliability_target_tightened".to_owned()
+                } else {
+                    format!("reliability_{}_changed", camel_to_snake(key))
+                };
+                add_contract_reason(
+                    &mut result,
+                    category,
+                    &code,
+                    &format!("$.after.{key}"),
+                    "A whole-Service reliability target changed; this declaration does not prove runtime enforcement.",
+                    "Review the target direction and rollout evidence with affected owners.",
+                );
+            }
+        }
+        for key in old.keys().chain(new.keys()).collect::<BTreeSet<_>>() {
+            if key != "version"
+                && !matches!(key.as_str(), "availabilityTarget" | "latencyTargetMs")
+                && old.get(key) != new.get(key)
+            {
+                add_contract_reason(
+                    &mut result,
+                    CompatibilityCategory::NeedsAttention,
+                    &format!("reliability_{}_changed", camel_to_snake(key)),
+                    &format!("$.after.{key}"),
+                    "A Reliability Contract declaration changed; this does not prove runtime enforcement.",
+                    "Review the declared whole-Service expectation, rollout evidence, and affected owners.",
+                );
+            }
+        }
+    }
+    finish_contract_result(
+        &mut result,
+        "reliability_declaration_compatible",
+        "The Reliability Contract declaration is unchanged; runtime behavior is not inferred.",
+        "Retain runtime evidence separately from this declaration check.",
+    );
+    result
+}
+
+fn compatibility_result(
+    input: &Value,
+    kind: ContractCompatibilityKind,
+) -> ContractCompatibilityResult {
+    let mut affected_references = input
+        .get("affectedReferences")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    affected_references.sort();
+    affected_references.dedup();
+    ContractCompatibilityResult {
+        category: CompatibilityCategory::Safe,
+        contract_kind: kind,
+        contract_id: input
+            .get("contractId")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned(),
+        changed_version: input
+            .get("changedVersion")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned(),
+        affected_references,
+        reasons: Vec::new(),
+    }
+}
+
+fn valid_candidate<'a>(
+    input: &'a Value,
+    result: &mut ContractCompatibilityResult,
+) -> Option<&'a Value> {
+    let before = input.get("before");
+    let after = input.get("after");
+    let before_version = before
+        .and_then(|v| v.get("version"))
+        .and_then(Value::as_str);
+    let after_version = after.and_then(|v| v.get("version")).and_then(Value::as_str);
+    if result.contract_id.is_empty()
+        || result.changed_version.is_empty()
+        || result.affected_references.is_empty()
+    {
+        add_contract_reason(
+            result,
+            CompatibilityCategory::Blocked,
+            "contract_relationship_unverifiable",
+            "$",
+            "Contract identity, changed version, and affected references must be explicit.",
+            "Resolve the contract identity and affected references before comparing versions.",
+        );
+    }
+    if before_version.is_none()
+        || after_version != Some(result.changed_version.as_str())
+        || before_version == after_version
+    {
+        add_contract_reason(
+            result,
+            CompatibilityCategory::Blocked,
+            "contract_version_unverifiable",
+            "$.after.version",
+            "Both versions must be explicit, different, and match changedVersion.",
+            "Provide authoritative before and after contract versions.",
+        );
+    }
+    before
+}
+
+fn compare_event_json_schema(
+    result: &mut ContractCompatibilityResult,
+    old: Option<&Value>,
+    new: Option<&Value>,
+) {
+    let (Some(old), Some(new)) = (old, new) else {
+        add_contract_reason(
+            result,
+            CompatibilityCategory::Blocked,
+            "event_schema_unverifiable",
+            "$.after.schema",
+            "The event schemas are missing.",
+            "Provide both canonical event schemas.",
+        );
+        return;
+    };
+    if old.get("type") != new.get("type") {
+        add_contract_reason(
+            result,
+            CompatibilityCategory::Breaking,
+            "event_type_changed",
+            "$.after.schema.type",
+            "The event payload type changed.",
+            "Restore the payload type or introduce a coordinated event version.",
+        );
+    }
+    let old_properties = old.get("properties").and_then(Value::as_object);
+    let new_properties = new.get("properties").and_then(Value::as_object);
+    if let (Some(old_properties), Some(new_properties)) = (old_properties, new_properties) {
+        for (field, old_field) in old_properties {
+            let Some(new_field) = new_properties.get(field) else {
+                add_contract_reason(
+                    result,
+                    CompatibilityCategory::Breaking,
+                    "event_field_removed",
+                    &format!("$.after.schema.properties.{field}"),
+                    "An event payload field was removed.",
+                    "Restore the field or coordinate a new version with every affected Consumer.",
+                );
+                continue;
+            };
+            if old_field.get("type") != new_field.get("type") {
+                add_contract_reason(
+                    result,
+                    CompatibilityCategory::Breaking,
+                    "event_field_type_changed",
+                    &format!("$.after.schema.properties.{field}"),
+                    "An event payload field type changed.",
+                    "Restore the type or add a new versioned field.",
+                );
+            } else if old_field != new_field {
+                add_contract_reason(
+                    result,
+                    CompatibilityCategory::NeedsAttention,
+                    "event_field_constraints_changed",
+                    &format!("$.after.schema.properties.{field}"),
+                    "Event field constraints changed and require semantic review.",
+                    "Review Producer and Consumer behavior before publishing.",
+                );
+            }
+        }
+        let old_required = string_set(old.get("required"));
+        let new_required = string_set(new.get("required"));
+        for field in old_required.difference(&new_required) {
+            add_contract_reason(
+                result,
+                CompatibilityCategory::Breaking,
+                "event_required_field_became_optional",
+                &format!("$.after.schema.properties.{field}"),
+                "A field guaranteed to Consumers may now be omitted.",
+                "Keep the event field required or coordinate a new event version.",
+            );
+        }
+    } else if old != new {
+        add_contract_reason(
+            result,
+            CompatibilityCategory::NeedsAttention,
+            "event_schema_not_structurally_proven",
+            "$.after.schema",
+            "The event schema change cannot be proven compatible structurally.",
+            "Review the schemas with affected Producers and Consumers.",
+        );
+    }
+}
+
+fn compare_event_protobuf(
+    result: &mut ContractCompatibilityResult,
+    old: Option<&Value>,
+    new: Option<&Value>,
+) {
+    if !valid_protobuf_event_fields(old) || !valid_protobuf_event_fields(new) {
+        add_contract_reason(
+            result,
+            CompatibilityCategory::Blocked,
+            "event_protobuf_descriptor_unverifiable",
+            "$.after.fields",
+            "The Protobuf event field descriptors are incomplete or ambiguous.",
+            "Provide unique positive field numbers with non-empty names and types.",
+        );
+        return;
+    }
+    let old_fields = protobuf_fields(old);
+    let new_fields = protobuf_fields(new);
+    let (Some(old_fields), Some(new_fields)) = (old_fields, new_fields) else {
+        add_contract_reason(
+            result,
+            CompatibilityCategory::Blocked,
+            "event_protobuf_descriptor_unverifiable",
+            "$.after.fields",
+            "The Protobuf event field descriptors are missing or invalid.",
+            "Provide descriptor-based fields for both event versions.",
+        );
+        return;
+    };
+    for (number, old_field) in &old_fields {
+        let Some(new_field) = new_fields.get(number) else {
+            add_contract_reason(
+                result,
+                CompatibilityCategory::Breaking,
+                "event_protobuf_field_removed",
+                &format!("$.after.fields.{number}"),
+                "A Protobuf event field number was removed.",
+                "Restore or reserve the number and coordinate a new event version.",
+            );
+            continue;
+        };
+        if old_field.get("type") != new_field.get("type") {
+            add_contract_reason(
+                result,
+                CompatibilityCategory::Breaking,
+                "event_protobuf_field_type_changed",
+                &format!("$.after.fields.{number}"),
+                "A Protobuf event field number changed wire type.",
+                "Restore the wire-compatible type or allocate a new field number.",
+            );
+        } else if old_field.get("name") != new_field.get("name") {
+            add_contract_reason(
+                result,
+                CompatibilityCategory::NeedsAttention,
+                "event_protobuf_field_renamed",
+                &format!("$.after.fields.{number}"),
+                "A Protobuf event field kept its number but changed source name.",
+                "Review generated clients and JSON mappings before publishing.",
+            );
+        }
+    }
+}
+
+fn valid_protobuf_event_fields(value: Option<&Value>) -> bool {
+    let Some(fields) = value
+        .and_then(|value| value.get("fields"))
+        .and_then(Value::as_array)
+    else {
+        return false;
+    };
+    let mut numbers = BTreeSet::new();
+    fields.iter().all(|field| {
+        field
+            .get("number")
+            .and_then(Value::as_i64)
+            .is_some_and(|number| number > 0 && numbers.insert(number))
+            && field
+                .get("name")
+                .and_then(Value::as_str)
+                .is_some_and(|value| !value.is_empty())
+            && field
+                .get("type")
+                .and_then(Value::as_str)
+                .is_some_and(|value| !value.is_empty())
+    })
+}
+
+fn valid_config_field(field: &Value) -> bool {
+    field.get("required").is_some_and(Value::is_boolean)
+        && field.get("sensitive").is_some_and(Value::is_boolean)
+        && matches!(
+            field.get("scope").and_then(Value::as_str),
+            Some("service" | "region" | "tenant")
+        )
+        && matches!(
+            field.get("mutability").and_then(Value::as_str),
+            Some("immutable" | "mutable")
+        )
+        && matches!(
+            field.get("activation").and_then(Value::as_str),
+            Some("hot" | "restart")
+        )
+}
+
+fn indexed_values(value: Option<&Value>, key: &str) -> Option<BTreeMap<String, Value>> {
+    let values = value?.as_array()?;
+    let mut indexed = BTreeMap::new();
+    for value in values {
+        let identity = value.get(key)?.as_str()?.to_owned();
+        if indexed.insert(identity, value.clone()).is_some() {
+            return None;
+        }
+    }
+    Some(indexed)
+}
+
+fn config_change(
+    result: &mut ContractCompatibilityResult,
+    path: &str,
+    old: &Value,
+    new: &Value,
+    field: &str,
+    code: &str,
+    category: CompatibilityCategory,
+    message: &str,
+) {
+    if old.get(field) != new.get(field) {
+        add_contract_reason(
+            result,
+            category,
+            code,
+            &format!("$.after.fields.{path}.{field}"),
+            message,
+            "Review the change and provide an operator migration and activation plan.",
+        );
+    }
+}
+
+fn add_contract_reason(
+    result: &mut ContractCompatibilityResult,
+    category: CompatibilityCategory,
+    code: &str,
+    path: &str,
+    message: &str,
+    next_action: &str,
+) {
+    result.category = result.category.max(category);
+    result.reasons.push(CompatibilityReason {
+        code: code.to_owned(),
+        path: path.to_owned(),
+        message: message.to_owned(),
+        next_action: next_action.to_owned(),
+    });
+}
+
+fn finish_contract_result(
+    result: &mut ContractCompatibilityResult,
+    safe_code: &str,
+    message: &str,
+    next_action: &str,
+) {
+    if result.reasons.is_empty() {
+        add_contract_reason(
+            result,
+            CompatibilityCategory::Safe,
+            safe_code,
+            "$",
+            message,
+            next_action,
+        );
+    }
+    result.reasons.sort();
+    result.reasons.dedup();
+}
+
+fn camel_to_snake(value: &str) -> String {
+    value
+        .chars()
+        .enumerate()
+        .fold(String::new(), |mut output, (index, ch)| {
+            if ch.is_ascii_uppercase() {
+                if index > 0 {
+                    output.push('_');
+                }
+                output.push(ch.to_ascii_lowercase());
+            } else {
+                output.push(ch);
+            }
+            output
+        })
+}
+
+fn reliability_target_tightened(key: &str, old: Option<&Value>, new: Option<&Value>) -> bool {
+    match key {
+        "availabilityTarget" => {
+            let parse = |value: Option<&Value>| {
+                value
+                    .and_then(Value::as_str)
+                    .and_then(|value| value.trim_end_matches('%').parse::<f64>().ok())
+            };
+            matches!((parse(old), parse(new)), (Some(old), Some(new)) if new > old)
+        }
+        "latencyTargetMs" => {
+            matches!((old.and_then(Value::as_u64), new.and_then(Value::as_u64)), (Some(old), Some(new)) if new < old)
+        }
+        _ => false,
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

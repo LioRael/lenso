@@ -1,0 +1,1 @@
+{"contractId":"ticket-opened","changedVersion":"v2","affectedReferences":["autonomous_service:support"],"before":{"format":"kafka","version":"v1"},"after":{"format":"kafka","version":"v2"}}

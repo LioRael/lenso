@@ -1,0 +1,261 @@
+[
+  {
+    "contractKind": "event_contract",
+    "name": "safe",
+    "result": {
+      "affectedReferences": [
+        "autonomous_service:support",
+        "consumer:analytics"
+      ],
+      "category": "safe",
+      "changedVersion": "v2",
+      "contractId": "ticket-opened",
+      "contractKind": "event_contract",
+      "reasons": [
+        {
+          "code": "event_backward_compatible",
+          "message": "The business event remains compatible for the affected references.",
+          "nextAction": "Publish the new event version and monitor Consumers.",
+          "path": "$"
+        }
+      ]
+    }
+  },
+  {
+    "contractKind": "event_contract",
+    "name": "needs_attention",
+    "result": {
+      "affectedReferences": [
+        "autonomous_service:support",
+        "consumer:analytics"
+      ],
+      "category": "needs_attention",
+      "changedVersion": "v2",
+      "contractId": "ticket-opened",
+      "contractKind": "event_contract",
+      "reasons": [
+        {
+          "code": "event_field_constraints_changed",
+          "message": "Event field constraints changed and require semantic review.",
+          "nextAction": "Review Producer and Consumer behavior before publishing.",
+          "path": "$.after.schema.properties.priority"
+        }
+      ]
+    }
+  },
+  {
+    "contractKind": "event_contract",
+    "name": "breaking",
+    "result": {
+      "affectedReferences": [
+        "autonomous_service:support",
+        "consumer:analytics"
+      ],
+      "category": "breaking",
+      "changedVersion": "v2",
+      "contractId": "ticket-opened",
+      "contractKind": "event_contract",
+      "reasons": [
+        {
+          "code": "event_field_removed",
+          "message": "An event payload field was removed.",
+          "nextAction": "Restore the field or coordinate a new version with every affected Consumer.",
+          "path": "$.after.schema.properties.id"
+        },
+        {
+          "code": "event_required_field_became_optional",
+          "message": "A field guaranteed to Consumers may now be omitted.",
+          "nextAction": "Keep the event field required or coordinate a new event version.",
+          "path": "$.after.schema.properties.id"
+        }
+      ]
+    }
+  },
+  {
+    "contractKind": "event_contract",
+    "name": "blocked",
+    "result": {
+      "affectedReferences": [
+        "autonomous_service:support"
+      ],
+      "category": "blocked",
+      "changedVersion": "v2",
+      "contractId": "ticket-opened",
+      "contractKind": "event_contract",
+      "reasons": [
+        {
+          "code": "event_artifact_unverifiable",
+          "message": "Event artifacts must use the same supported transport-independent format.",
+          "nextAction": "Provide canonical JSON Schema or Protobuf event artifacts; broker choice is not part of this comparison.",
+          "path": "$.before.format"
+        }
+      ]
+    }
+  },
+  {
+    "contractKind": "config_contract",
+    "name": "safe",
+    "result": {
+      "affectedReferences": [
+        "autonomous_service:support"
+      ],
+      "category": "safe",
+      "changedVersion": "v2",
+      "contractId": "support-config",
+      "contractKind": "config_contract",
+      "reasons": [
+        {
+          "code": "config_optional_value_added",
+          "message": "A new optional configuration value was added.",
+          "nextAction": "Provide the value when required and retain activation guidance for operators.",
+          "path": "$.after.fields.timeout"
+        }
+      ]
+    }
+  },
+  {
+    "contractKind": "config_contract",
+    "name": "needs_attention",
+    "result": {
+      "affectedReferences": [
+        "autonomous_service:support"
+      ],
+      "category": "needs_attention",
+      "changedVersion": "v2",
+      "contractId": "support-config",
+      "contractKind": "config_contract",
+      "reasons": [
+        {
+          "code": "config_mutability_changed",
+          "message": "Configuration mutability changed.",
+          "nextAction": "Review the change and provide an operator migration and activation plan.",
+          "path": "$.after.fields.token.mutability"
+        }
+      ]
+    }
+  },
+  {
+    "contractKind": "config_contract",
+    "name": "breaking",
+    "result": {
+      "affectedReferences": [
+        "autonomous_service:support"
+      ],
+      "category": "breaking",
+      "changedVersion": "v2",
+      "contractId": "support-config",
+      "contractKind": "config_contract",
+      "reasons": [
+        {
+          "code": "config_required_value_added",
+          "message": "An optional configuration value became required.",
+          "nextAction": "Keep it optional or provide a migration and activation plan.",
+          "path": "$.after.fields.token.required"
+        }
+      ]
+    }
+  },
+  {
+    "contractKind": "config_contract",
+    "name": "blocked",
+    "result": {
+      "affectedReferences": [
+        "autonomous_service:support"
+      ],
+      "category": "blocked",
+      "changedVersion": "v2",
+      "contractId": "support-config",
+      "contractKind": "config_contract",
+      "reasons": [
+        {
+          "code": "config_fields_unverifiable",
+          "message": "Config field declarations are missing or ambiguous.",
+          "nextAction": "Provide unique field paths in both Config Contract versions.",
+          "path": "$.after.fields"
+        }
+      ]
+    }
+  },
+  {
+    "contractKind": "reliability_contract",
+    "name": "safe",
+    "result": {
+      "affectedReferences": [
+        "autonomous_service:support"
+      ],
+      "category": "safe",
+      "changedVersion": "v2",
+      "contractId": "support-reliability",
+      "contractKind": "reliability_contract",
+      "reasons": [
+        {
+          "code": "reliability_declaration_compatible",
+          "message": "The Reliability Contract declaration is unchanged; runtime behavior is not inferred.",
+          "nextAction": "Retain runtime evidence separately from this declaration check.",
+          "path": "$"
+        }
+      ]
+    }
+  },
+  {
+    "contractKind": "reliability_contract",
+    "name": "needs_attention",
+    "result": {
+      "affectedReferences": [
+        "autonomous_service:support"
+      ],
+      "category": "needs_attention",
+      "changedVersion": "v2",
+      "contractId": "support-reliability",
+      "contractKind": "reliability_contract",
+      "reasons": [
+        {
+          "code": "reliability_degraded_modes_changed",
+          "message": "A Reliability Contract declaration changed; this does not prove runtime enforcement.",
+          "nextAction": "Review the declared whole-Service expectation, rollout evidence, and affected owners.",
+          "path": "$.after.degradedModes"
+        }
+      ]
+    }
+  },
+  {
+    "contractKind": "reliability_contract",
+    "name": "breaking",
+    "result": {
+      "affectedReferences": [
+        "autonomous_service:support"
+      ],
+      "category": "breaking",
+      "changedVersion": "v2",
+      "contractId": "support-reliability",
+      "contractKind": "reliability_contract",
+      "reasons": [
+        {
+          "code": "reliability_target_tightened",
+          "message": "A whole-Service reliability target changed; this declaration does not prove runtime enforcement.",
+          "nextAction": "Review the target direction and rollout evidence with affected owners.",
+          "path": "$.after.availabilityTarget"
+        }
+      ]
+    }
+  },
+  {
+    "contractKind": "reliability_contract",
+    "name": "blocked",
+    "result": {
+      "affectedReferences": [],
+      "category": "blocked",
+      "changedVersion": "v2",
+      "contractId": "support-reliability",
+      "contractKind": "reliability_contract",
+      "reasons": [
+        {
+          "code": "contract_relationship_unverifiable",
+          "message": "Contract identity, changed version, and affected references must be explicit.",
+          "nextAction": "Resolve the contract identity and affected references before comparing versions.",
+          "path": "$"
+        }
+      ]
+    }
+  }
+]
