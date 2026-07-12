@@ -4005,6 +4005,48 @@ components:
           type: array
           items:
             type: string
+    AdminContractCompatibilityReasonDto:
+      type: object
+      required:
+      - code
+      - path
+      - message
+      - nextAction
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        nextAction:
+          type: string
+        path:
+          type: string
+    AdminContractCompatibilityResultDto:
+      type: object
+      required:
+      - category
+      - contractKind
+      - contractId
+      - changedVersion
+      - affectedReferences
+      - reasons
+      properties:
+        affectedReferences:
+          type: array
+          items:
+            type: string
+        category:
+          type: string
+        changedVersion:
+          type: string
+        contractId:
+          type: string
+        contractKind:
+          type: string
+        reasons:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminContractCompatibilityReasonDto'
     AdminDataDetailResponse:
       type: object
       description: Response for `GET /admin/data/{module}/{entity}/{id}`.
@@ -7123,6 +7165,41 @@ components:
           type: string
         owner:
           type: string
+    AdminServiceSystemNodeDto:
+      type: object
+      required:
+      - id
+      - kind
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+        owner:
+          type:
+          - string
+          - 'null'
+    AdminServiceSystemRelationshipDto:
+      type: object
+      required:
+      - kind
+      - from
+      - to
+      properties:
+        contractId:
+          type:
+          - string
+          - 'null'
+        contractVersion:
+          type:
+          - string
+          - 'null'
+        from:
+          type: string
+        kind:
+          type: string
+        to:
+          type: string
     AdminServiceSystemReleaseRecordDto:
       type: object
       required:
@@ -7201,7 +7278,14 @@ components:
       - modules
       - dependencies
       - issues
+      - nodes
+      - relationships
+      - compatibilityResults
       properties:
+        compatibilityResults:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminContractCompatibilityResultDto'
         dependencies:
           type: array
           items:
@@ -7219,6 +7303,22 @@ components:
           items:
             $ref: '#/components/schemas/AdminServiceSystemModuleDto'
         name:
+          type:
+          - string
+          - 'null'
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminServiceSystemNodeDto'
+        protocolVersion:
+          type:
+          - string
+          - 'null'
+        relationships:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminServiceSystemRelationshipDto'
+        semanticKind:
           type:
           - string
           - 'null'
