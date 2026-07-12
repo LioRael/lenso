@@ -17,6 +17,14 @@ pub fn generate_contracts() -> anyhow::Result<()> {
         &generated_autonomous_service_schema(),
     )?;
     write_json(
+        "contracts/services/lenso-system.v2.schema.json",
+        &generated_system_v2_schema(),
+    )?;
+    write_json(
+        "contracts/services/lenso-system.v2.fixture.json",
+        &generated_system_v2_fixture(),
+    )?;
+    write_json(
         "contracts/context/lenso-context.v1.schema.json",
         &generated_common_context_schema(),
     )?;
@@ -39,6 +47,16 @@ pub fn generated_error_response_schema() -> Value {
 pub fn generated_autonomous_service_schema() -> Value {
     serde_json::from_str(lenso_service::SERVICE_V2_CONTRACT_SCHEMA_JSON)
         .expect("packaged Autonomous Service schema must be valid JSON")
+}
+
+pub fn generated_system_v2_schema() -> Value {
+    serde_json::from_str(lenso_service::SYSTEM_V2_CONTRACT_SCHEMA_JSON)
+        .expect("packaged System v2 schema must be valid JSON")
+}
+
+pub fn generated_system_v2_fixture() -> Value {
+    serde_json::from_str(lenso_service::MIXED_SYSTEM_V2_FIXTURE_JSON)
+        .expect("packaged mixed System v2 fixture must be valid JSON")
 }
 
 pub fn generated_common_context_schema() -> Value {

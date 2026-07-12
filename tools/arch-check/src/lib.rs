@@ -214,6 +214,9 @@ pub fn check_contract_artifacts_fresh(root: &Path) -> anyhow::Result<()> {
     let error_schema = read_json(root.join("contracts/errors/error-response.v1.schema.json"))?;
     let autonomous_service_schema =
         read_json(root.join("contracts/services/lenso-service.v2.schema.json"))?;
+    let system_v2_schema = read_json(root.join("contracts/services/lenso-system.v2.schema.json"))?;
+    let system_v2_fixture =
+        read_json(root.join("contracts/services/lenso-system.v2.fixture.json"))?;
     let common_context_schema =
         read_json(root.join("contracts/context/lenso-context.v1.schema.json"))?;
     let common_context_fixture =
@@ -227,6 +230,12 @@ pub fn check_contract_artifacts_fresh(root: &Path) -> anyhow::Result<()> {
     }
     if autonomous_service_schema != generate_contracts::generated_autonomous_service_schema() {
         violations.push("contracts/services/lenso-service.v2.schema.json is stale".to_owned());
+    }
+    if system_v2_schema != generate_contracts::generated_system_v2_schema() {
+        violations.push("contracts/services/lenso-system.v2.schema.json is stale".to_owned());
+    }
+    if system_v2_fixture != generate_contracts::generated_system_v2_fixture() {
+        violations.push("contracts/services/lenso-system.v2.fixture.json is stale".to_owned());
     }
     if common_context_schema != generate_contracts::generated_common_context_schema() {
         violations.push("contracts/context/lenso-context.v1.schema.json is stale".to_owned());

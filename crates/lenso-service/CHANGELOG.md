@@ -2,6 +2,10 @@
 
 ### Features
 
+Add the declarative `lenso.system.v2` mixed-topology graph with explicit Host,
+Provider, Autonomous Service, Module, Workload, Producer, and Consumer kinds,
+deterministic serialization, and actionable validation.
+
 Declare versioned OpenAPI, Protobuf, Event, Config, and Reliability Contract
 artifacts owned by an Autonomous Service v2, with deterministic public validation.
 

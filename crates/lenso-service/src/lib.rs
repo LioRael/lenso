@@ -12,6 +12,7 @@ pub const SERVICE_PACKAGE_PROTOCOL: &str = "lenso.service-package.v1";
 pub const SERVICE_WORKSPACE_PROTOCOL: &str = "lenso.service-workspace.v1";
 pub const SERVICE_RELEASE_PLAN_PROTOCOL: &str = "lenso.service-release-plan.v1";
 pub const SERVICE_SYSTEM_PROTOCOL: &str = "lenso.system.v1";
+pub const SYSTEM_V2_PROTOCOL: &str = "lenso.system.v2";
 pub const MODULE_CONTRACT_PROTOCOL: &str = "lenso.module.v1";
 pub const MODULE_RELEASE_PROTOCOL: &str = "lenso.module-release.v1";
 pub const SERVICE_CONTRACT_SCHEMA_JSON: &str =
@@ -25,6 +26,8 @@ pub const SERVICE_PACKAGE_SCHEMA_JSON: &str =
 pub const SERVICE_WORKSPACE_SCHEMA_JSON: &str =
     include_str!("../schemas/lenso-service-workspace.v1.schema.json");
 pub const SERVICE_SYSTEM_SCHEMA_JSON: &str = include_str!("../schemas/lenso-system.v1.schema.json");
+pub const SYSTEM_V2_CONTRACT_SCHEMA_JSON: &str =
+    include_str!("../schemas/lenso-system.v2.schema.json");
 pub const MODULE_CONTRACT_SCHEMA_JSON: &str =
     include_str!("../schemas/lenso-module.v1.schema.json");
 pub const MODULE_RELEASE_SCHEMA_JSON: &str =
@@ -35,6 +38,8 @@ pub const LEGACY_SYSTEM_V1_FIXTURE_JSON: &str =
     include_str!("../fixtures/contracts/v1/system-provider.json");
 pub const AUTONOMOUS_SERVICE_V2_FIXTURE_JSON: &str =
     include_str!("../fixtures/contracts/v2/autonomous-service.json");
+pub const MIXED_SYSTEM_V2_FIXTURE_JSON: &str =
+    include_str!("../fixtures/contracts/v2/mixed-system.json");
 pub const COMMON_CONTEXT_V1_FIXTURE_JSON: &str =
     include_str!("../fixtures/contracts/v1/common-context.json");
 pub const COMMON_CONTEXT_GLOSSARY_MARKDOWN: &str =
@@ -478,6 +483,7 @@ pub enum ContractSemanticKind {
     Provider,
     ProviderSystem,
     AutonomousService,
+    MixedSystem,
 }
 
 impl ContractSemanticKind {
@@ -487,6 +493,7 @@ impl ContractSemanticKind {
             Self::Provider => "provider",
             Self::ProviderSystem => "provider_system",
             Self::AutonomousService => "autonomous_service",
+            Self::MixedSystem => "mixed_system",
         }
     }
 }
@@ -971,6 +978,619 @@ pub struct ServiceWorkspaceModuleServices {
 pub struct ServiceWorkspaceModuleServicesFile {
     pub version: u64,
     pub modules: Vec<ServiceWorkspaceModuleServices>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemV2Graph {
+    pub artifact_protocol: String,
+    pub semantic_kind: ContractSemanticKind,
+    pub system_id: String,
+    pub nodes: Vec<SystemV2GraphNode>,
+    pub relationships: Vec<SystemV2GraphRelationship>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub issues: Vec<SystemV2Issue>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemV2GraphNode {
+    pub id: String,
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemV2GraphRelationship {
+    pub kind: String,
+    pub from: String,
+    pub to: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contract_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemV2Issue {
+    pub code: String,
+    pub path: String,
+    pub message: String,
+    pub next_action: String,
+}
+
+/// Validates and canonicalizes a declarative mixed-topology System v2 artifact.
+///
+/// This projection is intentionally control-plane-only: it contains no endpoint resolution or
+/// runtime dispatch behavior.
+pub fn system_v2_graph(value: &Value) -> Result<SystemV2Graph, Vec<SystemV2Issue>> {
+    let mut issues = Vec::new();
+    let Some(object) = value.as_object() else {
+        return Err(vec![system_v2_issue(
+            "ambiguous_kind",
+            "$",
+            "System artifact must be an object.",
+            "Provide a lenso.system.v2 JSON object with explicit topology kinds.",
+        )]);
+    };
+    if object.get("protocol").and_then(Value::as_str) != Some(SYSTEM_V2_PROTOCOL) {
+        issues.push(system_v2_issue(
+            "unsupported_protocol",
+            "$.protocol",
+            "protocol must be `lenso.system.v2`",
+            "Set protocol to `lenso.system.v2` or use the System v1 compatibility adapter.",
+        ));
+    }
+    let system_id = required_system_v2_string(object.get("systemId"), "$.systemId", &mut issues);
+    let mut nodes = Vec::new();
+    let mut relationships = Vec::new();
+    let mut owners = BTreeSet::new();
+    let mut identity_kinds = BTreeMap::<String, BTreeSet<String>>::new();
+    let mut module_owners = BTreeMap::<String, String>::new();
+
+    if let Some(host) = object.get("host").and_then(Value::as_object) {
+        let id = required_system_v2_string(host.get("hostId"), "$.host.hostId", &mut issues);
+        if !id.is_empty() {
+            owners.insert(("host".to_owned(), id.clone()));
+            identity_kinds
+                .entry(id.clone())
+                .or_default()
+                .insert("host".to_owned());
+            nodes.push(SystemV2GraphNode {
+                id: id.clone(),
+                kind: "host".to_owned(),
+                owner: None,
+            });
+            collect_system_v2_modules(
+                host.get("modules"),
+                "$.host.modules",
+                &id,
+                &mut module_owners,
+                &mut nodes,
+                &mut relationships,
+                &mut issues,
+            );
+        }
+    } else {
+        issues.push(system_v2_issue(
+            "missing_ownership",
+            "$.host",
+            "System v2 requires one explicit Host.",
+            "Declare host.hostId and the Modules owned by the Host.",
+        ));
+    }
+    let providers = system_v2_sorted_objects(
+        object.get("providers"),
+        "$.providers",
+        "providerId",
+        &mut issues,
+    );
+    let autonomous_services = system_v2_sorted_objects(
+        object.get("autonomousServices"),
+        "$.autonomousServices",
+        "serviceId",
+        &mut issues,
+    );
+    collect_system_v2_owners(
+        &providers,
+        "providers",
+        "providerId",
+        "provider",
+        &mut owners,
+        &mut identity_kinds,
+        &mut module_owners,
+        &mut nodes,
+        &mut relationships,
+        &mut issues,
+    );
+    collect_system_v2_owners(
+        &autonomous_services,
+        "autonomousServices",
+        "serviceId",
+        "autonomous_service",
+        &mut owners,
+        &mut identity_kinds,
+        &mut module_owners,
+        &mut nodes,
+        &mut relationships,
+        &mut issues,
+    );
+
+    for (index, service) in autonomous_services.iter().enumerate() {
+        let owner = service
+            .get("serviceId")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let workloads = system_v2_sorted_objects(
+            service.get("workloads"),
+            &format!("$.autonomousServices[{index}].workloads"),
+            "workloadId",
+            &mut issues,
+        );
+        if workloads.is_empty() {
+            issues.push(system_v2_issue(
+                "missing_ownership",
+                format!("$.autonomousServices[{index}].workloads"),
+                "Autonomous Service workloads must be explicit.",
+                "Declare every Workload under its owning Autonomous Service.",
+            ));
+        } else {
+            for (workload_index, workload) in workloads.iter().enumerate() {
+                let id = workload
+                    .get("workloadId")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                if id.is_empty() {
+                    issues.push(system_v2_issue(
+                        "missing_ownership",
+                        format!(
+                            "$.autonomousServices[{index}].workloads[{workload_index}].workloadId"
+                        ),
+                        "Workload identity is required.",
+                        "Declare workloadId under its owning Autonomous Service.",
+                    ));
+                } else {
+                    nodes.push(SystemV2GraphNode {
+                        id: id.to_owned(),
+                        kind: "workload".to_owned(),
+                        owner: Some(owner.to_owned()),
+                    });
+                    relationships.push(SystemV2GraphRelationship {
+                        kind: "owns".to_owned(),
+                        from: owner.to_owned(),
+                        to: id.to_owned(),
+                        contract_id: None,
+                    });
+                }
+            }
+        }
+    }
+
+    for (identity, kinds) in &identity_kinds {
+        if kinds.len() > 1 {
+            issues.push(system_v2_issue(
+                "ambiguous_kind",
+                format!("$.identities.{identity}"),
+                format!(
+                    "Identity `{identity}` is declared with multiple kinds: {}.",
+                    kinds.iter().cloned().collect::<Vec<_>>().join(", ")
+                ),
+                "Give every Host, Provider, and Autonomous Service a distinct stable identity.",
+            ));
+        }
+    }
+
+    let mut contracts = BTreeMap::<String, (String, String)>::new();
+    let contract_items = system_v2_sorted_objects(
+        object.get("contracts"),
+        "$.contracts",
+        "contractId",
+        &mut issues,
+    );
+    for (index, item) in contract_items.iter().enumerate() {
+        let contract_id = required_system_v2_string(
+            item.get("contractId"),
+            &format!("$.contracts[{index}].contractId"),
+            &mut issues,
+        );
+        let producer_kind = item
+            .get("producerKind")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let producer_id = item
+            .get("producerId")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if !matches!(producer_kind, "provider" | "autonomous_service") {
+            issues.push(system_v2_issue(
+                "ambiguous_kind",
+                format!("$.contracts[{index}].producerKind"),
+                "Producer kind must be explicit.",
+                "Use `provider` or `autonomous_service`.",
+            ));
+        } else if !owners.contains(&(producer_kind.to_owned(), producer_id.to_owned())) {
+            issues.push(system_v2_issue(
+                "unresolved_reference",
+                format!("$.contracts[{index}].producerId"),
+                "Producer reference does not resolve.",
+                "Reference a declared Provider or Autonomous Service.",
+            ));
+        }
+        let tenancy = item
+            .get("tenancyMode")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned();
+        let version = required_system_v2_string(
+            item.get("version"),
+            &format!("$.contracts[{index}].version"),
+            &mut issues,
+        );
+        let artifact = item.get("artifact").and_then(Value::as_object);
+        let artifact_valid = artifact
+            .and_then(|artifact| artifact.get("format"))
+            .and_then(Value::as_str)
+            .is_some_and(|format| {
+                matches!(
+                    format,
+                    "openapi" | "protobuf" | "json_schema" | "config" | "reliability"
+                )
+            })
+            && artifact
+                .and_then(|artifact| artifact.get("path"))
+                .and_then(Value::as_str)
+                .is_some_and(|path| !path.is_empty());
+        if !artifact_valid {
+            issues.push(system_v2_issue(
+                "unresolved_reference",
+                format!("$.contracts[{index}].artifact"),
+                "Versioned contract artifact format and path are required.",
+                "Declare a supported artifact.format and non-empty artifact.path.",
+            ));
+        }
+        if contracts
+            .insert(contract_id.clone(), (tenancy, version.clone()))
+            .is_some()
+        {
+            issues.push(system_v2_issue(
+                "ambiguous_kind",
+                format!("$.contracts[{index}].contractId"),
+                "Contract identity is declared more than once.",
+                "Give every versioned contract a unique contractId.",
+            ));
+        }
+        nodes.push(SystemV2GraphNode {
+            id: format!("producer:{contract_id}"),
+            kind: "producer".to_owned(),
+            owner: Some(producer_id.to_owned()),
+        });
+        relationships.push(SystemV2GraphRelationship {
+            kind: "produces".to_owned(),
+            from: producer_id.to_owned(),
+            to: format!("producer:{contract_id}"),
+            contract_id: Some(format!("{contract_id}@{version}")),
+        });
+    }
+
+    let consumer_items = system_v2_sorted_objects(
+        object.get("consumers"),
+        "$.consumers",
+        "consumerId",
+        &mut issues,
+    );
+    for (index, item) in consumer_items.iter().enumerate() {
+        let consumer_id = required_system_v2_string(
+            item.get("consumerId"),
+            &format!("$.consumers[{index}].consumerId"),
+            &mut issues,
+        );
+        let owner_kind = item
+            .get("ownerKind")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let owner_id = item
+            .get("ownerId")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if !matches!(owner_kind, "host" | "provider" | "autonomous_service") {
+            issues.push(system_v2_issue(
+                "ambiguous_kind",
+                format!("$.consumers[{index}].ownerKind"),
+                "Consumer owner kind is ambiguous.",
+                "Use `host`, `provider`, or `autonomous_service`.",
+            ));
+        } else if !owners.contains(&(owner_kind.to_owned(), owner_id.to_owned())) {
+            issues.push(system_v2_issue(
+                "unresolved_reference",
+                format!("$.consumers[{index}].ownerId"),
+                "Consumer owner reference does not resolve.",
+                "Reference a declared Host, Provider, or Autonomous Service.",
+            ));
+        }
+        let contract_id = item
+            .get("contractId")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        match contracts.get(contract_id) {
+            None => issues.push(system_v2_issue(
+                "unresolved_reference",
+                format!("$.consumers[{index}].contractId"),
+                "Consumer contract reference does not resolve.",
+                "Reference a contractId declared in contracts.",
+            )),
+            Some((required, _version))
+                if !system_v2_tenancy_compatible(
+                    required,
+                    item.get("tenancyMode")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default(),
+                ) =>
+            {
+                issues.push(system_v2_issue(
+                    "incompatible_tenancy",
+                    format!("$.consumers[{index}].tenancyMode"),
+                    "Consumer tenancy does not satisfy the Producer contract.",
+                    "Align the Consumer tenancyMode with the Producer contract requirement.",
+                ))
+            }
+            Some(_) => {}
+        }
+        nodes.push(SystemV2GraphNode {
+            id: format!("consumer:{consumer_id}"),
+            kind: "consumer".to_owned(),
+            owner: Some(owner_id.to_owned()),
+        });
+        let contract_version = contracts
+            .get(contract_id)
+            .map(|(_, version)| version.as_str())
+            .unwrap_or_default();
+        relationships.push(SystemV2GraphRelationship {
+            kind: "consumes".to_owned(),
+            from: format!("consumer:{consumer_id}"),
+            to: format!("producer:{contract_id}"),
+            contract_id: Some(format!("{contract_id}@{contract_version}")),
+        });
+    }
+    let mut node_id_kinds = BTreeMap::<&str, Vec<&str>>::new();
+    for node in &nodes {
+        node_id_kinds
+            .entry(node.id.as_str())
+            .or_default()
+            .push(node.kind.as_str());
+    }
+    for (id, kinds) in node_id_kinds {
+        if kinds.len() > 1 {
+            issues.push(system_v2_issue(
+                "ambiguous_kind",
+                format!("$.nodes.{id}"),
+                format!("Graph node identity `{id}` is declared more than once."),
+                "Give every Host, Provider, Autonomous Service, Module, and Workload a unique identity.",
+            ));
+        }
+    }
+    if !issues.is_empty() {
+        issues.sort_by(|a, b| (&a.path, &a.code).cmp(&(&b.path, &b.code)));
+        return Err(issues);
+    }
+    nodes.sort();
+    nodes.dedup();
+    relationships.sort();
+    relationships.dedup();
+    Ok(SystemV2Graph {
+        artifact_protocol: SYSTEM_V2_PROTOCOL.to_owned(),
+        semantic_kind: ContractSemanticKind::MixedSystem,
+        system_id,
+        nodes,
+        relationships,
+        issues: Vec::new(),
+    })
+}
+
+fn collect_system_v2_owners(
+    items: &[&serde_json::Map<String, Value>],
+    field: &str,
+    id_field: &str,
+    kind: &str,
+    owners: &mut BTreeSet<(String, String)>,
+    identity_kinds: &mut BTreeMap<String, BTreeSet<String>>,
+    module_owners: &mut BTreeMap<String, String>,
+    nodes: &mut Vec<SystemV2GraphNode>,
+    relationships: &mut Vec<SystemV2GraphRelationship>,
+    issues: &mut Vec<SystemV2Issue>,
+) {
+    for (index, item) in items.iter().enumerate() {
+        let id = required_system_v2_string(
+            item.get(id_field),
+            &format!("$.{field}[{index}].{id_field}"),
+            issues,
+        );
+        if id.is_empty() {
+            continue;
+        }
+        owners.insert((kind.to_owned(), id.clone()));
+        identity_kinds
+            .entry(id.clone())
+            .or_default()
+            .insert(kind.to_owned());
+        nodes.push(SystemV2GraphNode {
+            id: id.clone(),
+            kind: kind.to_owned(),
+            owner: None,
+        });
+        collect_system_v2_modules(
+            item.get("modules"),
+            &format!("$.{field}[{index}].modules"),
+            &id,
+            module_owners,
+            nodes,
+            relationships,
+            issues,
+        );
+    }
+}
+
+fn system_v2_sorted_objects<'a>(
+    value: Option<&'a Value>,
+    path: &str,
+    identity_field: &str,
+    issues: &mut Vec<SystemV2Issue>,
+) -> Vec<&'a serde_json::Map<String, Value>> {
+    let Some(items) = value.and_then(Value::as_array) else {
+        issues.push(system_v2_issue(
+            "missing_ownership",
+            path,
+            "A non-empty explicit topology collection is required.",
+            "Declare this field as a non-empty array of explicitly typed objects.",
+        ));
+        return Vec::new();
+    };
+    if items.is_empty() {
+        issues.push(system_v2_issue(
+            "missing_ownership",
+            path,
+            "A non-empty explicit topology collection is required.",
+            "Add at least one explicitly typed object.",
+        ));
+    }
+    let mut objects = Vec::new();
+    for (index, item) in items.iter().enumerate() {
+        if let Some(object) = item.as_object() {
+            objects.push(object);
+        } else {
+            issues.push(system_v2_issue(
+                "ambiguous_kind",
+                format!("{path}[{index}]"),
+                "Topology entries must be objects with explicit kinds and identities.",
+                "Replace this entry with the documented object shape.",
+            ));
+        }
+    }
+    objects.sort_by_key(|object| {
+        (
+            object
+                .get(identity_field)
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned(),
+            serde_json::to_string(object).unwrap_or_default(),
+        )
+    });
+    objects
+}
+
+fn collect_system_v2_modules(
+    value: Option<&Value>,
+    path: &str,
+    owner: &str,
+    module_owners: &mut BTreeMap<String, String>,
+    nodes: &mut Vec<SystemV2GraphNode>,
+    relationships: &mut Vec<SystemV2GraphRelationship>,
+    issues: &mut Vec<SystemV2Issue>,
+) {
+    let Some(modules) = value.and_then(Value::as_array) else {
+        issues.push(system_v2_issue(
+            "missing_ownership",
+            path,
+            "Module ownership collection is required.",
+            "Declare modules as an array under its explicit owner.",
+        ));
+        return;
+    };
+    if modules.is_empty() {
+        issues.push(system_v2_issue(
+            "missing_ownership",
+            path,
+            "Every topology owner must declare at least one Module.",
+            "Add the Modules owned by this Host, Provider, or Autonomous Service.",
+        ));
+    }
+    let mut modules = modules.iter().enumerate().collect::<Vec<_>>();
+    modules.sort_by_key(|(_, module)| serde_json::to_string(module).unwrap_or_default());
+    let mut seen = BTreeSet::new();
+    for (index, module) in modules {
+        let Some(id) = module.as_str().filter(|id| !id.is_empty()) else {
+            issues.push(system_v2_issue(
+                "missing_ownership",
+                format!("{path}[{index}]"),
+                "Module identity is required.",
+                "Declare a non-empty Module identity under its owner.",
+            ));
+            continue;
+        };
+        if !seen.insert(id) {
+            issues.push(system_v2_issue(
+                "ambiguous_kind",
+                format!("{path}[{index}]"),
+                "Module identity is declared more than once for this owner.",
+                "Keep each Module identity once under its owning topology node.",
+            ));
+        }
+        if let Some(existing) = module_owners.insert(id.to_owned(), owner.to_owned())
+            && existing != owner
+        {
+            issues.push(system_v2_issue(
+                "ambiguous_kind",
+                format!("{path}[{index}]"),
+                "Module has more than one owner.",
+                "Keep each Module under exactly one Host, Provider, or Autonomous Service.",
+            ));
+        }
+        nodes.push(SystemV2GraphNode {
+            id: id.to_owned(),
+            kind: "module".to_owned(),
+            owner: Some(owner.to_owned()),
+        });
+        relationships.push(SystemV2GraphRelationship {
+            kind: "owns".to_owned(),
+            from: owner.to_owned(),
+            to: id.to_owned(),
+            contract_id: None,
+        });
+    }
+}
+
+fn required_system_v2_string(
+    value: Option<&Value>,
+    path: &str,
+    issues: &mut Vec<SystemV2Issue>,
+) -> String {
+    match value
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+    {
+        Some(value) => value.to_owned(),
+        None => {
+            issues.push(system_v2_issue(
+                "missing_ownership",
+                path,
+                "Explicit identity is required.",
+                "Declare a stable non-empty identity.",
+            ));
+            String::new()
+        }
+    }
+}
+
+fn system_v2_tenancy_compatible(producer: &str, consumer: &str) -> bool {
+    matches!(
+        (producer, consumer),
+        ("none", "none") | ("optional", "optional" | "required") | ("required", "required")
+    )
+}
+
+fn system_v2_issue(
+    code: impl Into<String>,
+    path: impl Into<String>,
+    message: impl Into<String>,
+    next_action: impl Into<String>,
+) -> SystemV2Issue {
+    SystemV2Issue {
+        code: code.into(),
+        path: path.into(),
+        message: message.into(),
+        next_action: next_action.into(),
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2291,6 +2911,25 @@ pub fn check_contract_artifact_value(
             "artifact protocol is required to determine its semantic kind",
         ));
     };
+
+    if protocol == SYSTEM_V2_PROTOCOL {
+        if let Err(issues) = system_v2_graph(value) {
+            let issue = &issues[0];
+            return Err(ContractArtifactCheckError {
+                code: ContractArtifactCheckErrorCode::InvalidArtifact,
+                path: issue.path.clone(),
+                message: issue.message.clone(),
+                next_action: issue.next_action.clone(),
+            });
+        }
+        return Ok(ContractArtifactCheck {
+            detected_protocol: protocol.to_owned(),
+            artifact_kind: ContractArtifactKind::System,
+            semantic_kind: ContractSemanticKind::MixedSystem,
+            provider_semantics: None,
+            autonomous_service: None,
+        });
+    }
 
     if protocol == AUTONOMOUS_SERVICE_PROTOCOL {
         let issues = validate_autonomous_service_contract_value(value);
