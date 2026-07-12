@@ -28,3 +28,11 @@ The packaged golden pairs under
 `fixtures/compatibility/request-response` are the authoritative examples for
 all four categories. Callers should consume those fixtures or the evaluator,
 not duplicate the rules.
+
+Raw artifacts enter through `canonicalize_openapi_request_response` (OpenAPI
+3.0/3.1 JSON values, including YAML deserialized to JSON) or
+`canonicalize_protobuf_request_response` (binary `FileDescriptorSet`). The
+canonicalizers reject empty artifacts, unresolved/external OpenAPI references,
+ambiguous media types, duplicate operation ids, and Protobuf features that are
+not yet structurally modeled. Those inputs must never bypass canonicalization
+and reach the evaluator as hand-authored evidence.

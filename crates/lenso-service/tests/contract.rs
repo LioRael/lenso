@@ -22,6 +22,108 @@ use lenso_service::{
 use serde_json::json;
 
 #[test]
+fn raw_openapi_document_canonicalizes_for_the_authoritative_evaluator() {
+    let document = json!({
+        "openapi": "3.1.0",
+        "info": { "title": "Support", "version": "v1" },
+        "paths": { "/tickets": { "post": {
+            "operationId": "createTicket",
+            "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateTicket" } } } },
+            "responses": { "200": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Ticket" } } } } }
+        } } },
+        "components": { "schemas": {
+            "CreateTicket": { "type": "object", "required": ["subject"], "properties": { "subject": { "type": "string" } } },
+            "Ticket": { "type": "object", "required": ["id"], "properties": { "id": { "type": "string" } } }
+        } }
+    });
+    let canonical = lenso_service::canonicalize_openapi_request_response(&document).unwrap();
+    assert_eq!(canonical["format"], "openapi");
+    assert_eq!(canonical["version"], "v1");
+    assert_eq!(
+        canonical["operations"]["createTicket"]["request"]["required"][0],
+        "subject"
+    );
+}
+
+#[test]
+fn raw_canonicalizers_block_unverifiable_or_empty_contracts() {
+    let unresolved = json!({
+        "openapi": "3.1.0",
+        "info": { "title": "Support", "version": "v1" },
+        "paths": { "/tickets": { "get": {
+            "operationId": "getTicket",
+            "responses": { "200": { "content": { "application/json": { "schema": { "$ref": "external.yaml#/Ticket" } } } } }
+        } } }
+    });
+    let errors = lenso_service::canonicalize_openapi_request_response(&unresolved).unwrap_err();
+    assert_eq!(errors[0].code, "openapi_reference_unverifiable");
+
+    let empty = json!({
+        "openapi": "3.1.0",
+        "info": { "title": "Support", "version": "v1" },
+        "paths": {}
+    });
+    let errors = lenso_service::canonicalize_openapi_request_response(&empty).unwrap_err();
+    assert_eq!(errors[0].code, "openapi_operations_missing");
+
+    use prost::Message;
+    let descriptor = prost_types::FileDescriptorSet::default().encode_to_vec();
+    let errors =
+        lenso_service::canonicalize_protobuf_request_response("v1", &descriptor).unwrap_err();
+    assert_eq!(errors[0].code, "protobuf_operations_missing");
+}
+
+#[test]
+fn protobuf_descriptor_set_canonicalizes_for_the_authoritative_evaluator() {
+    use prost::Message;
+    use prost_types::{
+        DescriptorProto, FieldDescriptorProto, FileDescriptorProto, FileDescriptorSet,
+        MethodDescriptorProto, ServiceDescriptorProto, field_descriptor_proto,
+    };
+
+    let message = |name: &str, field_name: &str| DescriptorProto {
+        name: Some(name.to_owned()),
+        field: vec![FieldDescriptorProto {
+            name: Some(field_name.to_owned()),
+            number: Some(1),
+            label: Some(field_descriptor_proto::Label::Optional as i32),
+            r#type: Some(field_descriptor_proto::Type::String as i32),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let descriptor = FileDescriptorSet {
+        file: vec![FileDescriptorProto {
+            package: Some("support.v1".to_owned()),
+            message_type: vec![
+                message("GetTicketRequest", "id"),
+                message("Ticket", "status"),
+            ],
+            service: vec![ServiceDescriptorProto {
+                name: Some("Support".to_owned()),
+                method: vec![MethodDescriptorProto {
+                    name: Some("GetTicket".to_owned()),
+                    input_type: Some(".support.v1.GetTicketRequest".to_owned()),
+                    output_type: Some(".support.v1.Ticket".to_owned()),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }],
+    };
+    let canonical =
+        lenso_service::canonicalize_protobuf_request_response("v1", &descriptor.encode_to_vec())
+            .unwrap();
+    assert_eq!(canonical["format"], "protobuf");
+    assert_eq!(canonical["version"], "v1");
+    assert_eq!(
+        canonical["operations"]["support.v1.Support.GetTicket"]["response"]["fields"][0]["name"],
+        "status"
+    );
+}
+
+#[test]
 fn request_response_compatibility_golden_pairs_cover_every_public_category() {
     use lenso_service::{
         REQUEST_RESPONSE_COMPATIBILITY_FIXTURES, RequestResponseCompatibilityCategory,
