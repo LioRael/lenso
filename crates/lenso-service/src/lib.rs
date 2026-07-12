@@ -4,6 +4,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
+mod endpoint_resolution;
+
+pub use endpoint_resolution::{
+    Endpoint, EndpointResolutionError, EndpointResolutionErrorCode, EndpointResolver,
+    EndpointState, LastValidEndpointResolver, LocalProcessEndpointResolver, ServiceReference,
+    StaticEndpointResolver,
+};
+
 pub use lenso_contracts::ModuleManifest;
 
 pub const SERVICE_CONTRACT_PROTOCOL: &str = "lenso.service.v1";
