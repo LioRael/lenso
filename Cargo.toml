@@ -80,7 +80,7 @@ lenso-bootstrap = { path = "crates/lenso-bootstrap", version = "0.1.12" }
 lenso-api = { path = "crates/lenso-api", version = "0.1.13" }
 lenso-migrate = { path = "crates/lenso-migrate", version = "0.1.11" }
 lenso-worker = { path = "crates/lenso-worker", version = "0.1.11" }
-lenso-service = { path = "crates/lenso-service", version = "0.1.1" }
+lenso-service = { path = "crates/lenso-service", version = "0.1.2" }
 auth = { package = "lenso-module-auth", version = "0.1.8", features = ["redis"] }
 auth-anonymous = { package = "lenso-module-auth-anonymous", version = "0.1.0" }
 auth-github = { package = "lenso-module-auth-github", version = "0.1.0" }
