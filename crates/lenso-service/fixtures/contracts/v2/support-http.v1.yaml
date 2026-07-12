@@ -1,0 +1,59 @@
+openapi: 3.1.0
+info:
+  title: Support HTTP Service Contract
+  version: v1
+paths:
+  /v1/tickets/{ticket_id}:
+    get:
+      operationId: getTicket
+      x-lenso-idempotency: idempotent
+      responses:
+        '200':
+          description: Ticket
+        '404':
+          description: Standard not-found problem
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      operationId: updateTicket
+      x-lenso-idempotency: requires_key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title: { type: string }
+      responses:
+        '200':
+          description: Updated ticket
+        '400':
+          description: Standard validation problem
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Standard conflict problem
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [type, title, status, detail, code, errors]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer, minimum: 100, maximum: 599 }
+        detail: { type: string }
+        code: { type: string }
+        request_id: { type: [string, 'null'] }
+        correlation_id: { type: [string, 'null'] }
+        errors: { type: array, items: { type: object } }

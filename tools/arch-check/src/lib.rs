@@ -214,6 +214,8 @@ pub fn check_contract_artifacts_fresh(root: &Path) -> anyhow::Result<()> {
     let error_schema = read_json(root.join("contracts/errors/error-response.v1.schema.json"))?;
     let autonomous_service_schema =
         read_json(root.join("contracts/services/lenso-service.v2.schema.json"))?;
+    let direct_http_bindings =
+        read_json(root.join("contracts/services/support-http.v1.bindings.json"))?;
     let system_v2_schema = read_json(root.join("contracts/services/lenso-system.v2.schema.json"))?;
     let system_v2_fixture =
         read_json(root.join("contracts/services/lenso-system.v2.fixture.json"))?;
@@ -232,6 +234,9 @@ pub fn check_contract_artifacts_fresh(root: &Path) -> anyhow::Result<()> {
     }
     if autonomous_service_schema != generate_contracts::generated_autonomous_service_schema() {
         violations.push("contracts/services/lenso-service.v2.schema.json is stale".to_owned());
+    }
+    if direct_http_bindings != generate_contracts::generated_direct_http_bindings() {
+        violations.push("contracts/services/support-http.v1.bindings.json is stale".to_owned());
     }
     if system_v2_schema != generate_contracts::generated_system_v2_schema() {
         violations.push("contracts/services/lenso-system.v2.schema.json is stale".to_owned());

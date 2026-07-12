@@ -38,6 +38,19 @@ fn committed_autonomous_service_schema_matches_generator() {
 }
 
 #[test]
+fn committed_direct_http_bindings_match_generator() {
+    let committed: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/services/support-http.v1.bindings.json"
+    ))
+    .expect("committed direct HTTP bindings should parse");
+
+    assert_eq!(
+        committed,
+        generate_contracts::generated_direct_http_bindings()
+    );
+}
+
+#[test]
 fn committed_system_v2_artifacts_match_generator() {
     let schema: serde_json::Value = serde_json::from_str(include_str!(
         "../../../contracts/services/lenso-system.v2.schema.json"

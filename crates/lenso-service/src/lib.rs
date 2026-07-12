@@ -4,7 +4,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
+mod direct_http;
 mod endpoint_resolution;
+
+pub use direct_http::{
+    DirectHttpBindings, DirectHttpCall, DirectHttpCallError, DirectHttpClient, DirectHttpEvidence,
+    DirectHttpOperation, DirectHttpRequest, DirectHttpResponse, DirectHttpServerBinding,
+    HttpIdempotency, RetryDecision, generate_direct_http_bindings,
+};
 
 pub use endpoint_resolution::{
     Endpoint, EndpointResolutionError, EndpointResolutionErrorCode, EndpointResolver,
@@ -47,6 +54,8 @@ pub const LEGACY_SYSTEM_V1_FIXTURE_JSON: &str =
     include_str!("../fixtures/contracts/v1/system-provider.json");
 pub const AUTONOMOUS_SERVICE_V2_FIXTURE_JSON: &str =
     include_str!("../fixtures/contracts/v2/autonomous-service.json");
+pub const DIRECT_HTTP_OPENAPI_V1_FIXTURE_YAML: &str =
+    include_str!("../fixtures/contracts/v2/support-http.v1.yaml");
 pub const MIXED_SYSTEM_V2_FIXTURE_JSON: &str =
     include_str!("../fixtures/contracts/v2/mixed-system.json");
 pub const COMMON_CONTEXT_V1_FIXTURE_JSON: &str =
