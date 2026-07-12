@@ -1,0 +1,185 @@
+openapi: 3.1.0
+info:
+  title: Lenso Autonomous Service Runtime API
+  description: Service-owned health and local Story Segment surfaces
+  license:
+    name: MIT
+    identifier: MIT
+  version: 1.0.0
+paths:
+  /health/live:
+    get:
+      tags:
+      - service-runtime
+      operationId: liveness
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeHealth'
+  /health/ready:
+    get:
+      tags:
+      - service-runtime
+      operationId: readiness
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeHealth'
+        '503':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeHealth'
+  /health/startup:
+    get:
+      tags:
+      - service-runtime
+      operationId: startup
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeHealth'
+        '503':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeHealth'
+  /runtime/story-segments:
+    get:
+      tags:
+      - service-runtime
+      operationId: story_segments
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StorySegment'
+        '500':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      required:
+      - type
+      - title
+      - status
+      - detail
+      - code
+      - errors
+      properties:
+        code:
+          type: string
+        correlation_id:
+          type:
+          - string
+          - 'null'
+        detail:
+          type: string
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemErrorDetail'
+        request_id:
+          type:
+          - string
+          - 'null'
+        status:
+          type: integer
+          format: int32
+          maximum: 599
+          minimum: 100
+        title:
+          type: string
+        type:
+          type: string
+    ProblemErrorDetail:
+      type: object
+      required:
+      - reason
+      properties:
+        field:
+          type:
+          - string
+          - 'null'
+        reason:
+          type: string
+    RuntimeHealth:
+      type: object
+      required:
+      - serviceId
+      - workloadId
+      - storeId
+      - migrationWorkloadId
+      - phase
+      properties:
+        migrationWorkloadId:
+          type: string
+        phase:
+          $ref: '#/components/schemas/RuntimePhase'
+        serviceId:
+          type: string
+        storeId:
+          type: string
+        workloadId:
+          type: string
+    RuntimePhase:
+      type: string
+      enum:
+      - starting
+      - ready
+      - stopping
+      - stopped
+      - failed
+    StorySegment:
+      type: object
+      required:
+      - segmentId
+      - serviceId
+      - workloadId
+      - operation
+      - status
+      - startedAt
+      - completedAt
+      properties:
+        completedAt:
+          type: string
+          format: date-time
+        operation:
+          type: string
+        segmentId:
+          type: string
+        serviceId:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+        workloadId:
+          type: string

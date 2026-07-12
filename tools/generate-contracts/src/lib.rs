@@ -8,6 +8,10 @@ pub fn generate_contracts() -> anyhow::Result<()> {
         "contracts/openapi/app-api.v1.yaml",
         &lenso_api::openapi_document(),
     )?;
+    write_yaml(
+        "contracts/openapi/autonomous-service-runtime.v1.yaml",
+        &generated_autonomous_service_runtime_openapi(),
+    )?;
     write_json(
         "contracts/errors/error-response.v1.schema.json",
         &error_response_schema(),
@@ -46,6 +50,10 @@ pub fn generate_contracts() -> anyhow::Result<()> {
     )?;
 
     Ok(())
+}
+
+pub fn generated_autonomous_service_runtime_openapi() -> utoipa::openapi::OpenApi {
+    lenso_autonomous_service::openapi_document()
 }
 
 pub fn generated_error_response_schema() -> Value {
