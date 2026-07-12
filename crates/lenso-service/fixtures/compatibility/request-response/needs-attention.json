@@ -1,0 +1,7 @@
+{
+  "contractKind": "service_contract",
+  "contractId": "support-http.v1",
+  "changedVersion": "v2",
+  "before": {"format": "protobuf", "version": "v1", "operations": {"GetTicket": {"request": {"fields": [{"number": 1, "name": "id", "type": "string"}]}, "response": {"fields": [{"number": 1, "name": "status", "type": "string"}]}}}},
+  "after": {"format": "protobuf", "version": "v2", "operations": {"GetTicket": {"request": {"fields": [{"number": 1, "name": "ticket_id", "type": "string"}]}, "response": {"fields": [{"number": 1, "name": "status", "type": "string"}]}}}}
+}

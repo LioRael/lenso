@@ -22,6 +22,157 @@ use lenso_service::{
 use serde_json::json;
 
 #[test]
+fn request_response_compatibility_golden_pairs_cover_every_public_category() {
+    use lenso_service::{
+        REQUEST_RESPONSE_COMPATIBILITY_FIXTURES, RequestResponseCompatibilityCategory,
+        evaluate_request_response_compatibility_in_system,
+    };
+
+    let expected = [
+        RequestResponseCompatibilityCategory::Safe,
+        RequestResponseCompatibilityCategory::NeedsAttention,
+        RequestResponseCompatibilityCategory::Breaking,
+        RequestResponseCompatibilityCategory::Blocked,
+    ];
+    assert_eq!(
+        REQUEST_RESPONSE_COMPATIBILITY_FIXTURES.len(),
+        expected.len()
+    );
+    for (fixture, expected_category) in REQUEST_RESPONSE_COMPATIBILITY_FIXTURES.iter().zip(expected)
+    {
+        let input: serde_json::Value = serde_json::from_str(fixture.json).unwrap();
+        let mut system: serde_json::Value =
+            serde_json::from_str(MIXED_SYSTEM_V2_FIXTURE_JSON).unwrap();
+        if input["before"]["format"] == "protobuf" {
+            system["contracts"][0]["artifact"]["format"] = json!("protobuf");
+        }
+        let result = evaluate_request_response_compatibility_in_system(&system, &input);
+        assert_eq!(result.category, expected_category, "{}", fixture.name);
+        assert!(!result.reasons.is_empty());
+        assert!(
+            result
+                .reasons
+                .iter()
+                .all(|reason| !reason.next_action.is_empty())
+        );
+        assert!(!result.changed_version.is_empty());
+    }
+}
+
+#[test]
+fn request_response_compatibility_reports_kind_version_and_affected_relationships() {
+    use lenso_service::{
+        RequestResponseCompatibilityCategory, RequestResponseContractKind,
+        evaluate_request_response_compatibility_in_system,
+    };
+
+    let input =
+        serde_json::from_str(lenso_service::REQUEST_RESPONSE_COMPATIBILITY_SAFE_FIXTURE_JSON)
+            .unwrap();
+    let system = serde_json::from_str(MIXED_SYSTEM_V2_FIXTURE_JSON).unwrap();
+    let result = evaluate_request_response_compatibility_in_system(&system, &input);
+    assert_eq!(result.category, RequestResponseCompatibilityCategory::Safe);
+    assert_eq!(
+        result.contract_kind,
+        RequestResponseContractKind::ServiceContract
+    );
+    assert_eq!(result.changed_version, "v2");
+    assert_eq!(result.producers, ["autonomous_service:support"]);
+    assert_eq!(result.consumers, ["host:support-host"]);
+}
+
+#[test]
+fn request_response_compatibility_is_canonical_and_never_guesses_safe() {
+    use lenso_service::{
+        RequestResponseCompatibilityCategory, evaluate_request_response_compatibility,
+        evaluate_request_response_compatibility_in_system,
+    };
+
+    let input: serde_json::Value =
+        serde_json::from_str(lenso_service::REQUEST_RESPONSE_COMPATIBILITY_SAFE_FIXTURE_JSON)
+            .unwrap();
+    let mut reordered = input.clone();
+    reordered["before"]["operations"]
+        .as_object_mut()
+        .unwrap()
+        .insert(
+            "z-unused".to_owned(),
+            json!({"request": {}, "response": {}}),
+        );
+    reordered["after"]["operations"]
+        .as_object_mut()
+        .unwrap()
+        .insert(
+            "z-unused".to_owned(),
+            json!({"request": {}, "response": {}}),
+        );
+    let mut original = input;
+    original["before"]["operations"]
+        .as_object_mut()
+        .unwrap()
+        .insert(
+            "z-unused".to_owned(),
+            json!({"response": {}, "request": {}}),
+        );
+    original["after"]["operations"]
+        .as_object_mut()
+        .unwrap()
+        .insert(
+            "z-unused".to_owned(),
+            json!({"response": {}, "request": {}}),
+        );
+    let system: serde_json::Value = serde_json::from_str(MIXED_SYSTEM_V2_FIXTURE_JSON).unwrap();
+    assert_eq!(
+        serde_json::to_vec(&evaluate_request_response_compatibility_in_system(
+            &system, &original
+        ))
+        .unwrap(),
+        serde_json::to_vec(&evaluate_request_response_compatibility_in_system(
+            &system, &reordered
+        ))
+        .unwrap()
+    );
+
+    let mut unverifiable: serde_json::Value =
+        serde_json::from_str(lenso_service::REQUEST_RESPONSE_COMPATIBILITY_SAFE_FIXTURE_JSON)
+            .unwrap();
+    assert_eq!(
+        evaluate_request_response_compatibility(&unverifiable).category,
+        RequestResponseCompatibilityCategory::Blocked
+    );
+    unverifiable["contractId"] = json!("invented-contract");
+    assert_eq!(
+        evaluate_request_response_compatibility_in_system(&system, &unverifiable).category,
+        RequestResponseCompatibilityCategory::Blocked
+    );
+}
+
+#[test]
+fn provider_protocol_and_autonomous_service_contract_results_are_distinct() {
+    use lenso_service::{
+        RequestResponseContractKind, evaluate_request_response_compatibility_in_system,
+    };
+
+    let mut input: serde_json::Value =
+        serde_json::from_str(lenso_service::REQUEST_RESPONSE_COMPATIBILITY_SAFE_FIXTURE_JSON)
+            .unwrap();
+    input["contractKind"] = json!("provider_protocol");
+    let system = serde_json::from_str(MIXED_SYSTEM_V2_FIXTURE_JSON).unwrap();
+    let result = evaluate_request_response_compatibility_in_system(&system, &input);
+    assert_eq!(
+        result.contract_kind,
+        RequestResponseContractKind::ProviderProtocol
+    );
+    assert!(
+        result
+            .reasons
+            .iter()
+            .all(|reason| reason.code.starts_with("provider_protocol_")
+                || reason.code == "relationship_unverifiable")
+    );
+}
+
+#[test]
 fn mixed_system_v2_fixture_builds_a_deterministic_explicit_graph() {
     let source: serde_json::Value = serde_json::from_str(MIXED_SYSTEM_V2_FIXTURE_JSON).unwrap();
     let check = check_contract_artifact_value(&source).unwrap();

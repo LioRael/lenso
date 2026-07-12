@@ -44,6 +44,610 @@ pub const COMMON_CONTEXT_V1_FIXTURE_JSON: &str =
     include_str!("../fixtures/contracts/v1/common-context.json");
 pub const COMMON_CONTEXT_GLOSSARY_MARKDOWN: &str =
     include_str!("../docs/common-context-contracts.md");
+pub const REQUEST_RESPONSE_COMPATIBILITY_MARKDOWN: &str =
+    include_str!("../docs/request-response-compatibility.md");
+pub const REQUEST_RESPONSE_COMPATIBILITY_SAFE_FIXTURE_JSON: &str =
+    include_str!("../fixtures/compatibility/request-response/safe.json");
+pub const REQUEST_RESPONSE_COMPATIBILITY_NEEDS_ATTENTION_FIXTURE_JSON: &str =
+    include_str!("../fixtures/compatibility/request-response/needs-attention.json");
+pub const REQUEST_RESPONSE_COMPATIBILITY_BREAKING_FIXTURE_JSON: &str =
+    include_str!("../fixtures/compatibility/request-response/breaking.json");
+pub const REQUEST_RESPONSE_COMPATIBILITY_BLOCKED_FIXTURE_JSON: &str =
+    include_str!("../fixtures/compatibility/request-response/blocked.json");
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CompatibilityFixture {
+    pub name: &'static str,
+    pub json: &'static str,
+}
+
+pub const REQUEST_RESPONSE_COMPATIBILITY_FIXTURES: &[CompatibilityFixture] = &[
+    CompatibilityFixture {
+        name: "safe",
+        json: REQUEST_RESPONSE_COMPATIBILITY_SAFE_FIXTURE_JSON,
+    },
+    CompatibilityFixture {
+        name: "needs_attention",
+        json: REQUEST_RESPONSE_COMPATIBILITY_NEEDS_ATTENTION_FIXTURE_JSON,
+    },
+    CompatibilityFixture {
+        name: "breaking",
+        json: REQUEST_RESPONSE_COMPATIBILITY_BREAKING_FIXTURE_JSON,
+    },
+    CompatibilityFixture {
+        name: "blocked",
+        json: REQUEST_RESPONSE_COMPATIBILITY_BLOCKED_FIXTURE_JSON,
+    },
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RequestResponseCompatibilityCategory {
+    Safe,
+    NeedsAttention,
+    Breaking,
+    Blocked,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RequestResponseContractKind {
+    ProviderProtocol,
+    ServiceContract,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestResponseCompatibilityReason {
+    pub code: String,
+    pub path: String,
+    pub message: String,
+    pub next_action: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestResponseCompatibilityResult {
+    pub category: RequestResponseCompatibilityCategory,
+    pub contract_kind: RequestResponseContractKind,
+    pub contract_id: String,
+    pub changed_version: String,
+    pub producers: Vec<String>,
+    pub consumers: Vec<String>,
+    pub reasons: Vec<RequestResponseCompatibilityReason>,
+}
+
+/// Compares canonical OpenAPI or Protobuf request/response operation shapes.
+///
+/// The input is deliberately JSON so the public library and CLI can call the same evaluator.
+/// `operations` is keyed by stable operation or RPC name. OpenAPI request/response values are
+/// JSON Schemas; Protobuf values contain descriptor-like `fields` arrays keyed by field number.
+#[must_use]
+pub fn evaluate_request_response_compatibility(
+    input: &Value,
+) -> RequestResponseCompatibilityResult {
+    evaluate_request_response_compatibility_inner(None, input)
+}
+
+#[must_use]
+pub fn evaluate_request_response_compatibility_in_system(
+    system: &Value,
+    input: &Value,
+) -> RequestResponseCompatibilityResult {
+    evaluate_request_response_compatibility_inner(Some(system), input)
+}
+
+fn evaluate_request_response_compatibility_inner(
+    system: Option<&Value>,
+    input: &Value,
+) -> RequestResponseCompatibilityResult {
+    let raw_contract_kind = input.get("contractKind").and_then(Value::as_str);
+    let contract_kind = match raw_contract_kind {
+        Some("provider_protocol") => RequestResponseContractKind::ProviderProtocol,
+        _ => RequestResponseContractKind::ServiceContract,
+    };
+    let prefix = match contract_kind {
+        RequestResponseContractKind::ProviderProtocol => "provider_protocol_",
+        RequestResponseContractKind::ServiceContract => "service_contract_",
+    };
+    let mut result = RequestResponseCompatibilityResult {
+        category: RequestResponseCompatibilityCategory::Safe,
+        contract_kind,
+        contract_id: input
+            .get("contractId")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned(),
+        changed_version: input
+            .get("changedVersion")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned(),
+        producers: Vec::new(),
+        consumers: Vec::new(),
+        reasons: Vec::new(),
+    };
+    if !matches!(
+        raw_contract_kind,
+        Some("provider_protocol" | "service_contract")
+    ) {
+        compatibility_reason(
+            &mut result,
+            RequestResponseCompatibilityCategory::Blocked,
+            "relationship_unverifiable",
+            "$.contractKind",
+            "The request-response contract kind is missing or unsupported.",
+            "Declare `provider_protocol` or `service_contract` explicitly.",
+        );
+    }
+    if let Some(system) = system {
+        resolve_system_v2_relationships(system, input, &mut result);
+    }
+    if result.contract_id.is_empty()
+        || result.changed_version.is_empty()
+        || result.producers.is_empty()
+        || result.consumers.is_empty()
+    {
+        compatibility_reason(
+            &mut result,
+            RequestResponseCompatibilityCategory::Blocked,
+            "relationship_unverifiable",
+            "$",
+            "Contract identity, changed version, Producer, and Consumer relationships must all be verifiable.",
+            "Resolve the contract and System graph references before evaluating compatibility.",
+        );
+    }
+    let before = input.get("before");
+    let after = input.get("after");
+    let before_version = before
+        .and_then(|value| value.get("version"))
+        .and_then(Value::as_str);
+    let after_version = after
+        .and_then(|value| value.get("version"))
+        .and_then(Value::as_str);
+    if before_version.is_none()
+        || after_version.is_none()
+        || after_version != Some(result.changed_version.as_str())
+        || before_version == after_version
+    {
+        compatibility_reason(
+            &mut result,
+            RequestResponseCompatibilityCategory::Blocked,
+            &format!("{prefix}artifact_version_unverifiable"),
+            "$.after.version",
+            "Both artifact versions must be explicit, different, and the candidate must match changedVersion.",
+            "Provide authoritative before and after artifact versions and retry.",
+        );
+    }
+    let before_format = before
+        .and_then(|value| value.get("format"))
+        .and_then(Value::as_str);
+    let after_format = after
+        .and_then(|value| value.get("format"))
+        .and_then(Value::as_str);
+    if before_format != after_format || !matches!(before_format, Some("openapi" | "protobuf")) {
+        compatibility_reason(
+            &mut result,
+            RequestResponseCompatibilityCategory::Blocked,
+            &format!("{prefix}artifact_unverifiable"),
+            "$.before.format",
+            "Both artifacts must use the same supported request-response format.",
+            "Provide canonical OpenAPI or Protobuf artifacts in the same format.",
+        );
+    } else if let (Some(before_operations), Some(after_operations)) = (
+        before
+            .and_then(|value| value.get("operations"))
+            .and_then(Value::as_object),
+        after
+            .and_then(|value| value.get("operations"))
+            .and_then(Value::as_object),
+    ) {
+        for (operation, old) in before_operations {
+            let Some(new) = after_operations.get(operation) else {
+                compatibility_reason(
+                    &mut result,
+                    RequestResponseCompatibilityCategory::Breaking,
+                    &format!("{prefix}operation_removed"),
+                    &format!("$.after.operations.{operation}"),
+                    "A request-response operation was removed.",
+                    "Restore the operation or coordinate a new contract version with every Consumer.",
+                );
+                continue;
+            };
+            match before_format {
+                Some("openapi") => {
+                    compare_openapi_operation(&mut result, prefix, operation, old, new)
+                }
+                Some("protobuf") => {
+                    compare_protobuf_operation(&mut result, prefix, operation, old, new)
+                }
+                _ => {}
+            }
+        }
+    } else {
+        compatibility_reason(
+            &mut result,
+            RequestResponseCompatibilityCategory::Blocked,
+            &format!("{prefix}artifact_unverifiable"),
+            "$.before.operations",
+            "Both artifacts must expose canonical operations.",
+            "Generate canonical operation shapes from both artifacts and retry.",
+        );
+    }
+    if result.reasons.is_empty() {
+        compatibility_reason(
+            &mut result,
+            RequestResponseCompatibilityCategory::Safe,
+            &format!("{prefix}backward_compatible"),
+            "$",
+            "All known Producer and Consumer request-response relationships remain compatible.",
+            "Publish the changed version and monitor known Consumers.",
+        );
+    }
+    result.reasons.sort();
+    result.reasons.dedup();
+    result
+}
+
+fn resolve_system_v2_relationships(
+    system: &Value,
+    input: &Value,
+    result: &mut RequestResponseCompatibilityResult,
+) {
+    if system_v2_graph(system).is_err() {
+        return;
+    }
+    let Some(contract) = system
+        .get("contracts")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .find(|contract| {
+            contract.get("contractId").and_then(Value::as_str) == Some(&result.contract_id)
+        })
+    else {
+        return;
+    };
+    let Some(producer_kind) = contract.get("producerKind").and_then(Value::as_str) else {
+        return;
+    };
+    let Some(producer_id) = contract.get("producerId").and_then(Value::as_str) else {
+        return;
+    };
+    let resolved_kind = if producer_kind == "provider" {
+        RequestResponseContractKind::ProviderProtocol
+    } else {
+        RequestResponseContractKind::ServiceContract
+    };
+    let graph_version = contract.get("version").and_then(Value::as_str);
+    let graph_format = contract
+        .get("artifact")
+        .and_then(|artifact| artifact.get("format"))
+        .and_then(Value::as_str);
+    let baseline_version = input
+        .get("before")
+        .and_then(|artifact| artifact.get("version"))
+        .and_then(Value::as_str);
+    let baseline_format = input
+        .get("before")
+        .and_then(|artifact| artifact.get("format"))
+        .and_then(Value::as_str);
+    if resolved_kind != result.contract_kind
+        || graph_version != baseline_version
+        || graph_format != baseline_format
+    {
+        compatibility_reason(
+            result,
+            RequestResponseCompatibilityCategory::Blocked,
+            "relationship_unverifiable",
+            "$.before",
+            "The declared contract kind, baseline version, or format does not match the resolved System graph contract.",
+            "Use the contract kind, version, and artifact format declared by the authoritative System graph.",
+        );
+        return;
+    }
+    result.producers = vec![format!("{producer_kind}:{producer_id}")];
+    result.consumers = system
+        .get("consumers")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|consumer| {
+            consumer.get("contractId").and_then(Value::as_str) == Some(&result.contract_id)
+        })
+        .filter_map(|consumer| {
+            Some(format!(
+                "{}:{}",
+                consumer.get("ownerKind")?.as_str()?,
+                consumer.get("ownerId")?.as_str()?
+            ))
+        })
+        .collect();
+    result.consumers.sort();
+    result.consumers.dedup();
+}
+
+fn compare_openapi_operation(
+    result: &mut RequestResponseCompatibilityResult,
+    prefix: &str,
+    operation: &str,
+    old: &Value,
+    new: &Value,
+) {
+    compare_json_schema(
+        result,
+        prefix,
+        operation,
+        "request",
+        old.get("request"),
+        new.get("request"),
+        true,
+    );
+    compare_json_schema(
+        result,
+        prefix,
+        operation,
+        "response",
+        old.get("response"),
+        new.get("response"),
+        false,
+    );
+}
+
+fn compare_json_schema(
+    result: &mut RequestResponseCompatibilityResult,
+    prefix: &str,
+    operation: &str,
+    direction: &str,
+    old: Option<&Value>,
+    new: Option<&Value>,
+    request: bool,
+) {
+    let path = format!("$.after.operations.{operation}.{direction}");
+    let (Some(old), Some(new)) = (old, new) else {
+        compatibility_reason(
+            result,
+            RequestResponseCompatibilityCategory::Blocked,
+            &format!("{prefix}{direction}_schema_unverifiable"),
+            &path,
+            "The request or response schema is missing.",
+            "Provide both canonical schemas before evaluating compatibility.",
+        );
+        return;
+    };
+    if old.get("type") != new.get("type") {
+        compatibility_reason(
+            result,
+            RequestResponseCompatibilityCategory::Breaking,
+            &format!("{prefix}{direction}_type_changed"),
+            &path,
+            "The request or response type changed.",
+            "Restore the previous type or coordinate a new contract version with affected Consumers.",
+        );
+    }
+    let old_required = string_set(old.get("required"));
+    let new_required = string_set(new.get("required"));
+    let old_properties = old.get("properties").and_then(Value::as_object);
+    let new_properties = new.get("properties").and_then(Value::as_object);
+    if let (Some(old_properties), Some(new_properties)) = (old_properties, new_properties) {
+        if request {
+            for field in new_required.difference(&old_required) {
+                compatibility_reason(
+                    result,
+                    RequestResponseCompatibilityCategory::Breaking,
+                    &format!("{prefix}request_required_field_added"),
+                    &format!("{path}.properties.{field}"),
+                    "A new required request field rejects requests from existing Consumers.",
+                    "Make the field optional or coordinate the required request change with every Consumer.",
+                );
+            }
+        } else {
+            for field in old_required.difference(&new_required) {
+                compatibility_reason(
+                    result,
+                    RequestResponseCompatibilityCategory::Breaking,
+                    &format!("{prefix}response_required_field_became_optional"),
+                    &format!("{path}.properties.{field}"),
+                    "A response field required by existing Consumers may now be omitted.",
+                    "Keep the response field required or coordinate a new contract version with affected Consumers.",
+                );
+            }
+            for field in old_properties
+                .keys()
+                .filter(|field| !new_properties.contains_key(*field))
+            {
+                compatibility_reason(
+                    result,
+                    RequestResponseCompatibilityCategory::Breaking,
+                    &format!("{prefix}response_field_removed"),
+                    &format!("{path}.properties.{field}"),
+                    "A response field used by existing Consumers was removed.",
+                    "Restore the response field or coordinate a new contract version with affected Consumers.",
+                );
+            }
+        }
+        for (field, old_field) in old_properties {
+            if let Some(new_field) = new_properties.get(field) {
+                if old_field.get("type") != new_field.get("type") {
+                    compatibility_reason(
+                        result,
+                        RequestResponseCompatibilityCategory::Breaking,
+                        &format!("{prefix}{direction}_field_type_changed"),
+                        &format!("{path}.properties.{field}"),
+                        "A field type changed.",
+                        "Restore the previous field type or introduce a new field and version.",
+                    );
+                } else if old_field != new_field {
+                    compatibility_reason(
+                        result,
+                        RequestResponseCompatibilityCategory::NeedsAttention,
+                        &format!("{prefix}{direction}_field_constraints_changed"),
+                        &format!("{path}.properties.{field}"),
+                        "A field constraint changed and compatibility cannot be proven structurally.",
+                        "Review enum, range, format, and composition constraints with affected owners.",
+                    );
+                }
+            }
+        }
+        let old_constraints = schema_constraints(old);
+        let new_constraints = schema_constraints(new);
+        if old_constraints != new_constraints {
+            compatibility_reason(
+                result,
+                RequestResponseCompatibilityCategory::NeedsAttention,
+                &format!("{prefix}{direction}_constraints_changed"),
+                &path,
+                "Schema-level constraints changed and require semantic review.",
+                "Review the changed constraints with affected Producer and Consumer owners.",
+            );
+        }
+    } else if old != new {
+        compatibility_reason(
+            result,
+            RequestResponseCompatibilityCategory::NeedsAttention,
+            &format!("{prefix}{direction}_schema_not_structurally_proven"),
+            &path,
+            "The schema change cannot be proven compatible from object properties.",
+            "Review the schema constraints with affected Producer and Consumer owners.",
+        );
+    }
+}
+
+fn compare_protobuf_operation(
+    result: &mut RequestResponseCompatibilityResult,
+    prefix: &str,
+    operation: &str,
+    old: &Value,
+    new: &Value,
+) {
+    for direction in ["request", "response"] {
+        let path = format!("$.after.operations.{operation}.{direction}.fields");
+        let old_fields = protobuf_fields(old.get(direction));
+        let new_fields = protobuf_fields(new.get(direction));
+        let (Some(old_fields), Some(new_fields)) = (old_fields, new_fields) else {
+            compatibility_reason(
+                result,
+                RequestResponseCompatibilityCategory::Blocked,
+                &format!("{prefix}protobuf_descriptor_unverifiable"),
+                &path,
+                "The Protobuf field descriptors are missing or invalid.",
+                "Generate descriptor-based canonical fields for both contract versions.",
+            );
+            continue;
+        };
+        for (number, old_field) in &old_fields {
+            match new_fields.get(number) {
+                None if direction == "response" => compatibility_reason(
+                    result,
+                    RequestResponseCompatibilityCategory::Breaking,
+                    &format!("{prefix}protobuf_response_field_removed"),
+                    &format!("{path}.{number}"),
+                    "A response field number was removed.",
+                    "Restore or reserve the field and coordinate a new response contract version.",
+                ),
+                None => compatibility_reason(
+                    result,
+                    RequestResponseCompatibilityCategory::NeedsAttention,
+                    &format!("{prefix}protobuf_request_field_removed"),
+                    &format!("{path}.{number}"),
+                    "A request field number was removed and its semantic handling cannot be proven.",
+                    "Reserve the removed number and confirm all Producers tolerate the old wire field.",
+                ),
+                Some(new_field) if old_field.get("type") != new_field.get("type") => {
+                    compatibility_reason(
+                        result,
+                        RequestResponseCompatibilityCategory::Breaking,
+                        &format!("{prefix}protobuf_field_type_changed"),
+                        &format!("{path}.{number}"),
+                        "A Protobuf field number changed wire type.",
+                        "Restore the wire-compatible type or allocate a new field number.",
+                    )
+                }
+                Some(new_field) if old_field.get("name") != new_field.get("name") => {
+                    compatibility_reason(
+                        result,
+                        RequestResponseCompatibilityCategory::NeedsAttention,
+                        &format!("{prefix}protobuf_field_renamed"),
+                        &format!("{path}.{number}"),
+                        "A Protobuf field kept its number and type but changed source/JSON name.",
+                        "Review generated clients and JSON mappings before publishing.",
+                    )
+                }
+                _ => {}
+            }
+        }
+        for (number, new_field) in &new_fields {
+            if !old_fields.contains_key(number)
+                && new_field.get("label").and_then(Value::as_str) == Some("required")
+            {
+                compatibility_reason(
+                    result,
+                    RequestResponseCompatibilityCategory::Breaking,
+                    &format!("{prefix}protobuf_required_field_added"),
+                    &format!("{path}.{number}"),
+                    "A required Protobuf field was added.",
+                    "Make the field optional or coordinate a new contract version with every affected owner.",
+                );
+            }
+        }
+    }
+}
+
+fn compatibility_reason(
+    result: &mut RequestResponseCompatibilityResult,
+    category: RequestResponseCompatibilityCategory,
+    code: &str,
+    path: &str,
+    message: &str,
+    next_action: &str,
+) {
+    result.category = result.category.max(category);
+    result.reasons.push(RequestResponseCompatibilityReason {
+        code: code.to_owned(),
+        path: path.to_owned(),
+        message: message.to_owned(),
+        next_action: next_action.to_owned(),
+    });
+}
+
+fn string_set(value: Option<&Value>) -> BTreeSet<String> {
+    value
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::to_owned)
+        .collect()
+}
+
+fn schema_constraints(schema: &Value) -> BTreeMap<String, Value> {
+    schema
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter(|(key, _)| {
+            !matches!(
+                key.as_str(),
+                "type"
+                    | "properties"
+                    | "required"
+                    | "description"
+                    | "default"
+                    | "title"
+                    | "examples"
+            )
+        })
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect()
+}
+
+fn protobuf_fields(value: Option<&Value>) -> Option<BTreeMap<u64, Value>> {
+    let fields = value?.get("fields")?.as_array()?;
+    fields
+        .iter()
+        .map(|field| Some((field.get("number")?.as_u64()?, field.clone())))
+        .collect()
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
