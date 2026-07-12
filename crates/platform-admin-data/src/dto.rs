@@ -133,6 +133,49 @@ pub struct AdminServiceSystemResponse {
     pub modules: Vec<AdminServiceSystemModuleDto>,
     pub dependencies: Vec<AdminServiceSystemDependencyDto>,
     pub issues: Vec<AdminServiceSystemIssueDto>,
+    pub protocol_version: Option<String>,
+    pub semantic_kind: Option<String>,
+    pub nodes: Vec<AdminServiceSystemNodeDto>,
+    pub relationships: Vec<AdminServiceSystemRelationshipDto>,
+    pub compatibility_results: Vec<AdminContractCompatibilityResultDto>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceSystemNodeDto {
+    pub id: String,
+    pub kind: String,
+    pub owner: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminServiceSystemRelationshipDto {
+    pub kind: String,
+    pub from: String,
+    pub to: String,
+    pub contract_id: Option<String>,
+    pub contract_version: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminContractCompatibilityResultDto {
+    pub category: String,
+    pub contract_kind: String,
+    pub contract_id: String,
+    pub changed_version: String,
+    pub affected_references: Vec<String>,
+    pub reasons: Vec<AdminContractCompatibilityReasonDto>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminContractCompatibilityReasonDto {
+    pub code: String,
+    pub path: String,
+    pub message: String,
+    pub next_action: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

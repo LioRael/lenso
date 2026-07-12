@@ -1,8 +1,9 @@
 use crate::dto::{
     AdminActionInvocationDto, AdminActionInvokeRequest, AdminActionInvokeResponse,
-    AdminCapabilityIssueDto, AdminCapabilitySummaryDto, AdminDataDetailResponse,
-    AdminDataListResponse, AdminDataPageInfo, AdminKubernetesDeploymentObservationDto,
-    AdminLaunchpadAddonDto, AdminLaunchpadCapabilityPackDto, AdminLaunchpadChangePlanItemDto,
+    AdminCapabilityIssueDto, AdminCapabilitySummaryDto, AdminContractCompatibilityReasonDto,
+    AdminContractCompatibilityResultDto, AdminDataDetailResponse, AdminDataListResponse,
+    AdminDataPageInfo, AdminKubernetesDeploymentObservationDto, AdminLaunchpadAddonDto,
+    AdminLaunchpadCapabilityPackDto, AdminLaunchpadChangePlanItemDto,
     AdminLaunchpadChangePlanResponse, AdminLaunchpadChangePlanStatus,
     AdminLaunchpadChecklistItemDto, AdminLaunchpadCompositionActionDto,
     AdminLaunchpadCompositionDto, AdminLaunchpadDoctorCheckDto, AdminLaunchpadDoctorResponse,
@@ -35,7 +36,8 @@ use crate::dto::{
     AdminServiceModuleServiceStatusState, AdminServiceOperationDto, AdminServiceOperationKindDto,
     AdminServiceOperationLinksDto, AdminServiceReleaseRecordDto, AdminServiceSystemDependencyDto,
     AdminServiceSystemDriftDto, AdminServiceSystemDriftResponse, AdminServiceSystemDriftStatus,
-    AdminServiceSystemIssueDto, AdminServiceSystemModuleDto, AdminServiceSystemReleaseRecordDto,
+    AdminServiceSystemIssueDto, AdminServiceSystemModuleDto, AdminServiceSystemNodeDto,
+    AdminServiceSystemRelationshipDto, AdminServiceSystemReleaseRecordDto,
     AdminServiceSystemReleaseTrainResponse, AdminServiceSystemReleaseTrainStatus,
     AdminServiceSystemResponse, AdminServiceSystemRunbookDto, AdminServiceSystemRunbooksResponse,
     AdminServiceSystemRunbooksStatus, AdminServiceSystemServiceDto, AdminServiceSystemStatus,
@@ -482,6 +484,11 @@ fn service_system_response(path: &FsPath) -> AdminServiceSystemResponse {
             dependencies: Vec::new(),
             environments: Vec::new(),
             issues: Vec::new(),
+            compatibility_results: Vec::new(),
+            nodes: Vec::new(),
+            protocol_version: None,
+            relationships: Vec::new(),
+            semantic_kind: None,
             modules: Vec::new(),
             name: None,
             services: Vec::new(),
@@ -496,7 +503,30 @@ fn service_system_response(path: &FsPath) -> AdminServiceSystemResponse {
             return service_system_error_response(path, "read_error", error.to_string());
         }
     };
-    let system = match serde_json::from_str::<lenso_service::ServiceSystem>(&source) {
+    let value = match serde_json::from_str::<Value>(&source) {
+        Ok(value) => value,
+        Err(error) => {
+            return service_system_error_response(path, "parse_error", error.to_string());
+        }
+    };
+    let protocol = value.get("protocol").and_then(Value::as_str);
+    if protocol == Some(lenso_service::SYSTEM_V2_PROTOCOL) {
+        return service_system_v2_response(path, &value);
+    }
+    if protocol != Some(lenso_service::SERVICE_SYSTEM_PROTOCOL) {
+        let mut response = service_system_error_response(
+            path,
+            "unsupported_protocol",
+            format!(
+                "protocol must be `{}` or `{}`",
+                lenso_service::SERVICE_SYSTEM_PROTOCOL,
+                lenso_service::SYSTEM_V2_PROTOCOL
+            ),
+        );
+        response.protocol_version = protocol.map(str::to_owned);
+        return response;
+    }
+    let system = match serde_json::from_value::<lenso_service::ServiceSystem>(value) {
         Ok(system) => system,
         Err(error) => {
             return service_system_error_response(path, "parse_error", error.to_string());
@@ -521,47 +551,289 @@ fn service_system_response(path: &FsPath) -> AdminServiceSystemResponse {
             message: issue.message,
         })
         .collect::<Vec<_>>();
-    AdminServiceSystemResponse {
-        dependencies: graph
-            .dependencies
-            .into_iter()
-            .map(|dependency| AdminServiceSystemDependencyDto {
-                capability: dependency.capability,
-                from: dependency.from,
-                state: dependency.state,
-                to: dependency.to,
-            })
-            .collect(),
-        environments: graph.environments,
-        modules: graph
-            .modules
-            .into_iter()
-            .map(|module| AdminServiceSystemModuleDto {
-                capabilities: module.capabilities,
-                dependencies: module.dependencies,
-                name: module.name,
-                owner: module.owner,
-            })
-            .collect(),
-        name: Some(graph.name),
-        services: graph
-            .services
-            .into_iter()
-            .map(|service| AdminServiceSystemServiceDto {
-                modules: service.modules,
-                name: service.name,
-                target: service.target,
-            })
-            .collect(),
-        status: if issues.is_empty() {
-            AdminServiceSystemStatus::Ready
-        } else {
-            AdminServiceSystemStatus::NeedsAttention
+    attach_compatibility_results(
+        AdminServiceSystemResponse {
+            compatibility_results: Vec::new(),
+            dependencies: graph
+                .dependencies
+                .into_iter()
+                .map(|dependency| AdminServiceSystemDependencyDto {
+                    capability: dependency.capability,
+                    from: dependency.from,
+                    state: dependency.state,
+                    to: dependency.to,
+                })
+                .collect(),
+            environments: graph.environments,
+            modules: graph
+                .modules
+                .into_iter()
+                .map(|module| AdminServiceSystemModuleDto {
+                    capabilities: module.capabilities,
+                    dependencies: module.dependencies,
+                    name: module.name,
+                    owner: module.owner,
+                })
+                .collect(),
+            name: Some(graph.name),
+            services: graph
+                .services
+                .iter()
+                .map(|service| AdminServiceSystemServiceDto {
+                    modules: service.modules.clone(),
+                    name: service.name.clone(),
+                    target: service.target.clone(),
+                })
+                .collect(),
+            status: if issues.is_empty() {
+                AdminServiceSystemStatus::Ready
+            } else {
+                AdminServiceSystemStatus::NeedsAttention
+            },
+            system_file: path.to_string_lossy().into_owned(),
+            version: 1,
+            issues,
+            nodes: graph
+                .services
+                .iter()
+                .map(|service| AdminServiceSystemNodeDto {
+                    id: service.name.clone(),
+                    kind: "provider".to_owned(),
+                    owner: Some("host".to_owned()),
+                })
+                .collect(),
+            protocol_version: Some(lenso_service::SERVICE_SYSTEM_PROTOCOL.to_owned()),
+            relationships: Vec::new(),
+            semantic_kind: Some("provider_system".to_owned()),
         },
-        system_file: path.to_string_lossy().into_owned(),
-        version: 1,
-        issues,
+        path,
+    )
+}
+
+fn service_system_v2_response(path: &FsPath, value: &Value) -> AdminServiceSystemResponse {
+    let response = match lenso_service::system_v2_graph(value) {
+        Ok(graph) => AdminServiceSystemResponse {
+            compatibility_results: Vec::new(),
+            dependencies: Vec::new(),
+            environments: Vec::new(),
+            issues: Vec::new(),
+            modules: graph
+                .nodes
+                .iter()
+                .filter(|node| node.kind == "module")
+                .map(|node| AdminServiceSystemModuleDto {
+                    capabilities: Vec::new(),
+                    dependencies: Vec::new(),
+                    name: node.id.clone(),
+                    owner: node.owner.clone().unwrap_or_default(),
+                })
+                .collect(),
+            name: Some(graph.system_id.clone()),
+            nodes: graph
+                .nodes
+                .iter()
+                .map(|node| AdminServiceSystemNodeDto {
+                    id: node.id.clone(),
+                    kind: node.kind.clone(),
+                    owner: node.owner.clone(),
+                })
+                .collect(),
+            protocol_version: Some(graph.artifact_protocol),
+            relationships: graph
+                .relationships
+                .into_iter()
+                .map(|relationship| {
+                    let (contract_id, contract_version) = relationship
+                        .contract_id
+                        .as_deref()
+                        .and_then(|reference| reference.rsplit_once('@'))
+                        .map_or((relationship.contract_id.clone(), None), |(id, version)| {
+                            (Some(id.to_owned()), Some(version.to_owned()))
+                        });
+                    AdminServiceSystemRelationshipDto {
+                        contract_id,
+                        contract_version,
+                        from: relationship.from,
+                        kind: relationship.kind,
+                        to: relationship.to,
+                    }
+                })
+                .collect(),
+            semantic_kind: Some(graph.semantic_kind.as_str().to_owned()),
+            services: graph
+                .nodes
+                .iter()
+                .filter(|node| matches!(node.kind.as_str(), "provider" | "autonomous_service"))
+                .map(|node| AdminServiceSystemServiceDto {
+                    modules: Vec::new(),
+                    name: node.id.clone(),
+                    target: node.kind.clone(),
+                })
+                .collect(),
+            status: AdminServiceSystemStatus::Ready,
+            system_file: path.to_string_lossy().into_owned(),
+            version: 2,
+        },
+        Err(issues) => AdminServiceSystemResponse {
+            compatibility_results: Vec::new(),
+            dependencies: Vec::new(),
+            environments: Vec::new(),
+            issues: issues
+                .into_iter()
+                .map(|issue| AdminServiceSystemIssueDto {
+                    code: issue.code,
+                    message: issue.message,
+                })
+                .collect(),
+            modules: Vec::new(),
+            name: value
+                .get("systemId")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+            nodes: Vec::new(),
+            protocol_version: Some(lenso_service::SYSTEM_V2_PROTOCOL.to_owned()),
+            relationships: Vec::new(),
+            semantic_kind: Some("mixed_system".to_owned()),
+            services: Vec::new(),
+            status: AdminServiceSystemStatus::NeedsAttention,
+            system_file: path.to_string_lossy().into_owned(),
+            version: 2,
+        },
+    };
+    attach_compatibility_results(response, path)
+}
+
+fn attach_compatibility_results(
+    mut response: AdminServiceSystemResponse,
+    system_path: &FsPath,
+) -> AdminServiceSystemResponse {
+    match compatibility_results(system_path) {
+        Ok(results) => response.compatibility_results = results,
+        Err(message) => {
+            response.status = AdminServiceSystemStatus::NeedsAttention;
+            response.issues.push(AdminServiceSystemIssueDto {
+                code: "compatibility_parse_error".to_owned(),
+                message,
+            });
+        }
     }
+    response
+}
+
+fn compatibility_results(
+    system_path: &FsPath,
+) -> Result<Vec<AdminContractCompatibilityResultDto>, String> {
+    let path = system_path.with_file_name("lenso.contract-compatibility.json");
+    let source = match fs::read_to_string(&path) {
+        Ok(source) => source,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(format!("cannot read {}: {error}", path.display())),
+    };
+    let entries = serde_json::from_str::<Vec<Value>>(&source)
+        .map_err(|error| format!("cannot parse {}: {error}", path.display()))?;
+    entries
+        .into_iter()
+        .enumerate()
+        .map(|(index, entry)| {
+            let result = entry.get("result").cloned().unwrap_or(entry);
+            let reason_values = result
+                .get("reasons")
+                .ok_or_else(|| format!("compatibility result {index} requires `reasons`"))?
+                .as_array()
+                .ok_or_else(|| format!("compatibility result {index} requires `reasons`"))?;
+            let reasons = reason_values
+                .iter()
+                .enumerate()
+                .map(|(reason_index, reason)| {
+                    Ok(AdminContractCompatibilityReasonDto {
+                        code: required_compatibility_string(reason, "code", index, reason_index)?,
+                        message: required_compatibility_string(
+                            reason,
+                            "message",
+                            index,
+                            reason_index,
+                        )?,
+                        next_action: required_compatibility_string(
+                            reason,
+                            "nextAction",
+                            index,
+                            reason_index,
+                        )?,
+                        path: required_compatibility_string(reason, "path", index, reason_index)?,
+                    })
+                })
+                .collect::<Result<Vec<_>, String>>()?;
+            let mut affected_references = result
+                .get("affectedReferences")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .chain(
+                    result
+                        .get("producers")
+                        .and_then(Value::as_array)
+                        .into_iter()
+                        .flatten(),
+                )
+                .chain(
+                    result
+                        .get("consumers")
+                        .and_then(Value::as_array)
+                        .into_iter()
+                        .flatten(),
+                )
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect::<Vec<_>>();
+            affected_references.sort();
+            affected_references.dedup();
+            Ok(AdminContractCompatibilityResultDto {
+                affected_references,
+                category: required_compatibility_result_string(&result, "category", index)?,
+                changed_version: required_compatibility_result_string(
+                    &result,
+                    "changedVersion",
+                    index,
+                )?,
+                contract_id: required_compatibility_result_string(&result, "contractId", index)?,
+                contract_kind: required_compatibility_result_string(
+                    &result,
+                    "contractKind",
+                    index,
+                )?,
+                reasons,
+            })
+        })
+        .collect()
+}
+
+fn required_compatibility_result_string(
+    result: &Value,
+    field: &str,
+    index: usize,
+) -> Result<String, String> {
+    result
+        .get(field)
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+        .ok_or_else(|| format!("compatibility result {index} requires `{field}`"))
+}
+
+fn required_compatibility_string(
+    reason: &Value,
+    field: &str,
+    result_index: usize,
+    reason_index: usize,
+) -> Result<String, String> {
+    reason
+        .get(field)
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+        .ok_or_else(|| {
+            format!("compatibility result {result_index} reason {reason_index} requires `{field}`")
+        })
 }
 
 fn service_system_error_response(
@@ -576,8 +848,13 @@ fn service_system_error_response(
             code: code.into(),
             message: message.into(),
         }],
+        compatibility_results: Vec::new(),
         modules: Vec::new(),
+        nodes: Vec::new(),
         name: None,
+        protocol_version: None,
+        relationships: Vec::new(),
+        semantic_kind: None,
         services: Vec::new(),
         status: AdminServiceSystemStatus::NeedsAttention,
         system_file: path.to_string_lossy().into_owned(),
@@ -6059,6 +6336,146 @@ mod tests {
         assert_eq!(response.dependencies[0].to.as_deref(), Some("billing"));
 
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn service_system_response_projects_mixed_v2_topology() {
+        let root = std::env::temp_dir().join(format!("lenso-system-v2-{}", current_unix_ms()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("lenso.system.json");
+        fs::write(&path, lenso_service::MIXED_SYSTEM_V2_FIXTURE_JSON).unwrap();
+
+        let response = service_system_response(&path);
+
+        assert!(matches!(response.status, AdminServiceSystemStatus::Ready));
+        assert_eq!(
+            response.protocol_version.as_deref(),
+            Some("lenso.system.v2")
+        );
+        assert_eq!(response.semantic_kind.as_deref(), Some("mixed_system"));
+        assert!(
+            response
+                .nodes
+                .iter()
+                .any(|node| { node.id == "notification-provider" && node.kind == "provider" })
+        );
+        assert!(
+            response
+                .nodes
+                .iter()
+                .any(|node| { node.id == "support" && node.kind == "autonomous_service" })
+        );
+        assert!(response.nodes.iter().any(|node| {
+            node.id == "support-api"
+                && node.kind == "workload"
+                && node.owner.as_deref() == Some("support")
+        }));
+        assert!(response.relationships.iter().any(|relationship| {
+            relationship.kind == "produces"
+                && relationship.contract_id.as_deref() == Some("support-http.v1")
+                && relationship.contract_version.as_deref() == Some("v1")
+        }));
+        assert!(
+            response
+                .relationships
+                .iter()
+                .any(|relationship| relationship.kind == "consumes")
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn service_system_response_projects_backend_compatibility_results() {
+        let root = std::env::temp_dir().join(format!("lenso-compatibility-{}", current_unix_ms()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("lenso.system.json");
+        fs::write(&path, lenso_service::MIXED_SYSTEM_V2_FIXTURE_JSON).unwrap();
+        let input: Value =
+            serde_json::from_str(lenso_service::EVENT_COMPATIBILITY_BREAKING_FIXTURE_JSON).unwrap();
+        let result = lenso_service::evaluate_event_compatibility(&input);
+        fs::write(
+            root.join("lenso.contract-compatibility.json"),
+            serde_json::to_vec(&vec![serde_json::json!({ "result": result })]).unwrap(),
+        )
+        .unwrap();
+
+        let response = service_system_response(&path);
+
+        assert_eq!(response.compatibility_results.len(), 1);
+        let compatibility = &response.compatibility_results[0];
+        assert_eq!(compatibility.category, "breaking");
+        assert_eq!(compatibility.contract_kind, "event_contract");
+        assert_eq!(compatibility.changed_version, "v2");
+        assert!(
+            compatibility
+                .affected_references
+                .contains(&"consumer:analytics".to_owned())
+        );
+        assert!(
+            compatibility
+                .reasons
+                .iter()
+                .all(|reason| !reason.next_action.is_empty())
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn service_system_response_rejects_unknown_protocol_without_mislabeling_it() {
+        let root = std::env::temp_dir().join(format!("lenso-system-v3-{}", current_unix_ms()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("lenso.system.json");
+        fs::write(
+            &path,
+            serde_json::json!({ "protocol": "lenso.system.v3" }).to_string(),
+        )
+        .unwrap();
+
+        let response = service_system_response(&path);
+
+        assert!(matches!(
+            response.status,
+            AdminServiceSystemStatus::NeedsAttention
+        ));
+        assert_eq!(
+            response.protocol_version.as_deref(),
+            Some("lenso.system.v3")
+        );
+        assert!(response.semantic_kind.is_none());
+        assert_eq!(response.issues[0].code, "unsupported_protocol");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn service_system_response_surfaces_malformed_compatibility_artifact() {
+        let root = std::env::temp_dir().join(format!("lenso-compat-invalid-{}", current_unix_ms()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("lenso.system.json");
+        fs::write(&path, lenso_service::MIXED_SYSTEM_V2_FIXTURE_JSON).unwrap();
+        fs::write(root.join("lenso.contract-compatibility.json"), "[{}]").unwrap();
+
+        let response = service_system_response(&path);
+
+        assert!(matches!(
+            response.status,
+            AdminServiceSystemStatus::NeedsAttention
+        ));
+        assert!(response.compatibility_results.is_empty());
+        assert!(
+            response
+                .issues
+                .iter()
+                .any(|issue| issue.code == "compatibility_parse_error")
+        );
+
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

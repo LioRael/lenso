@@ -179,6 +179,20 @@ The endpoint reads `lenso.system.json`, returns `empty` when the file is
 missing, `needs_attention` when it cannot be parsed or has unresolved graph
 edges, and `ready` when the graph is coherent.
 
+For both System v1 and v2, the response includes normalized `protocolVersion`
+and `semanticKind` fields. System v2 additionally projects explicit Host,
+Provider, Autonomous Service, Module, Workload, Producer, and Consumer nodes,
+plus ownership, production, and consumption relationships. Contract
+relationships keep `contractId` and `contractVersion` separate so the Runtime
+Console does not have to parse or classify contract references.
+
+When `lenso.contract-compatibility.json` exists beside `lenso.system.json`, the
+endpoint also returns its already-evaluated results as `compatibilityResults`.
+The backend projection preserves the public category, contract kind, changed
+version, affected references, reasons, and next actions produced by
+`lenso-service`; Runtime Console must render those values without duplicating
+compatibility rules in TypeScript.
+
 V19 also exposes:
 
 ```text
