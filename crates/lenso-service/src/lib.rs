@@ -187,7 +187,24 @@ pub fn canonicalize_openapi_request_response(
                 .and_then(Value::as_str)
                 .map(str::to_owned)
                 .unwrap_or_else(|| format!("{} {}", method.to_ascii_uppercase(), path));
+            let declared_parameters = path_item
+                .get("parameters")
+                .and_then(Value::as_array)
+                .map_or(0, Vec::len)
+                + operation
+                    .get("parameters")
+                    .and_then(Value::as_array)
+                    .map_or(0, Vec::len);
             let parameters = canonicalize_openapi_parameters(document, path_item, operation);
+            if declared_parameters > 0 && parameters.is_none() {
+                errors.push(canonicalization_error(
+                    "openapi_parameter_unverifiable",
+                    format!("$.paths.{path}.{method}.parameters"),
+                    "An OpenAPI parameter cannot be canonicalized.",
+                    "Resolve parameter references and provide name, location, and schema metadata.",
+                ));
+                continue;
+            }
             let request = operation
                 .get("requestBody")
                 .and_then(|body| {
@@ -208,6 +225,13 @@ pub fn canonicalize_openapi_request_response(
                     Some(schema)
                 })
                 .or(parameters);
+            let declared_success_responses = operation
+                .get("responses")
+                .and_then(Value::as_object)
+                .into_iter()
+                .flatten()
+                .filter(|(status, _)| status.starts_with('2'))
+                .count();
             let responses = operation
                 .get("responses")
                 .and_then(Value::as_object)
@@ -219,6 +243,15 @@ pub fn canonicalize_openapi_request_response(
                         .map(|schema| (status.clone(), schema))
                 })
                 .collect::<serde_json::Map<_, _>>();
+            if responses.len() != declared_success_responses {
+                errors.push(canonicalization_error(
+                    "openapi_response_unverifiable",
+                    format!("$.paths.{path}.{method}.responses"),
+                    "A successful OpenAPI response cannot be canonicalized.",
+                    "Use one explicit media type per response and provide a valid schema.",
+                ));
+                continue;
+            }
             let response_statuses = responses.keys().cloned().collect::<Vec<_>>();
             let response = (!responses.is_empty()).then(|| {
                 serde_json::json!({
@@ -392,15 +425,19 @@ fn canonicalize_openapi_content(document: &Value, content: &Value) -> Option<Val
 }
 
 fn canonicalize_openapi_response(document: &Value, response: &Value) -> Option<Value> {
-    let mut schema = response
-        .get("content")
-        .and_then(|content| canonicalize_openapi_content(document, content))
-        .unwrap_or_else(|| {
+    let mut schema = match response.get("content") {
+        None => serde_json::json!({
+            "type": "null",
+            "x-lenso-no-content": true,
+        }),
+        Some(content) if content.as_object().is_some_and(serde_json::Map::is_empty) => {
             serde_json::json!({
                 "type": "null",
                 "x-lenso-no-content": true,
             })
-        });
+        }
+        Some(content) => canonicalize_openapi_content(document, content)?,
+    };
     let headers = response
         .get("headers")
         .and_then(Value::as_object)
@@ -480,6 +517,7 @@ fn canonicalize_openapi_parameters(
     let mut properties = serde_json::Map::new();
     let mut required = BTreeSet::new();
     for parameter in parameters {
+        let parameter = resolve_openapi_schema(document, parameter, &mut BTreeSet::new());
         let name = parameter.get("name").and_then(Value::as_str)?;
         let schema = parameter.get("schema")?;
         let mut schema = resolve_openapi_schema(document, schema, &mut BTreeSet::new());

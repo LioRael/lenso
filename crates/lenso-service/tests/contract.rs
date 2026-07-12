@@ -74,6 +74,48 @@ fn raw_canonicalizers_block_unverifiable_or_empty_contracts() {
 }
 
 #[test]
+fn raw_openapi_preserves_referenced_parameters_with_request_bodies() {
+    let document = json!({
+        "openapi": "3.1.0",
+        "info": { "title": "Support", "version": "v1" },
+        "paths": { "/tickets/{tenant}": { "post": {
+            "operationId": "createTicket",
+            "parameters": [{ "$ref": "#/components/parameters/Tenant" }],
+            "requestBody": { "content": { "application/json": { "schema": { "type": "object" } } } },
+            "responses": { "204": {} }
+        } } },
+        "components": { "parameters": {
+            "Tenant": { "name": "tenant", "in": "path", "required": true, "schema": { "type": "string" } }
+        } }
+    });
+
+    let canonical = lenso_service::canonicalize_openapi_request_response(&document).unwrap();
+    assert_eq!(
+        canonical["operations"]["createTicket"]["request"]["x-lenso-parameters"]["properties"]["tenant"]
+            ["type"],
+        "string"
+    );
+}
+
+#[test]
+fn raw_openapi_rejects_unsupported_response_content_as_unverifiable() {
+    let document = json!({
+        "openapi": "3.1.0",
+        "info": { "title": "Support", "version": "v1" },
+        "paths": { "/tickets": { "get": {
+            "operationId": "listTickets",
+            "responses": { "200": { "content": {
+                "application/json": { "schema": { "type": "array" } },
+                "application/xml": { "schema": { "type": "array" } }
+            } } }
+        } } }
+    });
+
+    let errors = lenso_service::canonicalize_openapi_request_response(&document).unwrap_err();
+    assert_eq!(errors[0].code, "openapi_response_unverifiable");
+}
+
+#[test]
 fn protobuf_descriptor_set_canonicalizes_for_the_authoritative_evaluator() {
     use prost::Message;
     use prost_types::{
