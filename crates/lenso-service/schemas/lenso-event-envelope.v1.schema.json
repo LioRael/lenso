@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lenso.dev/contracts/lenso.event-envelope.v1.schema.json",
+  "title": "lenso.event-envelope.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocol",
+    "eventId",
+    "eventType",
+    "contractId",
+    "contractVersion",
+    "producerServiceId",
+    "moduleId",
+    "occurredAt",
+    "tenancyMode",
+    "context",
+    "content"
+  ],
+  "properties": {
+    "protocol": { "const": "lenso.event-envelope.v1" },
+    "eventId": { "$ref": "#/$defs/nonEmptyString" },
+    "eventType": { "$ref": "#/$defs/nonEmptyString" },
+    "contractId": { "$ref": "#/$defs/nonEmptyString" },
+    "contractVersion": { "$ref": "#/$defs/nonEmptyString" },
+    "producerServiceId": { "$ref": "#/$defs/nonEmptyString" },
+    "moduleId": { "$ref": "#/$defs/nonEmptyString" },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "tenancyMode": { "enum": ["none", "optional", "required"] },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocol"],
+      "properties": {
+        "protocol": { "const": "lenso.context.v1" },
+        "story": { "$ref": "https://lenso.dev/contracts/lenso-context.v1.schema.json#/$defs/storyContext" },
+        "trace": { "$ref": "https://lenso.dev/contracts/lenso-context.v1.schema.json#/$defs/traceContext" },
+        "servicePrincipal": { "$ref": "https://lenso.dev/contracts/lenso-context.v1.schema.json#/$defs/servicePrincipal" },
+        "delegatedActor": { "$ref": "https://lenso.dev/contracts/lenso-context.v1.schema.json#/$defs/delegatedActorContext" },
+        "tenant": { "$ref": "https://lenso.dev/contracts/lenso-context.v1.schema.json#/$defs/tenantContext" },
+        "deadline": { "$ref": "https://lenso.dev/contracts/lenso-context.v1.schema.json#/$defs/deadline" },
+        "idempotencyKey": { "$ref": "https://lenso.dev/contracts/lenso-context.v1.schema.json#/$defs/idempotencyKey" },
+        "causation": { "$ref": "https://lenso.dev/contracts/lenso-context.v1.schema.json#/$defs/causation" },
+        "region": { "$ref": "https://lenso.dev/contracts/lenso-context.v1.schema.json#/$defs/region" }
+      }
+    },
+    "content": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contentType", "schema", "data"],
+      "properties": {
+        "contentType": { "const": "application/json" },
+        "schema": { "$ref": "#/$defs/nonEmptyString" },
+        "data": true
+      }
+    }
+  },
+  "$defs": {
+    "nonEmptyString": { "type": "string", "minLength": 1 }
+  }
+}

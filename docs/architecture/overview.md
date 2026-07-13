@@ -114,6 +114,11 @@ protocol-neutral Call Policy for safe attempts, circuit breaking, concurrency
 isolation, overload evidence, and composition-supplied business fallback while
 retaining native transport failures. Policy state stays inside the calling or
 receiving Service and has no Runtime Console or System Plane dependency.
+Declared JSON Schema Event Contracts generate transport-independent Event
+Contract artifacts and `lenso.event-envelope.v1` envelopes. The envelope keeps
+stable Service, Module, Contract, Story, causation, tenant, identity, region,
+and content metadata, and has a lossless CloudEvents 1.0 structured
+representation without broker vocabulary.
 Route proxying is specified
 separately in `docs/architecture/module-remote-http-proxy.md`. Remote runtime
 execution and event-handler dispatch are scoped in

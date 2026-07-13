@@ -257,5 +257,93 @@
         }
       ]
     }
+  },
+  {
+    "contractKind": "generated_event_contract",
+    "name": "safe",
+    "result": {
+      "affectedReferences": [
+        "autonomous_service:support",
+        "module:support-ticket"
+      ],
+      "category": "safe",
+      "changedVersion": "v2",
+      "contractId": "ticket-opened",
+      "contractKind": "event_contract",
+      "reasons": [
+        {
+          "code": "event_backward_compatible",
+          "message": "The business event remains compatible for the affected references.",
+          "nextAction": "Publish the new event version and monitor Consumers.",
+          "path": "$"
+        }
+      ]
+    }
+  },
+  {
+    "contractKind": "generated_event_contract",
+    "name": "needs_attention",
+    "result": {
+      "affectedReferences": [
+        "autonomous_service:support",
+        "module:support-ticket"
+      ],
+      "category": "needs_attention",
+      "changedVersion": "v2",
+      "contractId": "ticket-opened",
+      "contractKind": "event_contract",
+      "reasons": [
+        {
+          "code": "event_operating_regions_changed",
+          "message": "The producing Service Operating Regions changed.",
+          "nextAction": "Review regional publication and consumption expectations before publishing.",
+          "path": "$.operatingRegions"
+        }
+      ]
+    }
+  },
+  {
+    "contractKind": "generated_event_contract",
+    "name": "breaking",
+    "result": {
+      "affectedReferences": [
+        "autonomous_service:support",
+        "module:support-ticket"
+      ],
+      "category": "breaking",
+      "changedVersion": "v2",
+      "contractId": "ticket-opened",
+      "contractKind": "event_contract",
+      "reasons": [
+        {
+          "code": "event_required_context_added",
+          "message": "A new required context field was added: Deadline.",
+          "nextAction": "Keep the context optional or coordinate the requirement with every affected Producer and Consumer.",
+          "path": "$.context.required"
+        }
+      ]
+    }
+  },
+  {
+    "contractKind": "generated_event_contract",
+    "name": "blocked",
+    "result": {
+      "affectedReferences": [
+        "autonomous_service:support",
+        "module:support-ticket"
+      ],
+      "category": "blocked",
+      "changedVersion": "v2",
+      "contractId": "ticket-opened",
+      "contractKind": "event_contract",
+      "reasons": [
+        {
+          "code": "event_artifact_unverifiable",
+          "message": "Generated Event Contract artifacts must use supported protocols and internally consistent identities.",
+          "nextAction": "Regenerate both Event Contract artifacts from valid Autonomous Service declarations and payload schemas.",
+          "path": "$"
+        }
+      ]
+    }
   }
 ]

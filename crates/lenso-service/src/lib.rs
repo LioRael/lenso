@@ -8,6 +8,7 @@ mod call_policy;
 mod direct_grpc;
 mod direct_http;
 mod endpoint_resolution;
+mod event_envelope;
 
 pub use call_policy::{
     CallPolicyCircuitBreaker, CallPolicyClock, CallPolicyConcurrency, CallPolicyDeclaration,
@@ -36,6 +37,13 @@ pub use endpoint_resolution::{
     EndpointState, LastValidEndpointResolver, LocalProcessEndpointResolver, ServiceReference,
     StaticEndpointResolver,
 };
+pub use event_envelope::{
+    CloudEvent, EVENT_CONTRACT_ARTIFACT_PROTOCOL, EVENT_ENVELOPE_PROTOCOL, EventContent,
+    EventContext, EventContractGenerationError, EventEnvelope, EventEnvelopeIssue,
+    EventEnvelopeIssueCode, GeneratedEventContract,
+    evaluate_generated_event_contract_compatibility, event_envelope_from_cloudevent,
+    generate_event_contract, validate_event_envelope, validate_event_envelope_value,
+};
 
 pub use lenso_contracts::ModuleManifest;
 
@@ -55,6 +63,8 @@ pub const SERVICE_V2_CONTRACT_SCHEMA_JSON: &str =
     include_str!("../schemas/lenso-service.v2.schema.json");
 pub const COMMON_CONTEXT_V1_SCHEMA_JSON: &str =
     include_str!("../schemas/lenso-context.v1.schema.json");
+pub const EVENT_ENVELOPE_V1_SCHEMA_JSON: &str =
+    include_str!("../schemas/lenso-event-envelope.v1.schema.json");
 pub const SERVICE_PACKAGE_SCHEMA_JSON: &str =
     include_str!("../schemas/lenso-service-package.v1.schema.json");
 pub const SERVICE_WORKSPACE_SCHEMA_JSON: &str =
@@ -76,6 +86,8 @@ pub const DIRECT_HTTP_OPENAPI_V1_FIXTURE_YAML: &str =
     include_str!("../fixtures/contracts/v2/support-http.v1.yaml");
 pub const DIRECT_GRPC_PROTO_V1_FIXTURE: &str =
     include_str!("../fixtures/contracts/v2/support-grpc.v1.proto");
+pub const SUPPORT_EVENT_SCHEMA_JSON: &str =
+    include_str!("../fixtures/contracts/v2/support-ticket-opened.v1.schema.json");
 pub const DIRECT_GRPC_DESCRIPTOR_V1: &[u8] =
     tonic::include_file_descriptor_set!("support_descriptor");
 pub const MIXED_SYSTEM_V2_FIXTURE_JSON: &str =

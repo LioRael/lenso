@@ -105,3 +105,42 @@ fn committed_common_context_fixture_matches_generator() {
         generate_contracts::generated_common_context_fixture()
     );
 }
+
+#[test]
+fn committed_event_envelope_schema_matches_generator() {
+    let committed: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/events/lenso/lenso.event-envelope.v1.schema.json"
+    ))
+    .expect("committed Event Envelope schema should parse");
+
+    assert_eq!(
+        committed,
+        generate_contracts::generated_event_envelope_schema()
+    );
+}
+
+#[test]
+fn committed_support_event_artifacts_match_generator() {
+    let schema: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/events/support/support.ticket-opened.v1.schema.json"
+    ))
+    .expect("committed support Event schema should parse");
+    let contract: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/events/support/support.ticket-opened.v1.artifact.json"
+    ))
+    .expect("committed support Event Contract artifact should parse");
+    let envelope: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/events/support/support.ticket-opened.v1.envelope.json"
+    ))
+    .expect("committed support Event Envelope fixture should parse");
+
+    assert_eq!(schema, generate_contracts::generated_support_event_schema());
+    assert_eq!(
+        contract,
+        generate_contracts::generated_support_event_contract()
+    );
+    assert_eq!(
+        envelope,
+        generate_contracts::generated_support_event_envelope()
+    );
+}

@@ -12,7 +12,9 @@ rust-version.workspace = true
 
 [dependencies]
 axum.workspace = true
+chrono.workspace = true
 http.workspace = true
+jsonschema.workspace = true
 lenso-contracts.workspace = true
 prost.workspace = true
 prost-types.workspace = true

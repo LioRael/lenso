@@ -41,6 +41,7 @@ chrono = { version = "0.4", features = ["serde"] }
 dotenvy = "0.15"
 http = "1.4"
 getrandom = "0.4"
+jsonschema = { version = "0.47", default-features = false }
 jsonwebtoken = { version = "10", features = ["rust_crypto"] }
 opentelemetry = "0.32"
 opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic"] }
