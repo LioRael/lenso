@@ -1,0 +1,117 @@
+{
+  "$defs": {
+    "nonEmptyString": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "$id": "https://lenso.dev/contracts/lenso.event-envelope.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "content": {
+      "additionalProperties": false,
+      "properties": {
+        "contentType": {
+          "const": "application/json"
+        },
+        "data": true,
+        "schema": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      },
+      "required": [
+        "contentType",
+        "schema",
+        "data"
+      ],
+      "type": "object"
+    },
+    "context": {
+      "additionalProperties": false,
+      "properties": {
+        "causation": {
+          "$ref": "https://lenso.dev/contracts/lenso-context.v1.schema.json#/$defs/causation"
+        },
+        "deadline": {
+          "$ref": "https://lenso.dev/contracts/lenso-context.v1.schema.json#/$defs/deadline"
+        },
+        "delegatedActor": {
+          "$ref": "https://lenso.dev/contracts/lenso-context.v1.schema.json#/$defs/delegatedActorContext"
+        },
+        "idempotencyKey": {
+          "$ref": "https://lenso.dev/contracts/lenso-context.v1.schema.json#/$defs/idempotencyKey"
+        },
+        "protocol": {
+          "const": "lenso.context.v1"
+        },
+        "region": {
+          "$ref": "https://lenso.dev/contracts/lenso-context.v1.schema.json#/$defs/region"
+        },
+        "servicePrincipal": {
+          "$ref": "https://lenso.dev/contracts/lenso-context.v1.schema.json#/$defs/servicePrincipal"
+        },
+        "story": {
+          "$ref": "https://lenso.dev/contracts/lenso-context.v1.schema.json#/$defs/storyContext"
+        },
+        "tenant": {
+          "$ref": "https://lenso.dev/contracts/lenso-context.v1.schema.json#/$defs/tenantContext"
+        },
+        "trace": {
+          "$ref": "https://lenso.dev/contracts/lenso-context.v1.schema.json#/$defs/traceContext"
+        }
+      },
+      "required": [
+        "protocol"
+      ],
+      "type": "object"
+    },
+    "contractId": {
+      "$ref": "#/$defs/nonEmptyString"
+    },
+    "contractVersion": {
+      "$ref": "#/$defs/nonEmptyString"
+    },
+    "eventId": {
+      "$ref": "#/$defs/nonEmptyString"
+    },
+    "eventType": {
+      "$ref": "#/$defs/nonEmptyString"
+    },
+    "moduleId": {
+      "$ref": "#/$defs/nonEmptyString"
+    },
+    "occurredAt": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "producerServiceId": {
+      "$ref": "#/$defs/nonEmptyString"
+    },
+    "protocol": {
+      "const": "lenso.event-envelope.v1"
+    },
+    "tenancyMode": {
+      "enum": [
+        "none",
+        "optional",
+        "required"
+      ]
+    }
+  },
+  "required": [
+    "protocol",
+    "eventId",
+    "eventType",
+    "contractId",
+    "contractVersion",
+    "producerServiceId",
+    "moduleId",
+    "occurredAt",
+    "tenancyMode",
+    "context",
+    "content"
+  ],
+  "title": "lenso.event-envelope.v1",
+  "type": "object"
+}

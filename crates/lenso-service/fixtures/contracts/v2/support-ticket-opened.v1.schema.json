@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.lenso.local/events/support.ticket-opened.v1.schema.json",
+  "title": "support.ticket-opened.v1",
+  "type": "object",
+  "required": ["ticketId", "openedAt"],
+  "properties": {
+    "ticketId": { "type": "string", "minLength": 1 },
+    "openedAt": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}

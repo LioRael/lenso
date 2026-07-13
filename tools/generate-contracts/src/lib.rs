@@ -48,6 +48,22 @@ pub fn generate_contracts() -> anyhow::Result<()> {
         "contracts/context/lenso-context.v1.fixture.json",
         &generated_common_context_fixture(),
     )?;
+    write_json(
+        "contracts/events/lenso/lenso.event-envelope.v1.schema.json",
+        &generated_event_envelope_schema(),
+    )?;
+    write_json(
+        "contracts/events/support/support.ticket-opened.v1.schema.json",
+        &generated_support_event_schema(),
+    )?;
+    write_json(
+        "contracts/events/support/support.ticket-opened.v1.artifact.json",
+        &generated_support_event_contract(),
+    )?;
+    write_json(
+        "contracts/events/support/support.ticket-opened.v1.envelope.json",
+        &generated_support_event_envelope(),
+    )?;
     write_text(
         "docs/architecture/common-context-contracts.md",
         generated_common_context_glossary(),
@@ -124,6 +140,53 @@ pub fn generated_common_context_fixture() -> Value {
         .expect("packaged common context fixture must be valid JSON")
 }
 
+pub fn generated_event_envelope_schema() -> Value {
+    serde_json::from_str(lenso_service::EVENT_ENVELOPE_V1_SCHEMA_JSON)
+        .expect("packaged Event Envelope schema must be valid JSON")
+}
+
+pub fn generated_support_event_contract() -> Value {
+    let service: lenso_service::AutonomousServiceContract =
+        serde_json::from_str(lenso_service::AUTONOMOUS_SERVICE_V2_FIXTURE_JSON)
+            .expect("packaged Autonomous Service fixture must be valid");
+    let payload_schema = generated_support_event_schema();
+    serde_json::to_value(
+        lenso_service::generate_event_contract(
+            &service,
+            &service.event_contracts[0],
+            &payload_schema,
+        )
+        .expect("support Event Contract must generate"),
+    )
+    .expect("generated support Event Contract must serialize")
+}
+
+pub fn generated_support_event_schema() -> Value {
+    serde_json::from_str(lenso_service::SUPPORT_EVENT_SCHEMA_JSON)
+        .expect("packaged support Event schema must be valid JSON")
+}
+
+pub fn generated_support_event_envelope() -> Value {
+    let contract: lenso_service::GeneratedEventContract =
+        serde_json::from_value(generated_support_event_contract())
+            .expect("generated support Event Contract must deserialize");
+    let context: lenso_service::CommonContextContract =
+        serde_json::from_str(lenso_service::COMMON_CONTEXT_V1_FIXTURE_JSON)
+            .expect("packaged common context fixture must be valid");
+    let envelope = lenso_service::EventEnvelope::new(
+        &contract,
+        "event_support_ticket_01",
+        "2026-07-14T10:15:30Z",
+        context,
+        json!({
+            "ticketId": "ticket_01",
+            "openedAt": "2026-07-14T10:15:00Z"
+        }),
+    );
+    assert!(lenso_service::validate_event_envelope(&contract, &envelope).is_empty());
+    serde_json::to_value(envelope).expect("generated support Event Envelope must serialize")
+}
+
 pub fn generated_common_context_glossary() -> &'static str {
     lenso_service::COMMON_CONTEXT_GLOSSARY_MARKDOWN
 }
@@ -162,7 +225,48 @@ pub fn generated_contract_compatibility_matrix() -> Value {
             );
         }
     }
+    let before: lenso_service::GeneratedEventContract =
+        serde_json::from_value(generated_support_event_contract())
+            .expect("generated support Event Contract must deserialize");
+    for (name, candidate) in generated_support_event_compatibility_candidates(&before) {
+        rows.push(json!({
+            "contractKind": "generated_event_contract",
+            "name": name,
+            "result": lenso_service::evaluate_generated_event_contract_compatibility(
+                &before,
+                &candidate,
+            )
+        }));
+    }
     Value::Array(rows)
+}
+
+fn generated_support_event_compatibility_candidates(
+    before: &lenso_service::GeneratedEventContract,
+) -> Vec<(&'static str, lenso_service::GeneratedEventContract)> {
+    let mut safe = before.clone();
+    safe.contract_version = "v2".to_owned();
+    safe.event_type = "support.ticket-opened.v2".to_owned();
+    safe.artifact.path = "contracts/events/support/support.ticket-opened.v2.schema.json".to_owned();
+    safe.payload_schema["title"] = json!("support.ticket-opened.v2");
+    safe.payload_schema["properties"]["priority"] = json!({"type": "string"});
+    let mut needs_attention = safe.clone();
+    needs_attention
+        .operating_regions
+        .push("eu-west-1".to_owned());
+    let mut breaking = safe.clone();
+    breaking
+        .context
+        .required
+        .push(lenso_service::CommonContextRequirement::Deadline);
+    let mut blocked = safe.clone();
+    blocked.protocol = "lenso.event-contract.v2".to_owned();
+    vec![
+        ("safe", safe),
+        ("needs_attention", needs_attention),
+        ("breaking", breaking),
+        ("blocked", blocked),
+    ]
 }
 
 fn write_yaml(path: impl AsRef<Path>, value: &impl serde::Serialize) -> anyhow::Result<()> {

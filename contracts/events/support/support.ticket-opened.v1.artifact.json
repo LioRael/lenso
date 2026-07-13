@@ -1,0 +1,48 @@
+{
+  "artifact": {
+    "format": "json_schema",
+    "path": "contracts/events/support/support.ticket-opened.v1.schema.json"
+  },
+  "context": {
+    "protocol": "lenso.context.v1",
+    "required": [
+      "story",
+      "trace",
+      "service_principal",
+      "tenant",
+      "causation",
+      "region"
+    ]
+  },
+  "contractId": "ticket-opened",
+  "contractVersion": "v1",
+  "eventType": "support.ticket-opened.v1",
+  "moduleId": "support-ticket",
+  "operatingRegions": [
+    "cn-east-1"
+  ],
+  "payloadSchema": {
+    "$id": "https://contracts.lenso.local/events/support.ticket-opened.v1.schema.json",
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "openedAt": {
+        "format": "date-time",
+        "type": "string"
+      },
+      "ticketId": {
+        "minLength": 1,
+        "type": "string"
+      }
+    },
+    "required": [
+      "ticketId",
+      "openedAt"
+    ],
+    "title": "support.ticket-opened.v1",
+    "type": "object"
+  },
+  "producerServiceId": "support",
+  "protocol": "lenso.event-contract.v1",
+  "tenancyMode": "required"
+}

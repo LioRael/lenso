@@ -1,12 +1,21 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.lenso.local/events/support.ticket-opened.v1.schema.json",
-  "title": "support.ticket-opened.v1",
-  "type": "object",
-  "required": ["ticketId", "openedAt"],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
   "properties": {
-    "ticketId": { "type": "string", "minLength": 1 },
-    "openedAt": { "type": "string", "format": "date-time" }
+    "openedAt": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "ticketId": {
+      "minLength": 1,
+      "type": "string"
+    }
   },
-  "additionalProperties": false
+  "required": [
+    "ticketId",
+    "openedAt"
+  ],
+  "title": "support.ticket-opened.v1",
+  "type": "object"
 }

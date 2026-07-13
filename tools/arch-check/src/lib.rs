@@ -228,6 +228,14 @@ pub fn check_contract_artifacts_fresh(root: &Path) -> anyhow::Result<()> {
         read_json(root.join("contracts/context/lenso-context.v1.schema.json"))?;
     let common_context_fixture =
         read_json(root.join("contracts/context/lenso-context.v1.fixture.json"))?;
+    let event_envelope_schema =
+        read_json(root.join("contracts/events/lenso/lenso.event-envelope.v1.schema.json"))?;
+    let support_event_contract =
+        read_json(root.join("contracts/events/support/support.ticket-opened.v1.artifact.json"))?;
+    let support_event_schema =
+        read_json(root.join("contracts/events/support/support.ticket-opened.v1.schema.json"))?;
+    let support_event_envelope =
+        read_json(root.join("contracts/events/support/support.ticket-opened.v1.envelope.json"))?;
     let compatibility_matrix =
         read_json(root.join("contracts/compatibility/contract-compatibility.v1.json"))?;
     let mut violations = Vec::new();
@@ -260,6 +268,25 @@ pub fn check_contract_artifacts_fresh(root: &Path) -> anyhow::Result<()> {
     }
     if common_context_fixture != generate_contracts::generated_common_context_fixture() {
         violations.push("contracts/context/lenso-context.v1.fixture.json is stale".to_owned());
+    }
+    if event_envelope_schema != generate_contracts::generated_event_envelope_schema() {
+        violations
+            .push("contracts/events/lenso/lenso.event-envelope.v1.schema.json is stale".to_owned());
+    }
+    if support_event_contract != generate_contracts::generated_support_event_contract() {
+        violations.push(
+            "contracts/events/support/support.ticket-opened.v1.artifact.json is stale".to_owned(),
+        );
+    }
+    if support_event_schema != generate_contracts::generated_support_event_schema() {
+        violations.push(
+            "contracts/events/support/support.ticket-opened.v1.schema.json is stale".to_owned(),
+        );
+    }
+    if support_event_envelope != generate_contracts::generated_support_event_envelope() {
+        violations.push(
+            "contracts/events/support/support.ticket-opened.v1.envelope.json is stale".to_owned(),
+        );
     }
     if compatibility_matrix != generate_contracts::generated_contract_compatibility_matrix() {
         violations
