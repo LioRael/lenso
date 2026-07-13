@@ -4,17 +4,26 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
+mod call_policy;
 mod direct_grpc;
 mod direct_http;
 mod endpoint_resolution;
+
+pub use call_policy::{
+    CallPolicyCircuitBreaker, CallPolicyClock, CallPolicyConcurrency, CallPolicyDeclaration,
+    CallPolicyEvent, CallPolicyEvidence, CallPolicyFailure, CallPolicyFallback, CallPolicyOverload,
+    CallPolicyPermit, CallPolicyRuntime, CallPolicyTerminalOutcome, CallPolicyValidationIssue,
+    ManualCallPolicyClock, SystemCallPolicyClock,
+};
 
 pub mod support_grpc_v1 {
     tonic::include_proto!("lenso.services.support.v1");
 }
 
 pub use direct_grpc::{
-    DirectGrpcBindings, DirectGrpcCallError, DirectGrpcClient, DirectGrpcEvidence,
-    DirectGrpcOperation, DirectGrpcResponse, GrpcIdempotency, generate_direct_grpc_bindings,
+    DirectGrpcAdmissionError, DirectGrpcBindings, DirectGrpcCallError, DirectGrpcClient,
+    DirectGrpcEvidence, DirectGrpcOperation, DirectGrpcResponse, DirectGrpcServerPolicy,
+    GrpcIdempotency, generate_direct_grpc_bindings, parse_protobuf_call_policies,
 };
 pub use direct_http::{
     DirectHttpBindings, DirectHttpCall, DirectHttpCallError, DirectHttpClient, DirectHttpEvidence,
