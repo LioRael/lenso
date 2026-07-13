@@ -2,6 +2,29 @@
   "contractId": "support-grpc",
   "operations": [
     {
+      "callPolicy": {
+        "circuitBreaker": {
+          "failureThreshold": 2,
+          "halfOpenMaxCalls": 1,
+          "openForMs": 1000
+        },
+        "concurrency": {
+          "maxInFlight": 2
+        },
+        "fallback": {
+          "handler": "support.cached_sla",
+          "on": [
+            "circuit_open",
+            "bulkhead_saturated",
+            "overload_rejected",
+            "deadline_expired"
+          ]
+        },
+        "maxAttempts": 2,
+        "overload": {
+          "maxInFlight": 2
+        }
+      },
       "idempotency": "idempotent",
       "operationId": "GetSla",
       "path": "/lenso.services.support.v1.SupportService/GetSla",
@@ -9,6 +32,20 @@
       "responseType": ".lenso.services.support.v1.SlaResponse"
     },
     {
+      "callPolicy": {
+        "circuitBreaker": {
+          "failureThreshold": 2,
+          "halfOpenMaxCalls": 1,
+          "openForMs": 1000
+        },
+        "concurrency": {
+          "maxInFlight": 2
+        },
+        "maxAttempts": 1,
+        "overload": {
+          "maxInFlight": 2
+        }
+      },
       "idempotency": "unknown",
       "operationId": "ProbeSla",
       "path": "/lenso.services.support.v1.SupportService/ProbeSla",
@@ -16,6 +53,20 @@
       "responseType": ".lenso.services.support.v1.SlaResponse"
     },
     {
+      "callPolicy": {
+        "circuitBreaker": {
+          "failureThreshold": 2,
+          "halfOpenMaxCalls": 1,
+          "openForMs": 1000
+        },
+        "concurrency": {
+          "maxInFlight": 2
+        },
+        "maxAttempts": 2,
+        "overload": {
+          "maxInFlight": 2
+        }
+      },
       "idempotency": "requires_key",
       "operationId": "UpdateSla",
       "path": "/lenso.services.support.v1.SupportService/UpdateSla",

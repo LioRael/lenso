@@ -7,6 +7,14 @@ paths:
     get:
       operationId: getTicket
       x-lenso-idempotency: idempotent
+      x-lenso-call-policy:
+        maxAttempts: 2
+        circuitBreaker: { failureThreshold: 2, openForMs: 1000, halfOpenMaxCalls: 1 }
+        concurrency: { maxInFlight: 2 }
+        overload: { maxInFlight: 2 }
+        fallback:
+          handler: support.cached_ticket
+          on: [circuit_open, bulkhead_saturated, overload_rejected]
       responses:
         '200':
           description: Ticket
@@ -19,6 +27,11 @@ paths:
     post:
       operationId: updateTicket
       x-lenso-idempotency: requires_key
+      x-lenso-call-policy:
+        maxAttempts: 2
+        circuitBreaker: { failureThreshold: 2, openForMs: 1000, halfOpenMaxCalls: 1 }
+        concurrency: { maxInFlight: 2 }
+        overload: { maxInFlight: 2 }
       requestBody:
         required: true
         content:

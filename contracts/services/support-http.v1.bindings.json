@@ -2,6 +2,28 @@
   "contractId": "support-http",
   "operations": [
     {
+      "callPolicy": {
+        "circuitBreaker": {
+          "failureThreshold": 2,
+          "halfOpenMaxCalls": 1,
+          "openForMs": 1000
+        },
+        "concurrency": {
+          "maxInFlight": 2
+        },
+        "fallback": {
+          "handler": "support.cached_ticket",
+          "on": [
+            "circuit_open",
+            "bulkhead_saturated",
+            "overload_rejected"
+          ]
+        },
+        "maxAttempts": 2,
+        "overload": {
+          "maxInFlight": 2
+        }
+      },
       "idempotency": "idempotent",
       "method": "GET",
       "operationId": "getTicket",
@@ -106,6 +128,20 @@
       }
     },
     {
+      "callPolicy": {
+        "circuitBreaker": {
+          "failureThreshold": 2,
+          "halfOpenMaxCalls": 1,
+          "openForMs": 1000
+        },
+        "concurrency": {
+          "maxInFlight": 2
+        },
+        "maxAttempts": 2,
+        "overload": {
+          "maxInFlight": 2
+        }
+      },
       "idempotency": "requires_key",
       "method": "POST",
       "operationId": "updateTicket",
