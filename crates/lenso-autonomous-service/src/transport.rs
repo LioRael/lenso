@@ -522,6 +522,35 @@ struct ExistingInboxRow {
     status: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InboxStatus {
+    Received,
+    Retryable,
+    Completed,
+    Rejected,
+    Failed,
+}
+
+impl InboxStatus {
+    fn parse(value: &str) -> Result<Self, TransportError> {
+        match value {
+            "received" => Ok(Self::Received),
+            "retryable" => Ok(Self::Retryable),
+            "completed" => Ok(Self::Completed),
+            "rejected" => Ok(Self::Rejected),
+            "failed" => Ok(Self::Failed),
+            _ => Err(TransportError::new(
+                TransportErrorCode::DeliveryFailed,
+                format!("Service Inbox contains unsupported status `{value}`"),
+            )),
+        }
+    }
+
+    const fn can_retry(self) -> bool {
+        matches!(self, Self::Received | Self::Retryable)
+    }
+}
+
 pub async fn relay_service_events_once(
     state: &ServiceRuntimeState,
     adapter: &dyn TransportAdapter,
@@ -644,6 +673,16 @@ impl ServiceEventHandlerError {
     }
 
     #[must_use]
+    pub fn retryable(reason_code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            code: ServiceEventHandlerErrorCode::Retryable,
+            reason_code: reason_code.into(),
+            message: message.into(),
+            source: None,
+        }
+    }
+
+    #[must_use]
     pub fn rejected(message: impl Into<String>) -> Self {
         Self::rejected_with_code("event_rejected", message)
     }
@@ -711,6 +750,7 @@ pub async fn consume_service_events_once(
                 select delivery_id, status
                 from platform.service_event_inbox
                 where consumer_id = $1 and event_id = $2
+                for update
                 ",
             )
             .bind(consumer_id)
@@ -720,13 +760,15 @@ pub async fn consume_service_events_once(
             .map_err(|error| {
                 TransportError::store("Could not inspect duplicate Service Inbox event", error)
             })?;
-            if existing.status == "retryable" {
-                sqlx::query(
+            let existing_status = InboxStatus::parse(&existing.status)?;
+            if existing_status.can_retry() {
+                let retried = sqlx::query(
                     r"
                     update platform.service_event_inbox
                     set delivery_id = $3, envelope = $4, status = 'received',
                         last_error = null, received_at = now(), completed_at = null
                     where consumer_id = $1 and event_id = $2
+                      and status in ('received', 'retryable')
                     ",
                 )
                 .bind(consumer_id)
@@ -738,6 +780,12 @@ pub async fn consume_service_events_once(
                 .map_err(|error| {
                     TransportError::store("Could not retry Service Inbox event", error)
                 })?;
+                if retried.rows_affected() != 1 {
+                    return Err(TransportError::new(
+                        TransportErrorCode::DeliveryFailed,
+                        "Service Inbox retry lost its state transition",
+                    ));
+                }
                 record_service_evidence(
                     &mut transaction,
                     "inbox",
@@ -759,8 +807,8 @@ pub async fn consume_service_events_once(
                     Some(&delivery.delivery_id),
                     json!({
                         "attempt": delivery.attempt,
-                        "completedDeliveryId": existing.delivery_id,
-                        "completedStatus": existing.status,
+                        "originalDeliveryId": existing.delivery_id,
+                        "originalStatus": existing.status,
                     }),
                 )
                 .await?;
@@ -770,7 +818,13 @@ pub async fn consume_service_events_once(
                         error,
                     )
                 })?;
-                acknowledge_service_delivery(pool, adapter, &delivery, true).await?;
+                acknowledge_service_delivery(
+                    pool,
+                    adapter,
+                    &delivery,
+                    ServiceDeliveryAcknowledgement::Duplicate,
+                )
+                .await?;
                 continue;
             }
         }
@@ -788,7 +842,18 @@ pub async fn consume_service_events_once(
             transaction.rollback().await.map_err(|error| {
                 TransportError::store("Could not roll back failed Service Inbox handling", error)
             })?;
-            persist_handler_outcome(pool, &delivery, consumer_id, &handler_error).await?;
+            let handler_outcome_persisted =
+                persist_handler_outcome(pool, &delivery, consumer_id, &handler_error).await?;
+            if !handler_outcome_persisted {
+                acknowledge_service_delivery(
+                    pool,
+                    adapter,
+                    &delivery,
+                    ServiceDeliveryAcknowledgement::Duplicate,
+                )
+                .await?;
+                continue;
+            }
             adapter
                 .negative_acknowledge(
                     &delivery,
@@ -805,21 +870,36 @@ pub async fn consume_service_events_once(
             });
         }
 
-        sqlx::query(
+        let completed_inbox = sqlx::query(
             r"
             update platform.service_event_inbox
             set status = 'completed', completed_at = now()
-            where delivery_id = $1
+            where delivery_id = $1 and consumer_id = $2 and event_id = $3
+              and status = 'received'
             ",
         )
         .bind(&delivery.delivery_id)
+        .bind(consumer_id)
+        .bind(&delivery.envelope.event_id)
         .execute(&mut *transaction)
         .await
         .map_err(|error| TransportError::store("Could not complete Service Inbox event", error))?;
+        if completed_inbox.rows_affected() != 1 {
+            return Err(TransportError::new(
+                TransportErrorCode::DeliveryFailed,
+                "Service Inbox completion lost its state transition",
+            ));
+        }
         transaction.commit().await.map_err(|error| {
             TransportError::store("Could not commit Service Inbox business effect", error)
         })?;
-        acknowledge_service_delivery(pool, adapter, &delivery, false).await?;
+        acknowledge_service_delivery(
+            pool,
+            adapter,
+            &delivery,
+            ServiceDeliveryAcknowledgement::Processed,
+        )
+        .await?;
         completed += 1;
     }
     Ok(completed)
@@ -829,7 +909,7 @@ async fn acknowledge_service_delivery(
     pool: &PgPool,
     adapter: &dyn TransportAdapter,
     delivery: &TransportDelivery,
-    duplicate: bool,
+    acknowledgement: ServiceDeliveryAcknowledgement,
 ) -> Result<(), TransportError> {
     if let Err(error) = adapter.acknowledge(delivery).await {
         record_service_evidence_in_store(
@@ -838,7 +918,10 @@ async fn acknowledge_service_delivery(
             "acknowledgement_failed",
             &delivery.envelope.event_id,
             Some(&delivery.delivery_id),
-            json!({"reason": error.message, "duplicate": duplicate}),
+            json!({
+                "reason": error.message,
+                "duplicate": acknowledgement.is_duplicate(),
+            }),
         )
         .await?;
         return Err(error);
@@ -849,9 +932,21 @@ async fn acknowledge_service_delivery(
         "acknowledged",
         &delivery.envelope.event_id,
         Some(&delivery.delivery_id),
-        json!({"duplicate": duplicate}),
+        json!({"duplicate": acknowledgement.is_duplicate()}),
     )
     .await
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ServiceDeliveryAcknowledgement {
+    Processed,
+    Duplicate,
+}
+
+impl ServiceDeliveryAcknowledgement {
+    const fn is_duplicate(self) -> bool {
+        matches!(self, Self::Duplicate)
+    }
 }
 
 async fn persist_handler_outcome(
@@ -859,7 +954,7 @@ async fn persist_handler_outcome(
     delivery: &TransportDelivery,
     consumer_id: &str,
     error: &ServiceEventHandlerError,
-) -> Result<(), TransportError> {
+) -> Result<bool, TransportError> {
     let (status, outcome) = match error.code {
         ServiceEventHandlerErrorCode::Retryable => ("retryable", "retryable_failed"),
         ServiceEventHandlerErrorCode::Rejected => ("rejected", "rejected"),
@@ -867,7 +962,7 @@ async fn persist_handler_outcome(
     let mut transaction = pool.begin().await.map_err(|error| {
         TransportError::store("Could not persist Service Inbox handler outcome", error)
     })?;
-    sqlx::query(
+    let persisted = sqlx::query(
         r"
         insert into platform.service_event_inbox (
             delivery_id, consumer_id, event_id, envelope, status, last_error
@@ -879,6 +974,7 @@ async fn persist_handler_outcome(
             last_error = excluded.last_error,
             received_at = now(),
             completed_at = null
+        where platform.service_event_inbox.status in ('received', 'retryable')
         ",
     )
     .bind(&delivery.delivery_id)
@@ -898,6 +994,24 @@ async fn persist_handler_outcome(
     .map_err(|error| {
         TransportError::store("Could not persist Service Inbox handler outcome", error)
     })?;
+    if persisted.rows_affected() == 0 {
+        record_service_evidence(
+            &mut transaction,
+            "inbox",
+            "superseded_handler_outcome",
+            &delivery.envelope.event_id,
+            Some(&delivery.delivery_id),
+            json!({
+                "reasonCode": error.reason_code,
+                "reason": error.message,
+            }),
+        )
+        .await?;
+        transaction.commit().await.map_err(|error| {
+            TransportError::store("Could not commit superseded Inbox handler outcome", error)
+        })?;
+        return Ok(false);
+    }
     record_service_evidence(
         &mut transaction,
         "inbox",
@@ -914,7 +1028,7 @@ async fn persist_handler_outcome(
     transaction.commit().await.map_err(|error| {
         TransportError::store("Could not commit Service Inbox handler outcome", error)
     })?;
-    Ok(())
+    Ok(true)
 }
 
 async fn record_service_evidence(
