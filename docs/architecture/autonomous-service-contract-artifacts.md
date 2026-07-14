@@ -105,3 +105,25 @@ partition, offset, broker, and vendor settings are not part of either contract.
 `just generate` publishes the generic envelope schema plus the support Event
 Contract artifact and round-trip fixture under `contracts/events/`. Their
 freshness is enforced by generated-artifact tests and `arch-check`.
+
+## Transport Adapter and local delivery
+
+The Autonomous Service runtime exposes a protocol-neutral `TransportAdapter`
+boundary for publishing and receiving Event Envelopes, positive and negative
+acknowledgement, health, and diagnostics. Adapter methods expose stable Lenso
+delivery types; broker topics, partitions, offsets, consumer groups, and vendor
+clients remain outside Module code and Event Contracts.
+
+The local adapter persists transport deliveries and diagnostics in an injected
+PostgreSQL Store and needs no external broker, Kubernetes, service mesh,
+Runtime Console, or System Plane. Producers write the business change and
+Service-owned Outbox publication intent in one transaction. Consumers persist
+the received envelope in their own Inbox and invoke Module-owned behavior in a
+Service Store transaction before acknowledging delivery. Service-local Outbox,
+Inbox, and terminal evidence remain inspectable through
+`GET /runtime/event-deliveries`.
+
+This first flow establishes local delivery, not the complete at-least-once
+reliability lifecycle. Stable consumer/event deduplication, concurrent
+redelivery handling, restart recovery, ordering policy, dead-letter state, and
+replay are separate reliability slices.

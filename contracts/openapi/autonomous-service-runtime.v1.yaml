@@ -55,6 +55,32 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RuntimeHealth'
+  /runtime/event-deliveries:
+    get:
+      tags:
+      - service-runtime
+      operationId: event_delivery_evidence
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ServiceEventEvidence'
+        '500':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /runtime/story-segments:
     get:
       tags:
@@ -162,6 +188,32 @@ components:
       - stopping
       - stopped
       - failed
+    ServiceEventEvidence:
+      type: object
+      required:
+      - evidenceId
+      - stage
+      - outcome
+      - eventId
+      - detail
+      - recordedAt
+      properties:
+        deliveryId:
+          type:
+          - string
+          - 'null'
+        detail: {}
+        eventId:
+          type: string
+        evidenceId:
+          type: string
+        outcome:
+          type: string
+        recordedAt:
+          type: string
+          format: date-time
+        stage:
+          type: string
     StorySegment:
       type: object
       required:

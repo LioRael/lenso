@@ -1,5 +1,9 @@
 //! Host-independent runtime composition for one `lenso.service.v2` Service.
 
+mod transport;
+
+pub use transport::*;
+
 use axum::{
     Json, Router,
     extract::{Request, State},
@@ -91,6 +95,10 @@ pub const SERVICE_RUNTIME_MIGRATIONS: &[Migration] = &[
     Migration {
         name: "autonomous-service/0002_create_worker_runtime",
         sql: include_str!("../migrations/0002_create_worker_runtime.sql"),
+    },
+    Migration {
+        name: "autonomous-service/0003_create_event_delivery",
+        sql: include_str!("../migrations/0003_create_event_delivery.sql"),
     },
 ];
 
@@ -699,6 +707,7 @@ pub fn service_router(
         RuntimeHealth,
         RuntimePhase,
         StorySegment,
+        ServiceEventEvidence,
         platform_http::ErrorResponse,
         platform_http::ProblemErrorDetail
     ))
@@ -711,6 +720,7 @@ fn runtime_router() -> OpenApiRouter<ServiceRuntimeState> {
         .routes(routes!(readiness))
         .routes(routes!(startup))
         .routes(routes!(story_segments))
+        .routes(routes!(event_delivery_evidence))
 }
 
 #[must_use]
@@ -852,6 +862,7 @@ async fn persist_story_segment(
     if response.status().is_success()
         && !path.starts_with("/health/")
         && path != "/runtime/story-segments"
+        && path != "/runtime/event-deliveries"
     {
         let Some(pool) = &state.pool else {
             return platform_http::ApiErrorResponse::from(platform_core::AppError::new(
@@ -1224,6 +1235,12 @@ mod tests {
         assert!(document.paths.paths.contains_key("/health/ready"));
         assert!(document.paths.paths.contains_key("/health/startup"));
         assert!(document.paths.paths.contains_key("/runtime/story-segments"));
+        assert!(
+            document
+                .paths
+                .paths
+                .contains_key("/runtime/event-deliveries")
+        );
     }
 
     #[tokio::test]
