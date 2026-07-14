@@ -132,4 +132,10 @@ controlled-time consumers can advance the schedule without wall-clock sleeps.
 Poison and exhausted events enter durable dead-letter state with the original
 Event Envelope, contract identity, delivery history, failure evidence, and
 operator next actions. Terminal isolation lets later healthy events continue.
-Replay remains a separate reliability slice.
+Versioned operator results support deterministic inspection, non-mutating
+replay and cleanup plans, explicit production replay approval, and explicitly
+approved destructive cleanup. Replay preserves the original business event,
+Contract Version, Story Context, and causation while recording a distinct
+delivery attempt. Cleanup retains Inbox deduplication state, delivery evidence,
+and replay audit records, and excludes unresolved, retained, or actively
+replaying dead letters.

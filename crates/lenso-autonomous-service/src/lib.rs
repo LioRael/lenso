@@ -1,7 +1,9 @@
 //! Host-independent runtime composition for one `lenso.service.v2` Service.
 
+mod operations;
 mod transport;
 
+pub use operations::*;
 pub use transport::*;
 
 use axum::{
@@ -107,6 +109,10 @@ pub const SERVICE_RUNTIME_MIGRATIONS: &[Migration] = &[
     Migration {
         name: "autonomous-service/0006_classify_event_delivery_failures",
         sql: include_str!("../migrations/0006_classify_event_delivery_failures.sql"),
+    },
+    Migration {
+        name: "autonomous-service/0008_manage_dead_letter_replays",
+        sql: include_str!("../migrations/0008_manage_dead_letter_replays.sql"),
     },
 ];
 

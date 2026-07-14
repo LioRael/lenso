@@ -32,3 +32,12 @@ delivery evidence, and Module-owned business effects locally. Stable failure
 classification and controlled retry schedules persist beside Inbox history;
 poison and exhausted deliveries move to durable dead-letter state without
 blocking later healthy events.
+
+Dead-letter operator workflows return stable, versioned command results.
+`inspect_dead_letters` returns deterministic evidence;
+`plan_dead_letter_replay` and `plan_dead_letter_cleanup` are non-mutating dry
+runs; replay preserves the original Event Envelope while recording a distinct
+delivery attempt. Production replay requires explicit production approval, and
+all destructive cleanup requires explicit approval. Cleanup removes only
+resolved dead-letter records while retaining Inbox deduplication state,
+delivery evidence, and replay audit records.

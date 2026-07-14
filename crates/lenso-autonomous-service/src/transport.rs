@@ -1126,6 +1126,16 @@ pub async fn consume_service_events_once_at(
                     }),
                 )
                 .await?;
+                if existing_status == InboxStatus::Completed {
+                    complete_active_replay(
+                        &mut transaction,
+                        consumer_id,
+                        &delivery.envelope.event_id,
+                        now,
+                        true,
+                    )
+                    .await?;
+                }
                 transaction.commit().await.map_err(|error| {
                     TransportError::store(
                         "Could not commit duplicate Service Inbox evidence",
@@ -1230,6 +1240,14 @@ pub async fn consume_service_events_once_at(
                 "Service Inbox completion lost its state transition",
             ));
         }
+        complete_active_replay(
+            &mut transaction,
+            consumer_id,
+            &delivery.envelope.event_id,
+            now,
+            false,
+        )
+        .await?;
         transaction.commit().await.map_err(|error| {
             TransportError::store("Could not commit Service Inbox business effect", error)
         })?;
@@ -1243,6 +1261,59 @@ pub async fn consume_service_events_once_at(
         completed += 1;
     }
     first_handler_failure.map_or(Ok(completed), Err)
+}
+
+async fn complete_active_replay(
+    transaction: &mut Transaction<'_, Postgres>,
+    consumer_id: &str,
+    event_id: &str,
+    completed_at: chrono::DateTime<chrono::Utc>,
+    duplicate: bool,
+) -> Result<(), TransportError> {
+    let resolved = sqlx::query(
+        r#"
+        update platform.service_event_dead_letters
+        set status = 'resolved', resolved_at = $3
+        where consumer_id = $1 and event_id = $2 and status = 'replay_active'
+        "#,
+    )
+    .bind(consumer_id)
+    .bind(event_id)
+    .bind(completed_at)
+    .execute(&mut **transaction)
+    .await
+    .map_err(|error| TransportError::store("Could not resolve replayed dead letter", error))?;
+    if resolved.rows_affected() == 0 {
+        return Ok(());
+    }
+    let replay_status = if duplicate {
+        "duplicate_completed"
+    } else {
+        "completed"
+    };
+    sqlx::query(
+        r#"
+        update platform.service_event_replays
+        set status = $3, completed_at = $4
+        where consumer_id = $1 and event_id = $2 and status = 'published'
+        "#,
+    )
+    .bind(consumer_id)
+    .bind(event_id)
+    .bind(replay_status)
+    .bind(completed_at)
+    .execute(&mut **transaction)
+    .await
+    .map_err(|error| TransportError::store("Could not complete replay audit", error))?;
+    record_service_evidence(
+        transaction,
+        "replay",
+        replay_status,
+        event_id,
+        None,
+        json!({"duplicate": duplicate}),
+    )
+    .await
 }
 
 async fn acknowledge_service_delivery(
