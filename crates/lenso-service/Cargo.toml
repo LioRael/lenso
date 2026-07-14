@@ -15,6 +15,7 @@ axum.workspace = true
 chrono.workspace = true
 http.workspace = true
 jsonschema.workspace = true
+jsonwebtoken.workspace = true
 lenso-contracts.workspace = true
 prost.workspace = true
 prost-types.workspace = true

@@ -9,6 +9,7 @@ mod direct_grpc;
 mod direct_http;
 mod endpoint_resolution;
 mod event_envelope;
+mod workload_identity;
 
 pub use call_policy::{
     CallPolicyCircuitBreaker, CallPolicyClock, CallPolicyConcurrency, CallPolicyDeclaration,
@@ -22,9 +23,10 @@ pub mod support_grpc_v1 {
 }
 
 pub use direct_grpc::{
-    DirectGrpcAdmissionError, DirectGrpcBindings, DirectGrpcCallError, DirectGrpcClient,
-    DirectGrpcEvidence, DirectGrpcOperation, DirectGrpcResponse, DirectGrpcServerPolicy,
-    GrpcIdempotency, generate_direct_grpc_bindings, parse_protobuf_call_policies,
+    DirectGrpcAdmission, DirectGrpcAdmissionError, DirectGrpcBindings, DirectGrpcCallError,
+    DirectGrpcClient, DirectGrpcEvidence, DirectGrpcOperation, DirectGrpcResponse,
+    DirectGrpcServerPolicy, GrpcIdempotency, generate_direct_grpc_bindings,
+    parse_protobuf_call_policies,
 };
 pub use direct_http::{
     DirectHttpBindings, DirectHttpCall, DirectHttpCallError, DirectHttpClient, DirectHttpEvidence,
@@ -43,6 +45,12 @@ pub use event_envelope::{
     EventEnvelopeIssueCode, GeneratedEventContract,
     evaluate_generated_event_contract_compatibility, event_envelope_from_cloudevent,
     generate_event_contract, validate_event_envelope, validate_event_envelope_value,
+};
+pub use workload_identity::{
+    AuthenticatedServicePrincipal, AuthenticatedTransportBinding,
+    SystemSandboxWorkloadIdentityProvider, WorkloadCredential, WorkloadCredentialRequest,
+    WorkloadIdentityError, WorkloadIdentityErrorCode, WorkloadIdentityEvidence,
+    WorkloadIdentityProvider, WorkloadIdentityRotationEvidence, WorkloadIdentityVerification,
 };
 
 pub use lenso_contracts::ModuleManifest;
