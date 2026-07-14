@@ -28,4 +28,7 @@ transport: it requires no broker, Kubernetes, service mesh, Runtime Console,
 or System Plane. A Service records publication intent through
 `ServiceEventPublisher` in the same Store transaction as its business write;
 the relay and consumer helpers retain Service-owned Outbox, Inbox, terminal
-delivery evidence, and Module-owned business effects locally.
+delivery evidence, and Module-owned business effects locally. Stable failure
+classification and controlled retry schedules persist beside Inbox history;
+poison and exhausted deliveries move to durable dead-letter state without
+blocking later healthy events.

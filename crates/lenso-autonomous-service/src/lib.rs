@@ -104,6 +104,10 @@ pub const SERVICE_RUNTIME_MIGRATIONS: &[Migration] = &[
         name: "autonomous-service/0005_make_event_inbox_idempotent",
         sql: include_str!("../migrations/0005_make_event_inbox_idempotent.sql"),
     },
+    Migration {
+        name: "autonomous-service/0006_classify_event_delivery_failures",
+        sql: include_str!("../migrations/0006_classify_event_delivery_failures.sql"),
+    },
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]

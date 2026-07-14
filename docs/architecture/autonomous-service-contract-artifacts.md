@@ -123,7 +123,13 @@ Service Store transaction before acknowledging delivery. Service-local Outbox,
 Inbox, and terminal evidence remain inspectable through
 `GET /runtime/event-deliveries`.
 
-This first flow establishes local delivery, not the complete at-least-once
-reliability lifecycle. Stable consumer/event deduplication, concurrent
-redelivery handling, restart recovery, ordering policy, dead-letter state, and
-replay are separate reliability slices.
+Inbox consumption is idempotent by consumer and stable event identity. Delivery
+failures use protocol-neutral `retryable`, `non_retryable`, `expired`,
+`unauthorized`, `incompatible`, `poison`, and `exhausted` reasons while retaining
+the handler reason code and adapter diagnostic. A Service-owned retry policy
+persists attempt count, next-attempt time, history, and terminal outcome;
+controlled-time consumers can advance the schedule without wall-clock sleeps.
+Poison and exhausted events enter durable dead-letter state with the original
+Event Envelope, contract identity, delivery history, failure evidence, and
+operator next actions. Terminal isolation lets later healthy events continue.
+Replay remains a separate reliability slice.

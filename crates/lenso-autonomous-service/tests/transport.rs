@@ -3,11 +3,12 @@ use axum::body::Body;
 use http::{Request, StatusCode};
 use http_body_util::BodyExt as _;
 use lenso_autonomous_service::{
-    LocalTransportAdapter, ServiceEventHandler, ServiceEventPublisher, TransportAdapter,
-    TransportDelivery, TransportDiagnostic, TransportError, TransportErrorCode, TransportHealth,
-    TransportHealthStatus, TransportNegativeAcknowledgement, TransportPublication,
-    TransportPublicationReceipt, consume_service_events_once, prepare_runtime,
-    relay_service_events_once,
+    DeliveryFailureReason, LocalTransportAdapter, ServiceEventHandler, ServiceEventHandlerError,
+    ServiceEventPublisher, ServiceEventRetryPolicy, TransportAdapter, TransportDelivery,
+    TransportDiagnostic, TransportError, TransportErrorCode, TransportFailureDisposition,
+    TransportHealth, TransportHealthStatus, TransportNegativeAcknowledgement, TransportPublication,
+    TransportPublicationReceipt, consume_service_events_once, consume_service_events_once_at,
+    prepare_runtime, relay_service_events_once,
 };
 use lenso_service::{
     AutonomousServiceContract, AutonomousServiceStore, AutonomousServiceWorkload, EventEnvelope,
@@ -71,6 +72,32 @@ fn support_flow_uses_the_authoritative_event_envelope() {
     assert_eq!(envelope.tenancy_mode, ServiceTenancyMode::Required);
 }
 
+#[test]
+fn delivery_failures_use_stable_protocol_neutral_reasons() {
+    let failures = [
+        ServiceEventHandlerError::retryable("dependency_unavailable", "temporary outage"),
+        ServiceEventHandlerError::rejected_with_code("invalid_state", "invalid state"),
+        ServiceEventHandlerError::expired("event_deadline_elapsed", "deadline elapsed"),
+        ServiceEventHandlerError::unauthorized("identity_not_allowed", "identity denied"),
+        ServiceEventHandlerError::incompatible("contract_not_supported", "contract mismatch"),
+        ServiceEventHandlerError::poison("invalid_support_payload", "payload cannot be handled"),
+    ];
+
+    assert_eq!(
+        failures.each_ref().map(|failure| failure.failure_reason),
+        [
+            DeliveryFailureReason::Retryable,
+            DeliveryFailureReason::NonRetryable,
+            DeliveryFailureReason::Expired,
+            DeliveryFailureReason::Unauthorized,
+            DeliveryFailureReason::Incompatible,
+            DeliveryFailureReason::Poison,
+        ]
+    );
+    assert_eq!(failures[0].reason_code, "dependency_unavailable");
+    assert_eq!(failures[0].message, "temporary outage");
+}
+
 #[derive(Debug)]
 struct SupportSlaHandler;
 
@@ -85,6 +112,9 @@ struct RetryOnceSupportSlaHandler {
 }
 
 #[derive(Debug)]
+struct ClassifiedFailureSupportSlaHandler;
+
+#[derive(Debug)]
 struct PublishThenFailAdapter<'a> {
     adapter: &'a LocalTransportAdapter,
     should_fail: AtomicBool,
@@ -92,6 +122,9 @@ struct PublishThenFailAdapter<'a> {
 
 #[derive(Debug)]
 struct FailingAcknowledgementAdapter<'a>(&'a LocalTransportAdapter);
+
+#[derive(Debug)]
+struct ReversingDeliveryAdapter<'a>(&'a LocalTransportAdapter);
 
 #[async_trait]
 impl TransportAdapter for PublishThenFailAdapter<'_> {
@@ -182,6 +215,65 @@ impl TransportAdapter for FailingAcknowledgementAdapter<'_> {
 }
 
 #[async_trait]
+impl TransportAdapter for ReversingDeliveryAdapter<'_> {
+    async fn publish(
+        &self,
+        publication: TransportPublication,
+    ) -> Result<TransportPublicationReceipt, TransportError> {
+        self.0.publish(publication).await
+    }
+
+    async fn receive(
+        &self,
+        consumer_id: &str,
+        limit: i64,
+    ) -> Result<Vec<TransportDelivery>, TransportError> {
+        let mut deliveries = self.0.receive(consumer_id, limit).await?;
+        deliveries.reverse();
+        Ok(deliveries)
+    }
+
+    async fn receive_at(
+        &self,
+        consumer_id: &str,
+        limit: i64,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Vec<TransportDelivery>, TransportError> {
+        let mut deliveries = self.0.receive_at(consumer_id, limit, now).await?;
+        deliveries.reverse();
+        Ok(deliveries)
+    }
+
+    async fn acknowledge(&self, delivery: &TransportDelivery) -> Result<(), TransportError> {
+        self.0.acknowledge(delivery).await
+    }
+
+    async fn negative_acknowledge(
+        &self,
+        delivery: &TransportDelivery,
+        acknowledgement: TransportNegativeAcknowledgement,
+    ) -> Result<(), TransportError> {
+        self.0.negative_acknowledge(delivery, acknowledgement).await
+    }
+
+    async fn record_failure(
+        &self,
+        delivery: &TransportDelivery,
+        disposition: TransportFailureDisposition,
+    ) -> Result<(), TransportError> {
+        self.0.record_failure(delivery, disposition).await
+    }
+
+    async fn health(&self) -> Result<TransportHealth, TransportError> {
+        self.0.health().await
+    }
+
+    async fn diagnostics(&self) -> Result<Vec<TransportDiagnostic>, TransportError> {
+        self.0.diagnostics().await
+    }
+}
+
+#[async_trait]
 impl ServiceEventHandler for SupportSlaHandler {
     async fn handle(
         &self,
@@ -238,6 +330,280 @@ impl ServiceEventHandler for RetryOnceSupportSlaHandler {
         }
         SupportSlaHandler.handle(transaction, envelope).await
     }
+}
+
+#[async_trait]
+impl ServiceEventHandler for ClassifiedFailureSupportSlaHandler {
+    async fn handle(
+        &self,
+        transaction: &mut Transaction<'_, Postgres>,
+        envelope: &EventEnvelope,
+    ) -> Result<(), ServiceEventHandlerError> {
+        match envelope.event_id.as_str() {
+            "support-event-poison" => Err(ServiceEventHandlerError::poison(
+                "invalid_support_payload",
+                "Support payload cannot be handled",
+            )),
+            "support-event-exhausted" => Err(ServiceEventHandlerError::retryable(
+                "support_sla_temporarily_unavailable",
+                "Support SLA handler is temporarily unavailable",
+            )),
+            _ => SupportSlaHandler.handle(transaction, envelope).await,
+        }
+    }
+}
+
+#[tokio::test]
+async fn controlled_retries_dead_letter_poison_without_blocking_healthy_events() {
+    let Some(consumer) = TestDatabase::create().await else {
+        return;
+    };
+    let Some(transport_store) = TestDatabase::create().await else {
+        consumer.cleanup().await;
+        return;
+    };
+    let consumer_state = prepare_runtime(
+        &service("support-sla", "support-sla-store"),
+        &lenso_autonomous_service::ServiceRuntimeConfig::new(
+            "support-sla",
+            "support-sla-store",
+            "support-sla",
+        ),
+        consumer.pool.clone(),
+        &[platform_core::Migration {
+            name: "support-sla/0001_create_escalations",
+            sql: "create table support_sla_escalations (ticket_id text primary key, source_event_id text not null);",
+        }],
+    )
+    .await
+    .unwrap();
+    let adapter = LocalTransportAdapter::prepare(transport_store.pool.clone())
+        .await
+        .unwrap();
+    let policy = ServiceEventRetryPolicy::new(2, vec![chrono::Duration::seconds(5)]);
+    let now = chrono::DateTime::parse_from_rfc3339("2026-07-15T09:00:00Z")
+        .unwrap()
+        .to_utc();
+
+    for (event_id, ticket_id) in [
+        ("support-event-poison", "ticket_poison"),
+        ("support-event-healthy", "ticket_healthy"),
+    ] {
+        adapter
+            .publish(TransportPublication {
+                consumer_id: "support-sla".to_owned(),
+                envelope: support_ticket_opened(event_id, ticket_id),
+            })
+            .await
+            .unwrap();
+    }
+    assert_eq!(
+        consume_service_events_once_at(
+            &consumer_state,
+            &adapter,
+            "support-sla",
+            &ClassifiedFailureSupportSlaHandler,
+            10,
+            now,
+            &policy,
+        )
+        .await
+        .unwrap(),
+        1
+    );
+    let healthy_effects: i64 = sqlx::query_scalar(
+        "select count(*) from support_sla_escalations where source_event_id = 'support-event-healthy'",
+    )
+    .fetch_one(&consumer.pool)
+    .await
+    .unwrap();
+    assert_eq!(healthy_effects, 1);
+
+    let poison_dead_letter: (
+        String,
+        String,
+        String,
+        i32,
+        serde_json::Value,
+        serde_json::Value,
+        serde_json::Value,
+    ) = sqlx::query_as(
+        r"
+            select failure_reason, contract_id, contract_version, attempt_count,
+                   delivery_history, next_actions, envelope
+            from platform.service_event_dead_letters
+            where consumer_id = 'support-sla' and event_id = 'support-event-poison'
+            ",
+    )
+    .fetch_one(&consumer.pool)
+    .await
+    .unwrap();
+    assert_eq!(poison_dead_letter.0, "poison");
+    assert_eq!(poison_dead_letter.1, "ticket-opened");
+    assert_eq!(poison_dead_letter.2, "v1");
+    assert_eq!(poison_dead_letter.3, 1);
+    assert_eq!(poison_dead_letter.4.as_array().unwrap().len(), 1);
+    assert_eq!(
+        poison_dead_letter.5,
+        serde_json::json!(["inspect_payload", "correct_producer", "replay_event"])
+    );
+    assert_eq!(poison_dead_letter.6["eventId"], "support-event-poison");
+
+    adapter
+        .publish(TransportPublication {
+            consumer_id: "support-sla".to_owned(),
+            envelope: support_ticket_opened("support-event-exhausted", "ticket_exhausted"),
+        })
+        .await
+        .unwrap();
+    adapter
+        .publish(TransportPublication {
+            consumer_id: "support-sla".to_owned(),
+            envelope: support_ticket_opened(
+                "support-event-healthy-after-retry",
+                "ticket_healthy_after_retry",
+            ),
+        })
+        .await
+        .unwrap();
+    let first_failure = consume_service_events_once_at(
+        &consumer_state,
+        &adapter,
+        "support-sla",
+        &ClassifiedFailureSupportSlaHandler,
+        2,
+        now,
+        &policy,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(first_failure.code, TransportErrorCode::HandlerFailed);
+    let healthy_after_retry: i64 = sqlx::query_scalar(
+        "select count(*) from support_sla_escalations where source_event_id = 'support-event-healthy-after-retry'",
+    )
+    .fetch_one(&consumer.pool)
+    .await
+    .unwrap();
+    assert_eq!(healthy_after_retry, 1);
+    let scheduled: (
+        i32,
+        chrono::DateTime<chrono::Utc>,
+        Option<String>,
+        i32,
+        serde_json::Value,
+    ) = sqlx::query_as(
+        r"
+        select attempt_count, next_attempt_at, terminal_outcome,
+               max_attempts, retry_schedule
+        from platform.service_event_inbox
+        where consumer_id = 'support-sla' and event_id = 'support-event-exhausted'
+        ",
+    )
+    .fetch_one(&consumer.pool)
+    .await
+    .unwrap();
+    assert_eq!(scheduled.0, 1);
+    assert_eq!(scheduled.1, now + chrono::Duration::seconds(5));
+    assert_eq!(scheduled.2, None);
+    assert_eq!(scheduled.3, 2);
+    assert_eq!(scheduled.4, serde_json::json!([5000]));
+
+    let mut changed_redelivery =
+        support_ticket_opened("support-event-exhausted", "ticket_changed_on_redelivery");
+    changed_redelivery.content.data["priority"] = serde_json::json!("changed");
+    adapter
+        .publish(TransportPublication {
+            consumer_id: "support-sla".to_owned(),
+            envelope: changed_redelivery,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(
+        consume_service_events_once_at(
+            &consumer_state,
+            &adapter,
+            "support-sla",
+            &ClassifiedFailureSupportSlaHandler,
+            1,
+            now + chrono::Duration::seconds(4),
+            &policy,
+        )
+        .await
+        .unwrap(),
+        0
+    );
+    let drifted_policy = ServiceEventRetryPolicy::new(
+        10,
+        vec![chrono::Duration::hours(1), chrono::Duration::hours(2)],
+    );
+    assert_eq!(
+        consume_service_events_once_at(
+            &consumer_state,
+            &ReversingDeliveryAdapter(&adapter),
+            "support-sla",
+            &ClassifiedFailureSupportSlaHandler,
+            2,
+            now + chrono::Duration::seconds(5),
+            &drifted_policy,
+        )
+        .await
+        .unwrap(),
+        0
+    );
+    let exhausted: (String, i32, String, serde_json::Value, serde_json::Value) = sqlx::query_as(
+        r"
+        select failure_reason, attempt_count, terminal_outcome, delivery_history, envelope
+        from platform.service_event_dead_letters
+        where consumer_id = 'support-sla' and event_id = 'support-event-exhausted'
+        ",
+    )
+    .fetch_one(&consumer.pool)
+    .await
+    .unwrap();
+    assert_eq!(exhausted.0, "exhausted");
+    assert_eq!(exhausted.1, 2);
+    assert_eq!(exhausted.2, "dead_lettered");
+    assert_eq!(exhausted.3.as_array().unwrap().len(), 2);
+    assert_eq!(
+        exhausted.4["content"]["data"]["ticketId"],
+        "ticket_exhausted"
+    );
+    let diagnostics = adapter.diagnostics().await.unwrap();
+    assert!(diagnostics.iter().any(|entry| {
+        entry.event_id == "support-event-poison"
+            && entry.outcome == "failure_recorded"
+            && entry.detail["failureReason"] == "poison"
+            && entry.detail["reasonCode"] == "invalid_support_payload"
+    }));
+    assert!(diagnostics.iter().any(|entry| {
+        entry.event_id == "support-event-exhausted"
+            && entry.detail["failureReason"] == "exhausted"
+            && entry.detail["terminalOutcome"] == "dead_lettered"
+    }));
+    let terminal_evidence: (String, String, String) = sqlx::query_as(
+        r"
+        select outcome, detail ->> 'failureReason', detail ->> 'terminalOutcome'
+        from platform.service_event_delivery_evidence
+        where event_id = 'support-event-exhausted' and outcome = 'dead_lettered'
+        ",
+    )
+    .fetch_one(&consumer.pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        terminal_evidence,
+        (
+            "dead_lettered".to_owned(),
+            "exhausted".to_owned(),
+            "dead_lettered".to_owned(),
+        )
+    );
+
+    drop(consumer_state);
+    drop(adapter);
+    consumer.cleanup().await;
+    transport_store.cleanup().await;
 }
 
 #[tokio::test]
@@ -536,6 +902,10 @@ async fn local_transport_delivers_support_event_from_outbox_through_inbox() {
     let retry_once_handler = RetryOnceSupportSlaHandler {
         should_fail: AtomicBool::new(true),
     };
+    let retry_now = chrono::DateTime::parse_from_rfc3339("2026-07-15T09:00:00Z")
+        .unwrap()
+        .to_utc();
+    let immediate_retry_policy = ServiceEventRetryPolicy::new(3, vec![chrono::Duration::zero()]);
     adapter
         .publish(TransportPublication {
             consumer_id: "support-sla".to_owned(),
@@ -543,12 +913,14 @@ async fn local_transport_delivers_support_event_from_outbox_through_inbox() {
         })
         .await
         .unwrap();
-    let retryable_error = consume_service_events_once(
+    let retryable_error = consume_service_events_once_at(
         &consumer_state,
         &adapter,
         "support-sla",
         &retry_once_handler,
         1,
+        retry_now,
+        &immediate_retry_policy,
     )
     .await
     .unwrap_err();
@@ -561,19 +933,23 @@ async fn local_transport_delivers_support_event_from_outbox_through_inbox() {
         .await
         .unwrap();
     let (first_retry, second_retry) = tokio::join!(
-        consume_service_events_once(
+        consume_service_events_once_at(
             &consumer_state,
             &adapter,
             "support-sla",
             &retry_once_handler,
             1,
+            retry_now,
+            &immediate_retry_policy,
         ),
-        consume_service_events_once(
+        consume_service_events_once_at(
             &consumer_state,
             &adapter,
             "support-sla",
             &retry_once_handler,
             1,
+            retry_now,
+            &immediate_retry_policy,
         ),
     );
     let mut retry_completions = [first_retry.unwrap(), second_retry.unwrap()];
@@ -627,16 +1003,18 @@ async fn local_transport_delivers_support_event_from_outbox_through_inbox() {
         })
         .await
         .unwrap();
-    let rejected = consume_service_events_once(
-        &consumer_state,
-        &adapter,
-        "support-sla",
-        &watermark_handler,
-        1,
-    )
-    .await
-    .unwrap_err();
-    assert_eq!(rejected.code, TransportErrorCode::HandlerFailed);
+    assert_eq!(
+        consume_service_events_once(
+            &consumer_state,
+            &adapter,
+            "support-sla",
+            &watermark_handler,
+            1,
+        )
+        .await
+        .unwrap(),
+        0
+    );
     let rejected_inbox: (String, String) = sqlx::query_as(
         "select status, last_error from platform.service_event_inbox where consumer_id = 'support-sla' and event_id = 'support-event-delayed'",
     )
