@@ -2,19 +2,21 @@ use async_trait::async_trait;
 use lenso_autonomous_service::{
     DeadLetterApprovalRequest, DeadLetterAuthorityVerifier, DeadLetterInspectQuery,
     DeadLetterOperatorEnvironment, DeadLetterOperatorErrorCode, LocalTransportAdapter,
-    ServiceEventHandler, ServiceEventHandlerError, TransportAdapter, TransportDelivery,
-    TransportDeploymentClass, TransportDiagnostic, TransportError, TransportHealth,
-    TransportNegativeAcknowledgement, TransportPublication, TransportPublicationReceipt,
-    cleanup_dead_letters, consume_service_events_once, inspect_dead_letters,
-    plan_dead_letter_cleanup, plan_dead_letter_replay, prepare_runtime, replay_dead_letter,
-    retain_dead_letter_until, verify_dead_letter_authority,
+    ServiceEventHandler, ServiceEventHandlerError, ServiceEventWorkloadIdentity, TransportAdapter,
+    TransportDelivery, TransportDeploymentClass, TransportDiagnostic, TransportError,
+    TransportHealth, TransportNegativeAcknowledgement, TransportPublication,
+    TransportPublicationReceipt, cleanup_dead_letters, consume_service_events_once,
+    inspect_dead_letters, plan_dead_letter_cleanup, plan_dead_letter_replay, prepare_runtime,
+    replay_dead_letter, retain_dead_letter_until, verify_dead_letter_authority,
 };
 use lenso_service::{
     AutonomousServiceContract, AutonomousServiceStore, AutonomousServiceWorkload,
-    ServiceTenancyMode, WorkloadRole,
+    ServiceTenancyMode, SystemSandboxWorkloadIdentityProvider, WorkloadCredentialRequest,
+    WorkloadIdentityProvider, WorkloadRole,
 };
 use platform_testing::TestDatabase;
 use sqlx::{Postgres, Transaction};
+use std::sync::Arc;
 
 #[derive(Debug)]
 struct ReplaySupportHandler;
@@ -292,10 +294,25 @@ async fn replay_dry_run_is_non_mutating_and_execution_preserves_business_identit
     let adapter = LocalTransportAdapter::prepare(transport_database.pool.clone())
         .await
         .unwrap();
-    let envelope: lenso_service::EventEnvelope = serde_json::from_str(include_str!(
+    let provider = Arc::new(
+        SystemSandboxWorkloadIdentityProvider::new("local", "replay-event-sandbox-secret").unwrap(),
+    );
+    let now_ms = u64::try_from(chrono::Utc::now().timestamp_millis()).unwrap();
+    let credential = provider
+        .issue(WorkloadCredentialRequest::new(
+            "service:support",
+            "support-sla",
+            "sandbox-event:local-transport",
+            now_ms,
+            300_000,
+        ))
+        .unwrap();
+    let receiver = ServiceEventWorkloadIdentity::new(provider, "support-sla");
+    let mut envelope: lenso_service::EventEnvelope = serde_json::from_str(include_str!(
         "../../../contracts/events/support/support.ticket-opened.v1.envelope.json"
     ))
     .unwrap();
+    envelope.context.service_principal = Some(credential.service_principal_context());
     let envelope_json = serde_json::to_value(&envelope).unwrap();
     insert_replayable_dead_letter(&database.pool, &envelope).await;
 
@@ -342,9 +359,16 @@ async fn replay_dry_run_is_non_mutating_and_execution_preserves_business_identit
     assert_eq!(result.contract_version, envelope.contract_version);
     assert_ne!(result.delivery_id, "delivery-original");
     assert_eq!(
-        consume_service_events_once(&state, &adapter, "support-sla", &ReplaySupportHandler, 1,)
-            .await
-            .unwrap(),
+        consume_service_events_once(
+            &state,
+            &adapter,
+            "support-sla",
+            &ReplaySupportHandler,
+            1,
+            &receiver,
+        )
+        .await
+        .unwrap(),
         1
     );
     let first_replay_status: String = sqlx::query_scalar(
@@ -363,9 +387,16 @@ async fn replay_dry_run_is_non_mutating_and_execution_preserves_business_identit
     .unwrap();
     assert_eq!(active_status, "replay_active");
     assert_eq!(
-        consume_service_events_once(&state, &adapter, "support-sla", &ReplaySupportHandler, 1,)
-            .await
-            .unwrap(),
+        consume_service_events_once(
+            &state,
+            &adapter,
+            "support-sla",
+            &ReplaySupportHandler,
+            1,
+            &receiver,
+        )
+        .await
+        .unwrap(),
         0
     );
     let first_replay_status: String = sqlx::query_scalar(
@@ -385,9 +416,16 @@ async fn replay_dry_run_is_non_mutating_and_execution_preserves_business_identit
         .unwrap();
     assert_ne!(duplicate_result.delivery_id, result.delivery_id);
     assert_eq!(
-        consume_service_events_once(&state, &adapter, "support-sla", &ReplaySupportHandler, 10,)
-            .await
-            .unwrap(),
+        consume_service_events_once(
+            &state,
+            &adapter,
+            "support-sla",
+            &ReplaySupportHandler,
+            10,
+            &receiver,
+        )
+        .await
+        .unwrap(),
         0
     );
     let effect_count: i64 = sqlx::query_scalar("select count(*) from replay_effects")

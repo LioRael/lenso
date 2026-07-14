@@ -1,6 +1,8 @@
 use crate::{
-    CallPolicyDeclaration, CallPolicyEvent, CallPolicyEvidence, CallPolicyFailure,
-    CallPolicyRuntime, CallPolicyTerminalOutcome, EndpointResolver, ServiceReference,
+    AuthenticatedServicePrincipal, AuthenticatedTransportBinding, CallPolicyDeclaration,
+    CallPolicyEvent, CallPolicyEvidence, CallPolicyFailure, CallPolicyRuntime,
+    CallPolicyTerminalOutcome, EndpointResolver, ServiceReference, WorkloadIdentityProvider,
+    WorkloadIdentityVerification,
 };
 use axum::{
     Router,
@@ -22,6 +24,7 @@ use std::{
 
 const DEADLINE_HEADER: &str = "x-lenso-deadline-unix-ms";
 const IDEMPOTENCY_HEADER: &str = "idempotency-key";
+const AUTHORIZATION_HEADER: &str = "authorization";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -224,6 +227,9 @@ pub struct DirectHttpRequest {
     pub body: Bytes,
     pub deadline_unix_ms: Option<u64>,
     pub idempotency_key: Option<String>,
+    pub workload_credential: Option<String>,
+    pub authenticated_transport_binding: Option<String>,
+    pub authenticated_service_principal: Option<AuthenticatedServicePrincipal>,
 }
 
 impl DirectHttpRequest {
@@ -236,12 +242,27 @@ impl DirectHttpRequest {
             body: Bytes::new(),
             deadline_unix_ms: None,
             idempotency_key: None,
+            workload_credential: None,
+            authenticated_transport_binding: None,
+            authenticated_service_principal: None,
         }
     }
 
     #[must_use]
     pub fn with_deadline(mut self, deadline_unix_ms: u64) -> Self {
         self.deadline_unix_ms = Some(deadline_unix_ms);
+        self
+    }
+
+    #[must_use]
+    pub fn with_workload_credential(mut self, credential: impl Into<String>) -> Self {
+        self.workload_credential = Some(credential.into());
+        self
+    }
+
+    #[must_use]
+    pub fn with_authenticated_transport_binding(mut self, binding: impl Into<String>) -> Self {
+        self.authenticated_transport_binding = Some(binding.into());
         self
     }
 }
@@ -322,6 +343,13 @@ struct ServerInner {
     bindings: DirectHttpBindings,
     handler: Arc<Handler>,
     policy_runtime: CallPolicyRuntime,
+    workload_identity: Option<DirectHttpWorkloadIdentity>,
+}
+
+#[derive(Debug, Clone)]
+struct DirectHttpWorkloadIdentity {
+    provider: Arc<dyn WorkloadIdentityProvider>,
+    audience: String,
 }
 
 impl std::fmt::Debug for DirectHttpServerBinding {
@@ -334,15 +362,58 @@ impl std::fmt::Debug for DirectHttpServerBinding {
 }
 
 impl DirectHttpServerBinding {
-    pub fn new<F, Fut>(bindings: DirectHttpBindings, handler: F) -> Self
+    pub fn new<F, Fut>(
+        bindings: DirectHttpBindings,
+        provider: Arc<dyn WorkloadIdentityProvider>,
+        audience: impl Into<String>,
+        handler: F,
+    ) -> Self
     where
         F: Fn(DirectHttpRequest) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = DirectHttpResponse> + Send + 'static,
     {
-        Self::new_with_policy_runtime(bindings, CallPolicyRuntime::default(), handler)
+        Self::new_with_policy_runtime_unchecked(bindings, CallPolicyRuntime::default(), handler)
+            .with_workload_identity(provider, audience)
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn new_without_workload_identity<F, Fut>(bindings: DirectHttpBindings, handler: F) -> Self
+    where
+        F: Fn(DirectHttpRequest) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = DirectHttpResponse> + Send + 'static,
+    {
+        Self::new_with_policy_runtime_unchecked(bindings, CallPolicyRuntime::default(), handler)
     }
 
     pub fn new_with_policy_runtime<F, Fut>(
+        bindings: DirectHttpBindings,
+        policy_runtime: CallPolicyRuntime,
+        provider: Arc<dyn WorkloadIdentityProvider>,
+        audience: impl Into<String>,
+        handler: F,
+    ) -> Self
+    where
+        F: Fn(DirectHttpRequest) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = DirectHttpResponse> + Send + 'static,
+    {
+        Self::new_with_policy_runtime_unchecked(bindings, policy_runtime, handler)
+            .with_workload_identity(provider, audience)
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn new_with_policy_runtime_without_workload_identity<F, Fut>(
+        bindings: DirectHttpBindings,
+        policy_runtime: CallPolicyRuntime,
+        handler: F,
+    ) -> Self
+    where
+        F: Fn(DirectHttpRequest) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = DirectHttpResponse> + Send + 'static,
+    {
+        Self::new_with_policy_runtime_unchecked(bindings, policy_runtime, handler)
+    }
+
+    fn new_with_policy_runtime_unchecked<F, Fut>(
         bindings: DirectHttpBindings,
         policy_runtime: CallPolicyRuntime,
         handler: F,
@@ -356,6 +427,26 @@ impl DirectHttpServerBinding {
                 bindings,
                 handler: Arc::new(move |request| Box::pin(handler(request))),
                 policy_runtime,
+                workload_identity: None,
+            }),
+        }
+    }
+
+    #[must_use]
+    pub fn with_workload_identity(
+        self,
+        provider: Arc<dyn WorkloadIdentityProvider>,
+        audience: impl Into<String>,
+    ) -> Self {
+        Self {
+            inner: Arc::new(ServerInner {
+                bindings: self.inner.bindings.clone(),
+                handler: Arc::clone(&self.inner.handler),
+                policy_runtime: self.inner.policy_runtime.clone(),
+                workload_identity: Some(DirectHttpWorkloadIdentity {
+                    provider,
+                    audience: audience.into(),
+                }),
             }),
         }
     }
@@ -373,7 +464,7 @@ impl DirectHttpServerBinding {
 }
 
 impl ServerInner {
-    async fn handle(&self, request: DirectHttpRequest) -> DirectHttpResponse {
+    async fn handle(&self, mut request: DirectHttpRequest) -> DirectHttpResponse {
         let Some(operation) = self.bindings.match_request(&request.method, &request.path) else {
             return DirectHttpResponse::problem(
                 StatusCode::NOT_FOUND,
@@ -382,6 +473,38 @@ impl ServerInner {
                 None,
             );
         };
+        if let Some(identity) = &self.workload_identity {
+            let Some(credential) = request.workload_credential.as_deref() else {
+                return DirectHttpResponse::problem(
+                    StatusCode::UNAUTHORIZED,
+                    "workload_identity_required",
+                    "Workload Identity credential is required",
+                    Some(operation.operation_id.clone()),
+                );
+            };
+            let Some(binding) = request.authenticated_transport_binding.as_deref() else {
+                return DirectHttpResponse::problem(
+                    StatusCode::UNAUTHORIZED,
+                    "authenticated_transport_binding_required",
+                    "Authenticated transport binding is required",
+                    Some(operation.operation_id.clone()),
+                );
+            };
+            match identity.provider.verify(
+                credential,
+                &WorkloadIdentityVerification::new(&identity.audience, binding, now_ms()),
+            ) {
+                Ok(principal) => request.authenticated_service_principal = Some(principal),
+                Err(error) => {
+                    return DirectHttpResponse::problem(
+                        StatusCode::UNAUTHORIZED,
+                        &error.evidence.outcome,
+                        &error.message,
+                        Some(operation.operation_id.clone()),
+                    );
+                }
+            }
+        }
         if request
             .deadline_unix_ms
             .is_none_or(|deadline| deadline <= now_ms())
@@ -431,6 +554,16 @@ async fn handle_axum(State(inner): State<Arc<ServerInner>>, request: Request) ->
         .get(IDEMPOTENCY_HEADER)
         .and_then(|value| value.to_str().ok())
         .map(str::to_owned);
+    let workload_credential = parts
+        .headers
+        .get(AUTHORIZATION_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .map(str::to_owned);
+    let authenticated_transport_binding = parts
+        .extensions
+        .get::<AuthenticatedTransportBinding>()
+        .map(|binding| binding.0.clone());
     let body = to_bytes(body, 16 * 1024 * 1024).await.unwrap_or_default();
     let response = inner
         .handle(DirectHttpRequest {
@@ -440,6 +573,9 @@ async fn handle_axum(State(inner): State<Arc<ServerInner>>, request: Request) ->
             body,
             deadline_unix_ms,
             idempotency_key,
+            workload_credential,
+            authenticated_transport_binding,
+            authenticated_service_principal: None,
         })
         .await;
     response.into_response()
@@ -461,6 +597,7 @@ pub struct DirectHttpCall {
     body: Option<Value>,
     deadline_unix_ms: Option<u64>,
     idempotency_key: Option<String>,
+    workload_credential: Option<String>,
 }
 impl DirectHttpCall {
     #[must_use]
@@ -471,6 +608,7 @@ impl DirectHttpCall {
             body: None,
             deadline_unix_ms: None,
             idempotency_key: None,
+            workload_credential: None,
         }
     }
     #[must_use]
@@ -495,6 +633,12 @@ impl DirectHttpCall {
     #[must_use]
     pub fn with_idempotency_key(mut self, key: impl Into<String>) -> Self {
         self.idempotency_key = Some(key.into());
+        self
+    }
+
+    #[must_use]
+    pub fn with_workload_credential(mut self, credential: impl Into<String>) -> Self {
+        self.workload_credential = Some(credential.into());
         self
     }
 }
@@ -626,6 +770,9 @@ impl<R: EndpointResolver> DirectHttpClient<R> {
                 .header(DEADLINE_HEADER, deadline);
             if let Some(key) = call.idempotency_key.as_deref() {
                 request = request.header(IDEMPOTENCY_HEADER, key);
+            }
+            if let Some(credential) = call.workload_credential.as_deref() {
+                request = request.bearer_auth(credential);
             }
             if let Some(body) = call.body.as_ref() {
                 request = request.json(body);

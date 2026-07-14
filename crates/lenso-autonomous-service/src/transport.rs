@@ -1,11 +1,14 @@
 use crate::ServiceRuntimeState;
 use async_trait::async_trait;
-use lenso_service::EventEnvelope;
+use lenso_service::{
+    AuthenticatedServicePrincipal, AuthenticatedTransportBinding, EventEnvelope,
+    WorkloadIdentityProvider, WorkloadIdentityVerification,
+};
 use platform_core::{AppError, ErrorCode, Migration, apply_migrations};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::{FromRow, PgPool, Postgres, Transaction};
-use std::fmt::Debug;
+use std::{fmt::Debug, sync::Arc};
 use thiserror::Error;
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -79,6 +82,7 @@ pub struct TransportDelivery {
     pub consumer_id: String,
     pub envelope: EventEnvelope,
     pub attempt: u32,
+    pub authenticated_transport_binding: AuthenticatedTransportBinding,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -251,10 +255,22 @@ pub trait TransportAdapter: Debug + Send + Sync {
 #[derive(Debug, Clone)]
 pub struct LocalTransportAdapter {
     pool: PgPool,
+    authenticated_transport_binding: AuthenticatedTransportBinding,
 }
 
 impl LocalTransportAdapter {
     pub async fn prepare(pool: PgPool) -> Result<Self, TransportError> {
+        Self::prepare_with_authenticated_transport_binding(
+            pool,
+            AuthenticatedTransportBinding::new("sandbox-event:local-transport"),
+        )
+        .await
+    }
+
+    pub async fn prepare_with_authenticated_transport_binding(
+        pool: PgPool,
+        authenticated_transport_binding: AuthenticatedTransportBinding,
+    ) -> Result<Self, TransportError> {
         apply_migrations(&pool, LOCAL_TRANSPORT_MIGRATIONS)
             .await
             .map_err(|error| TransportError {
@@ -262,7 +278,10 @@ impl LocalTransportAdapter {
                 message: "Local Transport Adapter Store migration failed".to_owned(),
                 source: Some(Box::new(error)),
             })?;
-        let adapter = Self { pool };
+        let adapter = Self {
+            pool,
+            authenticated_transport_binding,
+        };
         adapter.recover_unacknowledged().await?;
         Ok(adapter)
     }
@@ -452,6 +471,7 @@ impl TransportAdapter for LocalTransportAdapter {
                     consumer_id: row.consumer_id,
                     envelope,
                     attempt: u32::try_from(row.attempts).unwrap_or_default(),
+                    authenticated_transport_binding: self.authenticated_transport_binding.clone(),
                 })
             })
             .collect()
@@ -1000,14 +1020,104 @@ pub trait ServiceEventHandler: Debug + Send + Sync {
     ) -> Result<(), ServiceEventHandlerError>;
 }
 
+#[derive(Debug, Clone)]
+pub struct ServiceEventWorkloadIdentity {
+    provider: Arc<dyn WorkloadIdentityProvider>,
+    audience: String,
+}
+
+impl ServiceEventWorkloadIdentity {
+    #[must_use]
+    pub fn new(provider: Arc<dyn WorkloadIdentityProvider>, audience: impl Into<String>) -> Self {
+        Self {
+            provider,
+            audience: audience.into(),
+        }
+    }
+
+    fn authenticate(
+        &self,
+        envelope: &EventEnvelope,
+        authenticated_transport_binding: &AuthenticatedTransportBinding,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Result<AuthenticatedServicePrincipal, ServiceEventHandlerError> {
+        let claim = envelope.context.service_principal.as_ref().ok_or_else(|| {
+            ServiceEventHandlerError::unauthorized(
+                "workload_identity_required",
+                "Event Envelope requires a Workload Identity Service Principal",
+            )
+        })?;
+        let now_unix_ms = u64::try_from(now.timestamp_millis()).map_err(|_| {
+            ServiceEventHandlerError::unauthorized(
+                "workload_identity_time_invalid",
+                "Event receiver time cannot verify the Workload Identity credential",
+            )
+        })?;
+        let authenticated = self
+            .provider
+            .verify(
+                &claim.proof.signature,
+                &WorkloadIdentityVerification::new(
+                    &self.audience,
+                    &authenticated_transport_binding.0,
+                    now_unix_ms,
+                ),
+            )
+            .map_err(|error| {
+                ServiceEventHandlerError::unauthorized(error.evidence.outcome, error.message)
+            })?;
+        if claim.proof.algorithm != authenticated.algorithm
+            || claim.proof.verification_method != authenticated.key_id
+            || claim.issuer != authenticated.issuer
+            || claim.subject != authenticated.service_principal
+            || claim.credential_id != authenticated.credential_id
+            || claim.expires_at_unix_ms != authenticated.expires_at_unix_ms
+            || !claim
+                .audiences
+                .iter()
+                .any(|audience| audience == &authenticated.audience)
+            || authenticated.service_principal.strip_prefix("service:")
+                != Some(envelope.producer_service_id.as_str())
+        {
+            return Err(ServiceEventHandlerError::unauthorized(
+                "service_principal_claim_mismatch",
+                "Event Envelope Service Principal does not match its verified Workload Identity proof",
+            ));
+        }
+        Ok(authenticated)
+    }
+}
+
 pub async fn consume_service_events_once(
     state: &ServiceRuntimeState,
     adapter: &dyn TransportAdapter,
     consumer_id: &str,
     handler: &dyn ServiceEventHandler,
     limit: i64,
+    workload_identity: &ServiceEventWorkloadIdentity,
 ) -> Result<usize, TransportError> {
     consume_service_events_once_at(
+        state,
+        adapter,
+        consumer_id,
+        handler,
+        limit,
+        chrono::Utc::now(),
+        &ServiceEventRetryPolicy::default(),
+        workload_identity,
+    )
+    .await
+}
+
+#[cfg(debug_assertions)]
+pub async fn consume_service_events_once_without_workload_identity(
+    state: &ServiceRuntimeState,
+    adapter: &dyn TransportAdapter,
+    consumer_id: &str,
+    handler: &dyn ServiceEventHandler,
+    limit: i64,
+) -> Result<usize, TransportError> {
+    consume_service_events_once_at_without_workload_identity(
         state,
         adapter,
         consumer_id,
@@ -1019,6 +1129,30 @@ pub async fn consume_service_events_once(
     .await
 }
 
+#[cfg(debug_assertions)]
+pub async fn consume_service_events_once_at_without_workload_identity(
+    state: &ServiceRuntimeState,
+    adapter: &dyn TransportAdapter,
+    consumer_id: &str,
+    handler: &dyn ServiceEventHandler,
+    limit: i64,
+    now: chrono::DateTime<chrono::Utc>,
+    retry_policy: &ServiceEventRetryPolicy,
+) -> Result<usize, TransportError> {
+    consume_service_events_once_at_internal(
+        state,
+        adapter,
+        consumer_id,
+        handler,
+        limit,
+        now,
+        retry_policy,
+        None,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
 pub async fn consume_service_events_once_at(
     state: &ServiceRuntimeState,
     adapter: &dyn TransportAdapter,
@@ -1027,6 +1161,31 @@ pub async fn consume_service_events_once_at(
     limit: i64,
     now: chrono::DateTime<chrono::Utc>,
     retry_policy: &ServiceEventRetryPolicy,
+    workload_identity: &ServiceEventWorkloadIdentity,
+) -> Result<usize, TransportError> {
+    consume_service_events_once_at_internal(
+        state,
+        adapter,
+        consumer_id,
+        handler,
+        limit,
+        now,
+        retry_policy,
+        Some(workload_identity),
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn consume_service_events_once_at_internal(
+    state: &ServiceRuntimeState,
+    adapter: &dyn TransportAdapter,
+    consumer_id: &str,
+    handler: &dyn ServiceEventHandler,
+    limit: i64,
+    now: chrono::DateTime<chrono::Utc>,
+    retry_policy: &ServiceEventRetryPolicy,
+    workload_identity: Option<&ServiceEventWorkloadIdentity>,
 ) -> Result<usize, TransportError> {
     let pool = state.transport_store()?;
     let deliveries = adapter.receive_at(consumer_id, limit, now).await?;
@@ -1205,7 +1364,19 @@ pub async fn consume_service_events_once_at(
         )
         .await?;
 
-        if let Err(handler_error) = handler.handle(&mut transaction, &delivery.envelope).await {
+        let handling_result = if let Some(identity) = workload_identity {
+            match identity.authenticate(
+                &delivery.envelope,
+                &delivery.authenticated_transport_binding,
+                now,
+            ) {
+                Ok(_) => handler.handle(&mut transaction, &delivery.envelope).await,
+                Err(error) => Err(error),
+            }
+        } else {
+            handler.handle(&mut transaction, &delivery.envelope).await
+        };
+        if let Err(handler_error) = handling_result {
             transaction.rollback().await.map_err(|error| {
                 TransportError::store("Could not roll back failed Service Inbox handling", error)
             })?;

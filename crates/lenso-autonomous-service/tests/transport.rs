@@ -4,19 +4,25 @@ use http::{Request, StatusCode};
 use http_body_util::BodyExt as _;
 use lenso_autonomous_service::{
     DeliveryFailureReason, LocalTransportAdapter, ServiceEventHandler, ServiceEventHandlerError,
-    ServiceEventPublisher, ServiceEventRetryPolicy, TransportAdapter, TransportDelivery,
-    TransportDiagnostic, TransportError, TransportErrorCode, TransportFailureDisposition,
-    TransportHealth, TransportHealthStatus, TransportNegativeAcknowledgement, TransportPublication,
-    TransportPublicationReceipt, consume_service_events_once, consume_service_events_once_at,
-    prepare_runtime, relay_service_events_once,
+    ServiceEventPublisher, ServiceEventRetryPolicy, ServiceEventWorkloadIdentity, TransportAdapter,
+    TransportDelivery, TransportDiagnostic, TransportError, TransportErrorCode,
+    TransportFailureDisposition, TransportHealth, TransportHealthStatus,
+    TransportNegativeAcknowledgement, TransportPublication, TransportPublicationReceipt,
+    consume_service_events_once_at, consume_service_events_once_at_without_workload_identity,
+    consume_service_events_once_without_workload_identity, prepare_runtime,
+    relay_service_events_once,
 };
 use lenso_service::{
     AutonomousServiceContract, AutonomousServiceStore, AutonomousServiceWorkload, EventEnvelope,
-    GeneratedEventContract, ServiceTenancyMode, WorkloadRole, validate_event_envelope,
+    GeneratedEventContract, ServiceTenancyMode, SystemSandboxWorkloadIdentityProvider,
+    WorkloadCredentialRequest, WorkloadIdentityProvider, WorkloadRole, validate_event_envelope,
 };
 use platform_testing::TestDatabase;
 use sqlx::{Postgres, Transaction};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 use tower::ServiceExt as _;
 use utoipa_axum::router::OpenApiRouter;
 
@@ -96,6 +102,119 @@ fn delivery_failures_use_stable_protocol_neutral_reasons() {
     );
     assert_eq!(failures[0].reason_code, "dependency_unavailable");
     assert_eq!(failures[0].message, "temporary outage");
+}
+
+#[tokio::test]
+async fn event_consumer_authenticates_service_principal_before_module_handling() {
+    let Some(consumer) = TestDatabase::create().await else {
+        return;
+    };
+    let Some(transport_store) = TestDatabase::create().await else {
+        consumer.cleanup().await;
+        return;
+    };
+    let consumer_state = prepare_runtime(
+        &service("support-sla", "support-sla-store"),
+        &lenso_autonomous_service::ServiceRuntimeConfig::new(
+            "support-sla",
+            "support-sla-store",
+            "support-sla",
+        ),
+        consumer.pool.clone(),
+        &[platform_core::Migration {
+            name: "support-sla/0001_create_escalations",
+            sql: "create table support_sla_escalations (ticket_id text primary key, source_event_id text not null);",
+        }],
+    )
+    .await
+    .unwrap();
+    let adapter = LocalTransportAdapter::prepare(transport_store.pool.clone())
+        .await
+        .unwrap();
+    let provider = Arc::new(
+        SystemSandboxWorkloadIdentityProvider::new("local", "event-sandbox-secret").unwrap(),
+    );
+    let now = chrono::Utc::now();
+    let now_ms = u64::try_from(now.timestamp_millis()).unwrap();
+    let credential = provider
+        .issue(WorkloadCredentialRequest::new(
+            "service:support",
+            "support-sla",
+            "sandbox-event:local-transport",
+            now_ms,
+            30_000,
+        ))
+        .unwrap();
+    let receiver = ServiceEventWorkloadIdentity::new(provider, "support-sla");
+
+    adapter
+        .publish(TransportPublication {
+            consumer_id: "support-sla".to_owned(),
+            envelope: support_ticket_opened("event-unauthenticated", "ticket-denied"),
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        consume_service_events_once_at(
+            &consumer_state,
+            &adapter,
+            "support-sla",
+            &SupportSlaHandler,
+            1,
+            now,
+            &ServiceEventRetryPolicy::default(),
+            &receiver,
+        )
+        .await
+        .unwrap(),
+        0
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("select count(*) from support_sla_escalations")
+            .fetch_one(&consumer.pool)
+            .await
+            .unwrap(),
+        0
+    );
+
+    let mut authenticated = support_ticket_opened("event-authenticated", "ticket-accepted");
+    authenticated.context.service_principal = Some(credential.service_principal_context());
+    adapter
+        .publish(TransportPublication {
+            consumer_id: "support-sla".to_owned(),
+            envelope: authenticated,
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        consume_service_events_once_at(
+            &consumer_state,
+            &adapter,
+            "support-sla",
+            &SupportSlaHandler,
+            1,
+            now + chrono::Duration::milliseconds(1),
+            &ServiceEventRetryPolicy::default(),
+            &receiver,
+        )
+        .await
+        .unwrap(),
+        1
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, String>(
+            "select ticket_id from support_sla_escalations where source_event_id = 'event-authenticated'",
+        )
+        .fetch_one(&consumer.pool)
+        .await
+        .unwrap(),
+        "ticket-accepted"
+    );
+
+    drop(consumer_state);
+    drop(adapter);
+    consumer.cleanup().await;
+    transport_store.cleanup().await;
 }
 
 #[derive(Debug)]
@@ -398,7 +517,7 @@ async fn controlled_retries_dead_letter_poison_without_blocking_healthy_events()
             .unwrap();
     }
     assert_eq!(
-        consume_service_events_once_at(
+        consume_service_events_once_at_without_workload_identity(
             &consumer_state,
             &adapter,
             "support-sla",
@@ -466,7 +585,7 @@ async fn controlled_retries_dead_letter_poison_without_blocking_healthy_events()
         })
         .await
         .unwrap();
-    let first_failure = consume_service_events_once_at(
+    let first_failure = consume_service_events_once_at_without_workload_identity(
         &consumer_state,
         &adapter,
         "support-sla",
@@ -520,7 +639,7 @@ async fn controlled_retries_dead_letter_poison_without_blocking_healthy_events()
         .unwrap();
 
     assert_eq!(
-        consume_service_events_once_at(
+        consume_service_events_once_at_without_workload_identity(
             &consumer_state,
             &adapter,
             "support-sla",
@@ -538,7 +657,7 @@ async fn controlled_retries_dead_letter_poison_without_blocking_healthy_events()
         vec![chrono::Duration::hours(1), chrono::Duration::hours(2)],
     );
     assert_eq!(
-        consume_service_events_once_at(
+        consume_service_events_once_at_without_workload_identity(
             &consumer_state,
             &ReversingDeliveryAdapter(&adapter),
             "support-sla",
@@ -671,7 +790,7 @@ async fn local_transport_delivers_support_event_from_outbox_through_inbox() {
         1
     );
     assert_eq!(
-        consume_service_events_once(
+        consume_service_events_once_without_workload_identity(
             &consumer_state,
             &adapter,
             "support-sla",
@@ -754,7 +873,7 @@ async fn local_transport_delivers_support_event_from_outbox_through_inbox() {
         1
     );
     assert_eq!(
-        consume_service_events_once(
+        consume_service_events_once_without_workload_identity(
             &consumer_state,
             &adapter,
             "support-sla",
@@ -830,7 +949,7 @@ async fn local_transport_delivers_support_event_from_outbox_through_inbox() {
         .await
         .unwrap();
     assert_eq!(
-        consume_service_events_once(
+        consume_service_events_once_without_workload_identity(
             &consumer_state,
             &adapter,
             "support-sla",
@@ -866,14 +985,14 @@ async fn local_transport_delivers_support_event_from_outbox_through_inbox() {
             .unwrap();
     }
     let (first, second) = tokio::join!(
-        consume_service_events_once(
+        consume_service_events_once_without_workload_identity(
             &consumer_state,
             &adapter,
             "support-sla",
             &SupportSlaHandler,
             1,
         ),
-        consume_service_events_once(
+        consume_service_events_once_without_workload_identity(
             &consumer_state,
             &adapter,
             "support-sla",
@@ -913,7 +1032,7 @@ async fn local_transport_delivers_support_event_from_outbox_through_inbox() {
         })
         .await
         .unwrap();
-    let retryable_error = consume_service_events_once_at(
+    let retryable_error = consume_service_events_once_at_without_workload_identity(
         &consumer_state,
         &adapter,
         "support-sla",
@@ -933,7 +1052,7 @@ async fn local_transport_delivers_support_event_from_outbox_through_inbox() {
         .await
         .unwrap();
     let (first_retry, second_retry) = tokio::join!(
-        consume_service_events_once_at(
+        consume_service_events_once_at_without_workload_identity(
             &consumer_state,
             &adapter,
             "support-sla",
@@ -942,7 +1061,7 @@ async fn local_transport_delivers_support_event_from_outbox_through_inbox() {
             retry_now,
             &immediate_retry_policy,
         ),
-        consume_service_events_once_at(
+        consume_service_events_once_at_without_workload_identity(
             &consumer_state,
             &adapter,
             "support-sla",
@@ -983,7 +1102,7 @@ async fn local_transport_delivers_support_event_from_outbox_through_inbox() {
         .await
         .unwrap();
     assert_eq!(
-        consume_service_events_once(
+        consume_service_events_once_without_workload_identity(
             &consumer_state,
             &adapter,
             "support-sla",
@@ -1004,7 +1123,7 @@ async fn local_transport_delivers_support_event_from_outbox_through_inbox() {
         .await
         .unwrap();
     assert_eq!(
-        consume_service_events_once(
+        consume_service_events_once_without_workload_identity(
             &consumer_state,
             &adapter,
             "support-sla",
@@ -1043,7 +1162,7 @@ async fn local_transport_delivers_support_event_from_outbox_through_inbox() {
         })
         .await
         .unwrap();
-    let error = consume_service_events_once(
+    let error = consume_service_events_once_without_workload_identity(
         &consumer_state,
         &FailingAcknowledgementAdapter(&adapter),
         "support-sla",
@@ -1111,7 +1230,7 @@ async fn local_transport_delivers_support_event_from_outbox_through_inbox() {
         .await
         .unwrap();
     assert_eq!(
-        consume_service_events_once(
+        consume_service_events_once_without_workload_identity(
             &consumer_state,
             &adapter,
             "support-sla",

@@ -1,8 +1,9 @@
 use lenso_service::{
-    CallPolicyEvent, CallPolicyFailure, CallPolicyRuntime, CallPolicyTerminalOutcome,
-    DirectGrpcCallError, DirectGrpcClient, DirectGrpcServerPolicy, Endpoint, EndpointState,
-    GrpcIdempotency, ManualCallPolicyClock, ServiceReference, StaticEndpointResolver,
-    generate_direct_grpc_bindings,
+    AuthenticatedTransportBinding, CallPolicyEvent, CallPolicyFailure, CallPolicyRuntime,
+    CallPolicyTerminalOutcome, DirectGrpcCallError, DirectGrpcClient, DirectGrpcServerPolicy,
+    Endpoint, EndpointState, GrpcIdempotency, ManualCallPolicyClock, ServiceReference,
+    StaticEndpointResolver, SystemSandboxWorkloadIdentityProvider, WorkloadCredentialRequest,
+    WorkloadIdentityProvider, generate_direct_grpc_bindings,
     support_grpc_v1::{
         GetSlaRequest, ProbeSlaRequest, SlaResponse, UpdateSlaRequest,
         support_service_server::{SupportService, SupportServiceServer},
@@ -12,6 +13,7 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
+use std::time::{SystemTime, UNIX_EPOCH};
 use tonic::{Request, Response, Status};
 
 fn bindings() -> lenso_service::DirectGrpcBindings {
@@ -120,6 +122,85 @@ fn authoritative_descriptor_remains_compatible_with_contract_evaluation() {
     }
 }
 
+#[test]
+fn grpc_admission_authenticates_workload_identity_before_business_handling() {
+    let now = now_ms();
+    let provider = Arc::new(
+        SystemSandboxWorkloadIdentityProvider::new("local", "grpc-sandbox-secret").unwrap(),
+    );
+    let credential = provider
+        .issue(WorkloadCredentialRequest::new(
+            "service:ticketing",
+            "service:support",
+            "sandbox-grpc:support-api",
+            now,
+            30_000,
+        ))
+        .unwrap();
+    let policy = DirectGrpcServerPolicy::new(bindings(), provider, "service:support");
+
+    let missing = policy.admit("GetSla", &grpc_request(now));
+    assert_eq!(
+        missing.unwrap_err().status().code(),
+        tonic::Code::Unauthenticated
+    );
+
+    let mut wrong_binding = grpc_request(now);
+    wrong_binding.metadata_mut().insert(
+        "authorization",
+        format!("Bearer {}", credential.token).parse().unwrap(),
+    );
+    wrong_binding
+        .extensions_mut()
+        .insert(AuthenticatedTransportBinding::new("sandbox-grpc:other"));
+    assert_eq!(
+        policy
+            .admit("GetSla", &wrong_binding)
+            .unwrap_err()
+            .status()
+            .message(),
+        "transport_binding_mismatch"
+    );
+
+    let mut accepted = grpc_request(now);
+    accepted.metadata_mut().insert(
+        "authorization",
+        format!("Bearer {}", credential.token).parse().unwrap(),
+    );
+    accepted
+        .extensions_mut()
+        .insert(AuthenticatedTransportBinding::new(
+            "sandbox-grpc:support-api",
+        ));
+    let admission = policy.admit("GetSla", &accepted).unwrap();
+    assert_eq!(
+        admission
+            .authenticated_service_principal
+            .unwrap()
+            .service_principal,
+        "service:ticketing"
+    );
+}
+
+fn grpc_request(now: u64) -> Request<GetSlaRequest> {
+    let mut request = Request::new(GetSlaRequest::default());
+    request.metadata_mut().insert(
+        "x-lenso-deadline-unix-ms",
+        (now + 30_000).to_string().parse().unwrap(),
+    );
+    request
+}
+
+fn now_ms() -> u64 {
+    u64::try_from(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis(),
+    )
+    .unwrap()
+}
+
 #[derive(Clone)]
 struct SupportFixture {
     attempts: Arc<AtomicUsize>,
@@ -148,6 +229,10 @@ impl SupportService for SupportFixture {
         assert_eq!(
             request.metadata().get("x-lenso-deadline-unix-ms").unwrap(),
             "4102444800000"
+        );
+        assert_eq!(
+            request.metadata().get("authorization").unwrap(),
+            "Bearer sandbox-workload-credential"
         );
         let mut response = Response::new(SlaResponse {
             payload: request.into_inner().payload,
@@ -214,7 +299,8 @@ async fn client_with_behavior(
     deadline_exceeded: Arc<AtomicBool>,
 ) -> DirectGrpcClient<StaticEndpointResolver> {
     let generated_bindings = bindings();
-    let admission = DirectGrpcServerPolicy::new(generated_bindings.clone());
+    let admission =
+        DirectGrpcServerPolicy::new_without_workload_identity(generated_bindings.clone());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
@@ -236,6 +322,7 @@ async fn client_with_behavior(
     )])
     .unwrap();
     DirectGrpcClient::new(resolver, generated_bindings)
+        .with_workload_credential("sandbox-workload-credential")
 }
 
 #[test]
@@ -251,7 +338,7 @@ fn generated_grpc_server_policy_rejects_overload_before_business_handling() {
         .as_mut()
         .unwrap()
         .max_in_flight = 1;
-    let admission = DirectGrpcServerPolicy::new(generated_bindings);
+    let admission = DirectGrpcServerPolicy::new_without_workload_identity(generated_bindings);
     let request = grpc_request_with_context((), false);
     let _first = admission.admit("GetSla", &request).unwrap();
     let error = admission.admit("GetSla", &request).unwrap_err();
@@ -268,7 +355,7 @@ fn generated_grpc_server_policy_rejects_overload_before_business_handling() {
 
 #[test]
 fn generated_grpc_server_policy_rejects_deadline_and_missing_key() {
-    let admission = DirectGrpcServerPolicy::new(bindings());
+    let admission = DirectGrpcServerPolicy::new_without_workload_identity(bindings());
     let expired = grpc_request_with_context((), false);
     let mut expired = expired;
     expired

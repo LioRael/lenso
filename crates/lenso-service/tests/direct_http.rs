@@ -3,7 +3,8 @@ use lenso_service::{
     CallPolicyEvent, CallPolicyFailure, CallPolicyRuntime, CallPolicyTerminalOutcome,
     DirectHttpCall, DirectHttpClient, DirectHttpRequest, DirectHttpResponse,
     DirectHttpServerBinding, Endpoint, EndpointState, ManualCallPolicyClock, ServiceReference,
-    StaticEndpointResolver, generate_direct_http_bindings,
+    StaticEndpointResolver, SystemSandboxWorkloadIdentityProvider, WorkloadCredentialRequest,
+    WorkloadIdentityProvider, generate_direct_http_bindings,
 };
 use serde_json::json;
 use std::{
@@ -95,7 +96,7 @@ fn generated_http_bindings_require_an_explicit_call_policy() {
 async fn server_rejects_expired_deadline_and_missing_key_before_business_handling() {
     let handled = Arc::new(AtomicUsize::new(0));
     let count = Arc::clone(&handled);
-    let server = DirectHttpServerBinding::new(bindings(), move |_| {
+    let server = DirectHttpServerBinding::new_without_workload_identity(bindings(), move |_| {
         let count = Arc::clone(&count);
         async move {
             count.fetch_add(1, Ordering::SeqCst);
@@ -123,19 +124,94 @@ async fn server_rejects_expired_deadline_and_missing_key_before_business_handlin
 }
 
 #[tokio::test]
+async fn server_authenticates_workload_identity_before_business_handling() {
+    let now = now_ms();
+    let provider = Arc::new(
+        SystemSandboxWorkloadIdentityProvider::new("local", "http-sandbox-secret").unwrap(),
+    );
+    let credential = provider
+        .issue(WorkloadCredentialRequest::new(
+            "service:ticketing",
+            "service:support",
+            "sandbox-http:support-api",
+            now,
+            30_000,
+        ))
+        .unwrap();
+    let handled = Arc::new(AtomicUsize::new(0));
+    let count = Arc::clone(&handled);
+    let server =
+        DirectHttpServerBinding::new(bindings(), provider, "service:support", move |request| {
+            let count = Arc::clone(&count);
+            async move {
+                count.fetch_add(1, Ordering::SeqCst);
+                assert_eq!(
+                    request
+                        .authenticated_service_principal
+                        .unwrap()
+                        .service_principal,
+                    "service:ticketing"
+                );
+                DirectHttpResponse::json(StatusCode::OK, json!({"ok": true}))
+            }
+        });
+
+    let missing = server
+        .handle(DirectHttpRequest::new(Method::GET, "/v1/tickets/42").with_deadline(now + 30_000))
+        .await;
+    assert_eq!(missing.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        missing.evidence.unwrap().decision,
+        "workload_identity_required"
+    );
+
+    let wrong_binding = server
+        .handle(
+            DirectHttpRequest::new(Method::GET, "/v1/tickets/42")
+                .with_deadline(now + 30_000)
+                .with_workload_credential(&credential.token)
+                .with_authenticated_transport_binding("sandbox-http:other"),
+        )
+        .await;
+    assert_eq!(wrong_binding.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        wrong_binding.evidence.unwrap().decision,
+        "transport_binding_mismatch"
+    );
+
+    let accepted = server
+        .handle(
+            DirectHttpRequest::new(Method::GET, "/v1/tickets/42")
+                .with_deadline(now + 30_000)
+                .with_workload_credential(&credential.token)
+                .with_authenticated_transport_binding("sandbox-http:support-api"),
+        )
+        .await;
+    assert_eq!(accepted.status, StatusCode::OK);
+    assert_eq!(handled.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
 async fn client_resolves_service_and_preserves_http_response_and_context() {
-    let server = DirectHttpServerBinding::new(bindings(), |request| async move {
-        assert_eq!(request.deadline_unix_ms, Some(4_102_444_800_000));
-        assert_eq!(request.idempotency_key.as_deref(), Some("ticket-42:update"));
-        let mut response = DirectHttpResponse::json(
-            StatusCode::CONFLICT,
-            json!({"type":"about:blank","title":"Conflict","status":409,"detail":"stale ticket","code":"conflict","request_id":"req-1","correlation_id":null,"errors":[]}),
-        );
-        response
-            .headers
-            .insert("x-request-id", "req-1".parse().unwrap());
-        response
-    });
+    let server = DirectHttpServerBinding::new_without_workload_identity(
+        bindings(),
+        |request| async move {
+            assert_eq!(request.deadline_unix_ms, Some(4_102_444_800_000));
+            assert_eq!(request.idempotency_key.as_deref(), Some("ticket-42:update"));
+            assert_eq!(
+                request.headers.get("authorization").unwrap(),
+                "Bearer workload-credential"
+            );
+            let mut response = DirectHttpResponse::json(
+                StatusCode::CONFLICT,
+                json!({"type":"about:blank","title":"Conflict","status":409,"detail":"stale ticket","code":"conflict","request_id":"req-1","correlation_id":null,"errors":[]}),
+            );
+            response
+                .headers
+                .insert("x-request-id", "req-1".parse().unwrap());
+            response
+        },
+    );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, server.router()).await.unwrap() });
@@ -153,7 +229,8 @@ async fn client_resolves_service_and_preserves_http_response_and_context() {
                 .with_path_parameter("ticket_id", "42")
                 .with_json(json!({"title": "updated"}))
                 .with_deadline(4_102_444_800_000)
-                .with_idempotency_key("ticket-42:update"),
+                .with_idempotency_key("ticket-42:update")
+                .with_workload_credential("workload-credential"),
         )
         .await
         .unwrap();
@@ -167,7 +244,7 @@ async fn client_resolves_service_and_preserves_http_response_and_context() {
 async fn keyed_operation_retries_one_retryable_response() {
     let attempts = Arc::new(AtomicUsize::new(0));
     let count = Arc::clone(&attempts);
-    let server = DirectHttpServerBinding::new(bindings(), move |_| {
+    let server = DirectHttpServerBinding::new_without_workload_identity(bindings(), move |_| {
         let count = Arc::clone(&count);
         async move {
             if count.fetch_add(1, Ordering::SeqCst) == 0 {
@@ -210,7 +287,7 @@ async fn direct_policy_runs_without_planes_and_records_circuit_fallback_and_reco
     let available = Arc::new(AtomicBool::new(false));
     let count = Arc::clone(&attempts);
     let serving = Arc::clone(&available);
-    let server = DirectHttpServerBinding::new(bindings(), move |_| {
+    let server = DirectHttpServerBinding::new_without_workload_identity(bindings(), move |_| {
         let count = Arc::clone(&count);
         let serving = Arc::clone(&serving);
         async move {
@@ -228,9 +305,10 @@ async fn direct_policy_runs_without_planes_and_records_circuit_fallback_and_reco
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, server.router()).await.unwrap() });
-    let healthy_server = DirectHttpServerBinding::new(bindings(), |_| async move {
-        DirectHttpResponse::json(StatusCode::OK, json!({"source":"other-service"}))
-    });
+    let healthy_server =
+        DirectHttpServerBinding::new_without_workload_identity(bindings(), |_| async move {
+            DirectHttpResponse::json(StatusCode::OK, json!({"source":"other-service"}))
+        });
     let healthy_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let healthy_address = healthy_listener.local_addr().unwrap();
     tokio::spawn(async move {
@@ -378,15 +456,16 @@ async fn generated_server_rejects_declared_overload_before_business_handling() {
         .as_mut()
         .unwrap()
         .max_in_flight = 1;
-    let server = DirectHttpServerBinding::new(server_bindings, move |_| {
-        let entered = Arc::clone(&handler_entered);
-        let release = Arc::clone(&handler_release);
-        async move {
-            entered.wait().await;
-            release.notified().await;
-            DirectHttpResponse::json(StatusCode::OK, json!({"ok":true}))
-        }
-    });
+    let server =
+        DirectHttpServerBinding::new_without_workload_identity(server_bindings, move |_| {
+            let entered = Arc::clone(&handler_entered);
+            let release = Arc::clone(&handler_release);
+            async move {
+                entered.wait().await;
+                release.notified().await;
+                DirectHttpResponse::json(StatusCode::OK, json!({"ok":true}))
+            }
+        });
     let first_server = server.clone();
     let first = tokio::spawn(async move {
         first_server
@@ -410,10 +489,11 @@ async fn generated_server_rejects_declared_overload_before_business_handling() {
 
 #[tokio::test]
 async fn client_bounds_attempts_by_the_absolute_deadline() {
-    let server = DirectHttpServerBinding::new(bindings(), |_| async move {
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        DirectHttpResponse::json(StatusCode::OK, json!({"ok": true}))
-    });
+    let server =
+        DirectHttpServerBinding::new_without_workload_identity(bindings(), |_| async move {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            DirectHttpResponse::json(StatusCode::OK, json!({"ok": true}))
+        });
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, server.router()).await.unwrap() });
@@ -457,10 +537,11 @@ async fn generated_client_requires_declared_path_parameters() {
 async fn generated_client_encodes_path_parameters_as_one_segment() {
     let seen_path = Arc::new(std::sync::Mutex::new(String::new()));
     let captured = Arc::clone(&seen_path);
-    let server = DirectHttpServerBinding::new(bindings(), move |request| {
-        *captured.lock().unwrap() = request.path;
-        async { DirectHttpResponse::json(StatusCode::OK, json!({"ok": true})) }
-    });
+    let server =
+        DirectHttpServerBinding::new_without_workload_identity(bindings(), move |request| {
+            *captured.lock().unwrap() = request.path;
+            async { DirectHttpResponse::json(StatusCode::OK, json!({"ok": true})) }
+        });
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, server.router()).await.unwrap() });

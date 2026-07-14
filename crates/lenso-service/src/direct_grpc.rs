@@ -1,7 +1,8 @@
 use crate::{
-    CallPolicyDeclaration, CallPolicyEvent, CallPolicyEvidence, CallPolicyFailure,
-    CallPolicyPermit, CallPolicyRuntime, CallPolicyTerminalOutcome, EndpointResolver,
-    RetryDecision, ServiceReference,
+    AuthenticatedServicePrincipal, AuthenticatedTransportBinding, CallPolicyDeclaration,
+    CallPolicyEvent, CallPolicyEvidence, CallPolicyFailure, CallPolicyPermit, CallPolicyRuntime,
+    CallPolicyTerminalOutcome, EndpointResolver, RetryDecision, ServiceReference,
+    WorkloadIdentityProvider, WorkloadIdentityVerification,
     support_grpc_v1::{
         GetSlaRequest, ProbeSlaRequest, SlaResponse, UpdateSlaRequest,
         support_service_client::SupportServiceClient,
@@ -19,6 +20,7 @@ use tonic::{Code, Request, Status, metadata::MetadataValue, transport::Channel};
 
 const DEADLINE_METADATA: &str = "x-lenso-deadline-unix-ms";
 const IDEMPOTENCY_METADATA: &str = "idempotency-key";
+const AUTHORIZATION_METADATA: &str = "authorization";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -83,14 +85,53 @@ impl DirectGrpcBindings {
 pub struct DirectGrpcServerPolicy {
     bindings: DirectGrpcBindings,
     runtime: CallPolicyRuntime,
+    workload_identity: Option<DirectGrpcWorkloadIdentity>,
+}
+
+pub struct DirectGrpcAdmission {
+    pub call_policy_permit: CallPolicyPermit,
+    pub authenticated_service_principal: Option<AuthenticatedServicePrincipal>,
+}
+
+impl std::fmt::Debug for DirectGrpcAdmission {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("DirectGrpcAdmission")
+            .field(
+                "authenticated_service_principal",
+                &self.authenticated_service_principal,
+            )
+            .finish_non_exhaustive()
+    }
+}
+
+#[derive(Debug, Clone)]
+struct DirectGrpcWorkloadIdentity {
+    provider: Arc<dyn WorkloadIdentityProvider>,
+    audience: String,
 }
 
 impl DirectGrpcServerPolicy {
     #[must_use]
-    pub fn new(bindings: DirectGrpcBindings) -> Self {
+    pub fn new(
+        bindings: DirectGrpcBindings,
+        provider: Arc<dyn WorkloadIdentityProvider>,
+        audience: impl Into<String>,
+    ) -> Self {
+        Self::new_unchecked(bindings).with_workload_identity(provider, audience)
+    }
+
+    #[must_use]
+    #[cfg(debug_assertions)]
+    pub fn new_without_workload_identity(bindings: DirectGrpcBindings) -> Self {
+        Self::new_unchecked(bindings)
+    }
+
+    fn new_unchecked(bindings: DirectGrpcBindings) -> Self {
         Self {
             bindings,
             runtime: CallPolicyRuntime::default(),
+            workload_identity: None,
         }
     }
 
@@ -100,14 +141,63 @@ impl DirectGrpcServerPolicy {
         self
     }
 
+    #[must_use]
+    pub fn with_workload_identity(
+        mut self,
+        provider: Arc<dyn WorkloadIdentityProvider>,
+        audience: impl Into<String>,
+    ) -> Self {
+        self.workload_identity = Some(DirectGrpcWorkloadIdentity {
+            provider,
+            audience: audience.into(),
+        });
+        self
+    }
+
     pub fn admit<T>(
         &self,
         operation_id: &str,
         request: &Request<T>,
-    ) -> Result<CallPolicyPermit, DirectGrpcAdmissionError> {
+    ) -> Result<DirectGrpcAdmission, DirectGrpcAdmissionError> {
         let operation = self.bindings.operation(operation_id).ok_or_else(|| {
             DirectGrpcAdmissionError::Contract("operation_not_declared".to_owned())
         })?;
+        let authenticated_service_principal = if let Some(identity) = &self.workload_identity {
+            let credential = request
+                .metadata()
+                .get(AUTHORIZATION_METADATA)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.strip_prefix("Bearer "))
+                .ok_or_else(|| {
+                    DirectGrpcAdmissionError::Unauthenticated(
+                        "workload_identity_required".to_owned(),
+                    )
+                })?;
+            let binding = request
+                .extensions()
+                .get::<AuthenticatedTransportBinding>()
+                .ok_or_else(|| {
+                    DirectGrpcAdmissionError::Unauthenticated(
+                        "authenticated_transport_binding_required".to_owned(),
+                    )
+                })?;
+            let principal = identity
+                .provider
+                .verify(
+                    credential,
+                    &WorkloadIdentityVerification::new(
+                        &identity.audience,
+                        &binding.0,
+                        self.runtime.now_ms(),
+                    ),
+                )
+                .map_err(|error| {
+                    DirectGrpcAdmissionError::Unauthenticated(error.evidence.outcome)
+                })?;
+            Some(principal)
+        } else {
+            None
+        };
         let deadline = request
             .metadata()
             .get(DEADLINE_METADATA)
@@ -130,17 +220,23 @@ impl DirectGrpcServerPolicy {
             });
         }
         let operation_key = format!("{}:{}", self.bindings.contract_id, operation.operation_id);
-        self.runtime
+        let call_policy_permit = self
+            .runtime
             .admit(operation_key, &operation.call_policy)
             .map_err(|event| DirectGrpcAdmissionError::Overloaded {
                 evidence: rejected_evidence(event),
-            })
+            })?;
+        Ok(DirectGrpcAdmission {
+            call_policy_permit,
+            authenticated_service_principal,
+        })
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DirectGrpcAdmissionError {
     Contract(String),
+    Unauthenticated(String),
     DeadlineExpired { evidence: CallPolicyEvidence },
     IdempotencyKeyRequired { evidence: CallPolicyEvidence },
     Overloaded { evidence: CallPolicyEvidence },
@@ -151,6 +247,7 @@ impl DirectGrpcAdmissionError {
     pub fn status(&self) -> Status {
         match self {
             Self::Contract(message) => Status::unimplemented(message.clone()),
+            Self::Unauthenticated(reason) => Status::unauthenticated(reason.clone()),
             Self::DeadlineExpired { .. } => Status::deadline_exceeded("deadline_expired"),
             Self::IdempotencyKeyRequired { .. } => {
                 Status::invalid_argument("idempotency_key_required")
@@ -346,6 +443,7 @@ pub struct DirectGrpcClient<R> {
     bindings: DirectGrpcBindings,
     policy_runtime: CallPolicyRuntime,
     fallbacks: BTreeMap<String, Arc<GrpcFallback>>,
+    workload_credential: Option<String>,
 }
 type GrpcFallback = dyn Fn(CallPolicyFailure) -> Vec<u8> + Send + Sync;
 
@@ -373,6 +471,7 @@ impl<R: EndpointResolver> DirectGrpcClient<R> {
             bindings,
             policy_runtime: CallPolicyRuntime::default(),
             fallbacks: BTreeMap::new(),
+            workload_credential: None,
         }
     }
 
@@ -388,6 +487,12 @@ impl<R: EndpointResolver> DirectGrpcClient<R> {
         F: Fn(CallPolicyFailure) -> Vec<u8> + Send + Sync + 'static,
     {
         self.fallbacks.insert(handler.into(), Arc::new(fallback));
+        self
+    }
+
+    #[must_use]
+    pub fn with_workload_credential(mut self, credential: impl Into<String>) -> Self {
+        self.workload_credential = Some(credential.into());
         self
     }
 
@@ -423,6 +528,7 @@ impl<R: EndpointResolver> DirectGrpcClient<R> {
                 },
                 deadline,
                 None,
+                self.workload_credential.as_deref(),
             ) {
                 Ok(request) => request,
                 Err(DirectGrpcCallError::Contract(message)) if message == "deadline_expired" => {
@@ -503,6 +609,7 @@ impl<R: EndpointResolver> DirectGrpcClient<R> {
                 },
                 deadline,
                 Some(idempotency_key),
+                self.workload_credential.as_deref(),
             ) {
                 Ok(request) => request,
                 Err(DirectGrpcCallError::Contract(message)) if message == "deadline_expired" => {
@@ -570,7 +677,12 @@ impl<R: EndpointResolver> DirectGrpcClient<R> {
                 );
             }
         };
-        let request = match request(ProbeSlaRequest { payload }, deadline, None) {
+        let request = match request(
+            ProbeSlaRequest { payload },
+            deadline,
+            None,
+            self.workload_credential.as_deref(),
+        ) {
             Ok(request) => request,
             Err(DirectGrpcCallError::Contract(message)) if message == "deadline_expired" => {
                 let events = permit
@@ -842,6 +954,7 @@ fn request<T>(
     message: T,
     deadline: u64,
     key: Option<&str>,
+    workload_credential: Option<&str>,
 ) -> Result<Request<T>, DirectGrpcCallError> {
     let remaining = deadline.saturating_sub(now_ms());
     if remaining == 0 {
@@ -858,6 +971,13 @@ fn request<T>(
         request.metadata_mut().insert(
             IDEMPOTENCY_METADATA,
             MetadataValue::try_from(key)
+                .map_err(|error| DirectGrpcCallError::Contract(error.to_string()))?,
+        );
+    }
+    if let Some(credential) = workload_credential {
+        request.metadata_mut().insert(
+            AUTHORIZATION_METADATA,
+            MetadataValue::try_from(format!("Bearer {credential}"))
                 .map_err(|error| DirectGrpcCallError::Contract(error.to_string()))?,
         );
     }

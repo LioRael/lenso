@@ -33,6 +33,14 @@ classification and controlled retry schedules persist beside Inbox history;
 poison and exhausted deliveries move to durable dead-letter state without
 blocking later healthy events.
 
+Authenticated event receivers use `ServiceEventWorkloadIdentity` with
+`consume_service_events_once_at`. The receiver verifies the
+Event Envelope's signed, audience-limited Service Principal and its
+authenticated Transport Adapter binding before Module behavior runs. Invalid
+identity is recorded as an unauthorized terminal delivery. Endpoint, process,
+replica, region, and Failure Domain metadata remain operational evidence and
+are never used as Service identity.
+
 Dead-letter operator workflows return stable, versioned command results.
 `inspect_dead_letters` returns deterministic evidence;
 `plan_dead_letter_replay` and `plan_dead_letter_cleanup` are non-mutating dry
