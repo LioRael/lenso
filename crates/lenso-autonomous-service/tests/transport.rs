@@ -74,6 +74,9 @@ fn support_flow_uses_the_authoritative_event_envelope() {
 struct SupportSlaHandler;
 
 #[derive(Debug)]
+struct RejectingSupportSlaHandler;
+
+#[derive(Debug)]
 struct FailingAcknowledgementAdapter<'a>(&'a LocalTransportAdapter);
 
 #[async_trait]
@@ -133,6 +136,22 @@ impl ServiceEventHandler for SupportSlaHandler {
         .await
         .map_err(lenso_autonomous_service::ServiceEventHandlerError::store)?;
         Ok(())
+    }
+}
+
+#[async_trait]
+impl ServiceEventHandler for RejectingSupportSlaHandler {
+    async fn handle(
+        &self,
+        _transaction: &mut Transaction<'_, Postgres>,
+        _envelope: &EventEnvelope,
+    ) -> Result<(), lenso_autonomous_service::ServiceEventHandlerError> {
+        Err(
+            lenso_autonomous_service::ServiceEventHandlerError::rejected_with_code(
+                "support_event_out_of_order",
+                "Support event occurred before the accepted SLA watermark",
+            ),
+        )
     }
 }
 
@@ -230,6 +249,21 @@ async fn local_transport_delivers_support_event_from_outbox_through_inbox() {
     .await
     .unwrap();
     assert_eq!(outbox, ("published".to_owned(), 1));
+    drop(producer_state);
+    let producer_state = prepare_runtime(
+        &service("support", "support-store"),
+        &lenso_autonomous_service::ServiceRuntimeConfig::new("support", "support-store", "support"),
+        producer.pool.clone(),
+        &[],
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        relay_service_events_once(&producer_state, &adapter, 10)
+            .await
+            .unwrap(),
+        0
+    );
     let inbox: String = sqlx::query_scalar(
         "select status from platform.service_event_inbox where event_id = 'support-event-1'",
     )
@@ -267,6 +301,120 @@ async fn local_transport_delivers_support_event_from_outbox_through_inbox() {
     );
 
     adapter
+        .publish(TransportPublication {
+            consumer_id: "support-sla".to_owned(),
+            envelope: support_ticket_opened("support-event-1", "ticket_01"),
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        consume_service_events_once(
+            &consumer_state,
+            &adapter,
+            "support-sla",
+            &SupportSlaHandler,
+            1,
+        )
+        .await
+        .unwrap(),
+        0
+    );
+    let effect_count: i64 = sqlx::query_scalar("select count(*) from support_sla_escalations")
+        .fetch_one(&consumer.pool)
+        .await
+        .unwrap();
+    assert_eq!(effect_count, 1);
+    let duplicate_count: i64 = sqlx::query_scalar(
+        "select count(*) from platform.service_event_delivery_evidence where event_id = 'support-event-1' and stage = 'inbox' and outcome = 'duplicate'",
+    )
+    .fetch_one(&consumer.pool)
+    .await
+    .unwrap();
+    assert_eq!(duplicate_count, 1);
+
+    for _ in 0..2 {
+        adapter
+            .publish(TransportPublication {
+                consumer_id: "support-sla".to_owned(),
+                envelope: support_ticket_opened("support-event-concurrent", "ticket_concurrent"),
+            })
+            .await
+            .unwrap();
+    }
+    let (first, second) = tokio::join!(
+        consume_service_events_once(
+            &consumer_state,
+            &adapter,
+            "support-sla",
+            &SupportSlaHandler,
+            1,
+        ),
+        consume_service_events_once(
+            &consumer_state,
+            &adapter,
+            "support-sla",
+            &SupportSlaHandler,
+            1,
+        ),
+    );
+    let mut completed = [first.unwrap(), second.unwrap()];
+    completed.sort_unstable();
+    assert_eq!(completed, [0, 1]);
+    let concurrent_effect_count: i64 = sqlx::query_scalar(
+        "select count(*) from support_sla_escalations where source_event_id = 'support-event-concurrent'",
+    )
+    .fetch_one(&consumer.pool)
+    .await
+    .unwrap();
+    assert_eq!(concurrent_effect_count, 1);
+    let concurrent_duplicate_count: i64 = sqlx::query_scalar(
+        "select count(*) from platform.service_event_delivery_evidence where event_id = 'support-event-concurrent' and stage = 'inbox' and outcome = 'duplicate'",
+    )
+    .fetch_one(&consumer.pool)
+    .await
+    .unwrap();
+    assert_eq!(concurrent_duplicate_count, 1);
+    let mut delayed = support_ticket_opened("support-event-delayed", "ticket_delayed");
+    delayed.occurred_at = "2026-07-14T09:15:30Z".to_owned();
+    adapter
+        .publish(TransportPublication {
+            consumer_id: "support-sla".to_owned(),
+            envelope: delayed,
+        })
+        .await
+        .unwrap();
+    let rejected = consume_service_events_once(
+        &consumer_state,
+        &adapter,
+        "support-sla",
+        &RejectingSupportSlaHandler,
+        1,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(rejected.code, TransportErrorCode::HandlerFailed);
+    let rejected_inbox: (String, String) = sqlx::query_as(
+        "select status, last_error from platform.service_event_inbox where consumer_id = 'support-sla' and event_id = 'support-event-delayed'",
+    )
+    .fetch_one(&consumer.pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        rejected_inbox,
+        (
+            "rejected".to_owned(),
+            "Support event occurred before the accepted SLA watermark".to_owned(),
+        )
+    );
+    let rejected_reason_code: String = sqlx::query_scalar(
+        "select detail ->> 'reasonCode' from platform.service_event_delivery_evidence where event_id = 'support-event-delayed' and stage = 'inbox' and outcome = 'rejected'",
+    )
+    .fetch_one(&consumer.pool)
+    .await
+    .unwrap();
+    assert_eq!(rejected_reason_code, "support_event_out_of_order");
+
+    let acknowledgement_failure_receipt = adapter
         .publish(TransportPublication {
             consumer_id: "support-sla".to_owned(),
             envelope: support_ticket_opened("support-event-ack-failure", "ticket_ack_failure"),
@@ -322,6 +470,52 @@ async fn local_transport_delivers_support_event_from_outbox_through_inbox() {
         )
         .await
         .unwrap();
+
+    drop(consumer_state);
+    drop(adapter);
+    let consumer_state = prepare_runtime(
+        &service("support-sla", "support-sla-store"),
+        &lenso_autonomous_service::ServiceRuntimeConfig::new(
+            "support-sla",
+            "support-sla-store",
+            "support-sla",
+        ),
+        consumer.pool.clone(),
+        &[],
+    )
+    .await
+    .unwrap();
+    let adapter = LocalTransportAdapter::prepare(transport_store.pool.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        consume_service_events_once(
+            &consumer_state,
+            &adapter,
+            "support-sla",
+            &SupportSlaHandler,
+            1,
+        )
+        .await
+        .unwrap(),
+        0
+    );
+    let restart_diagnostics = adapter.diagnostics().await.unwrap();
+    assert!(restart_diagnostics.iter().any(|entry| {
+        entry.delivery_id == acknowledgement_failure_receipt.delivery_id
+            && entry.outcome == "recovered_unacknowledged"
+    }));
+    assert!(restart_diagnostics.iter().any(|entry| {
+        entry.delivery_id == acknowledgement_failure_receipt.delivery_id
+            && entry.outcome == "acknowledged"
+    }));
+    let restart_duplicate_count: i64 = sqlx::query_scalar(
+        "select count(*) from platform.service_event_delivery_evidence where event_id = 'support-event-ack-failure' and stage = 'inbox' and outcome = 'duplicate'",
+    )
+    .fetch_one(&consumer.pool)
+    .await
+    .unwrap();
+    assert_eq!(restart_duplicate_count, 1);
 
     drop(producer_state);
     drop(consumer_state);

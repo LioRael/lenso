@@ -197,7 +197,44 @@ impl LocalTransportAdapter {
                 message: "Local Transport Adapter Store migration failed".to_owned(),
                 source: Some(Box::new(error)),
             })?;
-        Ok(Self { pool })
+        let adapter = Self { pool };
+        adapter.recover_unacknowledged().await?;
+        Ok(adapter)
+    }
+
+    async fn recover_unacknowledged(&self) -> Result<(), TransportError> {
+        let mut transaction = self.pool.begin().await.map_err(|error| {
+            TransportError::store("Could not begin local transport recovery", error)
+        })?;
+        let recovered = sqlx::query_as::<_, RecoveredLocalDeliveryRow>(
+            r"
+            update platform.local_transport_deliveries
+            set status = 'available', updated_at = now()
+            where status = 'received'
+            returning delivery_id, event_id, attempts
+            ",
+        )
+        .fetch_all(&mut *transaction)
+        .await
+        .map_err(|error| {
+            TransportError::store(
+                "Could not recover unacknowledged transport deliveries",
+                error,
+            )
+        })?;
+        for delivery in recovered {
+            insert_transport_diagnostic(
+                &mut transaction,
+                &delivery.delivery_id,
+                &delivery.event_id,
+                "recovered_unacknowledged",
+                json!({"previousAttempt": delivery.attempts}),
+            )
+            .await?;
+        }
+        transaction.commit().await.map_err(|error| {
+            TransportError::store("Could not commit local transport recovery", error)
+        })
     }
 
     async fn record_diagnostic(
@@ -224,6 +261,13 @@ struct LocalDeliveryRow {
     delivery_id: String,
     consumer_id: String,
     envelope: serde_json::Value,
+    attempts: i32,
+}
+
+#[derive(Debug, FromRow)]
+struct RecoveredLocalDeliveryRow {
+    delivery_id: String,
+    event_id: String,
     attempts: i32,
 }
 
@@ -472,6 +516,12 @@ struct ServiceOutboxRow {
     envelope: serde_json::Value,
 }
 
+#[derive(Debug, FromRow)]
+struct ExistingInboxRow {
+    delivery_id: String,
+    status: String,
+}
+
 pub async fn relay_service_events_once(
     state: &ServiceRuntimeState,
     adapter: &dyn TransportAdapter,
@@ -570,14 +620,24 @@ pub async fn relay_service_events_once(
 #[derive(Debug, Error)]
 #[error("{message}")]
 pub struct ServiceEventHandlerError {
+    pub code: ServiceEventHandlerErrorCode,
+    pub reason_code: String,
     pub message: String,
     #[source]
     source: Option<Box<dyn std::error::Error + Send + Sync>>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ServiceEventHandlerErrorCode {
+    Retryable,
+    Rejected,
+}
+
 impl ServiceEventHandlerError {
     pub fn store(error: sqlx::Error) -> Self {
         Self {
+            code: ServiceEventHandlerErrorCode::Retryable,
+            reason_code: "business_effect_store_unavailable".to_owned(),
             message: "Module-owned event behavior could not persist its business effect".to_owned(),
             source: Some(Box::new(error)),
         }
@@ -585,7 +645,14 @@ impl ServiceEventHandlerError {
 
     #[must_use]
     pub fn rejected(message: impl Into<String>) -> Self {
+        Self::rejected_with_code("event_rejected", message)
+    }
+
+    #[must_use]
+    pub fn rejected_with_code(reason_code: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
+            code: ServiceEventHandlerErrorCode::Rejected,
+            reason_code: reason_code.into(),
             message: message.into(),
             source: None,
         }
@@ -621,20 +688,92 @@ pub async fn consume_service_events_once(
         let mut transaction = pool.begin().await.map_err(|error| {
             TransportError::store("Could not begin Service Inbox transaction", error)
         })?;
-        sqlx::query(
+        let inserted = sqlx::query_scalar::<_, String>(
             r"
             insert into platform.service_event_inbox (
                 delivery_id, consumer_id, event_id, envelope, status
             ) values ($1, $2, $3, $4, 'received')
+            on conflict (consumer_id, event_id) do nothing
+            returning delivery_id
             ",
         )
         .bind(&delivery.delivery_id)
         .bind(consumer_id)
         .bind(&delivery.envelope.event_id)
-        .bind(envelope_json)
-        .execute(&mut *transaction)
+        .bind(envelope_json.clone())
+        .fetch_optional(&mut *transaction)
         .await
         .map_err(|error| TransportError::store("Could not record Service Inbox receipt", error))?;
+
+        if inserted.is_none() {
+            let existing = sqlx::query_as::<_, ExistingInboxRow>(
+                r"
+                select delivery_id, status
+                from platform.service_event_inbox
+                where consumer_id = $1 and event_id = $2
+                ",
+            )
+            .bind(consumer_id)
+            .bind(&delivery.envelope.event_id)
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(|error| {
+                TransportError::store("Could not inspect duplicate Service Inbox event", error)
+            })?;
+            if existing.status == "retryable" {
+                sqlx::query(
+                    r"
+                    update platform.service_event_inbox
+                    set delivery_id = $3, envelope = $4, status = 'received',
+                        last_error = null, received_at = now(), completed_at = null
+                    where consumer_id = $1 and event_id = $2
+                    ",
+                )
+                .bind(consumer_id)
+                .bind(&delivery.envelope.event_id)
+                .bind(&delivery.delivery_id)
+                .bind(envelope_json)
+                .execute(&mut *transaction)
+                .await
+                .map_err(|error| {
+                    TransportError::store("Could not retry Service Inbox event", error)
+                })?;
+                record_service_evidence(
+                    &mut transaction,
+                    "inbox",
+                    "retrying",
+                    &delivery.envelope.event_id,
+                    Some(&delivery.delivery_id),
+                    json!({
+                        "attempt": delivery.attempt,
+                        "previousDeliveryId": existing.delivery_id,
+                    }),
+                )
+                .await?;
+            } else {
+                record_service_evidence(
+                    &mut transaction,
+                    "inbox",
+                    "duplicate",
+                    &delivery.envelope.event_id,
+                    Some(&delivery.delivery_id),
+                    json!({
+                        "attempt": delivery.attempt,
+                        "completedDeliveryId": existing.delivery_id,
+                        "completedStatus": existing.status,
+                    }),
+                )
+                .await?;
+                transaction.commit().await.map_err(|error| {
+                    TransportError::store(
+                        "Could not commit duplicate Service Inbox evidence",
+                        error,
+                    )
+                })?;
+                acknowledge_service_delivery(pool, adapter, &delivery, true).await?;
+                continue;
+            }
+        }
         record_service_evidence(
             &mut transaction,
             "inbox",
@@ -649,13 +788,13 @@ pub async fn consume_service_events_once(
             transaction.rollback().await.map_err(|error| {
                 TransportError::store("Could not roll back failed Service Inbox handling", error)
             })?;
-            persist_failed_inbox(pool, &delivery, consumer_id, &handler_error.message).await?;
+            persist_handler_outcome(pool, &delivery, consumer_id, &handler_error).await?;
             adapter
                 .negative_acknowledge(
                     &delivery,
                     TransportNegativeAcknowledgement {
                         reason: handler_error.message.clone(),
-                        retryable: false,
+                        retryable: handler_error.code == ServiceEventHandlerErrorCode::Retryable,
                     },
                 )
                 .await?;
@@ -680,46 +819,66 @@ pub async fn consume_service_events_once(
         transaction.commit().await.map_err(|error| {
             TransportError::store("Could not commit Service Inbox business effect", error)
         })?;
-        if let Err(error) = adapter.acknowledge(&delivery).await {
-            record_service_evidence_in_store(
-                pool,
-                "delivery",
-                "acknowledgement_failed",
-                &delivery.envelope.event_id,
-                Some(&delivery.delivery_id),
-                json!({"reason": error.message}),
-            )
-            .await?;
-            return Err(error);
-        }
-        record_service_evidence_in_store(
-            pool,
-            "delivery",
-            "acknowledged",
-            &delivery.envelope.event_id,
-            Some(&delivery.delivery_id),
-            json!({}),
-        )
-        .await?;
+        acknowledge_service_delivery(pool, adapter, &delivery, false).await?;
         completed += 1;
     }
     Ok(completed)
 }
 
-async fn persist_failed_inbox(
+async fn acknowledge_service_delivery(
+    pool: &PgPool,
+    adapter: &dyn TransportAdapter,
+    delivery: &TransportDelivery,
+    duplicate: bool,
+) -> Result<(), TransportError> {
+    if let Err(error) = adapter.acknowledge(delivery).await {
+        record_service_evidence_in_store(
+            pool,
+            "delivery",
+            "acknowledgement_failed",
+            &delivery.envelope.event_id,
+            Some(&delivery.delivery_id),
+            json!({"reason": error.message, "duplicate": duplicate}),
+        )
+        .await?;
+        return Err(error);
+    }
+    record_service_evidence_in_store(
+        pool,
+        "delivery",
+        "acknowledged",
+        &delivery.envelope.event_id,
+        Some(&delivery.delivery_id),
+        json!({"duplicate": duplicate}),
+    )
+    .await
+}
+
+async fn persist_handler_outcome(
     pool: &PgPool,
     delivery: &TransportDelivery,
     consumer_id: &str,
-    message: &str,
+    error: &ServiceEventHandlerError,
 ) -> Result<(), TransportError> {
+    let (status, outcome) = match error.code {
+        ServiceEventHandlerErrorCode::Retryable => ("retryable", "retryable_failed"),
+        ServiceEventHandlerErrorCode::Rejected => ("rejected", "rejected"),
+    };
     let mut transaction = pool.begin().await.map_err(|error| {
-        TransportError::store("Could not persist failed Service Inbox event", error)
+        TransportError::store("Could not persist Service Inbox handler outcome", error)
     })?;
     sqlx::query(
         r"
         insert into platform.service_event_inbox (
             delivery_id, consumer_id, event_id, envelope, status, last_error
-        ) values ($1, $2, $3, $4, 'failed', $5)
+        ) values ($1, $2, $3, $4, $5, $6)
+        on conflict (consumer_id, event_id) do update
+        set delivery_id = excluded.delivery_id,
+            envelope = excluded.envelope,
+            status = excluded.status,
+            last_error = excluded.last_error,
+            received_at = now(),
+            completed_at = null
         ",
     )
     .bind(&delivery.delivery_id)
@@ -732,23 +891,28 @@ async fn persist_failed_inbox(
             source: Some(Box::new(error)),
         })?,
     )
-    .bind(message)
+    .bind(status)
+    .bind(&error.message)
     .execute(&mut *transaction)
     .await
     .map_err(|error| {
-        TransportError::store("Could not persist failed Service Inbox event", error)
+        TransportError::store("Could not persist Service Inbox handler outcome", error)
     })?;
     record_service_evidence(
         &mut transaction,
-        "delivery",
-        "failed",
+        "inbox",
+        outcome,
         &delivery.envelope.event_id,
         Some(&delivery.delivery_id),
-        json!({"reason": message}),
+        json!({
+            "reasonCode": error.reason_code,
+            "reason": error.message,
+            "retryable": error.code == ServiceEventHandlerErrorCode::Retryable,
+        }),
     )
     .await?;
     transaction.commit().await.map_err(|error| {
-        TransportError::store("Could not commit failed Service Inbox event", error)
+        TransportError::store("Could not commit Service Inbox handler outcome", error)
     })?;
     Ok(())
 }
