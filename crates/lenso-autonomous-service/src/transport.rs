@@ -842,9 +842,9 @@ pub async fn consume_service_events_once(
             transaction.rollback().await.map_err(|error| {
                 TransportError::store("Could not roll back failed Service Inbox handling", error)
             })?;
-            let handler_outcome_persisted =
+            let handler_outcome_persistence =
                 persist_handler_outcome(pool, &delivery, consumer_id, &handler_error).await?;
-            if !handler_outcome_persisted {
+            if handler_outcome_persistence == HandlerOutcomePersistence::Superseded {
                 acknowledge_service_delivery(
                     pool,
                     adapter,
@@ -954,7 +954,7 @@ async fn persist_handler_outcome(
     delivery: &TransportDelivery,
     consumer_id: &str,
     error: &ServiceEventHandlerError,
-) -> Result<bool, TransportError> {
+) -> Result<HandlerOutcomePersistence, TransportError> {
     let (status, outcome) = match error.code {
         ServiceEventHandlerErrorCode::Retryable => ("retryable", "retryable_failed"),
         ServiceEventHandlerErrorCode::Rejected => ("rejected", "rejected"),
@@ -1010,7 +1010,7 @@ async fn persist_handler_outcome(
         transaction.commit().await.map_err(|error| {
             TransportError::store("Could not commit superseded Inbox handler outcome", error)
         })?;
-        return Ok(false);
+        return Ok(HandlerOutcomePersistence::Superseded);
     }
     record_service_evidence(
         &mut transaction,
@@ -1028,7 +1028,13 @@ async fn persist_handler_outcome(
     transaction.commit().await.map_err(|error| {
         TransportError::store("Could not commit Service Inbox handler outcome", error)
     })?;
-    Ok(true)
+    Ok(HandlerOutcomePersistence::Persisted)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HandlerOutcomePersistence {
+    Persisted,
+    Superseded,
 }
 
 async fn record_service_evidence(
