@@ -3,6 +3,7 @@ use crate::{
     TransportPublication,
 };
 use lenso_service::EventEnvelope;
+use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, PgPool};
 use thiserror::Error;
@@ -13,6 +14,7 @@ pub const DEAD_LETTER_REPLAY_RESULT_PROTOCOL: &str = "lenso.dead-letter-replay-r
 pub const DEAD_LETTER_RETENTION_RESULT_PROTOCOL: &str = "lenso.dead-letter-retention-result.v1";
 pub const DEAD_LETTER_CLEANUP_PLAN_PROTOCOL: &str = "lenso.dead-letter-cleanup-plan.v1";
 pub const DEAD_LETTER_CLEANUP_RESULT_PROTOCOL: &str = "lenso.dead-letter-cleanup-result.v1";
+pub const DEAD_LETTER_OPERATOR_ERROR_PROTOCOL: &str = "lenso.dead-letter-operator-error.v1";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeadLetterInspectQuery {
@@ -269,15 +271,27 @@ pub struct DeadLetterCleanupResult {
     pub next_actions: Vec<String>,
 }
 
-#[derive(Debug, Error, Serialize)]
+#[derive(Debug, Error)]
 #[error("{message}")]
-#[serde(rename_all = "camelCase")]
 pub struct DeadLetterOperatorError {
     pub code: DeadLetterOperatorErrorCode,
     pub message: String,
     pub next_actions: Vec<String>,
-    #[serde(skip)]
     source: Option<Box<dyn std::error::Error + Send + Sync>>,
+}
+
+impl Serialize for DeadLetterOperatorError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut state = serializer.serialize_struct("DeadLetterOperatorError", 4)?;
+        state.serialize_field("protocol", DEAD_LETTER_OPERATOR_ERROR_PROTOCOL)?;
+        state.serialize_field("code", &self.code)?;
+        state.serialize_field("message", &self.message)?;
+        state.serialize_field("nextActions", &self.next_actions)?;
+        state.end()
+    }
 }
 
 impl DeadLetterOperatorError {

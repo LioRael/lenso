@@ -241,6 +241,26 @@ async fn inspect_dead_letters_returns_stable_ordered_operator_json() {
         serde_json::json!(["inspect_payload"])
     );
 
+    let error = inspect_dead_letters(
+        &state,
+        DeadLetterInspectQuery {
+            limit: 0,
+            ..DeadLetterInspectQuery::default()
+        },
+    )
+    .await
+    .unwrap_err();
+    let error_json = serde_json::to_value(error).unwrap();
+    assert_eq!(
+        error_json,
+        serde_json::json!({
+            "protocol": "lenso.dead-letter-operator-error.v1",
+            "code": "invalid_request",
+            "message": "Dead-letter inspection limit must be between 1 and 1000",
+            "nextActions": ["correct_command_input"]
+        })
+    );
+
     drop(state);
     database.cleanup().await;
 }
