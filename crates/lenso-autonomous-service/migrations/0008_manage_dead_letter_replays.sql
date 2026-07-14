@@ -15,7 +15,7 @@ create table if not exists platform.service_event_replays (
     consumer_id text not null,
     event_id text not null,
     original_delivery_id text not null,
-    replay_delivery_id text,
+    replay_delivery_id text not null unique,
     environment text not null,
     approval_id text,
     plan_id text not null,

@@ -1,10 +1,13 @@
 use async_trait::async_trait;
 use lenso_autonomous_service::{
-    DeadLetterCleanupApproval, DeadLetterInspectQuery, DeadLetterOperatorEnvironment,
-    DeadLetterOperatorErrorCode, LocalTransportAdapter, ServiceEventHandler,
-    ServiceEventHandlerError, cleanup_dead_letters, consume_service_events_once,
-    inspect_dead_letters, plan_dead_letter_cleanup, plan_dead_letter_replay, prepare_runtime,
-    replay_dead_letter, retain_dead_letter_until,
+    DeadLetterApprovalRequest, DeadLetterAuthorityVerifier, DeadLetterInspectQuery,
+    DeadLetterOperatorEnvironment, DeadLetterOperatorErrorCode, LocalTransportAdapter,
+    ServiceEventHandler, ServiceEventHandlerError, TransportAdapter, TransportDelivery,
+    TransportDeploymentClass, TransportDiagnostic, TransportError, TransportHealth,
+    TransportNegativeAcknowledgement, TransportPublication, TransportPublicationReceipt,
+    cleanup_dead_letters, consume_service_events_once, inspect_dead_letters,
+    plan_dead_letter_cleanup, plan_dead_letter_replay, prepare_runtime, replay_dead_letter,
+    retain_dead_letter_until, verify_dead_letter_authority,
 };
 use lenso_service::{
     AutonomousServiceContract, AutonomousServiceStore, AutonomousServiceWorkload,
@@ -15,6 +18,74 @@ use sqlx::{Postgres, Transaction};
 
 #[derive(Debug)]
 struct ReplaySupportHandler;
+
+#[derive(Debug)]
+struct TestAuthorityVerifier;
+
+#[derive(Debug)]
+struct ProductionTransportAdapter<'a>(&'a LocalTransportAdapter);
+
+#[async_trait]
+impl TransportAdapter for ProductionTransportAdapter<'_> {
+    fn deployment_class(&self) -> TransportDeploymentClass {
+        TransportDeploymentClass::Production
+    }
+
+    async fn publish(
+        &self,
+        publication: TransportPublication,
+    ) -> Result<TransportPublicationReceipt, TransportError> {
+        self.0.publish(publication).await
+    }
+
+    async fn publish_replay(
+        &self,
+        publication: TransportPublication,
+        delivery_id: &str,
+    ) -> Result<TransportPublicationReceipt, TransportError> {
+        self.0.publish_replay(publication, delivery_id).await
+    }
+
+    async fn receive(
+        &self,
+        consumer_id: &str,
+        limit: i64,
+    ) -> Result<Vec<TransportDelivery>, TransportError> {
+        self.0.receive(consumer_id, limit).await
+    }
+
+    async fn acknowledge(&self, delivery: &TransportDelivery) -> Result<(), TransportError> {
+        self.0.acknowledge(delivery).await
+    }
+
+    async fn negative_acknowledge(
+        &self,
+        delivery: &TransportDelivery,
+        acknowledgement: TransportNegativeAcknowledgement,
+    ) -> Result<(), TransportError> {
+        self.0.negative_acknowledge(delivery, acknowledgement).await
+    }
+
+    async fn health(&self) -> Result<TransportHealth, TransportError> {
+        self.0.health().await
+    }
+
+    async fn diagnostics(&self) -> Result<Vec<TransportDiagnostic>, TransportError> {
+        self.0.diagnostics().await
+    }
+}
+
+impl DeadLetterAuthorityVerifier for TestAuthorityVerifier {
+    fn verify(
+        &self,
+        request: &DeadLetterApprovalRequest,
+        credential: &str,
+    ) -> Result<String, String> {
+        (credential == "approved-secret")
+            .then(|| format!("approved:{}", request.plan_id))
+            .ok_or_else(|| "Operator credential was not approved".to_owned())
+    }
+}
 
 #[async_trait]
 impl ServiceEventHandler for ReplaySupportHandler {
@@ -30,6 +101,48 @@ impl ServiceEventHandler for ReplaySupportHandler {
             .map_err(ServiceEventHandlerError::store)?;
         Ok(())
     }
+}
+
+async fn insert_replayable_dead_letter(
+    pool: &sqlx::PgPool,
+    envelope: &lenso_service::EventEnvelope,
+) {
+    let envelope_json = serde_json::to_value(envelope).unwrap();
+    sqlx::query(
+        r#"
+        insert into platform.service_event_inbox (
+            delivery_id, consumer_id, event_id, envelope, status, attempt_count,
+            failure_reason, reason_code, terminal_outcome, delivery_history,
+            original_envelope, max_attempts, retry_schedule
+        ) values ('delivery-original', 'support-sla', $1, $2, 'dead_lettered', 1,
+                  'poison', 'invalid_payload', 'dead_lettered', '[]', $2, 3, '[]')
+        "#,
+    )
+    .bind(&envelope.event_id)
+    .bind(&envelope_json)
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"
+        insert into platform.service_event_dead_letters (
+            dead_letter_id, consumer_id, event_id, delivery_id, envelope,
+            contract_id, contract_version, failure_reason, reason_code,
+            diagnostic, attempt_count, terminal_outcome, delivery_history,
+            max_attempts, retry_schedule, next_actions, dead_lettered_at
+        ) values ('dead-replay', 'support-sla', $1, 'delivery-original', $2,
+                  $3, $4, 'poison', 'invalid_payload', 'invalid payload', 1,
+                  'dead_lettered', '[]', 3, '[]', '["replay_event"]',
+                  '2026-07-15T09:00:00Z')
+        "#,
+    )
+    .bind(&envelope.event_id)
+    .bind(&envelope_json)
+    .bind(&envelope.contract_id)
+    .bind(&envelope.contract_version)
+    .execute(pool)
+    .await
+    .unwrap();
 }
 
 fn service(service_id: &str, store_id: &str) -> AutonomousServiceContract {
@@ -164,49 +277,11 @@ async fn replay_dry_run_is_non_mutating_and_execution_preserves_business_identit
     ))
     .unwrap();
     let envelope_json = serde_json::to_value(&envelope).unwrap();
-    sqlx::query(
-        r#"
-        insert into platform.service_event_inbox (
-            delivery_id, consumer_id, event_id, envelope, status, attempt_count,
-            failure_reason, reason_code, terminal_outcome, delivery_history,
-            original_envelope, max_attempts, retry_schedule
-        ) values ('delivery-original', 'support-sla', $1, $2, 'dead_lettered', 1,
-                  'poison', 'invalid_payload', 'dead_lettered', '[]', $2, 3, '[]')
-        "#,
-    )
-    .bind(&envelope.event_id)
-    .bind(&envelope_json)
-    .execute(&database.pool)
-    .await
-    .unwrap();
-    sqlx::query(
-        r#"
-        insert into platform.service_event_dead_letters (
-            dead_letter_id, consumer_id, event_id, delivery_id, envelope,
-            contract_id, contract_version, failure_reason, reason_code,
-            diagnostic, attempt_count, terminal_outcome, delivery_history,
-            max_attempts, retry_schedule, next_actions, dead_lettered_at
-        ) values ('dead-replay', 'support-sla', $1, 'delivery-original', $2,
-                  $3, $4, 'poison', 'invalid_payload', 'invalid payload', 1,
-                  'dead_lettered', '[]', 3, '[]', '["replay_event"]',
-                  '2026-07-15T09:00:00Z')
-        "#,
-    )
-    .bind(&envelope.event_id)
-    .bind(&envelope_json)
-    .bind(&envelope.contract_id)
-    .bind(&envelope.contract_version)
-    .execute(&database.pool)
-    .await
-    .unwrap();
+    insert_replayable_dead_letter(&database.pool, &envelope).await;
 
-    let plan = plan_dead_letter_replay(
-        &state,
-        "dead-replay",
-        DeadLetterOperatorEnvironment::LocalSandbox,
-    )
-    .await
-    .unwrap();
+    let plan = plan_dead_letter_replay(&state, &adapter, "dead-replay")
+        .await
+        .unwrap();
     let json = serde_json::to_value(&plan).unwrap();
     assert_eq!(json["protocol"], "lenso.dead-letter-replay-plan.v1");
     assert_eq!(json["mutatesState"], false);
@@ -224,6 +299,7 @@ async fn replay_dry_run_is_non_mutating_and_execution_preserves_business_identit
     assert_eq!(json["authorization"]["status"], "not_required");
     assert_eq!(json["approvalBoundary"], "local_sandbox_only");
     assert_eq!(json["environment"], "local_sandbox");
+    assert_eq!(json["validations"].as_array().unwrap().len(), 4);
     let replay_count: i64 =
         sqlx::query_scalar("select count(*) from platform.service_event_replays")
             .fetch_one(&database.pool)
@@ -231,26 +307,13 @@ async fn replay_dry_run_is_non_mutating_and_execution_preserves_business_identit
             .unwrap();
     assert_eq!(replay_count, 0);
 
-    let production_plan = plan_dead_letter_replay(
-        &state,
-        "dead-replay",
-        DeadLetterOperatorEnvironment::Production,
-    )
-    .await
-    .unwrap();
-    let production_json = serde_json::to_value(&production_plan).unwrap();
-    assert_eq!(production_json["approvalBoundary"], "production_replay");
-    assert_eq!(production_json["authorization"]["status"], "required");
-    let error = replay_dead_letter(&state, &adapter, &production_plan, None)
+    adapter
+        .publish(TransportPublication {
+            consumer_id: "support-sla".to_owned(),
+            envelope: envelope.clone(),
+        })
         .await
-        .unwrap_err();
-    assert_eq!(error.code, DeadLetterOperatorErrorCode::ApprovalRequired);
-    let mut tampered_plan = production_plan.clone();
-    tampered_plan.environment = DeadLetterOperatorEnvironment::LocalSandbox;
-    let error = replay_dead_letter(&state, &adapter, &tampered_plan, None)
-        .await
-        .unwrap_err();
-    assert_eq!(error.code, DeadLetterOperatorErrorCode::StateChanged);
+        .unwrap();
 
     let result = replay_dead_letter(&state, &adapter, &plan, None)
         .await
@@ -259,7 +322,7 @@ async fn replay_dry_run_is_non_mutating_and_execution_preserves_business_identit
     assert_eq!(result.contract_version, envelope.contract_version);
     assert_ne!(result.delivery_id, "delivery-original");
     assert_eq!(
-        consume_service_events_once(&state, &adapter, "support-sla", &ReplaySupportHandler, 10,)
+        consume_service_events_once(&state, &adapter, "support-sla", &ReplaySupportHandler, 1,)
             .await
             .unwrap(),
         1
@@ -271,15 +334,32 @@ async fn replay_dry_run_is_non_mutating_and_execution_preserves_business_identit
     .fetch_one(&database.pool)
     .await
     .unwrap();
-    assert_eq!(first_replay_status, "completed");
-
-    let duplicate_plan = plan_dead_letter_replay(
-        &state,
-        "dead-replay",
-        DeadLetterOperatorEnvironment::LocalSandbox,
+    assert_eq!(first_replay_status, "published");
+    let active_status: String = sqlx::query_scalar(
+        "select status from platform.service_event_dead_letters where dead_letter_id = 'dead-replay'",
     )
+    .fetch_one(&database.pool)
     .await
     .unwrap();
+    assert_eq!(active_status, "replay_active");
+    assert_eq!(
+        consume_service_events_once(&state, &adapter, "support-sla", &ReplaySupportHandler, 1,)
+            .await
+            .unwrap(),
+        0
+    );
+    let first_replay_status: String = sqlx::query_scalar(
+        "select status from platform.service_event_replays where replay_id = $1",
+    )
+    .bind(&result.replay_id)
+    .fetch_one(&database.pool)
+    .await
+    .unwrap();
+    assert_eq!(first_replay_status, "duplicate_completed");
+
+    let duplicate_plan = plan_dead_letter_replay(&state, &adapter, "dead-replay")
+        .await
+        .unwrap();
     let duplicate_result = replay_dead_letter(&state, &adapter, &duplicate_plan, None)
         .await
         .unwrap();
@@ -303,6 +383,66 @@ async fn replay_dry_run_is_non_mutating_and_execution_preserves_business_identit
     .await
     .unwrap();
     assert_eq!(duplicate_status, "duplicate_completed");
+
+    drop(adapter);
+    drop(state);
+    database.cleanup().await;
+    transport_database.cleanup().await;
+}
+
+#[tokio::test]
+async fn production_replay_uses_runtime_environment_and_verified_authority() {
+    let Some(database) = TestDatabase::create().await else {
+        return;
+    };
+    let Some(transport_database) = TestDatabase::create().await else {
+        database.cleanup().await;
+        return;
+    };
+    let config = lenso_autonomous_service::ServiceRuntimeConfig::new(
+        "support-sla",
+        "support-sla-store",
+        "support-sla",
+    )
+    .with_operator_environment(DeadLetterOperatorEnvironment::Production);
+    let state = prepare_runtime(
+        &service("support-sla", "support-sla-store"),
+        &config,
+        database.pool.clone(),
+        &[],
+    )
+    .await
+    .unwrap();
+    let adapter = LocalTransportAdapter::prepare(transport_database.pool.clone())
+        .await
+        .unwrap();
+    let production_adapter = ProductionTransportAdapter(&adapter);
+    let envelope: lenso_service::EventEnvelope = serde_json::from_str(include_str!(
+        "../../../contracts/events/support/support.ticket-opened.v1.envelope.json"
+    ))
+    .unwrap();
+    insert_replayable_dead_letter(&database.pool, &envelope).await;
+
+    let plan = plan_dead_letter_replay(&state, &production_adapter, "dead-replay")
+        .await
+        .unwrap();
+    let json = serde_json::to_value(&plan).unwrap();
+    assert_eq!(json["environment"], "production");
+    assert_eq!(json["approvalBoundary"], "production_replay");
+    let error = replay_dead_letter(&state, &production_adapter, &plan, None)
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, DeadLetterOperatorErrorCode::ApprovalRequired);
+    let request = plan.approval_request().unwrap();
+    let error = verify_dead_letter_authority(&TestAuthorityVerifier, request.clone(), "forged")
+        .unwrap_err();
+    assert_eq!(error.code, DeadLetterOperatorErrorCode::AuthorizationDenied);
+    let approval =
+        verify_dead_letter_authority(&TestAuthorityVerifier, request, "approved-secret").unwrap();
+    let result = replay_dead_letter(&state, &production_adapter, &plan, Some(&approval))
+        .await
+        .unwrap();
+    assert_eq!(result.event_id, envelope.event_id);
 
     drop(adapter);
     drop(state);
@@ -411,13 +551,9 @@ async fn cleanup_requires_authority_and_preserves_deduplication_audit_and_active
     .await
     .unwrap();
 
-    let plan = plan_dead_letter_cleanup(
-        &state,
-        DeadLetterOperatorEnvironment::LocalSandbox,
-        "2026-08-01T00:00:00Z".parse().unwrap(),
-    )
-    .await
-    .unwrap();
+    let plan = plan_dead_letter_cleanup(&state, "2026-08-01T00:00:00Z".parse().unwrap())
+        .await
+        .unwrap();
     let json = serde_json::to_value(&plan).unwrap();
     assert_eq!(json["protocol"], "lenso.dead-letter-cleanup-plan.v1");
     assert_eq!(json["mutatesState"], false);
@@ -433,15 +569,15 @@ async fn cleanup_requires_authority_and_preserves_deduplication_audit_and_active
     let error = cleanup_dead_letters(&state, &plan, None).await.unwrap_err();
     assert_eq!(error.code, DeadLetterOperatorErrorCode::ApprovalRequired);
 
-    let result = cleanup_dead_letters(
-        &state,
-        &plan,
-        Some(&DeadLetterCleanupApproval {
-            approval_id: "cleanup-approved-1".to_owned(),
-        }),
+    let approval = verify_dead_letter_authority(
+        &TestAuthorityVerifier,
+        plan.approval_request(),
+        "approved-secret",
     )
-    .await
     .unwrap();
+    let result = cleanup_dead_letters(&state, &plan, Some(&approval))
+        .await
+        .unwrap();
     assert_eq!(result.deleted_dead_letter_ids, vec!["dead-clean"]);
     let remaining: Vec<String> = sqlx::query_scalar(
         "select dead_letter_id from platform.service_event_dead_letters order by dead_letter_id",
