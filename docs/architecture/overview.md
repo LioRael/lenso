@@ -119,6 +119,13 @@ Contract artifacts and `lenso.event-envelope.v1` envelopes. The envelope keeps
 stable Service, Module, Contract, Story, causation, tenant, identity, region,
 and content metadata, and has a lossless CloudEvents 1.0 structured
 representation without broker vocabulary.
+Autonomous Service receivers authenticate stable `service:<service-id>`
+Principals through the public Workload Identity provider boundary. The local
+System Sandbox provider is deterministic and development-only; production
+composition supplies an external provider rather than making Lenso a
+certificate authority. Direct HTTP, gRPC, and event admission verify signed,
+audience-limited, expiring credentials plus authenticated transport binding
+before business behavior, without a Host or System Plane lookup.
 Route proxying is specified
 separately in `docs/architecture/module-remote-http-proxy.md`. Remote runtime
 execution and event-handler dispatch are scoped in
