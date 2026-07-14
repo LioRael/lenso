@@ -1,7 +1,9 @@
 //! Host-independent runtime composition for one `lenso.service.v2` Service.
 
+mod operations;
 mod transport;
 
+pub use operations::*;
 pub use transport::*;
 
 use axum::{
@@ -31,6 +33,7 @@ pub struct ServiceRuntimeConfig {
     pub service_id: String,
     pub store_id: String,
     pub store_owner_service_id: String,
+    pub operator_environment: DeadLetterOperatorEnvironment,
     pub values: serde_json::Value,
 }
 
@@ -45,6 +48,7 @@ impl ServiceRuntimeConfig {
             service_id: service_id.into(),
             store_id: store_id.into(),
             store_owner_service_id: store_owner_service_id.into(),
+            operator_environment: DeadLetterOperatorEnvironment::LocalSandbox,
             values: serde_json::json!({}),
         }
     }
@@ -52,6 +56,15 @@ impl ServiceRuntimeConfig {
     #[must_use]
     pub fn with_values(mut self, values: serde_json::Value) -> Self {
         self.values = values;
+        self
+    }
+
+    #[must_use]
+    pub const fn with_operator_environment(
+        mut self,
+        operator_environment: DeadLetterOperatorEnvironment,
+    ) -> Self {
+        self.operator_environment = operator_environment;
         self
     }
 }
@@ -108,6 +121,10 @@ pub const SERVICE_RUNTIME_MIGRATIONS: &[Migration] = &[
         name: "autonomous-service/0006_classify_event_delivery_failures",
         sql: include_str!("../migrations/0006_classify_event_delivery_failures.sql"),
     },
+    Migration {
+        name: "autonomous-service/0008_manage_dead_letter_replays",
+        sql: include_str!("../migrations/0008_manage_dead_letter_replays.sql"),
+    },
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
@@ -128,13 +145,14 @@ pub struct ServiceRuntimeState {
     pool: Option<PgPool>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct ServiceRuntimeIdentity {
     service_id: String,
     api_workload_id: String,
     store_id: String,
     migration_workload_id: String,
     worker_workload_id: String,
+    operator_environment: DeadLetterOperatorEnvironment,
 }
 
 impl ServiceRuntimeState {
@@ -153,6 +171,7 @@ impl ServiceRuntimeState {
                 store_id: store_id.into(),
                 migration_workload_id: migration_workload_id.into(),
                 worker_workload_id: worker_workload_id.into(),
+                operator_environment: DeadLetterOperatorEnvironment::LocalSandbox,
             }),
             phase: Arc::new(RwLock::new(RuntimePhase::Starting)),
             worker_phase: Arc::new(RwLock::new(RuntimePhase::Starting)),
@@ -183,6 +202,14 @@ impl ServiceRuntimeState {
     #[must_use]
     pub fn with_store(mut self, pool: PgPool) -> Self {
         self.pool = Some(pool);
+        self
+    }
+
+    fn with_operator_environment(
+        mut self,
+        operator_environment: DeadLetterOperatorEnvironment,
+    ) -> Self {
+        Arc::make_mut(&mut self.identity).operator_environment = operator_environment;
         self
     }
 
@@ -260,7 +287,8 @@ pub async fn prepare_runtime(
         &validated.migration_workload_id,
         &validated.worker_workload_id,
     )
-    .with_store(pool.clone());
+    .with_store(pool.clone())
+    .with_operator_environment(config.operator_environment);
     if let Err(error) = apply_migrations(&pool, SERVICE_RUNTIME_MIGRATIONS).await {
         state.set_phase(RuntimePhase::Failed);
         return Err(runtime_error(

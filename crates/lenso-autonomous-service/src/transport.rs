@@ -109,6 +109,13 @@ pub enum TransportHealthStatus {
     Unavailable,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TransportDeploymentClass {
+    LocalSandbox,
+    Production,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TransportHealth {
@@ -179,10 +186,28 @@ pub(crate) async fn event_delivery_evidence(
 
 #[async_trait]
 pub trait TransportAdapter: Debug + Send + Sync {
+    fn deployment_class(&self) -> TransportDeploymentClass {
+        TransportDeploymentClass::LocalSandbox
+    }
+
     async fn publish(
         &self,
         publication: TransportPublication,
     ) -> Result<TransportPublicationReceipt, TransportError>;
+
+    /// Publishes a replay using a delivery identity durably allocated by the
+    /// Service before the adapter is called. Adapters must either publish with
+    /// exactly this identity or return before making the delivery visible.
+    async fn publish_replay(
+        &self,
+        _publication: TransportPublication,
+        _delivery_id: &str,
+    ) -> Result<TransportPublicationReceipt, TransportError> {
+        Err(TransportError::new(
+            TransportErrorCode::DeliveryFailed,
+            "Transport Adapter does not support durable replay publication",
+        ))
+    }
 
     async fn receive(
         &self,
@@ -261,6 +286,51 @@ impl LocalTransportAdapter {
         Ok(adapter)
     }
 
+    async fn publish_with_delivery_id(
+        &self,
+        publication: TransportPublication,
+        delivery_id: String,
+    ) -> Result<TransportPublicationReceipt, TransportError> {
+        let envelope =
+            serde_json::to_value(&publication.envelope).map_err(|error| TransportError {
+                code: TransportErrorCode::InvalidEnvelope,
+                message: "Event Envelope could not be serialized".to_owned(),
+                source: Some(Box::new(error)),
+            })?;
+        let mut transaction = self.pool.begin().await.map_err(|error| {
+            TransportError::store("Could not begin local transport publication", error)
+        })?;
+        sqlx::query(
+            r"
+            insert into platform.local_transport_deliveries (
+                delivery_id, consumer_id, event_id, envelope, status
+            ) values ($1, $2, $3, $4, 'available')
+            ",
+        )
+        .bind(&delivery_id)
+        .bind(&publication.consumer_id)
+        .bind(&publication.envelope.event_id)
+        .bind(envelope)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|error| TransportError::store("Could not publish Event Envelope", error))?;
+        insert_transport_diagnostic(
+            &mut transaction,
+            &delivery_id,
+            &publication.envelope.event_id,
+            "published",
+            json!({"consumerId": publication.consumer_id}),
+        )
+        .await?;
+        transaction.commit().await.map_err(|error| {
+            TransportError::store("Could not commit local transport publication", error)
+        })?;
+        Ok(TransportPublicationReceipt {
+            delivery_id,
+            event_id: publication.envelope.event_id,
+        })
+    }
+
     async fn recover_unacknowledged(&self) -> Result<(), TransportError> {
         let mut transaction = self.pool.begin().await.map_err(|error| {
             TransportError::store("Could not begin local transport recovery", error)
@@ -336,45 +406,17 @@ impl TransportAdapter for LocalTransportAdapter {
         &self,
         publication: TransportPublication,
     ) -> Result<TransportPublicationReceipt, TransportError> {
-        let delivery_id = Uuid::new_v4().to_string();
-        let envelope =
-            serde_json::to_value(&publication.envelope).map_err(|error| TransportError {
-                code: TransportErrorCode::InvalidEnvelope,
-                message: "Event Envelope could not be serialized".to_owned(),
-                source: Some(Box::new(error)),
-            })?;
-        let mut transaction = self.pool.begin().await.map_err(|error| {
-            TransportError::store("Could not begin local transport publication", error)
-        })?;
-        sqlx::query(
-            r"
-            insert into platform.local_transport_deliveries (
-                delivery_id, consumer_id, event_id, envelope, status
-            ) values ($1, $2, $3, $4, 'available')
-            ",
-        )
-        .bind(&delivery_id)
-        .bind(&publication.consumer_id)
-        .bind(&publication.envelope.event_id)
-        .bind(envelope)
-        .execute(&mut *transaction)
-        .await
-        .map_err(|error| TransportError::store("Could not publish Event Envelope", error))?;
-        insert_transport_diagnostic(
-            &mut transaction,
-            &delivery_id,
-            &publication.envelope.event_id,
-            "published",
-            json!({"consumerId": publication.consumer_id}),
-        )
-        .await?;
-        transaction.commit().await.map_err(|error| {
-            TransportError::store("Could not commit local transport publication", error)
-        })?;
-        Ok(TransportPublicationReceipt {
-            delivery_id,
-            event_id: publication.envelope.event_id,
-        })
+        self.publish_with_delivery_id(publication, Uuid::new_v4().to_string())
+            .await
+    }
+
+    async fn publish_replay(
+        &self,
+        publication: TransportPublication,
+        delivery_id: &str,
+    ) -> Result<TransportPublicationReceipt, TransportError> {
+        self.publish_with_delivery_id(publication, delivery_id.to_owned())
+            .await
     }
 
     async fn receive(
@@ -1285,6 +1327,17 @@ async fn consume_service_events_once_at_internal(
                     }),
                 )
                 .await?;
+                if existing_status == InboxStatus::Completed {
+                    complete_active_replay(
+                        &mut transaction,
+                        consumer_id,
+                        &delivery.envelope.event_id,
+                        &delivery.delivery_id,
+                        now,
+                        true,
+                    )
+                    .await?;
+                }
                 transaction.commit().await.map_err(|error| {
                     TransportError::store(
                         "Could not commit duplicate Service Inbox evidence",
@@ -1401,6 +1454,15 @@ async fn consume_service_events_once_at_internal(
                 "Service Inbox completion lost its state transition",
             ));
         }
+        complete_active_replay(
+            &mut transaction,
+            consumer_id,
+            &delivery.envelope.event_id,
+            &delivery.delivery_id,
+            now,
+            false,
+        )
+        .await?;
         transaction.commit().await.map_err(|error| {
             TransportError::store("Could not commit Service Inbox business effect", error)
         })?;
@@ -1414,6 +1476,71 @@ async fn consume_service_events_once_at_internal(
         completed += 1;
     }
     first_handler_failure.map_or(Ok(completed), Err)
+}
+
+async fn complete_active_replay(
+    transaction: &mut Transaction<'_, Postgres>,
+    consumer_id: &str,
+    event_id: &str,
+    delivery_id: &str,
+    completed_at: chrono::DateTime<chrono::Utc>,
+    duplicate: bool,
+) -> Result<(), TransportError> {
+    let resolved = sqlx::query(
+        r#"
+        update platform.service_event_dead_letters dead_letter
+        set status = 'resolved', resolved_at = $3
+        where consumer_id = $1 and event_id = $2 and status = 'replay_active'
+          and exists (
+              select 1
+              from platform.service_event_replays replay
+              where replay.dead_letter_id = dead_letter.dead_letter_id
+                and replay.replay_delivery_id = $4
+                and replay.status in ('preparing', 'published')
+          )
+        "#,
+    )
+    .bind(consumer_id)
+    .bind(event_id)
+    .bind(completed_at)
+    .bind(delivery_id)
+    .execute(&mut **transaction)
+    .await
+    .map_err(|error| TransportError::store("Could not resolve replayed dead letter", error))?;
+    if resolved.rows_affected() == 0 {
+        return Ok(());
+    }
+    let replay_status = if duplicate {
+        "duplicate_completed"
+    } else {
+        "completed"
+    };
+    sqlx::query(
+        r#"
+        update platform.service_event_replays
+        set status = $3, completed_at = $4
+        where consumer_id = $1 and event_id = $2
+          and replay_delivery_id = $5
+          and status in ('preparing', 'published')
+        "#,
+    )
+    .bind(consumer_id)
+    .bind(event_id)
+    .bind(replay_status)
+    .bind(completed_at)
+    .bind(delivery_id)
+    .execute(&mut **transaction)
+    .await
+    .map_err(|error| TransportError::store("Could not complete replay audit", error))?;
+    record_service_evidence(
+        transaction,
+        "replay",
+        replay_status,
+        event_id,
+        None,
+        json!({"duplicate": duplicate}),
+    )
+    .await
 }
 
 async fn acknowledge_service_delivery(
