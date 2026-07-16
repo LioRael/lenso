@@ -4,11 +4,13 @@ mod operations;
 mod transport;
 mod transport_nats_jetstream;
 mod workflow;
+mod workflow_child;
 
 pub use operations::*;
 pub use transport::*;
 pub use transport_nats_jetstream::*;
 pub use workflow::*;
+pub use workflow_child::*;
 
 use axum::{
     Json, Router,
@@ -168,8 +170,12 @@ pub const SERVICE_RUNTIME_MIGRATIONS: &[Migration] = &[
         sql: include_str!("../migrations/0011_advance_durable_workflow_steps.sql"),
     },
     Migration {
-        name: "autonomous-service/0012_recover_workflow_retries_and_timers",
-        sql: include_str!("../migrations/0012_recover_workflow_retries_and_timers.sql"),
+        name: "autonomous-service/0012_run_child_workflows",
+        sql: include_str!("../migrations/0012_run_child_workflows.sql"),
+    },
+    Migration {
+        name: "autonomous-service/0013_recover_workflow_retries_and_timers",
+        sql: include_str!("../migrations/0013_recover_workflow_retries_and_timers.sql"),
     },
 ];
 

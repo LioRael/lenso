@@ -286,6 +286,7 @@ pub(super) fn pending_step_inspection(
         exhausted_at: None,
         attempts: Vec::new(),
         timers,
+        child_workflow: None,
         created_at: now,
         updated_at: now,
     }

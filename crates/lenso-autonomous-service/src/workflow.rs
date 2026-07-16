@@ -56,6 +56,61 @@ pub struct WorkflowDefinitionIdentity {
     pub version: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkflowFailureEvidence {
+    pub code: String,
+    pub message: String,
+    pub next_action: String,
+}
+
+impl WorkflowFailureEvidence {
+    #[must_use]
+    pub fn new(
+        code: impl Into<String>,
+        message: impl Into<String>,
+        next_action: impl Into<String>,
+    ) -> Self {
+        Self {
+            code: code.into(),
+            message: message.into(),
+            next_action: next_action.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowParentInspection {
+    pub instance_id: String,
+    pub step_id: String,
+    pub causation_id: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowChildState {
+    Waiting,
+    Completed,
+    Failed,
+    UnsupportedVersion,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowChildInspection {
+    pub link_id: String,
+    pub start_id: String,
+    pub definition: WorkflowDefinitionIdentity,
+    pub instance_id: Option<String>,
+    pub state: WorkflowChildState,
+    pub completion_delivery_id: Option<String>,
+    pub failure: Option<WorkflowFailureEvidence>,
+    pub next_actions: Vec<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum WorkflowInstanceState {
@@ -68,8 +123,10 @@ pub enum WorkflowInstanceState {
 #[serde(rename_all = "snake_case")]
 pub enum WorkflowStepState {
     Pending,
+    WaitingForChild,
     Completed,
     Exhausted,
+    Failed,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -100,6 +157,7 @@ pub struct WorkflowStepInspection {
     pub exhausted_at: Option<DateTime<Utc>>,
     pub attempts: Vec<WorkflowStepAttemptInspection>,
     pub timers: Vec<WorkflowTimerInspection>,
+    pub child_workflow: Option<WorkflowChildInspection>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -115,6 +173,8 @@ pub struct WorkflowInstance {
     pub result: Option<Value>,
     pub story_context: WorkflowStoryContext,
     pub tenant_scope: Option<WorkflowTenantScope>,
+    pub parent: Option<WorkflowParentInspection>,
+    pub failure: Option<WorkflowFailureEvidence>,
     pub initial_step_id: String,
     pub steps: Vec<WorkflowStepInspection>,
     pub created_at: DateTime<Utc>,
@@ -159,6 +219,10 @@ pub enum WorkflowErrorCode {
     TransitionConflict,
     #[serde(rename = "workflow_event_contract_not_declared")]
     EventContractNotDeclared,
+    #[serde(rename = "workflow_child_link_not_found")]
+    ChildLinkNotFound,
+    #[serde(rename = "workflow_child_not_terminal")]
+    ChildNotTerminal,
     #[serde(rename = "workflow_store_unavailable")]
     StoreUnavailable,
     #[serde(rename = "workflow_stored_state_invalid")]
@@ -179,6 +243,8 @@ impl WorkflowErrorCode {
             Self::StepNotFound => "workflow_step_not_found",
             Self::TransitionConflict => "workflow_transition_conflict",
             Self::EventContractNotDeclared => "workflow_event_contract_not_declared",
+            Self::ChildLinkNotFound => "workflow_child_link_not_found",
+            Self::ChildNotTerminal => "workflow_child_not_terminal",
             Self::StoreUnavailable => "workflow_store_unavailable",
             Self::StoredStateInvalid => "workflow_stored_state_invalid",
         }
@@ -193,14 +259,14 @@ pub struct WorkflowMutationError {
 }
 
 impl WorkflowMutationError {
-    fn new(code: WorkflowErrorCode, message: impl Into<String>) -> Self {
+    pub(crate) fn new(code: WorkflowErrorCode, message: impl Into<String>) -> Self {
         Self {
             code,
             message: message.into(),
         }
     }
 
-    fn store(message: impl Into<String>) -> Self {
+    pub(crate) fn store(message: impl Into<String>) -> Self {
         Self::new(WorkflowErrorCode::StoreUnavailable, message)
     }
 }
@@ -240,7 +306,8 @@ impl WorkflowEventPublication {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
 pub enum WorkflowTransitionDisposition {
     Applied,
     Duplicate,
@@ -301,8 +368,11 @@ impl WorkflowApiError {
             WorkflowErrorCode::DefinitionNotFound
             | WorkflowErrorCode::DefinitionVersionNotFound
             | WorkflowErrorCode::InstanceNotFound
-            | WorkflowErrorCode::StepNotFound => StatusCode::NOT_FOUND,
-            WorkflowErrorCode::TransitionConflict => StatusCode::CONFLICT,
+            | WorkflowErrorCode::StepNotFound
+            | WorkflowErrorCode::ChildLinkNotFound => StatusCode::NOT_FOUND,
+            WorkflowErrorCode::TransitionConflict | WorkflowErrorCode::ChildNotTerminal => {
+                StatusCode::CONFLICT
+            }
             WorkflowErrorCode::StoreUnavailable => StatusCode::SERVICE_UNAVAILABLE,
             WorkflowErrorCode::StoredStateInvalid => StatusCode::INTERNAL_SERVER_ERROR,
         }
@@ -316,6 +386,8 @@ impl From<WorkflowMutationError> for WorkflowApiError {
             WorkflowErrorCode::StepNotFound => "inspect_workflow_steps",
             WorkflowErrorCode::TransitionConflict => "inspect_committed_workflow_transition",
             WorkflowErrorCode::EventContractNotDeclared => "declare_service_event_contract",
+            WorkflowErrorCode::ChildLinkNotFound => "inspect_parent_workflow_child_evidence",
+            WorkflowErrorCode::ChildNotTerminal => "wait_for_child_workflow",
             WorkflowErrorCode::DefinitionNotFound => "inspect_module_workflow_definitions",
             WorkflowErrorCode::DefinitionVersionNotFound => "select_registered_workflow_version",
             WorkflowErrorCode::StoreUnavailable => "restore_service_store",
@@ -369,6 +441,10 @@ struct WorkflowInstanceRow {
     result: Option<Value>,
     story_context: Value,
     tenant_scope: Option<Value>,
+    parent_instance_id: Option<String>,
+    parent_step_id: Option<String>,
+    causation_id: Option<String>,
+    failure_evidence: Option<Value>,
     initial_step_id: String,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
@@ -391,6 +467,23 @@ struct WorkflowStepRow {
     failure_code: Option<String>,
     failure_message: Option<String>,
     exhausted_at: Option<DateTime<Utc>>,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, FromRow)]
+struct WorkflowChildRow {
+    link_id: String,
+    start_id: String,
+    parent_step_id: String,
+    child_definition_owner: String,
+    child_definition_name: String,
+    child_definition_version: String,
+    child_instance_id: Option<String>,
+    state: String,
+    completion_delivery_id: Option<String>,
+    failure_evidence: Option<Value>,
+    next_action: String,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
 }
@@ -514,6 +607,8 @@ async fn start_workflow(
         result: None,
         story_context: request.story_context,
         tenant_scope: request.tenant_scope,
+        parent: None,
+        failure: None,
         initial_step_id: initial_step_id.clone(),
         steps: vec![recovery::pending_step_inspection(
             initial_step_id,
@@ -691,6 +786,8 @@ pub async fn start_workflow_from_event_in_tx(
         result: None,
         story_context,
         tenant_scope,
+        parent: None,
+        failure: None,
         initial_step_id: initial_step_id.clone(),
         steps: vec![recovery::pending_step_inspection(
             initial_step_id,
@@ -1066,6 +1163,12 @@ fn validate_outgoing_context(
     }
 }
 
+pub(crate) fn postgres_now() -> DateTime<Utc> {
+    let now = Utc::now();
+    DateTime::<Utc>::from_timestamp_micros(now.timestamp_micros())
+        .expect("current UTC timestamp must fit PostgreSQL microsecond precision")
+}
+
 #[utoipa::path(
     get,
     path = "/runtime/workflows/instances/{instance_id}",
@@ -1089,11 +1192,26 @@ async fn inspect_workflow(
         ));
     }
     let instance = load_instance(&state, &instance_id).await?;
+    let next_actions = workflow_next_actions(&instance);
     Ok(Json(WorkflowInspectionResult {
         protocol: WORKFLOW_INSPECTION_PROTOCOL.to_owned(),
         instance,
-        next_actions: vec!["no_action_required".to_owned()],
+        next_actions,
     }))
+}
+
+fn workflow_next_actions(instance: &WorkflowInstance) -> Vec<String> {
+    if let Some(failure) = &instance.failure {
+        return vec![failure.next_action.clone()];
+    }
+    if instance.steps.iter().any(|step| {
+        step.child_workflow
+            .as_ref()
+            .is_some_and(|child| child.state == WorkflowChildState::Waiting)
+    }) {
+        return vec!["wait_for_child_workflow".to_owned()];
+    }
+    vec!["no_action_required".to_owned()]
 }
 
 fn validate_start_request(
@@ -1129,7 +1247,7 @@ fn validate_start_request(
     }
 }
 
-fn resolve_definition(
+pub(crate) fn resolve_definition(
     state: &ServiceRuntimeState,
     owner: &str,
     name: &str,
@@ -1171,7 +1289,8 @@ async fn load_instance(
         r#"
         select instance_id, service_id, definition_owner, definition_name,
                definition_version, state, input, result, story_context,
-               tenant_scope, initial_step_id, created_at, updated_at
+               tenant_scope, parent_instance_id, parent_step_id, causation_id,
+               failure_evidence, initial_step_id, created_at, updated_at
         from platform.service_workflow_instances
         where service_id = $1 and instance_id = $2
         "#,
@@ -1204,7 +1323,24 @@ async fn load_instance(
         WorkflowApiError::store(format!("Could not inspect workflow steps: {error}"))
     })?;
     let recovery = recovery::load_recovery(pool, instance_id).await?;
-    workflow_from_rows(row, step_rows, recovery)
+    let child_rows = sqlx::query_as::<_, WorkflowChildRow>(
+        r#"
+        select link_id, start_id, parent_step_id, child_definition_owner,
+               child_definition_name, child_definition_version, child_instance_id,
+               state, completion_delivery_id, failure_evidence, next_action,
+               created_at, updated_at
+        from platform.service_workflow_child_links
+        where parent_instance_id = $1
+        order by created_at, link_id
+        "#,
+    )
+    .bind(instance_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|error| {
+        WorkflowApiError::store(format!("Could not inspect child workflow links: {error}"))
+    })?;
+    workflow_from_rows(row, step_rows, recovery, child_rows)
 }
 
 async fn load_instance_in_tx(
@@ -1216,7 +1352,8 @@ async fn load_instance_in_tx(
         r#"
         select instance_id, service_id, definition_owner, definition_name,
                definition_version, state, input, result, story_context,
-               tenant_scope, initial_step_id, created_at, updated_at
+               tenant_scope, parent_instance_id, parent_step_id, causation_id,
+               failure_evidence, initial_step_id, created_at, updated_at
         from platform.service_workflow_instances
         where service_id = $1 and instance_id = $2
         "#,
@@ -1250,7 +1387,24 @@ async fn load_instance_in_tx(
         WorkflowMutationError::store(format!("Could not inspect workflow steps: {error}"))
     })?;
     let recovery = recovery::load_recovery_in_tx(transaction, instance_id).await?;
-    workflow_from_rows(row, step_rows, recovery)
+    let child_rows = sqlx::query_as::<_, WorkflowChildRow>(
+        r#"
+        select link_id, start_id, parent_step_id, child_definition_owner,
+               child_definition_name, child_definition_version, child_instance_id,
+               state, completion_delivery_id, failure_evidence, next_action,
+               created_at, updated_at
+        from platform.service_workflow_child_links
+        where parent_instance_id = $1
+        order by created_at, link_id
+        "#,
+    )
+    .bind(instance_id)
+    .fetch_all(&mut **transaction)
+    .await
+    .map_err(|error| {
+        WorkflowMutationError::store(format!("Could not inspect child workflow links: {error}"))
+    })?;
+    workflow_from_rows(row, step_rows, recovery, child_rows)
         .map_err(|error| WorkflowMutationError::new(error.code, error.message))
 }
 
@@ -1258,6 +1412,7 @@ fn workflow_from_rows(
     row: WorkflowInstanceRow,
     step_rows: Vec<WorkflowStepRow>,
     mut recovery_by_step: recovery::WorkflowRecoveryByStep,
+    mut child_rows: Vec<WorkflowChildRow>,
 ) -> Result<WorkflowInstance, WorkflowApiError> {
     let state = match row.state.as_str() {
         "running" => WorkflowInstanceState::Running,
@@ -1280,13 +1435,36 @@ fn workflow_from_rows(
         .map_err(|error| {
             WorkflowApiError::stored_state(format!("Stored tenant scope is invalid: {error}"))
         })?;
+    let parent = match (row.parent_instance_id, row.parent_step_id, row.causation_id) {
+        (None, None, None) => None,
+        (Some(instance_id), Some(step_id), Some(causation_id)) => Some(WorkflowParentInspection {
+            instance_id,
+            step_id,
+            causation_id,
+        }),
+        _ => {
+            return Err(WorkflowApiError::stored_state(format!(
+                "Workflow Instance `{}` has an incomplete parent link",
+                row.instance_id
+            )));
+        }
+    };
+    let failure = row
+        .failure_evidence
+        .map(serde_json::from_value)
+        .transpose()
+        .map_err(|error| {
+            WorkflowApiError::stored_state(format!("Stored workflow failure is invalid: {error}"))
+        })?;
     let steps = step_rows
         .into_iter()
         .map(|step| {
             let state = match step.state.as_str() {
                 "pending" => WorkflowStepState::Pending,
+                "waiting_for_child" => WorkflowStepState::WaitingForChild,
                 "completed" => WorkflowStepState::Completed,
                 "exhausted" => WorkflowStepState::Exhausted,
+                "failed" => WorkflowStepState::Failed,
                 other => {
                     return Err(WorkflowApiError::stored_state(format!(
                         "Workflow step `{}` has unsupported state `{other}`",
@@ -1318,6 +1496,12 @@ fn workflow_from_rows(
                 step.failure_message,
             )?;
             let recovery = recovery_by_step.remove(&step.step_id).unwrap_or_default();
+            let child_workflow = child_rows
+                .iter()
+                .position(|child| child.parent_step_id == step.step_id)
+                .map(|index| child_rows.swap_remove(index))
+                .map(child_inspection_from_row)
+                .transpose()?;
             Ok(WorkflowStepInspection {
                 step_id: step.step_id,
                 definition_step_name: step.definition_step_name,
@@ -1342,6 +1526,7 @@ fn workflow_from_rows(
                 exhausted_at: step.exhausted_at,
                 attempts: recovery.attempts,
                 timers: recovery.timers,
+                child_workflow,
                 created_at: step.created_at,
                 updated_at: step.updated_at,
             })
@@ -1350,6 +1535,12 @@ fn workflow_from_rows(
     if steps.first().map(|step| step.step_id.as_str()) != Some(row.initial_step_id.as_str()) {
         return Err(WorkflowApiError::stored_state(format!(
             "Workflow Instance `{}` has inconsistent initial step identity",
+            row.instance_id
+        )));
+    }
+    if !child_rows.is_empty() {
+        return Err(WorkflowApiError::stored_state(format!(
+            "Workflow Instance `{}` has child evidence for an unknown step",
             row.instance_id
         )));
     }
@@ -1366,8 +1557,52 @@ fn workflow_from_rows(
         result: row.result,
         story_context,
         tenant_scope,
+        parent,
+        failure,
         initial_step_id: row.initial_step_id,
         steps,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+    })
+}
+
+fn child_inspection_from_row(
+    row: WorkflowChildRow,
+) -> Result<WorkflowChildInspection, WorkflowApiError> {
+    let state = match row.state.as_str() {
+        "waiting" => WorkflowChildState::Waiting,
+        "completed" => WorkflowChildState::Completed,
+        "failed" => WorkflowChildState::Failed,
+        "unsupported_version" => WorkflowChildState::UnsupportedVersion,
+        other => {
+            return Err(WorkflowApiError::stored_state(format!(
+                "Child workflow link `{}` has unsupported state `{other}`",
+                row.link_id
+            )));
+        }
+    };
+    let failure = row
+        .failure_evidence
+        .map(serde_json::from_value)
+        .transpose()
+        .map_err(|error| {
+            WorkflowApiError::stored_state(format!(
+                "Stored child workflow failure is invalid: {error}"
+            ))
+        })?;
+    Ok(WorkflowChildInspection {
+        link_id: row.link_id,
+        start_id: row.start_id,
+        definition: WorkflowDefinitionIdentity {
+            owner: row.child_definition_owner,
+            name: row.child_definition_name,
+            version: row.child_definition_version,
+        },
+        instance_id: row.child_instance_id,
+        state,
+        completion_delivery_id: row.completion_delivery_id,
+        failure,
+        next_actions: vec![row.next_action],
         created_at: row.created_at,
         updated_at: row.updated_at,
     })

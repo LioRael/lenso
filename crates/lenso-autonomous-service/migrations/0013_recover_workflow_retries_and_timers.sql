@@ -10,7 +10,13 @@ alter table platform.service_workflow_steps
 
 alter table platform.service_workflow_steps
     add constraint service_workflow_steps_state_check
-        check (state in ('pending', 'completed', 'exhausted')),
+        check (state in (
+            'pending',
+            'waiting_for_child',
+            'completed',
+            'exhausted',
+            'failed'
+        )),
     add column if not exists attempt_count integer not null default 0
         check (attempt_count >= 0),
     add column if not exists max_attempts integer not null default 1
