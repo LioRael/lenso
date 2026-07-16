@@ -3,19 +3,20 @@ use axum::body::Body;
 use http::{Request, StatusCode};
 use http_body_util::BodyExt as _;
 use lenso_autonomous_service::{
-    DeliveryFailureReason, LocalTransportAdapter, ServiceEventHandler, ServiceEventHandlerError,
-    ServiceEventPublisher, ServiceEventRetryPolicy, ServiceEventWorkloadIdentity, TransportAdapter,
-    TransportDelivery, TransportDiagnostic, TransportError, TransportErrorCode,
-    TransportFailureDisposition, TransportHealth, TransportHealthStatus,
-    TransportNegativeAcknowledgement, TransportPublication, TransportPublicationReceipt,
-    consume_service_events_once_at, consume_service_events_once_at_without_workload_identity,
+    DeliveryFailureReason, LocalTransportAdapter, NatsJetStreamTransportAdapter,
+    ServiceEventHandler, ServiceEventHandlerError, ServiceEventPublisher, ServiceEventRetryPolicy,
+    ServiceEventWorkloadIdentity, TransportAdapter, TransportDelivery, TransportDiagnostic,
+    TransportError, TransportErrorCode, TransportFailureDisposition, TransportHealth,
+    TransportHealthStatus, TransportNegativeAcknowledgement, TransportPublication,
+    TransportPublicationReceipt, consume_service_events_once_at,
+    consume_service_events_once_at_without_workload_identity,
     consume_service_events_once_without_workload_identity, prepare_runtime,
     relay_service_events_once,
 };
 use lenso_service::{
     AutonomousServiceContract, AutonomousServiceStore, AutonomousServiceWorkload, EventEnvelope,
-    GeneratedEventContract, ServiceTenancyMode, SystemSandboxWorkloadIdentityProvider,
-    WorkloadCredentialRequest, WorkloadIdentityProvider, WorkloadRole, validate_event_envelope,
+    ServiceTenancyMode, SystemSandboxWorkloadIdentityProvider, WorkloadCredentialRequest,
+    WorkloadIdentityProvider, WorkloadRole,
 };
 use platform_testing::TestDatabase;
 use sqlx::{Postgres, Transaction};
@@ -25,6 +26,13 @@ use std::sync::{
 };
 use tower::ServiceExt as _;
 use utoipa_axum::router::OpenApiRouter;
+
+#[path = "support/jetstream.rs"]
+mod jetstream_fixture;
+#[path = "support/event.rs"]
+mod support_event_fixture;
+use jetstream_fixture::JetStreamFixture;
+use support_event_fixture::support_ticket_opened;
 
 fn service(service_id: &str, store_id: &str) -> AutonomousServiceContract {
     let mut service = AutonomousServiceContract::new(
@@ -51,21 +59,6 @@ fn service(service_id: &str, store_id: &str) -> AutonomousServiceContract {
     );
     service.stores = vec![AutonomousServiceStore::new(store_id, service_id)];
     service
-}
-
-fn support_ticket_opened(event_id: &str, ticket_id: &str) -> EventEnvelope {
-    let mut envelope: EventEnvelope = serde_json::from_str(include_str!(
-        "../../../contracts/events/support/support.ticket-opened.v1.envelope.json"
-    ))
-    .unwrap();
-    event_id.clone_into(&mut envelope.event_id);
-    envelope.content.data["ticketId"] = serde_json::json!(ticket_id);
-    let contract: GeneratedEventContract = serde_json::from_str(include_str!(
-        "../../../contracts/events/support/support.ticket-opened.v1.artifact.json"
-    ))
-    .unwrap();
-    assert_eq!(validate_event_envelope(&contract, &envelope), vec![]);
-    envelope
 }
 
 #[test]
@@ -1264,4 +1257,110 @@ async fn local_transport_delivers_support_event_from_outbox_through_inbox() {
     producer.cleanup().await;
     consumer.cleanup().await;
     transport_store.cleanup().await;
+}
+
+#[tokio::test]
+async fn jetstream_restart_preserves_authoritative_support_behavior_once() {
+    let Some(diagnostic_store) = TestDatabase::create().await else {
+        return;
+    };
+    let Some(consumer) = TestDatabase::create().await else {
+        diagnostic_store.cleanup().await;
+        return;
+    };
+    let Some(fixture) = JetStreamFixture::create("support-sla").await else {
+        consumer.cleanup().await;
+        diagnostic_store.cleanup().await;
+        return;
+    };
+    let consumer_state = prepare_runtime(
+        &service("support-sla", "support-sla-store"),
+        &lenso_autonomous_service::ServiceRuntimeConfig::new(
+            "support-sla",
+            "support-sla-store",
+            "support-sla",
+        ),
+        consumer.pool.clone(),
+        &[platform_core::Migration {
+            name: "support-sla/0001_create_escalations",
+            sql: "create table support_sla_escalations (ticket_id text primary key, source_event_id text not null);",
+        }],
+    )
+    .await
+    .unwrap();
+    let adapter = NatsJetStreamTransportAdapter::bind(
+        async_nats::connect(&fixture.url).await.unwrap(),
+        diagnostic_store.pool.clone(),
+        fixture.config.clone(),
+    )
+    .await
+    .unwrap();
+    let event_id = "nats-support-event-after-restart";
+    adapter
+        .publish(TransportPublication {
+            consumer_id: "support-sla".to_owned(),
+            envelope: support_ticket_opened(event_id, "ticket_nats_restart"),
+        })
+        .await
+        .unwrap();
+    let interrupted = adapter.receive("support-sla", 1).await.unwrap().remove(0);
+    assert_eq!(interrupted.envelope.event_id, event_id);
+    drop(interrupted);
+    drop(adapter);
+
+    tokio::time::sleep(std::time::Duration::from_millis(350)).await;
+    let restarted_adapter = NatsJetStreamTransportAdapter::bind(
+        async_nats::connect(&fixture.url).await.unwrap(),
+        diagnostic_store.pool.clone(),
+        fixture.config.clone(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        consume_service_events_once_without_workload_identity(
+            &consumer_state,
+            &restarted_adapter,
+            "support-sla",
+            &SupportSlaHandler,
+            1,
+        )
+        .await
+        .unwrap(),
+        1
+    );
+    restarted_adapter
+        .publish(TransportPublication {
+            consumer_id: "support-sla".to_owned(),
+            envelope: support_ticket_opened(event_id, "ticket_nats_restart"),
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        consume_service_events_once_without_workload_identity(
+            &consumer_state,
+            &restarted_adapter,
+            "support-sla",
+            &SupportSlaHandler,
+            1,
+        )
+        .await
+        .unwrap(),
+        0
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "select count(*) from support_sla_escalations where source_event_id = $1",
+        )
+        .bind(event_id)
+        .fetch_one(&consumer.pool)
+        .await
+        .unwrap(),
+        1
+    );
+
+    drop(consumer_state);
+    drop(restarted_adapter);
+    fixture.cleanup().await;
+    consumer.cleanup().await;
+    diagnostic_store.cleanup().await;
 }

@@ -6,9 +6,11 @@ license = "MIT"
 description = "Host-independent runtime for Lenso Autonomous Services."
 
 [dependencies]
+async-nats.workspace = true
 async-trait.workspace = true
 axum.workspace = true
 chrono.workspace = true
+futures.workspace = true
 lenso-service.workspace = true
 platform-core.workspace = true
 platform-http.workspace = true
