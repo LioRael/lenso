@@ -54,10 +54,11 @@ jobs:
           test "$LENSO_SPIFFE_TEST_INFRASTRUCTURE_APPROVED" = true
           SPIRE_ROOT="$RUNNER_TEMP/lenso-spire"
           mkdir -p "$SPIRE_ROOT/server" "$SPIRE_ROOT/agent"
+          sudo chown 1000:1000 "$SPIRE_ROOT/server"
           cp crates/lenso-service/tests/support/spire/server.conf "$SPIRE_ROOT/server.conf"
           cp crates/lenso-service/tests/support/spire/agent.conf "$SPIRE_ROOT/agent.conf"
           docker network create lenso-spire
-          docker run --detach --rm \
+          docker run --detach \
             --name lenso-spire-server \
             --network lenso-spire \
             --env LENSO_SPIRE_SERVER_DIR=/run/spire/server \
@@ -81,7 +82,7 @@ jobs:
           JOIN_TOKEN="$(docker exec lenso-spire-server /opt/spire/bin/spire-server token generate \
             -socketPath /run/spire/server/private/api.sock \
             -output json | jq -r .value)"
-          docker run --detach --rm \
+          docker run --detach \
             --name lenso-spire-agent \
             --network lenso-spire \
             --pid host \
