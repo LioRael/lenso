@@ -55,10 +55,11 @@ pub use event_envelope::{
     generate_event_contract, validate_event_envelope, validate_event_envelope_value,
 };
 pub use workload_identity::{
-    AuthenticatedServicePrincipal, AuthenticatedTransportBinding,
-    SystemSandboxWorkloadIdentityProvider, WorkloadCredential, WorkloadCredentialRequest,
-    WorkloadIdentityError, WorkloadIdentityErrorCode, WorkloadIdentityEvidence,
-    WorkloadIdentityProvider, WorkloadIdentityRotationEvidence, WorkloadIdentityVerification,
+    AuthenticatedServicePrincipal, AuthenticatedTransportBinding, SpiffeWorkloadIdentityConfig,
+    SpiffeWorkloadIdentityProvider, SystemSandboxWorkloadIdentityProvider, WorkloadCredential,
+    WorkloadCredentialRequest, WorkloadIdentityError, WorkloadIdentityErrorCode,
+    WorkloadIdentityEvidence, WorkloadIdentityProvider, WorkloadIdentityRotationEvidence,
+    WorkloadIdentityVerification,
 };
 
 pub use lenso_contracts::ModuleManifest;

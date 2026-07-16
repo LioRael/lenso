@@ -23,6 +23,8 @@ prost-types.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
+spiffe.workspace = true
 tonic.workspace = true
 tonic-prost.workspace = true
 
@@ -30,7 +32,10 @@ tonic-prost.workspace = true
 workspace = true
 
 [dev-dependencies]
+rustls.workspace = true
 serde_yaml.workspace = true
+spiffe-rustls.workspace = true
+spiffe-rustls-tokio.workspace = true
 tokio.workspace = true
 tokio-stream.workspace = true
 

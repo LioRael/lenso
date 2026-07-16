@@ -27,6 +27,8 @@ jobs:
       DATABASE_URL: postgres://lenso:lenso@localhost:5432/lenso
       NATS_URL: nats://127.0.0.1:4222
       LENSO_NATS_TEST_INFRASTRUCTURE_APPROVED: true
+      LENSO_SPIFFE_TEST_INFRASTRUCTURE_APPROVED: true
+      SPIFFE_ENDPOINT_SOCKET: unix://${{ runner.temp }}/lenso-spire/agent/api.sock
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@f2b2b233b538f500472c7274c7012f57857d8ce0
@@ -48,8 +50,78 @@ jobs:
           done
           docker logs lenso-nats
           exit 1
+      - name: Start ephemeral SPIRE Workload Identity infrastructure
+        run: |
+          test "$LENSO_SPIFFE_TEST_INFRASTRUCTURE_APPROVED" = true
+          SPIRE_ROOT="$RUNNER_TEMP/lenso-spire"
+          mkdir -p "$SPIRE_ROOT/server" "$SPIRE_ROOT/agent"
+          cp crates/lenso-service/tests/support/spire/server.conf "$SPIRE_ROOT/server.conf"
+          cp crates/lenso-service/tests/support/spire/agent.conf "$SPIRE_ROOT/agent.conf"
+          docker network create lenso-spire
+          docker run --detach --rm \
+            --name lenso-spire-server \
+            --network lenso-spire \
+            --env LENSO_SPIRE_SERVER_DIR=/run/spire/server \
+            --volume "$SPIRE_ROOT/server.conf:/opt/spire/conf/server/server.conf:ro" \
+            --volume "$SPIRE_ROOT/server:/run/spire/server" \
+            ghcr.io/spiffe/spire-server:1.13.3 \
+            -config /opt/spire/conf/server/server.conf -expandEnv
+          for attempt in {1..100}; do
+            if docker exec lenso-spire-server /opt/spire/bin/spire-server healthcheck \
+              -socketPath /run/spire/server/private/api.sock >/dev/null 2>&1; then
+              break
+            fi
+            if [ "$attempt" = 100 ]; then
+              docker logs lenso-spire-server
+              exit 1
+            fi
+            sleep 0.1
+          done
+          docker exec lenso-spire-server /opt/spire/bin/spire-server bundle show \
+            -socketPath /run/spire/server/private/api.sock -format pem > "$SPIRE_ROOT/agent/bootstrap.crt"
+          JOIN_TOKEN="$(docker exec lenso-spire-server /opt/spire/bin/spire-server token generate \
+            -socketPath /run/spire/server/private/api.sock \
+            -output json | jq -r .value)"
+          docker run --detach --rm \
+            --name lenso-spire-agent \
+            --network lenso-spire \
+            --pid host \
+            --env LENSO_SPIRE_AGENT_DIR=/run/spire/agent \
+            --env LENSO_SPIRE_SERVER_ADDRESS=lenso-spire-server \
+            --volume "$SPIRE_ROOT/agent.conf:/opt/spire/conf/agent/agent.conf:ro" \
+            --volume "$SPIRE_ROOT/agent:/run/spire/agent" \
+            ghcr.io/spiffe/spire-agent:1.13.3 \
+            -config /opt/spire/conf/agent/agent.conf -expandEnv -joinToken "$JOIN_TOKEN"
+          for attempt in {1..100}; do
+            if docker exec lenso-spire-agent /opt/spire/bin/spire-agent healthcheck \
+              -socketPath /run/spire/agent/api.sock >/dev/null 2>&1; then
+              break
+            fi
+            if [ "$attempt" = 100 ]; then
+              docker logs lenso-spire-agent
+              exit 1
+            fi
+            sleep 0.1
+          done
+          AGENT_PARENT_ID="$(docker exec lenso-spire-server /opt/spire/bin/spire-server agent list \
+            -socketPath /run/spire/server/private/api.sock -output json | \
+            jq -r '.agents[0].id | "spiffe://\(.trust_domain)\(.path)"')"
+          for service in ticketing support; do
+            docker exec lenso-spire-server /opt/spire/bin/spire-server entry create \
+              -socketPath /run/spire/server/private/api.sock \
+              -parentID "$AGENT_PARENT_ID" \
+              -spiffeID "spiffe://lenso.test/service/$service" \
+              -selector "unix:uid:$(id -u)" \
+              -x509SVIDTTL 10 \
+              -jwtSVIDTTL 60
+          done
       - name: Run quality gates
         run: just ci
+      - name: Stop ephemeral SPIRE Workload Identity infrastructure
+        if: always()
+        run: |
+          docker rm --force lenso-spire-agent lenso-spire-server || true
+          docker network rm lenso-spire || true
       - name: Stop ephemeral NATS JetStream verification infrastructure
         if: always()
         run: docker rm --force lenso-nats || true
