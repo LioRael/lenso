@@ -19,7 +19,7 @@ use axum::{
 };
 use lenso_contracts::{ModuleManifest, WORKFLOW_DEFINITION_PROTOCOL, WorkflowDefinition};
 use lenso_service::{
-    AutonomousServiceContract, ServiceTenancyMode, WorkloadRole,
+    AutonomousServiceContract, EventContractArtifact, ServiceTenancyMode, WorkloadRole,
     validate_autonomous_service_contract,
 };
 use platform_core::{EventHandlerRegistry, Migration, OutboxRelay, apply_migrations};
@@ -161,6 +161,10 @@ pub const SERVICE_RUNTIME_MIGRATIONS: &[Migration] = &[
         name: "autonomous-service/0010_create_durable_workflows",
         sql: include_str!("../migrations/0010_create_durable_workflows.sql"),
     },
+    Migration {
+        name: "autonomous-service/0011_advance_durable_workflow_steps",
+        sql: include_str!("../migrations/0011_advance_durable_workflow_steps.sql"),
+    },
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
@@ -180,6 +184,7 @@ pub struct ServiceRuntimeState {
     worker_phase: Arc<RwLock<RuntimePhase>>,
     pool: Option<PgPool>,
     workflow_definitions: Arc<Vec<WorkflowDefinition>>,
+    event_contracts: Arc<Vec<EventContractArtifact>>,
 }
 
 #[derive(Debug, Clone)]
@@ -216,6 +221,7 @@ impl ServiceRuntimeState {
             worker_phase: Arc::new(RwLock::new(RuntimePhase::Starting)),
             pool: None,
             workflow_definitions: Arc::new(Vec::new()),
+            event_contracts: Arc::new(Vec::new()),
         }
     }
 
@@ -260,6 +266,11 @@ impl ServiceRuntimeState {
 
     fn with_workflow_definitions(mut self, workflow_definitions: Vec<WorkflowDefinition>) -> Self {
         self.workflow_definitions = Arc::new(workflow_definitions);
+        self
+    }
+
+    fn with_event_contracts(mut self, event_contracts: Vec<EventContractArtifact>) -> Self {
+        self.event_contracts = Arc::new(event_contracts);
         self
     }
 
@@ -340,7 +351,8 @@ pub async fn prepare_runtime(
     .with_store(pool.clone())
     .with_operator_environment(config.operator_environment)
     .with_tenancy_mode(contract.tenancy_mode.clone())
-    .with_workflow_definitions(config.workflow_definitions.clone());
+    .with_workflow_definitions(config.workflow_definitions.clone())
+    .with_event_contracts(contract.event_contracts.clone());
     if let Err(error) = apply_migrations(&pool, SERVICE_RUNTIME_MIGRATIONS).await {
         state.set_phase(RuntimePhase::Failed);
         return Err(runtime_error(

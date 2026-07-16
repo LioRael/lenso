@@ -413,6 +413,27 @@ components:
       type: string
       enum:
       - running
+      - completed
+    WorkflowOutgoingWorkInspection:
+      type: object
+      required:
+      - kind
+      - consumerId
+      - eventId
+      - contractId
+      - contractVersion
+      properties:
+        consumerId:
+          type: string
+        contractId:
+          type: string
+        contractVersion:
+          type: string
+        eventId:
+          type: string
+        kind:
+          type: string
+      additionalProperties: false
     WorkflowStartRequest:
       type: object
       required:
@@ -455,11 +476,20 @@ components:
       - createdAt
       - updatedAt
       properties:
+        completedAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
         createdAt:
           type: string
           format: date-time
         definitionStepName:
           type: string
+        outgoingWork:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/WorkflowOutgoingWorkInspection'
         position:
           type: integer
           format: int32
@@ -468,6 +498,10 @@ components:
           $ref: '#/components/schemas/WorkflowStepState'
         stepId:
           type: string
+        transitionId:
+          type:
+          - string
+          - 'null'
         updatedAt:
           type: string
           format: date-time
@@ -475,6 +509,7 @@ components:
       type: string
       enum:
       - pending
+      - completed
     WorkflowStoryContext:
       type: object
       required:

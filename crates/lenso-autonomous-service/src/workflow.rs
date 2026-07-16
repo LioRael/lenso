@@ -1,4 +1,4 @@
-use crate::ServiceRuntimeState;
+use crate::{ServiceEventPublisher, ServiceRuntimeState};
 use axum::{
     Json,
     extract::{Path, State},
@@ -7,10 +7,14 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use lenso_contracts::WorkflowDefinition;
-use lenso_service::ServiceTenancyMode;
+use lenso_service::{
+    CausationContext, CommonContextRequirement, EventContent, EventContext, EventContractArtifact,
+    EventEnvelope, ServicePrincipal, ServiceTenancyMode,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sqlx::FromRow;
+use sqlx::{FromRow, Postgres, Transaction};
+use thiserror::Error;
 use utoipa::ToSchema;
 use utoipa_axum::{router::OpenApiRouter, routes};
 use uuid::Uuid;
@@ -53,12 +57,24 @@ pub struct WorkflowDefinitionIdentity {
 #[serde(rename_all = "snake_case")]
 pub enum WorkflowInstanceState {
     Running,
+    Completed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum WorkflowStepState {
     Pending,
+    Completed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkflowOutgoingWorkInspection {
+    pub kind: String,
+    pub consumer_id: String,
+    pub event_id: String,
+    pub contract_id: String,
+    pub contract_version: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
@@ -68,6 +84,9 @@ pub struct WorkflowStepInspection {
     pub definition_step_name: String,
     pub position: u32,
     pub state: WorkflowStepState,
+    pub transition_id: Option<String>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub outgoing_work: Option<WorkflowOutgoingWorkInspection>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -119,6 +138,14 @@ pub enum WorkflowErrorCode {
     TenantIncompatible,
     #[serde(rename = "workflow_instance_not_found")]
     InstanceNotFound,
+    #[serde(rename = "workflow_context_required")]
+    ContextRequired,
+    #[serde(rename = "workflow_step_not_found")]
+    StepNotFound,
+    #[serde(rename = "workflow_transition_conflict")]
+    TransitionConflict,
+    #[serde(rename = "workflow_event_contract_not_declared")]
+    EventContractNotDeclared,
     #[serde(rename = "workflow_store_unavailable")]
     StoreUnavailable,
     #[serde(rename = "workflow_stored_state_invalid")]
@@ -135,10 +162,85 @@ impl WorkflowErrorCode {
             Self::TenantRequired => "workflow_tenant_required",
             Self::TenantIncompatible => "workflow_tenant_incompatible",
             Self::InstanceNotFound => "workflow_instance_not_found",
+            Self::ContextRequired => "workflow_context_required",
+            Self::StepNotFound => "workflow_step_not_found",
+            Self::TransitionConflict => "workflow_transition_conflict",
+            Self::EventContractNotDeclared => "workflow_event_contract_not_declared",
             Self::StoreUnavailable => "workflow_store_unavailable",
             Self::StoredStateInvalid => "workflow_stored_state_invalid",
         }
     }
+}
+
+#[derive(Debug, Error)]
+#[error("{message}")]
+pub struct WorkflowMutationError {
+    pub code: WorkflowErrorCode,
+    pub message: String,
+}
+
+impl WorkflowMutationError {
+    fn new(code: WorkflowErrorCode, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+        }
+    }
+
+    fn store(message: impl Into<String>) -> Self {
+        Self::new(WorkflowErrorCode::StoreUnavailable, message)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct WorkflowEventPublication {
+    pub consumer_id: String,
+    pub event_id: String,
+    pub contract_id: String,
+    pub contract_version: String,
+    pub occurred_at: String,
+    pub service_principal: ServicePrincipal,
+    pub data: Value,
+}
+
+impl WorkflowEventPublication {
+    #[must_use]
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        consumer_id: impl Into<String>,
+        event_id: impl Into<String>,
+        contract_id: impl Into<String>,
+        contract_version: impl Into<String>,
+        occurred_at: impl Into<String>,
+        service_principal: ServicePrincipal,
+        data: Value,
+    ) -> Self {
+        Self {
+            consumer_id: consumer_id.into(),
+            event_id: event_id.into(),
+            contract_id: contract_id.into(),
+            contract_version: contract_version.into(),
+            occurred_at: occurred_at.into(),
+            service_principal,
+            data,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkflowTransitionDisposition {
+    Applied,
+    Duplicate,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkflowStepTransitionResult {
+    pub disposition: WorkflowTransitionDisposition,
+    pub instance_id: String,
+    pub completed_step_id: String,
+    pub transition_id: String,
+    pub next_step_id: Option<String>,
+    pub outgoing_event_id: String,
 }
 
 #[derive(Debug)]
@@ -180,12 +282,36 @@ impl WorkflowApiError {
         match self.code {
             WorkflowErrorCode::InvalidRequest
             | WorkflowErrorCode::TenantRequired
-            | WorkflowErrorCode::TenantIncompatible => StatusCode::BAD_REQUEST,
+            | WorkflowErrorCode::TenantIncompatible
+            | WorkflowErrorCode::ContextRequired
+            | WorkflowErrorCode::EventContractNotDeclared => StatusCode::BAD_REQUEST,
             WorkflowErrorCode::DefinitionNotFound
             | WorkflowErrorCode::DefinitionVersionNotFound
-            | WorkflowErrorCode::InstanceNotFound => StatusCode::NOT_FOUND,
+            | WorkflowErrorCode::InstanceNotFound
+            | WorkflowErrorCode::StepNotFound => StatusCode::NOT_FOUND,
+            WorkflowErrorCode::TransitionConflict => StatusCode::CONFLICT,
             WorkflowErrorCode::StoreUnavailable => StatusCode::SERVICE_UNAVAILABLE,
             WorkflowErrorCode::StoredStateInvalid => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
+
+impl From<WorkflowMutationError> for WorkflowApiError {
+    fn from(error: WorkflowMutationError) -> Self {
+        let next_action = match error.code {
+            WorkflowErrorCode::ContextRequired => "start_workflow_from_declared_event_context",
+            WorkflowErrorCode::StepNotFound => "inspect_workflow_steps",
+            WorkflowErrorCode::TransitionConflict => "inspect_committed_workflow_transition",
+            WorkflowErrorCode::EventContractNotDeclared => "declare_service_event_contract",
+            WorkflowErrorCode::DefinitionNotFound => "inspect_module_workflow_definitions",
+            WorkflowErrorCode::DefinitionVersionNotFound => "select_registered_workflow_version",
+            WorkflowErrorCode::StoreUnavailable => "restore_service_store",
+            _ => "inspect_workflow_state",
+        };
+        Self {
+            code: error.code,
+            message: error.message,
+            next_actions: vec![next_action.to_owned()],
         }
     }
 }
@@ -241,8 +367,25 @@ struct WorkflowStepRow {
     definition_step_name: String,
     step_position: i32,
     state: String,
+    transition_id: Option<String>,
+    completed_at: Option<DateTime<Utc>>,
+    outgoing_work: Option<Value>,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, FromRow)]
+struct WorkflowTransitionRow {
+    definition_owner: String,
+    definition_name: String,
+    definition_version: String,
+    instance_state: String,
+    workflow_context: Option<Value>,
+    definition_step_name: String,
+    step_position: i32,
+    step_state: String,
+    transition_id: Option<String>,
+    outgoing_work: Option<Value>,
 }
 
 pub(crate) fn workflow_router() -> OpenApiRouter<ServiceRuntimeState> {
@@ -364,6 +507,9 @@ async fn start_workflow(
             definition_step_name: first_step_name,
             position: 0,
             state: WorkflowStepState::Pending,
+            transition_id: None,
+            completed_at: None,
+            outgoing_work: None,
             created_at: now,
             updated_at: now,
         }],
@@ -378,6 +524,549 @@ async fn start_workflow(
             next_actions: vec!["inspect_workflow".to_owned()],
         }),
     ))
+}
+
+/// Starts one declared Workflow from an Event Contract delivery inside the
+/// caller's Service Inbox transaction. The Event identity is the durable start
+/// trigger, so redelivery resolves to the already-started instance.
+#[allow(clippy::too_many_lines)]
+pub async fn start_workflow_from_event_in_tx(
+    state: &ServiceRuntimeState,
+    transaction: &mut Transaction<'_, Postgres>,
+    owner: &str,
+    name: &str,
+    version: &str,
+    envelope: &EventEnvelope,
+) -> Result<WorkflowInstance, WorkflowMutationError> {
+    let definition = resolve_definition(state, owner, name, version)?;
+    let story = envelope.context.story.as_ref().ok_or_else(|| {
+        WorkflowMutationError::new(
+            WorkflowErrorCode::ContextRequired,
+            "Event-started workflow requires Story Context",
+        )
+    })?;
+    let tenant_scope = envelope
+        .context
+        .tenant
+        .as_ref()
+        .map(|tenant| WorkflowTenantScope {
+            tenant_id: tenant.tenant_id.clone(),
+        });
+    match (&state.identity.tenancy_mode, &tenant_scope) {
+        (ServiceTenancyMode::Required, None) => {
+            return Err(WorkflowMutationError::new(
+                WorkflowErrorCode::TenantRequired,
+                "This Service requires tenant context for event-started workflows",
+            ));
+        }
+        (ServiceTenancyMode::None, Some(_)) => {
+            return Err(WorkflowMutationError::new(
+                WorkflowErrorCode::TenantIncompatible,
+                "This Service does not accept tenant-scoped workflow starts",
+            ));
+        }
+        _ => {}
+    }
+
+    let trigger_lock = format!(
+        "{}:{owner}:{name}:{version}:event:{}",
+        state.identity.service_id, envelope.event_id
+    );
+    sqlx::query("select pg_advisory_xact_lock(hashtextextended($1, 0))")
+        .bind(trigger_lock)
+        .execute(&mut **transaction)
+        .await
+        .map_err(|error| {
+            WorkflowMutationError::store(format!("Could not lock workflow start identity: {error}"))
+        })?;
+    let existing_instance_id = sqlx::query_scalar::<_, String>(
+        r#"
+        select instance_id
+        from platform.service_workflow_instances
+        where service_id = $1 and definition_owner = $2 and definition_name = $3
+          and definition_version = $4 and start_trigger_kind = 'event'
+          and start_trigger_id = $5
+        "#,
+    )
+    .bind(&state.identity.service_id)
+    .bind(owner)
+    .bind(name)
+    .bind(version)
+    .bind(&envelope.event_id)
+    .fetch_optional(&mut **transaction)
+    .await
+    .map_err(|error| {
+        WorkflowMutationError::store(format!("Could not inspect workflow start: {error}"))
+    })?;
+    if let Some(instance_id) = existing_instance_id {
+        return load_instance_in_tx(state, transaction, &instance_id).await;
+    }
+
+    let instance_id = format!("workflow_{}", Uuid::now_v7());
+    let initial_step_id = format!("workflow_step_{}", Uuid::now_v7());
+    let now = postgres_now();
+    let story_context = WorkflowStoryContext {
+        story_id: story.story_id.clone(),
+        segment_id: story.segment_id.clone(),
+    };
+    let story_json = serde_json::to_value(&story_context).map_err(|error| {
+        WorkflowMutationError::new(
+            WorkflowErrorCode::StoredStateInvalid,
+            format!("Could not encode workflow Story Context: {error}"),
+        )
+    })?;
+    let tenant_json = tenant_scope
+        .as_ref()
+        .map(serde_json::to_value)
+        .transpose()
+        .map_err(|error| {
+            WorkflowMutationError::new(
+                WorkflowErrorCode::StoredStateInvalid,
+                format!("Could not encode workflow tenant scope: {error}"),
+            )
+        })?;
+    let workflow_context = serde_json::to_value(&envelope.context).map_err(|error| {
+        WorkflowMutationError::new(
+            WorkflowErrorCode::StoredStateInvalid,
+            format!("Could not encode workflow execution context: {error}"),
+        )
+    })?;
+    sqlx::query(
+        r#"
+        insert into platform.service_workflow_instances (
+            instance_id, service_id, definition_owner, definition_name,
+            definition_version, state, input, result, story_context,
+            tenant_scope, initial_step_id, start_trigger_kind, start_trigger_id,
+            workflow_context, created_at, updated_at
+        ) values ($1, $2, $3, $4, $5, 'running', $6, null, $7, $8, $9,
+                  'event', $10, $11, $12, $12)
+        "#,
+    )
+    .bind(&instance_id)
+    .bind(&state.identity.service_id)
+    .bind(&definition.owner)
+    .bind(&definition.name)
+    .bind(&definition.version)
+    .bind(&envelope.content.data)
+    .bind(story_json)
+    .bind(tenant_json)
+    .bind(&initial_step_id)
+    .bind(&envelope.event_id)
+    .bind(workflow_context)
+    .bind(now)
+    .execute(&mut **transaction)
+    .await
+    .map_err(|error| {
+        WorkflowMutationError::store(format!("Could not persist event-started workflow: {error}"))
+    })?;
+    sqlx::query(
+        r#"
+        insert into platform.service_workflow_steps (
+            step_id, instance_id, definition_step_name, step_position,
+            state, created_at, updated_at
+        ) values ($1, $2, $3, 0, 'pending', $4, $4)
+        "#,
+    )
+    .bind(&initial_step_id)
+    .bind(&instance_id)
+    .bind(&definition.steps[0].name)
+    .bind(now)
+    .execute(&mut **transaction)
+    .await
+    .map_err(|error| {
+        WorkflowMutationError::store(format!(
+            "Could not persist event-started workflow step: {error}"
+        ))
+    })?;
+
+    Ok(WorkflowInstance {
+        instance_id,
+        service_id: state.identity.service_id.clone(),
+        definition: WorkflowDefinitionIdentity {
+            owner: definition.owner,
+            name: definition.name,
+            version: definition.version,
+        },
+        state: WorkflowInstanceState::Running,
+        input: envelope.content.data.clone(),
+        result: None,
+        story_context,
+        tenant_scope,
+        initial_step_id: initial_step_id.clone(),
+        steps: vec![WorkflowStepInspection {
+            step_id: initial_step_id,
+            definition_step_name: definition.steps[0].name.clone(),
+            position: 0,
+            state: WorkflowStepState::Pending,
+            transition_id: None,
+            completed_at: None,
+            outgoing_work: None,
+            created_at: now,
+            updated_at: now,
+        }],
+        created_at: now,
+        updated_at: now,
+    })
+}
+
+/// Completes one durable step and records its outgoing Event Contract work in
+/// the same Service Store transaction. Reusing the same transition identity is
+/// idempotent and returns the previously committed outcome.
+#[allow(clippy::too_many_lines)]
+pub async fn advance_workflow_step_with_event_in_tx(
+    state: &ServiceRuntimeState,
+    transaction: &mut Transaction<'_, Postgres>,
+    instance_id: &str,
+    step_id: &str,
+    transition_id: &str,
+    publication: WorkflowEventPublication,
+) -> Result<WorkflowStepTransitionResult, WorkflowMutationError> {
+    if [
+        instance_id,
+        step_id,
+        transition_id,
+        &publication.consumer_id,
+        &publication.event_id,
+        &publication.contract_id,
+        &publication.contract_version,
+        &publication.occurred_at,
+    ]
+    .iter()
+    .any(|value| value.trim().is_empty())
+    {
+        return Err(WorkflowMutationError::new(
+            WorkflowErrorCode::InvalidRequest,
+            "Workflow transition identities and outgoing Event identity must not be empty",
+        ));
+    }
+    let row = sqlx::query_as::<_, WorkflowTransitionRow>(
+        r#"
+        select instance.definition_owner, instance.definition_name,
+               instance.definition_version, instance.state as instance_state,
+               instance.workflow_context, step.definition_step_name,
+               step.step_position, step.state as step_state,
+               step.transition_id, step.outgoing_work
+        from platform.service_workflow_instances instance
+        join platform.service_workflow_steps step on step.instance_id = instance.instance_id
+        where instance.service_id = $1 and instance.instance_id = $2 and step.step_id = $3
+        for update of instance, step
+        "#,
+    )
+    .bind(&state.identity.service_id)
+    .bind(instance_id)
+    .bind(step_id)
+    .fetch_optional(&mut **transaction)
+    .await
+    .map_err(|error| {
+        WorkflowMutationError::store(format!("Could not lock workflow step: {error}"))
+    })?
+    .ok_or_else(|| {
+        WorkflowMutationError::new(
+            WorkflowErrorCode::StepNotFound,
+            format!("Workflow step `{step_id}` was not found in instance `{instance_id}`"),
+        )
+    })?;
+
+    if row.step_state == "completed" {
+        let outgoing_work = row
+            .outgoing_work
+            .map(serde_json::from_value::<WorkflowOutgoingWorkInspection>)
+            .transpose()
+            .map_err(|error| {
+                WorkflowMutationError::new(
+                    WorkflowErrorCode::StoredStateInvalid,
+                    format!("Stored workflow outgoing work is invalid: {error}"),
+                )
+            })?
+            .ok_or_else(|| {
+                WorkflowMutationError::new(
+                    WorkflowErrorCode::StoredStateInvalid,
+                    "Completed workflow step is missing outgoing work evidence",
+                )
+            })?;
+        if row.transition_id.as_deref() != Some(transition_id)
+            || outgoing_work.event_id != publication.event_id
+            || outgoing_work.consumer_id != publication.consumer_id
+            || outgoing_work.contract_id != publication.contract_id
+            || outgoing_work.contract_version != publication.contract_version
+        {
+            return Err(WorkflowMutationError::new(
+                WorkflowErrorCode::TransitionConflict,
+                format!("Workflow step `{step_id}` already completed through another transition"),
+            ));
+        }
+        let next_step_id = sqlx::query_scalar::<_, String>(
+            r#"
+            select step_id from platform.service_workflow_steps
+            where instance_id = $1 and step_position = $2
+            "#,
+        )
+        .bind(instance_id)
+        .bind(row.step_position + 1)
+        .fetch_optional(&mut **transaction)
+        .await
+        .map_err(|error| {
+            WorkflowMutationError::store(format!("Could not inspect next workflow step: {error}"))
+        })?;
+        return Ok(WorkflowStepTransitionResult {
+            disposition: WorkflowTransitionDisposition::Duplicate,
+            instance_id: instance_id.to_owned(),
+            completed_step_id: step_id.to_owned(),
+            transition_id: transition_id.to_owned(),
+            next_step_id,
+            outgoing_event_id: outgoing_work.event_id,
+        });
+    }
+    if row.step_state != "pending" || row.instance_state != "running" {
+        return Err(WorkflowMutationError::new(
+            WorkflowErrorCode::TransitionConflict,
+            format!("Workflow step `{step_id}` is not pending in a running instance"),
+        ));
+    }
+    let definition = resolve_definition(
+        state,
+        &row.definition_owner,
+        &row.definition_name,
+        &row.definition_version,
+    )?;
+    let position = usize::try_from(row.step_position).map_err(|_| {
+        WorkflowMutationError::new(
+            WorkflowErrorCode::StoredStateInvalid,
+            format!("Workflow step `{step_id}` has an invalid position"),
+        )
+    })?;
+    if definition
+        .steps
+        .get(position)
+        .map(|step| step.name.as_str())
+        != Some(row.definition_step_name.as_str())
+    {
+        return Err(WorkflowMutationError::new(
+            WorkflowErrorCode::StoredStateInvalid,
+            format!("Workflow step `{step_id}` does not match its pinned definition"),
+        ));
+    }
+    let contract = state
+        .event_contracts
+        .iter()
+        .find(|contract| {
+            contract.contract_id == publication.contract_id
+                && contract.version == publication.contract_version
+        })
+        .ok_or_else(|| {
+            WorkflowMutationError::new(
+                WorkflowErrorCode::EventContractNotDeclared,
+                format!(
+                    "Outgoing Event Contract `{}` version `{}` is not declared by Service `{}`",
+                    publication.contract_id,
+                    publication.contract_version,
+                    state.identity.service_id
+                ),
+            )
+        })?;
+    let event_type = contract
+        .artifact
+        .path
+        .rsplit('/')
+        .next()
+        .and_then(|name| name.strip_suffix(".schema.json"))
+        .filter(|name| name.ends_with(&format!(".{}.{}", contract.contract_id, contract.version)))
+        .ok_or_else(|| {
+            WorkflowMutationError::new(
+                WorkflowErrorCode::EventContractNotDeclared,
+                "Declared outgoing Event Contract has an invalid artifact identity",
+            )
+        })?
+        .to_owned();
+    let mut context: EventContext = row
+        .workflow_context
+        .map(serde_json::from_value)
+        .transpose()
+        .map_err(|error| {
+            WorkflowMutationError::new(
+                WorkflowErrorCode::StoredStateInvalid,
+                format!("Stored workflow execution context is invalid: {error}"),
+            )
+        })?
+        .ok_or_else(|| {
+            WorkflowMutationError::new(
+                WorkflowErrorCode::ContextRequired,
+                "Cross-Service workflow step requires persisted Event Context",
+            )
+        })?;
+    context.service_principal = Some(publication.service_principal);
+    context.causation = Some(CausationContext {
+        causation_id: step_id.to_owned(),
+        correlation_id: context
+            .causation
+            .as_ref()
+            .and_then(|causation| causation.correlation_id.clone()),
+    });
+    validate_outgoing_context(contract, &context)?;
+    let envelope = EventEnvelope {
+        protocol: lenso_service::EVENT_ENVELOPE_PROTOCOL.to_owned(),
+        event_id: publication.event_id.clone(),
+        event_type,
+        contract_id: contract.contract_id.clone(),
+        contract_version: contract.version.clone(),
+        producer_service_id: state.identity.service_id.clone(),
+        module_id: contract.module_id.clone(),
+        occurred_at: publication.occurred_at,
+        tenancy_mode: contract.tenancy_mode.clone(),
+        context,
+        content: EventContent {
+            content_type: "application/json".to_owned(),
+            schema: contract.artifact.path.clone(),
+            data: publication.data,
+        },
+    };
+    let outgoing_work = WorkflowOutgoingWorkInspection {
+        kind: "event_contract".to_owned(),
+        consumer_id: publication.consumer_id.clone(),
+        event_id: envelope.event_id.clone(),
+        contract_id: envelope.contract_id.clone(),
+        contract_version: envelope.contract_version.clone(),
+    };
+    ServiceEventPublisher
+        .publish_in_tx(transaction, &publication.consumer_id, &envelope)
+        .await
+        .map_err(|error| WorkflowMutationError::store(error.message))?;
+    let now = postgres_now();
+    let outgoing_work_json = serde_json::to_value(&outgoing_work).map_err(|error| {
+        WorkflowMutationError::new(
+            WorkflowErrorCode::StoredStateInvalid,
+            format!("Could not encode workflow outgoing work evidence: {error}"),
+        )
+    })?;
+    let updated = sqlx::query(
+        r#"
+        update platform.service_workflow_steps
+        set state = 'completed', transition_id = $3, completed_at = $4,
+            outgoing_work = $5, updated_at = $4
+        where instance_id = $1 and step_id = $2 and state = 'pending'
+        "#,
+    )
+    .bind(instance_id)
+    .bind(step_id)
+    .bind(transition_id)
+    .bind(now)
+    .bind(outgoing_work_json)
+    .execute(&mut **transaction)
+    .await
+    .map_err(|error| {
+        WorkflowMutationError::store(format!("Could not complete workflow step: {error}"))
+    })?;
+    if updated.rows_affected() != 1 {
+        return Err(WorkflowMutationError::new(
+            WorkflowErrorCode::TransitionConflict,
+            format!("Workflow step `{step_id}` lost its pending transition"),
+        ));
+    }
+
+    let next_step_id = if let Some(next_step) = definition.steps.get(position + 1) {
+        let next_step_id = format!("workflow_step_{}", Uuid::now_v7());
+        sqlx::query(
+            r#"
+            insert into platform.service_workflow_steps (
+                step_id, instance_id, definition_step_name, step_position,
+                state, created_at, updated_at
+            ) values ($1, $2, $3, $4, 'pending', $5, $5)
+            "#,
+        )
+        .bind(&next_step_id)
+        .bind(instance_id)
+        .bind(&next_step.name)
+        .bind(row.step_position + 1)
+        .bind(now)
+        .execute(&mut **transaction)
+        .await
+        .map_err(|error| {
+            WorkflowMutationError::store(format!("Could not persist next workflow step: {error}"))
+        })?;
+        Some(next_step_id)
+    } else {
+        None
+    };
+    sqlx::query(
+        r#"
+        update platform.service_workflow_instances
+        set state = $2, updated_at = $3
+        where instance_id = $1 and state = 'running'
+        "#,
+    )
+    .bind(instance_id)
+    .bind(if next_step_id.is_some() {
+        "running"
+    } else {
+        "completed"
+    })
+    .bind(now)
+    .execute(&mut **transaction)
+    .await
+    .map_err(|error| {
+        WorkflowMutationError::store(format!("Could not advance workflow instance: {error}"))
+    })?;
+
+    Ok(WorkflowStepTransitionResult {
+        disposition: WorkflowTransitionDisposition::Applied,
+        instance_id: instance_id.to_owned(),
+        completed_step_id: step_id.to_owned(),
+        transition_id: transition_id.to_owned(),
+        next_step_id,
+        outgoing_event_id: envelope.event_id,
+    })
+}
+
+fn validate_outgoing_context(
+    contract: &EventContractArtifact,
+    context: &EventContext,
+) -> Result<(), WorkflowMutationError> {
+    if context.protocol != lenso_service::COMMON_CONTEXT_PROTOCOL {
+        return Err(WorkflowMutationError::new(
+            WorkflowErrorCode::ContextRequired,
+            "Outgoing workflow Event Context uses an unsupported protocol",
+        ));
+    }
+    let present = |requirement| match requirement {
+        CommonContextRequirement::Story => context.story.is_some(),
+        CommonContextRequirement::Trace => context.trace.is_some(),
+        CommonContextRequirement::ServicePrincipal => context.service_principal.is_some(),
+        CommonContextRequirement::DelegatedActor => context.delegated_actor.is_some(),
+        CommonContextRequirement::Tenant => context.tenant.is_some(),
+        CommonContextRequirement::Deadline => context.deadline.is_some(),
+        CommonContextRequirement::IdempotencyKey => context.idempotency_key.is_some(),
+        CommonContextRequirement::Causation => context.causation.is_some(),
+        CommonContextRequirement::Region => context.region.is_some(),
+    };
+    if let Some(missing) = contract
+        .context
+        .required
+        .iter()
+        .copied()
+        .find(|requirement| !present(*requirement))
+    {
+        return Err(WorkflowMutationError::new(
+            WorkflowErrorCode::ContextRequired,
+            format!("Outgoing workflow Event Contract requires `{missing:?}` context"),
+        ));
+    }
+    match (&contract.tenancy_mode, &context.tenant) {
+        (ServiceTenancyMode::Required, None) => Err(WorkflowMutationError::new(
+            WorkflowErrorCode::TenantRequired,
+            "Outgoing workflow Event Contract requires Tenant Context",
+        )),
+        (ServiceTenancyMode::None, Some(_)) => Err(WorkflowMutationError::new(
+            WorkflowErrorCode::TenantIncompatible,
+            "Outgoing workflow Event Contract does not accept Tenant Context",
+        )),
+        _ => Ok(()),
+    }
+}
+
+fn postgres_now() -> DateTime<Utc> {
+    let now = Utc::now();
+    DateTime::<Utc>::from_timestamp_micros(now.timestamp_micros())
+        .expect("current UTC timestamp must fit PostgreSQL microsecond precision")
 }
 
 #[utoipa::path(
@@ -448,29 +1137,29 @@ fn resolve_definition(
     owner: &str,
     name: &str,
     version: &str,
-) -> Result<WorkflowDefinition, WorkflowApiError> {
+) -> Result<WorkflowDefinition, WorkflowMutationError> {
     let named = state
         .workflow_definitions
         .iter()
         .filter(|definition| definition.owner == owner && definition.name == name)
         .collect::<Vec<_>>();
     if named.is_empty() {
-        return Err(WorkflowApiError {
-            code: WorkflowErrorCode::DefinitionNotFound,
-            message: format!("Workflow Definition `{owner}/{name}` is not registered"),
-            next_actions: vec!["inspect_module_workflow_definitions".to_owned()],
-        });
+        return Err(WorkflowMutationError::new(
+            WorkflowErrorCode::DefinitionNotFound,
+            format!("Workflow Definition `{owner}/{name}` is not registered"),
+        ));
     }
     named
         .into_iter()
         .find(|definition| definition.version == version)
         .cloned()
-        .ok_or_else(|| WorkflowApiError {
-            code: WorkflowErrorCode::DefinitionVersionNotFound,
-            message: format!(
-                "Workflow Definition `{owner}/{name}` has no registered version `{version}`"
-            ),
-            next_actions: vec!["select_registered_workflow_version".to_owned()],
+        .ok_or_else(|| {
+            WorkflowMutationError::new(
+                WorkflowErrorCode::DefinitionVersionNotFound,
+                format!(
+                    "Workflow Definition `{owner}/{name}` has no registered version `{version}`"
+                ),
+            )
         })
 }
 
@@ -502,7 +1191,8 @@ async fn load_instance(
     })?;
     let step_rows = sqlx::query_as::<_, WorkflowStepRow>(
         r#"
-        select step_id, definition_step_name, step_position, state, created_at, updated_at
+        select step_id, definition_step_name, step_position, state, transition_id,
+               completed_at, outgoing_work, created_at, updated_at
         from platform.service_workflow_steps
         where instance_id = $1
         order by step_position, step_id
@@ -517,12 +1207,57 @@ async fn load_instance(
     workflow_from_rows(row, step_rows)
 }
 
+async fn load_instance_in_tx(
+    state: &ServiceRuntimeState,
+    transaction: &mut Transaction<'_, Postgres>,
+    instance_id: &str,
+) -> Result<WorkflowInstance, WorkflowMutationError> {
+    let row = sqlx::query_as::<_, WorkflowInstanceRow>(
+        r#"
+        select instance_id, service_id, definition_owner, definition_name,
+               definition_version, state, input, result, story_context,
+               tenant_scope, initial_step_id, created_at, updated_at
+        from platform.service_workflow_instances
+        where service_id = $1 and instance_id = $2
+        "#,
+    )
+    .bind(&state.identity.service_id)
+    .bind(instance_id)
+    .fetch_optional(&mut **transaction)
+    .await
+    .map_err(|error| WorkflowMutationError::store(format!("Could not inspect workflow: {error}")))?
+    .ok_or_else(|| {
+        WorkflowMutationError::new(
+            WorkflowErrorCode::InstanceNotFound,
+            format!("Workflow Instance `{instance_id}` was not found in this Service Store"),
+        )
+    })?;
+    let step_rows = sqlx::query_as::<_, WorkflowStepRow>(
+        r#"
+        select step_id, definition_step_name, step_position, state, transition_id,
+               completed_at, outgoing_work, created_at, updated_at
+        from platform.service_workflow_steps
+        where instance_id = $1
+        order by step_position, step_id
+        "#,
+    )
+    .bind(instance_id)
+    .fetch_all(&mut **transaction)
+    .await
+    .map_err(|error| {
+        WorkflowMutationError::store(format!("Could not inspect workflow steps: {error}"))
+    })?;
+    workflow_from_rows(row, step_rows)
+        .map_err(|error| WorkflowMutationError::new(error.code, error.message))
+}
+
 fn workflow_from_rows(
     row: WorkflowInstanceRow,
     step_rows: Vec<WorkflowStepRow>,
 ) -> Result<WorkflowInstance, WorkflowApiError> {
     let state = match row.state.as_str() {
         "running" => WorkflowInstanceState::Running,
+        "completed" => WorkflowInstanceState::Completed,
         other => {
             return Err(WorkflowApiError::stored_state(format!(
                 "Workflow Instance `{}` has unsupported state `{other}`",
@@ -545,6 +1280,7 @@ fn workflow_from_rows(
         .map(|step| {
             let state = match step.state.as_str() {
                 "pending" => WorkflowStepState::Pending,
+                "completed" => WorkflowStepState::Completed,
                 other => {
                     return Err(WorkflowApiError::stored_state(format!(
                         "Workflow step `{}` has unsupported state `{other}`",
@@ -563,6 +1299,17 @@ fn workflow_from_rows(
                 definition_step_name: step.definition_step_name,
                 position,
                 state,
+                transition_id: step.transition_id,
+                completed_at: step.completed_at,
+                outgoing_work: step
+                    .outgoing_work
+                    .map(serde_json::from_value)
+                    .transpose()
+                    .map_err(|error| {
+                        WorkflowApiError::stored_state(format!(
+                            "Stored workflow outgoing work is invalid: {error}"
+                        ))
+                    })?,
                 created_at: step.created_at,
                 updated_at: step.updated_at,
             })

@@ -108,9 +108,17 @@ Service, and starts instances in the Service Store through
 `POST /runtime/workflows/{owner}/{name}/instances`. The instance and its initial
 step are committed together with a pinned definition version, Story Context,
 tenant scope, and timestamps. `GET /runtime/workflows/instances/{instance_id}`
-reconstructs the same state from the Store after a runtime restart. This first
-slice does not execute steps or reinterpret the existing lightweight Host flow,
-Runtime Function, or Provider models.
+reconstructs the same state from the Store after a runtime restart. Declared
+Event Contract deliveries can also start an instance inside the existing Inbox
+transaction. Module behavior advances a pending step with a stable transition
+identity; the runtime completes that step, creates the next declared step, and
+writes its declared cross-Service Event Contract work to the Service Outbox in
+the same transaction. Duplicate delivery returns the committed transition and
+preserves Inbox evidence without repeating the business effect. Story,
+causation, Service Principal, delegated actor, tenant, deadline, and idempotency
+context remain explicit across the step. This slice does not add retries,
+timers, child workflows, compensation, or reinterpret the existing lightweight
+Host flow, Runtime Function, or Provider models.
 Its versioned Service, Event, Config, and Reliability Contract declarations are
 specified in [`autonomous-service-contract-artifacts.md`](autonomous-service-contract-artifacts.md).
 The separate [`lenso.context.v1`](common-context-contracts.md) envelope

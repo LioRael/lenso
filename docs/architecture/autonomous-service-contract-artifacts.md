@@ -158,7 +158,7 @@ decisions use the same safe reason codes and never persist proof signatures.
 Runtime function enqueue, claim, retry, and handler execution persist the
 explicit `TenantId`; schedules and lifecycle work remain explicitly unscoped.
 
-## Durable Workflow start and inspection
+## Durable Workflow start, transition, and inspection
 
 `ModuleManifest.runtime.workflows` is the public declaration seam for
 engine-neutral Durable Workflow definitions. Each `lenso.workflow-definition.v1`
@@ -175,12 +175,34 @@ state, and timestamps. A later deployment may select a newer version for new
 instances, but inspection reads the pinned version recorded by the existing
 instance.
 
+A declared Event Contract delivery can start that same definition inside the
+Service Inbox transaction through `start_workflow_from_event_in_tx`. The Event
+identity is the durable start trigger, and the complete Event Context is stored
+with the instance. Module behavior advances a pending step through
+`advance_workflow_step_with_event_in_tx`, supplying a stable transition identity
+and one outgoing Event Contract publication. The runtime locks the pinned step,
+marks it complete, creates the next declared step when present, and writes the
+outgoing event to the Service Outbox before the caller commits. A rollback loses
+all of those writes together; redelivery of the same transition returns the
+committed outcome without publishing again.
+
+Outgoing workflow events must match an Event Contract declared by the owning
+Service. The runtime derives the Event Type and content schema from that
+declaration, carries Story, trace, delegated actor, tenant, deadline,
+idempotency, and region context forward, replaces the Service Principal with
+the executing Service credential supplied by composition, and records the
+completed step as the new causation identity. Cross-Service steps do not read a
+remote Service Store and do not use the System Plane as a relay.
+
 The Service runtime exposes versioned start and inspection results through
 `POST /runtime/workflows/{owner}/{name}/instances` and
 `GET /runtime/workflows/instances/{instance_id}`. Errors use the standard
 problem-details envelope with stable workflow codes and `next_actions`.
-Inspection reads only Service-owned workflow tables; it does not require the
-Host, Runtime Console, System Plane, or an external workflow engine.
+Inspection includes completed transition identity and safe outgoing Event
+Contract metadata for Runtime Console and other operator consumers. It reads
+only Service-owned workflow tables and does not require the Host, Runtime
+Console, System Plane, or an external workflow engine. Retries, timers, child
+workflows, and compensation remain later workflow slices.
 
 ## Event Envelopes
 
