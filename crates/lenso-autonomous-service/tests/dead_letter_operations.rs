@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use lenso_autonomous_service::{
     DeadLetterApprovalRequest, DeadLetterAuthorityVerifier, DeadLetterInspectQuery,
     DeadLetterOperatorEnvironment, DeadLetterOperatorErrorCode, LocalTransportAdapter,
-    ServiceEventHandler, ServiceEventHandlerError, ServiceEventWorkloadIdentity, TransportAdapter,
+    ServiceEventAdmission, ServiceEventHandler, ServiceEventHandlerError, TransportAdapter,
     TransportDelivery, TransportDeploymentClass, TransportDiagnostic, TransportError,
     TransportHealth, TransportNegativeAcknowledgement, TransportPublication,
     TransportPublicationReceipt, cleanup_dead_letters, consume_service_events_once,
@@ -307,7 +307,7 @@ async fn replay_dry_run_is_non_mutating_and_execution_preserves_business_identit
             300_000,
         ))
         .unwrap();
-    let receiver = ServiceEventWorkloadIdentity::new(provider, "support-sla");
+    let receiver = ServiceEventAdmission::new_without_service_context(provider, "support-sla");
     let mut envelope: lenso_service::EventEnvelope = serde_json::from_str(include_str!(
         "../../../contracts/events/support/support.ticket-opened.v1.envelope.json"
     ))

@@ -258,6 +258,8 @@ async fn enqueue(pool: &platform_core::DbPool, function_name: &str, max_attempts
             input_json: json!({ "contact_id": "contact_1" }),
             correlation_id: CorrelationId::new("corr_remote_runtime_1"),
             actor: ActorContext::System,
+            tenant_id: Some(platform_core::TenantId("tenant_01".to_owned())),
+            tenancy_mode: platform_runtime::FunctionTenancyMode::Required,
             trace: TraceContext {
                 trace_id: Some("trace_remote_runtime_1".to_owned()),
                 span_id: Some("span_remote_runtime_1".to_owned()),

@@ -96,6 +96,32 @@ pub enum FunctionRunStatus {
     Dead,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FunctionTenancyMode {
+    None,
+    Optional,
+    Required,
+}
+
+impl FunctionTenancyMode {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Optional => "optional",
+            Self::Required => "required",
+        }
+    }
+
+    const fn accepts(self, tenant_id: Option<&TenantId>) -> bool {
+        match self {
+            Self::None => tenant_id.is_none(),
+            Self::Optional => true,
+            Self::Required => tenant_id.is_some(),
+        }
+    }
+}
+
 impl FunctionRunStatus {
     fn as_str(self) -> &'static str {
         match self {
@@ -114,6 +140,8 @@ pub struct EnqueueFunctionRequest {
     pub input_json: Value,
     pub correlation_id: CorrelationId,
     pub actor: ActorContext,
+    pub tenant_id: Option<TenantId>,
+    pub tenancy_mode: FunctionTenancyMode,
     pub trace: TraceContext,
     pub causation_id: Option<String>,
     pub max_attempts: Option<i32>,
@@ -128,6 +156,8 @@ pub struct ClaimedFunctionRun {
     pub max_attempts: i32,
     pub correlation_id: String,
     pub actor: ActorContext,
+    pub tenant_id: Option<TenantId>,
+    pub tenancy_mode: FunctionTenancyMode,
     pub trace: TraceContext,
     pub causation_id: Option<String>,
 }
@@ -155,6 +185,12 @@ impl RuntimeClient {
         tx: &mut DbTransaction<'_>,
         request: EnqueueFunctionRequest,
     ) -> AppResult<EnqueuedFunctionRun> {
+        if !request.tenancy_mode.accepts(request.tenant_id.as_ref()) {
+            return Err(AppError::new(
+                ErrorCode::Validation,
+                "function tenant context is incompatible with its tenancy mode",
+            ));
+        }
         let id = format!("fnrun_{}", Uuid::now_v7());
         let max_attempts = request.max_attempts.unwrap_or(3);
         let mut input_json = request.input_json;
@@ -190,9 +226,11 @@ impl RuntimeClient {
                     input_json,
                     max_attempts,
                     correlation_id,
-                    actor
+                    actor,
+                    tenant_id,
+                    tenancy_mode
                 )
-                values ($1, $2, $3, $4, $5, $6)
+                values ($1, $2, $3, $4, $5, $6, $7, $8)
                 "#,
             )
             .bind(&id)
@@ -201,6 +239,8 @@ impl RuntimeClient {
             .bind(max_attempts)
             .bind(&request.correlation_id.0)
             .bind(serde_json::to_value(&request.actor).map_err(map_serde_error)?)
+            .bind(request.tenant_id.as_ref().map(|tenant| &tenant.0))
+            .bind(request.tenancy_mode.as_str())
             .execute(&mut **tx)
             .await
             .map_err(map_runtime_error)
@@ -329,7 +369,9 @@ impl RuntimeWorker {
                 function_run.attempts,
                 function_run.max_attempts,
                 function_run.correlation_id,
-                function_run.actor
+                function_run.actor,
+                function_run.tenant_id,
+                function_run.tenancy_mode
             "#,
             )
             .bind(stale_processing_lock_seconds())
@@ -437,7 +479,7 @@ impl RuntimeWorker {
                 correlation_id: CorrelationId::new(run.correlation_id.clone()),
                 causation_id: run.causation_id.clone(),
                 actor: run.actor.clone(),
-                tenant_id: None::<TenantId>,
+                tenant_id: run.tenant_id.clone(),
                 trace: run.trace.clone(),
                 deadline: None::<DateTime<Utc>>,
             };
@@ -908,13 +950,33 @@ fn retry_delay_seconds(delay: Duration) -> f64 {
     delay.as_secs_f64()
 }
 
-type FunctionRunRow = (String, String, Value, i32, i32, String, Value);
+type FunctionRunRow = (
+    String,
+    String,
+    Value,
+    i32,
+    i32,
+    String,
+    Value,
+    Option<String>,
+    String,
+);
 
 impl TryFrom<FunctionRunRow> for ClaimedFunctionRun {
     type Error = AppError;
 
     fn try_from(row: FunctionRunRow) -> Result<Self, Self::Error> {
-        let (id, function_name, input_json, attempts, max_attempts, correlation_id, actor) = row;
+        let (
+            id,
+            function_name,
+            input_json,
+            attempts,
+            max_attempts,
+            correlation_id,
+            actor,
+            tenant_id,
+            tenancy_mode,
+        ) = row;
         let runtime_context = input_json.get("_lenso_runtime");
         let trace = runtime_context
             .map(trace_context_from_headers)
@@ -931,6 +993,9 @@ impl TryFrom<FunctionRunRow> for ClaimedFunctionRun {
             max_attempts,
             correlation_id,
             actor: serde_json::from_value(actor).map_err(map_serde_error)?,
+            tenant_id: tenant_id.map(TenantId),
+            tenancy_mode: serde_json::from_value(Value::String(tenancy_mode))
+                .map_err(map_serde_error)?,
             trace,
             causation_id,
         })

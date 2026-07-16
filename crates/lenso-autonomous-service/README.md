@@ -33,13 +33,19 @@ classification and controlled retry schedules persist beside Inbox history;
 poison and exhausted deliveries move to durable dead-letter state without
 blocking later healthy events.
 
-Authenticated event receivers use `ServiceEventWorkloadIdentity` with
+Authenticated event receivers use `ServiceEventAdmission` with
 `consume_service_events_once_at`. The receiver verifies the
 Event Envelope's signed, audience-limited Service Principal and its
 authenticated Transport Adapter binding before Module behavior runs. Invalid
 identity is recorded as an unauthorized terminal delivery. Endpoint, process,
 replica, region, and Failure Domain metadata remain operational evidence and
 are never used as Service identity.
+
+`ServiceEventAdmission::with_service_context` also applies the shared
+Delegated Actor and Tenant Context policy before Inbox business behavior.
+Accepted decisions are written to local event-delivery evidence without proof
+signatures; rejected decisions are classified as unauthorized before the
+Module handler runs.
 
 Dead-letter operator workflows return stable, versioned command results.
 `inspect_dead_letters` returns deterministic evidence;

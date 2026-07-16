@@ -1,14 +1,19 @@
+use base64::Engine as _;
 use lenso_service::{
     AuthenticatedTransportBinding, CallPolicyEvent, CallPolicyFailure, CallPolicyRuntime,
-    CallPolicyTerminalOutcome, DirectGrpcCallError, DirectGrpcClient, DirectGrpcServerPolicy,
-    Endpoint, EndpointState, GrpcIdempotency, ManualCallPolicyClock, ServiceReference,
-    StaticEndpointResolver, SystemSandboxWorkloadIdentityProvider, WorkloadCredentialRequest,
-    WorkloadIdentityProvider, generate_direct_grpc_bindings,
+    CallPolicyTerminalOutcome, DelegatedActorCredentialRequest, DelegatedContextProvider,
+    DirectGrpcCallError, DirectGrpcClient, DirectGrpcServerPolicy, Endpoint, EndpointState,
+    GrpcIdempotency, ManualCallPolicyClock, MemoryIdentityDecisionRecorder, ServiceContextPolicy,
+    ServiceReference, ServiceTenancyMode, StaticEndpointResolver,
+    SystemSandboxDelegatedContextProvider, SystemSandboxWorkloadIdentityProvider,
+    TenantCredentialRequest, WorkloadCredentialRequest, WorkloadIdentityProvider,
+    generate_direct_grpc_bindings,
     support_grpc_v1::{
         GetSlaRequest, ProbeSlaRequest, SlaResponse, UpdateSlaRequest,
         support_service_server::{SupportService, SupportServiceServer},
     },
 };
+use serde::Serialize;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -137,7 +142,8 @@ fn grpc_admission_authenticates_workload_identity_before_business_handling() {
             30_000,
         ))
         .unwrap();
-    let policy = DirectGrpcServerPolicy::new(bindings(), provider, "service:support");
+    let policy = DirectGrpcServerPolicy::new_without_workload_identity(bindings())
+        .with_workload_identity(provider, "service:support");
 
     let missing = policy.admit("GetSla", &grpc_request(now));
     assert_eq!(
@@ -180,6 +186,101 @@ fn grpc_admission_authenticates_workload_identity_before_business_handling() {
             .service_principal,
         "service:ticketing"
     );
+}
+
+#[test]
+fn grpc_admission_enforces_delegated_actor_and_tenant_context() {
+    let now = now_ms();
+    let provider = Arc::new(
+        SystemSandboxDelegatedContextProvider::new("local", "grpc-context-secret").unwrap(),
+    );
+    let actor = provider
+        .issue_actor(DelegatedActorCredentialRequest::new(
+            "user_01",
+            "service:support",
+            "support.sla.read",
+            ["support.sla.read"],
+            now,
+            30_000,
+        ))
+        .unwrap();
+    let tenant = provider
+        .issue_tenant(TenantCredentialRequest::new(
+            "tenant_01",
+            "user_01",
+            "delegation_1",
+            "service:support",
+            now,
+            30_000,
+        ))
+        .unwrap();
+    let evidence = Arc::new(MemoryIdentityDecisionRecorder::default());
+    let policy = DirectGrpcServerPolicy::new_without_workload_identity(bindings())
+        .with_service_context(
+            provider,
+            [(
+                "GetSla",
+                ServiceContextPolicy::new(
+                    "service:support",
+                    "support.sla.read",
+                    ["support.sla.read"],
+                    ["support.sla.read"],
+                    ServiceTenancyMode::Required,
+                ),
+            )],
+            evidence.clone(),
+        );
+
+    assert_eq!(
+        policy
+            .admit("GetSla", &grpc_request(now))
+            .unwrap_err()
+            .status()
+            .code(),
+        tonic::Code::PermissionDenied
+    );
+
+    let mut accepted = grpc_request(now);
+    accepted.metadata_mut().insert(
+        "x-lenso-delegated-actor",
+        encode_context(&actor).parse().unwrap(),
+    );
+    accepted.metadata_mut().insert(
+        "x-lenso-tenant-context",
+        encode_context(&tenant).parse().unwrap(),
+    );
+    let admission = policy.admit("GetSla", &accepted).unwrap();
+    assert_eq!(
+        admission
+            .authenticated_service_context
+            .unwrap()
+            .tenant
+            .unwrap()
+            .tenant_id,
+        "tenant_01"
+    );
+
+    let mut malformed = grpc_request(now);
+    malformed.metadata_mut().insert(
+        "x-lenso-delegated-actor",
+        "not-base64url-json".parse().unwrap(),
+    );
+    assert_eq!(
+        policy
+            .admit("GetSla", &malformed)
+            .unwrap_err()
+            .status()
+            .message(),
+        "delegated_context_invalid_proof"
+    );
+    assert_eq!(
+        evidence.evidence().last().unwrap().outcome,
+        "delegated_context_invalid_proof"
+    );
+}
+
+fn encode_context<T: Serialize>(value: &T) -> String {
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(serde_json::to_vec(value).unwrap())
 }
 
 fn grpc_request(now: u64) -> Request<GetSlaRequest> {

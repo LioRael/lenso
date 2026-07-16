@@ -5,6 +5,7 @@ use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
 mod call_policy;
+mod delegated_context;
 mod direct_grpc;
 mod direct_http;
 mod endpoint_resolution;
@@ -16,6 +17,13 @@ pub use call_policy::{
     CallPolicyEvent, CallPolicyEvidence, CallPolicyFailure, CallPolicyFallback, CallPolicyOverload,
     CallPolicyPermit, CallPolicyRuntime, CallPolicyTerminalOutcome, CallPolicyValidationIssue,
     ManualCallPolicyClock, SystemCallPolicyClock,
+};
+pub use delegated_context::{
+    AuthenticatedServiceContext, DelegatedActorCredentialRequest, DelegatedContextError,
+    DelegatedContextErrorCode, DelegatedContextProvider, IdentityDecisionEvidence,
+    IdentityDecisionRecorder, JsonlIdentityDecisionRecorder, MemoryIdentityDecisionRecorder,
+    ServiceContext, ServiceContextAdmission, ServiceContextPolicy,
+    SystemSandboxDelegatedContextProvider, TenantCredentialRequest,
 };
 
 pub mod support_grpc_v1 {
@@ -2232,6 +2240,7 @@ pub struct DelegatedActorContext {
     pub issuer: String,
     pub subject: String,
     pub audiences: Vec<String>,
+    pub intent: String,
     pub permissions: Vec<String>,
     pub expires_at_unix_ms: u64,
     pub delegation_id: String,
@@ -2243,6 +2252,8 @@ pub struct DelegatedActorContext {
 pub struct TenantContext {
     pub issuer: String,
     pub tenant_id: String,
+    pub actor_subject: String,
+    pub delegation_id: String,
     pub audiences: Vec<String>,
     pub expires_at_unix_ms: u64,
     pub claim_id: String,
@@ -2390,6 +2401,13 @@ pub fn validate_common_context_contract_value(value: &Value) -> Vec<CommonContex
         CommonContextIssueCode::InvalidServicePrincipal,
         &mut issues,
     );
+    validate_required_strings(
+        value,
+        "delegatedActor",
+        &["intent"],
+        CommonContextIssueCode::InvalidDelegatedActorContext,
+        &mut issues,
+    );
     validate_verifiable_claim(
         value,
         "delegatedActor",
@@ -2421,6 +2439,13 @@ pub fn validate_common_context_contract_value(value: &Value) -> Vec<CommonContex
         "tenant",
         "tenantId",
         "claimId",
+        CommonContextIssueCode::InvalidTenantContext,
+        &mut issues,
+    );
+    validate_required_strings(
+        value,
+        "tenant",
+        &["actorSubject", "delegationId"],
         CommonContextIssueCode::InvalidTenantContext,
         &mut issues,
     );

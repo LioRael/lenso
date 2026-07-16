@@ -1,8 +1,10 @@
 use crate::ServiceRuntimeState;
 use async_trait::async_trait;
 use lenso_service::{
-    AuthenticatedServicePrincipal, AuthenticatedTransportBinding, EventEnvelope,
-    WorkloadIdentityProvider, WorkloadIdentityVerification,
+    AuthenticatedServiceContext, AuthenticatedServicePrincipal, AuthenticatedTransportBinding,
+    DelegatedContextProvider, EventEnvelope, IdentityDecisionEvidence, ServiceContext,
+    ServiceContextAdmission, ServiceContextPolicy, WorkloadIdentityProvider,
+    WorkloadIdentityVerification,
 };
 use platform_core::{AppError, ErrorCode, Migration, apply_migrations};
 use serde::{Deserialize, Serialize};
@@ -815,6 +817,7 @@ pub struct ServiceEventHandlerError {
     pub failure_reason: DeliveryFailureReason,
     pub reason_code: String,
     pub message: String,
+    pub identity_evidence: Option<IdentityDecisionEvidence>,
     #[source]
     source: Option<Box<dyn std::error::Error + Send + Sync>>,
 }
@@ -951,6 +954,7 @@ impl ServiceEventHandlerError {
             failure_reason: DeliveryFailureReason::Retryable,
             reason_code: "business_effect_store_unavailable".to_owned(),
             message: "Module-owned event behavior could not persist its business effect".to_owned(),
+            identity_evidence: None,
             source: Some(Box::new(error)),
         }
     }
@@ -962,6 +966,7 @@ impl ServiceEventHandlerError {
             failure_reason: DeliveryFailureReason::Retryable,
             reason_code: reason_code.into(),
             message: message.into(),
+            identity_evidence: None,
             source: None,
         }
     }
@@ -986,6 +991,16 @@ impl ServiceEventHandlerError {
         Self::terminal(DeliveryFailureReason::Unauthorized, reason_code, message)
     }
 
+    fn unauthorized_with_evidence(
+        reason_code: impl Into<String>,
+        message: impl Into<String>,
+        evidence: IdentityDecisionEvidence,
+    ) -> Self {
+        let mut error = Self::terminal(DeliveryFailureReason::Unauthorized, reason_code, message);
+        error.identity_evidence = Some(evidence);
+        error
+    }
+
     #[must_use]
     pub fn incompatible(reason_code: impl Into<String>, message: impl Into<String>) -> Self {
         Self::terminal(DeliveryFailureReason::Incompatible, reason_code, message)
@@ -1006,6 +1021,7 @@ impl ServiceEventHandlerError {
             failure_reason,
             reason_code: reason_code.into(),
             message: message.into(),
+            identity_evidence: None,
             source: None,
         }
     }
@@ -1021,18 +1037,56 @@ pub trait ServiceEventHandler: Debug + Send + Sync {
 }
 
 #[derive(Debug, Clone)]
-pub struct ServiceEventWorkloadIdentity {
+pub struct ServiceEventAdmission {
     provider: Arc<dyn WorkloadIdentityProvider>,
     audience: String,
+    service_context: Option<ServiceContextAdmission>,
 }
 
-impl ServiceEventWorkloadIdentity {
+impl ServiceEventAdmission {
     #[must_use]
-    pub fn new(provider: Arc<dyn WorkloadIdentityProvider>, audience: impl Into<String>) -> Self {
+    pub fn new<I, S>(
+        provider: Arc<dyn WorkloadIdentityProvider>,
+        audience: impl Into<String>,
+        context_provider: Arc<dyn DelegatedContextProvider>,
+        policies: I,
+    ) -> Self
+    where
+        I: IntoIterator<Item = (S, ServiceContextPolicy)>,
+        S: Into<String>,
+    {
         Self {
             provider,
             audience: audience.into(),
+            service_context: Some(ServiceContextAdmission::new(context_provider, policies)),
         }
+    }
+
+    #[cfg(debug_assertions)]
+    #[must_use]
+    pub fn new_without_service_context(
+        provider: Arc<dyn WorkloadIdentityProvider>,
+        audience: impl Into<String>,
+    ) -> Self {
+        Self {
+            provider,
+            audience: audience.into(),
+            service_context: None,
+        }
+    }
+
+    #[must_use]
+    pub fn with_service_context<I, S>(
+        mut self,
+        provider: Arc<dyn DelegatedContextProvider>,
+        policies: I,
+    ) -> Self
+    where
+        I: IntoIterator<Item = (S, ServiceContextPolicy)>,
+        S: Into<String>,
+    {
+        self.service_context = Some(ServiceContextAdmission::new(provider, policies));
+        self
     }
 
     fn authenticate(
@@ -1040,7 +1094,13 @@ impl ServiceEventWorkloadIdentity {
         envelope: &EventEnvelope,
         authenticated_transport_binding: &AuthenticatedTransportBinding,
         now: chrono::DateTime<chrono::Utc>,
-    ) -> Result<AuthenticatedServicePrincipal, ServiceEventHandlerError> {
+    ) -> Result<
+        (
+            AuthenticatedServicePrincipal,
+            Option<AuthenticatedServiceContext>,
+        ),
+        ServiceEventHandlerError,
+    > {
         let claim = envelope.context.service_principal.as_ref().ok_or_else(|| {
             ServiceEventHandlerError::unauthorized(
                 "workload_identity_required",
@@ -1084,7 +1144,39 @@ impl ServiceEventWorkloadIdentity {
                 "Event Envelope Service Principal does not match its verified Workload Identity proof",
             ));
         }
-        Ok(authenticated)
+        let service_context = if let Some(context) = &self.service_context {
+            let tenancy_mode = context.tenancy_mode(&envelope.event_type).ok_or_else(|| {
+                ServiceEventHandlerError::unauthorized(
+                    "service_context_policy_required",
+                    "Event requires a Service Context policy",
+                )
+            })?;
+            if tenancy_mode != envelope.tenancy_mode {
+                return Err(ServiceEventHandlerError::unauthorized(
+                    "tenant_context_incompatible",
+                    "Event tenancy mode does not match the receiving Service Context policy",
+                ));
+            }
+            let supplied_context = envelope
+                .context
+                .delegated_actor
+                .clone()
+                .map(|actor| ServiceContext::new(actor, envelope.context.tenant.clone()));
+            Some(
+                context
+                    .admit(&envelope.event_type, supplied_context.as_ref(), now_unix_ms)
+                    .map_err(|error| {
+                        ServiceEventHandlerError::unauthorized_with_evidence(
+                            error.evidence.outcome.clone(),
+                            error.message,
+                            error.evidence,
+                        )
+                    })?,
+            )
+        } else {
+            None
+        };
+        Ok((authenticated, service_context))
     }
 }
 
@@ -1094,7 +1186,7 @@ pub async fn consume_service_events_once(
     consumer_id: &str,
     handler: &dyn ServiceEventHandler,
     limit: i64,
-    workload_identity: &ServiceEventWorkloadIdentity,
+    workload_identity: &ServiceEventAdmission,
 ) -> Result<usize, TransportError> {
     consume_service_events_once_at(
         state,
@@ -1161,7 +1253,7 @@ pub async fn consume_service_events_once_at(
     limit: i64,
     now: chrono::DateTime<chrono::Utc>,
     retry_policy: &ServiceEventRetryPolicy,
-    workload_identity: &ServiceEventWorkloadIdentity,
+    workload_identity: &ServiceEventAdmission,
 ) -> Result<usize, TransportError> {
     consume_service_events_once_at_internal(
         state,
@@ -1185,7 +1277,7 @@ async fn consume_service_events_once_at_internal(
     limit: i64,
     now: chrono::DateTime<chrono::Utc>,
     retry_policy: &ServiceEventRetryPolicy,
-    workload_identity: Option<&ServiceEventWorkloadIdentity>,
+    workload_identity: Option<&ServiceEventAdmission>,
 ) -> Result<usize, TransportError> {
     let pool = state.transport_store()?;
     let deliveries = adapter.receive_at(consumer_id, limit, now).await?;
@@ -1370,8 +1462,30 @@ async fn consume_service_events_once_at_internal(
                 &delivery.authenticated_transport_binding,
                 now,
             ) {
-                Ok(_) => handler.handle(&mut transaction, &delivery.envelope).await,
-                Err(error) => Err(error),
+                Ok((_, authenticated_context)) => {
+                    if let Some(context) = authenticated_context {
+                        record_identity_evidence_in_store(
+                            pool,
+                            &delivery.envelope.event_id,
+                            Some(&delivery.delivery_id),
+                            &context.evidence,
+                        )
+                        .await?;
+                    }
+                    handler.handle(&mut transaction, &delivery.envelope).await
+                }
+                Err(error) => {
+                    if let Some(evidence) = error.identity_evidence.as_ref() {
+                        record_identity_evidence_in_store(
+                            pool,
+                            &delivery.envelope.event_id,
+                            Some(&delivery.delivery_id),
+                            evidence,
+                        )
+                        .await?;
+                    }
+                    Err(error)
+                }
             }
         } else {
             handler.handle(&mut transaction, &delivery.envelope).await
@@ -1476,6 +1590,23 @@ async fn consume_service_events_once_at_internal(
         completed += 1;
     }
     first_handler_failure.map_or(Ok(completed), Err)
+}
+
+async fn record_identity_evidence_in_store(
+    pool: &PgPool,
+    event_id: &str,
+    delivery_id: Option<&str>,
+    evidence: &IdentityDecisionEvidence,
+) -> Result<(), TransportError> {
+    record_service_evidence_in_store(
+        pool,
+        "identity",
+        &evidence.outcome,
+        event_id,
+        delivery_id,
+        serde_json::to_value(evidence).expect("IdentityDecisionEvidence must serialize"),
+    )
+    .await
 }
 
 async fn complete_active_replay(

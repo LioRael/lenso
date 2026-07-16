@@ -236,6 +236,8 @@ impl RemoteEventHostActionRunner {
                 input_json: input,
                 correlation_id: CorrelationId::new(event.correlation_id.clone()),
                 actor: actor_from_event(event),
+                tenant_id: tenant_from_event(event),
+                tenancy_mode: platform_runtime::FunctionTenancyMode::Optional,
                 trace: trace_context_from_headers(&event.headers),
                 causation_id: Some(format!(
                     "remote_event_handler:{}:{handler_name}:{action_index}",
@@ -257,6 +259,14 @@ impl RemoteEventHostActionRunner {
 
         Ok(())
     }
+}
+
+fn tenant_from_event(event: &ClaimedOutboxEvent) -> Option<platform_core::TenantId> {
+    event
+        .headers
+        .get("tenant_id")
+        .cloned()
+        .and_then(|value| serde_json::from_value(value).ok())
 }
 
 #[derive(Debug)]

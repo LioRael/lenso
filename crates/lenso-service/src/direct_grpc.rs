@@ -1,13 +1,16 @@
 use crate::{
-    AuthenticatedServicePrincipal, AuthenticatedTransportBinding, CallPolicyDeclaration,
-    CallPolicyEvent, CallPolicyEvidence, CallPolicyFailure, CallPolicyPermit, CallPolicyRuntime,
-    CallPolicyTerminalOutcome, EndpointResolver, RetryDecision, ServiceReference,
+    AuthenticatedServiceContext, AuthenticatedServicePrincipal, AuthenticatedTransportBinding,
+    CallPolicyDeclaration, CallPolicyEvent, CallPolicyEvidence, CallPolicyFailure,
+    CallPolicyPermit, CallPolicyRuntime, CallPolicyTerminalOutcome, DelegatedActorContext,
+    DelegatedContextProvider, EndpointResolver, IdentityDecisionRecorder, RetryDecision,
+    ServiceContext, ServiceContextAdmission, ServiceContextPolicy, ServiceReference, TenantContext,
     WorkloadIdentityProvider, WorkloadIdentityVerification,
     support_grpc_v1::{
         GetSlaRequest, ProbeSlaRequest, SlaResponse, UpdateSlaRequest,
         support_service_client::SupportServiceClient,
     },
 };
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use prost::Message;
 use prost_types::FileDescriptorSet;
 use serde::{Deserialize, Serialize};
@@ -21,6 +24,8 @@ use tonic::{Code, Request, Status, metadata::MetadataValue, transport::Channel};
 const DEADLINE_METADATA: &str = "x-lenso-deadline-unix-ms";
 const IDEMPOTENCY_METADATA: &str = "idempotency-key";
 const AUTHORIZATION_METADATA: &str = "authorization";
+const DELEGATED_ACTOR_METADATA: &str = "x-lenso-delegated-actor";
+const TENANT_CONTEXT_METADATA: &str = "x-lenso-tenant-context";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -86,11 +91,13 @@ pub struct DirectGrpcServerPolicy {
     bindings: DirectGrpcBindings,
     runtime: CallPolicyRuntime,
     workload_identity: Option<DirectGrpcWorkloadIdentity>,
+    service_context: Option<DirectGrpcServiceContext>,
 }
 
 pub struct DirectGrpcAdmission {
     pub call_policy_permit: CallPolicyPermit,
     pub authenticated_service_principal: Option<AuthenticatedServicePrincipal>,
+    pub authenticated_service_context: Option<AuthenticatedServiceContext>,
 }
 
 impl std::fmt::Debug for DirectGrpcAdmission {
@@ -100,6 +107,10 @@ impl std::fmt::Debug for DirectGrpcAdmission {
             .field(
                 "authenticated_service_principal",
                 &self.authenticated_service_principal,
+            )
+            .field(
+                "authenticated_service_context",
+                &self.authenticated_service_context,
             )
             .finish_non_exhaustive()
     }
@@ -111,14 +122,25 @@ struct DirectGrpcWorkloadIdentity {
     audience: String,
 }
 
+#[derive(Debug, Clone)]
+struct DirectGrpcServiceContext {
+    admission: ServiceContextAdmission,
+    recorder: Arc<dyn IdentityDecisionRecorder>,
+}
+
 impl DirectGrpcServerPolicy {
     #[must_use]
     pub fn new(
         bindings: DirectGrpcBindings,
         provider: Arc<dyn WorkloadIdentityProvider>,
         audience: impl Into<String>,
+        context_provider: Arc<dyn DelegatedContextProvider>,
+        context_policies: impl IntoIterator<Item = (String, ServiceContextPolicy)>,
+        evidence_recorder: Arc<dyn IdentityDecisionRecorder>,
     ) -> Self {
-        Self::new_unchecked(bindings).with_workload_identity(provider, audience)
+        Self::new_unchecked(bindings)
+            .with_workload_identity(provider, audience)
+            .with_service_context(context_provider, context_policies, evidence_recorder)
     }
 
     #[must_use]
@@ -132,6 +154,7 @@ impl DirectGrpcServerPolicy {
             bindings,
             runtime: CallPolicyRuntime::default(),
             workload_identity: None,
+            service_context: None,
         }
     }
 
@@ -150,6 +173,24 @@ impl DirectGrpcServerPolicy {
         self.workload_identity = Some(DirectGrpcWorkloadIdentity {
             provider,
             audience: audience.into(),
+        });
+        self
+    }
+
+    #[must_use]
+    pub fn with_service_context<I, S>(
+        mut self,
+        provider: Arc<dyn DelegatedContextProvider>,
+        policies: I,
+        recorder: Arc<dyn IdentityDecisionRecorder>,
+    ) -> Self
+    where
+        I: IntoIterator<Item = (S, ServiceContextPolicy)>,
+        S: Into<String>,
+    {
+        self.service_context = Some(DirectGrpcServiceContext {
+            admission: ServiceContextAdmission::new(provider, policies),
+            recorder,
         });
         self
     }
@@ -198,6 +239,50 @@ impl DirectGrpcServerPolicy {
         } else {
             None
         };
+        let authenticated_service_context = if let Some(context) = &self.service_context {
+            let actor = decode_metadata::<DelegatedActorContext>(
+                request.metadata(),
+                DELEGATED_ACTOR_METADATA,
+            );
+            let tenant =
+                decode_metadata::<TenantContext>(request.metadata(), TENANT_CONTEXT_METADATA);
+            let decision = match (actor, tenant) {
+                (Ok(actor), Ok(tenant)) => {
+                    let service_context = actor.map(|actor| ServiceContext::new(actor, tenant));
+                    context.admission.admit(
+                        operation_id,
+                        service_context.as_ref(),
+                        self.runtime.now_ms(),
+                    )
+                }
+                _ => Err(context.admission.invalid_proof(operation_id)),
+            };
+            match decision {
+                Ok(authenticated) => {
+                    context
+                        .recorder
+                        .record(&authenticated.evidence)
+                        .map_err(|_| {
+                            DirectGrpcAdmissionError::PermissionDenied(
+                                "identity_evidence_persistence_failed".to_owned(),
+                            )
+                        })?;
+                    Some(authenticated)
+                }
+                Err(error) => {
+                    context.recorder.record(&error.evidence).map_err(|_| {
+                        DirectGrpcAdmissionError::PermissionDenied(
+                            "identity_evidence_persistence_failed".to_owned(),
+                        )
+                    })?;
+                    return Err(DirectGrpcAdmissionError::PermissionDenied(
+                        error.evidence.outcome,
+                    ));
+                }
+            }
+        } else {
+            None
+        };
         let deadline = request
             .metadata()
             .get(DEADLINE_METADATA)
@@ -229,6 +314,7 @@ impl DirectGrpcServerPolicy {
         Ok(DirectGrpcAdmission {
             call_policy_permit,
             authenticated_service_principal,
+            authenticated_service_context,
         })
     }
 }
@@ -237,6 +323,7 @@ impl DirectGrpcServerPolicy {
 pub enum DirectGrpcAdmissionError {
     Contract(String),
     Unauthenticated(String),
+    PermissionDenied(String),
     DeadlineExpired { evidence: CallPolicyEvidence },
     IdempotencyKeyRequired { evidence: CallPolicyEvidence },
     Overloaded { evidence: CallPolicyEvidence },
@@ -248,6 +335,7 @@ impl DirectGrpcAdmissionError {
         match self {
             Self::Contract(message) => Status::unimplemented(message.clone()),
             Self::Unauthenticated(reason) => Status::unauthenticated(reason.clone()),
+            Self::PermissionDenied(reason) => Status::permission_denied(reason.clone()),
             Self::DeadlineExpired { .. } => Status::deadline_exceeded("deadline_expired"),
             Self::IdempotencyKeyRequired { .. } => {
                 Status::invalid_argument("idempotency_key_required")
@@ -444,6 +532,8 @@ pub struct DirectGrpcClient<R> {
     policy_runtime: CallPolicyRuntime,
     fallbacks: BTreeMap<String, Arc<GrpcFallback>>,
     workload_credential: Option<String>,
+    delegated_actor_context: Option<DelegatedActorContext>,
+    tenant_context: Option<TenantContext>,
 }
 type GrpcFallback = dyn Fn(CallPolicyFailure) -> Vec<u8> + Send + Sync;
 
@@ -472,6 +562,8 @@ impl<R: EndpointResolver> DirectGrpcClient<R> {
             policy_runtime: CallPolicyRuntime::default(),
             fallbacks: BTreeMap::new(),
             workload_credential: None,
+            delegated_actor_context: None,
+            tenant_context: None,
         }
     }
 
@@ -493,6 +585,17 @@ impl<R: EndpointResolver> DirectGrpcClient<R> {
     #[must_use]
     pub fn with_workload_credential(mut self, credential: impl Into<String>) -> Self {
         self.workload_credential = Some(credential.into());
+        self
+    }
+
+    #[must_use]
+    pub fn with_service_context(
+        mut self,
+        actor: DelegatedActorContext,
+        tenant: Option<TenantContext>,
+    ) -> Self {
+        self.delegated_actor_context = Some(actor);
+        self.tenant_context = tenant;
         self
     }
 
@@ -529,6 +632,8 @@ impl<R: EndpointResolver> DirectGrpcClient<R> {
                 deadline,
                 None,
                 self.workload_credential.as_deref(),
+                self.delegated_actor_context.as_ref(),
+                self.tenant_context.as_ref(),
             ) {
                 Ok(request) => request,
                 Err(DirectGrpcCallError::Contract(message)) if message == "deadline_expired" => {
@@ -610,6 +715,8 @@ impl<R: EndpointResolver> DirectGrpcClient<R> {
                 deadline,
                 Some(idempotency_key),
                 self.workload_credential.as_deref(),
+                self.delegated_actor_context.as_ref(),
+                self.tenant_context.as_ref(),
             ) {
                 Ok(request) => request,
                 Err(DirectGrpcCallError::Contract(message)) if message == "deadline_expired" => {
@@ -682,6 +789,8 @@ impl<R: EndpointResolver> DirectGrpcClient<R> {
             deadline,
             None,
             self.workload_credential.as_deref(),
+            self.delegated_actor_context.as_ref(),
+            self.tenant_context.as_ref(),
         ) {
             Ok(request) => request,
             Err(DirectGrpcCallError::Contract(message)) if message == "deadline_expired" => {
@@ -955,6 +1064,8 @@ fn request<T>(
     deadline: u64,
     key: Option<&str>,
     workload_credential: Option<&str>,
+    delegated_actor_context: Option<&DelegatedActorContext>,
+    tenant_context: Option<&TenantContext>,
 ) -> Result<Request<T>, DirectGrpcCallError> {
     let remaining = deadline.saturating_sub(now_ms());
     if remaining == 0 {
@@ -981,7 +1092,44 @@ fn request<T>(
                 .map_err(|error| DirectGrpcCallError::Contract(error.to_string()))?,
         );
     }
+    if let Some(actor) = delegated_actor_context {
+        insert_context_metadata(request.metadata_mut(), DELEGATED_ACTOR_METADATA, actor)?;
+    }
+    if let Some(tenant) = tenant_context {
+        insert_context_metadata(request.metadata_mut(), TENANT_CONTEXT_METADATA, tenant)?;
+    }
     Ok(request)
+}
+
+fn insert_context_metadata<T: Serialize>(
+    metadata: &mut tonic::metadata::MetadataMap,
+    name: &'static str,
+    value: &T,
+) -> Result<(), DirectGrpcCallError> {
+    let encoded = serde_json::to_vec(value)
+        .map(|json| URL_SAFE_NO_PAD.encode(json))
+        .map_err(|error| DirectGrpcCallError::Contract(error.to_string()))?;
+    metadata.insert(
+        name,
+        MetadataValue::try_from(encoded)
+            .map_err(|error| DirectGrpcCallError::Contract(error.to_string()))?,
+    );
+    Ok(())
+}
+
+fn decode_metadata<T: for<'de> Deserialize<'de>>(
+    metadata: &tonic::metadata::MetadataMap,
+    name: &'static str,
+) -> Result<Option<T>, ()> {
+    let Some(value) = metadata.get(name) else {
+        return Ok(None);
+    };
+    value
+        .to_str()
+        .map_err(|_| ())
+        .and_then(|value| URL_SAFE_NO_PAD.decode(value).map_err(|_| ()))
+        .and_then(|value| serde_json::from_slice(&value).map_err(|_| ()))
+        .map(Some)
 }
 
 fn success(

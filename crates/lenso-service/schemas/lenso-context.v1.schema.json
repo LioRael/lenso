@@ -45,19 +45,21 @@
     },
     "delegatedActorContext": {
       "type": "object", "additionalProperties": false,
-      "required": ["issuer", "subject", "audiences", "permissions", "expiresAtUnixMs", "delegationId", "proof"],
+      "required": ["issuer", "subject", "audiences", "intent", "permissions", "expiresAtUnixMs", "delegationId", "proof"],
       "properties": {
         "issuer": { "$ref": "#/$defs/nonEmptyString" }, "subject": { "$ref": "#/$defs/nonEmptyString" },
-        "audiences": { "$ref": "#/$defs/nonEmptyStrings" }, "permissions": { "$ref": "#/$defs/nonEmptyStrings" },
+        "audiences": { "$ref": "#/$defs/nonEmptyStrings" }, "intent": { "$ref": "#/$defs/nonEmptyString" },
+        "permissions": { "$ref": "#/$defs/nonEmptyStrings" },
         "expiresAtUnixMs": { "type": "integer", "minimum": 1 }, "delegationId": { "$ref": "#/$defs/nonEmptyString" },
         "proof": { "$ref": "#/$defs/claimProof" }
       }
     },
     "tenantContext": {
       "type": "object", "additionalProperties": false,
-      "required": ["issuer", "tenantId", "audiences", "expiresAtUnixMs", "claimId", "proof"],
+      "required": ["issuer", "tenantId", "actorSubject", "delegationId", "audiences", "expiresAtUnixMs", "claimId", "proof"],
       "properties": {
         "issuer": { "$ref": "#/$defs/nonEmptyString" }, "tenantId": { "$ref": "#/$defs/nonEmptyString" },
+        "actorSubject": { "$ref": "#/$defs/nonEmptyString" }, "delegationId": { "$ref": "#/$defs/nonEmptyString" },
         "audiences": { "$ref": "#/$defs/nonEmptyStrings" }, "expiresAtUnixMs": { "type": "integer", "minimum": 1 },
         "claimId": { "$ref": "#/$defs/nonEmptyString" }, "proof": { "$ref": "#/$defs/claimProof" }
       }
