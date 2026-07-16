@@ -187,7 +187,12 @@ Current flow from a module event to runtime work:
 6. The runtime worker claims pending function runs and invokes registered function handlers.
 7. Success marks outbox/function rows complete; failures retry or eventually mark `dead`.
 
-No NATS, Kafka, service mesh, or external broker is part of the current architecture.
+The dependency-free System Sandbox uses the local PostgreSQL Transport Adapter.
+NATS JetStream is the first production Transport Adapter, selected in
+[`ADR 0023`](../adr/0023-select-nats-jetstream-as-the-first-production-transport-adapter.md).
+It remains optional and confined to Autonomous Service composition; linked
+Modules, Event Contracts, the Host runtime, and the System Plane do not depend
+on NATS, Kafka, a service mesh, or broker-specific types.
 
 ## Runtime Console
 

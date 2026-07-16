@@ -2,9 +2,11 @@
 
 mod operations;
 mod transport;
+mod transport_nats_jetstream;
 
 pub use operations::*;
 pub use transport::*;
+pub use transport_nats_jetstream::*;
 
 use axum::{
     Json, Router,

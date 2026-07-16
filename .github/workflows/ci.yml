@@ -9,6 +9,24 @@ on:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: lenso
+          POSTGRES_PASSWORD: lenso
+          POSTGRES_USER: lenso
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lenso -d lenso"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://lenso:lenso@localhost:5432/lenso
+      NATS_URL: nats://127.0.0.1:4222
+      LENSO_NATS_TEST_INFRASTRUCTURE_APPROVED: true
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@f2b2b233b538f500472c7274c7012f57857d8ce0
@@ -21,8 +39,20 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Install just
         uses: extractions/setup-just@v4
+      - name: Start ephemeral NATS JetStream verification infrastructure
+        run: |
+          docker run --detach --rm --name lenso-nats --publish 4222:4222 nats:2.14-alpine -js
+          for attempt in {1..50}; do
+            if (echo > /dev/tcp/127.0.0.1/4222) 2>/dev/null; then exit 0; fi
+            sleep 0.1
+          done
+          docker logs lenso-nats
+          exit 1
       - name: Run quality gates
         run: just ci
+      - name: Stop ephemeral NATS JetStream verification infrastructure
+        if: always()
+        run: docker rm --force lenso-nats || true
       - name: Verify reviewed release plan and packages
         if: ${{ startsWith(github.head_ref, 'release/') }}
         run: |
