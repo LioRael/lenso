@@ -116,9 +116,14 @@ writes its declared cross-Service Event Contract work to the Service Outbox in
 the same transaction. Duplicate delivery returns the committed transition and
 preserves Inbox evidence without repeating the business effect. Story,
 causation, Service Principal, delegated actor, tenant, deadline, and idempotency
-context remain explicit across the step. This slice does not add retries,
-timers, child workflows, compensation, or reinterpret the existing lightweight
-Host flow, Runtime Function, or Provider models.
+context remain explicit across the step. Step declarations may also pin one
+retry schedule and per-attempt timeout. The Service Store retains the original
+step identity, explicit attempt history, terminal exhaustion, and durable retry
+and timeout timers. Timer claims use worker leases so a restart can reclaim the
+same transition identity; the System Sandbox may inject controlled time without
+wall-clock sleeps. This slice does not add child workflows, compensation, or
+reinterpret the existing lightweight Host flow, Runtime Function, or Provider
+models.
 Its versioned Service, Event, Config, and Reliability Contract declarations are
 specified in [`autonomous-service-contract-artifacts.md`](autonomous-service-contract-artifacts.md).
 The separate [`lenso.context.v1`](common-context-contracts.md) envelope

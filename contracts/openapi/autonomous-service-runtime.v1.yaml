@@ -352,6 +352,12 @@ components:
           type: string
         version:
           type: string
+    WorkflowFailureClassification:
+      type: string
+      enum:
+      - retryable
+      - timeout
+      - permanent
     WorkflowInspectionResult:
       type: object
       required:
@@ -414,6 +420,7 @@ components:
       enum:
       - running
       - completed
+      - failed
     WorkflowOutgoingWorkInspection:
       type: object
       required:
@@ -466,6 +473,60 @@ components:
             type: string
         protocol:
           type: string
+    WorkflowStepAttemptInspection:
+      type: object
+      required:
+      - attemptId
+      - attemptNumber
+      - transitionId
+      - state
+      - scheduledAt
+      - startedAt
+      properties:
+        attemptId:
+          type: string
+        attemptNumber:
+          type: integer
+          format: int32
+          minimum: 0
+        completedAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        failure:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/WorkflowStepFailureInspection'
+        scheduledAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+        state:
+          $ref: '#/components/schemas/WorkflowStepAttemptState'
+        transitionId:
+          type: string
+    WorkflowStepAttemptState:
+      type: string
+      enum:
+      - running
+      - failed
+      - succeeded
+    WorkflowStepFailureInspection:
+      type: object
+      required:
+      - classification
+      - code
+      - message
+      properties:
+        classification:
+          $ref: '#/components/schemas/WorkflowFailureClassification'
+        code:
+          type: string
+        message:
+          type: string
     WorkflowStepInspection:
       type: object
       required:
@@ -473,9 +534,22 @@ components:
       - definitionStepName
       - position
       - state
+      - attemptCount
+      - maxAttempts
+      - retryScheduleMs
+      - attempts
+      - timers
       - createdAt
       - updatedAt
       properties:
+        attemptCount:
+          type: integer
+          format: int32
+          minimum: 0
+        attempts:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowStepAttemptInspection'
         completedAt:
           type:
           - string
@@ -486,6 +560,24 @@ components:
           format: date-time
         definitionStepName:
           type: string
+        exhaustedAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        latestFailure:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/WorkflowStepFailureInspection'
+        maxAttempts:
+          type: integer
+          format: int32
+          minimum: 0
+        nextAttemptAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
         outgoingWork:
           oneOf:
           - type: 'null'
@@ -494,10 +586,20 @@ components:
           type: integer
           format: int32
           minimum: 0
+        retryScheduleMs:
+          type: array
+          items:
+            type: integer
+            format: int64
+            minimum: 0
         state:
           $ref: '#/components/schemas/WorkflowStepState'
         stepId:
           type: string
+        timers:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowTimerInspection'
         transitionId:
           type:
           - string
@@ -510,6 +612,7 @@ components:
       enum:
       - pending
       - completed
+      - exhausted
     WorkflowStoryContext:
       type: object
       required:
@@ -529,3 +632,54 @@ components:
         tenantId:
           type: string
       additionalProperties: false
+    WorkflowTimerInspection:
+      type: object
+      required:
+      - timerId
+      - kind
+      - attemptNumber
+      - transitionId
+      - dueAt
+      - state
+      properties:
+        attemptNumber:
+          type: integer
+          format: int32
+          minimum: 0
+        claimedAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        claimedBy:
+          type:
+          - string
+          - 'null'
+        completedAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        dueAt:
+          type: string
+          format: date-time
+        kind:
+          $ref: '#/components/schemas/WorkflowTimerKind'
+        state:
+          $ref: '#/components/schemas/WorkflowTimerState'
+        timerId:
+          type: string
+        transitionId:
+          type: string
+    WorkflowTimerKind:
+      type: string
+      enum:
+      - retry
+      - step_timeout
+    WorkflowTimerState:
+      type: string
+      enum:
+      - pending
+      - claimed
+      - completed
+      - cancelled

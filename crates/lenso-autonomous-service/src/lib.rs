@@ -22,7 +22,9 @@ use lenso_service::{
     AutonomousServiceContract, EventContractArtifact, ServiceTenancyMode, WorkloadRole,
     validate_autonomous_service_contract,
 };
-use platform_core::{EventHandlerRegistry, Migration, OutboxRelay, apply_migrations};
+use platform_core::{
+    Clock, EventHandlerRegistry, Migration, OutboxRelay, SystemClock, apply_migrations,
+};
 use platform_runtime::{FunctionRegistry, RuntimeWorker};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -165,6 +167,10 @@ pub const SERVICE_RUNTIME_MIGRATIONS: &[Migration] = &[
         name: "autonomous-service/0011_advance_durable_workflow_steps",
         sql: include_str!("../migrations/0011_advance_durable_workflow_steps.sql"),
     },
+    Migration {
+        name: "autonomous-service/0012_recover_workflow_retries_and_timers",
+        sql: include_str!("../migrations/0012_recover_workflow_retries_and_timers.sql"),
+    },
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
@@ -185,6 +191,7 @@ pub struct ServiceRuntimeState {
     pool: Option<PgPool>,
     workflow_definitions: Arc<Vec<WorkflowDefinition>>,
     event_contracts: Arc<Vec<EventContractArtifact>>,
+    workflow_clock: Arc<dyn Clock>,
 }
 
 #[derive(Debug, Clone)]
@@ -222,6 +229,7 @@ impl ServiceRuntimeState {
             pool: None,
             workflow_definitions: Arc::new(Vec::new()),
             event_contracts: Arc::new(Vec::new()),
+            workflow_clock: Arc::new(SystemClock),
         }
     }
 
@@ -271,6 +279,14 @@ impl ServiceRuntimeState {
 
     fn with_event_contracts(mut self, event_contracts: Vec<EventContractArtifact>) -> Self {
         self.event_contracts = Arc::new(event_contracts);
+        self
+    }
+
+    /// Overrides wall-clock time for deterministic System Sandbox workflow
+    /// timers. Production composition should keep the default System clock.
+    #[must_use]
+    pub fn with_workflow_clock(mut self, workflow_clock: Arc<dyn Clock>) -> Self {
+        self.workflow_clock = workflow_clock;
         self
     }
 
@@ -1102,10 +1118,23 @@ fn validate_workflow_definitions(
             && !definition.result_contract.contract_id.trim().is_empty()
             && !definition.result_contract.version.trim().is_empty()
             && !definition.steps.is_empty()
-            && definition
-                .steps
-                .iter()
-                .all(|step| !step.name.trim().is_empty())
+            && definition.steps.iter().all(|step| {
+                !step.name.trim().is_empty()
+                    && step
+                        .timeout_ms
+                        .is_none_or(|timeout| timeout > 0 && i64::try_from(timeout).is_ok())
+                    && step.retry_policy.as_ref().is_none_or(|policy| {
+                        policy.max_attempts > 0
+                            && i32::try_from(policy.max_attempts).is_ok()
+                            && policy.delays_ms.len()
+                                == usize::try_from(policy.max_attempts.saturating_sub(1))
+                                    .unwrap_or(usize::MAX)
+                            && policy
+                                .delays_ms
+                                .iter()
+                                .all(|delay| i64::try_from(*delay).is_ok())
+                    })
+            })
             && definition
                 .steps
                 .iter()

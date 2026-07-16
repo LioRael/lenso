@@ -19,6 +19,9 @@ use utoipa::ToSchema;
 use utoipa_axum::{router::OpenApiRouter, routes};
 use uuid::Uuid;
 
+mod recovery;
+pub use recovery::*;
+
 pub const WORKFLOW_START_RESULT_PROTOCOL: &str = "lenso.workflow-start-result.v1";
 pub const WORKFLOW_INSPECTION_PROTOCOL: &str = "lenso.workflow-inspection.v1";
 
@@ -58,6 +61,7 @@ pub struct WorkflowDefinitionIdentity {
 pub enum WorkflowInstanceState {
     Running,
     Completed,
+    Failed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
@@ -65,6 +69,7 @@ pub enum WorkflowInstanceState {
 pub enum WorkflowStepState {
     Pending,
     Completed,
+    Exhausted,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -87,6 +92,14 @@ pub struct WorkflowStepInspection {
     pub transition_id: Option<String>,
     pub completed_at: Option<DateTime<Utc>>,
     pub outgoing_work: Option<WorkflowOutgoingWorkInspection>,
+    pub attempt_count: u32,
+    pub max_attempts: u32,
+    pub retry_schedule_ms: Vec<u64>,
+    pub next_attempt_at: Option<DateTime<Utc>>,
+    pub latest_failure: Option<WorkflowStepFailureInspection>,
+    pub exhausted_at: Option<DateTime<Utc>>,
+    pub attempts: Vec<WorkflowStepAttemptInspection>,
+    pub timers: Vec<WorkflowTimerInspection>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -370,6 +383,14 @@ struct WorkflowStepRow {
     transition_id: Option<String>,
     completed_at: Option<DateTime<Utc>>,
     outgoing_work: Option<Value>,
+    attempt_count: i32,
+    max_attempts: i32,
+    retry_schedule: Value,
+    next_attempt_at: Option<DateTime<Utc>>,
+    failure_classification: Option<String>,
+    failure_code: Option<String>,
+    failure_message: Option<String>,
+    exhausted_at: Option<DateTime<Utc>>,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
 }
@@ -386,6 +407,7 @@ struct WorkflowTransitionRow {
     step_state: String,
     transition_id: Option<String>,
     outgoing_work: Option<Value>,
+    attempt_count: i32,
 }
 
 pub(crate) fn workflow_router() -> OpenApiRouter<ServiceRuntimeState> {
@@ -424,12 +446,10 @@ async fn start_workflow(
     })?;
     validate_start_request(&state, &request)?;
     let definition = resolve_definition(&state, &owner, &name, &request.definition_version)?;
-    let first_step_name = definition.steps[0].name.clone();
+    let first_step = definition.steps[0].clone();
     let instance_id = format!("workflow_{}", Uuid::now_v7());
     let initial_step_id = format!("workflow_step_{}", Uuid::now_v7());
-    let now = Utc::now();
-    let now = DateTime::<Utc>::from_timestamp_micros(now.timestamp_micros())
-        .expect("current UTC timestamp must fit PostgreSQL microsecond precision");
+    let now = recovery::workflow_now(&state);
     let story_context = serde_json::to_value(&request.story_context)
         .map_err(|error| WorkflowApiError::stored_state(error.to_string()))?;
     let tenant_scope = request
@@ -467,23 +487,16 @@ async fn start_workflow(
     .execute(&mut *transaction)
     .await
     .map_err(|error| WorkflowApiError::store(format!("Could not persist workflow: {error}")))?;
-    sqlx::query(
-        r#"
-        insert into platform.service_workflow_steps (
-            step_id, instance_id, definition_step_name, step_position,
-            state, created_at, updated_at
-        ) values ($1, $2, $3, 0, 'pending', $4, $4)
-        "#,
+    let timers = recovery::persist_workflow_step_in_tx(
+        &mut transaction,
+        &instance_id,
+        &initial_step_id,
+        &first_step,
+        0,
+        now,
     )
-    .bind(&initial_step_id)
-    .bind(&instance_id)
-    .bind(&first_step_name)
-    .bind(now)
-    .execute(&mut *transaction)
     .await
-    .map_err(|error| {
-        WorkflowApiError::store(format!("Could not persist initial workflow step: {error}"))
-    })?;
+    .map_err(WorkflowApiError::from)?;
     transaction.commit().await.map_err(|error| {
         WorkflowApiError::store(format!("Could not commit workflow start: {error}"))
     })?;
@@ -502,17 +515,13 @@ async fn start_workflow(
         story_context: request.story_context,
         tenant_scope: request.tenant_scope,
         initial_step_id: initial_step_id.clone(),
-        steps: vec![WorkflowStepInspection {
-            step_id: initial_step_id,
-            definition_step_name: first_step_name,
-            position: 0,
-            state: WorkflowStepState::Pending,
-            transition_id: None,
-            completed_at: None,
-            outgoing_work: None,
-            created_at: now,
-            updated_at: now,
-        }],
+        steps: vec![recovery::pending_step_inspection(
+            initial_step_id,
+            &first_step,
+            0,
+            timers,
+            now,
+        )],
         created_at: now,
         updated_at: now,
     };
@@ -604,7 +613,7 @@ pub async fn start_workflow_from_event_in_tx(
 
     let instance_id = format!("workflow_{}", Uuid::now_v7());
     let initial_step_id = format!("workflow_step_{}", Uuid::now_v7());
-    let now = postgres_now();
+    let now = recovery::workflow_now(state);
     let story_context = WorkflowStoryContext {
         story_id: story.story_id.clone(),
         segment_id: story.segment_id.clone(),
@@ -659,25 +668,15 @@ pub async fn start_workflow_from_event_in_tx(
     .map_err(|error| {
         WorkflowMutationError::store(format!("Could not persist event-started workflow: {error}"))
     })?;
-    sqlx::query(
-        r#"
-        insert into platform.service_workflow_steps (
-            step_id, instance_id, definition_step_name, step_position,
-            state, created_at, updated_at
-        ) values ($1, $2, $3, 0, 'pending', $4, $4)
-        "#,
+    let timers = recovery::persist_workflow_step_in_tx(
+        transaction,
+        &instance_id,
+        &initial_step_id,
+        &definition.steps[0],
+        0,
+        now,
     )
-    .bind(&initial_step_id)
-    .bind(&instance_id)
-    .bind(&definition.steps[0].name)
-    .bind(now)
-    .execute(&mut **transaction)
-    .await
-    .map_err(|error| {
-        WorkflowMutationError::store(format!(
-            "Could not persist event-started workflow step: {error}"
-        ))
-    })?;
+    .await?;
 
     Ok(WorkflowInstance {
         instance_id,
@@ -693,17 +692,13 @@ pub async fn start_workflow_from_event_in_tx(
         story_context,
         tenant_scope,
         initial_step_id: initial_step_id.clone(),
-        steps: vec![WorkflowStepInspection {
-            step_id: initial_step_id,
-            definition_step_name: definition.steps[0].name.clone(),
-            position: 0,
-            state: WorkflowStepState::Pending,
-            transition_id: None,
-            completed_at: None,
-            outgoing_work: None,
-            created_at: now,
-            updated_at: now,
-        }],
+        steps: vec![recovery::pending_step_inspection(
+            initial_step_id,
+            &definition.steps[0],
+            0,
+            timers,
+            now,
+        )],
         created_at: now,
         updated_at: now,
     })
@@ -745,7 +740,7 @@ pub async fn advance_workflow_step_with_event_in_tx(
                instance.definition_version, instance.state as instance_state,
                instance.workflow_context, step.definition_step_name,
                step.step_position, step.state as step_state,
-               step.transition_id, step.outgoing_work
+               step.transition_id, step.outgoing_work, step.attempt_count
         from platform.service_workflow_instances instance
         join platform.service_workflow_steps step on step.instance_id = instance.instance_id
         where instance.service_id = $1 and instance.instance_id = $2 and step.step_id = $3
@@ -927,11 +922,26 @@ pub async fn advance_workflow_step_with_event_in_tx(
         contract_id: envelope.contract_id.clone(),
         contract_version: envelope.contract_version.clone(),
     };
+    let now = recovery::workflow_now(state);
+    let attempt_number = u32::try_from(row.attempt_count).map_err(|_| {
+        WorkflowMutationError::new(
+            WorkflowErrorCode::StoredStateInvalid,
+            format!("Workflow step `{step_id}` has an invalid attempt count"),
+        )
+    })? + 1;
+    recovery::record_workflow_step_success_in_tx(
+        transaction,
+        instance_id,
+        step_id,
+        attempt_number,
+        transition_id,
+        now,
+    )
+    .await?;
     ServiceEventPublisher
         .publish_in_tx(transaction, &publication.consumer_id, &envelope)
         .await
         .map_err(|error| WorkflowMutationError::store(error.message))?;
-    let now = postgres_now();
     let outgoing_work_json = serde_json::to_value(&outgoing_work).map_err(|error| {
         WorkflowMutationError::new(
             WorkflowErrorCode::StoredStateInvalid,
@@ -942,7 +952,8 @@ pub async fn advance_workflow_step_with_event_in_tx(
         r#"
         update platform.service_workflow_steps
         set state = 'completed', transition_id = $3, completed_at = $4,
-            outgoing_work = $5, updated_at = $4
+            outgoing_work = $5, attempt_count = $6, next_attempt_at = null,
+            updated_at = $4
         where instance_id = $1 and step_id = $2 and state = 'pending'
         "#,
     )
@@ -951,6 +962,7 @@ pub async fn advance_workflow_step_with_event_in_tx(
     .bind(transition_id)
     .bind(now)
     .bind(outgoing_work_json)
+    .bind(i32::try_from(attempt_number).unwrap_or(i32::MAX))
     .execute(&mut **transaction)
     .await
     .map_err(|error| {
@@ -965,24 +977,15 @@ pub async fn advance_workflow_step_with_event_in_tx(
 
     let next_step_id = if let Some(next_step) = definition.steps.get(position + 1) {
         let next_step_id = format!("workflow_step_{}", Uuid::now_v7());
-        sqlx::query(
-            r#"
-            insert into platform.service_workflow_steps (
-                step_id, instance_id, definition_step_name, step_position,
-                state, created_at, updated_at
-            ) values ($1, $2, $3, $4, 'pending', $5, $5)
-            "#,
+        recovery::persist_workflow_step_in_tx(
+            transaction,
+            instance_id,
+            &next_step_id,
+            next_step,
+            row.step_position + 1,
+            now,
         )
-        .bind(&next_step_id)
-        .bind(instance_id)
-        .bind(&next_step.name)
-        .bind(row.step_position + 1)
-        .bind(now)
-        .execute(&mut **transaction)
-        .await
-        .map_err(|error| {
-            WorkflowMutationError::store(format!("Could not persist next workflow step: {error}"))
-        })?;
+        .await?;
         Some(next_step_id)
     } else {
         None
@@ -1061,12 +1064,6 @@ fn validate_outgoing_context(
         )),
         _ => Ok(()),
     }
-}
-
-fn postgres_now() -> DateTime<Utc> {
-    let now = Utc::now();
-    DateTime::<Utc>::from_timestamp_micros(now.timestamp_micros())
-        .expect("current UTC timestamp must fit PostgreSQL microsecond precision")
 }
 
 #[utoipa::path(
@@ -1192,7 +1189,9 @@ async fn load_instance(
     let step_rows = sqlx::query_as::<_, WorkflowStepRow>(
         r#"
         select step_id, definition_step_name, step_position, state, transition_id,
-               completed_at, outgoing_work, created_at, updated_at
+               completed_at, outgoing_work, attempt_count, max_attempts,
+               retry_schedule, next_attempt_at, failure_classification,
+               failure_code, failure_message, exhausted_at, created_at, updated_at
         from platform.service_workflow_steps
         where instance_id = $1
         order by step_position, step_id
@@ -1204,7 +1203,8 @@ async fn load_instance(
     .map_err(|error| {
         WorkflowApiError::store(format!("Could not inspect workflow steps: {error}"))
     })?;
-    workflow_from_rows(row, step_rows)
+    let recovery = recovery::load_recovery(pool, instance_id).await?;
+    workflow_from_rows(row, step_rows, recovery)
 }
 
 async fn load_instance_in_tx(
@@ -1235,7 +1235,9 @@ async fn load_instance_in_tx(
     let step_rows = sqlx::query_as::<_, WorkflowStepRow>(
         r#"
         select step_id, definition_step_name, step_position, state, transition_id,
-               completed_at, outgoing_work, created_at, updated_at
+               completed_at, outgoing_work, attempt_count, max_attempts,
+               retry_schedule, next_attempt_at, failure_classification,
+               failure_code, failure_message, exhausted_at, created_at, updated_at
         from platform.service_workflow_steps
         where instance_id = $1
         order by step_position, step_id
@@ -1247,17 +1249,20 @@ async fn load_instance_in_tx(
     .map_err(|error| {
         WorkflowMutationError::store(format!("Could not inspect workflow steps: {error}"))
     })?;
-    workflow_from_rows(row, step_rows)
+    let recovery = recovery::load_recovery_in_tx(transaction, instance_id).await?;
+    workflow_from_rows(row, step_rows, recovery)
         .map_err(|error| WorkflowMutationError::new(error.code, error.message))
 }
 
 fn workflow_from_rows(
     row: WorkflowInstanceRow,
     step_rows: Vec<WorkflowStepRow>,
+    mut recovery_by_step: recovery::WorkflowRecoveryByStep,
 ) -> Result<WorkflowInstance, WorkflowApiError> {
     let state = match row.state.as_str() {
         "running" => WorkflowInstanceState::Running,
         "completed" => WorkflowInstanceState::Completed,
+        "failed" => WorkflowInstanceState::Failed,
         other => {
             return Err(WorkflowApiError::stored_state(format!(
                 "Workflow Instance `{}` has unsupported state `{other}`",
@@ -1281,6 +1286,7 @@ fn workflow_from_rows(
             let state = match step.state.as_str() {
                 "pending" => WorkflowStepState::Pending,
                 "completed" => WorkflowStepState::Completed,
+                "exhausted" => WorkflowStepState::Exhausted,
                 other => {
                     return Err(WorkflowApiError::stored_state(format!(
                         "Workflow step `{}` has unsupported state `{other}`",
@@ -1294,6 +1300,24 @@ fn workflow_from_rows(
                     step.step_id
                 ))
             })?;
+            let attempt_count = u32::try_from(step.attempt_count).map_err(|_| {
+                WorkflowApiError::stored_state(format!(
+                    "Workflow step `{}` has an invalid attempt count",
+                    step.step_id
+                ))
+            })?;
+            let max_attempts = u32::try_from(step.max_attempts).map_err(|_| {
+                WorkflowApiError::stored_state(format!(
+                    "Workflow step `{}` has an invalid maximum attempt count",
+                    step.step_id
+                ))
+            })?;
+            let latest_failure = recovery::latest_failure(
+                step.failure_classification.as_deref(),
+                step.failure_code,
+                step.failure_message,
+            )?;
+            let recovery = recovery_by_step.remove(&step.step_id).unwrap_or_default();
             Ok(WorkflowStepInspection {
                 step_id: step.step_id,
                 definition_step_name: step.definition_step_name,
@@ -1310,6 +1334,14 @@ fn workflow_from_rows(
                             "Stored workflow outgoing work is invalid: {error}"
                         ))
                     })?,
+                attempt_count,
+                max_attempts,
+                retry_schedule_ms: recovery::retry_schedule(step.retry_schedule)?,
+                next_attempt_at: step.next_attempt_at,
+                latest_failure,
+                exhausted_at: step.exhausted_at,
+                attempts: recovery.attempts,
+                timers: recovery.timers,
                 created_at: step.created_at,
                 updated_at: step.updated_at,
             })

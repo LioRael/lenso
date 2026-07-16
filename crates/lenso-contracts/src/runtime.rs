@@ -84,6 +84,13 @@ pub struct WorkflowStepDeclaration {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
+    /// Optional durable retry schedule. `max_attempts` includes the original
+    /// attempt, while each delay schedules the following attempt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_policy: Option<WorkflowRetryPolicyDeclaration>,
+    /// Optional durable timeout applied independently to every attempt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout_ms: Option<u64>,
 }
 
 impl WorkflowStepDeclaration {
@@ -92,6 +99,8 @@ impl WorkflowStepDeclaration {
         Self {
             name: name.into(),
             display_name: None,
+            retry_policy: None,
+            timeout_ms: None,
         }
     }
 
@@ -99,6 +108,37 @@ impl WorkflowStepDeclaration {
     pub fn with_display_name(mut self, display_name: impl Into<String>) -> Self {
         self.display_name = Some(display_name.into());
         self
+    }
+
+    #[must_use]
+    pub fn with_retry_policy(mut self, retry_policy: WorkflowRetryPolicyDeclaration) -> Self {
+        self.retry_policy = Some(retry_policy);
+        self
+    }
+
+    #[must_use]
+    pub const fn with_timeout_ms(mut self, timeout_ms: u64) -> Self {
+        self.timeout_ms = Some(timeout_ms);
+        self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkflowRetryPolicyDeclaration {
+    /// Total attempts including the original execution.
+    pub max_attempts: u32,
+    /// Delay before attempts 2..N. The length must equal `max_attempts` - 1.
+    pub delays_ms: Vec<u64>,
+}
+
+impl WorkflowRetryPolicyDeclaration {
+    #[must_use]
+    pub const fn new(max_attempts: u32, delays_ms: Vec<u64>) -> Self {
+        Self {
+            max_attempts,
+            delays_ms,
+        }
     }
 }
 
@@ -149,7 +189,33 @@ pub fn workflow_definition_schema() -> Value {
                 "required": ["name"],
                 "properties": {
                     "name": { "type": "string", "minLength": 1 },
-                    "displayName": { "type": "string", "minLength": 1 }
+                    "displayName": { "type": "string", "minLength": 1 },
+                    "retryPolicy": { "$ref": "#/$defs/retryPolicy" },
+                    "timeoutMs": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 9223372036854775807_i64
+                    }
+                }
+            },
+            "retryPolicy": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["maxAttempts", "delaysMs"],
+                "properties": {
+                    "maxAttempts": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 2147483647
+                    },
+                    "delaysMs": {
+                        "type": "array",
+                        "items": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9223372036854775807_i64
+                        }
+                    }
                 }
             }
         }
