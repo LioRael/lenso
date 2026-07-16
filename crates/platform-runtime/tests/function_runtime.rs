@@ -1,7 +1,7 @@
 use lenso_contracts::CronSchedule;
 use platform_core::{
     ActorContext, AppError, AppResult, CorrelationId, ErrorCode, ExecutionContext,
-    PLATFORM_MIGRATIONS, TraceContext, apply_migrations,
+    PLATFORM_MIGRATIONS, TenantId, TraceContext, apply_migrations,
 };
 use platform_runtime::{
     EnqueueFunctionRequest, FunctionDefinition, FunctionRegistry, RUNTIME_MIGRATIONS, RetryPolicy,
@@ -59,6 +59,8 @@ async fn enqueue_creates_function_run_row() {
                 user_id: "usr_1".to_owned(),
                 scopes: vec!["test:run".to_owned()],
             },
+            tenant_id: Some(TenantId("tenant_01".to_owned())),
+            tenancy_mode: platform_runtime::FunctionTenancyMode::Required,
             trace: trace_context(),
             causation_id: Some("evt_1".to_owned()),
             max_attempts: Some(5),
@@ -362,6 +364,10 @@ impl RuntimeFunction for CountingFunction {
         assert_eq!(ctx.trace.trace_id.as_deref(), Some("trace_1"));
         assert_eq!(ctx.trace.span_id.as_deref(), Some("span_1"));
         assert_eq!(ctx.causation_id.as_deref(), Some("evt_1"));
+        assert_eq!(
+            ctx.tenant_id.as_ref().map(|tenant| tenant.0.as_str()),
+            Some("tenant_01")
+        );
         assert_eq!(input["hello"], "world");
         Ok(json!({ "ok": true }))
     }
@@ -402,6 +408,8 @@ async fn enqueue(pool: &platform_core::DbPool, function_name: &str, max_attempts
             input_json: json!({ "hello": "world" }),
             correlation_id: CorrelationId::new("corr_1"),
             actor: ActorContext::System,
+            tenant_id: Some(TenantId("tenant_01".to_owned())),
+            tenancy_mode: platform_runtime::FunctionTenancyMode::Required,
             trace: trace_context(),
             causation_id: Some("evt_1".to_owned()),
             max_attempts: Some(max_attempts),

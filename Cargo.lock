@@ -2501,6 +2501,7 @@ name = "lenso-service"
 version = "0.1.2"
 dependencies = [
  "axum",
+ "base64",
  "chrono",
  "http",
  "jsonschema",

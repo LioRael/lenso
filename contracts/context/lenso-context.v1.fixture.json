@@ -12,6 +12,7 @@
     ],
     "delegationId": "delegation_01",
     "expiresAtUnixMs": 1783824900000,
+    "intent": "support.cases.create",
     "issuer": "https://identity.example.com",
     "permissions": [
       "support.cases.create"
@@ -51,10 +52,12 @@
     "storyId": "story_support_case_01"
   },
   "tenant": {
+    "actorSubject": "user_01",
     "audiences": [
       "support-api"
     ],
     "claimId": "tenant_claim_01",
+    "delegationId": "delegation_01",
     "expiresAtUnixMs": 1783824900000,
     "issuer": "https://identity.example.com",
     "proof": {

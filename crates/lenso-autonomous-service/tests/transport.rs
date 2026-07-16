@@ -4,8 +4,8 @@ use http::{Request, StatusCode};
 use http_body_util::BodyExt as _;
 use lenso_autonomous_service::{
     DeliveryFailureReason, LocalTransportAdapter, NatsJetStreamTransportAdapter,
-    ServiceEventHandler, ServiceEventHandlerError, ServiceEventPublisher, ServiceEventRetryPolicy,
-    ServiceEventWorkloadIdentity, TransportAdapter, TransportDelivery, TransportDiagnostic,
+    ServiceEventAdmission, ServiceEventHandler, ServiceEventHandlerError, ServiceEventPublisher,
+    ServiceEventRetryPolicy, TransportAdapter, TransportDelivery, TransportDiagnostic,
     TransportError, TransportErrorCode, TransportFailureDisposition, TransportHealth,
     TransportHealthStatus, TransportNegativeAcknowledgement, TransportPublication,
     TransportPublicationReceipt, consume_service_events_once_at,
@@ -14,8 +14,10 @@ use lenso_autonomous_service::{
     relay_service_events_once,
 };
 use lenso_service::{
-    AutonomousServiceContract, AutonomousServiceStore, AutonomousServiceWorkload, EventEnvelope,
-    ServiceTenancyMode, SystemSandboxWorkloadIdentityProvider, WorkloadCredentialRequest,
+    AutonomousServiceContract, AutonomousServiceStore, AutonomousServiceWorkload,
+    DelegatedActorCredentialRequest, DelegatedContextProvider, EventEnvelope, ServiceContextPolicy,
+    ServiceTenancyMode, SystemSandboxDelegatedContextProvider,
+    SystemSandboxWorkloadIdentityProvider, TenantCredentialRequest, WorkloadCredentialRequest,
     WorkloadIdentityProvider, WorkloadRole,
 };
 use platform_testing::TestDatabase;
@@ -138,7 +140,44 @@ async fn event_consumer_authenticates_service_principal_before_module_handling()
             30_000,
         ))
         .unwrap();
-    let receiver = ServiceEventWorkloadIdentity::new(provider, "support-sla");
+    let context_provider = Arc::new(
+        SystemSandboxDelegatedContextProvider::new("local", "event-context-secret").unwrap(),
+    );
+    let delegated_actor = context_provider
+        .issue_actor(DelegatedActorCredentialRequest::new(
+            "user_01",
+            "support-sla",
+            "support.ticket.opened",
+            ["support.tickets.read"],
+            now_ms,
+            30_000,
+        ))
+        .unwrap();
+    let tenant = context_provider
+        .issue_tenant(TenantCredentialRequest::new(
+            "tenant_01",
+            "user_01",
+            "delegation_1",
+            "support-sla",
+            now_ms,
+            30_000,
+        ))
+        .unwrap();
+    let receiver = ServiceEventAdmission::new(
+        provider,
+        "support-sla",
+        context_provider,
+        [(
+            "support.ticket-opened.v1",
+            ServiceContextPolicy::new(
+                "support-sla",
+                "support.ticket.opened",
+                ["support.tickets.read"],
+                ["support.tickets.read"],
+                ServiceTenancyMode::Required,
+            ),
+        )],
+    );
 
     adapter
         .publish(TransportPublication {
@@ -172,6 +211,8 @@ async fn event_consumer_authenticates_service_principal_before_module_handling()
 
     let mut authenticated = support_ticket_opened("event-authenticated", "ticket-accepted");
     authenticated.context.service_principal = Some(credential.service_principal_context());
+    authenticated.context.delegated_actor = Some(delegated_actor);
+    authenticated.context.tenant = Some(tenant);
     adapter
         .publish(TransportPublication {
             consumer_id: "support-sla".to_owned(),
@@ -202,6 +243,24 @@ async fn event_consumer_authenticates_service_principal_before_module_handling()
         .await
         .unwrap(),
         "ticket-accepted"
+    );
+    let identity_evidence: (String, String, String) = sqlx::query_as(
+        r"
+        select outcome, detail ->> 'delegationId', detail ->> 'tenantId'
+        from platform.service_event_delivery_evidence
+        where event_id = 'event-authenticated' and stage = 'identity'
+        ",
+    )
+    .fetch_one(&consumer.pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        identity_evidence,
+        (
+            "identity_context_accepted".to_owned(),
+            "delegation_1".to_owned(),
+            "tenant_01".to_owned(),
+        )
     );
 
     drop(consumer_state);

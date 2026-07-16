@@ -1,7 +1,9 @@
 use crate::{
-    AuthenticatedServicePrincipal, AuthenticatedTransportBinding, CallPolicyDeclaration,
-    CallPolicyEvent, CallPolicyEvidence, CallPolicyFailure, CallPolicyRuntime,
-    CallPolicyTerminalOutcome, EndpointResolver, ServiceReference, WorkloadIdentityProvider,
+    AuthenticatedServiceContext, AuthenticatedServicePrincipal, AuthenticatedTransportBinding,
+    CallPolicyDeclaration, CallPolicyEvent, CallPolicyEvidence, CallPolicyFailure,
+    CallPolicyRuntime, CallPolicyTerminalOutcome, DelegatedActorContext, DelegatedContextProvider,
+    EndpointResolver, IdentityDecisionRecorder, ServiceContext, ServiceContextAdmission,
+    ServiceContextPolicy, ServiceReference, TenantContext, WorkloadIdentityProvider,
     WorkloadIdentityVerification,
 };
 use axum::{
@@ -12,6 +14,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::any,
 };
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
@@ -25,6 +28,8 @@ use std::{
 const DEADLINE_HEADER: &str = "x-lenso-deadline-unix-ms";
 const IDEMPOTENCY_HEADER: &str = "idempotency-key";
 const AUTHORIZATION_HEADER: &str = "authorization";
+const DELEGATED_ACTOR_HEADER: &str = "x-lenso-delegated-actor";
+const TENANT_CONTEXT_HEADER: &str = "x-lenso-tenant-context";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -230,6 +235,10 @@ pub struct DirectHttpRequest {
     pub workload_credential: Option<String>,
     pub authenticated_transport_binding: Option<String>,
     pub authenticated_service_principal: Option<AuthenticatedServicePrincipal>,
+    pub delegated_actor_context: Option<DelegatedActorContext>,
+    pub tenant_context: Option<TenantContext>,
+    service_context_decode_failed: bool,
+    pub authenticated_service_context: Option<AuthenticatedServiceContext>,
 }
 
 impl DirectHttpRequest {
@@ -245,6 +254,10 @@ impl DirectHttpRequest {
             workload_credential: None,
             authenticated_transport_binding: None,
             authenticated_service_principal: None,
+            delegated_actor_context: None,
+            tenant_context: None,
+            service_context_decode_failed: false,
+            authenticated_service_context: None,
         }
     }
 
@@ -263,6 +276,17 @@ impl DirectHttpRequest {
     #[must_use]
     pub fn with_authenticated_transport_binding(mut self, binding: impl Into<String>) -> Self {
         self.authenticated_transport_binding = Some(binding.into());
+        self
+    }
+
+    #[must_use]
+    pub fn with_service_context(
+        mut self,
+        actor: DelegatedActorContext,
+        tenant: Option<TenantContext>,
+    ) -> Self {
+        self.delegated_actor_context = Some(actor);
+        self.tenant_context = tenant;
         self
     }
 }
@@ -344,12 +368,19 @@ struct ServerInner {
     handler: Arc<Handler>,
     policy_runtime: CallPolicyRuntime,
     workload_identity: Option<DirectHttpWorkloadIdentity>,
+    service_context: Option<DirectHttpServiceContext>,
 }
 
 #[derive(Debug, Clone)]
 struct DirectHttpWorkloadIdentity {
     provider: Arc<dyn WorkloadIdentityProvider>,
     audience: String,
+}
+
+#[derive(Debug, Clone)]
+struct DirectHttpServiceContext {
+    admission: ServiceContextAdmission,
+    recorder: Arc<dyn IdentityDecisionRecorder>,
 }
 
 impl std::fmt::Debug for DirectHttpServerBinding {
@@ -366,6 +397,9 @@ impl DirectHttpServerBinding {
         bindings: DirectHttpBindings,
         provider: Arc<dyn WorkloadIdentityProvider>,
         audience: impl Into<String>,
+        context_provider: Arc<dyn DelegatedContextProvider>,
+        context_policies: impl IntoIterator<Item = (String, ServiceContextPolicy)>,
+        evidence_recorder: Arc<dyn IdentityDecisionRecorder>,
         handler: F,
     ) -> Self
     where
@@ -374,6 +408,7 @@ impl DirectHttpServerBinding {
     {
         Self::new_with_policy_runtime_unchecked(bindings, CallPolicyRuntime::default(), handler)
             .with_workload_identity(provider, audience)
+            .with_service_context(context_provider, context_policies, evidence_recorder)
     }
 
     #[cfg(debug_assertions)]
@@ -390,6 +425,9 @@ impl DirectHttpServerBinding {
         policy_runtime: CallPolicyRuntime,
         provider: Arc<dyn WorkloadIdentityProvider>,
         audience: impl Into<String>,
+        context_provider: Arc<dyn DelegatedContextProvider>,
+        context_policies: impl IntoIterator<Item = (String, ServiceContextPolicy)>,
+        evidence_recorder: Arc<dyn IdentityDecisionRecorder>,
         handler: F,
     ) -> Self
     where
@@ -398,6 +436,7 @@ impl DirectHttpServerBinding {
     {
         Self::new_with_policy_runtime_unchecked(bindings, policy_runtime, handler)
             .with_workload_identity(provider, audience)
+            .with_service_context(context_provider, context_policies, evidence_recorder)
     }
 
     #[cfg(debug_assertions)]
@@ -428,6 +467,7 @@ impl DirectHttpServerBinding {
                 handler: Arc::new(move |request| Box::pin(handler(request))),
                 policy_runtime,
                 workload_identity: None,
+                service_context: None,
             }),
         }
     }
@@ -446,6 +486,32 @@ impl DirectHttpServerBinding {
                 workload_identity: Some(DirectHttpWorkloadIdentity {
                     provider,
                     audience: audience.into(),
+                }),
+                service_context: self.inner.service_context.clone(),
+            }),
+        }
+    }
+
+    #[must_use]
+    pub fn with_service_context<I, S>(
+        self,
+        provider: Arc<dyn DelegatedContextProvider>,
+        policies: I,
+        recorder: Arc<dyn IdentityDecisionRecorder>,
+    ) -> Self
+    where
+        I: IntoIterator<Item = (S, ServiceContextPolicy)>,
+        S: Into<String>,
+    {
+        Self {
+            inner: Arc::new(ServerInner {
+                bindings: self.inner.bindings.clone(),
+                handler: Arc::clone(&self.inner.handler),
+                policy_runtime: self.inner.policy_runtime.clone(),
+                workload_identity: self.inner.workload_identity.clone(),
+                service_context: Some(DirectHttpServiceContext {
+                    admission: ServiceContextAdmission::new(provider, policies),
+                    recorder,
                 }),
             }),
         }
@@ -498,6 +564,48 @@ impl ServerInner {
                 Err(error) => {
                     return DirectHttpResponse::problem(
                         StatusCode::UNAUTHORIZED,
+                        &error.evidence.outcome,
+                        &error.message,
+                        Some(operation.operation_id.clone()),
+                    );
+                }
+            }
+        }
+        if let Some(context) = &self.service_context {
+            let decision = if request.service_context_decode_failed {
+                Err(context.admission.invalid_proof(&operation.operation_id))
+            } else {
+                let service_context = request
+                    .delegated_actor_context
+                    .clone()
+                    .map(|actor| ServiceContext::new(actor, request.tenant_context.clone()));
+                context
+                    .admission
+                    .admit(&operation.operation_id, service_context.as_ref(), now_ms())
+            };
+            match decision {
+                Ok(authenticated) => {
+                    if context.recorder.record(&authenticated.evidence).is_err() {
+                        return DirectHttpResponse::problem(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            "identity_evidence_persistence_failed",
+                            "Identity decision evidence could not be persisted",
+                            Some(operation.operation_id.clone()),
+                        );
+                    }
+                    request.authenticated_service_context = Some(authenticated);
+                }
+                Err(error) => {
+                    if context.recorder.record(&error.evidence).is_err() {
+                        return DirectHttpResponse::problem(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            "identity_evidence_persistence_failed",
+                            "Identity decision evidence could not be persisted",
+                            Some(operation.operation_id.clone()),
+                        );
+                    }
+                    return DirectHttpResponse::problem(
+                        StatusCode::FORBIDDEN,
                         &error.evidence.outcome,
                         &error.message,
                         Some(operation.operation_id.clone()),
@@ -564,6 +672,12 @@ async fn handle_axum(State(inner): State<Arc<ServerInner>>, request: Request) ->
         .extensions
         .get::<AuthenticatedTransportBinding>()
         .map(|binding| binding.0.clone());
+    let actor =
+        decode_context_header::<DelegatedActorContext>(&parts.headers, DELEGATED_ACTOR_HEADER);
+    let tenant = decode_context_header::<TenantContext>(&parts.headers, TENANT_CONTEXT_HEADER);
+    let service_context_decode_failed = actor.is_err() || tenant.is_err();
+    let delegated_actor_context = actor.ok().flatten();
+    let tenant_context = tenant.ok().flatten();
     let body = to_bytes(body, 16 * 1024 * 1024).await.unwrap_or_default();
     let response = inner
         .handle(DirectHttpRequest {
@@ -576,6 +690,10 @@ async fn handle_axum(State(inner): State<Arc<ServerInner>>, request: Request) ->
             workload_credential,
             authenticated_transport_binding,
             authenticated_service_principal: None,
+            delegated_actor_context,
+            tenant_context,
+            service_context_decode_failed,
+            authenticated_service_context: None,
         })
         .await;
     response.into_response()
@@ -598,6 +716,8 @@ pub struct DirectHttpCall {
     deadline_unix_ms: Option<u64>,
     idempotency_key: Option<String>,
     workload_credential: Option<String>,
+    delegated_actor_context: Option<DelegatedActorContext>,
+    tenant_context: Option<TenantContext>,
 }
 impl DirectHttpCall {
     #[must_use]
@@ -609,6 +729,8 @@ impl DirectHttpCall {
             deadline_unix_ms: None,
             idempotency_key: None,
             workload_credential: None,
+            delegated_actor_context: None,
+            tenant_context: None,
         }
     }
     #[must_use]
@@ -639,6 +761,17 @@ impl DirectHttpCall {
     #[must_use]
     pub fn with_workload_credential(mut self, credential: impl Into<String>) -> Self {
         self.workload_credential = Some(credential.into());
+        self
+    }
+
+    #[must_use]
+    pub fn with_service_context(
+        mut self,
+        actor: DelegatedActorContext,
+        tenant: Option<TenantContext>,
+    ) -> Self {
+        self.delegated_actor_context = Some(actor);
+        self.tenant_context = tenant;
         self
     }
 }
@@ -773,6 +906,12 @@ impl<R: EndpointResolver> DirectHttpClient<R> {
             }
             if let Some(credential) = call.workload_credential.as_deref() {
                 request = request.bearer_auth(credential);
+            }
+            if let Some(actor) = call.delegated_actor_context.as_ref() {
+                request = request.header(DELEGATED_ACTOR_HEADER, encode_context_header(actor)?);
+            }
+            if let Some(tenant) = call.tenant_context.as_ref() {
+                request = request.header(TENANT_CONTEXT_HEADER, encode_context_header(tenant)?);
             }
             if let Some(body) = call.body.as_ref() {
                 request = request.json(body);
@@ -947,6 +1086,27 @@ impl<R: EndpointResolver> DirectHttpClient<R> {
             },
         })
     }
+}
+
+fn encode_context_header<T: Serialize>(value: &T) -> Result<String, DirectHttpCallError> {
+    serde_json::to_vec(value)
+        .map(|json| URL_SAFE_NO_PAD.encode(json))
+        .map_err(|error| DirectHttpCallError::Contract(error.to_string()))
+}
+
+fn decode_context_header<T: for<'de> Deserialize<'de>>(
+    headers: &HeaderMap,
+    name: &str,
+) -> Result<Option<T>, ()> {
+    let Some(value) = headers.get(name) else {
+        return Ok(None);
+    };
+    value
+        .to_str()
+        .map_err(|_| ())
+        .and_then(|value| URL_SAFE_NO_PAD.decode(value).map_err(|_| ()))
+        .and_then(|value| serde_json::from_slice(&value).map_err(|_| ()))
+        .map(Some)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

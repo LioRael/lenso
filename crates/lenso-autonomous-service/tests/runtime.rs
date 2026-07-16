@@ -266,6 +266,8 @@ async fn service_worker_runs_module_outbox_and_function_work_with_local_evidence
             input_json: serde_json::json!({"ticketId": "ticket-1"}),
             correlation_id: platform_core::CorrelationId::new("story-1"),
             actor: platform_core::ActorContext::System,
+            tenant_id: Some(platform_core::TenantId("tenant_01".to_owned())),
+            tenancy_mode: platform_runtime::FunctionTenancyMode::Required,
             trace: platform_core::TraceContext::default(),
             causation_id: Some("ticket-opened-1".to_owned()),
             max_attempts: Some(1),

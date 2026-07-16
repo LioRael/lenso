@@ -27,6 +27,7 @@
     "issuer": "https://identity.example.com",
     "subject": "user_01",
     "audiences": ["support-api"],
+    "intent": "support.cases.create",
     "permissions": ["support.cases.create"],
     "expiresAtUnixMs": 1783824900000,
     "delegationId": "delegation_01",
@@ -39,6 +40,8 @@
   "tenant": {
     "issuer": "https://identity.example.com",
     "tenantId": "tenant_01",
+    "actorSubject": "user_01",
+    "delegationId": "delegation_01",
     "audiences": ["support-api"],
     "expiresAtUnixMs": 1783824900000,
     "claimId": "tenant_claim_01",

@@ -21,4 +21,8 @@ pub const RUNTIME_MIGRATIONS: &[Migration] = &[
         name: "runtime/0005_create_scheduled_functions",
         sql: include_str!("../migrations/0005_create_scheduled_functions.sql"),
     },
+    Migration {
+        name: "runtime/0006_preserve_function_tenant_context",
+        sql: include_str!("../migrations/0006_preserve_function_tenant_context.sql"),
+    },
 ];

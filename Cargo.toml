@@ -38,6 +38,7 @@ arc-swap = "1"
 async-trait = "0.1"
 async-nats = { version = "0.49.1", default-features = false, features = ["jetstream", "nkeys", "ring", "server_2_14"] }
 axum = "0.8"
+base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 dotenvy = "0.15"
 http = "1.4"

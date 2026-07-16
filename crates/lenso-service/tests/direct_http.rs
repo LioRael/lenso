@@ -1,9 +1,11 @@
 use http::{Method, StatusCode};
 use lenso_service::{
     CallPolicyEvent, CallPolicyFailure, CallPolicyRuntime, CallPolicyTerminalOutcome,
-    DirectHttpCall, DirectHttpClient, DirectHttpRequest, DirectHttpResponse,
-    DirectHttpServerBinding, Endpoint, EndpointState, ManualCallPolicyClock, ServiceReference,
-    StaticEndpointResolver, SystemSandboxWorkloadIdentityProvider, WorkloadCredentialRequest,
+    DelegatedActorCredentialRequest, DelegatedContextProvider, DirectHttpCall, DirectHttpClient,
+    DirectHttpRequest, DirectHttpResponse, DirectHttpServerBinding, Endpoint, EndpointState,
+    ManualCallPolicyClock, MemoryIdentityDecisionRecorder, ServiceContextPolicy, ServiceReference,
+    ServiceTenancyMode, StaticEndpointResolver, SystemSandboxDelegatedContextProvider,
+    SystemSandboxWorkloadIdentityProvider, TenantCredentialRequest, WorkloadCredentialRequest,
     WorkloadIdentityProvider, generate_direct_http_bindings,
 };
 use serde_json::json;
@@ -141,7 +143,7 @@ async fn server_authenticates_workload_identity_before_business_handling() {
     let handled = Arc::new(AtomicUsize::new(0));
     let count = Arc::clone(&handled);
     let server =
-        DirectHttpServerBinding::new(bindings(), provider, "service:support", move |request| {
+        DirectHttpServerBinding::new_without_workload_identity(bindings(), move |request| {
             let count = Arc::clone(&count);
             async move {
                 count.fetch_add(1, Ordering::SeqCst);
@@ -154,7 +156,8 @@ async fn server_authenticates_workload_identity_before_business_handling() {
                 );
                 DirectHttpResponse::json(StatusCode::OK, json!({"ok": true}))
             }
-        });
+        })
+        .with_workload_identity(provider, "service:support");
 
     let missing = server
         .handle(DirectHttpRequest::new(Method::GET, "/v1/tickets/42").with_deadline(now + 30_000))
@@ -192,7 +195,109 @@ async fn server_authenticates_workload_identity_before_business_handling() {
 }
 
 #[tokio::test]
+async fn server_enforces_delegated_actor_and_tenant_before_business_handling() {
+    let now = now_ms();
+    let provider = Arc::new(
+        SystemSandboxDelegatedContextProvider::new("local", "http-context-secret").unwrap(),
+    );
+    let actor = provider
+        .issue_actor(DelegatedActorCredentialRequest::new(
+            "user_01",
+            "service:support",
+            "support.ticket.read",
+            ["support.tickets.read"],
+            now,
+            30_000,
+        ))
+        .unwrap();
+    let tenant = provider
+        .issue_tenant(TenantCredentialRequest::new(
+            "tenant_01",
+            "user_01",
+            "delegation_1",
+            "service:support",
+            now,
+            30_000,
+        ))
+        .unwrap();
+    let handled = Arc::new(AtomicUsize::new(0));
+    let count = Arc::clone(&handled);
+    let server =
+        DirectHttpServerBinding::new_without_workload_identity(bindings(), move |request| {
+            let count = Arc::clone(&count);
+            async move {
+                count.fetch_add(1, Ordering::SeqCst);
+                assert_eq!(
+                    request
+                        .authenticated_service_context
+                        .unwrap()
+                        .tenant
+                        .unwrap()
+                        .tenant_id,
+                    "tenant_01"
+                );
+                DirectHttpResponse::json(StatusCode::OK, json!({"ok": true}))
+            }
+        })
+        .with_service_context(
+            provider,
+            [(
+                "getTicket",
+                ServiceContextPolicy::new(
+                    "service:support",
+                    "support.ticket.read",
+                    ["support.tickets.read"],
+                    ["support.tickets.read"],
+                    ServiceTenancyMode::Required,
+                ),
+            )],
+            Arc::new(MemoryIdentityDecisionRecorder::default()),
+        );
+
+    let missing = server
+        .handle(DirectHttpRequest::new(Method::GET, "/v1/tickets/42").with_deadline(now + 30_000))
+        .await;
+    assert_eq!(missing.status, StatusCode::FORBIDDEN);
+    assert_eq!(missing.evidence.unwrap().decision, "delegation_required");
+
+    let accepted = server
+        .handle(
+            DirectHttpRequest::new(Method::GET, "/v1/tickets/42")
+                .with_deadline(now + 30_000)
+                .with_service_context(actor, Some(tenant)),
+        )
+        .await;
+    assert_eq!(accepted.status, StatusCode::OK);
+    assert_eq!(handled.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
 async fn client_resolves_service_and_preserves_http_response_and_context() {
+    let now = now_ms();
+    let context_provider = Arc::new(
+        SystemSandboxDelegatedContextProvider::new("local", "http-client-context-secret").unwrap(),
+    );
+    let actor = context_provider
+        .issue_actor(DelegatedActorCredentialRequest::new(
+            "user_01",
+            "service:support",
+            "support.ticket.update",
+            ["support.tickets.update"],
+            now,
+            30_000,
+        ))
+        .unwrap();
+    let tenant = context_provider
+        .issue_tenant(TenantCredentialRequest::new(
+            "tenant_01",
+            "user_01",
+            "delegation_1",
+            "service:support",
+            now,
+            30_000,
+        ))
+        .unwrap();
+    let evidence = Arc::new(MemoryIdentityDecisionRecorder::default());
     let server = DirectHttpServerBinding::new_without_workload_identity(
         bindings(),
         |request| async move {
@@ -201,6 +306,15 @@ async fn client_resolves_service_and_preserves_http_response_and_context() {
             assert_eq!(
                 request.headers.get("authorization").unwrap(),
                 "Bearer workload-credential"
+            );
+            assert_eq!(
+                request
+                    .authenticated_service_context
+                    .unwrap()
+                    .tenant
+                    .unwrap()
+                    .tenant_id,
+                "tenant_01"
             );
             let mut response = DirectHttpResponse::json(
                 StatusCode::CONFLICT,
@@ -211,6 +325,17 @@ async fn client_resolves_service_and_preserves_http_response_and_context() {
                 .insert("x-request-id", "req-1".parse().unwrap());
             response
         },
+    )
+    .with_service_context(
+        context_provider,
+        [("updateTicket", ServiceContextPolicy::new(
+            "service:support",
+            "support.ticket.update",
+            ["support.tickets.update"],
+            ["support.tickets.update"],
+            ServiceTenancyMode::Required,
+        ))],
+        evidence.clone(),
     );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
@@ -230,7 +355,8 @@ async fn client_resolves_service_and_preserves_http_response_and_context() {
                 .with_json(json!({"title": "updated"}))
                 .with_deadline(4_102_444_800_000)
                 .with_idempotency_key("ticket-42:update")
-                .with_workload_credential("workload-credential"),
+                .with_workload_credential("workload-credential")
+                .with_service_context(actor, Some(tenant)),
         )
         .await
         .unwrap();
@@ -238,6 +364,21 @@ async fn client_resolves_service_and_preserves_http_response_and_context() {
     assert_eq!(response.status, StatusCode::CONFLICT);
     assert_eq!(response.headers["x-request-id"], "req-1");
     assert_eq!(response.standard_error.unwrap()["code"], "conflict");
+
+    let malformed = reqwest::Client::new()
+        .post(format!("http://{address}/v1/tickets/42"))
+        .header("x-lenso-deadline-unix-ms", "4102444800000")
+        .header("idempotency-key", "ticket-42:malformed")
+        .header("x-lenso-delegated-actor", "not-base64url-json")
+        .json(&json!({"title": "malformed"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(malformed.status(), StatusCode::FORBIDDEN);
+    assert_eq!(
+        evidence.evidence().last().unwrap().outcome,
+        "delegated_context_invalid_proof"
+    );
 }
 
 #[tokio::test]

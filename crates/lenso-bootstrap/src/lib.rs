@@ -1971,6 +1971,8 @@ pub async fn enqueue_lifecycle_activation_jobs(
                         service_id: "worker".to_owned(),
                         scopes: vec!["runtime.functions.enqueue".to_owned()],
                     },
+                    tenant_id: None,
+                    tenancy_mode: platform_runtime::FunctionTenancyMode::None,
                     trace: TraceContext::default(),
                     causation_id: Some(format!(
                         "module_lifecycle:{}:{}",

@@ -164,6 +164,8 @@ impl RuntimeScheduler {
                         service_id: self.worker_id.clone(),
                         scopes: vec!["runtime.functions.enqueue".to_owned()],
                     },
+                    tenant_id: None,
+                    tenancy_mode: crate::FunctionTenancyMode::None,
                     trace: TraceContext::default(),
                     causation_id: Some(format!("runtime_schedule:{}", schedule.schedule_key)),
                     max_attempts: Some(schedule.max_attempts),

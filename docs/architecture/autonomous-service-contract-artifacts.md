@@ -112,6 +112,30 @@ The explicitly named `*_without_workload_identity` helpers remain only in
 debug builds for legacy policy and transport fixtures; release builds cannot
 compose them as Autonomous Service receiver boundaries.
 
+## Delegated Actor and Tenant Context
+
+`DelegatedContextProvider` is the issuer integration boundary for signed,
+short-lived actor delegation and tenant claims. The development-only
+`SystemSandboxDelegatedContextProvider` issues deterministic audience-bound
+claims for local tests; production composition supplies its own provider.
+Delegated Actor Context carries one explicit intent and a bounded permission
+set, never the initiating browser credential.
+
+`ServiceContextPolicy` is shared by direct HTTP, direct gRPC, and Event Inbox
+admission. It verifies proof, expiry, audience, exact intent, required and
+allowed permissions, and the Service's `required`, `optional`, or `none`
+Tenancy Mode before Module behavior. Required mode rejects absent scope;
+optional mode preserves verified explicit scope without inventing one; none
+mode rejects accidental scoped execution. Tenant claims must share the actor
+delegation issuer and cannot outlive the delegation. Endpoint identity,
+OpenTelemetry Baggage, and default tenants are never authority sources.
+
+Accepted Event Inbox decisions persist local evidence containing only stable
+actor, delegation, tenant, claim, audience, and outcome identifiers. Rejected
+decisions use the same safe reason codes and never persist proof signatures.
+Runtime function enqueue, claim, retry, and handler execution persist the
+explicit `TenantId`; schedules and lifecycle work remain explicitly unscoped.
+
 ## Event Envelopes
 
 A declared JSON Schema `eventContract` generates a versioned
