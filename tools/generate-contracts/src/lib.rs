@@ -13,6 +13,10 @@ pub fn generate_contracts() -> anyhow::Result<()> {
         &generated_autonomous_service_runtime_openapi(),
     )?;
     write_json(
+        "contracts/workflows/lenso.workflow-definition.v1.schema.json",
+        &generated_workflow_definition_schema(),
+    )?;
+    write_json(
         "contracts/errors/error-response.v1.schema.json",
         &error_response_schema(),
     )?;
@@ -82,6 +86,10 @@ pub fn generate_contracts() -> anyhow::Result<()> {
 
 pub fn generated_autonomous_service_runtime_openapi() -> utoipa::openapi::OpenApi {
     lenso_autonomous_service::openapi_document()
+}
+
+pub fn generated_workflow_definition_schema() -> Value {
+    lenso_contracts::workflow_definition_schema()
 }
 
 pub fn generated_error_response_schema() -> Value {
@@ -334,6 +342,10 @@ fn error_response_schema() -> Value {
             "errors": {
                 "type": "array",
                 "items": { "$ref": "#/$defs/ProblemErrorDetail" }
+            },
+            "next_actions": {
+                "type": ["array", "null"],
+                "items": { "type": "string" }
             }
         },
         "$defs": {

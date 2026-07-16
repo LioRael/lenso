@@ -158,6 +158,30 @@ decisions use the same safe reason codes and never persist proof signatures.
 Runtime function enqueue, claim, retry, and handler execution persist the
 explicit `TenantId`; schedules and lifecycle work remain explicitly unscoped.
 
+## Durable Workflow start and inspection
+
+`ModuleManifest.runtime.workflows` is the public declaration seam for
+engine-neutral Durable Workflow definitions. Each `lenso.workflow-definition.v1`
+definition has a stable owning Module, name, version, input and result contract
+references, and ordered step metadata. The generated JSON Schema under
+`contracts/workflows/` is the committed machine contract for this shape.
+
+Autonomous Service composition collects those Module declarations without
+binding them to Runtime Functions or Provider behavior. A start request selects
+one exact definition version, then commits a stable Workflow Instance and its
+initial step to the owning Service Store in one transaction. The instance keeps
+the selected definition version, input, Story Context, optional tenant scope,
+state, and timestamps. A later deployment may select a newer version for new
+instances, but inspection reads the pinned version recorded by the existing
+instance.
+
+The Service runtime exposes versioned start and inspection results through
+`POST /runtime/workflows/{owner}/{name}/instances` and
+`GET /runtime/workflows/instances/{instance_id}`. Errors use the standard
+problem-details envelope with stable workflow codes and `next_actions`.
+Inspection reads only Service-owned workflow tables; it does not require the
+Host, Runtime Console, System Plane, or an external workflow engine.
+
 ## Event Envelopes
 
 A declared JSON Schema `eventContract` generates a versioned

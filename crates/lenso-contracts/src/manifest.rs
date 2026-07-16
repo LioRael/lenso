@@ -18,7 +18,10 @@ use crate::lifecycle::{
     LifecycleSurface,
 };
 use crate::module_source::ModuleSource;
-use crate::runtime::{RuntimeFunctionDeclaration, RuntimeSurface, ScheduledFunctionDeclaration};
+use crate::runtime::{
+    RuntimeFunctionDeclaration, RuntimeSurface, ScheduledFunctionDeclaration,
+    WORKFLOW_DEFINITION_PROTOCOL, WorkflowDataContract, WorkflowDefinition,
+};
 use crate::validate_cron_expression;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -235,7 +238,7 @@ pub fn lint_module_manifest_parts(
     }
     let mut runtime_lints = Vec::new();
     if let Some(runtime) = runtime {
-        lint_runtime_surface(runtime, &mut runtime_lints);
+        lint_runtime_surface(name, runtime, &mut runtime_lints);
     }
     if let Some(events) = events {
         lint_event_surface(events, &mut lints);
@@ -431,12 +434,17 @@ fn collect_schema_capability_references(
     }
 }
 
-fn lint_runtime_surface(runtime: &RuntimeSurface, lints: &mut Vec<ModuleManifestLint>) {
-    if runtime.functions.is_empty() && runtime.schedules.is_empty() {
+fn lint_runtime_surface(
+    module_name: &str,
+    runtime: &RuntimeSurface,
+    lints: &mut Vec<ModuleManifestLint>,
+) {
+    if runtime.functions.is_empty() && runtime.schedules.is_empty() && runtime.workflows.is_empty()
+    {
         lints.push(ModuleManifestLint {
             severity: ModuleManifestLintSeverity::Warning,
             subject: "runtime".to_owned(),
-            message: "Runtime surface declares no functions or schedules.".to_owned(),
+            message: "Runtime surface declares no functions, schedules, or workflows.".to_owned(),
             suggestion: "Add at least one runtime declaration or omit the runtime surface."
                 .to_owned(),
         });
@@ -451,6 +459,146 @@ fn lint_runtime_surface(runtime: &RuntimeSurface, lints: &mut Vec<ModuleManifest
     let mut schedule_names = HashSet::new();
     for schedule in &runtime.schedules {
         lint_scheduled_function(schedule, &function_names, &mut schedule_names, lints);
+    }
+    let mut workflow_identities = HashSet::new();
+    for workflow in &runtime.workflows {
+        lint_workflow_definition(module_name, workflow, &mut workflow_identities, lints);
+    }
+}
+
+fn lint_workflow_definition(
+    module_name: &str,
+    workflow: &WorkflowDefinition,
+    identities: &mut HashSet<(String, String, String)>,
+    lints: &mut Vec<ModuleManifestLint>,
+) {
+    let subject = if present(&workflow.name) && present(&workflow.version) {
+        format!("runtime.workflow.{}.{}", workflow.name, workflow.version)
+    } else {
+        "runtime.workflow".to_owned()
+    };
+
+    if workflow.protocol != WORKFLOW_DEFINITION_PROTOCOL {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Error,
+            subject: format!("{subject}.protocol"),
+            message: "Durable Workflow definition uses an unsupported protocol.".to_owned(),
+            suggestion: format!("Set protocol to {WORKFLOW_DEFINITION_PROTOCOL}."),
+        });
+    }
+    if !present(&workflow.owner) || workflow.owner != module_name {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Error,
+            subject: format!("{subject}.owner"),
+            message: "Durable Workflow owner must match the declaring Module.".to_owned(),
+            suggestion: format!("Set owner to the Module name `{module_name}`."),
+        });
+    }
+    if !present(&workflow.name) {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Error,
+            subject: subject.clone(),
+            message: "Durable Workflow definition is missing a stable name.".to_owned(),
+            suggestion: "Set a path-safe workflow name such as support_sla.".to_owned(),
+        });
+    } else if !valid_runtime_function_name(&workflow.name) {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Error,
+            subject: subject.clone(),
+            message: "Durable Workflow name must be path-safe.".to_owned(),
+            suggestion: "Use ASCII letters, digits, dot, underscore, or hyphen.".to_owned(),
+        });
+    }
+    if !present(&workflow.version) {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Error,
+            subject: format!("{subject}.version"),
+            message: "Durable Workflow definition is missing a version.".to_owned(),
+            suggestion: "Set a stable definition version such as v1.".to_owned(),
+        });
+    } else if !valid_runtime_function_name(&workflow.version) {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Error,
+            subject: format!("{subject}.version"),
+            message: "Durable Workflow version must be path-safe.".to_owned(),
+            suggestion: "Use a stable path-safe version such as v1 or 1.0.0.".to_owned(),
+        });
+    }
+    if present(&workflow.owner)
+        && present(&workflow.name)
+        && present(&workflow.version)
+        && !identities.insert((
+            workflow.owner.clone(),
+            workflow.name.clone(),
+            workflow.version.clone(),
+        ))
+    {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Error,
+            subject: subject.clone(),
+            message: "Duplicate Durable Workflow definition identity.".to_owned(),
+            suggestion: "Keep one declaration per owner, name, and version.".to_owned(),
+        });
+    }
+
+    lint_workflow_data_contract(
+        &format!("{subject}.input_contract"),
+        &workflow.input_contract,
+        lints,
+    );
+    lint_workflow_data_contract(
+        &format!("{subject}.result_contract"),
+        &workflow.result_contract,
+        lints,
+    );
+
+    if workflow.steps.is_empty() {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Error,
+            subject: format!("{subject}.steps"),
+            message: "Durable Workflow definition must declare an ordered first step.".to_owned(),
+            suggestion: "Add at least one stable step declaration.".to_owned(),
+        });
+    }
+    let mut step_names = HashSet::new();
+    for step in &workflow.steps {
+        let step_subject = if present(&step.name) {
+            format!("{subject}.step.{}", step.name)
+        } else {
+            format!("{subject}.step")
+        };
+        if !present(&step.name) || !valid_runtime_function_name(&step.name) {
+            lints.push(ModuleManifestLint {
+                severity: ModuleManifestLintSeverity::Error,
+                subject: step_subject,
+                message: "Durable Workflow step name must be a non-empty path-safe identifier."
+                    .to_owned(),
+                suggestion: "Use a stable step name such as acknowledge_ticket.".to_owned(),
+            });
+        } else if !step_names.insert(step.name.clone()) {
+            lints.push(ModuleManifestLint {
+                severity: ModuleManifestLintSeverity::Error,
+                subject: step_subject,
+                message: "Durable Workflow step name is declared more than once.".to_owned(),
+                suggestion: "Keep one ordered declaration per stable step name.".to_owned(),
+            });
+        }
+    }
+}
+
+fn lint_workflow_data_contract(
+    subject: &str,
+    contract: &WorkflowDataContract,
+    lints: &mut Vec<ModuleManifestLint>,
+) {
+    if !present(&contract.contract_id) || !present(&contract.version) {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Error,
+            subject: subject.to_owned(),
+            message: "Durable Workflow data contract requires a stable identity and version."
+                .to_owned(),
+            suggestion: "Set contractId and version to stable contract identifiers.".to_owned(),
+        });
     }
 }
 
@@ -1588,7 +1736,10 @@ mod tests {
         LifecycleStartupCheckDeclaration, LifecycleStartupCheckKind, LifecycleSurface,
     };
     use crate::{ModuleHttpMethod, ModuleHttpRoute};
-    use crate::{RuntimeFunctionDeclaration, RuntimeRetryPolicyDeclaration, RuntimeSurface};
+    use crate::{
+        RuntimeFunctionDeclaration, RuntimeRetryPolicyDeclaration, RuntimeSurface,
+        WorkflowDataContract, WorkflowDefinition, WorkflowStepDeclaration,
+    };
     use crate::{StoryDisplayDescriptor, StoryDisplaySource};
 
     #[test]
@@ -2043,6 +2194,7 @@ mod tests {
                     cron: "0 * * * *".to_owned(),
                     input: serde_json::json!({ "reason": "schedule" }),
                 }],
+                workflows: vec![],
             })
             .build();
 
@@ -2055,8 +2207,84 @@ mod tests {
         );
         assert!(json.contains(r#""queue":"remote-crm""#), "got {json}");
         assert!(json.contains(r#""schedules""#), "got {json}");
+        assert!(
+            !json.contains(r#""workflows""#),
+            "empty workflow declarations must not change existing Runtime Function manifests: {json}"
+        );
         let back: ModuleManifest = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(manifest, back);
+    }
+
+    #[test]
+    fn manifest_with_versioned_workflow_round_trips_and_lints_cleanly() {
+        let manifest = ModuleManifest::builder("support-sla")
+            .runtime(RuntimeSurface {
+                functions: vec![],
+                schedules: vec![],
+                workflows: vec![WorkflowDefinition::new(
+                    "support-sla",
+                    "ticket_sla",
+                    "v1",
+                    WorkflowDataContract::new("support.sla.start", "v1"),
+                    WorkflowDataContract::new("support.sla.result", "v1"),
+                    vec![
+                        WorkflowStepDeclaration::new("acknowledge_ticket")
+                            .with_display_name("Acknowledge ticket"),
+                        WorkflowStepDeclaration::new("await_resolution"),
+                    ],
+                )],
+            })
+            .build();
+
+        let json = serde_json::to_string(&manifest).expect("serialize");
+        let back: ModuleManifest = serde_json::from_str(&json).expect("deserialize");
+        let lints = lint_module_manifest(ModuleSource::Linked, &back);
+
+        assert_eq!(manifest, back);
+        assert!(json.contains(r#""protocol":"lenso.workflow-definition.v1""#));
+        assert!(json.contains(r#""inputContract""#));
+        assert!(lints.iter().all(|lint| {
+            lint.severity != ModuleManifestLintSeverity::Error
+                && !lint.subject.starts_with("runtime.workflow")
+        }));
+    }
+
+    #[test]
+    fn manifest_lint_rejects_unowned_or_ambiguous_workflows() {
+        let invalid = WorkflowDefinition::new(
+            "another-module",
+            "ticket_sla",
+            "v1",
+            WorkflowDataContract::new("", "v1"),
+            WorkflowDataContract::new("support.sla.result", "v1"),
+            vec![
+                WorkflowStepDeclaration::new("acknowledge_ticket"),
+                WorkflowStepDeclaration::new("acknowledge_ticket"),
+            ],
+        );
+        let manifest = ModuleManifest::builder("support-sla")
+            .runtime(RuntimeSurface {
+                functions: vec![],
+                schedules: vec![],
+                workflows: vec![invalid.clone(), invalid],
+            })
+            .build();
+
+        let lints = lint_module_manifest(ModuleSource::Linked, &manifest);
+
+        assert!(
+            lints
+                .iter()
+                .any(|lint| lint.subject == "runtime.workflow.ticket_sla.v1.owner")
+        );
+        assert!(lints.iter().any(|lint| {
+            lint.subject == "runtime.workflow.ticket_sla.v1"
+                && lint.message == "Duplicate Durable Workflow definition identity."
+        }));
+        assert!(lints.iter().any(|lint| {
+            lint.subject == "runtime.workflow.ticket_sla.v1.step.acknowledge_ticket"
+                && lint.message == "Durable Workflow step name is declared more than once."
+        }));
     }
 
     #[test]
@@ -2196,6 +2424,7 @@ mod tests {
                     },
                 ],
                 schedules: vec![],
+                workflows: vec![],
             })
             .build();
 
@@ -2235,6 +2464,7 @@ mod tests {
                     operation: None,
                 }],
                 schedules: vec![],
+                workflows: vec![],
             })
             .lifecycle(LifecycleSurface {
                 startup_checks: vec![LifecycleStartupCheckDeclaration {
@@ -2275,6 +2505,7 @@ mod tests {
             .runtime(RuntimeSurface {
                 functions: vec![],
                 schedules: vec![],
+                workflows: vec![],
             })
             .lifecycle(LifecycleSurface {
                 startup_checks: vec![
@@ -2356,6 +2587,7 @@ mod tests {
                     operation: None,
                 }],
                 schedules: vec![],
+                workflows: vec![],
             })
             .lifecycle(LifecycleSurface {
                 startup_checks: vec![],
@@ -2532,6 +2764,7 @@ mod tests {
                     cron: "bad cron".to_owned(),
                     input: serde_json::json!({}),
                 }],
+                workflows: vec![],
             })
             .lifecycle(LifecycleSurface {
                 startup_checks: vec![LifecycleStartupCheckDeclaration {

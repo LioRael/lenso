@@ -10,6 +10,7 @@ rust-version.workspace = true
 anyhow.workspace = true
 lenso-api.workspace = true
 lenso-autonomous-service.workspace = true
+lenso-contracts.workspace = true
 lenso-service.workspace = true
 serde.workspace = true
 serde_json.workspace = true

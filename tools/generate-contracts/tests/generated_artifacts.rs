@@ -25,6 +25,19 @@ fn committed_autonomous_service_runtime_openapi_matches_generator() {
 }
 
 #[test]
+fn committed_workflow_definition_schema_matches_generator() {
+    let committed: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/workflows/lenso.workflow-definition.v1.schema.json"
+    ))
+    .expect("committed Workflow Definition schema should parse");
+
+    assert_eq!(
+        committed,
+        generate_contracts::generated_workflow_definition_schema()
+    );
+}
+
+#[test]
 fn committed_autonomous_service_schema_matches_generator() {
     let committed: serde_json::Value = serde_json::from_str(include_str!(
         "../../../contracts/services/lenso-service.v2.schema.json"

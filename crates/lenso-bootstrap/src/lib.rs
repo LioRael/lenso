@@ -4525,6 +4525,7 @@ mod tests {
                         operation: None,
                     }],
                     schedules: vec![],
+                    workflows: vec![],
                 });
             }
             if !builder.capabilities.is_empty() {

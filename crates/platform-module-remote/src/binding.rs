@@ -146,6 +146,7 @@ mod tests {
                     operation: None,
                 }],
                 schedules: vec![],
+                workflows: vec![],
             }),
             None,
         )
@@ -180,6 +181,7 @@ mod tests {
                     operation: None,
                 }],
                 schedules: vec![],
+                workflows: vec![],
             }),
             None,
         )

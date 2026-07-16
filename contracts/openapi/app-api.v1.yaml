@@ -7972,6 +7972,12 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ProblemErrorDetail'
+        next_actions:
+          type:
+          - array
+          - 'null'
+          items:
+            type: string
         request_id:
           type:
           - string
@@ -8586,6 +8592,14 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ScheduledFunctionDeclaration'
+        workflows:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowDefinition'
+          description: |-
+            Engine-neutral Durable Workflow definitions owned by this Module.
+            Autonomous Service composition decides how to execute them; Host-managed
+            Provider and Runtime Function behavior does not consume this metadata.
     ScheduledFunctionDeclaration:
       type: object
       required:
@@ -8695,6 +8709,62 @@ components:
             type: string
           path:
             type: string
+    WorkflowDataContract:
+      type: object
+      required:
+      - contractId
+      - version
+      properties:
+        contractId:
+          type: string
+        version:
+          type: string
+      additionalProperties: false
+    WorkflowDefinition:
+      type: object
+      required:
+      - protocol
+      - owner
+      - name
+      - version
+      - inputContract
+      - resultContract
+      - steps
+      properties:
+        inputContract:
+          $ref: '#/components/schemas/WorkflowDataContract'
+        name:
+          type: string
+          description: Stable workflow name within the owning Module.
+        owner:
+          type: string
+          description: Stable Module identity that owns the workflow behavior.
+        protocol:
+          type: string
+          description: Versioned declaration protocol, currently `lenso.workflow-definition.v1`.
+        resultContract:
+          $ref: '#/components/schemas/WorkflowDataContract'
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowStepDeclaration'
+          description: Ordered step metadata. Position in this vector is contract-significant.
+        version:
+          type: string
+          description: Definition version pinned by every started instance.
+      additionalProperties: false
+    WorkflowStepDeclaration:
+      type: object
+      required:
+      - name
+      properties:
+        displayName:
+          type:
+          - string
+          - 'null'
+        name:
+          type: string
+      additionalProperties: false
 tags:
 - name: auth
   description: Auth module development session APIs

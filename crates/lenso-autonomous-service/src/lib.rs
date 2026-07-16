@@ -3,10 +3,12 @@
 mod operations;
 mod transport;
 mod transport_nats_jetstream;
+mod workflow;
 
 pub use operations::*;
 pub use transport::*;
 pub use transport_nats_jetstream::*;
+pub use workflow::*;
 
 use axum::{
     Json, Router,
@@ -15,14 +17,17 @@ use axum::{
     middleware::{self, Next},
     response::{IntoResponse as _, Response},
 };
+use lenso_contracts::{ModuleManifest, WORKFLOW_DEFINITION_PROTOCOL, WorkflowDefinition};
 use lenso_service::{
-    AutonomousServiceContract, WorkloadRole, validate_autonomous_service_contract,
+    AutonomousServiceContract, ServiceTenancyMode, WorkloadRole,
+    validate_autonomous_service_contract,
 };
 use platform_core::{EventHandlerRegistry, Migration, OutboxRelay, apply_migrations};
 use platform_runtime::{FunctionRegistry, RuntimeWorker};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::{
+    collections::HashSet,
     sync::{Arc, RwLock},
     time::Duration,
 };
@@ -37,6 +42,7 @@ pub struct ServiceRuntimeConfig {
     pub store_owner_service_id: String,
     pub operator_environment: DeadLetterOperatorEnvironment,
     pub values: serde_json::Value,
+    pub workflow_definitions: Vec<WorkflowDefinition>,
 }
 
 impl ServiceRuntimeConfig {
@@ -52,12 +58,33 @@ impl ServiceRuntimeConfig {
             store_owner_service_id: store_owner_service_id.into(),
             operator_environment: DeadLetterOperatorEnvironment::LocalSandbox,
             values: serde_json::json!({}),
+            workflow_definitions: Vec::new(),
         }
     }
 
     #[must_use]
     pub fn with_values(mut self, values: serde_json::Value) -> Self {
         self.values = values;
+        self
+    }
+
+    #[must_use]
+    pub fn with_workflow_definitions(
+        mut self,
+        workflow_definitions: Vec<WorkflowDefinition>,
+    ) -> Self {
+        self.workflow_definitions = workflow_definitions;
+        self
+    }
+
+    /// Collects Durable Workflow declarations from the composing Modules.
+    #[must_use]
+    pub fn with_module_manifests(mut self, manifests: &[ModuleManifest]) -> Self {
+        self.workflow_definitions = manifests
+            .iter()
+            .filter_map(|manifest| manifest.runtime.as_ref())
+            .flat_map(|runtime| runtime.workflows.iter().cloned())
+            .collect();
         self
     }
 
@@ -100,6 +127,9 @@ pub enum RuntimeErrorCode {
     WorkerRunFailed,
     MissingConfigValue,
     InvalidConfigValue,
+    InvalidWorkflowDefinition,
+    DuplicateWorkflowDefinition,
+    WorkflowOwnerNotDeclared,
 }
 
 pub const SERVICE_RUNTIME_MIGRATIONS: &[Migration] = &[
@@ -127,6 +157,10 @@ pub const SERVICE_RUNTIME_MIGRATIONS: &[Migration] = &[
         name: "autonomous-service/0008_manage_dead_letter_replays",
         sql: include_str!("../migrations/0008_manage_dead_letter_replays.sql"),
     },
+    Migration {
+        name: "autonomous-service/0010_create_durable_workflows",
+        sql: include_str!("../migrations/0010_create_durable_workflows.sql"),
+    },
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
@@ -145,6 +179,7 @@ pub struct ServiceRuntimeState {
     phase: Arc<RwLock<RuntimePhase>>,
     worker_phase: Arc<RwLock<RuntimePhase>>,
     pool: Option<PgPool>,
+    workflow_definitions: Arc<Vec<WorkflowDefinition>>,
 }
 
 #[derive(Debug, Clone)]
@@ -155,6 +190,7 @@ struct ServiceRuntimeIdentity {
     migration_workload_id: String,
     worker_workload_id: String,
     operator_environment: DeadLetterOperatorEnvironment,
+    tenancy_mode: ServiceTenancyMode,
 }
 
 impl ServiceRuntimeState {
@@ -174,10 +210,12 @@ impl ServiceRuntimeState {
                 migration_workload_id: migration_workload_id.into(),
                 worker_workload_id: worker_workload_id.into(),
                 operator_environment: DeadLetterOperatorEnvironment::LocalSandbox,
+                tenancy_mode: ServiceTenancyMode::None,
             }),
             phase: Arc::new(RwLock::new(RuntimePhase::Starting)),
             worker_phase: Arc::new(RwLock::new(RuntimePhase::Starting)),
             pool: None,
+            workflow_definitions: Arc::new(Vec::new()),
         }
     }
 
@@ -212,6 +250,16 @@ impl ServiceRuntimeState {
         operator_environment: DeadLetterOperatorEnvironment,
     ) -> Self {
         Arc::make_mut(&mut self.identity).operator_environment = operator_environment;
+        self
+    }
+
+    fn with_tenancy_mode(mut self, tenancy_mode: ServiceTenancyMode) -> Self {
+        Arc::make_mut(&mut self.identity).tenancy_mode = tenancy_mode;
+        self
+    }
+
+    fn with_workflow_definitions(mut self, workflow_definitions: Vec<WorkflowDefinition>) -> Self {
+        self.workflow_definitions = Arc::new(workflow_definitions);
         self
     }
 
@@ -290,7 +338,9 @@ pub async fn prepare_runtime(
         &validated.worker_workload_id,
     )
     .with_store(pool.clone())
-    .with_operator_environment(config.operator_environment);
+    .with_operator_environment(config.operator_environment)
+    .with_tenancy_mode(contract.tenancy_mode.clone())
+    .with_workflow_definitions(config.workflow_definitions.clone());
     if let Err(error) = apply_migrations(&pool, SERVICE_RUNTIME_MIGRATIONS).await {
         state.set_phase(RuntimePhase::Failed);
         return Err(runtime_error(
@@ -759,6 +809,7 @@ fn runtime_router() -> OpenApiRouter<ServiceRuntimeState> {
         .routes(routes!(startup))
         .routes(routes!(story_segments))
         .routes(routes!(event_delivery_evidence))
+        .merge(workflow::workflow_router())
 }
 
 #[must_use]
@@ -969,6 +1020,7 @@ pub fn validate_runtime(
         ));
     }
     validate_config_values(contract, &config.values)?;
+    validate_workflow_definitions(contract, &config.workflow_definitions)?;
 
     let api_workload_id = one_workload(contract, WorkloadRole::API)?;
     let migration_workload_id = one_workload(contract, WorkloadRole::MIGRATION)?;
@@ -1007,6 +1059,70 @@ pub fn validate_runtime(
         worker_workload_id,
         store_id: store.store_id.clone(),
     })
+}
+
+fn validate_workflow_definitions(
+    contract: &AutonomousServiceContract,
+    definitions: &[WorkflowDefinition],
+) -> Result<(), RuntimeError> {
+    let declared_modules = contract.modules.iter().collect::<HashSet<_>>();
+    let mut identities = HashSet::new();
+    for definition in definitions {
+        if !declared_modules.contains(&definition.owner) {
+            return Err(runtime_error(
+                RuntimeErrorCode::WorkflowOwnerNotDeclared,
+                format!(
+                    "Workflow Definition `{}/{}` is owned by a Module this Service does not declare",
+                    definition.owner, definition.name
+                ),
+                format!(
+                    "Declare Module `{}` in Service `{}` before registering its workflow.",
+                    definition.owner, contract.service_id
+                ),
+            ));
+        }
+        let valid = definition.protocol == WORKFLOW_DEFINITION_PROTOCOL
+            && !definition.owner.trim().is_empty()
+            && !definition.name.trim().is_empty()
+            && !definition.version.trim().is_empty()
+            && !definition.input_contract.contract_id.trim().is_empty()
+            && !definition.input_contract.version.trim().is_empty()
+            && !definition.result_contract.contract_id.trim().is_empty()
+            && !definition.result_contract.version.trim().is_empty()
+            && !definition.steps.is_empty()
+            && definition
+                .steps
+                .iter()
+                .all(|step| !step.name.trim().is_empty())
+            && definition
+                .steps
+                .iter()
+                .map(|step| &step.name)
+                .collect::<HashSet<_>>()
+                .len()
+                == definition.steps.len();
+        if !valid {
+            return Err(runtime_error(
+                RuntimeErrorCode::InvalidWorkflowDefinition,
+                format!(
+                    "Workflow Definition `{}/{}` version `{}` is incomplete or invalid",
+                    definition.owner, definition.name, definition.version
+                ),
+                "Fix the Module workflow declaration and restart the Service.",
+            ));
+        }
+        if !identities.insert((&definition.owner, &definition.name, &definition.version)) {
+            return Err(runtime_error(
+                RuntimeErrorCode::DuplicateWorkflowDefinition,
+                format!(
+                    "Workflow Definition `{}/{}` version `{}` is registered more than once",
+                    definition.owner, definition.name, definition.version
+                ),
+                "Keep one registered definition per owner, name, and version.",
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn validate_config_values(
@@ -1114,7 +1230,8 @@ fn runtime_error(
 #[cfg(test)]
 mod tests {
     use axum::routing::get;
-    use http::{Request, StatusCode};
+    use http::{Request, StatusCode, header};
+    use http_body_util::BodyExt as _;
     use lenso_service::{
         AutonomousServiceContract, AutonomousServiceStore, AutonomousServiceWorkload,
         ConfigActivation, ConfigContract, ConfigFieldContract, ConfigMutability, ConfigScope,
@@ -1279,6 +1396,46 @@ mod tests {
                 .paths
                 .contains_key("/runtime/event-deliveries")
         );
+        assert!(
+            document
+                .paths
+                .paths
+                .contains_key("/runtime/workflows/{owner}/{name}/instances")
+        );
+        assert!(
+            document
+                .paths
+                .paths
+                .contains_key("/runtime/workflows/instances/{instance_id}")
+        );
+    }
+
+    #[tokio::test]
+    async fn workflow_request_errors_have_stable_codes_and_next_actions() {
+        let state = ServiceRuntimeState::ready(
+            "support",
+            "support-api",
+            "primary",
+            "support-migrate",
+            "support-worker",
+        );
+        let app = service_router(OpenApiRouter::new(), state);
+
+        let response = app
+            .oneshot(
+                Request::post("/runtime/workflows/support/ticket_sla/instances")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(axum::body::Body::from("{"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let error: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(error["code"], "workflow_invalid_request");
+        assert_eq!(error["next_actions"][0], "correct_workflow_request");
     }
 
     #[tokio::test]

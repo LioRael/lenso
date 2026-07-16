@@ -830,6 +830,7 @@ fn runtime_surface() -> RuntimeSurface {
             operation: None,
         }],
         schedules: vec![],
+        workflows: vec![],
     }
 }
 
