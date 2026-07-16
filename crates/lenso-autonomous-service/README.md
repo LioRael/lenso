@@ -33,6 +33,14 @@ classification and controlled retry schedules persist beside Inbox history;
 poison and exhausted deliveries move to durable dead-letter state without
 blocking later healthy events.
 
+`NatsJetStreamTransportAdapter` is the first production implementation. It
+binds an operator-provisioned stream and durable pull consumers, receives an
+operator-created credential-bearing client, and retains adapter diagnostics in
+the injected Service Store. It does not provision or clean up production NATS
+infrastructure. The local and JetStream implementations run the same
+conformance suite, including interruption redelivery and the unchanged
+authoritative support Event Envelope behavior.
+
 Authenticated event receivers use `ServiceEventAdmission` with
 `consume_service_events_once_at`. The receiver verifies the
 Event Envelope's signed, audience-limited Service Principal and its

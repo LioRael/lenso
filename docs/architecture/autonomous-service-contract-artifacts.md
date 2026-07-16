@@ -184,6 +184,15 @@ Service Store transaction before acknowledging delivery. Service-local Outbox,
 Inbox, and terminal evidence remain inspectable through
 `GET /runtime/event-deliveries`.
 
+The first production adapter binds operator-provisioned NATS JetStream streams
+and durable pull consumers. Its topology and credential-bearing client are
+injected by Service composition and never enter Event Contracts or Module code.
+The adapter uses publish acknowledgements, explicit delivery acknowledgement,
+negative acknowledgement, and acknowledgement-timeout redelivery while keeping
+diagnostics in the Service Store. It validates existing topology but performs
+no implicit production provisioning or cleanup. See
+[`ADR 0023`](../adr/0023-select-nats-jetstream-as-the-first-production-transport-adapter.md).
+
 Inbox consumption is idempotent by consumer and stable event identity. Delivery
 failures use protocol-neutral `retryable`, `non_retryable`, `expired`,
 `unauthorized`, `incompatible`, `poison`, and `exhausted` reasons while retaining
