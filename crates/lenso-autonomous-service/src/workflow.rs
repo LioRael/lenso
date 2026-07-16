@@ -285,6 +285,8 @@ async fn start_workflow(
     let instance_id = format!("workflow_{}", Uuid::now_v7());
     let initial_step_id = format!("workflow_step_{}", Uuid::now_v7());
     let now = Utc::now();
+    let now = DateTime::<Utc>::from_timestamp_micros(now.timestamp_micros())
+        .expect("current UTC timestamp must fit PostgreSQL microsecond precision");
     let story_context = serde_json::to_value(&request.story_context)
         .map_err(|error| WorkflowApiError::stored_state(error.to_string()))?;
     let tenant_scope = request
