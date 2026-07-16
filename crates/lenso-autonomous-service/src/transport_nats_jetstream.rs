@@ -29,16 +29,6 @@ pub struct NatsJetStreamConsumerBinding {
     pub durable_consumer_name: String,
 }
 
-impl NatsJetStreamConsumerBinding {
-    #[must_use]
-    pub fn new(subject: impl Into<String>, durable_consumer_name: impl Into<String>) -> Self {
-        Self {
-            subject: subject.into(),
-            durable_consumer_name: durable_consumer_name.into(),
-        }
-    }
-}
-
 /// Operator-supplied topology for an already provisioned JetStream stream and
 /// durable consumers. Credential resolution and infrastructure provisioning
 /// intentionally remain outside the adapter.
