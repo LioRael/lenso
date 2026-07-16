@@ -15,8 +15,8 @@ use lenso_autonomous_service::{
 };
 use lenso_service::{
     AutonomousServiceContract, AutonomousServiceStore, AutonomousServiceWorkload, EventEnvelope,
-    GeneratedEventContract, ServiceTenancyMode, SystemSandboxWorkloadIdentityProvider,
-    WorkloadCredentialRequest, WorkloadIdentityProvider, WorkloadRole, validate_event_envelope,
+    ServiceTenancyMode, SystemSandboxWorkloadIdentityProvider, WorkloadCredentialRequest,
+    WorkloadIdentityProvider, WorkloadRole,
 };
 use platform_testing::TestDatabase;
 use sqlx::{Postgres, Transaction};
@@ -29,7 +29,10 @@ use utoipa_axum::router::OpenApiRouter;
 
 #[path = "support/jetstream.rs"]
 mod jetstream_fixture;
+#[path = "support/event.rs"]
+mod support_event_fixture;
 use jetstream_fixture::JetStreamFixture;
+use support_event_fixture::support_ticket_opened;
 
 fn service(service_id: &str, store_id: &str) -> AutonomousServiceContract {
     let mut service = AutonomousServiceContract::new(
@@ -56,21 +59,6 @@ fn service(service_id: &str, store_id: &str) -> AutonomousServiceContract {
     );
     service.stores = vec![AutonomousServiceStore::new(store_id, service_id)];
     service
-}
-
-fn support_ticket_opened(event_id: &str, ticket_id: &str) -> EventEnvelope {
-    let mut envelope: EventEnvelope = serde_json::from_str(include_str!(
-        "../../../contracts/events/support/support.ticket-opened.v1.envelope.json"
-    ))
-    .unwrap();
-    event_id.clone_into(&mut envelope.event_id);
-    envelope.content.data["ticketId"] = serde_json::json!(ticket_id);
-    let contract: GeneratedEventContract = serde_json::from_str(include_str!(
-        "../../../contracts/events/support/support.ticket-opened.v1.artifact.json"
-    ))
-    .unwrap();
-    assert_eq!(validate_event_envelope(&contract, &envelope), vec![]);
-    envelope
 }
 
 #[test]
