@@ -1532,9 +1532,17 @@ async fn retries_and_timers_recover_after_restart_with_controlled_time() {
     assert!(exhaustion.terminal_exhausted);
     assert_eq!(exhaustion.attempt_count, 3);
     assert_eq!(exhaustion.step_id, exhausted_instance.initial_step_id);
-    let exhausted_state: (String, String, i32, Option<DateTime<Utc>>) = sqlx::query_as(
+    let exhausted_state: (
+        String,
+        String,
+        i32,
+        Option<DateTime<Utc>>,
+        Option<serde_json::Value>,
+        Option<String>,
+    ) = sqlx::query_as(
         r"
-        select instance.state, step.state, step.attempt_count, step.next_attempt_at
+        select instance.state, step.state, step.attempt_count, step.next_attempt_at,
+               instance.failure_evidence, instance.terminal_transition_id
         from platform.service_workflow_instances instance
         join platform.service_workflow_steps step
           on step.instance_id = instance.instance_id
@@ -1546,9 +1554,24 @@ async fn retries_and_timers_recover_after_restart_with_controlled_time() {
     .fetch_one(&db.pool)
     .await
     .unwrap();
+    assert_eq!(exhausted_state.0, "failed");
+    assert_eq!(exhausted_state.1, "exhausted");
+    assert_eq!(exhausted_state.2, 3);
+    assert_eq!(exhausted_state.3, None);
     assert_eq!(
-        exhausted_state,
-        ("failed".to_owned(), "exhausted".to_owned(), 3, None)
+        exhausted_state.4,
+        Some(
+            serde_json::to_value(WorkflowFailureEvidence::new(
+                "dependency_unavailable",
+                "retry budget exhausted",
+                "inspect_workflow",
+            ))
+            .unwrap()
+        )
+    );
+    assert_eq!(
+        exhausted_state.5.as_deref(),
+        Some(retry_three.attempt_transition_id.as_str())
     );
 
     db.cleanup().await;

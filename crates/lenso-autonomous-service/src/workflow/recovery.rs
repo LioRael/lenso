@@ -1,6 +1,6 @@
 use super::{
-    WorkflowApiError, WorkflowEventPublication, WorkflowMutationError, WorkflowStepInspection,
-    WorkflowStepTransitionResult,
+    WorkflowApiError, WorkflowEventPublication, WorkflowFailureEvidence, WorkflowMutationError,
+    WorkflowStepInspection, WorkflowStepTransitionResult,
 };
 use crate::ServiceRuntimeState;
 use chrono::{DateTime, Duration, Utc};
@@ -1292,14 +1292,28 @@ async fn record_failure_in_tx(
         WorkflowMutationError::store(format!("Could not persist workflow failure: {error}"))
     })?;
     if terminal {
+        let failure_evidence = serde_json::to_value(WorkflowFailureEvidence::new(
+            failure.code.clone(),
+            failure.message.clone(),
+            "inspect_workflow",
+        ))
+        .map_err(|error| {
+            WorkflowMutationError::new(
+                super::WorkflowErrorCode::StoredStateInvalid,
+                format!("Could not encode exhausted workflow failure evidence: {error}"),
+            )
+        })?;
         sqlx::query(
             r#"
             update platform.service_workflow_instances
-            set state = 'failed', updated_at = $2
+            set state = 'failed', failure_evidence = $2, terminal_transition_id = $3,
+                updated_at = $4
             where instance_id = $1 and state = 'running'
             "#,
         )
         .bind(instance_id)
+        .bind(failure_evidence)
+        .bind(source.attempt_transition_id())
         .bind(now)
         .execute(&mut **transaction)
         .await
