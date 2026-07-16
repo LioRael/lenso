@@ -122,10 +122,13 @@ representation without broker vocabulary.
 Autonomous Service receivers authenticate stable `service:<service-id>`
 Principals through the public Workload Identity provider boundary. The local
 System Sandbox provider is deterministic and development-only; production
-composition supplies an external provider rather than making Lenso a
-certificate authority. Direct HTTP, gRPC, and event admission verify signed,
-audience-limited, expiring credentials plus authenticated transport binding
-before business behavior, without a Host or System Plane lookup.
+composition uses the first production integration selected in
+[`ADR 0024`](../adr/0024-select-spiffe-spire-as-the-first-production-workload-identity.md):
+SPIFFE X.509-SVID mTLS plus an audience-limited JWT-SVID from the Workload API.
+Lenso maps the authenticated peer SPIFFE ID to the stable Service Principal and
+does not become a certificate authority. Direct HTTP, gRPC, and event admission
+verify signed, expiring credentials plus authenticated transport binding before
+business behavior, without a Runtime Console, Host, or System Plane lookup.
 Route proxying is specified
 separately in `docs/architecture/module-remote-http-proxy.md`. Remote runtime
 execution and event-handler dispatch are scoped in
