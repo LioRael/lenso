@@ -116,9 +116,15 @@ writes its declared cross-Service Event Contract work to the Service Outbox in
 the same transaction. Duplicate delivery returns the committed transition and
 preserves Inbox evidence without repeating the business effect. Story,
 causation, Service Principal, delegated actor, tenant, deadline, and idempotency
-context remain explicit across the step. This slice does not add retries,
-timers, child workflows, compensation, or reinterpret the existing lightweight
-Host flow, Runtime Function, or Provider models.
+context remain explicit across the step. A pending parent step can also start a
+version-pinned child instance in the same Service Store and wait durably for its
+completion. The child retains distinct identity, explicit parent and causation
+links, and validated inherited Story, delegated actor, tenant, deadline, and
+idempotency context. A stable completion delivery resumes the parent exactly
+once after either worker restarts; child failure or an unsupported pinned
+version remains durable parent evidence with a stable next action. This slice
+does not add retries, timers, compensation, or reinterpret the existing
+lightweight Host flow, Runtime Function, or Provider models.
 Its versioned Service, Event, Config, and Reliability Contract declarations are
 specified in [`autonomous-service-contract-artifacts.md`](autonomous-service-contract-artifacts.md).
 The separate [`lenso.context.v1`](common-context-contracts.md) envelope

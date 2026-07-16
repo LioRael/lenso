@@ -194,6 +194,24 @@ the executing Service credential supplied by composition, and records the
 completed step as the new causation identity. Cross-Service steps do not read a
 remote Service Store and do not use the System Plane as a relay.
 
+Module behavior can decompose a pending step through
+`start_child_workflow_in_tx`. The parent step becomes `waiting_for_child` in the
+same transaction that creates the version-pinned child instance and its first
+step. The child keeps a distinct instance identity plus explicit parent
+instance, parent step, and causation links. Story, delegated actor, tenant,
+deadline, and present idempotency context are decoded, validated, and copied
+from durable parent execution context; they are never reconstructed from trace
+or log data.
+
+After a child reaches `completed` or `failed`, a stable completion delivery can
+call `resume_parent_from_child_in_tx`. The child link, parent transition, and
+next parent step commit together. Redelivery of the same completion returns the
+already-committed outcome and cannot create another parent step. A restart
+reloads both pinned definition versions from the Service Store. Child failure
+or a worker that no longer supports a pinned parent or child version records
+durable failure evidence and a stable deployment or recovery next action on the
+parent inspection surface.
+
 The Service runtime exposes versioned start and inspection results through
 `POST /runtime/workflows/{owner}/{name}/instances` and
 `GET /runtime/workflows/instances/{instance_id}`. Errors use the standard
@@ -201,8 +219,8 @@ problem-details envelope with stable workflow codes and `next_actions`.
 Inspection includes completed transition identity and safe outgoing Event
 Contract metadata for Runtime Console and other operator consumers. It reads
 only Service-owned workflow tables and does not require the Host, Runtime
-Console, System Plane, or an external workflow engine. Retries, timers, child
-workflows, and compensation remain later workflow slices.
+Console, System Plane, or an external workflow engine. Retries, timers, and
+compensation remain later workflow slices.
 
 ## Event Envelopes
 
