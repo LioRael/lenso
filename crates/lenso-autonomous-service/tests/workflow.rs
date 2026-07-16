@@ -5,9 +5,12 @@ use http_body_util::BodyExt as _;
 use lenso_autonomous_service::{
     LocalTransportAdapter, ServiceEventHandler, ServiceEventHandlerError, ServiceEventPublisher,
     ServiceRuntimeConfig, ServiceRuntimeState, TransportAdapter, TransportPublication,
-    WorkflowEventPublication, WorkflowTransitionDisposition,
+    WorkflowChildStartRequest, WorkflowChildStartResult, WorkflowEventPublication,
+    WorkflowFailureEvidence, WorkflowInstance, WorkflowTransitionDisposition,
     advance_workflow_step_with_event_in_tx, consume_service_events_once_without_workload_identity,
-    prepare_runtime, relay_service_events_once, service_router, start_workflow_from_event_in_tx,
+    fail_workflow_in_tx, prepare_runtime, relay_service_events_once,
+    resume_parent_from_child_in_tx, service_router, start_child_workflow_in_tx,
+    start_workflow_from_event_in_tx,
 };
 use lenso_contracts::{
     ModuleManifest, RuntimeSurface, WorkflowDataContract, WorkflowDefinition,
@@ -96,7 +99,33 @@ fn manifest() -> ModuleManifest {
         .runtime(RuntimeSurface {
             functions: vec![],
             schedules: vec![],
-            workflows: vec![workflow("v1"), workflow("v2")],
+            workflows: vec![
+                workflow("v1"),
+                workflow("v2"),
+                child_workflow("v1"),
+                child_workflow("v2"),
+            ],
+        })
+        .build()
+}
+
+fn child_workflow(version: &str) -> WorkflowDefinition {
+    WorkflowDefinition::new(
+        "support-sla",
+        "ticket_escalation",
+        version,
+        WorkflowDataContract::new("support.escalation.start", "v1"),
+        WorkflowDataContract::new("support.escalation.result", "v1"),
+        vec![WorkflowStepDeclaration::new("notify_on_call")],
+    )
+}
+
+fn manifest_without_child_v1() -> ModuleManifest {
+    ModuleManifest::builder("support-sla")
+        .runtime(RuntimeSurface {
+            functions: vec![],
+            schedules: vec![],
+            workflows: vec![workflow("v1"), workflow("v2"), child_workflow("v2")],
         })
         .build()
 }
@@ -240,6 +269,42 @@ fn start_request(version: &str) -> Request<Body> {
 async fn json_body(response: axum::response::Response) -> serde_json::Value {
     let body = response.into_body().collect().await.unwrap().to_bytes();
     serde_json::from_slice(&body).unwrap()
+}
+
+async fn start_parent_and_child(
+    state: &ServiceRuntimeState,
+    pool: &sqlx::PgPool,
+    source: &EventEnvelope,
+    child_version: &str,
+) -> (WorkflowInstance, WorkflowChildStartResult) {
+    let mut transaction = pool.begin().await.unwrap();
+    let parent = start_workflow_from_event_in_tx(
+        state,
+        &mut transaction,
+        "support-sla",
+        "ticket_sla",
+        "v1",
+        source,
+    )
+    .await
+    .unwrap();
+    let child = start_child_workflow_in_tx(
+        state,
+        &mut transaction,
+        &parent.instance_id,
+        &parent.initial_step_id,
+        &WorkflowChildStartRequest {
+            start_id: format!("{}:ticket_escalation", source.event_id),
+            definition_owner: "support-sla".to_owned(),
+            definition_name: "ticket_escalation".to_owned(),
+            definition_version: child_version.to_owned(),
+            input: serde_json::json!({"ticketId": source.content.data["ticketId"]}),
+        },
+    )
+    .await
+    .unwrap();
+    transaction.commit().await.unwrap();
+    (parent, child)
 }
 
 #[tokio::test]
@@ -669,4 +734,391 @@ async fn support_event_advances_workflow_and_outbox_atomically_across_services()
     support_db.cleanup().await;
     sla_db.cleanup().await;
     transport_db.cleanup().await;
+}
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn child_workflow_inherits_context_and_resumes_parent_once_across_restarts() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let service = service();
+    let manifest = manifest();
+    let state = prepare_runtime(&service, &runtime_config(&manifest), db.pool.clone(), &[])
+        .await
+        .unwrap();
+    let source = support_ticket_opened("support-event-child", "ticket_child");
+    let (parent, child_start) = start_parent_and_child(&state, &db.pool, &source, "v1").await;
+    assert_eq!(
+        child_start.disposition,
+        WorkflowTransitionDisposition::Applied
+    );
+    let child_instance_id = child_start.child_instance_id.clone().unwrap();
+    assert_ne!(parent.instance_id, child_instance_id);
+    drop(state);
+
+    let restarted = prepare_runtime(&service, &runtime_config(&manifest), db.pool.clone(), &[])
+        .await
+        .expect("child worker restart should recover pinned state");
+    let (child_step_id, child_version, child_context): (String, String, serde_json::Value) =
+        sqlx::query_as(
+            r#"
+            select initial_step_id, definition_version, workflow_context
+            from platform.service_workflow_instances
+            where instance_id = $1
+            "#,
+        )
+        .bind(&child_instance_id)
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+    assert_eq!(child_version, "v1");
+    let child_context: lenso_service::EventContext = serde_json::from_value(child_context).unwrap();
+    assert_eq!(child_context.story, source.context.story);
+    assert_eq!(
+        child_context.delegated_actor,
+        source.context.delegated_actor
+    );
+    assert_eq!(child_context.tenant, source.context.tenant);
+    assert_eq!(child_context.deadline, source.context.deadline);
+    assert_eq!(
+        child_context.idempotency_key,
+        source.context.idempotency_key
+    );
+    assert_eq!(
+        child_context.causation.as_ref().unwrap().causation_id,
+        parent.initial_step_id
+    );
+    assert_eq!(
+        child_context.causation.as_ref().unwrap().correlation_id,
+        source.context.causation.as_ref().unwrap().correlation_id
+    );
+
+    let mut child_completion = db.pool.begin().await.unwrap();
+    let completed = advance_workflow_step_with_event_in_tx(
+        &restarted,
+        &mut child_completion,
+        &child_instance_id,
+        &child_step_id,
+        "support-event-child:notify_on_call",
+        acknowledgement_publication(&child_instance_id, &child_step_id, &source),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        completed.disposition,
+        WorkflowTransitionDisposition::Applied
+    );
+    assert!(completed.next_step_id.is_none());
+    child_completion.commit().await.unwrap();
+    drop(restarted);
+
+    let restarted = prepare_runtime(&service, &runtime_config(&manifest), db.pool.clone(), &[])
+        .await
+        .expect("parent worker restart should recover child wait state");
+    let mut resume = db.pool.begin().await.unwrap();
+    let resumed = resume_parent_from_child_in_tx(
+        &restarted,
+        &mut resume,
+        &parent.instance_id,
+        &parent.initial_step_id,
+        &child_instance_id,
+        "child-completion-delivery-01",
+    )
+    .await
+    .unwrap();
+    assert_eq!(resumed.disposition, WorkflowTransitionDisposition::Applied);
+    assert!(resumed.next_step_id.is_some());
+    resume.commit().await.unwrap();
+
+    let mut redelivery = db.pool.begin().await.unwrap();
+    let duplicate = resume_parent_from_child_in_tx(
+        &restarted,
+        &mut redelivery,
+        &parent.instance_id,
+        &parent.initial_step_id,
+        &child_instance_id,
+        "child-completion-delivery-01",
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        duplicate.disposition,
+        WorkflowTransitionDisposition::Duplicate
+    );
+    assert_eq!(duplicate.next_step_id, resumed.next_step_id);
+    redelivery.commit().await.unwrap();
+
+    let app = service_router(OpenApiRouter::new(), restarted);
+    let parent_inspection = app
+        .clone()
+        .oneshot(
+            Request::get(format!(
+                "/runtime/workflows/instances/{}",
+                parent.instance_id
+            ))
+            .body(Body::empty())
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(parent_inspection.status(), StatusCode::OK);
+    let parent_inspection = json_body(parent_inspection).await;
+    assert_eq!(parent_inspection["instance"]["definition"]["version"], "v1");
+    assert_eq!(parent_inspection["instance"]["state"], "running");
+    assert_eq!(
+        parent_inspection["instance"]["steps"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    assert_eq!(
+        parent_inspection["instance"]["steps"][0]["state"],
+        "completed"
+    );
+    assert_eq!(
+        parent_inspection["instance"]["steps"][0]["childWorkflow"]["instanceId"],
+        child_instance_id
+    );
+    assert_eq!(
+        parent_inspection["instance"]["steps"][0]["childWorkflow"]["state"],
+        "completed"
+    );
+    assert_eq!(
+        parent_inspection["instance"]["steps"][0]["childWorkflow"]["completionDeliveryId"],
+        "child-completion-delivery-01"
+    );
+    assert_eq!(
+        parent_inspection["instance"]["steps"][1]["state"],
+        "pending"
+    );
+
+    let child_inspection = app
+        .oneshot(
+            Request::get(format!("/runtime/workflows/instances/{child_instance_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(child_inspection.status(), StatusCode::OK);
+    let child_inspection = json_body(child_inspection).await;
+    assert_eq!(child_inspection["instance"]["definition"]["version"], "v1");
+    assert_eq!(child_inspection["instance"]["state"], "completed");
+    assert_eq!(
+        child_inspection["instance"]["parent"]["instanceId"],
+        parent.instance_id
+    );
+    assert_eq!(
+        child_inspection["instance"]["parent"]["stepId"],
+        parent.initial_step_id
+    );
+    assert_eq!(
+        child_inspection["instance"]["parent"]["causationId"],
+        parent.initial_step_id
+    );
+    let resumed_step_count: i64 = sqlx::query_scalar(
+        "select count(*) from platform.service_workflow_steps where instance_id = $1",
+    )
+    .bind(&parent.instance_id)
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    assert_eq!(resumed_step_count, 2);
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn child_failure_becomes_durable_parent_evidence() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let service = service();
+    let manifest = manifest();
+    let state = prepare_runtime(&service, &runtime_config(&manifest), db.pool.clone(), &[])
+        .await
+        .unwrap();
+    let source = support_ticket_opened("support-event-child-failure", "ticket_child_failure");
+    let (parent, child_start) = start_parent_and_child(&state, &db.pool, &source, "v1").await;
+    let child_instance_id = child_start.child_instance_id.unwrap();
+    let failure = WorkflowFailureEvidence::new(
+        "workflow_child_business_failure",
+        "On-call acknowledgement was rejected",
+        "retry_child_workflow",
+    );
+    let mut fail = db.pool.begin().await.unwrap();
+    let failed = fail_workflow_in_tx(
+        &state,
+        &mut fail,
+        &child_instance_id,
+        "child-failure-01",
+        &failure,
+    )
+    .await
+    .unwrap();
+    assert_eq!(failed.disposition, WorkflowTransitionDisposition::Applied);
+    fail.commit().await.unwrap();
+    drop(state);
+
+    let restarted = prepare_runtime(&service, &runtime_config(&manifest), db.pool.clone(), &[])
+        .await
+        .unwrap();
+    let mut resume = db.pool.begin().await.unwrap();
+    let resumed = resume_parent_from_child_in_tx(
+        &restarted,
+        &mut resume,
+        &parent.instance_id,
+        &parent.initial_step_id,
+        &child_instance_id,
+        "child-failure-delivery-01",
+    )
+    .await
+    .unwrap();
+    assert_eq!(resumed.disposition, WorkflowTransitionDisposition::Applied);
+    assert_eq!(resumed.failure, Some(failure.clone()));
+    resume.commit().await.unwrap();
+
+    let mut redelivery = db.pool.begin().await.unwrap();
+    let duplicate = resume_parent_from_child_in_tx(
+        &restarted,
+        &mut redelivery,
+        &parent.instance_id,
+        &parent.initial_step_id,
+        &child_instance_id,
+        "child-failure-delivery-01",
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        duplicate.disposition,
+        WorkflowTransitionDisposition::Duplicate
+    );
+    redelivery.commit().await.unwrap();
+
+    let app = service_router(OpenApiRouter::new(), restarted);
+    let inspected = app
+        .oneshot(
+            Request::get(format!(
+                "/runtime/workflows/instances/{}",
+                parent.instance_id
+            ))
+            .body(Body::empty())
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    let inspected = json_body(inspected).await;
+    assert_eq!(inspected["instance"]["state"], "failed");
+    assert_eq!(
+        inspected["instance"]["failure"]["code"],
+        "workflow_child_business_failure"
+    );
+    assert_eq!(inspected["nextActions"][0], "retry_child_workflow");
+    assert_eq!(inspected["instance"]["steps"][0]["state"], "failed");
+    assert_eq!(
+        inspected["instance"]["steps"][0]["childWorkflow"]["state"],
+        "failed"
+    );
+    assert_eq!(
+        inspected["instance"]["steps"][0]["childWorkflow"]["nextActions"][0],
+        "retry_child_workflow"
+    );
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn unsupported_pinned_child_version_is_durable_parent_evidence() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let service = service();
+    let manifest = manifest();
+    let state = prepare_runtime(&service, &runtime_config(&manifest), db.pool.clone(), &[])
+        .await
+        .unwrap();
+    let source = support_ticket_opened(
+        "support-event-child-unsupported",
+        "ticket_child_unsupported",
+    );
+    let (parent, child_start) = start_parent_and_child(&state, &db.pool, &source, "v1").await;
+    let child_instance_id = child_start.child_instance_id.unwrap();
+    drop(state);
+
+    let unsupported_manifest = manifest_without_child_v1();
+    let restarted = prepare_runtime(
+        &service,
+        &runtime_config(&unsupported_manifest),
+        db.pool.clone(),
+        &[],
+    )
+    .await
+    .unwrap();
+    let mut resume = db.pool.begin().await.unwrap();
+    let unsupported = resume_parent_from_child_in_tx(
+        &restarted,
+        &mut resume,
+        &parent.instance_id,
+        &parent.initial_step_id,
+        &child_instance_id,
+        "child-unsupported-delivery-01",
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        unsupported.disposition,
+        WorkflowTransitionDisposition::Applied
+    );
+    assert_eq!(
+        unsupported.failure.as_ref().unwrap().code,
+        "workflow_child_definition_version_unsupported"
+    );
+    resume.commit().await.unwrap();
+
+    let app = service_router(OpenApiRouter::new(), restarted);
+    let parent_inspection = app
+        .clone()
+        .oneshot(
+            Request::get(format!(
+                "/runtime/workflows/instances/{}",
+                parent.instance_id
+            ))
+            .body(Body::empty())
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    let parent_inspection = json_body(parent_inspection).await;
+    assert_eq!(parent_inspection["instance"]["state"], "failed");
+    assert_eq!(
+        parent_inspection["instance"]["failure"]["code"],
+        "workflow_child_definition_version_unsupported"
+    );
+    assert_eq!(
+        parent_inspection["nextActions"][0],
+        "deploy_worker_supporting_child_workflow_version"
+    );
+    assert_eq!(
+        parent_inspection["instance"]["steps"][0]["childWorkflow"]["definition"]["version"],
+        "v1"
+    );
+    assert_eq!(
+        parent_inspection["instance"]["steps"][0]["childWorkflow"]["state"],
+        "failed"
+    );
+    let child_inspection = app
+        .oneshot(
+            Request::get(format!("/runtime/workflows/instances/{child_instance_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let child_inspection = json_body(child_inspection).await;
+    assert_eq!(child_inspection["instance"]["definition"]["version"], "v1");
+    assert_eq!(child_inspection["instance"]["state"], "failed");
+
+    db.cleanup().await;
 }

@@ -339,6 +339,54 @@ components:
           type: string
         workloadId:
           type: string
+    WorkflowChildInspection:
+      type: object
+      required:
+      - linkId
+      - startId
+      - definition
+      - state
+      - nextActions
+      - createdAt
+      - updatedAt
+      properties:
+        completionDeliveryId:
+          type:
+          - string
+          - 'null'
+        createdAt:
+          type: string
+          format: date-time
+        definition:
+          $ref: '#/components/schemas/WorkflowDefinitionIdentity'
+        failure:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/WorkflowFailureEvidence'
+        instanceId:
+          type:
+          - string
+          - 'null'
+        linkId:
+          type: string
+        nextActions:
+          type: array
+          items:
+            type: string
+        startId:
+          type: string
+        state:
+          $ref: '#/components/schemas/WorkflowChildState'
+        updatedAt:
+          type: string
+          format: date-time
+    WorkflowChildState:
+      type: string
+      enum:
+      - waiting
+      - completed
+      - failed
+      - unsupported_version
     WorkflowDefinitionIdentity:
       type: object
       required:
@@ -352,6 +400,20 @@ components:
           type: string
         version:
           type: string
+    WorkflowFailureEvidence:
+      type: object
+      required:
+      - code
+      - message
+      - nextAction
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        nextAction:
+          type: string
+      additionalProperties: false
     WorkflowInspectionResult:
       type: object
       required:
@@ -386,11 +448,19 @@ components:
           format: date-time
         definition:
           $ref: '#/components/schemas/WorkflowDefinitionIdentity'
+        failure:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/WorkflowFailureEvidence'
         initialStepId:
           type: string
         input: {}
         instanceId:
           type: string
+        parent:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/WorkflowParentInspection'
         result: {}
         serviceId:
           type: string
@@ -414,6 +484,7 @@ components:
       enum:
       - running
       - completed
+      - failed
     WorkflowOutgoingWorkInspection:
       type: object
       required:
@@ -434,6 +505,19 @@ components:
         kind:
           type: string
       additionalProperties: false
+    WorkflowParentInspection:
+      type: object
+      required:
+      - instanceId
+      - stepId
+      - causationId
+      properties:
+        causationId:
+          type: string
+        instanceId:
+          type: string
+        stepId:
+          type: string
     WorkflowStartRequest:
       type: object
       required:
@@ -476,6 +560,10 @@ components:
       - createdAt
       - updatedAt
       properties:
+        childWorkflow:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/WorkflowChildInspection'
         completedAt:
           type:
           - string
@@ -509,7 +597,9 @@ components:
       type: string
       enum:
       - pending
+      - waiting_for_child
       - completed
+      - failed
     WorkflowStoryContext:
       type: object
       required:
