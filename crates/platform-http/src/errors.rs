@@ -18,6 +18,8 @@ pub struct ProblemDetails {
     pub request_id: Option<String>,
     pub correlation_id: Option<String>,
     pub errors: Vec<ProblemErrorDetail>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_actions: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -102,6 +104,7 @@ impl IntoResponse for ApiErrorResponse {
                     reason: detail.reason,
                 })
                 .collect(),
+            next_actions: None,
         };
         let mut response = (status, Json(body)).into_response();
         response.headers_mut().insert(

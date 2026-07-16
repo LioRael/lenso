@@ -51,6 +51,7 @@ pub use operation::{
 };
 pub use runtime::{
     RuntimeFunctionDeclaration, RuntimeRetryPolicyDeclaration, RuntimeSurface,
-    ScheduledFunctionDeclaration,
+    ScheduledFunctionDeclaration, WORKFLOW_DEFINITION_PROTOCOL, WorkflowDataContract,
+    WorkflowDefinition, WorkflowStepDeclaration, workflow_definition_schema,
 };
 pub use story_display::{StoryDisplayDescriptor, StoryDisplaySource};

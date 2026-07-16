@@ -1,0 +1,83 @@
+{
+  "$defs": {
+    "dataContract": {
+      "additionalProperties": false,
+      "properties": {
+        "contractId": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "contractId",
+        "version"
+      ],
+      "type": "object"
+    },
+    "step": {
+      "additionalProperties": false,
+      "properties": {
+        "displayName": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://contracts.lenso.local/workflows/lenso.workflow-definition.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "inputContract": {
+      "$ref": "#/$defs/dataContract"
+    },
+    "name": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "owner": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "protocol": {
+      "const": "lenso.workflow-definition.v1"
+    },
+    "resultContract": {
+      "$ref": "#/$defs/dataContract"
+    },
+    "steps": {
+      "items": {
+        "$ref": "#/$defs/step"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "version": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "protocol",
+    "owner",
+    "name",
+    "version",
+    "inputContract",
+    "resultContract",
+    "steps"
+  ],
+  "title": "LensoWorkflowDefinition",
+  "type": "object"
+}

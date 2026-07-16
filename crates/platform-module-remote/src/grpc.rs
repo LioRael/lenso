@@ -760,6 +760,7 @@ mod tests {
                     operation: None,
                 }],
                 schedules: vec![],
+                workflows: vec![],
             })
             .events(EventSurface {
                 handlers: vec![EventHandlerDeclaration {

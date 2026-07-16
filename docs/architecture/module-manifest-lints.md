@@ -64,7 +64,7 @@ Console category mapping and tests in the same change.
 | `warning` | `console.surface.{surface}.navigation.workspace.label` | Console workspace is missing an operator-facing label. |
 | `warning` | `console.surface.{surface}.navigation.group.id` | Console navigation group id is invalid. |
 | `warning` | `console.surface.{surface}.navigation.group.label` | Console navigation group is missing an operator-facing label. |
-| `warning` | `runtime` | Runtime surface declares no functions or schedules. |
+| `warning` | `runtime` | Runtime surface declares no functions, schedules, or workflows. |
 | `error` | `runtime.function` | Runtime function declaration is missing a name. |
 | `warning` | `runtime.function.{name}` | Runtime function name is not path-safe, queue is missing, or another declaration quality issue applies. |
 | `error` | `runtime.function.{name}` | Runtime function name is declared more than once. |
@@ -74,6 +74,15 @@ Console category mapping and tests in the same change.
 | `warning` | `runtime.schedule.{name}` | Scheduled runtime function name is not path-safe. |
 | `error` | `runtime.schedule.{name}` | Scheduled runtime function name is duplicated or references an unknown runtime function. |
 | `error` | `runtime.schedule.{name}.cron` | Scheduled runtime function cron expression is missing or invalid. |
+| `error` | `runtime.workflow` | Durable Workflow definition is missing a stable name. |
+| `error` | `runtime.workflow.{name}.{version}` | Workflow identity is duplicated or its name is invalid. |
+| `error` | `runtime.workflow.{name}.{version}.protocol` | Workflow declaration protocol is unsupported. |
+| `error` | `runtime.workflow.{name}.{version}.owner` | Workflow owner does not match the declaring Module. |
+| `error` | `runtime.workflow.{name}.{version}.version` | Workflow version is missing or not path-safe. |
+| `error` | `runtime.workflow.{name}.{version}.input_contract` | Workflow input contract identity or version is missing. |
+| `error` | `runtime.workflow.{name}.{version}.result_contract` | Workflow result contract identity or version is missing. |
+| `error` | `runtime.workflow.{name}.{version}.steps` | Workflow has no ordered first step. |
+| `error` | `runtime.workflow.{name}.{version}.step.{step}` | Workflow step identity is invalid or duplicated. |
 | `warning` | `events.handlers` | Event surface declares no handlers. |
 | `error` | `events.handler` | Event handler declaration is missing a name. |
 | `warning` | `events.handler.{name}` | Event handler name is not path-safe. |

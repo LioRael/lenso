@@ -107,6 +107,98 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /runtime/workflows/instances/{instance_id}:
+    get:
+      tags:
+      - service-runtime
+      operationId: inspect_workflow
+      parameters:
+      - name: instance_id
+        in: path
+        description: Stable Workflow Instance identity
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowInspectionResult'
+        '404':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /runtime/workflows/{owner}/{name}/instances:
+    post:
+      tags:
+      - service-runtime
+      operationId: start_workflow
+      parameters:
+      - name: owner
+        in: path
+        description: Owning Module identity
+        required: true
+        schema:
+          type: string
+      - name: name
+        in: path
+        description: Stable Workflow Definition name
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkflowStartRequest'
+        required: true
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowStartResult'
+        '400':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 components:
   schemas:
     ErrorResponse:
@@ -131,6 +223,12 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ProblemErrorDetail'
+        next_actions:
+          type:
+          - array
+          - 'null'
+          items:
+            type: string
         request_id:
           type:
           - string
@@ -241,3 +339,158 @@ components:
           type: string
         workloadId:
           type: string
+    WorkflowDefinitionIdentity:
+      type: object
+      required:
+      - owner
+      - name
+      - version
+      properties:
+        name:
+          type: string
+        owner:
+          type: string
+        version:
+          type: string
+    WorkflowInspectionResult:
+      type: object
+      required:
+      - protocol
+      - instance
+      - nextActions
+      properties:
+        instance:
+          $ref: '#/components/schemas/WorkflowInstance'
+        nextActions:
+          type: array
+          items:
+            type: string
+        protocol:
+          type: string
+    WorkflowInstance:
+      type: object
+      required:
+      - instanceId
+      - serviceId
+      - definition
+      - state
+      - input
+      - storyContext
+      - initialStepId
+      - steps
+      - createdAt
+      - updatedAt
+      properties:
+        createdAt:
+          type: string
+          format: date-time
+        definition:
+          $ref: '#/components/schemas/WorkflowDefinitionIdentity'
+        initialStepId:
+          type: string
+        input: {}
+        instanceId:
+          type: string
+        result: {}
+        serviceId:
+          type: string
+        state:
+          $ref: '#/components/schemas/WorkflowInstanceState'
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowStepInspection'
+        storyContext:
+          $ref: '#/components/schemas/WorkflowStoryContext'
+        tenantScope:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/WorkflowTenantScope'
+        updatedAt:
+          type: string
+          format: date-time
+    WorkflowInstanceState:
+      type: string
+      enum:
+      - running
+    WorkflowStartRequest:
+      type: object
+      required:
+      - definitionVersion
+      - input
+      - storyContext
+      properties:
+        definitionVersion:
+          type: string
+        input: {}
+        storyContext:
+          $ref: '#/components/schemas/WorkflowStoryContext'
+        tenantScope:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/WorkflowTenantScope'
+      additionalProperties: false
+    WorkflowStartResult:
+      type: object
+      required:
+      - protocol
+      - instance
+      - nextActions
+      properties:
+        instance:
+          $ref: '#/components/schemas/WorkflowInstance'
+        nextActions:
+          type: array
+          items:
+            type: string
+        protocol:
+          type: string
+    WorkflowStepInspection:
+      type: object
+      required:
+      - stepId
+      - definitionStepName
+      - position
+      - state
+      - createdAt
+      - updatedAt
+      properties:
+        createdAt:
+          type: string
+          format: date-time
+        definitionStepName:
+          type: string
+        position:
+          type: integer
+          format: int32
+          minimum: 0
+        state:
+          $ref: '#/components/schemas/WorkflowStepState'
+        stepId:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+    WorkflowStepState:
+      type: string
+      enum:
+      - pending
+    WorkflowStoryContext:
+      type: object
+      required:
+      - storyId
+      - segmentId
+      properties:
+        segmentId:
+          type: string
+        storyId:
+          type: string
+      additionalProperties: false
+    WorkflowTenantScope:
+      type: object
+      required:
+      - tenantId
+      properties:
+        tenantId:
+          type: string
+      additionalProperties: false

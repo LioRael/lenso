@@ -42,6 +42,15 @@
       },
       "type": "array"
     },
+    "next_actions": {
+      "items": {
+        "type": "string"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
     "request_id": {
       "type": [
         "string",

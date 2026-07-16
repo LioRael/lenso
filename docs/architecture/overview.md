@@ -101,6 +101,16 @@ surfaces; and performs deterministic shutdown and claim release transitions.
 Business routes and migrations remain injected Module contributions. This
 runtime does not call the Host or Provider boot paths and does not reinterpret
 Provider v1 artifacts.
+Modules can now declare engine-neutral, versioned Durable Workflow definitions
+under `ModuleManifest.runtime.workflows`. Autonomous Service composition
+collects those definitions, validates that each owner is a Module owned by the
+Service, and starts instances in the Service Store through
+`POST /runtime/workflows/{owner}/{name}/instances`. The instance and its initial
+step are committed together with a pinned definition version, Story Context,
+tenant scope, and timestamps. `GET /runtime/workflows/instances/{instance_id}`
+reconstructs the same state from the Store after a runtime restart. This first
+slice does not execute steps or reinterpret the existing lightweight Host flow,
+Runtime Function, or Provider models.
 Its versioned Service, Event, Config, and Reliability Contract declarations are
 specified in [`autonomous-service-contract-artifacts.md`](autonomous-service-contract-artifacts.md).
 The separate [`lenso.context.v1`](common-context-contracts.md) envelope
