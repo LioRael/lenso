@@ -28,7 +28,6 @@ jobs:
       NATS_URL: nats://127.0.0.1:4222
       LENSO_NATS_TEST_INFRASTRUCTURE_APPROVED: true
       LENSO_SPIFFE_TEST_INFRASTRUCTURE_APPROVED: true
-      SPIFFE_ENDPOINT_SOCKET: unix://${{ runner.temp }}/lenso-spire/agent/api.sock
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@f2b2b233b538f500472c7274c7012f57857d8ce0
@@ -116,6 +115,8 @@ jobs:
               -jwtSVIDTTL 60
           done
       - name: Run quality gates
+        env:
+          SPIFFE_ENDPOINT_SOCKET: unix://${{ runner.temp }}/lenso-spire/agent/api.sock
         run: just ci
       - name: Stop ephemeral SPIRE Workload Identity infrastructure
         if: always()
