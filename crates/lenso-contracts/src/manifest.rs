@@ -21,6 +21,7 @@ use crate::module_source::ModuleSource;
 use crate::runtime::{
     RuntimeFunctionDeclaration, RuntimeSurface, ScheduledFunctionDeclaration,
     WORKFLOW_DEFINITION_PROTOCOL, WorkflowDataContract, WorkflowDefinition,
+    WorkflowStepDeclaration,
 };
 use crate::validate_cron_expression;
 use serde::{Deserialize, Serialize};
@@ -570,7 +571,7 @@ fn lint_workflow_definition(
         if !present(&step.name) || !valid_runtime_function_name(&step.name) {
             lints.push(ModuleManifestLint {
                 severity: ModuleManifestLintSeverity::Error,
-                subject: step_subject,
+                subject: step_subject.clone(),
                 message: "Durable Workflow step name must be a non-empty path-safe identifier."
                     .to_owned(),
                 suggestion: "Use a stable step name such as acknowledge_ticket.".to_owned(),
@@ -578,11 +579,51 @@ fn lint_workflow_definition(
         } else if !step_names.insert(step.name.clone()) {
             lints.push(ModuleManifestLint {
                 severity: ModuleManifestLintSeverity::Error,
-                subject: step_subject,
+                subject: step_subject.clone(),
                 message: "Durable Workflow step name is declared more than once.".to_owned(),
                 suggestion: "Keep one ordered declaration per stable step name.".to_owned(),
             });
         }
+        lint_workflow_step_recovery(step, &step_subject, lints);
+    }
+}
+
+fn lint_workflow_step_recovery(
+    step: &WorkflowStepDeclaration,
+    subject: &str,
+    lints: &mut Vec<ModuleManifestLint>,
+) {
+    if let Some(retry_policy) = &step.retry_policy
+        && (retry_policy.max_attempts == 0
+            || i32::try_from(retry_policy.max_attempts).is_err()
+            || retry_policy.delays_ms.len()
+                != usize::try_from(retry_policy.max_attempts.saturating_sub(1))
+                    .unwrap_or(usize::MAX)
+            || retry_policy
+                .delays_ms
+                .iter()
+                .any(|delay| i64::try_from(*delay).is_err()))
+    {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Error,
+            subject: format!("{subject}.retry_policy"),
+            message: "Durable Workflow retry schedule must use supported attempt and delay values."
+                .to_owned(),
+            suggestion: "Set maxAttempts to 1..=2147483647 and provide maxAttempts - 1 delaysMs entries within the signed 64-bit range."
+                .to_owned(),
+        });
+    }
+    if step
+        .timeout_ms
+        .is_some_and(|timeout| timeout == 0 || i64::try_from(timeout).is_err())
+    {
+        lints.push(ModuleManifestLint {
+            severity: ModuleManifestLintSeverity::Error,
+            subject: format!("{subject}.timeout_ms"),
+            message: "Durable Workflow timeout must use a supported positive value.".to_owned(),
+            suggestion: "Set timeoutMs within the positive signed 64-bit range or omit it."
+                .to_owned(),
+        });
     }
 }
 
@@ -1738,7 +1779,8 @@ mod tests {
     use crate::{ModuleHttpMethod, ModuleHttpRoute};
     use crate::{
         RuntimeFunctionDeclaration, RuntimeRetryPolicyDeclaration, RuntimeSurface,
-        WorkflowDataContract, WorkflowDefinition, WorkflowStepDeclaration,
+        WorkflowDataContract, WorkflowDefinition, WorkflowRetryPolicyDeclaration,
+        WorkflowStepDeclaration,
     };
     use crate::{StoryDisplayDescriptor, StoryDisplaySource};
 
@@ -2229,7 +2271,12 @@ mod tests {
                     WorkflowDataContract::new("support.sla.result", "v1"),
                     vec![
                         WorkflowStepDeclaration::new("acknowledge_ticket")
-                            .with_display_name("Acknowledge ticket"),
+                            .with_display_name("Acknowledge ticket")
+                            .with_retry_policy(WorkflowRetryPolicyDeclaration::new(
+                                3,
+                                vec![1_000, 5_000],
+                            ))
+                            .with_timeout_ms(30_000),
                         WorkflowStepDeclaration::new("await_resolution"),
                     ],
                 )],
@@ -2243,6 +2290,9 @@ mod tests {
         assert_eq!(manifest, back);
         assert!(json.contains(r#""protocol":"lenso.workflow-definition.v1""#));
         assert!(json.contains(r#""inputContract""#));
+        assert!(json.contains(r#""maxAttempts":3"#));
+        assert!(json.contains(r#""delaysMs":[1000,5000]"#));
+        assert!(json.contains(r#""timeoutMs":30000"#));
         assert!(lints.iter().all(|lint| {
             lint.severity != ModuleManifestLintSeverity::Error
                 && !lint.subject.starts_with("runtime.workflow")
@@ -2258,7 +2308,9 @@ mod tests {
             WorkflowDataContract::new("", "v1"),
             WorkflowDataContract::new("support.sla.result", "v1"),
             vec![
-                WorkflowStepDeclaration::new("acknowledge_ticket"),
+                WorkflowStepDeclaration::new("acknowledge_ticket")
+                    .with_retry_policy(WorkflowRetryPolicyDeclaration::new(3, vec![1_000]))
+                    .with_timeout_ms(0),
                 WorkflowStepDeclaration::new("acknowledge_ticket"),
             ],
         );
@@ -2284,6 +2336,12 @@ mod tests {
         assert!(lints.iter().any(|lint| {
             lint.subject == "runtime.workflow.ticket_sla.v1.step.acknowledge_ticket"
                 && lint.message == "Durable Workflow step name is declared more than once."
+        }));
+        assert!(lints.iter().any(|lint| {
+            lint.subject == "runtime.workflow.ticket_sla.v1.step.acknowledge_ticket.retry_policy"
+        }));
+        assert!(lints.iter().any(|lint| {
+            lint.subject == "runtime.workflow.ticket_sla.v1.step.acknowledge_ticket.timeout_ms"
         }));
     }
 

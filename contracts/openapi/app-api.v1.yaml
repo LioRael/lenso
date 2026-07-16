@@ -8753,6 +8753,25 @@ components:
           type: string
           description: Definition version pinned by every started instance.
       additionalProperties: false
+    WorkflowRetryPolicyDeclaration:
+      type: object
+      required:
+      - maxAttempts
+      - delaysMs
+      properties:
+        delaysMs:
+          type: array
+          items:
+            type: integer
+            format: int64
+            minimum: 0
+          description: Delay before attempts 2..N. The length must equal `max_attempts` - 1.
+        maxAttempts:
+          type: integer
+          format: int32
+          description: Total attempts including the original execution.
+          minimum: 0
+      additionalProperties: false
     WorkflowStepDeclaration:
       type: object
       required:
@@ -8764,6 +8783,20 @@ components:
           - 'null'
         name:
           type: string
+        retryPolicy:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/WorkflowRetryPolicyDeclaration'
+            description: |-
+              Optional durable retry schedule. `max_attempts` includes the original
+              attempt, while each delay schedules the following attempt.
+        timeoutMs:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          description: Optional durable timeout applied independently to every attempt.
+          minimum: 0
       additionalProperties: false
 tags:
 - name: auth

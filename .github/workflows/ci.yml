@@ -24,6 +24,8 @@ jobs:
           --health-timeout 3s
           --health-retries 10
     env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
       DATABASE_URL: postgres://lenso:lenso@localhost:5432/lenso
       NATS_URL: nats://127.0.0.1:4222
       LENSO_NATS_TEST_INFRASTRUCTURE_APPROVED: true
@@ -38,6 +40,8 @@ jobs:
           node-version: 24.18.0
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+        with:
+          env-vars: CARGO_PROFILE_DEV_DEBUG CARGO_PROFILE_TEST_DEBUG
       - name: Install just
         uses: extractions/setup-just@v4
       - name: Start ephemeral NATS JetStream verification infrastructure

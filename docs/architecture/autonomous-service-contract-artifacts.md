@@ -158,13 +158,15 @@ decisions use the same safe reason codes and never persist proof signatures.
 Runtime function enqueue, claim, retry, and handler execution persist the
 explicit `TenantId`; schedules and lifecycle work remain explicitly unscoped.
 
-## Durable Workflow start, transition, and inspection
+## Durable Workflow start, recovery, transition, and inspection
 
 `ModuleManifest.runtime.workflows` is the public declaration seam for
 engine-neutral Durable Workflow definitions. Each `lenso.workflow-definition.v1`
 definition has a stable owning Module, name, version, input and result contract
-references, and ordered step metadata. The generated JSON Schema under
-`contracts/workflows/` is the committed machine contract for this shape.
+references, and ordered step metadata. A step may declare `retryPolicy` with a
+total `maxAttempts` and one `delaysMs` entry per retry, plus a positive
+per-attempt `timeoutMs`. The generated JSON Schema under `contracts/workflows/`
+is the committed machine contract for this shape.
 
 Autonomous Service composition collects those Module declarations without
 binding them to Runtime Functions or Provider behavior. A start request selects
@@ -185,6 +187,26 @@ marks it complete, creates the next declared step when present, and writes the
 outgoing event to the Service Outbox before the caller commits. A rollback loses
 all of those writes together; redelivery of the same transition returns the
 committed outcome without publishing again.
+
+Failed execution retains the original step identity while appending one durable
+attempt record with a stable failure classification, code, message, attempt
+number, and transition identity. Retry scheduling uses the definition pinned by
+the instance. Reaching the declared attempt budget marks the step `exhausted`
+and the instance `failed`; it cannot remain indefinitely running.
+
+Retry and step-timeout timers persist their due time, attempt number, and stable
+transition identity in the Service Store. Workers claim due work through a
+lease, and an expired claim is reclaimed after restart. A due timeout takes
+precedence over its abandoned retry attempt. Resolving a claim, recording the
+attempt, scheduling the next retry, and changing terminal workflow state share
+one transaction. A successful retry still uses the normal workflow transition
+and Outbox transaction, so replay after an uncertain commit returns the
+committed transition without repeating business effects or outgoing work.
+
+Production composition uses the system clock. The development-only
+`SystemSandboxWorkflowClock` can advance controlled UTC time so repeated timeout
+proofs produce identical classifications and schedules without wall-clock
+sleeps.
 
 Outgoing workflow events must match an Event Contract declared by the owning
 Service. The runtime derives the Event Type and content schema from that
@@ -216,11 +238,12 @@ The Service runtime exposes versioned start and inspection results through
 `POST /runtime/workflows/{owner}/{name}/instances` and
 `GET /runtime/workflows/instances/{instance_id}`. Errors use the standard
 problem-details envelope with stable workflow codes and `next_actions`.
-Inspection includes completed transition identity and safe outgoing Event
-Contract metadata for Runtime Console and other operator consumers. It reads
-only Service-owned workflow tables and does not require the Host, Runtime
-Console, System Plane, or an external workflow engine. Retries, timers, and
-compensation remain later workflow slices.
+Inspection includes completed transition identity, safe outgoing Event Contract
+metadata, retry policy, latest failure, attempt history, timer due times and
+claim state, and child workflow evidence for Runtime Console and other operator
+consumers. It reads only Service-owned workflow tables and does not require the
+Host, Runtime Console, System Plane, or an external workflow engine.
+Compensation remains a later workflow slice.
 
 ## Event Envelopes
 

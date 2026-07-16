@@ -18,6 +18,29 @@
       ],
       "type": "object"
     },
+    "retryPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "delaysMs": {
+          "items": {
+            "maximum": 9223372036854775807,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "maxAttempts": {
+          "maximum": 2147483647,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "maxAttempts",
+        "delaysMs"
+      ],
+      "type": "object"
+    },
     "step": {
       "additionalProperties": false,
       "properties": {
@@ -28,6 +51,14 @@
         "name": {
           "minLength": 1,
           "type": "string"
+        },
+        "retryPolicy": {
+          "$ref": "#/$defs/retryPolicy"
+        },
+        "timeoutMs": {
+          "maximum": 9223372036854775807,
+          "minimum": 1,
+          "type": "integer"
         }
       },
       "required": [
