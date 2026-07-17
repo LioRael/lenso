@@ -387,6 +387,129 @@ components:
       - completed
       - failed
       - unsupported_version
+    WorkflowCompensationAttemptInspection:
+      type: object
+      required:
+      - attemptId
+      - attemptNumber
+      - transitionId
+      - state
+      - startedAt
+      properties:
+        attemptId:
+          type: string
+        attemptNumber:
+          type: integer
+          format: int32
+          minimum: 0
+        completedAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        failure:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/WorkflowFailureEvidence'
+        startedAt:
+          type: string
+          format: date-time
+        state:
+          $ref: '#/components/schemas/WorkflowCompensationAttemptState'
+        transitionId:
+          type: string
+    WorkflowCompensationAttemptState:
+      type: string
+      enum:
+      - dispatched
+      - succeeded
+      - failed
+    WorkflowCompensationInspection:
+      type: object
+      required:
+      - compensationId
+      - effectId
+      - stepId
+      - name
+      - executionOrder
+      - contract
+      - completionContract
+      - state
+      - attemptCount
+      - selectedByTimeoutTransitionId
+      - attempts
+      - selectedAt
+      - updatedAt
+      properties:
+        attemptCount:
+          type: integer
+          format: int32
+          minimum: 0
+        attempts:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowCompensationAttemptInspection'
+        compensationId:
+          type: string
+        completedAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        completionContract:
+          $ref: '#/components/schemas/WorkflowDataContract'
+        contract:
+          $ref: '#/components/schemas/WorkflowDataContract'
+        effectId:
+          type: string
+        executionOrder:
+          type: integer
+          format: int32
+          minimum: 0
+        failure:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/WorkflowFailureEvidence'
+        name:
+          type: string
+        outgoingWork:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/WorkflowOutgoingWorkInspection'
+        selectedAt:
+          type: string
+          format: date-time
+        selectedByTimeoutTransitionId:
+          type: string
+        state:
+          $ref: '#/components/schemas/WorkflowCompensationState'
+        stepId:
+          type: string
+        transitionId:
+          type:
+          - string
+          - 'null'
+        updatedAt:
+          type: string
+          format: date-time
+    WorkflowCompensationState:
+      type: string
+      enum:
+      - pending
+      - dispatched
+      - compensated
+      - failed
+    WorkflowDataContract:
+      type: object
+      required:
+      - contractId
+      - version
+      properties:
+        contractId:
+          type: string
+        version:
+          type: string
+      additionalProperties: false
     WorkflowDefinitionIdentity:
       type: object
       required:
@@ -400,6 +523,56 @@ components:
           type: string
         version:
           type: string
+    WorkflowEffectInspection:
+      type: object
+      required:
+      - effectId
+      - stepId
+      - definitionStepName
+      - transitionId
+      - outgoingWork
+      - compensationName
+      - compensationOrder
+      - compensationContract
+      - compensationCompletionContract
+      - state
+      - completedAt
+      - updatedAt
+      properties:
+        compensationCompletionContract:
+          $ref: '#/components/schemas/WorkflowDataContract'
+        compensationContract:
+          $ref: '#/components/schemas/WorkflowDataContract'
+        compensationName:
+          type: string
+        compensationOrder:
+          type: integer
+          format: int32
+          minimum: 0
+        completedAt:
+          type: string
+          format: date-time
+        definitionStepName:
+          type: string
+        effectId:
+          type: string
+        outgoingWork:
+          $ref: '#/components/schemas/WorkflowOutgoingWorkInspection'
+        state:
+          $ref: '#/components/schemas/WorkflowEffectState'
+        stepId:
+          type: string
+        transitionId:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+    WorkflowEffectState:
+      type: string
+      enum:
+      - completed
+      - compensated
+      - compensation_failed
     WorkflowFailureClassification:
       type: string
       enum:
@@ -420,6 +593,30 @@ components:
         nextAction:
           type: string
       additionalProperties: false
+    WorkflowHistoryEntry:
+      type: object
+      required:
+      - historyId
+      - kind
+      - detail
+      - recordedAt
+      properties:
+        compensationId:
+          type:
+          - string
+          - 'null'
+        detail: {}
+        historyId:
+          type: string
+        kind:
+          type: string
+        recordedAt:
+          type: string
+          format: date-time
+        stepId:
+          type:
+          - string
+          - 'null'
     WorkflowInspectionResult:
       type: object
       required:
@@ -446,18 +643,33 @@ components:
       - storyContext
       - initialStepId
       - steps
+      - effects
+      - compensations
+      - history
       - createdAt
       - updatedAt
       properties:
+        compensations:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowCompensationInspection'
         createdAt:
           type: string
           format: date-time
         definition:
           $ref: '#/components/schemas/WorkflowDefinitionIdentity'
+        effects:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowEffectInspection'
         failure:
           oneOf:
           - type: 'null'
           - $ref: '#/components/schemas/WorkflowFailureEvidence'
+        history:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowHistoryEntry'
         initialStepId:
           type: string
         input: {}
@@ -491,6 +703,9 @@ components:
       - running
       - completed
       - failed
+      - compensating
+      - compensated
+      - compensation_failed
     WorkflowOutgoingWorkInspection:
       type: object
       required:

@@ -96,6 +96,7 @@ Claude Code project memory was imported into Codex on 2026-06-03. Keep these des
 - Do not re-add `#[non_exhaustive]` to producer-constructed structs `AdminSchema`, `EntitySchema`, `FieldSchema`, or `AdminPage`; it blocks struct literal construction from other crates. Keep it on consumer-matched enums such as `FieldType` and `AdminSurface`.
 - `platform-admin` is runtime observability, not business CRUD. `platform-admin-data` is schema-admin business data. Both are platform crates and must not depend on concrete modules; `lenso-bootstrap` injects the module/data registries.
 - OpenAPI is single-source through `utoipa-axum`: put `#[utoipa::path]` on real handlers and register routes with `OpenApiRouter::routes(routes!(handler))`. `crates/lenso-api/src/openapi.rs::openapi_document()` must stay pure and context-free because generators, arch checks, and sync tests call it outside a runtime.
+- Durable Workflow compensation persists completed effects and deterministic compensation order in the owning Service Store. Compensation request publication is atomic with local dispatch state, remote reversal remains inside the remote Service Inbox transaction, and the Workflow reaches `compensated` only after a declared completion Event confirms the stable effect and compensation identities. Rejected compensation uses the distinct `compensation_failed` state with intervention evidence; no distributed transaction is introduced.
 
 ## Runtime Console Guidelines
 

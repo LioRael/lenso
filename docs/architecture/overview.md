@@ -127,9 +127,18 @@ completion. The child retains distinct identity, explicit parent and causation
 links, and validated inherited Story, delegated actor, tenant, deadline, and
 idempotency context. A stable completion delivery resumes the parent exactly
 once after either worker restarts; child failure or an unsupported pinned
-version remains durable parent evidence with a stable next action. This slice
-does not add compensation or reinterpret the existing lightweight Host flow,
-Runtime Function, or Provider models.
+version remains durable parent evidence with a stable next action. Completed
+steps may declare stable compensation identity, deterministic order, a request
+Event Contract, and a completion Event Contract. A controlled timeout records
+the completed effects before selecting their compensations. Each request is
+published through the owning Service Outbox with stable effect and compensation
+identity; the Workflow remains `compensating` until the remote Service reverses
+the business effect and confirms it through the declared completion Event.
+Restart and redelivery preserve at-most-once business reversal through the
+Service-owned Inbox, while a rejected compensation becomes the distinct durable
+`compensation_failed` state with explicit intervention evidence. This does not
+introduce a distributed transaction or reinterpret the existing lightweight
+Host flow, Runtime Function, or Provider models.
 Its versioned Service, Event, Config, and Reliability Contract declarations are
 specified in [`autonomous-service-contract-artifacts.md`](autonomous-service-contract-artifacts.md).
 The separate [`lenso.context.v1`](common-context-contracts.md) envelope

@@ -5,12 +5,14 @@ mod transport;
 mod transport_nats_jetstream;
 mod workflow;
 mod workflow_child;
+mod workflow_compensation;
 
 pub use operations::*;
 pub use transport::*;
 pub use transport_nats_jetstream::*;
 pub use workflow::*;
 pub use workflow_child::*;
+pub use workflow_compensation::*;
 
 use axum::{
     Json, Router,
@@ -176,6 +178,18 @@ pub const SERVICE_RUNTIME_MIGRATIONS: &[Migration] = &[
     Migration {
         name: "autonomous-service/0013_recover_workflow_retries_and_timers",
         sql: include_str!("../migrations/0013_recover_workflow_retries_and_timers.sql"),
+    },
+    Migration {
+        name: "autonomous-service/0014_compensate_workflow_effects",
+        sql: include_str!("../migrations/0014_compensate_workflow_effects.sql"),
+    },
+    Migration {
+        name: "autonomous-service/0015_create_workflow_compensations",
+        sql: include_str!("../migrations/0015_create_workflow_compensations.sql"),
+    },
+    Migration {
+        name: "autonomous-service/0016_create_workflow_compensation_history",
+        sql: include_str!("../migrations/0016_create_workflow_compensation_history.sql"),
     },
 ];
 
@@ -1140,6 +1154,19 @@ fn validate_workflow_definitions(
                                 .iter()
                                 .all(|delay| i64::try_from(*delay).is_ok())
                     })
+                    && step.compensation.as_ref().is_none_or(|compensation| {
+                        !compensation.name.trim().is_empty()
+                            && compensation.order > 0
+                            && i32::try_from(compensation.order).is_ok()
+                            && !compensation.contract.contract_id.trim().is_empty()
+                            && !compensation.contract.version.trim().is_empty()
+                            && !compensation
+                                .completion_contract
+                                .contract_id
+                                .trim()
+                                .is_empty()
+                            && !compensation.completion_contract.version.trim().is_empty()
+                    })
             })
             && definition
                 .steps
@@ -1147,7 +1174,29 @@ fn validate_workflow_definitions(
                 .map(|step| &step.name)
                 .collect::<HashSet<_>>()
                 .len()
-                == definition.steps.len();
+                == definition.steps.len()
+            && definition
+                .steps
+                .iter()
+                .filter_map(|step| step.compensation.as_ref().map(|value| &value.name))
+                .collect::<HashSet<_>>()
+                .len()
+                == definition
+                    .steps
+                    .iter()
+                    .filter(|step| step.compensation.is_some())
+                    .count()
+            && definition
+                .steps
+                .iter()
+                .filter_map(|step| step.compensation.as_ref().map(|value| value.order))
+                .collect::<HashSet<_>>()
+                .len()
+                == definition
+                    .steps
+                    .iter()
+                    .filter(|step| step.compensation.is_some())
+                    .count();
         if !valid {
             return Err(runtime_error(
                 RuntimeErrorCode::InvalidWorkflowDefinition,

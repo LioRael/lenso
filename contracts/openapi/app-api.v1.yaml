@@ -8709,6 +8709,29 @@ components:
             type: string
           path:
             type: string
+    WorkflowCompensationDeclaration:
+      type: object
+      required:
+      - name
+      - order
+      - contract
+      - completionContract
+      properties:
+        completionContract:
+          $ref: '#/components/schemas/WorkflowDataContract'
+          description: Versioned Event Contract that confirms the remote business effect was reversed.
+        contract:
+          $ref: '#/components/schemas/WorkflowDataContract'
+          description: Versioned Event Contract used to request the compensation effect.
+        name:
+          type: string
+          description: Stable compensation behavior identity within this Workflow Definition.
+        order:
+          type: integer
+          format: int32
+          description: Explicit deterministic execution order. Lower values execute first.
+          minimum: 0
+      additionalProperties: false
     WorkflowDataContract:
       type: object
       required:
@@ -8777,6 +8800,14 @@ components:
       required:
       - name
       properties:
+        compensation:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/WorkflowCompensationDeclaration'
+            description: |-
+              Optional compensation for the completed business effect produced by
+              this step. The explicit order is evaluated across all completed effects
+              when compensation is selected; it is independent from completion time.
         displayName:
           type:
           - string
