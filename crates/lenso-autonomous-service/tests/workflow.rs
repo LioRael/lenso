@@ -830,11 +830,12 @@ async fn pinned_definition_migration_rejects_legacy_running_instances() {
     let Some(db) = TestDatabase::create().await else {
         return;
     };
-    let guard_index = SERVICE_RUNTIME_MIGRATIONS.len() - 1;
-    assert_eq!(
-        SERVICE_RUNTIME_MIGRATIONS[guard_index].name,
-        "autonomous-service/0014_pin_workflow_definition_artifacts"
-    );
+    let guard_index = SERVICE_RUNTIME_MIGRATIONS
+        .iter()
+        .position(|migration| {
+            migration.name == "autonomous-service/0014_pin_workflow_definition_artifacts"
+        })
+        .expect("pinned Workflow Definition migration must be registered");
     platform_core::apply_migrations(&db.pool, &SERVICE_RUNTIME_MIGRATIONS[..guard_index])
         .await
         .unwrap();
@@ -855,10 +856,12 @@ async fn pinned_definition_migration_rejects_legacy_running_instances() {
     .await
     .unwrap();
 
-    let error =
-        platform_core::apply_migrations(&db.pool, &SERVICE_RUNTIME_MIGRATIONS[guard_index..])
-            .await
-            .unwrap_err();
+    let error = platform_core::apply_migrations(
+        &db.pool,
+        &SERVICE_RUNTIME_MIGRATIONS[guard_index..=guard_index],
+    )
+    .await
+    .unwrap_err();
     assert_eq!(error.public_message, "Database migration failed");
     let migration_applied: bool = sqlx::query_scalar(
         "select exists(select 1 from platform.schema_migrations where name = $1)",

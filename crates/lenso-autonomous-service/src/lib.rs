@@ -184,16 +184,16 @@ pub const SERVICE_RUNTIME_MIGRATIONS: &[Migration] = &[
         sql: include_str!("../migrations/0014_pin_workflow_definition_artifacts.sql"),
     },
     Migration {
-        name: "autonomous-service/0014_compensate_workflow_effects",
-        sql: include_str!("../migrations/0014_compensate_workflow_effects.sql"),
+        name: "autonomous-service/0015_compensate_workflow_effects",
+        sql: include_str!("../migrations/0015_compensate_workflow_effects.sql"),
     },
     Migration {
-        name: "autonomous-service/0015_create_workflow_compensations",
-        sql: include_str!("../migrations/0015_create_workflow_compensations.sql"),
+        name: "autonomous-service/0016_create_workflow_compensations",
+        sql: include_str!("../migrations/0016_create_workflow_compensations.sql"),
     },
     Migration {
-        name: "autonomous-service/0016_create_workflow_compensation_history",
-        sql: include_str!("../migrations/0016_create_workflow_compensation_history.sql"),
+        name: "autonomous-service/0017_create_workflow_compensation_history",
+        sql: include_str!("../migrations/0017_create_workflow_compensation_history.sql"),
     },
 ];
 
