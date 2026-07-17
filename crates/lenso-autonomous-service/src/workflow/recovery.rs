@@ -1,6 +1,7 @@
 use super::{
-    WorkflowApiError, WorkflowEventPublication, WorkflowFailureEvidence, WorkflowMutationError,
-    WorkflowStepInspection, WorkflowStepTransitionResult,
+    WorkflowApiError, WorkflowDefinitionIdentity, WorkflowEventPublication,
+    WorkflowFailureEvidence, WorkflowMutationError, WorkflowStepInspection,
+    WorkflowStepTransitionResult, resolve_pinned_definition,
 };
 use crate::ServiceRuntimeState;
 use chrono::{DateTime, Duration, Utc};
@@ -174,6 +175,7 @@ pub struct WorkflowWorkClaim {
     pub timer_id: String,
     pub instance_id: String,
     pub step_id: String,
+    pub definition: WorkflowDefinitionIdentity,
     pub kind: WorkflowTimerKind,
     pub attempt_number: u32,
     pub transition_id: String,
@@ -604,6 +606,11 @@ struct ClaimedTimerRow {
     timer_id: String,
     instance_id: String,
     step_id: String,
+    definition_owner: String,
+    definition_name: String,
+    definition_version: String,
+    definition_artifact: Option<serde_json::Value>,
+    definition_digest: Option<String>,
     kind: String,
     attempt_number: i32,
     transition_id: String,
@@ -646,7 +653,9 @@ pub async fn claim_due_workflow_work_at(
     let rows = sqlx::query_as::<_, ClaimedTimerRow>(
         r#"
         with candidates as (
-            select timer.timer_id
+            select timer.timer_id, instance.definition_owner,
+                   instance.definition_name, instance.definition_version,
+                   instance.definition_artifact, instance.definition_digest
             from platform.service_workflow_timers timer
             join platform.service_workflow_steps step on step.step_id = timer.step_id
             join platform.service_workflow_instances instance
@@ -693,6 +702,9 @@ pub async fn claim_due_workflow_work_at(
         from candidates, platform.service_workflow_steps step
         where timer.timer_id = candidates.timer_id and step.step_id = timer.step_id
         returning timer.timer_id, timer.instance_id, timer.step_id, timer.kind,
+                  candidates.definition_owner, candidates.definition_name,
+                  candidates.definition_version, candidates.definition_artifact,
+                  candidates.definition_digest,
                   timer.attempt_number, timer.transition_id,
                   timer.attempt_transition_id, timer.due_at,
                   timer.claimed_by, timer.claimed_at, step.timeout_ms
@@ -708,6 +720,24 @@ pub async fn claim_due_workflow_work_at(
     .map_err(|error| {
         WorkflowMutationError::store(format!("Could not claim due workflow work: {error}"))
     })?;
+
+    for row in &rows {
+        if let Err(error) = resolve_pinned_definition(
+            state,
+            &row.definition_owner,
+            &row.definition_name,
+            &row.definition_version,
+            row.definition_artifact.as_ref(),
+            row.definition_digest.as_deref(),
+        ) {
+            transaction.rollback().await.map_err(|rollback_error| {
+                WorkflowMutationError::store(format!(
+                    "Could not roll back unsupported workflow claim: {rollback_error}"
+                ))
+            })?;
+            return Err(error);
+        }
+    }
 
     let mut claims = Vec::with_capacity(rows.len());
     for row in rows {
@@ -792,6 +822,11 @@ pub async fn claim_due_workflow_work_at(
             timer_id: row.timer_id,
             instance_id: row.instance_id,
             step_id: row.step_id,
+            definition: WorkflowDefinitionIdentity {
+                owner: row.definition_owner,
+                name: row.definition_name,
+                version: row.definition_version,
+            },
             kind,
             attempt_number,
             transition_id: row.transition_id,

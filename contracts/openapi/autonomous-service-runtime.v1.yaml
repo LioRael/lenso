@@ -107,6 +107,30 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /runtime/workflows/definitions/compatibility:
+    post:
+      tags:
+      - service-runtime
+      operationId: check_workflow_compatibility
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkflowCompatibilityRequest'
+        required: true
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowCompatibilityResult'
+        '400':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /runtime/workflows/instances/{instance_id}:
     get:
       tags:
@@ -188,6 +212,55 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /runtime/workflows/{owner}/{name}/migration-plans/dry-run:
+    post:
+      tags:
+      - service-runtime
+      operationId: dry_run_workflow_migration
+      parameters:
+      - name: owner
+        in: path
+        description: Owning Module identity
+        required: true
+        schema:
+          type: string
+      - name: name
+        in: path
+        description: Stable Workflow Definition name
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkflowMigrationDryRunRequest'
+        required: true
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowMigrationDryRunPlan'
+        '400':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
           description: ''
           content:
             application/problem+json:
@@ -387,6 +460,107 @@ components:
       - completed
       - failed
       - unsupported_version
+    WorkflowCompatibilityCategory:
+      type: string
+      enum:
+      - safe
+      - needs-attention
+      - breaking
+      - blocked
+    WorkflowCompatibilityReason:
+      type: object
+      required:
+      - code
+      - path
+      - message
+      - nextAction
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        nextAction:
+          type: string
+        path:
+          type: string
+      additionalProperties: false
+    WorkflowCompatibilityRequest:
+      type: object
+      required:
+      - before
+      - after
+      properties:
+        after:
+          $ref: '#/components/schemas/WorkflowDefinition'
+        before:
+          $ref: '#/components/schemas/WorkflowDefinition'
+      additionalProperties: false
+    WorkflowCompatibilityResult:
+      type: object
+      required:
+      - protocol
+      - category
+      - before
+      - after
+      - reasons
+      properties:
+        after:
+          $ref: '#/components/schemas/WorkflowDefinitionReference'
+        before:
+          $ref: '#/components/schemas/WorkflowDefinitionReference'
+        category:
+          $ref: '#/components/schemas/WorkflowCompatibilityCategory'
+        protocol:
+          type: string
+        reasons:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowCompatibilityReason'
+      additionalProperties: false
+    WorkflowDataContract:
+      type: object
+      required:
+      - contractId
+      - version
+      properties:
+        contractId:
+          type: string
+        version:
+          type: string
+      additionalProperties: false
+    WorkflowDefinition:
+      type: object
+      required:
+      - protocol
+      - owner
+      - name
+      - version
+      - inputContract
+      - resultContract
+      - steps
+      properties:
+        inputContract:
+          $ref: '#/components/schemas/WorkflowDataContract'
+        name:
+          type: string
+          description: Stable workflow name within the owning Module.
+        owner:
+          type: string
+          description: Stable Module identity that owns the workflow behavior.
+        protocol:
+          type: string
+          description: Versioned declaration protocol, currently `lenso.workflow-definition.v1`.
+        resultContract:
+          $ref: '#/components/schemas/WorkflowDataContract'
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowStepDeclaration'
+          description: Ordered step metadata. Position in this vector is contract-significant.
+        version:
+          type: string
+          description: Definition version pinned by every started instance.
+      additionalProperties: false
     WorkflowDefinitionIdentity:
       type: object
       required:
@@ -400,6 +574,20 @@ components:
           type: string
         version:
           type: string
+    WorkflowDefinitionReference:
+      type: object
+      required:
+      - owner
+      - name
+      - version
+      properties:
+        name:
+          type: string
+        owner:
+          type: string
+        version:
+          type: string
+      additionalProperties: false
     WorkflowFailureClassification:
       type: string
       enum:
@@ -491,6 +679,109 @@ components:
       - running
       - completed
       - failed
+    WorkflowMigrationAffectedInstance:
+      type: object
+      required:
+      - instanceId
+      - state
+      - steps
+      properties:
+        definitionDigest:
+          type:
+          - string
+          - 'null'
+        instanceId:
+          type: string
+        state:
+          type: string
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowMigrationAffectedStep'
+    WorkflowMigrationAffectedStep:
+      type: object
+      required:
+      - name
+      - position
+      - state
+      properties:
+        name:
+          type: string
+        position:
+          type: integer
+          format: int32
+          minimum: 0
+        state:
+          type: string
+    WorkflowMigrationApprovalBoundary:
+      type: string
+      enum:
+      - in_flight_workflow_migration
+    WorkflowMigrationDryRunPlan:
+      type: object
+      required:
+      - protocol
+      - planId
+      - mutatesState
+      - serviceId
+      - sourceDefinition
+      - sourceDefinitionDigest
+      - targetDefinition
+      - targetDefinitionDigest
+      - compatibility
+      - affectedInstances
+      - stateMapping
+      - rollbackConstraints
+      - approvalBoundary
+      - nextActions
+      properties:
+        affectedInstances:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowMigrationAffectedInstance'
+        approvalBoundary:
+          $ref: '#/components/schemas/WorkflowMigrationApprovalBoundary'
+        compatibility:
+          $ref: '#/components/schemas/WorkflowCompatibilityResult'
+        mutatesState:
+          type: boolean
+        nextActions:
+          type: array
+          items:
+            type: string
+        planId:
+          type: string
+        protocol:
+          type: string
+        rollbackConstraints:
+          type: array
+          items:
+            type: string
+        serviceId:
+          type: string
+        sourceDefinition:
+          $ref: '#/components/schemas/WorkflowDefinitionIdentity'
+        sourceDefinitionDigest:
+          type: string
+        stateMapping:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowStateMapping'
+        targetDefinition:
+          $ref: '#/components/schemas/WorkflowDefinitionIdentity'
+        targetDefinitionDigest:
+          type: string
+    WorkflowMigrationDryRunRequest:
+      type: object
+      required:
+      - fromVersion
+      - targetVersion
+      properties:
+        fromVersion:
+          type: string
+        targetVersion:
+          type: string
+      additionalProperties: false
     WorkflowOutgoingWorkInspection:
       type: object
       required:
@@ -524,6 +815,25 @@ components:
           type: string
         stepId:
           type: string
+    WorkflowRetryPolicyDeclaration:
+      type: object
+      required:
+      - maxAttempts
+      - delaysMs
+      properties:
+        delaysMs:
+          type: array
+          items:
+            type: integer
+            format: int64
+            minimum: 0
+          description: Delay before attempts 2..N. The length must equal `max_attempts` - 1.
+        maxAttempts:
+          type: integer
+          format: int32
+          description: Total attempts including the original execution.
+          minimum: 0
+      additionalProperties: false
     WorkflowStartRequest:
       type: object
       required:
@@ -556,6 +866,37 @@ components:
             type: string
         protocol:
           type: string
+    WorkflowStateMapping:
+      type: object
+      required:
+      - fromStep
+      - fromPosition
+      - status
+      properties:
+        fromPosition:
+          type: integer
+          format: int32
+          minimum: 0
+        fromStep:
+          type: string
+        status:
+          $ref: '#/components/schemas/WorkflowStateMappingStatus'
+        toPosition:
+          type:
+          - integer
+          - 'null'
+          format: int32
+          minimum: 0
+        toStep:
+          type:
+          - string
+          - 'null'
+    WorkflowStateMappingStatus:
+      type: string
+      enum:
+      - preserved
+      - moved
+      - unmapped
     WorkflowStepAttemptInspection:
       type: object
       required:
@@ -597,6 +938,32 @@ components:
       - running
       - failed
       - succeeded
+    WorkflowStepDeclaration:
+      type: object
+      required:
+      - name
+      properties:
+        displayName:
+          type:
+          - string
+          - 'null'
+        name:
+          type: string
+        retryPolicy:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/WorkflowRetryPolicyDeclaration'
+            description: |-
+              Optional durable retry schedule. `max_attempts` includes the original
+              attempt, while each delay schedules the following attempt.
+        timeoutMs:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          description: Optional durable timeout applied independently to every attempt.
+          minimum: 0
+      additionalProperties: false
     WorkflowStepFailureInspection:
       type: object
       required:
