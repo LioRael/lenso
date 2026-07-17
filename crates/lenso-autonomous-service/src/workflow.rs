@@ -13,13 +13,17 @@ use lenso_service::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest as _, Sha256};
 use sqlx::{FromRow, Postgres, Transaction};
+use std::fmt::Write as _;
 use thiserror::Error;
 use utoipa::ToSchema;
 use utoipa_axum::{router::OpenApiRouter, routes};
 use uuid::Uuid;
 
+mod evolution;
 mod recovery;
+pub use evolution::*;
 pub use recovery::*;
 
 pub const WORKFLOW_START_RESULT_PROTOCOL: &str = "lenso.workflow-start-result.v1";
@@ -205,6 +209,8 @@ pub enum WorkflowErrorCode {
     DefinitionNotFound,
     #[serde(rename = "workflow_definition_version_not_found")]
     DefinitionVersionNotFound,
+    #[serde(rename = "workflow_definition_version_unsupported")]
+    DefinitionVersionUnsupported,
     #[serde(rename = "workflow_tenant_required")]
     TenantRequired,
     #[serde(rename = "workflow_tenant_incompatible")]
@@ -236,6 +242,7 @@ impl WorkflowErrorCode {
             Self::InvalidRequest => "workflow_invalid_request",
             Self::DefinitionNotFound => "workflow_definition_not_found",
             Self::DefinitionVersionNotFound => "workflow_definition_version_not_found",
+            Self::DefinitionVersionUnsupported => "workflow_definition_version_unsupported",
             Self::TenantRequired => "workflow_tenant_required",
             Self::TenantIncompatible => "workflow_tenant_incompatible",
             Self::InstanceNotFound => "workflow_instance_not_found",
@@ -370,9 +377,9 @@ impl WorkflowApiError {
             | WorkflowErrorCode::InstanceNotFound
             | WorkflowErrorCode::StepNotFound
             | WorkflowErrorCode::ChildLinkNotFound => StatusCode::NOT_FOUND,
-            WorkflowErrorCode::TransitionConflict | WorkflowErrorCode::ChildNotTerminal => {
-                StatusCode::CONFLICT
-            }
+            WorkflowErrorCode::DefinitionVersionUnsupported
+            | WorkflowErrorCode::TransitionConflict
+            | WorkflowErrorCode::ChildNotTerminal => StatusCode::CONFLICT,
             WorkflowErrorCode::StoreUnavailable => StatusCode::SERVICE_UNAVAILABLE,
             WorkflowErrorCode::StoredStateInvalid => StatusCode::INTERNAL_SERVER_ERROR,
         }
@@ -390,6 +397,9 @@ impl From<WorkflowMutationError> for WorkflowApiError {
             WorkflowErrorCode::ChildNotTerminal => "wait_for_child_workflow",
             WorkflowErrorCode::DefinitionNotFound => "inspect_module_workflow_definitions",
             WorkflowErrorCode::DefinitionVersionNotFound => "select_registered_workflow_version",
+            WorkflowErrorCode::DefinitionVersionUnsupported => {
+                "deploy_worker_supporting_pinned_workflow_definition"
+            }
             WorkflowErrorCode::StoreUnavailable => "restore_service_store",
             _ => "inspect_workflow_state",
         };
@@ -493,6 +503,8 @@ struct WorkflowTransitionRow {
     definition_owner: String,
     definition_name: String,
     definition_version: String,
+    definition_artifact: Option<Value>,
+    definition_digest: Option<String>,
     instance_state: String,
     workflow_context: Option<Value>,
     definition_step_name: String,
@@ -507,6 +519,7 @@ pub(crate) fn workflow_router() -> OpenApiRouter<ServiceRuntimeState> {
     OpenApiRouter::new()
         .routes(routes!(start_workflow))
         .routes(routes!(inspect_workflow))
+        .merge(evolution::workflow_evolution_router())
 }
 
 #[utoipa::path(
@@ -539,6 +552,7 @@ async fn start_workflow(
     })?;
     validate_start_request(&state, &request)?;
     let definition = resolve_definition(&state, &owner, &name, &request.definition_version)?;
+    let (definition_artifact, definition_digest) = encode_pinned_definition(&definition)?;
     let first_step = definition.steps[0].clone();
     let instance_id = format!("workflow_{}", Uuid::now_v7());
     let initial_step_id = format!("workflow_step_{}", Uuid::now_v7());
@@ -562,9 +576,11 @@ async fn start_workflow(
         r#"
         insert into platform.service_workflow_instances (
             instance_id, service_id, definition_owner, definition_name,
-            definition_version, state, input, result, story_context,
+            definition_version, definition_artifact, definition_digest,
+            state, input, result, story_context,
             tenant_scope, initial_step_id, created_at, updated_at
-        ) values ($1, $2, $3, $4, $5, 'running', $6, null, $7, $8, $9, $10, $10)
+        ) values ($1, $2, $3, $4, $5, $6, $7, 'running', $8, null,
+                  $9, $10, $11, $12, $12)
         "#,
     )
     .bind(&instance_id)
@@ -572,6 +588,8 @@ async fn start_workflow(
     .bind(&definition.owner)
     .bind(&definition.name)
     .bind(&definition.version)
+    .bind(definition_artifact)
+    .bind(definition_digest)
     .bind(&request.input)
     .bind(story_context)
     .bind(tenant_scope)
@@ -643,6 +661,7 @@ pub async fn start_workflow_from_event_in_tx(
     envelope: &EventEnvelope,
 ) -> Result<WorkflowInstance, WorkflowMutationError> {
     let definition = resolve_definition(state, owner, name, version)?;
+    let (definition_artifact, definition_digest) = encode_pinned_definition(&definition)?;
     let story = envelope.context.story.as_ref().ok_or_else(|| {
         WorkflowMutationError::new(
             WorkflowErrorCode::ContextRequired,
@@ -739,11 +758,12 @@ pub async fn start_workflow_from_event_in_tx(
         r#"
         insert into platform.service_workflow_instances (
             instance_id, service_id, definition_owner, definition_name,
-            definition_version, state, input, result, story_context,
+            definition_version, definition_artifact, definition_digest,
+            state, input, result, story_context,
             tenant_scope, initial_step_id, start_trigger_kind, start_trigger_id,
             workflow_context, created_at, updated_at
-        ) values ($1, $2, $3, $4, $5, 'running', $6, null, $7, $8, $9,
-                  'event', $10, $11, $12, $12)
+        ) values ($1, $2, $3, $4, $5, $6, $7, 'running', $8, null, $9,
+                  $10, $11, 'event', $12, $13, $14, $14)
         "#,
     )
     .bind(&instance_id)
@@ -751,6 +771,8 @@ pub async fn start_workflow_from_event_in_tx(
     .bind(&definition.owner)
     .bind(&definition.name)
     .bind(&definition.version)
+    .bind(definition_artifact)
+    .bind(definition_digest)
     .bind(&envelope.content.data)
     .bind(story_json)
     .bind(tenant_json)
@@ -834,7 +856,8 @@ pub async fn advance_workflow_step_with_event_in_tx(
     let row = sqlx::query_as::<_, WorkflowTransitionRow>(
         r#"
         select instance.definition_owner, instance.definition_name,
-               instance.definition_version, instance.state as instance_state,
+               instance.definition_version, instance.definition_artifact,
+               instance.definition_digest, instance.state as instance_state,
                instance.workflow_context, step.definition_step_name,
                step.step_position, step.state as step_state,
                step.transition_id, step.outgoing_work, step.attempt_count
@@ -915,11 +938,13 @@ pub async fn advance_workflow_step_with_event_in_tx(
             format!("Workflow step `{step_id}` is not pending in a running instance"),
         ));
     }
-    let definition = resolve_definition(
+    let definition = resolve_pinned_definition(
         state,
         &row.definition_owner,
         &row.definition_name,
         &row.definition_version,
+        row.definition_artifact.as_ref(),
+        row.definition_digest.as_deref(),
     )?;
     let position = usize::try_from(row.step_position).map_err(|_| {
         WorkflowMutationError::new(
@@ -1273,6 +1298,84 @@ pub(crate) fn resolve_definition(
                 WorkflowErrorCode::DefinitionVersionNotFound,
                 format!(
                     "Workflow Definition `{owner}/{name}` has no registered version `{version}`"
+                ),
+            )
+        })
+}
+
+pub(crate) fn encode_pinned_definition(
+    definition: &WorkflowDefinition,
+) -> Result<(Value, String), WorkflowMutationError> {
+    let bytes = serde_json::to_vec(definition).map_err(|error| {
+        WorkflowMutationError::new(
+            WorkflowErrorCode::StoredStateInvalid,
+            format!("Could not encode pinned Workflow Definition: {error}"),
+        )
+    })?;
+    let artifact = serde_json::from_slice(&bytes).map_err(|error| {
+        WorkflowMutationError::new(
+            WorkflowErrorCode::StoredStateInvalid,
+            format!("Could not materialize pinned Workflow Definition: {error}"),
+        )
+    })?;
+    let digest = format!("sha256:{}", sha256_hex(&bytes));
+    Ok((artifact, digest))
+}
+
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    let mut encoded = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        write!(&mut encoded, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    encoded
+}
+
+pub(crate) fn resolve_pinned_definition(
+    state: &ServiceRuntimeState,
+    owner: &str,
+    name: &str,
+    version: &str,
+    artifact: Option<&Value>,
+    digest: Option<&str>,
+) -> Result<WorkflowDefinition, WorkflowMutationError> {
+    let artifact = artifact.ok_or_else(|| {
+        WorkflowMutationError::new(
+            WorkflowErrorCode::DefinitionVersionUnsupported,
+            format!(
+                "Workflow Definition `{owner}/{name}` version `{version}` has no pinned artifact and cannot be interpreted safely"
+            ),
+        )
+    })?;
+    let pinned: WorkflowDefinition = serde_json::from_value(artifact.clone()).map_err(|error| {
+        WorkflowMutationError::new(
+            WorkflowErrorCode::StoredStateInvalid,
+            format!("Pinned Workflow Definition artifact is invalid: {error}"),
+        )
+    })?;
+    if pinned.owner != owner || pinned.name != name || pinned.version != version {
+        return Err(WorkflowMutationError::new(
+            WorkflowErrorCode::StoredStateInvalid,
+            "Pinned Workflow Definition artifact does not match the stored instance identity",
+        ));
+    }
+    let (_, expected_digest) = encode_pinned_definition(&pinned)?;
+    if digest != Some(expected_digest.as_str()) {
+        return Err(WorkflowMutationError::new(
+            WorkflowErrorCode::StoredStateInvalid,
+            "Pinned Workflow Definition digest does not match its stored artifact",
+        ));
+    }
+    state
+        .workflow_definitions
+        .iter()
+        .find(|candidate| **candidate == pinned)
+        .cloned()
+        .ok_or_else(|| {
+            WorkflowMutationError::new(
+                WorkflowErrorCode::DefinitionVersionUnsupported,
+                format!(
+                    "This worker does not support the exact pinned Workflow Definition `{owner}/{name}` version `{version}`"
                 ),
             )
         })

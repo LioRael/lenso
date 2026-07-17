@@ -106,8 +106,11 @@ under `ModuleManifest.runtime.workflows`. Autonomous Service composition
 collects those definitions, validates that each owner is a Module owned by the
 Service, and starts instances in the Service Store through
 `POST /runtime/workflows/{owner}/{name}/instances`. The instance and its initial
-step are committed together with a pinned definition version, Story Context,
-tenant scope, and timestamps. `GET /runtime/workflows/instances/{instance_id}`
+step are committed together with the exact immutable definition artifact, its
+SHA-256 digest, the selected version, Story Context, tenant scope, and
+timestamps. The artifact migration fails closed while any legacy instance is
+still running, so an upgrade cannot silently adopt a new worker definition as
+old durable state. `GET /runtime/workflows/instances/{instance_id}`
 reconstructs the same state from the Store after a runtime restart. Declared
 Event Contract deliveries can also start an instance inside the existing Inbox
 transaction. Module behavior advances a pending step with a stable transition
@@ -127,7 +130,16 @@ completion. The child retains distinct identity, explicit parent and causation
 links, and validated inherited Story, delegated actor, tenant, deadline, and
 idempotency context. A stable completion delivery resumes the parent exactly
 once after either worker restarts; child failure or an unsupported pinned
-version remains durable parent evidence with a stable next action. This slice
+version remains durable parent evidence with a stable next action. Retry and
+timer claim transactions reject a worker whose registered definition is not
+structurally identical to the pinned artifact, so a deployment cannot reuse a
+version string to reinterpret existing state. Definition compatibility checks
+return deterministic `safe`, `needs-attention`, `breaking`, or `blocked`
+evidence with paths and next actions. The migration dry-run endpoint reports
+affected in-flight instances, deterministic state mappings, the target version,
+compatibility evidence, rollback constraints, and the explicit
+`in_flight_workflow_migration` Approval Boundary without changing instance,
+step, timer, attempt, or claim state. This slice
 does not add compensation or reinterpret the existing lightweight Host flow,
 Runtime Function, or Provider models.
 Its versioned Service, Event, Config, and Reliability Contract declarations are

@@ -17,6 +17,10 @@ pub fn generate_contracts() -> anyhow::Result<()> {
         &generated_workflow_definition_schema(),
     )?;
     write_json(
+        "contracts/workflows/lenso.workflow-compatibility.v1.json",
+        &generated_workflow_compatibility_artifact(),
+    )?;
+    write_json(
         "contracts/errors/error-response.v1.schema.json",
         &error_response_schema(),
     )?;
@@ -90,6 +94,10 @@ pub fn generated_autonomous_service_runtime_openapi() -> utoipa::openapi::OpenAp
 
 pub fn generated_workflow_definition_schema() -> Value {
     lenso_contracts::workflow_definition_schema()
+}
+
+pub fn generated_workflow_compatibility_artifact() -> Value {
+    lenso_contracts::workflow_compatibility_artifact()
 }
 
 pub fn generated_error_response_schema() -> Value {

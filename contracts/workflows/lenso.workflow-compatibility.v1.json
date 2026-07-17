@@ -1,0 +1,111 @@
+{
+  "cases": [
+    {
+      "name": "safe",
+      "result": {
+        "after": {
+          "name": "ticket_sla",
+          "owner": "support-sla",
+          "version": "v2"
+        },
+        "before": {
+          "name": "ticket_sla",
+          "owner": "support-sla",
+          "version": "v1"
+        },
+        "category": "safe",
+        "protocol": "lenso.workflow-compatibility.v1",
+        "reasons": [
+          {
+            "code": "workflow_definition_compatible",
+            "message": "The new version preserves the existing Workflow execution contract.",
+            "nextAction": "Publish the new immutable version and select it explicitly for new instances.",
+            "path": "$.after.version"
+          }
+        ]
+      }
+    },
+    {
+      "name": "needs_attention",
+      "result": {
+        "after": {
+          "name": "ticket_sla",
+          "owner": "support-sla",
+          "version": "v2"
+        },
+        "before": {
+          "name": "ticket_sla",
+          "owner": "support-sla",
+          "version": "v1"
+        },
+        "category": "needs-attention",
+        "protocol": "lenso.workflow-compatibility.v1",
+        "reasons": [
+          {
+            "code": "workflow_timeout_changed",
+            "message": "The timeout for an existing Workflow step changed.",
+            "nextAction": "Review timer effects for new instances and keep in-flight timers pinned.",
+            "path": "$.after.steps[0].timeoutMs"
+          }
+        ]
+      }
+    },
+    {
+      "name": "breaking",
+      "result": {
+        "after": {
+          "name": "ticket_sla",
+          "owner": "support-sla",
+          "version": "v2"
+        },
+        "before": {
+          "name": "ticket_sla",
+          "owner": "support-sla",
+          "version": "v1"
+        },
+        "category": "breaking",
+        "protocol": "lenso.workflow-compatibility.v1",
+        "reasons": [
+          {
+            "code": "workflow_step_moved",
+            "message": "An existing ordered Workflow step moved to a different position.",
+            "nextAction": "Preserve step order or provide an explicit in-flight state mapping.",
+            "path": "$.after.steps[0].name"
+          },
+          {
+            "code": "workflow_step_removed",
+            "message": "An existing ordered Workflow step was removed.",
+            "nextAction": "Preserve the existing step or provide an explicit in-flight state mapping.",
+            "path": "$.before.steps[0]"
+          }
+        ]
+      }
+    },
+    {
+      "name": "blocked",
+      "result": {
+        "after": {
+          "name": "ticket_sla",
+          "owner": "support-sla",
+          "version": "v1"
+        },
+        "before": {
+          "name": "ticket_sla",
+          "owner": "support-sla",
+          "version": "v1"
+        },
+        "category": "blocked",
+        "protocol": "lenso.workflow-compatibility.v1",
+        "reasons": [
+          {
+            "code": "workflow_version_not_immutable",
+            "message": "Changed Workflow Definition content must use a new explicit version.",
+            "nextAction": "Restore the original version artifact and publish the changed definition under a new version.",
+            "path": "$.after.version"
+          }
+        ]
+      }
+    }
+  ],
+  "protocol": "lenso.workflow-compatibility.v1"
+}
