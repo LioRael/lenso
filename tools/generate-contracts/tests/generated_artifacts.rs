@@ -38,6 +38,19 @@ fn committed_workflow_definition_schema_matches_generator() {
 }
 
 #[test]
+fn committed_workflow_compatibility_artifact_matches_generator() {
+    let committed: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/workflows/lenso.workflow-compatibility.v1.json"
+    ))
+    .expect("committed Workflow compatibility artifact should parse");
+
+    assert_eq!(
+        committed,
+        generate_contracts::generated_workflow_compatibility_artifact()
+    );
+}
+
+#[test]
 fn committed_autonomous_service_schema_matches_generator() {
     let committed: serde_json::Value = serde_json::from_str(include_str!(
         "../../../contracts/services/lenso-service.v2.schema.json"

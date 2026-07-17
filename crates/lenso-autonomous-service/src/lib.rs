@@ -180,6 +180,10 @@ pub const SERVICE_RUNTIME_MIGRATIONS: &[Migration] = &[
         sql: include_str!("../migrations/0013_recover_workflow_retries_and_timers.sql"),
     },
     Migration {
+        name: "autonomous-service/0014_pin_workflow_definition_artifacts",
+        sql: include_str!("../migrations/0014_pin_workflow_definition_artifacts.sql"),
+    },
+    Migration {
         name: "autonomous-service/0014_compensate_workflow_effects",
         sql: include_str!("../migrations/0014_compensate_workflow_effects.sql"),
     },
@@ -1518,6 +1522,7 @@ mod tests {
         let app = service_router(OpenApiRouter::new(), state);
 
         let response = app
+            .clone()
             .oneshot(
                 Request::post("/runtime/workflows/support/ticket_sla/instances")
                     .header(header::CONTENT_TYPE, "application/json")
@@ -1529,6 +1534,33 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         let body = response.into_body().collect().await.unwrap().to_bytes();
+        let error: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(error["code"], "workflow_invalid_request");
+        assert_eq!(error["next_actions"][0], "correct_workflow_request");
+
+        let compatibility_response = app
+            .oneshot(
+                Request::post("/runtime/workflows/definitions/compatibility")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(axum::body::Body::from("{"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(compatibility_response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(
+            compatibility_response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .unwrap(),
+            "application/problem+json"
+        );
+        let body = compatibility_response
+            .into_body()
+            .collect()
+            .await
+            .unwrap()
+            .to_bytes();
         let error: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(error["code"], "workflow_invalid_request");
         assert_eq!(error["next_actions"][0], "correct_workflow_request");

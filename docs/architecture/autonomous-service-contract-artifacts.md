@@ -48,6 +48,37 @@ schema, and v2 fixture describe the same surface.
 Compatibility evolution is defined in the generated
 [`contract-compatibility.md`](contract-compatibility.md) reference and its packaged golden pairs.
 
+## Durable Workflow version evolution
+
+Migration `0014_pin_workflow_definition_artifacts` fails closed when a Store
+still contains running pre-artifact Workflow Instances. Operators must drain
+those instances with the previous Service release before retrying the upgrade;
+the migration never adopts the new worker's definition as legacy state.
+
+Every Durable Workflow Instance started after that gate retains the exact
+`lenso.workflow-definition.v1` artifact and a canonical SHA-256 digest beside
+its selected version. Deploying another definition or restarting a worker does
+not rewrite those fields. A worker must register an exactly matching artifact
+before it can claim retry or timer work for that instance; an unsupported or
+same-version-but-different definition rolls the claim transaction back without
+changing workflow state.
+
+`POST /runtime/workflows/definitions/compatibility` compares immutable
+definition versions and returns the deterministic `safe`, `needs-attention`,
+`breaking`, or `blocked` category plus stable paths and next actions. The
+authoritative examples are generated at
+`contracts/workflows/lenso.workflow-compatibility.v1.json`.
+
+`POST /runtime/workflows/{owner}/{name}/migration-plans/dry-run` is read-only.
+It identifies in-flight source-version instances and their persisted steps,
+derives a deterministic state mapping to the registered target definition,
+includes compatibility evidence and rollback constraints, and returns a stable
+content-addressed plan ID. Every plan reports `mutatesState: false` and the
+`in_flight_workflow_migration` Approval Boundary. Lenso does not automatically
+execute a plan during definition deployment or worker restart. The generated
+Autonomous Service Runtime OpenAPI is the versioned migration-plan contract;
+Runtime Console may consume that contract but is not in the execution path.
+
 ## Direct HTTP bindings
 
 An OpenAPI `serviceContract` can generate `DirectHttpBindings` from its versioned artifact. Each

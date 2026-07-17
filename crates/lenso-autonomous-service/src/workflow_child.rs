@@ -1,6 +1,7 @@
 use crate::{
     ServiceRuntimeState, WorkflowErrorCode, WorkflowFailureEvidence, WorkflowMutationError,
-    WorkflowTenantScope, WorkflowTransitionDisposition, postgres_now, resolve_definition,
+    WorkflowTenantScope, WorkflowTransitionDisposition, encode_pinned_definition, postgres_now,
+    resolve_definition, resolve_pinned_definition,
 };
 use chrono::{DateTime, Utc};
 use lenso_service::{CausationContext, EventContext};
@@ -90,6 +91,8 @@ struct ChildResumeRow {
     parent_definition_owner: String,
     parent_definition_name: String,
     parent_definition_version: String,
+    parent_definition_artifact: Option<Value>,
+    parent_definition_digest: Option<String>,
     parent_state: String,
     parent_step_name: String,
     parent_step_position: i32,
@@ -97,6 +100,8 @@ struct ChildResumeRow {
     child_definition_owner: String,
     child_definition_name: String,
     child_definition_version: String,
+    child_definition_artifact: Option<Value>,
+    child_definition_digest: Option<String>,
     child_state: String,
     child_failure_evidence: Option<Value>,
 }
@@ -243,6 +248,7 @@ pub async fn start_child_workflow_in_tx(
 
     let child_instance_id = format!("workflow_{}", Uuid::now_v7());
     let child_step_id = format!("workflow_step_{}", Uuid::now_v7());
+    let (definition_artifact, definition_digest) = encode_pinned_definition(&definition)?;
     let context_json = serde_json::to_value(&context).map_err(|error| {
         WorkflowMutationError::new(
             WorkflowErrorCode::StoredStateInvalid,
@@ -254,12 +260,13 @@ pub async fn start_child_workflow_in_tx(
         r#"
         insert into platform.service_workflow_instances (
             instance_id, service_id, definition_owner, definition_name,
-            definition_version, state, input, result, story_context,
+            definition_version, definition_artifact, definition_digest,
+            state, input, result, story_context,
             tenant_scope, initial_step_id, start_trigger_kind, start_trigger_id,
             workflow_context, parent_instance_id, parent_step_id, causation_id,
             created_at, updated_at
-        ) values ($1, $2, $3, $4, $5, 'running', $6, null, $7, $8, $9,
-                  'child', $10, $11, $12, $13, $14, $15, $15)
+        ) values ($1, $2, $3, $4, $5, $6, $7, 'running', $8, null, $9,
+                  $10, $11, 'child', $12, $13, $14, $15, $16, $17, $17)
         "#,
     )
     .bind(&child_instance_id)
@@ -267,6 +274,8 @@ pub async fn start_child_workflow_in_tx(
     .bind(&definition.owner)
     .bind(&definition.name)
     .bind(&definition.version)
+    .bind(definition_artifact)
+    .bind(definition_digest)
     .bind(&request.input)
     .bind(&parent.story_context)
     .bind(&parent.tenant_scope)
@@ -509,6 +518,8 @@ pub async fn resume_parent_from_child_in_tx(
                parent.definition_owner as parent_definition_owner,
                parent.definition_name as parent_definition_name,
                parent.definition_version as parent_definition_version,
+               parent.definition_artifact as parent_definition_artifact,
+               parent.definition_digest as parent_definition_digest,
                parent.state as parent_state,
                step.definition_step_name as parent_step_name,
                step.step_position as parent_step_position,
@@ -516,6 +527,8 @@ pub async fn resume_parent_from_child_in_tx(
                child.definition_owner as child_definition_owner,
                child.definition_name as child_definition_name,
                child.definition_version as child_definition_version,
+               child.definition_artifact as child_definition_artifact,
+               child.definition_digest as child_definition_digest,
                child.state as child_state,
                child.failure_evidence as child_failure_evidence
         from platform.service_workflow_child_links link
@@ -578,15 +591,19 @@ pub async fn resume_parent_from_child_in_tx(
         ));
     }
 
-    if let Err(error) = resolve_definition(
+    if let Err(error) = resolve_pinned_definition(
         state,
         &row.child_definition_owner,
         &row.child_definition_name,
         &row.child_definition_version,
+        row.child_definition_artifact.as_ref(),
+        row.child_definition_digest.as_deref(),
     ) {
         if matches!(
             error.code,
-            WorkflowErrorCode::DefinitionNotFound | WorkflowErrorCode::DefinitionVersionNotFound
+            WorkflowErrorCode::DefinitionNotFound
+                | WorkflowErrorCode::DefinitionVersionNotFound
+                | WorkflowErrorCode::DefinitionVersionUnsupported
         ) {
             let failure = WorkflowFailureEvidence::new(
                 "workflow_child_definition_version_unsupported",
@@ -638,11 +655,13 @@ pub async fn resume_parent_from_child_in_tx(
             .await
         }
         "completed" => {
-            let parent_definition = match resolve_definition(
+            let parent_definition = match resolve_pinned_definition(
                 state,
                 &row.parent_definition_owner,
                 &row.parent_definition_name,
                 &row.parent_definition_version,
+                row.parent_definition_artifact.as_ref(),
+                row.parent_definition_digest.as_deref(),
             ) {
                 Ok(definition) => definition,
                 Err(error)
@@ -650,6 +669,7 @@ pub async fn resume_parent_from_child_in_tx(
                         error.code,
                         WorkflowErrorCode::DefinitionNotFound
                             | WorkflowErrorCode::DefinitionVersionNotFound
+                            | WorkflowErrorCode::DefinitionVersionUnsupported
                     ) =>
                 {
                     let failure = WorkflowFailureEvidence::new(

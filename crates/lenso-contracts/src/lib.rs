@@ -51,8 +51,10 @@ pub use operation::{
 };
 pub use runtime::{
     RuntimeFunctionDeclaration, RuntimeRetryPolicyDeclaration, RuntimeSurface,
-    ScheduledFunctionDeclaration, WORKFLOW_DEFINITION_PROTOCOL, WorkflowCompensationDeclaration,
-    WorkflowDataContract, WorkflowDefinition, WorkflowRetryPolicyDeclaration,
-    WorkflowStepDeclaration, workflow_definition_schema,
+    ScheduledFunctionDeclaration, WORKFLOW_COMPATIBILITY_PROTOCOL, WORKFLOW_DEFINITION_PROTOCOL,
+    WorkflowCompatibilityCategory, WorkflowCompatibilityReason, WorkflowCompatibilityResult,
+    WorkflowCompensationDeclaration, WorkflowDataContract, WorkflowDefinition,
+    WorkflowDefinitionReference, WorkflowRetryPolicyDeclaration, WorkflowStepDeclaration,
+    evaluate_workflow_compatibility, workflow_compatibility_artifact, workflow_definition_schema,
 };
 pub use story_display::{StoryDisplayDescriptor, StoryDisplaySource};

@@ -4,14 +4,14 @@ use chrono::{DateTime, Duration, Utc};
 use http::{Request, StatusCode, header};
 use http_body_util::BodyExt as _;
 use lenso_autonomous_service::{
-    LocalTransportAdapter, ServiceEventHandler, ServiceEventHandlerError, ServiceEventPublisher,
-    ServiceRuntimeConfig, ServiceRuntimeState, SystemSandboxWorkflowClock, TransportAdapter,
-    TransportPublication, WorkflowChildStartRequest, WorkflowChildStartResult, WorkflowErrorCode,
-    WorkflowEventPublication, WorkflowFailureClassification, WorkflowFailureDisposition,
-    WorkflowFailureEvidence, WorkflowInstance, WorkflowStepFailure, WorkflowTimerKind,
-    WorkflowTransitionDisposition, advance_claimed_workflow_retry_with_event_in_tx,
-    advance_workflow_step_with_event_in_tx, claim_due_workflow_work_at,
-    complete_workflow_compensation_from_event_in_tx,
+    LocalTransportAdapter, SERVICE_RUNTIME_MIGRATIONS, ServiceEventHandler,
+    ServiceEventHandlerError, ServiceEventPublisher, ServiceRuntimeConfig, ServiceRuntimeState,
+    SystemSandboxWorkflowClock, TransportAdapter, TransportPublication, WorkflowChildStartRequest,
+    WorkflowChildStartResult, WorkflowErrorCode, WorkflowEventPublication,
+    WorkflowFailureClassification, WorkflowFailureDisposition, WorkflowFailureEvidence,
+    WorkflowInstance, WorkflowStepFailure, WorkflowTimerKind, WorkflowTransitionDisposition,
+    advance_claimed_workflow_retry_with_event_in_tx, advance_workflow_step_with_event_in_tx,
+    claim_due_workflow_work_at, complete_workflow_compensation_from_event_in_tx,
     consume_service_events_once_without_workload_identity,
     dispatch_workflow_compensation_with_event_in_tx, fail_workflow_in_tx, prepare_runtime,
     record_claimed_workflow_step_failure_at, record_workflow_compensation_failure_at,
@@ -518,6 +518,19 @@ fn start_request(version: &str) -> Request<Body> {
         .unwrap()
 }
 
+fn migration_dry_run_request(from_version: &str, target_version: &str) -> Request<Body> {
+    Request::post("/runtime/workflows/support-sla/ticket_sla/migration-plans/dry-run")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            serde_json::json!({
+                "fromVersion": from_version,
+                "targetVersion": target_version
+            })
+            .to_string(),
+        ))
+        .unwrap()
+}
+
 async fn json_body(response: axum::response::Response) -> serde_json::Value {
     let body = response.into_body().collect().await.unwrap().to_bytes();
     serde_json::from_slice(&body).unwrap()
@@ -730,6 +743,62 @@ async fn versioned_workflow_start_and_inspection_survive_runtime_restart() {
     assert_ne!(newer["instance"]["instanceId"], instance_id);
     assert_eq!(inspected["instance"]["definition"]["version"], "v1");
 
+    let first_plan_response = restarted_app
+        .clone()
+        .oneshot(migration_dry_run_request("v1", "v2"))
+        .await
+        .unwrap();
+    assert_eq!(first_plan_response.status(), StatusCode::OK);
+    let first_plan = json_body(first_plan_response).await;
+    let second_plan_response = restarted_app
+        .clone()
+        .oneshot(migration_dry_run_request("v1", "v2"))
+        .await
+        .unwrap();
+    assert_eq!(second_plan_response.status(), StatusCode::OK);
+    let second_plan = json_body(second_plan_response).await;
+    assert_eq!(first_plan["protocol"], "lenso.workflow-migration-plan.v1");
+    assert_eq!(first_plan["mutatesState"], false);
+    assert_eq!(first_plan["sourceDefinition"]["version"], "v1");
+    assert!(
+        first_plan["sourceDefinitionDigest"]
+            .as_str()
+            .unwrap()
+            .starts_with("sha256:")
+    );
+    assert_eq!(first_plan["targetDefinition"]["version"], "v2");
+    assert!(
+        first_plan["targetDefinitionDigest"]
+            .as_str()
+            .unwrap()
+            .starts_with("sha256:")
+    );
+    assert_eq!(first_plan["compatibility"]["category"], "safe");
+    assert_eq!(first_plan["affectedInstances"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        first_plan["affectedInstances"][0]["instanceId"],
+        instance_id
+    );
+    assert_eq!(first_plan["stateMapping"][0]["status"], "preserved");
+    assert_eq!(
+        first_plan["approvalBoundary"],
+        "in_flight_workflow_migration"
+    );
+    assert_eq!(first_plan["planId"], second_plan["planId"]);
+    assert_eq!(
+        first_plan["affectedInstances"],
+        second_plan["affectedInstances"]
+    );
+
+    let pinned_version: String = sqlx::query_scalar(
+        "select definition_version from platform.service_workflow_instances where instance_id = $1",
+    )
+    .bind(&instance_id)
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    assert_eq!(pinned_version, "v1");
+
     let unknown_response = restarted_app.oneshot(start_request("v3")).await.unwrap();
     assert_eq!(unknown_response.status(), StatusCode::NOT_FOUND);
     let unknown = json_body(unknown_response).await;
@@ -753,6 +822,199 @@ async fn versioned_workflow_start_and_inspection_survive_runtime_restart() {
     assert_eq!(persisted_instances, 2);
     assert_eq!(persisted_steps, 2);
 
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn pinned_definition_migration_rejects_legacy_running_instances() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let guard_index = SERVICE_RUNTIME_MIGRATIONS.len() - 1;
+    assert_eq!(
+        SERVICE_RUNTIME_MIGRATIONS[guard_index].name,
+        "autonomous-service/0014_pin_workflow_definition_artifacts"
+    );
+    platform_core::apply_migrations(&db.pool, &SERVICE_RUNTIME_MIGRATIONS[..guard_index])
+        .await
+        .unwrap();
+    sqlx::query(
+        r#"
+        insert into platform.service_workflow_instances (
+            instance_id, service_id, definition_owner, definition_name,
+            definition_version, state, input, story_context, initial_step_id,
+            created_at, updated_at
+        ) values (
+            'workflow_legacy', 'support-sla', 'support-sla', 'ticket_sla',
+            'v1', 'running', '{}'::jsonb, '{}'::jsonb, 'workflow_step_legacy',
+            now(), now()
+        )
+        "#,
+    )
+    .execute(&db.pool)
+    .await
+    .unwrap();
+
+    let error =
+        platform_core::apply_migrations(&db.pool, &SERVICE_RUNTIME_MIGRATIONS[guard_index..])
+            .await
+            .unwrap_err();
+    assert_eq!(error.public_message, "Database migration failed");
+    let migration_applied: bool = sqlx::query_scalar(
+        "select exists(select 1 from platform.schema_migrations where name = $1)",
+    )
+    .bind(SERVICE_RUNTIME_MIGRATIONS[guard_index].name)
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    let artifact_column_exists: bool = sqlx::query_scalar(
+        r#"
+        select exists(
+            select 1 from information_schema.columns
+            where table_schema = 'platform'
+              and table_name = 'service_workflow_instances'
+              and column_name = 'definition_artifact'
+        )
+        "#,
+    )
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    assert!(!migration_applied);
+    assert!(!artifact_column_exists);
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn incompatible_worker_rejects_pinned_claim_without_mutating_workflow_state() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let service = service();
+    let original_manifest = manifest();
+    let original_state = prepare_runtime(
+        &service,
+        &runtime_config(&original_manifest),
+        db.pool.clone(),
+        &[],
+    )
+    .await
+    .unwrap();
+    let app = service_router(OpenApiRouter::new(), original_state.clone());
+    let started_response = app.clone().oneshot(start_request("v1")).await.unwrap();
+    assert_eq!(started_response.status(), StatusCode::CREATED);
+    let started = json_body(started_response).await;
+    let instance_id = started["instance"]["instanceId"].as_str().unwrap();
+    let step_id = started["instance"]["initialStepId"].as_str().unwrap();
+    let due_at: DateTime<Utc> = sqlx::query_scalar(
+        "select due_at from platform.service_workflow_timers where instance_id = $1",
+    )
+    .bind(instance_id)
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    drop(app);
+    drop(original_state);
+
+    let mut reinterpreted_v1 = workflow("v1");
+    reinterpreted_v1.steps[0].timeout_ms = Some(9_000);
+    let reinterpreted_manifest = ModuleManifest::builder("support-sla")
+        .runtime(RuntimeSurface {
+            functions: vec![],
+            schedules: vec![],
+            workflows: vec![reinterpreted_v1, workflow("v2")],
+        })
+        .build();
+    let incompatible_state = prepare_runtime(
+        &service,
+        &runtime_config(&reinterpreted_manifest),
+        db.pool.clone(),
+        &[],
+    )
+    .await
+    .unwrap();
+    let incompatible_app = service_router(OpenApiRouter::new(), incompatible_state.clone());
+    let blocked_plan_response = incompatible_app
+        .oneshot(migration_dry_run_request("v1", "v2"))
+        .await
+        .unwrap();
+    assert_eq!(blocked_plan_response.status(), StatusCode::OK);
+    let blocked_plan = json_body(blocked_plan_response).await;
+    assert_eq!(blocked_plan["compatibility"]["category"], "blocked");
+    assert_eq!(
+        blocked_plan["compatibility"]["reasons"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|reason| { reason["code"] == "workflow_in_flight_source_artifact_mismatch" })
+            .count(),
+        1
+    );
+    let error = claim_due_workflow_work_at(
+        &incompatible_state,
+        "support-sla-worker/new-deployment",
+        due_at + Duration::milliseconds(1),
+        Duration::seconds(30),
+        10,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(error.code, WorkflowErrorCode::DefinitionVersionUnsupported);
+
+    let timer: (String, Option<String>, Option<DateTime<Utc>>) = sqlx::query_as(
+        "select state, claimed_by, claimed_at from platform.service_workflow_timers where instance_id = $1",
+    )
+    .bind(instance_id)
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    let attempt_count: i64 = sqlx::query_scalar(
+        "select count(*) from platform.service_workflow_step_attempts where instance_id = $1",
+    )
+    .bind(instance_id)
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    let states: (String, String) = sqlx::query_as(
+        r#"
+        select instance.state, step.state
+        from platform.service_workflow_instances instance
+        join platform.service_workflow_steps step on step.instance_id = instance.instance_id
+        where instance.instance_id = $1 and step.step_id = $2
+        "#,
+    )
+    .bind(instance_id)
+    .bind(step_id)
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    assert_eq!(timer, ("pending".to_owned(), None, None));
+    assert_eq!(attempt_count, 0);
+    assert_eq!(states, ("running".to_owned(), "pending".to_owned()));
+
+    let compatible_state = prepare_runtime(
+        &service,
+        &runtime_config(&original_manifest),
+        db.pool.clone(),
+        &[],
+    )
+    .await
+    .unwrap();
+    let claims = claim_due_workflow_work_at(
+        &compatible_state,
+        "support-sla-worker/v1-compatible",
+        due_at + Duration::milliseconds(1),
+        Duration::seconds(30),
+        10,
+    )
+    .await
+    .unwrap();
+    assert_eq!(claims.len(), 1);
+    assert_eq!(claims[0].definition.version, "v1");
+
+    drop(compatible_state);
+    drop(incompatible_state);
     db.cleanup().await;
 }
 
