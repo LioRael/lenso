@@ -11,14 +11,17 @@ use lenso_autonomous_service::{
     WorkflowFailureClassification, WorkflowFailureDisposition, WorkflowFailureEvidence,
     WorkflowInstance, WorkflowStepFailure, WorkflowTimerKind, WorkflowTransitionDisposition,
     advance_claimed_workflow_retry_with_event_in_tx, advance_workflow_step_with_event_in_tx,
-    claim_due_workflow_work_at, consume_service_events_once_without_workload_identity,
-    fail_workflow_in_tx, prepare_runtime, record_claimed_workflow_step_failure_at,
+    claim_due_workflow_work_at, complete_workflow_compensation_from_event_in_tx,
+    consume_service_events_once_without_workload_identity,
+    dispatch_workflow_compensation_with_event_in_tx, fail_workflow_in_tx, prepare_runtime,
+    record_claimed_workflow_step_failure_at, record_workflow_compensation_failure_at,
     record_workflow_step_failure_at, relay_service_events_once, resume_parent_from_child_in_tx,
-    service_router, start_child_workflow_in_tx, start_workflow_from_event_in_tx,
+    select_workflow_compensations_after_timeout_at, service_router, start_child_workflow_in_tx,
+    start_workflow_from_event_in_tx,
 };
 use lenso_contracts::{
-    ModuleManifest, RuntimeSurface, WorkflowDataContract, WorkflowDefinition,
-    WorkflowRetryPolicyDeclaration, WorkflowStepDeclaration,
+    ModuleManifest, RuntimeSurface, WorkflowCompensationDeclaration, WorkflowDataContract,
+    WorkflowDefinition, WorkflowRetryPolicyDeclaration, WorkflowStepDeclaration,
 };
 use lenso_service::{
     AutonomousServiceContract, AutonomousServiceStore, AutonomousServiceWorkload,
@@ -79,7 +82,18 @@ fn service() -> AutonomousServiceContract {
         CommonContextRequirement::Causation,
         CommonContextRequirement::Region,
     ]);
-    service.event_contracts = vec![acknowledgement];
+    let mut compensation_request = EventContractArtifact::new(
+        "sla-compensation-requested",
+        "support-sla",
+        "v1",
+        ServiceTenancyMode::Required,
+        EventArtifactReference::new(
+            EventArtifactFormat::JsonSchema,
+            "contracts/events/support/support.sla-compensation-requested.v1.schema.json",
+        ),
+    );
+    compensation_request.context = acknowledgement.context.clone();
+    service.event_contracts = vec![acknowledgement, compensation_request];
     service
 }
 
@@ -96,6 +110,28 @@ fn support_service() -> AutonomousServiceContract {
     );
     service.modules = vec!["support-ticket".to_owned()];
     service.stores = vec![AutonomousServiceStore::new("primary", "support")];
+    let mut compensation_completed = EventContractArtifact::new(
+        "sla-compensated",
+        "support-ticket",
+        "v1",
+        ServiceTenancyMode::Required,
+        EventArtifactReference::new(
+            EventArtifactFormat::JsonSchema,
+            "contracts/events/support/support.sla-compensated.v1.schema.json",
+        ),
+    );
+    compensation_completed.context = ContractContextRequirements::new(vec![
+        CommonContextRequirement::Story,
+        CommonContextRequirement::Trace,
+        CommonContextRequirement::ServicePrincipal,
+        CommonContextRequirement::DelegatedActor,
+        CommonContextRequirement::Tenant,
+        CommonContextRequirement::Deadline,
+        CommonContextRequirement::IdempotencyKey,
+        CommonContextRequirement::Causation,
+        CommonContextRequirement::Region,
+    ]);
+    service.event_contracts = vec![compensation_completed];
     service
 }
 
@@ -107,6 +143,7 @@ fn manifest() -> ModuleManifest {
             workflows: vec![
                 workflow("v1"),
                 workflow("v2"),
+                compensation_workflow("v1"),
                 child_workflow("v1"),
                 child_workflow("v2"),
             ],
@@ -130,7 +167,12 @@ fn manifest_without_child_v1() -> ModuleManifest {
         .runtime(RuntimeSurface {
             functions: vec![],
             schedules: vec![],
-            workflows: vec![workflow("v1"), workflow("v2"), child_workflow("v2")],
+            workflows: vec![
+                workflow("v1"),
+                workflow("v2"),
+                compensation_workflow("v1"),
+                child_workflow("v2"),
+            ],
         })
         .build()
 }
@@ -147,6 +189,35 @@ fn workflow(version: &str) -> WorkflowDefinition {
                 .with_retry_policy(WorkflowRetryPolicyDeclaration::new(3, vec![1_000, 2_000]))
                 .with_timeout_ms(5_000),
             WorkflowStepDeclaration::new("await_resolution"),
+        ],
+    )
+}
+
+fn compensation_workflow(version: &str) -> WorkflowDefinition {
+    WorkflowDefinition::new(
+        "support-sla",
+        "ticket_sla_compensation",
+        version,
+        WorkflowDataContract::new("support.sla.start", "v1"),
+        WorkflowDataContract::new("support.sla.result", "v1"),
+        vec![
+            WorkflowStepDeclaration::new("acknowledge_ticket").with_compensation(
+                WorkflowCompensationDeclaration::new(
+                    "withdraw_sla_acknowledgement",
+                    2,
+                    WorkflowDataContract::new("sla-compensation-requested", "v1"),
+                )
+                .with_completion_contract(WorkflowDataContract::new("sla-compensated", "v1")),
+            ),
+            WorkflowStepDeclaration::new("reserve_on_call").with_compensation(
+                WorkflowCompensationDeclaration::new(
+                    "release_on_call",
+                    1,
+                    WorkflowDataContract::new("sla-compensation-requested", "v1"),
+                )
+                .with_completion_contract(WorkflowDataContract::new("sla-compensated", "v1")),
+            ),
+            WorkflowStepDeclaration::new("await_resolution").with_timeout_ms(5_000),
         ],
     )
 }
@@ -255,6 +326,180 @@ impl ServiceEventHandler for SupportTicketAcknowledgementHandler {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct SupportTicketSlaHandler;
+
+#[async_trait]
+impl ServiceEventHandler for SupportTicketSlaHandler {
+    async fn handle(
+        &self,
+        transaction: &mut Transaction<'_, Postgres>,
+        envelope: &EventEnvelope,
+    ) -> Result<(), ServiceEventHandlerError> {
+        if envelope.contract_id == "sla-acknowledged" {
+            let Some(effect_id) = envelope.content.data["effectId"].as_str() else {
+                return Ok(());
+            };
+            sqlx::query(
+                r#"
+                insert into support_ticket_sla_effects (
+                    effect_id, ticket_id, compensation_action, source_event_id, active
+                ) values ($1, $2, $3, $4, true)
+                on conflict (effect_id) do nothing
+                "#,
+            )
+            .bind(effect_id)
+            .bind(envelope.content.data["ticketId"].as_str().unwrap())
+            .bind(
+                envelope.content.data["compensationAction"]
+                    .as_str()
+                    .unwrap(),
+            )
+            .bind(&envelope.event_id)
+            .execute(&mut **transaction)
+            .await
+            .map_err(ServiceEventHandlerError::store)?;
+            return Ok(());
+        }
+        if envelope.contract_id != "sla-compensation-requested" {
+            return Ok(());
+        }
+        let compensation_id = envelope.content.data["compensationId"].as_str().unwrap();
+        let effect_id = envelope.content.data["effectId"].as_str().unwrap();
+        let action = envelope.content.data["action"].as_str().unwrap();
+        let reversed = sqlx::query(
+            r#"
+            update support_ticket_sla_effects
+            set active = false, compensated_by = $2
+            where effect_id = $1 and compensation_action = $3 and active = true
+            "#,
+        )
+        .bind(effect_id)
+        .bind(compensation_id)
+        .bind(action)
+        .execute(&mut **transaction)
+        .await
+        .map_err(ServiceEventHandlerError::store)?;
+        if reversed.rows_affected() != 1 {
+            return Err(ServiceEventHandlerError::rejected_with_code(
+                "compensation_effect_not_active",
+                format!("Effect `{effect_id}` is not active for compensation `{compensation_id}`"),
+            ));
+        }
+        sqlx::query(
+            r#"
+            insert into support_ticket_sla_compensations (
+                compensation_id, effect_id, action, envelope
+            ) values ($1, $2, $3, $4)
+            on conflict (compensation_id) do nothing
+            "#,
+        )
+        .bind(compensation_id)
+        .bind(effect_id)
+        .bind(action)
+        .bind(serde_json::to_value(envelope).unwrap())
+        .execute(&mut **transaction)
+        .await
+        .map_err(ServiceEventHandlerError::store)?;
+        let mut completed = envelope.clone();
+        completed.event_id = format!("{compensation_id}:completed");
+        completed.event_type = "support.sla-compensated.v1".to_owned();
+        completed.contract_id = "sla-compensated".to_owned();
+        completed.producer_service_id = "support".to_owned();
+        completed.module_id = "support-ticket".to_owned();
+        completed.content.schema =
+            "contracts/events/support/support.sla-compensated.v1.schema.json".to_owned();
+        let principal = completed.context.service_principal.as_mut().unwrap();
+        principal.subject = "spiffe://example.com/service/support".to_owned();
+        principal.audiences = vec!["support-sla".to_owned()];
+        principal.credential_id = "credential_support_01".to_owned();
+        completed.context.causation = Some(lenso_service::CausationContext {
+            causation_id: envelope.event_id.clone(),
+            correlation_id: envelope
+                .context
+                .causation
+                .as_ref()
+                .and_then(|causation| causation.correlation_id.clone()),
+        });
+        ServiceEventPublisher
+            .publish_in_tx(transaction, "support-sla", &completed)
+            .await
+            .map_err(|error| {
+                ServiceEventHandlerError::retryable(
+                    "compensation_completion_publish_failed",
+                    error.message,
+                )
+            })?;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+struct SupportSlaCompensationCompletedHandler {
+    state: ServiceRuntimeState,
+}
+
+#[async_trait]
+impl ServiceEventHandler for SupportSlaCompensationCompletedHandler {
+    async fn handle(
+        &self,
+        transaction: &mut Transaction<'_, Postgres>,
+        envelope: &EventEnvelope,
+    ) -> Result<(), ServiceEventHandlerError> {
+        complete_workflow_compensation_from_event_in_tx(&self.state, transaction, envelope)
+            .await
+            .map_err(|error| {
+                ServiceEventHandlerError::retryable(error.code.as_str(), error.message)
+            })?;
+        Ok(())
+    }
+}
+
+fn support_effect_publication(
+    instance_id: &str,
+    step_id: &str,
+    compensation_action: &str,
+    source: &EventEnvelope,
+) -> WorkflowEventPublication {
+    WorkflowEventPublication::new(
+        "support",
+        format!("{step_id}:effect:event"),
+        "sla-acknowledged",
+        "v1",
+        "2026-07-17T01:00:00Z",
+        support_sla_principal(source),
+        serde_json::json!({
+            "ticketId": source.content.data["ticketId"],
+            "workflowInstanceId": instance_id,
+            "workflowStepId": step_id,
+            "effectId": format!("{step_id}:effect"),
+            "compensationAction": compensation_action,
+        }),
+    )
+}
+
+fn compensation_request_publication(
+    instance_id: &str,
+    compensation_id: &str,
+    source: &EventEnvelope,
+) -> WorkflowEventPublication {
+    WorkflowEventPublication::new(
+        "support",
+        format!("{compensation_id}:request"),
+        "sla-compensation-requested",
+        "v1",
+        "2026-07-17T01:00:05Z",
+        support_sla_principal(source),
+        serde_json::json!({
+            "ticketId": source.content.data["ticketId"],
+            "workflowInstanceId": format!("caller-controlled-{instance_id}"),
+            "compensationId": format!("caller-controlled-{compensation_id}"),
+            "effectId": "caller-controlled-effect",
+            "action": "caller-controlled-action",
+        }),
+    )
+}
+
 fn start_request(version: &str) -> Request<Body> {
     Request::post("/runtime/workflows/support-sla/ticket_sla/instances")
         .header(header::CONTENT_TYPE, "application/json")
@@ -291,6 +536,39 @@ async fn json_body(response: axum::response::Response) -> serde_json::Value {
     serde_json::from_slice(&body).unwrap()
 }
 
+async fn force_cleanup_test_databases(databases: Vec<TestDatabase>) {
+    let names = databases
+        .iter()
+        .map(|database| {
+            database
+                .url
+                .rsplit('/')
+                .next()
+                .unwrap()
+                .split('?')
+                .next()
+                .unwrap()
+                .to_owned()
+        })
+        .collect::<Vec<_>>();
+    let admin_url = std::env::var("DATABASE_URL").unwrap();
+    let admin_pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&admin_url)
+        .await
+        .unwrap();
+    for name in names {
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            r#"drop database if exists "{name}" with (force)"#
+        )))
+        .execute(&admin_pool)
+        .await
+        .unwrap();
+    }
+    admin_pool.close().await;
+    drop(databases);
+}
+
 async fn start_parent_and_child(
     state: &ServiceRuntimeState,
     pool: &sqlx::PgPool,
@@ -325,6 +603,63 @@ async fn start_parent_and_child(
     .unwrap();
     transaction.commit().await.unwrap();
     (parent, child)
+}
+
+async fn complete_compensatable_support_effects(
+    state: &ServiceRuntimeState,
+    pool: &sqlx::PgPool,
+    source: &EventEnvelope,
+) -> (String, String) {
+    let mut start = pool.begin().await.unwrap();
+    let instance = start_workflow_from_event_in_tx(
+        state,
+        &mut start,
+        "support-sla",
+        "ticket_sla_compensation",
+        "v1",
+        source,
+    )
+    .await
+    .unwrap();
+    start.commit().await.unwrap();
+
+    let mut acknowledge = pool.begin().await.unwrap();
+    let acknowledged = advance_workflow_step_with_event_in_tx(
+        state,
+        &mut acknowledge,
+        &instance.instance_id,
+        &instance.initial_step_id,
+        &format!("{}:acknowledge_ticket", source.event_id),
+        support_effect_publication(
+            &instance.instance_id,
+            &instance.initial_step_id,
+            "withdraw_sla_acknowledgement",
+            source,
+        ),
+    )
+    .await
+    .unwrap();
+    acknowledge.commit().await.unwrap();
+    let reserve_step_id = acknowledged.next_step_id.unwrap();
+
+    let mut reserve = pool.begin().await.unwrap();
+    let reserved = advance_workflow_step_with_event_in_tx(
+        state,
+        &mut reserve,
+        &instance.instance_id,
+        &reserve_step_id,
+        &format!("{}:reserve_on_call", source.event_id),
+        support_effect_publication(
+            &instance.instance_id,
+            &reserve_step_id,
+            "release_on_call",
+            source,
+        ),
+    )
+    .await
+    .unwrap();
+    reserve.commit().await.unwrap();
+    (instance.instance_id, reserved.next_step_id.unwrap())
 }
 
 #[tokio::test]
@@ -495,11 +830,12 @@ async fn pinned_definition_migration_rejects_legacy_running_instances() {
     let Some(db) = TestDatabase::create().await else {
         return;
     };
-    let guard_index = SERVICE_RUNTIME_MIGRATIONS.len() - 1;
-    assert_eq!(
-        SERVICE_RUNTIME_MIGRATIONS[guard_index].name,
-        "autonomous-service/0014_pin_workflow_definition_artifacts"
-    );
+    let guard_index = SERVICE_RUNTIME_MIGRATIONS
+        .iter()
+        .position(|migration| {
+            migration.name == "autonomous-service/0014_pin_workflow_definition_artifacts"
+        })
+        .expect("pinned Workflow Definition migration must be registered");
     platform_core::apply_migrations(&db.pool, &SERVICE_RUNTIME_MIGRATIONS[..guard_index])
         .await
         .unwrap();
@@ -520,10 +856,12 @@ async fn pinned_definition_migration_rejects_legacy_running_instances() {
     .await
     .unwrap();
 
-    let error =
-        platform_core::apply_migrations(&db.pool, &SERVICE_RUNTIME_MIGRATIONS[guard_index..])
-            .await
-            .unwrap_err();
+    let error = platform_core::apply_migrations(
+        &db.pool,
+        &SERVICE_RUNTIME_MIGRATIONS[guard_index..=guard_index],
+    )
+    .await
+    .unwrap_err();
     assert_eq!(error.public_message, "Database migration failed");
     let migration_applied: bool = sqlx::query_scalar(
         "select exists(select 1 from platform.schema_migrations where name = $1)",
@@ -1387,9 +1725,10 @@ async fn support_event_advances_workflow_and_outbox_atomically_across_services()
         (1, 1, 1)
     );
 
-    support_db.cleanup().await;
-    sla_db.cleanup().await;
-    transport_db.cleanup().await;
+    drop(sla_state);
+    drop(support_state);
+    drop(adapter);
+    force_cleanup_test_databases(vec![support_db, sla_db, transport_db]).await;
 }
 
 #[tokio::test]
@@ -1835,6 +2174,707 @@ async fn retries_and_timers_recover_after_restart_with_controlled_time() {
         exhausted_state.5.as_deref(),
         Some(retry_three.attempt_transition_id.as_str())
     );
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn timed_out_support_sla_compensates_cross_service_effects_once_in_declared_order() {
+    let Some(sla_db) = TestDatabase::create().await else {
+        return;
+    };
+    let Some(support_db) = TestDatabase::create().await else {
+        return;
+    };
+    let Some(transport_db) = TestDatabase::create().await else {
+        return;
+    };
+    let initial_time = DateTime::parse_from_rfc3339("2026-07-17T01:00:00Z")
+        .unwrap()
+        .with_timezone(&Utc);
+    let clock = Arc::new(SystemSandboxWorkflowClock::new(initial_time));
+    let manifest = manifest();
+    let mut sla_state = prepare_runtime(
+        &service(),
+        &runtime_config(&manifest),
+        sla_db.pool.clone(),
+        &[],
+    )
+    .await
+    .unwrap()
+    .with_workflow_clock(Arc::clone(&clock) as Arc<dyn platform_core::Clock>);
+    let support_migrations = [platform_core::Migration {
+        name: "support-ticket/0001_create_sla_compensations",
+        sql: r#"
+            create table support_ticket_sla_effects (
+                effect_id text primary key,
+                ticket_id text not null,
+                compensation_action text not null,
+                source_event_id text not null unique,
+                active boolean not null,
+                compensated_by text unique
+            );
+            create table support_ticket_sla_compensations (
+                compensation_id text primary key,
+                effect_id text not null unique,
+                action text not null,
+                envelope jsonb not null
+            );
+        "#,
+    }];
+    let support_state = prepare_runtime(
+        &support_service(),
+        &ServiceRuntimeConfig::new("support", "primary", "support"),
+        support_db.pool.clone(),
+        &support_migrations,
+    )
+    .await
+    .unwrap();
+    let adapter = LocalTransportAdapter::prepare(transport_db.pool.clone())
+        .await
+        .unwrap();
+    let source = support_ticket_opened("support-event-compensation", "ticket_compensation");
+    let (instance_id, timeout_step_id) =
+        complete_compensatable_support_effects(&sla_state, &sla_db.pool, &source).await;
+
+    assert_eq!(
+        relay_service_events_once(&sla_state, &adapter, 10)
+            .await
+            .unwrap(),
+        2
+    );
+    assert_eq!(
+        consume_service_events_once_without_workload_identity(
+            &support_state,
+            &adapter,
+            "support",
+            &SupportTicketSlaHandler,
+            10,
+        )
+        .await
+        .unwrap(),
+        2
+    );
+    let active_business_effects: Vec<(String, String, bool)> = sqlx::query_as(
+        "select effect_id, compensation_action, active from support_ticket_sla_effects order by compensation_action",
+    )
+    .fetch_all(&support_db.pool)
+    .await
+    .unwrap();
+    assert_eq!(active_business_effects.len(), 2);
+    assert!(active_business_effects.iter().all(|effect| effect.2));
+
+    let effects_before_timeout: Vec<(String, String, i32, String)> = sqlx::query_as(
+        r#"
+        select effect_id, compensation_name, compensation_order, state
+        from platform.service_workflow_effects
+        where instance_id = $1
+        order by compensation_order
+        "#,
+    )
+    .bind(&instance_id)
+    .fetch_all(&sla_db.pool)
+    .await
+    .unwrap();
+    assert_eq!(effects_before_timeout.len(), 2);
+    assert_eq!(effects_before_timeout[0].1, "release_on_call");
+    assert_eq!(effects_before_timeout[0].2, 1);
+    assert_eq!(effects_before_timeout[1].1, "withdraw_sla_acknowledgement");
+    assert_eq!(effects_before_timeout[1].2, 2);
+    assert!(
+        effects_before_timeout
+            .iter()
+            .all(|effect| effect.3 == "completed")
+    );
+    let instance_state_before_timeout: String = sqlx::query_scalar(
+        "select state from platform.service_workflow_instances where instance_id = $1",
+    )
+    .bind(&instance_id)
+    .fetch_one(&sla_db.pool)
+    .await
+    .unwrap();
+    assert_eq!(instance_state_before_timeout, "running");
+
+    let timeout_time = clock.advance(Duration::seconds(5));
+    let timeout_claim = claim_due_workflow_work_at(
+        &sla_state,
+        "support-sla-compensation-worker",
+        timeout_time,
+        Duration::seconds(30),
+        10,
+    )
+    .await
+    .unwrap()
+    .remove(0);
+    assert_eq!(timeout_claim.kind, WorkflowTimerKind::StepTimeout);
+    assert_eq!(timeout_claim.step_id, timeout_step_id);
+    let selection =
+        select_workflow_compensations_after_timeout_at(&sla_state, &timeout_claim, timeout_time)
+            .await
+            .unwrap();
+    assert_eq!(
+        selection.disposition,
+        WorkflowTransitionDisposition::Applied
+    );
+    assert_eq!(selection.compensations.len(), 2);
+    assert_eq!(selection.compensations[0].name, "release_on_call");
+    assert_eq!(selection.compensations[0].execution_order, 1);
+    assert_eq!(
+        selection.compensations[1].name,
+        "withdraw_sla_acknowledgement"
+    );
+    assert_eq!(selection.compensations[1].execution_order, 2);
+    let duplicate_selection =
+        select_workflow_compensations_after_timeout_at(&sla_state, &timeout_claim, timeout_time)
+            .await
+            .unwrap();
+    assert_eq!(
+        duplicate_selection.disposition,
+        WorkflowTransitionDisposition::Duplicate
+    );
+
+    drop(sla_state);
+    sla_state = prepare_runtime(
+        &service(),
+        &runtime_config(&manifest),
+        sla_db.pool.clone(),
+        &[],
+    )
+    .await
+    .unwrap()
+    .with_workflow_clock(Arc::clone(&clock) as Arc<dyn platform_core::Clock>);
+    let first = &selection.compensations[0];
+    let second = &selection.compensations[1];
+    let mut out_of_order = sla_db.pool.begin().await.unwrap();
+    let out_of_order_error = dispatch_workflow_compensation_with_event_in_tx(
+        &sla_state,
+        &mut out_of_order,
+        &second.compensation_id,
+        &format!("{}:attempt:1", second.compensation_id),
+        compensation_request_publication(&instance_id, &second.compensation_id, &source),
+    )
+    .await
+    .unwrap_err();
+    out_of_order.rollback().await.unwrap();
+    assert_eq!(
+        out_of_order_error.code,
+        WorkflowErrorCode::TransitionConflict
+    );
+
+    let first_transition = format!("{}:attempt:1", first.compensation_id);
+    let first_publication =
+        compensation_request_publication(&instance_id, &first.compensation_id, &source);
+    let mut first_tx = sla_db.pool.begin().await.unwrap();
+    let first_result = dispatch_workflow_compensation_with_event_in_tx(
+        &sla_state,
+        &mut first_tx,
+        &first.compensation_id,
+        &first_transition,
+        first_publication.clone(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        first_result.disposition,
+        WorkflowTransitionDisposition::Applied
+    );
+    assert_eq!(
+        first_result.workflow_state,
+        lenso_autonomous_service::WorkflowInstanceState::Compensating
+    );
+    first_tx.commit().await.unwrap();
+
+    let mut first_duplicate_tx = sla_db.pool.begin().await.unwrap();
+    let first_duplicate = dispatch_workflow_compensation_with_event_in_tx(
+        &sla_state,
+        &mut first_duplicate_tx,
+        &first.compensation_id,
+        &first_transition,
+        first_publication,
+    )
+    .await
+    .unwrap();
+    first_duplicate_tx.commit().await.unwrap();
+    assert_eq!(
+        first_duplicate.disposition,
+        WorkflowTransitionDisposition::Duplicate
+    );
+    assert_eq!(
+        first_duplicate.workflow_state,
+        lenso_autonomous_service::WorkflowInstanceState::Compensating
+    );
+    assert_eq!(
+        relay_service_events_once(&sla_state, &adapter, 10)
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        consume_service_events_once_without_workload_identity(
+            &support_state,
+            &adapter,
+            "support",
+            &SupportTicketSlaHandler,
+            10,
+        )
+        .await
+        .unwrap(),
+        1
+    );
+    let first_reversed: (bool, Option<String>) = sqlx::query_as(
+        "select active, compensated_by from support_ticket_sla_effects where effect_id = $1",
+    )
+    .bind(&first.effect_id)
+    .fetch_one(&support_db.pool)
+    .await
+    .unwrap();
+    assert_eq!(first_reversed, (false, Some(first.compensation_id.clone())));
+    let still_active: bool =
+        sqlx::query_scalar("select active from support_ticket_sla_effects where effect_id = $1")
+            .bind(&second.effect_id)
+            .fetch_one(&support_db.pool)
+            .await
+            .unwrap();
+    assert!(still_active);
+    assert_eq!(
+        relay_service_events_once(&support_state, &adapter, 10)
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        consume_service_events_once_without_workload_identity(
+            &sla_state,
+            &adapter,
+            "support-sla",
+            &SupportSlaCompensationCompletedHandler {
+                state: sla_state.clone(),
+            },
+            10,
+        )
+        .await
+        .unwrap(),
+        1
+    );
+    let state_after_first_completion: String = sqlx::query_scalar(
+        "select state from platform.service_workflow_instances where instance_id = $1",
+    )
+    .bind(&instance_id)
+    .fetch_one(&sla_db.pool)
+    .await
+    .unwrap();
+    assert_eq!(state_after_first_completion, "compensating");
+
+    drop(sla_state);
+    sla_state = prepare_runtime(
+        &service(),
+        &runtime_config(&manifest),
+        sla_db.pool.clone(),
+        &[],
+    )
+    .await
+    .unwrap()
+    .with_workflow_clock(Arc::clone(&clock) as Arc<dyn platform_core::Clock>);
+    let second_transition = format!("{}:attempt:1", second.compensation_id);
+    let second_publication =
+        compensation_request_publication(&instance_id, &second.compensation_id, &source);
+    let mut second_tx = sla_db.pool.begin().await.unwrap();
+    let second_result = dispatch_workflow_compensation_with_event_in_tx(
+        &sla_state,
+        &mut second_tx,
+        &second.compensation_id,
+        &second_transition,
+        second_publication.clone(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        second_result.disposition,
+        WorkflowTransitionDisposition::Applied
+    );
+    assert_eq!(
+        second_result.workflow_state,
+        lenso_autonomous_service::WorkflowInstanceState::Compensating
+    );
+    second_tx.commit().await.unwrap();
+
+    let mut second_duplicate_tx = sla_db.pool.begin().await.unwrap();
+    let second_duplicate = dispatch_workflow_compensation_with_event_in_tx(
+        &sla_state,
+        &mut second_duplicate_tx,
+        &second.compensation_id,
+        &second_transition,
+        second_publication,
+    )
+    .await
+    .unwrap();
+    second_duplicate_tx.commit().await.unwrap();
+    assert_eq!(
+        second_duplicate.disposition,
+        WorkflowTransitionDisposition::Duplicate
+    );
+    assert_eq!(
+        second_duplicate.workflow_state,
+        lenso_autonomous_service::WorkflowInstanceState::Compensating
+    );
+    assert_eq!(
+        relay_service_events_once(&sla_state, &adapter, 10)
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        consume_service_events_once_without_workload_identity(
+            &support_state,
+            &adapter,
+            "support",
+            &SupportTicketSlaHandler,
+            10,
+        )
+        .await
+        .unwrap(),
+        1
+    );
+    assert_eq!(
+        relay_service_events_once(&support_state, &adapter, 10)
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        consume_service_events_once_without_workload_identity(
+            &sla_state,
+            &adapter,
+            "support-sla",
+            &SupportSlaCompensationCompletedHandler {
+                state: sla_state.clone(),
+            },
+            10,
+        )
+        .await
+        .unwrap(),
+        1
+    );
+    let compensation_outbox_count: i64 = sqlx::query_scalar(
+        "select count(*) from platform.service_event_outbox where event_id like '%:compensation:%:request'",
+    )
+    .fetch_one(&sla_db.pool)
+    .await
+    .unwrap();
+    assert_eq!(compensation_outbox_count, 2);
+    let redelivered_envelope: serde_json::Value = sqlx::query_scalar(
+        "select envelope from platform.service_event_outbox where event_id = $1",
+    )
+    .bind(format!("{}:request", first.compensation_id))
+    .fetch_one(&sla_db.pool)
+    .await
+    .unwrap();
+    adapter
+        .publish(TransportPublication {
+            consumer_id: "support".to_owned(),
+            envelope: serde_json::from_value(redelivered_envelope).unwrap(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        consume_service_events_once_without_workload_identity(
+            &support_state,
+            &adapter,
+            "support",
+            &SupportTicketSlaHandler,
+            10,
+        )
+        .await
+        .unwrap(),
+        0
+    );
+    let business_compensations: Vec<(String, String, String)> = sqlx::query_as(
+        "select compensation_id, effect_id, action from support_ticket_sla_compensations order by action",
+    )
+    .fetch_all(&support_db.pool)
+    .await
+    .unwrap();
+    assert_eq!(business_compensations.len(), 2);
+    assert_eq!(
+        business_compensations
+            .iter()
+            .map(|entry| entry.2.as_str())
+            .collect::<Vec<_>>(),
+        vec!["release_on_call", "withdraw_sla_acknowledgement"]
+    );
+    assert!(
+        business_compensations
+            .iter()
+            .any(|entry| { entry.0 == first.compensation_id && entry.1 == first.effect_id })
+    );
+    assert!(
+        business_compensations
+            .iter()
+            .any(|entry| { entry.0 == second.compensation_id && entry.1 == second.effect_id })
+    );
+    let active_effect_count: i64 =
+        sqlx::query_scalar("select count(*) from support_ticket_sla_effects where active")
+            .fetch_one(&support_db.pool)
+            .await
+            .unwrap();
+    assert_eq!(active_effect_count, 0);
+
+    let app = service_router(OpenApiRouter::new(), sla_state.clone());
+    let inspected = app
+        .oneshot(
+            Request::get(format!("/runtime/workflows/instances/{instance_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(inspected.status(), StatusCode::OK);
+    let inspected = json_body(inspected).await;
+    assert_eq!(inspected["instance"]["state"], "compensated");
+    assert_eq!(
+        inspected["instance"]["effects"].as_array().unwrap().len(),
+        2
+    );
+    assert!(
+        inspected["instance"]["effects"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|effect| effect["state"] == "compensated")
+    );
+    assert_eq!(
+        inspected["instance"]["compensations"][0]["name"],
+        "release_on_call"
+    );
+    assert_eq!(
+        inspected["instance"]["compensations"][1]["name"],
+        "withdraw_sla_acknowledgement"
+    );
+    assert!(
+        inspected["instance"]["compensations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|compensation| {
+                compensation["state"] == "compensated"
+                    && compensation["attemptCount"] == 1
+                    && compensation["attempts"].as_array().unwrap().len() == 1
+            })
+    );
+    let history_kinds = inspected["instance"]["history"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|entry| entry["kind"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert!(history_kinds.contains(&"effect_completed"));
+    assert!(history_kinds.contains(&"step_timed_out"));
+    assert!(history_kinds.contains(&"compensation_selected"));
+    assert!(history_kinds.contains(&"compensation_attempt_succeeded"));
+    assert!(history_kinds.contains(&"workflow_compensated"));
+    assert_eq!(inspected["nextActions"][0], "no_action_required");
+    let story_statuses: Vec<String> = sqlx::query_scalar(
+        "select status from platform.service_story_segments where operation like 'workflow %' order by segment_id",
+    )
+    .fetch_all(&sla_db.pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        story_statuses
+            .iter()
+            .filter(|status| *status == "completed")
+            .count(),
+        2
+    );
+    assert_eq!(
+        story_statuses
+            .iter()
+            .filter(|status| *status == "timed_out")
+            .count(),
+        1
+    );
+    assert_eq!(
+        story_statuses
+            .iter()
+            .filter(|status| *status == "compensated")
+            .count(),
+        2
+    );
+
+    drop(sla_state);
+    drop(support_state);
+    drop(adapter);
+    force_cleanup_test_databases(vec![support_db, sla_db, transport_db]).await;
+}
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn failed_compensation_requires_intervention_without_becoming_workflow_failure() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let initial_time = DateTime::parse_from_rfc3339("2026-07-17T02:00:00Z")
+        .unwrap()
+        .with_timezone(&Utc);
+    let clock = Arc::new(SystemSandboxWorkflowClock::new(initial_time));
+    let manifest = manifest();
+    let state = prepare_runtime(&service(), &runtime_config(&manifest), db.pool.clone(), &[])
+        .await
+        .unwrap()
+        .with_workflow_clock(Arc::clone(&clock) as Arc<dyn platform_core::Clock>);
+    let source = support_ticket_opened(
+        "support-event-compensation-failure",
+        "ticket_compensation_failure",
+    );
+    let (instance_id, timeout_step_id) =
+        complete_compensatable_support_effects(&state, &db.pool, &source).await;
+    let timeout_time = clock.advance(Duration::seconds(5));
+    let timeout_claim = claim_due_workflow_work_at(
+        &state,
+        "support-sla-compensation-failure-worker",
+        timeout_time,
+        Duration::seconds(30),
+        10,
+    )
+    .await
+    .unwrap()
+    .remove(0);
+    assert_eq!(timeout_claim.step_id, timeout_step_id);
+    let selection =
+        select_workflow_compensations_after_timeout_at(&state, &timeout_claim, timeout_time)
+            .await
+            .unwrap();
+    let compensation = &selection.compensations[0];
+    let failure = WorkflowFailureEvidence::new(
+        "support_compensation_rejected",
+        "Support Service rejected the compensation effect",
+        "open_support_compensation_runbook",
+    );
+    let transition_id = format!("{}:attempt:1", compensation.compensation_id);
+    let mut dispatch = db.pool.begin().await.unwrap();
+    let dispatched = dispatch_workflow_compensation_with_event_in_tx(
+        &state,
+        &mut dispatch,
+        &compensation.compensation_id,
+        &transition_id,
+        compensation_request_publication(&instance_id, &compensation.compensation_id, &source),
+    )
+    .await
+    .unwrap();
+    dispatch.commit().await.unwrap();
+    assert_eq!(
+        dispatched.disposition,
+        WorkflowTransitionDisposition::Applied
+    );
+    let failed = record_workflow_compensation_failure_at(
+        &state,
+        &compensation.compensation_id,
+        &transition_id,
+        failure.clone(),
+        timeout_time,
+    )
+    .await
+    .unwrap();
+    assert_eq!(failed.disposition, WorkflowTransitionDisposition::Applied);
+    assert_eq!(
+        failed.workflow_state,
+        lenso_autonomous_service::WorkflowInstanceState::CompensationFailed
+    );
+    let duplicate = record_workflow_compensation_failure_at(
+        &state,
+        &compensation.compensation_id,
+        &transition_id,
+        failure,
+        timeout_time,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        duplicate.disposition,
+        WorkflowTransitionDisposition::Duplicate
+    );
+
+    let app = service_router(OpenApiRouter::new(), state);
+    let inspected = app
+        .oneshot(
+            Request::get(format!("/runtime/workflows/instances/{instance_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let inspected = json_body(inspected).await;
+    assert_eq!(inspected["instance"]["state"], "compensation_failed");
+    assert_ne!(inspected["instance"]["state"], "failed");
+    assert_eq!(
+        inspected["instance"]["failure"]["code"],
+        "support_compensation_rejected"
+    );
+    assert_eq!(inspected["instance"]["compensations"][0]["state"], "failed");
+    assert!(
+        inspected["instance"]["compensations"][0]["outgoingWork"].is_object(),
+        "a remote rejection must retain the dispatched request as durable evidence"
+    );
+    assert_eq!(
+        inspected["instance"]["compensations"][0]["attempts"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        inspected["instance"]["compensations"][0]["attempts"][0]["state"],
+        "failed"
+    );
+    assert_eq!(
+        inspected["instance"]["compensations"][0]["failure"]["nextAction"],
+        "open_support_compensation_runbook"
+    );
+    assert_eq!(
+        inspected["instance"]["compensations"][1]["state"],
+        "pending"
+    );
+    assert_eq!(
+        inspected["nextActions"][0],
+        "open_support_compensation_runbook"
+    );
+    assert!(
+        inspected["instance"]["history"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| {
+                entry["kind"] == "compensation_attempt_failed"
+                    && entry["detail"]["interventionRequired"] == true
+            })
+    );
+    assert!(
+        inspected["instance"]["history"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| {
+                entry["kind"] == "workflow_compensation_failed"
+                    && entry["detail"]["finalOutcome"] == "compensation_failed"
+                    && entry["detail"]["failure"]["code"] == "support_compensation_rejected"
+            })
+    );
+    let intervention_segments: i64 = sqlx::query_scalar(
+        "select count(*) from platform.service_story_segments where status = 'intervention_required'",
+    )
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    assert_eq!(intervention_segments, 1);
+    let failure_operation: String = sqlx::query_scalar(
+        "select operation from platform.service_story_segments where status = 'intervention_required'",
+    )
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    assert!(failure_operation.contains("support_compensation_rejected"));
+    assert!(failure_operation.contains("Support Service rejected the compensation effect"));
 
     db.cleanup().await;
 }

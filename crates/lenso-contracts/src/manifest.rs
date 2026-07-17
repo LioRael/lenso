@@ -562,6 +562,8 @@ fn lint_workflow_definition(
         });
     }
     let mut step_names = HashSet::new();
+    let mut compensation_names = HashSet::new();
+    let mut compensation_orders = HashSet::new();
     for step in &workflow.steps {
         let step_subject = if present(&step.name) {
             format!("{subject}.step.{}", step.name)
@@ -584,13 +586,21 @@ fn lint_workflow_definition(
                 suggestion: "Keep one ordered declaration per stable step name.".to_owned(),
             });
         }
-        lint_workflow_step_recovery(step, &step_subject, lints);
+        lint_workflow_step_recovery(
+            step,
+            &step_subject,
+            &mut compensation_names,
+            &mut compensation_orders,
+            lints,
+        );
     }
 }
 
 fn lint_workflow_step_recovery(
     step: &WorkflowStepDeclaration,
     subject: &str,
+    compensation_names: &mut HashSet<String>,
+    compensation_orders: &mut HashSet<u32>,
     lints: &mut Vec<ModuleManifestLint>,
 ) {
     if let Some(retry_policy) = &step.retry_policy
@@ -624,6 +634,55 @@ fn lint_workflow_step_recovery(
             suggestion: "Set timeoutMs within the positive signed 64-bit range or omit it."
                 .to_owned(),
         });
+    }
+    if let Some(compensation) = &step.compensation {
+        let compensation_subject = format!("{subject}.compensation");
+        if !present(&compensation.name) || !valid_runtime_function_name(&compensation.name) {
+            lints.push(ModuleManifestLint {
+                severity: ModuleManifestLintSeverity::Error,
+                subject: format!("{compensation_subject}.name"),
+                message:
+                    "Durable Workflow compensation name must be a non-empty path-safe identifier."
+                        .to_owned(),
+                suggestion: "Use a stable compensation name such as release_sla_reservation."
+                    .to_owned(),
+            });
+        } else if !compensation_names.insert(compensation.name.clone()) {
+            lints.push(ModuleManifestLint {
+                severity: ModuleManifestLintSeverity::Error,
+                subject: format!("{compensation_subject}.name"),
+                message: "Durable Workflow compensation name is declared more than once."
+                    .to_owned(),
+                suggestion: "Keep one stable compensation name per Workflow Definition.".to_owned(),
+            });
+        }
+        if compensation.order == 0 || i32::try_from(compensation.order).is_err() {
+            lints.push(ModuleManifestLint {
+                severity: ModuleManifestLintSeverity::Error,
+                subject: format!("{compensation_subject}.order"),
+                message: "Durable Workflow compensation order must use a supported positive value."
+                    .to_owned(),
+                suggestion: "Set order to a unique value within 1..=2147483647.".to_owned(),
+            });
+        } else if !compensation_orders.insert(compensation.order) {
+            lints.push(ModuleManifestLint {
+                severity: ModuleManifestLintSeverity::Error,
+                subject: format!("{compensation_subject}.order"),
+                message: "Durable Workflow compensation order is declared more than once."
+                    .to_owned(),
+                suggestion: "Assign one deterministic order to each compensation.".to_owned(),
+            });
+        }
+        lint_workflow_data_contract(
+            &format!("{compensation_subject}.contract"),
+            &compensation.contract,
+            lints,
+        );
+        lint_workflow_data_contract(
+            &format!("{compensation_subject}.completion_contract"),
+            &compensation.completion_contract,
+            lints,
+        );
     }
 }
 
@@ -1779,8 +1838,8 @@ mod tests {
     use crate::{ModuleHttpMethod, ModuleHttpRoute};
     use crate::{
         RuntimeFunctionDeclaration, RuntimeRetryPolicyDeclaration, RuntimeSurface,
-        WorkflowDataContract, WorkflowDefinition, WorkflowRetryPolicyDeclaration,
-        WorkflowStepDeclaration,
+        WorkflowCompensationDeclaration, WorkflowDataContract, WorkflowDefinition,
+        WorkflowRetryPolicyDeclaration, WorkflowStepDeclaration,
     };
     use crate::{StoryDisplayDescriptor, StoryDisplaySource};
 
@@ -2276,7 +2335,17 @@ mod tests {
                                 3,
                                 vec![1_000, 5_000],
                             ))
-                            .with_timeout_ms(30_000),
+                            .with_timeout_ms(30_000)
+                            .with_compensation(
+                                WorkflowCompensationDeclaration::new(
+                                    "withdraw_sla_acknowledgement",
+                                    1,
+                                    WorkflowDataContract::new("sla-compensation-requested", "v1"),
+                                )
+                                .with_completion_contract(
+                                    WorkflowDataContract::new("sla-compensated", "v1"),
+                                ),
+                            ),
                         WorkflowStepDeclaration::new("await_resolution"),
                     ],
                 )],
@@ -2286,6 +2355,8 @@ mod tests {
         let json = serde_json::to_string(&manifest).expect("serialize");
         let back: ModuleManifest = serde_json::from_str(&json).expect("deserialize");
         let lints = lint_module_manifest(ModuleSource::Linked, &back);
+        let workflow_schema = crate::workflow_definition_schema();
+        let compensation_schema = &workflow_schema["$defs"]["compensation"];
 
         assert_eq!(manifest, back);
         assert!(json.contains(r#""protocol":"lenso.workflow-definition.v1""#));
@@ -2293,6 +2364,21 @@ mod tests {
         assert!(json.contains(r#""maxAttempts":3"#));
         assert!(json.contains(r#""delaysMs":[1000,5000]"#));
         assert!(json.contains(r#""timeoutMs":30000"#));
+        assert!(json.contains(r#""name":"withdraw_sla_acknowledgement""#));
+        assert!(json.contains(r#""order":1"#));
+        assert!(json.contains(r#""contract":{"contractId":"sla-compensation-requested""#));
+        assert!(json.contains(r#""completionContract":{"contractId":"sla-compensated""#));
+        assert_eq!(
+            compensation_schema["properties"]["completionContract"]["$ref"],
+            "#/$defs/dataContract"
+        );
+        assert!(
+            compensation_schema["required"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|field| field == "completionContract")
+        );
         assert!(lints.iter().all(|lint| {
             lint.severity != ModuleManifestLintSeverity::Error
                 && !lint.subject.starts_with("runtime.workflow")
@@ -2310,8 +2396,19 @@ mod tests {
             vec![
                 WorkflowStepDeclaration::new("acknowledge_ticket")
                     .with_retry_policy(WorkflowRetryPolicyDeclaration::new(3, vec![1_000]))
-                    .with_timeout_ms(0),
-                WorkflowStepDeclaration::new("acknowledge_ticket"),
+                    .with_timeout_ms(0)
+                    .with_compensation(WorkflowCompensationDeclaration::new(
+                        "invalid compensation",
+                        0,
+                        WorkflowDataContract::new("", ""),
+                    )),
+                WorkflowStepDeclaration::new("acknowledge_ticket").with_compensation(
+                    WorkflowCompensationDeclaration::new(
+                        "invalid compensation",
+                        0,
+                        WorkflowDataContract::new("", ""),
+                    ),
+                ),
             ],
         );
         let manifest = ModuleManifest::builder("support-sla")
@@ -2342,6 +2439,18 @@ mod tests {
         }));
         assert!(lints.iter().any(|lint| {
             lint.subject == "runtime.workflow.ticket_sla.v1.step.acknowledge_ticket.timeout_ms"
+        }));
+        assert!(lints.iter().any(|lint| {
+            lint.subject
+                == "runtime.workflow.ticket_sla.v1.step.acknowledge_ticket.compensation.name"
+        }));
+        assert!(lints.iter().any(|lint| {
+            lint.subject
+                == "runtime.workflow.ticket_sla.v1.step.acknowledge_ticket.compensation.order"
+        }));
+        assert!(lints.iter().any(|lint| {
+            lint.subject
+                == "runtime.workflow.ticket_sla.v1.step.acknowledge_ticket.compensation.contract"
         }));
     }
 

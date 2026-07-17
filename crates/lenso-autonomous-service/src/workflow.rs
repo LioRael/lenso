@@ -22,7 +22,7 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 use uuid::Uuid;
 
 mod evolution;
-mod recovery;
+pub(crate) mod recovery;
 pub use evolution::*;
 pub use recovery::*;
 
@@ -121,6 +121,23 @@ pub enum WorkflowInstanceState {
     Running,
     Completed,
     Failed,
+    Compensating,
+    Compensated,
+    CompensationFailed,
+}
+
+impl WorkflowInstanceState {
+    pub(crate) fn parse(value: &str) -> Option<Self> {
+        match value {
+            "running" => Some(Self::Running),
+            "completed" => Some(Self::Completed),
+            "failed" => Some(Self::Failed),
+            "compensating" => Some(Self::Compensating),
+            "compensated" => Some(Self::Compensated),
+            "compensation_failed" => Some(Self::CompensationFailed),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
@@ -181,6 +198,9 @@ pub struct WorkflowInstance {
     pub failure: Option<WorkflowFailureEvidence>,
     pub initial_step_id: String,
     pub steps: Vec<WorkflowStepInspection>,
+    pub effects: Vec<crate::WorkflowEffectInspection>,
+    pub compensations: Vec<crate::WorkflowCompensationInspection>,
+    pub history: Vec<crate::WorkflowHistoryEntry>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -331,9 +351,9 @@ pub struct WorkflowStepTransitionResult {
 }
 
 #[derive(Debug)]
-struct WorkflowApiError {
-    code: WorkflowErrorCode,
-    message: String,
+pub(crate) struct WorkflowApiError {
+    pub(crate) code: WorkflowErrorCode,
+    pub(crate) message: String,
     next_actions: Vec<String>,
 }
 
@@ -346,7 +366,7 @@ impl WorkflowApiError {
         }
     }
 
-    fn store(message: impl Into<String>) -> Self {
+    pub(crate) fn store(message: impl Into<String>) -> Self {
         Self {
             code: WorkflowErrorCode::StoreUnavailable,
             message: message.into(),
@@ -357,7 +377,7 @@ impl WorkflowApiError {
         }
     }
 
-    fn stored_state(message: impl Into<String>) -> Self {
+    pub(crate) fn stored_state(message: impl Into<String>) -> Self {
         Self {
             code: WorkflowErrorCode::StoredStateInvalid,
             message: message.into(),
@@ -635,6 +655,9 @@ async fn start_workflow(
             timers,
             now,
         )],
+        effects: Vec::new(),
+        compensations: Vec::new(),
+        history: Vec::new(),
         created_at: now,
         updated_at: now,
     };
@@ -818,6 +841,9 @@ pub async fn start_workflow_from_event_in_tx(
             timers,
             now,
         )],
+        effects: Vec::new(),
+        compensations: Vec::new(),
+        history: Vec::new(),
         created_at: now,
         updated_at: now,
     })
@@ -952,12 +978,13 @@ pub async fn advance_workflow_step_with_event_in_tx(
             format!("Workflow step `{step_id}` has an invalid position"),
         )
     })?;
-    if definition
-        .steps
-        .get(position)
-        .map(|step| step.name.as_str())
-        != Some(row.definition_step_name.as_str())
-    {
+    let declared_step = definition.steps.get(position).ok_or_else(|| {
+        WorkflowMutationError::new(
+            WorkflowErrorCode::StoredStateInvalid,
+            format!("Workflow step `{step_id}` has no pinned declaration"),
+        )
+    })?;
+    if declared_step.name != row.definition_step_name {
         return Err(WorkflowMutationError::new(
             WorkflowErrorCode::StoredStateInvalid,
             format!("Workflow step `{step_id}` does not match its pinned definition"),
@@ -981,20 +1008,7 @@ pub async fn advance_workflow_step_with_event_in_tx(
                 ),
             )
         })?;
-    let event_type = contract
-        .artifact
-        .path
-        .rsplit('/')
-        .next()
-        .and_then(|name| name.strip_suffix(".schema.json"))
-        .filter(|name| name.ends_with(&format!(".{}.{}", contract.contract_id, contract.version)))
-        .ok_or_else(|| {
-            WorkflowMutationError::new(
-                WorkflowErrorCode::EventContractNotDeclared,
-                "Declared outgoing Event Contract has an invalid artifact identity",
-            )
-        })?
-        .to_owned();
+    let event_type = event_type_for_contract(contract)?;
     let mut context: EventContext = row
         .workflow_context
         .map(serde_json::from_value)
@@ -1070,6 +1084,20 @@ pub async fn advance_workflow_step_with_event_in_tx(
             format!("Could not encode workflow outgoing work evidence: {error}"),
         )
     })?;
+    if let Some(compensation) = &declared_step.compensation {
+        crate::record_compensatable_effect_in_tx(
+            state,
+            transaction,
+            instance_id,
+            step_id,
+            &row.definition_step_name,
+            transition_id,
+            &outgoing_work,
+            compensation,
+            now,
+        )
+        .await?;
+    }
     let updated = sqlx::query(
         r#"
         update platform.service_workflow_steps
@@ -1142,7 +1170,7 @@ pub async fn advance_workflow_step_with_event_in_tx(
     })
 }
 
-fn validate_outgoing_context(
+pub(crate) fn validate_outgoing_context(
     contract: &EventContractArtifact,
     context: &EventContext,
 ) -> Result<(), WorkflowMutationError> {
@@ -1188,6 +1216,25 @@ fn validate_outgoing_context(
     }
 }
 
+pub(crate) fn event_type_for_contract(
+    contract: &EventContractArtifact,
+) -> Result<String, WorkflowMutationError> {
+    contract
+        .artifact
+        .path
+        .rsplit('/')
+        .next()
+        .and_then(|name| name.strip_suffix(".schema.json"))
+        .filter(|name| name.ends_with(&format!(".{}.{}", contract.contract_id, contract.version)))
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| {
+            WorkflowMutationError::new(
+                WorkflowErrorCode::EventContractNotDeclared,
+                "Declared Event Contract has an invalid artifact identity",
+            )
+        })
+}
+
 pub(crate) fn postgres_now() -> DateTime<Utc> {
     let now = Utc::now();
     DateTime::<Utc>::from_timestamp_micros(now.timestamp_micros())
@@ -1228,6 +1275,9 @@ async fn inspect_workflow(
 fn workflow_next_actions(instance: &WorkflowInstance) -> Vec<String> {
     if let Some(failure) = &instance.failure {
         return vec![failure.next_action.clone()];
+    }
+    if instance.state == WorkflowInstanceState::Compensating {
+        return vec!["execute_next_workflow_compensation".to_owned()];
     }
     if instance.steps.iter().any(|step| {
         step.child_workflow
@@ -1426,6 +1476,7 @@ async fn load_instance(
         WorkflowApiError::store(format!("Could not inspect workflow steps: {error}"))
     })?;
     let recovery = recovery::load_recovery(pool, instance_id).await?;
+    let compensation_evidence = crate::load_compensation_evidence(pool, instance_id).await?;
     let child_rows = sqlx::query_as::<_, WorkflowChildRow>(
         r#"
         select link_id, start_id, parent_step_id, child_definition_owner,
@@ -1443,7 +1494,7 @@ async fn load_instance(
     .map_err(|error| {
         WorkflowApiError::store(format!("Could not inspect child workflow links: {error}"))
     })?;
-    workflow_from_rows(row, step_rows, recovery, child_rows)
+    workflow_from_rows(row, step_rows, recovery, child_rows, compensation_evidence)
 }
 
 async fn load_instance_in_tx(
@@ -1490,6 +1541,8 @@ async fn load_instance_in_tx(
         WorkflowMutationError::store(format!("Could not inspect workflow steps: {error}"))
     })?;
     let recovery = recovery::load_recovery_in_tx(transaction, instance_id).await?;
+    let compensation_evidence =
+        crate::load_compensation_evidence_in_tx(transaction, instance_id).await?;
     let child_rows = sqlx::query_as::<_, WorkflowChildRow>(
         r#"
         select link_id, start_id, parent_step_id, child_definition_owner,
@@ -1507,7 +1560,7 @@ async fn load_instance_in_tx(
     .map_err(|error| {
         WorkflowMutationError::store(format!("Could not inspect child workflow links: {error}"))
     })?;
-    workflow_from_rows(row, step_rows, recovery, child_rows)
+    workflow_from_rows(row, step_rows, recovery, child_rows, compensation_evidence)
         .map_err(|error| WorkflowMutationError::new(error.code, error.message))
 }
 
@@ -1516,18 +1569,14 @@ fn workflow_from_rows(
     step_rows: Vec<WorkflowStepRow>,
     mut recovery_by_step: recovery::WorkflowRecoveryByStep,
     mut child_rows: Vec<WorkflowChildRow>,
+    compensation_evidence: crate::WorkflowCompensationEvidence,
 ) -> Result<WorkflowInstance, WorkflowApiError> {
-    let state = match row.state.as_str() {
-        "running" => WorkflowInstanceState::Running,
-        "completed" => WorkflowInstanceState::Completed,
-        "failed" => WorkflowInstanceState::Failed,
-        other => {
-            return Err(WorkflowApiError::stored_state(format!(
-                "Workflow Instance `{}` has unsupported state `{other}`",
-                row.instance_id
-            )));
-        }
-    };
+    let state = WorkflowInstanceState::parse(&row.state).ok_or_else(|| {
+        WorkflowApiError::stored_state(format!(
+            "Workflow Instance `{}` has unsupported state `{}`",
+            row.instance_id, row.state
+        ))
+    })?;
     let story_context = serde_json::from_value(row.story_context).map_err(|error| {
         WorkflowApiError::stored_state(format!("Stored Story Context is invalid: {error}"))
     })?;
@@ -1664,6 +1713,9 @@ fn workflow_from_rows(
         failure,
         initial_step_id: row.initial_step_id,
         steps,
+        effects: compensation_evidence.effects,
+        compensations: compensation_evidence.compensations,
+        history: compensation_evidence.history,
         created_at: row.created_at,
         updated_at: row.updated_at,
     })

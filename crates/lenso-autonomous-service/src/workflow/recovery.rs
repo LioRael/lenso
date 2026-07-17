@@ -1386,7 +1386,7 @@ struct ClaimValidationRow {
     claimed_at: Option<DateTime<Utc>>,
 }
 
-pub(super) async fn validate_claim_in_tx(
+pub(crate) async fn validate_claim_in_tx(
     transaction: &mut Transaction<'_, Postgres>,
     claim: &WorkflowWorkClaim,
 ) -> Result<(), WorkflowMutationError> {

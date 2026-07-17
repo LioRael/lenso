@@ -274,7 +274,21 @@ metadata, retry policy, latest failure, attempt history, timer due times and
 claim state, and child workflow evidence for Runtime Console and other operator
 consumers. It reads only Service-owned workflow tables and does not require the
 Host, Runtime Console, System Plane, or an external workflow engine.
-Compensation remains a later workflow slice.
+
+Steps may declare one compensation with a stable name, unique positive order,
+request Event Contract, and completion Event Contract. When a controlled
+timeout selects compensation, the Service Store retains the completed effect,
+stable compensation identity, declared order, attempts, and history. Dispatch
+and the outgoing request share the workflow owner's Service Store and Outbox
+transaction. The request payload binds the persisted Workflow Instance,
+compensation, effect, and action identities rather than accepting caller-owned
+values. The Workflow remains `compensating` while the remote Service reverses
+its business effect in its own Inbox transaction and publishes the declared
+completion Event. Only that correlated completion marks the effect and
+compensation complete. A failure instead records `compensation_failed`, its
+failure code and next action, a workflow-level final outcome, and an explicit
+intervention Story Segment. This preserves exactly-once business effects over
+at-least-once delivery without a distributed transaction.
 
 ## Event Envelopes
 

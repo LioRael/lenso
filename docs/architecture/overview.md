@@ -139,9 +139,18 @@ evidence with paths and next actions. The migration dry-run endpoint reports
 affected in-flight instances, deterministic state mappings, the target version,
 compatibility evidence, rollback constraints, and the explicit
 `in_flight_workflow_migration` Approval Boundary without changing instance,
-step, timer, attempt, or claim state. This slice
-does not add compensation or reinterpret the existing lightweight Host flow,
-Runtime Function, or Provider models.
+step, timer, attempt, or claim state. Completed steps may declare stable
+compensation identity, deterministic order, a request Event Contract, and a
+completion Event Contract. A controlled timeout records the completed effects
+before selecting their compensations. Each request is published through the
+owning Service Outbox with stable effect and compensation identity; the
+Workflow remains `compensating` until the remote Service reverses the business
+effect and confirms it through the declared completion Event. Restart and
+redelivery preserve at-most-once business reversal through the Service-owned
+Inbox, while a rejected compensation becomes the distinct durable
+`compensation_failed` state with explicit intervention evidence. These slices
+do not introduce a distributed transaction or reinterpret the existing
+lightweight Host flow, Runtime Function, or Provider models.
 Its versioned Service, Event, Config, and Reliability Contract declarations are
 specified in [`autonomous-service-contract-artifacts.md`](autonomous-service-contract-artifacts.md).
 The separate [`lenso.context.v1`](common-context-contracts.md) envelope

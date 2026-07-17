@@ -92,6 +92,11 @@ pub struct WorkflowStepDeclaration {
     /// Optional durable timeout applied independently to every attempt.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timeout_ms: Option<u64>,
+    /// Optional compensation for the completed business effect produced by
+    /// this step. The explicit order is evaluated across all completed effects
+    /// when compensation is selected; it is independent from completion time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compensation: Option<WorkflowCompensationDeclaration>,
 }
 
 impl WorkflowStepDeclaration {
@@ -102,6 +107,7 @@ impl WorkflowStepDeclaration {
             display_name: None,
             retry_policy: None,
             timeout_ms: None,
+            compensation: None,
         }
     }
 
@@ -120,6 +126,43 @@ impl WorkflowStepDeclaration {
     #[must_use]
     pub const fn with_timeout_ms(mut self, timeout_ms: u64) -> Self {
         self.timeout_ms = Some(timeout_ms);
+        self
+    }
+
+    #[must_use]
+    pub fn with_compensation(mut self, compensation: WorkflowCompensationDeclaration) -> Self {
+        self.compensation = Some(compensation);
+        self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkflowCompensationDeclaration {
+    /// Stable compensation behavior identity within this Workflow Definition.
+    pub name: String,
+    /// Explicit deterministic execution order. Lower values execute first.
+    pub order: u32,
+    /// Versioned Event Contract used to request the compensation effect.
+    pub contract: WorkflowDataContract,
+    /// Versioned Event Contract that confirms the remote business effect was reversed.
+    pub completion_contract: WorkflowDataContract,
+}
+
+impl WorkflowCompensationDeclaration {
+    #[must_use]
+    pub fn new(name: impl Into<String>, order: u32, contract: WorkflowDataContract) -> Self {
+        Self {
+            name: name.into(),
+            order,
+            completion_contract: contract.clone(),
+            contract,
+        }
+    }
+
+    #[must_use]
+    pub fn with_completion_contract(mut self, contract: WorkflowDataContract) -> Self {
+        self.completion_contract = contract;
         self
     }
 }
@@ -515,7 +558,23 @@ pub fn workflow_definition_schema() -> Value {
                         "type": "integer",
                         "minimum": 1,
                         "maximum": 9223372036854775807_i64
-                    }
+                    },
+                    "compensation": { "$ref": "#/$defs/compensation" }
+                }
+            },
+            "compensation": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "order", "contract", "completionContract"],
+                "properties": {
+                    "name": { "type": "string", "minLength": 1 },
+                    "order": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 2147483647
+                    },
+                    "contract": { "$ref": "#/$defs/dataContract" },
+                    "completionContract": { "$ref": "#/$defs/dataContract" }
                 }
             },
             "retryPolicy": {
