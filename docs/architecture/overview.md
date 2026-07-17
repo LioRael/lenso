@@ -139,7 +139,13 @@ evidence with paths and next actions. The migration dry-run endpoint reports
 affected in-flight instances, deterministic state mappings, the target version,
 compatibility evidence, rollback constraints, and the explicit
 `in_flight_workflow_migration` Approval Boundary without changing instance,
-step, timer, attempt, or claim state. Completed steps may declare stable
+step, timer, attempt, or claim state. Protected operator controls use a separate
+durable dispatch gate: deterministic dry-run plans can pause or resume an
+instance, or reopen one selected exhausted step for a single authorized retry,
+without changing step identity or erasing completed work, attempt history,
+timers, claims, causation, or idempotency context. Stale plans fail closed and
+every applied action records verified actor, authority, reason, prior and
+resulting state, time, and next action. Completed steps may declare stable
 compensation identity, deterministic order, a request Event Contract, and a
 completion Event Contract. A controlled timeout records the completed effects
 before selecting their compensations. Each request is published through the

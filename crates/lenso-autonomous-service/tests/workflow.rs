@@ -6,7 +6,8 @@ use http_body_util::BodyExt as _;
 use lenso_autonomous_service::{
     LocalTransportAdapter, SERVICE_RUNTIME_MIGRATIONS, ServiceEventHandler,
     ServiceEventHandlerError, ServiceEventPublisher, ServiceRuntimeConfig, ServiceRuntimeState,
-    SystemSandboxWorkflowClock, TransportAdapter, TransportPublication, WorkflowChildStartRequest,
+    SystemSandboxWorkflowClock, TransportAdapter, TransportPublication, WorkflowAuthorityGrant,
+    WorkflowAuthorityRequest, WorkflowAuthorityVerifier, WorkflowChildStartRequest,
     WorkflowChildStartResult, WorkflowErrorCode, WorkflowEventPublication,
     WorkflowFailureClassification, WorkflowFailureDisposition, WorkflowFailureEvidence,
     WorkflowInstance, WorkflowStepFailure, WorkflowTimerKind, WorkflowTransitionDisposition,
@@ -225,6 +226,33 @@ fn compensation_workflow(version: &str) -> WorkflowDefinition {
 fn runtime_config(manifest: &ModuleManifest) -> ServiceRuntimeConfig {
     ServiceRuntimeConfig::new("support-sla", "primary", "support-sla")
         .with_module_manifests(std::slice::from_ref(manifest))
+}
+
+#[derive(Debug)]
+struct TestWorkflowAuthorityVerifier;
+
+impl WorkflowAuthorityVerifier for TestWorkflowAuthorityVerifier {
+    fn verify(
+        &self,
+        request: &WorkflowAuthorityRequest,
+        credential: &str,
+    ) -> Result<WorkflowAuthorityGrant, String> {
+        if credential != "approved-workflow-control" {
+            return Err("Workflow operator credential is not authorized".to_owned());
+        }
+        Ok(WorkflowAuthorityGrant {
+            actor_id: "operator:incident-commander".to_owned(),
+            authority_id: format!(
+                "approved:{}:{}",
+                request.required_authority, request.plan_id
+            ),
+        })
+    }
+}
+
+fn runtime_config_with_workflow_authority(manifest: &ModuleManifest) -> ServiceRuntimeConfig {
+    runtime_config(manifest)
+        .with_workflow_authority_verifier(Arc::new(TestWorkflowAuthorityVerifier))
 }
 
 fn support_sla_principal(source: &EventEnvelope) -> ServicePrincipal {
@@ -529,6 +557,50 @@ fn migration_dry_run_request(from_version: &str, target_version: &str) -> Reques
             .to_string(),
         ))
         .unwrap()
+}
+
+fn workflow_operator_plan_request(
+    instance_id: &str,
+    action: &str,
+    selected_step_id: Option<&str>,
+) -> Request<Body> {
+    Request::post(format!(
+        "/runtime/workflows/instances/{instance_id}/operator-actions/{action}/dry-run"
+    ))
+    .header(header::CONTENT_TYPE, "application/json")
+    .body(Body::from(
+        serde_json::json!({"selectedStepId": selected_step_id}).to_string(),
+    ))
+    .unwrap()
+}
+
+fn workflow_operator_apply_request(
+    instance_id: &str,
+    action: &str,
+    selected_step_id: Option<&str>,
+    plan_id: &str,
+    credential: Option<&str>,
+) -> Request<Body> {
+    let mut request = Request::post(format!(
+        "/runtime/workflows/instances/{instance_id}/operator-actions/{action}"
+    ))
+    .header(header::CONTENT_TYPE, "application/json")
+    .body(Body::from(
+        serde_json::json!({
+            "planId": plan_id,
+            "selectedStepId": selected_step_id,
+            "reason": "Contain and recover the support SLA incident"
+        })
+        .to_string(),
+    ))
+    .unwrap();
+    if let Some(credential) = credential {
+        request.headers_mut().insert(
+            header::AUTHORIZATION,
+            format!("Bearer {credential}").parse().unwrap(),
+        );
+    }
+    request
 }
 
 async fn json_body(response: axum::response::Response) -> serde_json::Value {
@@ -2876,5 +2948,463 @@ async fn failed_compensation_requires_intervention_without_becoming_workflow_fai
     assert!(failure_operation.contains("support_compensation_rejected"));
     assert!(failure_operation.contains("Support Service rejected the compensation effect"));
 
+    db.cleanup().await;
+}
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn workflow_operator_controls_are_deterministic_authorized_and_audited() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let initial_time = DateTime::parse_from_rfc3339("2026-07-17T12:00:00Z")
+        .unwrap()
+        .with_timezone(&Utc);
+    let clock = Arc::new(SystemSandboxWorkflowClock::new(initial_time));
+    let manifest = manifest();
+    let state = prepare_runtime(
+        &service(),
+        &runtime_config_with_workflow_authority(&manifest),
+        db.pool.clone(),
+        &[],
+    )
+    .await
+    .unwrap()
+    .with_workflow_clock(Arc::clone(&clock) as Arc<dyn platform_core::Clock>);
+    let source = support_ticket_opened("support-event-operator", "ticket_operator");
+    let mut start = db.pool.begin().await.unwrap();
+    let instance = start_workflow_from_event_in_tx(
+        &state,
+        &mut start,
+        "support-sla",
+        "ticket_sla",
+        "v1",
+        &source,
+    )
+    .await
+    .unwrap();
+    start.commit().await.unwrap();
+    let instance_id = instance.instance_id.clone();
+    let step_id = instance.initial_step_id.clone();
+    let original_context: serde_json::Value = sqlx::query_scalar(
+        "select workflow_context from platform.service_workflow_instances where instance_id = $1",
+    )
+    .bind(&instance_id)
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    let original_step_count: i64 = sqlx::query_scalar(
+        "select count(*) from platform.service_workflow_steps where instance_id = $1",
+    )
+    .bind(&instance_id)
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    let app = service_router(OpenApiRouter::new(), state.clone());
+
+    let inspected = app
+        .clone()
+        .oneshot(
+            Request::get(format!(
+                "/runtime/workflows/instances/{instance_id}?stepId={step_id}"
+            ))
+            .body(Body::empty())
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(inspected.status(), StatusCode::OK);
+    let inspected = json_body(inspected).await;
+    assert_eq!(inspected["instance"]["definition"]["version"], "v1");
+    assert_eq!(inspected["instance"]["control"]["state"], "active");
+    assert_eq!(inspected["selectedStep"]["stepId"], step_id);
+    assert_eq!(inspected["selectedStep"]["attempts"], serde_json::json!([]));
+    assert_eq!(inspected["availableActions"], serde_json::json!(["pause"]));
+    assert!(
+        inspected["pendingWork"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|work| work["kind"] == "timer" && work["state"] == "pending")
+    );
+
+    let first_pause_plan = app
+        .clone()
+        .oneshot(workflow_operator_plan_request(&instance_id, "pause", None))
+        .await
+        .unwrap();
+    assert_eq!(first_pause_plan.status(), StatusCode::OK);
+    let first_pause_plan = json_body(first_pause_plan).await;
+    let repeated_pause_plan = app
+        .clone()
+        .oneshot(workflow_operator_plan_request(&instance_id, "pause", None))
+        .await
+        .unwrap();
+    let repeated_pause_plan = json_body(repeated_pause_plan).await;
+    assert_eq!(first_pause_plan, repeated_pause_plan);
+    assert_eq!(first_pause_plan["mutatesState"], false);
+    assert_eq!(
+        first_pause_plan["authorization"]["requiredAuthority"],
+        "workflow_instance_pause"
+    );
+    let intervention_count: i64 =
+        sqlx::query_scalar("select count(*) from platform.service_workflow_interventions")
+            .fetch_one(&db.pool)
+            .await
+            .unwrap();
+    assert_eq!(intervention_count, 0, "dry run must remain read-only");
+
+    let claim_time = clock.advance(Duration::seconds(5));
+    let claimed = claim_due_workflow_work_at(
+        &state,
+        "support-sla-worker-claimed-before-pause",
+        claim_time,
+        Duration::seconds(5),
+        10,
+    )
+    .await
+    .unwrap()
+    .remove(0);
+    assert_eq!(claimed.kind, WorkflowTimerKind::StepTimeout);
+    let stale = app
+        .clone()
+        .oneshot(workflow_operator_apply_request(
+            &instance_id,
+            "pause",
+            None,
+            first_pause_plan["planId"].as_str().unwrap(),
+            Some("approved-workflow-control"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(stale.status(), StatusCode::CONFLICT);
+    let stale = json_body(stale).await;
+    assert_eq!(stale["code"], "workflow_stale_plan");
+    assert_eq!(stale["next_actions"][0], "plan_workflow_action_again");
+
+    let pause_plan = app
+        .clone()
+        .oneshot(workflow_operator_plan_request(&instance_id, "pause", None))
+        .await
+        .unwrap();
+    let pause_plan = json_body(pause_plan).await;
+    assert_eq!(
+        pause_plan["affectedResources"]["inFlightClaimIds"][0],
+        claimed.timer_id
+    );
+    let missing_authority = app
+        .clone()
+        .oneshot(workflow_operator_apply_request(
+            &instance_id,
+            "pause",
+            None,
+            pause_plan["planId"].as_str().unwrap(),
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(missing_authority.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        json_body(missing_authority).await["code"],
+        "workflow_authority_required"
+    );
+    let paused = app
+        .clone()
+        .oneshot(workflow_operator_apply_request(
+            &instance_id,
+            "pause",
+            None,
+            pause_plan["planId"].as_str().unwrap(),
+            Some("approved-workflow-control"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(paused.status(), StatusCode::OK);
+    let paused = json_body(paused).await;
+    assert_eq!(paused["disposition"], "applied");
+    assert_eq!(
+        paused["intervention"]["actorId"],
+        "operator:incident-commander"
+    );
+    assert_eq!(
+        paused["intervention"]["priorState"]["executionState"],
+        "running"
+    );
+    assert_eq!(
+        paused["intervention"]["resultingState"]["controlState"],
+        "paused"
+    );
+    let duplicate_pause = app
+        .clone()
+        .oneshot(workflow_operator_apply_request(
+            &instance_id,
+            "pause",
+            None,
+            pause_plan["planId"].as_str().unwrap(),
+            Some("approved-workflow-control"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(json_body(duplicate_pause).await["disposition"], "duplicate");
+
+    let blocked_claims = claim_due_workflow_work_at(
+        &state,
+        "support-sla-worker-while-paused",
+        claim_time + Duration::seconds(10),
+        Duration::seconds(1),
+        10,
+    )
+    .await
+    .unwrap();
+    assert!(blocked_claims.is_empty());
+    let paused_inspection = app
+        .clone()
+        .oneshot(
+            Request::get(format!(
+                "/runtime/workflows/instances/{instance_id}?stepId={step_id}"
+            ))
+            .body(Body::empty())
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    let paused_inspection = json_body(paused_inspection).await;
+    assert_eq!(paused_inspection["instance"]["state"], "running");
+    assert_eq!(paused_inspection["instance"]["control"]["state"], "paused");
+    assert_eq!(
+        paused_inspection["availableActions"],
+        serde_json::json!(["resume"])
+    );
+    assert_eq!(
+        paused_inspection["selectedStep"]["timers"][0]["state"],
+        "claimed"
+    );
+
+    let resume_plan = app
+        .clone()
+        .oneshot(workflow_operator_plan_request(&instance_id, "resume", None))
+        .await
+        .unwrap();
+    let resume_plan = json_body(resume_plan).await;
+    let resumed = app
+        .clone()
+        .oneshot(workflow_operator_apply_request(
+            &instance_id,
+            "resume",
+            None,
+            resume_plan["planId"].as_str().unwrap(),
+            Some("approved-workflow-control"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resumed.status(), StatusCode::OK);
+    let resumed = json_body(resumed).await;
+    assert_eq!(
+        resumed["intervention"]["priorState"]["controlState"],
+        "paused"
+    );
+    assert_eq!(
+        resumed["intervention"]["resultingState"]["controlState"],
+        "active"
+    );
+    let resumed_step_count: i64 = sqlx::query_scalar(
+        "select count(*) from platform.service_workflow_steps where instance_id = $1",
+    )
+    .bind(&instance_id)
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    assert_eq!(resumed_step_count, original_step_count);
+
+    let first_failure = record_claimed_workflow_step_failure_at(
+        &state,
+        &claimed,
+        WorkflowStepFailure::timeout("step_timeout", "support dependency timed out"),
+        claim_time,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        first_failure.disposition,
+        WorkflowFailureDisposition::RetryScheduled
+    );
+    let second_attempt_time = clock.advance(Duration::seconds(1));
+    let second_attempt = claim_due_workflow_work_at(
+        &state,
+        "support-sla-worker-terminal-failure",
+        second_attempt_time,
+        Duration::seconds(5),
+        10,
+    )
+    .await
+    .unwrap()
+    .remove(0);
+    let terminal = record_claimed_workflow_step_failure_at(
+        &state,
+        &second_attempt,
+        WorkflowStepFailure::permanent(
+            "support_dependency_rejected",
+            "support dependency rejected the attempt",
+        ),
+        second_attempt_time,
+    )
+    .await
+    .unwrap();
+    assert_eq!(terminal.disposition, WorkflowFailureDisposition::Exhausted);
+
+    let failed_inspection = app
+        .clone()
+        .oneshot(
+            Request::get(format!(
+                "/runtime/workflows/instances/{instance_id}?stepId={step_id}"
+            ))
+            .body(Body::empty())
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    let failed_inspection = json_body(failed_inspection).await;
+    assert_eq!(failed_inspection["instance"]["state"], "failed");
+    assert_eq!(failed_inspection["selectedStep"]["state"], "exhausted");
+    assert_eq!(
+        failed_inspection["selectedStep"]["attempts"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    assert_eq!(
+        failed_inspection["availableActions"],
+        serde_json::json!(["retry"])
+    );
+
+    let retry_plan = app
+        .clone()
+        .oneshot(workflow_operator_plan_request(
+            &instance_id,
+            "retry",
+            Some(&step_id),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(retry_plan.status(), StatusCode::OK);
+    let retry_plan = json_body(retry_plan).await;
+    assert_eq!(retry_plan["mutatesState"], false);
+    assert_eq!(retry_plan["selectedStepId"], step_id);
+    assert_eq!(
+        retry_plan["affectedResources"]["attemptIds"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    assert_eq!(retry_plan["resultingState"]["executionState"], "running");
+    let denied = app
+        .clone()
+        .oneshot(workflow_operator_apply_request(
+            &instance_id,
+            "retry",
+            Some(&step_id),
+            retry_plan["planId"].as_str().unwrap(),
+            Some("forged-workflow-control"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(denied.status(), StatusCode::FORBIDDEN);
+    assert_eq!(
+        json_body(denied).await["code"],
+        "workflow_authorization_denied"
+    );
+    let retried = app
+        .clone()
+        .oneshot(workflow_operator_apply_request(
+            &instance_id,
+            "retry",
+            Some(&step_id),
+            retry_plan["planId"].as_str().unwrap(),
+            Some("approved-workflow-control"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(retried.status(), StatusCode::OK);
+    let retried = json_body(retried).await;
+    assert_eq!(retried["disposition"], "applied");
+    let attempt_transition_id = retried["intervention"]["attemptTransitionId"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(attempt_transition_id.starts_with(&format!("{step_id}:operator-retry:")));
+    let duplicate_retry = app
+        .clone()
+        .oneshot(workflow_operator_apply_request(
+            &instance_id,
+            "retry",
+            Some(&step_id),
+            retry_plan["planId"].as_str().unwrap(),
+            Some("approved-workflow-control"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(json_body(duplicate_retry).await["disposition"], "duplicate");
+
+    let manual_claim = claim_due_workflow_work_at(
+        &state,
+        "support-sla-worker-manual-retry",
+        second_attempt_time,
+        Duration::seconds(5),
+        10,
+    )
+    .await
+    .unwrap()
+    .remove(0);
+    assert_eq!(manual_claim.step_id, step_id);
+    assert_eq!(manual_claim.attempt_number, 3);
+    assert_eq!(manual_claim.attempt_transition_id, attempt_transition_id);
+    let final_state: (String, String, i64, serde_json::Value) = sqlx::query_as(
+        r#"
+        select instance.state, step.state, instance.control_revision,
+               instance.workflow_context
+        from platform.service_workflow_instances instance
+        join platform.service_workflow_steps step on step.instance_id = instance.instance_id
+        where instance.instance_id = $1 and step.step_id = $2
+        "#,
+    )
+    .bind(&instance_id)
+    .bind(&step_id)
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    assert_eq!(final_state.0, "running");
+    assert_eq!(final_state.1, "pending");
+    assert_eq!(final_state.2, 3);
+    assert_eq!(final_state.3, original_context);
+    let interventions: Vec<(String, String, String, String)> = sqlx::query_as(
+        r#"
+        select action, actor_id, reason, next_action
+        from platform.service_workflow_interventions
+        where instance_id = $1
+        order by ((resulting_state ->> 'controlRevision')::bigint), intervention_id
+        "#,
+    )
+    .bind(&instance_id)
+    .fetch_all(&db.pool)
+    .await
+    .unwrap();
+    assert_eq!(interventions.len(), 3);
+    assert_eq!(
+        interventions
+            .iter()
+            .map(|entry| entry.0.as_str())
+            .collect::<Vec<_>>(),
+        vec!["pause", "resume", "retry"]
+    );
+    assert!(interventions.iter().all(|entry| {
+        entry.1 == "operator:incident-commander"
+            && entry.2 == "Contain and recover the support SLA incident"
+            && !entry.3.is_empty()
+    }));
+
+    drop(app);
+    drop(state);
     db.cleanup().await;
 }
