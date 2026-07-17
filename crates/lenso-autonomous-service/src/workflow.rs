@@ -1,7 +1,7 @@
 use crate::{ServiceEventPublisher, ServiceRuntimeState};
 use axum::{
     Json,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
 };
@@ -17,12 +17,14 @@ use sha2::{Digest as _, Sha256};
 use sqlx::{FromRow, Postgres, Transaction};
 use std::fmt::Write as _;
 use thiserror::Error;
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 use utoipa_axum::{router::OpenApiRouter, routes};
 use uuid::Uuid;
 
+mod control;
 mod evolution;
 pub(crate) mod recovery;
+pub use control::*;
 pub use evolution::*;
 pub use recovery::*;
 
@@ -115,7 +117,7 @@ pub struct WorkflowChildInspection {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum WorkflowInstanceState {
     Running,
@@ -196,11 +198,13 @@ pub struct WorkflowInstance {
     pub tenant_scope: Option<WorkflowTenantScope>,
     pub parent: Option<WorkflowParentInspection>,
     pub failure: Option<WorkflowFailureEvidence>,
+    pub control: WorkflowControlInspection,
     pub initial_step_id: String,
     pub steps: Vec<WorkflowStepInspection>,
     pub effects: Vec<crate::WorkflowEffectInspection>,
     pub compensations: Vec<crate::WorkflowCompensationInspection>,
     pub history: Vec<crate::WorkflowHistoryEntry>,
+    pub interventions: Vec<WorkflowInterventionInspection>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -218,7 +222,19 @@ pub struct WorkflowStartResult {
 pub struct WorkflowInspectionResult {
     pub protocol: String,
     pub instance: WorkflowInstance,
+    pub selected_step: Option<WorkflowStepInspection>,
+    pub pending_work: Vec<WorkflowPendingWorkInspection>,
+    pub available_actions: Vec<WorkflowOperatorAction>,
     pub next_actions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, IntoParams, ToSchema)]
+#[into_params(parameter_in = Query)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkflowInspectionQuery {
+    /// Selects one stable step identity for focused attempts, timers, and
+    /// operator-action eligibility.
+    pub step_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
@@ -253,6 +269,16 @@ pub enum WorkflowErrorCode {
     StoreUnavailable,
     #[serde(rename = "workflow_stored_state_invalid")]
     StoredStateInvalid,
+    #[serde(rename = "workflow_action_not_eligible")]
+    ActionNotEligible,
+    #[serde(rename = "workflow_stale_plan")]
+    StalePlan,
+    #[serde(rename = "workflow_authority_required")]
+    AuthorityRequired,
+    #[serde(rename = "workflow_authority_unavailable")]
+    AuthorityUnavailable,
+    #[serde(rename = "workflow_authorization_denied")]
+    AuthorizationDenied,
 }
 
 impl WorkflowErrorCode {
@@ -274,6 +300,11 @@ impl WorkflowErrorCode {
             Self::ChildNotTerminal => "workflow_child_not_terminal",
             Self::StoreUnavailable => "workflow_store_unavailable",
             Self::StoredStateInvalid => "workflow_stored_state_invalid",
+            Self::ActionNotEligible => "workflow_action_not_eligible",
+            Self::StalePlan => "workflow_stale_plan",
+            Self::AuthorityRequired => "workflow_authority_required",
+            Self::AuthorityUnavailable => "workflow_authority_unavailable",
+            Self::AuthorizationDenied => "workflow_authorization_denied",
         }
     }
 }
@@ -399,8 +430,14 @@ impl WorkflowApiError {
             | WorkflowErrorCode::ChildLinkNotFound => StatusCode::NOT_FOUND,
             WorkflowErrorCode::DefinitionVersionUnsupported
             | WorkflowErrorCode::TransitionConflict
-            | WorkflowErrorCode::ChildNotTerminal => StatusCode::CONFLICT,
-            WorkflowErrorCode::StoreUnavailable => StatusCode::SERVICE_UNAVAILABLE,
+            | WorkflowErrorCode::ChildNotTerminal
+            | WorkflowErrorCode::ActionNotEligible
+            | WorkflowErrorCode::StalePlan => StatusCode::CONFLICT,
+            WorkflowErrorCode::AuthorityRequired => StatusCode::UNAUTHORIZED,
+            WorkflowErrorCode::AuthorizationDenied => StatusCode::FORBIDDEN,
+            WorkflowErrorCode::StoreUnavailable | WorkflowErrorCode::AuthorityUnavailable => {
+                StatusCode::SERVICE_UNAVAILABLE
+            }
             WorkflowErrorCode::StoredStateInvalid => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -421,6 +458,11 @@ impl From<WorkflowMutationError> for WorkflowApiError {
                 "deploy_worker_supporting_pinned_workflow_definition"
             }
             WorkflowErrorCode::StoreUnavailable => "restore_service_store",
+            WorkflowErrorCode::ActionNotEligible => "inspect_available_workflow_actions",
+            WorkflowErrorCode::StalePlan => "plan_workflow_action_again",
+            WorkflowErrorCode::AuthorityRequired => "provide_workflow_operator_authority",
+            WorkflowErrorCode::AuthorityUnavailable => "configure_workflow_authority_verifier",
+            WorkflowErrorCode::AuthorizationDenied => "request_workflow_operator_authority",
             _ => "inspect_workflow_state",
         };
         Self {
@@ -475,6 +517,9 @@ struct WorkflowInstanceRow {
     parent_step_id: Option<String>,
     causation_id: Option<String>,
     failure_evidence: Option<Value>,
+    control_state: String,
+    control_revision: i64,
+    paused_at: Option<DateTime<Utc>>,
     initial_step_id: String,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
@@ -526,6 +571,7 @@ struct WorkflowTransitionRow {
     definition_artifact: Option<Value>,
     definition_digest: Option<String>,
     instance_state: String,
+    control_state: String,
     workflow_context: Option<Value>,
     definition_step_name: String,
     step_position: i32,
@@ -539,6 +585,7 @@ pub(crate) fn workflow_router() -> OpenApiRouter<ServiceRuntimeState> {
     OpenApiRouter::new()
         .routes(routes!(start_workflow))
         .routes(routes!(inspect_workflow))
+        .merge(control::workflow_control_router())
         .merge(evolution::workflow_evolution_router())
 }
 
@@ -647,6 +694,7 @@ async fn start_workflow(
         tenant_scope: request.tenant_scope,
         parent: None,
         failure: None,
+        control: WorkflowControlInspection::active(),
         initial_step_id: initial_step_id.clone(),
         steps: vec![recovery::pending_step_inspection(
             initial_step_id,
@@ -658,6 +706,7 @@ async fn start_workflow(
         effects: Vec::new(),
         compensations: Vec::new(),
         history: Vec::new(),
+        interventions: Vec::new(),
         created_at: now,
         updated_at: now,
     };
@@ -833,6 +882,7 @@ pub async fn start_workflow_from_event_in_tx(
         tenant_scope,
         parent: None,
         failure: None,
+        control: WorkflowControlInspection::active(),
         initial_step_id: initial_step_id.clone(),
         steps: vec![recovery::pending_step_inspection(
             initial_step_id,
@@ -844,6 +894,7 @@ pub async fn start_workflow_from_event_in_tx(
         effects: Vec::new(),
         compensations: Vec::new(),
         history: Vec::new(),
+        interventions: Vec::new(),
         created_at: now,
         updated_at: now,
     })
@@ -884,6 +935,7 @@ pub async fn advance_workflow_step_with_event_in_tx(
         select instance.definition_owner, instance.definition_name,
                instance.definition_version, instance.definition_artifact,
                instance.definition_digest, instance.state as instance_state,
+               instance.control_state,
                instance.workflow_context, step.definition_step_name,
                step.step_position, step.state as step_state,
                step.transition_id, step.outgoing_work, step.attempt_count
@@ -962,6 +1014,14 @@ pub async fn advance_workflow_step_with_event_in_tx(
         return Err(WorkflowMutationError::new(
             WorkflowErrorCode::TransitionConflict,
             format!("Workflow step `{step_id}` is not pending in a running instance"),
+        ));
+    }
+    if row.control_state != "active" {
+        return Err(WorkflowMutationError::new(
+            WorkflowErrorCode::TransitionConflict,
+            format!(
+                "Workflow Instance `{instance_id}` is paused; resume it before dispatching new step work"
+            ),
         ));
     }
     let definition = resolve_pinned_definition(
@@ -1244,7 +1304,10 @@ pub(crate) fn postgres_now() -> DateTime<Utc> {
 #[utoipa::path(
     get,
     path = "/runtime/workflows/instances/{instance_id}",
-    params(("instance_id" = String, Path, description = "Stable Workflow Instance identity")),
+    params(
+        ("instance_id" = String, Path, description = "Stable Workflow Instance identity"),
+        WorkflowInspectionQuery
+    ),
     responses(
         (status = 200, body = WorkflowInspectionResult),
         (status = 404, body = platform_http::ErrorResponse, content_type = "application/problem+json"),
@@ -1256,6 +1319,7 @@ pub(crate) fn postgres_now() -> DateTime<Utc> {
 async fn inspect_workflow(
     State(state): State<ServiceRuntimeState>,
     Path(instance_id): Path<String>,
+    Query(query): Query<WorkflowInspectionQuery>,
 ) -> Result<Json<WorkflowInspectionResult>, WorkflowApiError> {
     if instance_id.trim().is_empty() {
         return Err(WorkflowApiError::invalid(
@@ -1264,15 +1328,30 @@ async fn inspect_workflow(
         ));
     }
     let instance = load_instance(&state, &instance_id).await?;
-    let next_actions = workflow_next_actions(&instance);
+    let selected_step = selected_workflow_step(&instance, query.step_id.as_deref())?;
+    let pending_work = workflow_pending_work(&instance);
+    let available_actions = workflow_available_actions(&instance, selected_step.as_ref());
+    let next_actions = workflow_next_actions(&instance, &available_actions);
     Ok(Json(WorkflowInspectionResult {
         protocol: WORKFLOW_INSPECTION_PROTOCOL.to_owned(),
         instance,
+        selected_step,
+        pending_work,
+        available_actions,
         next_actions,
     }))
 }
 
-fn workflow_next_actions(instance: &WorkflowInstance) -> Vec<String> {
+fn workflow_next_actions(
+    instance: &WorkflowInstance,
+    available_actions: &[WorkflowOperatorAction],
+) -> Vec<String> {
+    if instance.control.state == WorkflowControlState::Paused {
+        return vec!["plan_workflow_resume".to_owned()];
+    }
+    if available_actions.contains(&WorkflowOperatorAction::Retry) {
+        return vec!["plan_selected_step_retry".to_owned()];
+    }
     if let Some(failure) = &instance.failure {
         return vec![failure.next_action.clone()];
     }
@@ -1431,7 +1510,7 @@ pub(crate) fn resolve_pinned_definition(
         })
 }
 
-async fn load_instance(
+pub(super) async fn load_instance(
     state: &ServiceRuntimeState,
     instance_id: &str,
 ) -> Result<WorkflowInstance, WorkflowApiError> {
@@ -1443,7 +1522,8 @@ async fn load_instance(
         select instance_id, service_id, definition_owner, definition_name,
                definition_version, state, input, result, story_context,
                tenant_scope, parent_instance_id, parent_step_id, causation_id,
-               failure_evidence, initial_step_id, created_at, updated_at
+               failure_evidence, control_state, control_revision, paused_at,
+               initial_step_id, created_at, updated_at
         from platform.service_workflow_instances
         where service_id = $1 and instance_id = $2
         "#,
@@ -1476,6 +1556,7 @@ async fn load_instance(
         WorkflowApiError::store(format!("Could not inspect workflow steps: {error}"))
     })?;
     let recovery = recovery::load_recovery(pool, instance_id).await?;
+    let control_evidence = control::load_control_evidence(pool, instance_id).await?;
     let compensation_evidence = crate::load_compensation_evidence(pool, instance_id).await?;
     let child_rows = sqlx::query_as::<_, WorkflowChildRow>(
         r#"
@@ -1494,10 +1575,17 @@ async fn load_instance(
     .map_err(|error| {
         WorkflowApiError::store(format!("Could not inspect child workflow links: {error}"))
     })?;
-    workflow_from_rows(row, step_rows, recovery, child_rows, compensation_evidence)
+    workflow_from_rows(
+        row,
+        step_rows,
+        recovery,
+        child_rows,
+        compensation_evidence,
+        control_evidence,
+    )
 }
 
-async fn load_instance_in_tx(
+pub(super) async fn load_instance_in_tx(
     state: &ServiceRuntimeState,
     transaction: &mut Transaction<'_, Postgres>,
     instance_id: &str,
@@ -1507,7 +1595,8 @@ async fn load_instance_in_tx(
         select instance_id, service_id, definition_owner, definition_name,
                definition_version, state, input, result, story_context,
                tenant_scope, parent_instance_id, parent_step_id, causation_id,
-               failure_evidence, initial_step_id, created_at, updated_at
+               failure_evidence, control_state, control_revision, paused_at,
+               initial_step_id, created_at, updated_at
         from platform.service_workflow_instances
         where service_id = $1 and instance_id = $2
         "#,
@@ -1541,6 +1630,7 @@ async fn load_instance_in_tx(
         WorkflowMutationError::store(format!("Could not inspect workflow steps: {error}"))
     })?;
     let recovery = recovery::load_recovery_in_tx(transaction, instance_id).await?;
+    let control_evidence = control::load_control_evidence_in_tx(transaction, instance_id).await?;
     let compensation_evidence =
         crate::load_compensation_evidence_in_tx(transaction, instance_id).await?;
     let child_rows = sqlx::query_as::<_, WorkflowChildRow>(
@@ -1560,8 +1650,15 @@ async fn load_instance_in_tx(
     .map_err(|error| {
         WorkflowMutationError::store(format!("Could not inspect child workflow links: {error}"))
     })?;
-    workflow_from_rows(row, step_rows, recovery, child_rows, compensation_evidence)
-        .map_err(|error| WorkflowMutationError::new(error.code, error.message))
+    workflow_from_rows(
+        row,
+        step_rows,
+        recovery,
+        child_rows,
+        compensation_evidence,
+        control_evidence,
+    )
+    .map_err(|error| WorkflowMutationError::new(error.code, error.message))
 }
 
 fn workflow_from_rows(
@@ -1570,6 +1667,7 @@ fn workflow_from_rows(
     mut recovery_by_step: recovery::WorkflowRecoveryByStep,
     mut child_rows: Vec<WorkflowChildRow>,
     compensation_evidence: crate::WorkflowCompensationEvidence,
+    control_evidence: WorkflowControlEvidence,
 ) -> Result<WorkflowInstance, WorkflowApiError> {
     let state = WorkflowInstanceState::parse(&row.state).ok_or_else(|| {
         WorkflowApiError::stored_state(format!(
@@ -1608,6 +1706,11 @@ fn workflow_from_rows(
         .map_err(|error| {
             WorkflowApiError::stored_state(format!("Stored workflow failure is invalid: {error}"))
         })?;
+    let control = WorkflowControlInspection::from_stored(
+        &row.control_state,
+        row.control_revision,
+        row.paused_at,
+    )?;
     let steps = step_rows
         .into_iter()
         .map(|step| {
@@ -1711,11 +1814,13 @@ fn workflow_from_rows(
         tenant_scope,
         parent,
         failure,
+        control,
         initial_step_id: row.initial_step_id,
         steps,
         effects: compensation_evidence.effects,
         compensations: compensation_evidence.compensations,
         history: compensation_evidence.history,
+        interventions: control_evidence.interventions,
         created_at: row.created_at,
         updated_at: row.updated_at,
     })

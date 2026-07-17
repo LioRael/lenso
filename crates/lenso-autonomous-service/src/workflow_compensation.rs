@@ -238,6 +238,7 @@ struct CompensationExecutionRow {
     outgoing_work: Option<Value>,
     failure_evidence: Option<Value>,
     instance_state: String,
+    control_state: String,
     workflow_context: Option<Value>,
 }
 
@@ -599,6 +600,15 @@ pub async fn dispatch_workflow_compensation_with_event_in_tx(
         return Err(WorkflowMutationError::new(
             WorkflowErrorCode::TransitionConflict,
             format!("Compensation `{compensation_id}` was dispatched through another transition"),
+        ));
+    }
+    if row.control_state != "active" {
+        return Err(WorkflowMutationError::new(
+            WorkflowErrorCode::TransitionConflict,
+            format!(
+                "Workflow Instance `{}` is paused; resume it before dispatching compensation",
+                row.instance_id
+            ),
         ));
     }
     if row.state == "failed" || row.instance_state == "compensation_failed" {
@@ -1613,7 +1623,8 @@ async fn lock_compensation(
                compensation.completion_contract_version, compensation.state,
                compensation.attempt_count, compensation.transition_id,
                compensation.outgoing_work, compensation.failure_evidence,
-               instance.state as instance_state, instance.workflow_context
+               instance.state as instance_state, instance.control_state,
+               instance.workflow_context
         from platform.service_workflow_compensations compensation
         join platform.service_workflow_instances instance
           on instance.instance_id = compensation.instance_id

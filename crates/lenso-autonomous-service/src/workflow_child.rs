@@ -58,6 +58,7 @@ pub struct WorkflowFailureTransitionResult {
 struct ParentStepRow {
     definition_version: String,
     instance_state: String,
+    control_state: String,
     story_context: Value,
     tenant_scope: Option<Value>,
     workflow_context: Option<Value>,
@@ -94,6 +95,7 @@ struct ChildResumeRow {
     parent_definition_artifact: Option<Value>,
     parent_definition_digest: Option<String>,
     parent_state: String,
+    parent_control_state: String,
     parent_step_name: String,
     parent_step_position: i32,
     parent_step_state: String,
@@ -121,6 +123,7 @@ pub async fn start_child_workflow_in_tx(
     let parent = sqlx::query_as::<_, ParentStepRow>(
         r#"
         select instance.definition_version, instance.state as instance_state,
+               instance.control_state,
                instance.story_context, instance.tenant_scope, instance.workflow_context,
                step.state as step_state
         from platform.service_workflow_instances instance
@@ -188,6 +191,14 @@ pub async fn start_child_workflow_in_tx(
         return Err(WorkflowMutationError::new(
             WorkflowErrorCode::TransitionConflict,
             format!("Parent workflow step `{parent_step_id}` is not pending in a running instance"),
+        ));
+    }
+    if parent.control_state != "active" {
+        return Err(WorkflowMutationError::new(
+            WorkflowErrorCode::TransitionConflict,
+            format!(
+                "Parent Workflow Instance `{parent_instance_id}` is paused; resume it before starting child work"
+            ),
         ));
     }
 
@@ -521,6 +532,7 @@ pub async fn resume_parent_from_child_in_tx(
                parent.definition_artifact as parent_definition_artifact,
                parent.definition_digest as parent_definition_digest,
                parent.state as parent_state,
+               parent.control_state as parent_control_state,
                step.definition_step_name as parent_step_name,
                step.step_position as parent_step_position,
                step.state as parent_step_state,
@@ -588,6 +600,14 @@ pub async fn resume_parent_from_child_in_tx(
         return Err(WorkflowMutationError::new(
             WorkflowErrorCode::TransitionConflict,
             format!("Parent workflow step `{parent_step_id}` is not waiting for its child"),
+        ));
+    }
+    if row.parent_control_state != "active" {
+        return Err(WorkflowMutationError::new(
+            WorkflowErrorCode::TransitionConflict,
+            format!(
+                "Parent Workflow Instance `{parent_instance_id}` is paused; resume it before consuming child completion"
+            ),
         ));
     }
 

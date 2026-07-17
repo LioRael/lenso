@@ -143,6 +143,14 @@ paths:
         required: true
         schema:
           type: string
+      - name: stepId
+        in: query
+        description: |-
+          Selects one stable step identity for focused attempts, timers, and
+          operator-action eligibility.
+        required: false
+        schema:
+          type: string
       responses:
         '200':
           description: ''
@@ -157,6 +165,134 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /runtime/workflows/instances/{instance_id}/operator-actions/{action}:
+    post:
+      tags:
+      - service-runtime
+      operationId: apply_workflow_operator_action_http
+      parameters:
+      - name: instance_id
+        in: path
+        description: Stable Workflow Instance identity
+        required: true
+        schema:
+          type: string
+      - name: action
+        in: path
+        description: pause, resume, or retry
+        required: true
+        schema:
+          type: string
+      - name: authorization
+        in: header
+        description: Bearer credential verified by the deployment-owned Workflow authority provider
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkflowOperatorApplyRequest'
+        required: true
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowOperatorResult'
+        '400':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /runtime/workflows/instances/{instance_id}/operator-actions/{action}/dry-run:
+    post:
+      tags:
+      - service-runtime
+      operationId: dry_run_workflow_operator_action
+      parameters:
+      - name: instance_id
+        in: path
+        description: Stable Workflow Instance identity
+        required: true
+        schema:
+          type: string
+      - name: action
+        in: path
+        description: pause, resume, or retry
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkflowOperatorPlanRequest'
+        required: true
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowOperatorPlan'
+        '400':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
           description: ''
           content:
             application/problem+json:
@@ -652,6 +788,28 @@ components:
       - dispatched
       - compensated
       - failed
+    WorkflowControlInspection:
+      type: object
+      required:
+      - state
+      - revision
+      properties:
+        pausedAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        revision:
+          type: integer
+          format: int64
+          minimum: 0
+        state:
+          $ref: '#/components/schemas/WorkflowControlState'
+    WorkflowControlState:
+      type: string
+      enum:
+      - active
+      - paused
     WorkflowDataContract:
       type: object
       required:
@@ -822,16 +980,30 @@ components:
       required:
       - protocol
       - instance
+      - pendingWork
+      - availableActions
       - nextActions
       properties:
+        availableActions:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowOperatorAction'
         instance:
           $ref: '#/components/schemas/WorkflowInstance'
         nextActions:
           type: array
           items:
             type: string
+        pendingWork:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowPendingWorkInspection'
         protocol:
           type: string
+        selectedStep:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/WorkflowStepInspection'
     WorkflowInstance:
       type: object
       required:
@@ -841,11 +1013,13 @@ components:
       - state
       - input
       - storyContext
+      - control
       - initialStepId
       - steps
       - effects
       - compensations
       - history
+      - interventions
       - createdAt
       - updatedAt
       properties:
@@ -853,6 +1027,8 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/WorkflowCompensationInspection'
+        control:
+          $ref: '#/components/schemas/WorkflowControlInspection'
         createdAt:
           type: string
           format: date-time
@@ -875,6 +1051,10 @@ components:
         input: {}
         instanceId:
           type: string
+        interventions:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowInterventionInspection'
         parent:
           oneOf:
           - type: 'null'
@@ -906,6 +1086,49 @@ components:
       - compensating
       - compensated
       - compensation_failed
+    WorkflowInterventionInspection:
+      type: object
+      required:
+      - interventionId
+      - action
+      - planId
+      - actorId
+      - authorityId
+      - reason
+      - priorState
+      - resultingState
+      - nextAction
+      - recordedAt
+      properties:
+        action:
+          $ref: '#/components/schemas/WorkflowOperatorAction'
+        actorId:
+          type: string
+        attemptTransitionId:
+          type:
+          - string
+          - 'null'
+        authorityId:
+          type: string
+        interventionId:
+          type: string
+        nextAction:
+          type: string
+        planId:
+          type: string
+        priorState:
+          $ref: '#/components/schemas/WorkflowOperatorStateSnapshot'
+        reason:
+          type: string
+        recordedAt:
+          type: string
+          format: date-time
+        resultingState:
+          $ref: '#/components/schemas/WorkflowOperatorStateSnapshot'
+        stepId:
+          type:
+          - string
+          - 'null'
     WorkflowMigrationAffectedInstance:
       type: object
       required:
@@ -1009,6 +1232,176 @@ components:
         targetVersion:
           type: string
       additionalProperties: false
+    WorkflowOperatorAction:
+      type: string
+      enum:
+      - pause
+      - resume
+      - retry
+    WorkflowOperatorAffectedResources:
+      type: object
+      required:
+      - instanceId
+      - pendingWorkIds
+      - timerIds
+      - attemptIds
+      - completedStepIds
+      - inFlightClaimIds
+      properties:
+        attemptIds:
+          type: array
+          items:
+            type: string
+        completedStepIds:
+          type: array
+          items:
+            type: string
+        inFlightClaimIds:
+          type: array
+          items:
+            type: string
+        instanceId:
+          type: string
+        pendingWorkIds:
+          type: array
+          items:
+            type: string
+        selectedStepId:
+          type:
+          - string
+          - 'null'
+        timerIds:
+          type: array
+          items:
+            type: string
+    WorkflowOperatorApplyRequest:
+      type: object
+      required:
+      - planId
+      - reason
+      properties:
+        planId:
+          type: string
+        reason:
+          type: string
+        selectedStepId:
+          type:
+          - string
+          - 'null'
+      additionalProperties: false
+    WorkflowOperatorApprovalBoundary:
+      type: string
+      enum:
+      - workflow_instance_control
+    WorkflowOperatorAuthorization:
+      type: object
+      required:
+      - status
+      - requiredAuthority
+      properties:
+        requiredAuthority:
+          type: string
+        status:
+          $ref: '#/components/schemas/WorkflowOperatorAuthorizationStatus'
+    WorkflowOperatorAuthorizationStatus:
+      type: string
+      enum:
+      - required
+    WorkflowOperatorPlan:
+      type: object
+      required:
+      - protocol
+      - planId
+      - mutatesState
+      - action
+      - serviceId
+      - instanceId
+      - definitionVersion
+      - priorState
+      - resultingState
+      - affectedResources
+      - preservedState
+      - authorization
+      - approvalBoundary
+      - nextActions
+      properties:
+        action:
+          $ref: '#/components/schemas/WorkflowOperatorAction'
+        affectedResources:
+          $ref: '#/components/schemas/WorkflowOperatorAffectedResources'
+        approvalBoundary:
+          $ref: '#/components/schemas/WorkflowOperatorApprovalBoundary'
+        authorization:
+          $ref: '#/components/schemas/WorkflowOperatorAuthorization'
+        definitionVersion:
+          type: string
+        instanceId:
+          type: string
+        mutatesState:
+          type: boolean
+        nextActions:
+          type: array
+          items:
+            type: string
+        planId:
+          type: string
+        preservedState:
+          type: array
+          items:
+            type: string
+        priorState:
+          $ref: '#/components/schemas/WorkflowOperatorStateSnapshot'
+        protocol:
+          type: string
+        resultingState:
+          $ref: '#/components/schemas/WorkflowOperatorStateSnapshot'
+        selectedStepId:
+          type:
+          - string
+          - 'null'
+        serviceId:
+          type: string
+    WorkflowOperatorPlanRequest:
+      type: object
+      properties:
+        selectedStepId:
+          type:
+          - string
+          - 'null'
+      additionalProperties: false
+    WorkflowOperatorResult:
+      type: object
+      required:
+      - protocol
+      - disposition
+      - intervention
+      - nextActions
+      properties:
+        disposition:
+          $ref: '#/components/schemas/WorkflowTransitionDisposition'
+        intervention:
+          $ref: '#/components/schemas/WorkflowInterventionInspection'
+        nextActions:
+          type: array
+          items:
+            type: string
+        protocol:
+          type: string
+    WorkflowOperatorStateSnapshot:
+      type: object
+      required:
+      - executionState
+      - controlState
+      - controlRevision
+      properties:
+        controlRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        controlState:
+          $ref: '#/components/schemas/WorkflowControlState'
+        executionState:
+          $ref: '#/components/schemas/WorkflowInstanceState'
     WorkflowOutgoingWorkInspection:
       type: object
       required:
@@ -1042,6 +1435,35 @@ components:
           type: string
         stepId:
           type: string
+    WorkflowPendingWorkInspection:
+      type: object
+      required:
+      - kind
+      - resourceId
+      - state
+      properties:
+        dueAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        kind:
+          $ref: '#/components/schemas/WorkflowPendingWorkKind'
+        resourceId:
+          type: string
+        state:
+          type: string
+        stepId:
+          type:
+          - string
+          - 'null'
+    WorkflowPendingWorkKind:
+      type: string
+      enum:
+      - step
+      - timer
+      - child_workflow
+      - compensation
     WorkflowRetryPolicyDeclaration:
       type: object
       required:
@@ -1374,3 +1796,8 @@ components:
       - claimed
       - completed
       - cancelled
+    WorkflowTransitionDisposition:
+      type: string
+      enum:
+      - applied
+      - duplicate

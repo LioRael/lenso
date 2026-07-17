@@ -662,6 +662,7 @@ pub async fn claim_due_workflow_work_at(
               on instance.instance_id = timer.instance_id
             where instance.service_id = $1
               and instance.state = 'running'
+              and instance.control_state = 'active'
               and step.state = 'pending'
               and (
                 (timer.state = 'pending' and timer.due_at <= $2)

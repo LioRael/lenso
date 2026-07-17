@@ -275,6 +275,37 @@ claim state, and child workflow evidence for Runtime Console and other operator
 consumers. It reads only Service-owned workflow tables and does not require the
 Host, Runtime Console, System Plane, or an external workflow engine.
 
+Operator control is a separate durable dispatch gate, not a new business
+lifecycle state. Pausing changes an instance from control state `active` to
+`paused` while preserving its running, failed, or compensating execution state,
+completed steps, attempts, timers, child links, compensation evidence, and any
+already-issued worker claim. A paused instance cannot dispatch a new step,
+child, retry attempt, or compensation. Work that was already claimed remains
+durable, and already-committed Outbox work is not retracted. A completion that
+would create new outgoing work is deferred until resume, and the same stable
+transition or idempotency identity is used again. Resume only reopens that
+dispatch gate and never recreates completed work.
+
+`POST /runtime/workflows/instances/{instance_id}/operator-actions/{action}/dry-run`
+returns a deterministic `lenso.workflow-operator-plan.v1` document for `pause`,
+`resume`, or a selected exhausted-step `retry`. The plan is read-only and binds
+the instance revision, pinned definition version, selected step, attempts,
+timers, pending work, in-flight claims, preserved state, affected resources,
+required authority, and resulting state into a SHA-256 plan identity. Applying
+the matching action requires a deployment-owned authority verifier and a
+Bearer credential for that exact plan; missing verifier configuration fails
+closed. Any intervening state change returns `workflow_stale_plan` and requires
+a new dry run.
+
+An authorized manual retry reopens only the selected exhausted step, retains
+its step identity and prior attempt evidence, and schedules one new durable
+attempt with an intervention-derived transition identity. Story, causation,
+delegated actor, tenant, deadline, and idempotency context stay on the original
+Workflow Instance. Every applied or idempotently repeated action exposes stable
+JSON and records the verified actor, authority, reason, time, plan, prior state,
+resulting state, affected step when present, retry transition when present, and
+next action in the Service Store. Authority credentials are never persisted.
+
 Steps may declare one compensation with a stable name, unique positive order,
 request Event Contract, and completion Event Contract. When a controlled
 timeout selects compensation, the Service Store retains the completed effect,

@@ -41,7 +41,7 @@ use utoipa::{OpenApi, ToSchema};
 use utoipa_axum::{router::OpenApiRouter, routes};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct ServiceRuntimeConfig {
     pub service_id: String,
     pub store_id: String,
@@ -49,7 +49,29 @@ pub struct ServiceRuntimeConfig {
     pub operator_environment: DeadLetterOperatorEnvironment,
     pub values: serde_json::Value,
     pub workflow_definitions: Vec<WorkflowDefinition>,
+    pub workflow_authority_verifier: Option<Arc<dyn WorkflowAuthorityVerifier>>,
 }
+
+impl PartialEq for ServiceRuntimeConfig {
+    fn eq(&self, other: &Self) -> bool {
+        self.service_id == other.service_id
+            && self.store_id == other.store_id
+            && self.store_owner_service_id == other.store_owner_service_id
+            && self.operator_environment == other.operator_environment
+            && self.values == other.values
+            && self.workflow_definitions == other.workflow_definitions
+            && match (
+                &self.workflow_authority_verifier,
+                &other.workflow_authority_verifier,
+            ) {
+                (None, None) => true,
+                (Some(left), Some(right)) => Arc::ptr_eq(left, right),
+                _ => false,
+            }
+    }
+}
+
+impl Eq for ServiceRuntimeConfig {}
 
 impl ServiceRuntimeConfig {
     #[must_use]
@@ -65,6 +87,7 @@ impl ServiceRuntimeConfig {
             operator_environment: DeadLetterOperatorEnvironment::LocalSandbox,
             values: serde_json::json!({}),
             workflow_definitions: Vec::new(),
+            workflow_authority_verifier: None,
         }
     }
 
@@ -100,6 +123,18 @@ impl ServiceRuntimeConfig {
         operator_environment: DeadLetterOperatorEnvironment,
     ) -> Self {
         self.operator_environment = operator_environment;
+        self
+    }
+
+    /// Installs the deployment-owned verifier used by protected Workflow
+    /// operator actions. Without one, read-only inspection and planning remain
+    /// available while every mutation fails closed.
+    #[must_use]
+    pub fn with_workflow_authority_verifier(
+        mut self,
+        verifier: Arc<dyn WorkflowAuthorityVerifier>,
+    ) -> Self {
+        self.workflow_authority_verifier = Some(verifier);
         self
     }
 }
@@ -195,6 +230,10 @@ pub const SERVICE_RUNTIME_MIGRATIONS: &[Migration] = &[
         name: "autonomous-service/0017_create_workflow_compensation_history",
         sql: include_str!("../migrations/0017_create_workflow_compensation_history.sql"),
     },
+    Migration {
+        name: "autonomous-service/0018_control_workflow_instances",
+        sql: include_str!("../migrations/0018_control_workflow_instances.sql"),
+    },
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
@@ -216,6 +255,7 @@ pub struct ServiceRuntimeState {
     workflow_definitions: Arc<Vec<WorkflowDefinition>>,
     event_contracts: Arc<Vec<EventContractArtifact>>,
     workflow_clock: Arc<dyn Clock>,
+    workflow_authority_verifier: Option<Arc<dyn WorkflowAuthorityVerifier>>,
 }
 
 #[derive(Debug, Clone)]
@@ -254,6 +294,7 @@ impl ServiceRuntimeState {
             workflow_definitions: Arc::new(Vec::new()),
             event_contracts: Arc::new(Vec::new()),
             workflow_clock: Arc::new(SystemClock),
+            workflow_authority_verifier: None,
         }
     }
 
@@ -303,6 +344,14 @@ impl ServiceRuntimeState {
 
     fn with_event_contracts(mut self, event_contracts: Vec<EventContractArtifact>) -> Self {
         self.event_contracts = Arc::new(event_contracts);
+        self
+    }
+
+    fn with_workflow_authority_verifier(
+        mut self,
+        verifier: Option<Arc<dyn WorkflowAuthorityVerifier>>,
+    ) -> Self {
+        self.workflow_authority_verifier = verifier;
         self
     }
 
@@ -392,7 +441,8 @@ pub async fn prepare_runtime(
     .with_operator_environment(config.operator_environment)
     .with_tenancy_mode(contract.tenancy_mode.clone())
     .with_workflow_definitions(config.workflow_definitions.clone())
-    .with_event_contracts(contract.event_contracts.clone());
+    .with_event_contracts(contract.event_contracts.clone())
+    .with_workflow_authority_verifier(config.workflow_authority_verifier.clone());
     if let Err(error) = apply_migrations(&pool, SERVICE_RUNTIME_MIGRATIONS).await {
         state.set_phase(RuntimePhase::Failed);
         return Err(runtime_error(
@@ -1507,6 +1557,14 @@ mod tests {
                 .paths
                 .paths
                 .contains_key("/runtime/workflows/instances/{instance_id}")
+        );
+        assert!(document.paths.paths.contains_key(
+            "/runtime/workflows/instances/{instance_id}/operator-actions/{action}/dry-run"
+        ));
+        assert!(
+            document.paths.paths.contains_key(
+                "/runtime/workflows/instances/{instance_id}/operator-actions/{action}"
+            )
         );
     }
 
