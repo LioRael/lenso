@@ -1,3 +1,10 @@
+## lenso-service@0.1.3
+
+### Features
+
+Add a deterministic module extraction-readiness report with fail-closed
+evidence evaluation for Service v2 system graphs.
+
 ## lenso-service@0.1.2
 
 ### Features
