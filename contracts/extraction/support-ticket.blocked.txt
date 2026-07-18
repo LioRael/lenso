@@ -1,0 +1,46 @@
+Extraction readiness: support-ticket
+Result: blocked (not ready)
+System: support-system
+Linked owner: support-host
+Effects: read-only; writesRepositoryFiles=false; startsWorkloads=false; movesData=false; changesAuthority=false
+Findings:
+- [blocked] cross_module_import support_sla::internal::SlaPolicy: Cross-Module import `support_sla::internal::SlaPolicy` couples `support-ticket` to `support-sla` in-process.
+  evidence: modules/support-ticket/src/lib.rs:12
+  next: Remove the import and preserve the interaction through an approved Service or Event Contract.
+- [blocked] in_process_boundary_call support_sla::public::evaluate: In-process boundary call `support_sla::public::evaluate` crosses from `support-ticket` to `support-sla`.
+  evidence: modules/support-ticket/src/service.rs:41
+  next: Replace the boundary call with an approved Service or Event Contract before extraction.
+- [blocked] required_event_contract_missing event-handler:record_audit: The required versioned contract artifact is missing. Required kind: Event Contract.
+  evidence: module:event-handler:record_audit
+  next: Publish and reference an authoritative versioned Event Contract for this surface.
+- [blocked] required_service_contract_missing http:GET /tickets/{id}: The required versioned contract artifact is missing. Required kind: Service Contract.
+  evidence: module:http:GET /tickets/{id}
+  next: Publish and reference an authoritative versioned Service Contract for this surface.
+- [breaking] active_consumer_breaking consumer:support-ticket-sla-updates:support.sla-updated.v1: Active Consumer is incompatible with the required Contract Version.
+  evidence: system:consumer/support-ticket-sla-updates
+  next: Migrate the Consumer to support.sla-updated.v1.
+- [needs_attention] admin_surface_present module.admin: Admin declarations are part of the Module's operator-facing identity.
+  evidence: module:admin/schema
+  next: Preserve admin declarations and authorization requirements in the candidate Service.
+- [needs_attention] console_surface_present module.console: Runtime Console declarations are part of the Module's operator-facing identity.
+  evidence: module:console/surface:support-tickets@/support/tickets
+  next: Preserve Console routes, packages, slots, and contributions during extraction.
+- [needs_attention] runtime_surface_present module.runtime: Runtime functions and schedules must retain their identities and execution ownership.
+  evidence: module:runtime/support-ticket-reindex -> support-ticket.reindex.v1
+  evidence: module:runtime/support-ticket.reindex.v1@v1
+  next: Carry these runtime declarations into the candidate Service and extraction drain plan.
+- [needs_attention] story_surface_present module.stories: Runtime Story display declarations must remain stable across extraction.
+  evidence: module:stories/execution:support-ticket.reindex.v1 -> Reindex support tickets
+  next: Preserve Story display names and titles and include them in behavior comparison.
+- [needs_attention] workflow_surface_present module.workflows: Durable Workflow declarations require explicit ownership and in-flight-instance handling.
+  evidence: module:workflows/ticket_triage@v1
+  next: Preserve pinned Workflow Definitions and plan how active instances drain before Cutover.
+Declared surfaces:
+- http: GET /tickets/{id}
+- events: apply_sla_update <- support.sla-updated.v1, record_audit <- support.audit-recorded.v1
+- runtime: support-ticket.reindex.v1@v1
+- schedules: support-ticket-reindex -> support-ticket.reindex.v1
+- workflows: ticket_triage@v1
+- admin: schema
+- console: surface:support-tickets@/support/tickets
+- stories: execution:support-ticket.reindex.v1 -> Reindex support tickets

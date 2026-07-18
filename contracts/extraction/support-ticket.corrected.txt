@@ -1,0 +1,42 @@
+Extraction readiness: support-ticket
+Result: needs_attention (ready)
+System: support-system
+Linked owner: support-host
+Effects: read-only; writesRepositoryFiles=false; startsWorkloads=false; movesData=false; changesAuthority=false
+Findings:
+- [needs_attention] admin_surface_present module.admin: Admin declarations are part of the Module's operator-facing identity.
+  evidence: module:admin/schema
+  next: Preserve admin declarations and authorization requirements in the candidate Service.
+- [needs_attention] console_surface_present module.console: Runtime Console declarations are part of the Module's operator-facing identity.
+  evidence: module:console/surface:support-tickets@/support/tickets
+  next: Preserve Console routes, packages, slots, and contributions during extraction.
+- [needs_attention] runtime_surface_present module.runtime: Runtime functions and schedules must retain their identities and execution ownership.
+  evidence: module:runtime/support-ticket-reindex -> support-ticket.reindex.v1
+  evidence: module:runtime/support-ticket.reindex.v1@v1
+  next: Carry these runtime declarations into the candidate Service and extraction drain plan.
+- [needs_attention] story_surface_present module.stories: Runtime Story display declarations must remain stable across extraction.
+  evidence: module:stories/execution:support-ticket.reindex.v1 -> Reindex support tickets
+  next: Preserve Story display names and titles and include them in behavior comparison.
+- [needs_attention] workflow_surface_present module.workflows: Durable Workflow declarations require explicit ownership and in-flight-instance handling.
+  evidence: module:workflows/ticket_triage@v1
+  next: Preserve pinned Workflow Definitions and plan how active instances drain before Cutover.
+- [safe] boundary_clean boundary.analysis: No cross-Module imports or in-process boundary calls were detected.
+  evidence: analyzer:rust/support-ticket
+  next: No boundary remediation is required.
+- [safe] consumers_compatible consumers.analysis: All supplied active Consumer compatibility results are safe or reviewable.
+  evidence: system:consumer/support-ticket-sla-updates
+  next: Pin these Consumer results in the Extraction Plan.
+- [safe] contracts_complete contracts.analysis: Every declared HTTP and Event surface has authoritative contract evidence.
+  evidence: contracts/events/support.audit-recorded.v1.schema.json
+  evidence: contracts/events/support.sla-updated.v1.schema.json
+  evidence: contracts/openapi/support-ticket.v1.yaml
+  next: Preserve these contract identities during extraction.
+Declared surfaces:
+- http: GET /tickets/{id}
+- events: apply_sla_update <- support.sla-updated.v1, record_audit <- support.audit-recorded.v1
+- runtime: support-ticket.reindex.v1@v1
+- schedules: support-ticket-reindex -> support-ticket.reindex.v1
+- workflows: ticket_triage@v1
+- admin: schema
+- console: surface:support-tickets@/support/tickets
+- stories: execution:support-ticket.reindex.v1 -> Reindex support tickets

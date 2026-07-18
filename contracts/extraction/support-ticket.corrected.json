@@ -1,0 +1,150 @@
+{
+  "analyzerVersion": "lenso.extraction-readiness.v1",
+  "classification": "needs_attention",
+  "effects": {
+    "changesAuthority": false,
+    "movesData": false,
+    "startsWorkloads": false,
+    "writesRepositoryFiles": false
+  },
+  "findings": [
+    {
+      "classification": "needs_attention",
+      "code": "admin_surface_present",
+      "evidenceReferences": [
+        "module:admin/schema"
+      ],
+      "message": "Admin declarations are part of the Module's operator-facing identity.",
+      "nextActions": [
+        "Preserve admin declarations and authorization requirements in the candidate Service."
+      ],
+      "subject": "module.admin"
+    },
+    {
+      "classification": "needs_attention",
+      "code": "console_surface_present",
+      "evidenceReferences": [
+        "module:console/surface:support-tickets@/support/tickets"
+      ],
+      "message": "Runtime Console declarations are part of the Module's operator-facing identity.",
+      "nextActions": [
+        "Preserve Console routes, packages, slots, and contributions during extraction."
+      ],
+      "subject": "module.console"
+    },
+    {
+      "classification": "needs_attention",
+      "code": "runtime_surface_present",
+      "evidenceReferences": [
+        "module:runtime/support-ticket-reindex -> support-ticket.reindex.v1",
+        "module:runtime/support-ticket.reindex.v1@v1"
+      ],
+      "message": "Runtime functions and schedules must retain their identities and execution ownership.",
+      "nextActions": [
+        "Carry these runtime declarations into the candidate Service and extraction drain plan."
+      ],
+      "subject": "module.runtime"
+    },
+    {
+      "classification": "needs_attention",
+      "code": "story_surface_present",
+      "evidenceReferences": [
+        "module:stories/execution:support-ticket.reindex.v1 -> Reindex support tickets"
+      ],
+      "message": "Runtime Story display declarations must remain stable across extraction.",
+      "nextActions": [
+        "Preserve Story display names and titles and include them in behavior comparison."
+      ],
+      "subject": "module.stories"
+    },
+    {
+      "classification": "needs_attention",
+      "code": "workflow_surface_present",
+      "evidenceReferences": [
+        "module:workflows/ticket_triage@v1"
+      ],
+      "message": "Durable Workflow declarations require explicit ownership and in-flight-instance handling.",
+      "nextActions": [
+        "Preserve pinned Workflow Definitions and plan how active instances drain before Cutover."
+      ],
+      "subject": "module.workflows"
+    },
+    {
+      "classification": "safe",
+      "code": "boundary_clean",
+      "evidenceReferences": [
+        "analyzer:rust/support-ticket"
+      ],
+      "message": "No cross-Module imports or in-process boundary calls were detected.",
+      "nextActions": [
+        "No boundary remediation is required."
+      ],
+      "subject": "boundary.analysis"
+    },
+    {
+      "classification": "safe",
+      "code": "consumers_compatible",
+      "evidenceReferences": [
+        "system:consumer/support-ticket-sla-updates"
+      ],
+      "message": "All supplied active Consumer compatibility results are safe or reviewable.",
+      "nextActions": [
+        "Pin these Consumer results in the Extraction Plan."
+      ],
+      "subject": "consumers.analysis"
+    },
+    {
+      "classification": "safe",
+      "code": "contracts_complete",
+      "evidenceReferences": [
+        "contracts/events/support.audit-recorded.v1.schema.json",
+        "contracts/events/support.sla-updated.v1.schema.json",
+        "contracts/openapi/support-ticket.v1.yaml"
+      ],
+      "message": "Every declared HTTP and Event surface has authoritative contract evidence.",
+      "nextActions": [
+        "Preserve these contract identities during extraction."
+      ],
+      "subject": "contracts.analysis"
+    }
+  ],
+  "issueCodes": [
+    "admin_surface_present",
+    "console_surface_present",
+    "runtime_surface_present",
+    "story_surface_present",
+    "workflow_surface_present"
+  ],
+  "protocol": "lenso.extraction-readiness-report.v1",
+  "ready": true,
+  "surfaces": {
+    "admin": [
+      "schema"
+    ],
+    "console": [
+      "surface:support-tickets@/support/tickets"
+    ],
+    "eventHandlers": [
+      "apply_sla_update <- support.sla-updated.v1",
+      "record_audit <- support.audit-recorded.v1"
+    ],
+    "httpRoutes": [
+      "GET /tickets/{id}"
+    ],
+    "runtimeFunctions": [
+      "support-ticket.reindex.v1@v1"
+    ],
+    "schedules": [
+      "support-ticket-reindex -> support-ticket.reindex.v1"
+    ],
+    "stories": [
+      "execution:support-ticket.reindex.v1 -> Reindex support tickets"
+    ],
+    "workflows": [
+      "ticket_triage@v1"
+    ]
+  },
+  "systemId": "support-system",
+  "targetModule": "support-ticket",
+  "targetOwner": "support-host"
+}
