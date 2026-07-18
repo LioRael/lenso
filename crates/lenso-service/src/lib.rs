@@ -11,6 +11,7 @@ mod direct_grpc;
 mod direct_http;
 mod endpoint_resolution;
 mod event_envelope;
+mod extraction_readiness;
 mod reliability_report;
 mod story_segment;
 mod workload_identity;
@@ -56,6 +57,16 @@ pub use event_envelope::{
     EventEnvelopeIssueCode, GeneratedEventContract,
     evaluate_generated_event_contract_compatibility, event_envelope_from_cloudevent,
     generate_event_contract, validate_event_envelope, validate_event_envelope_value,
+};
+pub use extraction_readiness::{
+    EXTRACTION_READINESS_ANALYZER_VERSION, EXTRACTION_READINESS_REPORT_PROTOCOL,
+    ExtractionBoundaryEvidence, ExtractionBoundaryReference, ExtractionBoundaryReferenceKind,
+    ExtractionConsumerCompatibilityEvidence, ExtractionContractDirection,
+    ExtractionContractEvidence, ExtractionContractKind, ExtractionEvidenceStatus,
+    ExtractionReadinessEffects, ExtractionReadinessEvidence, ExtractionReadinessFinding,
+    ExtractionReadinessIssueCode, ExtractionReadinessReport, ExtractionReadinessSurfaceSummary,
+    evaluate_extraction_readiness, extraction_readiness_report_json,
+    extraction_readiness_report_schema, render_extraction_readiness_report,
 };
 pub use reliability_report::{
     ActiveDegradedMode, RELIABILITY_REPORT_PROTOCOL, ReliabilityCheck, ReliabilityCheckState,
@@ -241,7 +252,9 @@ pub const RELIABILITY_COMPATIBILITY_FIXTURES: &[CompatibilityFixture] = &[
     },
 ];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum CompatibilityCategory {
     Safe,

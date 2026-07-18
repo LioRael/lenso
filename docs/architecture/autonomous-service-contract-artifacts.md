@@ -75,6 +75,33 @@ schema, and v2 fixture describe the same surface.
 Compatibility evolution is defined in the generated
 [`contract-compatibility.md`](contract-compatibility.md) reference and its packaged golden pairs.
 
+## Extraction Readiness Report
+
+`lenso.extraction-readiness-report.v1` is the first public artifact for moving
+one Host-owned linked Module toward an Autonomous Service. The public
+`lenso-service` evaluator combines the Module manifest, a validated
+`lenso.system.v2` graph, and structured boundary, Contract, and active Consumer
+evidence. CLI-owned source analyzers supply repository evidence; they do not
+define separate readiness rules.
+
+Findings use the existing `safe`, `needs_attention`, `breaking`, and `blocked`
+compatibility vocabulary plus stable issue codes, evidence references, and next
+actions. Missing or incomplete source analysis, missing Service or Event
+Contracts, ambiguous evidence, unverified Consumers, cross-Module imports, and
+in-process boundary calls fail closed. Runtime functions, schedules, Durable
+Workflows, admin declarations, Console contributions, and Runtime Story display
+metadata remain visible as `needs_attention` preservation work without becoming
+an unexplained blocker.
+
+Readiness evaluation is always non-mutating. Its versioned effects object fixes
+repository writes, Workload startup, data movement, and authority changes to
+`false`. The human projection is rendered from the same report returned as
+JSON. Generated schema, blocked support-ticket proof, and corrected
+support-ticket proof live under `contracts/extraction/` and are freshness-checked
+by `just generated-check` and `just arch-check`. Provider v1 and System v1 keep
+their existing Host-managed semantics and are not accepted as Autonomous
+extraction evidence.
+
 ## Durable Workflow version evolution
 
 Migration `0014_pin_workflow_definition_artifacts` fails closed when a Store

@@ -1,0 +1,237 @@
+{
+  "$defs": {
+    "CompatibilityCategory": {
+      "enum": [
+        "safe",
+        "needs_attention",
+        "breaking",
+        "blocked"
+      ],
+      "type": "string"
+    },
+    "ExtractionReadinessEffects": {
+      "properties": {
+        "changesAuthority": {
+          "const": false,
+          "type": "boolean"
+        },
+        "movesData": {
+          "const": false,
+          "type": "boolean"
+        },
+        "startsWorkloads": {
+          "const": false,
+          "type": "boolean"
+        },
+        "writesRepositoryFiles": {
+          "const": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "writesRepositoryFiles",
+        "startsWorkloads",
+        "movesData",
+        "changesAuthority"
+      ],
+      "type": "object"
+    },
+    "ExtractionReadinessFinding": {
+      "properties": {
+        "classification": {
+          "$ref": "#/$defs/CompatibilityCategory"
+        },
+        "code": {
+          "$ref": "#/$defs/ExtractionReadinessIssueCode"
+        },
+        "evidenceReferences": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "message": {
+          "type": "string"
+        },
+        "nextActions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "subject": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "classification",
+        "code",
+        "subject",
+        "message",
+        "evidenceReferences",
+        "nextActions"
+      ],
+      "type": "object"
+    },
+    "ExtractionReadinessIssueCode": {
+      "enum": [
+        "active_consumer_blocked",
+        "active_consumer_breaking",
+        "active_consumer_compatibility_missing",
+        "active_consumer_evidence_ambiguous",
+        "active_consumer_needs_attention",
+        "admin_surface_present",
+        "boundary_clean",
+        "boundary_evidence_ambiguous",
+        "boundary_evidence_incomplete",
+        "boundary_evidence_missing",
+        "boundary_evidence_target_mismatch",
+        "console_surface_present",
+        "consumers_compatible",
+        "contract_evidence_ambiguous",
+        "contract_evidence_missing",
+        "contract_identity_mismatch",
+        "contracts_complete",
+        "cross_module_import",
+        "in_process_boundary_call",
+        "manifest_invalid",
+        "manifest_needs_attention",
+        "required_event_contract_missing",
+        "required_service_contract_missing",
+        "runtime_surface_present",
+        "story_surface_present",
+        "system_evidence_invalid",
+        "target_module_missing",
+        "target_module_not_linked",
+        "workflow_surface_present"
+      ],
+      "type": "string"
+    },
+    "ExtractionReadinessSurfaceSummary": {
+      "properties": {
+        "admin": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "console": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "eventHandlers": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "httpRoutes": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "runtimeFunctions": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "schedules": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "stories": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "workflows": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$id": "https://contracts.lenso.local/extraction/lenso.extraction-readiness-report.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "analyzerVersion": {
+      "const": "lenso.extraction-readiness.v1",
+      "type": "string"
+    },
+    "classification": {
+      "$ref": "#/$defs/CompatibilityCategory"
+    },
+    "effects": {
+      "$ref": "#/$defs/ExtractionReadinessEffects"
+    },
+    "findings": {
+      "items": {
+        "$ref": "#/$defs/ExtractionReadinessFinding"
+      },
+      "type": "array"
+    },
+    "issueCodes": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ExtractionReadinessIssueCode"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "protocol": {
+      "const": "lenso.extraction-readiness-report.v1",
+      "type": "string"
+    },
+    "ready": {
+      "type": "boolean"
+    },
+    "surfaces": {
+      "$ref": "#/$defs/ExtractionReadinessSurfaceSummary"
+    },
+    "systemId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "targetModule": {
+      "type": "string"
+    },
+    "targetOwner": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "protocol",
+    "analyzerVersion",
+    "targetModule",
+    "classification",
+    "ready",
+    "surfaces",
+    "findings",
+    "effects"
+  ],
+  "title": "Lenso Extraction Readiness Report v1",
+  "type": "object"
+}

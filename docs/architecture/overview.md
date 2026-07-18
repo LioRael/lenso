@@ -192,6 +192,13 @@ healthy, degraded, or unavailable state, and activates declared Degraded Modes.
 Public readiness and liveness follow the resolved contract semantics. This M3
 evidence is read-only and does not block promotion, execute canary policy, or
 trigger rollback.
+The first M4 extraction slice adds the versioned, read-only
+`lenso.extraction-readiness-report.v1` contract. It evaluates one Host-owned
+linked Module from its manifest, the mixed-topology System graph, and
+CLI-supplied boundary, Contract, and Consumer evidence. Missing or ambiguous
+evidence fails closed; declared runtime, admin, Console, Workflow, and Story
+surfaces remain explicit preservation work. Evaluation never writes files,
+starts Workloads, moves data, or changes authority.
 Its versioned Service, Event, Config, and Reliability Contract declarations are
 specified in [`autonomous-service-contract-artifacts.md`](autonomous-service-contract-artifacts.md).
 The separate [`lenso.context.v1`](common-context-contracts.md) envelope

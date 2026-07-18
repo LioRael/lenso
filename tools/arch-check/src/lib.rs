@@ -224,6 +224,19 @@ pub fn check_contract_artifacts_fresh(root: &Path) -> anyhow::Result<()> {
     let system_v2_schema = read_json(root.join("contracts/services/lenso-system.v2.schema.json"))?;
     let system_v2_fixture =
         read_json(root.join("contracts/services/lenso-system.v2.fixture.json"))?;
+    let extraction_readiness_schema = read_json(
+        root.join("contracts/extraction/lenso.extraction-readiness-report.v1.schema.json"),
+    )?;
+    let extraction_readiness_blocked =
+        read_json(root.join("contracts/extraction/support-ticket.blocked.json"))?;
+    let extraction_readiness_corrected =
+        read_json(root.join("contracts/extraction/support-ticket.corrected.json"))?;
+    let extraction_readiness_blocked_human =
+        fs::read_to_string(root.join("contracts/extraction/support-ticket.blocked.txt"))
+            .context("blocked support-ticket Extraction Readiness Report should be readable")?;
+    let extraction_readiness_corrected_human =
+        fs::read_to_string(root.join("contracts/extraction/support-ticket.corrected.txt"))
+            .context("corrected support-ticket Extraction Readiness Report should be readable")?;
     let common_context_schema =
         read_json(root.join("contracts/context/lenso-context.v1.schema.json"))?;
     let common_context_fixture =
@@ -262,6 +275,32 @@ pub fn check_contract_artifacts_fresh(root: &Path) -> anyhow::Result<()> {
     }
     if system_v2_fixture != generate_contracts::generated_system_v2_fixture() {
         violations.push("contracts/services/lenso-system.v2.fixture.json is stale".to_owned());
+    }
+    if extraction_readiness_schema != generate_contracts::generated_extraction_readiness_schema() {
+        violations.push(
+            "contracts/extraction/lenso.extraction-readiness-report.v1.schema.json is stale"
+                .to_owned(),
+        );
+    }
+    if extraction_readiness_blocked
+        != generate_contracts::generated_support_ticket_extraction_readiness_blocked()
+    {
+        violations.push("contracts/extraction/support-ticket.blocked.json is stale".to_owned());
+    }
+    if extraction_readiness_corrected
+        != generate_contracts::generated_support_ticket_extraction_readiness_corrected()
+    {
+        violations.push("contracts/extraction/support-ticket.corrected.json is stale".to_owned());
+    }
+    if extraction_readiness_blocked_human
+        != generate_contracts::generated_support_ticket_extraction_readiness_blocked_human()
+    {
+        violations.push("contracts/extraction/support-ticket.blocked.txt is stale".to_owned());
+    }
+    if extraction_readiness_corrected_human
+        != generate_contracts::generated_support_ticket_extraction_readiness_corrected_human()
+    {
+        violations.push("contracts/extraction/support-ticket.corrected.txt is stale".to_owned());
     }
     if common_context_schema != generate_contracts::generated_common_context_schema() {
         violations.push("contracts/context/lenso-context.v1.schema.json is stale".to_owned());

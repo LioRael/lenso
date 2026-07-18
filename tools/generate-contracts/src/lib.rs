@@ -49,6 +49,26 @@ pub fn generate_contracts() -> anyhow::Result<()> {
         &generated_system_v2_fixture(),
     )?;
     write_json(
+        "contracts/extraction/lenso.extraction-readiness-report.v1.schema.json",
+        &generated_extraction_readiness_schema(),
+    )?;
+    write_json(
+        "contracts/extraction/support-ticket.blocked.json",
+        &generated_support_ticket_extraction_readiness_blocked(),
+    )?;
+    write_text(
+        "contracts/extraction/support-ticket.blocked.txt",
+        &generated_support_ticket_extraction_readiness_blocked_human(),
+    )?;
+    write_json(
+        "contracts/extraction/support-ticket.corrected.json",
+        &generated_support_ticket_extraction_readiness_corrected(),
+    )?;
+    write_text(
+        "contracts/extraction/support-ticket.corrected.txt",
+        &generated_support_ticket_extraction_readiness_corrected_human(),
+    )?;
+    write_json(
         "contracts/context/lenso-context.v1.schema.json",
         &generated_common_context_schema(),
     )?;
@@ -144,6 +164,243 @@ pub fn generated_system_v2_schema() -> Value {
 pub fn generated_system_v2_fixture() -> Value {
     serde_json::from_str(lenso_service::MIXED_SYSTEM_V2_FIXTURE_JSON)
         .expect("packaged mixed System v2 fixture must be valid JSON")
+}
+
+pub fn generated_extraction_readiness_schema() -> Value {
+    lenso_service::extraction_readiness_report_schema()
+}
+
+pub fn generated_support_ticket_extraction_readiness_blocked() -> Value {
+    serde_json::to_value(support_ticket_extraction_readiness_report(true))
+        .expect("blocked support-ticket Extraction Readiness Report must serialize")
+}
+
+pub fn generated_support_ticket_extraction_readiness_blocked_human() -> String {
+    lenso_service::render_extraction_readiness_report(&support_ticket_extraction_readiness_report(
+        true,
+    ))
+}
+
+pub fn generated_support_ticket_extraction_readiness_corrected() -> Value {
+    serde_json::to_value(support_ticket_extraction_readiness_report(false))
+        .expect("corrected support-ticket Extraction Readiness Report must serialize")
+}
+
+pub fn generated_support_ticket_extraction_readiness_corrected_human() -> String {
+    lenso_service::render_extraction_readiness_report(&support_ticket_extraction_readiness_report(
+        false,
+    ))
+}
+
+fn support_ticket_extraction_readiness_report(
+    blocked: bool,
+) -> lenso_service::ExtractionReadinessReport {
+    use lenso_contracts::{
+        AdminSchema, ConsoleArea, ConsolePackage, ConsoleSurface, EntitySchema,
+        EventHandlerDeclaration, EventSurface, FieldSchema, FieldType, ModuleHttpMethod,
+        ModuleHttpRoute, ModuleManifest, RuntimeFunctionDeclaration, RuntimeSurface,
+        ScheduledFunctionDeclaration, StoryDisplayDescriptor, StoryDisplaySource,
+        WorkflowDataContract, WorkflowDefinition, WorkflowStepDeclaration,
+    };
+    use lenso_service::{
+        CompatibilityCategory, ExtractionBoundaryEvidence, ExtractionBoundaryReference,
+        ExtractionBoundaryReferenceKind, ExtractionConsumerCompatibilityEvidence,
+        ExtractionContractDirection, ExtractionContractEvidence, ExtractionContractKind,
+        ExtractionEvidenceStatus, ExtractionReadinessEvidence,
+    };
+
+    let module = ModuleManifest::builder("support-ticket")
+        .capabilities(vec!["support.tickets.read".to_owned()])
+        .http_routes(vec![ModuleHttpRoute {
+            method: ModuleHttpMethod::Get,
+            path: "/tickets/{id}".to_owned(),
+            capability: Some("support.tickets.read".to_owned()),
+            display_name: Some("Get ticket".to_owned()),
+            story_title: Some("Support ticket opened".to_owned()),
+            operation: None,
+        }])
+        .events(EventSurface {
+            handlers: vec![
+                EventHandlerDeclaration {
+                    name: "apply_sla_update".to_owned(),
+                    event_name: "support.sla-updated.v1".to_owned(),
+                    operation: None,
+                },
+                EventHandlerDeclaration {
+                    name: "record_audit".to_owned(),
+                    event_name: "support.audit-recorded.v1".to_owned(),
+                    operation: None,
+                },
+            ],
+        })
+        .runtime(RuntimeSurface {
+            functions: vec![RuntimeFunctionDeclaration {
+                name: "support-ticket.reindex.v1".to_owned(),
+                version: 1,
+                queue: "support-ticket".to_owned(),
+                input_schema: Some("support-ticket.reindex.v1".to_owned()),
+                retry_policy: None,
+                operation: None,
+            }],
+            schedules: vec![ScheduledFunctionDeclaration {
+                name: "support-ticket-reindex".to_owned(),
+                function_name: "support-ticket.reindex.v1".to_owned(),
+                cron: "0 * * * *".to_owned(),
+                input: json!({}),
+            }],
+            workflows: vec![WorkflowDefinition::new(
+                "support-ticket",
+                "ticket_triage",
+                "v1",
+                WorkflowDataContract::new("support.ticket-triage-input", "v1"),
+                WorkflowDataContract::new("support.ticket-triage-result", "v1"),
+                vec![WorkflowStepDeclaration::new("classify")],
+            )],
+        })
+        .admin(AdminSchema {
+            entities: vec![EntitySchema {
+                name: "tickets".to_owned(),
+                label: "Tickets".to_owned(),
+                fields: vec![FieldSchema {
+                    name: "id".to_owned(),
+                    label: "ID".to_owned(),
+                    field_type: FieldType::String,
+                    nullable: false,
+                }],
+                read_capability: "support.tickets.read".to_owned(),
+            }],
+        })
+        .console(vec![ConsoleSurface {
+            name: "support-tickets".to_owned(),
+            label: "Support tickets".to_owned(),
+            area: ConsoleArea::Data,
+            route: "/support/tickets".to_owned(),
+            package: ConsolePackage {
+                name: "@lenso/support-ticket-console".to_owned(),
+                export: "supportTicketConsoleModule".to_owned(),
+            },
+            icon: None,
+            required_capabilities: vec!["support.tickets.read".to_owned()],
+            navigation: None,
+        }])
+        .story_display(vec![StoryDisplayDescriptor {
+            source: StoryDisplaySource::ExecutionName {
+                name: "support-ticket.reindex.v1".to_owned(),
+            },
+            display_name: "Reindex support tickets".to_owned(),
+            story_title: Some("Support ticket maintenance".to_owned()),
+        }])
+        .build();
+    let system = json!({
+        "protocol": "lenso.system.v2",
+        "systemId": "support-system",
+        "host": { "hostId": "support-host", "modules": ["support-ticket"] },
+        "providers": [{
+            "providerId": "notification-provider",
+            "modules": ["notification-gateway"]
+        }],
+        "autonomousServices": [{
+            "serviceId": "support-sla-service",
+            "modules": ["support-sla"],
+            "workloads": [{ "workloadId": "support-sla-api", "role": "api" }]
+        }],
+        "contracts": [{
+            "contractId": "support.sla-updated.v1",
+            "version": "v1",
+            "producerKind": "autonomous_service",
+            "producerId": "support-sla-service",
+            "artifact": {
+                "format": "json_schema",
+                "path": "contracts/events/support.sla-updated.v1.schema.json"
+            },
+            "tenancyMode": "required"
+        }],
+        "consumers": [{
+            "consumerId": "support-ticket-sla-updates",
+            "ownerKind": "host",
+            "ownerId": "support-host",
+            "contractId": "support.sla-updated.v1",
+            "tenancyMode": "required"
+        }]
+    });
+    let mut evidence = ExtractionReadinessEvidence {
+        boundary: Some(ExtractionBoundaryEvidence {
+            complete: true,
+            evidence_references: vec!["analyzer:rust/support-ticket".to_owned()],
+            references: Vec::new(),
+        }),
+        contracts: Some(vec![
+            ExtractionContractEvidence {
+                subject: "http:GET /tickets/{id}".to_owned(),
+                kind: ExtractionContractKind::Service,
+                direction: ExtractionContractDirection::Provides,
+                status: ExtractionEvidenceStatus::Present,
+                contract_id: Some("support-ticket-http.v1".to_owned()),
+                evidence_references: vec!["contracts/openapi/support-ticket.v1.yaml".to_owned()],
+            },
+            ExtractionContractEvidence {
+                subject: "event-handler:apply_sla_update".to_owned(),
+                kind: ExtractionContractKind::Event,
+                direction: ExtractionContractDirection::Consumes,
+                status: ExtractionEvidenceStatus::Present,
+                contract_id: Some("support.sla-updated.v1".to_owned()),
+                evidence_references: vec![
+                    "contracts/events/support.sla-updated.v1.schema.json".to_owned(),
+                ],
+            },
+            ExtractionContractEvidence {
+                subject: "event-handler:record_audit".to_owned(),
+                kind: ExtractionContractKind::Event,
+                direction: ExtractionContractDirection::Consumes,
+                status: ExtractionEvidenceStatus::Present,
+                contract_id: Some("support.audit-recorded.v1".to_owned()),
+                evidence_references: vec![
+                    "contracts/events/support.audit-recorded.v1.schema.json".to_owned(),
+                ],
+            },
+        ]),
+        active_consumers: Some(vec![ExtractionConsumerCompatibilityEvidence {
+            consumer_id: "support-ticket-sla-updates".to_owned(),
+            contract_id: "support.sla-updated.v1".to_owned(),
+            classification: CompatibilityCategory::Safe,
+            evidence_references: vec!["system:consumer/support-ticket-sla-updates".to_owned()],
+            next_action: "No action needed.".to_owned(),
+        }]),
+    };
+    if blocked {
+        evidence
+            .boundary
+            .as_mut()
+            .expect("boundary fixture")
+            .references = vec![
+            ExtractionBoundaryReference {
+                kind: ExtractionBoundaryReferenceKind::CrossModuleImport,
+                from_module: "support-ticket".to_owned(),
+                to_module: "support-sla".to_owned(),
+                symbol: "support_sla::internal::SlaPolicy".to_owned(),
+                evidence_reference: "modules/support-ticket/src/lib.rs:12".to_owned(),
+            },
+            ExtractionBoundaryReference {
+                kind: ExtractionBoundaryReferenceKind::InProcessBoundaryCall,
+                from_module: "support-ticket".to_owned(),
+                to_module: "support-sla".to_owned(),
+                symbol: "support_sla::public::evaluate".to_owned(),
+                evidence_reference: "modules/support-ticket/src/service.rs:41".to_owned(),
+            },
+        ];
+        let contracts = evidence.contracts.as_mut().expect("contract fixture");
+        contracts[0].status = ExtractionEvidenceStatus::Missing;
+        contracts[0].contract_id = None;
+        contracts[2].status = ExtractionEvidenceStatus::Missing;
+        contracts[2].contract_id = None;
+        let consumer = &mut evidence
+            .active_consumers
+            .as_mut()
+            .expect("consumer fixture")[0];
+        consumer.classification = CompatibilityCategory::Breaking;
+        consumer.next_action = "Migrate the Consumer to support.sla-updated.v1.".to_owned();
+    }
+    lenso_service::evaluate_extraction_readiness(&module, &system, &evidence)
 }
 
 pub fn generated_common_context_schema() -> Value {

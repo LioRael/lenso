@@ -107,6 +107,50 @@ fn committed_system_v2_artifacts_match_generator() {
 }
 
 #[test]
+fn committed_extraction_readiness_artifacts_match_generator() {
+    let schema: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/extraction/lenso.extraction-readiness-report.v1.schema.json"
+    ))
+    .expect("committed Extraction Readiness Report schema should parse");
+    let blocked: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/extraction/support-ticket.blocked.json"
+    ))
+    .expect("committed blocked support-ticket report should parse");
+    let corrected: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/extraction/support-ticket.corrected.json"
+    ))
+    .expect("committed corrected support-ticket report should parse");
+    let blocked_human = include_str!("../../../contracts/extraction/support-ticket.blocked.txt");
+    let corrected_human =
+        include_str!("../../../contracts/extraction/support-ticket.corrected.txt");
+
+    assert_eq!(
+        schema,
+        generate_contracts::generated_extraction_readiness_schema()
+    );
+    assert_eq!(
+        blocked,
+        generate_contracts::generated_support_ticket_extraction_readiness_blocked()
+    );
+    assert_eq!(
+        corrected,
+        generate_contracts::generated_support_ticket_extraction_readiness_corrected()
+    );
+    assert_eq!(
+        blocked_human,
+        generate_contracts::generated_support_ticket_extraction_readiness_blocked_human()
+    );
+    assert_eq!(
+        corrected_human,
+        generate_contracts::generated_support_ticket_extraction_readiness_corrected_human()
+    );
+    let validator = jsonschema::validator_for(&schema)
+        .expect("Extraction Readiness Report schema should compile");
+    assert!(validator.is_valid(&blocked));
+    assert!(validator.is_valid(&corrected));
+}
+
+#[test]
 fn committed_common_context_schema_matches_generator() {
     let committed: serde_json::Value = serde_json::from_str(include_str!(
         "../../../contracts/context/lenso-context.v1.schema.json"

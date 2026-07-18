@@ -8,6 +8,7 @@ rust-version.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+jsonschema.workspace = true
 lenso-api.workspace = true
 lenso-autonomous-service.workspace = true
 lenso-contracts.workspace = true

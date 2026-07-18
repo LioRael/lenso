@@ -1250,6 +1250,7 @@ name = "generate-contracts"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "jsonschema",
  "lenso-api",
  "lenso-autonomous-service",
  "lenso-contracts",
@@ -2580,6 +2581,7 @@ dependencies = [
  "protoc-bin-vendored",
  "reqwest",
  "rustls",
+ "schemars",
  "serde",
  "serde_json",
  "serde_yaml",

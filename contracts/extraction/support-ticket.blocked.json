@@ -1,0 +1,177 @@
+{
+  "analyzerVersion": "lenso.extraction-readiness.v1",
+  "classification": "blocked",
+  "effects": {
+    "changesAuthority": false,
+    "movesData": false,
+    "startsWorkloads": false,
+    "writesRepositoryFiles": false
+  },
+  "findings": [
+    {
+      "classification": "blocked",
+      "code": "cross_module_import",
+      "evidenceReferences": [
+        "modules/support-ticket/src/lib.rs:12"
+      ],
+      "message": "Cross-Module import `support_sla::internal::SlaPolicy` couples `support-ticket` to `support-sla` in-process.",
+      "nextActions": [
+        "Remove the import and preserve the interaction through an approved Service or Event Contract."
+      ],
+      "subject": "support_sla::internal::SlaPolicy"
+    },
+    {
+      "classification": "blocked",
+      "code": "in_process_boundary_call",
+      "evidenceReferences": [
+        "modules/support-ticket/src/service.rs:41"
+      ],
+      "message": "In-process boundary call `support_sla::public::evaluate` crosses from `support-ticket` to `support-sla`.",
+      "nextActions": [
+        "Replace the boundary call with an approved Service or Event Contract before extraction."
+      ],
+      "subject": "support_sla::public::evaluate"
+    },
+    {
+      "classification": "blocked",
+      "code": "required_event_contract_missing",
+      "evidenceReferences": [
+        "module:event-handler:record_audit"
+      ],
+      "message": "The required versioned contract artifact is missing. Required kind: Event Contract.",
+      "nextActions": [
+        "Publish and reference an authoritative versioned Event Contract for this surface."
+      ],
+      "subject": "event-handler:record_audit"
+    },
+    {
+      "classification": "blocked",
+      "code": "required_service_contract_missing",
+      "evidenceReferences": [
+        "module:http:GET /tickets/{id}"
+      ],
+      "message": "The required versioned contract artifact is missing. Required kind: Service Contract.",
+      "nextActions": [
+        "Publish and reference an authoritative versioned Service Contract for this surface."
+      ],
+      "subject": "http:GET /tickets/{id}"
+    },
+    {
+      "classification": "breaking",
+      "code": "active_consumer_breaking",
+      "evidenceReferences": [
+        "system:consumer/support-ticket-sla-updates"
+      ],
+      "message": "Active Consumer is incompatible with the required Contract Version.",
+      "nextActions": [
+        "Migrate the Consumer to support.sla-updated.v1."
+      ],
+      "subject": "consumer:support-ticket-sla-updates:support.sla-updated.v1"
+    },
+    {
+      "classification": "needs_attention",
+      "code": "admin_surface_present",
+      "evidenceReferences": [
+        "module:admin/schema"
+      ],
+      "message": "Admin declarations are part of the Module's operator-facing identity.",
+      "nextActions": [
+        "Preserve admin declarations and authorization requirements in the candidate Service."
+      ],
+      "subject": "module.admin"
+    },
+    {
+      "classification": "needs_attention",
+      "code": "console_surface_present",
+      "evidenceReferences": [
+        "module:console/surface:support-tickets@/support/tickets"
+      ],
+      "message": "Runtime Console declarations are part of the Module's operator-facing identity.",
+      "nextActions": [
+        "Preserve Console routes, packages, slots, and contributions during extraction."
+      ],
+      "subject": "module.console"
+    },
+    {
+      "classification": "needs_attention",
+      "code": "runtime_surface_present",
+      "evidenceReferences": [
+        "module:runtime/support-ticket-reindex -> support-ticket.reindex.v1",
+        "module:runtime/support-ticket.reindex.v1@v1"
+      ],
+      "message": "Runtime functions and schedules must retain their identities and execution ownership.",
+      "nextActions": [
+        "Carry these runtime declarations into the candidate Service and extraction drain plan."
+      ],
+      "subject": "module.runtime"
+    },
+    {
+      "classification": "needs_attention",
+      "code": "story_surface_present",
+      "evidenceReferences": [
+        "module:stories/execution:support-ticket.reindex.v1 -> Reindex support tickets"
+      ],
+      "message": "Runtime Story display declarations must remain stable across extraction.",
+      "nextActions": [
+        "Preserve Story display names and titles and include them in behavior comparison."
+      ],
+      "subject": "module.stories"
+    },
+    {
+      "classification": "needs_attention",
+      "code": "workflow_surface_present",
+      "evidenceReferences": [
+        "module:workflows/ticket_triage@v1"
+      ],
+      "message": "Durable Workflow declarations require explicit ownership and in-flight-instance handling.",
+      "nextActions": [
+        "Preserve pinned Workflow Definitions and plan how active instances drain before Cutover."
+      ],
+      "subject": "module.workflows"
+    }
+  ],
+  "issueCodes": [
+    "active_consumer_breaking",
+    "admin_surface_present",
+    "console_surface_present",
+    "cross_module_import",
+    "in_process_boundary_call",
+    "required_event_contract_missing",
+    "required_service_contract_missing",
+    "runtime_surface_present",
+    "story_surface_present",
+    "workflow_surface_present"
+  ],
+  "protocol": "lenso.extraction-readiness-report.v1",
+  "ready": false,
+  "surfaces": {
+    "admin": [
+      "schema"
+    ],
+    "console": [
+      "surface:support-tickets@/support/tickets"
+    ],
+    "eventHandlers": [
+      "apply_sla_update <- support.sla-updated.v1",
+      "record_audit <- support.audit-recorded.v1"
+    ],
+    "httpRoutes": [
+      "GET /tickets/{id}"
+    ],
+    "runtimeFunctions": [
+      "support-ticket.reindex.v1@v1"
+    ],
+    "schedules": [
+      "support-ticket-reindex -> support-ticket.reindex.v1"
+    ],
+    "stories": [
+      "execution:support-ticket.reindex.v1 -> Reindex support tickets"
+    ],
+    "workflows": [
+      "ticket_triage@v1"
+    ]
+  },
+  "systemId": "support-system",
+  "targetModule": "support-ticket",
+  "targetOwner": "support-host"
+}
