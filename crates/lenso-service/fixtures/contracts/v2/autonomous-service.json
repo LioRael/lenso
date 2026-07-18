@@ -53,11 +53,19 @@
     "contractId": "support-reliability",
     "version": "v1",
     "artifact": { "path": "contracts/reliability/support.v1.schema.json" },
+    "profile": "standard",
+    "overrides": {
+      "workflowBacklogLimit": 500,
+      "timerLagLimitMs": 10000,
+      "retryExhaustionLimit": 10,
+      "compensationPressureLimit": 10
+    },
     "availabilityTarget": "99.9%",
     "latencyTargetMs": 300,
     "dependencyCriticality": { "notification-gateway": "degradable" },
     "healthSemantics": ["ready means requests can be served"],
     "degradedModes": ["queue notifications while gateway is unavailable"],
+    "degradedModeByDependency": { "notification-gateway": "queue_notifications" },
     "backlogLimit": 10000,
     "errorBudget": "43m per 30d",
     "rolloutSafety": ["rollback when error rate exceeds 2% for 5m"]

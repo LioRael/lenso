@@ -7,13 +7,14 @@ use lenso_service::{
     ContractContextRequirements, ContractOwner, ContractSemanticKind, EventArtifactFormat,
     EventArtifactReference, EventContractArtifact, LEGACY_CONTRACT_FIXTURES,
     MIXED_SYSTEM_V2_FIXTURE_JSON, MODULE_CONTRACT_SCHEMA_JSON, MODULE_RELEASE_SCHEMA_JSON,
-    ModuleContract, ModuleManifest, ReliabilityContract, SERVICE_CONTRACT_SCHEMA_JSON,
-    SERVICE_SYSTEM_SCHEMA_JSON, SERVICE_V2_CONTRACT_SCHEMA_JSON, SERVICE_WORKSPACE_SCHEMA_JSON,
-    SYSTEM_V2_CONTRACT_SCHEMA_JSON, SchemaArtifactReference, ServiceArtifactFormat,
-    ServiceArtifactReference, ServiceCompatibility, ServiceContract, ServiceContractArtifact,
-    ServiceHealth, ServiceLocalProcess, ServiceProvider, ServiceSystem, ServiceSystemDependency,
-    ServiceSystemModule, ServiceSystemService, ServiceTenancyMode, ServiceWorkspace,
-    ServiceWorkspaceService, WorkloadRole, check_contract_artifact_value,
+    ModuleContract, ModuleManifest, ReliabilityContract, ReliabilityLivenessSemantics,
+    ReliabilityProfile, ReliabilityProfileOverrides, ReliabilityReadinessSemantics,
+    SERVICE_CONTRACT_SCHEMA_JSON, SERVICE_SYSTEM_SCHEMA_JSON, SERVICE_V2_CONTRACT_SCHEMA_JSON,
+    SERVICE_WORKSPACE_SCHEMA_JSON, SYSTEM_V2_CONTRACT_SCHEMA_JSON, SchemaArtifactReference,
+    ServiceArtifactFormat, ServiceArtifactReference, ServiceCompatibility, ServiceContract,
+    ServiceContractArtifact, ServiceHealth, ServiceLocalProcess, ServiceProvider, ServiceSystem,
+    ServiceSystemDependency, ServiceSystemModule, ServiceSystemService, ServiceTenancyMode,
+    ServiceWorkspace, ServiceWorkspaceService, WorkloadRole, check_contract_artifact_value,
     check_contract_artifact_value_with_artifacts, service_system_graph, system_v2_graph,
     validate_autonomous_service_artifact_references, validate_module_contract_value,
     validate_service_contract_value, validate_service_system_value,
@@ -835,6 +836,42 @@ fn autonomous_service_v2_public_types_declare_owned_contract_artifacts() {
 }
 
 #[test]
+fn reliability_profiles_resolve_validated_overrides_deterministically() {
+    let mut reliability = ReliabilityContract::new(
+        "support-reliability",
+        "v1",
+        SchemaArtifactReference::new("contracts/reliability/support.v1.schema.json"),
+        "99.95%",
+        "22m per 30d",
+    );
+    reliability.profile = ReliabilityProfile::Critical;
+    reliability.latency_target_ms = 250;
+    reliability.backlog_limit = 80;
+    reliability.overrides = ReliabilityProfileOverrides {
+        workflow_backlog_limit: Some(12),
+        timer_lag_limit_ms: Some(750),
+        readiness: Some(ReliabilityReadinessSemantics::Serving),
+        liveness: Some(ReliabilityLivenessSemantics::ProcessRunning),
+        ..ReliabilityProfileOverrides::default()
+    };
+
+    let first = reliability.effective_values().unwrap();
+    let second = reliability.effective_values().unwrap();
+
+    assert_eq!(first, second);
+    assert_eq!(first.availability_target_basis_points, 9_995);
+    assert_eq!(first.latency_target_ms, 250);
+    assert_eq!(first.queue_backlog_limit, 80);
+    assert_eq!(first.workflow_backlog_limit, 12);
+    assert_eq!(first.timer_lag_limit_ms, 750);
+    assert_eq!(first.retry_exhaustion_limit, 5);
+    assert_eq!(first.compensation_pressure_limit, 5);
+    assert_eq!(first.error_budget_consumed_limit_basis_points, 8_000);
+    assert_eq!(first.readiness, ReliabilityReadinessSemantics::Serving);
+    assert_eq!(first.liveness, ReliabilityLivenessSemantics::ProcessRunning);
+}
+
+#[test]
 fn autonomous_service_v2_contract_artifact_failures_are_deterministic() {
     let mut source: serde_json::Value =
         serde_json::from_str(AUTONOMOUS_SERVICE_V2_FIXTURE_JSON).unwrap();
@@ -948,6 +985,9 @@ fn autonomous_service_v2_rejects_malformed_config_and_reliability_contracts() {
     source["configContract"]["fields"][0]["scope"] = json!("global");
     source["configContract"]["fields"][1]["path"] = json!("sla.defaultHours");
     source["reliabilityContract"]["availabilityTarget"] = json!("");
+    source["reliabilityContract"]["overrides"]["errorBudgetConsumedLimitBasisPoints"] =
+        json!(10_001);
+    source["reliabilityContract"]["degradedModeByDependency"]["notification-gateway"] = json!("");
 
     let issues = lenso_service::validate_autonomous_service_contract_value(&source);
     assert_eq!(
