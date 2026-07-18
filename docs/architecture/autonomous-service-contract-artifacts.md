@@ -368,6 +368,30 @@ authenticated transport binding. Tenant-aware Services expose only the single
 authorized partition requested by the reader, and credential proofs or cursor
 keys are never written into Story evidence or returned by the Feed.
 
+## Federated Runtime Story
+
+The Story observability boundary consumes at least two authenticated Segment
+Feeds and assembles `lenso.federated-runtime-story.v1`. Each source Service and
+tenant partition has an independent durable cursor in the aggregation Store.
+Collected revisions are append-only and idempotent under source Service,
+Segment identity, and evidence revision. The read model selects the latest
+revision without changing the stable node identity, so late evidence completes
+the existing Story rather than creating a replacement Story.
+
+Source availability is part of the evidence model. `unreachable`, `stale`,
+`unauthorized`, `truncated`, and `retention_expired` are explicit typed Segment
+gaps. Successful collection resolves transient availability and authorization
+gaps; truncation and retention gaps remain visible because later success cannot
+prove that lost evidence never existed. A deliberate cursor restart changes
+only aggregation state and does not acknowledge or mutate the source Feed.
+
+Every Feed envelope and Segment must match the configured source Service and
+requested tenant partition before persistence. Federated reads select one
+tenant partition, so a reused Story identity cannot expose another tenant's
+Segments or gaps. Trace, metric, and log providers may attach technical
+evidence to stable Segment nodes. Enrichment failure is non-fatal and never
+changes Story identity, Workflow state, or business completion evidence.
+
 ## Event Envelopes
 
 A declared JSON Schema `eventContract` generates a versioned

@@ -15,15 +15,26 @@ name = "story"
 path = "src/lib.rs"
 
 [dependencies]
+async-trait.workspace = true
 axum.workspace = true
 chrono.workspace = true
+lenso-service.workspace = true
 platform-core.workspace = true
 platform-http.workspace = true
 platform-module.workspace = true
+reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true
+tracing.workspace = true
 utoipa.workspace = true
+
+[dev-dependencies]
+lenso-autonomous-service.workspace = true
+platform-testing.workspace = true
+tokio.workspace = true
+tower.workspace = true
+utoipa-axum.workspace = true
 
 [lints]
 workspace = true
