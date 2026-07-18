@@ -3744,6 +3744,21 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
 components:
   schemas:
+    ActiveDegradedMode:
+      type: object
+      required:
+      - dependencyId
+      - mode
+      - evidenceReferences
+      properties:
+        dependencyId:
+          type: string
+        evidenceReferences:
+          type: array
+          items:
+            type: string
+        mode:
+          type: string
     AdminAction:
       type: object
       required:
@@ -4221,6 +4236,84 @@ components:
           $ref: '#/components/schemas/AdminEmbeddedRuntime'
         sandbox:
           $ref: '#/components/schemas/AdminSandboxPolicy'
+    AdminFederatedStoryEvidence:
+      type: object
+      required:
+      - protocol
+      - assembledAt
+      - gaps
+      - workflowEntities
+      - reliability
+      properties:
+        assembledAt:
+          type: string
+          format: date-time
+        gaps:
+          type: array
+          items:
+            $ref: '#/components/schemas/FederatedStoryGap'
+        protocol:
+          type: string
+        reliability:
+          type: array
+          items:
+            $ref: '#/components/schemas/FederatedStoryReliabilityEvidence'
+        tenantId:
+          type:
+          - string
+          - 'null'
+        workflowEntities:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminFederatedWorkflowEntity'
+    AdminFederatedWorkflowEntity:
+      type: object
+      required:
+      - kind
+      - id
+      - nodeId
+      - instanceId
+      - label
+      - state
+      - serviceId
+      - attempt
+      - observedAt
+      properties:
+        attempt:
+          type: integer
+          format: int32
+          minimum: 0
+        id:
+          type: string
+        instanceId:
+          type: string
+        kind:
+          $ref: '#/components/schemas/AdminFederatedWorkflowEntityKind'
+        label:
+          type: string
+        nodeId:
+          type: string
+        observedAt:
+          type: string
+          format: date-time
+        parentId:
+          type:
+          - string
+          - 'null'
+        serviceId:
+          type: string
+        state:
+          type: string
+    AdminFederatedWorkflowEntityKind:
+      type: string
+      enum:
+      - instance
+      - step
+      - attempt
+      - timer
+      - child
+      - compensation
+      - intervention
     AdminFunctionRunDetail:
       type: object
       required:
@@ -6124,6 +6217,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AdminRuntimeStoryEdge'
+        federation:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/AdminFederatedStoryEvidence'
         nodes:
           type: array
           items:
@@ -6164,6 +6261,7 @@ components:
     AdminRuntimeStoryListItem:
       type: object
       required:
+      - story_kind
       - title
       - correlation_id
       - status
@@ -6202,6 +6300,8 @@ components:
           items:
             type: string
         status:
+          type: string
+        story_kind:
           type: string
         title:
           type: string
@@ -7925,6 +8025,59 @@ components:
           type: string
         user_id:
           type: string
+    EffectiveReliabilityValues:
+      type: object
+      required:
+      - availabilityTargetBasisPoints
+      - latencyTargetMs
+      - queueBacklogLimit
+      - workflowBacklogLimit
+      - timerLagLimitMs
+      - retryExhaustionLimit
+      - compensationPressureLimit
+      - errorBudget
+      - errorBudgetConsumedLimitBasisPoints
+      - readiness
+      - liveness
+      properties:
+        availabilityTargetBasisPoints:
+          type: integer
+          format: int32
+          minimum: 0
+        compensationPressureLimit:
+          type: integer
+          format: int64
+          minimum: 0
+        errorBudget:
+          type: string
+        errorBudgetConsumedLimitBasisPoints:
+          type: integer
+          format: int32
+          minimum: 0
+        latencyTargetMs:
+          type: integer
+          format: int64
+          minimum: 0
+        liveness:
+          $ref: '#/components/schemas/ReliabilityLivenessSemantics'
+        queueBacklogLimit:
+          type: integer
+          format: int64
+          minimum: 0
+        readiness:
+          $ref: '#/components/schemas/ReliabilityReadinessSemantics'
+        retryExhaustionLimit:
+          type: integer
+          format: int64
+          minimum: 0
+        timerLagLimitMs:
+          type: integer
+          format: int64
+          minimum: 0
+        workflowBacklogLimit:
+          type: integer
+          format: int64
+          minimum: 0
     EntitySchema:
       type: object
       description: One manageable entity (e.g. identity's "users").
@@ -8016,6 +8169,74 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/EventHandlerDeclaration'
+    FederatedStoryGap:
+      type: object
+      required:
+      - sourceServiceId
+      - kind
+      - detectedAt
+      - lastObservedAt
+      - detail
+      - nextAction
+      properties:
+        detail:
+          type: string
+        detectedAt:
+          type: string
+          format: date-time
+        kind:
+          $ref: '#/components/schemas/FederatedStoryGapKind'
+        lastObservedAt:
+          type: string
+          format: date-time
+        nextAction:
+          type: string
+        sourceServiceId:
+          type: string
+        tenantId:
+          type:
+          - string
+          - 'null'
+    FederatedStoryGapKind:
+      type: string
+      enum:
+      - unreachable
+      - stale
+      - unauthorized
+      - truncated
+      - retention_expired
+    FederatedStoryReliabilityEvidence:
+      type: object
+      required:
+      - sourceServiceId
+      - observedAt
+      - status
+      properties:
+        detail:
+          type:
+          - string
+          - 'null'
+        nextAction:
+          type:
+          - string
+          - 'null'
+        observedAt:
+          type: string
+          format: date-time
+        report:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ReliabilityReport'
+        sourceServiceId:
+          type: string
+        status:
+          $ref: '#/components/schemas/FederatedStoryReliabilityStatus'
+    FederatedStoryReliabilityStatus:
+      type: string
+      enum:
+      - available
+      - unavailable
+      - not_declared
     FieldSchema:
       type: object
       description: One field of an entity.
@@ -8491,6 +8712,204 @@ components:
           - 'null'
         reason:
           type: string
+    ReliabilityCheck:
+      type: object
+      required:
+      - code
+      - state
+      - observed
+      - expected
+      properties:
+        code:
+          type: string
+        evidenceReferences:
+          type: array
+          items:
+            type: string
+        expected: {}
+        issueCode:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ReliabilityIssueCode'
+        nextActions:
+          type: array
+          items:
+            type: string
+        observed: {}
+        state:
+          $ref: '#/components/schemas/ReliabilityCheckState'
+    ReliabilityCheckState:
+      type: string
+      enum:
+      - met
+      - breached
+      - unknown
+      - allowed
+    ReliabilityEnforcementBoundary:
+      type: object
+      required:
+      - reportsOnly
+      - blocksProductionPromotion
+      - executesCanaryPolicy
+      - triggersAutomatedRollback
+      properties:
+        blocksProductionPromotion:
+          type: boolean
+        executesCanaryPolicy:
+          type: boolean
+        reportsOnly:
+          type: boolean
+        triggersAutomatedRollback:
+          type: boolean
+    ReliabilityHealthResult:
+      type: object
+      required:
+      - healthy
+      - semantics
+      - issueCodes
+      properties:
+        healthy:
+          type: boolean
+        issueCodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReliabilityIssueCode'
+        semantics:
+          type: string
+    ReliabilityIssueCode:
+      type: string
+      enum:
+      - service_runtime_unavailable
+      - dependency_critical_unavailable
+      - dependency_degradable_unavailable
+      - dependency_observation_missing
+      - queue_backlog_limit_exceeded
+      - workflow_backlog_limit_exceeded
+      - timer_lag_limit_exceeded
+      - retry_exhaustion_limit_exceeded
+      - compensation_pressure_limit_exceeded
+      - availability_target_breached
+      - latency_target_breached
+      - error_budget_limit_exceeded
+      - reliability_observation_missing
+      - reliability_observation_source_unavailable
+      - reliability_store_observation_unavailable
+    ReliabilityLivenessSemantics:
+      type: string
+      enum:
+      - process_running
+      - runtime_operational
+    ReliabilityProfile:
+      type: string
+      enum:
+      - development
+      - standard
+      - critical
+    ReliabilityProfileOverrides:
+      type: object
+      properties:
+        compensationPressureLimit:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        errorBudgetConsumedLimitBasisPoints:
+          type:
+          - integer
+          - 'null'
+          format: int32
+          minimum: 0
+        liveness:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ReliabilityLivenessSemantics'
+        queueBacklogLimit:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        readiness:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ReliabilityReadinessSemantics'
+        retryExhaustionLimit:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        timerLagLimitMs:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        workflowBacklogLimit:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+      additionalProperties: false
+    ReliabilityReadinessSemantics:
+      type: string
+      enum:
+      - serving
+      - healthy
+    ReliabilityReport:
+      type: object
+      required:
+      - protocol
+      - serviceId
+      - contractId
+      - contractVersion
+      - profile
+      - effectiveValues
+      - state
+      - liveness
+      - readiness
+      - activeDegradedModes
+      - checks
+      - enforcement
+      properties:
+        activeDegradedModes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActiveDegradedMode'
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReliabilityCheck'
+        contractId:
+          type: string
+        contractVersion:
+          type: string
+        effectiveValues:
+          $ref: '#/components/schemas/EffectiveReliabilityValues'
+        enforcement:
+          $ref: '#/components/schemas/ReliabilityEnforcementBoundary'
+        liveness:
+          $ref: '#/components/schemas/ReliabilityHealthResult'
+        overrides:
+          $ref: '#/components/schemas/ReliabilityProfileOverrides'
+        profile:
+          $ref: '#/components/schemas/ReliabilityProfile'
+        protocol:
+          type: string
+        readiness:
+          $ref: '#/components/schemas/ReliabilityHealthResult'
+        serviceId:
+          type: string
+        state:
+          $ref: '#/components/schemas/ReliabilityServiceState'
+    ReliabilityServiceState:
+      type: string
+      enum:
+      - healthy
+      - degraded
+      - unavailable
     RemoteHttpProxyResponse:
       type: object
       required:

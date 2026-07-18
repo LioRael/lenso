@@ -116,6 +116,11 @@ stale, unauthorized, truncated, and retention-expired feeds remain explicit
 typed gaps. Late evidence enriches the same `lenso.federated-runtime-story.v1`
 identity, while optional trace, metric, and log providers may annotate matched
 nodes without determining Story identity or business completion.
+The runtime admin backend now presents those collected Stories through the
+existing tenant-scoped Stories API. It projects cross-Service graph and
+timeline nodes, exact Workflow evidence states, typed Segment gaps, correlated
+technical operations, and collected Reliability Reports for Runtime Console;
+the frontend does not recompute federation or reliability rules.
 Modules can now declare engine-neutral, versioned Durable Workflow definitions
 under `ModuleManifest.runtime.workflows`. Autonomous Service composition
 collects those definitions, validates that each owner is a Module owned by the

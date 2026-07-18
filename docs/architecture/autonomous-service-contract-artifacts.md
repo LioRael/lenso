@@ -419,6 +419,21 @@ Segments or gaps. Trace, metric, and log providers may attach technical
 evidence to stable Segment nodes. Enrichment failure is non-fatal and never
 changes Story identity, Workflow state, or business completion evidence.
 
+The runtime admin backend exposes collected Federated Runtime Stories through
+the existing Stories list and detail API. It projects Segment provenance and
+causation into cross-Service nodes and edges, and projects Workflow instances,
+steps, attempts, timers, children, compensations, and interventions into
+explicit state-bearing entities. The projection retains typed gaps rather than
+mapping missing evidence to success. Reads use the authenticated request's
+tenant partition and never merge tenant scopes.
+
+Collection also snapshots the latest report-only `lenso.reliability-report.v1`
+evidence for each source Service. The shared report contract includes the
+selected profile, explicit overrides, deterministic effective values, Degraded
+Modes, pressure and SLO checks, evidence references, issue codes, and next
+actions. Runtime Console renders that backend projection and does not duplicate
+Story aggregation or Reliability Contract evaluation in TypeScript.
+
 ## Event Envelopes
 
 A declared JSON Schema `eventContract` generates a versioned

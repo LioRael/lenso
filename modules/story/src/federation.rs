@@ -5,7 +5,10 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use lenso_service::{STORY_SEGMENT_FEED_PROTOCOL, StorySegment, StorySegmentFeed};
+use lenso_service::{
+    RELIABILITY_REPORT_PROTOCOL, ReliabilityReport, STORY_SEGMENT_FEED_PROTOCOL, StorySegment,
+    StorySegmentFeed,
+};
 use platform_core::{AppError, AppResult, ErrorCode, TelemetrySpanProvider, TelemetrySpanQuery};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -158,6 +161,15 @@ pub trait FederatedStoryFeedClient: fmt::Debug + Send + Sync {
         &self,
         request: FederatedStoryFeedRequest,
     ) -> Result<StorySegmentFeed, FederatedStoryFeedError>;
+
+    /// Reads report-only Service reliability evidence beside Story collection.
+    /// Implementations that do not expose reliability may keep the default.
+    async fn read_reliability(
+        &self,
+        _source: &FederatedStorySource,
+    ) -> Result<Option<ReliabilityReport>, FederatedStoryFeedError> {
+        Ok(None)
+    }
 }
 
 #[async_trait]
@@ -310,6 +322,70 @@ impl FederatedStoryFeedClient for HttpFederatedStoryFeedClient {
             ),
         ))
     }
+
+    async fn read_reliability(
+        &self,
+        source: &FederatedStorySource,
+    ) -> Result<Option<ReliabilityReport>, FederatedStoryFeedError> {
+        let url = format!(
+            "{}/runtime/reliability",
+            source.feed_base_url().trim_end_matches('/')
+        );
+        let response = self.client.get(url).send().await.map_err(|_| {
+            FederatedStoryFeedError::new(
+                FederatedStoryGapKind::Unreachable,
+                format!(
+                    "Reliability Report for Service `{}` could not be reached",
+                    source.service_id()
+                ),
+            )
+            .with_next_action("restore_reliability_report")
+        })?;
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        if !response.status().is_success() {
+            return Err(FederatedStoryFeedError::new(
+                if matches!(
+                    response.status(),
+                    reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN
+                ) {
+                    FederatedStoryGapKind::Unauthorized
+                } else {
+                    FederatedStoryGapKind::Unreachable
+                },
+                format!(
+                    "Reliability Report for Service `{}` returned HTTP {}",
+                    source.service_id(),
+                    response.status().as_u16()
+                ),
+            )
+            .with_next_action("restore_reliability_report"));
+        }
+        let report = response.json::<ReliabilityReport>().await.map_err(|_| {
+            FederatedStoryFeedError::new(
+                FederatedStoryGapKind::Truncated,
+                format!(
+                    "Reliability Report for Service `{}` returned an invalid payload",
+                    source.service_id()
+                ),
+            )
+            .with_next_action("repair_reliability_report_contract")
+        })?;
+        if report.protocol != RELIABILITY_REPORT_PROTOCOL
+            || report.service_id != source.service_id()
+        {
+            return Err(FederatedStoryFeedError::new(
+                FederatedStoryGapKind::Truncated,
+                format!(
+                    "Reliability Report for Service `{}` changed protocol or Service identity",
+                    source.service_id()
+                ),
+            )
+            .with_next_action("repair_reliability_report_identity"));
+        }
+        Ok(Some(report))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
@@ -350,6 +426,50 @@ pub struct FederatedStoryGap {
     pub next_action: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum FederatedStoryReliabilityStatus {
+    Available,
+    Unavailable,
+    NotDeclared,
+}
+
+impl FederatedStoryReliabilityStatus {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Available => "available",
+            Self::Unavailable => "unavailable",
+            Self::NotDeclared => "not_declared",
+        }
+    }
+
+    fn from_stored(value: &str) -> AppResult<Self> {
+        match value {
+            "available" => Ok(Self::Available),
+            "unavailable" => Ok(Self::Unavailable),
+            "not_declared" => Ok(Self::NotDeclared),
+            _ => Err(AppError::new(
+                ErrorCode::Internal,
+                "Stored Federated Story reliability status is invalid",
+            )),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct FederatedStoryReliabilityEvidence {
+    pub source_service_id: String,
+    pub observed_at: DateTime<Utc>,
+    pub status: FederatedStoryReliabilityStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub report: Option<ReliabilityReport>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_action: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct FederatedRuntimeStory {
@@ -360,6 +480,7 @@ pub struct FederatedRuntimeStory {
     pub assembled_at: DateTime<Utc>,
     pub segments: Vec<FederatedStorySegment>,
     pub gaps: Vec<FederatedStoryGap>,
+    pub reliability: Vec<FederatedStoryReliabilityEvidence>,
 }
 
 #[async_trait]
@@ -556,6 +677,15 @@ impl FederatedStoryAggregator {
         tenant_id: Option<&str>,
         observed_at: DateTime<Utc>,
     ) -> AppResult<FederatedStoryCollectionResult> {
+        let reliability = self.feed_client.read_reliability(source).await;
+        persist_reliability_evidence(
+            &self.pool,
+            source.service_id(),
+            tenant_id,
+            observed_at,
+            reliability,
+        )
+        .await?;
         let cursor = load_source_cursor(&self.pool, source.service_id(), tenant_id).await?;
         let request = FederatedStoryFeedRequest {
             source: source.clone(),
@@ -656,6 +786,62 @@ impl FederatedStoryAggregator {
         tenant_id: Option<&str>,
         assembled_at: DateTime<Utc>,
     ) -> AppResult<FederatedRuntimeStory> {
+        FederatedStoryReader::new(self.pool.clone())
+            .with_enrichment_provider(self.enrichment.clone())
+            .story_at(story_id, tenant_id, assembled_at)
+            .await
+    }
+}
+
+/// Read-only projection of already-collected Federated Runtime Story evidence.
+/// It has no feed client and therefore cannot acknowledge or advance execution.
+#[derive(Clone)]
+pub struct FederatedStoryReader {
+    pool: PgPool,
+    enrichment: Arc<dyn FederatedStoryEnrichmentProvider>,
+}
+
+impl fmt::Debug for FederatedStoryReader {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("FederatedStoryReader")
+            .field("enrichment", &self.enrichment)
+            .finish_non_exhaustive()
+    }
+}
+
+impl FederatedStoryReader {
+    #[must_use]
+    pub fn new(pool: PgPool) -> Self {
+        Self {
+            pool,
+            enrichment: Arc::new(NoopFederatedStoryEnrichmentProvider),
+        }
+    }
+
+    #[must_use]
+    pub fn with_enrichment_provider(
+        mut self,
+        enrichment: Arc<dyn FederatedStoryEnrichmentProvider>,
+    ) -> Self {
+        self.enrichment = enrichment;
+        self
+    }
+
+    pub async fn story(
+        &self,
+        story_id: &str,
+        tenant_id: Option<&str>,
+    ) -> AppResult<FederatedRuntimeStory> {
+        self.story_at(story_id, tenant_id, Utc::now()).await
+    }
+
+    pub async fn story_at(
+        &self,
+        story_id: &str,
+        tenant_id: Option<&str>,
+        assembled_at: DateTime<Utc>,
+    ) -> AppResult<FederatedRuntimeStory> {
         validate_tenant_id(tenant_id)?;
         if story_id.trim().is_empty() {
             return Err(AppError::new(
@@ -717,6 +903,7 @@ impl FederatedStoryAggregator {
             }
         }
         let gaps = load_active_gaps(&self.pool, tenant_id).await?;
+        let reliability = load_reliability_evidence(&self.pool, tenant_id).await?;
         Ok(FederatedRuntimeStory {
             protocol: FEDERATED_RUNTIME_STORY_PROTOCOL.to_owned(),
             story_id: story_id.to_owned(),
@@ -724,6 +911,7 @@ impl FederatedStoryAggregator {
             assembled_at,
             segments,
             gaps,
+            reliability,
         })
     }
 }
@@ -1038,6 +1226,127 @@ async fn load_active_gaps(
         },
     )
     .collect()
+}
+
+async fn persist_reliability_evidence(
+    pool: &PgPool,
+    source_service_id: &str,
+    tenant_id: Option<&str>,
+    observed_at: DateTime<Utc>,
+    result: Result<Option<ReliabilityReport>, FederatedStoryFeedError>,
+) -> AppResult<()> {
+    let (status, report, detail, next_action) = match result {
+        Ok(Some(report)) => (
+            FederatedStoryReliabilityStatus::Available,
+            Some(serde_json::to_value(report).map_err(|error| {
+                AppError::new(
+                    ErrorCode::Internal,
+                    "Could not serialize Federated Story reliability evidence",
+                )
+                .with_source(error)
+            })?),
+            None,
+            None,
+        ),
+        Ok(None) => (
+            FederatedStoryReliabilityStatus::NotDeclared,
+            None,
+            Some("Service does not declare a Reliability Contract".to_owned()),
+            None,
+        ),
+        Err(error) => (
+            FederatedStoryReliabilityStatus::Unavailable,
+            None,
+            Some(error.detail),
+            Some(error.next_action),
+        ),
+    };
+    sqlx::query(
+        r#"
+        insert into platform.federated_story_reliability (
+            source_service_id, tenant_scope, status, report, detail,
+            next_action, observed_at
+        ) values ($1, $2, $3, $4, $5, $6, $7)
+        on conflict (source_service_id, tenant_scope) do update set
+            status = excluded.status,
+            report = excluded.report,
+            detail = excluded.detail,
+            next_action = excluded.next_action,
+            observed_at = excluded.observed_at
+        "#,
+    )
+    .bind(source_service_id)
+    .bind(tenant_scope(tenant_id))
+    .bind(status.as_str())
+    .bind(report)
+    .bind(detail)
+    .bind(next_action)
+    .bind(observed_at)
+    .execute(pool)
+    .await
+    .map_err(aggregation_store_error)?;
+    Ok(())
+}
+
+async fn load_reliability_evidence(
+    pool: &PgPool,
+    tenant_id: Option<&str>,
+) -> AppResult<Vec<FederatedStoryReliabilityEvidence>> {
+    let rows = sqlx::query_as::<
+        _,
+        (
+            String,
+            String,
+            Option<Value>,
+            Option<String>,
+            Option<String>,
+            DateTime<Utc>,
+        ),
+    >(
+        r#"
+        select source_service_id, status, report, detail, next_action, observed_at
+        from platform.federated_story_reliability
+        where tenant_scope = $1
+        order by source_service_id
+        "#,
+    )
+    .bind(tenant_scope(tenant_id))
+    .fetch_all(pool)
+    .await
+    .map_err(aggregation_store_error)?;
+
+    rows.into_iter()
+        .map(
+            |(source_service_id, status, report, detail, next_action, observed_at)| {
+                let status = FederatedStoryReliabilityStatus::from_stored(&status)?;
+                let report = report
+                    .map(|report| {
+                        serde_json::from_value::<ReliabilityReport>(report).map_err(|error| {
+                            AppError::new(
+                                ErrorCode::Internal,
+                                "Stored Federated Story reliability report is invalid",
+                            )
+                            .with_source(error)
+                        })
+                    })
+                    .transpose()?;
+                if (status == FederatedStoryReliabilityStatus::Available) != report.is_some() {
+                    return Err(AppError::new(
+                        ErrorCode::Internal,
+                        "Stored Federated Story reliability evidence is inconsistent",
+                    ));
+                }
+                Ok(FederatedStoryReliabilityEvidence {
+                    source_service_id,
+                    observed_at,
+                    status,
+                    report,
+                    detail,
+                    next_action,
+                })
+            },
+        )
+        .collect()
 }
 
 fn tenant_scope(tenant_id: Option<&str>) -> &str {

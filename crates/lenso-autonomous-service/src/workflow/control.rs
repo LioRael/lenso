@@ -3,7 +3,10 @@ use super::{
     WorkflowMutationError, WorkflowStepInspection, WorkflowStepState, WorkflowTenantScope,
     WorkflowTimerState, load_instance, load_instance_in_tx, sha256_hex,
 };
-use crate::{ServiceRuntimeState, WorkflowTransitionDisposition};
+use crate::{
+    ServiceRuntimeState, WorkflowTransitionDisposition,
+    append_persisted_workflow_story_segment_in_tx,
+};
 use axum::{
     Json,
     extract::{Path, State},
@@ -1325,6 +1328,39 @@ async fn apply_workflow_operator_action(
         recorded_at: now,
     };
     insert_intervention(&mut transaction, instance_id, &intervention).await?;
+    let evidence_status = match action {
+        WorkflowOperatorAction::Pause => "paused",
+        WorkflowOperatorAction::Resume => "running",
+        WorkflowOperatorAction::Retry => "retry_scheduled",
+        WorkflowOperatorAction::Cancel | WorkflowOperatorAction::Terminate => {
+            workflow_instance_state_as_str(intervention.resulting_state.execution_state)
+        }
+        WorkflowOperatorAction::Intervene => "intervention_recorded",
+    };
+    let evidence_attempt = selected_step_id
+        .and_then(|step_id| instance.steps.iter().find(|step| step.step_id == step_id))
+        .map_or(1, |step| step.attempt_count.saturating_add(1).max(1));
+    append_persisted_workflow_story_segment_in_tx(
+        state,
+        &mut transaction,
+        instance_id,
+        selected_step_id,
+        None,
+        Some(&intervention.intervention_id),
+        &format!(
+            "workflow:{instance_id}:intervention:{}",
+            intervention.intervention_id
+        ),
+        &format!("workflow.instance.{}", action.as_str()),
+        "lenso.workflow-operator-result",
+        "v1",
+        evidence_status,
+        evidence_attempt,
+        Some(plan_id),
+        now,
+    )
+    .await
+    .map_err(|error| WorkflowApiError::store(error.public_message))?;
     transaction.commit().await.map_err(|error| {
         WorkflowApiError::store(format!(
             "Could not commit Workflow operator action: {error}"

@@ -7,8 +7,9 @@ use lenso_autonomous_service::{
 };
 use lenso_service::{
     AuthenticatedTransportBinding, AutonomousServiceContract, AutonomousServiceStore,
-    AutonomousServiceWorkload, ServiceTenancyMode, StorySegment, StorySegmentContract,
-    StorySegmentFeed, StorySegmentOperation, StorySegmentSource,
+    AutonomousServiceWorkload, ReliabilityContract, ReliabilityProfile,
+    ReliabilityProfileOverrides, SchemaArtifactReference, ServiceTenancyMode, StorySegment,
+    StorySegmentContract, StorySegmentFeed, StorySegmentOperation, StorySegmentSource,
     SystemSandboxWorkloadIdentityProvider, WorkloadCredentialRequest, WorkloadIdentityProvider,
     WorkloadRole,
 };
@@ -66,6 +67,21 @@ fn service(service_id: &str) -> AutonomousServiceContract {
         vec!["local".to_owned()],
     );
     service.stores = vec![AutonomousServiceStore::new("primary", service_id)];
+    if service_id == "support-sla" {
+        let mut reliability = ReliabilityContract::new(
+            "support-reliability",
+            "v1",
+            SchemaArtifactReference::new("contracts/reliability/support.v1.schema.json"),
+            "99.9%",
+            "43m per 30d",
+        );
+        reliability.profile = ReliabilityProfile::Critical;
+        reliability.overrides = ReliabilityProfileOverrides {
+            workflow_backlog_limit: Some(5),
+            ..ReliabilityProfileOverrides::default()
+        };
+        service.reliability_contract = Some(reliability);
+    }
     service
 }
 
@@ -330,6 +346,15 @@ async fn two_authenticated_service_feeds_resume_and_accept_late_evidence() {
         .await
         .unwrap();
     assert_eq!(initial_story.segments.len(), 2);
+    let sla_reliability = initial_story
+        .reliability
+        .iter()
+        .find(|evidence| evidence.source_service_id == "support-sla")
+        .and_then(|evidence| evidence.report.as_ref())
+        .expect("support-sla reliability should be collected beside the story");
+    assert_eq!(sla_reliability.profile, ReliabilityProfile::Critical);
+    assert_eq!(sla_reliability.overrides.workflow_backlog_limit, Some(5));
+    assert_eq!(sla_reliability.effective_values.workflow_backlog_limit, 5);
     assert!(
         initial_story
             .segments

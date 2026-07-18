@@ -59,6 +59,7 @@ pub struct AdminRuntimeTechnicalOperationListResponse {
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct AdminRuntimeStoryListItem {
+    pub story_kind: String,
     pub title: String,
     pub correlation_id: String,
     pub status: String,
@@ -78,6 +79,48 @@ pub struct AdminRuntimeStoryDetail {
     pub nodes: Vec<AdminRuntimeStoryNode>,
     pub edges: Vec<AdminRuntimeStoryEdge>,
     pub timeline_items: Vec<AdminRuntimeTimelineItem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub federation: Option<AdminFederatedStoryEvidence>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AdminFederatedWorkflowEntityKind {
+    Instance,
+    Step,
+    Attempt,
+    Timer,
+    Child,
+    Compensation,
+    Intervention,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminFederatedWorkflowEntity {
+    pub kind: AdminFederatedWorkflowEntityKind,
+    pub id: String,
+    pub node_id: String,
+    pub instance_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_id: Option<String>,
+    pub label: String,
+    pub state: String,
+    pub service_id: String,
+    pub attempt: u32,
+    pub observed_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminFederatedStoryEvidence {
+    pub protocol: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tenant_id: Option<String>,
+    pub assembled_at: DateTime<Utc>,
+    pub gaps: Vec<crate::federation::FederatedStoryGap>,
+    pub workflow_entities: Vec<AdminFederatedWorkflowEntity>,
+    pub reliability: Vec<crate::federation::FederatedStoryReliabilityEvidence>,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
