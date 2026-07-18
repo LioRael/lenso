@@ -190,8 +190,8 @@
       "reasons": [
         {
           "code": "reliability_declaration_compatible",
-          "message": "The Reliability Contract declaration is unchanged; runtime behavior is not inferred.",
-          "nextAction": "Retain runtime evidence separately from this declaration check.",
+          "message": "The Reliability Contract declaration is unchanged; runtime observations remain a separate report.",
+          "nextAction": "Retain the runtime Reliability Report beside this declaration check.",
           "path": "$"
         }
       ]
@@ -211,8 +211,8 @@
       "reasons": [
         {
           "code": "reliability_degraded_modes_changed",
-          "message": "A Reliability Contract declaration changed; this does not prove runtime enforcement.",
-          "nextAction": "Review the declared whole-Service expectation, rollout evidence, and affected owners.",
+          "message": "A Reliability Contract declaration changed; evaluate the effective profile against runtime evidence.",
+          "nextAction": "Review the declared whole-Service expectation, Reliability Report, and affected owners.",
           "path": "$.after.degradedModes"
         }
       ]
@@ -232,8 +232,8 @@
       "reasons": [
         {
           "code": "reliability_target_tightened",
-          "message": "A whole-Service reliability target changed; this declaration does not prove runtime enforcement.",
-          "nextAction": "Review the target direction and rollout evidence with affected owners.",
+          "message": "A whole-Service reliability target changed; declaration compatibility does not replace a runtime Reliability Report.",
+          "nextAction": "Review the target direction and runtime evidence with affected owners.",
           "path": "$.after.availabilityTarget"
         }
       ]

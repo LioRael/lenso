@@ -3,6 +3,7 @@ use prost::Message;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
+use utoipa::ToSchema;
 
 mod call_policy;
 mod delegated_context;
@@ -529,8 +530,8 @@ pub fn evaluate_reliability_compatibility(input: &Value) -> ContractCompatibilit
                     category,
                     &code,
                     &format!("$.after.{key}"),
-                    "A whole-Service reliability target changed; this declaration does not prove runtime enforcement.",
-                    "Review the target direction and rollout evidence with affected owners.",
+                    "A whole-Service reliability target changed; declaration compatibility does not replace a runtime Reliability Report.",
+                    "Review the target direction and runtime evidence with affected owners.",
                 );
             }
         }
@@ -544,8 +545,8 @@ pub fn evaluate_reliability_compatibility(input: &Value) -> ContractCompatibilit
                     CompatibilityCategory::NeedsAttention,
                     &format!("reliability_{}_changed", camel_to_snake(key)),
                     &format!("$.after.{key}"),
-                    "A Reliability Contract declaration changed; this does not prove runtime enforcement.",
-                    "Review the declared whole-Service expectation, rollout evidence, and affected owners.",
+                    "A Reliability Contract declaration changed; evaluate the effective profile against runtime evidence.",
+                    "Review the declared whole-Service expectation, Reliability Report, and affected owners.",
                 );
             }
         }
@@ -553,8 +554,8 @@ pub fn evaluate_reliability_compatibility(input: &Value) -> ContractCompatibilit
     finish_contract_result(
         &mut result,
         "reliability_declaration_compatible",
-        "The Reliability Contract declaration is unchanged; runtime behavior is not inferred.",
-        "Retain runtime evidence separately from this declaration check.",
+        "The Reliability Contract declaration is unchanged; runtime observations remain a separate report.",
+        "Retain the runtime Reliability Report beside this declaration check.",
     );
     result
 }
@@ -4511,17 +4512,132 @@ impl ConfigContract {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ReliabilityProfile {
+    Development,
+    Standard,
+    Critical,
+}
+
+impl Default for ReliabilityProfile {
+    fn default() -> Self {
+        Self::Standard
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ReliabilityReadinessSemantics {
+    Serving,
+    Healthy,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ReliabilityLivenessSemantics {
+    ProcessRunning,
+    RuntimeOperational,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, Default)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReliabilityProfileOverrides {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub queue_backlog_limit: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow_backlog_limit: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timer_lag_limit_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_exhaustion_limit: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compensation_pressure_limit: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_budget_consumed_limit_basis_points: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub readiness: Option<ReliabilityReadinessSemantics>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub liveness: Option<ReliabilityLivenessSemantics>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct EffectiveReliabilityValues {
+    pub availability_target_basis_points: u32,
+    pub latency_target_ms: u64,
+    pub queue_backlog_limit: u64,
+    pub workflow_backlog_limit: u64,
+    pub timer_lag_limit_ms: u64,
+    pub retry_exhaustion_limit: u64,
+    pub compensation_pressure_limit: u64,
+    pub error_budget: String,
+    pub error_budget_consumed_limit_basis_points: u32,
+    pub readiness: ReliabilityReadinessSemantics,
+    pub liveness: ReliabilityLivenessSemantics,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ReliabilityProfileDefaults {
+    workflow_backlog_limit: u64,
+    timer_lag_limit_ms: u64,
+    retry_exhaustion_limit: u64,
+    compensation_pressure_limit: u64,
+    error_budget_consumed_limit_basis_points: u32,
+    readiness: ReliabilityReadinessSemantics,
+    liveness: ReliabilityLivenessSemantics,
+}
+
+impl ReliabilityProfile {
+    const fn defaults(self) -> ReliabilityProfileDefaults {
+        match self {
+            Self::Development => ReliabilityProfileDefaults {
+                workflow_backlog_limit: 1_000,
+                timer_lag_limit_ms: 60_000,
+                retry_exhaustion_limit: 100,
+                compensation_pressure_limit: 100,
+                error_budget_consumed_limit_basis_points: 10_000,
+                readiness: ReliabilityReadinessSemantics::Serving,
+                liveness: ReliabilityLivenessSemantics::ProcessRunning,
+            },
+            Self::Standard => ReliabilityProfileDefaults {
+                workflow_backlog_limit: 250,
+                timer_lag_limit_ms: 30_000,
+                retry_exhaustion_limit: 25,
+                compensation_pressure_limit: 25,
+                error_budget_consumed_limit_basis_points: 10_000,
+                readiness: ReliabilityReadinessSemantics::Serving,
+                liveness: ReliabilityLivenessSemantics::RuntimeOperational,
+            },
+            Self::Critical => ReliabilityProfileDefaults {
+                workflow_backlog_limit: 50,
+                timer_lag_limit_ms: 5_000,
+                retry_exhaustion_limit: 5,
+                compensation_pressure_limit: 5,
+                error_budget_consumed_limit_basis_points: 8_000,
+                readiness: ReliabilityReadinessSemantics::Healthy,
+                liveness: ReliabilityLivenessSemantics::RuntimeOperational,
+            },
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReliabilityContract {
     pub contract_id: String,
     pub version: String,
     pub artifact: SchemaArtifactReference,
+    pub profile: ReliabilityProfile,
+    #[serde(default)]
+    pub overrides: ReliabilityProfileOverrides,
     pub availability_target: String,
     pub latency_target_ms: u64,
     pub dependency_criticality: BTreeMap<String, String>,
     pub health_semantics: Vec<String>,
     pub degraded_modes: Vec<String>,
+    #[serde(default)]
+    pub degraded_mode_by_dependency: BTreeMap<String, String>,
     pub backlog_limit: u64,
     pub error_budget: String,
     pub rollout_safety: Vec<String>,
@@ -4540,16 +4656,79 @@ impl ReliabilityContract {
             contract_id: contract_id.into(),
             version: version.into(),
             artifact,
+            profile: ReliabilityProfile::Standard,
+            overrides: ReliabilityProfileOverrides::default(),
             availability_target: availability_target.into(),
             latency_target_ms: 0,
             dependency_criticality: BTreeMap::new(),
             health_semantics: Vec::new(),
             degraded_modes: Vec::new(),
+            degraded_mode_by_dependency: BTreeMap::new(),
             backlog_limit: 0,
             error_budget: error_budget.into(),
             rollout_safety: Vec::new(),
         }
     }
+
+    /// Resolves one deterministic runtime view from a validated declaration.
+    #[must_use]
+    pub fn effective_values(&self) -> Option<EffectiveReliabilityValues> {
+        let defaults = self.profile.defaults();
+        let availability_target_basis_points =
+            parse_percentage_basis_points(&self.availability_target)?;
+        Some(EffectiveReliabilityValues {
+            availability_target_basis_points,
+            latency_target_ms: self.latency_target_ms,
+            queue_backlog_limit: self
+                .overrides
+                .queue_backlog_limit
+                .unwrap_or(self.backlog_limit),
+            workflow_backlog_limit: self
+                .overrides
+                .workflow_backlog_limit
+                .unwrap_or(defaults.workflow_backlog_limit),
+            timer_lag_limit_ms: self
+                .overrides
+                .timer_lag_limit_ms
+                .unwrap_or(defaults.timer_lag_limit_ms),
+            retry_exhaustion_limit: self
+                .overrides
+                .retry_exhaustion_limit
+                .unwrap_or(defaults.retry_exhaustion_limit),
+            compensation_pressure_limit: self
+                .overrides
+                .compensation_pressure_limit
+                .unwrap_or(defaults.compensation_pressure_limit),
+            error_budget: self.error_budget.clone(),
+            error_budget_consumed_limit_basis_points: self
+                .overrides
+                .error_budget_consumed_limit_basis_points
+                .unwrap_or(defaults.error_budget_consumed_limit_basis_points),
+            readiness: self.overrides.readiness.unwrap_or(defaults.readiness),
+            liveness: self.overrides.liveness.unwrap_or(defaults.liveness),
+        })
+    }
+}
+
+fn parse_percentage_basis_points(value: &str) -> Option<u32> {
+    let percent = value.trim().strip_suffix('%')?.trim();
+    let (whole, fraction) = percent.split_once('.').unwrap_or((percent, ""));
+    if fraction.len() > 2
+        || whole.is_empty()
+        || !whole.chars().all(|c| c.is_ascii_digit())
+        || !fraction.chars().all(|c| c.is_ascii_digit())
+    {
+        return None;
+    }
+    let whole = whole.parse::<u32>().ok()?;
+    let fraction = match fraction.len() {
+        0 => 0,
+        1 => fraction.parse::<u32>().ok()? * 10,
+        2 => fraction.parse::<u32>().ok()?,
+        _ => return None,
+    };
+    let basis_points = whole.checked_mul(100)?.checked_add(fraction)?;
+    (basis_points <= 10_000).then_some(basis_points)
 }
 
 impl AutonomousServiceStore {
@@ -5859,11 +6038,14 @@ fn validate_reliability_contract(value: Option<&Value>, issues: &mut Vec<Autonom
             "contractId",
             "version",
             "artifact",
+            "profile",
+            "overrides",
             "availabilityTarget",
             "latencyTargetMs",
             "dependencyCriticality",
             "healthSemantics",
             "degradedModes",
+            "degradedModeByDependency",
             "backlogLimit",
             "errorBudget",
             "rolloutSafety",
@@ -5871,25 +6053,67 @@ fn validate_reliability_contract(value: Option<&Value>, issues: &mut Vec<Autonom
         issues,
     );
     validate_service_owned_contract_header(object, "$.reliabilityContract", issues);
+    let dependencies = object
+        .get("dependencyCriticality")
+        .and_then(Value::as_object);
+    let degraded_mode_by_dependency = object
+        .get("degradedModeByDependency")
+        .and_then(Value::as_object);
+    let degradable_dependencies = dependencies
+        .into_iter()
+        .flat_map(|dependencies| dependencies.iter())
+        .filter_map(|(dependency, criticality)| {
+            (criticality.as_str() == Some("degradable")).then_some(dependency.as_str())
+        })
+        .collect::<BTreeSet<_>>();
+    let mapped_degradable_dependencies = degraded_mode_by_dependency
+        .into_iter()
+        .flat_map(|dependencies| dependencies.iter())
+        .filter_map(|(dependency, mode)| {
+            mode.as_str()
+                .is_some_and(|mode| !mode.trim().is_empty())
+                .then_some(dependency.as_str())
+        })
+        .collect::<BTreeSet<_>>();
     if object
         .get("version")
         .and_then(Value::as_str)
         .is_none_or(|v| v.trim().is_empty())
+        || !matches!(
+            object.get("profile").and_then(Value::as_str),
+            Some("development" | "standard" | "critical")
+        )
+        || !valid_reliability_overrides(object.get("overrides"))
         || object
             .get("availabilityTarget")
             .and_then(Value::as_str)
-            .is_none_or(|v| v.trim().is_empty())
+            .and_then(parse_percentage_basis_points)
+            .is_none()
         || !object.get("latencyTargetMs").is_some_and(Value::is_u64)
         || !object
             .get("dependencyCriticality")
             .and_then(Value::as_object)
             .is_some_and(|dependencies| {
-                dependencies.values().all(|value| {
-                    matches!(value.as_str(), Some("critical" | "degradable" | "optional"))
+                dependencies.iter().all(|(dependency, value)| {
+                    !dependency.trim().is_empty()
+                        && matches!(value.as_str(), Some("critical" | "degradable" | "optional"))
                 })
             })
         || !is_string_array(object.get("healthSemantics"))
         || !is_string_array(object.get("degradedModes"))
+        || !object
+            .get("degradedModeByDependency")
+            .and_then(Value::as_object)
+            .is_some_and(|modes| {
+                modes.iter().all(|(dependency, mode)| {
+                    mode.as_str().is_some_and(|mode| !mode.trim().is_empty())
+                        && dependencies.is_some_and(|dependencies| {
+                            dependencies.get(dependency).and_then(Value::as_str)
+                                == Some("degradable")
+                        })
+                })
+            })
+        || degradable_dependencies != mapped_degradable_dependencies
         || !object.get("backlogLimit").is_some_and(Value::is_u64)
         || object
             .get("errorBudget")
@@ -5905,6 +6129,47 @@ fn validate_reliability_contract(value: Option<&Value>, issues: &mut Vec<Autonom
             "Declare whole-Service reliability expectations using supported values.",
         );
     }
+}
+
+fn valid_reliability_overrides(value: Option<&Value>) -> bool {
+    let Some(overrides) = value.and_then(Value::as_object) else {
+        return false;
+    };
+    const NUMERIC_FIELDS: &[&str] = &[
+        "queueBacklogLimit",
+        "workflowBacklogLimit",
+        "timerLagLimitMs",
+        "retryExhaustionLimit",
+        "compensationPressureLimit",
+    ];
+    const ALLOWED_FIELDS: &[&str] = &[
+        "queueBacklogLimit",
+        "workflowBacklogLimit",
+        "timerLagLimitMs",
+        "retryExhaustionLimit",
+        "compensationPressureLimit",
+        "errorBudgetConsumedLimitBasisPoints",
+        "readiness",
+        "liveness",
+    ];
+    overrides
+        .keys()
+        .all(|field| ALLOWED_FIELDS.contains(&field.as_str()))
+        && NUMERIC_FIELDS
+            .iter()
+            .all(|field| overrides.get(*field).is_none_or(Value::is_u64))
+        && overrides
+            .get("errorBudgetConsumedLimitBasisPoints")
+            .is_none_or(|value| value.as_u64().is_some_and(|value| value <= 10_000))
+        && overrides
+            .get("readiness")
+            .is_none_or(|value| matches!(value.as_str(), Some("serving" | "healthy")))
+        && overrides.get("liveness").is_none_or(|value| {
+            matches!(
+                value.as_str(),
+                Some("process_running" | "runtime_operational")
+            )
+        })
 }
 
 fn is_string_array(value: Option<&Value>) -> bool {

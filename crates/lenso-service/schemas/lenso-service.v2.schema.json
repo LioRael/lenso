@@ -150,17 +150,33 @@
     },
     "reliabilityContract": {
       "type": "object",
-      "required": ["contractId", "version", "artifact", "availabilityTarget", "latencyTargetMs", "dependencyCriticality", "healthSemantics", "degradedModes", "backlogLimit", "errorBudget", "rolloutSafety"],
+      "required": ["contractId", "version", "artifact", "profile", "overrides", "availabilityTarget", "latencyTargetMs", "dependencyCriticality", "healthSemantics", "degradedModes", "degradedModeByDependency", "backlogLimit", "errorBudget", "rolloutSafety"],
       "additionalProperties": false,
       "properties": {
         "contractId": { "type": "string", "minLength": 1 },
         "version": { "type": "string", "minLength": 1 },
         "artifact": { "$ref": "#/$defs/schemaArtifact" },
-        "availabilityTarget": { "type": "string", "minLength": 1 },
+        "profile": { "enum": ["development", "standard", "critical"] },
+        "overrides": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "queueBacklogLimit": { "type": "integer", "minimum": 0 },
+            "workflowBacklogLimit": { "type": "integer", "minimum": 0 },
+            "timerLagLimitMs": { "type": "integer", "minimum": 0 },
+            "retryExhaustionLimit": { "type": "integer", "minimum": 0 },
+            "compensationPressureLimit": { "type": "integer", "minimum": 0 },
+            "errorBudgetConsumedLimitBasisPoints": { "type": "integer", "minimum": 0, "maximum": 10000 },
+            "readiness": { "enum": ["serving", "healthy"] },
+            "liveness": { "enum": ["process_running", "runtime_operational"] }
+          }
+        },
+        "availabilityTarget": { "type": "string", "pattern": "^(100(?:\\.0{1,2})?|(?:[0-9]{1,2})(?:\\.[0-9]{1,2})?)%$" },
         "latencyTargetMs": { "type": "integer", "minimum": 0 },
         "dependencyCriticality": { "type": "object", "additionalProperties": { "enum": ["critical", "degradable", "optional"] } },
         "healthSemantics": { "type": "array", "items": { "type": "string", "minLength": 1 } },
         "degradedModes": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "degradedModeByDependency": { "type": "object", "additionalProperties": { "type": "string", "minLength": 1 } },
         "backlogLimit": { "type": "integer", "minimum": 0 },
         "errorBudget": { "type": "string", "minLength": 1 },
         "rolloutSafety": { "type": "array", "items": { "type": "string", "minLength": 1 } }

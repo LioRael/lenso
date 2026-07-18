@@ -179,6 +179,14 @@ Inbox, while a rejected compensation becomes the distinct durable
 `compensation_failed` state with explicit intervention evidence. These slices
 do not introduce a distributed transaction or reinterpret the existing
 lightweight Host flow, Runtime Function, or Provider models.
+Reliability Contracts now select reusable development, standard, or critical
+profiles and resolve validated Service overrides into deterministic effective
+limits. The Autonomous Service runtime evaluates local queue and Workflow
+pressure plus Service-owned dependency and SLO observations, reports explicit
+healthy, degraded, or unavailable state, and activates declared Degraded Modes.
+Public readiness and liveness follow the resolved contract semantics. This M3
+evidence is read-only and does not block promotion, execute canary policy, or
+trigger rollback.
 Its versioned Service, Event, Config, and Reliability Contract declarations are
 specified in [`autonomous-service-contract-artifacts.md`](autonomous-service-contract-artifacts.md).
 The separate [`lenso.context.v1`](common-context-contracts.md) envelope

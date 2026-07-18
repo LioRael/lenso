@@ -10,6 +10,7 @@ API, Migration, and Worker Workloads under one Service identity. It exposes:
 - `GET /health/live`
 - `GET /health/ready`
 - `GET /health/startup`
+- `GET /runtime/reliability`
 - `GET /runtime/story-segments`
 - `GET /runtime/event-deliveries`
 
@@ -33,6 +34,16 @@ runtime functions, event handlers, and migrations. The Service-owned Worker
 claims its Store's queues and transactional Outbox, persists retry state and
 health locally, and releases only its own claims during deterministic shutdown.
 This crate does not select concrete Modules or use the Host/Provider boot facade.
+
+`GET /runtime/reliability` resolves the Service's `development`, `standard`, or
+`critical` Reliability Profile plus validated Service overrides. It evaluates
+Service Store queue and Workflow pressure together with dependency, availability,
+latency, and error-budget observations supplied through the Service-owned
+`ReliabilityObservationSource`. Reports contain deterministic effective values,
+explicit healthy/degraded/unavailable state, activated Degraded Modes, evidence
+references, issue codes, and next actions. Declared readiness and liveness
+semantics also drive the public health endpoints. This M3 surface is read-only:
+it does not block promotion, run canary policy, or trigger rollback.
 
 The public `TransportAdapter` boundary carries authoritative Event Envelopes
 through protocol-neutral publish, receive, acknowledgement, negative

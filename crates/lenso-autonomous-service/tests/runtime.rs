@@ -1,11 +1,18 @@
 use axum::{body::Body, routing::post};
 use http::{Request, StatusCode};
-use lenso_autonomous_service::{ServiceRuntimeConfig, prepare_runtime, service_router};
+use http_body_util::BodyExt as _;
+use lenso_autonomous_service::{
+    ReliabilityDependencyObservation, ReliabilityDependencyState, ReliabilityExternalObservations,
+    ReliabilityMetricObservation, ReliabilityObservationError, ReliabilityObservationSource,
+    ServiceRuntimeConfig, prepare_runtime, service_router,
+};
 use lenso_service::{
     AutonomousServiceContract, AutonomousServiceStore, AutonomousServiceWorkload,
-    ServiceTenancyMode, WorkloadRole,
+    ReliabilityContract, ReliabilityProfile, SchemaArtifactReference, ServiceTenancyMode,
+    WorkloadRole,
 };
 use platform_testing::TestDatabase;
+use std::collections::BTreeMap;
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
@@ -43,6 +50,121 @@ fn service_named(service_id: &str) -> AutonomousServiceContract {
     );
     service.stores = vec![AutonomousServiceStore::new("primary", service_id)];
     service
+}
+
+#[tokio::test]
+async fn reliability_report_evaluates_store_pressure_and_declared_health_semantics() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let mut definition = service();
+    let mut reliability = ReliabilityContract::new(
+        "support-reliability",
+        "v1",
+        SchemaArtifactReference::new("contracts/reliability/support.v1.schema.json"),
+        "99.9%",
+        "43m per 30d",
+    );
+    reliability.profile = ReliabilityProfile::Standard;
+    reliability.latency_target_ms = 300;
+    reliability.backlog_limit = 1;
+    reliability.dependency_criticality =
+        BTreeMap::from([("notification-gateway".to_owned(), "degradable".to_owned())]);
+    reliability.health_semantics = vec!["ready means traffic can be served".to_owned()];
+    reliability.degraded_modes = vec!["queue notifications".to_owned()];
+    reliability.degraded_mode_by_dependency = BTreeMap::from([(
+        "notification-gateway".to_owned(),
+        "queue_notifications".to_owned(),
+    )]);
+    definition.reliability_contract = Some(reliability);
+    let config = ServiceRuntimeConfig::new("support", "primary", "support")
+        .with_reliability_observation_source(Arc::new(StaticReliabilityObservations));
+    let state = prepare_runtime(&definition, &config, db.pool.clone(), &[])
+        .await
+        .expect("Service migrations should apply");
+    sqlx::query(
+        r#"
+        insert into platform.outbox (
+            id, event_name, event_version, source_module, aggregate_type,
+            aggregate_id, correlation_id, occurred_at, payload
+        ) values
+            ('reliability-event-1', 'ticket.opened', 1, 'tickets', 'ticket',
+             '1', 'story-1', now(), '{}'),
+            ('reliability-event-2', 'ticket.opened', 1, 'tickets', 'ticket',
+             '2', 'story-2', now(), '{}')
+        "#,
+    )
+    .execute(&db.pool)
+    .await
+    .unwrap();
+    let shutdown = platform_core::Shutdown::new();
+    let worker_shutdown = shutdown.clone();
+    let worker_state = state.clone();
+    let worker = tokio::spawn(async move {
+        lenso_autonomous_service::run_worker(
+            worker_state,
+            Arc::new(platform_runtime::FunctionRegistry::default()),
+            platform_core::EventHandlerRegistry::default(),
+            lenso_autonomous_service::ServiceWorkerConfig {
+                poll_interval: Duration::from_secs(60),
+                batch_size: 10,
+            },
+            worker_shutdown,
+        )
+        .await
+        .unwrap();
+    });
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    let app = service_router(OpenApiRouter::new(), state);
+
+    let report = app
+        .clone()
+        .oneshot(
+            Request::get("/runtime/reliability")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(report.status(), StatusCode::OK);
+    let report: serde_json::Value =
+        serde_json::from_slice(&report.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    assert_eq!(report["state"], "degraded");
+    assert_eq!(report["effectiveValues"]["queueBacklogLimit"], 1);
+    assert_eq!(
+        report["activeDegradedModes"][0]["mode"],
+        "queue_notifications"
+    );
+    assert!(report["checks"].as_array().unwrap().iter().any(|check| {
+        check["code"] == "queue_backlog"
+            && check["issueCode"] == "queue_backlog_limit_exceeded"
+            && check["evidenceReferences"]
+                .as_array()
+                .unwrap()
+                .contains(&serde_json::json!("service-store:platform.outbox"))
+    }));
+    assert_eq!(report["enforcement"]["reportsOnly"], true);
+    assert_eq!(report["enforcement"]["blocksProductionPromotion"], false);
+
+    let ready = app
+        .clone()
+        .oneshot(Request::get("/health/ready").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(
+        ready.status(),
+        StatusCode::OK,
+        "standard serving semantics permit an explicit Degraded Mode"
+    );
+    let health: serde_json::Value =
+        serde_json::from_slice(&ready.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    assert_eq!(health["reliabilityState"], "degraded");
+    assert_eq!(health["declaredSemantics"], "serving");
+
+    shutdown.signal();
+    worker.await.unwrap();
+    drop(app);
+    db.cleanup().await;
 }
 
 #[tokio::test]
@@ -351,5 +473,39 @@ impl platform_core::EventHandler for CountingEvent {
     ) -> platform_core::AppResult<()> {
         self.0.fetch_add(1, Ordering::SeqCst);
         Ok(())
+    }
+}
+
+#[derive(Debug)]
+struct StaticReliabilityObservations;
+
+#[async_trait::async_trait]
+impl ReliabilityObservationSource for StaticReliabilityObservations {
+    async fn observe(
+        &self,
+        _service_id: &str,
+    ) -> Result<ReliabilityExternalObservations, ReliabilityObservationError> {
+        Ok(ReliabilityExternalObservations {
+            observed_at: Some(chrono::Utc::now()),
+            dependencies: BTreeMap::from([(
+                "notification-gateway".to_owned(),
+                ReliabilityDependencyObservation::new(
+                    ReliabilityDependencyState::Unavailable,
+                    vec!["probe:notification-gateway".to_owned()],
+                ),
+            )]),
+            availability_basis_points: Some(ReliabilityMetricObservation::new(
+                10_000,
+                vec!["slo:availability:30d".to_owned()],
+            )),
+            latency_ms: Some(ReliabilityMetricObservation::new(
+                100,
+                vec!["slo:latency:p99:5m".to_owned()],
+            )),
+            error_budget_consumed_basis_points: Some(ReliabilityMetricObservation::new(
+                100,
+                vec!["slo:error-budget:30d".to_owned()],
+            )),
+        })
     }
 }

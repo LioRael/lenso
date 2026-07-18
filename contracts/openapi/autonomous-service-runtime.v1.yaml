@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Lenso Autonomous Service Runtime API
-  description: Service-owned health, authenticated Story Segment Feed, and Durable Workflow surfaces
+  description: Service-owned health, Reliability Reports, authenticated Story Segment Feed, and Durable Workflow surfaces
   license:
     name: MIT
     identifier: MIT
@@ -79,6 +79,24 @@ paths:
           description: ''
           content:
             application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /runtime/reliability:
+    get:
+      tags:
+      - service-runtime
+      operationId: reliability_report
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReliabilityReport'
+        '404':
+          description: ''
+          content:
+            application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /runtime/story-segments:
@@ -456,6 +474,74 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
 components:
   schemas:
+    ActiveDegradedMode:
+      type: object
+      required:
+      - dependencyId
+      - mode
+      - evidenceReferences
+      properties:
+        dependencyId:
+          type: string
+        evidenceReferences:
+          type: array
+          items:
+            type: string
+        mode:
+          type: string
+    EffectiveReliabilityValues:
+      type: object
+      required:
+      - availabilityTargetBasisPoints
+      - latencyTargetMs
+      - queueBacklogLimit
+      - workflowBacklogLimit
+      - timerLagLimitMs
+      - retryExhaustionLimit
+      - compensationPressureLimit
+      - errorBudget
+      - errorBudgetConsumedLimitBasisPoints
+      - readiness
+      - liveness
+      properties:
+        availabilityTargetBasisPoints:
+          type: integer
+          format: int32
+          minimum: 0
+        compensationPressureLimit:
+          type: integer
+          format: int64
+          minimum: 0
+        errorBudget:
+          type: string
+        errorBudgetConsumedLimitBasisPoints:
+          type: integer
+          format: int32
+          minimum: 0
+        latencyTargetMs:
+          type: integer
+          format: int64
+          minimum: 0
+        liveness:
+          $ref: '#/components/schemas/ReliabilityLivenessSemantics'
+        queueBacklogLimit:
+          type: integer
+          format: int64
+          minimum: 0
+        readiness:
+          $ref: '#/components/schemas/ReliabilityReadinessSemantics'
+        retryExhaustionLimit:
+          type: integer
+          format: int64
+          minimum: 0
+        timerLagLimitMs:
+          type: integer
+          format: int64
+          minimum: 0
+        workflowBacklogLimit:
+          type: integer
+          format: int64
+          minimum: 0
     ErrorResponse:
       type: object
       required:
@@ -508,6 +594,154 @@ components:
           - 'null'
         reason:
           type: string
+    ReliabilityCheck:
+      type: object
+      required:
+      - code
+      - state
+      - observed
+      - expected
+      properties:
+        code:
+          type: string
+        evidenceReferences:
+          type: array
+          items:
+            type: string
+        expected: {}
+        issueCode:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ReliabilityIssueCode'
+        nextActions:
+          type: array
+          items:
+            type: string
+        observed: {}
+        state:
+          $ref: '#/components/schemas/ReliabilityCheckState'
+    ReliabilityCheckState:
+      type: string
+      enum:
+      - met
+      - breached
+      - unknown
+      - allowed
+    ReliabilityEnforcementBoundary:
+      type: object
+      required:
+      - reportsOnly
+      - blocksProductionPromotion
+      - executesCanaryPolicy
+      - triggersAutomatedRollback
+      properties:
+        blocksProductionPromotion:
+          type: boolean
+        executesCanaryPolicy:
+          type: boolean
+        reportsOnly:
+          type: boolean
+        triggersAutomatedRollback:
+          type: boolean
+    ReliabilityHealthResult:
+      type: object
+      required:
+      - healthy
+      - semantics
+      - issueCodes
+      properties:
+        healthy:
+          type: boolean
+        issueCodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReliabilityIssueCode'
+        semantics:
+          type: string
+    ReliabilityIssueCode:
+      type: string
+      enum:
+      - service_runtime_unavailable
+      - dependency_critical_unavailable
+      - dependency_degradable_unavailable
+      - dependency_observation_missing
+      - queue_backlog_limit_exceeded
+      - workflow_backlog_limit_exceeded
+      - timer_lag_limit_exceeded
+      - retry_exhaustion_limit_exceeded
+      - compensation_pressure_limit_exceeded
+      - availability_target_breached
+      - latency_target_breached
+      - error_budget_limit_exceeded
+      - reliability_observation_missing
+      - reliability_observation_source_unavailable
+      - reliability_store_observation_unavailable
+    ReliabilityLivenessSemantics:
+      type: string
+      enum:
+      - process_running
+      - runtime_operational
+    ReliabilityProfile:
+      type: string
+      enum:
+      - development
+      - standard
+      - critical
+    ReliabilityReadinessSemantics:
+      type: string
+      enum:
+      - serving
+      - healthy
+    ReliabilityReport:
+      type: object
+      required:
+      - protocol
+      - serviceId
+      - contractId
+      - contractVersion
+      - profile
+      - effectiveValues
+      - state
+      - liveness
+      - readiness
+      - activeDegradedModes
+      - checks
+      - enforcement
+      properties:
+        activeDegradedModes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActiveDegradedMode'
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReliabilityCheck'
+        contractId:
+          type: string
+        contractVersion:
+          type: string
+        effectiveValues:
+          $ref: '#/components/schemas/EffectiveReliabilityValues'
+        enforcement:
+          $ref: '#/components/schemas/ReliabilityEnforcementBoundary'
+        liveness:
+          $ref: '#/components/schemas/ReliabilityHealthResult'
+        profile:
+          $ref: '#/components/schemas/ReliabilityProfile'
+        protocol:
+          type: string
+        readiness:
+          $ref: '#/components/schemas/ReliabilityHealthResult'
+        serviceId:
+          type: string
+        state:
+          $ref: '#/components/schemas/ReliabilityServiceState'
+    ReliabilityServiceState:
+      type: string
+      enum:
+      - healthy
+      - degraded
+      - unavailable
     RuntimeHealth:
       type: object
       required:
@@ -519,10 +753,22 @@ components:
       - phase
       - workerPhase
       properties:
+        declaredSemantics:
+          type:
+          - string
+          - 'null'
         migrationWorkloadId:
           type: string
         phase:
           $ref: '#/components/schemas/RuntimePhase'
+        reliabilityIssueCodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReliabilityIssueCode'
+        reliabilityState:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ReliabilityServiceState'
         serviceId:
           type: string
         storeId:

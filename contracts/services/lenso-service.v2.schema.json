@@ -169,7 +169,7 @@
           "$ref": "#/$defs/schemaArtifact"
         },
         "availabilityTarget": {
-          "minLength": 1,
+          "pattern": "^(100(?:\\.0{1,2})?|(?:[0-9]{1,2})(?:\\.[0-9]{1,2})?)%$",
           "type": "string"
         },
         "backlogLimit": {
@@ -179,6 +179,13 @@
         "contractId": {
           "minLength": 1,
           "type": "string"
+        },
+        "degradedModeByDependency": {
+          "additionalProperties": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "object"
         },
         "degradedModes": {
           "items": {
@@ -212,6 +219,56 @@
           "minimum": 0,
           "type": "integer"
         },
+        "overrides": {
+          "additionalProperties": false,
+          "properties": {
+            "compensationPressureLimit": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "errorBudgetConsumedLimitBasisPoints": {
+              "maximum": 10000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "liveness": {
+              "enum": [
+                "process_running",
+                "runtime_operational"
+              ]
+            },
+            "queueBacklogLimit": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "readiness": {
+              "enum": [
+                "serving",
+                "healthy"
+              ]
+            },
+            "retryExhaustionLimit": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "timerLagLimitMs": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "workflowBacklogLimit": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        },
+        "profile": {
+          "enum": [
+            "development",
+            "standard",
+            "critical"
+          ]
+        },
         "rolloutSafety": {
           "items": {
             "minLength": 1,
@@ -228,11 +285,14 @@
         "contractId",
         "version",
         "artifact",
+        "profile",
+        "overrides",
         "availabilityTarget",
         "latencyTargetMs",
         "dependencyCriticality",
         "healthSemantics",
         "degradedModes",
+        "degradedModeByDependency",
         "backlogLimit",
         "errorBudget",
         "rolloutSafety"

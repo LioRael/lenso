@@ -33,8 +33,35 @@ activation, Secret Providers, and enforcement remain outside this contract-only 
 
 `reliabilityContract` is a Service-owned schema artifact recording whole-Service availability,
 latency, dependency criticality, health semantics, Degraded Modes, backlog limits, error budget,
-and rollout safety. These are declarations for review and future compatibility evaluation; Lenso
-does not enforce them at runtime in M0.
+and rollout safety. A Service selects the `development`, `standard`, or `critical` profile and may
+override the profile's queue backlog, Workflow backlog, timer lag, retry exhaustion,
+compensation pressure, error-budget consumption, readiness, and liveness defaults. The existing
+availability, latency, and queue-backlog declarations remain explicit Service values. Overrides
+are validated before startup and resolve to one deterministic `effectiveValues` object.
+The existing `healthSemantics` strings remain reviewer-facing explanations; the effective
+`readiness` and `liveness` enum values are the machine-evaluated health contract.
+
+| Profile | Workflow backlog | Timer lag | Retry exhaustion | Compensation pressure | Error-budget consumed | Readiness | Liveness |
+| --- | ---: | ---: | ---: | ---: | ---: | --- | --- |
+| `development` | 1,000 | 60,000 ms | 100 | 100 | 100% | `serving` | `process_running` |
+| `standard` | 250 | 30,000 ms | 25 | 25 | 100% | `serving` | `runtime_operational` |
+| `critical` | 50 | 5,000 ms | 5 | 5 | 80% | `healthy` | `runtime_operational` |
+
+`GET /runtime/reliability` evaluates those effective values against Service-owned evidence. Queue
+pressure includes local Outbox and Runtime Function work; Workflow pressure includes in-flight
+instances, overdue durable timers, exhausted steps, and pending or failed compensation work.
+Deployment composition may inject a `ReliabilityObservationSource` for dependency availability,
+availability, latency, and error-budget observations. Every check returns a stable state, evidence
+references, issue code, and next action. Unavailable critical dependencies make the Service
+unavailable; unavailable degradable dependencies activate their declared Degraded Mode and make
+the Service degraded; optional dependencies do not reduce Service state.
+
+`/health/live` and `/health/ready` use the resolved `process_running` or `runtime_operational` and
+`serving` or `healthy` semantics. A `serving` Service may remain ready in an explicit Degraded
+Mode, while `healthy` readiness requires every observation to meet its expectation. M3 reports
+and explains evidence only: the report explicitly cannot block production promotion, execute a
+canary policy, or trigger automated rollback. Those enforcement paths remain production-delivery
+work.
 
 ## Validation
 

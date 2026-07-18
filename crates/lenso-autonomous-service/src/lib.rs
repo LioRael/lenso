@@ -1,6 +1,7 @@
 //! Host-independent runtime composition for one `lenso.service.v2` Service.
 
 mod operations;
+mod reliability;
 mod story_feed;
 mod transport;
 mod transport_nats_jetstream;
@@ -9,6 +10,7 @@ mod workflow_child;
 mod workflow_compensation;
 
 pub use operations::*;
+pub use reliability::*;
 pub use story_feed::*;
 pub use transport::*;
 pub use transport_nats_jetstream::*;
@@ -25,8 +27,8 @@ use axum::{
 };
 use lenso_contracts::{ModuleManifest, WORKFLOW_DEFINITION_PROTOCOL, WorkflowDefinition};
 use lenso_service::{
-    AutonomousServiceContract, EventContractArtifact, ServiceTenancyMode, WorkloadRole,
-    validate_autonomous_service_contract,
+    AutonomousServiceContract, EventContractArtifact, ReliabilityContract, ServiceTenancyMode,
+    WorkloadRole, validate_autonomous_service_contract,
 };
 use platform_core::{
     Clock, EventHandlerRegistry, Migration, OutboxRelay, SystemClock, apply_migrations,
@@ -53,6 +55,7 @@ pub struct ServiceRuntimeConfig {
     pub workflow_definitions: Vec<WorkflowDefinition>,
     pub workflow_authority_verifier: Option<Arc<dyn WorkflowAuthorityVerifier>>,
     pub story_segment_feed: Option<StorySegmentFeedConfig>,
+    pub reliability_observation_source: Option<Arc<dyn ReliabilityObservationSource>>,
 }
 
 impl PartialEq for ServiceRuntimeConfig {
@@ -72,6 +75,14 @@ impl PartialEq for ServiceRuntimeConfig {
                 _ => false,
             }
             && self.story_segment_feed == other.story_segment_feed
+            && match (
+                &self.reliability_observation_source,
+                &other.reliability_observation_source,
+            ) {
+                (None, None) => true,
+                (Some(left), Some(right)) => Arc::ptr_eq(left, right),
+                _ => false,
+            }
     }
 }
 
@@ -93,6 +104,7 @@ impl ServiceRuntimeConfig {
             workflow_definitions: Vec::new(),
             workflow_authority_verifier: None,
             story_segment_feed: None,
+            reliability_observation_source: None,
         }
     }
 
@@ -148,6 +160,18 @@ impl ServiceRuntimeConfig {
     #[must_use]
     pub fn with_story_segment_feed(mut self, config: StorySegmentFeedConfig) -> Self {
         self.story_segment_feed = Some(config);
+        self
+    }
+
+    /// Installs the Service-owned dependency and SLO observation boundary used
+    /// by read-only Reliability Reports. The source never controls rollout or
+    /// mutates business execution.
+    #[must_use]
+    pub fn with_reliability_observation_source(
+        mut self,
+        source: Arc<dyn ReliabilityObservationSource>,
+    ) -> Self {
+        self.reliability_observation_source = Some(source);
         self
     }
 }
@@ -279,6 +303,8 @@ pub struct ServiceRuntimeState {
     workflow_clock: Arc<dyn Clock>,
     workflow_authority_verifier: Option<Arc<dyn WorkflowAuthorityVerifier>>,
     story_segment_feed: Option<Arc<StorySegmentFeedConfig>>,
+    reliability_contract: Option<Arc<ReliabilityContract>>,
+    reliability_observation_source: Option<Arc<dyn ReliabilityObservationSource>>,
 }
 
 #[derive(Debug, Clone)]
@@ -319,6 +345,8 @@ impl ServiceRuntimeState {
             workflow_clock: Arc::new(SystemClock),
             workflow_authority_verifier: None,
             story_segment_feed: None,
+            reliability_contract: None,
+            reliability_observation_source: None,
         }
     }
 
@@ -384,6 +412,16 @@ impl ServiceRuntimeState {
         self
     }
 
+    fn with_reliability(
+        mut self,
+        contract: Option<ReliabilityContract>,
+        observation_source: Option<Arc<dyn ReliabilityObservationSource>>,
+    ) -> Self {
+        self.reliability_contract = contract.map(Arc::new);
+        self.reliability_observation_source = observation_source;
+        self
+    }
+
     /// Overrides wall-clock time for deterministic System Sandbox workflow
     /// timers. Production composition should keep the default System clock.
     #[must_use]
@@ -443,6 +481,12 @@ pub struct RuntimeHealth {
     pub worker_workload_id: String,
     pub phase: RuntimePhase,
     pub worker_phase: RuntimePhase,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reliability_state: Option<ReliabilityServiceState>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reliability_issue_codes: Vec<ReliabilityIssueCode>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub declared_semantics: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -472,7 +516,11 @@ pub async fn prepare_runtime(
     .with_workflow_definitions(config.workflow_definitions.clone())
     .with_event_contracts(contract.event_contracts.clone())
     .with_workflow_authority_verifier(config.workflow_authority_verifier.clone())
-    .with_story_segment_feed(config.story_segment_feed.clone());
+    .with_story_segment_feed(config.story_segment_feed.clone())
+    .with_reliability(
+        contract.reliability_contract.clone(),
+        config.reliability_observation_source.clone(),
+    );
     if let Err(error) = apply_migrations(&pool, SERVICE_RUNTIME_MIGRATIONS).await {
         state.set_phase(RuntimePhase::Failed);
         return Err(runtime_error(
@@ -856,6 +904,9 @@ fn failed_runtime_health(
         worker_workload_id: workload(WorkloadRole::WORKER),
         phase: RuntimePhase::Failed,
         worker_phase: RuntimePhase::Failed,
+        reliability_state: None,
+        reliability_issue_codes: Vec::new(),
+        declared_semantics: None,
     }
 }
 
@@ -930,7 +981,7 @@ pub fn service_router(
     info(
         title = "Lenso Autonomous Service Runtime API",
         version = "1.0.0",
-        description = "Service-owned health, authenticated Story Segment Feed, and Durable Workflow surfaces"
+        description = "Service-owned health, Reliability Reports, authenticated Story Segment Feed, and Durable Workflow surfaces"
     ),
     components(schemas(
         RuntimeHealth,
@@ -972,6 +1023,7 @@ fn runtime_router() -> OpenApiRouter<ServiceRuntimeState> {
         .routes(routes!(liveness))
         .routes(routes!(readiness))
         .routes(routes!(startup))
+        .routes(routes!(reliability_report))
         .routes(routes!(story_segments))
         .routes(routes!(event_delivery_evidence))
         .merge(workflow::workflow_router())
@@ -1008,15 +1060,42 @@ pub async fn serve(
 
 #[utoipa::path(get, path = "/health/live", responses((status = 200, body = RuntimeHealth)), tag = "service-runtime")]
 async fn liveness(State(state): State<ServiceRuntimeState>) -> (StatusCode, Json<RuntimeHealth>) {
-    health_response(&state, state.phase() != RuntimePhase::Stopped)
+    let semantics = state
+        .reliability_contract
+        .as_deref()
+        .and_then(ReliabilityContract::effective_values)
+        .map(|values| values.liveness);
+    let healthy =
+        semantics.map_or(
+            state.phase() != RuntimePhase::Stopped,
+            |semantics| match semantics {
+                lenso_service::ReliabilityLivenessSemantics::ProcessRunning => {
+                    state.phase() != RuntimePhase::Stopped
+                }
+                lenso_service::ReliabilityLivenessSemantics::RuntimeOperational => {
+                    !matches!(state.phase(), RuntimePhase::Failed | RuntimePhase::Stopped)
+                }
+            },
+        );
+    let mut health = runtime_health(&state);
+    health.declared_semantics = semantics.map(|semantics| {
+        serde_json::to_value(semantics)
+            .expect("liveness semantics serialize")
+            .as_str()
+            .expect("liveness semantics serialize as a string")
+            .to_owned()
+    });
+    health_status_response(healthy, health)
 }
 
 #[utoipa::path(get, path = "/health/ready", responses((status = 200, body = RuntimeHealth), (status = 503, body = RuntimeHealth)), tag = "service-runtime")]
 async fn readiness(State(state): State<ServiceRuntimeState>) -> (StatusCode, Json<RuntimeHealth>) {
-    health_response(
-        &state,
+    let report = reliability::collect_reliability_report(&state).await;
+    let healthy = report.as_ref().map_or(
         state.phase() == RuntimePhase::Ready && state.worker_phase() == RuntimePhase::Ready,
-    )
+        |report| report.readiness.healthy,
+    );
+    health_response(&state, healthy, report.as_ref())
 }
 
 #[utoipa::path(get, path = "/health/startup", responses((status = 200, body = RuntimeHealth), (status = 503, body = RuntimeHealth)), tag = "service-runtime")]
@@ -1024,12 +1103,45 @@ async fn startup(State(state): State<ServiceRuntimeState>) -> (StatusCode, Json<
     health_response(
         &state,
         matches!(state.phase(), RuntimePhase::Ready | RuntimePhase::Stopping),
+        None,
     )
+}
+
+#[utoipa::path(
+    get,
+    path = "/runtime/reliability",
+    responses(
+        (status = 200, body = ReliabilityReport),
+        (status = 404, body = platform_http::ErrorResponse)
+    ),
+    tag = "service-runtime"
+)]
+async fn reliability_report(
+    State(state): State<ServiceRuntimeState>,
+) -> Result<Json<ReliabilityReport>, platform_http::ApiErrorResponse> {
+    reliability::collect_reliability_report(&state)
+        .await
+        .map(Json)
+        .ok_or_else(|| {
+            platform_core::AppError::new(
+                platform_core::ErrorCode::NotFound,
+                "Service does not declare a Reliability Contract",
+            )
+            .into()
+        })
 }
 
 fn health_response(
     state: &ServiceRuntimeState,
     healthy: bool,
+    report: Option<&ReliabilityReport>,
+) -> (StatusCode, Json<RuntimeHealth>) {
+    health_status_response(healthy, runtime_health_with_report(state, report))
+}
+
+fn health_status_response(
+    healthy: bool,
+    health: RuntimeHealth,
 ) -> (StatusCode, Json<RuntimeHealth>) {
     (
         if healthy {
@@ -1037,7 +1149,7 @@ fn health_response(
         } else {
             StatusCode::SERVICE_UNAVAILABLE
         },
-        Json(runtime_health(state)),
+        Json(health),
     )
 }
 
@@ -1050,7 +1162,23 @@ fn runtime_health(state: &ServiceRuntimeState) -> RuntimeHealth {
         worker_workload_id: state.identity.worker_workload_id.clone(),
         phase: state.phase(),
         worker_phase: state.worker_phase(),
+        reliability_state: None,
+        reliability_issue_codes: Vec::new(),
+        declared_semantics: None,
     }
+}
+
+fn runtime_health_with_report(
+    state: &ServiceRuntimeState,
+    report: Option<&ReliabilityReport>,
+) -> RuntimeHealth {
+    let mut health = runtime_health(state);
+    if let Some(report) = report {
+        health.reliability_state = Some(report.state);
+        health.reliability_issue_codes = report.readiness.issue_codes.clone();
+        health.declared_semantics = Some(report.readiness.semantics.clone());
+    }
+    health
 }
 
 async fn persist_story_segment(
@@ -1431,6 +1559,7 @@ mod tests {
     use lenso_service::{
         AutonomousServiceContract, AutonomousServiceStore, AutonomousServiceWorkload,
         ConfigActivation, ConfigContract, ConfigFieldContract, ConfigMutability, ConfigScope,
+        ReliabilityContract, ReliabilityLivenessSemantics, ReliabilityProfileOverrides,
         SchemaArtifactReference, ServiceTenancyMode, WorkloadRole,
     };
 
@@ -1578,6 +1707,67 @@ mod tests {
         assert_eq!(ready.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 
+    #[tokio::test]
+    async fn public_liveness_uses_declared_semantics_without_observing_dependencies() {
+        let contract = |liveness| {
+            let mut contract = ReliabilityContract::new(
+                "support-reliability",
+                "v1",
+                SchemaArtifactReference::new("contracts/reliability/support.v1.schema.json"),
+                "99.9%",
+                "43m per 30d",
+            );
+            contract.overrides = ReliabilityProfileOverrides {
+                liveness: Some(liveness),
+                ..ReliabilityProfileOverrides::default()
+            };
+            contract
+        };
+        let process_state = ServiceRuntimeState::ready(
+            "support",
+            "support-api",
+            "primary",
+            "support-migrate",
+            "support-worker",
+        )
+        .with_reliability(
+            Some(contract(ReliabilityLivenessSemantics::ProcessRunning)),
+            None,
+        );
+        process_state.set_phase(super::RuntimePhase::Failed);
+        let process_live = service_router(OpenApiRouter::new(), process_state)
+            .oneshot(
+                Request::get("/health/live")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(process_live.status(), StatusCode::OK);
+
+        let runtime_state = ServiceRuntimeState::ready(
+            "support",
+            "support-api",
+            "primary",
+            "support-migrate",
+            "support-worker",
+        )
+        .with_reliability(
+            Some(contract(ReliabilityLivenessSemantics::RuntimeOperational)),
+            None,
+        );
+        runtime_state.set_phase(super::RuntimePhase::Failed);
+        let runtime_live = service_router(OpenApiRouter::new(), runtime_state)
+            .oneshot(
+                Request::get("/health/live")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(runtime_live.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
     #[test]
     fn public_runtime_surfaces_are_in_openapi() {
         let document = super::openapi_document();
@@ -1585,6 +1775,7 @@ mod tests {
         assert!(document.paths.paths.contains_key("/health/live"));
         assert!(document.paths.paths.contains_key("/health/ready"));
         assert!(document.paths.paths.contains_key("/health/startup"));
+        assert!(document.paths.paths.contains_key("/runtime/reliability"));
         assert!(document.paths.paths.contains_key("/runtime/story-segments"));
         assert!(
             document
