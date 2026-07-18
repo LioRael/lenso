@@ -63,3 +63,12 @@ delivery attempt. Production replay requires explicit production approval, and
 all destructive cleanup requires explicit approval. Cleanup removes only
 resolved dead-letter records while retaining Inbox deduplication state,
 delivery evidence, and replay audit records.
+
+Durable Workflow operator actions use deterministic dry-run plans and a
+deployment-owned authority verifier. Pause, resume, retry, cooperative cancel,
+strong terminate, and human intervention each require the exact plan credential
+behind an explicit Approval Boundary. Cancel selects declared compensation and
+reaches `cancelled` only after it completes; terminate reaches `terminated`
+without implying compensation or cleanup. The durable intervention record
+retains actor, authority, reason, time, tenant scope, affected steps, timers,
+children, compensations, irreversible effects, and prior/resulting state.

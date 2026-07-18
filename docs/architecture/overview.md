@@ -145,7 +145,14 @@ instance, or reopen one selected exhausted step for a single authorized retry,
 without changing step identity or erasing completed work, attempt history,
 timers, claims, causation, or idempotency context. Stale plans fail closed and
 every applied action records verified actor, authority, reason, prior and
-resulting state, time, and next action. Completed steps may declare stable
+resulting state, time, and next action. The same protected plan protocol can
+cooperatively cancel an instance, strongly terminate it, or record a human
+intervention. Cancel stops ordinary work and selects declared compensation
+before reaching `cancelled`; terminate reaches `terminated` without reporting
+implicit cleanup. Plans identify affected steps, timers, children,
+compensations, irreversible effects, tenant scope, and expected terminal state,
+and every apply requires a deployment-owned authority verifier plus the
+action's explicit Approval Boundary. Completed steps may declare stable
 compensation identity, deterministic order, a request Event Contract, and a
 completion Event Contract. A controlled timeout records the completed effects
 before selecting their compensations. Each request is published through the

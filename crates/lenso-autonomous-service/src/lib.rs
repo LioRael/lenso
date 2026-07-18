@@ -234,6 +234,10 @@ pub const SERVICE_RUNTIME_MIGRATIONS: &[Migration] = &[
         name: "autonomous-service/0018_control_workflow_instances",
         sql: include_str!("../migrations/0018_control_workflow_instances.sql"),
     },
+    Migration {
+        name: "autonomous-service/0019_protect_workflow_terminal_operations",
+        sql: include_str!("../migrations/0019_protect_workflow_terminal_operations.sql"),
+    },
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
