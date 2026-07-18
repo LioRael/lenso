@@ -1,4 +1,8 @@
-use crate::{ServiceEventPublisher, ServiceRuntimeState};
+use crate::{
+    ServiceEventPublisher, ServiceRuntimeState, StorySegmentRecord, StorySegmentWorkflow,
+    append_persisted_workflow_story_segment_in_tx, append_story_segment_in_tx,
+    append_worker_story_segment_in_tx,
+};
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -684,6 +688,33 @@ async fn start_workflow(
     )
     .await
     .map_err(WorkflowApiError::from)?;
+    let mut segment = StorySegmentRecord::new(
+        &request.story_context.story_id,
+        format!("workflow:{instance_id}:started"),
+        "durable_workflow",
+        format!("workflow.{owner}.{name}.start"),
+        &definition.input_contract.contract_id,
+        &definition.input_contract.version,
+        "started",
+        now,
+    )
+    .with_parent_segment(&request.story_context.segment_id)
+    .with_workflow(StorySegmentWorkflow {
+        instance_id: instance_id.clone(),
+        definition_owner: definition.owner.clone(),
+        definition_name: definition.name.clone(),
+        definition_version: definition.version.clone(),
+        step_id: Some(initial_step_id.clone()),
+        parent_instance_id: None,
+        compensation_id: None,
+        intervention_id: None,
+    });
+    if let Some(tenant_scope) = &request.tenant_scope {
+        segment = segment.with_tenant(&tenant_scope.tenant_id);
+    }
+    append_story_segment_in_tx(&state, &mut transaction, &segment)
+        .await
+        .map_err(|error| WorkflowApiError::store(error.public_message))?;
     transaction.commit().await.map_err(|error| {
         WorkflowApiError::store(format!("Could not commit workflow start: {error}"))
     })?;
@@ -876,6 +907,34 @@ pub async fn start_workflow_from_event_in_tx(
         now,
     )
     .await?;
+    let mut segment = StorySegmentRecord::new(
+        &story_context.story_id,
+        format!("workflow:{instance_id}:started"),
+        "durable_workflow",
+        format!("workflow.{owner}.{name}.start"),
+        &definition.input_contract.contract_id,
+        &definition.input_contract.version,
+        "started",
+        now,
+    )
+    .with_parent_segment(&story_context.segment_id)
+    .with_causation(&envelope.event_id)
+    .with_workflow(StorySegmentWorkflow {
+        instance_id: instance_id.clone(),
+        definition_owner: definition.owner.clone(),
+        definition_name: definition.name.clone(),
+        definition_version: definition.version.clone(),
+        step_id: Some(initial_step_id.clone()),
+        parent_instance_id: None,
+        compensation_id: None,
+        intervention_id: None,
+    });
+    if let Some(tenant_scope) = &tenant_scope {
+        segment = segment.with_tenant(&tenant_scope.tenant_id);
+    }
+    append_worker_story_segment_in_tx(state, transaction, &segment)
+        .await
+        .map_err(|error| WorkflowMutationError::store(error.public_message))?;
 
     Ok(WorkflowInstance {
         instance_id,
@@ -1230,6 +1289,25 @@ pub async fn advance_workflow_step_with_event_in_tx(
     .map_err(|error| {
         WorkflowMutationError::store(format!("Could not advance workflow instance: {error}"))
     })?;
+
+    append_persisted_workflow_story_segment_in_tx(
+        state,
+        transaction,
+        instance_id,
+        Some(step_id),
+        None,
+        None,
+        &format!("workflow:{instance_id}:step:{step_id}"),
+        &format!("workflow.step.{}", row.definition_step_name),
+        &envelope.contract_id,
+        &envelope.contract_version,
+        "completed",
+        attempt_number,
+        Some(transition_id),
+        now,
+    )
+    .await
+    .map_err(|error| WorkflowMutationError::store(error.public_message))?;
 
     Ok(WorkflowStepTransitionResult {
         disposition: WorkflowTransitionDisposition::Applied,

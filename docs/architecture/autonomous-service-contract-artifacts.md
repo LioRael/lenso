@@ -341,6 +341,33 @@ failure code and next action, a workflow-level final outcome, and an explicit
 intervention Story Segment. This preserves exactly-once business effects over
 at-least-once delivery without a distributed transaction.
 
+## Story Segment Feed
+
+Every Autonomous Service retains versioned Story Segment evidence in its own
+Service Store. A Feed entry has stable Story and Segment identity plus a
+positive evidence revision; source Service and Workload; operation and contract
+identity; status, attempt, tenant, causation, and timestamps; and Workflow
+Instance, pinned definition, step, parent, compensation, or intervention
+identity when applicable. New evidence revisions append rows under the same
+Segment identity. The Store rejects updates and deletes, and an identical
+identity/revision append is a deterministic duplicate.
+
+`GET /runtime/story-segments` returns `lenso.story-segment-feed.v1` in Store
+sequence order. Its HMAC-signed opaque cursor is scoped to the source Service,
+authenticated reader Service Principal, and requested tenant partition, so a
+consumer can retry a page or resume after an API Workload restart. Entries
+outside the configured retention window are not returned and a cursor that has
+fallen behind retained evidence fails explicitly. Feed reads do not persist an
+acknowledgement and never update Workflow Instances, steps, timers, dispatch
+gates, Inbox, or Outbox state.
+
+The endpoint fails closed unless deployment composition supplies a Workload
+Identity provider, exact audience, reader-to-tenant policy, retention window,
+and durable cursor-signing key. The Bearer credential must also match the
+authenticated transport binding. Tenant-aware Services expose only the single
+authorized partition requested by the reader, and credential proofs or cursor
+keys are never written into Story evidence or returned by the Feed.
+
 ## Event Envelopes
 
 A declared JSON Schema `eventContract` generates a versioned

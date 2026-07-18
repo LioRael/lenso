@@ -1,6 +1,5 @@
 use axum::{body::Body, routing::post};
 use http::{Request, StatusCode};
-use http_body_util::BodyExt as _;
 use lenso_autonomous_service::{ServiceRuntimeConfig, prepare_runtime, service_router};
 use lenso_service::{
     AutonomousServiceContract, AutonomousServiceStore, AutonomousServiceWorkload,
@@ -187,23 +186,27 @@ async fn api_operation_persists_service_local_story_segment() {
         .await
         .unwrap();
     assert_eq!(operation.status(), StatusCode::CREATED);
+    drop(operation);
 
-    let evidence = app
-        .oneshot(
-            Request::get("/runtime/story-segments")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(evidence.status(), StatusCode::OK);
-    let body = evidence.into_body().collect().await.unwrap().to_bytes();
-    let segments: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(segments[0]["serviceId"], "support");
-    assert_eq!(segments[0]["workloadId"], "support-api");
-    assert_eq!(segments[0]["operation"], "POST /tickets");
-    assert_eq!(segments[0]["status"], "succeeded");
+    let segment: (String, String, String, String, String, i32, i32) = sqlx::query_as(
+        r#"
+        select story_id, service_id, workload_id, operation, status,
+               evidence_revision, attempt
+        from platform.service_story_segments
+        where service_id = 'support'
+        "#,
+    )
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    assert!(!segment.0.is_empty());
+    assert_eq!(segment.1, "support");
+    assert_eq!(segment.2, "support-api");
+    assert_eq!(segment.3, "POST /tickets");
+    assert_eq!(segment.4, "succeeded");
+    assert_eq!((segment.5, segment.6), (1, 1));
 
+    drop(app);
     db.cleanup().await;
 }
 
@@ -306,11 +309,8 @@ async fn service_worker_runs_module_outbox_and_function_work_with_local_evidence
     .fetch_all(&db.pool)
     .await
     .unwrap();
-    assert!(outcomes.contains(&("event ticket.opened.v1".to_owned(), "published".to_owned())));
-    assert!(outcomes.contains(&(
-        "function tickets.notify.v1".to_owned(),
-        "completed".to_owned()
-    )));
+    assert!(outcomes.contains(&("ticket.opened.v1".to_owned(), "published".to_owned())));
+    assert!(outcomes.contains(&("tickets.notify.v1".to_owned(), "completed".to_owned())));
     let phase: String = sqlx::query_scalar(
         "select phase from platform.service_worker_health where service_id = 'support' and workload_id = 'support-worker'",
     )

@@ -1,6 +1,7 @@
 //! Host-independent runtime composition for one `lenso.service.v2` Service.
 
 mod operations;
+mod story_feed;
 mod transport;
 mod transport_nats_jetstream;
 mod workflow;
@@ -8,6 +9,7 @@ mod workflow_child;
 mod workflow_compensation;
 
 pub use operations::*;
+pub use story_feed::*;
 pub use transport::*;
 pub use transport_nats_jetstream::*;
 pub use workflow::*;
@@ -37,7 +39,7 @@ use std::{
     sync::{Arc, RwLock},
     time::Duration,
 };
-use utoipa::{OpenApi, ToSchema};
+use utoipa::{Modify, OpenApi, ToSchema};
 use utoipa_axum::{router::OpenApiRouter, routes};
 use uuid::Uuid;
 
@@ -50,6 +52,7 @@ pub struct ServiceRuntimeConfig {
     pub values: serde_json::Value,
     pub workflow_definitions: Vec<WorkflowDefinition>,
     pub workflow_authority_verifier: Option<Arc<dyn WorkflowAuthorityVerifier>>,
+    pub story_segment_feed: Option<StorySegmentFeedConfig>,
 }
 
 impl PartialEq for ServiceRuntimeConfig {
@@ -68,6 +71,7 @@ impl PartialEq for ServiceRuntimeConfig {
                 (Some(left), Some(right)) => Arc::ptr_eq(left, right),
                 _ => false,
             }
+            && self.story_segment_feed == other.story_segment_feed
     }
 }
 
@@ -88,6 +92,7 @@ impl ServiceRuntimeConfig {
             values: serde_json::json!({}),
             workflow_definitions: Vec::new(),
             workflow_authority_verifier: None,
+            story_segment_feed: None,
         }
     }
 
@@ -137,6 +142,14 @@ impl ServiceRuntimeConfig {
         self.workflow_authority_verifier = Some(verifier);
         self
     }
+
+    /// Installs the deployment-owned Workload Identity, reader policy,
+    /// retention, and cursor key for the authenticated Story Segment Feed.
+    #[must_use]
+    pub fn with_story_segment_feed(mut self, config: StorySegmentFeedConfig) -> Self {
+        self.story_segment_feed = Some(config);
+        self
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -171,6 +184,7 @@ pub enum RuntimeErrorCode {
     InvalidWorkflowDefinition,
     DuplicateWorkflowDefinition,
     WorkflowOwnerNotDeclared,
+    InvalidStorySegmentFeedConfiguration,
 }
 
 pub const SERVICE_RUNTIME_MIGRATIONS: &[Migration] = &[
@@ -238,6 +252,10 @@ pub const SERVICE_RUNTIME_MIGRATIONS: &[Migration] = &[
         name: "autonomous-service/0019_protect_workflow_terminal_operations",
         sql: include_str!("../migrations/0019_protect_workflow_terminal_operations.sql"),
     },
+    Migration {
+        name: "autonomous-service/0020_publish_story_segment_feed",
+        sql: include_str!("../migrations/0020_publish_story_segment_feed.sql"),
+    },
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
@@ -260,6 +278,7 @@ pub struct ServiceRuntimeState {
     event_contracts: Arc<Vec<EventContractArtifact>>,
     workflow_clock: Arc<dyn Clock>,
     workflow_authority_verifier: Option<Arc<dyn WorkflowAuthorityVerifier>>,
+    story_segment_feed: Option<Arc<StorySegmentFeedConfig>>,
 }
 
 #[derive(Debug, Clone)]
@@ -299,6 +318,7 @@ impl ServiceRuntimeState {
             event_contracts: Arc::new(Vec::new()),
             workflow_clock: Arc::new(SystemClock),
             workflow_authority_verifier: None,
+            story_segment_feed: None,
         }
     }
 
@@ -356,6 +376,11 @@ impl ServiceRuntimeState {
         verifier: Option<Arc<dyn WorkflowAuthorityVerifier>>,
     ) -> Self {
         self.workflow_authority_verifier = verifier;
+        self
+    }
+
+    fn with_story_segment_feed(mut self, config: Option<StorySegmentFeedConfig>) -> Self {
+        self.story_segment_feed = config.map(Arc::new);
         self
     }
 
@@ -446,7 +471,8 @@ pub async fn prepare_runtime(
     .with_tenancy_mode(contract.tenancy_mode.clone())
     .with_workflow_definitions(config.workflow_definitions.clone())
     .with_event_contracts(contract.event_contracts.clone())
-    .with_workflow_authority_verifier(config.workflow_authority_verifier.clone());
+    .with_workflow_authority_verifier(config.workflow_authority_verifier.clone())
+    .with_story_segment_feed(config.story_segment_feed.clone());
     if let Err(error) = apply_migrations(&pool, SERVICE_RUNTIME_MIGRATIONS).await {
         state.set_phase(RuntimePhase::Failed);
         return Err(runtime_error(
@@ -644,15 +670,20 @@ async fn project_background_story_segments(
     sqlx::query(
         r#"
         insert into platform.service_story_segments (
-            segment_id, service_id, workload_id, operation, status, started_at, completed_at
+            story_id, segment_id, evidence_revision, service_id, workload_id,
+            operation_kind, operation, contract_id, contract_version,
+            status, attempt, started_at, completed_at, recorded_at,
+            tenant_id, causation_id
         )
         select
-            concat('function:', id, ':', status, ':', attempts), $1, $2,
-            concat('function ', function_name), status,
-            coalesce(started_at, created_at), coalesce(completed_at, updated_at)
+            correlation_id, concat('function:', id), greatest(attempts, 1), $1, $2,
+            'runtime_function', function_name, function_name, 'v1', status,
+            greatest(attempts, 1), coalesce(started_at, created_at),
+            coalesce(completed_at, updated_at), coalesce(completed_at, updated_at),
+            tenant_id, null
         from runtime.function_runs
         where status in ('completed', 'failed', 'dead')
-        on conflict (segment_id) do nothing
+        on conflict (service_id, segment_id, evidence_revision) do nothing
         "#,
     )
     .bind(&state.identity.service_id)
@@ -663,15 +694,19 @@ async fn project_background_story_segments(
     sqlx::query(
         r#"
         insert into platform.service_story_segments (
-            segment_id, service_id, workload_id, operation, status, started_at, completed_at
+            story_id, segment_id, evidence_revision, service_id, workload_id,
+            operation_kind, operation, contract_id, contract_version,
+            status, attempt, started_at, completed_at, recorded_at, causation_id
         )
         select
-            concat('event:', id, ':', status, ':', attempts), $1, $2,
-            concat('event ', event_name), status,
-            created_at, coalesce(published_at, available_at)
+            correlation_id, concat('event:', id), greatest(attempts, 1), $1, $2,
+            'event_contract', event_name, event_name, concat('v', event_version),
+            status, greatest(attempts, 1), created_at,
+            coalesce(published_at, available_at), coalesce(published_at, available_at),
+            causation_id
         from platform.outbox
         where status in ('published', 'failed', 'dead')
-        on conflict (segment_id) do nothing
+        on conflict (service_id, segment_id, evidence_revision) do nothing
         "#,
     )
     .bind(&state.identity.service_id)
@@ -895,18 +930,42 @@ pub fn service_router(
     info(
         title = "Lenso Autonomous Service Runtime API",
         version = "1.0.0",
-        description = "Service-owned health and local Story Segment surfaces"
+        description = "Service-owned health, authenticated Story Segment Feed, and Durable Workflow surfaces"
     ),
     components(schemas(
         RuntimeHealth,
         RuntimePhase,
         StorySegment,
+        StorySegmentSource,
+        StorySegmentOperation,
+        StorySegmentContract,
+        StorySegmentWorkflow,
+        StorySegmentFeed,
         ServiceEventEvidence,
         platform_http::ErrorResponse,
         platform_http::ProblemErrorDetail
-    ))
+    )),
+    modifiers(&StorySegmentFeedSecurity)
 )]
 struct ServiceRuntimeApi;
+
+struct StorySegmentFeedSecurity;
+
+impl Modify for StorySegmentFeedSecurity {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        if let Some(components) = openapi.components.as_mut() {
+            components.add_security_scheme(
+                "bearer_auth",
+                utoipa::openapi::security::SecurityScheme::Http(
+                    utoipa::openapi::security::HttpBuilder::new()
+                        .scheme(utoipa::openapi::security::HttpAuthScheme::Bearer)
+                        .bearer_format("Workload Identity")
+                        .build(),
+                ),
+            );
+        }
+    }
+}
 
 fn runtime_router() -> OpenApiRouter<ServiceRuntimeState> {
     OpenApiRouter::new()
@@ -994,58 +1053,6 @@ fn runtime_health(state: &ServiceRuntimeState) -> RuntimeHealth {
     }
 }
 
-#[derive(Debug, Serialize, ToSchema, sqlx::FromRow)]
-#[serde(rename_all = "camelCase")]
-pub struct StorySegment {
-    pub segment_id: String,
-    pub service_id: String,
-    pub workload_id: String,
-    pub operation: String,
-    pub status: String,
-    pub started_at: chrono::DateTime<chrono::Utc>,
-    pub completed_at: chrono::DateTime<chrono::Utc>,
-}
-
-#[utoipa::path(
-    get,
-    path = "/runtime/story-segments",
-    responses(
-        (status = 200, body = [StorySegment]),
-        (status = 503, body = platform_http::ErrorResponse, content_type = "application/problem+json"),
-        (status = 500, body = platform_http::ErrorResponse, content_type = "application/problem+json")
-    ),
-    tag = "service-runtime"
-)]
-async fn story_segments(
-    State(state): State<ServiceRuntimeState>,
-) -> Result<Json<Vec<StorySegment>>, platform_http::ApiErrorResponse> {
-    let pool = state
-        .store()
-        .map_err(platform_http::ApiErrorResponse::from)?;
-    sqlx::query_as::<_, StorySegment>(
-        r#"
-        select segment_id, service_id, workload_id, operation, status, started_at, completed_at
-        from platform.service_story_segments
-        where service_id = $1
-        order by completed_at desc, segment_id
-        limit 100
-        "#,
-    )
-    .bind(&state.identity.service_id)
-    .fetch_all(pool)
-    .await
-    .map(Json)
-    .map_err(|error| {
-        platform_http::ApiErrorResponse::from(
-            platform_core::AppError::new(
-                platform_core::ErrorCode::Internal,
-                "Could not read local Story Segments",
-            )
-            .with_source(error),
-        )
-    })
-}
-
 async fn persist_story_segment(
     State(state): State<ServiceRuntimeState>,
     request: Request,
@@ -1053,35 +1060,50 @@ async fn persist_story_segment(
 ) -> Response {
     let method = request.method().to_string();
     let path = request.uri().path().to_owned();
+    let supplied_story_id = request_header(&request, "x-lenso-story-id");
+    let supplied_segment_id = request_header(&request, "x-lenso-segment-id");
+    let supplied_contract_id = request_header(&request, "x-lenso-contract-id");
+    let supplied_contract_version = request_header(&request, "x-lenso-contract-version");
+    let tenant_id = request_header(&request, "x-lenso-tenant-id");
+    let parent_segment_id = request_header(&request, "x-lenso-parent-segment-id");
+    let causation_id = request_header(&request, "x-lenso-causation-id");
+    let evidence_revision = request_header(&request, "x-lenso-evidence-revision")
+        .and_then(|value| value.parse::<u32>().ok())
+        .unwrap_or(1);
+    let attempt = request_header(&request, "x-lenso-attempt")
+        .and_then(|value| value.parse::<u32>().ok())
+        .unwrap_or(1);
     let response = next.run(request).await;
     if response.status().is_success()
         && !path.starts_with("/health/")
-        && path != "/runtime/story-segments"
-        && path != "/runtime/event-deliveries"
+        && !path.starts_with("/runtime/")
     {
-        let Some(pool) = &state.pool else {
-            return platform_http::ApiErrorResponse::from(platform_core::AppError::new(
-                platform_core::ErrorCode::Internal,
-                "Successful operation has no Service Store for local Story Segment persistence",
-            ))
-            .into_response();
-        };
         let now = chrono::Utc::now();
-        if let Err(error) = sqlx::query(
-            r#"
-            insert into platform.service_story_segments (
-                segment_id, service_id, workload_id, operation, status, started_at, completed_at
-            ) values ($1, $2, $3, $4, 'succeeded', $5, $5)
-            "#,
+        let segment_id = supplied_segment_id.unwrap_or_else(|| Uuid::now_v7().to_string());
+        let story_id = supplied_story_id.unwrap_or_else(|| segment_id.clone());
+        let operation_id = format!("{method} {path}");
+        let mut record = StorySegmentRecord::new(
+            story_id,
+            segment_id,
+            "http",
+            &operation_id,
+            supplied_contract_id.unwrap_or_else(|| operation_id.clone()),
+            supplied_contract_version.unwrap_or_else(|| "v1".to_owned()),
+            "succeeded",
+            now,
         )
-        .bind(Uuid::now_v7().to_string())
-        .bind(&state.identity.service_id)
-        .bind(&state.identity.api_workload_id)
-        .bind(format!("{method} {path}"))
-        .bind(now)
-        .execute(pool)
-        .await
-        {
+        .with_revision(evidence_revision)
+        .with_attempt(attempt);
+        if let Some(tenant_id) = tenant_id {
+            record = record.with_tenant(tenant_id);
+        }
+        if let Some(parent_segment_id) = parent_segment_id {
+            record = record.with_parent_segment(parent_segment_id);
+        }
+        if let Some(causation_id) = causation_id {
+            record = record.with_causation(causation_id);
+        }
+        if let Err(error) = append_story_segment(&state, &record).await {
             return platform_http::ApiErrorResponse::from(
                 platform_core::AppError::new(
                     platform_core::ErrorCode::Internal,
@@ -1093,6 +1115,15 @@ async fn persist_story_segment(
         }
     }
     response
+}
+
+fn request_header(request: &Request, name: &str) -> Option<String> {
+    request
+        .headers()
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_owned)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, Serialize, Deserialize)]
@@ -1127,6 +1158,17 @@ pub fn validate_runtime(
     }
     validate_config_values(contract, &config.values)?;
     validate_workflow_definitions(contract, &config.workflow_definitions)?;
+    if let Some(message) = config
+        .story_segment_feed
+        .as_ref()
+        .and_then(StorySegmentFeedConfig::validation_error)
+    {
+        return Err(runtime_error(
+            RuntimeErrorCode::InvalidStorySegmentFeedConfiguration,
+            message,
+            "Configure a non-empty audience, retention window, cursor key, and reader policy.",
+        ));
+    }
 
     let api_workload_id = one_workload(contract, WorkloadRole::API)?;
     let migration_workload_id = one_workload(contract, WorkloadRole::MIGRATION)?;
@@ -1569,6 +1611,20 @@ mod tests {
             document.paths.paths.contains_key(
                 "/runtime/workflows/instances/{instance_id}/operator-actions/{action}"
             )
+        );
+        let document = serde_json::to_value(document).unwrap();
+        assert_eq!(
+            document["paths"]["/runtime/story-segments"]["get"]["responses"]["200"]["content"]["application/json"]
+                ["schema"]["$ref"],
+            "#/components/schemas/StorySegmentFeed"
+        );
+        assert_eq!(
+            document["paths"]["/runtime/story-segments"]["get"]["security"][0]["bearer_auth"],
+            serde_json::json!([])
+        );
+        assert_eq!(
+            document["components"]["securitySchemes"]["bearer_auth"]["scheme"],
+            "bearer"
         );
     }
 

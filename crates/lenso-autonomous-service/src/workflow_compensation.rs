@@ -2,7 +2,8 @@ use crate::{
     ServiceEventPublisher, ServiceRuntimeState, WorkflowApiError, WorkflowErrorCode,
     WorkflowEventPublication, WorkflowFailureEvidence, WorkflowInstanceState,
     WorkflowMutationError, WorkflowOutgoingWorkInspection, WorkflowTransitionDisposition,
-    WorkflowWorkClaim, event_type_for_contract, postgres_now, validate_outgoing_context,
+    WorkflowWorkClaim, append_persisted_workflow_story_segment_in_tx, event_type_for_contract,
+    postgres_now, validate_outgoing_context,
 };
 use chrono::{DateTime, Utc};
 use lenso_contracts::{WorkflowCompensationDeclaration, WorkflowDataContract};
@@ -267,6 +268,8 @@ pub(crate) async fn record_compensatable_effect_in_tx(
     now: DateTime<Utc>,
 ) -> Result<String, WorkflowMutationError> {
     let effect_id = format!("{step_id}:effect");
+    let effect_contract_id = outgoing_work.contract_id.clone();
+    let effect_contract_version = outgoing_work.contract_version.clone();
     let outgoing_work = serde_json::to_value(outgoing_work).map_err(|error| {
         WorkflowMutationError::new(
             WorkflowErrorCode::StoredStateInvalid,
@@ -322,9 +325,17 @@ pub(crate) async fn record_compensatable_effect_in_tx(
     insert_story_segment(
         state,
         transaction,
+        instance_id,
+        Some(step_id),
+        None,
+        None,
         &format!("workflow:{effect_id}:completed"),
         &format!("workflow effect {effect_id}"),
+        &effect_contract_id,
+        &effect_contract_version,
         "completed",
+        1,
+        Some(transition_id),
         now,
     )
     .await?;
@@ -537,6 +548,10 @@ pub async fn select_workflow_compensations_after_timeout_at(
     insert_story_segment(
         state,
         &mut transaction,
+        &claim.instance_id,
+        Some(&claim.step_id),
+        None,
+        None,
         &format!(
             "workflow:{}:timeout:{}",
             claim.instance_id, claim.transition_id
@@ -545,7 +560,11 @@ pub async fn select_workflow_compensations_after_timeout_at(
             "workflow {} timeout selected compensation",
             claim.instance_id
         ),
+        "lenso.workflow-timer",
+        "v1",
         "timed_out",
+        claim.attempt_number,
+        Some(&claim.transition_id),
         now,
     )
     .await?;
@@ -680,9 +699,17 @@ pub(crate) async fn select_workflow_compensations_for_cancel_in_tx(
     insert_story_segment(
         state,
         transaction,
+        instance_id,
+        None,
+        None,
+        Some(cancellation_transition_id),
         &format!("workflow:{instance_id}:cancel:{cancellation_transition_id}"),
         &format!("workflow {instance_id} cooperative cancel requested"),
+        "lenso.workflow-operator-result",
+        "v1",
         "cancelling",
+        1,
+        Some(cancellation_transition_id),
         now,
     )
     .await?;
@@ -852,9 +879,17 @@ pub async fn dispatch_workflow_compensation_with_event_in_tx(
     insert_story_segment(
         state,
         transaction,
+        &row.instance_id,
+        Some(&row.step_id),
+        Some(compensation_id),
+        None,
         &format!("workflow:{compensation_id}:attempt:{attempt_number}:dispatched"),
         &format!("workflow compensation {compensation_id}"),
+        &row.contract_id,
+        &row.contract_version,
         "dispatched",
+        u32::try_from(attempt_number).unwrap_or(u32::MAX),
+        Some(transition_id),
         now,
     )
     .await?;
@@ -1073,12 +1108,20 @@ pub async fn complete_workflow_compensation_from_event_in_tx(
     insert_story_segment(
         state,
         transaction,
+        &row.instance_id,
+        Some(&row.step_id),
+        Some(compensation_id),
+        None,
         &format!(
             "workflow:{compensation_id}:attempt:{}:succeeded",
             row.attempt_count
         ),
         &format!("workflow compensation {compensation_id}"),
+        &row.completion_contract_id,
+        &row.completion_contract_version,
         "compensated",
+        u32::try_from(row.attempt_count).unwrap_or(u32::MAX),
+        Some(transition_id.as_str()),
         now,
     )
     .await?;
@@ -1309,12 +1352,20 @@ pub async fn record_workflow_compensation_failure_at(
     insert_story_segment(
         state,
         &mut transaction,
+        &row.instance_id,
+        Some(&row.step_id),
+        Some(compensation_id),
+        Some(&format!("workflow:{compensation_id}:intervention")),
         &format!("workflow:{compensation_id}:attempt:{attempt_number}:failed"),
         &format!(
             "workflow compensation {compensation_id} failed {}: {}",
             failure.code, failure.message
         ),
+        &row.contract_id,
+        &row.contract_version,
         "intervention_required",
+        u32::try_from(attempt_number).unwrap_or(u32::MAX),
+        Some(transition_id),
         now,
     )
     .await?;
@@ -2069,27 +2120,35 @@ async fn insert_history(
 async fn insert_story_segment(
     state: &ServiceRuntimeState,
     transaction: &mut Transaction<'_, Postgres>,
+    instance_id: &str,
+    step_id: Option<&str>,
+    compensation_id: Option<&str>,
+    intervention_id: Option<&str>,
     segment_id: &str,
     operation: &str,
+    contract_id: &str,
+    contract_version: &str,
     status: &str,
+    attempt: u32,
+    causation_id: Option<&str>,
     recorded_at: DateTime<Utc>,
 ) -> Result<(), WorkflowMutationError> {
-    sqlx::query(
-        r#"
-        insert into platform.service_story_segments (
-            segment_id, service_id, workload_id, operation,
-            status, started_at, completed_at
-        ) values ($1, $2, $3, $4, $5, $6, $6)
-        on conflict (segment_id) do nothing
-        "#,
+    append_persisted_workflow_story_segment_in_tx(
+        state,
+        transaction,
+        instance_id,
+        step_id,
+        compensation_id,
+        intervention_id,
+        segment_id,
+        operation,
+        contract_id,
+        contract_version,
+        status,
+        attempt,
+        causation_id,
+        recorded_at,
     )
-    .bind(segment_id)
-    .bind(&state.identity.service_id)
-    .bind(&state.identity.worker_workload_id)
-    .bind(operation)
-    .bind(status)
-    .bind(recorded_at)
-    .execute(&mut **transaction)
     .await
     .map_err(|error| {
         WorkflowMutationError::store(format!(

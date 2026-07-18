@@ -101,6 +101,13 @@ surfaces; and performs deterministic shutdown and claim release transitions.
 Business routes and migrations remain injected Module contributions. This
 runtime does not call the Host or Provider boot paths and does not reinterpret
 Provider v1 artifacts.
+Its Story evidence is exposed as an authenticated
+`lenso.story-segment-feed.v1` append-only feed. Stable evidence revisions carry
+Service, Workload, contract, tenant, causation, and Workflow identity; signed
+opaque cursors survive API Workload restarts for the declared retention window.
+Workload Identity audience verification and explicit reader-to-tenant policy
+protect every read. Collection remains read-only and cannot acknowledge,
+advance, or unblock workflow execution.
 Modules can now declare engine-neutral, versioned Durable Workflow definitions
 under `ModuleManifest.runtime.workflows`. Autonomous Service composition
 collects those definitions, validates that each owner is a Module owned by the
