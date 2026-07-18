@@ -51,6 +51,13 @@ pub enum WorkflowCompensationState {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
+pub enum WorkflowCompensationSelectionKind {
+    Timeout,
+    Cancel,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
 pub enum WorkflowCompensationAttemptState {
     Dispatched,
     Succeeded,
@@ -84,6 +91,10 @@ pub struct WorkflowCompensationInspection {
     pub transition_id: Option<String>,
     pub outgoing_work: Option<WorkflowOutgoingWorkInspection>,
     pub failure: Option<WorkflowFailureEvidence>,
+    pub selection_kind: WorkflowCompensationSelectionKind,
+    pub selected_by_transition_id: String,
+    /// Legacy v1 field retained for compatibility. Use
+    /// `selected_by_transition_id` together with `selection_kind`.
     pub selected_by_timeout_transition_id: String,
     pub attempts: Vec<WorkflowCompensationAttemptInspection>,
     pub selected_at: DateTime<Utc>,
@@ -187,6 +198,7 @@ struct CompensationRow {
     transition_id: Option<String>,
     outgoing_work: Option<Value>,
     failure_evidence: Option<Value>,
+    selection_kind: String,
     selected_by_timeout_transition_id: String,
     selected_at: DateTime<Utc>,
     completed_at: Option<DateTime<Utc>>,
@@ -240,6 +252,7 @@ struct CompensationExecutionRow {
     failure_evidence: Option<Value>,
     instance_state: String,
     control_state: String,
+    terminal_intent: Option<String>,
     workflow_context: Option<Value>,
 }
 
@@ -567,6 +580,142 @@ pub async fn select_workflow_compensations_after_timeout_at(
     })
 }
 
+/// Selects declared compensation for a cooperative, Approval Boundary guarded
+/// cancellation. The caller owns the surrounding Workflow Instance lock and
+/// transaction so ordinary work and terminal intent change atomically.
+pub(crate) async fn select_workflow_compensations_for_cancel_in_tx(
+    state: &ServiceRuntimeState,
+    transaction: &mut Transaction<'_, Postgres>,
+    instance_id: &str,
+    cancellation_transition_id: &str,
+    now: DateTime<Utc>,
+) -> Result<Vec<WorkflowCompensationSelection>, WorkflowMutationError> {
+    let effects = sqlx::query_as::<_, EffectRow>(
+        r#"
+        select effect_id, step_id, definition_step_name, effect_transition_id,
+               effect_outgoing_work, compensation_name, compensation_order,
+               compensation_contract_id, compensation_contract_version,
+               compensation_completion_contract_id,
+               compensation_completion_contract_version,
+               state, completed_at, updated_at
+        from platform.service_workflow_effects
+        where instance_id = $1 and state = 'completed'
+        order by compensation_order, effect_id
+        for update
+        "#,
+    )
+    .bind(instance_id)
+    .fetch_all(&mut **transaction)
+    .await
+    .map_err(|error| {
+        WorkflowMutationError::store(format!(
+            "Could not lock cancellable Workflow effects: {error}"
+        ))
+    })?;
+    let mut selections = Vec::with_capacity(effects.len());
+    for effect in effects {
+        let compensation_id = format!(
+            "{}:compensation:{}",
+            effect.effect_id, effect.compensation_name
+        );
+        sqlx::query(
+            r#"
+            insert into platform.service_workflow_compensations (
+                compensation_id, effect_id, instance_id, step_id, name,
+                execution_order, contract_id, contract_version, state,
+                completion_contract_id, completion_contract_version,
+                selection_kind, selected_by_timeout_transition_id,
+                selected_at, updated_at
+            ) values (
+                $1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, $10,
+                'cancel', $11, $12, $12
+            )
+            "#,
+        )
+        .bind(&compensation_id)
+        .bind(&effect.effect_id)
+        .bind(instance_id)
+        .bind(&effect.step_id)
+        .bind(&effect.compensation_name)
+        .bind(effect.compensation_order)
+        .bind(&effect.compensation_contract_id)
+        .bind(&effect.compensation_contract_version)
+        .bind(&effect.compensation_completion_contract_id)
+        .bind(&effect.compensation_completion_contract_version)
+        .bind(cancellation_transition_id)
+        .bind(now)
+        .execute(&mut **transaction)
+        .await
+        .map_err(|error| {
+            WorkflowMutationError::store(format!(
+                "Could not persist cancellation compensation: {error}"
+            ))
+        })?;
+        insert_history(
+            transaction,
+            &format!("{compensation_id}:history:selected"),
+            instance_id,
+            Some(&effect.step_id),
+            Some(&compensation_id),
+            "compensation_selected",
+            json!({
+                "effectId": effect.effect_id,
+                "compensationId": compensation_id,
+                "executionOrder": effect.compensation_order,
+                "selectionKind": "cancel",
+                "cancellationTransitionId": cancellation_transition_id,
+            }),
+            now,
+        )
+        .await?;
+        selections.push(WorkflowCompensationSelection {
+            compensation_id,
+            effect_id: effect.effect_id,
+            step_id: effect.step_id,
+            name: effect.compensation_name,
+            execution_order: u32::try_from(effect.compensation_order).map_err(|_| {
+                WorkflowMutationError::new(
+                    WorkflowErrorCode::StoredStateInvalid,
+                    "Stored compensation order is invalid",
+                )
+            })?,
+        });
+    }
+    insert_history(
+        transaction,
+        &format!("{cancellation_transition_id}:history:cancel-requested"),
+        instance_id,
+        None,
+        None,
+        "workflow_cancel_requested",
+        json!({
+            "cancellationTransitionId": cancellation_transition_id,
+            "selectedCompensationCount": selections.len(),
+            "expectedTerminalState": "cancelled",
+        }),
+        now,
+    )
+    .await?;
+    insert_story_segment(
+        state,
+        transaction,
+        instance_id,
+        None,
+        None,
+        Some(cancellation_transition_id),
+        &format!("workflow:{instance_id}:cancel:{cancellation_transition_id}"),
+        &format!("workflow {instance_id} cooperative cancel requested"),
+        "lenso.workflow-operator-result",
+        "v1",
+        "cancelling",
+        1,
+        Some(cancellation_transition_id),
+        now,
+    )
+    .await?;
+    Ok(selections)
+}
+
 /// Dispatches one selected compensation through its declared request Event Contract.
 /// The Workflow remains compensating until the owning Service confirms the
 /// reversed business effect through the declared completion Event Contract.
@@ -884,17 +1033,34 @@ pub async fn complete_workflow_compensation_from_event_in_tx(
         WorkflowMutationError::store(format!("Could not inspect remaining compensations: {error}"))
     })?;
     let workflow_state = if remaining == 0 {
+        let (stored_state, workflow_state) = if row.terminal_intent.as_deref() == Some("cancelled")
+        {
+            ("cancelled", WorkflowInstanceState::Cancelled)
+        } else {
+            ("compensated", WorkflowInstanceState::Compensated)
+        };
         sqlx::query(
-            "update platform.service_workflow_instances set state = 'compensated', updated_at = $2 where instance_id = $1 and state = 'compensating'",
+            r#"
+            update platform.service_workflow_instances
+            set state = $2,
+                terminal_evidence = case
+                    when $2 = 'cancelled'
+                    then jsonb_set(terminal_evidence, '{cleanupReported}', 'true'::jsonb)
+                    else terminal_evidence
+                end,
+                updated_at = $3
+            where instance_id = $1 and state = 'compensating'
+            "#,
         )
         .bind(&row.instance_id)
+        .bind(stored_state)
         .bind(now)
         .execute(&mut **transaction)
         .await
         .map_err(|error| {
             WorkflowMutationError::store(format!("Could not finish compensation: {error}"))
         })?;
-        WorkflowInstanceState::Compensated
+        workflow_state
     } else {
         WorkflowInstanceState::Compensating
     };
@@ -918,15 +1084,23 @@ pub async fn complete_workflow_compensation_from_event_in_tx(
         now,
     )
     .await?;
-    if workflow_state == WorkflowInstanceState::Compensated {
+    if matches!(
+        workflow_state,
+        WorkflowInstanceState::Compensated | WorkflowInstanceState::Cancelled
+    ) {
+        let (history_kind, final_outcome) = if workflow_state == WorkflowInstanceState::Cancelled {
+            ("workflow_cancelled", "cancelled")
+        } else {
+            ("workflow_compensated", "compensated")
+        };
         insert_history(
             transaction,
-            &format!("{}:history:compensated", row.instance_id),
+            &format!("{}:history:{final_outcome}", row.instance_id),
             &row.instance_id,
             None,
             None,
-            "workflow_compensated",
-            json!({"finalOutcome": "compensated"}),
+            history_kind,
+            json!({"finalOutcome": final_outcome}),
             now,
         )
         .await?;
@@ -1427,6 +1601,16 @@ fn compensation_from_row(
                     "Stored compensation failure is invalid: {error}"
                 ))
             })?,
+        selection_kind: match row.selection_kind.as_str() {
+            "timeout" => WorkflowCompensationSelectionKind::Timeout,
+            "cancel" => WorkflowCompensationSelectionKind::Cancel,
+            other => {
+                return Err(WorkflowApiError::stored_state(format!(
+                    "Stored compensation selection kind `{other}` is invalid"
+                )));
+            }
+        },
+        selected_by_transition_id: row.selected_by_timeout_transition_id.clone(),
         selected_by_timeout_transition_id: row.selected_by_timeout_transition_id,
         attempts,
         selected_at: row.selected_at,
@@ -1511,7 +1695,8 @@ fn compensation_select() -> &'static str {
     select compensation_id, effect_id, step_id, name, execution_order,
            contract_id, contract_version, state, attempt_count, transition_id,
            completion_contract_id, completion_contract_version,
-           outgoing_work, failure_evidence, selected_by_timeout_transition_id,
+           outgoing_work, failure_evidence, selection_kind,
+           selected_by_timeout_transition_id,
            selected_at, completed_at, updated_at
     from platform.service_workflow_compensations
     where instance_id = $1
@@ -1667,7 +1852,7 @@ async fn lock_compensation(
                compensation.attempt_count, compensation.transition_id,
                compensation.outgoing_work, compensation.failure_evidence,
                instance.state as instance_state, instance.control_state,
-               instance.workflow_context
+               instance.terminal_intent, instance.workflow_context
         from platform.service_workflow_compensations compensation
         join platform.service_workflow_instances instance
           on instance.instance_id = compensation.instance_id

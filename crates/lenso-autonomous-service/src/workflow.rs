@@ -130,6 +130,8 @@ pub enum WorkflowInstanceState {
     Compensating,
     Compensated,
     CompensationFailed,
+    Cancelled,
+    Terminated,
 }
 
 impl WorkflowInstanceState {
@@ -141,6 +143,8 @@ impl WorkflowInstanceState {
             "compensating" => Some(Self::Compensating),
             "compensated" => Some(Self::Compensated),
             "compensation_failed" => Some(Self::CompensationFailed),
+            "cancelled" => Some(Self::Cancelled),
+            "terminated" => Some(Self::Terminated),
             _ => None,
         }
     }
@@ -154,6 +158,8 @@ pub enum WorkflowStepState {
     Completed,
     Exhausted,
     Failed,
+    Cancelled,
+    Terminated,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -203,6 +209,7 @@ pub struct WorkflowInstance {
     pub parent: Option<WorkflowParentInspection>,
     pub failure: Option<WorkflowFailureEvidence>,
     pub control: WorkflowControlInspection,
+    pub terminal_operation: Option<WorkflowTerminalOperationInspection>,
     pub initial_step_id: String,
     pub steps: Vec<WorkflowStepInspection>,
     pub effects: Vec<crate::WorkflowEffectInspection>,
@@ -524,6 +531,8 @@ struct WorkflowInstanceRow {
     control_state: String,
     control_revision: i64,
     paused_at: Option<DateTime<Utc>>,
+    terminal_intent: Option<String>,
+    terminal_evidence: Option<Value>,
     initial_step_id: String,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
@@ -726,6 +735,7 @@ async fn start_workflow(
         parent: None,
         failure: None,
         control: WorkflowControlInspection::active(),
+        terminal_operation: None,
         initial_step_id: initial_step_id.clone(),
         steps: vec![recovery::pending_step_inspection(
             initial_step_id,
@@ -942,6 +952,7 @@ pub async fn start_workflow_from_event_in_tx(
         parent: None,
         failure: None,
         control: WorkflowControlInspection::active(),
+        terminal_operation: None,
         initial_step_id: initial_step_id.clone(),
         steps: vec![recovery::pending_step_inspection(
             initial_step_id,
@@ -1424,6 +1435,20 @@ fn workflow_next_actions(
     instance: &WorkflowInstance,
     available_actions: &[WorkflowOperatorAction],
 ) -> Vec<String> {
+    if instance.state == WorkflowInstanceState::Terminated {
+        return vec!["inspect_terminated_workflow_without_cleanup_assumptions".to_owned()];
+    }
+    if instance.state == WorkflowInstanceState::Cancelled {
+        return vec!["inspect_cancelled_workflow".to_owned()];
+    }
+    if instance
+        .terminal_operation
+        .as_ref()
+        .is_some_and(|operation| operation.action == WorkflowOperatorAction::Cancel)
+        && instance.state == WorkflowInstanceState::Compensating
+    {
+        return vec!["execute_next_workflow_compensation".to_owned()];
+    }
     if instance.control.state == WorkflowControlState::Paused {
         return vec!["plan_workflow_resume".to_owned()];
     }
@@ -1601,6 +1626,7 @@ pub(super) async fn load_instance(
                definition_version, state, input, result, story_context,
                tenant_scope, parent_instance_id, parent_step_id, causation_id,
                failure_evidence, control_state, control_revision, paused_at,
+               terminal_intent, terminal_evidence,
                initial_step_id, created_at, updated_at
         from platform.service_workflow_instances
         where service_id = $1 and instance_id = $2
@@ -1674,6 +1700,7 @@ pub(super) async fn load_instance_in_tx(
                definition_version, state, input, result, story_context,
                tenant_scope, parent_instance_id, parent_step_id, causation_id,
                failure_evidence, control_state, control_revision, paused_at,
+               terminal_intent, terminal_evidence,
                initial_step_id, created_at, updated_at
         from platform.service_workflow_instances
         where service_id = $1 and instance_id = $2
@@ -1789,6 +1816,11 @@ fn workflow_from_rows(
         row.control_revision,
         row.paused_at,
     )?;
+    let terminal_operation = WorkflowTerminalOperationInspection::from_stored(
+        row.terminal_intent.as_deref(),
+        row.terminal_evidence,
+        state,
+    )?;
     let steps = step_rows
         .into_iter()
         .map(|step| {
@@ -1798,6 +1830,8 @@ fn workflow_from_rows(
                 "completed" => WorkflowStepState::Completed,
                 "exhausted" => WorkflowStepState::Exhausted,
                 "failed" => WorkflowStepState::Failed,
+                "cancelled" => WorkflowStepState::Cancelled,
+                "terminated" => WorkflowStepState::Terminated,
                 other => {
                     return Err(WorkflowApiError::stored_state(format!(
                         "Workflow step `{}` has unsupported state `{other}`",
@@ -1893,6 +1927,7 @@ fn workflow_from_rows(
         parent,
         failure,
         control,
+        terminal_operation,
         initial_step_id: row.initial_step_id,
         steps,
         effects: compensation_evidence.effects,

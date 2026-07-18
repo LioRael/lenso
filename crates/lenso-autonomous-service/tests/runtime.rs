@@ -309,11 +309,8 @@ async fn service_worker_runs_module_outbox_and_function_work_with_local_evidence
     .fetch_all(&db.pool)
     .await
     .unwrap();
-    assert!(outcomes.contains(&("event ticket.opened.v1".to_owned(), "published".to_owned())));
-    assert!(outcomes.contains(&(
-        "function tickets.notify.v1".to_owned(),
-        "completed".to_owned()
-    )));
+    assert!(outcomes.contains(&("ticket.opened.v1".to_owned(), "published".to_owned())));
+    assert!(outcomes.contains(&("tickets.notify.v1".to_owned(), "completed".to_owned())));
     let phase: String = sqlx::query_scalar(
         "select phase from platform.service_worker_health where service_id = 'support' and workload_id = 'support-worker'",
     )

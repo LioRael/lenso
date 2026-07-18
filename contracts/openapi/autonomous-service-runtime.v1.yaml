@@ -236,7 +236,7 @@ paths:
           type: string
       - name: action
         in: path
-        description: pause, resume, or retry
+        description: pause, resume, retry, cancel, terminate, or intervene
         required: true
         schema:
           type: string
@@ -309,7 +309,7 @@ paths:
           type: string
       - name: action
         in: path
-        description: pause, resume, or retry
+        description: pause, resume, retry, cancel, terminate, or intervene
         required: true
         schema:
           type: string
@@ -897,6 +897,8 @@ components:
       - completionContract
       - state
       - attemptCount
+      - selectionKind
+      - selectedByTransitionId
       - selectedByTimeoutTransitionId
       - attempts
       - selectedAt
@@ -942,6 +944,13 @@ components:
           format: date-time
         selectedByTimeoutTransitionId:
           type: string
+          description: |-
+            Legacy v1 field retained for compatibility. Use
+            `selected_by_transition_id` together with `selection_kind`.
+        selectedByTransitionId:
+          type: string
+        selectionKind:
+          $ref: '#/components/schemas/WorkflowCompensationSelectionKind'
         state:
           $ref: '#/components/schemas/WorkflowCompensationState'
         stepId:
@@ -953,6 +962,11 @@ components:
         updatedAt:
           type: string
           format: date-time
+    WorkflowCompensationSelectionKind:
+      type: string
+      enum:
+      - timeout
+      - cancel
     WorkflowCompensationState:
       type: string
       enum:
@@ -1246,6 +1260,10 @@ components:
           oneOf:
           - type: 'null'
           - $ref: '#/components/schemas/WorkflowTenantScope'
+        terminalOperation:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/WorkflowTerminalOperationInspection'
         updatedAt:
           type: string
           format: date-time
@@ -1258,6 +1276,8 @@ components:
       - compensating
       - compensated
       - compensation_failed
+      - cancelled
+      - terminated
     WorkflowInterventionInspection:
       type: object
       required:
@@ -1267,6 +1287,8 @@ components:
       - actorId
       - authorityId
       - reason
+      - affectedResources
+      - approvalBoundary
       - priorState
       - resultingState
       - nextAction
@@ -1276,12 +1298,20 @@ components:
           $ref: '#/components/schemas/WorkflowOperatorAction'
         actorId:
           type: string
+        affectedResources:
+          $ref: '#/components/schemas/WorkflowOperatorAffectedResources'
+        approvalBoundary:
+          $ref: '#/components/schemas/WorkflowOperatorApprovalBoundary'
         attemptTransitionId:
           type:
           - string
           - 'null'
         authorityId:
           type: string
+        expectedTerminalState:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/WorkflowInstanceState'
         interventionId:
           type: string
         nextAction:
@@ -1301,6 +1331,26 @@ components:
           type:
           - string
           - 'null'
+        tenantScope:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/WorkflowTenantScope'
+    WorkflowIrreversibleEffectInspection:
+      type: object
+      required:
+      - stepId
+      - definitionStepName
+      - transitionId
+      - reason
+      properties:
+        definitionStepName:
+          type: string
+        reason:
+          type: string
+        stepId:
+          type: string
+        transitionId:
+          type: string
     WorkflowMigrationAffectedInstance:
       type: object
       required:
@@ -1410,17 +1460,36 @@ components:
       - pause
       - resume
       - retry
+      - cancel
+      - terminate
+      - intervene
     WorkflowOperatorAffectedResources:
       type: object
       required:
       - instanceId
+      - affectedStepIds
       - pendingWorkIds
       - timerIds
       - attemptIds
       - completedStepIds
+      - childWorkflowIds
+      - compensationIds
+      - irreversibleEffects
       - inFlightClaimIds
       properties:
+        affectedStepIds:
+          type: array
+          items:
+            type: string
         attemptIds:
+          type: array
+          items:
+            type: string
+        childWorkflowIds:
+          type: array
+          items:
+            type: string
+        compensationIds:
           type: array
           items:
             type: string
@@ -1434,6 +1503,10 @@ components:
             type: string
         instanceId:
           type: string
+        irreversibleEffects:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowIrreversibleEffectInspection'
         pendingWorkIds:
           type: array
           items:
@@ -1465,6 +1538,8 @@ components:
       type: string
       enum:
       - workflow_instance_control
+      - workflow_terminal_operation
+      - workflow_human_intervention
     WorkflowOperatorAuthorization:
       type: object
       required:
@@ -1507,6 +1582,10 @@ components:
           $ref: '#/components/schemas/WorkflowOperatorAuthorization'
         definitionVersion:
           type: string
+        expectedTerminalState:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/WorkflowInstanceState'
         instanceId:
           type: string
         mutatesState:
@@ -1898,6 +1977,8 @@ components:
       - completed
       - exhausted
       - failed
+      - cancelled
+      - terminated
     WorkflowStoryContext:
       type: object
       required:
@@ -1917,6 +1998,29 @@ components:
         tenantId:
           type: string
       additionalProperties: false
+    WorkflowTerminalOperationInspection:
+      type: object
+      required:
+      - action
+      - planId
+      - expectedTerminalState
+      - compensationRequired
+      - cleanupReported
+      - requestedAt
+      properties:
+        action:
+          $ref: '#/components/schemas/WorkflowOperatorAction'
+        cleanupReported:
+          type: boolean
+        compensationRequired:
+          type: boolean
+        expectedTerminalState:
+          $ref: '#/components/schemas/WorkflowInstanceState'
+        planId:
+          type: string
+        requestedAt:
+          type: string
+          format: date-time
     WorkflowTimerInspection:
       type: object
       required:

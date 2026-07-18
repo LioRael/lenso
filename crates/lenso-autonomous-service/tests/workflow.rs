@@ -3052,7 +3052,10 @@ async fn workflow_operator_controls_are_deterministic_authorized_and_audited() {
     assert_eq!(inspected["instance"]["control"]["state"], "active");
     assert_eq!(inspected["selectedStep"]["stepId"], step_id);
     assert_eq!(inspected["selectedStep"]["attempts"], serde_json::json!([]));
-    assert_eq!(inspected["availableActions"], serde_json::json!(["pause"]));
+    assert_eq!(
+        inspected["availableActions"],
+        serde_json::json!(["pause", "cancel", "terminate", "intervene"])
+    );
     assert!(
         inspected["pendingWork"]
             .as_array()
@@ -3206,7 +3209,7 @@ async fn workflow_operator_controls_are_deterministic_authorized_and_audited() {
     assert_eq!(paused_inspection["instance"]["control"]["state"], "paused");
     assert_eq!(
         paused_inspection["availableActions"],
-        serde_json::json!(["resume"])
+        serde_json::json!(["resume", "cancel", "terminate", "intervene"])
     );
     assert_eq!(
         paused_inspection["selectedStep"]["timers"][0]["state"],
@@ -3308,7 +3311,7 @@ async fn workflow_operator_controls_are_deterministic_authorized_and_audited() {
     );
     assert_eq!(
         failed_inspection["availableActions"],
-        serde_json::json!(["retry"])
+        serde_json::json!(["retry", "cancel", "terminate", "intervene"])
     );
 
     let retry_plan = app
@@ -3439,5 +3442,564 @@ async fn workflow_operator_controls_are_deterministic_authorized_and_audited() {
 
     drop(app);
     drop(state);
-    db.cleanup().await;
+    force_cleanup_test_databases(vec![db]).await;
+}
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn cooperative_cancel_stops_ordinary_work_and_selects_declared_compensation() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let initial_time = DateTime::parse_from_rfc3339("2026-07-18T01:00:00Z")
+        .unwrap()
+        .with_timezone(&Utc);
+    let clock = Arc::new(SystemSandboxWorkflowClock::new(initial_time));
+    let manifest = manifest();
+    let state = prepare_runtime(
+        &service(),
+        &runtime_config_with_workflow_authority(&manifest),
+        db.pool.clone(),
+        &[],
+    )
+    .await
+    .unwrap()
+    .with_workflow_clock(Arc::clone(&clock) as Arc<dyn platform_core::Clock>);
+    let source = support_ticket_opened("support-event-cancel", "ticket_cancel");
+    let (instance_id, pending_step_id) =
+        complete_compensatable_support_effects(&state, &db.pool, &source).await;
+    let app = service_router(OpenApiRouter::new(), state.clone());
+
+    let plan = app
+        .clone()
+        .oneshot(workflow_operator_plan_request(&instance_id, "cancel", None))
+        .await
+        .unwrap();
+    assert_eq!(plan.status(), StatusCode::OK);
+    let plan = json_body(plan).await;
+    assert_eq!(plan["mutatesState"], false);
+    assert_eq!(plan["expectedTerminalState"], "cancelled");
+    assert_eq!(plan["resultingState"]["executionState"], "compensating");
+    assert_eq!(plan["approvalBoundary"], "workflow_terminal_operation");
+    assert_eq!(
+        plan["authorization"]["requiredAuthority"],
+        "workflow_instance_cancel"
+    );
+    assert_eq!(
+        plan["affectedResources"]["affectedStepIds"],
+        serde_json::json!([pending_step_id])
+    );
+    assert_eq!(
+        plan["affectedResources"]["compensationIds"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    assert!(
+        plan["affectedResources"]["timerIds"]
+            .as_array()
+            .is_some_and(|timers| !timers.is_empty())
+    );
+    assert_eq!(
+        plan["affectedResources"]["irreversibleEffects"],
+        serde_json::json!([])
+    );
+    let intervention_count: i64 =
+        sqlx::query_scalar("select count(*) from platform.service_workflow_interventions")
+            .fetch_one(&db.pool)
+            .await
+            .unwrap();
+    assert_eq!(intervention_count, 0, "cancel dry run must be read-only");
+
+    let applied = app
+        .clone()
+        .oneshot(workflow_operator_apply_request(
+            &instance_id,
+            "cancel",
+            None,
+            plan["planId"].as_str().unwrap(),
+            Some("approved-workflow-control"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(applied.status(), StatusCode::OK);
+    let applied = json_body(applied).await;
+    assert_eq!(applied["disposition"], "applied");
+    assert_eq!(
+        applied["intervention"]["expectedTerminalState"],
+        "cancelled"
+    );
+    assert_eq!(
+        applied["intervention"]["tenantScope"]["tenantId"],
+        "tenant_01"
+    );
+    assert_eq!(
+        applied["intervention"]["affectedResources"]["compensationIds"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    let duplicate = app
+        .clone()
+        .oneshot(workflow_operator_apply_request(
+            &instance_id,
+            "cancel",
+            None,
+            plan["planId"].as_str().unwrap(),
+            Some("approved-workflow-control"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(json_body(duplicate).await["disposition"], "duplicate");
+
+    let stored: (String, Option<String>, String, String, i64) = sqlx::query_as(
+        r#"
+        select instance.state, instance.terminal_intent, step.state, timer.state,
+               instance.control_revision
+        from platform.service_workflow_instances instance
+        join platform.service_workflow_steps step
+          on step.instance_id = instance.instance_id and step.step_id = $2
+        join platform.service_workflow_timers timer
+          on timer.instance_id = instance.instance_id and timer.step_id = step.step_id
+        where instance.instance_id = $1
+        "#,
+    )
+    .bind(&instance_id)
+    .bind(&pending_step_id)
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    assert_eq!(stored.0, "compensating");
+    assert_eq!(stored.1.as_deref(), Some("cancelled"));
+    assert_eq!(stored.2, "cancelled");
+    assert_eq!(stored.3, "cancelled");
+    assert_eq!(stored.4, 1);
+    let compensations: Vec<(String, String, String, i32)> = sqlx::query_as(
+        r#"
+        select compensation_id, state, selection_kind, execution_order
+        from platform.service_workflow_compensations
+        where instance_id = $1
+        order by execution_order
+        "#,
+    )
+    .bind(&instance_id)
+    .fetch_all(&db.pool)
+    .await
+    .unwrap();
+    assert_eq!(compensations.len(), 2);
+    assert!(
+        compensations
+            .iter()
+            .all(|entry| entry.1 == "pending" && entry.2 == "cancel")
+    );
+    assert_eq!(
+        compensations
+            .iter()
+            .map(|entry| entry.3)
+            .collect::<Vec<_>>(),
+        vec![1, 2]
+    );
+    let claims = claim_due_workflow_work_at(
+        &state,
+        "support-sla-worker-after-cancel",
+        clock.advance(Duration::seconds(30)),
+        Duration::seconds(5),
+        10,
+    )
+    .await
+    .unwrap();
+    assert!(claims.is_empty());
+
+    let inspection = app
+        .clone()
+        .oneshot(
+            Request::get(format!("/runtime/workflows/instances/{instance_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let inspection = json_body(inspection).await;
+    assert_eq!(inspection["instance"]["state"], "compensating");
+    assert_eq!(
+        inspection["instance"]["terminalOperation"]["action"],
+        "cancel"
+    );
+    assert_eq!(
+        inspection["instance"]["terminalOperation"]["expectedTerminalState"],
+        "cancelled"
+    );
+    assert_eq!(
+        inspection["instance"]["compensations"][0]["selectionKind"],
+        "cancel"
+    );
+    assert_eq!(
+        inspection["availableActions"],
+        serde_json::json!(["pause", "terminate", "intervene"])
+    );
+    assert_eq!(
+        inspection["nextActions"],
+        serde_json::json!(["execute_next_workflow_compensation"])
+    );
+    let second_plan = app
+        .clone()
+        .oneshot(workflow_operator_plan_request(&instance_id, "cancel", None))
+        .await
+        .unwrap();
+    assert_eq!(second_plan.status(), StatusCode::CONFLICT);
+    assert_eq!(
+        json_body(second_plan).await["code"],
+        "workflow_action_not_eligible"
+    );
+
+    let mut final_compensation = None;
+    for (compensation_id, _, _, _) in &compensations {
+        let transition_id = format!("{compensation_id}:attempt:1");
+        let mut dispatch = db.pool.begin().await.unwrap();
+        let dispatched = dispatch_workflow_compensation_with_event_in_tx(
+            &state,
+            &mut dispatch,
+            compensation_id,
+            &transition_id,
+            compensation_request_publication(&instance_id, compensation_id, &source),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            dispatched.workflow_state,
+            lenso_autonomous_service::WorkflowInstanceState::Compensating
+        );
+        dispatch.commit().await.unwrap();
+
+        let request_envelope: serde_json::Value = sqlx::query_scalar(
+            "select envelope from platform.service_event_outbox where event_id = $1",
+        )
+        .bind(format!("{compensation_id}:request"))
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+        let mut completion: EventEnvelope = serde_json::from_value(request_envelope).unwrap();
+        completion.event_id = format!("{compensation_id}:completed");
+        completion.event_type = "support.sla-compensated.v1".to_owned();
+        completion.contract_id = "sla-compensated".to_owned();
+        completion.contract_version = "v1".to_owned();
+        completion.producer_service_id = "support".to_owned();
+        completion.module_id = "support-ticket".to_owned();
+        completion.content.schema =
+            "contracts/events/support/support.sla-compensated.v1.schema.json".to_owned();
+        completion.context.causation = Some(lenso_service::CausationContext {
+            causation_id: format!("{compensation_id}:request"),
+            correlation_id: completion
+                .context
+                .causation
+                .as_ref()
+                .and_then(|causation| causation.correlation_id.clone()),
+        });
+        let mut complete = db.pool.begin().await.unwrap();
+        let completed =
+            complete_workflow_compensation_from_event_in_tx(&state, &mut complete, &completion)
+                .await
+                .unwrap();
+        complete.commit().await.unwrap();
+        final_compensation = Some(completed);
+    }
+    let final_compensation = final_compensation.unwrap();
+    assert_eq!(
+        final_compensation.workflow_state,
+        lenso_autonomous_service::WorkflowInstanceState::Cancelled
+    );
+    let final_inspection = app
+        .clone()
+        .oneshot(
+            Request::get(format!("/runtime/workflows/instances/{instance_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let final_inspection = json_body(final_inspection).await;
+    assert_eq!(final_inspection["instance"]["state"], "cancelled");
+    assert_eq!(
+        final_inspection["instance"]["terminalOperation"]["cleanupReported"],
+        true
+    );
+    assert_eq!(final_inspection["pendingWork"], serde_json::json!([]));
+    assert_eq!(
+        final_inspection["availableActions"],
+        serde_json::json!(["intervene"])
+    );
+    assert!(
+        final_inspection["instance"]["effects"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|effect| effect["state"] == "compensated")
+    );
+    assert!(
+        final_inspection["instance"]["history"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| {
+                entry["kind"] == "workflow_cancelled"
+                    && entry["detail"]["finalOutcome"] == "cancelled"
+            })
+    );
+
+    drop(app);
+    drop(state);
+    force_cleanup_test_databases(vec![db]).await;
+}
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn terminate_is_strong_without_cleanup_and_human_intervention_is_audited() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let manifest = manifest();
+    let state = prepare_runtime(
+        &service(),
+        &runtime_config_with_workflow_authority(&manifest),
+        db.pool.clone(),
+        &[],
+    )
+    .await
+    .unwrap();
+    let source = support_ticket_opened("support-event-terminate", "ticket_terminate");
+    let mut start = db.pool.begin().await.unwrap();
+    let instance = start_workflow_from_event_in_tx(
+        &state,
+        &mut start,
+        "support-sla",
+        "ticket_sla",
+        "v1",
+        &source,
+    )
+    .await
+    .unwrap();
+    start.commit().await.unwrap();
+    let instance_id = instance.instance_id;
+    let step_id = instance.initial_step_id;
+    let app = service_router(OpenApiRouter::new(), state.clone());
+
+    let plan = app
+        .clone()
+        .oneshot(workflow_operator_plan_request(
+            &instance_id,
+            "terminate",
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(plan.status(), StatusCode::OK);
+    let plan = json_body(plan).await;
+    assert_eq!(plan["expectedTerminalState"], "terminated");
+    assert_eq!(plan["resultingState"]["executionState"], "terminated");
+    assert_eq!(plan["approvalBoundary"], "workflow_terminal_operation");
+    assert_eq!(
+        plan["authorization"]["requiredAuthority"],
+        "workflow_instance_terminate"
+    );
+    assert_eq!(
+        plan["affectedResources"]["affectedStepIds"],
+        serde_json::json!([step_id.clone()])
+    );
+    assert!(
+        plan["affectedResources"]["compensationIds"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    let terminated = app
+        .clone()
+        .oneshot(workflow_operator_apply_request(
+            &instance_id,
+            "terminate",
+            None,
+            plan["planId"].as_str().unwrap(),
+            Some("approved-workflow-control"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(terminated.status(), StatusCode::OK);
+    let terminated = json_body(terminated).await;
+    assert_eq!(terminated["disposition"], "applied");
+    assert_eq!(
+        terminated["intervention"]["approvalBoundary"],
+        "workflow_terminal_operation"
+    );
+    let duplicate = app
+        .clone()
+        .oneshot(workflow_operator_apply_request(
+            &instance_id,
+            "terminate",
+            None,
+            plan["planId"].as_str().unwrap(),
+            Some("approved-workflow-control"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(json_body(duplicate).await["disposition"], "duplicate");
+
+    let terminal: (String, String, String, serde_json::Value) = sqlx::query_as(
+        r#"
+        select instance.state, step.state, timer.state, instance.terminal_evidence
+        from platform.service_workflow_instances instance
+        join platform.service_workflow_steps step
+          on step.instance_id = instance.instance_id and step.step_id = $2
+        join platform.service_workflow_timers timer
+          on timer.instance_id = instance.instance_id and timer.step_id = step.step_id
+        where instance.instance_id = $1
+        "#,
+    )
+    .bind(&instance_id)
+    .bind(&step_id)
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    assert_eq!(terminal.0, "terminated");
+    assert_eq!(terminal.1, "terminated");
+    assert_eq!(terminal.2, "cancelled");
+    assert_eq!(terminal.3["action"], "terminate");
+    assert_eq!(terminal.3["compensationRequired"], false);
+    assert_eq!(terminal.3["cleanupReported"], false);
+    let compensation_count: i64 = sqlx::query_scalar(
+        "select count(*) from platform.service_workflow_compensations where instance_id = $1",
+    )
+    .bind(&instance_id)
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    assert_eq!(compensation_count, 0);
+
+    let inspection = app
+        .clone()
+        .oneshot(
+            Request::get(format!(
+                "/runtime/workflows/instances/{instance_id}?stepId={step_id}"
+            ))
+            .body(Body::empty())
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    let inspection = json_body(inspection).await;
+    assert_eq!(inspection["instance"]["state"], "terminated");
+    assert_eq!(inspection["pendingWork"], serde_json::json!([]));
+    assert_eq!(
+        inspection["availableActions"],
+        serde_json::json!(["intervene"])
+    );
+    assert_eq!(
+        inspection["nextActions"],
+        serde_json::json!(["inspect_terminated_workflow_without_cleanup_assumptions"])
+    );
+
+    let intervention_plan = app
+        .clone()
+        .oneshot(workflow_operator_plan_request(
+            &instance_id,
+            "intervene",
+            Some(&step_id),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(intervention_plan.status(), StatusCode::OK);
+    let intervention_plan = json_body(intervention_plan).await;
+    assert_eq!(
+        intervention_plan["approvalBoundary"],
+        "workflow_human_intervention"
+    );
+    assert_eq!(
+        intervention_plan["authorization"]["requiredAuthority"],
+        "workflow_human_intervention"
+    );
+    assert_eq!(
+        intervention_plan["resultingState"]["executionState"],
+        "terminated"
+    );
+    let intervened = app
+        .clone()
+        .oneshot(workflow_operator_apply_request(
+            &instance_id,
+            "intervene",
+            Some(&step_id),
+            intervention_plan["planId"].as_str().unwrap(),
+            Some("approved-workflow-control"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(intervened.status(), StatusCode::OK);
+    let intervened = json_body(intervened).await;
+    assert_eq!(intervened["disposition"], "applied");
+    assert_eq!(
+        intervened["intervention"]["actorId"],
+        "operator:incident-commander"
+    );
+    assert_eq!(
+        intervened["intervention"]["tenantScope"]["tenantId"],
+        "tenant_01"
+    );
+    assert_eq!(intervened["intervention"]["stepId"], step_id);
+    assert_eq!(
+        intervened["intervention"]["affectedResources"]["selectedStepId"],
+        step_id
+    );
+    let duplicate_intervention = app
+        .clone()
+        .oneshot(workflow_operator_apply_request(
+            &instance_id,
+            "intervene",
+            Some(&step_id),
+            intervention_plan["planId"].as_str().unwrap(),
+            Some("approved-workflow-control"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        json_body(duplicate_intervention).await["disposition"],
+        "duplicate"
+    );
+    let fresh_terminate = app
+        .clone()
+        .oneshot(workflow_operator_plan_request(
+            &instance_id,
+            "terminate",
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(fresh_terminate.status(), StatusCode::CONFLICT);
+
+    let interventions: Vec<(String, String, Option<serde_json::Value>, serde_json::Value)> =
+        sqlx::query_as(
+            r#"
+            select action, approval_boundary, tenant_scope, affected_resources
+            from platform.service_workflow_interventions
+            where instance_id = $1
+            order by recorded_at, intervention_id
+            "#,
+        )
+        .bind(&instance_id)
+        .fetch_all(&db.pool)
+        .await
+        .unwrap();
+    assert_eq!(interventions.len(), 2);
+    assert_eq!(interventions[0].0, "terminate");
+    assert_eq!(interventions[0].1, "workflow_terminal_operation");
+    assert_eq!(interventions[1].0, "intervene");
+    assert_eq!(interventions[1].1, "workflow_human_intervention");
+    assert!(
+        interventions
+            .iter()
+            .all(|entry| entry.2.as_ref().unwrap()["tenantId"] == "tenant_01")
+    );
+    assert_eq!(interventions[1].3["selectedStepId"], step_id);
+
+    drop(app);
+    drop(state);
+    force_cleanup_test_databases(vec![db]).await;
 }
