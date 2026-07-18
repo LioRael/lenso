@@ -765,6 +765,39 @@ async fn versioned_workflow_start_and_inspection_survive_runtime_restart() {
         .unwrap()
         .to_owned();
     let created_at = started["instance"]["createdAt"].clone();
+    let segment: (
+        String,
+        String,
+        String,
+        String,
+        String,
+        String,
+        String,
+        String,
+        i32,
+    ) = sqlx::query_as(
+        r#"
+        select story_id, tenant_id, workflow_instance_id,
+               workflow_definition_owner, workflow_definition_name,
+               workflow_definition_version, workflow_step_id,
+               parent_segment_id, evidence_revision
+        from platform.service_story_segments
+        where workflow_instance_id = $1 and status = 'started'
+        "#,
+    )
+    .bind(&instance_id)
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    assert_eq!(segment.0, "story_support_01");
+    assert_eq!(segment.1, "tenant_01");
+    assert_eq!(segment.2, instance_id);
+    assert_eq!(segment.3, "support-sla");
+    assert_eq!(segment.4, "ticket_sla");
+    assert_eq!(segment.5, "v1");
+    assert_eq!(segment.6, initial_step_id);
+    assert_eq!(segment.7, "segment_start_01");
+    assert_eq!(segment.8, 1);
     drop(app);
 
     let restarted_state =
@@ -894,7 +927,7 @@ async fn versioned_workflow_start_and_inspection_survive_runtime_restart() {
     assert_eq!(persisted_instances, 2);
     assert_eq!(persisted_steps, 2);
 
-    db.cleanup().await;
+    force_cleanup_test_databases(vec![db]).await;
 }
 
 #[tokio::test]

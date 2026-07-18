@@ -13,8 +13,22 @@ API, Migration, and Worker Workloads under one Service identity. It exposes:
 - `GET /runtime/story-segments`
 - `GET /runtime/event-deliveries`
 
-Successful business requests and background function/event outcomes are
-persisted as local Story Segments. Module registrations inject business routes,
+`GET /runtime/story-segments` is the versioned
+`lenso.story-segment-feed.v1` surface. Deployments configure its Workload
+Identity provider, audience, reader-to-tenant policy, retention window, and a
+stable cursor-signing key through `StorySegmentFeedConfig`. Reads require a
+Bearer credential bound to the authenticated transport and select exactly one
+tenant partition for tenant-aware Services. Opaque signed cursors can be
+retried and reused after API Workload restarts; reads never acknowledge or
+advance workflow execution.
+
+Successful business requests, background function/event outcomes, and Durable
+Workflow transitions are persisted as append-only local Story Segment
+revisions. Each revision carries stable Story and Segment identity, Service and
+Workload source, operation and contract identity, status, attempt, tenant,
+causation, timestamps, and workflow identity when applicable. Database
+constraints reject updates and deletes, while an identical identity/revision
+append is an idempotent duplicate. Module registrations inject business routes,
 runtime functions, event handlers, and migrations. The Service-owned Worker
 claims its Store's queues and transactional Outbox, persists retry state and
 health locally, and releases only its own claims during deterministic shutdown.

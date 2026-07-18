@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Lenso Autonomous Service Runtime API
-  description: Service-owned health and local Story Segment surfaces
+  description: Service-owned health, authenticated Story Segment Feed, and Durable Workflow surfaces
   license:
     name: MIT
     identifier: MIT
@@ -86,15 +86,59 @@ paths:
       tags:
       - service-runtime
       operationId: story_segments
+      parameters:
+      - name: cursor
+        in: query
+        description: Opaque cursor returned by a prior feed response.
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: Maximum number of entries to return, from 1 through 500.
+        required: false
+        schema:
+          type: integer
+          format: int32
+          maximum: 500
+          minimum: 1
+      - name: tenantId
+        in: query
+        description: Required for tenant-aware Services; omitted reads only unscoped evidence.
+        required: false
+        schema:
+          type: string
       responses:
         '200':
           description: ''
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/StorySegment'
+                $ref: '#/components/schemas/StorySegmentFeed'
+        '400':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '410':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: ''
           content:
@@ -107,6 +151,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - bearer_auth: []
   /runtime/workflows/definitions/compatibility:
     post:
       tags:
@@ -524,30 +570,156 @@ components:
     StorySegment:
       type: object
       required:
+      - storyId
       - segmentId
-      - serviceId
-      - workloadId
+      - evidenceRevision
+      - source
       - operation
+      - contract
       - status
+      - attempt
       - startedAt
       - completedAt
+      - recordedAt
       properties:
+        attempt:
+          type: integer
+          format: int32
+          minimum: 0
+        causationId:
+          type:
+          - string
+          - 'null'
         completedAt:
           type: string
           format: date-time
+        contract:
+          $ref: '#/components/schemas/StorySegmentContract'
+        evidenceRevision:
+          type: integer
+          format: int32
+          minimum: 0
         operation:
+          $ref: '#/components/schemas/StorySegmentOperation'
+        parentSegmentId:
+          type:
+          - string
+          - 'null'
+        recordedAt:
           type: string
+          format: date-time
         segmentId:
           type: string
-        serviceId:
-          type: string
+        source:
+          $ref: '#/components/schemas/StorySegmentSource'
         startedAt:
           type: string
           format: date-time
         status:
           type: string
+        storyId:
+          type: string
+        tenantId:
+          type:
+          - string
+          - 'null'
+        workflow:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/StorySegmentWorkflow'
+    StorySegmentContract:
+      type: object
+      required:
+      - contractId
+      - version
+      properties:
+        contractId:
+          type: string
+        version:
+          type: string
+    StorySegmentFeed:
+      type: object
+      required:
+      - protocol
+      - sourceServiceId
+      - retentionWindowSeconds
+      - asOf
+      - segments
+      - nextCursor
+      properties:
+        asOf:
+          type: string
+          format: date-time
+        nextCursor:
+          type: string
+        protocol:
+          type: string
+        retentionWindowSeconds:
+          type: integer
+          format: int64
+          minimum: 0
+        segments:
+          type: array
+          items:
+            $ref: '#/components/schemas/StorySegment'
+        sourceServiceId:
+          type: string
+        tenantId:
+          type:
+          - string
+          - 'null'
+    StorySegmentOperation:
+      type: object
+      required:
+      - kind
+      - operationId
+      properties:
+        kind:
+          type: string
+        operationId:
+          type: string
+    StorySegmentSource:
+      type: object
+      required:
+      - serviceId
+      - workloadId
+      properties:
+        serviceId:
+          type: string
         workloadId:
           type: string
+    StorySegmentWorkflow:
+      type: object
+      required:
+      - instanceId
+      - definitionOwner
+      - definitionName
+      - definitionVersion
+      properties:
+        compensationId:
+          type:
+          - string
+          - 'null'
+        definitionName:
+          type: string
+        definitionOwner:
+          type: string
+        definitionVersion:
+          type: string
+        instanceId:
+          type: string
+        interventionId:
+          type:
+          - string
+          - 'null'
+        parentInstanceId:
+          type:
+          - string
+          - 'null'
+        stepId:
+          type:
+          - string
+          - 'null'
     WorkflowChildInspection:
       type: object
       required:
@@ -1801,3 +1973,8 @@ components:
       enum:
       - applied
       - duplicate
+  securitySchemes:
+    bearer_auth:
+      type: http
+      scheme: bearer
+      bearerFormat: Workload Identity
