@@ -664,14 +664,19 @@ fn segment_from_record(
         contract: record.contract.clone(),
         status: record.status.clone(),
         attempt: record.attempt,
-        started_at: record.started_at,
-        completed_at: record.completed_at,
-        recorded_at: record.recorded_at,
+        started_at: postgres_timestamp_precision(record.started_at),
+        completed_at: postgres_timestamp_precision(record.completed_at),
+        recorded_at: postgres_timestamp_precision(record.recorded_at),
         tenant_id: record.tenant_id.clone(),
         parent_segment_id: record.parent_segment_id.clone(),
         causation_id: record.causation_id.clone(),
         workflow: record.workflow.clone(),
     }
+}
+
+fn postgres_timestamp_precision(value: DateTime<Utc>) -> DateTime<Utc> {
+    DateTime::<Utc>::from_timestamp_micros(value.timestamp_micros())
+        .expect("Story Segment timestamp must fit PostgreSQL precision")
 }
 
 fn validate_record(record: &StorySegmentRecord) -> Result<(), AppError> {

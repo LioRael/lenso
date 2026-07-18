@@ -97,6 +97,12 @@ async fn json_body(response: axum::response::Response) -> serde_json::Value {
 }
 
 fn segment(story_id: &str, segment_id: &str, tenant_id: &str, status: &str) -> StorySegmentRecord {
+    let now = chrono::Utc::now();
+    let recorded_at = chrono::DateTime::from_timestamp(
+        now.timestamp(),
+        (now.timestamp_subsec_nanos() / 1_000 * 1_000) + 789,
+    )
+    .unwrap();
     StorySegmentRecord::new(
         story_id,
         segment_id,
@@ -105,7 +111,7 @@ fn segment(story_id: &str, segment_id: &str, tenant_id: &str, status: &str) -> S
         "ticket-opened",
         "v1",
         status,
-        chrono::Utc::now(),
+        recorded_at,
     )
     .with_tenant(tenant_id)
 }
