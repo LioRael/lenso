@@ -1,7 +1,7 @@
 use super::{
     WorkflowApiError, WorkflowErrorCode, WorkflowInstance, WorkflowInstanceState,
-    WorkflowMutationError, WorkflowStepInspection, WorkflowStepState, WorkflowTimerState,
-    load_instance, load_instance_in_tx, sha256_hex,
+    WorkflowMutationError, WorkflowStepInspection, WorkflowStepState, WorkflowTenantScope,
+    WorkflowTimerState, load_instance, load_instance_in_tx, sha256_hex,
 };
 use crate::{ServiceRuntimeState, WorkflowTransitionDisposition};
 use axum::{
@@ -93,6 +93,9 @@ pub enum WorkflowOperatorAction {
     Pause,
     Resume,
     Retry,
+    Cancel,
+    Terminate,
+    Intervene,
 }
 
 impl WorkflowOperatorAction {
@@ -101,6 +104,9 @@ impl WorkflowOperatorAction {
             Self::Pause => "pause",
             Self::Resume => "resume",
             Self::Retry => "retry",
+            Self::Cancel => "cancel",
+            Self::Terminate => "terminate",
+            Self::Intervene => "intervene",
         }
     }
 
@@ -109,6 +115,21 @@ impl WorkflowOperatorAction {
             Self::Pause => "workflow_instance_pause",
             Self::Resume => "workflow_instance_resume",
             Self::Retry => "workflow_step_retry",
+            Self::Cancel => "workflow_instance_cancel",
+            Self::Terminate => "workflow_instance_terminate",
+            Self::Intervene => "workflow_human_intervention",
+        }
+    }
+
+    const fn approval_boundary(self) -> WorkflowOperatorApprovalBoundary {
+        match self {
+            Self::Pause | Self::Resume | Self::Retry => {
+                WorkflowOperatorApprovalBoundary::WorkflowInstanceControl
+            }
+            Self::Cancel | Self::Terminate => {
+                WorkflowOperatorApprovalBoundary::WorkflowTerminalOperation
+            }
+            Self::Intervene => WorkflowOperatorApprovalBoundary::WorkflowHumanIntervention,
         }
     }
 }
@@ -121,8 +142,84 @@ impl FromStr for WorkflowOperatorAction {
             "pause" => Ok(Self::Pause),
             "resume" => Ok(Self::Resume),
             "retry" => Ok(Self::Retry),
+            "cancel" => Ok(Self::Cancel),
+            "terminate" => Ok(Self::Terminate),
+            "intervene" => Ok(Self::Intervene),
             _ => Err(()),
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowTerminalOperationInspection {
+    pub action: WorkflowOperatorAction,
+    pub plan_id: String,
+    pub expected_terminal_state: WorkflowInstanceState,
+    pub compensation_required: bool,
+    pub cleanup_reported: bool,
+    pub requested_at: DateTime<Utc>,
+}
+
+impl WorkflowTerminalOperationInspection {
+    pub(super) fn from_stored(
+        terminal_intent: Option<&str>,
+        evidence: Option<Value>,
+        state: WorkflowInstanceState,
+    ) -> Result<Option<Self>, WorkflowApiError> {
+        let Some(evidence) = evidence else {
+            if terminal_intent.is_some()
+                || matches!(
+                    state,
+                    WorkflowInstanceState::Cancelled | WorkflowInstanceState::Terminated
+                )
+            {
+                return Err(WorkflowApiError::stored_state(
+                    "Stored Workflow terminal state is missing terminal operation evidence",
+                ));
+            }
+            return Ok(None);
+        };
+        let operation: Self = serde_json::from_value(evidence).map_err(|error| {
+            WorkflowApiError::stored_state(format!(
+                "Stored Workflow terminal operation evidence is invalid: {error}"
+            ))
+        })?;
+        let valid = match operation.action {
+            WorkflowOperatorAction::Cancel => {
+                terminal_intent == Some("cancelled")
+                    && operation.expected_terminal_state == WorkflowInstanceState::Cancelled
+                    && matches!(
+                        state,
+                        WorkflowInstanceState::Compensating
+                            | WorkflowInstanceState::Cancelled
+                            | WorkflowInstanceState::CompensationFailed
+                    )
+                    && match state {
+                        WorkflowInstanceState::Cancelled if operation.compensation_required => {
+                            operation.cleanup_reported
+                        }
+                        WorkflowInstanceState::Compensating
+                        | WorkflowInstanceState::CompensationFailed => !operation.cleanup_reported,
+                        WorkflowInstanceState::Cancelled => !operation.cleanup_reported,
+                        _ => false,
+                    }
+            }
+            WorkflowOperatorAction::Terminate => {
+                terminal_intent.is_none()
+                    && operation.expected_terminal_state == WorkflowInstanceState::Terminated
+                    && state == WorkflowInstanceState::Terminated
+                    && !operation.compensation_required
+                    && !operation.cleanup_reported
+            }
+            _ => false,
+        };
+        if !valid {
+            return Err(WorkflowApiError::stored_state(
+                "Stored Workflow terminal operation does not match its execution state",
+            ));
+        }
+        Ok(Some(operation))
     }
 }
 
@@ -163,6 +260,10 @@ pub struct WorkflowInterventionInspection {
     pub actor_id: String,
     pub authority_id: String,
     pub reason: String,
+    pub tenant_scope: Option<WorkflowTenantScope>,
+    pub affected_resources: WorkflowOperatorAffectedResources,
+    pub approval_boundary: WorkflowOperatorApprovalBoundary,
+    pub expected_terminal_state: Option<WorkflowInstanceState>,
     pub prior_state: WorkflowOperatorStateSnapshot,
     pub resulting_state: WorkflowOperatorStateSnapshot,
     pub next_action: String,
@@ -184,6 +285,10 @@ struct InterventionRow {
     actor_id: String,
     authority_id: String,
     reason: String,
+    tenant_scope: Option<Value>,
+    affected_resources: Value,
+    approval_boundary: String,
+    expected_terminal_state: Option<String>,
     prior_state: Value,
     resulting_state: Value,
     next_action: String,
@@ -204,6 +309,34 @@ fn intervention_from_row(
         actor_id: row.actor_id,
         authority_id: row.authority_id,
         reason: row.reason,
+        tenant_scope: row
+            .tenant_scope
+            .map(serde_json::from_value)
+            .transpose()
+            .map_err(|error| {
+                WorkflowApiError::stored_state(format!(
+                    "Stored Workflow intervention tenant scope is invalid: {error}"
+                ))
+            })?,
+        affected_resources: serde_json::from_value(row.affected_resources).map_err(|error| {
+            WorkflowApiError::stored_state(format!(
+                "Stored Workflow intervention affected resources are invalid: {error}"
+            ))
+        })?,
+        approval_boundary: WorkflowOperatorApprovalBoundary::parse(&row.approval_boundary)
+            .ok_or_else(|| {
+                WorkflowApiError::stored_state(
+                    "Stored Workflow intervention Approval Boundary is invalid",
+                )
+            })?,
+        expected_terminal_state: match row.expected_terminal_state {
+            Some(value) => Some(WorkflowInstanceState::parse(&value).ok_or_else(|| {
+                WorkflowApiError::stored_state(
+                    "Stored Workflow intervention expected terminal state is invalid",
+                )
+            })?),
+            None => None,
+        },
         prior_state: serde_json::from_value(row.prior_state).map_err(|error| {
             WorkflowApiError::stored_state(format!(
                 "Stored Workflow intervention prior state is invalid: {error}"
@@ -222,7 +355,8 @@ fn intervention_from_row(
 
 const INTERVENTION_SELECT: &str = r#"
     select intervention_id, action, plan_id, step_id, actor_id, authority_id,
-           reason, prior_state, resulting_state, next_action,
+           reason, tenant_scope, affected_resources, approval_boundary,
+           expected_terminal_state, prior_state, resulting_state, next_action,
            attempt_transition_id, recorded_at
     from platform.service_workflow_interventions
     where instance_id = $1
@@ -303,6 +437,12 @@ pub(super) fn selected_workflow_step(
 pub(super) fn workflow_pending_work(
     instance: &WorkflowInstance,
 ) -> Vec<WorkflowPendingWorkInspection> {
+    if matches!(
+        instance.state,
+        WorkflowInstanceState::Cancelled | WorkflowInstanceState::Terminated
+    ) {
+        return Vec::new();
+    }
     let mut pending = Vec::new();
     for step in &instance.steps {
         if matches!(
@@ -342,6 +482,7 @@ pub(super) fn workflow_pending_work(
             }
         }
         if let Some(child) = &step.child_workflow
+            && step.state == WorkflowStepState::WaitingForChild
             && child.state == super::WorkflowChildState::Waiting
         {
             pending.push(WorkflowPendingWorkInspection {
@@ -380,21 +521,46 @@ pub(super) fn workflow_available_actions(
     instance: &WorkflowInstance,
     selected_step: Option<&WorkflowStepInspection>,
 ) -> Vec<WorkflowOperatorAction> {
-    if instance.control.state == WorkflowControlState::Paused {
-        return vec![WorkflowOperatorAction::Resume];
-    }
     let mut actions = Vec::new();
+    let cancellation_in_progress = instance
+        .terminal_operation
+        .as_ref()
+        .is_some_and(|operation| operation.action == WorkflowOperatorAction::Cancel);
+    if instance.control.state == WorkflowControlState::Paused {
+        actions.push(WorkflowOperatorAction::Resume);
+    } else {
+        if matches!(
+            instance.state,
+            WorkflowInstanceState::Running | WorkflowInstanceState::Compensating
+        ) {
+            actions.push(WorkflowOperatorAction::Pause);
+        }
+        if instance.state == WorkflowInstanceState::Failed
+            && selected_step.is_some_and(retry_step_is_eligible)
+        {
+            actions.push(WorkflowOperatorAction::Retry);
+        }
+    }
+    if !cancellation_in_progress
+        && matches!(
+            instance.state,
+            WorkflowInstanceState::Running
+                | WorkflowInstanceState::Failed
+                | WorkflowInstanceState::Compensating
+        )
+    {
+        actions.push(WorkflowOperatorAction::Cancel);
+    }
     if matches!(
         instance.state,
-        WorkflowInstanceState::Running | WorkflowInstanceState::Compensating
+        WorkflowInstanceState::Running
+            | WorkflowInstanceState::Failed
+            | WorkflowInstanceState::Compensating
+            | WorkflowInstanceState::CompensationFailed
     ) {
-        actions.push(WorkflowOperatorAction::Pause);
+        actions.push(WorkflowOperatorAction::Terminate);
     }
-    if instance.state == WorkflowInstanceState::Failed
-        && selected_step.is_some_and(retry_step_is_eligible)
-    {
-        actions.push(WorkflowOperatorAction::Retry);
-    }
+    actions.push(WorkflowOperatorAction::Intervene);
     actions
 }
 
@@ -437,21 +603,55 @@ pub struct WorkflowOperatorAuthorization {
     pub required_authority: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum WorkflowOperatorApprovalBoundary {
     WorkflowInstanceControl,
+    WorkflowTerminalOperation,
+    WorkflowHumanIntervention,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+impl WorkflowOperatorApprovalBoundary {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::WorkflowInstanceControl => "workflow_instance_control",
+            Self::WorkflowTerminalOperation => "workflow_terminal_operation",
+            Self::WorkflowHumanIntervention => "workflow_human_intervention",
+        }
+    }
+
+    fn parse(value: &str) -> Option<Self> {
+        match value {
+            "workflow_instance_control" => Some(Self::WorkflowInstanceControl),
+            "workflow_terminal_operation" => Some(Self::WorkflowTerminalOperation),
+            "workflow_human_intervention" => Some(Self::WorkflowHumanIntervention),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowIrreversibleEffectInspection {
+    pub step_id: String,
+    pub definition_step_name: String,
+    pub transition_id: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkflowOperatorAffectedResources {
     pub instance_id: String,
     pub selected_step_id: Option<String>,
+    pub affected_step_ids: Vec<String>,
     pub pending_work_ids: Vec<String>,
     pub timer_ids: Vec<String>,
     pub attempt_ids: Vec<String>,
     pub completed_step_ids: Vec<String>,
+    pub child_workflow_ids: Vec<String>,
+    pub compensation_ids: Vec<String>,
+    pub irreversible_effects: Vec<WorkflowIrreversibleEffectInspection>,
     pub in_flight_claim_ids: Vec<String>,
 }
 
@@ -468,6 +668,7 @@ pub struct WorkflowOperatorPlan {
     pub definition_version: String,
     pub prior_state: WorkflowOperatorStateSnapshot,
     pub resulting_state: WorkflowOperatorStateSnapshot,
+    pub expected_terminal_state: Option<WorkflowInstanceState>,
     pub affected_resources: WorkflowOperatorAffectedResources,
     pub preserved_state: Vec<String>,
     pub authorization: WorkflowOperatorAuthorization,
@@ -482,6 +683,7 @@ pub struct WorkflowAuthorityRequest {
     pub plan_id: String,
     pub service_id: String,
     pub instance_id: String,
+    pub approval_boundary: WorkflowOperatorApprovalBoundary,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -571,7 +773,7 @@ pub(super) fn workflow_control_router() -> OpenApiRouter<ServiceRuntimeState> {
     path = "/runtime/workflows/instances/{instance_id}/operator-actions/{action}/dry-run",
     params(
         ("instance_id" = String, Path, description = "Stable Workflow Instance identity"),
-        ("action" = String, Path, description = "pause, resume, or retry")
+        ("action" = String, Path, description = "pause, resume, retry, cancel, terminate, or intervene")
     ),
     request_body = WorkflowOperatorPlanRequest,
     responses(
@@ -611,7 +813,7 @@ async fn dry_run_workflow_operator_action(
     path = "/runtime/workflows/instances/{instance_id}/operator-actions/{action}",
     params(
         ("instance_id" = String, Path, description = "Stable Workflow Instance identity"),
-        ("action" = String, Path, description = "pause, resume, or retry"),
+        ("action" = String, Path, description = "pause, resume, retry, cancel, terminate, or intervene"),
         ("authorization" = String, Header, description = "Bearer credential verified by the deployment-owned Workflow authority provider")
     ),
     request_body = WorkflowOperatorApplyRequest,
@@ -652,6 +854,7 @@ async fn apply_workflow_operator_action_http(
         plan_id: request.plan_id.clone(),
         service_id: state.identity.service_id.clone(),
         instance_id: instance_id.clone(),
+        approval_boundary: action.approval_boundary(),
     };
     let authority = verify_workflow_authority(&state, authority_request, credential)?;
     Ok(Json(
@@ -672,7 +875,7 @@ fn parse_action(action: &str) -> Result<WorkflowOperatorAction, WorkflowApiError
     action.parse().map_err(|()| {
         WorkflowApiError::invalid(
             WorkflowErrorCode::InvalidRequest,
-            "Workflow operator action must be `pause`, `resume`, or `retry`",
+            "Workflow operator action must be `pause`, `resume`, `retry`, `cancel`, `terminate`, or `intervene`",
         )
     })
 }
@@ -713,10 +916,14 @@ fn build_operator_plan(
     action: WorkflowOperatorAction,
     selected_step_id: Option<&str>,
 ) -> Result<WorkflowOperatorPlan, WorkflowApiError> {
-    if action != WorkflowOperatorAction::Retry && selected_step_id.is_some() {
+    if !matches!(
+        action,
+        WorkflowOperatorAction::Retry | WorkflowOperatorAction::Intervene
+    ) && selected_step_id.is_some()
+    {
         return Err(WorkflowApiError::invalid(
             WorkflowErrorCode::InvalidRequest,
-            "Pause and resume plans do not select a Workflow step",
+            "Only retry and intervention plans may select a Workflow step",
         ));
     }
     let selected_step = selected_workflow_step(instance, selected_step_id)?;
@@ -743,18 +950,32 @@ fn build_operator_plan(
             "Workflow retry requires one selected failed step",
         ));
     }
+    let compensation_required = action == WorkflowOperatorAction::Cancel
+        && (instance.state == WorkflowInstanceState::Compensating
+            || instance
+                .effects
+                .iter()
+                .any(|effect| effect.state == crate::WorkflowEffectState::Completed));
     let prior_state = state_snapshot(instance);
     let resulting_state = WorkflowOperatorStateSnapshot {
-        execution_state: if action == WorkflowOperatorAction::Retry {
-            WorkflowInstanceState::Running
-        } else {
-            instance.state
+        execution_state: match action {
+            WorkflowOperatorAction::Retry => WorkflowInstanceState::Running,
+            WorkflowOperatorAction::Cancel if compensation_required => {
+                WorkflowInstanceState::Compensating
+            }
+            WorkflowOperatorAction::Cancel => WorkflowInstanceState::Cancelled,
+            WorkflowOperatorAction::Terminate => WorkflowInstanceState::Terminated,
+            WorkflowOperatorAction::Pause
+            | WorkflowOperatorAction::Resume
+            | WorkflowOperatorAction::Intervene => instance.state,
         },
         control_state: match action {
             WorkflowOperatorAction::Pause => WorkflowControlState::Paused,
-            WorkflowOperatorAction::Resume | WorkflowOperatorAction::Retry => {
-                WorkflowControlState::Active
-            }
+            WorkflowOperatorAction::Resume
+            | WorkflowOperatorAction::Retry
+            | WorkflowOperatorAction::Cancel
+            | WorkflowOperatorAction::Terminate => WorkflowControlState::Active,
+            WorkflowOperatorAction::Intervene => instance.control.state,
         },
         control_revision: instance.control.revision + 1,
     };
@@ -762,6 +983,12 @@ fn build_operator_plan(
     let affected_resources = WorkflowOperatorAffectedResources {
         instance_id: instance.instance_id.clone(),
         selected_step_id: selected_step.as_ref().map(|step| step.step_id.clone()),
+        affected_step_ids: instance
+            .steps
+            .iter()
+            .filter(|step| step.state != WorkflowStepState::Completed)
+            .map(|step| step.step_id.clone())
+            .collect(),
         pending_work_ids: pending_work
             .iter()
             .map(|work| work.resource_id.clone())
@@ -786,6 +1013,39 @@ fn build_operator_plan(
             .filter(|step| step.state == WorkflowStepState::Completed)
             .map(|step| step.step_id.clone())
             .collect(),
+        child_workflow_ids: instance
+            .steps
+            .iter()
+            .filter_map(|step| step.child_workflow.as_ref())
+            .map(|child| {
+                child
+                    .instance_id
+                    .clone()
+                    .unwrap_or_else(|| child.link_id.clone())
+            })
+            .collect(),
+        compensation_ids: workflow_compensation_ids(instance),
+        irreversible_effects: instance
+            .steps
+            .iter()
+            .filter(|step| {
+                step.state == WorkflowStepState::Completed
+                    && !instance
+                        .effects
+                        .iter()
+                        .any(|effect| effect.step_id == step.step_id)
+            })
+            .filter_map(|step| {
+                step.transition_id.as_ref().map(|transition_id| {
+                    WorkflowIrreversibleEffectInspection {
+                        step_id: step.step_id.clone(),
+                        definition_step_name: step.definition_step_name.clone(),
+                        transition_id: transition_id.clone(),
+                        reason: "no_declared_compensation".to_owned(),
+                    }
+                })
+            })
+            .collect(),
         in_flight_claim_ids: instance
             .steps
             .iter()
@@ -797,7 +1057,7 @@ fn build_operator_plan(
             })
             .collect(),
     };
-    let preserved_state = vec![
+    let mut preserved_state = vec![
         "completed_steps".to_owned(),
         "workflow_step_identity".to_owned(),
         "attempt_history".to_owned(),
@@ -805,11 +1065,19 @@ fn build_operator_plan(
         "in_flight_claims".to_owned(),
         "story_causation_tenant_and_idempotency_context".to_owned(),
     ];
+    if action == WorkflowOperatorAction::Terminate {
+        preserved_state.push("completed_effects_without_cleanup_claims".to_owned());
+    }
     let authorization = WorkflowOperatorAuthorization {
         status: WorkflowOperatorAuthorizationStatus::Required,
         required_authority: action.required_authority().to_owned(),
     };
-    let approval_boundary = WorkflowOperatorApprovalBoundary::WorkflowInstanceControl;
+    let approval_boundary = action.approval_boundary();
+    let expected_terminal_state = match action {
+        WorkflowOperatorAction::Cancel => Some(WorkflowInstanceState::Cancelled),
+        WorkflowOperatorAction::Terminate => Some(WorkflowInstanceState::Terminated),
+        _ => None,
+    };
     let next_actions = vec![format!("authorize_and_apply_workflow_{}", action.as_str())];
     let selected_step_id = selected_step.map(|step| step.step_id);
     let plan_material = serde_json::json!({
@@ -823,6 +1091,7 @@ fn build_operator_plan(
         "instanceUpdatedAt": instance.updated_at,
         "priorState": prior_state,
         "resultingState": resulting_state,
+        "expectedTerminalState": expected_terminal_state,
         "affectedResources": affected_resources,
         "preservedState": preserved_state,
         "authorization": authorization,
@@ -843,12 +1112,35 @@ fn build_operator_plan(
         definition_version: instance.definition.version.clone(),
         prior_state,
         resulting_state,
+        expected_terminal_state,
         affected_resources,
         preserved_state,
         authorization,
         approval_boundary,
         next_actions,
     })
+}
+
+fn workflow_compensation_ids(instance: &WorkflowInstance) -> Vec<String> {
+    let mut compensation_ids = instance
+        .compensations
+        .iter()
+        .map(|compensation| compensation.compensation_id.clone())
+        .collect::<Vec<_>>();
+    for effect in instance
+        .effects
+        .iter()
+        .filter(|effect| effect.state == crate::WorkflowEffectState::Completed)
+    {
+        let compensation_id = format!(
+            "{}:compensation:{}",
+            effect.effect_id, effect.compensation_name
+        );
+        if !compensation_ids.contains(&compensation_id) {
+            compensation_ids.push(compensation_id);
+        }
+    }
+    compensation_ids
 }
 
 fn state_snapshot(instance: &WorkflowInstance) -> WorkflowOperatorStateSnapshot {
@@ -874,6 +1166,7 @@ async fn apply_workflow_operator_action(
         || authority.request.service_id != state.identity.service_id
         || authority.request.instance_id != instance_id
         || authority.request.required_authority != action.required_authority()
+        || authority.request.approval_boundary != action.approval_boundary()
     {
         return Err(operator_error(
             WorkflowErrorCode::AuthorizationDenied,
@@ -977,6 +1270,39 @@ async fn apply_workflow_operator_action(
                 "dispatch_selected_step_retry".to_owned(),
             )
         }
+        WorkflowOperatorAction::Cancel => {
+            apply_cancel(
+                state,
+                &mut transaction,
+                &instance,
+                &current_plan,
+                &intervention_id,
+                now,
+            )
+            .await?;
+            let next_action = if current_plan.resulting_state.execution_state
+                == WorkflowInstanceState::Compensating
+            {
+                "execute_next_workflow_compensation"
+            } else {
+                "inspect_cancelled_workflow"
+            };
+            (None, next_action.to_owned())
+        }
+        WorkflowOperatorAction::Terminate => {
+            apply_terminate(&mut transaction, &instance, &current_plan, now).await?;
+            (None, "inspect_terminated_workflow".to_owned())
+        }
+        WorkflowOperatorAction::Intervene => {
+            record_human_intervention_state_change(
+                &mut transaction,
+                instance_id,
+                instance.control.revision,
+                now,
+            )
+            .await?;
+            (None, "follow_recorded_human_intervention".to_owned())
+        }
     };
     let prior_state = current_plan.prior_state;
     let resulting_state = current_plan.resulting_state;
@@ -988,6 +1314,10 @@ async fn apply_workflow_operator_action(
         actor_id: authority.actor_id.clone(),
         authority_id: authority.authority_id.clone(),
         reason: reason.to_owned(),
+        tenant_scope: instance.tenant_scope.clone(),
+        affected_resources: current_plan.affected_resources,
+        approval_boundary: current_plan.approval_boundary,
+        expected_terminal_state: current_plan.expected_terminal_state,
         prior_state,
         resulting_state,
         next_action,
@@ -1004,6 +1334,192 @@ async fn apply_workflow_operator_action(
         WorkflowTransitionDisposition::Applied,
         intervention,
     ))
+}
+
+async fn apply_cancel(
+    state: &ServiceRuntimeState,
+    transaction: &mut Transaction<'_, Postgres>,
+    instance: &WorkflowInstance,
+    plan: &WorkflowOperatorPlan,
+    intervention_id: &str,
+    now: DateTime<Utc>,
+) -> Result<(), WorkflowApiError> {
+    stop_future_ordinary_work(transaction, &instance.instance_id, "cancelled", now).await?;
+    if instance.state != WorkflowInstanceState::Compensating {
+        crate::select_workflow_compensations_for_cancel_in_tx(
+            state,
+            transaction,
+            &instance.instance_id,
+            intervention_id,
+            now,
+        )
+        .await
+        .map_err(WorkflowApiError::from)?;
+    }
+    let terminal_operation = WorkflowTerminalOperationInspection {
+        action: WorkflowOperatorAction::Cancel,
+        plan_id: plan.plan_id.clone(),
+        expected_terminal_state: WorkflowInstanceState::Cancelled,
+        compensation_required: plan.resulting_state.execution_state
+            == WorkflowInstanceState::Compensating,
+        cleanup_reported: false,
+        requested_at: now,
+    };
+    update_terminal_instance(
+        transaction,
+        instance,
+        plan.resulting_state.execution_state,
+        Some("cancelled"),
+        &terminal_operation,
+        now,
+    )
+    .await
+}
+
+async fn apply_terminate(
+    transaction: &mut Transaction<'_, Postgres>,
+    instance: &WorkflowInstance,
+    plan: &WorkflowOperatorPlan,
+    now: DateTime<Utc>,
+) -> Result<(), WorkflowApiError> {
+    stop_future_ordinary_work(transaction, &instance.instance_id, "terminated", now).await?;
+    let terminal_operation = WorkflowTerminalOperationInspection {
+        action: WorkflowOperatorAction::Terminate,
+        plan_id: plan.plan_id.clone(),
+        expected_terminal_state: WorkflowInstanceState::Terminated,
+        compensation_required: false,
+        cleanup_reported: false,
+        requested_at: now,
+    };
+    update_terminal_instance(
+        transaction,
+        instance,
+        WorkflowInstanceState::Terminated,
+        None,
+        &terminal_operation,
+        now,
+    )
+    .await
+}
+
+async fn stop_future_ordinary_work(
+    transaction: &mut Transaction<'_, Postgres>,
+    instance_id: &str,
+    step_state: &str,
+    now: DateTime<Utc>,
+) -> Result<(), WorkflowApiError> {
+    sqlx::query(
+        r#"
+        update platform.service_workflow_timers
+        set state = 'cancelled', completed_at = $2, updated_at = $2
+        where instance_id = $1 and state in ('pending', 'claimed')
+        "#,
+    )
+    .bind(instance_id)
+    .bind(now)
+    .execute(&mut **transaction)
+    .await
+    .map_err(|error| WorkflowApiError::store(format!("Could not stop Workflow timers: {error}")))?;
+    sqlx::query(
+        r#"
+        update platform.service_workflow_steps
+        set state = $2, next_attempt_at = null, updated_at = $3
+        where instance_id = $1 and state <> 'completed'
+        "#,
+    )
+    .bind(instance_id)
+    .bind(step_state)
+    .bind(now)
+    .execute(&mut **transaction)
+    .await
+    .map_err(|error| WorkflowApiError::store(format!("Could not stop Workflow steps: {error}")))?;
+    Ok(())
+}
+
+async fn update_terminal_instance(
+    transaction: &mut Transaction<'_, Postgres>,
+    instance: &WorkflowInstance,
+    state: WorkflowInstanceState,
+    terminal_intent: Option<&str>,
+    terminal_operation: &WorkflowTerminalOperationInspection,
+    now: DateTime<Utc>,
+) -> Result<(), WorkflowApiError> {
+    let terminal_evidence = serde_json::to_value(terminal_operation)
+        .map_err(|error| WorkflowApiError::stored_state(error.to_string()))?;
+    let updated = sqlx::query(
+        r#"
+        update platform.service_workflow_instances
+        set state = $2, control_state = 'active',
+            control_revision = control_revision + 1, paused_at = null,
+            terminal_intent = $3, terminal_evidence = $4,
+            failure_evidence = null, terminal_transition_id = null,
+            updated_at = $5
+        where instance_id = $1 and control_revision = $6
+        "#,
+    )
+    .bind(&instance.instance_id)
+    .bind(workflow_instance_state_as_str(state))
+    .bind(terminal_intent)
+    .bind(terminal_evidence)
+    .bind(now)
+    .bind(i64::try_from(instance.control.revision).unwrap_or(i64::MAX))
+    .execute(&mut **transaction)
+    .await
+    .map_err(|error| {
+        WorkflowApiError::store(format!("Could not apply Workflow terminal state: {error}"))
+    })?;
+    if updated.rows_affected() != 1 {
+        return Err(operator_error(
+            WorkflowErrorCode::StalePlan,
+            "Workflow state changed while applying the terminal operation",
+            "plan_workflow_action_again",
+        ));
+    }
+    Ok(())
+}
+
+async fn record_human_intervention_state_change(
+    transaction: &mut Transaction<'_, Postgres>,
+    instance_id: &str,
+    revision: u64,
+    now: DateTime<Utc>,
+) -> Result<(), WorkflowApiError> {
+    let updated = sqlx::query(
+        r#"
+        update platform.service_workflow_instances
+        set control_revision = control_revision + 1, updated_at = $3
+        where instance_id = $1 and control_revision = $2
+        "#,
+    )
+    .bind(instance_id)
+    .bind(i64::try_from(revision).unwrap_or(i64::MAX))
+    .bind(now)
+    .execute(&mut **transaction)
+    .await
+    .map_err(|error| {
+        WorkflowApiError::store(format!("Could not record Workflow intervention: {error}"))
+    })?;
+    if updated.rows_affected() != 1 {
+        return Err(operator_error(
+            WorkflowErrorCode::StalePlan,
+            "Workflow state changed while recording the human intervention",
+            "plan_workflow_action_again",
+        ));
+    }
+    Ok(())
+}
+
+const fn workflow_instance_state_as_str(state: WorkflowInstanceState) -> &'static str {
+    match state {
+        WorkflowInstanceState::Running => "running",
+        WorkflowInstanceState::Completed => "completed",
+        WorkflowInstanceState::Failed => "failed",
+        WorkflowInstanceState::Compensating => "compensating",
+        WorkflowInstanceState::Compensated => "compensated",
+        WorkflowInstanceState::CompensationFailed => "compensation_failed",
+        WorkflowInstanceState::Cancelled => "cancelled",
+        WorkflowInstanceState::Terminated => "terminated",
+    }
 }
 
 fn stable_intervention_id(plan_id: &str) -> String {
@@ -1133,13 +1649,25 @@ async fn insert_intervention(
         .map_err(|error| WorkflowApiError::stored_state(error.to_string()))?;
     let resulting_state = serde_json::to_value(&intervention.resulting_state)
         .map_err(|error| WorkflowApiError::stored_state(error.to_string()))?;
+    let tenant_scope = intervention
+        .tenant_scope
+        .as_ref()
+        .map(serde_json::to_value)
+        .transpose()
+        .map_err(|error| WorkflowApiError::stored_state(error.to_string()))?;
+    let affected_resources = serde_json::to_value(&intervention.affected_resources)
+        .map_err(|error| WorkflowApiError::stored_state(error.to_string()))?;
     sqlx::query(
         r#"
         insert into platform.service_workflow_interventions (
             intervention_id, instance_id, step_id, action, plan_id,
-            actor_id, authority_id, reason, prior_state, resulting_state,
-            next_action, attempt_transition_id, recorded_at
-        ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            actor_id, authority_id, reason, tenant_scope, affected_resources,
+            approval_boundary, expected_terminal_state, prior_state,
+            resulting_state, next_action, attempt_transition_id, recorded_at
+        ) values (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+            $13, $14, $15, $16, $17
+        )
         "#,
     )
     .bind(&intervention.intervention_id)
@@ -1150,6 +1678,14 @@ async fn insert_intervention(
     .bind(&intervention.actor_id)
     .bind(&intervention.authority_id)
     .bind(&intervention.reason)
+    .bind(tenant_scope)
+    .bind(affected_resources)
+    .bind(intervention.approval_boundary.as_str())
+    .bind(
+        intervention
+            .expected_terminal_state
+            .map(workflow_instance_state_as_str),
+    )
     .bind(prior_state)
     .bind(resulting_state)
     .bind(&intervention.next_action)
@@ -1172,7 +1708,8 @@ async fn intervention_by_plan_in_tx(
     let row = sqlx::query_as::<_, InterventionRow>(
         r#"
         select intervention_id, action, plan_id, step_id, actor_id, authority_id,
-               reason, prior_state, resulting_state, next_action,
+               reason, tenant_scope, affected_resources, approval_boundary,
+               expected_terminal_state, prior_state, resulting_state, next_action,
                attempt_transition_id, recorded_at
         from platform.service_workflow_interventions
         where instance_id = $1 and action = $2 and plan_id = $3

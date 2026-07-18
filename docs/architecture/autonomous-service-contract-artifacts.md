@@ -288,10 +288,12 @@ dispatch gate and never recreates completed work.
 
 `POST /runtime/workflows/instances/{instance_id}/operator-actions/{action}/dry-run`
 returns a deterministic `lenso.workflow-operator-plan.v1` document for `pause`,
-`resume`, or a selected exhausted-step `retry`. The plan is read-only and binds
+`resume`, a selected exhausted-step `retry`, cooperative `cancel`, strong
+`terminate`, or recorded human `intervene`. The plan is read-only and binds
 the instance revision, pinned definition version, selected step, attempts,
-timers, pending work, in-flight claims, preserved state, affected resources,
-required authority, and resulting state into a SHA-256 plan identity. Applying
+timers, pending work, in-flight claims, children, declared compensations,
+irreversible effects, preserved state, affected resources, required authority,
+and expected terminal state into a SHA-256 plan identity. Applying
 the matching action requires a deployment-owned authority verifier and a
 Bearer credential for that exact plan; missing verifier configuration fails
 closed. Any intervening state change returns `workflow_stale_plan` and requires
@@ -305,6 +307,24 @@ Workflow Instance. Every applied or idempotently repeated action exposes stable
 JSON and records the verified actor, authority, reason, time, plan, prior state,
 resulting state, affected step when present, retry transition when present, and
 next action in the Service Store. Authority credentials are never persisted.
+
+Cooperative cancel stops future ordinary steps and timers. Completed effects
+with declared compensation are selected in their stable order and the Workflow
+remains `compensating` until their remote completion Events arrive; only then
+does it become `cancelled`. A cancel with no selected compensation becomes
+`cancelled` immediately. Repeating the exact authorized plan is idempotent,
+while a fresh cancel after terminal intent is recorded returns a stable
+eligibility conflict.
+
+Terminate is the separate strong `terminated` state. It stops future ordinary
+steps and timers, preserves completed effects and existing compensation
+evidence, and records `cleanupReported: false`; it never claims that cleanup or
+compensation occurred. Human intervention may target the whole instance or one
+stable step without rewriting business state. Cancel, terminate, and
+intervention each pass an explicit Approval Boundary and retain actor,
+authority, reason, time, tenant scope, affected resources, prior state, and
+resulting state in the Service Store. Repository access supplies none of this
+runtime authority.
 
 Steps may declare one compensation with a stable name, unique positive order,
 request Event Contract, and completion Event Contract. When a controlled
