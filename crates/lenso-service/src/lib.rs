@@ -10,6 +10,7 @@ mod direct_grpc;
 mod direct_http;
 mod endpoint_resolution;
 mod event_envelope;
+mod story_segment;
 mod workload_identity;
 
 pub use call_policy::{
@@ -53,6 +54,10 @@ pub use event_envelope::{
     EventEnvelopeIssueCode, GeneratedEventContract,
     evaluate_generated_event_contract_compatibility, event_envelope_from_cloudevent,
     generate_event_contract, validate_event_envelope, validate_event_envelope_value,
+};
+pub use story_segment::{
+    STORY_SEGMENT_FEED_PROTOCOL, StorySegment, StorySegmentContract, StorySegmentFeed,
+    StorySegmentOperation, StorySegmentSource, StorySegmentWorkflow,
 };
 pub use workload_identity::{
     AuthenticatedServicePrincipal, AuthenticatedTransportBinding, SpiffeWorkloadIdentityConfig,

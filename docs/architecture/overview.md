@@ -108,6 +108,14 @@ opaque cursors survive API Workload restarts for the declared retention window.
 Workload Identity audience verification and explicit reader-to-tenant policy
 protect every read. Collection remains read-only and cannot acknowledge,
 advance, or unblock workflow execution.
+The Story module owns delayed federation outside the Service runtime. Its
+PostgreSQL-backed aggregator keeps one durable cursor per source Service and
+tenant partition, stores Segment revisions idempotently, and projects the
+latest revision under a stable cross-Service node identity. Unreachable,
+stale, unauthorized, truncated, and retention-expired feeds remain explicit
+typed gaps. Late evidence enriches the same `lenso.federated-runtime-story.v1`
+identity, while optional trace, metric, and log providers may annotate matched
+nodes without determining Story identity or business completion.
 Modules can now declare engine-neutral, versioned Durable Workflow definitions
 under `ModuleManifest.runtime.workflows`. Autonomous Service composition
 collects those definitions, validates that each owner is a Module owned by the

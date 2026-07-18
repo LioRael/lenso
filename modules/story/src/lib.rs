@@ -5,4 +5,6 @@
 //! the Story backend is extracted in slices.
 
 pub mod backend;
+pub mod federation;
+pub mod migrations;
 pub mod module;

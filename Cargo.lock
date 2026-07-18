@@ -2381,15 +2381,24 @@ dependencies = [
 name = "lenso-module-story"
 version = "0.1.4"
 dependencies = [
+ "async-trait",
  "axum",
  "chrono",
+ "lenso-autonomous-service",
  "lenso-platform-core",
  "lenso-platform-http",
  "lenso-platform-module",
+ "lenso-platform-testing",
+ "lenso-service",
+ "reqwest",
  "serde",
  "serde_json",
  "sqlx",
+ "tokio",
+ "tower",
+ "tracing",
  "utoipa",
+ "utoipa-axum",
 ]
 
 [[package]]
@@ -2583,6 +2592,7 @@ dependencies = [
  "tonic",
  "tonic-prost",
  "tonic-prost-build",
+ "utoipa",
 ]
 
 [[package]]

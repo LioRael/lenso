@@ -652,6 +652,9 @@ pub fn migrations_for_config_with_composition(
         .collect::<Vec<_>>();
 
     let profile = CompositionProfile::from_config(config)?;
+    if linked_module_enabled_from_config(config, story::module::MODULE_NAME) {
+        migrations.extend(story::migrations::STORY_MIGRATIONS.iter().copied());
+    }
     if profile == CompositionProfile::Demo {
         if linked_module_enabled_from_config(config, "auth") {
             migrations.extend(auth::migrations::AUTH_MIGRATIONS.iter().copied());
@@ -734,6 +737,8 @@ pub fn migrations_for_profile(profile: CompositionProfile) -> Vec<Migration> {
         .chain(RUNTIME_MIGRATIONS)
         .copied()
         .collect::<Vec<_>>();
+
+    migrations.extend(story::migrations::STORY_MIGRATIONS.iter().copied());
 
     if profile == CompositionProfile::Demo {
         migrations.extend(auth::migrations::AUTH_MIGRATIONS.iter().copied());
@@ -2740,6 +2745,7 @@ mod tests {
 
         assert!(names.iter().any(|name| name.starts_with("platform/")));
         assert!(names.iter().any(|name| name.starts_with("runtime/")));
+        assert!(names.iter().any(|name| name.starts_with("story/")));
         assert!(!names.iter().any(|name| name.starts_with("auth/")));
         assert!(!names.iter().any(|name| name.starts_with("auth-oauth/")));
         assert!(!names.iter().any(|name| name.starts_with("auth-github/")));
@@ -3938,6 +3944,18 @@ mod tests {
                 auth_google::module::MODULE_NAME,
                 auth_oidc::module::MODULE_NAME,
             ]
+        );
+
+        let migration_names = migrations_for_config(&config)
+            .expect("demo linked profile should parse")
+            .into_iter()
+            .map(|migration| migration.name)
+            .collect::<Vec<_>>();
+        assert!(
+            !migration_names
+                .iter()
+                .any(|name| name.starts_with("story/")),
+            "disabled Story module must not install aggregation tables"
         );
     }
 
