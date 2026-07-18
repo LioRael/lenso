@@ -5,10 +5,9 @@ use lenso_api::build_router;
 use platform_core::config::ConsoleConfig;
 use platform_core::{
     AppConfig, AppContext, AuthConfig, DatabaseConfig, HttpConfig, InMemoryTelemetrySpanProvider,
-    LoggingEventPublisher, ModuleSourcesConfig, PLATFORM_MIGRATIONS, RedisConfig, ServiceConfig,
-    TelemetryConfig, TelemetrySpan, apply_migrations,
+    LoggingEventPublisher, ModuleSourcesConfig, RedisConfig, ServiceConfig, TelemetryConfig,
+    TelemetrySpan, apply_migrations,
 };
-use platform_runtime::RUNTIME_MIGRATIONS;
 use platform_testing::TestDatabase;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -2271,40 +2270,34 @@ async fn admin_runtime_openapi_contract_is_present() {
 }
 
 async fn test_app(db: &TestDatabase) -> axum::Router {
-    let migrations = PLATFORM_MIGRATIONS
-        .iter()
-        .chain(RUNTIME_MIGRATIONS)
-        .copied()
-        .collect::<Vec<_>>();
-    apply_migrations(&db.pool, &migrations)
-        .await
-        .expect("migrations should apply");
-
     let mut config = test_app_config();
     config.database = DatabaseConfig {
         url: db.url.clone(),
         max_connections: 5,
     };
+    let migrations = lenso_bootstrap::migrations_for_config(&config)
+        .expect("test app migrations should compose");
+    apply_migrations(&db.pool, &migrations)
+        .await
+        .expect("migrations should apply");
+
     let ctx = AppContext::new(config, db.pool.clone(), Arc::new(LoggingEventPublisher));
     install_runtime_function_declarations();
     build_router(ctx)
 }
 
 async fn test_app_with_telemetry(db: &TestDatabase, spans: Vec<TelemetrySpan>) -> axum::Router {
-    let migrations = PLATFORM_MIGRATIONS
-        .iter()
-        .chain(RUNTIME_MIGRATIONS)
-        .copied()
-        .collect::<Vec<_>>();
-    apply_migrations(&db.pool, &migrations)
-        .await
-        .expect("migrations should apply");
-
     let mut config = test_app_config();
     config.database = DatabaseConfig {
         url: db.url.clone(),
         max_connections: 5,
     };
+    let migrations = lenso_bootstrap::migrations_for_config(&config)
+        .expect("test app migrations should compose");
+    apply_migrations(&db.pool, &migrations)
+        .await
+        .expect("migrations should apply");
+
     let ctx = AppContext::new(config, db.pool.clone(), Arc::new(LoggingEventPublisher))
         .with_telemetry_span_provider(Arc::new(InMemoryTelemetrySpanProvider::new(spans)));
     install_runtime_function_declarations();

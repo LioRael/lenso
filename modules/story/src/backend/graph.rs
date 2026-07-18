@@ -43,6 +43,7 @@ pub(super) fn build_story_detail(rows: Vec<StoryWorkRow>) -> AdminRuntimeStoryDe
         nodes,
         edges,
         timeline_items,
+        federation: None,
     }
 }
 
@@ -76,6 +77,7 @@ fn build_story_summary(rows: &[StoryWorkRow]) -> AdminRuntimeStoryListItem {
         .max(0);
 
     AdminRuntimeStoryListItem {
+        story_kind: "runtime".to_owned(),
         title: story_title(rows),
         correlation_id: rows
             .first()

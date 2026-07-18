@@ -687,6 +687,54 @@ components:
       - development
       - standard
       - critical
+    ReliabilityProfileOverrides:
+      type: object
+      properties:
+        compensationPressureLimit:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        errorBudgetConsumedLimitBasisPoints:
+          type:
+          - integer
+          - 'null'
+          format: int32
+          minimum: 0
+        liveness:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ReliabilityLivenessSemantics'
+        queueBacklogLimit:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        readiness:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ReliabilityReadinessSemantics'
+        retryExhaustionLimit:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        timerLagLimitMs:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        workflowBacklogLimit:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+      additionalProperties: false
     ReliabilityReadinessSemantics:
       type: string
       enum:
@@ -726,6 +774,8 @@ components:
           $ref: '#/components/schemas/ReliabilityEnforcementBoundary'
         liveness:
           $ref: '#/components/schemas/ReliabilityHealthResult'
+        overrides:
+          $ref: '#/components/schemas/ReliabilityProfileOverrides'
         profile:
           $ref: '#/components/schemas/ReliabilityProfile'
         protocol:

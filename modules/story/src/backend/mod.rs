@@ -20,6 +20,7 @@ const MAX_LIMIT: i64 = 100;
 
 mod catalog;
 mod dto;
+mod federated;
 mod graph;
 mod heatmap;
 mod queries;
@@ -32,6 +33,8 @@ pub use catalog::{install_default_story_display, install_story_display};
 pub use catalog::{reset_catalogs_for_test, story_display_catalog_snapshot};
 #[allow(unused_imports)]
 use dto::*;
+#[allow(unused_imports)]
+use federated::*;
 #[allow(unused_imports)]
 use graph::*;
 #[allow(unused_imports)]
@@ -105,7 +108,17 @@ async fn list_stories(
 
     let limit = normalized_limit(query.limit);
     let rows = fetch_story_rows(&ctx, &request_ctx, None, query.created_before, limit).await?;
-    let stories = build_story_summaries(rows);
+    let mut stories = build_story_summaries(rows);
+    stories.extend(
+        fetch_federated_story_summaries(&ctx, &request_ctx, query.created_before, limit).await?,
+    );
+    stories.sort_by(|left, right| {
+        right
+            .updated_at
+            .cmp(&left.updated_at)
+            .then_with(|| left.correlation_id.cmp(&right.correlation_id))
+    });
+    stories.truncate(usize::try_from(limit).unwrap_or(usize::MAX));
 
     Ok(Json(AdminRuntimeStoryListResponse {
         page: page_info(limit, stories.last().map(|story| story.updated_at)),
@@ -171,19 +184,13 @@ async fn get_story(
     ensure_story_read_capability(&admin, &request_ctx)?;
 
     let rows = fetch_story_rows(&ctx, &request_ctx, Some(&correlation_id), None, MAX_LIMIT).await?;
-    if rows.is_empty() {
-        return Err(ApiErrorResponse::with_context(
-            AppError::new(
-                ErrorCode::NotFound,
-                format!("Runtime story {correlation_id} was not found"),
-            ),
-            &request_ctx,
-        ));
-    }
+    let data = if rows.is_empty() {
+        fetch_federated_story_detail(&ctx, &request_ctx, &correlation_id).await?
+    } else {
+        build_story_detail(rows)
+    };
 
-    Ok(Json(AdminRuntimeStoryDetailResponse {
-        data: build_story_detail(rows),
-    }))
+    Ok(Json(AdminRuntimeStoryDetailResponse { data }))
 }
 
 #[utoipa::path(
@@ -327,7 +334,11 @@ async fn get_story_technical_operations(
 
     let rows = fetch_story_rows(&ctx, &request_ctx, Some(&correlation_id), None, MAX_LIMIT).await?;
     if rows.is_empty() {
-        return Err(story_not_found(&request_ctx, &correlation_id));
+        let story = fetch_federated_story(&ctx, &request_ctx, &correlation_id).await?;
+        return Ok(Json(AdminRuntimeTechnicalOperationListResponse {
+            data: federated_technical_operations(&story),
+            order: "started_at_asc",
+        }));
     }
 
     let spans = ctx

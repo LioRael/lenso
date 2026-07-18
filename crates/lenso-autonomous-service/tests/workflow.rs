@@ -2279,6 +2279,27 @@ async fn retries_and_timers_recover_after_restart_with_controlled_time() {
         exhausted_state.5.as_deref(),
         Some(retry_three.attempt_transition_id.as_str())
     );
+    let attempt_story_states: Vec<(i32, String)> = sqlx::query_as(
+        r#"
+        select attempt, status
+        from platform.service_story_segments
+        where workflow_instance_id = $1
+          and contract_id = 'lenso.workflow-attempt'
+        order by attempt
+        "#,
+    )
+    .bind(&exhausted_instance.instance_id)
+    .fetch_all(&db.pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        attempt_story_states,
+        vec![
+            (1, "retry_scheduled".to_owned()),
+            (2, "retry_scheduled".to_owned()),
+            (3, "exhausted".to_owned()),
+        ]
+    );
 
     db.cleanup().await;
 }
@@ -3439,6 +3460,30 @@ async fn workflow_operator_controls_are_deterministic_authorized_and_audited() {
             && entry.2 == "Contain and recover the support SLA incident"
             && !entry.3.is_empty()
     }));
+    let operator_story_states: Vec<(String, String)> = sqlx::query_as(
+        r#"
+        select operation, status
+        from platform.service_story_segments
+        where workflow_instance_id = $1
+          and contract_id = 'lenso.workflow-operator-result'
+        order by feed_sequence
+        "#,
+    )
+    .bind(&instance_id)
+    .fetch_all(&db.pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        operator_story_states,
+        vec![
+            ("workflow.instance.pause".to_owned(), "paused".to_owned()),
+            ("workflow.instance.resume".to_owned(), "running".to_owned()),
+            (
+                "workflow.instance.retry".to_owned(),
+                "retry_scheduled".to_owned()
+            ),
+        ]
+    );
 
     drop(app);
     drop(state);
@@ -3998,6 +4043,32 @@ async fn terminate_is_strong_without_cleanup_and_human_intervention_is_audited()
             .all(|entry| entry.2.as_ref().unwrap()["tenantId"] == "tenant_01")
     );
     assert_eq!(interventions[1].3["selectedStepId"], step_id);
+    let operator_story_states: Vec<(String, String)> = sqlx::query_as(
+        r#"
+        select operation, status
+        from platform.service_story_segments
+        where workflow_instance_id = $1
+          and contract_id = 'lenso.workflow-operator-result'
+        order by feed_sequence
+        "#,
+    )
+    .bind(&instance_id)
+    .fetch_all(&db.pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        operator_story_states,
+        vec![
+            (
+                "workflow.instance.terminate".to_owned(),
+                "terminated".to_owned()
+            ),
+            (
+                "workflow.instance.intervene".to_owned(),
+                "intervention_recorded".to_owned()
+            ),
+        ]
+    );
 
     drop(app);
     drop(state);

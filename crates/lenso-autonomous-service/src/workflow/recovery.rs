@@ -3,7 +3,7 @@ use super::{
     WorkflowFailureEvidence, WorkflowMutationError, WorkflowStepInspection,
     WorkflowStepTransitionResult, resolve_pinned_definition,
 };
-use crate::ServiceRuntimeState;
+use crate::{ServiceRuntimeState, append_persisted_workflow_story_segment_in_tx};
 use chrono::{DateTime, Duration, Utc};
 use lenso_contracts::WorkflowStepDeclaration;
 use platform_core::Clock;
@@ -1357,6 +1357,28 @@ async fn record_failure_in_tx(
             WorkflowMutationError::store(format!("Could not exhaust workflow instance: {error}"))
         })?;
     }
+    append_persisted_workflow_story_segment_in_tx(
+        state,
+        transaction,
+        instance_id,
+        Some(step_id),
+        None,
+        None,
+        &format!("workflow:{instance_id}:step:{step_id}:attempt:{attempt_number}"),
+        &format!("workflow.step.{step_id}.attempt"),
+        "lenso.workflow-attempt",
+        "v1",
+        if terminal {
+            "exhausted"
+        } else {
+            "retry_scheduled"
+        },
+        attempt_number,
+        Some(source.attempt_transition_id()),
+        now,
+    )
+    .await
+    .map_err(|error| WorkflowMutationError::store(error.public_message))?;
     Ok(WorkflowFailureResult {
         disposition: if terminal {
             WorkflowFailureDisposition::Exhausted
