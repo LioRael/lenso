@@ -13,6 +13,7 @@ mod endpoint_resolution;
 mod event_envelope;
 mod extraction_backfill;
 mod extraction_plan;
+mod extraction_provisional_cutover;
 mod extraction_quiescence;
 mod extraction_readiness;
 mod extraction_reconciliation;
@@ -89,6 +90,13 @@ pub use extraction_plan::{
     dry_run_extraction_plan, ensure_extraction_plan_fresh, extraction_input_digest,
     extraction_plan_integrity_is_valid, extraction_plan_json, extraction_plan_schema,
     generate_extraction_plan, render_extraction_plan,
+};
+pub use extraction_provisional_cutover::{
+    EXTRACTION_PROVISIONAL_CUTOVER_PROTOCOL, ExtractionCutoverEvidence, ExtractionCutoverReceipt,
+    ExtractionProvisionalCutoverError, ExtractionProvisionalCutoverInputs,
+    ExtractionProvisionalCutoverIssueCode, ExtractionProvisionalCutoverRun,
+    ExtractionProvisionalCutoverStatus, ExtractionTrafficRoute, fail_provisional_cutover,
+    start_provisional_cutover, verify_provisional_cutover,
 };
 pub use extraction_quiescence::{
     EXTRACTION_QUIESCENCE_PROTOCOL, ExtractionDrainSnapshot, ExtractionQuiescenceEffects,
