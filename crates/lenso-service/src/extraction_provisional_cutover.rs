@@ -76,6 +76,42 @@ pub struct ExtractionCutoverEvidence {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
+pub struct ExtractionLinkedRollbackValidation {
+    pub validation_digest: String,
+    pub authority_revision: String,
+    pub routing_revision: String,
+    pub business_probe_digest: String,
+    pub passed: bool,
+}
+
+impl ExtractionLinkedRollbackValidation {
+    #[must_use]
+    pub fn bind(
+        run: &ExtractionProvisionalCutoverRun,
+        business_probe_digest: impl Into<String>,
+        passed: bool,
+    ) -> Self {
+        let mut validation = Self {
+            validation_digest: String::new(),
+            authority_revision: run.authority_revision.clone(),
+            routing_revision: run.routing_revision_before.clone(),
+            business_probe_digest: business_probe_digest.into(),
+            passed,
+        };
+        validation.validation_digest = rollback_validation_digest(&validation);
+        validation
+    }
+
+    fn is_valid_for(&self, run: &ExtractionProvisionalCutoverRun) -> bool {
+        self.validation_digest == rollback_validation_digest(self)
+            && self.authority_revision == run.authority_revision
+            && self.routing_revision == run.routing_revision_before
+            && !self.business_probe_digest.trim().is_empty()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct ExtractionProvisionalCutoverRun {
     pub protocol: String,
     pub cutover_id: String,
@@ -259,7 +295,7 @@ pub fn fail_provisional_cutover(
     mut run: ExtractionProvisionalCutoverRun,
     failure: &str,
     audit_identity: &str,
-    linked_business_probe_passed: bool,
+    validation: ExtractionLinkedRollbackValidation,
 ) -> ExtractionProvisionalCutoverRun {
     if run.status == ExtractionProvisionalCutoverStatus::RolledBack {
         return run;
@@ -270,25 +306,24 @@ pub fn fail_provisional_cutover(
         &run.routing_revision_before,
         "restored",
     );
-    let reopen_mutations = receipt(
-        "reopen-linked-mutations",
-        "paused",
-        "open",
-        if linked_business_probe_passed {
-            "validated"
-        } else {
-            "probe_failed"
-        },
-    );
-    run.rollback_receipts = vec![restore_routing, reopen_mutations];
+    let validation_passed = validation.is_valid_for(&run) && validation.passed;
+    run.rollback_receipts = vec![restore_routing];
+    if validation_passed {
+        run.rollback_receipts.push(receipt(
+            "reopen-linked-mutations",
+            "paused",
+            "open",
+            "validated",
+        ));
+    }
     run.status = ExtractionProvisionalCutoverStatus::RolledBack;
     run.routing_revision_current = run.routing_revision_before.clone();
     run.route = ExtractionTrafficRoute::Linked;
-    run.external_mutations_paused = false;
-    run.linked_mutations_open = true;
+    run.external_mutations_paused = !validation_passed;
+    run.linked_mutations_open = validation_passed;
     run.linked_authoritative = true;
     run.candidate_authoritative = false;
-    run.linked_business_probe_passed = linked_business_probe_passed;
+    run.linked_business_probe_passed = validation_passed;
     run.evidence.push(evidence(
         "rollback",
         audit_identity,
@@ -300,6 +335,43 @@ pub fn fail_provisional_cutover(
     run.revision += 1;
     refresh(&mut run);
     run
+}
+
+#[must_use]
+pub fn complete_provisional_rollback_validation(
+    mut run: ExtractionProvisionalCutoverRun,
+    validation: ExtractionLinkedRollbackValidation,
+) -> ExtractionProvisionalCutoverRun {
+    if run.status == ExtractionProvisionalCutoverStatus::RolledBack
+        && run.external_mutations_paused
+        && validation.is_valid_for(&run)
+        && validation.passed
+    {
+        run.rollback_receipts.push(receipt(
+            "reopen-linked-mutations",
+            "paused",
+            "open",
+            "validated",
+        ));
+        run.external_mutations_paused = false;
+        run.linked_mutations_open = true;
+        run.linked_business_probe_passed = true;
+        run.evidence.push(evidence(
+            "linked_business_validation",
+            "linked-authority",
+            &validation.business_probe_digest,
+            "Linked business behavior passed before mutations reopened.",
+        ));
+        run.revision += 1;
+        refresh(&mut run);
+    }
+    run
+}
+
+fn rollback_validation_digest(validation: &ExtractionLinkedRollbackValidation) -> String {
+    let mut value = validation.clone();
+    value.validation_digest.clear();
+    digest(&value)
 }
 
 fn error(
@@ -342,6 +414,18 @@ fn evidence(kind: &str, subject: &str, value: &str, detail: &str) -> ExtractionC
 fn refresh(run: &mut ExtractionProvisionalCutoverRun) {
     run.cutover_digest.clear();
     run.cutover_digest = digest(run);
+}
+
+#[must_use]
+pub fn extraction_provisional_cutover_integrity_is_valid(
+    run: &ExtractionProvisionalCutoverRun,
+) -> bool {
+    if run.protocol != EXTRACTION_PROVISIONAL_CUTOVER_PROTOCOL {
+        return false;
+    }
+    let mut value = run.clone();
+    value.cutover_digest.clear();
+    run.cutover_digest == digest(&value)
 }
 
 fn digest(value: &impl Serialize) -> String {

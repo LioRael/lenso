@@ -93,10 +93,11 @@ pub use extraction_plan::{
 };
 pub use extraction_provisional_cutover::{
     EXTRACTION_PROVISIONAL_CUTOVER_PROTOCOL, ExtractionCutoverEvidence, ExtractionCutoverReceipt,
-    ExtractionProvisionalCutoverError, ExtractionProvisionalCutoverInputs,
-    ExtractionProvisionalCutoverIssueCode, ExtractionProvisionalCutoverRun,
-    ExtractionProvisionalCutoverStatus, ExtractionTrafficRoute, fail_provisional_cutover,
-    start_provisional_cutover, verify_provisional_cutover,
+    ExtractionLinkedRollbackValidation, ExtractionProvisionalCutoverError,
+    ExtractionProvisionalCutoverInputs, ExtractionProvisionalCutoverIssueCode,
+    ExtractionProvisionalCutoverRun, ExtractionProvisionalCutoverStatus, ExtractionTrafficRoute,
+    complete_provisional_rollback_validation, extraction_provisional_cutover_integrity_is_valid,
+    fail_provisional_cutover, start_provisional_cutover, verify_provisional_cutover,
 };
 pub use extraction_quiescence::{
     EXTRACTION_QUIESCENCE_PROTOCOL, ExtractionDrainSnapshot, ExtractionQuiescenceEffects,
