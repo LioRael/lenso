@@ -62,10 +62,13 @@ pub use extraction_readiness::{
     EXTRACTION_READINESS_ANALYZER_VERSION, EXTRACTION_READINESS_REPORT_PROTOCOL,
     ExtractionBoundaryEvidence, ExtractionBoundaryReference, ExtractionBoundaryReferenceKind,
     ExtractionConsumerCompatibilityEvidence, ExtractionContractDirection,
-    ExtractionContractEvidence, ExtractionContractKind, ExtractionEvidenceStatus,
-    ExtractionReadinessEffects, ExtractionReadinessEvidence, ExtractionReadinessFinding,
-    ExtractionReadinessIssueCode, ExtractionReadinessReport, ExtractionReadinessSurfaceSummary,
-    evaluate_extraction_readiness, extraction_readiness_report_json,
+    ExtractionContractEvidence, ExtractionContractKind, ExtractionCursorEvidence,
+    ExtractionDataAccessEvidence, ExtractionDataAccessKind, ExtractionDataEvidenceSource,
+    ExtractionDataTableEvidence, ExtractionDataVolumeEvidence, ExtractionEvidenceStatus,
+    ExtractionMigrationEvidence, ExtractionReadinessEffects, ExtractionReadinessEvidence,
+    ExtractionReadinessFinding, ExtractionReadinessIssueCode, ExtractionReadinessReport,
+    ExtractionReadinessSurfaceSummary, ExtractionServiceDataEvidence,
+    ExtractionTransactionEvidence, evaluate_extraction_readiness, extraction_readiness_report_json,
     extraction_readiness_report_schema, render_extraction_readiness_report,
 };
 pub use reliability_report::{

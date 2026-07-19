@@ -12,9 +12,11 @@ use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub const EXTRACTION_READINESS_REPORT_PROTOCOL: &str = "lenso.extraction-readiness-report.v1";
-pub const EXTRACTION_READINESS_ANALYZER_VERSION: &str = "lenso.extraction-readiness.v1";
+pub const EXTRACTION_READINESS_ANALYZER_VERSION: &str = "lenso.extraction-readiness.v2";
 const EXTRACTION_READINESS_SCHEMA_ID: &str =
     "https://contracts.lenso.local/extraction/lenso.extraction-readiness-report.v1.schema.json";
+const LARGE_DATA_VOLUME_ROWS: u64 = 1_000_000;
+const LARGE_DATA_VOLUME_BYTES: u64 = 1_073_741_824;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -89,6 +91,116 @@ pub struct ExtractionConsumerCompatibilityEvidence {
     pub next_action: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+#[serde(
+    tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
+pub enum ExtractionDataEvidenceSource {
+    StaticDeclaration,
+    LiveStoreObservation {
+        observation_id: String,
+        store: String,
+        read_only: bool,
+    },
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ExtractionDataAccessKind {
+    Read,
+    Write,
+    ReadWrite,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtractionCursorEvidence {
+    pub column: String,
+    pub high_water_mark: String,
+    pub trustworthy: bool,
+    #[serde(default)]
+    pub evidence_references: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtractionDataVolumeEvidence {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approximate_rows: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approximate_bytes: Option<u64>,
+    #[serde(default)]
+    pub evidence_references: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtractionDataTableEvidence {
+    pub table: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_module: Option<String>,
+    pub source: ExtractionDataEvidenceSource,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub volume: Option<ExtractionDataVolumeEvidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<ExtractionCursorEvidence>,
+    #[serde(default)]
+    pub evidence_references: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtractionMigrationEvidence {
+    pub migration: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_module: Option<String>,
+    pub source: ExtractionDataEvidenceSource,
+    #[serde(default)]
+    pub evidence_references: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtractionDataAccessEvidence {
+    pub accessor_module: String,
+    pub table: String,
+    pub access: ExtractionDataAccessKind,
+    pub source: ExtractionDataEvidenceSource,
+    #[serde(default)]
+    pub evidence_references: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtractionTransactionEvidence {
+    pub transaction: String,
+    #[serde(default)]
+    pub participating_modules: Vec<String>,
+    pub source: ExtractionDataEvidenceSource,
+    #[serde(default)]
+    pub evidence_references: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtractionServiceDataEvidence {
+    pub complete: bool,
+    #[serde(default)]
+    pub evidence_references: Vec<String>,
+    #[serde(default)]
+    pub tables: Vec<ExtractionDataTableEvidence>,
+    #[serde(default)]
+    pub migrations: Vec<ExtractionMigrationEvidence>,
+    #[serde(default)]
+    pub access_paths: Vec<ExtractionDataAccessEvidence>,
+    #[serde(default)]
+    pub transactions: Vec<ExtractionTransactionEvidence>,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtractionReadinessEvidence {
@@ -98,6 +210,8 @@ pub struct ExtractionReadinessEvidence {
     pub contracts: Option<Vec<ExtractionContractEvidence>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub active_consumers: Option<Vec<ExtractionConsumerCompatibilityEvidence>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub service_data: Option<ExtractionServiceDataEvidence>,
 }
 
 #[derive(
@@ -122,17 +236,30 @@ pub enum ExtractionReadinessIssueCode {
     ContractEvidenceMissing,
     ContractIdentityMismatch,
     ContractsComplete,
+    CrossModuleTableAccess,
     CrossModuleImport,
+    DataVolumeLarge,
+    ExtractionCursorMissing,
+    ExtractionCursorUsable,
     InProcessBoundaryCall,
+    LiveStoreObservationNotReadOnly,
+    LiveStoreObservationPresent,
     ManifestInvalid,
     ManifestNeedsAttention,
+    MigrationOwnershipUnresolved,
     RequiredEventContractMissing,
     RequiredServiceContractMissing,
     RuntimeSurfacePresent,
+    ServiceDataEvidenceIncomplete,
+    ServiceDataEvidenceMissing,
+    ServiceDataReady,
     StorySurfacePresent,
     SystemEvidenceInvalid,
+    TableOwnershipUnresolved,
     TargetModuleMissing,
     TargetModuleNotLinked,
+    TransactionBoundaryUnresolved,
+    TransactionSpansServiceBoundary,
     WorkflowSurfacePresent,
 }
 
@@ -193,6 +320,8 @@ pub struct ExtractionReadinessReport {
     #[serde(default)]
     pub issue_codes: Vec<ExtractionReadinessIssueCode>,
     pub surfaces: ExtractionReadinessSurfaceSummary,
+    #[serde(default)]
+    pub service_data: ExtractionServiceDataEvidence,
     pub findings: Vec<ExtractionReadinessFinding>,
     pub effects: ExtractionReadinessEffects,
 }
@@ -254,6 +383,13 @@ pub fn evaluate_extraction_readiness(
         evidence.active_consumers.as_deref(),
         &mut findings,
     );
+    let service_data = normalized_service_data(evidence.service_data.as_ref());
+    collect_service_data_findings(
+        module,
+        evidence.service_data.as_ref(),
+        &service_data,
+        &mut findings,
+    );
 
     normalize_findings(&mut findings);
     let classification = findings
@@ -282,9 +418,501 @@ pub fn evaluate_extraction_readiness(
         ),
         issue_codes,
         surfaces,
+        service_data,
         findings,
         effects: ExtractionReadinessEffects::default(),
     }
+}
+
+fn normalized_service_data(
+    evidence: Option<&ExtractionServiceDataEvidence>,
+) -> ExtractionServiceDataEvidence {
+    let mut normalized = evidence.cloned().unwrap_or_default();
+    normalize_strings(&mut normalized.evidence_references);
+    for table in &mut normalized.tables {
+        normalize_strings(&mut table.evidence_references);
+        if let Some(volume) = &mut table.volume {
+            normalize_strings(&mut volume.evidence_references);
+        }
+        if let Some(cursor) = &mut table.cursor {
+            normalize_strings(&mut cursor.evidence_references);
+        }
+    }
+    for migration in &mut normalized.migrations {
+        normalize_strings(&mut migration.evidence_references);
+    }
+    for access in &mut normalized.access_paths {
+        normalize_strings(&mut access.evidence_references);
+    }
+    for transaction in &mut normalized.transactions {
+        normalize_strings(&mut transaction.participating_modules);
+        normalize_strings(&mut transaction.evidence_references);
+    }
+    normalized.tables.sort();
+    normalized.tables.dedup();
+    normalized.migrations.sort();
+    normalized.migrations.dedup();
+    normalized.access_paths.sort();
+    normalized.access_paths.dedup();
+    normalized.transactions.sort();
+    normalized.transactions.dedup();
+    normalized
+}
+
+fn collect_service_data_findings(
+    module: &ModuleManifest,
+    supplied: Option<&ExtractionServiceDataEvidence>,
+    data: &ExtractionServiceDataEvidence,
+    findings: &mut Vec<ExtractionReadinessFinding>,
+) {
+    let finding_start = findings.len();
+    let Some(_) = supplied else {
+        push_finding(
+            findings,
+            CompatibilityCategory::Blocked,
+            ExtractionReadinessIssueCode::ServiceDataEvidenceMissing,
+            "service_data".to_owned(),
+            "Service Data evidence is missing, so Postgres ownership and extraction safety are unknown.",
+            vec!["extraction-evidence:serviceData".to_owned()],
+            vec!["Supply complete table, migration, access-path, transaction, volume, and cursor evidence before planning extraction.".to_owned()],
+        );
+        return;
+    };
+    if !data.complete {
+        push_finding(
+            findings,
+            CompatibilityCategory::Blocked,
+            ExtractionReadinessIssueCode::ServiceDataEvidenceIncomplete,
+            "service_data".to_owned(),
+            "Service Data analysis is incomplete, so missing Postgres coupling cannot be treated as safe.",
+            evidence_references_or(&data.evidence_references, "extraction-evidence:serviceData"),
+            vec!["Complete the Service Data analysis and rerun extraction readiness.".to_owned()],
+        );
+    }
+
+    collect_live_store_findings(data, findings);
+
+    let table_ownership = collect_table_ownership(data, findings);
+    collect_migration_ownership(data, findings);
+    collect_table_access_findings(module, data, &table_ownership, findings);
+    collect_transaction_findings(module, data, findings);
+    collect_volume_and_cursor_findings(module, data, &table_ownership, findings);
+
+    if findings[finding_start..]
+        .iter()
+        .all(|finding| finding.classification != CompatibilityCategory::Blocked)
+    {
+        push_finding(
+            findings,
+            CompatibilityCategory::Safe,
+            ExtractionReadinessIssueCode::ServiceDataReady,
+            "service_data".to_owned(),
+            "Service Data ownership, access paths, and transaction boundaries are safe enough to plan extraction.",
+            evidence_references_or(
+                &data.evidence_references,
+                "extraction-evidence:serviceData",
+            ),
+            vec!["Carry the reported tables, migrations, volume, and cursor evidence into the Extraction Plan.".to_owned()],
+        );
+    }
+}
+
+fn collect_live_store_findings(
+    data: &ExtractionServiceDataEvidence,
+    findings: &mut Vec<ExtractionReadinessFinding>,
+) {
+    let mut observations = BTreeMap::<(String, String, bool), BTreeSet<String>>::new();
+    for (source, references) in data
+        .tables
+        .iter()
+        .map(|item| (&item.source, &item.evidence_references))
+        .chain(
+            data.migrations
+                .iter()
+                .map(|item| (&item.source, &item.evidence_references)),
+        )
+        .chain(
+            data.access_paths
+                .iter()
+                .map(|item| (&item.source, &item.evidence_references)),
+        )
+        .chain(
+            data.transactions
+                .iter()
+                .map(|item| (&item.source, &item.evidence_references)),
+        )
+    {
+        if let ExtractionDataEvidenceSource::LiveStoreObservation {
+            observation_id,
+            store,
+            read_only,
+        } = source
+        {
+            observations
+                .entry((observation_id.clone(), store.clone(), *read_only))
+                .or_default()
+                .extend(references.iter().cloned());
+        }
+    }
+    for ((observation_id, store, read_only), references) in observations {
+        let subject = format!("service_data.observation.{observation_id}");
+        if read_only {
+            push_finding(
+                findings,
+                CompatibilityCategory::Safe,
+                ExtractionReadinessIssueCode::LiveStoreObservationPresent,
+                subject,
+                format!(
+                    "Read-only live Store observation `{observation_id}` from `{store}` is reported separately from static declarations."
+                ),
+                evidence_references_or_set(&references, "extraction-evidence:serviceData"),
+                vec!["Use the observation as planning evidence only; readiness analysis does not mutate the Store.".to_owned()],
+            );
+        } else {
+            push_finding(
+                findings,
+                CompatibilityCategory::Blocked,
+                ExtractionReadinessIssueCode::LiveStoreObservationNotReadOnly,
+                subject,
+                format!(
+                    "Live Store observation `{observation_id}` from `{store}` is not declared read-only."
+                ),
+                evidence_references_or_set(&references, "extraction-evidence:serviceData"),
+                vec!["Replace it with evidence collected through a read-only Store observation path.".to_owned()],
+            );
+        }
+    }
+}
+
+fn collect_table_ownership(
+    data: &ExtractionServiceDataEvidence,
+    findings: &mut Vec<ExtractionReadinessFinding>,
+) -> BTreeMap<String, Option<String>> {
+    let mut records = BTreeMap::<String, (BTreeSet<String>, bool, BTreeSet<String>)>::new();
+    for table in &data.tables {
+        let record = records.entry(table.table.clone()).or_default();
+        match table
+            .owner_module
+            .as_deref()
+            .filter(|owner| !owner.trim().is_empty())
+        {
+            Some(owner) => {
+                record.0.insert(owner.to_owned());
+            }
+            None => record.1 = true,
+        }
+        record.2.extend(table.evidence_references.iter().cloned());
+    }
+    records
+        .into_iter()
+        .map(|(table, (owners, has_unresolved, references))| {
+            let owner = if !has_unresolved && owners.len() == 1 {
+                owners.first().cloned()
+            } else {
+                push_finding(
+                    findings,
+                    CompatibilityCategory::Blocked,
+                    ExtractionReadinessIssueCode::TableOwnershipUnresolved,
+                    format!("service_data.table.{table}"),
+                    if owners.is_empty() {
+                        format!("Postgres table `{table}` has no declared Module owner.")
+                    } else {
+                        format!(
+                            "Postgres table `{table}` has unresolved ownership evidence: {}.",
+                            owners.into_iter().collect::<Vec<_>>().join(", ")
+                        )
+                    },
+                    evidence_references_or_set(
+                        &references,
+                        &format!("extraction-evidence:table/{table}"),
+                    ),
+                    vec![
+                        "Assign the table to exactly one Module before planning extraction."
+                            .to_owned(),
+                    ],
+                );
+                None
+            };
+            (table, owner)
+        })
+        .collect()
+}
+
+fn collect_migration_ownership(
+    data: &ExtractionServiceDataEvidence,
+    findings: &mut Vec<ExtractionReadinessFinding>,
+) {
+    let mut records = BTreeMap::<String, (BTreeSet<String>, bool, BTreeSet<String>)>::new();
+    for migration in &data.migrations {
+        let record = records.entry(migration.migration.clone()).or_default();
+        match migration
+            .owner_module
+            .as_deref()
+            .filter(|owner| !owner.trim().is_empty())
+        {
+            Some(owner) => {
+                record.0.insert(owner.to_owned());
+            }
+            None => record.1 = true,
+        }
+        record
+            .2
+            .extend(migration.evidence_references.iter().cloned());
+    }
+    for (migration, (owners, has_unresolved, references)) in records {
+        if !has_unresolved && owners.len() == 1 {
+            continue;
+        }
+        push_finding(
+            findings,
+            CompatibilityCategory::Blocked,
+            ExtractionReadinessIssueCode::MigrationOwnershipUnresolved,
+            format!("service_data.migration.{migration}"),
+            if owners.is_empty() {
+                format!("Postgres migration `{migration}` has no declared Module owner.")
+            } else {
+                format!(
+                    "Postgres migration `{migration}` has unresolved ownership evidence: {}.",
+                    owners.into_iter().collect::<Vec<_>>().join(", ")
+                )
+            },
+            evidence_references_or_set(
+                &references,
+                &format!("extraction-evidence:migration/{migration}"),
+            ),
+            vec!["Assign the migration to exactly one Module and preserve that schema lifecycle in the candidate Service.".to_owned()],
+        );
+    }
+}
+
+fn collect_table_access_findings(
+    module: &ModuleManifest,
+    data: &ExtractionServiceDataEvidence,
+    table_ownership: &BTreeMap<String, Option<String>>,
+    findings: &mut Vec<ExtractionReadinessFinding>,
+) {
+    for access in &data.access_paths {
+        let subject = format!(
+            "service_data.access.{}.{}",
+            access.accessor_module, access.table
+        );
+        let Some(Some(owner)) = table_ownership.get(&access.table) else {
+            push_finding(
+                findings,
+                CompatibilityCategory::Blocked,
+                ExtractionReadinessIssueCode::TableOwnershipUnresolved,
+                subject,
+                format!(
+                    "Access path from Module `{}` reaches table `{}` without trustworthy ownership evidence.",
+                    access.accessor_module, access.table
+                ),
+                evidence_references_or(
+                    &access.evidence_references,
+                    &format!("extraction-evidence:access/{}", access.table),
+                ),
+                vec!["Declare the table owner before evaluating this access path.".to_owned()],
+            );
+            continue;
+        };
+        if owner != &access.accessor_module
+            && (owner == &module.name || access.accessor_module == module.name)
+        {
+            push_finding(
+                findings,
+                CompatibilityCategory::Blocked,
+                ExtractionReadinessIssueCode::CrossModuleTableAccess,
+                subject,
+                format!(
+                    "Module `{}` directly {}-accesses table `{}` owned by Module `{owner}`.",
+                    access.accessor_module,
+                    data_access_label(access.access),
+                    access.table
+                ),
+                evidence_references_or(
+                    &access.evidence_references,
+                    &format!("extraction-evidence:access/{}", access.table),
+                ),
+                vec!["Replace direct cross-Module table access with an approved Service or Event Contract before extraction.".to_owned()],
+            );
+        }
+    }
+}
+
+fn collect_transaction_findings(
+    module: &ModuleManifest,
+    data: &ExtractionServiceDataEvidence,
+    findings: &mut Vec<ExtractionReadinessFinding>,
+) {
+    for transaction in &data.transactions {
+        let subject = format!("service_data.transaction.{}", transaction.transaction);
+        if transaction.participating_modules.is_empty() {
+            push_finding(
+                findings,
+                CompatibilityCategory::Blocked,
+                ExtractionReadinessIssueCode::TransactionBoundaryUnresolved,
+                subject,
+                format!(
+                    "Transaction `{}` has no trustworthy participating Module ownership evidence.",
+                    transaction.transaction
+                ),
+                evidence_references_or(
+                    &transaction.evidence_references,
+                    &format!("extraction-evidence:transaction/{}", transaction.transaction),
+                ),
+                vec!["Attribute every table touched by the transaction to its Module owner before extraction.".to_owned()],
+            );
+            continue;
+        }
+        if transaction
+            .participating_modules
+            .iter()
+            .any(|participant| participant == &module.name)
+            && transaction.participating_modules.len() > 1
+        {
+            push_finding(
+                findings,
+                CompatibilityCategory::Blocked,
+                ExtractionReadinessIssueCode::TransactionSpansServiceBoundary,
+                subject,
+                format!(
+                    "Transaction `{}` spans the proposed Service boundary across Modules: {}.",
+                    transaction.transaction,
+                    transaction.participating_modules.join(", ")
+                ),
+                evidence_references_or(
+                    &transaction.evidence_references,
+                    &format!("extraction-evidence:transaction/{}", transaction.transaction),
+                ),
+                vec!["Split the transaction into Service-local transactions coordinated through Outbox delivery, idempotent consumption, and explicit progress or compensation.".to_owned()],
+            );
+        }
+    }
+}
+
+fn collect_volume_and_cursor_findings(
+    module: &ModuleManifest,
+    data: &ExtractionServiceDataEvidence,
+    table_ownership: &BTreeMap<String, Option<String>>,
+    findings: &mut Vec<ExtractionReadinessFinding>,
+) {
+    for (table, owner) in table_ownership {
+        if owner.as_deref() != Some(module.name.as_str()) {
+            continue;
+        }
+        let records = data
+            .tables
+            .iter()
+            .filter(|candidate| candidate.table == *table)
+            .collect::<Vec<_>>();
+        let mut max_rows = None;
+        let mut max_bytes = None;
+        let mut volume_references = BTreeSet::new();
+        let mut cursor_references = BTreeSet::new();
+        let mut usable_cursors = Vec::new();
+        for record in records {
+            if let Some(volume) = &record.volume {
+                max_rows = max_rows.max(volume.approximate_rows);
+                max_bytes = max_bytes.max(volume.approximate_bytes);
+                volume_references.extend(record.evidence_references.iter().cloned());
+                volume_references.extend(volume.evidence_references.iter().cloned());
+            }
+            if let Some(cursor) = &record.cursor {
+                cursor_references.extend(record.evidence_references.iter().cloned());
+                cursor_references.extend(cursor.evidence_references.iter().cloned());
+                if cursor.trustworthy
+                    && !cursor.column.trim().is_empty()
+                    && !cursor.high_water_mark.trim().is_empty()
+                {
+                    usable_cursors.push(cursor);
+                }
+            }
+        }
+        let large = max_rows.is_some_and(|rows| rows >= LARGE_DATA_VOLUME_ROWS)
+            || max_bytes.is_some_and(|bytes| bytes >= LARGE_DATA_VOLUME_BYTES);
+        if large {
+            push_finding(
+                findings,
+                CompatibilityCategory::NeedsAttention,
+                ExtractionReadinessIssueCode::DataVolumeLarge,
+                format!("service_data.table.{table}.volume"),
+                format!(
+                    "Large data volume for `{table}` informs backfill and bounded-write-pause risk ({}; large means at least {LARGE_DATA_VOLUME_ROWS} rows or {LARGE_DATA_VOLUME_BYTES} bytes).",
+                    data_volume_label(max_rows, max_bytes),
+                ),
+                evidence_references_or_set(
+                    &volume_references,
+                    &format!("extraction-evidence:table/{table}/volume"),
+                ),
+                vec!["Size resumable backfill batches, reconciliation, and the bounded write pause from this evidence; volume alone does not block readiness.".to_owned()],
+            );
+        }
+        usable_cursors.sort();
+        if let Some(cursor) = usable_cursors.first() {
+            push_finding(
+                findings,
+                CompatibilityCategory::Safe,
+                ExtractionReadinessIssueCode::ExtractionCursorUsable,
+                format!("service_data.table.{table}.cursor"),
+                format!(
+                    "Table `{table}` has trustworthy extraction cursor `{}` at high-water mark `{}`.",
+                    cursor.column, cursor.high_water_mark
+                ),
+                evidence_references_or_set(
+                    &cursor_references,
+                    &format!("extraction-evidence:table/{table}/cursor"),
+                ),
+                vec!["Pin this cursor and high-water mark in the Extraction Plan.".to_owned()],
+            );
+        } else {
+            push_finding(
+                findings,
+                CompatibilityCategory::NeedsAttention,
+                ExtractionReadinessIssueCode::ExtractionCursorMissing,
+                format!("service_data.table.{table}.cursor"),
+                format!(
+                    "Table `{table}` has no trustworthy extraction cursor or high-water mark; a full copy must occur during the bounded write pause."
+                ),
+                evidence_references_or_set(
+                    &cursor_references,
+                    &format!("extraction-evidence:table/{table}/cursor"),
+                ),
+                vec!["Plan a full table copy and reconciliation while Module writes are paused, or supply a trustworthy cursor.".to_owned()],
+            );
+        }
+    }
+}
+
+fn data_volume_label(rows: Option<u64>, bytes: Option<u64>) -> String {
+    let mut values = Vec::new();
+    if let Some(rows) = rows {
+        values.push(format!("approximately {rows} rows"));
+    }
+    if let Some(bytes) = bytes {
+        values.push(format!("approximately {bytes} bytes"));
+    }
+    values.join(", ")
+}
+
+fn evidence_references_or(references: &[String], fallback: &str) -> Vec<String> {
+    if references.is_empty() {
+        vec![fallback.to_owned()]
+    } else {
+        references.to_vec()
+    }
+}
+
+fn evidence_references_or_set(references: &BTreeSet<String>, fallback: &str) -> Vec<String> {
+    if references.is_empty() {
+        vec![fallback.to_owned()]
+    } else {
+        references.iter().cloned().collect()
+    }
+}
+
+fn normalize_strings(values: &mut Vec<String>) {
+    values.retain(|value| !value.trim().is_empty());
+    values.sort();
+    values.dedup();
 }
 
 fn collect_target_owner(
@@ -1120,8 +1748,9 @@ pub fn render_extraction_readiness_report(report: &ExtractionReadinessReport) ->
             report.target_owner.as_deref().unwrap_or("unknown")
         ),
         "Effects: read-only; writesRepositoryFiles=false; startsWorkloads=false; movesData=false; changesAuthority=false".to_owned(),
-        "Findings:".to_owned(),
     ];
+    output.extend(render_service_data(&report.service_data));
+    output.push("Findings:".to_owned());
     for finding in &report.findings {
         output.push(format!(
             "- [{}] {} {}: {}",
@@ -1159,6 +1788,123 @@ pub fn render_extraction_readiness_report(report: &ExtractionReadinessReport) ->
     }
     output.push(String::new());
     output.join("\n")
+}
+
+fn render_service_data(data: &ExtractionServiceDataEvidence) -> Vec<String> {
+    let mut output = vec![
+        "Service data:".to_owned(),
+        format!(
+            "- evidence: {}",
+            if data.complete {
+                "complete"
+            } else {
+                "missing_or_incomplete"
+            }
+        ),
+    ];
+    if data.tables.is_empty() {
+        output.push("- tables: none".to_owned());
+    } else {
+        for table in &data.tables {
+            output.push(format!(
+                "- table {}: owner={}; source={}; volume={}; cursor={}",
+                table.table,
+                table.owner_module.as_deref().unwrap_or("unresolved"),
+                data_source_label(&table.source),
+                table
+                    .volume
+                    .as_ref()
+                    .map(|volume| {
+                        data_volume_label(volume.approximate_rows, volume.approximate_bytes)
+                    })
+                    .filter(|label| !label.is_empty())
+                    .unwrap_or_else(|| "unknown".to_owned()),
+                table.cursor.as_ref().map_or_else(
+                    || "none".to_owned(),
+                    |cursor| {
+                        format!(
+                            "{}@{} ({})",
+                            cursor.column,
+                            cursor.high_water_mark,
+                            if cursor.trustworthy {
+                                "trustworthy"
+                            } else {
+                                "untrusted"
+                            }
+                        )
+                    },
+                )
+            ));
+        }
+    }
+    if data.migrations.is_empty() {
+        output.push("- migrations: none".to_owned());
+    } else {
+        for migration in &data.migrations {
+            output.push(format!(
+                "- migration {}: owner={}; source={}",
+                migration.migration,
+                migration.owner_module.as_deref().unwrap_or("unresolved"),
+                data_source_label(&migration.source)
+            ));
+        }
+    }
+    if data.access_paths.is_empty() {
+        output.push("- access paths: none".to_owned());
+    } else {
+        for access in &data.access_paths {
+            output.push(format!(
+                "- access {} -> {}: {}; source={}",
+                access.accessor_module,
+                access.table,
+                data_access_label(access.access),
+                data_source_label(&access.source)
+            ));
+        }
+    }
+    if data.transactions.is_empty() {
+        output.push("- transactions: none".to_owned());
+    } else {
+        for transaction in &data.transactions {
+            output.push(format!(
+                "- transaction {}: modules={}; source={}",
+                transaction.transaction,
+                if transaction.participating_modules.is_empty() {
+                    "unresolved".to_owned()
+                } else {
+                    transaction.participating_modules.join(", ")
+                },
+                data_source_label(&transaction.source)
+            ));
+        }
+    }
+    output
+}
+
+fn data_source_label(source: &ExtractionDataEvidenceSource) -> String {
+    match source {
+        ExtractionDataEvidenceSource::StaticDeclaration => "static_declaration".to_owned(),
+        ExtractionDataEvidenceSource::LiveStoreObservation {
+            observation_id,
+            store,
+            read_only,
+        } => format!(
+            "live_store_observation:{observation_id}@{store} ({})",
+            if *read_only {
+                "read_only"
+            } else {
+                "not_read_only"
+            }
+        ),
+    }
+}
+
+fn data_access_label(access: ExtractionDataAccessKind) -> &'static str {
+    match access {
+        ExtractionDataAccessKind::Read => "read",
+        ExtractionDataAccessKind::Write => "write",
+        ExtractionDataAccessKind::ReadWrite => "read_write",
+    }
 }
 
 pub fn extraction_readiness_report_json(
@@ -1241,10 +1987,23 @@ fn issue_code_label(code: ExtractionReadinessIssueCode) -> &'static str {
         ExtractionReadinessIssueCode::ContractEvidenceMissing => "contract_evidence_missing",
         ExtractionReadinessIssueCode::ContractIdentityMismatch => "contract_identity_mismatch",
         ExtractionReadinessIssueCode::ContractsComplete => "contracts_complete",
+        ExtractionReadinessIssueCode::CrossModuleTableAccess => "cross_module_table_access",
         ExtractionReadinessIssueCode::CrossModuleImport => "cross_module_import",
+        ExtractionReadinessIssueCode::DataVolumeLarge => "data_volume_large",
+        ExtractionReadinessIssueCode::ExtractionCursorMissing => "extraction_cursor_missing",
+        ExtractionReadinessIssueCode::ExtractionCursorUsable => "extraction_cursor_usable",
         ExtractionReadinessIssueCode::InProcessBoundaryCall => "in_process_boundary_call",
+        ExtractionReadinessIssueCode::LiveStoreObservationNotReadOnly => {
+            "live_store_observation_not_read_only"
+        }
+        ExtractionReadinessIssueCode::LiveStoreObservationPresent => {
+            "live_store_observation_present"
+        }
         ExtractionReadinessIssueCode::ManifestInvalid => "manifest_invalid",
         ExtractionReadinessIssueCode::ManifestNeedsAttention => "manifest_needs_attention",
+        ExtractionReadinessIssueCode::MigrationOwnershipUnresolved => {
+            "migration_ownership_unresolved"
+        }
         ExtractionReadinessIssueCode::RequiredEventContractMissing => {
             "required_event_contract_missing"
         }
@@ -1252,10 +2011,22 @@ fn issue_code_label(code: ExtractionReadinessIssueCode) -> &'static str {
             "required_service_contract_missing"
         }
         ExtractionReadinessIssueCode::RuntimeSurfacePresent => "runtime_surface_present",
+        ExtractionReadinessIssueCode::ServiceDataEvidenceIncomplete => {
+            "service_data_evidence_incomplete"
+        }
+        ExtractionReadinessIssueCode::ServiceDataEvidenceMissing => "service_data_evidence_missing",
+        ExtractionReadinessIssueCode::ServiceDataReady => "service_data_ready",
         ExtractionReadinessIssueCode::StorySurfacePresent => "story_surface_present",
         ExtractionReadinessIssueCode::SystemEvidenceInvalid => "system_evidence_invalid",
+        ExtractionReadinessIssueCode::TableOwnershipUnresolved => "table_ownership_unresolved",
         ExtractionReadinessIssueCode::TargetModuleMissing => "target_module_missing",
         ExtractionReadinessIssueCode::TargetModuleNotLinked => "target_module_not_linked",
+        ExtractionReadinessIssueCode::TransactionBoundaryUnresolved => {
+            "transaction_boundary_unresolved"
+        }
+        ExtractionReadinessIssueCode::TransactionSpansServiceBoundary => {
+            "transaction_spans_service_boundary"
+        }
         ExtractionReadinessIssueCode::WorkflowSurfacePresent => "workflow_surface_present",
     }
 }
@@ -1389,6 +2160,69 @@ mod tests {
         })
     }
 
+    fn corrected_service_data() -> ExtractionServiceDataEvidence {
+        ExtractionServiceDataEvidence {
+            complete: true,
+            evidence_references: vec!["analyzer:postgres/support-ticket".to_owned()],
+            tables: vec![
+                ExtractionDataTableEvidence {
+                    table: "support.tickets".to_owned(),
+                    owner_module: Some("support-ticket".to_owned()),
+                    source: ExtractionDataEvidenceSource::StaticDeclaration,
+                    volume: None,
+                    cursor: None,
+                    evidence_references: vec![
+                        "modules/support-ticket/migrations/0001_tickets.sql".to_owned(),
+                    ],
+                },
+                ExtractionDataTableEvidence {
+                    table: "support.tickets".to_owned(),
+                    owner_module: Some("support-ticket".to_owned()),
+                    source: ExtractionDataEvidenceSource::LiveStoreObservation {
+                        observation_id: "support-store-2026-07-19".to_owned(),
+                        store: "host-postgres".to_owned(),
+                        read_only: true,
+                    },
+                    volume: Some(ExtractionDataVolumeEvidence {
+                        approximate_rows: Some(25_000_000),
+                        approximate_bytes: Some(17_179_869_184),
+                        evidence_references: vec!["postgres:pg_class/support.tickets".to_owned()],
+                    }),
+                    cursor: Some(ExtractionCursorEvidence {
+                        column: "id".to_owned(),
+                        high_water_mark: "25000000".to_owned(),
+                        trustworthy: true,
+                        evidence_references: vec!["postgres:max(support.tickets.id)".to_owned()],
+                    }),
+                    evidence_references: vec![
+                        "postgres:observation/support-store-2026-07-19".to_owned(),
+                    ],
+                },
+            ],
+            migrations: vec![ExtractionMigrationEvidence {
+                migration: "0001_create_support_tickets".to_owned(),
+                owner_module: Some("support-ticket".to_owned()),
+                source: ExtractionDataEvidenceSource::StaticDeclaration,
+                evidence_references: vec![
+                    "modules/support-ticket/migrations/0001_tickets.sql".to_owned(),
+                ],
+            }],
+            access_paths: vec![ExtractionDataAccessEvidence {
+                accessor_module: "support-ticket".to_owned(),
+                table: "support.tickets".to_owned(),
+                access: ExtractionDataAccessKind::ReadWrite,
+                source: ExtractionDataEvidenceSource::StaticDeclaration,
+                evidence_references: vec!["modules/support-ticket/src/store.rs:14".to_owned()],
+            }],
+            transactions: vec![ExtractionTransactionEvidence {
+                transaction: "support-ticket-update".to_owned(),
+                participating_modules: vec!["support-ticket".to_owned()],
+                source: ExtractionDataEvidenceSource::StaticDeclaration,
+                evidence_references: vec!["modules/support-ticket/src/store.rs:41".to_owned()],
+            }],
+        }
+    }
+
     fn corrected_evidence() -> ExtractionReadinessEvidence {
         ExtractionReadinessEvidence {
             boundary: Some(ExtractionBoundaryEvidence {
@@ -1435,6 +2269,7 @@ mod tests {
                 evidence_references: vec!["system:consumer/support-ticket-sla-updates".to_owned()],
                 next_action: "No action needed.".to_owned(),
             }]),
+            service_data: Some(corrected_service_data()),
         }
     }
 
@@ -1472,10 +2307,63 @@ mod tests {
             CompatibilityCategory::Breaking;
         blocked.active_consumers.as_mut().expect("consumers")[0].next_action =
             "Migrate the Consumer to support.sla-updated.v1.".to_owned();
+        let service_data = blocked.service_data.as_mut().expect("service data");
+        service_data.tables.extend([
+            ExtractionDataTableEvidence {
+                table: "support.sla_policies".to_owned(),
+                owner_module: Some("support-sla".to_owned()),
+                source: ExtractionDataEvidenceSource::StaticDeclaration,
+                volume: None,
+                cursor: None,
+                evidence_references: vec!["modules/support-sla/migrations/0001.sql".to_owned()],
+            },
+            ExtractionDataTableEvidence {
+                table: "support.audit_events".to_owned(),
+                owner_module: None,
+                source: ExtractionDataEvidenceSource::StaticDeclaration,
+                volume: None,
+                cursor: None,
+                evidence_references: vec!["migrations/0009_support_audit.sql".to_owned()],
+            },
+        ]);
+        service_data.migrations.push(ExtractionMigrationEvidence {
+            migration: "0009_support_audit".to_owned(),
+            owner_module: None,
+            source: ExtractionDataEvidenceSource::StaticDeclaration,
+            evidence_references: vec!["migrations/0009_support_audit.sql".to_owned()],
+        });
+        service_data
+            .access_paths
+            .push(ExtractionDataAccessEvidence {
+                accessor_module: "support-ticket".to_owned(),
+                table: "support.sla_policies".to_owned(),
+                access: ExtractionDataAccessKind::Read,
+                source: ExtractionDataEvidenceSource::StaticDeclaration,
+                evidence_references: vec!["modules/support-ticket/src/sla.rs:28".to_owned()],
+            });
+        service_data
+            .transactions
+            .push(ExtractionTransactionEvidence {
+                transaction: "ticket-and-sla-update".to_owned(),
+                participating_modules: vec!["support-sla".to_owned(), "support-ticket".to_owned()],
+                source: ExtractionDataEvidenceSource::StaticDeclaration,
+                evidence_references: vec!["modules/support-ticket/src/sla.rs:52".to_owned()],
+            });
 
         let first = evaluate_extraction_readiness(&module, &system(), &blocked);
         let second = evaluate_extraction_readiness(&module, &system(), &blocked);
         assert_eq!(first, second);
+        let mut reordered = blocked.clone();
+        let data = reordered.service_data.as_mut().expect("service data");
+        data.tables.reverse();
+        data.migrations.reverse();
+        data.access_paths.reverse();
+        data.transactions.reverse();
+        data.evidence_references.reverse();
+        assert_eq!(
+            first,
+            evaluate_extraction_readiness(&module, &system(), &reordered)
+        );
         assert_eq!(first.classification, CompatibilityCategory::Blocked);
         assert!(!first.ready);
         for code in [
@@ -1484,6 +2372,10 @@ mod tests {
             ExtractionReadinessIssueCode::RequiredServiceContractMissing,
             ExtractionReadinessIssueCode::RequiredEventContractMissing,
             ExtractionReadinessIssueCode::ActiveConsumerBreaking,
+            ExtractionReadinessIssueCode::CrossModuleTableAccess,
+            ExtractionReadinessIssueCode::TableOwnershipUnresolved,
+            ExtractionReadinessIssueCode::MigrationOwnershipUnresolved,
+            ExtractionReadinessIssueCode::TransactionSpansServiceBoundary,
         ] {
             assert!(first.issue_codes.contains(&code), "missing {code:?}");
         }
@@ -1502,6 +2394,16 @@ mod tests {
         assert!(!corrected.surfaces.admin.is_empty());
         assert!(!corrected.surfaces.console.is_empty());
         assert!(!corrected.surfaces.stories.is_empty());
+        assert_eq!(corrected.service_data.tables.len(), 2);
+        assert!(
+            corrected
+                .issue_codes
+                .contains(&ExtractionReadinessIssueCode::DataVolumeLarge)
+        );
+        assert!(corrected.findings.iter().any(|finding| {
+            finding.code == ExtractionReadinessIssueCode::LiveStoreObservationPresent
+                && finding.message.contains("Read-only")
+        }));
         assert!(
             !corrected
                 .issue_codes
@@ -1522,9 +2424,47 @@ mod tests {
             ExtractionReadinessIssueCode::BoundaryEvidenceMissing,
             ExtractionReadinessIssueCode::ContractEvidenceMissing,
             ExtractionReadinessIssueCode::ActiveConsumerCompatibilityMissing,
+            ExtractionReadinessIssueCode::ServiceDataEvidenceMissing,
         ] {
             assert!(report.issue_codes.contains(&code));
         }
+    }
+
+    #[test]
+    fn missing_cursor_requires_bounded_pause_full_copy_without_blocking_readiness() {
+        let mut evidence = corrected_evidence();
+        for table in &mut evidence.service_data.as_mut().expect("service data").tables {
+            table.cursor = None;
+        }
+        let report = evaluate_extraction_readiness(&manifest(), &system(), &evidence);
+        assert!(report.ready);
+        let finding = report
+            .findings
+            .iter()
+            .find(|finding| finding.code == ExtractionReadinessIssueCode::ExtractionCursorMissing)
+            .expect("missing cursor should be reported");
+        assert!(finding.message.contains("full copy"));
+        assert!(finding.message.contains("bounded write pause"));
+    }
+
+    #[test]
+    fn live_store_observations_must_be_read_only() {
+        let mut evidence = corrected_evidence();
+        for table in &mut evidence.service_data.as_mut().expect("service data").tables {
+            if let ExtractionDataEvidenceSource::LiveStoreObservation { read_only, .. } =
+                &mut table.source
+            {
+                *read_only = false;
+            }
+        }
+        let report = evaluate_extraction_readiness(&manifest(), &system(), &evidence);
+        assert!(!report.ready);
+        assert!(
+            report
+                .issue_codes
+                .contains(&ExtractionReadinessIssueCode::LiveStoreObservationNotReadOnly)
+        );
+        assert_eq!(report.effects, ExtractionReadinessEffects::default());
     }
 
     #[test]
@@ -1540,6 +2480,18 @@ mod tests {
         let decoded: ExtractionReadinessReport =
             serde_json::from_value(future).expect("v1 reader should ignore future fields");
         assert_eq!(decoded.protocol, EXTRACTION_READINESS_REPORT_PROTOCOL);
+
+        let mut older = serde_json::to_value(&report).expect("report should serialize");
+        older
+            .as_object_mut()
+            .expect("report should be an object")
+            .remove("serviceData");
+        let decoded: ExtractionReadinessReport =
+            serde_json::from_value(older).expect("v1 reader should default added data summary");
+        assert_eq!(
+            decoded.service_data,
+            ExtractionServiceDataEvidence::default()
+        );
     }
 
     #[test]
@@ -1549,6 +2501,8 @@ mod tests {
         assert!(human.contains("Extraction readiness: support-ticket"));
         assert!(human.contains("Result: needs_attention (ready)"));
         assert!(human.contains("writesRepositoryFiles=false"));
+        assert!(human.contains("live_store_observation"));
+        assert!(human.contains("support.tickets"));
         let json = extraction_readiness_report_json(&report).expect("report should render");
         let decoded: ExtractionReadinessReport =
             serde_json::from_str(&json).expect("JSON output should be readable");

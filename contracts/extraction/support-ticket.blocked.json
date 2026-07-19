@@ -1,5 +1,5 @@
 {
-  "analyzerVersion": "lenso.extraction-readiness.v1",
+  "analyzerVersion": "lenso.extraction-readiness.v2",
   "classification": "blocked",
   "effects": {
     "changesAuthority": false,
@@ -8,6 +8,18 @@
     "writesRepositoryFiles": false
   },
   "findings": [
+    {
+      "classification": "blocked",
+      "code": "cross_module_table_access",
+      "evidenceReferences": [
+        "modules/support-ticket/src/sla.rs:28"
+      ],
+      "message": "Module `support-ticket` directly read-accesses table `support.sla_policies` owned by Module `support-sla`.",
+      "nextActions": [
+        "Replace direct cross-Module table access with an approved Service or Event Contract before extraction."
+      ],
+      "subject": "service_data.access.support-ticket.support.sla_policies"
+    },
     {
       "classification": "blocked",
       "code": "cross_module_import",
@@ -34,6 +46,18 @@
     },
     {
       "classification": "blocked",
+      "code": "migration_ownership_unresolved",
+      "evidenceReferences": [
+        "migrations/0009_support_audit.sql"
+      ],
+      "message": "Postgres migration `0009_support_audit` has no declared Module owner.",
+      "nextActions": [
+        "Assign the migration to exactly one Module and preserve that schema lifecycle in the candidate Service."
+      ],
+      "subject": "service_data.migration.0009_support_audit"
+    },
+    {
+      "classification": "blocked",
       "code": "required_event_contract_missing",
       "evidenceReferences": [
         "module:event-handler:record_audit"
@@ -55,6 +79,30 @@
         "Publish and reference an authoritative versioned Service Contract for this surface."
       ],
       "subject": "http:GET /tickets/{id}"
+    },
+    {
+      "classification": "blocked",
+      "code": "table_ownership_unresolved",
+      "evidenceReferences": [
+        "migrations/0009_support_audit.sql"
+      ],
+      "message": "Postgres table `support.audit_events` has no declared Module owner.",
+      "nextActions": [
+        "Assign the table to exactly one Module before planning extraction."
+      ],
+      "subject": "service_data.table.support.audit_events"
+    },
+    {
+      "classification": "blocked",
+      "code": "transaction_spans_service_boundary",
+      "evidenceReferences": [
+        "modules/support-ticket/src/sla.rs:52"
+      ],
+      "message": "Transaction `ticket-and-sla-update` spans the proposed Service boundary across Modules: support-sla, support-ticket.",
+      "nextActions": [
+        "Split the transaction into Service-local transactions coordinated through Outbox delivery, idempotent consumption, and explicit progress or compensation."
+      ],
+      "subject": "service_data.transaction.ticket-and-sla-update"
     },
     {
       "classification": "breaking",
@@ -94,6 +142,19 @@
     },
     {
       "classification": "needs_attention",
+      "code": "data_volume_large",
+      "evidenceReferences": [
+        "postgres:observation/support-store-2026-07-19",
+        "postgres:pg_class/support.tickets"
+      ],
+      "message": "Large data volume for `support.tickets` informs backfill and bounded-write-pause risk (approximately 25000000 rows, approximately 17179869184 bytes; large means at least 1000000 rows or 1073741824 bytes).",
+      "nextActions": [
+        "Size resumable backfill batches, reconciliation, and the bounded write pause from this evidence; volume alone does not block readiness."
+      ],
+      "subject": "service_data.table.support.tickets.volume"
+    },
+    {
+      "classification": "needs_attention",
       "code": "runtime_surface_present",
       "evidenceReferences": [
         "module:runtime/support-ticket-reindex -> support-ticket.reindex.v1",
@@ -128,22 +189,189 @@
         "Preserve pinned Workflow Definitions and plan how active instances drain before Cutover."
       ],
       "subject": "module.workflows"
+    },
+    {
+      "classification": "safe",
+      "code": "extraction_cursor_usable",
+      "evidenceReferences": [
+        "postgres:max(support.tickets.id)",
+        "postgres:observation/support-store-2026-07-19"
+      ],
+      "message": "Table `support.tickets` has trustworthy extraction cursor `id` at high-water mark `25000000`.",
+      "nextActions": [
+        "Pin this cursor and high-water mark in the Extraction Plan."
+      ],
+      "subject": "service_data.table.support.tickets.cursor"
+    },
+    {
+      "classification": "safe",
+      "code": "live_store_observation_present",
+      "evidenceReferences": [
+        "postgres:observation/support-store-2026-07-19"
+      ],
+      "message": "Read-only live Store observation `support-store-2026-07-19` from `host-postgres` is reported separately from static declarations.",
+      "nextActions": [
+        "Use the observation as planning evidence only; readiness analysis does not mutate the Store."
+      ],
+      "subject": "service_data.observation.support-store-2026-07-19"
     }
   ],
   "issueCodes": [
     "active_consumer_breaking",
     "admin_surface_present",
     "console_surface_present",
+    "cross_module_table_access",
     "cross_module_import",
+    "data_volume_large",
     "in_process_boundary_call",
+    "migration_ownership_unresolved",
     "required_event_contract_missing",
     "required_service_contract_missing",
     "runtime_surface_present",
     "story_surface_present",
+    "table_ownership_unresolved",
+    "transaction_spans_service_boundary",
     "workflow_surface_present"
   ],
   "protocol": "lenso.extraction-readiness-report.v1",
   "ready": false,
+  "serviceData": {
+    "accessPaths": [
+      {
+        "access": "read",
+        "accessorModule": "support-ticket",
+        "evidenceReferences": [
+          "modules/support-ticket/src/sla.rs:28"
+        ],
+        "source": {
+          "kind": "static_declaration"
+        },
+        "table": "support.sla_policies"
+      },
+      {
+        "access": "read_write",
+        "accessorModule": "support-ticket",
+        "evidenceReferences": [
+          "modules/support-ticket/src/store.rs:14"
+        ],
+        "source": {
+          "kind": "static_declaration"
+        },
+        "table": "support.tickets"
+      }
+    ],
+    "complete": true,
+    "evidenceReferences": [
+      "analyzer:postgres/support-ticket"
+    ],
+    "migrations": [
+      {
+        "evidenceReferences": [
+          "modules/support-ticket/migrations/0001_tickets.sql"
+        ],
+        "migration": "0001_create_support_tickets",
+        "ownerModule": "support-ticket",
+        "source": {
+          "kind": "static_declaration"
+        }
+      },
+      {
+        "evidenceReferences": [
+          "migrations/0009_support_audit.sql"
+        ],
+        "migration": "0009_support_audit",
+        "source": {
+          "kind": "static_declaration"
+        }
+      }
+    ],
+    "tables": [
+      {
+        "evidenceReferences": [
+          "migrations/0009_support_audit.sql"
+        ],
+        "source": {
+          "kind": "static_declaration"
+        },
+        "table": "support.audit_events"
+      },
+      {
+        "evidenceReferences": [
+          "modules/support-sla/migrations/0001.sql"
+        ],
+        "ownerModule": "support-sla",
+        "source": {
+          "kind": "static_declaration"
+        },
+        "table": "support.sla_policies"
+      },
+      {
+        "evidenceReferences": [
+          "modules/support-ticket/migrations/0001_tickets.sql"
+        ],
+        "ownerModule": "support-ticket",
+        "source": {
+          "kind": "static_declaration"
+        },
+        "table": "support.tickets"
+      },
+      {
+        "cursor": {
+          "column": "id",
+          "evidenceReferences": [
+            "postgres:max(support.tickets.id)"
+          ],
+          "highWaterMark": "25000000",
+          "trustworthy": true
+        },
+        "evidenceReferences": [
+          "postgres:observation/support-store-2026-07-19"
+        ],
+        "ownerModule": "support-ticket",
+        "source": {
+          "kind": "live_store_observation",
+          "observationId": "support-store-2026-07-19",
+          "readOnly": true,
+          "store": "host-postgres"
+        },
+        "table": "support.tickets",
+        "volume": {
+          "approximateBytes": 17179869184,
+          "approximateRows": 25000000,
+          "evidenceReferences": [
+            "postgres:pg_class/support.tickets"
+          ]
+        }
+      }
+    ],
+    "transactions": [
+      {
+        "evidenceReferences": [
+          "modules/support-ticket/src/store.rs:41"
+        ],
+        "participatingModules": [
+          "support-ticket"
+        ],
+        "source": {
+          "kind": "static_declaration"
+        },
+        "transaction": "support-ticket-update"
+      },
+      {
+        "evidenceReferences": [
+          "modules/support-ticket/src/sla.rs:52"
+        ],
+        "participatingModules": [
+          "support-sla",
+          "support-ticket"
+        ],
+        "source": {
+          "kind": "static_declaration"
+        },
+        "transaction": "ticket-and-sla-update"
+      }
+    ]
+  },
   "surfaces": {
     "admin": [
       "schema"

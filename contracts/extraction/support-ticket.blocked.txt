@@ -3,19 +3,43 @@ Result: blocked (not ready)
 System: support-system
 Linked owner: support-host
 Effects: read-only; writesRepositoryFiles=false; startsWorkloads=false; movesData=false; changesAuthority=false
+Service data:
+- evidence: complete
+- table support.audit_events: owner=unresolved; source=static_declaration; volume=unknown; cursor=none
+- table support.sla_policies: owner=support-sla; source=static_declaration; volume=unknown; cursor=none
+- table support.tickets: owner=support-ticket; source=static_declaration; volume=unknown; cursor=none
+- table support.tickets: owner=support-ticket; source=live_store_observation:support-store-2026-07-19@host-postgres (read_only); volume=approximately 25000000 rows, approximately 17179869184 bytes; cursor=id@25000000 (trustworthy)
+- migration 0001_create_support_tickets: owner=support-ticket; source=static_declaration
+- migration 0009_support_audit: owner=unresolved; source=static_declaration
+- access support-ticket -> support.sla_policies: read; source=static_declaration
+- access support-ticket -> support.tickets: read_write; source=static_declaration
+- transaction support-ticket-update: modules=support-ticket; source=static_declaration
+- transaction ticket-and-sla-update: modules=support-sla, support-ticket; source=static_declaration
 Findings:
+- [blocked] cross_module_table_access service_data.access.support-ticket.support.sla_policies: Module `support-ticket` directly read-accesses table `support.sla_policies` owned by Module `support-sla`.
+  evidence: modules/support-ticket/src/sla.rs:28
+  next: Replace direct cross-Module table access with an approved Service or Event Contract before extraction.
 - [blocked] cross_module_import support_sla::internal::SlaPolicy: Cross-Module import `support_sla::internal::SlaPolicy` couples `support-ticket` to `support-sla` in-process.
   evidence: modules/support-ticket/src/lib.rs:12
   next: Remove the import and preserve the interaction through an approved Service or Event Contract.
 - [blocked] in_process_boundary_call support_sla::public::evaluate: In-process boundary call `support_sla::public::evaluate` crosses from `support-ticket` to `support-sla`.
   evidence: modules/support-ticket/src/service.rs:41
   next: Replace the boundary call with an approved Service or Event Contract before extraction.
+- [blocked] migration_ownership_unresolved service_data.migration.0009_support_audit: Postgres migration `0009_support_audit` has no declared Module owner.
+  evidence: migrations/0009_support_audit.sql
+  next: Assign the migration to exactly one Module and preserve that schema lifecycle in the candidate Service.
 - [blocked] required_event_contract_missing event-handler:record_audit: The required versioned contract artifact is missing. Required kind: Event Contract.
   evidence: module:event-handler:record_audit
   next: Publish and reference an authoritative versioned Event Contract for this surface.
 - [blocked] required_service_contract_missing http:GET /tickets/{id}: The required versioned contract artifact is missing. Required kind: Service Contract.
   evidence: module:http:GET /tickets/{id}
   next: Publish and reference an authoritative versioned Service Contract for this surface.
+- [blocked] table_ownership_unresolved service_data.table.support.audit_events: Postgres table `support.audit_events` has no declared Module owner.
+  evidence: migrations/0009_support_audit.sql
+  next: Assign the table to exactly one Module before planning extraction.
+- [blocked] transaction_spans_service_boundary service_data.transaction.ticket-and-sla-update: Transaction `ticket-and-sla-update` spans the proposed Service boundary across Modules: support-sla, support-ticket.
+  evidence: modules/support-ticket/src/sla.rs:52
+  next: Split the transaction into Service-local transactions coordinated through Outbox delivery, idempotent consumption, and explicit progress or compensation.
 - [breaking] active_consumer_breaking consumer:support-ticket-sla-updates:support.sla-updated.v1: Active Consumer is incompatible with the required Contract Version.
   evidence: system:consumer/support-ticket-sla-updates
   next: Migrate the Consumer to support.sla-updated.v1.
@@ -25,6 +49,10 @@ Findings:
 - [needs_attention] console_surface_present module.console: Runtime Console declarations are part of the Module's operator-facing identity.
   evidence: module:console/surface:support-tickets@/support/tickets
   next: Preserve Console routes, packages, slots, and contributions during extraction.
+- [needs_attention] data_volume_large service_data.table.support.tickets.volume: Large data volume for `support.tickets` informs backfill and bounded-write-pause risk (approximately 25000000 rows, approximately 17179869184 bytes; large means at least 1000000 rows or 1073741824 bytes).
+  evidence: postgres:observation/support-store-2026-07-19
+  evidence: postgres:pg_class/support.tickets
+  next: Size resumable backfill batches, reconciliation, and the bounded write pause from this evidence; volume alone does not block readiness.
 - [needs_attention] runtime_surface_present module.runtime: Runtime functions and schedules must retain their identities and execution ownership.
   evidence: module:runtime/support-ticket-reindex -> support-ticket.reindex.v1
   evidence: module:runtime/support-ticket.reindex.v1@v1
@@ -35,6 +63,13 @@ Findings:
 - [needs_attention] workflow_surface_present module.workflows: Durable Workflow declarations require explicit ownership and in-flight-instance handling.
   evidence: module:workflows/ticket_triage@v1
   next: Preserve pinned Workflow Definitions and plan how active instances drain before Cutover.
+- [safe] extraction_cursor_usable service_data.table.support.tickets.cursor: Table `support.tickets` has trustworthy extraction cursor `id` at high-water mark `25000000`.
+  evidence: postgres:max(support.tickets.id)
+  evidence: postgres:observation/support-store-2026-07-19
+  next: Pin this cursor and high-water mark in the Extraction Plan.
+- [safe] live_store_observation_present service_data.observation.support-store-2026-07-19: Read-only live Store observation `support-store-2026-07-19` from `host-postgres` is reported separately from static declarations.
+  evidence: postgres:observation/support-store-2026-07-19
+  next: Use the observation as planning evidence only; readiness analysis does not mutate the Store.
 Declared surfaces:
 - http: GET /tickets/{id}
 - events: apply_sla_update <- support.sla-updated.v1, record_audit <- support.audit-recorded.v1
