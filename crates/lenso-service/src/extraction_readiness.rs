@@ -45,21 +45,27 @@ pub struct ExtractionBoundaryEvidence {
     pub references: Vec<ExtractionBoundaryReference>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum ExtractionContractKind {
     Service,
     Event,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum ExtractionContractDirection {
     Provides,
     Consumes,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum ExtractionEvidenceStatus {
     Present,
@@ -67,7 +73,7 @@ pub enum ExtractionEvidenceStatus {
     Ambiguous,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtractionContractEvidence {
     pub subject: String,
@@ -80,7 +86,7 @@ pub struct ExtractionContractEvidence {
     pub evidence_references: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtractionConsumerCompatibilityEvidence {
     pub consumer_id: String,
@@ -319,6 +325,10 @@ pub struct ExtractionReadinessReport {
     pub ready: bool,
     #[serde(default)]
     pub issue_codes: Vec<ExtractionReadinessIssueCode>,
+    #[serde(default)]
+    pub contract_evidence: Vec<ExtractionContractEvidence>,
+    #[serde(default)]
+    pub active_consumers: Vec<ExtractionConsumerCompatibilityEvidence>,
     pub surfaces: ExtractionReadinessSurfaceSummary,
     #[serde(default)]
     pub service_data: ExtractionServiceDataEvidence,
@@ -375,12 +385,14 @@ pub fn evaluate_extraction_readiness(
         .and_then(|graph| collect_target_owner(module, graph, &mut findings));
 
     collect_boundary_findings(module, evidence.boundary.as_ref(), &mut findings);
+    let contract_evidence = normalized_contract_evidence(evidence.contracts.as_deref());
     let contract_ids =
-        collect_contract_findings(module, evidence.contracts.as_deref(), &mut findings);
+        collect_contract_findings(module, contract_evidence.as_deref(), &mut findings);
+    let active_consumers = normalized_consumer_evidence(evidence.active_consumers.as_deref());
     collect_consumer_findings(
         graph.as_ref(),
         &contract_ids,
-        evidence.active_consumers.as_deref(),
+        active_consumers.as_deref(),
         &mut findings,
     );
     let service_data = normalized_service_data(evidence.service_data.as_ref());
@@ -417,11 +429,39 @@ pub fn evaluate_extraction_readiness(
             CompatibilityCategory::Safe | CompatibilityCategory::NeedsAttention
         ),
         issue_codes,
+        contract_evidence: contract_evidence.unwrap_or_default(),
+        active_consumers: active_consumers.unwrap_or_default(),
         surfaces,
         service_data,
         findings,
         effects: ExtractionReadinessEffects::default(),
     }
+}
+
+fn normalized_contract_evidence(
+    evidence: Option<&[ExtractionContractEvidence]>,
+) -> Option<Vec<ExtractionContractEvidence>> {
+    evidence.map(|evidence| {
+        let mut normalized = evidence.to_vec();
+        for contract in &mut normalized {
+            normalize_strings(&mut contract.evidence_references);
+        }
+        normalized.sort();
+        normalized
+    })
+}
+
+fn normalized_consumer_evidence(
+    evidence: Option<&[ExtractionConsumerCompatibilityEvidence]>,
+) -> Option<Vec<ExtractionConsumerCompatibilityEvidence>> {
+    evidence.map(|evidence| {
+        let mut normalized = evidence.to_vec();
+        for consumer in &mut normalized {
+            normalize_strings(&mut consumer.evidence_references);
+        }
+        normalized.sort();
+        normalized
+    })
 }
 
 fn normalized_service_data(
@@ -2486,12 +2526,22 @@ mod tests {
             .as_object_mut()
             .expect("report should be an object")
             .remove("serviceData");
+        older
+            .as_object_mut()
+            .expect("report should be an object")
+            .remove("contractEvidence");
+        older
+            .as_object_mut()
+            .expect("report should be an object")
+            .remove("activeConsumers");
         let decoded: ExtractionReadinessReport =
             serde_json::from_value(older).expect("v1 reader should default added data summary");
         assert_eq!(
             decoded.service_data,
             ExtractionServiceDataEvidence::default()
         );
+        assert!(decoded.contract_evidence.is_empty());
+        assert!(decoded.active_consumers.is_empty());
     }
 
     #[test]

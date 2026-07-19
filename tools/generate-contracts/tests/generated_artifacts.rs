@@ -151,6 +151,50 @@ fn committed_extraction_readiness_artifacts_match_generator() {
 }
 
 #[test]
+fn committed_extraction_plan_artifacts_match_generator() {
+    let schema = serde_json::from_str::<serde_json::Value>(include_str!(
+        "../../../contracts/extraction/lenso.extraction-plan.v1.schema.json"
+    ))
+    .expect("committed Extraction Plan schema must parse");
+    let plan = serde_json::from_str::<serde_json::Value>(include_str!(
+        "../../../contracts/extraction/support-ticket.plan.json"
+    ))
+    .expect("committed support-ticket Extraction Plan must parse");
+    let human = include_str!("../../../contracts/extraction/support-ticket.plan.txt");
+
+    assert_eq!(
+        schema,
+        generate_contracts::generated_extraction_plan_schema()
+    );
+    assert_eq!(
+        plan,
+        generate_contracts::generated_support_ticket_extraction_plan()
+    );
+    assert_eq!(
+        human,
+        generate_contracts::generated_support_ticket_extraction_plan_human()
+    );
+    assert_eq!(
+        plan["protocol"],
+        serde_json::json!("lenso.extraction-plan.v1")
+    );
+    assert_eq!(
+        plan["proposedService"]["workloads"]
+            .as_array()
+            .expect("workloads")
+            .iter()
+            .map(|workload| workload["role"].as_str().expect("role"))
+            .collect::<Vec<_>>(),
+        vec!["api", "worker", "migration"]
+    );
+    assert_eq!(plan["proposedService"]["store"]["isolated"], true);
+    assert_eq!(plan["effects"]["writesRepositoryFiles"], false);
+    assert_eq!(plan["effects"]["startsWorkloads"], false);
+    assert_eq!(plan["effects"]["copiesData"], false);
+    assert_eq!(plan["effects"]["changesAuthority"], false);
+}
+
+#[test]
 fn committed_common_context_schema_matches_generator() {
     let committed: serde_json::Value = serde_json::from_str(include_str!(
         "../../../contracts/context/lenso-context.v1.schema.json"

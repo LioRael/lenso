@@ -69,6 +69,18 @@ pub fn generate_contracts() -> anyhow::Result<()> {
         &generated_support_ticket_extraction_readiness_corrected_human(),
     )?;
     write_json(
+        "contracts/extraction/lenso.extraction-plan.v1.schema.json",
+        &generated_extraction_plan_schema(),
+    )?;
+    write_json(
+        "contracts/extraction/support-ticket.plan.json",
+        &generated_support_ticket_extraction_plan(),
+    )?;
+    write_text(
+        "contracts/extraction/support-ticket.plan.txt",
+        &generated_support_ticket_extraction_plan_human(),
+    )?;
+    write_json(
         "contracts/context/lenso-context.v1.schema.json",
         &generated_common_context_schema(),
     )?;
@@ -192,9 +204,99 @@ pub fn generated_support_ticket_extraction_readiness_corrected_human() -> String
     ))
 }
 
-fn support_ticket_extraction_readiness_report(
-    blocked: bool,
-) -> lenso_service::ExtractionReadinessReport {
+pub fn generated_extraction_plan_schema() -> Value {
+    lenso_service::extraction_plan_schema()
+}
+
+pub fn generated_support_ticket_extraction_plan() -> Value {
+    serde_json::to_value(support_ticket_extraction_plan())
+        .expect("support-ticket Extraction Plan must serialize")
+}
+
+pub fn generated_support_ticket_extraction_plan_human() -> String {
+    lenso_service::render_extraction_plan(&support_ticket_extraction_plan())
+}
+
+fn support_ticket_extraction_plan() -> lenso_service::ExtractionPlan {
+    use lenso_service::{
+        ExtractionAuthorityKind, ExtractionContractDirection, ExtractionContractKind,
+        ExtractionEvidenceDigest, ExtractionExpectedAuthority, ExtractionPlanContractVersion,
+        ExtractionPlanInputs, extraction_input_digest,
+    };
+
+    let inputs = ExtractionPlanInputs {
+        readiness_report: support_ticket_extraction_readiness_report(false),
+        module: support_ticket_extraction_module(),
+        system: support_ticket_extraction_system(),
+        contract_versions: vec![
+            ExtractionPlanContractVersion {
+                contract_id: "support-ticket-http.v1".to_owned(),
+                version: "v1".to_owned(),
+                kind: ExtractionContractKind::Service,
+                direction: ExtractionContractDirection::Provides,
+                artifact_reference: "contracts/openapi/support.v1.yaml".to_owned(),
+                artifact_digest: extraction_input_digest(
+                    lenso_service::DIRECT_HTTP_OPENAPI_V1_FIXTURE_YAML.as_bytes(),
+                ),
+                producer_id: None,
+                consumer_ids: Vec::new(),
+            },
+            ExtractionPlanContractVersion {
+                contract_id: "support-grpc.v1".to_owned(),
+                version: "v1".to_owned(),
+                kind: ExtractionContractKind::Service,
+                direction: ExtractionContractDirection::Consumes,
+                artifact_reference: "contracts/services/support-grpc.v1.proto".to_owned(),
+                artifact_digest: extraction_input_digest(
+                    lenso_service::DIRECT_GRPC_PROTO_V1_FIXTURE.as_bytes(),
+                ),
+                producer_id: Some("support-sla-service".to_owned()),
+                consumer_ids: Vec::new(),
+            },
+            ExtractionPlanContractVersion {
+                contract_id: "support.sla-updated.v1".to_owned(),
+                version: "v1".to_owned(),
+                kind: ExtractionContractKind::Event,
+                direction: ExtractionContractDirection::Consumes,
+                artifact_reference: "contracts/events/support.sla-updated.v1.schema.json"
+                    .to_owned(),
+                artifact_digest: extraction_input_digest(b"support.sla-updated.v1-schema-v1"),
+                producer_id: Some("support-sla-service".to_owned()),
+                consumer_ids: Vec::new(),
+            },
+            ExtractionPlanContractVersion {
+                contract_id: "support.audit-recorded.v1".to_owned(),
+                version: "v1".to_owned(),
+                kind: ExtractionContractKind::Event,
+                direction: ExtractionContractDirection::Consumes,
+                artifact_reference: "contracts/events/support.audit-recorded.v1.schema.json"
+                    .to_owned(),
+                artifact_digest: extraction_input_digest(b"support.audit-recorded.v1-schema-v1"),
+                producer_id: Some("support-audit-service".to_owned()),
+                consumer_ids: Vec::new(),
+            },
+        ],
+        expected_authority: ExtractionExpectedAuthority {
+            kind: ExtractionAuthorityKind::LinkedHost,
+            owner_id: "support-host".to_owned(),
+            revision: "support-authority-r7".to_owned(),
+        },
+        evidence_digests: vec![
+            ExtractionEvidenceDigest {
+                reference: "readiness-evidence:boundary-and-contracts".to_owned(),
+                digest: extraction_input_digest(b"support-ticket-boundary-contract-evidence-v1"),
+            },
+            ExtractionEvidenceDigest {
+                reference: "readiness-evidence:postgres-observation".to_owned(),
+                digest: extraction_input_digest(b"support-store-2026-07-19:25000000:17179869184"),
+            },
+        ],
+    };
+    lenso_service::generate_extraction_plan(&inputs)
+        .expect("corrected support-ticket readiness must generate an Extraction Plan")
+}
+
+fn support_ticket_extraction_module() -> lenso_contracts::ModuleManifest {
     use lenso_contracts::{
         AdminSchema, ConsoleArea, ConsolePackage, ConsoleSurface, EntitySchema,
         EventHandlerDeclaration, EventSurface, FieldSchema, FieldType, ModuleHttpMethod,
@@ -202,17 +304,8 @@ fn support_ticket_extraction_readiness_report(
         ScheduledFunctionDeclaration, StoryDisplayDescriptor, StoryDisplaySource,
         WorkflowDataContract, WorkflowDefinition, WorkflowStepDeclaration,
     };
-    use lenso_service::{
-        CompatibilityCategory, ExtractionBoundaryEvidence, ExtractionBoundaryReference,
-        ExtractionBoundaryReferenceKind, ExtractionConsumerCompatibilityEvidence,
-        ExtractionContractDirection, ExtractionContractEvidence, ExtractionContractKind,
-        ExtractionCursorEvidence, ExtractionDataAccessEvidence, ExtractionDataAccessKind,
-        ExtractionDataEvidenceSource, ExtractionDataTableEvidence, ExtractionDataVolumeEvidence,
-        ExtractionEvidenceStatus, ExtractionMigrationEvidence, ExtractionReadinessEvidence,
-        ExtractionServiceDataEvidence, ExtractionTransactionEvidence,
-    };
 
-    let module = ModuleManifest::builder("support-ticket")
+    ModuleManifest::builder("support-ticket")
         .capabilities(vec!["support.tickets.read".to_owned()])
         .http_routes(vec![ModuleHttpRoute {
             method: ModuleHttpMethod::Get,
@@ -293,8 +386,11 @@ fn support_ticket_extraction_readiness_report(
             display_name: "Reindex support tickets".to_owned(),
             story_title: Some("Support ticket maintenance".to_owned()),
         }])
-        .build();
-    let system = json!({
+        .build()
+}
+
+fn support_ticket_extraction_system() -> Value {
+    json!({
         "protocol": "lenso.system.v2",
         "systemId": "support-system",
         "host": { "hostId": "support-host", "modules": ["support-ticket"] },
@@ -325,7 +421,24 @@ fn support_ticket_extraction_readiness_report(
             "contractId": "support.sla-updated.v1",
             "tenancyMode": "required"
         }]
-    });
+    })
+}
+
+fn support_ticket_extraction_readiness_report(
+    blocked: bool,
+) -> lenso_service::ExtractionReadinessReport {
+    use lenso_service::{
+        CompatibilityCategory, ExtractionBoundaryEvidence, ExtractionBoundaryReference,
+        ExtractionBoundaryReferenceKind, ExtractionConsumerCompatibilityEvidence,
+        ExtractionContractDirection, ExtractionContractEvidence, ExtractionContractKind,
+        ExtractionCursorEvidence, ExtractionDataAccessEvidence, ExtractionDataAccessKind,
+        ExtractionDataEvidenceSource, ExtractionDataTableEvidence, ExtractionDataVolumeEvidence,
+        ExtractionEvidenceStatus, ExtractionMigrationEvidence, ExtractionReadinessEvidence,
+        ExtractionServiceDataEvidence, ExtractionTransactionEvidence,
+    };
+
+    let module = support_ticket_extraction_module();
+    let system = support_ticket_extraction_system();
     let mut evidence = ExtractionReadinessEvidence {
         boundary: Some(ExtractionBoundaryEvidence {
             complete: true,

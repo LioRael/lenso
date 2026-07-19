@@ -1,0 +1,105 @@
+Extraction plan: support-ticket
+Plan ID: extraction-plan:sha256:80e73e1266c08cd9c98d075feaaa22545d8aae63b3f6ba7b1b1c6e1bb67fb0ec
+System: support-system
+Expected authority: linked_host:support-host@support-authority-r7
+Candidate Service: support-ticket-service
+Workloads: support-ticket-service-api (api), support-ticket-service-worker (worker), support-ticket-service-migration (migration)
+Store: support-ticket-service-store (postgres, isolated)
+Effects: dry-run; writesRepositoryFiles=false; startsWorkloads=false; copiesData=false; changesAuthority=false
+Pinned inputs:
+- readiness_evidence support-ticket: sha256:4f544fd36b12f5ca0a8f4bfcbcc19d11ddf90dea19e2f61c49fc70bd7df12394
+- module_declaration support-ticket: sha256:2410c4e038608cf8e3370b4ef3e6e354ce90a8fa3aea434c14d0a3aa785a6f6c
+- contract_version support-grpc.v1@v1: sha256:4b7da9b79a74571482414c8ac74ed240e36a49f0a6998d273fed68949b59db13
+- contract_version support-ticket-http.v1@v1: sha256:5c2d3702b01b3385398d46bcf5c6c899bb27778d516c61ba9cc6df45bc940467
+- contract_version support.audit-recorded.v1@v1: sha256:f34dcf9cd5f8976ea330fd6a5f1b7f3da964a7879d3a4abd08ac434525c76c78
+- contract_version support.sla-updated.v1@v1: sha256:856fb9dcd8cfaf8bc3e339c460e1da43e732277671071c012f63bd3644825b85
+- system_graph support-system: sha256:0d30b8993c6a6673af55fa646c907ab5dacd7ac5a714f11242ecfd7bf766ae47
+- analyzer_version lenso.extraction-readiness.v2: sha256:1cca1972b1bbf1e7b431d06912b22dad59e503d09134caeb38d7e72883752cf6
+- data_mapping support-ticket: sha256:0f08df1dd5d0ada34b4c657f20ec7dc21042d25f39a7da6c513a261dd9c9c1c0
+- authority_revision support-host: sha256:b1eec37bc46a740e3dc1b87decc2458e69aa8aed9e96de74af35de02ee487395
+- evidence readiness-evidence:boundary-and-contracts: sha256:cc03f5c9754e45d3f41b499ee85b052e5a2002b1725baef32f22d26dd1c75cc9
+- evidence readiness-evidence:postgres-observation: sha256:1f3b2d0069c4e349305a4f8b97b727908bf082a754fc1f35773e58e01aeaa14a
+Diff:
+- authority.module.support-ticket: linked_host:support-host@support-authority-r7 -> autonomous_service:support-ticket-service
+- contractProducer.support-ticket-http.v1@v1: host:support-host -> autonomous_service:support-ticket-service
+- generatedClient.support-ticket-service-support-grpc-v1-client: absent -> support-grpc.v1@v1
+- serviceReference.support-ticket-service-support-grpc-v1-v1-reference: absent -> support-grpc.v1@v1:support-sla-service
+- serviceReference.support-ticket-service-support-ticket-http-v1-v1-reference: absent -> support-ticket-http.v1@v1:support-ticket-service
+- store.support-ticket-service-store: absent -> postgres:isolated
+- system.autonomousServices.support-ticket-service: absent -> module=support-ticket
+- system.host.modules.support-ticket: support-host -> absent
+- workload.support-ticket-service-api: absent -> support-ticket-service:api
+- workload.support-ticket-service-migration: absent -> support-ticket-service:migration
+- workload.support-ticket-service-worker: absent -> support-ticket-service:worker
+Phases:
+- 01-analysis analysis
+  prerequisite: The target Module is linked, ready, and owned by the pinned Host authority.
+  mutation: none
+  evidence: Fresh input digests and a content-addressed Extraction Plan.
+  rollback: No mutation occurs; regenerate the plan if any pinned input changes.
+  issueCodes: readiness_evidence_changed, module_declaration_changed, contract_version_changed, system_graph_changed, analyzer_version_changed, data_mapping_changed, authority_revision_changed, input_evidence_changed
+  next: Review the exact plan, diff, risks, and Approval Boundary.
+- 02-scaffold scaffold
+  prerequisite: The exact plan is fresh and the deterministic scaffold patch has been reviewed.
+  mutation: Write the candidate API, Worker, and Migration Workload scaffold plus generated bindings and clients.
+  evidence: A deterministic patch, file digests, compile evidence, and identity-preservation evidence.
+  rollback: Remove only plan-owned generated files; refuse changed or unrecognized files.
+  issueCodes: scaffold_conflict
+  next: Apply the scaffold without changing linked authority.
+- 03-destination-expansion destination_expansion
+  prerequisite: The candidate Migration Workload is valid and the destination Store is isolated.
+  mutation: Create the isolated Service Store and apply expand-first destination schema changes.
+  evidence: Idempotent migration receipts and candidate health evidence.
+  rollback: Discard the candidate Store; never contract or delete source schema.
+  issueCodes: destination_expansion_failed
+  next: Verify destination schema compatibility before copying Service Data.
+- 04-backfill backfill
+  prerequisite: Destination expansion succeeded and every online table has a pinned trustworthy cursor.
+  mutation: Copy ordered idempotent batches through pinned trustworthy cursors and durable checkpoints.
+  evidence: Durable source high-water marks, destination checkpoints, counts, and batch digests.
+  rollback: Stop copying and retain the linked implementation as the sole authoritative writer.
+  issueCodes: backfill_checkpoint_stale
+  next: Resume only from validated checkpoints, then reconcile the copied state.
+- 05-reconciliation reconciliation
+  prerequisite: Backfill checkpoint and source high-water mark are stable.
+  mutation: none
+  evidence: Matching identities, counts, field digests, relationships, and declared business invariants.
+  rollback: Keep linked authority and remediate or repeat backfill when reconciliation differs.
+  issueCodes: reconciliation_mismatch
+  next: Record reconciliation evidence bound to the exact plan and checkpoint.
+- 06-drain drain
+  prerequisite: Candidate readiness and pre-pause reconciliation passed.
+  mutation: Pause new Module mutations, drain requests, Inbox, Outbox, schedules, and Workflows, then copy the final delta.
+  evidence: Source quiescence, drained-work evidence, final checkpoint, and final reconciliation.
+  rollback: Reopen linked writes before provisional routing if drain or final reconciliation fails.
+  issueCodes: drain_incomplete
+  next: Proceed only while external authoritative mutations remain paused.
+- 07-provisional-cutover provisional_cutover
+  prerequisite: The source is quiescent, work is drained, and the final delta reconciles.
+  mutation: Route declared verification traffic to candidate Service `support-ticket-service` without admitting authoritative mutations.
+  evidence: Candidate health, routing, compatibility, and provisional authority evidence.
+  rollback: Restore linked routing and authority without reverse data movement.
+  issueCodes: provisional_cutover_failed
+  next: Run behavior, Contract, policy, health, and Runtime Story verification.
+- 08-verification verification
+  prerequisite: Provisional routing is active and all external authoritative mutations remain paused.
+  mutation: none
+  evidence: Compatibility, policy, business scenario, durable state, Event, Workflow, and Runtime Story comparison evidence.
+  rollback: Rollback provisional routing on any mismatch or stale input.
+  issueCodes: verification_failed
+  next: Choose rollback on failure or request exact final commit approval on success.
+- 09-rollback-or-commit rollback_or_commit
+  prerequisite: Verification is terminal, the plan is fresh, and the authority revision still matches.
+  mutation: Either restore linked routing and writes, or compare-and-set authority and topology to the candidate before reopening writes.
+  evidence: Rollback evidence, or verified approval plus one-owner authority and topology evidence.
+  rollback: Before commit, restore linked authority; after new Autonomous writes, block fast rollback without a reviewed reverse plan.
+  issueCodes: rollback_required, final_approval_required
+  next: Stop at the human Approval Boundary before final ownership transfer.
+  approvalBoundary: commit-extraction-authority
+- 10-terminal-evidence terminal_evidence
+  prerequisite: Rollback or commit reached one unambiguous authoritative owner.
+  mutation: none
+  evidence: Terminal plan, phase receipts, evidence, authority, topology, rollback constraints, and next actions.
+  rollback: Do not erase source data, linked recovery state, or audit evidence.
+  issueCodes: terminal_evidence_incomplete
+  next: Publish the versioned terminal extraction evidence for operators and automation.
