@@ -78,6 +78,9 @@ Do not create DDD or Clean Architecture folders:
 
 - The runtime must not own business logic.
 - Module commands that write data and emit events must use the transactional outbox.
+- Host-owned linked modules must use `lenso::host::transaction` when combining
+  a caller idempotency key, business SQL, and Outbox publication. They must not
+  import `lenso-platform-core` or write platform transaction tables directly.
 - Module event handlers may enqueue runtime functions, but function behavior stays in the owning module.
 - Runtime function names must be stable, versioned, and documented under `contracts/runtime/functions/`.
 - Do not add NATS, Kafka, service mesh, or Kubernetes complexity before there is a real extraction need.

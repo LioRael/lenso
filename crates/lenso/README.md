@@ -29,6 +29,38 @@ lenso = { version = "0.3.18", features = ["host"] }
 Application SQL, repositories, auth/session policy, CRUD shape, and Runtime
 Console UI stay in the host application or module code.
 
+Host-owned linked modules can use `lenso::host::transaction` when one operation
+must atomically claim an idempotency key, execute app-owned SQL, and publish an
+Outbox event. The application still writes its business query with `sqlx`; it
+does not import `lenso-platform-core` or address platform tables directly.
+
+Consumers that only need this transaction boundary can avoid the complete Host
+boot dependency graph:
+
+```toml
+lenso = { version = "0.3.19", features = ["host-transactions"] }
+```
+
+```rust,ignore
+use lenso::host::transaction::{
+    IdempotencyClaim, IdempotencyKey, LinkedTransaction, OutboxEvent,
+};
+
+let key = IdempotencyKey::parse("orders:create", request_key)?;
+let mut transaction = LinkedTransaction::begin(&context.db).await?;
+if transaction.claim_idempotency_key(&key).await? == IdempotencyClaim::Existing {
+    transaction.rollback().await?;
+    return Ok(());
+}
+
+sqlx::query("insert into orders (id) values ($1)")
+    .bind(order_id)
+    .execute(&mut **transaction.sql())
+    .await?;
+transaction.publish_outbox(&event).await?;
+transaction.commit().await?;
+```
+
 ## Example
 
 ```rust

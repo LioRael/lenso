@@ -27,17 +27,18 @@ tokio = { workspace = true, optional = true }
 [features]
 default = []
 host = [
+    "host-transactions",
     "dep:anyhow",
     "dep:axum",
     "dep:lenso-api",
     "dep:lenso-bootstrap",
     "dep:lenso-migrate",
     "dep:lenso-worker",
-    "dep:platform-core",
     "dep:platform-http",
     "dep:platform-module",
     "dep:tokio",
 ]
+host-transactions = ["dep:platform-core"]
 
 [lints]
 workspace = true
