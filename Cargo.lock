@@ -2430,6 +2430,7 @@ dependencies = [
  "lenso-platform-http",
  "lenso-platform-module",
  "lenso-platform-testing",
+ "lenso-service",
  "serde",
  "serde_json",
  "sqlx",

@@ -17,6 +17,7 @@ path = "src/lib.rs"
 [dependencies]
 axum.workspace = true
 chrono.workspace = true
+lenso-service.workspace = true
 platform-core.workspace = true
 platform-http.workspace = true
 platform-module.workspace = true

@@ -1454,6 +1454,73 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /admin/runtime/extractions/current:
+    get:
+      tags:
+      - admin-runtime
+      operationId: admin_runtime_get_extraction_projection
+      responses:
+        '200':
+          description: Authoritative read-only Module extraction projection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtractionConsoleProjection'
+        '401':
+          description: Authentication is required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Runtime read capability is required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/runtime/extractions/{plan_id}/artifacts/{artifact_id}:
+    get:
+      tags:
+      - admin-runtime
+      operationId: admin_runtime_get_extraction_artifact
+      parameters:
+      - name: plan_id
+        in: path
+        description: Extraction plan identifier
+        required: true
+        schema:
+          type: string
+      - name: artifact_id
+        in: path
+        description: Stable extraction artifact identifier
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Persisted extraction workflow artifact
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          description: Authentication is required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Runtime read capability is required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Extraction artifact was not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/runtime/functions:
     get:
       tags:
@@ -8169,6 +8236,166 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/EventHandlerDeclaration'
+    ExtractionConsoleApprovalBoundary:
+      type: object
+      required:
+      - boundaryId
+      - phaseId
+      - action
+      - reason
+      properties:
+        action:
+          type: string
+        boundaryId:
+          type: string
+        phaseId:
+          type: string
+        reason:
+          type: string
+        requiredPins:
+          type: array
+          items:
+            type: string
+    ExtractionConsoleAuthority:
+      type: object
+      required:
+      - kind
+      - ownerId
+      - revision
+      properties:
+        kind:
+          type: string
+        ownerId:
+          type: string
+        revision:
+          type: string
+    ExtractionConsoleBlocker:
+      type: object
+      required:
+      - code
+      - subject
+      - detail
+      - artifactId
+      properties:
+        artifactId:
+          type: string
+        code:
+          type: string
+        detail:
+          type: string
+        nextActions:
+          type: array
+          items:
+            type: string
+        subject:
+          type: string
+    ExtractionConsoleEvidence:
+      type: object
+      required:
+      - kind
+      - subject
+      - digest
+      - detail
+      - artifactId
+      properties:
+        artifactId:
+          type: string
+        detail:
+          type: string
+        digest:
+          type: string
+        kind:
+          type: string
+        subject:
+          type: string
+    ExtractionConsoleProjection:
+      type: object
+      required:
+      - protocol
+      - projectionDigest
+      - state
+      - readinessSummary
+      - currentAuthority
+      - readOnly
+      - protectedWorkflow
+      properties:
+        applyActions:
+          type: array
+          items:
+            type: string
+        approvalBoundaries:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExtractionConsoleApprovalBoundary'
+        blockers:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExtractionConsoleBlocker'
+        currentAuthority:
+          $ref: '#/components/schemas/ExtractionConsoleAuthority'
+        evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExtractionConsoleEvidence'
+        planDigest:
+          type:
+          - string
+          - 'null'
+        planId:
+          type:
+          - string
+          - 'null'
+        projectionDigest:
+          type: string
+        protectedWorkflow:
+          type: string
+        protocol:
+          type: string
+        readOnly:
+          type: boolean
+        readinessSummary:
+          type: string
+        state:
+          $ref: '#/components/schemas/ExtractionConsoleState'
+        timeline:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExtractionConsoleTimelineEntry'
+    ExtractionConsoleState:
+      type: string
+      enum:
+      - planned
+      - preparing
+      - blocked
+      - quiesced
+      - provisional
+      - rolled_back
+      - committed
+      - post_commit_rollback_blocked
+    ExtractionConsoleTimelineEntry:
+      type: object
+      required:
+      - phaseId
+      - kind
+      - state
+      - artifactId
+      properties:
+        artifactId:
+          type: string
+        blockers:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExtractionConsoleBlocker'
+        evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExtractionConsoleEvidence'
+        kind:
+          type: string
+        phaseId:
+          type: string
+        state:
+          type: string
     FederatedStoryGap:
       type: object
       required:
