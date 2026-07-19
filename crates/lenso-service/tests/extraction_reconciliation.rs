@@ -59,6 +59,7 @@ fn matching_data_records_checkpointed_business_evidence() {
     let result = reconcile_extraction_data(ExtractionReconciliationInputs {
         backfill: completed_backfill(),
         source: source(),
+        destination_records: None,
         destination_relationship_counts: vec![ExtractionRelationshipCount::new(
             "ticket-comments",
             3,
@@ -85,6 +86,7 @@ fn each_mismatch_class_has_a_stable_blocking_code_and_next_action() {
     let result = reconcile_extraction_data(ExtractionReconciliationInputs {
         backfill: completed_backfill(),
         source: changed_source,
+        destination_records: None,
         destination_relationship_counts: vec![ExtractionRelationshipCount::new(
             "ticket-comments",
             3,
@@ -120,6 +122,7 @@ fn a_changed_source_high_water_mark_invalidates_prior_reconciliation() {
     let result = reconcile_extraction_data(ExtractionReconciliationInputs {
         backfill: completed_backfill(),
         source,
+        destination_records: None,
         destination_relationship_counts: vec![ExtractionRelationshipCount::new(
             "ticket-comments",
             3,

@@ -105,9 +105,10 @@ pub use extraction_reconciliation::{
     EXTRACTION_RECONCILIATION_PROTOCOL, ExtractionBusinessInvariant, ExtractionNormalizedField,
     ExtractionReconciliationEffects, ExtractionReconciliationEvidence,
     ExtractionReconciliationInputs, ExtractionReconciliationIssue,
-    ExtractionReconciliationIssueCode, ExtractionReconciliationResult,
-    ExtractionReconciliationStatus, ExtractionRelationshipCount, ExtractionSourceSnapshot,
-    reconcile_extraction_data,
+    ExtractionReconciliationIssueCode, ExtractionReconciliationReadError,
+    ExtractionReconciliationResult, ExtractionReconciliationStatus, ExtractionRelationshipCount,
+    ExtractionSourceSnapshot, extraction_reconciliation_integrity_is_valid,
+    reconcile_extraction_data, reconcile_postgres_extraction_service_data,
 };
 pub use extraction_run::{
     DESTINATION_EXPANSION_PHASE_ID, EXTRACTION_OPERATION_RECEIPT_PROTOCOL, EXTRACTION_RUN_PROTOCOL,

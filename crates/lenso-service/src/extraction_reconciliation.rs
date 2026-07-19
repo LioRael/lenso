@@ -1,10 +1,12 @@
 use crate::{
-    ExtractionBackfillRecord, ExtractionBackfillRun, ExtractionBackfillStatus,
+    ExtractionBackfillRecord, ExtractionBackfillRun, ExtractionBackfillStatus, ExtractionPlan,
     extraction_backfill_integrity_is_valid, extraction_input_digest,
+    extraction_plan_integrity_is_valid,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
 
 pub const EXTRACTION_RECONCILIATION_PROTOCOL: &str = "lenso.extraction-reconciliation.v1";
 
@@ -74,6 +76,8 @@ pub struct ExtractionSourceSnapshot {
 pub struct ExtractionReconciliationInputs {
     pub backfill: ExtractionBackfillRun,
     pub source: ExtractionSourceSnapshot,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub destination_records: Option<Vec<ExtractionBackfillRecord>>,
     #[serde(default)]
     pub destination_relationship_counts: Vec<ExtractionRelationshipCount>,
     #[serde(default)]
@@ -81,6 +85,19 @@ pub struct ExtractionReconciliationInputs {
     #[serde(default)]
     pub business_invariants: Vec<ExtractionBusinessInvariant>,
 }
+
+#[derive(Debug)]
+pub struct ExtractionReconciliationReadError {
+    pub message: String,
+}
+
+impl fmt::Display for ExtractionReconciliationReadError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for ExtractionReconciliationReadError {}
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
@@ -178,6 +195,10 @@ pub fn reconcile_extraction_data(
         .sort_by(|left, right| left.invariant_id.cmp(&right.invariant_id));
 
     let backfill = &inputs.backfill;
+    let destination_records = inputs
+        .destination_records
+        .as_ref()
+        .unwrap_or(&backfill.destination_records);
     let checkpoint = backfill
         .progress
         .destination_checkpoint
@@ -217,7 +238,7 @@ pub fn reconcile_extraction_data(
         }
     }
     let source_count = u64::try_from(inputs.source.records.len()).unwrap_or(u64::MAX);
-    let destination_count = u64::try_from(backfill.destination_records.len()).unwrap_or(u64::MAX);
+    let destination_count = u64::try_from(destination_records.len()).unwrap_or(u64::MAX);
     if source_count != destination_count {
         push_issue(
             &mut issues,
@@ -228,7 +249,7 @@ pub fn reconcile_extraction_data(
         );
     }
     let source_ids = stable_ids(&inputs.source.records);
-    let destination_ids = stable_ids(&backfill.destination_records);
+    let destination_ids = stable_ids(destination_records);
     if source_ids != destination_ids {
         push_issue(
             &mut issues,
@@ -239,8 +260,7 @@ pub fn reconcile_extraction_data(
         );
     }
     let normalized_source = normalize_records(&inputs.source.records, &inputs.normalized_fields);
-    let normalized_destination =
-        normalize_records(&backfill.destination_records, &inputs.normalized_fields);
+    let normalized_destination = normalize_records(destination_records, &inputs.normalized_fields);
     let source_digest = digest(&normalized_source);
     let destination_digest = digest(&normalized_destination);
     evidence.push(ExtractionReconciliationEvidence {
@@ -333,6 +353,102 @@ pub fn reconcile_extraction_data(
     result
 }
 
+/// Reads fresh plan-scoped source and candidate snapshots from PostgreSQL and
+/// reconciles those durable rows instead of trusting the Backfill receipt as
+/// the candidate state.
+pub async fn reconcile_postgres_extraction_service_data(
+    source_pool: &sqlx::PgPool,
+    destination_pool: &sqlx::PgPool,
+    plan: &ExtractionPlan,
+    backfill: ExtractionBackfillRun,
+    normalized_fields: Vec<ExtractionNormalizedField>,
+    business_invariants: Vec<ExtractionBusinessInvariant>,
+) -> Result<ExtractionReconciliationResult, ExtractionReconciliationReadError> {
+    if !extraction_plan_integrity_is_valid(plan)
+        || !extraction_backfill_integrity_is_valid(&backfill)
+        || backfill.scope.plan_id != plan.plan_id
+        || backfill.scope.plan_digest != plan.plan_digest
+        || plan.data_mapping.tables.len() != 1
+    {
+        return Err(read_error(
+            "PostgreSQL reconciliation requires one integrity-valid plan-scoped table mapping.",
+        ));
+    }
+    let mapping = &plan.data_mapping.tables[0];
+    let cursor = mapping
+        .cursors
+        .iter()
+        .find(|cursor| cursor.trustworthy)
+        .ok_or_else(|| read_error("PostgreSQL reconciliation requires a trustworthy cursor."))?;
+    let source_table = quoted_relation(&mapping.source_table)?;
+    let destination_table = quoted_relation(&mapping.destination_table)?;
+    let cursor_column = quoted_identifier(&cursor.column)?;
+    let cursor_name = cursor.column.as_str();
+    let high_water_cursor = format!(
+        "(jsonb_populate_record(null::{source_table}, jsonb_build_object('{cursor_name}', $1::text))).{cursor_column}"
+    );
+    let source_rows = sqlx::query_as::<_, (String, serde_json::Value)>(sqlx::AssertSqlSafe(
+        format!(
+            "select {cursor_column}::text, to_jsonb(source_row) from {source_table} source_row where {cursor_column} <= {high_water_cursor} order by {cursor_column}"
+        ),
+    ))
+    .bind(&backfill.progress.source_high_water_mark)
+    .fetch_all(source_pool)
+    .await
+    .map_err(|source| read_error(format!("Source snapshot failed: {source}")))?;
+    let destination_rows =
+        sqlx::query_as::<_, (String, serde_json::Value)>(sqlx::AssertSqlSafe(format!(
+            "select {cursor_column}::text, to_jsonb(destination_row) from {destination_table} destination_row order by {cursor_column}"
+        )))
+        .fetch_all(destination_pool)
+        .await
+        .map_err(|source| read_error(format!("Candidate snapshot failed: {source}")))?;
+    let records = |rows: Vec<(String, serde_json::Value)>| {
+        rows.into_iter()
+            .map(|(stable_id, value)| ExtractionBackfillRecord::new(stable_id, value))
+            .collect::<Vec<_>>()
+    };
+    Ok(reconcile_extraction_data(ExtractionReconciliationInputs {
+        source: ExtractionSourceSnapshot {
+            source_high_water_mark: backfill.progress.source_high_water_mark.clone(),
+            records: records(source_rows),
+            relationship_counts: Vec::new(),
+        },
+        destination_records: Some(records(destination_rows)),
+        backfill,
+        destination_relationship_counts: Vec::new(),
+        normalized_fields,
+        business_invariants,
+    }))
+}
+
+fn quoted_relation(value: &str) -> Result<String, ExtractionReconciliationReadError> {
+    value
+        .split('.')
+        .map(quoted_identifier)
+        .collect::<Result<Vec<_>, _>>()
+        .map(|parts| parts.join("."))
+}
+
+fn quoted_identifier(value: &str) -> Result<String, ExtractionReconciliationReadError> {
+    if value.is_empty()
+        || !value
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || character == '_')
+    {
+        return Err(read_error(format!(
+            "Unsafe PostgreSQL identifier `{value}` in Extraction Plan."
+        )));
+    }
+    Ok(format!("\"{value}\""))
+}
+
+fn read_error(message: impl Into<String>) -> ExtractionReconciliationReadError {
+    ExtractionReconciliationReadError {
+        message: message.into(),
+    }
+}
+
 fn normalize_records(
     records: &[ExtractionBackfillRecord],
     normalized_fields: &[ExtractionNormalizedField],
@@ -399,4 +515,12 @@ fn result_without_digest(
     let mut value = result.clone();
     value.reconciliation_digest.clear();
     value
+}
+
+#[must_use]
+pub fn extraction_reconciliation_integrity_is_valid(
+    result: &ExtractionReconciliationResult,
+) -> bool {
+    result.protocol == EXTRACTION_RECONCILIATION_PROTOCOL
+        && result.reconciliation_digest == digest(&result_without_digest(result))
 }
