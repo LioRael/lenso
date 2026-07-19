@@ -302,6 +302,13 @@ queues, Outbox delivery, and Story evidence remain Host-owned:
 
 The service kit should stay stable and small. It exists to remove boilerplate, not to own business behavior.
 
+Host-owned linked modules that combine a business write with an emitted event
+use `lenso::host::transaction::LinkedTransaction`. It exposes the caller
+transaction for app-owned SQL and keeps the scoped idempotency claim plus
+Outbox publication atomic with that SQL. Modules never import
+`lenso-platform-core` or write `platform.outbox` and
+`platform.idempotency_claims` directly.
+
 ## Runtime
 
 The runtime is embedded beside the modular monolith. It manages functions, triggers, queues, flows, retry policies, function run persistence, and execution metadata. It does not own business logic.

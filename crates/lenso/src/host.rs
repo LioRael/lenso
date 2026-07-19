@@ -6,6 +6,8 @@ pub use crate::ModuleManifest;
 pub use lenso_bootstrap::{HostComposition, HostLinkedModule, HostWiring};
 pub use platform_core::Migration;
 
+pub mod transaction;
+
 /// First-party linked modules that a host can opt into explicitly.
 pub mod builtins {
     pub use lenso_bootstrap::{
@@ -183,5 +185,16 @@ mod tests {
     #[test]
     fn host_builder_exposes_embedded_worker_boot() {
         let _future = HostBuilder::new().run_api_with_embedded_worker_from_env();
+    }
+
+    #[test]
+    fn public_facade_exposes_atomic_linked_transactions() {
+        use super::transaction::{IdempotencyClaim, IdempotencyKey, LinkedTransaction};
+
+        let key = IdempotencyKey::parse("example:create", "request-1").unwrap();
+        assert_eq!(key.scope(), "example:create");
+        assert_eq!(key.value(), "request-1");
+        let _claim = IdempotencyClaim::Acquired;
+        let _begin = LinkedTransaction::begin;
     }
 }

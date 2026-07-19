@@ -158,3 +158,36 @@ async fn platform_migrations_create_remote_http_proxy_calls_table() {
 
     db.cleanup().await;
 }
+
+#[tokio::test]
+async fn platform_migrations_create_idempotency_claims_table() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+
+    apply_migrations(&db.pool, platform_core::PLATFORM_MIGRATIONS)
+        .await
+        .expect("platform migrations should apply");
+
+    let primary_key_columns: Vec<String> = sqlx::query_scalar(
+        r#"
+        select a.attname
+        from pg_index i
+        join pg_class table_class on table_class.oid = i.indrelid
+        join pg_namespace namespace on namespace.oid = table_class.relnamespace
+        join pg_attribute a
+            on a.attrelid = table_class.oid
+            and a.attnum = any(i.indkey)
+        where namespace.nspname = 'platform'
+            and table_class.relname = 'idempotency_claims'
+            and i.indisprimary
+        order by array_position(i.indkey::int[], a.attnum::int)
+        "#,
+    )
+    .fetch_all(&db.pool)
+    .await
+    .expect("idempotency primary key should query");
+
+    assert_eq!(primary_key_columns, ["scope", "key"]);
+    db.cleanup().await;
+}

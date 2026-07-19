@@ -32,3 +32,19 @@ pub async fn ping(pool: &DbPool) -> AppResult<()> {
             .retryable()
         })
 }
+
+pub async fn begin_transaction(pool: &DbPool) -> AppResult<DbTransaction<'_>> {
+    pool.begin().await.map_err(map_transaction_error)
+}
+
+pub async fn commit_transaction(transaction: DbTransaction<'_>) -> AppResult<()> {
+    transaction.commit().await.map_err(map_transaction_error)
+}
+
+pub async fn rollback_transaction(transaction: DbTransaction<'_>) -> AppResult<()> {
+    transaction.rollback().await.map_err(map_transaction_error)
+}
+
+fn map_transaction_error(source: sqlx::Error) -> AppError {
+    AppError::new(ErrorCode::Internal, "Database transaction failed").with_source(source)
+}

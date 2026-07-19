@@ -44,6 +44,10 @@ pub const PLATFORM_MIGRATIONS: &[Migration] = &[
         name: "platform/0009_add_story_query_indexes",
         sql: include_str!("../migrations/0009_add_story_query_indexes.sql"),
     },
+    Migration {
+        name: "platform/0010_create_idempotency_claims",
+        sql: include_str!("../migrations/0010_create_idempotency_claims.sql"),
+    },
 ];
 
 pub async fn apply_migrations(pool: &PgPool, migrations: &[Migration]) -> AppResult<()> {
