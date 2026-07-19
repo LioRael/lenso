@@ -195,6 +195,46 @@ Unrelated repository files are outside the managed file set and remain
 untouched. The generated schema, support-ticket scaffold JSON, and exact patch
 are committed under `contracts/extraction/` and freshness-checked.
 
+## Extraction Run and destination expansion
+
+`lenso.extraction-run.v1` is the durable public state for executing the
+Extraction Plan. The initial mutating slice supports only phase
+`03-destination-expansion`: it embeds the exact plan, expected linked authority,
+candidate Service and isolated Store identities, candidate Migration and API
+Workload identities, ordered operations, receipts, evidence, errors, next
+actions, and an integrity digest for every revision. The Run identity stays
+stable while the revision digest changes as receipts are appended.
+
+The Extraction Plan now binds each migration mapping to one authoritative
+source reference and SHA-256 content digest. Run creation requires those exact
+SQL artifacts plus a fully applied identity-preserving scaffold. Postgres is
+the only supported Store engine in this slice. SQL validation fails closed to a
+small additive vocabulary such as schema, table, index, type, extension,
+comment, column-add, and constraint-add statements. Drop, truncate, data writes,
+rename, column rewrite, source contraction, and cleanup are rejected before any
+Workload behavior is invoked.
+
+`start_destination_expansion` creates an apply Run without effects;
+`dry_run_destination_expansion` returns the same expected state and ordered
+operations with no effects. `advance_destination_expansion` advances at most
+one operation so the caller can durably persist every revision. It calls
+`ExtractionExpansionWorkload::inspect_receipt` before `execute`. Implementations
+persist the content-addressed receipt beside the candidate Store effect; if a
+process stops after committing the effect but before saving the Run, the next
+advance recovers that receipt instead of repeating the mutation. Every receipt
+is bound to the run, plan, expected state, operation, Workload, candidate
+Service, destination Store, and unchanged linked authority.
+
+The ordered phase creates or validates the isolated candidate Store, applies
+each expand-first migration, checks the Migration Workload, and checks candidate
+API health. CLI-owned orchestration supplies Postgres provisioning and process
+behavior through the public Workload boundary; the contract layer never receives
+source mutation credentials. Successful expansion still does not copy Service
+Data, mutate the linked implementation or source Store, change authority, or
+perform cleanup. The generated schema plus completed support-ticket Run JSON and
+human projection are committed under `contracts/extraction/` and
+freshness-checked.
+
 ## Durable Workflow version evolution
 
 Migration `0014_pin_workflow_definition_artifacts` fails closed when a Store

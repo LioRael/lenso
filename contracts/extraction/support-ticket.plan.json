@@ -21,7 +21,9 @@
       {
         "destinationStore": "support-ticket-service-store",
         "ownerModule": "support-ticket",
-        "sourceMigration": "0001_create_support_tickets"
+        "sourceDigest": "sha256:da4b3d6540ed81176938a3e19d6f591a33810babd4ade7ba91ed27c4750373ac",
+        "sourceMigration": "0001_create_support_tickets",
+        "sourceReference": "modules/support-ticket/migrations/0001_tickets.sql"
       }
     ],
     "storeEngine": "postgres",
@@ -434,7 +436,7 @@
       "subject": "lenso.extraction-readiness.v2"
     },
     {
-      "digest": "sha256:0f08df1dd5d0ada34b4c657f20ec7dc21042d25f39a7da6c513a261dd9c9c1c0",
+      "digest": "sha256:f97944a42e954a87f9050495e10f26e096602a0e61d87955fe0fc53ff4a0c09a",
       "kind": "data_mapping",
       "subject": "support-ticket"
     },
@@ -442,6 +444,11 @@
       "digest": "sha256:b1eec37bc46a740e3dc1b87decc2458e69aa8aed9e96de74af35de02ee487395",
       "kind": "authority_revision",
       "subject": "support-host"
+    },
+    {
+      "digest": "sha256:da4b3d6540ed81176938a3e19d6f591a33810babd4ade7ba91ed27c4750373ac",
+      "kind": "evidence",
+      "subject": "modules/support-ticket/migrations/0001_tickets.sql"
     },
     {
       "digest": "sha256:cc03f5c9754e45d3f41b499ee85b052e5a2002b1725baef32f22d26dd1c75cc9",
@@ -454,8 +461,8 @@
       "subject": "readiness-evidence:postgres-observation"
     }
   ],
-  "planDigest": "sha256:11e350d80ba2e3e1c848d271b618a7e15a762bb703088901b5f854dfb3851459",
-  "planId": "extraction-plan:sha256:11e350d80ba2e3e1c848d271b618a7e15a762bb703088901b5f854dfb3851459",
+  "planDigest": "sha256:60204393c09d750db912068f8fed44a8b959064b84de83b5e7fb6e130905fc0b",
+  "planId": "extraction-plan:sha256:60204393c09d750db912068f8fed44a8b959064b84de83b5e7fb6e130905fc0b",
   "proposedService": {
     "contractVersions": [
       {

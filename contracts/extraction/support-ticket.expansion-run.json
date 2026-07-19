@@ -1,0 +1,894 @@
+{
+  "currentPhase": {
+    "completedOperationIds": [
+      "03-destination-expansion/01-create-isolated-store",
+      "03-destination-expansion/02-apply-expand-migration-0001_create_support_tickets",
+      "03-destination-expansion/03-verify-migration-workload",
+      "03-destination-expansion/04-verify-candidate-health"
+    ],
+    "kind": "destination_expansion",
+    "phaseId": "03-destination-expansion",
+    "status": "succeeded"
+  },
+  "effects": {
+    "appliesDestinationSchema": true,
+    "changesAuthority": false,
+    "copiesServiceData": false,
+    "createsDestinationStore": true,
+    "invokesCandidateWorkloadBehavior": true,
+    "mutatesLinkedImplementation": false,
+    "mutatesSourceStore": false,
+    "performsDestructiveCleanup": false
+  },
+  "errors": [],
+  "evidence": [
+    {
+      "detail": "candidate Store is isolated and owned only by support-ticket-service",
+      "digest": "sha256:57dec610ccbbe571dc0d85a7e951e84551c5bd171c414ca54754690c7ec2df75",
+      "kind": "store_isolation",
+      "subject": "03-destination-expansion/01-create-isolated-store"
+    },
+    {
+      "detail": "expand-first support-ticket schema migration applied idempotently",
+      "digest": "sha256:da4a89c5eecc10d5adb3488036c6f6e72803d04942ffa9b5f5cf0a952b9e8495",
+      "kind": "migration_applied",
+      "subject": "03-destination-expansion/02-apply-expand-migration-0001_create_support_tickets"
+    },
+    {
+      "detail": "public Migration Workload reports the exact plan-owned migration set",
+      "digest": "sha256:41369fd9d143c98ec49a2b9642b86d60bfa1de8c83fdc3860c2ca20cb3fcc6ba",
+      "kind": "migration_workload_health",
+      "subject": "03-destination-expansion/03-verify-migration-workload"
+    },
+    {
+      "detail": "public API Workload health reports ready without candidate authority",
+      "digest": "sha256:0fb831e61a8134be00350ccc6ada46affc03bb486a4239c80cd7b49f875ac706",
+      "kind": "candidate_health",
+      "subject": "03-destination-expansion/04-verify-candidate-health"
+    }
+  ],
+  "expectedState": {
+    "apiWorkloadId": "support-ticket-service-api",
+    "candidateServiceId": "support-ticket-service",
+    "destinationStoreEngine": "postgres",
+    "destinationStoreId": "support-ticket-service-store",
+    "destinationStoreIsolated": true,
+    "linkedAuthorityRemainsAuthoritative": true,
+    "migrationWorkloadId": "support-ticket-service-migration",
+    "orderedOperationsDigest": "sha256:f727339f9a67c6dfd7d723e36ea7e9d58974a5b463b0cc18ab0cd6dc45595157",
+    "phaseId": "03-destination-expansion",
+    "planDigest": "sha256:60204393c09d750db912068f8fed44a8b959064b84de83b5e7fb6e130905fc0b",
+    "planId": "extraction-plan:sha256:60204393c09d750db912068f8fed44a8b959064b84de83b5e7fb6e130905fc0b",
+    "scaffoldDigest": "sha256:b9e76ea7a84b2f5bc28cb3a58a7b949d4db839aa8f58d50e57543231a023d711",
+    "scaffoldId": "extraction-scaffold:sha256:b9e76ea7a84b2f5bc28cb3a58a7b949d4db839aa8f58d50e57543231a023d711",
+    "sourceAuthority": {
+      "kind": "linked_host",
+      "ownerId": "support-host",
+      "revision": "support-authority-r7"
+    },
+    "sourceStoreRemainsUnchanged": true
+  },
+  "expectedStateDigest": "sha256:5407b7a78bc6bed7f33a8bcdacfc00308461ee5444dadffe33adacbeef560920",
+  "mode": "apply",
+  "nextActions": [
+    "Persist the successful destination expansion evidence before starting backfill."
+  ],
+  "orderedOperations": [
+    {
+      "candidateServiceId": "support-ticket-service",
+      "destinationStoreId": "support-ticket-service-store",
+      "kind": "create_isolated_store",
+      "mutating": true,
+      "operationDigest": "sha256:ca5eff26db4602f02dae7d8b90e3ca7c9d1db266d95f8187f5dfa7e5b047a1f6",
+      "operationId": "03-destination-expansion/01-create-isolated-store",
+      "order": 1,
+      "workloadId": "support-ticket-service-migration"
+    },
+    {
+      "candidateServiceId": "support-ticket-service",
+      "destinationStoreId": "support-ticket-service-store",
+      "kind": "apply_expand_migration",
+      "migration": {
+        "migrationId": "0001_create_support_tickets",
+        "sourceDigest": "sha256:da4b3d6540ed81176938a3e19d6f591a33810babd4ade7ba91ed27c4750373ac",
+        "sourceReference": "modules/support-ticket/migrations/0001_tickets.sql",
+        "sql": "create schema if not exists support;\n\ncreate table if not exists support.tickets (\n    id text primary key,\n    title text not null,\n    status text not null,\n    created_at timestamptz not null\n);\n"
+      },
+      "mutating": true,
+      "operationDigest": "sha256:ceb78359a5de7bac6505acd211728efd6cda63bf1740256799b5859f6716d1d0",
+      "operationId": "03-destination-expansion/02-apply-expand-migration-0001_create_support_tickets",
+      "order": 2,
+      "workloadId": "support-ticket-service-migration"
+    },
+    {
+      "candidateServiceId": "support-ticket-service",
+      "destinationStoreId": "support-ticket-service-store",
+      "kind": "verify_migration_workload",
+      "mutating": false,
+      "operationDigest": "sha256:6bb15a81c0ee21896e124096550cffaa9201f37a8a025fe14d474b3dd4401d1e",
+      "operationId": "03-destination-expansion/03-verify-migration-workload",
+      "order": 3,
+      "workloadId": "support-ticket-service-migration"
+    },
+    {
+      "candidateServiceId": "support-ticket-service",
+      "destinationStoreId": "support-ticket-service-store",
+      "kind": "verify_candidate_health",
+      "mutating": false,
+      "operationDigest": "sha256:ab84a696828e34de2d68ad249b53d28aac965be186cfe14e0a3c1a3c280e3593",
+      "operationId": "03-destination-expansion/04-verify-candidate-health",
+      "order": 4,
+      "workloadId": "support-ticket-service-api"
+    }
+  ],
+  "plan": {
+    "approvalBoundaries": [
+      {
+        "action": "commit_authority_to_autonomous_service",
+        "boundaryId": "commit-extraction-authority",
+        "phaseId": "09-rollback-or-commit",
+        "reason": "Final ownership transfer and write reopening are irreversible without a separately reviewed reverse-migration plan.",
+        "requiredPins": [
+          "readiness_evidence",
+          "contract_version",
+          "system_graph",
+          "data_mapping",
+          "authority_revision",
+          "evidence"
+        ]
+      }
+    ],
+    "dataMapping": {
+      "destinationStore": "support-ticket-service-store",
+      "migrations": [
+        {
+          "destinationStore": "support-ticket-service-store",
+          "ownerModule": "support-ticket",
+          "sourceDigest": "sha256:da4b3d6540ed81176938a3e19d6f591a33810babd4ade7ba91ed27c4750373ac",
+          "sourceMigration": "0001_create_support_tickets",
+          "sourceReference": "modules/support-ticket/migrations/0001_tickets.sql"
+        }
+      ],
+      "storeEngine": "postgres",
+      "tables": [
+        {
+          "copyMode": "online_checkpointed",
+          "cursors": [
+            {
+              "column": "id",
+              "evidenceReferences": [
+                "postgres:max(support.tickets.id)"
+              ],
+              "highWaterMark": "25000000",
+              "trustworthy": true
+            }
+          ],
+          "destinationStore": "support-ticket-service-store",
+          "destinationTable": "support.tickets",
+          "evidenceSources": [
+            {
+              "kind": "static_declaration"
+            },
+            {
+              "kind": "live_store_observation",
+              "observationId": "support-store-2026-07-19",
+              "readOnly": true,
+              "store": "host-postgres"
+            }
+          ],
+          "ownerModule": "support-ticket",
+          "sourceTable": "support.tickets"
+        }
+      ]
+    },
+    "diff": {
+      "entries": [
+        {
+          "after": "autonomous_service:support-ticket-service",
+          "before": "linked_host:support-host@support-authority-r7",
+          "subject": "authority.module.support-ticket"
+        },
+        {
+          "after": "autonomous_service:support-ticket-service",
+          "before": "host:support-host",
+          "subject": "contractProducer.support-ticket-http.v1@v1"
+        },
+        {
+          "after": "support-grpc.v1@v1",
+          "subject": "generatedClient.support-ticket-service-support-grpc-v1-client"
+        },
+        {
+          "after": "support-grpc.v1@v1:support-sla-service",
+          "subject": "serviceReference.support-ticket-service-support-grpc-v1-v1-reference"
+        },
+        {
+          "after": "support-ticket-http.v1@v1:support-ticket-service",
+          "subject": "serviceReference.support-ticket-service-support-ticket-http-v1-v1-reference"
+        },
+        {
+          "after": "postgres:isolated",
+          "subject": "store.support-ticket-service-store"
+        },
+        {
+          "after": "module=support-ticket",
+          "subject": "system.autonomousServices.support-ticket-service"
+        },
+        {
+          "before": "support-host",
+          "subject": "system.host.modules.support-ticket"
+        },
+        {
+          "after": "support-ticket-service:api",
+          "subject": "workload.support-ticket-service-api"
+        },
+        {
+          "after": "support-ticket-service:migration",
+          "subject": "workload.support-ticket-service-migration"
+        },
+        {
+          "after": "support-ticket-service:worker",
+          "subject": "workload.support-ticket-service-worker"
+        }
+      ]
+    },
+    "effects": {
+      "changesAuthority": false,
+      "copiesData": false,
+      "startsWorkloads": false,
+      "writesRepositoryFiles": false
+    },
+    "expectedAuthority": {
+      "kind": "linked_host",
+      "ownerId": "support-host",
+      "revision": "support-authority-r7"
+    },
+    "generatorVersion": "lenso.extraction-plan-generator.v1",
+    "phases": [
+      {
+        "expectedEvidence": [
+          "Fresh input digests and a content-addressed Extraction Plan."
+        ],
+        "intendedMutations": [],
+        "issueCodes": [
+          "readiness_evidence_changed",
+          "module_declaration_changed",
+          "contract_version_changed",
+          "system_graph_changed",
+          "analyzer_version_changed",
+          "data_mapping_changed",
+          "authority_revision_changed",
+          "input_evidence_changed"
+        ],
+        "kind": "analysis",
+        "nextActions": [
+          "Review the exact plan, diff, risks, and Approval Boundary."
+        ],
+        "order": 1,
+        "phaseId": "01-analysis",
+        "prerequisitePhaseIds": [],
+        "prerequisites": [
+          "The target Module is linked, ready, and owned by the pinned Host authority."
+        ],
+        "rollbackConditions": [
+          "No mutation occurs; regenerate the plan if any pinned input changes."
+        ]
+      },
+      {
+        "expectedEvidence": [
+          "A deterministic patch, file digests, compile evidence, and identity-preservation evidence."
+        ],
+        "intendedMutations": [
+          "Write the candidate API, Worker, and Migration Workload scaffold plus generated bindings and clients."
+        ],
+        "issueCodes": [
+          "scaffold_conflict"
+        ],
+        "kind": "scaffold",
+        "nextActions": [
+          "Apply the scaffold without changing linked authority."
+        ],
+        "order": 2,
+        "phaseId": "02-scaffold",
+        "prerequisitePhaseIds": [
+          "01-analysis"
+        ],
+        "prerequisites": [
+          "The exact plan is fresh and the deterministic scaffold patch has been reviewed."
+        ],
+        "rollbackConditions": [
+          "Remove only plan-owned generated files; refuse changed or unrecognized files."
+        ]
+      },
+      {
+        "expectedEvidence": [
+          "Idempotent migration receipts and candidate health evidence."
+        ],
+        "intendedMutations": [
+          "Create the isolated Service Store and apply expand-first destination schema changes."
+        ],
+        "issueCodes": [
+          "destination_expansion_failed"
+        ],
+        "kind": "destination_expansion",
+        "nextActions": [
+          "Verify destination schema compatibility before copying Service Data."
+        ],
+        "order": 3,
+        "phaseId": "03-destination-expansion",
+        "prerequisitePhaseIds": [
+          "02-scaffold"
+        ],
+        "prerequisites": [
+          "The candidate Migration Workload is valid and the destination Store is isolated."
+        ],
+        "rollbackConditions": [
+          "Discard the candidate Store; never contract or delete source schema."
+        ]
+      },
+      {
+        "expectedEvidence": [
+          "Durable source high-water marks, destination checkpoints, counts, and batch digests."
+        ],
+        "intendedMutations": [
+          "Copy ordered idempotent batches through pinned trustworthy cursors and durable checkpoints."
+        ],
+        "issueCodes": [
+          "backfill_checkpoint_stale"
+        ],
+        "kind": "backfill",
+        "nextActions": [
+          "Resume only from validated checkpoints, then reconcile the copied state."
+        ],
+        "order": 4,
+        "phaseId": "04-backfill",
+        "prerequisitePhaseIds": [
+          "03-destination-expansion"
+        ],
+        "prerequisites": [
+          "Destination expansion succeeded and every online table has a pinned trustworthy cursor."
+        ],
+        "rollbackConditions": [
+          "Stop copying and retain the linked implementation as the sole authoritative writer."
+        ]
+      },
+      {
+        "expectedEvidence": [
+          "Matching identities, counts, field digests, relationships, and declared business invariants."
+        ],
+        "intendedMutations": [],
+        "issueCodes": [
+          "reconciliation_mismatch"
+        ],
+        "kind": "reconciliation",
+        "nextActions": [
+          "Record reconciliation evidence bound to the exact plan and checkpoint."
+        ],
+        "order": 5,
+        "phaseId": "05-reconciliation",
+        "prerequisitePhaseIds": [
+          "04-backfill"
+        ],
+        "prerequisites": [
+          "Backfill checkpoint and source high-water mark are stable."
+        ],
+        "rollbackConditions": [
+          "Keep linked authority and remediate or repeat backfill when reconciliation differs."
+        ]
+      },
+      {
+        "expectedEvidence": [
+          "Source quiescence, drained-work evidence, final checkpoint, and final reconciliation."
+        ],
+        "intendedMutations": [
+          "Pause new Module mutations, drain requests, Inbox, Outbox, schedules, and Workflows, then copy the final delta."
+        ],
+        "issueCodes": [
+          "drain_incomplete"
+        ],
+        "kind": "drain",
+        "nextActions": [
+          "Proceed only while external authoritative mutations remain paused."
+        ],
+        "order": 6,
+        "phaseId": "06-drain",
+        "prerequisitePhaseIds": [
+          "05-reconciliation"
+        ],
+        "prerequisites": [
+          "Candidate readiness and pre-pause reconciliation passed."
+        ],
+        "rollbackConditions": [
+          "Reopen linked writes before provisional routing if drain or final reconciliation fails."
+        ]
+      },
+      {
+        "expectedEvidence": [
+          "Candidate health, routing, compatibility, and provisional authority evidence."
+        ],
+        "intendedMutations": [
+          "Route declared verification traffic to candidate Service `support-ticket-service` without admitting authoritative mutations."
+        ],
+        "issueCodes": [
+          "provisional_cutover_failed"
+        ],
+        "kind": "provisional_cutover",
+        "nextActions": [
+          "Run behavior, Contract, policy, health, and Runtime Story verification."
+        ],
+        "order": 7,
+        "phaseId": "07-provisional-cutover",
+        "prerequisitePhaseIds": [
+          "06-drain"
+        ],
+        "prerequisites": [
+          "The source is quiescent, work is drained, and the final delta reconciles."
+        ],
+        "rollbackConditions": [
+          "Restore linked routing and authority without reverse data movement."
+        ]
+      },
+      {
+        "expectedEvidence": [
+          "Compatibility, policy, business scenario, durable state, Event, Workflow, and Runtime Story comparison evidence."
+        ],
+        "intendedMutations": [],
+        "issueCodes": [
+          "verification_failed"
+        ],
+        "kind": "verification",
+        "nextActions": [
+          "Choose rollback on failure or request exact final commit approval on success."
+        ],
+        "order": 8,
+        "phaseId": "08-verification",
+        "prerequisitePhaseIds": [
+          "07-provisional-cutover"
+        ],
+        "prerequisites": [
+          "Provisional routing is active and all external authoritative mutations remain paused."
+        ],
+        "rollbackConditions": [
+          "Rollback provisional routing on any mismatch or stale input."
+        ]
+      },
+      {
+        "approvalBoundary": {
+          "action": "commit_authority_to_autonomous_service",
+          "boundaryId": "commit-extraction-authority",
+          "phaseId": "09-rollback-or-commit",
+          "reason": "Final ownership transfer and write reopening are irreversible without a separately reviewed reverse-migration plan.",
+          "requiredPins": [
+            "readiness_evidence",
+            "contract_version",
+            "system_graph",
+            "data_mapping",
+            "authority_revision",
+            "evidence"
+          ]
+        },
+        "expectedEvidence": [
+          "Rollback evidence, or verified approval plus one-owner authority and topology evidence."
+        ],
+        "intendedMutations": [
+          "Either restore linked routing and writes, or compare-and-set authority and topology to the candidate before reopening writes."
+        ],
+        "issueCodes": [
+          "rollback_required",
+          "final_approval_required"
+        ],
+        "kind": "rollback_or_commit",
+        "nextActions": [
+          "Stop at the human Approval Boundary before final ownership transfer."
+        ],
+        "order": 9,
+        "phaseId": "09-rollback-or-commit",
+        "prerequisitePhaseIds": [
+          "08-verification"
+        ],
+        "prerequisites": [
+          "Verification is terminal, the plan is fresh, and the authority revision still matches."
+        ],
+        "rollbackConditions": [
+          "Before commit, restore linked authority; after new Autonomous writes, block fast rollback without a reviewed reverse plan."
+        ]
+      },
+      {
+        "expectedEvidence": [
+          "Terminal plan, phase receipts, evidence, authority, topology, rollback constraints, and next actions."
+        ],
+        "intendedMutations": [],
+        "issueCodes": [
+          "terminal_evidence_incomplete"
+        ],
+        "kind": "terminal_evidence",
+        "nextActions": [
+          "Publish the versioned terminal extraction evidence for operators and automation."
+        ],
+        "order": 10,
+        "phaseId": "10-terminal-evidence",
+        "prerequisitePhaseIds": [
+          "09-rollback-or-commit"
+        ],
+        "prerequisites": [
+          "Rollback or commit reached one unambiguous authoritative owner."
+        ],
+        "rollbackConditions": [
+          "Do not erase source data, linked recovery state, or audit evidence."
+        ]
+      }
+    ],
+    "pinnedInputs": [
+      {
+        "digest": "sha256:725b606441988467f3d8dc916f0893618393c972b2fd9bf43417e481e8f17bf2",
+        "kind": "readiness_evidence",
+        "subject": "support-ticket"
+      },
+      {
+        "digest": "sha256:b61cc12aeecb5d05006367d52c3d86ff7231c8e7c2e2ce32ef54a2a5baa9d8f6",
+        "kind": "module_declaration",
+        "subject": "support-ticket"
+      },
+      {
+        "digest": "sha256:56d78af62735eec6e732f640fc2b64ab033c63482704e09d52380118618bd285",
+        "kind": "contract_version",
+        "subject": "support-grpc.v1@v1"
+      },
+      {
+        "digest": "sha256:82124e5608b37c0e9859e536e3a711a39d2c635cb4365c173428193337db400b",
+        "kind": "contract_version",
+        "subject": "support-ticket-http.v1@v1"
+      },
+      {
+        "digest": "sha256:fdf2cd822641125c822ab3460c4ee8387cf957b628c89d36fcd717c4104e5c01",
+        "kind": "contract_version",
+        "subject": "support.audit-recorded.v1@v1"
+      },
+      {
+        "digest": "sha256:cc9b5c35b7dbcbc621cb48862777720c97b809034df16d532796e16c5cb6a13b",
+        "kind": "contract_version",
+        "subject": "support.sla-updated.v1@v1"
+      },
+      {
+        "digest": "sha256:0d30b8993c6a6673af55fa646c907ab5dacd7ac5a714f11242ecfd7bf766ae47",
+        "kind": "system_graph",
+        "subject": "support-system"
+      },
+      {
+        "digest": "sha256:1cca1972b1bbf1e7b431d06912b22dad59e503d09134caeb38d7e72883752cf6",
+        "kind": "analyzer_version",
+        "subject": "lenso.extraction-readiness.v2"
+      },
+      {
+        "digest": "sha256:f97944a42e954a87f9050495e10f26e096602a0e61d87955fe0fc53ff4a0c09a",
+        "kind": "data_mapping",
+        "subject": "support-ticket"
+      },
+      {
+        "digest": "sha256:b1eec37bc46a740e3dc1b87decc2458e69aa8aed9e96de74af35de02ee487395",
+        "kind": "authority_revision",
+        "subject": "support-host"
+      },
+      {
+        "digest": "sha256:da4b3d6540ed81176938a3e19d6f591a33810babd4ade7ba91ed27c4750373ac",
+        "kind": "evidence",
+        "subject": "modules/support-ticket/migrations/0001_tickets.sql"
+      },
+      {
+        "digest": "sha256:cc03f5c9754e45d3f41b499ee85b052e5a2002b1725baef32f22d26dd1c75cc9",
+        "kind": "evidence",
+        "subject": "readiness-evidence:boundary-and-contracts"
+      },
+      {
+        "digest": "sha256:1f3b2d0069c4e349305a4f8b97b727908bf082a754fc1f35773e58e01aeaa14a",
+        "kind": "evidence",
+        "subject": "readiness-evidence:postgres-observation"
+      }
+    ],
+    "planDigest": "sha256:60204393c09d750db912068f8fed44a8b959064b84de83b5e7fb6e130905fc0b",
+    "planId": "extraction-plan:sha256:60204393c09d750db912068f8fed44a8b959064b84de83b5e7fb6e130905fc0b",
+    "proposedService": {
+      "contractVersions": [
+        {
+          "artifactDigest": "sha256:4660fb3b6914214fd868d13de5bc996fb01602b2949aee55531bdf9dc0888b4b",
+          "artifactFormat": "protobuf",
+          "artifactReference": "contracts/services/support-grpc.v1.proto",
+          "consumerIds": [],
+          "contractId": "support-grpc.v1",
+          "direction": "consumes",
+          "kind": "service",
+          "producerId": "support-sla-service",
+          "requiredContext": [
+            "trace",
+            "service_principal",
+            "tenant",
+            "deadline",
+            "idempotency_key"
+          ],
+          "tenancyMode": "required",
+          "version": "v1"
+        },
+        {
+          "artifactDigest": "sha256:4ad4f7be18e6afbd250e0ca1326671c8b07203525e9adeab0d07221ac2a23059",
+          "artifactFormat": "openapi",
+          "artifactReference": "contracts/openapi/support.v1.yaml",
+          "consumerIds": [],
+          "contractId": "support-ticket-http.v1",
+          "direction": "provides",
+          "kind": "service",
+          "requiredContext": [
+            "story",
+            "trace",
+            "service_principal",
+            "tenant",
+            "deadline",
+            "idempotency_key"
+          ],
+          "tenancyMode": "required",
+          "version": "v1"
+        },
+        {
+          "artifactDigest": "sha256:42561220b24128494947744b47e78f8ef68321f426f8a2d43ae48bacbc6fdb69",
+          "artifactFormat": "json_schema",
+          "artifactReference": "contracts/events/support.audit-recorded.v1.schema.json",
+          "consumerIds": [],
+          "contractId": "support.audit-recorded.v1",
+          "direction": "consumes",
+          "kind": "event",
+          "producerId": "support-audit-service",
+          "requiredContext": [
+            "story",
+            "trace",
+            "service_principal",
+            "tenant",
+            "causation",
+            "region"
+          ],
+          "tenancyMode": "required",
+          "version": "v1"
+        },
+        {
+          "artifactDigest": "sha256:2ac30c22ef370e4d971d7761de9e76b8daac731efcfaaba59442666801fdefc5",
+          "artifactFormat": "json_schema",
+          "artifactReference": "contracts/events/support.sla-updated.v1.schema.json",
+          "consumerIds": [],
+          "contractId": "support.sla-updated.v1",
+          "direction": "consumes",
+          "kind": "event",
+          "producerId": "support-sla-service",
+          "requiredContext": [
+            "story",
+            "trace",
+            "service_principal",
+            "tenant",
+            "causation",
+            "region"
+          ],
+          "tenancyMode": "required",
+          "version": "v1"
+        }
+      ],
+      "generatedClients": [
+        {
+          "artifactReference": "contracts/services/support-grpc.v1.proto",
+          "clientId": "support-ticket-service-support-grpc-v1-client",
+          "contractId": "support-grpc.v1",
+          "ownerId": "support-ticket-service",
+          "version": "v1"
+        }
+      ],
+      "moduleId": "support-ticket",
+      "preservedCapabilities": [
+        "support.tickets.read"
+      ],
+      "preservedSurfaces": {
+        "admin": [
+          "schema"
+        ],
+        "console": [
+          "surface:support-tickets@/support/tickets"
+        ],
+        "eventHandlers": [
+          "apply_sla_update <- support.sla-updated.v1",
+          "record_audit <- support.audit-recorded.v1"
+        ],
+        "httpRoutes": [
+          "GET /v1/tickets/{ticket_id}"
+        ],
+        "runtimeFunctions": [
+          "support-ticket.reindex.v1@v1"
+        ],
+        "schedules": [
+          "support-ticket-reindex -> support-ticket.reindex.v1"
+        ],
+        "stories": [
+          "execution:support-ticket.reindex.v1 -> Reindex support tickets"
+        ],
+        "workflows": [
+          "ticket_triage@v1"
+        ]
+      },
+      "serviceId": "support-ticket-service",
+      "serviceReferences": [
+        {
+          "contractId": "support-grpc.v1",
+          "direction": "consumes",
+          "referenceId": "support-ticket-service-support-grpc-v1-v1-reference",
+          "targetServiceId": "support-sla-service",
+          "version": "v1"
+        },
+        {
+          "contractId": "support-ticket-http.v1",
+          "direction": "provides",
+          "referenceId": "support-ticket-service-support-ticket-http-v1-v1-reference",
+          "targetServiceId": "support-ticket-service",
+          "version": "v1"
+        }
+      ],
+      "store": {
+        "engine": "postgres",
+        "isolated": true,
+        "storeId": "support-ticket-service-store"
+      },
+      "workloads": [
+        {
+          "role": "api",
+          "workloadId": "support-ticket-service-api"
+        },
+        {
+          "role": "worker",
+          "workloadId": "support-ticket-service-worker"
+        },
+        {
+          "role": "migration",
+          "workloadId": "support-ticket-service-migration"
+        }
+      ]
+    },
+    "protocol": "lenso.extraction-plan.v1",
+    "readinessClassification": "needs_attention",
+    "readinessIssueCodes": [
+      "admin_surface_present",
+      "console_surface_present",
+      "data_volume_large",
+      "runtime_surface_present",
+      "story_surface_present",
+      "workflow_surface_present"
+    ],
+    "sourceSystemId": "support-system",
+    "targetModule": "support-ticket"
+  },
+  "protocol": "lenso.extraction-run.v1",
+  "receipts": [
+    {
+      "candidateAuthoritative": false,
+      "candidateServiceId": "support-ticket-service",
+      "destinationStoreId": "support-ticket-service-store",
+      "evidence": [
+        {
+          "detail": "candidate Store is isolated and owned only by support-ticket-service",
+          "digest": "sha256:57dec610ccbbe571dc0d85a7e951e84551c5bd171c414ca54754690c7ec2df75",
+          "kind": "store_isolation",
+          "subject": "03-destination-expansion/01-create-isolated-store"
+        }
+      ],
+      "expectedStateDigest": "sha256:5407b7a78bc6bed7f33a8bcdacfc00308461ee5444dadffe33adacbeef560920",
+      "linkedAuthorityRemainsAuthoritative": true,
+      "operationDigest": "sha256:ca5eff26db4602f02dae7d8b90e3ca7c9d1db266d95f8187f5dfa7e5b047a1f6",
+      "operationId": "03-destination-expansion/01-create-isolated-store",
+      "operationKind": "create_isolated_store",
+      "outcome": "created",
+      "planDigest": "sha256:60204393c09d750db912068f8fed44a8b959064b84de83b5e7fb6e130905fc0b",
+      "planId": "extraction-plan:sha256:60204393c09d750db912068f8fed44a8b959064b84de83b5e7fb6e130905fc0b",
+      "protocol": "lenso.extraction-operation-receipt.v1",
+      "receiptDigest": "sha256:2d5c759b66f20c5c85df83867c512b84686bec20566adb16115880defeecafbf",
+      "receiptId": "extraction-operation-receipt:sha256:2d5c759b66f20c5c85df83867c512b84686bec20566adb16115880defeecafbf",
+      "runId": "extraction-run:sha256:ac55a8e2e19298fe559db11fe45b96694ea81b38545c58b834f3f988cb99db4a",
+      "sourceAuthority": {
+        "kind": "linked_host",
+        "ownerId": "support-host",
+        "revision": "support-authority-r7"
+      },
+      "sourceStoreUnchanged": true,
+      "workloadId": "support-ticket-service-migration"
+    },
+    {
+      "candidateAuthoritative": false,
+      "candidateServiceId": "support-ticket-service",
+      "destinationStoreId": "support-ticket-service-store",
+      "evidence": [
+        {
+          "detail": "expand-first support-ticket schema migration applied idempotently",
+          "digest": "sha256:da4a89c5eecc10d5adb3488036c6f6e72803d04942ffa9b5f5cf0a952b9e8495",
+          "kind": "migration_applied",
+          "subject": "03-destination-expansion/02-apply-expand-migration-0001_create_support_tickets"
+        }
+      ],
+      "expectedStateDigest": "sha256:5407b7a78bc6bed7f33a8bcdacfc00308461ee5444dadffe33adacbeef560920",
+      "linkedAuthorityRemainsAuthoritative": true,
+      "operationDigest": "sha256:ceb78359a5de7bac6505acd211728efd6cda63bf1740256799b5859f6716d1d0",
+      "operationId": "03-destination-expansion/02-apply-expand-migration-0001_create_support_tickets",
+      "operationKind": "apply_expand_migration",
+      "outcome": "applied",
+      "planDigest": "sha256:60204393c09d750db912068f8fed44a8b959064b84de83b5e7fb6e130905fc0b",
+      "planId": "extraction-plan:sha256:60204393c09d750db912068f8fed44a8b959064b84de83b5e7fb6e130905fc0b",
+      "protocol": "lenso.extraction-operation-receipt.v1",
+      "receiptDigest": "sha256:5fe6a98c0ecae3bb95c7080a32901f749de5396ededbfaf8de6e0101a0ee2856",
+      "receiptId": "extraction-operation-receipt:sha256:5fe6a98c0ecae3bb95c7080a32901f749de5396ededbfaf8de6e0101a0ee2856",
+      "runId": "extraction-run:sha256:ac55a8e2e19298fe559db11fe45b96694ea81b38545c58b834f3f988cb99db4a",
+      "sourceAuthority": {
+        "kind": "linked_host",
+        "ownerId": "support-host",
+        "revision": "support-authority-r7"
+      },
+      "sourceStoreUnchanged": true,
+      "workloadId": "support-ticket-service-migration"
+    },
+    {
+      "candidateAuthoritative": false,
+      "candidateServiceId": "support-ticket-service",
+      "destinationStoreId": "support-ticket-service-store",
+      "evidence": [
+        {
+          "detail": "public Migration Workload reports the exact plan-owned migration set",
+          "digest": "sha256:41369fd9d143c98ec49a2b9642b86d60bfa1de8c83fdc3860c2ca20cb3fcc6ba",
+          "kind": "migration_workload_health",
+          "subject": "03-destination-expansion/03-verify-migration-workload"
+        }
+      ],
+      "expectedStateDigest": "sha256:5407b7a78bc6bed7f33a8bcdacfc00308461ee5444dadffe33adacbeef560920",
+      "linkedAuthorityRemainsAuthoritative": true,
+      "operationDigest": "sha256:6bb15a81c0ee21896e124096550cffaa9201f37a8a025fe14d474b3dd4401d1e",
+      "operationId": "03-destination-expansion/03-verify-migration-workload",
+      "operationKind": "verify_migration_workload",
+      "outcome": "healthy",
+      "planDigest": "sha256:60204393c09d750db912068f8fed44a8b959064b84de83b5e7fb6e130905fc0b",
+      "planId": "extraction-plan:sha256:60204393c09d750db912068f8fed44a8b959064b84de83b5e7fb6e130905fc0b",
+      "protocol": "lenso.extraction-operation-receipt.v1",
+      "receiptDigest": "sha256:a092eb05546b60304927d245aa786df28c41aacb7e784d22efd735c412d2fda3",
+      "receiptId": "extraction-operation-receipt:sha256:a092eb05546b60304927d245aa786df28c41aacb7e784d22efd735c412d2fda3",
+      "runId": "extraction-run:sha256:ac55a8e2e19298fe559db11fe45b96694ea81b38545c58b834f3f988cb99db4a",
+      "sourceAuthority": {
+        "kind": "linked_host",
+        "ownerId": "support-host",
+        "revision": "support-authority-r7"
+      },
+      "sourceStoreUnchanged": true,
+      "workloadId": "support-ticket-service-migration"
+    },
+    {
+      "candidateAuthoritative": false,
+      "candidateServiceId": "support-ticket-service",
+      "destinationStoreId": "support-ticket-service-store",
+      "evidence": [
+        {
+          "detail": "public API Workload health reports ready without candidate authority",
+          "digest": "sha256:0fb831e61a8134be00350ccc6ada46affc03bb486a4239c80cd7b49f875ac706",
+          "kind": "candidate_health",
+          "subject": "03-destination-expansion/04-verify-candidate-health"
+        }
+      ],
+      "expectedStateDigest": "sha256:5407b7a78bc6bed7f33a8bcdacfc00308461ee5444dadffe33adacbeef560920",
+      "linkedAuthorityRemainsAuthoritative": true,
+      "operationDigest": "sha256:ab84a696828e34de2d68ad249b53d28aac965be186cfe14e0a3c1a3c280e3593",
+      "operationId": "03-destination-expansion/04-verify-candidate-health",
+      "operationKind": "verify_candidate_health",
+      "outcome": "healthy",
+      "planDigest": "sha256:60204393c09d750db912068f8fed44a8b959064b84de83b5e7fb6e130905fc0b",
+      "planId": "extraction-plan:sha256:60204393c09d750db912068f8fed44a8b959064b84de83b5e7fb6e130905fc0b",
+      "protocol": "lenso.extraction-operation-receipt.v1",
+      "receiptDigest": "sha256:25fb4566da56d71a78418a5b1d933514f449067b790fb42670186f8aaea195ab",
+      "receiptId": "extraction-operation-receipt:sha256:25fb4566da56d71a78418a5b1d933514f449067b790fb42670186f8aaea195ab",
+      "runId": "extraction-run:sha256:ac55a8e2e19298fe559db11fe45b96694ea81b38545c58b834f3f988cb99db4a",
+      "sourceAuthority": {
+        "kind": "linked_host",
+        "ownerId": "support-host",
+        "revision": "support-authority-r7"
+      },
+      "sourceStoreUnchanged": true,
+      "workloadId": "support-ticket-service-api"
+    }
+  ],
+  "revision": 5,
+  "runDigest": "sha256:794dfcca99e5c8b5ed8a125bcb39b0b2201fe92af7db97ae3bd67bf1cf48ac40",
+  "runId": "extraction-run:sha256:ac55a8e2e19298fe559db11fe45b96694ea81b38545c58b834f3f988cb99db4a"
+}

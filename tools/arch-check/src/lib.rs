@@ -250,6 +250,13 @@ pub fn check_contract_artifacts_fresh(root: &Path) -> anyhow::Result<()> {
     let extraction_scaffold_patch =
         fs::read_to_string(root.join("contracts/extraction/support-ticket.scaffold.patch"))
             .context("support-ticket Extraction Scaffold patch should be readable")?;
+    let extraction_run_schema =
+        read_json(root.join("contracts/extraction/lenso.extraction-run.v1.schema.json"))?;
+    let extraction_run =
+        read_json(root.join("contracts/extraction/support-ticket.expansion-run.json"))?;
+    let extraction_run_human =
+        fs::read_to_string(root.join("contracts/extraction/support-ticket.expansion-run.txt"))
+            .context("support-ticket destination-expansion Run should be readable")?;
     let common_context_schema =
         read_json(root.join("contracts/context/lenso-context.v1.schema.json"))?;
     let common_context_fixture =
@@ -338,6 +345,18 @@ pub fn check_contract_artifacts_fresh(root: &Path) -> anyhow::Result<()> {
         != generate_contracts::generated_support_ticket_extraction_scaffold_patch()
     {
         violations.push("contracts/extraction/support-ticket.scaffold.patch is stale".to_owned());
+    }
+    if extraction_run_schema != generate_contracts::generated_extraction_run_schema() {
+        violations
+            .push("contracts/extraction/lenso.extraction-run.v1.schema.json is stale".to_owned());
+    }
+    if extraction_run != generate_contracts::generated_support_ticket_extraction_run() {
+        violations
+            .push("contracts/extraction/support-ticket.expansion-run.json is stale".to_owned());
+    }
+    if extraction_run_human != generate_contracts::generated_support_ticket_extraction_run_human() {
+        violations
+            .push("contracts/extraction/support-ticket.expansion-run.txt is stale".to_owned());
     }
     if common_context_schema != generate_contracts::generated_common_context_schema() {
         violations.push("contracts/context/lenso-context.v1.schema.json is stale".to_owned());
