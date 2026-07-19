@@ -14,6 +14,7 @@ mod event_envelope;
 mod extraction_backfill;
 mod extraction_plan;
 mod extraction_readiness;
+mod extraction_reconciliation;
 mod extraction_run;
 mod extraction_scaffold;
 mod reliability_report;
@@ -99,6 +100,14 @@ pub use extraction_readiness::{
     ExtractionReadinessSurfaceSummary, ExtractionServiceDataEvidence,
     ExtractionTransactionEvidence, evaluate_extraction_readiness, extraction_readiness_report_json,
     extraction_readiness_report_schema, render_extraction_readiness_report,
+};
+pub use extraction_reconciliation::{
+    EXTRACTION_RECONCILIATION_PROTOCOL, ExtractionBusinessInvariant, ExtractionNormalizedField,
+    ExtractionReconciliationEffects, ExtractionReconciliationEvidence,
+    ExtractionReconciliationInputs, ExtractionReconciliationIssue,
+    ExtractionReconciliationIssueCode, ExtractionReconciliationResult,
+    ExtractionReconciliationStatus, ExtractionRelationshipCount, ExtractionSourceSnapshot,
+    reconcile_extraction_data,
 };
 pub use extraction_run::{
     DESTINATION_EXPANSION_PHASE_ID, EXTRACTION_OPERATION_RECEIPT_PROTOCOL, EXTRACTION_RUN_PROTOCOL,
