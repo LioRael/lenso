@@ -384,3 +384,13 @@ fn refresh(run: &mut ExtractionQuiescenceRun) {
 fn digest(value: &impl Serialize) -> String {
     extraction_input_digest(&serde_json::to_vec(value).expect("quiescence values serialize"))
 }
+
+#[must_use]
+pub fn extraction_quiescence_integrity_is_valid(run: &ExtractionQuiescenceRun) -> bool {
+    if run.protocol != EXTRACTION_QUIESCENCE_PROTOCOL {
+        return false;
+    }
+    let mut value = run.clone();
+    value.quiescence_digest.clear();
+    run.quiescence_digest == digest(&value)
+}

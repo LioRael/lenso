@@ -94,8 +94,8 @@ pub use extraction_quiescence::{
     EXTRACTION_QUIESCENCE_PROTOCOL, ExtractionDrainSnapshot, ExtractionQuiescenceEffects,
     ExtractionQuiescenceEvidence, ExtractionQuiescenceIssue, ExtractionQuiescenceIssueCode,
     ExtractionQuiescenceRun, ExtractionQuiescenceStartError, ExtractionQuiescenceStatus,
-    cancel_extraction_quiescence, complete_extraction_quiescence, record_extraction_drain,
-    start_extraction_quiescence,
+    cancel_extraction_quiescence, complete_extraction_quiescence,
+    extraction_quiescence_integrity_is_valid, record_extraction_drain, start_extraction_quiescence,
 };
 pub use extraction_readiness::{
     EXTRACTION_READINESS_ANALYZER_VERSION, EXTRACTION_READINESS_REPORT_PROTOCOL,
