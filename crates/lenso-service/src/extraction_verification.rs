@@ -178,6 +178,7 @@ pub struct ExtractionVerificationResult {
     pub status: ExtractionVerificationStatus,
     pub plan_id: String,
     pub reconciliation_id: String,
+    pub reconciliation_digest: String,
     pub issues: Vec<ExtractionVerificationIssue>,
     pub evidence: Vec<ExtractionVerificationEvidence>,
     pub compatibility: Vec<ExtractionCompatibilityEvidence>,
@@ -346,6 +347,7 @@ pub fn verify_extraction_behavior(
     };
     let identity_digest = digest(&(
         inputs.reconciliation.reconciliation_id.as_str(),
+        inputs.reconciliation.reconciliation_digest.as_str(),
         inputs.linked.operation_id.as_str(),
         inputs.linked.tenant_id.as_str(),
         inputs.linked.actor_id.as_str(),
@@ -357,6 +359,7 @@ pub fn verify_extraction_behavior(
         status,
         plan_id: inputs.reconciliation.plan_id,
         reconciliation_id: inputs.reconciliation.reconciliation_id,
+        reconciliation_digest: inputs.reconciliation.reconciliation_digest,
         issues,
         evidence,
         compatibility: inputs.compatibility,
@@ -460,4 +463,10 @@ fn without_digest(result: &ExtractionVerificationResult) -> ExtractionVerificati
     let mut value = result.clone();
     value.verification_digest.clear();
     value
+}
+
+#[must_use]
+pub fn extraction_verification_integrity_is_valid(result: &ExtractionVerificationResult) -> bool {
+    result.protocol == EXTRACTION_VERIFICATION_PROTOCOL
+        && result.verification_digest == digest(&without_digest(result))
 }

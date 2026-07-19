@@ -144,7 +144,7 @@ pub use extraction_verification::{
     ExtractionCompatibilityEvidence, ExtractionPolicyEvidence, ExtractionVerificationEffects,
     ExtractionVerificationEvidence, ExtractionVerificationInputs, ExtractionVerificationIssue,
     ExtractionVerificationIssueCode, ExtractionVerificationResult, ExtractionVerificationStatus,
-    verify_extraction_behavior,
+    extraction_verification_integrity_is_valid, verify_extraction_behavior,
 };
 pub use reliability_report::{
     ActiveDegradedMode, RELIABILITY_REPORT_PROTOCOL, ReliabilityCheck, ReliabilityCheckState,
