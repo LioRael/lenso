@@ -1,0 +1,15 @@
+Extraction Run: extraction-run:sha256:ac55a8e2e19298fe559db11fe45b96694ea81b38545c58b834f3f988cb99db4a
+Plan: extraction-plan:sha256:60204393c09d750db912068f8fed44a8b959064b84de83b5e7fb6e130905fc0b
+mode: apply
+phase: 03-destination-expansion (succeeded)
+authority: linkedhost:support-host@support-authority-r7 (unchanged)
+Candidate Store: support-ticket-service-store (postgres, isolated=true)
+
+Ordered operations:
+- 01 [done] createisolatedstore: 03-destination-expansion/01-create-isolated-store
+- 02 [done] applyexpandmigration: 03-destination-expansion/02-apply-expand-migration-0001_create_support_tickets
+- 03 [done] verifymigrationworkload: 03-destination-expansion/03-verify-migration-workload
+- 04 [done] verifycandidatehealth: 03-destination-expansion/04-verify-candidate-health
+
+Next actions:
+- Persist the successful destination expansion evidence before starting backfill.

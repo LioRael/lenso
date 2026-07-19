@@ -1219,7 +1219,12 @@ fn migration_readme(plan: &ExtractionPlan) -> String {
         .data_mapping
         .migrations
         .iter()
-        .map(|migration| format!("- `{}`", migration.source_migration))
+        .map(|migration| {
+            format!(
+                "- `{}` from `{}` (`{}`)",
+                migration.source_migration, migration.source_reference, migration.source_digest
+            )
+        })
         .collect::<Vec<_>>();
     format!(
         "# Candidate migrations\n\nThe Migration Workload is scaffolded, but this phase does not apply schema or data changes. The expand-first phase must copy the plan-owned migrations from authoritative Module sources and bind receipts to `{}`.\n\nPlanned Module migrations:\n{}\n",

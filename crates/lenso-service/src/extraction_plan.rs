@@ -129,6 +129,8 @@ pub struct ExtractionTableMapping {
 #[serde(rename_all = "camelCase")]
 pub struct ExtractionMigrationMapping {
     pub source_migration: String,
+    pub source_reference: String,
+    pub source_digest: String,
     pub destination_store: String,
     pub owner_module: String,
 }
@@ -447,7 +449,7 @@ pub fn generate_extraction_plan(
         ));
     }
     let proposed_service = proposed_service(inputs);
-    let data_mapping = data_mapping(inputs, &proposed_service.store.store_id);
+    let data_mapping = data_mapping(inputs, &proposed_service.store.store_id)?;
     let pinned_inputs = pinned_inputs(inputs, &data_mapping)?;
     let diff = plan_diff(inputs, &proposed_service);
     let phases = plan_phases(&proposed_service, &data_mapping);
@@ -546,7 +548,18 @@ pub fn ensure_extraction_plan_fresh(
     }
 
     let destination_store = format!("{}-service-store", current_inputs.module.name);
-    let current_mapping = data_mapping(current_inputs, &destination_store);
+    let current_mapping = data_mapping(current_inputs, &destination_store).map_err(|error| {
+        ExtractionPlanRejection {
+            plan_id: plan.plan_id.clone(),
+            message:
+                "Current migration evidence could not be pinned; the plan is stale before mutation."
+                    .to_owned(),
+            issue_codes: vec![ExtractionPlanIssueCode::DataMappingChanged],
+            stale_inputs: Vec::new(),
+            next_actions: error.next_actions,
+            effects: ExtractionPlanEffects::default(),
+        }
+    })?;
     let current_pins = pinned_inputs(current_inputs, &current_mapping).map_err(|error| {
         ExtractionPlanRejection {
             plan_id: plan.plan_id.clone(),
@@ -922,7 +935,10 @@ fn proposed_service(inputs: &ExtractionPlanInputs) -> ExtractionServicePlan {
     }
 }
 
-fn data_mapping(inputs: &ExtractionPlanInputs, destination_store: &str) -> ExtractionDataMapping {
+fn data_mapping(
+    inputs: &ExtractionPlanInputs,
+    destination_store: &str,
+) -> Result<ExtractionDataMapping, ExtractionPlanGenerationError> {
     #[derive(Default)]
     struct TableEvidence {
         sources: BTreeSet<ExtractionDataEvidenceSource>,
@@ -959,28 +975,51 @@ fn data_mapping(inputs: &ExtractionPlanInputs, destination_store: &str) -> Extra
             }
         })
         .collect::<Vec<_>>();
-    let mut migrations = inputs
-        .readiness_report
-        .service_data
-        .migrations
+    let evidence_digests = inputs
+        .evidence_digests
         .iter()
-        .map(|migration| ExtractionMigrationMapping {
+        .map(|evidence| (evidence.reference.as_str(), evidence.digest.as_str()))
+        .collect::<BTreeMap<_, _>>();
+    let mut migrations = Vec::new();
+    for migration in &inputs.readiness_report.service_data.migrations {
+        let references = migration
+            .evidence_references
+            .iter()
+            .filter_map(|reference| {
+                evidence_digests
+                    .get(reference.as_str())
+                    .map(|digest| (reference, *digest))
+            })
+            .collect::<Vec<_>>();
+        let [(source_reference, source_digest)] = references.as_slice() else {
+            return Err(generation_error(
+                ExtractionPlanGenerationIssueCode::InputInvalid,
+                format!(
+                    "Migration `{}` must resolve to exactly one digest-pinned source artifact.",
+                    migration.migration
+                ),
+                "Record the authoritative migration path and content digest as Extraction Plan evidence.",
+            ));
+        };
+        migrations.push(ExtractionMigrationMapping {
             source_migration: migration.migration.clone(),
+            source_reference: (*source_reference).clone(),
+            source_digest: (*source_digest).to_owned(),
             destination_store: destination_store.to_owned(),
             owner_module: migration
                 .owner_module
                 .clone()
                 .unwrap_or_else(|| "unresolved".to_owned()),
-        })
-        .collect::<Vec<_>>();
+        });
+    }
     migrations.sort();
     migrations.dedup();
-    ExtractionDataMapping {
+    Ok(ExtractionDataMapping {
         store_engine: "postgres".to_owned(),
         destination_store: destination_store.to_owned(),
         tables,
         migrations,
-    }
+    })
 }
 
 fn pinned_inputs(

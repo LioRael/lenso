@@ -13,6 +13,7 @@ mod endpoint_resolution;
 mod event_envelope;
 mod extraction_plan;
 mod extraction_readiness;
+mod extraction_run;
 mod extraction_scaffold;
 mod reliability_report;
 mod story_segment;
@@ -87,6 +88,22 @@ pub use extraction_readiness::{
     ExtractionReadinessSurfaceSummary, ExtractionServiceDataEvidence,
     ExtractionTransactionEvidence, evaluate_extraction_readiness, extraction_readiness_report_json,
     extraction_readiness_report_schema, render_extraction_readiness_report,
+};
+pub use extraction_run::{
+    DESTINATION_EXPANSION_PHASE_ID, EXTRACTION_OPERATION_RECEIPT_PROTOCOL, EXTRACTION_RUN_PROTOCOL,
+    ExtractionExpandMigration, ExtractionExpansionOperation, ExtractionExpansionOperationKind,
+    ExtractionExpansionWorkload, ExtractionMigrationArtifact, ExtractionOperationOutcome,
+    ExtractionOperationReceipt, ExtractionRun, ExtractionRunAdvanceError,
+    ExtractionRunAdvanceErrorCode, ExtractionRunEffects, ExtractionRunError,
+    ExtractionRunErrorCode, ExtractionRunEvidence, ExtractionRunEvidenceKind,
+    ExtractionRunExpectedState, ExtractionRunInputs, ExtractionRunMode, ExtractionRunPhase,
+    ExtractionRunStartError, ExtractionRunStartErrorCode, ExtractionRunStatus,
+    ExtractionWorkloadFailure, ExtractionWorkloadFailureCode, ExtractionWorkloadRequest,
+    advance_destination_expansion, build_extraction_operation_receipt,
+    dry_run_destination_expansion, extraction_operation_receipt_integrity_is_valid,
+    extraction_run_integrity_is_valid, extraction_run_json, extraction_run_schema,
+    record_destination_expansion_receipt, render_extraction_run, start_destination_expansion,
+    validate_expand_first_postgres_sql,
 };
 pub use extraction_scaffold::{
     EXTRACTION_SCAFFOLD_GENERATOR_VERSION, EXTRACTION_SCAFFOLD_PROTOCOL,

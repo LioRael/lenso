@@ -222,6 +222,18 @@ before writing, treats matching files as an idempotent retry, and refuses any
 changed or unrecognized target without touching unrelated repository files.
 The candidate remains non-authoritative, does not start Workloads or move data,
 and never changes the Provider v1 path.
+Destination expansion is recorded as the versioned
+`lenso.extraction-run.v1` artifact. The Run embeds the exact Extraction Plan,
+expected linked authority, candidate Store and Workload identities, ordered
+operations, content-addressed receipts, evidence, errors, and next actions.
+Migration mappings pin the authoritative source path and SQL digest. The public
+Workload boundary checks for a durable operation receipt before executing one
+operation, so a restart after the Store effect but before Run persistence
+recovers without repeating that effect. Only an isolated Postgres candidate
+Store and conservative expand-first schema statements are accepted; source
+data, linked behavior, backfill, authority, and destructive cleanup remain out
+of scope. Migration and API health are verified through candidate Workload
+behavior before the phase succeeds.
 Its versioned Service, Event, Config, and Reliability Contract declarations are
 specified in [`autonomous-service-contract-artifacts.md`](autonomous-service-contract-artifacts.md).
 The separate [`lenso.context.v1`](common-context-contracts.md) envelope

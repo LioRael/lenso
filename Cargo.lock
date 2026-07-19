@@ -2568,6 +2568,7 @@ dependencies = [
 name = "lenso-service"
 version = "0.1.3"
 dependencies = [
+ "async-trait",
  "axum",
  "base64",
  "chrono",

@@ -12,7 +12,7 @@ new file mode 100644
 +      "path": "services/support-ticket-service/Cargo.toml"
 +    },
 +    {
-+      "digest": "sha256:49d394f0759920570b6c5273fa4f94a3aeb9f8a29dc8bbb566edcd740e187467",
++      "digest": "sha256:da46a975eea402fd71495a533b1315c0ebfb9025490c4052c89d3e12cbaabf51",
 +      "path": "services/support-ticket-service/README.md"
 +    },
 +    {
@@ -60,7 +60,7 @@ new file mode 100644
 +      "path": "services/support-ticket-service/lenso.service.json"
 +    },
 +    {
-+      "digest": "sha256:4371426ea8e52ef008d98bb2e54c0f13fb6c48355d5310d67d34842e01717df9",
++      "digest": "sha256:6d7881f276c9ca55c3a57f190567472ee83bdf140e75771df690d44789e4dad2",
 +      "path": "services/support-ticket-service/migrations/README.md"
 +    },
 +    {
@@ -80,8 +80,8 @@ new file mode 100644
 +      "path": "services/support-ticket-service/src/lib.rs"
 +    }
 +  ],
-+  "planDigest": "sha256:11e350d80ba2e3e1c848d271b618a7e15a762bb703088901b5f854dfb3851459",
-+  "planId": "extraction-plan:sha256:11e350d80ba2e3e1c848d271b618a7e15a762bb703088901b5f854dfb3851459",
++  "planDigest": "sha256:60204393c09d750db912068f8fed44a8b959064b84de83b5e7fb6e130905fc0b",
++  "planId": "extraction-plan:sha256:60204393c09d750db912068f8fed44a8b959064b84de83b5e7fb6e130905fc0b",
 +  "protocol": "lenso.extraction-scaffold-ownership.v1"
 +}
 diff --git a/services/support-ticket-service/Cargo.toml b/services/support-ticket-service/Cargo.toml
@@ -116,7 +116,7 @@ new file mode 100644
 @@ -0,0 +1,7 @@
 +# support-ticket-service extraction candidate
 +
-+This scaffold preserves Module `support-ticket` and is bound to `extraction-plan:sha256:11e350d80ba2e3e1c848d271b618a7e15a762bb703088901b5f854dfb3851459`.
++This scaffold preserves Module `support-ticket` and is bound to `extraction-plan:sha256:60204393c09d750db912068f8fed44a8b959064b84de83b5e7fb6e130905fc0b`.
 +
 +The linked Host remains authoritative. These API, Worker, and Migration entrypoints validate the candidate shape only; Store expansion and Workload startup belong to the next approved Extraction Plan phase.
 +
@@ -943,10 +943,10 @@ new file mode 100644
 @@ -0,0 +1,6 @@
 +# Candidate migrations
 +
-+The Migration Workload is scaffolded, but this phase does not apply schema or data changes. The expand-first phase must copy the plan-owned migrations from authoritative Module sources and bind receipts to `extraction-plan:sha256:11e350d80ba2e3e1c848d271b618a7e15a762bb703088901b5f854dfb3851459`.
++The Migration Workload is scaffolded, but this phase does not apply schema or data changes. The expand-first phase must copy the plan-owned migrations from authoritative Module sources and bind receipts to `extraction-plan:sha256:60204393c09d750db912068f8fed44a8b959064b84de83b5e7fb6e130905fc0b`.
 +
 +Planned Module migrations:
-+- `0001_create_support_tickets`
++- `0001_create_support_tickets` from `modules/support-ticket/migrations/0001_tickets.sql` (`sha256:da4b3d6540ed81176938a3e19d6f591a33810babd4ade7ba91ed27c4750373ac`)
 diff --git a/services/support-ticket-service/src/bin/api.rs b/services/support-ticket-service/src/bin/api.rs
 new file mode 100644
 --- /dev/null

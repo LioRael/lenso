@@ -184,6 +184,90 @@
       ],
       "type": "object"
     },
+    "ExtractionExpandMigration": {
+      "properties": {
+        "migrationId": {
+          "type": "string"
+        },
+        "sourceDigest": {
+          "type": "string"
+        },
+        "sourceReference": {
+          "type": "string"
+        },
+        "sql": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "migrationId",
+        "sourceReference",
+        "sourceDigest",
+        "sql"
+      ],
+      "type": "object"
+    },
+    "ExtractionExpansionOperation": {
+      "properties": {
+        "candidateServiceId": {
+          "type": "string"
+        },
+        "destinationStoreId": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/ExtractionExpansionOperationKind"
+        },
+        "migration": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExtractionExpandMigration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mutating": {
+          "type": "boolean"
+        },
+        "operationDigest": {
+          "type": "string"
+        },
+        "operationId": {
+          "type": "string"
+        },
+        "order": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "workloadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "operationId",
+        "operationDigest",
+        "order",
+        "kind",
+        "workloadId",
+        "candidateServiceId",
+        "destinationStoreId",
+        "mutating"
+      ],
+      "type": "object"
+    },
+    "ExtractionExpansionOperationKind": {
+      "enum": [
+        "create_isolated_store",
+        "apply_expand_migration",
+        "verify_migration_workload",
+        "verify_candidate_health"
+      ],
+      "type": "string"
+    },
     "ExtractionExpectedAuthority": {
       "properties": {
         "kind": {
@@ -289,6 +373,185 @@
       ],
       "type": "object"
     },
+    "ExtractionOperationOutcome": {
+      "enum": [
+        "created",
+        "already_exists",
+        "applied",
+        "already_applied",
+        "healthy"
+      ],
+      "type": "string"
+    },
+    "ExtractionOperationReceipt": {
+      "properties": {
+        "candidateAuthoritative": {
+          "type": "boolean"
+        },
+        "candidateServiceId": {
+          "type": "string"
+        },
+        "destinationStoreId": {
+          "type": "string"
+        },
+        "evidence": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ExtractionRunEvidence"
+          },
+          "type": "array"
+        },
+        "expectedStateDigest": {
+          "type": "string"
+        },
+        "linkedAuthorityRemainsAuthoritative": {
+          "type": "boolean"
+        },
+        "operationDigest": {
+          "type": "string"
+        },
+        "operationId": {
+          "type": "string"
+        },
+        "operationKind": {
+          "$ref": "#/$defs/ExtractionExpansionOperationKind"
+        },
+        "outcome": {
+          "$ref": "#/$defs/ExtractionOperationOutcome"
+        },
+        "planDigest": {
+          "type": "string"
+        },
+        "planId": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "receiptDigest": {
+          "type": "string"
+        },
+        "receiptId": {
+          "type": "string"
+        },
+        "runId": {
+          "type": "string"
+        },
+        "sourceAuthority": {
+          "$ref": "#/$defs/ExtractionExpectedAuthority"
+        },
+        "sourceStoreUnchanged": {
+          "type": "boolean"
+        },
+        "workloadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol",
+        "receiptId",
+        "receiptDigest",
+        "runId",
+        "planId",
+        "planDigest",
+        "expectedStateDigest",
+        "operationId",
+        "operationDigest",
+        "operationKind",
+        "workloadId",
+        "candidateServiceId",
+        "destinationStoreId",
+        "outcome",
+        "sourceAuthority",
+        "sourceStoreUnchanged",
+        "linkedAuthorityRemainsAuthoritative",
+        "candidateAuthoritative"
+      ],
+      "type": "object"
+    },
+    "ExtractionPlan": {
+      "properties": {
+        "approvalBoundaries": {
+          "items": {
+            "$ref": "#/$defs/ExtractionApprovalBoundary"
+          },
+          "type": "array"
+        },
+        "dataMapping": {
+          "$ref": "#/$defs/ExtractionDataMapping"
+        },
+        "diff": {
+          "$ref": "#/$defs/ExtractionPlanDiff"
+        },
+        "effects": {
+          "$ref": "#/$defs/ExtractionPlanEffects"
+        },
+        "expectedAuthority": {
+          "$ref": "#/$defs/ExtractionExpectedAuthority"
+        },
+        "generatorVersion": {
+          "type": "string"
+        },
+        "phases": {
+          "items": {
+            "$ref": "#/$defs/ExtractionPlanPhase"
+          },
+          "type": "array"
+        },
+        "pinnedInputs": {
+          "items": {
+            "$ref": "#/$defs/ExtractionInputPin"
+          },
+          "type": "array"
+        },
+        "planDigest": {
+          "type": "string"
+        },
+        "planId": {
+          "type": "string"
+        },
+        "proposedService": {
+          "$ref": "#/$defs/ExtractionServicePlan"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "readinessClassification": {
+          "$ref": "#/$defs/CompatibilityCategory"
+        },
+        "readinessIssueCodes": {
+          "items": {
+            "$ref": "#/$defs/ExtractionReadinessIssueCode"
+          },
+          "type": "array"
+        },
+        "sourceSystemId": {
+          "type": "string"
+        },
+        "targetModule": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol",
+        "generatorVersion",
+        "planId",
+        "planDigest",
+        "targetModule",
+        "sourceSystemId",
+        "readinessClassification",
+        "readinessIssueCodes",
+        "expectedAuthority",
+        "pinnedInputs",
+        "dataMapping",
+        "proposedService",
+        "diff",
+        "phases",
+        "approvalBoundaries",
+        "effects"
+      ],
+      "type": "object"
+    },
     "ExtractionPlanContractVersion": {
       "properties": {
         "artifactDigest": {
@@ -388,19 +651,15 @@
     "ExtractionPlanEffects": {
       "properties": {
         "changesAuthority": {
-          "const": false,
           "type": "boolean"
         },
         "copiesData": {
-          "const": false,
           "type": "boolean"
         },
         "startsWorkloads": {
-          "const": false,
           "type": "boolean"
         },
         "writesRepositoryFiles": {
-          "const": false,
           "type": "boolean"
         }
       },
@@ -640,6 +899,252 @@
       },
       "type": "object"
     },
+    "ExtractionRunEffects": {
+      "properties": {
+        "appliesDestinationSchema": {
+          "type": "boolean"
+        },
+        "changesAuthority": {
+          "type": "boolean"
+        },
+        "copiesServiceData": {
+          "type": "boolean"
+        },
+        "createsDestinationStore": {
+          "type": "boolean"
+        },
+        "invokesCandidateWorkloadBehavior": {
+          "type": "boolean"
+        },
+        "mutatesLinkedImplementation": {
+          "type": "boolean"
+        },
+        "mutatesSourceStore": {
+          "type": "boolean"
+        },
+        "performsDestructiveCleanup": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "createsDestinationStore",
+        "appliesDestinationSchema",
+        "invokesCandidateWorkloadBehavior",
+        "copiesServiceData",
+        "mutatesSourceStore",
+        "mutatesLinkedImplementation",
+        "changesAuthority",
+        "performsDestructiveCleanup"
+      ],
+      "type": "object"
+    },
+    "ExtractionRunError": {
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/ExtractionRunErrorCode"
+        },
+        "evidence": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ExtractionRunEvidence"
+          },
+          "type": "array"
+        },
+        "message": {
+          "type": "string"
+        },
+        "nextActions": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "operationId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resolved": {
+          "type": "boolean"
+        },
+        "sequence": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sequence",
+        "code",
+        "message",
+        "resolved"
+      ],
+      "type": "object"
+    },
+    "ExtractionRunErrorCode": {
+      "enum": [
+        "plan_stale",
+        "authority_changed",
+        "source_mutation_reported",
+        "receipt_invalid",
+        "store_provisioning_failed",
+        "migration_failed",
+        "migration_workload_unhealthy",
+        "candidate_unhealthy",
+        "workload_unavailable"
+      ],
+      "type": "string"
+    },
+    "ExtractionRunEvidence": {
+      "properties": {
+        "detail": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/ExtractionRunEvidenceKind"
+        },
+        "subject": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "subject",
+        "digest",
+        "detail"
+      ],
+      "type": "object"
+    },
+    "ExtractionRunEvidenceKind": {
+      "enum": [
+        "store_isolation",
+        "migration_applied",
+        "migration_workload_health",
+        "candidate_health",
+        "source_authority"
+      ],
+      "type": "string"
+    },
+    "ExtractionRunExpectedState": {
+      "properties": {
+        "apiWorkloadId": {
+          "type": "string"
+        },
+        "candidateServiceId": {
+          "type": "string"
+        },
+        "destinationStoreEngine": {
+          "type": "string"
+        },
+        "destinationStoreId": {
+          "type": "string"
+        },
+        "destinationStoreIsolated": {
+          "type": "boolean"
+        },
+        "linkedAuthorityRemainsAuthoritative": {
+          "type": "boolean"
+        },
+        "migrationWorkloadId": {
+          "type": "string"
+        },
+        "orderedOperationsDigest": {
+          "type": "string"
+        },
+        "phaseId": {
+          "type": "string"
+        },
+        "planDigest": {
+          "type": "string"
+        },
+        "planId": {
+          "type": "string"
+        },
+        "scaffoldDigest": {
+          "type": "string"
+        },
+        "scaffoldId": {
+          "type": "string"
+        },
+        "sourceAuthority": {
+          "$ref": "#/$defs/ExtractionExpectedAuthority"
+        },
+        "sourceStoreRemainsUnchanged": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "planId",
+        "planDigest",
+        "scaffoldId",
+        "scaffoldDigest",
+        "phaseId",
+        "sourceAuthority",
+        "linkedAuthorityRemainsAuthoritative",
+        "sourceStoreRemainsUnchanged",
+        "candidateServiceId",
+        "destinationStoreId",
+        "destinationStoreEngine",
+        "destinationStoreIsolated",
+        "migrationWorkloadId",
+        "apiWorkloadId",
+        "orderedOperationsDigest"
+      ],
+      "type": "object"
+    },
+    "ExtractionRunMode": {
+      "enum": [
+        "apply",
+        "dry_run"
+      ],
+      "type": "string"
+    },
+    "ExtractionRunPhase": {
+      "properties": {
+        "completedOperationIds": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "$ref": "#/$defs/ExtractionPlanPhaseKind"
+        },
+        "nextOperationId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "phaseId": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/ExtractionRunStatus"
+        }
+      },
+      "required": [
+        "phaseId",
+        "kind",
+        "status"
+      ],
+      "type": "object"
+    },
+    "ExtractionRunStatus": {
+      "enum": [
+        "planned",
+        "in_progress",
+        "blocked",
+        "succeeded"
+      ],
+      "type": "string"
+    },
     "ExtractionServicePlan": {
       "properties": {
         "contractVersions": {
@@ -817,92 +1322,92 @@
       "type": "string"
     }
   },
-  "$id": "https://contracts.lenso.local/extraction/lenso.extraction-plan.v1.schema.json",
+  "$id": "https://contracts.lenso.local/extraction/lenso.extraction-run.v1.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "properties": {
-    "approvalBoundaries": {
-      "items": {
-        "$ref": "#/$defs/ExtractionApprovalBoundary"
-      },
-      "type": "array"
-    },
-    "dataMapping": {
-      "$ref": "#/$defs/ExtractionDataMapping"
-    },
-    "diff": {
-      "$ref": "#/$defs/ExtractionPlanDiff"
+    "currentPhase": {
+      "$ref": "#/$defs/ExtractionRunPhase"
     },
     "effects": {
-      "$ref": "#/$defs/ExtractionPlanEffects"
+      "$ref": "#/$defs/ExtractionRunEffects"
     },
-    "expectedAuthority": {
-      "$ref": "#/$defs/ExtractionExpectedAuthority"
+    "errors": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ExtractionRunError"
+      },
+      "type": "array"
     },
-    "generatorVersion": {
-      "const": "lenso.extraction-plan-generator.v1",
+    "evidence": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ExtractionRunEvidence"
+      },
+      "type": "array"
+    },
+    "expectedState": {
+      "$ref": "#/$defs/ExtractionRunExpectedState"
+    },
+    "expectedStateDigest": {
       "type": "string"
     },
-    "phases": {
+    "mode": {
+      "$ref": "#/$defs/ExtractionRunMode"
+    },
+    "nextActions": {
+      "default": [],
       "items": {
-        "$ref": "#/$defs/ExtractionPlanPhase"
+        "type": "string"
       },
       "type": "array"
     },
-    "pinnedInputs": {
+    "orderedOperations": {
       "items": {
-        "$ref": "#/$defs/ExtractionInputPin"
+        "$ref": "#/$defs/ExtractionExpansionOperation"
       },
       "type": "array"
     },
-    "planDigest": {
+    "plan": {
+      "$ref": "#/$defs/ExtractionPlan"
+    },
+    "protocol": {
+      "const": "lenso.extraction-run.v1",
+      "type": "string"
+    },
+    "receipts": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ExtractionOperationReceipt"
+      },
+      "type": "array"
+    },
+    "revision": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "runDigest": {
       "pattern": "^sha256:[0-9a-f]{64}$",
       "type": "string"
     },
-    "planId": {
-      "pattern": "^extraction-plan:sha256:[0-9a-f]{64}$",
-      "type": "string"
-    },
-    "proposedService": {
-      "$ref": "#/$defs/ExtractionServicePlan"
-    },
-    "protocol": {
-      "const": "lenso.extraction-plan.v1",
-      "type": "string"
-    },
-    "readinessClassification": {
-      "$ref": "#/$defs/CompatibilityCategory"
-    },
-    "readinessIssueCodes": {
-      "items": {
-        "$ref": "#/$defs/ExtractionReadinessIssueCode"
-      },
-      "type": "array"
-    },
-    "sourceSystemId": {
-      "type": "string"
-    },
-    "targetModule": {
+    "runId": {
+      "pattern": "^extraction-run:sha256:[0-9a-f]{64}$",
       "type": "string"
     }
   },
   "required": [
     "protocol",
-    "generatorVersion",
-    "planId",
-    "planDigest",
-    "targetModule",
-    "sourceSystemId",
-    "readinessClassification",
-    "readinessIssueCodes",
-    "expectedAuthority",
-    "pinnedInputs",
-    "dataMapping",
-    "proposedService",
-    "diff",
-    "phases",
-    "approvalBoundaries",
+    "runId",
+    "runDigest",
+    "revision",
+    "mode",
+    "plan",
+    "currentPhase",
+    "expectedState",
+    "expectedStateDigest",
+    "orderedOperations",
     "effects"
   ],
-  "title": "Lenso Extraction Plan v1",
+  "title": "Lenso Extraction Run v1",
   "type": "object"
 }

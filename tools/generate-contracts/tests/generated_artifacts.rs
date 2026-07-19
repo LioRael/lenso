@@ -242,6 +242,42 @@ fn committed_extraction_scaffold_artifacts_match_generator() {
 }
 
 #[test]
+fn committed_extraction_run_artifacts_match_generator() {
+    let schema = serde_json::from_str::<serde_json::Value>(include_str!(
+        "../../../contracts/extraction/lenso.extraction-run.v1.schema.json"
+    ))
+    .expect("committed Extraction Run schema must parse");
+    let run = serde_json::from_str::<serde_json::Value>(include_str!(
+        "../../../contracts/extraction/support-ticket.expansion-run.json"
+    ))
+    .expect("committed support-ticket Extraction Run must parse");
+    let human = include_str!("../../../contracts/extraction/support-ticket.expansion-run.txt");
+
+    assert_eq!(
+        schema,
+        generate_contracts::generated_extraction_run_schema()
+    );
+    assert_eq!(
+        run,
+        generate_contracts::generated_support_ticket_extraction_run()
+    );
+    assert_eq!(
+        human,
+        generate_contracts::generated_support_ticket_extraction_run_human()
+    );
+    let validator =
+        jsonschema::validator_for(&schema).expect("Extraction Run schema should compile");
+    assert!(validator.is_valid(&run));
+    assert_eq!(run["protocol"], "lenso.extraction-run.v1");
+    assert_eq!(run["currentPhase"]["status"], "succeeded");
+    assert_eq!(run["receipts"].as_array().expect("receipts").len(), 4);
+    assert_eq!(run["effects"]["copiesServiceData"], false);
+    assert_eq!(run["effects"]["mutatesSourceStore"], false);
+    assert_eq!(run["effects"]["changesAuthority"], false);
+    assert_eq!(run["effects"]["performsDestructiveCleanup"], false);
+}
+
+#[test]
 fn generated_support_ticket_candidate_compiles_through_public_entrypoints() {
     let scaffold = serde_json::from_value::<lenso_service::ExtractionScaffold>(
         generate_contracts::generated_support_ticket_extraction_scaffold(),

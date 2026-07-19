@@ -93,6 +93,18 @@ pub fn generate_contracts() -> anyhow::Result<()> {
         &generated_support_ticket_extraction_scaffold_patch(),
     )?;
     write_json(
+        "contracts/extraction/lenso.extraction-run.v1.schema.json",
+        &generated_extraction_run_schema(),
+    )?;
+    write_json(
+        "contracts/extraction/support-ticket.expansion-run.json",
+        &generated_support_ticket_extraction_run(),
+    )?;
+    write_text(
+        "contracts/extraction/support-ticket.expansion-run.txt",
+        &generated_support_ticket_extraction_run_human(),
+    )?;
+    write_json(
         "contracts/context/lenso-context.v1.schema.json",
         &generated_common_context_schema(),
     )?;
@@ -280,6 +292,107 @@ pub fn generated_support_ticket_extraction_scaffold_patch() -> String {
     support_ticket_extraction_scaffold().patch
 }
 
+pub fn generated_extraction_run_schema() -> Value {
+    lenso_service::extraction_run_schema()
+}
+
+pub fn generated_support_ticket_extraction_run() -> Value {
+    serde_json::to_value(support_ticket_extraction_run())
+        .expect("support-ticket destination-expansion Run must serialize")
+}
+
+pub fn generated_support_ticket_extraction_run_human() -> String {
+    lenso_service::render_extraction_run(&support_ticket_extraction_run())
+}
+
+fn support_ticket_extraction_run() -> lenso_service::ExtractionRun {
+    use lenso_service::{
+        ExtractionExpansionOperationKind, ExtractionMigrationArtifact, ExtractionOperationOutcome,
+        ExtractionRunEvidence, ExtractionRunEvidenceKind, ExtractionRunInputs,
+        ExtractionScaffoldApplyResult, ExtractionScaffoldEffects, ExtractionWorkloadRequest,
+    };
+
+    let plan = support_ticket_extraction_plan();
+    let scaffold = support_ticket_extraction_scaffold();
+    let unchanged_files = scaffold
+        .files
+        .iter()
+        .map(|file| file.path.clone())
+        .collect();
+    let inputs = ExtractionRunInputs {
+        plan: plan.clone(),
+        current_plan_inputs: support_ticket_extraction_plan_inputs(),
+        scaffold: scaffold.clone(),
+        scaffold_apply_result: ExtractionScaffoldApplyResult {
+            protocol: "lenso.extraction-scaffold-apply.v1".to_owned(),
+            scaffold_id: scaffold.scaffold_id.clone(),
+            plan_id: plan.plan_id.clone(),
+            created_files: Vec::new(),
+            unchanged_files,
+            linked_authority_remains_authoritative: true,
+            effects: ExtractionScaffoldEffects::default(),
+        },
+        migrations: vec![ExtractionMigrationArtifact {
+            migration_id: "0001_create_support_tickets".to_owned(),
+            source_reference: support_ticket_migration_reference().to_owned(),
+            source_digest: lenso_service::extraction_input_digest(
+                support_ticket_migration_sql().as_bytes(),
+            ),
+            sql: support_ticket_migration_sql().to_owned(),
+        }],
+    };
+    let mut run = lenso_service::start_destination_expansion(&inputs)
+        .expect("support-ticket destination expansion must start");
+    for operation in run.ordered_operations.clone() {
+        let (outcome, kind, detail) = match operation.kind {
+            ExtractionExpansionOperationKind::CreateIsolatedStore => (
+                ExtractionOperationOutcome::Created,
+                ExtractionRunEvidenceKind::StoreIsolation,
+                "candidate Store is isolated and owned only by support-ticket-service",
+            ),
+            ExtractionExpansionOperationKind::ApplyExpandMigration => (
+                ExtractionOperationOutcome::Applied,
+                ExtractionRunEvidenceKind::MigrationApplied,
+                "expand-first support-ticket schema migration applied idempotently",
+            ),
+            ExtractionExpansionOperationKind::VerifyMigrationWorkload => (
+                ExtractionOperationOutcome::Healthy,
+                ExtractionRunEvidenceKind::MigrationWorkloadHealth,
+                "public Migration Workload reports the exact plan-owned migration set",
+            ),
+            ExtractionExpansionOperationKind::VerifyCandidateHealth => (
+                ExtractionOperationOutcome::Healthy,
+                ExtractionRunEvidenceKind::CandidateHealth,
+                "public API Workload health reports ready without candidate authority",
+            ),
+        };
+        let request = ExtractionWorkloadRequest {
+            run_id: run.run_id.clone(),
+            plan_id: run.plan.plan_id.clone(),
+            plan_digest: run.plan.plan_digest.clone(),
+            expected_state: run.expected_state.clone(),
+            expected_state_digest: run.expected_state_digest.clone(),
+            operation: operation.clone(),
+        };
+        let receipt = lenso_service::build_extraction_operation_receipt(
+            &request,
+            outcome,
+            vec![ExtractionRunEvidence {
+                kind,
+                subject: operation.operation_id.clone(),
+                digest: lenso_service::extraction_input_digest(
+                    operation.operation_digest.as_bytes(),
+                ),
+                detail: detail.to_owned(),
+            }],
+        )
+        .expect("support-ticket operation receipt must build");
+        run = lenso_service::record_destination_expansion_receipt(run, receipt)
+            .expect("support-ticket operation receipt must record");
+    }
+    run
+}
+
 fn support_ticket_extraction_scaffold() -> lenso_service::ExtractionScaffold {
     use lenso_service::{ExtractionScaffoldArtifact, ExtractionScaffoldInputs};
 
@@ -319,6 +432,11 @@ fn support_ticket_extraction_scaffold() -> lenso_service::ExtractionScaffold {
 }
 
 fn support_ticket_extraction_plan() -> lenso_service::ExtractionPlan {
+    lenso_service::generate_extraction_plan(&support_ticket_extraction_plan_inputs())
+        .expect("corrected support-ticket readiness must generate an Extraction Plan")
+}
+
+fn support_ticket_extraction_plan_inputs() -> lenso_service::ExtractionPlanInputs {
     use lenso_service::{
         CommonContextRequirement, ExtractionAuthorityKind, ExtractionContractArtifactFormat,
         ExtractionContractDirection, ExtractionContractKind, ExtractionEvidenceDigest,
@@ -326,7 +444,7 @@ fn support_ticket_extraction_plan() -> lenso_service::ExtractionPlan {
         ServiceTenancyMode, extraction_input_digest,
     };
 
-    let inputs = ExtractionPlanInputs {
+    ExtractionPlanInputs {
         readiness_report: support_ticket_extraction_readiness_report(false),
         module: support_ticket_extraction_module(),
         system: support_ticket_extraction_system(),
@@ -435,10 +553,20 @@ fn support_ticket_extraction_plan() -> lenso_service::ExtractionPlan {
                 reference: "readiness-evidence:postgres-observation".to_owned(),
                 digest: extraction_input_digest(b"support-store-2026-07-19:25000000:17179869184"),
             },
+            ExtractionEvidenceDigest {
+                reference: support_ticket_migration_reference().to_owned(),
+                digest: extraction_input_digest(support_ticket_migration_sql().as_bytes()),
+            },
         ],
-    };
-    lenso_service::generate_extraction_plan(&inputs)
-        .expect("corrected support-ticket readiness must generate an Extraction Plan")
+    }
+}
+
+fn support_ticket_migration_reference() -> &'static str {
+    "modules/support-ticket/migrations/0001_tickets.sql"
+}
+
+fn support_ticket_migration_sql() -> &'static str {
+    "create schema if not exists support;\n\ncreate table if not exists support.tickets (\n    id text primary key,\n    title text not null,\n    status text not null,\n    created_at timestamptz not null\n);\n"
 }
 
 fn support_ticket_extraction_module() -> lenso_contracts::ModuleManifest {

@@ -11,6 +11,7 @@ keywords = ["backend", "framework", "services"]
 rust-version.workspace = true
 
 [dependencies]
+async-trait.workspace = true
 axum.workspace = true
 base64.workspace = true
 chrono.workspace = true
