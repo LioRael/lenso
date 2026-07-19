@@ -48,3 +48,17 @@ impl<'a> LinkedTransaction<'a> {
         rollback_transaction(self.transaction).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn minimal_feature_exposes_the_public_transaction_contract() {
+        let key = IdempotencyKey::parse("example:create", "request-1").unwrap();
+        assert_eq!(key.scope(), "example:create");
+        assert_eq!(key.value(), "request-1");
+        let _claim = IdempotencyClaim::Acquired;
+        let _begin = LinkedTransaction::begin;
+    }
+}

@@ -77,7 +77,9 @@ The current host-facing surface is intentionally narrow:
   helpers, `AppContext`, and `LinkedHttpContribution`.
 - `lenso::host::transaction::LinkedTransaction` for the one stable persistence
   boundary shared by host-owned linked modules: a scoped idempotency claim,
-  app-owned SQL, and Outbox publication can commit or roll back atomically.
+  app-owned SQL, and Outbox publication can commit or roll back atomically. It
+  is independently available through the lightweight `host-transactions`
+  feature; the complete `host` feature includes it for compatibility.
 
 `lenso::host` should not grow a repository layer, query builder, CRUD framework,
 or auth/session abstraction just because the starter needs one example. The

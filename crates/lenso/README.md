@@ -34,6 +34,13 @@ must atomically claim an idempotency key, execute app-owned SQL, and publish an
 Outbox event. The application still writes its business query with `sqlx`; it
 does not import `lenso-platform-core` or address platform tables directly.
 
+Consumers that only need this transaction boundary can avoid the complete Host
+boot dependency graph:
+
+```toml
+lenso = { version = "0.3.19", features = ["host-transactions"] }
+```
+
 ```rust,ignore
 use lenso::host::transaction::{
     IdempotencyClaim, IdempotencyKey, LinkedTransaction, OutboxEvent,
