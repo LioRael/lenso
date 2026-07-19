@@ -24,6 +24,7 @@ reqwest.workspace = true
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+serde_yaml.workspace = true
 sha2.workspace = true
 spiffe.workspace = true
 tonic.workspace = true
@@ -35,7 +36,6 @@ workspace = true
 
 [dev-dependencies]
 rustls.workspace = true
-serde_yaml.workspace = true
 spiffe-rustls.workspace = true
 spiffe-rustls-tokio.workspace = true
 tokio.workspace = true

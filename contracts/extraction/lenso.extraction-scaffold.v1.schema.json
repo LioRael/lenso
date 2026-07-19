@@ -1,0 +1,353 @@
+{
+  "$defs": {
+    "CommonContextRequirement": {
+      "enum": [
+        "story",
+        "trace",
+        "service_principal",
+        "delegated_actor",
+        "tenant",
+        "deadline",
+        "idempotency_key",
+        "causation",
+        "region"
+      ],
+      "type": "string"
+    },
+    "ExtractionGeneratedBinding": {
+      "properties": {
+        "artifactDigest": {
+          "type": "string"
+        },
+        "artifactPath": {
+          "type": "string"
+        },
+        "bindingDigest": {
+          "type": "string"
+        },
+        "bindingPath": {
+          "type": "string"
+        },
+        "contractId": {
+          "type": "string"
+        },
+        "eventTypes": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "generatedClientIds": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "$ref": "#/$defs/ExtractionGeneratedBindingKind"
+        },
+        "operationIds": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "requiredContext": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CommonContextRequirement"
+          },
+          "type": "array"
+        },
+        "role": {
+          "$ref": "#/$defs/ExtractionScaffoldBindingRole"
+        },
+        "tenancyMode": {
+          "$ref": "#/$defs/ServiceTenancyMode"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "contractId",
+        "version",
+        "kind",
+        "role",
+        "artifactPath",
+        "artifactDigest",
+        "bindingPath",
+        "bindingDigest",
+        "tenancyMode"
+      ],
+      "type": "object"
+    },
+    "ExtractionGeneratedBindingKind": {
+      "enum": [
+        "http",
+        "grpc",
+        "event"
+      ],
+      "type": "string"
+    },
+    "ExtractionPreservedIdentity": {
+      "properties": {
+        "adminIdentity": true,
+        "capabilities": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "consoleIdentity": true,
+        "eventTypes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "moduleManifest": true,
+        "moduleManifestDigest": {
+          "type": "string"
+        },
+        "moduleName": {
+          "type": "string"
+        },
+        "operationIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "runtimeFunctionNames": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "scheduleNames": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "storyTitles": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "workflowIdentities": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "moduleName",
+        "moduleManifestDigest",
+        "moduleManifest",
+        "capabilities",
+        "operationIds",
+        "eventTypes",
+        "runtimeFunctionNames",
+        "scheduleNames",
+        "workflowIdentities",
+        "storyTitles",
+        "adminIdentity",
+        "consoleIdentity"
+      ],
+      "type": "object"
+    },
+    "ExtractionScaffoldBindingRole": {
+      "enum": [
+        "server",
+        "client",
+        "publisher",
+        "handler"
+      ],
+      "type": "string"
+    },
+    "ExtractionScaffoldEffects": {
+      "properties": {
+        "changesAuthority": {
+          "const": false,
+          "type": "boolean"
+        },
+        "changesProviderPath": {
+          "const": false,
+          "type": "boolean"
+        },
+        "copiesData": {
+          "const": false,
+          "type": "boolean"
+        },
+        "startsWorkloads": {
+          "const": false,
+          "type": "boolean"
+        },
+        "writesRepositoryFiles": {
+          "const": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "writesRepositoryFiles",
+        "startsWorkloads",
+        "copiesData",
+        "changesAuthority",
+        "changesProviderPath"
+      ],
+      "type": "object"
+    },
+    "ExtractionScaffoldFile": {
+      "properties": {
+        "contents": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/ExtractionScaffoldFileKind"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "kind",
+        "digest",
+        "contents"
+      ],
+      "type": "object"
+    },
+    "ExtractionScaffoldFileKind": {
+      "enum": [
+        "cargo_manifest",
+        "workload_entrypoint",
+        "module_manifest",
+        "service_manifest",
+        "contract_artifact",
+        "generated_binding",
+        "service_client",
+        "migration_guide",
+        "ownership_receipt",
+        "readme",
+        "rust_library"
+      ],
+      "type": "string"
+    },
+    "ServiceTenancyMode": {
+      "enum": [
+        "none",
+        "optional",
+        "required"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "https://contracts.lenso.local/extraction/lenso.extraction-scaffold.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "bindings": {
+      "items": {
+        "$ref": "#/$defs/ExtractionGeneratedBinding"
+      },
+      "type": "array"
+    },
+    "boundaryReplacements": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "candidateService": true,
+    "candidateServiceId": {
+      "type": "string"
+    },
+    "destinationRoot": {
+      "type": "string"
+    },
+    "effects": {
+      "$ref": "#/$defs/ExtractionScaffoldEffects"
+    },
+    "files": {
+      "items": {
+        "$ref": "#/$defs/ExtractionScaffoldFile"
+      },
+      "type": "array"
+    },
+    "generatorVersion": {
+      "const": "lenso.extraction-scaffold-generator.v1",
+      "type": "string"
+    },
+    "linkedAuthorityRemainsAuthoritative": {
+      "type": "boolean"
+    },
+    "localBehaviorIds": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "patch": {
+      "type": "string"
+    },
+    "planDigest": {
+      "type": "string"
+    },
+    "planId": {
+      "type": "string"
+    },
+    "preservedIdentity": {
+      "$ref": "#/$defs/ExtractionPreservedIdentity"
+    },
+    "protocol": {
+      "const": "lenso.extraction-scaffold.v1",
+      "type": "string"
+    },
+    "providerCompatibilityPreserved": {
+      "type": "boolean"
+    },
+    "scaffoldDigest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "scaffoldId": {
+      "pattern": "^extraction-scaffold:sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "targetModule": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "protocol",
+    "generatorVersion",
+    "scaffoldId",
+    "scaffoldDigest",
+    "planId",
+    "planDigest",
+    "targetModule",
+    "candidateServiceId",
+    "destinationRoot",
+    "linkedAuthorityRemainsAuthoritative",
+    "providerCompatibilityPreserved",
+    "preservedIdentity",
+    "candidateService",
+    "bindings",
+    "localBehaviorIds",
+    "boundaryReplacements",
+    "files",
+    "patch",
+    "effects"
+  ],
+  "title": "Lenso Extraction Scaffold v1",
+  "type": "object"
+}

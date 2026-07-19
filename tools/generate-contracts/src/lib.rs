@@ -81,6 +81,18 @@ pub fn generate_contracts() -> anyhow::Result<()> {
         &generated_support_ticket_extraction_plan_human(),
     )?;
     write_json(
+        "contracts/extraction/lenso.extraction-scaffold.v1.schema.json",
+        &generated_extraction_scaffold_schema(),
+    )?;
+    write_json(
+        "contracts/extraction/support-ticket.scaffold.json",
+        &generated_support_ticket_extraction_scaffold(),
+    )?;
+    write_text(
+        "contracts/extraction/support-ticket.scaffold.patch",
+        &generated_support_ticket_extraction_scaffold_patch(),
+    )?;
+    write_json(
         "contracts/context/lenso-context.v1.schema.json",
         &generated_common_context_schema(),
     )?;
@@ -217,11 +229,101 @@ pub fn generated_support_ticket_extraction_plan_human() -> String {
     lenso_service::render_extraction_plan(&support_ticket_extraction_plan())
 }
 
+fn support_sla_updated_schema_source() -> String {
+    format!(
+        "{}\n",
+        serde_json::to_string_pretty(&json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": "https://contracts.lenso.local/events/support.sla-updated.v1.schema.json",
+            "title": "support.sla-updated.v1",
+            "type": "object",
+            "required": ["ticketId", "slaHours"],
+            "properties": {
+                "ticketId": { "type": "string", "minLength": 1 },
+                "slaHours": { "type": "integer", "minimum": 1 }
+            },
+            "additionalProperties": false
+        }))
+        .expect("support SLA Event schema must serialize")
+    )
+}
+
+fn support_audit_recorded_schema_source() -> String {
+    format!(
+        "{}\n",
+        serde_json::to_string_pretty(&json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": "https://contracts.lenso.local/events/support.audit-recorded.v1.schema.json",
+            "title": "support.audit-recorded.v1",
+            "type": "object",
+            "required": ["ticketId", "action"],
+            "properties": {
+                "ticketId": { "type": "string", "minLength": 1 },
+                "action": { "type": "string", "minLength": 1 }
+            },
+            "additionalProperties": false
+        }))
+        .expect("support audit Event schema must serialize")
+    )
+}
+
+pub fn generated_extraction_scaffold_schema() -> Value {
+    lenso_service::extraction_scaffold_schema()
+}
+
+pub fn generated_support_ticket_extraction_scaffold() -> Value {
+    serde_json::to_value(support_ticket_extraction_scaffold())
+        .expect("support-ticket Extraction Scaffold must serialize")
+}
+
+pub fn generated_support_ticket_extraction_scaffold_patch() -> String {
+    support_ticket_extraction_scaffold().patch
+}
+
+fn support_ticket_extraction_scaffold() -> lenso_service::ExtractionScaffold {
+    use lenso_service::{ExtractionScaffoldArtifact, ExtractionScaffoldInputs};
+
+    let plan = support_ticket_extraction_plan();
+    let inputs = ExtractionScaffoldInputs {
+        plan,
+        module: support_ticket_extraction_module(),
+        artifacts: vec![
+            ExtractionScaffoldArtifact {
+                contract_id: "support-ticket-http.v1".to_owned(),
+                version: "v1".to_owned(),
+                contents: lenso_service::DIRECT_HTTP_OPENAPI_V1_FIXTURE_YAML.to_owned(),
+                protobuf_descriptor: None,
+            },
+            ExtractionScaffoldArtifact {
+                contract_id: "support-grpc.v1".to_owned(),
+                version: "v1".to_owned(),
+                contents: lenso_service::DIRECT_GRPC_PROTO_V1_FIXTURE.to_owned(),
+                protobuf_descriptor: Some(lenso_service::DIRECT_GRPC_DESCRIPTOR_V1.to_vec()),
+            },
+            ExtractionScaffoldArtifact {
+                contract_id: "support.sla-updated.v1".to_owned(),
+                version: "v1".to_owned(),
+                contents: support_sla_updated_schema_source(),
+                protobuf_descriptor: None,
+            },
+            ExtractionScaffoldArtifact {
+                contract_id: "support.audit-recorded.v1".to_owned(),
+                version: "v1".to_owned(),
+                contents: support_audit_recorded_schema_source(),
+                protobuf_descriptor: None,
+            },
+        ],
+    };
+    lenso_service::generate_extraction_scaffold(&inputs)
+        .expect("support-ticket Extraction Scaffold must generate")
+}
+
 fn support_ticket_extraction_plan() -> lenso_service::ExtractionPlan {
     use lenso_service::{
-        ExtractionAuthorityKind, ExtractionContractDirection, ExtractionContractKind,
-        ExtractionEvidenceDigest, ExtractionExpectedAuthority, ExtractionPlanContractVersion,
-        ExtractionPlanInputs, extraction_input_digest,
+        CommonContextRequirement, ExtractionAuthorityKind, ExtractionContractArtifactFormat,
+        ExtractionContractDirection, ExtractionContractKind, ExtractionEvidenceDigest,
+        ExtractionExpectedAuthority, ExtractionPlanContractVersion, ExtractionPlanInputs,
+        ServiceTenancyMode, extraction_input_digest,
     };
 
     let inputs = ExtractionPlanInputs {
@@ -238,6 +340,16 @@ fn support_ticket_extraction_plan() -> lenso_service::ExtractionPlan {
                 artifact_digest: extraction_input_digest(
                     lenso_service::DIRECT_HTTP_OPENAPI_V1_FIXTURE_YAML.as_bytes(),
                 ),
+                artifact_format: ExtractionContractArtifactFormat::Openapi,
+                tenancy_mode: ServiceTenancyMode::Required,
+                required_context: vec![
+                    CommonContextRequirement::Story,
+                    CommonContextRequirement::Trace,
+                    CommonContextRequirement::ServicePrincipal,
+                    CommonContextRequirement::Tenant,
+                    CommonContextRequirement::Deadline,
+                    CommonContextRequirement::IdempotencyKey,
+                ],
                 producer_id: None,
                 consumer_ids: Vec::new(),
             },
@@ -250,6 +362,15 @@ fn support_ticket_extraction_plan() -> lenso_service::ExtractionPlan {
                 artifact_digest: extraction_input_digest(
                     lenso_service::DIRECT_GRPC_PROTO_V1_FIXTURE.as_bytes(),
                 ),
+                artifact_format: ExtractionContractArtifactFormat::Protobuf,
+                tenancy_mode: ServiceTenancyMode::Required,
+                required_context: vec![
+                    CommonContextRequirement::Trace,
+                    CommonContextRequirement::ServicePrincipal,
+                    CommonContextRequirement::Tenant,
+                    CommonContextRequirement::Deadline,
+                    CommonContextRequirement::IdempotencyKey,
+                ],
                 producer_id: Some("support-sla-service".to_owned()),
                 consumer_ids: Vec::new(),
             },
@@ -260,7 +381,19 @@ fn support_ticket_extraction_plan() -> lenso_service::ExtractionPlan {
                 direction: ExtractionContractDirection::Consumes,
                 artifact_reference: "contracts/events/support.sla-updated.v1.schema.json"
                     .to_owned(),
-                artifact_digest: extraction_input_digest(b"support.sla-updated.v1-schema-v1"),
+                artifact_digest: extraction_input_digest(
+                    support_sla_updated_schema_source().as_bytes(),
+                ),
+                artifact_format: ExtractionContractArtifactFormat::JsonSchema,
+                tenancy_mode: ServiceTenancyMode::Required,
+                required_context: vec![
+                    CommonContextRequirement::Story,
+                    CommonContextRequirement::Trace,
+                    CommonContextRequirement::ServicePrincipal,
+                    CommonContextRequirement::Tenant,
+                    CommonContextRequirement::Causation,
+                    CommonContextRequirement::Region,
+                ],
                 producer_id: Some("support-sla-service".to_owned()),
                 consumer_ids: Vec::new(),
             },
@@ -271,7 +404,19 @@ fn support_ticket_extraction_plan() -> lenso_service::ExtractionPlan {
                 direction: ExtractionContractDirection::Consumes,
                 artifact_reference: "contracts/events/support.audit-recorded.v1.schema.json"
                     .to_owned(),
-                artifact_digest: extraction_input_digest(b"support.audit-recorded.v1-schema-v1"),
+                artifact_digest: extraction_input_digest(
+                    support_audit_recorded_schema_source().as_bytes(),
+                ),
+                artifact_format: ExtractionContractArtifactFormat::JsonSchema,
+                tenancy_mode: ServiceTenancyMode::Required,
+                required_context: vec![
+                    CommonContextRequirement::Story,
+                    CommonContextRequirement::Trace,
+                    CommonContextRequirement::ServicePrincipal,
+                    CommonContextRequirement::Tenant,
+                    CommonContextRequirement::Causation,
+                    CommonContextRequirement::Region,
+                ],
                 producer_id: Some("support-audit-service".to_owned()),
                 consumer_ids: Vec::new(),
             },
@@ -301,19 +446,23 @@ fn support_ticket_extraction_module() -> lenso_contracts::ModuleManifest {
         AdminSchema, ConsoleArea, ConsolePackage, ConsoleSurface, EntitySchema,
         EventHandlerDeclaration, EventSurface, FieldSchema, FieldType, ModuleHttpMethod,
         ModuleHttpRoute, ModuleManifest, RuntimeFunctionDeclaration, RuntimeSurface,
-        ScheduledFunctionDeclaration, StoryDisplayDescriptor, StoryDisplaySource,
-        WorkflowDataContract, WorkflowDefinition, WorkflowStepDeclaration,
+        ScheduledFunctionDeclaration, ServiceOperationMetadata, StoryDisplayDescriptor,
+        StoryDisplaySource, WorkflowDataContract, WorkflowDefinition, WorkflowStepDeclaration,
     };
 
     ModuleManifest::builder("support-ticket")
         .capabilities(vec!["support.tickets.read".to_owned()])
         .http_routes(vec![ModuleHttpRoute {
             method: ModuleHttpMethod::Get,
-            path: "/tickets/{id}".to_owned(),
+            path: "/v1/tickets/{ticket_id}".to_owned(),
             capability: Some("support.tickets.read".to_owned()),
             display_name: Some("Get ticket".to_owned()),
             story_title: Some("Support ticket opened".to_owned()),
-            operation: None,
+            operation: Some(ServiceOperationMetadata {
+                operation_id: Some("getTicket".to_owned()),
+                summary: Some("Get ticket".to_owned()),
+                ..ServiceOperationMetadata::default()
+            }),
         }])
         .events(EventSurface {
             handlers: vec![
@@ -447,7 +596,7 @@ fn support_ticket_extraction_readiness_report(
         }),
         contracts: Some(vec![
             ExtractionContractEvidence {
-                subject: "http:GET /tickets/{id}".to_owned(),
+                subject: "http:GET /v1/tickets/{ticket_id}".to_owned(),
                 kind: ExtractionContractKind::Service,
                 direction: ExtractionContractDirection::Provides,
                 status: ExtractionEvidenceStatus::Present,

@@ -212,6 +212,16 @@ phase through terminal evidence. Dry-run is the exact zero-effect plan, and
 integrity plus per-input freshness checks reject any stale plan before a later
 CLI-owned mutating phase can begin. Final authority commit remains a human
 Approval Boundary.
+The scaffold phase turns that exact plan into the content-addressed
+`lenso.extraction-scaffold.v1` artifact. It preserves the complete
+`ModuleManifest`, emits API, Worker, and Migration validation entrypoints,
+copies only pinned Contract artifacts, and derives HTTP, gRPC, Event, and
+Service Client bindings through the public Contract generators. Dry-run is an
+exact unified patch. Apply revalidates plan freshness and every generated file
+before writing, treats matching files as an idempotent retry, and refuses any
+changed or unrecognized target without touching unrelated repository files.
+The candidate remains non-authoritative, does not start Workloads or move data,
+and never changes the Provider v1 path.
 Its versioned Service, Event, Config, and Reliability Contract declarations are
 specified in [`autonomous-service-contract-artifacts.md`](autonomous-service-contract-artifacts.md).
 The separate [`lenso.context.v1`](common-context-contracts.md) envelope

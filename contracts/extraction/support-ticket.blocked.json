@@ -39,7 +39,7 @@
       ],
       "kind": "service",
       "status": "missing",
-      "subject": "http:GET /tickets/{id}"
+      "subject": "http:GET /v1/tickets/{ticket_id}"
     }
   ],
   "effects": {
@@ -113,13 +113,13 @@
       "classification": "blocked",
       "code": "required_service_contract_missing",
       "evidenceReferences": [
-        "module:http:GET /tickets/{id}"
+        "module:http:GET /v1/tickets/{ticket_id}"
       ],
       "message": "The required versioned contract artifact is missing. Required kind: Service Contract.",
       "nextActions": [
         "Publish and reference an authoritative versioned Service Contract for this surface."
       ],
-      "subject": "http:GET /tickets/{id}"
+      "subject": "http:GET /v1/tickets/{ticket_id}"
     },
     {
       "classification": "blocked",
@@ -425,7 +425,7 @@
       "record_audit <- support.audit-recorded.v1"
     ],
     "httpRoutes": [
-      "GET /tickets/{id}"
+      "GET /v1/tickets/{ticket_id}"
     ],
     "runtimeFunctions": [
       "support-ticket.reindex.v1@v1"

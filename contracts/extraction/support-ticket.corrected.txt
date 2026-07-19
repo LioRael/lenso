@@ -53,7 +53,7 @@ Findings:
   evidence: analyzer:postgres/support-ticket
   next: Carry the reported tables, migrations, volume, and cursor evidence into the Extraction Plan.
 Declared surfaces:
-- http: GET /tickets/{id}
+- http: GET /v1/tickets/{ticket_id}
 - events: apply_sla_update <- support.sla-updated.v1, record_audit <- support.audit-recorded.v1
 - runtime: support-ticket.reindex.v1@v1
 - schedules: support-ticket-reindex -> support-ticket.reindex.v1

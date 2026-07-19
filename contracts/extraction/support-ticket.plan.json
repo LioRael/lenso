@@ -394,32 +394,32 @@
   ],
   "pinnedInputs": [
     {
-      "digest": "sha256:4f544fd36b12f5ca0a8f4bfcbcc19d11ddf90dea19e2f61c49fc70bd7df12394",
+      "digest": "sha256:725b606441988467f3d8dc916f0893618393c972b2fd9bf43417e481e8f17bf2",
       "kind": "readiness_evidence",
       "subject": "support-ticket"
     },
     {
-      "digest": "sha256:2410c4e038608cf8e3370b4ef3e6e354ce90a8fa3aea434c14d0a3aa785a6f6c",
+      "digest": "sha256:b61cc12aeecb5d05006367d52c3d86ff7231c8e7c2e2ce32ef54a2a5baa9d8f6",
       "kind": "module_declaration",
       "subject": "support-ticket"
     },
     {
-      "digest": "sha256:4b7da9b79a74571482414c8ac74ed240e36a49f0a6998d273fed68949b59db13",
+      "digest": "sha256:56d78af62735eec6e732f640fc2b64ab033c63482704e09d52380118618bd285",
       "kind": "contract_version",
       "subject": "support-grpc.v1@v1"
     },
     {
-      "digest": "sha256:5c2d3702b01b3385398d46bcf5c6c899bb27778d516c61ba9cc6df45bc940467",
+      "digest": "sha256:82124e5608b37c0e9859e536e3a711a39d2c635cb4365c173428193337db400b",
       "kind": "contract_version",
       "subject": "support-ticket-http.v1@v1"
     },
     {
-      "digest": "sha256:f34dcf9cd5f8976ea330fd6a5f1b7f3da964a7879d3a4abd08ac434525c76c78",
+      "digest": "sha256:fdf2cd822641125c822ab3460c4ee8387cf957b628c89d36fcd717c4104e5c01",
       "kind": "contract_version",
       "subject": "support.audit-recorded.v1@v1"
     },
     {
-      "digest": "sha256:856fb9dcd8cfaf8bc3e339c460e1da43e732277671071c012f63bd3644825b85",
+      "digest": "sha256:cc9b5c35b7dbcbc621cb48862777720c97b809034df16d532796e16c5cb6a13b",
       "kind": "contract_version",
       "subject": "support.sla-updated.v1@v1"
     },
@@ -454,47 +454,86 @@
       "subject": "readiness-evidence:postgres-observation"
     }
   ],
-  "planDigest": "sha256:80e73e1266c08cd9c98d075feaaa22545d8aae63b3f6ba7b1b1c6e1bb67fb0ec",
-  "planId": "extraction-plan:sha256:80e73e1266c08cd9c98d075feaaa22545d8aae63b3f6ba7b1b1c6e1bb67fb0ec",
+  "planDigest": "sha256:11e350d80ba2e3e1c848d271b618a7e15a762bb703088901b5f854dfb3851459",
+  "planId": "extraction-plan:sha256:11e350d80ba2e3e1c848d271b618a7e15a762bb703088901b5f854dfb3851459",
   "proposedService": {
     "contractVersions": [
       {
         "artifactDigest": "sha256:4660fb3b6914214fd868d13de5bc996fb01602b2949aee55531bdf9dc0888b4b",
+        "artifactFormat": "protobuf",
         "artifactReference": "contracts/services/support-grpc.v1.proto",
         "consumerIds": [],
         "contractId": "support-grpc.v1",
         "direction": "consumes",
         "kind": "service",
         "producerId": "support-sla-service",
+        "requiredContext": [
+          "trace",
+          "service_principal",
+          "tenant",
+          "deadline",
+          "idempotency_key"
+        ],
+        "tenancyMode": "required",
         "version": "v1"
       },
       {
         "artifactDigest": "sha256:4ad4f7be18e6afbd250e0ca1326671c8b07203525e9adeab0d07221ac2a23059",
+        "artifactFormat": "openapi",
         "artifactReference": "contracts/openapi/support.v1.yaml",
         "consumerIds": [],
         "contractId": "support-ticket-http.v1",
         "direction": "provides",
         "kind": "service",
+        "requiredContext": [
+          "story",
+          "trace",
+          "service_principal",
+          "tenant",
+          "deadline",
+          "idempotency_key"
+        ],
+        "tenancyMode": "required",
         "version": "v1"
       },
       {
-        "artifactDigest": "sha256:0d7319a2877214bba3d3dd54b6f5211055be37cc14f6468d8558880f156592d2",
+        "artifactDigest": "sha256:42561220b24128494947744b47e78f8ef68321f426f8a2d43ae48bacbc6fdb69",
+        "artifactFormat": "json_schema",
         "artifactReference": "contracts/events/support.audit-recorded.v1.schema.json",
         "consumerIds": [],
         "contractId": "support.audit-recorded.v1",
         "direction": "consumes",
         "kind": "event",
         "producerId": "support-audit-service",
+        "requiredContext": [
+          "story",
+          "trace",
+          "service_principal",
+          "tenant",
+          "causation",
+          "region"
+        ],
+        "tenancyMode": "required",
         "version": "v1"
       },
       {
-        "artifactDigest": "sha256:c03ae8a6b5d0263b4488e01f9ebc0a3873629680c562ecff6ecb20fb6bd5d49c",
+        "artifactDigest": "sha256:2ac30c22ef370e4d971d7761de9e76b8daac731efcfaaba59442666801fdefc5",
+        "artifactFormat": "json_schema",
         "artifactReference": "contracts/events/support.sla-updated.v1.schema.json",
         "consumerIds": [],
         "contractId": "support.sla-updated.v1",
         "direction": "consumes",
         "kind": "event",
         "producerId": "support-sla-service",
+        "requiredContext": [
+          "story",
+          "trace",
+          "service_principal",
+          "tenant",
+          "causation",
+          "region"
+        ],
+        "tenancyMode": "required",
         "version": "v1"
       }
     ],
@@ -523,7 +562,7 @@
         "record_audit <- support.audit-recorded.v1"
       ],
       "httpRoutes": [
-        "GET /tickets/{id}"
+        "GET /v1/tickets/{ticket_id}"
       ],
       "runtimeFunctions": [
         "support-ticket.reindex.v1@v1"

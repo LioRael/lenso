@@ -1,0 +1,1027 @@
+diff --git a/services/support-ticket-service/.lenso/extraction-scaffold.json b/services/support-ticket-service/.lenso/extraction-scaffold.json
+new file mode 100644
+--- /dev/null
++++ b/services/support-ticket-service/.lenso/extraction-scaffold.json
+@@ -0,0 +1,81 @@
++{
++  "generatorVersion": "lenso.extraction-scaffold-generator.v1",
++  "linkedAuthorityRemainsAuthoritative": true,
++  "managedFiles": [
++    {
++      "digest": "sha256:4ec150a2252ebe6ac990deb85046dfc83dde71df17d53728cbb90fc0f17b548f",
++      "path": "services/support-ticket-service/Cargo.toml"
++    },
++    {
++      "digest": "sha256:49d394f0759920570b6c5273fa4f94a3aeb9f8a29dc8bbb566edcd740e187467",
++      "path": "services/support-ticket-service/README.md"
++    },
++    {
++      "digest": "sha256:42561220b24128494947744b47e78f8ef68321f426f8a2d43ae48bacbc6fdb69",
++      "path": "services/support-ticket-service/contracts/events/support.audit-recorded.v1.schema.json"
++    },
++    {
++      "digest": "sha256:2ac30c22ef370e4d971d7761de9e76b8daac731efcfaaba59442666801fdefc5",
++      "path": "services/support-ticket-service/contracts/events/support.sla-updated.v1.schema.json"
++    },
++    {
++      "digest": "sha256:4ad4f7be18e6afbd250e0ca1326671c8b07203525e9adeab0d07221ac2a23059",
++      "path": "services/support-ticket-service/contracts/openapi/support.v1.yaml"
++    },
++    {
++      "digest": "sha256:4660fb3b6914214fd868d13de5bc996fb01602b2949aee55531bdf9dc0888b4b",
++      "path": "services/support-ticket-service/contracts/services/support-grpc.v1.proto"
++    },
++    {
++      "digest": "sha256:b18925a7bd6b57b9d680c69f605840d65eeb457a9ebc1806103eecb2a3f8f22e",
++      "path": "services/support-ticket-service/generated/bindings/support-audit-recorded-v1-v1-handler.json"
++    },
++    {
++      "digest": "sha256:4a310931d95f59694d82543e977c5a0e1b9a33c34724409836b4d402755b1721",
++      "path": "services/support-ticket-service/generated/bindings/support-grpc-v1-v1-client.json"
++    },
++    {
++      "digest": "sha256:ba2eab5825aae81f6bc3e94caf9d1ae01af85c5379a05b5edfc5b88d56452516",
++      "path": "services/support-ticket-service/generated/bindings/support-sla-updated-v1-v1-handler.json"
++    },
++    {
++      "digest": "sha256:5a6524535c26a877e48163cf5660096762a0d47f5365be03894fba3c0f4d530c",
++      "path": "services/support-ticket-service/generated/bindings/support-ticket-http-v1-v1-server.json"
++    },
++    {
++      "digest": "sha256:0b2313dbf10ecc246a1394521c6f4ef5272c9fb8eb7d071f3fa03a43b9dcbcc2",
++      "path": "services/support-ticket-service/generated/clients/support-ticket-service-support-grpc-v1-client.json"
++    },
++    {
++      "digest": "sha256:d2193dd5fb401a902aada98ee37600adfccde7b5791e9fafa10520e28354821f",
++      "path": "services/support-ticket-service/lenso.module.json"
++    },
++    {
++      "digest": "sha256:de7d0fe6c7f39e4f0cbf1f955d7a51783d201b0d345b52edc3c65b25b804f51a",
++      "path": "services/support-ticket-service/lenso.service.json"
++    },
++    {
++      "digest": "sha256:4371426ea8e52ef008d98bb2e54c0f13fb6c48355d5310d67d34842e01717df9",
++      "path": "services/support-ticket-service/migrations/README.md"
++    },
++    {
++      "digest": "sha256:1214536f3c3212d23eface970491121ed6e74d90598b322d16e68b39140553bd",
++      "path": "services/support-ticket-service/src/bin/api.rs"
++    },
++    {
++      "digest": "sha256:381a15c5dd3d89bbfd72bbd0e43be5b342f3f45466f02a6be711673b943e8d35",
++      "path": "services/support-ticket-service/src/bin/migration.rs"
++    },
++    {
++      "digest": "sha256:1766a5ecb1810f5e2b1545baba8de8c91c190ec4257ca01cdb80ea14fc072ddc",
++      "path": "services/support-ticket-service/src/bin/worker.rs"
++    },
++    {
++      "digest": "sha256:1b7bb9db50685f68eb26a4504ca77ec1ac66cdf392c8da7a2d5cf88438406f5a",
++      "path": "services/support-ticket-service/src/lib.rs"
++    }
++  ],
++  "planDigest": "sha256:11e350d80ba2e3e1c848d271b618a7e15a762bb703088901b5f854dfb3851459",
++  "planId": "extraction-plan:sha256:11e350d80ba2e3e1c848d271b618a7e15a762bb703088901b5f854dfb3851459",
++  "protocol": "lenso.extraction-scaffold-ownership.v1"
++}
+diff --git a/services/support-ticket-service/Cargo.toml b/services/support-ticket-service/Cargo.toml
+new file mode 100644
+--- /dev/null
++++ b/services/support-ticket-service/Cargo.toml
+@@ -0,0 +1,20 @@
++[package]
++name = "support_ticket_service_candidate"
++version = "0.0.0"
++edition = "2024"
++publish = false
++
++[lib]
++path = "src/lib.rs"
++
++[[bin]]
++name = "support-ticket-service-api"
++path = "src/bin/api.rs"
++
++[[bin]]
++name = "support-ticket-service-worker"
++path = "src/bin/worker.rs"
++
++[[bin]]
++name = "support-ticket-service-migration"
++path = "src/bin/migration.rs"
+diff --git a/services/support-ticket-service/README.md b/services/support-ticket-service/README.md
+new file mode 100644
+--- /dev/null
++++ b/services/support-ticket-service/README.md
+@@ -0,0 +1,7 @@
++# support-ticket-service extraction candidate
++
++This scaffold preserves Module `support-ticket` and is bound to `extraction-plan:sha256:11e350d80ba2e3e1c848d271b618a7e15a762bb703088901b5f854dfb3851459`.
++
++The linked Host remains authoritative. These API, Worker, and Migration entrypoints validate the candidate shape only; Store expansion and Workload startup belong to the next approved Extraction Plan phase.
++
++Generated Contract bindings live under `generated/bindings/`; only planned cross-Service boundaries receive generated clients under `generated/clients/`. Existing Provider v1 files and behavior are not changed.
+diff --git a/services/support-ticket-service/contracts/events/support.audit-recorded.v1.schema.json b/services/support-ticket-service/contracts/events/support.audit-recorded.v1.schema.json
+new file mode 100644
+--- /dev/null
++++ b/services/support-ticket-service/contracts/events/support.audit-recorded.v1.schema.json
+@@ -0,0 +1,21 @@
++{
++  "$id": "https://contracts.lenso.local/events/support.audit-recorded.v1.schema.json",
++  "$schema": "https://json-schema.org/draft/2020-12/schema",
++  "additionalProperties": false,
++  "properties": {
++    "action": {
++      "minLength": 1,
++      "type": "string"
++    },
++    "ticketId": {
++      "minLength": 1,
++      "type": "string"
++    }
++  },
++  "required": [
++    "ticketId",
++    "action"
++  ],
++  "title": "support.audit-recorded.v1",
++  "type": "object"
++}
+diff --git a/services/support-ticket-service/contracts/events/support.sla-updated.v1.schema.json b/services/support-ticket-service/contracts/events/support.sla-updated.v1.schema.json
+new file mode 100644
+--- /dev/null
++++ b/services/support-ticket-service/contracts/events/support.sla-updated.v1.schema.json
+@@ -0,0 +1,21 @@
++{
++  "$id": "https://contracts.lenso.local/events/support.sla-updated.v1.schema.json",
++  "$schema": "https://json-schema.org/draft/2020-12/schema",
++  "additionalProperties": false,
++  "properties": {
++    "slaHours": {
++      "minimum": 1,
++      "type": "integer"
++    },
++    "ticketId": {
++      "minLength": 1,
++      "type": "string"
++    }
++  },
++  "required": [
++    "ticketId",
++    "slaHours"
++  ],
++  "title": "support.sla-updated.v1",
++  "type": "object"
++}
+diff --git a/services/support-ticket-service/contracts/openapi/support.v1.yaml b/services/support-ticket-service/contracts/openapi/support.v1.yaml
+new file mode 100644
+--- /dev/null
++++ b/services/support-ticket-service/contracts/openapi/support.v1.yaml
+@@ -0,0 +1,72 @@
++openapi: 3.1.0
++info:
++  title: Support HTTP Service Contract
++  version: v1
++paths:
++  /v1/tickets/{ticket_id}:
++    get:
++      operationId: getTicket
++      x-lenso-idempotency: idempotent
++      x-lenso-call-policy:
++        maxAttempts: 2
++        circuitBreaker: { failureThreshold: 2, openForMs: 1000, halfOpenMaxCalls: 1 }
++        concurrency: { maxInFlight: 2 }
++        overload: { maxInFlight: 2 }
++        fallback:
++          handler: support.cached_ticket
++          on: [circuit_open, bulkhead_saturated, overload_rejected]
++      responses:
++        '200':
++          description: Ticket
++        '404':
++          description: Standard not-found problem
++          content:
++            application/problem+json:
++              schema:
++                $ref: '#/components/schemas/ErrorResponse'
++    post:
++      operationId: updateTicket
++      x-lenso-idempotency: requires_key
++      x-lenso-call-policy:
++        maxAttempts: 2
++        circuitBreaker: { failureThreshold: 2, openForMs: 1000, halfOpenMaxCalls: 1 }
++        concurrency: { maxInFlight: 2 }
++        overload: { maxInFlight: 2 }
++      requestBody:
++        required: true
++        content:
++          application/json:
++            schema:
++              type: object
++              required: [title]
++              properties:
++                title: { type: string }
++      responses:
++        '200':
++          description: Updated ticket
++        '400':
++          description: Standard validation problem
++          content:
++            application/problem+json:
++              schema:
++                $ref: '#/components/schemas/ErrorResponse'
++        '409':
++          description: Standard conflict problem
++          content:
++            application/problem+json:
++              schema:
++                $ref: '#/components/schemas/ErrorResponse'
++components:
++  schemas:
++    ErrorResponse:
++      type: object
++      required: [type, title, status, detail, code, errors]
++      properties:
++        type: { type: string }
++        title: { type: string }
++        status: { type: integer, minimum: 100, maximum: 599 }
++        detail: { type: string }
++        code: { type: string }
++        request_id: { type: [string, 'null'] }
++        correlation_id: { type: [string, 'null'] }
++        errors: { type: array, items: { type: object } }
+diff --git a/services/support-ticket-service/contracts/services/support-grpc.v1.proto b/services/support-ticket-service/contracts/services/support-grpc.v1.proto
+new file mode 100644
+--- /dev/null
++++ b/services/support-ticket-service/contracts/services/support-grpc.v1.proto
+@@ -0,0 +1,23 @@
++syntax = "proto3";
++
++package lenso.services.support.v1;
++
++// lenso-contract-id: support-grpc
++// lenso-contract-version: v1
++service SupportService {
++  // lenso-idempotency: idempotent
++  // lenso-call-policy: {"maxAttempts":2,"circuitBreaker":{"failureThreshold":2,"openForMs":1000,"halfOpenMaxCalls":1},"concurrency":{"maxInFlight":2},"overload":{"maxInFlight":2},"fallback":{"handler":"support.cached_sla","on":["circuit_open","bulkhead_saturated","overload_rejected","deadline_expired"]}}
++  rpc GetSla(GetSlaRequest) returns (SlaResponse) {
++    option idempotency_level = NO_SIDE_EFFECTS;
++  }
++  // lenso-idempotency: requires_key
++  // lenso-call-policy: {"maxAttempts":2,"circuitBreaker":{"failureThreshold":2,"openForMs":1000,"halfOpenMaxCalls":1},"concurrency":{"maxInFlight":2},"overload":{"maxInFlight":2}}
++  rpc UpdateSla(UpdateSlaRequest) returns (SlaResponse);
++  // lenso-call-policy: {"maxAttempts":1,"circuitBreaker":{"failureThreshold":2,"openForMs":1000,"halfOpenMaxCalls":1},"concurrency":{"maxInFlight":2},"overload":{"maxInFlight":2}}
++  rpc ProbeSla(ProbeSlaRequest) returns (SlaResponse);
++}
++
++message GetSlaRequest { bytes payload = 1; }
++message UpdateSlaRequest { bytes payload = 1; }
++message ProbeSlaRequest { bytes payload = 1; }
++message SlaResponse { bytes payload = 1; }
+diff --git a/services/support-ticket-service/generated/bindings/support-audit-recorded-v1-v1-handler.json b/services/support-ticket-service/generated/bindings/support-audit-recorded-v1-v1-handler.json
+new file mode 100644
+--- /dev/null
++++ b/services/support-ticket-service/generated/bindings/support-audit-recorded-v1-v1-handler.json
+@@ -0,0 +1,18 @@
++{
++  "artifact": "contracts/events/support.audit-recorded.v1.schema.json",
++  "artifactDigest": "sha256:42561220b24128494947744b47e78f8ef68321f426f8a2d43ae48bacbc6fdb69",
++  "contractId": "support.audit-recorded.v1",
++  "direction": "consumes",
++  "eventType": "support.audit-recorded.v1",
++  "protocol": "lenso.generated-event-binding.v1",
++  "requiredContext": [
++    "story",
++    "trace",
++    "service_principal",
++    "tenant",
++    "causation",
++    "region"
++  ],
++  "tenancyMode": "required",
++  "version": "v1"
++}
+diff --git a/services/support-ticket-service/generated/bindings/support-grpc-v1-v1-client.json b/services/support-ticket-service/generated/bindings/support-grpc-v1-v1-client.json
+new file mode 100644
+--- /dev/null
++++ b/services/support-ticket-service/generated/bindings/support-grpc-v1-v1-client.json
+@@ -0,0 +1,79 @@
++{
++  "contractId": "support-grpc.v1",
++  "operations": [
++    {
++      "callPolicy": {
++        "circuitBreaker": {
++          "failureThreshold": 2,
++          "halfOpenMaxCalls": 1,
++          "openForMs": 1000
++        },
++        "concurrency": {
++          "maxInFlight": 2
++        },
++        "fallback": {
++          "handler": "support.cached_sla",
++          "on": [
++            "circuit_open",
++            "bulkhead_saturated",
++            "overload_rejected",
++            "deadline_expired"
++          ]
++        },
++        "maxAttempts": 2,
++        "overload": {
++          "maxInFlight": 2
++        }
++      },
++      "idempotency": "idempotent",
++      "operationId": "GetSla",
++      "path": "/lenso.services.support.v1.SupportService/GetSla",
++      "requestType": ".lenso.services.support.v1.GetSlaRequest",
++      "responseType": ".lenso.services.support.v1.SlaResponse"
++    },
++    {
++      "callPolicy": {
++        "circuitBreaker": {
++          "failureThreshold": 2,
++          "halfOpenMaxCalls": 1,
++          "openForMs": 1000
++        },
++        "concurrency": {
++          "maxInFlight": 2
++        },
++        "maxAttempts": 1,
++        "overload": {
++          "maxInFlight": 2
++        }
++      },
++      "idempotency": "unknown",
++      "operationId": "ProbeSla",
++      "path": "/lenso.services.support.v1.SupportService/ProbeSla",
++      "requestType": ".lenso.services.support.v1.ProbeSlaRequest",
++      "responseType": ".lenso.services.support.v1.SlaResponse"
++    },
++    {
++      "callPolicy": {
++        "circuitBreaker": {
++          "failureThreshold": 2,
++          "halfOpenMaxCalls": 1,
++          "openForMs": 1000
++        },
++        "concurrency": {
++          "maxInFlight": 2
++        },
++        "maxAttempts": 2,
++        "overload": {
++          "maxInFlight": 2
++        }
++      },
++      "idempotency": "requires_key",
++      "operationId": "UpdateSla",
++      "path": "/lenso.services.support.v1.SupportService/UpdateSla",
++      "requestType": ".lenso.services.support.v1.UpdateSlaRequest",
++      "responseType": ".lenso.services.support.v1.SlaResponse"
++    }
++  ],
++  "serviceName": "lenso.services.support.v1.SupportService",
++  "version": "v1"
++}
+diff --git a/services/support-ticket-service/generated/bindings/support-sla-updated-v1-v1-handler.json b/services/support-ticket-service/generated/bindings/support-sla-updated-v1-v1-handler.json
+new file mode 100644
+--- /dev/null
++++ b/services/support-ticket-service/generated/bindings/support-sla-updated-v1-v1-handler.json
+@@ -0,0 +1,18 @@
++{
++  "artifact": "contracts/events/support.sla-updated.v1.schema.json",
++  "artifactDigest": "sha256:2ac30c22ef370e4d971d7761de9e76b8daac731efcfaaba59442666801fdefc5",
++  "contractId": "support.sla-updated.v1",
++  "direction": "consumes",
++  "eventType": "support.sla-updated.v1",
++  "protocol": "lenso.generated-event-binding.v1",
++  "requiredContext": [
++    "story",
++    "trace",
++    "service_principal",
++    "tenant",
++    "causation",
++    "region"
++  ],
++  "tenancyMode": "required",
++  "version": "v1"
++}
+diff --git a/services/support-ticket-service/generated/bindings/support-ticket-http-v1-v1-server.json b/services/support-ticket-service/generated/bindings/support-ticket-http-v1-v1-server.json
+new file mode 100644
+--- /dev/null
++++ b/services/support-ticket-service/generated/bindings/support-ticket-http-v1-v1-server.json
+@@ -0,0 +1,309 @@
++{
++  "contractId": "support-ticket-http.v1",
++  "operations": [
++    {
++      "callPolicy": {
++        "circuitBreaker": {
++          "failureThreshold": 2,
++          "halfOpenMaxCalls": 1,
++          "openForMs": 1000
++        },
++        "concurrency": {
++          "maxInFlight": 2
++        },
++        "fallback": {
++          "handler": "support.cached_ticket",
++          "on": [
++            "circuit_open",
++            "bulkhead_saturated",
++            "overload_rejected"
++          ]
++        },
++        "maxAttempts": 2,
++        "overload": {
++          "maxInFlight": 2
++        }
++      },
++      "idempotency": "idempotent",
++      "method": "GET",
++      "operationId": "getTicket",
++      "path": "/v1/tickets/{ticket_id}",
++      "responseSchemas": {
++        "404": {
++          "properties": {
++            "code": {
++              "type": "string"
++            },
++            "correlation_id": {
++              "type": [
++                "string",
++                "null"
++              ]
++            },
++            "detail": {
++              "type": "string"
++            },
++            "errors": {
++              "items": {
++                "type": "object"
++              },
++              "type": "array"
++            },
++            "request_id": {
++              "type": [
++                "string",
++                "null"
++              ]
++            },
++            "status": {
++              "maximum": 599,
++              "minimum": 100,
++              "type": "integer"
++            },
++            "title": {
++              "type": "string"
++            },
++            "type": {
++              "type": "string"
++            }
++          },
++          "required": [
++            "type",
++            "title",
++            "status",
++            "detail",
++            "code",
++            "errors"
++          ],
++          "type": "object"
++        }
++      },
++      "standardErrorSchema": {
++        "properties": {
++          "code": {
++            "type": "string"
++          },
++          "correlation_id": {
++            "type": [
++              "string",
++              "null"
++            ]
++          },
++          "detail": {
++            "type": "string"
++          },
++          "errors": {
++            "items": {
++              "type": "object"
++            },
++            "type": "array"
++          },
++          "request_id": {
++            "type": [
++              "string",
++              "null"
++            ]
++          },
++          "status": {
++            "maximum": 599,
++            "minimum": 100,
++            "type": "integer"
++          },
++          "title": {
++            "type": "string"
++          },
++          "type": {
++            "type": "string"
++          }
++        },
++        "required": [
++          "type",
++          "title",
++          "status",
++          "detail",
++          "code",
++          "errors"
++        ],
++        "type": "object"
++      }
++    },
++    {
++      "callPolicy": {
++        "circuitBreaker": {
++          "failureThreshold": 2,
++          "halfOpenMaxCalls": 1,
++          "openForMs": 1000
++        },
++        "concurrency": {
++          "maxInFlight": 2
++        },
++        "maxAttempts": 2,
++        "overload": {
++          "maxInFlight": 2
++        }
++      },
++      "idempotency": "requires_key",
++      "method": "POST",
++      "operationId": "updateTicket",
++      "path": "/v1/tickets/{ticket_id}",
++      "requestSchema": {
++        "properties": {
++          "title": {
++            "type": "string"
++          }
++        },
++        "required": [
++          "title"
++        ],
++        "type": "object"
++      },
++      "responseSchemas": {
++        "400": {
++          "properties": {
++            "code": {
++              "type": "string"
++            },
++            "correlation_id": {
++              "type": [
++                "string",
++                "null"
++              ]
++            },
++            "detail": {
++              "type": "string"
++            },
++            "errors": {
++              "items": {
++                "type": "object"
++              },
++              "type": "array"
++            },
++            "request_id": {
++              "type": [
++                "string",
++                "null"
++              ]
++            },
++            "status": {
++              "maximum": 599,
++              "minimum": 100,
++              "type": "integer"
++            },
++            "title": {
++              "type": "string"
++            },
++            "type": {
++              "type": "string"
++            }
++          },
++          "required": [
++            "type",
++            "title",
++            "status",
++            "detail",
++            "code",
++            "errors"
++          ],
++          "type": "object"
++        },
++        "409": {
++          "properties": {
++            "code": {
++              "type": "string"
++            },
++            "correlation_id": {
++              "type": [
++                "string",
++                "null"
++              ]
++            },
++            "detail": {
++              "type": "string"
++            },
++            "errors": {
++              "items": {
++                "type": "object"
++              },
++              "type": "array"
++            },
++            "request_id": {
++              "type": [
++                "string",
++                "null"
++              ]
++            },
++            "status": {
++              "maximum": 599,
++              "minimum": 100,
++              "type": "integer"
++            },
++            "title": {
++              "type": "string"
++            },
++            "type": {
++              "type": "string"
++            }
++          },
++          "required": [
++            "type",
++            "title",
++            "status",
++            "detail",
++            "code",
++            "errors"
++          ],
++          "type": "object"
++        }
++      },
++      "standardErrorSchema": {
++        "properties": {
++          "code": {
++            "type": "string"
++          },
++          "correlation_id": {
++            "type": [
++              "string",
++              "null"
++            ]
++          },
++          "detail": {
++            "type": "string"
++          },
++          "errors": {
++            "items": {
++              "type": "object"
++            },
++            "type": "array"
++          },
++          "request_id": {
++            "type": [
++              "string",
++              "null"
++            ]
++          },
++          "status": {
++            "maximum": 599,
++            "minimum": 100,
++            "type": "integer"
++          },
++          "title": {
++            "type": "string"
++          },
++          "type": {
++            "type": "string"
++          }
++        },
++        "required": [
++          "type",
++          "title",
++          "status",
++          "detail",
++          "code",
++          "errors"
++        ],
++        "type": "object"
++      }
++    }
++  ],
++  "version": "v1"
++}
+diff --git a/services/support-ticket-service/generated/clients/support-ticket-service-support-grpc-v1-client.json b/services/support-ticket-service/generated/clients/support-ticket-service-support-grpc-v1-client.json
+new file mode 100644
+--- /dev/null
++++ b/services/support-ticket-service/generated/clients/support-ticket-service-support-grpc-v1-client.json
+@@ -0,0 +1,23 @@
++{
++  "artifact": "contracts/services/support-grpc.v1.proto",
++  "binding": "generated/bindings/support-grpc-v1-v1-client.json",
++  "clientId": "support-ticket-service-support-grpc-v1-client",
++  "contractId": "support-grpc.v1",
++  "operationIds": [
++    "GetSla",
++    "ProbeSla",
++    "UpdateSla"
++  ],
++  "ownerId": "support-ticket-service",
++  "protocol": "lenso.generated-service-client.v1",
++  "requiredContext": [
++    "trace",
++    "service_principal",
++    "tenant",
++    "deadline",
++    "idempotency_key"
++  ],
++  "tenancyMode": "required",
++  "transport": "grpc",
++  "version": "v1"
++}
+diff --git a/services/support-ticket-service/lenso.module.json b/services/support-ticket-service/lenso.module.json
+new file mode 100644
+--- /dev/null
++++ b/services/support-ticket-service/lenso.module.json
+@@ -0,0 +1,118 @@
++{
++  "admin": {
++    "entities": [
++      {
++        "fields": [
++          {
++            "field_type": {
++              "kind": "string"
++            },
++            "label": "ID",
++            "name": "id",
++            "nullable": false
++          }
++        ],
++        "label": "Tickets",
++        "name": "tickets",
++        "read_capability": "support.tickets.read"
++      }
++    ],
++    "kind": "schema"
++  },
++  "capabilities": [
++    "support.tickets.read"
++  ],
++  "console": [
++    {
++      "area": "data",
++      "label": "Support tickets",
++      "name": "support-tickets",
++      "package": {
++        "export": "supportTicketConsoleModule",
++        "name": "@lenso/support-ticket-console"
++      },
++      "required_capabilities": [
++        "support.tickets.read"
++      ],
++      "route": "/support/tickets"
++    }
++  ],
++  "console_contributions": [],
++  "console_slots": [],
++  "dependencies": [],
++  "events": {
++    "handlers": [
++      {
++        "event_name": "support.sla-updated.v1",
++        "name": "apply_sla_update"
++      },
++      {
++        "event_name": "support.audit-recorded.v1",
++        "name": "record_audit"
++      }
++    ]
++  },
++  "http_routes": [
++    {
++      "capability": "support.tickets.read",
++      "display_name": "Get ticket",
++      "method": "GET",
++      "operation": {
++        "operationId": "getTicket",
++        "summary": "Get ticket"
++      },
++      "path": "/v1/tickets/{ticket_id}",
++      "story_title": "Support ticket opened"
++    }
++  ],
++  "name": "support-ticket",
++  "runtime": {
++    "functions": [
++      {
++        "input_schema": "support-ticket.reindex.v1",
++        "name": "support-ticket.reindex.v1",
++        "queue": "support-ticket",
++        "version": 1
++      }
++    ],
++    "schedules": [
++      {
++        "cron": "0 * * * *",
++        "function_name": "support-ticket.reindex.v1",
++        "input": {},
++        "name": "support-ticket-reindex"
++      }
++    ],
++    "workflows": [
++      {
++        "inputContract": {
++          "contractId": "support.ticket-triage-input",
++          "version": "v1"
++        },
++        "name": "ticket_triage",
++        "owner": "support-ticket",
++        "protocol": "lenso.workflow-definition.v1",
++        "resultContract": {
++          "contractId": "support.ticket-triage-result",
++          "version": "v1"
++        },
++        "steps": [
++          {
++            "name": "classify"
++          }
++        ],
++        "version": "v1"
++      }
++    ]
++  },
++  "story_display": [
++    {
++      "display_name": "Reindex support tickets",
++      "source": {
++        "kind": "execution_name",
++        "name": "support-ticket.reindex.v1"
++      },
++      "story_title": "Support ticket maintenance"
++    }
++  ]
++}
+diff --git a/services/support-ticket-service/lenso.service.json b/services/support-ticket-service/lenso.service.json
+new file mode 100644
+--- /dev/null
++++ b/services/support-ticket-service/lenso.service.json
+@@ -0,0 +1,58 @@
++{
++  "modules": [
++    "support-ticket"
++  ],
++  "operatingRegions": [
++    "local-sandbox"
++  ],
++  "protocol": "lenso.service.v2",
++  "serviceContracts": [
++    {
++      "artifact": {
++        "format": "openapi",
++        "path": "contracts/openapi/support.v1.yaml"
++      },
++      "context": {
++        "protocol": "lenso.context.v1",
++        "required": [
++          "story",
++          "trace",
++          "service_principal",
++          "tenant",
++          "deadline",
++          "idempotency_key"
++        ]
++      },
++      "contractId": "support-ticket-http.v1",
++      "moduleId": "support-ticket",
++      "tenancyMode": "required",
++      "version": "v1"
++    }
++  ],
++  "serviceId": "support-ticket-service",
++  "stores": [
++    {
++      "serviceId": "support-ticket-service",
++      "storeId": "support-ticket-service-store"
++    }
++  ],
++  "tenancyMode": "required",
++  "version": "0.0.0-extraction-candidate",
++  "workloads": [
++    {
++      "role": "api",
++      "serviceId": "support-ticket-service",
++      "workloadId": "support-ticket-service-api"
++    },
++    {
++      "role": "worker",
++      "serviceId": "support-ticket-service",
++      "workloadId": "support-ticket-service-worker"
++    },
++    {
++      "role": "migration",
++      "serviceId": "support-ticket-service",
++      "workloadId": "support-ticket-service-migration"
++    }
++  ]
++}
+diff --git a/services/support-ticket-service/migrations/README.md b/services/support-ticket-service/migrations/README.md
+new file mode 100644
+--- /dev/null
++++ b/services/support-ticket-service/migrations/README.md
+@@ -0,0 +1,6 @@
++# Candidate migrations
++
++The Migration Workload is scaffolded, but this phase does not apply schema or data changes. The expand-first phase must copy the plan-owned migrations from authoritative Module sources and bind receipts to `extraction-plan:sha256:11e350d80ba2e3e1c848d271b618a7e15a762bb703088901b5f854dfb3851459`.
++
++Planned Module migrations:
++- `0001_create_support_tickets`
+diff --git a/services/support-ticket-service/src/bin/api.rs b/services/support-ticket-service/src/bin/api.rs
+new file mode 100644
+--- /dev/null
++++ b/services/support-ticket-service/src/bin/api.rs
+@@ -0,0 +1,14 @@
++//! Generated api Workload validation entrypoint.
++
++pub const SERVICE_ID: &str = "support-ticket-service";
++pub const MODULE_ID: &str = "support-ticket";
++pub const WORKLOAD_ID: &str = "support-ticket-service-api";
++pub const WORKLOAD_ROLE: &str = "api";
++
++pub fn run() {
++    println!("{{\"serviceId\":\"{}\",\"moduleId\":\"{}\",\"workloadId\":\"{}\",\"role\":\"{}\",\"authority\":\"linked_host\"}}", SERVICE_ID, MODULE_ID, WORKLOAD_ID, WORKLOAD_ROLE);
++}
++
++fn main() {
++    run();
++}
+diff --git a/services/support-ticket-service/src/bin/migration.rs b/services/support-ticket-service/src/bin/migration.rs
+new file mode 100644
+--- /dev/null
++++ b/services/support-ticket-service/src/bin/migration.rs
+@@ -0,0 +1,14 @@
++//! Generated migration Workload validation entrypoint.
++
++pub const SERVICE_ID: &str = "support-ticket-service";
++pub const MODULE_ID: &str = "support-ticket";
++pub const WORKLOAD_ID: &str = "support-ticket-service-migration";
++pub const WORKLOAD_ROLE: &str = "migration";
++
++pub fn run() {
++    println!("{{\"serviceId\":\"{}\",\"moduleId\":\"{}\",\"workloadId\":\"{}\",\"role\":\"{}\",\"authority\":\"linked_host\"}}", SERVICE_ID, MODULE_ID, WORKLOAD_ID, WORKLOAD_ROLE);
++}
++
++fn main() {
++    run();
++}
+diff --git a/services/support-ticket-service/src/bin/worker.rs b/services/support-ticket-service/src/bin/worker.rs
+new file mode 100644
+--- /dev/null
++++ b/services/support-ticket-service/src/bin/worker.rs
+@@ -0,0 +1,14 @@
++//! Generated worker Workload validation entrypoint.
++
++pub const SERVICE_ID: &str = "support-ticket-service";
++pub const MODULE_ID: &str = "support-ticket";
++pub const WORKLOAD_ID: &str = "support-ticket-service-worker";
++pub const WORKLOAD_ROLE: &str = "worker";
++
++pub fn run() {
++    println!("{{\"serviceId\":\"{}\",\"moduleId\":\"{}\",\"workloadId\":\"{}\",\"role\":\"{}\",\"authority\":\"linked_host\"}}", SERVICE_ID, MODULE_ID, WORKLOAD_ID, WORKLOAD_ROLE);
++}
++
++fn main() {
++    run();
++}
+diff --git a/services/support-ticket-service/src/lib.rs b/services/support-ticket-service/src/lib.rs
+new file mode 100644
+--- /dev/null
++++ b/services/support-ticket-service/src/lib.rs
+@@ -0,0 +1,16 @@
++//! Generated extraction candidate. The linked Module remains authoritative.
++
++pub const SERVICE_ID: &str = "support-ticket-service";
++pub const MODULE_ID: &str = "support-ticket";
++pub const LINKED_AUTHORITY_REMAINS_AUTHORITATIVE: bool = true;
++pub const MODULE_MANIFEST_JSON: &str = include_str!("../lenso.module.json");
++pub const SERVICE_MANIFEST_JSON: &str = include_str!("../lenso.service.json");
++
++#[must_use]
++pub fn validate_public_entrypoints() -> bool {
++    !SERVICE_ID.is_empty()
++        && !MODULE_ID.is_empty()
++        && LINKED_AUTHORITY_REMAINS_AUTHORITATIVE
++        && !MODULE_MANIFEST_JSON.is_empty()
++        && !SERVICE_MANIFEST_JSON.is_empty()
++}
