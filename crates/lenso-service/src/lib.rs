@@ -13,6 +13,7 @@ mod endpoint_resolution;
 mod event_envelope;
 mod extraction_backfill;
 mod extraction_plan;
+mod extraction_quiescence;
 mod extraction_readiness;
 mod extraction_reconciliation;
 mod extraction_run;
@@ -88,6 +89,13 @@ pub use extraction_plan::{
     dry_run_extraction_plan, ensure_extraction_plan_fresh, extraction_input_digest,
     extraction_plan_integrity_is_valid, extraction_plan_json, extraction_plan_schema,
     generate_extraction_plan, render_extraction_plan,
+};
+pub use extraction_quiescence::{
+    EXTRACTION_QUIESCENCE_PROTOCOL, ExtractionDrainSnapshot, ExtractionQuiescenceEffects,
+    ExtractionQuiescenceEvidence, ExtractionQuiescenceIssue, ExtractionQuiescenceIssueCode,
+    ExtractionQuiescenceRun, ExtractionQuiescenceStartError, ExtractionQuiescenceStatus,
+    cancel_extraction_quiescence, complete_extraction_quiescence, record_extraction_drain,
+    start_extraction_quiescence,
 };
 pub use extraction_readiness::{
     EXTRACTION_READINESS_ANALYZER_VERSION, EXTRACTION_READINESS_REPORT_PROTOCOL,
