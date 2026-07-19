@@ -228,6 +228,8 @@ pub fn router() -> ApiOpenApiRouter {
     OpenApiRouter::new()
         .routes(routes!(get_admin_context))
         .routes(routes!(get_summary))
+        .routes(routes!(get_extraction_console_projection))
+        .routes(routes!(get_extraction_artifact))
         .routes(routes!(get_heatmap))
         .routes(routes!(get_execution_technical_operations))
         .routes(routes!(get_execution_payload))

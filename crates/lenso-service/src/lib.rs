@@ -13,6 +13,7 @@ mod endpoint_resolution;
 mod event_envelope;
 mod extraction_authority_commit;
 mod extraction_backfill;
+mod extraction_console_projection;
 mod extraction_plan;
 mod extraction_provisional_cutover;
 mod extraction_quiescence;
@@ -88,6 +89,13 @@ pub use extraction_backfill::{
     apply_postgres_extraction_backfill_batch, copy_postgres_extraction_service_data_batch,
     extraction_backfill_integrity_is_valid, load_postgres_extraction_backfill,
     start_extraction_backfill,
+};
+pub use extraction_console_projection::{
+    EXTRACTION_CONSOLE_PROJECTION_PROTOCOL, ExtractionConsoleApprovalBoundary,
+    ExtractionConsoleArtifacts, ExtractionConsoleAuthority, ExtractionConsoleBlocker,
+    ExtractionConsoleEvidence, ExtractionConsoleProjection, ExtractionConsoleState,
+    ExtractionConsoleTimelineEntry, load_extraction_artifact, load_extraction_console_projection,
+    project_extraction_console, record_extraction_artifact,
 };
 pub use extraction_plan::{
     EXTRACTION_PLAN_GENERATOR_VERSION, EXTRACTION_PLAN_PROTOCOL, ExtractionApprovalBoundary,

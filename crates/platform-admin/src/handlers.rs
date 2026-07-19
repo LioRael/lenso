@@ -12,6 +12,64 @@ use platform_http::{AdminActor, ApiErrorResponse, ErrorResponse, HttpRequestCont
 
 #[utoipa::path(
     get,
+    path = "/admin/runtime/extractions/current",
+    operation_id = "admin_runtime_get_extraction_projection",
+    tag = "admin-runtime",
+    responses(
+        (status = 200, description = "Authoritative read-only Module extraction projection", body = lenso_service::ExtractionConsoleProjection),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 403, description = "Runtime read capability is required", body = ErrorResponse, content_type = "application/problem+json")
+    )
+)]
+pub(crate) async fn get_extraction_console_projection(
+    admin: AdminActor,
+    State(ctx): State<AppContext>,
+    HttpRequestContext(request_ctx): HttpRequestContext,
+) -> Result<Json<lenso_service::ExtractionConsoleProjection>, ApiErrorResponse> {
+    ensure_runtime_read_capability(&admin, &request_ctx)?;
+    let projection = lenso_service::load_extraction_console_projection(&ctx.db, None)
+        .await
+        .map_err(|source| query_error(source, &request_ctx))?;
+    Ok(Json(projection))
+}
+
+#[utoipa::path(
+    get,
+    path = "/admin/runtime/extractions/{plan_id}/artifacts/{artifact_id}",
+    operation_id = "admin_runtime_get_extraction_artifact",
+    tag = "admin-runtime",
+    params(
+        ("plan_id" = String, Path, description = "Extraction plan identifier"),
+        ("artifact_id" = String, Path, description = "Stable extraction artifact identifier")
+    ),
+    responses(
+        (status = 200, description = "Persisted extraction workflow artifact", body = Object),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 403, description = "Runtime read capability is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 404, description = "Extraction artifact was not found", body = ErrorResponse, content_type = "application/problem+json")
+    )
+)]
+pub(crate) async fn get_extraction_artifact(
+    admin: AdminActor,
+    State(ctx): State<AppContext>,
+    Path((plan_id, artifact_id)): Path<(String, String)>,
+    HttpRequestContext(request_ctx): HttpRequestContext,
+) -> Result<Json<serde_json::Value>, ApiErrorResponse> {
+    ensure_runtime_read_capability(&admin, &request_ctx)?;
+    let artifact = lenso_service::load_extraction_artifact(&ctx.db, &plan_id, &artifact_id)
+        .await
+        .map_err(|source| query_error(source, &request_ctx))?
+        .ok_or_else(|| {
+            ApiErrorResponse::with_context(
+                AppError::new(ErrorCode::NotFound, "Extraction artifact was not found"),
+                &request_ctx,
+            )
+        })?;
+    Ok(Json(artifact))
+}
+
+#[utoipa::path(
+    get,
     path = "/admin/runtime/summary",
     operation_id = "admin_runtime_get_summary",
     tag = "admin-runtime",
