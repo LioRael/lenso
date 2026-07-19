@@ -11,6 +11,7 @@ mod direct_grpc;
 mod direct_http;
 mod endpoint_resolution;
 mod event_envelope;
+mod extraction_backfill;
 mod extraction_plan;
 mod extraction_readiness;
 mod extraction_run;
@@ -60,6 +61,14 @@ pub use event_envelope::{
     EventEnvelopeIssueCode, GeneratedEventContract,
     evaluate_generated_event_contract_compatibility, event_envelope_from_cloudevent,
     generate_event_contract, validate_event_envelope, validate_event_envelope_value,
+};
+pub use extraction_backfill::{
+    EXTRACTION_BACKFILL_PROTOCOL, ExtractionBackfillBatchReceipt, ExtractionBackfillBoundary,
+    ExtractionBackfillEffects, ExtractionBackfillError, ExtractionBackfillErrorCode,
+    ExtractionBackfillEvidence, ExtractionBackfillProgress, ExtractionBackfillRecord,
+    ExtractionBackfillRequest, ExtractionBackfillRun, ExtractionBackfillScope,
+    ExtractionBackfillStatus, apply_extraction_backfill_batch,
+    extraction_backfill_integrity_is_valid, start_extraction_backfill,
 };
 pub use extraction_plan::{
     EXTRACTION_PLAN_GENERATOR_VERSION, EXTRACTION_PLAN_PROTOCOL, ExtractionApprovalBoundary,
