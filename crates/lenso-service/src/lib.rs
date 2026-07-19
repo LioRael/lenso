@@ -68,7 +68,9 @@ pub use extraction_backfill::{
     ExtractionBackfillEvidence, ExtractionBackfillProgress, ExtractionBackfillRecord,
     ExtractionBackfillRequest, ExtractionBackfillRun, ExtractionBackfillScope,
     ExtractionBackfillStatus, apply_extraction_backfill_batch,
-    extraction_backfill_integrity_is_valid, start_extraction_backfill,
+    apply_postgres_extraction_backfill_batch, copy_postgres_extraction_service_data_batch,
+    extraction_backfill_integrity_is_valid, load_postgres_extraction_backfill,
+    start_extraction_backfill,
 };
 pub use extraction_plan::{
     EXTRACTION_PLAN_GENERATOR_VERSION, EXTRACTION_PLAN_PROTOCOL, ExtractionApprovalBoundary,

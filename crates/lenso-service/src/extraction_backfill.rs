@@ -201,6 +201,7 @@ pub enum ExtractionBackfillErrorCode {
     BackfillBatchChanged,
     BackfillRecordChanged,
     BackfillRunInvalid,
+    BackfillPersistenceFailed,
 }
 
 impl ExtractionBackfillErrorCode {
@@ -215,6 +216,7 @@ impl ExtractionBackfillErrorCode {
             Self::BackfillBatchChanged => "backfill_batch_changed",
             Self::BackfillRecordChanged => "backfill_record_changed",
             Self::BackfillRunInvalid => "backfill_run_invalid",
+            Self::BackfillPersistenceFailed => "backfill_persistence_failed",
         }
     }
 }
@@ -358,7 +360,9 @@ pub fn apply_extraction_backfill_batch(
         .iter()
         .map(|record| record.stable_id.as_str())
         .collect::<Vec<_>>();
-    if ordered_ids.windows(2).any(|pair| pair[0] >= pair[1])
+    if ordered_ids
+        .windows(2)
+        .any(|pair| !stable_id_is_strictly_before(pair[0], pair[1]))
         || request
             .records
             .iter()
@@ -368,6 +372,22 @@ pub fn apply_extraction_backfill_batch(
             ExtractionBackfillErrorCode::BackfillBatchUnordered,
             "Backfill records must have unique stable identities in deterministic ascending order.",
             "Sort the source query by the declared stable identity and rebuild the batch.",
+        ));
+    }
+    if run
+        .progress
+        .next_after_stable_id
+        .as_deref()
+        .is_some_and(|last| {
+            request.records.first().is_some_and(|record| {
+                !stable_id_is_strictly_before(last, record.stable_id.as_str())
+            })
+        })
+    {
+        return Err(error(
+            ExtractionBackfillErrorCode::BackfillBatchUnordered,
+            "The next batch does not advance beyond the durable stable-identity checkpoint.",
+            "Resume the source query strictly after nextAfterStableId.",
         ));
     }
     let mut destination = run
@@ -456,6 +476,350 @@ pub fn apply_extraction_backfill_batch(
     Ok(run)
 }
 
+/// Atomically persists destination records, the batch receipt, and the next
+/// checkpoint in PostgreSQL. The run row is locked and compared by digest so a
+/// restarted or concurrent orchestrator cannot overwrite newer progress.
+pub async fn apply_postgres_extraction_backfill_batch(
+    pool: &sqlx::PgPool,
+    run: ExtractionBackfillRun,
+    request: ExtractionBackfillRequest,
+) -> Result<ExtractionBackfillRun, ExtractionBackfillError> {
+    let mut transaction = pool.begin().await.map_err(persistence_error)?;
+    sqlx::query("create schema if not exists lenso_extraction")
+        .execute(&mut *transaction)
+        .await
+        .map_err(persistence_error)?;
+    sqlx::query(
+        r#"
+        create table if not exists lenso_extraction.backfill_runs (
+            run_id text primary key,
+            revision bigint not null,
+            run_digest text not null,
+            run_json jsonb not null,
+            updated_at timestamptz not null default now()
+        )
+        "#,
+    )
+    .execute(&mut *transaction)
+    .await
+    .map_err(persistence_error)?;
+    sqlx::query(
+        r#"
+        create table if not exists lenso_extraction.backfill_records (
+            run_id text not null references lenso_extraction.backfill_runs(run_id),
+            stable_id text not null,
+            record_digest text not null,
+            record_json jsonb not null,
+            primary key (run_id, stable_id)
+        )
+        "#,
+    )
+    .execute(&mut *transaction)
+    .await
+    .map_err(persistence_error)?;
+    sqlx::query("select pg_advisory_xact_lock(hashtext($1))")
+        .bind(&run.run_id)
+        .execute(&mut *transaction)
+        .await
+        .map_err(persistence_error)?;
+
+    let stored = sqlx::query_as::<_, (i64, String, serde_json::Value)>(
+        "select revision, run_digest, run_json from lenso_extraction.backfill_runs where run_id = $1 for update",
+    )
+    .bind(&run.run_id)
+    .fetch_optional(&mut *transaction)
+    .await
+    .map_err(persistence_error)?;
+    let durable_run = if let Some((_, stored_digest, stored_json)) = stored {
+        let stored_run: ExtractionBackfillRun =
+            serde_json::from_value(stored_json).map_err(|source| {
+                error(
+                    ExtractionBackfillErrorCode::BackfillPersistenceFailed,
+                    format!("Stored Backfill Run is unreadable: {source}"),
+                    "Repair or restore the last integrity-valid durable Run.",
+                )
+            })?;
+        if stored_digest != run.run_digest {
+            let replayed = apply_extraction_backfill_batch(run.clone(), request.clone())?;
+            let expected_receipt = replayed
+                .receipts
+                .iter()
+                .find(|receipt| receipt.batch_id == request.batch_id);
+            let stored_receipt = stored_run
+                .receipts
+                .iter()
+                .find(|receipt| receipt.batch_id == request.batch_id);
+            if expected_receipt == stored_receipt && stored_receipt.is_some() {
+                transaction.commit().await.map_err(persistence_error)?;
+                return Ok(stored_run);
+            }
+            return Err(error(
+                ExtractionBackfillErrorCode::BackfillCheckpointStale,
+                "A newer durable PostgreSQL checkpoint already exists for this Backfill Run.",
+                "Reload the durable Run and resume from its current checkpoint.",
+            ));
+        }
+        stored_run
+    } else {
+        sqlx::query(
+            "insert into lenso_extraction.backfill_runs (run_id, revision, run_digest, run_json) values ($1, $2, $3, $4)",
+        )
+        .bind(&run.run_id)
+        .bind(i64::try_from(run.revision).unwrap_or(i64::MAX))
+        .bind(&run.run_digest)
+        .bind(serde_json::to_value(&run).map_err(|source| {
+            error(
+                ExtractionBackfillErrorCode::BackfillPersistenceFailed,
+                format!("Backfill Run could not serialize: {source}"),
+                "Persist an integrity-valid Backfill Run.",
+            )
+        })?)
+        .execute(&mut *transaction)
+        .await
+        .map_err(persistence_error)?;
+        run
+    };
+    let previous_revision = durable_run.revision;
+    let next = apply_extraction_backfill_batch(durable_run, request)?;
+    for record in &next.destination_records {
+        let persisted = sqlx::query(
+            r#"
+            insert into lenso_extraction.backfill_records (run_id, stable_id, record_digest, record_json)
+            values ($1, $2, $3, $4)
+            on conflict (run_id, stable_id) do update
+            set record_digest = excluded.record_digest, record_json = excluded.record_json
+            where lenso_extraction.backfill_records.record_digest = excluded.record_digest
+            "#,
+        )
+        .bind(&next.run_id)
+        .bind(&record.stable_id)
+        .bind(&record.record_digest)
+        .bind(&record.value)
+        .execute(&mut *transaction)
+        .await
+        .map_err(persistence_error)?;
+        if persisted.rows_affected() != 1 {
+            return Err(error(
+                ExtractionBackfillErrorCode::BackfillRecordChanged,
+                format!(
+                    "Durable candidate record {} differs from the checkpointed Backfill Run.",
+                    record.stable_id
+                ),
+                "Reconcile the durable record ledger before advancing the checkpoint.",
+            ));
+        }
+    }
+    let updated = sqlx::query(
+        r#"
+        update lenso_extraction.backfill_runs
+        set revision = $2, run_digest = $3, run_json = $4, updated_at = now()
+        where run_id = $1 and revision = $5
+        "#,
+    )
+    .bind(&next.run_id)
+    .bind(i64::try_from(next.revision).unwrap_or(i64::MAX))
+    .bind(&next.run_digest)
+    .bind(serde_json::to_value(&next).map_err(|source| {
+        error(
+            ExtractionBackfillErrorCode::BackfillPersistenceFailed,
+            format!("Backfill Run could not serialize: {source}"),
+            "Persist an integrity-valid Backfill Run.",
+        )
+    })?)
+    .bind(i64::try_from(previous_revision).unwrap_or(i64::MAX))
+    .execute(&mut *transaction)
+    .await
+    .map_err(persistence_error)?;
+    if updated.rows_affected() != 1 {
+        return Err(error(
+            ExtractionBackfillErrorCode::BackfillCheckpointStale,
+            "The durable PostgreSQL checkpoint changed during this batch.",
+            "Reload the durable Run and retry from its current checkpoint.",
+        ));
+    }
+    transaction.commit().await.map_err(persistence_error)?;
+    Ok(next)
+}
+
+/// Reload the last transactionally committed run after process restart or a
+/// lost client response.
+pub async fn load_postgres_extraction_backfill(
+    pool: &sqlx::PgPool,
+    run_id: &str,
+) -> Result<Option<ExtractionBackfillRun>, ExtractionBackfillError> {
+    let exists = sqlx::query_scalar::<_, Option<String>>(
+        "select to_regclass('lenso_extraction.backfill_runs')::text",
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(persistence_error)?
+    .is_some();
+    if !exists {
+        return Ok(None);
+    }
+    let value = sqlx::query_scalar::<_, serde_json::Value>(
+        "select run_json from lenso_extraction.backfill_runs where run_id = $1",
+    )
+    .bind(run_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(persistence_error)?;
+    value
+        .map(|value| {
+            serde_json::from_value(value).map_err(|source| {
+                error(
+                    ExtractionBackfillErrorCode::BackfillPersistenceFailed,
+                    format!("Stored Backfill Run is unreadable: {source}"),
+                    "Repair or restore the last integrity-valid durable Run.",
+                )
+            })
+        })
+        .transpose()
+}
+
+/// Read one plan-scoped source batch and copy it into the planned candidate
+/// Postgres table before atomically advancing the durable checkpoint.
+pub async fn copy_postgres_extraction_service_data_batch(
+    source_pool: &sqlx::PgPool,
+    destination_pool: &sqlx::PgPool,
+    plan: &ExtractionPlan,
+    run: ExtractionBackfillRun,
+    batch_id: impl Into<String>,
+    limit: i64,
+) -> Result<ExtractionBackfillRun, ExtractionBackfillError> {
+    if !extraction_plan_integrity_is_valid(plan)
+        || run.scope.plan_id != plan.plan_id
+        || run.scope.plan_digest != plan.plan_digest
+    {
+        return Err(error(
+            ExtractionBackfillErrorCode::BackfillRunInvalid,
+            "Backfill Run does not belong to the supplied Extraction Plan.",
+            "Load the exact plan-scoped Run before reading Service Data.",
+        ));
+    }
+    if plan.data_mapping.tables.len() != 1 {
+        return Err(error(
+            ExtractionBackfillErrorCode::BackfillRunInvalid,
+            "A Postgres Backfill Run must be scoped to exactly one table mapping.",
+            "Create one durable plan-scoped Backfill Run per table mapping.",
+        ));
+    }
+    let mapping = plan.data_mapping.tables.first().ok_or_else(|| {
+        error(
+            ExtractionBackfillErrorCode::BackfillRunInvalid,
+            "Extraction Plan has no Postgres table mapping.",
+            "Regenerate the plan with an owned source and destination table.",
+        )
+    })?;
+    let cursor = mapping
+        .cursors
+        .iter()
+        .find(|cursor| cursor.trustworthy)
+        .ok_or_else(|| {
+            error(
+                ExtractionBackfillErrorCode::BackfillCursorMissing,
+                "Extraction Plan has no trustworthy Postgres cursor.",
+                "Enter the bounded write-pause phase or regenerate cursor evidence.",
+            )
+        })?;
+    let source_table = quoted_relation(&mapping.source_table)?;
+    let destination_table = quoted_relation(&mapping.destination_table)?;
+    let cursor_column = quoted_identifier(&cursor.column)?;
+    let cursor_name = cursor.column.as_str();
+    let after_cursor = format!(
+        "(jsonb_populate_record(null::{source_table}, jsonb_build_object('{cursor_name}', $1::text))).{cursor_column}"
+    );
+    let high_water_cursor = format!(
+        "(jsonb_populate_record(null::{source_table}, jsonb_build_object('{cursor_name}', $2::text))).{cursor_column}"
+    );
+    let after = run
+        .progress
+        .next_after_stable_id
+        .clone()
+        .unwrap_or_default();
+    let rows = sqlx::query_as::<_, (String, serde_json::Value)>(sqlx::AssertSqlSafe(format!(
+        "select {cursor_column}::text, to_jsonb(source_row) from {source_table} source_row where ($1 = '' or {cursor_column} > {after_cursor}) and {cursor_column} <= {high_water_cursor} order by {cursor_column} limit $3"
+    )))
+    .bind(&after)
+    .bind(&run.progress.source_high_water_mark)
+    .bind(limit.max(1))
+    .fetch_all(source_pool)
+    .await
+    .map_err(persistence_error)?;
+    let mut transaction = destination_pool.begin().await.map_err(persistence_error)?;
+    let mut records = Vec::with_capacity(rows.len());
+    for (stable_id, value) in rows {
+        let existing = sqlx::query_scalar::<_, serde_json::Value>(sqlx::AssertSqlSafe(format!(
+            "select to_jsonb(destination_row) from {destination_table} destination_row where {cursor_column}::text = $1"
+        )))
+        .bind(&stable_id)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(persistence_error)?;
+        if let Some(existing) = existing {
+            if existing != value {
+                return Err(error(
+                    ExtractionBackfillErrorCode::BackfillRecordChanged,
+                    format!("Candidate record {stable_id} differs from the plan-scoped source."),
+                    "Reconcile the conflicting candidate record before resuming.",
+                ));
+            }
+        } else {
+            sqlx::query(sqlx::AssertSqlSafe(format!(
+                "insert into {destination_table} select * from jsonb_populate_record(null::{destination_table}, $1)"
+            )))
+            .bind(&value)
+            .execute(&mut *transaction)
+            .await
+            .map_err(persistence_error)?;
+        }
+        records.push(ExtractionBackfillRecord::new(stable_id, value));
+    }
+    transaction.commit().await.map_err(persistence_error)?;
+    let final_batch = records
+        .last()
+        .is_none_or(|record| record.stable_id == run.progress.source_high_water_mark)
+        || i64::try_from(records.len()).unwrap_or(i64::MAX) < limit.max(1);
+    let mut request = ExtractionBackfillRequest::new(
+        batch_id,
+        run.progress.destination_checkpoint.clone(),
+        records,
+    );
+    request.final_batch = final_batch;
+    apply_postgres_extraction_backfill_batch(destination_pool, run, request).await
+}
+
+fn quoted_relation(value: &str) -> Result<String, ExtractionBackfillError> {
+    value
+        .split('.')
+        .map(quoted_identifier)
+        .collect::<Result<Vec<_>, _>>()
+        .map(|parts| parts.join("."))
+}
+
+fn quoted_identifier(value: &str) -> Result<String, ExtractionBackfillError> {
+    if value.is_empty()
+        || !value
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || character == '_')
+    {
+        return Err(error(
+            ExtractionBackfillErrorCode::BackfillRunInvalid,
+            format!("Unsafe Postgres identifier `{value}` in Extraction Plan."),
+            "Regenerate the plan from validated schema ownership evidence.",
+        ));
+    }
+    Ok(format!("\"{value}\""))
+}
+
+fn persistence_error(source: sqlx::Error) -> ExtractionBackfillError {
+    error(
+        ExtractionBackfillErrorCode::BackfillPersistenceFailed,
+        format!("PostgreSQL backfill persistence failed: {source}"),
+        "Restore PostgreSQL availability and resume from the last durable checkpoint.",
+    )
+}
+
 #[must_use]
 pub fn extraction_backfill_integrity_is_valid(run: &ExtractionBackfillRun) -> bool {
     if run.protocol != EXTRACTION_BACKFILL_PROTOCOL
@@ -472,7 +836,7 @@ pub fn extraction_backfill_integrity_is_valid(run: &ExtractionBackfillRun) -> bo
         || run
             .destination_records
             .windows(2)
-            .any(|pair| pair[0].stable_id >= pair[1].stable_id)
+            .any(|pair| !stable_id_is_strictly_before(&pair[0].stable_id, &pair[1].stable_id))
     {
         return false;
     }
@@ -482,6 +846,13 @@ pub fn extraction_backfill_integrity_is_valid(run: &ExtractionBackfillRun) -> bo
         .map(|receipt| receipt.batch_id.as_str())
         .collect::<BTreeSet<_>>();
     receipt_ids.len() == run.receipts.len() && run.run_digest == run_digest(run)
+}
+
+fn stable_id_is_strictly_before(left: &str, right: &str) -> bool {
+    match (left.parse::<i128>(), right.parse::<i128>()) {
+        (Ok(left), Ok(right)) => left < right,
+        _ => left < right,
+    }
 }
 
 fn refresh_digest(run: &mut ExtractionBackfillRun) {

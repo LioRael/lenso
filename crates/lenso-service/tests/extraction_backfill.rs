@@ -1,8 +1,9 @@
 use lenso_service::{
     ExtractionBackfillBoundary, ExtractionBackfillRecord, ExtractionBackfillRequest,
     ExtractionBackfillStatus, ExtractionPlan, ExtractionRun, apply_extraction_backfill_batch,
-    start_extraction_backfill,
+    copy_postgres_extraction_service_data_batch, start_extraction_backfill,
 };
+use sqlx::postgres::PgPoolOptions;
 
 fn plan() -> ExtractionPlan {
     serde_json::from_str(include_str!(
@@ -125,4 +126,110 @@ fn batches_are_plan_scoped_and_deterministically_ordered() {
     )
     .expect_err("unstable ordering must not be accepted");
     assert_eq!(error.code.as_str(), "backfill_batch_unordered");
+}
+
+#[test]
+fn next_batch_must_advance_beyond_the_durable_identity_checkpoint() {
+    let run = start_extraction_backfill(
+        &plan(),
+        &expansion(),
+        ExtractionBackfillBoundary::TrustworthyCursor {
+            cursor: "support_tickets.id".to_owned(),
+            source_high_water_mark: "ticket-003".to_owned(),
+        },
+    )
+    .unwrap();
+    let run = apply_extraction_backfill_batch(
+        run,
+        ExtractionBackfillRequest::new("batch-001", None, vec![record("ticket-002", "second")]),
+    )
+    .unwrap();
+    let error = apply_extraction_backfill_batch(
+        run.clone(),
+        ExtractionBackfillRequest::new(
+            "batch-002",
+            run.progress.destination_checkpoint.clone(),
+            vec![record("ticket-001", "first")],
+        ),
+    )
+    .expect_err("a resumed source query cannot move backwards");
+    assert_eq!(error.code.as_str(), "backfill_batch_unordered");
+}
+
+#[test]
+fn numeric_stable_id_order_uses_numeric_progression() {
+    let run = start_extraction_backfill(
+        &plan(),
+        &expansion(),
+        ExtractionBackfillBoundary::TrustworthyCursor {
+            cursor: "support_tickets.id".to_owned(),
+            source_high_water_mark: "10".to_owned(),
+        },
+    )
+    .unwrap();
+    let run = apply_extraction_backfill_batch(
+        run,
+        ExtractionBackfillRequest::new(
+            "batch-001",
+            None,
+            vec![record("9", "ninth"), record("10", "tenth")],
+        )
+        .final_batch(),
+    )
+    .expect("native numeric order must remain valid after string serialization");
+    assert_eq!(run.progress.next_after_stable_id.as_deref(), Some("10"));
+}
+
+#[tokio::test]
+async fn sql_copy_rejects_a_mutated_or_multi_table_plan_before_database_access() {
+    let original = plan();
+    let run = start_extraction_backfill(
+        &original,
+        &expansion(),
+        ExtractionBackfillBoundary::TrustworthyCursor {
+            cursor: "support_tickets.id".to_owned(),
+            source_high_water_mark: "ticket-003".to_owned(),
+        },
+    )
+    .unwrap();
+    let pool = PgPoolOptions::new()
+        .connect_lazy("postgres://invalid@127.0.0.1:1/invalid")
+        .unwrap();
+
+    let mut mutated = original.clone();
+    mutated.data_mapping.tables[0].source_table = "other.records".to_owned();
+    let error = copy_postgres_extraction_service_data_batch(
+        &pool,
+        &pool,
+        &mutated,
+        run.clone(),
+        "batch-001",
+        10,
+    )
+    .await
+    .expect_err("changed mapping must invalidate the plan digest before SQL");
+    assert_eq!(
+        error.code,
+        lenso_service::ExtractionBackfillErrorCode::BackfillRunInvalid
+    );
+
+    let mut multi_table = original;
+    multi_table
+        .data_mapping
+        .tables
+        .push(multi_table.data_mapping.tables[0].clone());
+    let error = copy_postgres_extraction_service_data_batch(
+        &pool,
+        &pool,
+        &multi_table,
+        run,
+        "batch-001",
+        10,
+    )
+    .await
+    .expect_err("a run cannot silently finish after only the first table");
+    assert_eq!(
+        error.code,
+        lenso_service::ExtractionBackfillErrorCode::BackfillRunInvalid
+    );
 }
