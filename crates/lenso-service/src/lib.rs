@@ -17,6 +17,7 @@ mod extraction_readiness;
 mod extraction_reconciliation;
 mod extraction_run;
 mod extraction_scaffold;
+mod extraction_verification;
 mod reliability_report;
 mod story_segment;
 mod workload_identity;
@@ -137,6 +138,13 @@ pub use extraction_scaffold::{
     apply_extraction_scaffold, dry_run_extraction_scaffold, extraction_scaffold_integrity_is_valid,
     extraction_scaffold_json, extraction_scaffold_schema, generate_extraction_scaffold,
     render_extraction_scaffold_patch, validate_extraction_scaffold,
+};
+pub use extraction_verification::{
+    EXTRACTION_VERIFICATION_PROTOCOL, ExtractionBehaviorObservation,
+    ExtractionCompatibilityEvidence, ExtractionPolicyEvidence, ExtractionVerificationEffects,
+    ExtractionVerificationEvidence, ExtractionVerificationInputs, ExtractionVerificationIssue,
+    ExtractionVerificationIssueCode, ExtractionVerificationResult, ExtractionVerificationStatus,
+    extraction_verification_integrity_is_valid, verify_extraction_behavior,
 };
 pub use reliability_report::{
     ActiveDegradedMode, RELIABILITY_REPORT_PROTOCOL, ReliabilityCheck, ReliabilityCheckState,
