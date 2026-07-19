@@ -203,6 +203,15 @@ failure. Optional live Store observations remain explicitly read-only and
 distinct from static declarations. Declared runtime, admin, Console, Workflow,
 and Story surfaces remain explicit preservation work. Evaluation never writes
 files, starts Workloads, moves data, or changes authority.
+Ready Modules can produce the versioned, content-addressed
+`lenso.extraction-plan.v1` artifact. It pins readiness, Module, Contract,
+System, analyzer, Postgres mapping, evidence, and expected authority inputs;
+proposes API, Worker, and Migration Workloads, an isolated Store, Service
+References, generated clients, and the System graph diff; and orders every
+phase through terminal evidence. Dry-run is the exact zero-effect plan, and
+integrity plus per-input freshness checks reject any stale plan before a later
+CLI-owned mutating phase can begin. Final authority commit remains a human
+Approval Boundary.
 Its versioned Service, Event, Config, and Reliability Contract declarations are
 specified in [`autonomous-service-contract-artifacts.md`](autonomous-service-contract-artifacts.md).
 The separate [`lenso.context.v1`](common-context-contracts.md) envelope

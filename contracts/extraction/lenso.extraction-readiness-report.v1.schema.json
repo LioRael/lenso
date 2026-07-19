@@ -9,6 +9,86 @@
       ],
       "type": "string"
     },
+    "ExtractionConsumerCompatibilityEvidence": {
+      "properties": {
+        "classification": {
+          "$ref": "#/$defs/CompatibilityCategory"
+        },
+        "consumerId": {
+          "type": "string"
+        },
+        "contractId": {
+          "type": "string"
+        },
+        "evidenceReferences": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "nextAction": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "consumerId",
+        "contractId",
+        "classification",
+        "nextAction"
+      ],
+      "type": "object"
+    },
+    "ExtractionContractDirection": {
+      "enum": [
+        "provides",
+        "consumes"
+      ],
+      "type": "string"
+    },
+    "ExtractionContractEvidence": {
+      "properties": {
+        "contractId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "direction": {
+          "$ref": "#/$defs/ExtractionContractDirection"
+        },
+        "evidenceReferences": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "$ref": "#/$defs/ExtractionContractKind"
+        },
+        "status": {
+          "$ref": "#/$defs/ExtractionEvidenceStatus"
+        },
+        "subject": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "subject",
+        "kind",
+        "direction",
+        "status"
+      ],
+      "type": "object"
+    },
+    "ExtractionContractKind": {
+      "enum": [
+        "service",
+        "event"
+      ],
+      "type": "string"
+    },
     "ExtractionCursorEvidence": {
       "properties": {
         "column": {
@@ -188,6 +268,14 @@
         }
       },
       "type": "object"
+    },
+    "ExtractionEvidenceStatus": {
+      "enum": [
+        "present",
+        "missing",
+        "ambiguous"
+      ],
+      "type": "string"
     },
     "ExtractionMigrationEvidence": {
       "properties": {
@@ -468,12 +556,26 @@
   "$id": "https://contracts.lenso.local/extraction/lenso.extraction-readiness-report.v1.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "properties": {
+    "activeConsumers": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ExtractionConsumerCompatibilityEvidence"
+      },
+      "type": "array"
+    },
     "analyzerVersion": {
       "const": "lenso.extraction-readiness.v2",
       "type": "string"
     },
     "classification": {
       "$ref": "#/$defs/CompatibilityCategory"
+    },
+    "contractEvidence": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ExtractionContractEvidence"
+      },
+      "type": "array"
     },
     "effects": {
       "$ref": "#/$defs/ExtractionReadinessEffects"

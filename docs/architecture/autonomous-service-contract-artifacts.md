@@ -117,6 +117,48 @@ by `just generated-check` and `just arch-check`. Provider v1 and System v1 keep
 their existing Host-managed semantics and are not accepted as Autonomous
 extraction evidence.
 
+## Extraction Plan
+
+`lenso.extraction-plan.v1` turns a ready linked Module into one reviewable,
+content-addressed proposal before any preparation or authority mutation. The
+public `lenso-service` generator pins SHA-256 digests for the readiness report,
+Module declaration, relevant Contract Versions, complete `lenso.system.v2`
+graph, readiness analyzer version, Postgres data mapping, expected linked-Host
+authority revision, and CLI-supplied analyzer or Store evidence. The plan ID is
+derived from the complete normalized plan content, including its proposed
+Service, diff, phases, and Approval Boundaries.
+
+The candidate proposal includes API, Worker, and Migration Workloads, one
+isolated Postgres Service Store, provided and consumed Service References,
+generated Service Clients, preserved capabilities and operator surfaces, and
+the required ownership and System graph diff. Tables with trustworthy cursors
+use checkpointed online preparation; tables without one are explicitly held
+for the bounded write pause. Planning never interprets shared Postgres as
+shared logical ownership.
+
+Phases have stable numeric identities and cover analysis, scaffold,
+destination expansion, backfill, reconciliation, drain, provisional Cutover,
+verification, rollback or commit, and terminal evidence. Every phase declares
+machine-readable prerequisites, intended mutations, expected evidence,
+rollback conditions, issue codes, and next actions. Final ownership transfer
+is the explicit `commit-extraction-authority` Approval Boundary; planning does
+not cross it.
+
+`dry_run_extraction_plan` returns the exact same plan and diff as generation.
+Its effects object fixes repository writes, Workload startup, data copying, and
+authority changes to `false`. Before a caller may apply any later phase,
+`ensure_extraction_plan_fresh` first verifies the plan's own content address and
+then compares every current input pin. Module, Contract, topology, analyzer,
+data, evidence, or authority drift returns deterministic stale-input issue
+codes and zero effects. The caller must discard the stale plan and regenerate;
+there is no best-effort continuation against changed state.
+
+The schema plus support-ticket JSON and human projections live under
+`contracts/extraction/`. They are generated from the same public Rust artifact
+and checked by `just generated-check` and `just arch-check`. Repository
+scanning, file patches, Store copies, Workload startup, and protected System
+mutation remain CLI-owned follow-up behavior.
+
 ## Durable Workflow version evolution
 
 Migration `0014_pin_workflow_definition_artifacts` fails closed when a Store

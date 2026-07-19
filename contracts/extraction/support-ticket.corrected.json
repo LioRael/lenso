@@ -1,6 +1,49 @@
 {
+  "activeConsumers": [
+    {
+      "classification": "safe",
+      "consumerId": "support-ticket-sla-updates",
+      "contractId": "support.sla-updated.v1",
+      "evidenceReferences": [
+        "system:consumer/support-ticket-sla-updates"
+      ],
+      "nextAction": "No action needed."
+    }
+  ],
   "analyzerVersion": "lenso.extraction-readiness.v2",
   "classification": "needs_attention",
+  "contractEvidence": [
+    {
+      "contractId": "support.sla-updated.v1",
+      "direction": "consumes",
+      "evidenceReferences": [
+        "contracts/events/support.sla-updated.v1.schema.json"
+      ],
+      "kind": "event",
+      "status": "present",
+      "subject": "event-handler:apply_sla_update"
+    },
+    {
+      "contractId": "support.audit-recorded.v1",
+      "direction": "consumes",
+      "evidenceReferences": [
+        "contracts/events/support.audit-recorded.v1.schema.json"
+      ],
+      "kind": "event",
+      "status": "present",
+      "subject": "event-handler:record_audit"
+    },
+    {
+      "contractId": "support-ticket-http.v1",
+      "direction": "provides",
+      "evidenceReferences": [
+        "contracts/openapi/support-ticket.v1.yaml"
+      ],
+      "kind": "service",
+      "status": "present",
+      "subject": "http:GET /tickets/{id}"
+    }
+  ],
   "effects": {
     "changesAuthority": false,
     "movesData": false,

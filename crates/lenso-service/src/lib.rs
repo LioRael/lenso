@@ -11,6 +11,7 @@ mod direct_grpc;
 mod direct_http;
 mod endpoint_resolution;
 mod event_envelope;
+mod extraction_plan;
 mod extraction_readiness;
 mod reliability_report;
 mod story_segment;
@@ -57,6 +58,20 @@ pub use event_envelope::{
     EventEnvelopeIssueCode, GeneratedEventContract,
     evaluate_generated_event_contract_compatibility, event_envelope_from_cloudevent,
     generate_event_contract, validate_event_envelope, validate_event_envelope_value,
+};
+pub use extraction_plan::{
+    EXTRACTION_PLAN_GENERATOR_VERSION, EXTRACTION_PLAN_PROTOCOL, ExtractionApprovalBoundary,
+    ExtractionAuthorityKind, ExtractionCopyMode, ExtractionDataMapping, ExtractionEvidenceDigest,
+    ExtractionExpectedAuthority, ExtractionGeneratedClientPlan, ExtractionInputPin,
+    ExtractionInputPinKind, ExtractionMigrationMapping, ExtractionPlan,
+    ExtractionPlanContractVersion, ExtractionPlanDiff, ExtractionPlanDiffEntry,
+    ExtractionPlanEffects, ExtractionPlanGenerationError, ExtractionPlanGenerationIssueCode,
+    ExtractionPlanInputs, ExtractionPlanIssueCode, ExtractionPlanPhase, ExtractionPlanPhaseKind,
+    ExtractionPlanRejection, ExtractionServicePlan, ExtractionServiceReferencePlan,
+    ExtractionStaleInput, ExtractionStorePlan, ExtractionTableMapping, ExtractionWorkloadPlan,
+    ExtractionWorkloadRole, dry_run_extraction_plan, ensure_extraction_plan_fresh,
+    extraction_input_digest, extraction_plan_integrity_is_valid, extraction_plan_json,
+    extraction_plan_schema, generate_extraction_plan, render_extraction_plan,
 };
 pub use extraction_readiness::{
     EXTRACTION_READINESS_ANALYZER_VERSION, EXTRACTION_READINESS_REPORT_PROTOCOL,

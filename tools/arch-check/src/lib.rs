@@ -237,6 +237,12 @@ pub fn check_contract_artifacts_fresh(root: &Path) -> anyhow::Result<()> {
     let extraction_readiness_corrected_human =
         fs::read_to_string(root.join("contracts/extraction/support-ticket.corrected.txt"))
             .context("corrected support-ticket Extraction Readiness Report should be readable")?;
+    let extraction_plan_schema =
+        read_json(root.join("contracts/extraction/lenso.extraction-plan.v1.schema.json"))?;
+    let extraction_plan = read_json(root.join("contracts/extraction/support-ticket.plan.json"))?;
+    let extraction_plan_human =
+        fs::read_to_string(root.join("contracts/extraction/support-ticket.plan.txt"))
+            .context("support-ticket Extraction Plan should be readable")?;
     let common_context_schema =
         read_json(root.join("contracts/context/lenso-context.v1.schema.json"))?;
     let common_context_fixture =
@@ -301,6 +307,17 @@ pub fn check_contract_artifacts_fresh(root: &Path) -> anyhow::Result<()> {
         != generate_contracts::generated_support_ticket_extraction_readiness_corrected_human()
     {
         violations.push("contracts/extraction/support-ticket.corrected.txt is stale".to_owned());
+    }
+    if extraction_plan_schema != generate_contracts::generated_extraction_plan_schema() {
+        violations
+            .push("contracts/extraction/lenso.extraction-plan.v1.schema.json is stale".to_owned());
+    }
+    if extraction_plan != generate_contracts::generated_support_ticket_extraction_plan() {
+        violations.push("contracts/extraction/support-ticket.plan.json is stale".to_owned());
+    }
+    if extraction_plan_human != generate_contracts::generated_support_ticket_extraction_plan_human()
+    {
+        violations.push("contracts/extraction/support-ticket.plan.txt is stale".to_owned());
     }
     if common_context_schema != generate_contracts::generated_common_context_schema() {
         violations.push("contracts/context/lenso-context.v1.schema.json is stale".to_owned());
