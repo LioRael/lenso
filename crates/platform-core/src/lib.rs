@@ -8,6 +8,7 @@ pub mod events;
 pub mod execution;
 pub mod execution_logs;
 pub mod health;
+pub mod idempotency;
 pub mod ids;
 pub mod migrations;
 pub mod outbox;
@@ -35,7 +36,10 @@ pub use context::{
     ActorContext, ActorResolutionRequest, ActorResolver, AppContext, ClientRequestMetadata,
     CorrelationId, DevActorResolver, RequestContext, RequestId, TenantId, TraceContext,
 };
-pub use db::{DbPool, connect_pool};
+pub use db::{
+    DbPool, DbTransaction, begin_transaction, commit_transaction, connect_pool,
+    rollback_transaction,
+};
 pub use error::{AppError, AppResult, ErrorCode};
 pub use events::{EventEnvelope, EventPayload, EventPublisher, LoggingEventPublisher};
 pub use execution::{ExecutionContext, ExecutionId};
@@ -43,6 +47,7 @@ pub use execution_logs::{
     ExecutionLogProvider, ExecutionLogQuery, ExecutionLogRow, PostgresExecutionLogProvider,
 };
 pub use health::{HealthRegistry, HealthStatus};
+pub use idempotency::{IdempotencyClaim, IdempotencyKey, claim_idempotency_key_in_tx};
 pub use ids::{IdGenerator, UuidGenerator};
 pub use lenso_contracts::{StoryDisplayDescriptor, StoryDisplaySource};
 pub use migrations::{Migration, PLATFORM_MIGRATIONS, apply_migrations};

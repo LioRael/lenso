@@ -75,6 +75,9 @@ The current host-facing surface is intentionally narrow:
 - `lenso::host::http` re-exports for linked HTTP handlers, including
   `OpenApiRouter`, `routes!`, `Path`, `JsonBody`, standard error response
   helpers, `AppContext`, and `LinkedHttpContribution`.
+- `lenso::host::transaction::LinkedTransaction` for the one stable persistence
+  boundary shared by host-owned linked modules: a scoped idempotency claim,
+  app-owned SQL, and Outbox publication can commit or roll back atomically.
 
 `lenso::host` should not grow a repository layer, query builder, CRUD framework,
 or auth/session abstraction just because the starter needs one example. The
@@ -82,6 +85,12 @@ starter may use normal Rust crates such as `sqlx`, `serde`, `axum`, and
 `utoipa` directly for app-owned business code. Keep promoting only boot and HTTP
 authoring helpers that stay stable across real starter data slices. App-owned
 SQL and CRUD code stay in the starter.
+
+The transaction seam does not change that rule. Applications continue to use
+ordinary `sqlx` queries against module-owned tables. The facade owns only the
+platform invariants callers cannot reproduce safely: the idempotency claim and
+Outbox insert use the exact same caller transaction, while platform table names
+and `lenso-platform-core` remain outside application imports.
 
 The starter host template lives in the standalone
 [`LioRael/lenso-cli`](https://github.com/LioRael/lenso-cli) repository and is
