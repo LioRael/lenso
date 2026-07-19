@@ -195,6 +195,89 @@ fn committed_extraction_plan_artifacts_match_generator() {
 }
 
 #[test]
+fn committed_extraction_scaffold_artifacts_match_generator() {
+    let schema = serde_json::from_str::<serde_json::Value>(include_str!(
+        "../../../contracts/extraction/lenso.extraction-scaffold.v1.schema.json"
+    ))
+    .expect("committed Extraction Scaffold schema must parse");
+    let scaffold = serde_json::from_str::<serde_json::Value>(include_str!(
+        "../../../contracts/extraction/support-ticket.scaffold.json"
+    ))
+    .expect("committed support-ticket Extraction Scaffold must parse");
+    let patch = include_str!("../../../contracts/extraction/support-ticket.scaffold.patch");
+
+    assert_eq!(
+        schema,
+        generate_contracts::generated_extraction_scaffold_schema()
+    );
+    assert_eq!(
+        scaffold,
+        generate_contracts::generated_support_ticket_extraction_scaffold()
+    );
+    assert_eq!(
+        patch,
+        generate_contracts::generated_support_ticket_extraction_scaffold_patch()
+    );
+    let validator =
+        jsonschema::validator_for(&schema).expect("Extraction Scaffold schema should compile");
+    assert!(validator.is_valid(&scaffold));
+    assert_eq!(
+        scaffold["protocol"],
+        serde_json::json!("lenso.extraction-scaffold.v1")
+    );
+    assert_eq!(
+        scaffold["preservedIdentity"]["moduleName"],
+        serde_json::json!("support-ticket")
+    );
+    assert_eq!(
+        scaffold["preservedIdentity"]["operationIds"],
+        serde_json::json!(["getTicket"])
+    );
+    assert_eq!(scaffold["linkedAuthorityRemainsAuthoritative"], true);
+    assert_eq!(scaffold["providerCompatibilityPreserved"], true);
+    assert_eq!(scaffold["effects"]["writesRepositoryFiles"], false);
+    assert!(patch.contains("src/bin/api.rs"));
+    assert!(patch.contains("src/bin/worker.rs"));
+    assert!(patch.contains("src/bin/migration.rs"));
+}
+
+#[test]
+fn generated_support_ticket_candidate_compiles_through_public_entrypoints() {
+    let scaffold = serde_json::from_value::<lenso_service::ExtractionScaffold>(
+        generate_contracts::generated_support_ticket_extraction_scaffold(),
+    )
+    .expect("generated Extraction Scaffold must decode");
+    let root = std::env::temp_dir().join(format!(
+        "lenso-support-ticket-candidate-{}",
+        std::process::id()
+    ));
+    if root.exists() {
+        std::fs::remove_dir_all(&root).expect("stale candidate test root should be removable");
+    }
+    std::fs::create_dir_all(&root).expect("candidate test root should be creatable");
+    for file in &scaffold.files {
+        let path = root.join(&file.path);
+        std::fs::create_dir_all(path.parent().expect("generated file parent"))
+            .expect("generated parent should be creatable");
+        std::fs::write(path, &file.contents).expect("generated file should be writable");
+    }
+    let manifest = root.join(&scaffold.destination_root).join("Cargo.toml");
+    let target = root.join("target");
+    let output = std::process::Command::new(env!("CARGO"))
+        .args(["check", "--manifest-path"])
+        .arg(&manifest)
+        .env("CARGO_TARGET_DIR", &target)
+        .output()
+        .expect("generated candidate cargo check should run");
+    assert!(
+        output.status.success(),
+        "generated candidate failed to compile:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    std::fs::remove_dir_all(&root).expect("candidate test root should be removable");
+}
+
+#[test]
 fn committed_common_context_schema_matches_generator() {
     let committed: serde_json::Value = serde_json::from_str(include_str!(
         "../../../contracts/context/lenso-context.v1.schema.json"

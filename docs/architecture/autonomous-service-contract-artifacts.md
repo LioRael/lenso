@@ -155,9 +155,45 @@ there is no best-effort continuation against changed state.
 
 The schema plus support-ticket JSON and human projections live under
 `contracts/extraction/`. They are generated from the same public Rust artifact
-and checked by `just generated-check` and `just arch-check`. Repository
-scanning, file patches, Store copies, Workload startup, and protected System
-mutation remain CLI-owned follow-up behavior.
+and checked by `just generated-check` and `just arch-check`. Repository scanning
+and command orchestration remain CLI-owned; Store copies, Workload startup, and
+protected System mutation are later phases. The shared deterministic scaffold
+artifact and apply-safety boundary are described below.
+
+## Extraction Scaffold
+
+`lenso.extraction-scaffold.v1` applies only the repository-scaffold intent of
+the approved plan. Its content address covers the exact plan identity, the
+preserved Module identity, candidate Service declaration, generated bindings,
+managed file contents, and unified patch. Contract Version pins now carry the
+artifact format, Tenancy Mode, and ordered Common Context requirements so the
+scaffold cannot invent transport, identity, deadline, idempotency, or tenant
+semantics later.
+
+`generate_extraction_scaffold` and `dry_run_extraction_scaffold` are pure. They
+require the plan-pinned `ModuleManifest` plus one digest-matching artifact for
+every Contract Version. OpenAPI server/client operations are generated through
+`generate_direct_http_bindings`; Protobuf Service operations use
+`generate_direct_grpc_bindings`; Event bindings preserve the authoritative JSON
+Schema title as the Event type. Generated Service Clients exist only for the
+cross-Service references declared by the plan. The complete Module manifest is
+copied unchanged, so capabilities, operation identifiers, runtime functions,
+schedules, Workflow definitions, admin and Console declarations, and Story
+titles retain their linked identities.
+
+The candidate contains standalone API, Worker, and Migration validation
+entrypoints plus the Autonomous Service v2 candidate manifest. Those
+entrypoints compile without starting a process or touching a Store; destination
+expansion and runtime startup remain the next plan phase. The linked Host is
+still the only authority, and no Provider v1 artifact is generated or edited.
+
+`apply_extraction_scaffold` revalidates scaffold integrity, the exact plan, and
+all current plan inputs before filesystem mutation. It preflights every managed
+path, rejects symlink traversal and any different existing target, creates only
+missing candidate files, and treats byte-identical files as an idempotent retry.
+Unrelated repository files are outside the managed file set and remain
+untouched. The generated schema, support-ticket scaffold JSON, and exact patch
+are committed under `contracts/extraction/` and freshness-checked.
 
 ## Durable Workflow version evolution
 

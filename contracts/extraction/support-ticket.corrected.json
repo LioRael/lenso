@@ -41,7 +41,7 @@
       ],
       "kind": "service",
       "status": "present",
-      "subject": "http:GET /tickets/{id}"
+      "subject": "http:GET /v1/tickets/{ticket_id}"
     }
   ],
   "effects": {
@@ -308,7 +308,7 @@
       "record_audit <- support.audit-recorded.v1"
     ],
     "httpRoutes": [
-      "GET /tickets/{id}"
+      "GET /v1/tickets/{ticket_id}"
     ],
     "runtimeFunctions": [
       "support-ticket.reindex.v1@v1"

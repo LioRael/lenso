@@ -1,8 +1,8 @@
 use crate::{
-    CompatibilityCategory, EXTRACTION_READINESS_REPORT_PROTOCOL, ExtractionContractDirection,
-    ExtractionContractKind, ExtractionCursorEvidence, ExtractionDataEvidenceSource,
-    ExtractionReadinessIssueCode, ExtractionReadinessReport, ExtractionReadinessSurfaceSummary,
-    ModuleManifest, system_v2_graph,
+    CommonContextRequirement, CompatibilityCategory, EXTRACTION_READINESS_REPORT_PROTOCOL,
+    ExtractionContractDirection, ExtractionContractKind, ExtractionCursorEvidence,
+    ExtractionDataEvidenceSource, ExtractionReadinessIssueCode, ExtractionReadinessReport,
+    ExtractionReadinessSurfaceSummary, ModuleManifest, ServiceTenancyMode, system_v2_graph,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -42,10 +42,24 @@ pub struct ExtractionPlanContractVersion {
     pub direction: ExtractionContractDirection,
     pub artifact_reference: String,
     pub artifact_digest: String,
+    pub artifact_format: ExtractionContractArtifactFormat,
+    pub tenancy_mode: ServiceTenancyMode,
+    #[serde(default)]
+    pub required_context: Vec<CommonContextRequirement>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub producer_id: Option<String>,
     #[serde(default)]
     pub consumer_ids: Vec<String>,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ExtractionContractArtifactFormat {
+    Openapi,
+    Protobuf,
+    JsonSchema,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
@@ -721,6 +735,45 @@ fn validate_contracts(
                 "Resolve the producer from the current System graph before planning a generated client.",
             ));
         }
+        if !matches!(
+            (contract.kind, contract.artifact_format),
+            (
+                ExtractionContractKind::Service,
+                ExtractionContractArtifactFormat::Openapi
+                    | ExtractionContractArtifactFormat::Protobuf
+            ) | (
+                ExtractionContractKind::Event,
+                ExtractionContractArtifactFormat::JsonSchema
+                    | ExtractionContractArtifactFormat::Protobuf
+            )
+        ) {
+            return Err(generation_error(
+                ExtractionPlanGenerationIssueCode::InputInvalid,
+                "A Contract Version uses an artifact format that does not match its Service or Event kind.",
+                "Use OpenAPI or Protobuf for Service Contracts and JSON Schema or Protobuf for Event Contracts.",
+            ));
+        }
+        if contract.tenancy_mode == ServiceTenancyMode::Required
+            && !contract
+                .required_context
+                .contains(&CommonContextRequirement::Tenant)
+        {
+            return Err(generation_error(
+                ExtractionPlanGenerationIssueCode::InputInvalid,
+                "A tenant-required Contract Version must require tenant context.",
+                "Preserve the authoritative Contract context requirements before generating the plan.",
+            ));
+        }
+        let mut required_context = contract.required_context.clone();
+        required_context.sort();
+        required_context.dedup();
+        if required_context != contract.required_context {
+            return Err(generation_error(
+                ExtractionPlanGenerationIssueCode::InputInvalid,
+                "Contract context requirements must be unique and deterministically ordered.",
+                "Sort and deduplicate the authoritative Contract context requirements.",
+            ));
+        }
         let identity = (contract.contract_id.as_str(), contract.version.as_str());
         if !identities.insert(identity) {
             return Err(generation_error(
@@ -772,6 +825,8 @@ fn proposed_service(inputs: &ExtractionPlanInputs) -> ExtractionServicePlan {
     let mut contracts = inputs.contract_versions.clone();
     for contract in &mut contracts {
         normalize_strings(&mut contract.consumer_ids);
+        contract.required_context.sort();
+        contract.required_context.dedup();
     }
     contracts.sort();
     let mut service_references = contracts
@@ -972,6 +1027,8 @@ fn pinned_inputs(
     let mut contracts = inputs.contract_versions.clone();
     for contract in &mut contracts {
         normalize_strings(&mut contract.consumer_ids);
+        contract.required_context.sort();
+        contract.required_context.dedup();
     }
     contracts.sort();
     pins.extend(
@@ -1649,6 +1706,9 @@ mod tests {
                 direction: ExtractionContractDirection::Provides,
                 artifact_reference: "contracts/openapi/support-ticket.v1.yaml".to_owned(),
                 artifact_digest: extraction_input_digest(b"support-ticket-http-v1"),
+                artifact_format: ExtractionContractArtifactFormat::Openapi,
+                tenancy_mode: ServiceTenancyMode::Required,
+                required_context: vec![CommonContextRequirement::Tenant],
                 producer_id: None,
                 consumer_ids: vec!["support-portal".to_owned()],
             }],
@@ -1733,6 +1793,9 @@ mod tests {
             direction: ExtractionContractDirection::Consumes,
             artifact_reference: "contracts/services/support-sla.v1.proto".to_owned(),
             artifact_digest: extraction_input_digest(b"support-sla-grpc-v1"),
+            artifact_format: ExtractionContractArtifactFormat::Protobuf,
+            tenancy_mode: ServiceTenancyMode::Required,
+            required_context: vec![CommonContextRequirement::Tenant],
             producer_id: Some("support-sla-service".to_owned()),
             consumer_ids: Vec::new(),
         });

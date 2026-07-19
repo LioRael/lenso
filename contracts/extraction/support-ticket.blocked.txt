@@ -31,8 +31,8 @@ Findings:
 - [blocked] required_event_contract_missing event-handler:record_audit: The required versioned contract artifact is missing. Required kind: Event Contract.
   evidence: module:event-handler:record_audit
   next: Publish and reference an authoritative versioned Event Contract for this surface.
-- [blocked] required_service_contract_missing http:GET /tickets/{id}: The required versioned contract artifact is missing. Required kind: Service Contract.
-  evidence: module:http:GET /tickets/{id}
+- [blocked] required_service_contract_missing http:GET /v1/tickets/{ticket_id}: The required versioned contract artifact is missing. Required kind: Service Contract.
+  evidence: module:http:GET /v1/tickets/{ticket_id}
   next: Publish and reference an authoritative versioned Service Contract for this surface.
 - [blocked] table_ownership_unresolved service_data.table.support.audit_events: Postgres table `support.audit_events` has no declared Module owner.
   evidence: migrations/0009_support_audit.sql
@@ -71,7 +71,7 @@ Findings:
   evidence: postgres:observation/support-store-2026-07-19
   next: Use the observation as planning evidence only; readiness analysis does not mutate the Store.
 Declared surfaces:
-- http: GET /tickets/{id}
+- http: GET /v1/tickets/{ticket_id}
 - events: apply_sla_update <- support.sla-updated.v1, record_audit <- support.audit-recorded.v1
 - runtime: support-ticket.reindex.v1@v1
 - schedules: support-ticket-reindex -> support-ticket.reindex.v1

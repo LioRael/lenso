@@ -1,5 +1,19 @@
 {
   "$defs": {
+    "CommonContextRequirement": {
+      "enum": [
+        "story",
+        "trace",
+        "service_principal",
+        "delegated_actor",
+        "tenant",
+        "deadline",
+        "idempotency_key",
+        "causation",
+        "region"
+      ],
+      "type": "string"
+    },
     "CompatibilityCategory": {
       "enum": [
         "safe",
@@ -43,6 +57,14 @@
       "enum": [
         "linked_host",
         "autonomous_service"
+      ],
+      "type": "string"
+    },
+    "ExtractionContractArtifactFormat": {
+      "enum": [
+        "openapi",
+        "protobuf",
+        "json_schema"
       ],
       "type": "string"
     },
@@ -264,6 +286,9 @@
         "artifactDigest": {
           "type": "string"
         },
+        "artifactFormat": {
+          "$ref": "#/$defs/ExtractionContractArtifactFormat"
+        },
         "artifactReference": {
           "type": "string"
         },
@@ -289,6 +314,16 @@
             "null"
           ]
         },
+        "requiredContext": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CommonContextRequirement"
+          },
+          "type": "array"
+        },
+        "tenancyMode": {
+          "$ref": "#/$defs/ServiceTenancyMode"
+        },
         "version": {
           "type": "string"
         }
@@ -299,7 +334,9 @@
         "kind",
         "direction",
         "artifactReference",
-        "artifactDigest"
+        "artifactDigest",
+        "artifactFormat",
+        "tenancyMode"
       ],
       "type": "object"
     },
@@ -760,6 +797,14 @@
         "api",
         "worker",
         "migration"
+      ],
+      "type": "string"
+    },
+    "ServiceTenancyMode": {
+      "enum": [
+        "none",
+        "optional",
+        "required"
       ],
       "type": "string"
     }

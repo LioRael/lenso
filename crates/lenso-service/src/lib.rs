@@ -13,6 +13,7 @@ mod endpoint_resolution;
 mod event_envelope;
 mod extraction_plan;
 mod extraction_readiness;
+mod extraction_scaffold;
 mod reliability_report;
 mod story_segment;
 mod workload_identity;
@@ -61,17 +62,18 @@ pub use event_envelope::{
 };
 pub use extraction_plan::{
     EXTRACTION_PLAN_GENERATOR_VERSION, EXTRACTION_PLAN_PROTOCOL, ExtractionApprovalBoundary,
-    ExtractionAuthorityKind, ExtractionCopyMode, ExtractionDataMapping, ExtractionEvidenceDigest,
-    ExtractionExpectedAuthority, ExtractionGeneratedClientPlan, ExtractionInputPin,
-    ExtractionInputPinKind, ExtractionMigrationMapping, ExtractionPlan,
-    ExtractionPlanContractVersion, ExtractionPlanDiff, ExtractionPlanDiffEntry,
-    ExtractionPlanEffects, ExtractionPlanGenerationError, ExtractionPlanGenerationIssueCode,
-    ExtractionPlanInputs, ExtractionPlanIssueCode, ExtractionPlanPhase, ExtractionPlanPhaseKind,
-    ExtractionPlanRejection, ExtractionServicePlan, ExtractionServiceReferencePlan,
-    ExtractionStaleInput, ExtractionStorePlan, ExtractionTableMapping, ExtractionWorkloadPlan,
-    ExtractionWorkloadRole, dry_run_extraction_plan, ensure_extraction_plan_fresh,
-    extraction_input_digest, extraction_plan_integrity_is_valid, extraction_plan_json,
-    extraction_plan_schema, generate_extraction_plan, render_extraction_plan,
+    ExtractionAuthorityKind, ExtractionContractArtifactFormat, ExtractionCopyMode,
+    ExtractionDataMapping, ExtractionEvidenceDigest, ExtractionExpectedAuthority,
+    ExtractionGeneratedClientPlan, ExtractionInputPin, ExtractionInputPinKind,
+    ExtractionMigrationMapping, ExtractionPlan, ExtractionPlanContractVersion, ExtractionPlanDiff,
+    ExtractionPlanDiffEntry, ExtractionPlanEffects, ExtractionPlanGenerationError,
+    ExtractionPlanGenerationIssueCode, ExtractionPlanInputs, ExtractionPlanIssueCode,
+    ExtractionPlanPhase, ExtractionPlanPhaseKind, ExtractionPlanRejection, ExtractionServicePlan,
+    ExtractionServiceReferencePlan, ExtractionStaleInput, ExtractionStorePlan,
+    ExtractionTableMapping, ExtractionWorkloadPlan, ExtractionWorkloadRole,
+    dry_run_extraction_plan, ensure_extraction_plan_fresh, extraction_input_digest,
+    extraction_plan_integrity_is_valid, extraction_plan_json, extraction_plan_schema,
+    generate_extraction_plan, render_extraction_plan,
 };
 pub use extraction_readiness::{
     EXTRACTION_READINESS_ANALYZER_VERSION, EXTRACTION_READINESS_REPORT_PROTOCOL,
@@ -85,6 +87,18 @@ pub use extraction_readiness::{
     ExtractionReadinessSurfaceSummary, ExtractionServiceDataEvidence,
     ExtractionTransactionEvidence, evaluate_extraction_readiness, extraction_readiness_report_json,
     extraction_readiness_report_schema, render_extraction_readiness_report,
+};
+pub use extraction_scaffold::{
+    EXTRACTION_SCAFFOLD_GENERATOR_VERSION, EXTRACTION_SCAFFOLD_PROTOCOL,
+    ExtractionGeneratedBinding, ExtractionGeneratedBindingKind, ExtractionPreservedIdentity,
+    ExtractionScaffold, ExtractionScaffoldApplyError, ExtractionScaffoldApplyErrorCode,
+    ExtractionScaffoldApplyResult, ExtractionScaffoldArtifact, ExtractionScaffoldBindingRole,
+    ExtractionScaffoldEffects, ExtractionScaffoldFile, ExtractionScaffoldFileKind,
+    ExtractionScaffoldGenerationError, ExtractionScaffoldGenerationIssueCode,
+    ExtractionScaffoldInputs, ExtractionScaffoldIssue, ExtractionScaffoldIssueCode,
+    apply_extraction_scaffold, dry_run_extraction_scaffold, extraction_scaffold_integrity_is_valid,
+    extraction_scaffold_json, extraction_scaffold_schema, generate_extraction_scaffold,
+    render_extraction_scaffold_patch, validate_extraction_scaffold,
 };
 pub use reliability_report::{
     ActiveDegradedMode, RELIABILITY_REPORT_PROTOCOL, ReliabilityCheck, ReliabilityCheckState,
@@ -4246,7 +4260,9 @@ impl ServiceReleasePlan {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum ServiceTenancyMode {
     None,
@@ -4397,7 +4413,9 @@ impl SchemaArtifactReference {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum CommonContextRequirement {
     Story,
