@@ -1,0 +1,311 @@
+{
+  "evidence": {
+    "activeConsumers": [
+      {
+        "classification": "safe",
+        "consumerId": "support-ticket-sla-updates",
+        "contractId": "support.sla-updated.v1",
+        "evidenceReferences": [
+          "system:consumer/support-ticket-sla-updates"
+        ],
+        "nextAction": "No action needed."
+      }
+    ],
+    "boundary": {
+      "complete": true,
+      "evidenceReferences": [
+        "analyzer:rust/support-ticket"
+      ],
+      "references": []
+    },
+    "contracts": [
+      {
+        "contractId": "support-ticket-http.v1",
+        "direction": "provides",
+        "evidenceReferences": [
+          "contracts/openapi/support-ticket.v1.yaml"
+        ],
+        "kind": "service",
+        "status": "present",
+        "subject": "http:GET /v1/tickets/{ticket_id}"
+      },
+      {
+        "contractId": "support.sla-updated.v1",
+        "direction": "consumes",
+        "evidenceReferences": [
+          "contracts/events/support.sla-updated.v1.schema.json"
+        ],
+        "kind": "event",
+        "status": "present",
+        "subject": "event-handler:apply_sla_update"
+      },
+      {
+        "contractId": "support.audit-recorded.v1",
+        "direction": "consumes",
+        "evidenceReferences": [
+          "contracts/events/support.audit-recorded.v1.schema.json"
+        ],
+        "kind": "event",
+        "status": "present",
+        "subject": "event-handler:record_audit"
+      }
+    ],
+    "serviceData": {
+      "accessPaths": [
+        {
+          "access": "read_write",
+          "accessorModule": "support-ticket",
+          "evidenceReferences": [
+            "modules/support-ticket/src/store.rs:14"
+          ],
+          "source": {
+            "kind": "static_declaration"
+          },
+          "table": "support.tickets"
+        }
+      ],
+      "complete": true,
+      "evidenceReferences": [
+        "analyzer:postgres/support-ticket"
+      ],
+      "migrations": [
+        {
+          "evidenceReferences": [
+            "modules/support-ticket/migrations/0001_tickets.sql"
+          ],
+          "migration": "0001_create_support_tickets",
+          "ownerModule": "support-ticket",
+          "source": {
+            "kind": "static_declaration"
+          }
+        }
+      ],
+      "tables": [
+        {
+          "evidenceReferences": [
+            "modules/support-ticket/migrations/0001_tickets.sql"
+          ],
+          "ownerModule": "support-ticket",
+          "source": {
+            "kind": "static_declaration"
+          },
+          "table": "support.tickets"
+        },
+        {
+          "cursor": {
+            "column": "id",
+            "evidenceReferences": [
+              "postgres:max(support.tickets.id)"
+            ],
+            "highWaterMark": "25000000",
+            "trustworthy": true
+          },
+          "evidenceReferences": [
+            "postgres:observation/support-store-2026-07-19"
+          ],
+          "ownerModule": "support-ticket",
+          "source": {
+            "kind": "live_store_observation",
+            "observationId": "support-store-2026-07-19",
+            "readOnly": true,
+            "store": "host-postgres"
+          },
+          "table": "support.tickets",
+          "volume": {
+            "approximateBytes": 17179869184,
+            "approximateRows": 25000000,
+            "evidenceReferences": [
+              "postgres:pg_class/support.tickets"
+            ]
+          }
+        }
+      ],
+      "transactions": [
+        {
+          "evidenceReferences": [
+            "modules/support-ticket/src/store.rs:41"
+          ],
+          "participatingModules": [
+            "support-ticket"
+          ],
+          "source": {
+            "kind": "static_declaration"
+          },
+          "transaction": "support-ticket-update"
+        }
+      ]
+    }
+  },
+  "module": {
+    "admin": {
+      "entities": [
+        {
+          "fields": [
+            {
+              "field_type": {
+                "kind": "string"
+              },
+              "label": "ID",
+              "name": "id",
+              "nullable": false
+            }
+          ],
+          "label": "Tickets",
+          "name": "tickets",
+          "read_capability": "support.tickets.read"
+        }
+      ],
+      "kind": "schema"
+    },
+    "capabilities": [
+      "support.tickets.read"
+    ],
+    "console": [
+      {
+        "area": "data",
+        "label": "Support tickets",
+        "name": "support-tickets",
+        "package": {
+          "export": "supportTicketConsoleModule",
+          "name": "@lenso/support-ticket-console"
+        },
+        "required_capabilities": [
+          "support.tickets.read"
+        ],
+        "route": "/support/tickets"
+      }
+    ],
+    "console_contributions": [],
+    "console_slots": [],
+    "dependencies": [],
+    "events": {
+      "handlers": [
+        {
+          "event_name": "support.sla-updated.v1",
+          "name": "apply_sla_update"
+        },
+        {
+          "event_name": "support.audit-recorded.v1",
+          "name": "record_audit"
+        }
+      ]
+    },
+    "http_routes": [
+      {
+        "capability": "support.tickets.read",
+        "display_name": "Get ticket",
+        "method": "GET",
+        "operation": {
+          "operationId": "getTicket",
+          "summary": "Get ticket"
+        },
+        "path": "/v1/tickets/{ticket_id}",
+        "story_title": "Support ticket opened"
+      }
+    ],
+    "name": "support-ticket",
+    "runtime": {
+      "functions": [
+        {
+          "input_schema": "support-ticket.reindex.v1",
+          "name": "support-ticket.reindex.v1",
+          "queue": "support-ticket",
+          "version": 1
+        }
+      ],
+      "schedules": [
+        {
+          "cron": "0 * * * *",
+          "function_name": "support-ticket.reindex.v1",
+          "input": {},
+          "name": "support-ticket-reindex"
+        }
+      ],
+      "workflows": [
+        {
+          "inputContract": {
+            "contractId": "support.ticket-triage-input",
+            "version": "v1"
+          },
+          "name": "ticket_triage",
+          "owner": "support-ticket",
+          "protocol": "lenso.workflow-definition.v1",
+          "resultContract": {
+            "contractId": "support.ticket-triage-result",
+            "version": "v1"
+          },
+          "steps": [
+            {
+              "name": "classify"
+            }
+          ],
+          "version": "v1"
+        }
+      ]
+    },
+    "story_display": [
+      {
+        "display_name": "Reindex support tickets",
+        "source": {
+          "kind": "execution_name",
+          "name": "support-ticket.reindex.v1"
+        },
+        "story_title": "Support ticket maintenance"
+      }
+    ]
+  },
+  "system": {
+    "autonomousServices": [
+      {
+        "modules": [
+          "support-sla"
+        ],
+        "serviceId": "support-sla-service",
+        "workloads": [
+          {
+            "role": "api",
+            "workloadId": "support-sla-api"
+          }
+        ]
+      }
+    ],
+    "consumers": [
+      {
+        "consumerId": "support-ticket-sla-updates",
+        "contractId": "support.sla-updated.v1",
+        "ownerId": "support-host",
+        "ownerKind": "host",
+        "tenancyMode": "required"
+      }
+    ],
+    "contracts": [
+      {
+        "artifact": {
+          "format": "json_schema",
+          "path": "contracts/events/support.sla-updated.v1.schema.json"
+        },
+        "contractId": "support.sla-updated.v1",
+        "producerId": "support-sla-service",
+        "producerKind": "autonomous_service",
+        "tenancyMode": "required",
+        "version": "v1"
+      }
+    ],
+    "host": {
+      "hostId": "support-host",
+      "modules": [
+        "support-ticket"
+      ]
+    },
+    "protocol": "lenso.system.v2",
+    "providers": [
+      {
+        "modules": [
+          "notification-gateway"
+        ],
+        "providerId": "notification-provider"
+      }
+    ],
+    "systemId": "support-system"
+  }
+}

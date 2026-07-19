@@ -69,7 +69,7 @@ pub struct ExtractionEvidenceDigest {
     pub digest: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtractionPlanInputs {
     pub readiness_report: ExtractionReadinessReport,
     pub module: ModuleManifest,

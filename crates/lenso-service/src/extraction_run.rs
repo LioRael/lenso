@@ -246,7 +246,7 @@ pub struct ExtractionRun {
     pub effects: ExtractionRunEffects,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtractionRunInputs {
     pub plan: ExtractionPlan,
     pub current_plan_inputs: ExtractionPlanInputs,

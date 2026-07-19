@@ -25,7 +25,7 @@ const EXTRACTION_SCAFFOLD_SCHEMA_ID: &str =
     "https://contracts.lenso.local/extraction/lenso.extraction-scaffold.v1.schema.json";
 const EXTRACTION_SCAFFOLD_APPLY_PROTOCOL: &str = "lenso.extraction-scaffold-apply.v1";
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExtractionScaffoldArtifact {
     pub contract_id: String,
     pub version: String,
@@ -33,7 +33,7 @@ pub struct ExtractionScaffoldArtifact {
     pub protobuf_descriptor: Option<Vec<u8>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtractionScaffoldInputs {
     pub plan: ExtractionPlan,
     pub module: ModuleManifest,
