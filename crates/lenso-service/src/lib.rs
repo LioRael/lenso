@@ -11,6 +11,7 @@ mod direct_grpc;
 mod direct_http;
 mod endpoint_resolution;
 mod event_envelope;
+mod extraction_authority_commit;
 mod extraction_backfill;
 mod extraction_plan;
 mod extraction_provisional_cutover;
@@ -65,6 +66,13 @@ pub use event_envelope::{
     EventEnvelopeIssueCode, GeneratedEventContract,
     evaluate_generated_event_contract_compatibility, event_envelope_from_cloudevent,
     generate_event_contract, validate_event_envelope, validate_event_envelope_value,
+};
+pub use extraction_authority_commit::{
+    EXTRACTION_AUTHORITY_COMMIT_PROTOCOL, ExtractionApproval, ExtractionAuthorityCommitError,
+    ExtractionAuthorityCommitErrorCode, ExtractionAuthorityCommitInputs,
+    ExtractionAuthorityCommitReceipt, ExtractionAuthorityCommitResult,
+    ExtractionAuthorityCommitStatus, ExtractionFastRollbackError, ExtractionFastRollbackIssueCode,
+    commit_extraction_authority, record_autonomous_mutation, request_fast_extraction_rollback,
 };
 pub use extraction_backfill::{
     EXTRACTION_BACKFILL_PROTOCOL, ExtractionBackfillBatchReceipt, ExtractionBackfillBoundary,
