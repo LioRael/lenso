@@ -1,5 +1,5 @@
 {
-  "analyzerVersion": "lenso.extraction-readiness.v1",
+  "analyzerVersion": "lenso.extraction-readiness.v2",
   "classification": "needs_attention",
   "effects": {
     "changesAuthority": false,
@@ -31,6 +31,19 @@
         "Preserve Console routes, packages, slots, and contributions during extraction."
       ],
       "subject": "module.console"
+    },
+    {
+      "classification": "needs_attention",
+      "code": "data_volume_large",
+      "evidenceReferences": [
+        "postgres:observation/support-store-2026-07-19",
+        "postgres:pg_class/support.tickets"
+      ],
+      "message": "Large data volume for `support.tickets` informs backfill and bounded-write-pause risk (approximately 25000000 rows, approximately 17179869184 bytes; large means at least 1000000 rows or 1073741824 bytes).",
+      "nextActions": [
+        "Size resumable backfill batches, reconciliation, and the bounded write pause from this evidence; volume alone does not block readiness."
+      ],
+      "subject": "service_data.table.support.tickets.volume"
     },
     {
       "classification": "needs_attention",
@@ -106,17 +119,140 @@
         "Preserve these contract identities during extraction."
       ],
       "subject": "contracts.analysis"
+    },
+    {
+      "classification": "safe",
+      "code": "extraction_cursor_usable",
+      "evidenceReferences": [
+        "postgres:max(support.tickets.id)",
+        "postgres:observation/support-store-2026-07-19"
+      ],
+      "message": "Table `support.tickets` has trustworthy extraction cursor `id` at high-water mark `25000000`.",
+      "nextActions": [
+        "Pin this cursor and high-water mark in the Extraction Plan."
+      ],
+      "subject": "service_data.table.support.tickets.cursor"
+    },
+    {
+      "classification": "safe",
+      "code": "live_store_observation_present",
+      "evidenceReferences": [
+        "postgres:observation/support-store-2026-07-19"
+      ],
+      "message": "Read-only live Store observation `support-store-2026-07-19` from `host-postgres` is reported separately from static declarations.",
+      "nextActions": [
+        "Use the observation as planning evidence only; readiness analysis does not mutate the Store."
+      ],
+      "subject": "service_data.observation.support-store-2026-07-19"
+    },
+    {
+      "classification": "safe",
+      "code": "service_data_ready",
+      "evidenceReferences": [
+        "analyzer:postgres/support-ticket"
+      ],
+      "message": "Service Data ownership, access paths, and transaction boundaries are safe enough to plan extraction.",
+      "nextActions": [
+        "Carry the reported tables, migrations, volume, and cursor evidence into the Extraction Plan."
+      ],
+      "subject": "service_data"
     }
   ],
   "issueCodes": [
     "admin_surface_present",
     "console_surface_present",
+    "data_volume_large",
     "runtime_surface_present",
     "story_surface_present",
     "workflow_surface_present"
   ],
   "protocol": "lenso.extraction-readiness-report.v1",
   "ready": true,
+  "serviceData": {
+    "accessPaths": [
+      {
+        "access": "read_write",
+        "accessorModule": "support-ticket",
+        "evidenceReferences": [
+          "modules/support-ticket/src/store.rs:14"
+        ],
+        "source": {
+          "kind": "static_declaration"
+        },
+        "table": "support.tickets"
+      }
+    ],
+    "complete": true,
+    "evidenceReferences": [
+      "analyzer:postgres/support-ticket"
+    ],
+    "migrations": [
+      {
+        "evidenceReferences": [
+          "modules/support-ticket/migrations/0001_tickets.sql"
+        ],
+        "migration": "0001_create_support_tickets",
+        "ownerModule": "support-ticket",
+        "source": {
+          "kind": "static_declaration"
+        }
+      }
+    ],
+    "tables": [
+      {
+        "evidenceReferences": [
+          "modules/support-ticket/migrations/0001_tickets.sql"
+        ],
+        "ownerModule": "support-ticket",
+        "source": {
+          "kind": "static_declaration"
+        },
+        "table": "support.tickets"
+      },
+      {
+        "cursor": {
+          "column": "id",
+          "evidenceReferences": [
+            "postgres:max(support.tickets.id)"
+          ],
+          "highWaterMark": "25000000",
+          "trustworthy": true
+        },
+        "evidenceReferences": [
+          "postgres:observation/support-store-2026-07-19"
+        ],
+        "ownerModule": "support-ticket",
+        "source": {
+          "kind": "live_store_observation",
+          "observationId": "support-store-2026-07-19",
+          "readOnly": true,
+          "store": "host-postgres"
+        },
+        "table": "support.tickets",
+        "volume": {
+          "approximateBytes": 17179869184,
+          "approximateRows": 25000000,
+          "evidenceReferences": [
+            "postgres:pg_class/support.tickets"
+          ]
+        }
+      }
+    ],
+    "transactions": [
+      {
+        "evidenceReferences": [
+          "modules/support-ticket/src/store.rs:41"
+        ],
+        "participatingModules": [
+          "support-ticket"
+        ],
+        "source": {
+          "kind": "static_declaration"
+        },
+        "transaction": "support-ticket-update"
+      }
+    ]
+  },
   "surfaces": {
     "admin": [
       "schema"

@@ -206,7 +206,10 @@ fn support_ticket_extraction_readiness_report(
         CompatibilityCategory, ExtractionBoundaryEvidence, ExtractionBoundaryReference,
         ExtractionBoundaryReferenceKind, ExtractionConsumerCompatibilityEvidence,
         ExtractionContractDirection, ExtractionContractEvidence, ExtractionContractKind,
-        ExtractionEvidenceStatus, ExtractionReadinessEvidence,
+        ExtractionCursorEvidence, ExtractionDataAccessEvidence, ExtractionDataAccessKind,
+        ExtractionDataEvidenceSource, ExtractionDataTableEvidence, ExtractionDataVolumeEvidence,
+        ExtractionEvidenceStatus, ExtractionMigrationEvidence, ExtractionReadinessEvidence,
+        ExtractionServiceDataEvidence, ExtractionTransactionEvidence,
     };
 
     let module = ModuleManifest::builder("support-ticket")
@@ -366,6 +369,66 @@ fn support_ticket_extraction_readiness_report(
             evidence_references: vec!["system:consumer/support-ticket-sla-updates".to_owned()],
             next_action: "No action needed.".to_owned(),
         }]),
+        service_data: Some(ExtractionServiceDataEvidence {
+            complete: true,
+            evidence_references: vec!["analyzer:postgres/support-ticket".to_owned()],
+            tables: vec![
+                ExtractionDataTableEvidence {
+                    table: "support.tickets".to_owned(),
+                    owner_module: Some("support-ticket".to_owned()),
+                    source: ExtractionDataEvidenceSource::StaticDeclaration,
+                    volume: None,
+                    cursor: None,
+                    evidence_references: vec![
+                        "modules/support-ticket/migrations/0001_tickets.sql".to_owned(),
+                    ],
+                },
+                ExtractionDataTableEvidence {
+                    table: "support.tickets".to_owned(),
+                    owner_module: Some("support-ticket".to_owned()),
+                    source: ExtractionDataEvidenceSource::LiveStoreObservation {
+                        observation_id: "support-store-2026-07-19".to_owned(),
+                        store: "host-postgres".to_owned(),
+                        read_only: true,
+                    },
+                    volume: Some(ExtractionDataVolumeEvidence {
+                        approximate_rows: Some(25_000_000),
+                        approximate_bytes: Some(17_179_869_184),
+                        evidence_references: vec!["postgres:pg_class/support.tickets".to_owned()],
+                    }),
+                    cursor: Some(ExtractionCursorEvidence {
+                        column: "id".to_owned(),
+                        high_water_mark: "25000000".to_owned(),
+                        trustworthy: true,
+                        evidence_references: vec!["postgres:max(support.tickets.id)".to_owned()],
+                    }),
+                    evidence_references: vec![
+                        "postgres:observation/support-store-2026-07-19".to_owned(),
+                    ],
+                },
+            ],
+            migrations: vec![ExtractionMigrationEvidence {
+                migration: "0001_create_support_tickets".to_owned(),
+                owner_module: Some("support-ticket".to_owned()),
+                source: ExtractionDataEvidenceSource::StaticDeclaration,
+                evidence_references: vec![
+                    "modules/support-ticket/migrations/0001_tickets.sql".to_owned(),
+                ],
+            }],
+            access_paths: vec![ExtractionDataAccessEvidence {
+                accessor_module: "support-ticket".to_owned(),
+                table: "support.tickets".to_owned(),
+                access: ExtractionDataAccessKind::ReadWrite,
+                source: ExtractionDataEvidenceSource::StaticDeclaration,
+                evidence_references: vec!["modules/support-ticket/src/store.rs:14".to_owned()],
+            }],
+            transactions: vec![ExtractionTransactionEvidence {
+                transaction: "support-ticket-update".to_owned(),
+                participating_modules: vec!["support-ticket".to_owned()],
+                source: ExtractionDataEvidenceSource::StaticDeclaration,
+                evidence_references: vec!["modules/support-ticket/src/store.rs:41".to_owned()],
+            }],
+        }),
     };
     if blocked {
         evidence
@@ -399,6 +462,51 @@ fn support_ticket_extraction_readiness_report(
             .expect("consumer fixture")[0];
         consumer.classification = CompatibilityCategory::Breaking;
         consumer.next_action = "Migrate the Consumer to support.sla-updated.v1.".to_owned();
+        let service_data = evidence
+            .service_data
+            .as_mut()
+            .expect("service data fixture");
+        service_data.tables.extend([
+            ExtractionDataTableEvidence {
+                table: "support.sla_policies".to_owned(),
+                owner_module: Some("support-sla".to_owned()),
+                source: ExtractionDataEvidenceSource::StaticDeclaration,
+                volume: None,
+                cursor: None,
+                evidence_references: vec!["modules/support-sla/migrations/0001.sql".to_owned()],
+            },
+            ExtractionDataTableEvidence {
+                table: "support.audit_events".to_owned(),
+                owner_module: None,
+                source: ExtractionDataEvidenceSource::StaticDeclaration,
+                volume: None,
+                cursor: None,
+                evidence_references: vec!["migrations/0009_support_audit.sql".to_owned()],
+            },
+        ]);
+        service_data.migrations.push(ExtractionMigrationEvidence {
+            migration: "0009_support_audit".to_owned(),
+            owner_module: None,
+            source: ExtractionDataEvidenceSource::StaticDeclaration,
+            evidence_references: vec!["migrations/0009_support_audit.sql".to_owned()],
+        });
+        service_data
+            .access_paths
+            .push(ExtractionDataAccessEvidence {
+                accessor_module: "support-ticket".to_owned(),
+                table: "support.sla_policies".to_owned(),
+                access: ExtractionDataAccessKind::Read,
+                source: ExtractionDataEvidenceSource::StaticDeclaration,
+                evidence_references: vec!["modules/support-ticket/src/sla.rs:28".to_owned()],
+            });
+        service_data
+            .transactions
+            .push(ExtractionTransactionEvidence {
+                transaction: "ticket-and-sla-update".to_owned(),
+                participating_modules: vec!["support-sla".to_owned(), "support-ticket".to_owned()],
+                source: ExtractionDataEvidenceSource::StaticDeclaration,
+                evidence_references: vec!["modules/support-ticket/src/sla.rs:52".to_owned()],
+            });
     }
     lenso_service::evaluate_extraction_readiness(&module, &system, &evidence)
 }

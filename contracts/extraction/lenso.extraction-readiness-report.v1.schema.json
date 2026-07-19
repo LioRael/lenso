@@ -9,6 +9,214 @@
       ],
       "type": "string"
     },
+    "ExtractionCursorEvidence": {
+      "properties": {
+        "column": {
+          "type": "string"
+        },
+        "evidenceReferences": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "highWaterMark": {
+          "type": "string"
+        },
+        "trustworthy": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "column",
+        "highWaterMark",
+        "trustworthy"
+      ],
+      "type": "object"
+    },
+    "ExtractionDataAccessEvidence": {
+      "properties": {
+        "access": {
+          "$ref": "#/$defs/ExtractionDataAccessKind"
+        },
+        "accessorModule": {
+          "type": "string"
+        },
+        "evidenceReferences": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/$defs/ExtractionDataEvidenceSource"
+        },
+        "table": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "accessorModule",
+        "table",
+        "access",
+        "source"
+      ],
+      "type": "object"
+    },
+    "ExtractionDataAccessKind": {
+      "enum": [
+        "read",
+        "write",
+        "read_write"
+      ],
+      "type": "string"
+    },
+    "ExtractionDataEvidenceSource": {
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "static_declaration",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "live_store_observation",
+              "type": "string"
+            },
+            "observationId": {
+              "type": "string"
+            },
+            "readOnly": {
+              "type": "boolean"
+            },
+            "store": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "observationId",
+            "store",
+            "readOnly"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ExtractionDataTableEvidence": {
+      "properties": {
+        "cursor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExtractionCursorEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidenceReferences": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "ownerModule": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "$ref": "#/$defs/ExtractionDataEvidenceSource"
+        },
+        "table": {
+          "type": "string"
+        },
+        "volume": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExtractionDataVolumeEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "table",
+        "source"
+      ],
+      "type": "object"
+    },
+    "ExtractionDataVolumeEvidence": {
+      "properties": {
+        "approximateBytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "approximateRows": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "evidenceReferences": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ExtractionMigrationEvidence": {
+      "properties": {
+        "evidenceReferences": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "migration": {
+          "type": "string"
+        },
+        "ownerModule": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "$ref": "#/$defs/ExtractionDataEvidenceSource"
+        }
+      },
+      "required": [
+        "migration",
+        "source"
+      ],
+      "type": "object"
+    },
     "ExtractionReadinessEffects": {
       "properties": {
         "changesAuthority": {
@@ -92,17 +300,30 @@
         "contract_evidence_missing",
         "contract_identity_mismatch",
         "contracts_complete",
+        "cross_module_table_access",
         "cross_module_import",
+        "data_volume_large",
+        "extraction_cursor_missing",
+        "extraction_cursor_usable",
         "in_process_boundary_call",
+        "live_store_observation_not_read_only",
+        "live_store_observation_present",
         "manifest_invalid",
         "manifest_needs_attention",
+        "migration_ownership_unresolved",
         "required_event_contract_missing",
         "required_service_contract_missing",
         "runtime_surface_present",
+        "service_data_evidence_incomplete",
+        "service_data_evidence_missing",
+        "service_data_ready",
         "story_surface_present",
         "system_evidence_invalid",
+        "table_ownership_unresolved",
         "target_module_missing",
         "target_module_not_linked",
+        "transaction_boundary_unresolved",
+        "transaction_spans_service_boundary",
         "workflow_surface_present"
       ],
       "type": "string"
@@ -167,13 +388,88 @@
         }
       },
       "type": "object"
+    },
+    "ExtractionServiceDataEvidence": {
+      "properties": {
+        "accessPaths": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ExtractionDataAccessEvidence"
+          },
+          "type": "array"
+        },
+        "complete": {
+          "type": "boolean"
+        },
+        "evidenceReferences": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "migrations": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ExtractionMigrationEvidence"
+          },
+          "type": "array"
+        },
+        "tables": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ExtractionDataTableEvidence"
+          },
+          "type": "array"
+        },
+        "transactions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ExtractionTransactionEvidence"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "complete"
+      ],
+      "type": "object"
+    },
+    "ExtractionTransactionEvidence": {
+      "properties": {
+        "evidenceReferences": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "participatingModules": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/$defs/ExtractionDataEvidenceSource"
+        },
+        "transaction": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "transaction",
+        "source"
+      ],
+      "type": "object"
     }
   },
   "$id": "https://contracts.lenso.local/extraction/lenso.extraction-readiness-report.v1.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "properties": {
     "analyzerVersion": {
-      "const": "lenso.extraction-readiness.v1",
+      "const": "lenso.extraction-readiness.v2",
       "type": "string"
     },
     "classification": {
@@ -202,6 +498,17 @@
     },
     "ready": {
       "type": "boolean"
+    },
+    "serviceData": {
+      "$ref": "#/$defs/ExtractionServiceDataEvidence",
+      "default": {
+        "accessPaths": [],
+        "complete": false,
+        "evidenceReferences": [],
+        "migrations": [],
+        "tables": [],
+        "transactions": []
+      }
     },
     "surfaces": {
       "$ref": "#/$defs/ExtractionReadinessSurfaceSummary"

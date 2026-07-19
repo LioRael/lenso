@@ -80,9 +80,9 @@ Compatibility evolution is defined in the generated
 `lenso.extraction-readiness-report.v1` is the first public artifact for moving
 one Host-owned linked Module toward an Autonomous Service. The public
 `lenso-service` evaluator combines the Module manifest, a validated
-`lenso.system.v2` graph, and structured boundary, Contract, and active Consumer
-evidence. CLI-owned source analyzers supply repository evidence; they do not
-define separate readiness rules.
+`lenso.system.v2` graph, and structured boundary, Contract, active Consumer,
+and Service Data evidence. CLI-owned source analyzers supply repository and
+optional live Store observations; they do not define separate readiness rules.
 
 Findings use the existing `safe`, `needs_attention`, `breaking`, and `blocked`
 compatibility vocabulary plus stable issue codes, evidence references, and next
@@ -92,6 +92,21 @@ in-process boundary calls fail closed. Runtime functions, schedules, Durable
 Workflows, admin declarations, Console contributions, and Runtime Story display
 metadata remain visible as `needs_attention` preservation work without becoming
 an unexplained blocker.
+
+Service Data evidence records Postgres tables, migrations, access paths,
+transaction participants, approximate row and byte volume, and any trustworthy
+cursor plus high-water mark. Every record identifies whether it came from a
+static declaration or a named live Store observation. A live observation must
+be marked read-only; the evaluator never opens a Store connection itself.
+Unknown or conflicting table or migration ownership, access across the proposed
+Module boundary, and transactions spanning that boundary block readiness. A
+table at or above one million rows or one GiB produces an explainable
+`needs_attention` planning finding rather than a binary failure. A target-owned
+table without a trustworthy cursor remains plan-ready only with an explicit
+requirement to perform its full copy during the bounded write pause. These
+Service Data decision rules are identified by analyzer version
+`lenso.extraction-readiness.v2` while the additive report envelope remains
+`lenso.extraction-readiness-report.v1`.
 
 Readiness evaluation is always non-mutating. Its versioned effects object fixes
 repository writes, Workload startup, data movement, and authority changes to

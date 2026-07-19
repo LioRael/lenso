@@ -3,6 +3,13 @@ Result: needs_attention (ready)
 System: support-system
 Linked owner: support-host
 Effects: read-only; writesRepositoryFiles=false; startsWorkloads=false; movesData=false; changesAuthority=false
+Service data:
+- evidence: complete
+- table support.tickets: owner=support-ticket; source=static_declaration; volume=unknown; cursor=none
+- table support.tickets: owner=support-ticket; source=live_store_observation:support-store-2026-07-19@host-postgres (read_only); volume=approximately 25000000 rows, approximately 17179869184 bytes; cursor=id@25000000 (trustworthy)
+- migration 0001_create_support_tickets: owner=support-ticket; source=static_declaration
+- access support-ticket -> support.tickets: read_write; source=static_declaration
+- transaction support-ticket-update: modules=support-ticket; source=static_declaration
 Findings:
 - [needs_attention] admin_surface_present module.admin: Admin declarations are part of the Module's operator-facing identity.
   evidence: module:admin/schema
@@ -10,6 +17,10 @@ Findings:
 - [needs_attention] console_surface_present module.console: Runtime Console declarations are part of the Module's operator-facing identity.
   evidence: module:console/surface:support-tickets@/support/tickets
   next: Preserve Console routes, packages, slots, and contributions during extraction.
+- [needs_attention] data_volume_large service_data.table.support.tickets.volume: Large data volume for `support.tickets` informs backfill and bounded-write-pause risk (approximately 25000000 rows, approximately 17179869184 bytes; large means at least 1000000 rows or 1073741824 bytes).
+  evidence: postgres:observation/support-store-2026-07-19
+  evidence: postgres:pg_class/support.tickets
+  next: Size resumable backfill batches, reconciliation, and the bounded write pause from this evidence; volume alone does not block readiness.
 - [needs_attention] runtime_surface_present module.runtime: Runtime functions and schedules must retain their identities and execution ownership.
   evidence: module:runtime/support-ticket-reindex -> support-ticket.reindex.v1
   evidence: module:runtime/support-ticket.reindex.v1@v1
@@ -31,6 +42,16 @@ Findings:
   evidence: contracts/events/support.sla-updated.v1.schema.json
   evidence: contracts/openapi/support-ticket.v1.yaml
   next: Preserve these contract identities during extraction.
+- [safe] extraction_cursor_usable service_data.table.support.tickets.cursor: Table `support.tickets` has trustworthy extraction cursor `id` at high-water mark `25000000`.
+  evidence: postgres:max(support.tickets.id)
+  evidence: postgres:observation/support-store-2026-07-19
+  next: Pin this cursor and high-water mark in the Extraction Plan.
+- [safe] live_store_observation_present service_data.observation.support-store-2026-07-19: Read-only live Store observation `support-store-2026-07-19` from `host-postgres` is reported separately from static declarations.
+  evidence: postgres:observation/support-store-2026-07-19
+  next: Use the observation as planning evidence only; readiness analysis does not mutate the Store.
+- [safe] service_data_ready service_data: Service Data ownership, access paths, and transaction boundaries are safe enough to plan extraction.
+  evidence: analyzer:postgres/support-ticket
+  next: Carry the reported tables, migrations, volume, and cursor evidence into the Extraction Plan.
 Declared surfaces:
 - http: GET /tickets/{id}
 - events: apply_sla_update <- support.sla-updated.v1, record_audit <- support.audit-recorded.v1

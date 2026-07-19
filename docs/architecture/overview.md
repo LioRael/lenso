@@ -195,10 +195,14 @@ trigger rollback.
 The first M4 extraction slice adds the versioned, read-only
 `lenso.extraction-readiness-report.v1` contract. It evaluates one Host-owned
 linked Module from its manifest, the mixed-topology System graph, and
-CLI-supplied boundary, Contract, and Consumer evidence. Missing or ambiguous
-evidence fails closed; declared runtime, admin, Console, Workflow, and Story
-surfaces remain explicit preservation work. Evaluation never writes files,
-starts Workloads, moves data, or changes authority.
+CLI-supplied boundary, Contract, Consumer, and Postgres Service Data evidence.
+Missing or ambiguous evidence fails closed; unresolved ownership, cross-Module
+table access, and cross-boundary transactions block planning, while data volume
+and cursor findings expose bounded-pause risk without turning size alone into a
+failure. Optional live Store observations remain explicitly read-only and
+distinct from static declarations. Declared runtime, admin, Console, Workflow,
+and Story surfaces remain explicit preservation work. Evaluation never writes
+files, starts Workloads, moves data, or changes authority.
 Its versioned Service, Event, Config, and Reliability Contract declarations are
 specified in [`autonomous-service-contract-artifacts.md`](autonomous-service-contract-artifacts.md).
 The separate [`lenso.context.v1`](common-context-contracts.md) envelope
