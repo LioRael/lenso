@@ -2590,6 +2590,7 @@ dependencies = [
  "spiffe",
  "spiffe-rustls",
  "spiffe-rustls-tokio",
+ "sqlx",
  "tokio",
  "tokio-stream",
  "tonic",
