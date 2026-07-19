@@ -48,6 +48,10 @@ pub const PLATFORM_MIGRATIONS: &[Migration] = &[
         name: "platform/0010_create_idempotency_claims",
         sql: include_str!("../migrations/0010_create_idempotency_claims.sql"),
     },
+    Migration {
+        name: "platform/0011_create_extraction_artifacts",
+        sql: include_str!("../migrations/0011_create_extraction_artifacts.sql"),
+    },
 ];
 
 pub async fn apply_migrations(pool: &PgPool, migrations: &[Migration]) -> AppResult<()> {

@@ -68,11 +68,16 @@ pub use event_envelope::{
     generate_event_contract, validate_event_envelope, validate_event_envelope_value,
 };
 pub use extraction_authority_commit::{
-    EXTRACTION_AUTHORITY_COMMIT_PROTOCOL, ExtractionApproval, ExtractionAuthorityCommitError,
-    ExtractionAuthorityCommitErrorCode, ExtractionAuthorityCommitInputs,
-    ExtractionAuthorityCommitReceipt, ExtractionAuthorityCommitResult,
-    ExtractionAuthorityCommitStatus, ExtractionFastRollbackError, ExtractionFastRollbackIssueCode,
-    commit_extraction_authority, record_autonomous_mutation, request_fast_extraction_rollback,
+    EXTRACTION_AUTHORITY_COMMIT_PROTOCOL, EXTRACTION_CANDIDATE_HEALTH_PROTOCOL, ExtractionApproval,
+    ExtractionApprovalVerifier, ExtractionAuthorityCommitError, ExtractionAuthorityCommitErrorCode,
+    ExtractionAuthorityCommitInputs, ExtractionAuthorityCommitReceipt,
+    ExtractionAuthorityCommitResult, ExtractionAuthorityCommitRevalidation,
+    ExtractionAuthorityCommitStatus, ExtractionCandidateHealthEvidence,
+    ExtractionFastRollbackError, ExtractionFastRollbackIssueCode,
+    ExtractionReverseMigrationEvidence, ExtractionTopologyState, commit_extraction_authority,
+    commit_extraction_authority_postgres, extraction_candidate_health_integrity_is_valid,
+    initialize_extraction_topology_state, record_autonomous_mutation,
+    request_fast_extraction_rollback,
 };
 pub use extraction_backfill::{
     EXTRACTION_BACKFILL_PROTOCOL, ExtractionBackfillBatchReceipt, ExtractionBackfillBoundary,
