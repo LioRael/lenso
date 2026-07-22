@@ -16,6 +16,13 @@ const PACKAGE = /^(cargo:[a-z0-9]+(?:-[a-z0-9]+)*|npm:@lenso\/[a-z0-9]+(?:-[a-z0
 const VERSION = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/u;
 function fail(message) { throw new Error(`repository runtime: ${message}`); }
 function hash(bytes) { return sha256(bytes); }
+export function npmRegistryAuthentication(registry) {
+    const url = new URL(registry);
+    if (url.username || url.password || url.search || url.hash)
+        fail("npm registry URL must not contain credentials, query parameters, or a fragment");
+    url.pathname = url.pathname.replace(/\/?$/u, "/");
+    return { registry: url.toString(), authKey: `//${url.host}${url.pathname}:_authToken` };
+}
 function safeRelative(path) {
     if (!path || path.startsWith("/") || path.includes("\\") || path.split("/").some((part) => part === "" || part === "." || part === ".."))
         fail(`unsafe path ${path}`);
@@ -181,8 +188,10 @@ export async function createPreflightProof(environment) {
     if (!endpoint)
         fail("coordinator preflight endpoint is required");
     const response = await fetch(endpoint, { method: "POST", redirect: "error", headers: { authorization: `Bearer ${environment.githubToken}`, "content-type": "application/json", "idempotency-key": environment.eventId }, body: JSON.stringify({ schema: "lenso.publisher-preflight.v1", binding, bindingDigest: digest }) });
-    if (!response.ok)
-        fail(`coordinator preflight confirmation ${response.status}`);
+    if (!response.ok) {
+        const detail = (await response.text()).slice(0, 500);
+        fail(`coordinator preflight confirmation ${response.status}: ${detail}`);
+    }
     const proof = await response.json();
     const now = Date.now();
     const issued = Date.parse(proof.issuedAt);
@@ -252,7 +261,7 @@ export async function stageCargoArchives(cwd, plan, selected) {
     // One Cargo invocation creates a temporary local registry containing all
     // planned packages, so same-plan dependencies and workspace dev-dependencies
     // can be verified without weakening the no-write preflight boundary.
-    await execFile("cargo", ["publish", "--dry-run", "--locked", ...planArgs], { cwd });
+    await execFile("cargo", ["publish", "--dry-run", "--locked", "--allow-dirty", ...planArgs], { cwd });
     // Cargo removes archives produced by `publish --dry-run`. Materialize the
     // already-verified source in one dependency-aware invocation as well. Use
     // every Cargo package in the plan because `cargo package` also resolves
@@ -263,7 +272,7 @@ export async function stageCargoArchives(cwd, plan, selected) {
         const path = join(cwd, "target/package", `${name}-${item.version}.crate`);
         await rm(path, { force: true });
     }
-    await execFile("cargo", ["package", "--locked", "--no-verify", ...planArgs], { cwd });
+    await execFile("cargo", ["package", "--locked", "--no-verify", "--allow-dirty", ...planArgs], { cwd });
     for (const item of cargoPackages) {
         const name = item.id.slice(6);
         const path = join(cwd, "target/package", `${name}-${item.version}.crate`);
@@ -541,7 +550,8 @@ export function publicationOrder(plan, selected) {
 async function publishOnce(environment, item, artifact) {
     if (item.id.startsWith("npm:")) {
         const shadow = process.env.LENSO_RELEASE_MODE === "shadow";
-        const registry = process.env.LENSO_NPM_REGISTRY_URL ?? "https://registry.npmjs.org";
+        const npmAuth = npmRegistryAuthentication(process.env.LENSO_NPM_REGISTRY_URL ?? "https://registry.npmjs.org");
+        const registry = npmAuth.registry;
         let authDirectory;
         try {
             const authArgs = [];
@@ -549,11 +559,9 @@ async function publishOnce(environment, item, artifact) {
                 const token = process.env.NODE_AUTH_TOKEN;
                 if (!token)
                     fail("shadow npm registry token is required");
-                const url = new URL(registry);
                 authDirectory = await mkdtemp(join(tmpdir(), "lenso-npm-auth-"));
                 const userConfig = join(authDirectory, "npmrc");
-                const authPath = `${url.pathname.replace(/\/?$/u, "/")}`;
-                await writeFile(userConfig, `registry=${registry}\n//${url.host}${authPath}:_authToken=${token}\nalways-auth=true\n`, { mode: 0o600 });
+                await writeFile(userConfig, `registry=${registry}\n${npmAuth.authKey}=${token}\n`, { mode: 0o600 });
                 authArgs.push("--userconfig", userConfig);
             }
             else if (process.env.NODE_AUTH_TOKEN || process.env.NPM_TOKEN) {
@@ -721,9 +729,9 @@ export async function publishSelected(environment) {
             observed = await observe();
             if (!observed.exists)
                 fail("published package is not registry-visible");
-            if (hash(observed.bytes) !== hash(artifact.bytes))
-                fail("registry archive differs from packed archive");
         }
+        if (hash(observed.bytes) !== hash(artifact.bytes))
+            fail("registry archive differs from packed archive");
         const provenanceUrl = await createAttestation(artifact.path, artifact.bytes, environment);
         const receipt = receiptFor(plan, item, observed, provenanceUrl, environment, fixedGroup ? `${fixedGroup.name}@${fixedGroup.version}` : undefined);
         assertComponentReceipt(receipt);
