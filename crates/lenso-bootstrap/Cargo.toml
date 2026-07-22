@@ -1,6 +1,6 @@
 [package]
 name = "lenso-bootstrap"
-version = "0.1.17"
+version = "0.1.18"
 edition.workspace = true
 license = "MIT"
 description = "Composition root for first-party Lenso host modules."
