@@ -5,9 +5,9 @@ core:changelogs:
 core:packages:
   - id: cargo:lenso
     updated: true
-  - id: cargo:lenso-autonomous-service
-    updated: true
   - id: cargo:lenso-api
+    updated: true
+  - id: cargo:lenso-autonomous-service
     updated: true
   - id: cargo:lenso-bootstrap
     updated: true
@@ -19,25 +19,25 @@ core:packages:
     updated: true
   - id: cargo:lenso-worker
     updated: true
+  - id: cargo:lenso-platform-admin-data
+    updated: true
   - changelogIds:
       - release.md
     id: cargo:lenso-service
     updated: true
   - id: cargo:lenso-platform-admin
     updated: true
-  - id: cargo:lenso-platform-admin-data
-    updated: true
   - id: cargo:lenso-platform-core
-    updated: true
-  - id: cargo:lenso-platform-http
     updated: true
   - id: cargo:lenso-platform-module
     updated: true
-  - id: cargo:lenso-platform-module-remote
+  - id: cargo:lenso-platform-http
     updated: true
   - id: cargo:lenso-platform-runtime
     updated: true
   - id: cargo:lenso-platform-testing
+    updated: true
+  - id: cargo:lenso-platform-module-remote
     updated: true
   - id: cargo:lenso-module-story
     updated: true
