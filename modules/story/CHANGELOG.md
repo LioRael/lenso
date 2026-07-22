@@ -1,3 +1,10 @@
+## lenso-module-story@0.1.14
+
+### Fixes
+
+Publish the remaining reviewed M6 package slice with the current fail-closed
+publisher runtime after replacing the stale sealed publisher contract.
+
 ## lenso-module-story@0.1.13
 
 ### Fixes

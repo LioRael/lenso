@@ -1,5 +1,5 @@
 core:changelogs:
-  - content: "---\npackages:\n  lenso-module-story:\n    type: patch\n---\n\n### Fixes\n\nPublish the reviewed M6 package slice through the coordinator-scoped release\nworkflow after replacing the stale publisher contract.\n"
+  - content: "---\npackages:\n  lenso-module-story:\n    type: patch\n---\n\n### Fixes\n\nPublish the remaining reviewed M6 package slice with the current fail-closed\npublisher runtime after replacing the stale sealed publisher contract.\n"
     filename: release.md
     v: 0.0.0
 core:packages:
@@ -17,11 +17,11 @@ core:packages:
     updated: true
   - id: cargo:lenso-service
     updated: false
-  - id: cargo:lenso-platform-admin
-    updated: false
   - id: cargo:lenso-worker
     updated: true
   - id: cargo:lenso-platform-admin-data
+    updated: false
+  - id: cargo:lenso-platform-admin
     updated: false
   - id: cargo:lenso-platform-core
     updated: false
