@@ -1,6 +1,6 @@
 [package]
 name = "lenso-api"
-version = "0.1.23"
+version = "0.1.24"
 edition.workspace = true
 license = "MIT"
 description = "HTTP API host crate for the Lenso backend framework."

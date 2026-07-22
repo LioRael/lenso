@@ -1,5 +1,5 @@
 core:changelogs:
-  - content: "---\npackages:\n  lenso-module-story:\n    type: patch\n---\n\n### Fixes\n\nPublish the remaining reviewed M6 package slice with the current fail-closed\npublisher runtime after replacing the stale sealed publisher contract.\n"
+  - content: "---\npackages:\n  lenso-contracts:\n    type: patch\n  lenso-service:\n    type: patch\n---\n\n### Fixes\n\nRestore the complete reviewed M6 Cargo dependency closure so every unpublished\nfoundation, module, and host package is built and verified in one shadow plan.\n"
     filename: release.md
     v: 0.0.0
 core:packages:
@@ -8,34 +8,36 @@ core:packages:
   - id: cargo:lenso-api
     updated: true
   - id: cargo:lenso-autonomous-service
-    updated: false
+    updated: true
   - id: cargo:lenso-bootstrap
     updated: true
-  - id: cargo:lenso-contracts
-    updated: false
-  - id: cargo:lenso-migrate
-    updated: true
-  - id: cargo:lenso-service
-    updated: false
-  - id: cargo:lenso-worker
-    updated: true
-  - id: cargo:lenso-platform-admin-data
-    updated: false
-  - id: cargo:lenso-platform-admin
-    updated: false
-  - id: cargo:lenso-platform-core
-    updated: false
-  - id: cargo:lenso-platform-http
-    updated: false
-  - id: cargo:lenso-platform-module
-    updated: false
-  - id: cargo:lenso-platform-module-remote
-    updated: false
-  - id: cargo:lenso-platform-runtime
-    updated: false
-  - id: cargo:lenso-platform-testing
-    updated: false
   - changelogIds:
       - release.md
-    id: cargo:lenso-module-story
+    id: cargo:lenso-contracts
+    updated: true
+  - changelogIds:
+      - release.md
+    id: cargo:lenso-service
+    updated: true
+  - id: cargo:lenso-migrate
+    updated: true
+  - id: cargo:lenso-worker
+    updated: true
+  - id: cargo:lenso-platform-http
+    updated: true
+  - id: cargo:lenso-platform-module
+    updated: true
+  - id: cargo:lenso-platform-module-remote
+    updated: true
+  - id: cargo:lenso-platform-core
+    updated: true
+  - id: cargo:lenso-platform-runtime
+    updated: true
+  - id: cargo:lenso-platform-testing
+    updated: true
+  - id: cargo:lenso-module-story
+    updated: true
+  - id: cargo:lenso-platform-admin
+    updated: true
+  - id: cargo:lenso-platform-admin-data
     updated: true
