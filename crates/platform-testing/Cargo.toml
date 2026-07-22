@@ -1,6 +1,6 @@
 [package]
 name = "lenso-platform-testing"
-version = "0.1.4"
+version = "0.1.5"
 edition.workspace = true
 license = "MIT"
 description = "Test support utilities for the Lenso backend framework."

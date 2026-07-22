@@ -1,6 +1,6 @@
 [package]
 name = "lenso-service"
-version = "0.1.7"
+version = "0.1.8"
 edition.workspace = true
 license = "MIT"
 description = "Public contracts for Lenso Providers and Autonomous Services."
