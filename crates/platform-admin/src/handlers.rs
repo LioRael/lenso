@@ -9,6 +9,28 @@ use platform_core::{
 };
 use platform_http::responses::json;
 use platform_http::{AdminActor, ApiErrorResponse, ErrorResponse, HttpRequestContext};
+#[utoipa::path(
+    get,
+    path = "/admin/runtime/deliveries/current",
+    operation_id = "admin_runtime_get_delivery_projection",
+    tag = "admin-runtime",
+    responses(
+        (status = 200, description = "Read-only production delivery evidence projection", body = lenso_service::DeliveryConsoleProjection),
+        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 403, description = "Runtime read capability is required", body = ErrorResponse, content_type = "application/problem+json")
+    )
+)]
+pub(crate) async fn get_delivery_console_projection(
+    admin: AdminActor,
+    State(ctx): State<AppContext>,
+    HttpRequestContext(request_ctx): HttpRequestContext,
+) -> Result<Json<lenso_service::DeliveryConsoleProjection>, ApiErrorResponse> {
+    ensure_runtime_read_capability(&admin, &request_ctx)?;
+    let projection = lenso_service::load_delivery_console_projection(&ctx.db, None)
+        .await
+        .map_err(|source| query_error(source, &request_ctx))?;
+    Ok(Json(projection))
+}
 
 #[utoipa::path(
     get,

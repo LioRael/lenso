@@ -82,6 +82,32 @@ async fn admin_runtime_summary_rejects_dev_bearer_outside_local_environment() {
 }
 
 #[tokio::test]
+async fn system_delivery_artifact_recording_rejects_an_unscoped_service() {
+    let app = auth_only_app();
+    let request = Request::builder()
+        .method("POST")
+        .uri("/system/delivery/deliveries/release:test/artifacts")
+        .header(
+            "authorization",
+            "Bearer dev-service:unrelated:runtime.stories.read",
+        )
+        .header("content-type", "application/json")
+        .body(Body::from(
+            r#"{"providerId":"ci:test","providerProof":"sha256:invalid","artifacts":[]}"#,
+        ))
+        .expect("request should build");
+
+    let response = app.oneshot(request).await.expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    let body = json_body(response).await;
+    assert_eq!(
+        body["detail"],
+        "missing production delivery capability: runtime.deliveries.write"
+    );
+}
+
+#[tokio::test]
 async fn admin_runtime_outbox_requires_authentication() {
     let app = auth_only_app();
 
@@ -281,6 +307,108 @@ async fn user_actor_with_runtime_read_capability_can_get_runtime_summary() {
     assert_eq!(body["status"], "healthy");
     assert_eq!(body["outbox"]["pending"], 1);
     assert_eq!(body["functions"]["pending"], 1);
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn runtime_read_actor_can_get_secret_free_delivery_projection() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let app = test_app(&db).await;
+    let rejected = lenso_service::record_delivery_artifact(
+        &db.pool,
+        "delivery:support:5",
+        &json!({
+            "protocol": "lenso.config-revision.v1",
+            "revisionId": "config:5",
+            "values": {"SECRET": "must-not-leak"},
+            "secretReferences": [{
+                "referenceId": "secret:db:5",
+                "provider": "vault",
+                "purpose": "database",
+                "scope": "service",
+                "status": "resolved"
+            }]
+        }),
+    )
+    .await
+    .expect_err("invalid plaintext Config Revision must fail before persistence");
+    assert!(rejected.to_string().contains("Config Revision"));
+    let contract = lenso_service::build_config_contract(
+        "config-contract:support:v1",
+        vec![lenso_service::ConfigField {
+            path: "DATABASE_PASSWORD".to_owned(),
+            value_type: lenso_service::ConfigValueType::String,
+            required: true,
+            sensitivity: lenso_service::ConfigFieldSensitivity::Sensitive,
+            scope: lenso_service::ConfigFieldScope::Service,
+            activation: lenso_service::ConfigFieldActivation::Restart,
+            mutable: true,
+        }],
+    )
+    .expect("Config Contract should build");
+    let secret_provider = lenso_service::DeterministicSecretProvider::new(
+        "vault",
+        [(
+            "secret:db:5".to_owned(),
+            lenso_service::SecretReferenceObservation {
+                status: lenso_service::SecretReferenceStatus::Resolved,
+                metadata: std::collections::BTreeMap::new(),
+            },
+        )],
+    );
+    let revision = lenso_service::build_config_revision(
+        "service:support",
+        &contract,
+        std::collections::BTreeMap::new(),
+        vec![lenso_service::SecretReference {
+            reference_id: "secret:db:5".to_owned(),
+            provider: "vault".to_owned(),
+            purpose: "DATABASE_PASSWORD".to_owned(),
+            scope: "service".to_owned(),
+            status: lenso_service::SecretReferenceStatus::Resolved,
+            metadata: std::collections::BTreeMap::new(),
+        }],
+        &secret_provider,
+    )
+    .expect("opaque Config Revision should build");
+    lenso_service::record_delivery_artifact(
+        &db.pool,
+        "delivery:support:5",
+        &serde_json::to_value(&revision).expect("revision should serialize"),
+    )
+    .await
+    .expect("redacted delivery evidence should persist");
+    let stored = sqlx::query_scalar::<_, serde_json::Value>(
+        "select artifact_json from platform.delivery_artifacts where delivery_id = $1",
+    )
+    .bind("delivery:support:5")
+    .fetch_one(&db.pool)
+    .await
+    .expect("stored delivery evidence should load");
+    assert_eq!(stored["values"], json!({}));
+    assert_eq!(stored["valuesRedacted"], true);
+
+    let response = app
+        .oneshot(
+            admin_get("/admin/runtime/deliveries/current")
+                .with_header("authorization", RUNTIME_READ_USER_AUTH),
+        )
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["protocol"], "lenso.delivery-console.v1");
+    assert_eq!(body["readOnly"], true);
+    assert_eq!(body["applyActions"], json!([]));
+    assert_eq!(
+        body["configuration"]["secretReferences"][0]["referenceId"],
+        "secret:db:5"
+    );
+    assert!(!body.to_string().contains("must-not-leak"));
 
     db.cleanup().await;
 }
@@ -2181,6 +2309,11 @@ async fn admin_runtime_openapi_contract_is_present() {
         value["paths"]["/admin/runtime/summary"]["get"]["operationId"],
         "admin_runtime_get_summary"
     );
+    assert_eq!(
+        value["paths"]["/admin/runtime/deliveries/current"]["get"]["operationId"],
+        "admin_runtime_get_delivery_projection"
+    );
+    assert!(value["components"]["schemas"]["DeliveryConsoleProjection"].is_object());
     assert_eq!(
         value["paths"]["/admin/runtime/outbox"]["get"]["operationId"],
         "admin_runtime_list_outbox"

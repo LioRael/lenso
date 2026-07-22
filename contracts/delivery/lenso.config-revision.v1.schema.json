@@ -1,0 +1,134 @@
+{
+  "$defs": {
+    "ConfigFieldActivation": {
+      "enum": [
+        "hot",
+        "restart"
+      ],
+      "type": "string"
+    },
+    "ConfigFieldScope": {
+      "enum": [
+        "service",
+        "workload"
+      ],
+      "type": "string"
+    },
+    "ConfigImpact": {
+      "properties": {
+        "activation": {
+          "$ref": "#/$defs/ConfigFieldActivation"
+        },
+        "mutable": {
+          "type": "boolean"
+        },
+        "path": {
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/ConfigFieldScope"
+        }
+      },
+      "required": [
+        "path",
+        "scope",
+        "activation",
+        "mutable"
+      ],
+      "type": "object"
+    },
+    "SecretReference": {
+      "properties": {
+        "metadata": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "type": "object"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "purpose": {
+          "type": "string"
+        },
+        "referenceId": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/SecretReferenceStatus"
+        }
+      },
+      "required": [
+        "referenceId",
+        "provider",
+        "purpose",
+        "scope",
+        "status"
+      ],
+      "type": "object"
+    },
+    "SecretReferenceStatus": {
+      "enum": [
+        "resolved",
+        "unresolved",
+        "expired"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "https://contracts.lenso.local/delivery/lenso.config-revision.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "contractDigest": {
+      "type": "string"
+    },
+    "contractReference": {
+      "type": "string"
+    },
+    "impacts": {
+      "items": {
+        "$ref": "#/$defs/ConfigImpact"
+      },
+      "type": "array"
+    },
+    "protocol": {
+      "type": "string"
+    },
+    "revisionDigest": {
+      "type": "string"
+    },
+    "revisionId": {
+      "type": "string"
+    },
+    "secretReferences": {
+      "items": {
+        "$ref": "#/$defs/SecretReference"
+      },
+      "type": "array"
+    },
+    "serviceId": {
+      "type": "string"
+    },
+    "values": {
+      "additionalProperties": true,
+      "type": "object"
+    }
+  },
+  "required": [
+    "protocol",
+    "revisionId",
+    "revisionDigest",
+    "serviceId",
+    "contractReference",
+    "contractDigest",
+    "values",
+    "secretReferences",
+    "impacts"
+  ],
+  "title": "ConfigRevision",
+  "type": "object"
+}

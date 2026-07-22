@@ -1,0 +1,644 @@
+{
+  "$defs": {
+    "CorsIntent": {
+      "properties": {
+        "allowedMethods": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "allowedOrigins": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "DeliveryEffects": {
+      "properties": {
+        "appendsLedger": {
+          "type": "boolean"
+        },
+        "mutatesConfiguration": {
+          "type": "boolean"
+        },
+        "mutatesDeployment": {
+          "type": "boolean"
+        },
+        "mutatesEnvironment": {
+          "type": "boolean"
+        },
+        "mutatesGateway": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "mutatesEnvironment",
+        "mutatesConfiguration",
+        "mutatesGateway",
+        "mutatesDeployment",
+        "appendsLedger"
+      ],
+      "type": "object"
+    },
+    "DeliveryIssue": {
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/DeliveryIssueCode"
+        },
+        "evidenceReferences": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "message": {
+          "type": "string"
+        },
+        "nextActions": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "remediation": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "remediation"
+      ],
+      "type": "object"
+    },
+    "DeliveryIssueCode": {
+      "enum": [
+        "release_input_invalid",
+        "mutable_artifact_reference",
+        "missing_sbom",
+        "missing_provenance",
+        "provenance_subject_mismatch",
+        "signature_missing",
+        "signature_invalid",
+        "signer_untrusted",
+        "signer_revoked",
+        "release_tampered",
+        "config_contract_mismatch",
+        "plaintext_secret_detected",
+        "secret_reference_unresolved",
+        "stale_input",
+        "concurrent_mutation",
+        "policy_evidence_missing",
+        "policy_rule_blocked",
+        "contract_incompatible",
+        "migration_unsafe",
+        "workflow_incompatible",
+        "rollback_unsafe",
+        "edge_operation_unknown",
+        "edge_path_conflict",
+        "edge_exposure_unsafe",
+        "deployment_input_invalid",
+        "migration_incomplete",
+        "observation_stale",
+        "approval_required",
+        "approval_invalid",
+        "reliability_evidence_missing",
+        "canary_breach",
+        "rollback_incomplete",
+        "coordination_unavailable"
+      ],
+      "type": "string"
+    },
+    "DeploymentAdapterKind": {
+      "enum": [
+        "local",
+        "externally_managed",
+        "kubernetes"
+      ],
+      "type": "string"
+    },
+    "DeploymentPlan": {
+      "properties": {
+        "adapter": {
+          "$ref": "#/$defs/DeploymentAdapterKind"
+        },
+        "adapterInputs": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "configRevisionId": {
+          "type": "string"
+        },
+        "effects": {
+          "$ref": "#/$defs/DeliveryEffects"
+        },
+        "endpoints": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "environment": {
+          "type": "string"
+        },
+        "expectedEnvironmentRevision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "gatewayPlanDigest": {
+          "type": "string"
+        },
+        "nextActions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "placement": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "planDigest": {
+          "type": "string"
+        },
+        "planId": {
+          "type": "string"
+        },
+        "policyEvidenceReferences": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "releaseDigest": {
+          "type": "string"
+        },
+        "releaseId": {
+          "type": "string"
+        },
+        "rollbackCapable": {
+          "type": "boolean"
+        },
+        "secretReferenceIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "serviceId": {
+          "type": "string"
+        },
+        "workloads": {
+          "items": {
+            "$ref": "#/$defs/DeploymentWorkloadPlan"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "protocol",
+        "planId",
+        "planDigest",
+        "adapter",
+        "environment",
+        "expectedEnvironmentRevision",
+        "releaseId",
+        "releaseDigest",
+        "serviceId",
+        "configRevisionId",
+        "secretReferenceIds",
+        "endpoints",
+        "placement",
+        "workloads",
+        "adapterInputs",
+        "gatewayPlanDigest",
+        "policyEvidenceReferences",
+        "rollbackCapable",
+        "nextActions",
+        "effects"
+      ],
+      "type": "object"
+    },
+    "DeploymentWorkloadPlan": {
+      "properties": {
+        "artifactDigest": {
+          "type": "string"
+        },
+        "artifactReference": {
+          "type": "string"
+        },
+        "mediaType": {
+          "type": "string"
+        },
+        "role": {
+          "$ref": "#/$defs/ReleaseWorkloadRole"
+        },
+        "settings": {
+          "$ref": "#/$defs/DeploymentWorkloadSettings"
+        },
+        "workloadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workloadId",
+        "role",
+        "artifactReference",
+        "artifactDigest",
+        "mediaType",
+        "settings"
+      ],
+      "type": "object"
+    },
+    "DeploymentWorkloadSettings": {
+      "properties": {
+        "command": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "disruptionMinAvailable": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "healthPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "port": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "replicas": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "workloadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workloadId",
+        "replicas"
+      ],
+      "type": "object"
+    },
+    "EdgeAuthentication": {
+      "enum": [
+        "public",
+        "workload",
+        "user",
+        "workload_or_user"
+      ],
+      "type": "string"
+    },
+    "GatewayConfigurationPlan": {
+      "properties": {
+        "configurationIdentity": {
+          "type": "string"
+        },
+        "diff": {
+          "items": {
+            "$ref": "#/$defs/GatewayPlanDiffEntry"
+          },
+          "type": "array"
+        },
+        "drifted": {
+          "type": "boolean"
+        },
+        "edgeContractDigest": {
+          "type": "string"
+        },
+        "edgeContractId": {
+          "type": "string"
+        },
+        "edgeProviderId": {
+          "type": "string"
+        },
+        "edgeProviderProof": {
+          "type": "string"
+        },
+        "edgeReleaseDigest": {
+          "type": "string"
+        },
+        "edgeReleaseId": {
+          "type": "string"
+        },
+        "effects": {
+          "$ref": "#/$defs/DeliveryEffects"
+        },
+        "environment": {
+          "type": "string"
+        },
+        "expectedGatewayRevision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "gatewayAdapter": {
+          "type": "string"
+        },
+        "issues": {
+          "items": {
+            "$ref": "#/$defs/DeliveryIssue"
+          },
+          "type": "array"
+        },
+        "nextActions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "operationCatalogDigest": {
+          "type": "string"
+        },
+        "planDigest": {
+          "type": "string"
+        },
+        "planId": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "publicOrigin": {
+          "type": "string"
+        },
+        "routes": {
+          "items": {
+            "$ref": "#/$defs/ResolvedEdgeRoute"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "protocol",
+        "planId",
+        "planDigest",
+        "edgeContractId",
+        "edgeContractDigest",
+        "edgeReleaseId",
+        "edgeReleaseDigest",
+        "operationCatalogDigest",
+        "edgeProviderId",
+        "edgeProviderProof",
+        "environment",
+        "gatewayAdapter",
+        "publicOrigin",
+        "expectedGatewayRevision",
+        "configurationIdentity",
+        "routes",
+        "diff",
+        "drifted",
+        "issues",
+        "nextActions",
+        "effects"
+      ],
+      "type": "object"
+    },
+    "GatewayPlanDiffEntry": {
+      "properties": {
+        "after": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "before": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "subject": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "subject"
+      ],
+      "type": "object"
+    },
+    "RateIntent": {
+      "properties": {
+        "requests": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "windowSeconds": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "requests",
+        "windowSeconds"
+      ],
+      "type": "object"
+    },
+    "ReleaseWorkloadRole": {
+      "enum": [
+        "api",
+        "worker",
+        "migration",
+        "extension"
+      ],
+      "type": "string"
+    },
+    "ResolvedEdgeRoute": {
+      "properties": {
+        "authentication": {
+          "$ref": "#/$defs/EdgeAuthentication"
+        },
+        "contractId": {
+          "type": "string"
+        },
+        "contractVersion": {
+          "type": "string"
+        },
+        "cors": {
+          "$ref": "#/$defs/CorsIntent"
+        },
+        "deprecated": {
+          "type": "boolean"
+        },
+        "operationId": {
+          "type": "string"
+        },
+        "publicPath": {
+          "type": "string"
+        },
+        "rate": {
+          "$ref": "#/$defs/RateIntent"
+        },
+        "requestSchemaReference": {
+          "type": "string"
+        },
+        "responseSchemaReference": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "contractId",
+        "contractVersion",
+        "operationId",
+        "publicPath",
+        "authentication",
+        "cors",
+        "rate",
+        "deprecated",
+        "requestSchemaReference",
+        "responseSchemaReference"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://contracts.lenso.local/delivery/lenso.promotion-plan.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "configRevisionId": {
+      "type": "string"
+    },
+    "effects": {
+      "$ref": "#/$defs/DeliveryEffects"
+    },
+    "evidenceReferences": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "freshnessHorizonRevision": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "planDigest": {
+      "type": "string"
+    },
+    "planId": {
+      "type": "string"
+    },
+    "policyEvidenceDigest": {
+      "type": "string"
+    },
+    "policyEvidenceId": {
+      "type": "string"
+    },
+    "protocol": {
+      "type": "string"
+    },
+    "releaseDigest": {
+      "type": "string"
+    },
+    "releaseId": {
+      "type": "string"
+    },
+    "secretReferenceIds": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "sourceEnvironment": {
+      "type": "string"
+    },
+    "sourceEnvironmentRevision": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "sourceTopologyDigest": {
+      "type": "string"
+    },
+    "sourceVerificationDigest": {
+      "type": "string"
+    },
+    "sourceVerificationId": {
+      "type": "string"
+    },
+    "targetDeployment": {
+      "$ref": "#/$defs/DeploymentPlan"
+    },
+    "targetEnvironment": {
+      "type": "string"
+    },
+    "targetEnvironmentRevision": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "targetGateway": {
+      "$ref": "#/$defs/GatewayConfigurationPlan"
+    },
+    "targetTopologyDigest": {
+      "type": "string"
+    },
+    "workloadDigests": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    }
+  },
+  "required": [
+    "protocol",
+    "planId",
+    "planDigest",
+    "releaseId",
+    "releaseDigest",
+    "workloadDigests",
+    "sourceEnvironment",
+    "targetEnvironment",
+    "sourceEnvironmentRevision",
+    "targetEnvironmentRevision",
+    "sourceVerificationId",
+    "sourceVerificationDigest",
+    "policyEvidenceId",
+    "policyEvidenceDigest",
+    "configRevisionId",
+    "secretReferenceIds",
+    "targetDeployment",
+    "targetGateway",
+    "sourceTopologyDigest",
+    "targetTopologyDigest",
+    "evidenceReferences",
+    "freshnessHorizonRevision",
+    "effects"
+  ],
+  "title": "PromotionPlan",
+  "type": "object"
+}

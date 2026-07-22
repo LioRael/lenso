@@ -1,0 +1,310 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: lensoautonomousservices.lenso.dev
+spec:
+  group: lenso.dev
+  names:
+    categories: []
+    kind: LensoAutonomousService
+    plural: lensoautonomousservices
+    shortNames: []
+    singular: lensoautonomousservice
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.state
+      name: State
+      type: string
+    - jsonPath: .status.observedReleaseId
+      name: Release
+      type: string
+    - jsonPath: .status.configRevisionId
+      name: Config
+      type: string
+    - jsonPath: .status.rolloutPhase
+      name: Phase
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Auto-generated derived type for LensoAutonomousServiceSpec via `CustomResource`
+        properties:
+          spec:
+            properties:
+              configRevisionId:
+                type: string
+              environment:
+                type: string
+              evidenceReferences:
+                default: []
+                items:
+                  type: string
+                type: array
+              expectedEnvironmentRevision:
+                format: uint64
+                minimum: 0.0
+                type: integer
+              policyEvidenceReferences:
+                default: []
+                items:
+                  type: string
+                type: array
+              releaseDigest:
+                type: string
+              releaseId:
+                type: string
+              rollbackReleaseId:
+                nullable: true
+                type: string
+              rolloutStrategy:
+                type: string
+              secretReferences:
+                default: []
+                items:
+                  properties:
+                    provider:
+                      type: string
+                    referenceId:
+                      type: string
+                    targetName:
+                      type: string
+                  required:
+                  - provider
+                  - referenceId
+                  - targetName
+                  type: object
+                type: array
+              serviceId:
+                type: string
+              workloads:
+                items:
+                  properties:
+                    command:
+                      default: []
+                      items:
+                        type: string
+                      type: array
+                    configMapName:
+                      nullable: true
+                      type: string
+                    disruptionMinAvailable:
+                      format: int32
+                      nullable: true
+                      type: integer
+                    image:
+                      type: string
+                    livenessPath:
+                      nullable: true
+                      type: string
+                    networkPolicyEnabled:
+                      type: boolean
+                    placement:
+                      default:
+                        nodeSelector: {}
+                      properties:
+                        nodeSelector:
+                          additionalProperties:
+                            type: string
+                          default: {}
+                          type: object
+                      type: object
+                    port:
+                      format: int32
+                      nullable: true
+                      type: integer
+                    readinessPath:
+                      nullable: true
+                      type: string
+                    replicas:
+                      format: int32
+                      type: integer
+                    role:
+                      enum:
+                      - api
+                      - worker
+                      - migration
+                      - extension
+                      type: string
+                    scaling:
+                      properties:
+                        maxReplicas:
+                          format: int32
+                          type: integer
+                        minReplicas:
+                          format: int32
+                          type: integer
+                        targetCpuUtilization:
+                          format: int32
+                          type: integer
+                      required:
+                      - maxReplicas
+                      - minReplicas
+                      - targetCpuUtilization
+                      type: object
+                    secretReferenceIds:
+                      default: []
+                      items:
+                        type: string
+                      type: array
+                    workloadId:
+                      type: string
+                  required:
+                  - image
+                  - networkPolicyEnabled
+                  - replicas
+                  - role
+                  - scaling
+                  - workloadId
+                  type: object
+                type: array
+            required:
+            - configRevisionId
+            - environment
+            - expectedEnvironmentRevision
+            - releaseDigest
+            - releaseId
+            - rolloutStrategy
+            - serviceId
+            - workloads
+            type: object
+          status:
+            nullable: true
+            properties:
+              conditions:
+                default: []
+                items:
+                  properties:
+                    lastTransitionTime:
+                      description: Time is a wrapper around time.Time which supports correct marshaling to YAML and JSON.  Wrappers are provided for many of the factory methods that the time package offers.
+                      format: date-time
+                      type: string
+                    message:
+                      type: string
+                    reason:
+                      type: string
+                    status:
+                      type: string
+                    type:
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              configRevisionId:
+                type: string
+              drifted:
+                type: boolean
+              evidenceReferences:
+                default: []
+                items:
+                  type: string
+                type: array
+              issues:
+                default: []
+                items:
+                  properties:
+                    code:
+                      type: string
+                    evidenceReferences:
+                      default: []
+                      items:
+                        type: string
+                      type: array
+                    message:
+                      type: string
+                    nextActions:
+                      default: []
+                      items:
+                        type: string
+                      type: array
+                    remediation:
+                      type: string
+                  required:
+                  - code
+                  - message
+                  - remediation
+                  type: object
+                type: array
+              nextActions:
+                default: []
+                items:
+                  type: string
+                type: array
+              observedGeneration:
+                format: int64
+                nullable: true
+                type: integer
+              observedReleaseDigest:
+                type: string
+              observedReleaseId:
+                type: string
+              policyEvidenceReferences:
+                default: []
+                items:
+                  type: string
+                type: array
+              rollbackState:
+                type: string
+              rolloutPhase:
+                type: string
+              state:
+                enum:
+                - pending
+                - migrating
+                - progressing
+                - ready
+                - failed
+                - paused
+                type: string
+              workloads:
+                default: []
+                items:
+                  properties:
+                    desiredDigest:
+                      type: string
+                    failed:
+                      type: boolean
+                    observedDigest:
+                      nullable: true
+                      type: string
+                    ready:
+                      type: boolean
+                    role:
+                      enum:
+                      - api
+                      - worker
+                      - migration
+                      - extension
+                      type: string
+                    workloadId:
+                      type: string
+                  required:
+                  - desiredDigest
+                  - failed
+                  - ready
+                  - role
+                  - workloadId
+                  type: object
+                type: array
+            required:
+            - configRevisionId
+            - drifted
+            - observedReleaseDigest
+            - observedReleaseId
+            - rollbackState
+            - rolloutPhase
+            - state
+            type: object
+        required:
+        - spec
+        title: LensoAutonomousService
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

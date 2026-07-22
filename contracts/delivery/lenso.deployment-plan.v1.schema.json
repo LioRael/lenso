@@ -1,0 +1,237 @@
+{
+  "$defs": {
+    "DeliveryEffects": {
+      "properties": {
+        "appendsLedger": {
+          "type": "boolean"
+        },
+        "mutatesConfiguration": {
+          "type": "boolean"
+        },
+        "mutatesDeployment": {
+          "type": "boolean"
+        },
+        "mutatesEnvironment": {
+          "type": "boolean"
+        },
+        "mutatesGateway": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "mutatesEnvironment",
+        "mutatesConfiguration",
+        "mutatesGateway",
+        "mutatesDeployment",
+        "appendsLedger"
+      ],
+      "type": "object"
+    },
+    "DeploymentAdapterKind": {
+      "enum": [
+        "local",
+        "externally_managed",
+        "kubernetes"
+      ],
+      "type": "string"
+    },
+    "DeploymentWorkloadPlan": {
+      "properties": {
+        "artifactDigest": {
+          "type": "string"
+        },
+        "artifactReference": {
+          "type": "string"
+        },
+        "mediaType": {
+          "type": "string"
+        },
+        "role": {
+          "$ref": "#/$defs/ReleaseWorkloadRole"
+        },
+        "settings": {
+          "$ref": "#/$defs/DeploymentWorkloadSettings"
+        },
+        "workloadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workloadId",
+        "role",
+        "artifactReference",
+        "artifactDigest",
+        "mediaType",
+        "settings"
+      ],
+      "type": "object"
+    },
+    "DeploymentWorkloadSettings": {
+      "properties": {
+        "command": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "disruptionMinAvailable": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "healthPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "port": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "replicas": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "workloadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workloadId",
+        "replicas"
+      ],
+      "type": "object"
+    },
+    "ReleaseWorkloadRole": {
+      "enum": [
+        "api",
+        "worker",
+        "migration",
+        "extension"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "https://contracts.lenso.local/delivery/lenso.deployment-plan.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "adapter": {
+      "$ref": "#/$defs/DeploymentAdapterKind"
+    },
+    "adapterInputs": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "configRevisionId": {
+      "type": "string"
+    },
+    "effects": {
+      "$ref": "#/$defs/DeliveryEffects"
+    },
+    "endpoints": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "environment": {
+      "type": "string"
+    },
+    "expectedEnvironmentRevision": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "gatewayPlanDigest": {
+      "type": "string"
+    },
+    "nextActions": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "placement": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "planDigest": {
+      "type": "string"
+    },
+    "planId": {
+      "type": "string"
+    },
+    "policyEvidenceReferences": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "protocol": {
+      "type": "string"
+    },
+    "releaseDigest": {
+      "type": "string"
+    },
+    "releaseId": {
+      "type": "string"
+    },
+    "rollbackCapable": {
+      "type": "boolean"
+    },
+    "secretReferenceIds": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "serviceId": {
+      "type": "string"
+    },
+    "workloads": {
+      "items": {
+        "$ref": "#/$defs/DeploymentWorkloadPlan"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "protocol",
+    "planId",
+    "planDigest",
+    "adapter",
+    "environment",
+    "expectedEnvironmentRevision",
+    "releaseId",
+    "releaseDigest",
+    "serviceId",
+    "configRevisionId",
+    "secretReferenceIds",
+    "endpoints",
+    "placement",
+    "workloads",
+    "adapterInputs",
+    "gatewayPlanDigest",
+    "policyEvidenceReferences",
+    "rollbackCapable",
+    "nextActions",
+    "effects"
+  ],
+  "title": "DeploymentPlan",
+  "type": "object"
+}

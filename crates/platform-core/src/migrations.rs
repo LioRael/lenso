@@ -52,6 +52,10 @@ pub const PLATFORM_MIGRATIONS: &[Migration] = &[
         name: "platform/0011_create_extraction_artifacts",
         sql: include_str!("../migrations/0011_create_extraction_artifacts.sql"),
     },
+    Migration {
+        name: "platform/0012_create_delivery_artifacts",
+        sql: include_str!("../migrations/0012_create_delivery_artifacts.sql"),
+    },
 ];
 
 pub async fn apply_migrations(pool: &PgPool, migrations: &[Migration]) -> AppResult<()> {

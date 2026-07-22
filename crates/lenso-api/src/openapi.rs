@@ -31,7 +31,8 @@ use utoipa::openapi::response::Response;
         (name = "auth", description = "Auth module development session APIs"),
         (name = "admin-runtime", description = "Read-only runtime console APIs"),
         (name = "admin-config", description = "Editable configuration console APIs"),
-        (name = "admin-data", description = "Schema-driven admin data console APIs")
+        (name = "admin-data", description = "Schema-driven admin data console APIs"),
+        (name = "system-delivery", description = "Production delivery authority APIs")
     )
 )]
 struct ApiDoc;
@@ -56,6 +57,7 @@ pub(crate) fn api_router_for_profile(profile: CompositionProfile) -> ApiOpenApiR
         .merge(platform_admin::router())
         .merge(platform_admin_data::router())
         .merge(platform_module_remote::router())
+        .merge(crate::system_delivery::router())
 }
 
 pub(crate) fn api_router_for_context_with_composition(
@@ -72,7 +74,8 @@ pub(crate) fn api_router_for_context_with_composition(
         lenso_bootstrap::merge_linked_http_for_context_with_composition(base, ctx, composition)?
             .merge(platform_admin::router())
             .merge(platform_admin_data::router())
-            .merge(platform_module_remote::router()),
+            .merge(platform_module_remote::router())
+            .merge(crate::system_delivery::router()),
     )
 }
 

@@ -1,0 +1,215 @@
+{
+  "$defs": {
+    "DeliveryDecision": {
+      "enum": [
+        "passed",
+        "advisory",
+        "blocked"
+      ],
+      "type": "string"
+    },
+    "DeliveryEffects": {
+      "properties": {
+        "appendsLedger": {
+          "type": "boolean"
+        },
+        "mutatesConfiguration": {
+          "type": "boolean"
+        },
+        "mutatesDeployment": {
+          "type": "boolean"
+        },
+        "mutatesEnvironment": {
+          "type": "boolean"
+        },
+        "mutatesGateway": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "mutatesEnvironment",
+        "mutatesConfiguration",
+        "mutatesGateway",
+        "mutatesDeployment",
+        "appendsLedger"
+      ],
+      "type": "object"
+    },
+    "DeliveryIssue": {
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/DeliveryIssueCode"
+        },
+        "evidenceReferences": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "message": {
+          "type": "string"
+        },
+        "nextActions": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "remediation": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "remediation"
+      ],
+      "type": "object"
+    },
+    "DeliveryIssueCode": {
+      "enum": [
+        "release_input_invalid",
+        "mutable_artifact_reference",
+        "missing_sbom",
+        "missing_provenance",
+        "provenance_subject_mismatch",
+        "signature_missing",
+        "signature_invalid",
+        "signer_untrusted",
+        "signer_revoked",
+        "release_tampered",
+        "config_contract_mismatch",
+        "plaintext_secret_detected",
+        "secret_reference_unresolved",
+        "stale_input",
+        "concurrent_mutation",
+        "policy_evidence_missing",
+        "policy_rule_blocked",
+        "contract_incompatible",
+        "migration_unsafe",
+        "workflow_incompatible",
+        "rollback_unsafe",
+        "edge_operation_unknown",
+        "edge_path_conflict",
+        "edge_exposure_unsafe",
+        "deployment_input_invalid",
+        "migration_incomplete",
+        "observation_stale",
+        "approval_required",
+        "approval_invalid",
+        "reliability_evidence_missing",
+        "canary_breach",
+        "rollback_incomplete",
+        "coordination_unavailable"
+      ],
+      "type": "string"
+    },
+    "PolicyRuleResult": {
+      "properties": {
+        "decision": {
+          "$ref": "#/$defs/DeliveryDecision"
+        },
+        "evidenceReferences": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "nextActions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "remediation": {
+          "type": "string"
+        },
+        "ruleId": {
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/PolicyRuleSeverity"
+        }
+      },
+      "required": [
+        "ruleId",
+        "severity",
+        "decision",
+        "evidenceReferences",
+        "remediation",
+        "nextActions"
+      ],
+      "type": "object"
+    },
+    "PolicyRuleSeverity": {
+      "enum": [
+        "required",
+        "advisory"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "https://contracts.lenso.local/delivery/lenso.policy-evidence.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "decision": {
+      "$ref": "#/$defs/DeliveryDecision"
+    },
+    "effects": {
+      "$ref": "#/$defs/DeliveryEffects"
+    },
+    "evaluatedSubject": {
+      "type": "string"
+    },
+    "evidenceDigest": {
+      "type": "string"
+    },
+    "evidenceId": {
+      "type": "string"
+    },
+    "inputDigests": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "issues": {
+      "items": {
+        "$ref": "#/$defs/DeliveryIssue"
+      },
+      "type": "array"
+    },
+    "packDigest": {
+      "type": "string"
+    },
+    "packId": {
+      "type": "string"
+    },
+    "protocol": {
+      "type": "string"
+    },
+    "ruleResults": {
+      "items": {
+        "$ref": "#/$defs/PolicyRuleResult"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "protocol",
+    "evidenceId",
+    "evidenceDigest",
+    "packId",
+    "packDigest",
+    "evaluatedSubject",
+    "inputDigests",
+    "decision",
+    "ruleResults",
+    "issues",
+    "effects"
+  ],
+  "title": "PolicyEvidence",
+  "type": "object"
+}

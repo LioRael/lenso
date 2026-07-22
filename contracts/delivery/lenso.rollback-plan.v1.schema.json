@@ -1,0 +1,353 @@
+{
+  "$defs": {
+    "DeliveryEffects": {
+      "properties": {
+        "appendsLedger": {
+          "type": "boolean"
+        },
+        "mutatesConfiguration": {
+          "type": "boolean"
+        },
+        "mutatesDeployment": {
+          "type": "boolean"
+        },
+        "mutatesEnvironment": {
+          "type": "boolean"
+        },
+        "mutatesGateway": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "mutatesEnvironment",
+        "mutatesConfiguration",
+        "mutatesGateway",
+        "mutatesDeployment",
+        "appendsLedger"
+      ],
+      "type": "object"
+    },
+    "DeliveryIssue": {
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/DeliveryIssueCode"
+        },
+        "evidenceReferences": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "message": {
+          "type": "string"
+        },
+        "nextActions": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "remediation": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "remediation"
+      ],
+      "type": "object"
+    },
+    "DeliveryIssueCode": {
+      "enum": [
+        "release_input_invalid",
+        "mutable_artifact_reference",
+        "missing_sbom",
+        "missing_provenance",
+        "provenance_subject_mismatch",
+        "signature_missing",
+        "signature_invalid",
+        "signer_untrusted",
+        "signer_revoked",
+        "release_tampered",
+        "config_contract_mismatch",
+        "plaintext_secret_detected",
+        "secret_reference_unresolved",
+        "stale_input",
+        "concurrent_mutation",
+        "policy_evidence_missing",
+        "policy_rule_blocked",
+        "contract_incompatible",
+        "migration_unsafe",
+        "workflow_incompatible",
+        "rollback_unsafe",
+        "edge_operation_unknown",
+        "edge_path_conflict",
+        "edge_exposure_unsafe",
+        "deployment_input_invalid",
+        "migration_incomplete",
+        "observation_stale",
+        "approval_required",
+        "approval_invalid",
+        "reliability_evidence_missing",
+        "canary_breach",
+        "rollback_incomplete",
+        "coordination_unavailable"
+      ],
+      "type": "string"
+    },
+    "ReleaseRollbackConstraints": {
+      "properties": {
+        "automaticAllowed": {
+          "type": "boolean"
+        },
+        "blockedByIrreversibleMigration": {
+          "type": "boolean"
+        },
+        "previousReleaseRequired": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "previousReleaseRequired",
+        "automaticAllowed",
+        "blockedByIrreversibleMigration"
+      ],
+      "type": "object"
+    },
+    "RollbackSafetyEvidence": {
+      "properties": {
+        "adapterRecoveryComplete": {
+          "type": "boolean"
+        },
+        "canaryPlanId": {
+          "type": "string"
+        },
+        "configRevisionCompatible": {
+          "type": "boolean"
+        },
+        "destructiveChangesAbsent": {
+          "type": "boolean"
+        },
+        "edgeConfigurationCompatible": {
+          "type": "boolean"
+        },
+        "evidenceId": {
+          "type": "string"
+        },
+        "evidenceReferences": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "expectedEnvironmentRevision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "failedDeploymentPlanId": {
+          "type": "string"
+        },
+        "migrationsReversible": {
+          "type": "boolean"
+        },
+        "policyApproved": {
+          "type": "boolean"
+        },
+        "previousDeploymentPlanId": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "providerId": {
+          "type": "string"
+        },
+        "providerProof": {
+          "type": "string"
+        },
+        "secretReferencesResolvable": {
+          "type": "boolean"
+        },
+        "workflowsDowngradeSafe": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "protocol",
+        "evidenceId",
+        "canaryPlanId",
+        "failedDeploymentPlanId",
+        "previousDeploymentPlanId",
+        "expectedEnvironmentRevision",
+        "providerId",
+        "providerProof",
+        "migrationsReversible",
+        "destructiveChangesAbsent",
+        "workflowsDowngradeSafe",
+        "configRevisionCompatible",
+        "secretReferencesResolvable",
+        "edgeConfigurationCompatible",
+        "adapterRecoveryComplete",
+        "policyApproved"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://contracts.lenso.local/delivery/lenso.rollback-plan.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "automaticAllowed": {
+      "type": "boolean"
+    },
+    "canaryDecisionId": {
+      "type": "string"
+    },
+    "canaryPlanDigest": {
+      "type": "string"
+    },
+    "canaryPlanId": {
+      "type": "string"
+    },
+    "effects": {
+      "$ref": "#/$defs/DeliveryEffects"
+    },
+    "environment": {
+      "type": "string"
+    },
+    "expectedEnvironmentRevision": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "failedConfigRevisionId": {
+      "type": "string"
+    },
+    "failedDeploymentPlanDigest": {
+      "type": "string"
+    },
+    "failedDeploymentPlanId": {
+      "type": "string"
+    },
+    "failedGatewayPlanDigest": {
+      "type": "string"
+    },
+    "failedGatewayPlanId": {
+      "type": "string"
+    },
+    "failedReleaseDigest": {
+      "type": "string"
+    },
+    "failedReleaseId": {
+      "type": "string"
+    },
+    "failedWorkloadDigests": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "issues": {
+      "items": {
+        "$ref": "#/$defs/DeliveryIssue"
+      },
+      "type": "array"
+    },
+    "planDigest": {
+      "type": "string"
+    },
+    "planId": {
+      "type": "string"
+    },
+    "previousConfigRevisionId": {
+      "type": "string"
+    },
+    "previousDeploymentPlanDigest": {
+      "type": "string"
+    },
+    "previousDeploymentPlanId": {
+      "type": "string"
+    },
+    "previousGatewayConfigurationIdentity": {
+      "type": "string"
+    },
+    "previousGatewayPlanDigest": {
+      "type": "string"
+    },
+    "previousGatewayPlanId": {
+      "type": "string"
+    },
+    "previousGatewayRevision": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "previousReleaseDigest": {
+      "type": "string"
+    },
+    "previousReleaseId": {
+      "type": "string"
+    },
+    "previousWorkloadDigests": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "prohibitedActions": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "protocol": {
+      "type": "string"
+    },
+    "releaseRollbackConstraints": {
+      "$ref": "#/$defs/ReleaseRollbackConstraints"
+    },
+    "safety": {
+      "$ref": "#/$defs/RollbackSafetyEvidence"
+    }
+  },
+  "required": [
+    "protocol",
+    "planId",
+    "planDigest",
+    "canaryPlanId",
+    "canaryPlanDigest",
+    "canaryDecisionId",
+    "environment",
+    "expectedEnvironmentRevision",
+    "failedReleaseId",
+    "failedReleaseDigest",
+    "failedDeploymentPlanId",
+    "failedDeploymentPlanDigest",
+    "failedConfigRevisionId",
+    "failedWorkloadDigests",
+    "failedGatewayPlanId",
+    "failedGatewayPlanDigest",
+    "previousReleaseId",
+    "previousReleaseDigest",
+    "previousDeploymentPlanId",
+    "previousDeploymentPlanDigest",
+    "previousConfigRevisionId",
+    "previousWorkloadDigests",
+    "previousGatewayPlanId",
+    "previousGatewayPlanDigest",
+    "previousGatewayConfigurationIdentity",
+    "previousGatewayRevision",
+    "releaseRollbackConstraints",
+    "safety",
+    "automaticAllowed",
+    "issues",
+    "prohibitedActions",
+    "effects"
+  ],
+  "title": "RollbackPlan",
+  "type": "object"
+}
