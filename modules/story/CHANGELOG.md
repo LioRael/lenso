@@ -1,8 +1,4 @@
----
-packages:
-  lenso-module-story:
-    type: patch
----
+## lenso-module-story@0.1.12
 
 ### Fixes
 
