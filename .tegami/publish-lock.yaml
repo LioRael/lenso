@@ -3,29 +3,29 @@ core:changelogs:
     filename: release.md
     v: 0.0.0
 core:packages:
+  - id: cargo:lenso
+    updated: true
   - id: cargo:lenso-api
     updated: true
   - id: cargo:lenso-autonomous-service
     updated: true
-  - id: cargo:lenso
-    updated: true
   - id: cargo:lenso-bootstrap
+    updated: true
+  - id: cargo:lenso-migrate
+    updated: true
+  - id: cargo:lenso-worker
+    updated: true
+  - id: cargo:lenso-platform-admin
     updated: true
   - changelogIds:
       - release.md
     id: cargo:lenso-contracts
     updated: true
-  - id: cargo:lenso-migrate
-    updated: true
   - changelogIds:
       - release.md
     id: cargo:lenso-service
     updated: true
-  - id: cargo:lenso-platform-admin
-    updated: true
   - id: cargo:lenso-platform-admin-data
-    updated: true
-  - id: cargo:lenso-worker
     updated: true
   - id: cargo:lenso-platform-core
     updated: true
