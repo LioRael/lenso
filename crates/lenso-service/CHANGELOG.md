@@ -1,3 +1,11 @@
+## lenso-service@0.1.9
+
+### Features
+
+Publish the shared problem-details contract required by packaged autonomous
+services, plus candidate M6 GA support contracts for exact compatibility checks,
+manifest migration, service upgrades, contract retirement, and failure evidence.
+
 ## lenso-service@0.1.8
 
 ### Features
