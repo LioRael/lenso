@@ -83,7 +83,7 @@ utoipa = { version = "5.5", features = ["axum_extras", "chrono", "uuid"] }
 utoipa-axum = "0.2"
 uuid = { version = "1.23", features = ["serde", "v7"] }
 
-lenso = { path = "crates/lenso", version = "0.3.28" }
+lenso = { path = "crates/lenso", version = "0.3.29" }
 lenso-contracts = { path = "crates/lenso-contracts", version = "0.3.12" }
 platform-core = { package = "lenso-platform-core", path = "crates/platform-core", version = "0.1.12" }
 platform-admin = { package = "lenso-platform-admin", path = "crates/platform-admin", version = "0.1.12" }
@@ -93,10 +93,10 @@ platform-module-remote = { package = "lenso-platform-module-remote", path = "cra
 platform-http = { package = "lenso-platform-http", path = "crates/platform-http", version = "0.1.11" }
 platform-runtime = { package = "lenso-platform-runtime", path = "crates/platform-runtime", version = "0.1.9" }
 platform-testing = { package = "lenso-platform-testing", path = "crates/platform-testing", version = "0.1.8" }
-lenso-bootstrap = { path = "crates/lenso-bootstrap", version = "0.1.21" }
-lenso-api = { path = "crates/lenso-api", version = "0.1.22" }
-lenso-migrate = { path = "crates/lenso-migrate", version = "0.1.20" }
-lenso-worker = { path = "crates/lenso-worker", version = "0.1.20" }
+lenso-bootstrap = { path = "crates/lenso-bootstrap", version = "0.1.22" }
+lenso-api = { path = "crates/lenso-api", version = "0.1.23" }
+lenso-migrate = { path = "crates/lenso-migrate", version = "0.1.21" }
+lenso-worker = { path = "crates/lenso-worker", version = "0.1.21" }
 lenso-service = { path = "crates/lenso-service", version = "0.1.11" }
 lenso-autonomous-service = { path = "crates/lenso-autonomous-service", version = "0.1.7" }
 lenso-operator = { path = "crates/lenso-operator" }
@@ -108,7 +108,7 @@ auth-oauth = { package = "lenso-module-auth-oauth", version = "0.1.1" }
 auth-oidc = { package = "lenso-module-auth-oidc", version = "0.1.1" }
 auth-password = { package = "lenso-module-auth-password", version = "0.1.9" }
 auth-phone = { package = "lenso-module-auth-phone", version = "0.1.1" }
-story = { package = "lenso-module-story", path = "modules/story", version = "0.1.13" }
+story = { package = "lenso-module-story", path = "modules/story", version = "0.1.14" }
 generate-contracts = { path = "tools/generate-contracts" }
 arch-check = { path = "tools/arch-check" }
 remote-module-fixture = { path = "fixtures/remote-module" }
