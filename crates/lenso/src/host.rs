@@ -1,5 +1,6 @@
 //! Public authoring helpers for Lenso host applications.
 
+pub mod outbox;
 pub mod transaction;
 
 #[cfg(feature = "host")]

@@ -44,6 +44,7 @@ first-user-smoke:
 
 test:
     cargo test --locked --workspace
+    cargo test --locked -p lenso --features host-transactions --test host_outbox_relay
 
 rust-fmt:
     cargo fmt --all

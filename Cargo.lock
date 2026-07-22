@@ -2091,7 +2091,9 @@ name = "lenso"
 version = "0.3.24"
 dependencies = [
  "anyhow",
+ "async-trait",
  "axum",
+ "chrono",
  "lenso-api",
  "lenso-bootstrap",
  "lenso-contracts",
@@ -2100,6 +2102,8 @@ dependencies = [
  "lenso-platform-http",
  "lenso-platform-module",
  "lenso-worker",
+ "serde_json",
+ "sqlx",
  "tokio",
 ]
 

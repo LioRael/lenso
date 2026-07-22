@@ -61,6 +61,40 @@ transaction.publish_outbox(&event).await?;
 transaction.commit().await?;
 ```
 
+The same feature exposes the host-owned relay through
+`lenso::host::outbox`. A host implements `EventDispatcher` and passes it to
+`OutboxRelay::relay_once`; it does not import a `lenso-platform-*` crate or
+address Outbox tables directly. Delivery is at least once. When a dispatcher
+returns a retryable `AppError`, the existing host retry and dead-letter policy
+decides when to redeliver or exhaust the event. Consumers must therefore make
+effects idempotent using the stable `ClaimedOutboxEvent::id`.
+
+```rust,ignore
+use lenso::host::outbox::{
+    AppError, AppResult, ClaimedOutboxEvent, ErrorCode, EventDispatcher,
+    OutboxRelay,
+};
+
+#[derive(Debug)]
+struct Consumer;
+
+#[async_trait::async_trait]
+impl EventDispatcher for Consumer {
+    async fn dispatch(&self, event: &ClaimedOutboxEvent) -> AppResult<()> {
+        consume_idempotently(&event.id, &event.payload)
+            .await
+            .map_err(|error| {
+                AppError::new(ErrorCode::ExternalDependency, "consumer unavailable")
+                    .with_source(error)
+                    .retryable()
+            })
+    }
+}
+
+let relay = OutboxRelay::new(context.db.clone(), "app-worker");
+relay.relay_once(&Consumer, 25).await?;
+```
+
 ## Example
 
 ```rust
