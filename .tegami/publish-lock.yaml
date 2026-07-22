@@ -17,11 +17,11 @@ core:packages:
     updated: true
   - id: cargo:lenso-migrate
     updated: true
+  - id: cargo:lenso-worker
+    updated: true
   - changelogIds:
       - release.md
     id: cargo:lenso-service
-    updated: true
-  - id: cargo:lenso-worker
     updated: true
   - id: cargo:lenso-platform-admin
     updated: true

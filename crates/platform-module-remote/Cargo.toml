@@ -1,6 +1,6 @@
 [package]
 name = "lenso-platform-module-remote"
-version = "0.1.8"
+version = "0.1.9"
 edition.workspace = true
 license = "MIT"
 description = "Remote module host support for the Lenso backend framework."
