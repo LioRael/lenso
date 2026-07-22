@@ -98,6 +98,34 @@ pub fn generate_contracts() -> anyhow::Result<()> {
         "contracts/delivery/support.service-release.json",
         &generated_support_service_release(),
     )?;
+    write_json(
+        "contracts/ga/lenso.ga-support-manifest.v1.schema.json",
+        &generated_ga_support_manifest_schema(),
+    )?;
+    write_json(
+        "contracts/ga/lenso.manifest-migration-plan.v1.schema.json",
+        &generated_manifest_migration_plan_schema(),
+    )?;
+    write_json(
+        "contracts/ga/lenso.service-upgrade-plan.v1.schema.json",
+        &generated_service_upgrade_plan_schema(),
+    )?;
+    write_json(
+        "contracts/ga/lenso.contract-retirement-plan.v1.schema.json",
+        &generated_contract_retirement_plan_schema(),
+    )?;
+    write_json(
+        "contracts/ga/lenso.failure-scenario-evidence.v1.schema.json",
+        &generated_failure_scenario_evidence_schema(),
+    )?;
+    write_json(
+        "contracts/ga/lenso.ga-support-manifest.v1.json",
+        &generated_ga_support_manifest(),
+    )?;
+    write_text(
+        "docs/operations/ga-support.md",
+        &generated_ga_support_guidance(),
+    )?;
     write_yaml(
         "contracts/operator/lenso-autonomous-service.v1alpha1.crd.yaml",
         &generated_autonomous_service_crd(),
@@ -262,6 +290,110 @@ pub fn generated_system_v2_fixture() -> Value {
 
 pub fn generated_service_release_schema() -> Value {
     generated_delivery_schema::<lenso_service::ServiceRelease>("lenso.service-release.v1")
+}
+
+pub fn generated_ga_support_manifest_schema() -> Value {
+    lenso_service::ga_support_manifest_schema()
+}
+
+pub fn generated_manifest_migration_plan_schema() -> Value {
+    lenso_service::manifest_migration_plan_schema()
+}
+
+pub fn generated_service_upgrade_plan_schema() -> Value {
+    lenso_service::service_upgrade_plan_schema()
+}
+
+pub fn generated_contract_retirement_plan_schema() -> Value {
+    lenso_service::contract_retirement_plan_schema()
+}
+
+pub fn generated_failure_scenario_evidence_schema() -> Value {
+    lenso_service::failure_scenario_evidence_schema()
+}
+
+pub fn generated_ga_support_manifest() -> Value {
+    use lenso_service::{
+        ComponentKind, DocumentationIdentity, GaComponent, GaSupportManifestInput, ManifestFormat,
+        ManifestKind, SupportCombinationInput, SupportStatus, UpgradeEdgeInput,
+        assemble_ga_support_manifest, extraction_input_digest,
+    };
+    use std::collections::BTreeMap;
+
+    let component = |kind, component_id: &str, version: &str| GaComponent {
+        kind,
+        component_id: component_id.to_owned(),
+        version: version.to_owned(),
+        digest: extraction_input_digest(format!("{component_id}@{version}").as_bytes()),
+    };
+    let components = vec![
+        component(ComponentKind::Cli, "@lenso/cli", "0.1.30"),
+        component(ComponentKind::Runtime, "lenso-service", "0.1.4"),
+        component(ComponentKind::Runtime, "lenso-autonomous-service", "0.1.0"),
+        component(ComponentKind::Contracts, "lenso-contracts", "0.3.5"),
+        component(ComponentKind::Provider, "lenso-service-provider-v1", "1"),
+        component(ComponentKind::Operator, "lenso-operator", "0.1.0"),
+        component(
+            ComponentKind::RuntimeConsole,
+            "@lenso/runtime-console",
+            "0.1.1",
+        ),
+    ];
+    let references = components.iter().map(GaComponent::reference).collect();
+    let manifest = assemble_ga_support_manifest(GaSupportManifestInput {
+        status: SupportStatus::Candidate,
+        components,
+        manifest_formats: vec![
+            ManifestFormat {
+                kind: ManifestKind::Provider,
+                version: "lenso.service.v1".into(),
+            },
+            ManifestFormat {
+                kind: ManifestKind::System,
+                version: "lenso.system.v1".into(),
+            },
+            ManifestFormat {
+                kind: ManifestKind::System,
+                version: "lenso.system.v2".into(),
+            },
+            ManifestFormat {
+                kind: ManifestKind::Service,
+                version: "lenso.service.v2".into(),
+            },
+        ],
+        state_versions: vec!["service-store.v1".into()],
+        adapter_versions: BTreeMap::from([
+            ("nats-jetstream".into(), "2.11".into()),
+            ("spiffe-spire".into(), "1.12".into()),
+            ("postgresql".into(), "18".into()),
+        ]),
+        documentation: DocumentationIdentity {
+            version: "m6-candidate".into(),
+            digest: extraction_input_digest(b"docs:m6-candidate"),
+        },
+        combinations: vec![SupportCombinationInput {
+            combination_id: "m6-candidate-1".into(),
+            component_references: references,
+            state_version: "service-store.v1".into(),
+            status: SupportStatus::Candidate,
+        }],
+        upgrade_edges: vec![UpgradeEdgeInput {
+            edge_id: "system-v1-v2".into(),
+            source_format: "lenso.system.v1".into(),
+            target_format: "lenso.system.v2".into(),
+            mixed_version_references: vec![],
+            rollback_safe: true,
+        }],
+    })
+    .expect("the committed candidate GA Support Manifest must be valid");
+    serde_json::to_value(manifest).expect("GA Support Manifest must serialize")
+}
+
+pub fn generated_ga_support_guidance() -> String {
+    let manifest: lenso_service::GaSupportManifest =
+        serde_json::from_value(generated_ga_support_manifest())
+            .expect("generated support manifest must deserialize");
+    lenso_service::render_ga_support_manifest(&manifest)
 }
 
 pub fn generated_delivery_schema<T: JsonSchema>(protocol: &str) -> Value {

@@ -1,0 +1,165 @@
+{
+  "$defs": {
+    "ServiceUpgradeInput": {
+      "properties": {
+        "configRevisionDigest": {
+          "type": "string"
+        },
+        "configRevisionId": {
+          "type": "string"
+        },
+        "fromReleaseDigest": {
+          "type": "string"
+        },
+        "fromReleaseId": {
+          "type": "string"
+        },
+        "serviceId": {
+          "type": "string"
+        },
+        "sourceStateVersion": {
+          "type": "string"
+        },
+        "targetStateVersion": {
+          "type": "string"
+        },
+        "toReleaseDigest": {
+          "type": "string"
+        },
+        "toReleaseId": {
+          "type": "string"
+        },
+        "workflowArtifactDigests": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "serviceId",
+        "fromReleaseId",
+        "fromReleaseDigest",
+        "toReleaseId",
+        "toReleaseDigest",
+        "configRevisionId",
+        "configRevisionDigest",
+        "sourceStateVersion",
+        "targetStateVersion",
+        "workflowArtifactDigests"
+      ],
+      "type": "object"
+    },
+    "ServiceUpgradeStep": {
+      "properties": {
+        "expectedStateVersion": {
+          "type": "string"
+        },
+        "precondition": {
+          "type": "string"
+        },
+        "sequence": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "workload": {
+          "$ref": "#/$defs/UpgradeWorkload"
+        }
+      },
+      "required": [
+        "sequence",
+        "workload",
+        "precondition",
+        "expectedStateVersion"
+      ],
+      "type": "object"
+    },
+    "UpgradeRollbackConstraint": {
+      "properties": {
+        "approvalBoundary": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "automaticAllowed": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "automaticAllowed",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "UpgradeWorkload": {
+      "enum": [
+        "migration",
+        "api",
+        "worker"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "https://contracts.lenso.local/ga/lenso.service-upgrade-plan.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "input": {
+      "$ref": "#/$defs/ServiceUpgradeInput"
+    },
+    "manifestDigest": {
+      "type": "string"
+    },
+    "manifestId": {
+      "type": "string"
+    },
+    "mixedVersionReferences": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "planDigest": {
+      "type": "string"
+    },
+    "planId": {
+      "type": "string"
+    },
+    "preservedIdentities": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "protocol": {
+      "type": "string"
+    },
+    "rollback": {
+      "$ref": "#/$defs/UpgradeRollbackConstraint"
+    },
+    "steps": {
+      "items": {
+        "$ref": "#/$defs/ServiceUpgradeStep"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "protocol",
+    "planId",
+    "planDigest",
+    "manifestId",
+    "manifestDigest",
+    "input",
+    "steps",
+    "mixedVersionReferences",
+    "preservedIdentities",
+    "rollback"
+  ],
+  "title": "ServiceUpgradePlan",
+  "type": "object"
+}

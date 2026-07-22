@@ -1,0 +1,82 @@
+{
+  "$defs": {
+    "ManifestKind": {
+      "enum": [
+        "provider",
+        "service",
+        "system",
+        "module",
+        "backup"
+      ],
+      "type": "string"
+    },
+    "ManifestMigrationEffects": {
+      "properties": {
+        "createsTarget": {
+          "type": "boolean"
+        },
+        "mutatesSource": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "mutatesSource",
+        "createsTarget"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://contracts.lenso.local/ga/lenso.manifest-migration-plan.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "effects": {
+      "$ref": "#/$defs/ManifestMigrationEffects"
+    },
+    "identityPointers": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "kind": {
+      "$ref": "#/$defs/ManifestKind"
+    },
+    "migrated": true,
+    "migratedDigest": {
+      "type": "string"
+    },
+    "planDigest": {
+      "type": "string"
+    },
+    "planId": {
+      "type": "string"
+    },
+    "protocol": {
+      "type": "string"
+    },
+    "sourceDigest": {
+      "type": "string"
+    },
+    "sourceFormat": {
+      "type": "string"
+    },
+    "targetFormat": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "protocol",
+    "planId",
+    "planDigest",
+    "kind",
+    "sourceFormat",
+    "targetFormat",
+    "sourceDigest",
+    "migratedDigest",
+    "migrated",
+    "identityPointers",
+    "effects"
+  ],
+  "title": "ManifestMigrationPlan",
+  "type": "object"
+}

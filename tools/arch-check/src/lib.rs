@@ -224,6 +224,20 @@ pub fn check_contract_artifacts_fresh(root: &Path) -> anyhow::Result<()> {
     let system_v2_schema = read_json(root.join("contracts/services/lenso-system.v2.schema.json"))?;
     let system_v2_fixture =
         read_json(root.join("contracts/services/lenso-system.v2.fixture.json"))?;
+    let ga_support_manifest_schema =
+        read_json(root.join("contracts/ga/lenso.ga-support-manifest.v1.schema.json"))?;
+    let ga_support_manifest =
+        read_json(root.join("contracts/ga/lenso.ga-support-manifest.v1.json"))?;
+    let manifest_migration_plan_schema =
+        read_json(root.join("contracts/ga/lenso.manifest-migration-plan.v1.schema.json"))?;
+    let service_upgrade_plan_schema =
+        read_json(root.join("contracts/ga/lenso.service-upgrade-plan.v1.schema.json"))?;
+    let contract_retirement_plan_schema =
+        read_json(root.join("contracts/ga/lenso.contract-retirement-plan.v1.schema.json"))?;
+    let failure_scenario_evidence_schema =
+        read_json(root.join("contracts/ga/lenso.failure-scenario-evidence.v1.schema.json"))?;
+    let ga_support_guidance = fs::read_to_string(root.join("docs/operations/ga-support.md"))
+        .context("generated GA support guidance should be readable")?;
     let extraction_readiness_schema = read_json(
         root.join("contracts/extraction/lenso.extraction-readiness-report.v1.schema.json"),
     )?;
@@ -295,6 +309,39 @@ pub fn check_contract_artifacts_fresh(root: &Path) -> anyhow::Result<()> {
     }
     if system_v2_fixture != generate_contracts::generated_system_v2_fixture() {
         violations.push("contracts/services/lenso-system.v2.fixture.json is stale".to_owned());
+    }
+    if ga_support_manifest_schema != generate_contracts::generated_ga_support_manifest_schema() {
+        violations
+            .push("contracts/ga/lenso.ga-support-manifest.v1.schema.json is stale".to_owned());
+    }
+    if ga_support_manifest != generate_contracts::generated_ga_support_manifest() {
+        violations.push("contracts/ga/lenso.ga-support-manifest.v1.json is stale".to_owned());
+    }
+    if manifest_migration_plan_schema
+        != generate_contracts::generated_manifest_migration_plan_schema()
+    {
+        violations
+            .push("contracts/ga/lenso.manifest-migration-plan.v1.schema.json is stale".to_owned());
+    }
+    if service_upgrade_plan_schema != generate_contracts::generated_service_upgrade_plan_schema() {
+        violations
+            .push("contracts/ga/lenso.service-upgrade-plan.v1.schema.json is stale".to_owned());
+    }
+    if contract_retirement_plan_schema
+        != generate_contracts::generated_contract_retirement_plan_schema()
+    {
+        violations
+            .push("contracts/ga/lenso.contract-retirement-plan.v1.schema.json is stale".to_owned());
+    }
+    if failure_scenario_evidence_schema
+        != generate_contracts::generated_failure_scenario_evidence_schema()
+    {
+        violations.push(
+            "contracts/ga/lenso.failure-scenario-evidence.v1.schema.json is stale".to_owned(),
+        );
+    }
+    if ga_support_guidance != generate_contracts::generated_ga_support_guidance() {
+        violations.push("docs/operations/ga-support.md is stale".to_owned());
     }
     if extraction_readiness_schema != generate_contracts::generated_extraction_readiness_schema() {
         violations.push(

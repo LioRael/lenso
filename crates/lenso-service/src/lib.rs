@@ -23,6 +23,7 @@ mod extraction_reconciliation;
 mod extraction_run;
 mod extraction_scaffold;
 mod extraction_verification;
+mod ga_support;
 mod production_delivery;
 mod reliability_report;
 mod story_segment;
@@ -195,6 +196,7 @@ pub use extraction_verification::{
     ExtractionVerificationIssueCode, ExtractionVerificationResult, ExtractionVerificationStatus,
     extraction_verification_integrity_is_valid, verify_extraction_behavior,
 };
+pub use ga_support::*;
 pub use production_delivery::*;
 pub use reliability_report::{
     ActiveDegradedMode, RELIABILITY_REPORT_PROTOCOL, ReliabilityCheck, ReliabilityCheckState,
