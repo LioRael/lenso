@@ -24,6 +24,13 @@ platform-http = { workspace = true, optional = true }
 platform-module = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 
+[dev-dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+
 [features]
 default = []
 host = [
@@ -39,6 +46,10 @@ host = [
     "dep:tokio",
 ]
 host-transactions = ["dep:platform-core"]
+
+[[test]]
+name = "host_outbox_relay"
+required-features = ["host-transactions"]
 
 [lints]
 workspace = true
