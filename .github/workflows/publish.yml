@@ -26,6 +26,10 @@ jobs:
         with:
           app-id: ${{ vars.LENSO_RELEASE_APP_ID }}
           private-key: ${{ secrets.LENSO_RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: |
+            ${{ github.event.repository.name }}
+            lenso-release
           permission-contents: write
           permission-metadata: read
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -56,6 +60,8 @@ jobs:
           npm install --global npm@11.7.0
           rustup toolchain install 1.94.0 --profile minimal
           rustup default 1.94.0
+      - name: Build exact release artifacts when configured
+        run: pnpm run --if-present build
       - name: Complete fail-closed preflight before any registry OIDC
         env:
           INPUT_EVENT_ID: ${{ inputs.event_id }}
