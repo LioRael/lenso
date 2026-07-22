@@ -1,6 +1,6 @@
 [package]
 name = "lenso-platform-http"
-version = "0.1.6"
+version = "0.1.7"
 edition.workspace = true
 license = "MIT"
 description = "HTTP primitives for the Lenso backend framework."
