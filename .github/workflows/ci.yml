@@ -138,5 +138,10 @@ jobs:
           pnpm install --frozen-lockfile
           node scripts/release-plan.mjs --verify
           just package-readiness
-          jq -r '.packages[] | select(.id | startswith("cargo:")) | select(.releaseGroup == "foundation") | .id | sub("^cargo:"; "")' .lenso-release/plan.json |
-            while read -r package; do cargo package --locked --allow-dirty -p "$package"; done
+          cargo_packages=()
+          while read -r package; do
+            cargo_packages+=(--package "$package")
+          done < <(jq -r '.packages[] | select(.id | startswith("cargo:")) | select(.releaseGroup == "foundation") | .id | sub("^cargo:"; "")' .lenso-release/plan.json)
+          if (( ${#cargo_packages[@]} > 0 )); then
+            cargo publish --dry-run --locked --allow-dirty "${cargo_packages[@]}"
+          fi
