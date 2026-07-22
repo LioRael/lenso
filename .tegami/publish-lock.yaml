@@ -1,5 +1,5 @@
 core:changelogs:
-  - content: "---\npackages:\n  lenso-module-story:\n    type: patch\n---\n\n### Fixes\n\nPublish the Story module with its SQLx derive feature declared directly so the\nisolated Cargo package verifies without relying on workspace feature unification.\n"
+  - content: "---\npackages:\n  lenso-module-story:\n    type: patch\n---\n\n### Fixes\n\nPublish the reviewed M6 package slice through the coordinator-scoped release\nworkflow after replacing the stale publisher contract.\n"
     filename: release.md
     v: 0.0.0
 core:packages:
@@ -13,25 +13,25 @@ core:packages:
     updated: true
   - id: cargo:lenso-contracts
     updated: false
-  - id: cargo:lenso-worker
-    updated: true
   - id: cargo:lenso-migrate
     updated: true
   - id: cargo:lenso-service
     updated: false
   - id: cargo:lenso-platform-admin
     updated: false
+  - id: cargo:lenso-worker
+    updated: true
   - id: cargo:lenso-platform-admin-data
     updated: false
   - id: cargo:lenso-platform-core
     updated: false
   - id: cargo:lenso-platform-http
     updated: false
+  - id: cargo:lenso-platform-module
+    updated: false
   - id: cargo:lenso-platform-module-remote
     updated: false
   - id: cargo:lenso-platform-runtime
-    updated: false
-  - id: cargo:lenso-platform-module
     updated: false
   - id: cargo:lenso-platform-testing
     updated: false
