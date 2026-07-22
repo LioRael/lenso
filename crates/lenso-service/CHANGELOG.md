@@ -1,3 +1,12 @@
+## lenso-service@0.1.4
+
+### Features
+
+Add immutable multi-Workload Service Releases, supply-chain trust, Config
+Revisions, deterministic production Policy Evidence, portable Deployment and
+Gateway adapters, staging Promotion, reliability-aware canary and rollback,
+coordination-outage recovery, and secret-free Runtime Console projections.
+
 ## lenso-service@0.1.3
 
 ### Features
