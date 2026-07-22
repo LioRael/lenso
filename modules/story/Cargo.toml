@@ -1,6 +1,6 @@
 [package]
 name = "lenso-module-story"
-version = "0.1.5"
+version = "0.1.6"
 edition.workspace = true
 license = "MIT"
 description = "First-party runtime story module for the Lenso backend framework."
