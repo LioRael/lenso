@@ -1,14 +1,14 @@
 {
   "schema": "lenso.repository-template.v1",
-  "sourceRevision": "ffffa92ccaa4851a81b4cfd74fbe31f849a77846",
+  "sourceRevision": "b9bae19d55bc719ffd87c70105ad6a379ac49381",
   "files": [
     {
       "path": ".github/workflows/publish.yml",
-      "sha256": "sha256:ccc5fa40fcd1285b4ee0761a0fc1a58b7239c4cc78fb26a95f4c474f6108e20b"
+      "sha256": "sha256:87587fa088db97da02ccad5045dc9755df49527b25d1c7feb01d400c194008ab"
     },
     {
       "path": ".github/workflows/release-plan.yml",
-      "sha256": "sha256:42bed6015a0c12e978f1ef07e0095da454e94a1f724ebf48d8f44093c2b41337"
+      "sha256": "sha256:2b8b935955dafb0a954788476b84f595a34fe563923b56596b845ad01b9e186b"
     },
     {
       "path": ".lenso-release/runtime/components.yaml",
@@ -56,7 +56,7 @@
     },
     {
       "path": ".lenso-release/runtime/lib/repository/runtime.js",
-      "sha256": "sha256:6c93b9bbd7504e578ecf242067647404b1b42f0cfce5b90c25f727c4ca068c5a"
+      "sha256": "sha256:c1d3de7143fa11bf3cb44c4e52574c485b4f0040dc7dfe764b452847deaabcec"
     },
     {
       "path": ".lenso-release/runtime/lib/tegami/capture-plugin.js",
@@ -72,11 +72,11 @@
     },
     {
       "path": ".lenso-release/runtime/lib/tegami/export-plan.js",
-      "sha256": "sha256:984c3b986cb7560acca7da18bc93ab56cd547ddb614d3b5d3646ed071b293405"
+      "sha256": "sha256:8d1381ed4cf18e9132d6577b69110dada753a8c978ba2e3103fb9f4aec9a149e"
     },
     {
       "path": ".lenso-release/runtime/manifest.json",
-      "sha256": "sha256:bdb1ceef72e99cb6137cc0ebca88348c57f848c9d19db6824045a045c8265772"
+      "sha256": "sha256:16795ca29e80b298e3edc988a2de89e76531beeb3e976425e1d7963c5e9abfca"
     },
     {
       "path": ".lenso-release/runtime/node_modules/@clack/core/LICENSE",
@@ -1604,7 +1604,7 @@
     },
     {
       "path": ".lenso-release/shadow.json",
-      "sha256": "sha256:7500452e10ee2cc3d006726ba6a93cf0c37fe6a937926c347819ea74cddc2aa3"
+      "sha256": "sha256:18878ebc72e62a6756522c42f67d2ca4aaa92eae176cc09851831266d22c40c6"
     },
     {
       "path": "scripts/publish-cargo.sh",
@@ -1616,7 +1616,7 @@
     },
     {
       "path": "scripts/release-mode.mjs",
-      "sha256": "sha256:3e6f403841c2d4cd9b10d37703f66bf847d5a0f9762b5afaf2cc170b2206e950"
+      "sha256": "sha256:a861137eeab40492b316204784dfbd047a6d6b6855637e31cf302acd7c6d7599"
     },
     {
       "path": "scripts/release-plan.mjs",
