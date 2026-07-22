@@ -1,10 +1,4 @@
----
-packages:
-  lenso-contracts:
-    type: patch
-  lenso-service:
-    type: patch
----
+## lenso-contracts@0.3.6
 
 ### Features
 
