@@ -1,0 +1,105 @@
+{
+  "adapterVersions": {
+    "nats-jetstream": "2.11",
+    "postgresql": "18",
+    "spiffe-spire": "1.12"
+  },
+  "combinations": [
+    {
+      "combinationId": "m6-candidate-1",
+      "componentReferences": [
+        "cli:@lenso/cli@0.1.30",
+        "contracts:lenso-contracts@0.3.5",
+        "operator:lenso-operator@0.1.0",
+        "provider:lenso-service-provider-v1@1",
+        "runtime:lenso-autonomous-service@0.1.0",
+        "runtime:lenso-service@0.1.4",
+        "runtime_console:@lenso/runtime-console@0.1.1"
+      ],
+      "stateVersion": "service-store.v1",
+      "status": "candidate"
+    }
+  ],
+  "components": [
+    {
+      "componentId": "@lenso/cli",
+      "digest": "sha256:1a9e9bc2e7d7ee80fe7a97993fbbd332d1d6bca899be90bb215548788e45fed2",
+      "kind": "cli",
+      "version": "0.1.30"
+    },
+    {
+      "componentId": "lenso-autonomous-service",
+      "digest": "sha256:2afec83dc5afa244582aa392af475e4d5de6228e455efe548bd224e5e1dabe8a",
+      "kind": "runtime",
+      "version": "0.1.0"
+    },
+    {
+      "componentId": "lenso-service",
+      "digest": "sha256:fc323e176ef96c86b13201741fd318f43b9a16b931a48701e99ccc9e6ef5ace4",
+      "kind": "runtime",
+      "version": "0.1.4"
+    },
+    {
+      "componentId": "lenso-contracts",
+      "digest": "sha256:0e6626f863b457a3742d353c613f9d2d26c4c786574246a346bb73e7e87a7015",
+      "kind": "contracts",
+      "version": "0.3.5"
+    },
+    {
+      "componentId": "lenso-service-provider-v1",
+      "digest": "sha256:5cecee2372a80ae8bcec57cd43c1bb19d73d5a3621fa6092f0850028c086bb00",
+      "kind": "provider",
+      "version": "1"
+    },
+    {
+      "componentId": "lenso-operator",
+      "digest": "sha256:eda3f717c993979b0cb05dfa7528dd79c0ccf52cbb4a96b3a4178806cf7dd7f4",
+      "kind": "operator",
+      "version": "0.1.0"
+    },
+    {
+      "componentId": "@lenso/runtime-console",
+      "digest": "sha256:514c7edd33302f55985aaba08f3217fd2bd52ee65e2340b8f7ec5d6f4fb6944f",
+      "kind": "runtime_console",
+      "version": "0.1.1"
+    }
+  ],
+  "documentation": {
+    "digest": "sha256:8516a631e4279c907c19bd033cb3e3c918fae460362a143b58b2a986b99ee660",
+    "version": "m6-candidate"
+  },
+  "manifestDigest": "sha256:19c68b5b926e629242f51ced34da37bf5eb0220452ce875e52e0b14d3dd624b7",
+  "manifestFormats": [
+    {
+      "kind": "provider",
+      "version": "lenso.service.v1"
+    },
+    {
+      "kind": "service",
+      "version": "lenso.service.v2"
+    },
+    {
+      "kind": "system",
+      "version": "lenso.system.v1"
+    },
+    {
+      "kind": "system",
+      "version": "lenso.system.v2"
+    }
+  ],
+  "manifestId": "ga-support:19c68b5b926e6292",
+  "protocol": "lenso.ga-support-manifest.v1",
+  "stateVersions": [
+    "service-store.v1"
+  ],
+  "status": "candidate",
+  "upgradeEdges": [
+    {
+      "edgeId": "system-v1-v2",
+      "mixedVersionReferences": [],
+      "rollbackSafe": true,
+      "sourceFormat": "lenso.system.v1",
+      "targetFormat": "lenso.system.v2"
+    }
+  ]
+}

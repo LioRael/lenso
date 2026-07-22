@@ -1,0 +1,203 @@
+{
+  "$defs": {
+    "FailureCondition": {
+      "enum": [
+        "api_crash",
+        "worker_crash",
+        "network_slow",
+        "network_partitioned",
+        "postgres_store_unavailable",
+        "nats_disconnected",
+        "nats_acknowledgement_lost",
+        "nats_redelivery",
+        "nats_poison_event",
+        "spiffe_workload_api_unavailable",
+        "spiffe_credential_expired",
+        "spiffe_credential_rotated",
+        "telemetry_unavailable",
+        "story_aggregation_unavailable",
+        "runtime_console_unavailable",
+        "system_plane_unavailable"
+      ],
+      "type": "string"
+    },
+    "FailureObservation": {
+      "properties": {
+        "evidenceDigest": {
+          "type": "string"
+        },
+        "expected": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FailureOutcome"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outcome": {
+          "$ref": "#/$defs/FailureOutcome"
+        },
+        "subject": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "subject",
+        "outcome",
+        "evidenceDigest"
+      ],
+      "type": "object"
+    },
+    "FailureOutcome": {
+      "enum": [
+        "continue",
+        "degrade",
+        "pause_coordinated_mutation",
+        "reject_work",
+        "fail_closed"
+      ],
+      "type": "string"
+    },
+    "GaIssue": {
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/GaIssueCode"
+        },
+        "message": {
+          "type": "string"
+        },
+        "nextActions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "remediation": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "remediation",
+        "nextActions"
+      ],
+      "type": "object"
+    },
+    "GaIssueCode": {
+      "enum": [
+        "manifest_invalid",
+        "combination_unknown",
+        "combination_unsupported",
+        "manifest_source_stale",
+        "manifest_format_unsupported",
+        "manifest_target_collision",
+        "manifest_identity_changed",
+        "plan_integrity_invalid",
+        "upgrade_unsupported",
+        "retirement_active_consumer",
+        "retirement_evidence_stale",
+        "retirement_deprecation_incomplete",
+        "retirement_replacement_missing",
+        "retirement_approval_invalid",
+        "retirement_input_stale",
+        "failure_unexpected_outcome",
+        "failure_cleanup_incomplete"
+      ],
+      "type": "string"
+    },
+    "SupportDecision": {
+      "enum": [
+        "supported",
+        "unsupported",
+        "unknown",
+        "blocked"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "https://contracts.lenso.local/ga/lenso.failure-scenario-evidence.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "adapterVersion": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "cleanupComplete": {
+      "type": "boolean"
+    },
+    "condition": {
+      "$ref": "#/$defs/FailureCondition"
+    },
+    "controlledTimeUnixMs": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "decision": {
+      "$ref": "#/$defs/SupportDecision"
+    },
+    "effects": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "evidenceDigest": {
+      "type": "string"
+    },
+    "evidenceId": {
+      "type": "string"
+    },
+    "expected": {
+      "$ref": "#/$defs/FailureOutcome"
+    },
+    "issues": {
+      "items": {
+        "$ref": "#/$defs/GaIssue"
+      },
+      "type": "array"
+    },
+    "observations": {
+      "items": {
+        "$ref": "#/$defs/FailureObservation"
+      },
+      "type": "array"
+    },
+    "protocol": {
+      "type": "string"
+    },
+    "remediation": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "scenarioId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "protocol",
+    "evidenceId",
+    "evidenceDigest",
+    "scenarioId",
+    "condition",
+    "expected",
+    "observations",
+    "effects",
+    "cleanupComplete",
+    "decision",
+    "issues",
+    "remediation"
+  ],
+  "title": "FailureScenarioEvidence",
+  "type": "object"
+}

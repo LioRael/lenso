@@ -1,0 +1,145 @@
+{
+  "$defs": {
+    "ContractRetirementEffects": {
+      "properties": {
+        "mutatesConsumers": {
+          "type": "boolean"
+        },
+        "retiresContract": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "retiresContract",
+        "mutatesConsumers"
+      ],
+      "type": "object"
+    },
+    "GaIssue": {
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/GaIssueCode"
+        },
+        "message": {
+          "type": "string"
+        },
+        "nextActions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "remediation": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "remediation",
+        "nextActions"
+      ],
+      "type": "object"
+    },
+    "GaIssueCode": {
+      "enum": [
+        "manifest_invalid",
+        "combination_unknown",
+        "combination_unsupported",
+        "manifest_source_stale",
+        "manifest_format_unsupported",
+        "manifest_target_collision",
+        "manifest_identity_changed",
+        "plan_integrity_invalid",
+        "upgrade_unsupported",
+        "retirement_active_consumer",
+        "retirement_evidence_stale",
+        "retirement_deprecation_incomplete",
+        "retirement_replacement_missing",
+        "retirement_approval_invalid",
+        "retirement_input_stale",
+        "failure_unexpected_outcome",
+        "failure_cleanup_incomplete"
+      ],
+      "type": "string"
+    },
+    "SupportDecision": {
+      "enum": [
+        "supported",
+        "unsupported",
+        "unknown",
+        "blocked"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "https://contracts.lenso.local/ga/lenso.contract-retirement-plan.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "affectedConsumers": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "approvalBoundary": {
+      "type": "string"
+    },
+    "contractId": {
+      "type": "string"
+    },
+    "decision": {
+      "$ref": "#/$defs/SupportDecision"
+    },
+    "effects": {
+      "$ref": "#/$defs/ContractRetirementEffects"
+    },
+    "inputDigest": {
+      "type": "string"
+    },
+    "irreversibleEffects": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "issues": {
+      "items": {
+        "$ref": "#/$defs/GaIssue"
+      },
+      "type": "array"
+    },
+    "planDigest": {
+      "type": "string"
+    },
+    "planId": {
+      "type": "string"
+    },
+    "protocol": {
+      "type": "string"
+    },
+    "replacementVersion": {
+      "type": "string"
+    },
+    "retiringVersion": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "protocol",
+    "planId",
+    "planDigest",
+    "inputDigest",
+    "decision",
+    "contractId",
+    "retiringVersion",
+    "replacementVersion",
+    "affectedConsumers",
+    "irreversibleEffects",
+    "issues",
+    "effects",
+    "approvalBoundary"
+  ],
+  "title": "ContractRetirementPlan",
+  "type": "object"
+}

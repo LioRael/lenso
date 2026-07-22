@@ -159,6 +159,63 @@ fn committed_production_delivery_artifacts_match_generators() {
 }
 
 #[test]
+fn committed_ga_support_artifacts_match_the_public_generators() {
+    let manifest_schema: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/ga/lenso.ga-support-manifest.v1.schema.json"
+    ))
+    .expect("committed GA Support Manifest schema should parse");
+    let manifest: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/ga/lenso.ga-support-manifest.v1.json"
+    ))
+    .expect("committed GA Support Manifest should parse");
+    let guidance = include_str!("../../../docs/operations/ga-support.md");
+
+    assert_eq!(
+        manifest_schema,
+        generate_contracts::generated_ga_support_manifest_schema()
+    );
+    assert_eq!(
+        manifest,
+        generate_contracts::generated_ga_support_manifest()
+    );
+    assert_eq!(
+        guidance,
+        generate_contracts::generated_ga_support_guidance()
+    );
+    assert!(
+        jsonschema::validator_for(&manifest_schema)
+            .unwrap()
+            .is_valid(&manifest)
+    );
+    assert_eq!(manifest["protocol"], "lenso.ga-support-manifest.v1");
+    assert!(guidance.contains(&manifest["manifestDigest"].as_str().unwrap()));
+
+    let schemas = [
+        (
+            include_str!("../../../contracts/ga/lenso.manifest-migration-plan.v1.schema.json"),
+            generate_contracts::generated_manifest_migration_plan_schema(),
+        ),
+        (
+            include_str!("../../../contracts/ga/lenso.service-upgrade-plan.v1.schema.json"),
+            generate_contracts::generated_service_upgrade_plan_schema(),
+        ),
+        (
+            include_str!("../../../contracts/ga/lenso.contract-retirement-plan.v1.schema.json"),
+            generate_contracts::generated_contract_retirement_plan_schema(),
+        ),
+        (
+            include_str!("../../../contracts/ga/lenso.failure-scenario-evidence.v1.schema.json"),
+            generate_contracts::generated_failure_scenario_evidence_schema(),
+        ),
+    ];
+    for (committed, generated) in schemas {
+        let committed: serde_json::Value = serde_json::from_str(committed).unwrap();
+        assert_eq!(committed, generated);
+        jsonschema::validator_for(&committed).expect("GA contract schema should compile");
+    }
+}
+
+#[test]
 fn production_delivery_openapi_describes_raw_artifact_objects() {
     let openapi: serde_yaml::Value =
         serde_yaml::from_str(include_str!("../../../contracts/openapi/app-api.v1.yaml"))

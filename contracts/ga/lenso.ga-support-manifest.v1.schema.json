@@ -1,0 +1,215 @@
+{
+  "$defs": {
+    "ComponentKind": {
+      "enum": [
+        "cli",
+        "runtime",
+        "contracts",
+        "provider",
+        "operator",
+        "runtime_console",
+        "first_party_module",
+        "skill"
+      ],
+      "type": "string"
+    },
+    "DocumentationIdentity": {
+      "properties": {
+        "digest": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "digest"
+      ],
+      "type": "object"
+    },
+    "GaComponent": {
+      "properties": {
+        "componentId": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/ComponentKind"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "componentId",
+        "version",
+        "digest"
+      ],
+      "type": "object"
+    },
+    "ManifestFormat": {
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ManifestKind"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "version"
+      ],
+      "type": "object"
+    },
+    "ManifestKind": {
+      "enum": [
+        "provider",
+        "service",
+        "system",
+        "module",
+        "backup"
+      ],
+      "type": "string"
+    },
+    "SupportCombinationInput": {
+      "properties": {
+        "combinationId": {
+          "type": "string"
+        },
+        "componentReferences": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "stateVersion": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/SupportStatus"
+        }
+      },
+      "required": [
+        "combinationId",
+        "componentReferences",
+        "stateVersion",
+        "status"
+      ],
+      "type": "object"
+    },
+    "SupportStatus": {
+      "enum": [
+        "candidate",
+        "general_availability",
+        "deprecated",
+        "unsupported"
+      ],
+      "type": "string"
+    },
+    "UpgradeEdgeInput": {
+      "properties": {
+        "edgeId": {
+          "type": "string"
+        },
+        "mixedVersionReferences": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "rollbackSafe": {
+          "type": "boolean"
+        },
+        "sourceFormat": {
+          "type": "string"
+        },
+        "targetFormat": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "edgeId",
+        "sourceFormat",
+        "targetFormat",
+        "mixedVersionReferences",
+        "rollbackSafe"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://contracts.lenso.local/ga/lenso.ga-support-manifest.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "adapterVersions": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "combinations": {
+      "items": {
+        "$ref": "#/$defs/SupportCombinationInput"
+      },
+      "type": "array"
+    },
+    "components": {
+      "items": {
+        "$ref": "#/$defs/GaComponent"
+      },
+      "type": "array"
+    },
+    "documentation": {
+      "$ref": "#/$defs/DocumentationIdentity"
+    },
+    "manifestDigest": {
+      "type": "string"
+    },
+    "manifestFormats": {
+      "items": {
+        "$ref": "#/$defs/ManifestFormat"
+      },
+      "type": "array"
+    },
+    "manifestId": {
+      "type": "string"
+    },
+    "protocol": {
+      "type": "string"
+    },
+    "stateVersions": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "status": {
+      "$ref": "#/$defs/SupportStatus"
+    },
+    "upgradeEdges": {
+      "items": {
+        "$ref": "#/$defs/UpgradeEdgeInput"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "protocol",
+    "manifestId",
+    "manifestDigest",
+    "status",
+    "components",
+    "manifestFormats",
+    "stateVersions",
+    "adapterVersions",
+    "documentation",
+    "combinations",
+    "upgradeEdges"
+  ],
+  "title": "GaSupportManifest",
+  "type": "object"
+}
