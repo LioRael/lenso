@@ -1,0 +1,963 @@
+{
+  "$defs": {
+    "BlockedCoordinationOperation": {
+      "properties": {
+        "issueCode": {
+          "$ref": "#/$defs/DeliveryIssueCode"
+        },
+        "nextActions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "operation": {
+          "$ref": "#/$defs/ProtectedCoordinationOperation"
+        }
+      },
+      "required": [
+        "operation",
+        "issueCode",
+        "nextActions"
+      ],
+      "type": "object"
+    },
+    "CoordinationOutageClaims": {
+      "properties": {
+        "autonomousServiceRunning": {
+          "type": "boolean"
+        },
+        "configRevisionId": {
+          "type": "string"
+        },
+        "deploymentObservationId": {
+          "type": "string"
+        },
+        "deploymentPlanDigest": {
+          "type": "string"
+        },
+        "deploymentPlanId": {
+          "type": "string"
+        },
+        "deploymentReceiptId": {
+          "type": "string"
+        },
+        "durableCheckpointId": {
+          "type": "string"
+        },
+        "environmentRevisionAfter": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "evidenceReferences": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "gatewayIsDataPlane": {
+          "type": "boolean"
+        },
+        "gatewayRequiresLivePolicy": {
+          "type": "boolean"
+        },
+        "gatewayRequiresLiveReleaseMetadata": {
+          "type": "boolean"
+        },
+        "lastValidConfigRevisionAvailable": {
+          "type": "boolean"
+        },
+        "operationResults": {
+          "additionalProperties": false,
+          "properties": {
+            "compensation": {
+              "type": "boolean"
+            },
+            "direct_request": {
+              "type": "boolean"
+            },
+            "durable_workflow": {
+              "type": "boolean"
+            },
+            "event": {
+              "type": "boolean"
+            },
+            "inbox": {
+              "type": "boolean"
+            },
+            "outbox": {
+              "type": "boolean"
+            },
+            "retry": {
+              "type": "boolean"
+            },
+            "runtime_story": {
+              "type": "boolean"
+            },
+            "timer": {
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
+        "operatorObservationDigest": {
+          "type": "string"
+        },
+        "operatorObservationId": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "releaseDigest": {
+          "type": "string"
+        },
+        "releaseId": {
+          "type": "string"
+        },
+        "runtimeConsoleAvailable": {
+          "type": "boolean"
+        },
+        "secretProviderLeaseValid": {
+          "type": "boolean"
+        },
+        "secretRotationPolicyPreserved": {
+          "type": "boolean"
+        },
+        "security": {
+          "$ref": "#/$defs/SecurityContinuity"
+        },
+        "selectedGatewayRunning": {
+          "type": "boolean"
+        },
+        "selectedTransportRunning": {
+          "type": "boolean"
+        },
+        "systemPlaneAvailable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "protocol",
+        "deploymentPlanId",
+        "deploymentPlanDigest",
+        "deploymentReceiptId",
+        "deploymentObservationId",
+        "operatorObservationId",
+        "operatorObservationDigest",
+        "environmentRevisionAfter",
+        "releaseId",
+        "releaseDigest",
+        "configRevisionId",
+        "systemPlaneAvailable",
+        "runtimeConsoleAvailable",
+        "autonomousServiceRunning",
+        "selectedGatewayRunning",
+        "selectedTransportRunning",
+        "gatewayIsDataPlane",
+        "gatewayRequiresLivePolicy",
+        "gatewayRequiresLiveReleaseMetadata",
+        "lastValidConfigRevisionAvailable",
+        "secretProviderLeaseValid",
+        "secretRotationPolicyPreserved",
+        "operationResults",
+        "security",
+        "durableCheckpointId",
+        "evidenceReferences"
+      ],
+      "type": "object"
+    },
+    "CoordinationOutageObservation": {
+      "properties": {
+        "authorityId": {
+          "type": "string"
+        },
+        "authorityProof": {
+          "type": "string"
+        },
+        "claims": {
+          "$ref": "#/$defs/CoordinationOutageClaims"
+        },
+        "observationDigest": {
+          "type": "string"
+        },
+        "observationId": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol",
+        "observationId",
+        "observationDigest",
+        "authorityId",
+        "authorityProof",
+        "claims"
+      ],
+      "type": "object"
+    },
+    "DataPlaneOperation": {
+      "enum": [
+        "direct_request",
+        "event",
+        "durable_workflow",
+        "inbox",
+        "outbox",
+        "timer",
+        "retry",
+        "compensation",
+        "runtime_story"
+      ],
+      "type": "string"
+    },
+    "DeliveryDecision": {
+      "enum": [
+        "passed",
+        "advisory",
+        "blocked"
+      ],
+      "type": "string"
+    },
+    "DeliveryEffects": {
+      "properties": {
+        "appendsLedger": {
+          "type": "boolean"
+        },
+        "mutatesConfiguration": {
+          "type": "boolean"
+        },
+        "mutatesDeployment": {
+          "type": "boolean"
+        },
+        "mutatesEnvironment": {
+          "type": "boolean"
+        },
+        "mutatesGateway": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "mutatesEnvironment",
+        "mutatesConfiguration",
+        "mutatesGateway",
+        "mutatesDeployment",
+        "appendsLedger"
+      ],
+      "type": "object"
+    },
+    "DeliveryIssue": {
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/DeliveryIssueCode"
+        },
+        "evidenceReferences": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "message": {
+          "type": "string"
+        },
+        "nextActions": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "remediation": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "remediation"
+      ],
+      "type": "object"
+    },
+    "DeliveryIssueCode": {
+      "enum": [
+        "release_input_invalid",
+        "mutable_artifact_reference",
+        "missing_sbom",
+        "missing_provenance",
+        "provenance_subject_mismatch",
+        "signature_missing",
+        "signature_invalid",
+        "signer_untrusted",
+        "signer_revoked",
+        "release_tampered",
+        "config_contract_mismatch",
+        "plaintext_secret_detected",
+        "secret_reference_unresolved",
+        "stale_input",
+        "concurrent_mutation",
+        "policy_evidence_missing",
+        "policy_rule_blocked",
+        "contract_incompatible",
+        "migration_unsafe",
+        "workflow_incompatible",
+        "rollback_unsafe",
+        "edge_operation_unknown",
+        "edge_path_conflict",
+        "edge_exposure_unsafe",
+        "deployment_input_invalid",
+        "migration_incomplete",
+        "observation_stale",
+        "approval_required",
+        "approval_invalid",
+        "reliability_evidence_missing",
+        "canary_breach",
+        "rollback_incomplete",
+        "coordination_unavailable"
+      ],
+      "type": "string"
+    },
+    "DeploymentAdapterKind": {
+      "enum": [
+        "local",
+        "externally_managed",
+        "kubernetes"
+      ],
+      "type": "string"
+    },
+    "DeploymentObservation": {
+      "properties": {
+        "configRevisionId": {
+          "type": "string"
+        },
+        "desiredReleaseId": {
+          "type": "string"
+        },
+        "desiredWorkloadDigests": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "drifted": {
+          "type": "boolean"
+        },
+        "environment": {
+          "type": "string"
+        },
+        "fresh": {
+          "type": "boolean"
+        },
+        "nextActions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "observationId": {
+          "type": "string"
+        },
+        "observedReleaseDigest": {
+          "type": "string"
+        },
+        "observedReleaseId": {
+          "type": "string"
+        },
+        "observedWorkloadDigests": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "planId": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "receiptId": {
+          "type": "string"
+        },
+        "sourceObservationId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol",
+        "observationId",
+        "planId",
+        "receiptId",
+        "sourceObservationId",
+        "environment",
+        "desiredReleaseId",
+        "observedReleaseId",
+        "observedReleaseDigest",
+        "desiredWorkloadDigests",
+        "observedWorkloadDigests",
+        "configRevisionId",
+        "drifted",
+        "fresh",
+        "nextActions"
+      ],
+      "type": "object"
+    },
+    "DeploymentPlan": {
+      "properties": {
+        "adapter": {
+          "$ref": "#/$defs/DeploymentAdapterKind"
+        },
+        "adapterInputs": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "configRevisionId": {
+          "type": "string"
+        },
+        "effects": {
+          "$ref": "#/$defs/DeliveryEffects"
+        },
+        "endpoints": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "environment": {
+          "type": "string"
+        },
+        "expectedEnvironmentRevision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "gatewayPlanDigest": {
+          "type": "string"
+        },
+        "nextActions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "placement": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "planDigest": {
+          "type": "string"
+        },
+        "planId": {
+          "type": "string"
+        },
+        "policyEvidenceReferences": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "releaseDigest": {
+          "type": "string"
+        },
+        "releaseId": {
+          "type": "string"
+        },
+        "rollbackCapable": {
+          "type": "boolean"
+        },
+        "secretReferenceIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "serviceId": {
+          "type": "string"
+        },
+        "workloads": {
+          "items": {
+            "$ref": "#/$defs/DeploymentWorkloadPlan"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "protocol",
+        "planId",
+        "planDigest",
+        "adapter",
+        "environment",
+        "expectedEnvironmentRevision",
+        "releaseId",
+        "releaseDigest",
+        "serviceId",
+        "configRevisionId",
+        "secretReferenceIds",
+        "endpoints",
+        "placement",
+        "workloads",
+        "adapterInputs",
+        "gatewayPlanDigest",
+        "policyEvidenceReferences",
+        "rollbackCapable",
+        "nextActions",
+        "effects"
+      ],
+      "type": "object"
+    },
+    "DeploymentReceipt": {
+      "properties": {
+        "adapter": {
+          "$ref": "#/$defs/DeploymentAdapterKind"
+        },
+        "configRevisionId": {
+          "type": "string"
+        },
+        "effects": {
+          "$ref": "#/$defs/DeliveryEffects"
+        },
+        "environment": {
+          "type": "string"
+        },
+        "environmentRevisionAfter": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "environmentRevisionBefore": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "gatewayPlanDigest": {
+          "type": "string"
+        },
+        "planId": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "receiptId": {
+          "type": "string"
+        },
+        "releaseDigest": {
+          "type": "string"
+        },
+        "releaseId": {
+          "type": "string"
+        },
+        "workloadDigests": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "protocol",
+        "receiptId",
+        "planId",
+        "adapter",
+        "environment",
+        "environmentRevisionBefore",
+        "environmentRevisionAfter",
+        "releaseId",
+        "releaseDigest",
+        "configRevisionId",
+        "workloadDigests",
+        "gatewayPlanDigest",
+        "effects"
+      ],
+      "type": "object"
+    },
+    "DeploymentWorkloadPlan": {
+      "properties": {
+        "artifactDigest": {
+          "type": "string"
+        },
+        "artifactReference": {
+          "type": "string"
+        },
+        "mediaType": {
+          "type": "string"
+        },
+        "role": {
+          "$ref": "#/$defs/ReleaseWorkloadRole"
+        },
+        "settings": {
+          "$ref": "#/$defs/DeploymentWorkloadSettings"
+        },
+        "workloadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workloadId",
+        "role",
+        "artifactReference",
+        "artifactDigest",
+        "mediaType",
+        "settings"
+      ],
+      "type": "object"
+    },
+    "DeploymentWorkloadSettings": {
+      "properties": {
+        "command": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "disruptionMinAvailable": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "healthPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "port": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "replicas": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "workloadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workloadId",
+        "replicas"
+      ],
+      "type": "object"
+    },
+    "OperatorObservationAttestation": {
+      "properties": {
+        "authorityId": {
+          "type": "string"
+        },
+        "authorityProof": {
+          "type": "string"
+        },
+        "claims": {
+          "$ref": "#/$defs/OperatorObservationClaims"
+        },
+        "observationDigest": {
+          "type": "string"
+        },
+        "observationId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "observationId",
+        "observationDigest",
+        "authorityId",
+        "authorityProof",
+        "claims"
+      ],
+      "type": "object"
+    },
+    "OperatorObservationClaims": {
+      "properties": {
+        "authorityContext": {
+          "type": "string"
+        },
+        "configRevisionId": {
+          "type": "string"
+        },
+        "decision": {
+          "$ref": "#/$defs/DeliveryDecision"
+        },
+        "deploymentPlanDigest": {
+          "type": "string"
+        },
+        "deploymentPlanId": {
+          "type": "string"
+        },
+        "desiredReleaseDigest": {
+          "type": "string"
+        },
+        "desiredReleaseId": {
+          "type": "string"
+        },
+        "desiredWorkloadDigests": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "drifted": {
+          "type": "boolean"
+        },
+        "environment": {
+          "type": "string"
+        },
+        "environmentRevision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "expectedEnvironmentRevision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "fresh": {
+          "type": "boolean"
+        },
+        "observedReleaseDigest": {
+          "type": "string"
+        },
+        "observedReleaseId": {
+          "type": "string"
+        },
+        "observedWorkloadDigests": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "resourceUid": {
+          "type": "string"
+        },
+        "resourceVersion": {
+          "type": "string"
+        },
+        "rollbackState": {
+          "type": "string"
+        },
+        "rolloutPhase": {
+          "type": "string"
+        },
+        "serviceId": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        },
+        "workloadHealth": {
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "protocol",
+        "serviceId",
+        "environment",
+        "deploymentPlanId",
+        "deploymentPlanDigest",
+        "expectedEnvironmentRevision",
+        "environmentRevision",
+        "authorityContext",
+        "resourceUid",
+        "resourceVersion",
+        "desiredReleaseId",
+        "desiredReleaseDigest",
+        "observedReleaseId",
+        "observedReleaseDigest",
+        "desiredWorkloadDigests",
+        "observedWorkloadDigests",
+        "workloadHealth",
+        "configRevisionId",
+        "state",
+        "rolloutPhase",
+        "rollbackState",
+        "drifted",
+        "fresh",
+        "decision"
+      ],
+      "type": "object"
+    },
+    "ProtectedCoordinationOperation": {
+      "enum": [
+        "promotion",
+        "configuration_activation",
+        "contract_retirement",
+        "deployment_mutation"
+      ],
+      "type": "string"
+    },
+    "ReleaseWorkloadRole": {
+      "enum": [
+        "api",
+        "worker",
+        "migration",
+        "extension"
+      ],
+      "type": "string"
+    },
+    "SecurityContinuity": {
+      "properties": {
+        "callPolicyEnforced": {
+          "type": "boolean"
+        },
+        "serviceAuthorizationEnforced": {
+          "type": "boolean"
+        },
+        "tenantContextEnforced": {
+          "type": "boolean"
+        },
+        "workloadIdentityEnforced": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "workloadIdentityEnforced",
+        "tenantContextEnforced",
+        "callPolicyEnforced",
+        "serviceAuthorizationEnforced"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://contracts.lenso.local/delivery/lenso.coordination-outage-proof.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "blockedOperations": {
+      "items": {
+        "$ref": "#/$defs/BlockedCoordinationOperation"
+      },
+      "type": "array"
+    },
+    "configRevisionId": {
+      "type": "string"
+    },
+    "continuedOperations": {
+      "items": {
+        "$ref": "#/$defs/DataPlaneOperation"
+      },
+      "type": "array"
+    },
+    "decision": {
+      "$ref": "#/$defs/DeliveryDecision"
+    },
+    "deployment": {
+      "$ref": "#/$defs/DeploymentReceipt"
+    },
+    "deploymentObservation": {
+      "$ref": "#/$defs/DeploymentObservation"
+    },
+    "deploymentObservationId": {
+      "type": "string"
+    },
+    "deploymentPlan": {
+      "$ref": "#/$defs/DeploymentPlan"
+    },
+    "deploymentPlanDigest": {
+      "type": "string"
+    },
+    "deploymentPlanId": {
+      "type": "string"
+    },
+    "deploymentReceiptId": {
+      "type": "string"
+    },
+    "durableCheckpointId": {
+      "type": "string"
+    },
+    "effects": {
+      "$ref": "#/$defs/DeliveryEffects"
+    },
+    "environmentRevisionAfter": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "evidenceReferences": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "issues": {
+      "items": {
+        "$ref": "#/$defs/DeliveryIssue"
+      },
+      "type": "array"
+    },
+    "operatorObservation": {
+      "$ref": "#/$defs/OperatorObservationAttestation"
+    },
+    "outageObservation": {
+      "$ref": "#/$defs/CoordinationOutageObservation"
+    },
+    "proofDigest": {
+      "type": "string"
+    },
+    "proofId": {
+      "type": "string"
+    },
+    "protocol": {
+      "type": "string"
+    },
+    "releaseDigest": {
+      "type": "string"
+    },
+    "releaseId": {
+      "type": "string"
+    },
+    "security": {
+      "$ref": "#/$defs/SecurityContinuity"
+    }
+  },
+  "required": [
+    "protocol",
+    "proofId",
+    "proofDigest",
+    "decision",
+    "deploymentPlanId",
+    "deploymentPlanDigest",
+    "deploymentReceiptId",
+    "deploymentObservationId",
+    "environmentRevisionAfter",
+    "releaseId",
+    "releaseDigest",
+    "configRevisionId",
+    "durableCheckpointId",
+    "deploymentPlan",
+    "deployment",
+    "deploymentObservation",
+    "outageObservation",
+    "operatorObservation",
+    "continuedOperations",
+    "blockedOperations",
+    "security",
+    "issues",
+    "evidenceReferences",
+    "effects"
+  ],
+  "title": "CoordinationOutageEvidence",
+  "type": "object"
+}

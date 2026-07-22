@@ -1,0 +1,347 @@
+{
+  "$defs": {
+    "DeliveryEvidenceReference": {
+      "properties": {
+        "digest": {
+          "type": "string"
+        },
+        "reference": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "reference",
+        "digest"
+      ],
+      "type": "object"
+    },
+    "ReleaseContractVersion": {
+      "properties": {
+        "artifact": {
+          "$ref": "#/$defs/DeliveryEvidenceReference"
+        },
+        "contractId": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "contractId",
+        "version",
+        "kind",
+        "artifact"
+      ],
+      "type": "object"
+    },
+    "ReleaseMigration": {
+      "properties": {
+        "artifact": {
+          "$ref": "#/$defs/DeliveryEvidenceReference"
+        },
+        "migrationId": {
+          "type": "string"
+        },
+        "phase": {
+          "type": "string"
+        },
+        "reversible": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "migrationId",
+        "phase",
+        "artifact",
+        "reversible"
+      ],
+      "type": "object"
+    },
+    "ReleaseModule": {
+      "properties": {
+        "moduleId": {
+          "type": "string"
+        },
+        "moduleVersion": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "moduleId",
+        "moduleVersion"
+      ],
+      "type": "object"
+    },
+    "ReleaseProvenance": {
+      "properties": {
+        "builder": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string"
+        },
+        "inputDigests": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "reference": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "subjectDigests": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "reference",
+        "digest",
+        "source",
+        "builder"
+      ],
+      "type": "object"
+    },
+    "ReleaseRetention": {
+      "properties": {
+        "artifactDays": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "evidenceDays": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "evidenceDays",
+        "artifactDays"
+      ],
+      "type": "object"
+    },
+    "ReleaseRollbackConstraints": {
+      "properties": {
+        "automaticAllowed": {
+          "type": "boolean"
+        },
+        "blockedByIrreversibleMigration": {
+          "type": "boolean"
+        },
+        "previousReleaseRequired": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "previousReleaseRequired",
+        "automaticAllowed",
+        "blockedByIrreversibleMigration"
+      ],
+      "type": "object"
+    },
+    "ReleaseRolloutGate": {
+      "properties": {
+        "evidenceKind": {
+          "type": "string"
+        },
+        "gateId": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "gateId",
+        "evidenceKind",
+        "required"
+      ],
+      "type": "object"
+    },
+    "ReleaseSignature": {
+      "properties": {
+        "signature": {
+          "type": "string"
+        },
+        "signer": {
+          "type": "string"
+        },
+        "subjectDigest": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "signer",
+        "subjectDigest",
+        "signature"
+      ],
+      "type": "object"
+    },
+    "ReleaseWorkloadRole": {
+      "enum": [
+        "api",
+        "worker",
+        "migration",
+        "extension"
+      ],
+      "type": "string"
+    },
+    "WorkloadArtifact": {
+      "properties": {
+        "artifactDigest": {
+          "type": "string"
+        },
+        "artifactReference": {
+          "type": "string"
+        },
+        "displayTag": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mediaType": {
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/ReleaseProvenance"
+        },
+        "role": {
+          "$ref": "#/$defs/ReleaseWorkloadRole"
+        },
+        "sbom": {
+          "$ref": "#/$defs/DeliveryEvidenceReference"
+        },
+        "signatureSubject": {
+          "type": "string"
+        },
+        "workloadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workloadId",
+        "role",
+        "artifactReference",
+        "artifactDigest",
+        "mediaType",
+        "sbom",
+        "provenance",
+        "signatureSubject"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://contracts.lenso.local/delivery/lenso.service-release.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "configContract": {
+      "$ref": "#/$defs/DeliveryEvidenceReference"
+    },
+    "contractVersions": {
+      "items": {
+        "$ref": "#/$defs/ReleaseContractVersion"
+      },
+      "type": "array"
+    },
+    "migrations": {
+      "items": {
+        "$ref": "#/$defs/ReleaseMigration"
+      },
+      "type": "array"
+    },
+    "modules": {
+      "items": {
+        "$ref": "#/$defs/ReleaseModule"
+      },
+      "type": "array"
+    },
+    "protocol": {
+      "type": "string"
+    },
+    "releaseDigest": {
+      "type": "string"
+    },
+    "releaseId": {
+      "type": "string"
+    },
+    "reliabilityContract": {
+      "$ref": "#/$defs/DeliveryEvidenceReference"
+    },
+    "retention": {
+      "$ref": "#/$defs/ReleaseRetention"
+    },
+    "rollback": {
+      "$ref": "#/$defs/ReleaseRollbackConstraints"
+    },
+    "rolloutGates": {
+      "items": {
+        "$ref": "#/$defs/ReleaseRolloutGate"
+      },
+      "type": "array"
+    },
+    "serviceId": {
+      "type": "string"
+    },
+    "serviceVersion": {
+      "type": "string"
+    },
+    "signatures": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ReleaseSignature"
+      },
+      "type": "array"
+    },
+    "verificationEvidence": {
+      "items": {
+        "$ref": "#/$defs/DeliveryEvidenceReference"
+      },
+      "type": "array"
+    },
+    "workflowCompatibility": {
+      "items": {
+        "$ref": "#/$defs/DeliveryEvidenceReference"
+      },
+      "type": "array"
+    },
+    "workloads": {
+      "items": {
+        "$ref": "#/$defs/WorkloadArtifact"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "protocol",
+    "releaseId",
+    "releaseDigest",
+    "serviceId",
+    "serviceVersion",
+    "modules",
+    "workloads",
+    "contractVersions",
+    "configContract",
+    "reliabilityContract",
+    "migrations",
+    "workflowCompatibility",
+    "verificationEvidence",
+    "rolloutGates",
+    "rollback",
+    "retention"
+  ],
+  "title": "ServiceRelease",
+  "type": "object"
+}

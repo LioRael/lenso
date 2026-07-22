@@ -107,6 +107,84 @@ fn committed_system_v2_artifacts_match_generator() {
 }
 
 #[test]
+fn committed_production_delivery_artifacts_match_generators() {
+    let release_schema: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/delivery/lenso.service-release.v1.schema.json"
+    ))
+    .expect("committed Service Release schema should parse");
+    let release: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/delivery/support.service-release.json"
+    ))
+    .expect("committed support Service Release should parse");
+    let crd: serde_yaml::Value = serde_yaml::from_str(include_str!(
+        "../../../contracts/operator/lenso-autonomous-service.v1alpha1.crd.yaml"
+    ))
+    .expect("committed Autonomous Service CRD should parse");
+    let fixture: serde_yaml::Value = serde_yaml::from_str(include_str!(
+        "../../../contracts/operator/support.autonomous-service.yaml"
+    ))
+    .expect("committed Autonomous Service fixture should parse");
+
+    assert_eq!(
+        release_schema,
+        generate_contracts::generated_service_release_schema()
+    );
+    assert_eq!(
+        release,
+        generate_contracts::generated_support_service_release()
+    );
+    assert_eq!(crd, generate_contracts::generated_autonomous_service_crd());
+    assert_eq!(
+        fixture,
+        generate_contracts::generated_support_autonomous_service()
+    );
+    let validator =
+        jsonschema::validator_for(&release_schema).expect("Service Release schema should compile");
+    assert!(validator.is_valid(&release));
+    assert_eq!(release["protocol"], "lenso.service-release.v1");
+    assert_eq!(fixture["kind"], "LensoAutonomousService");
+    assert_eq!(
+        fixture["spec"]["releaseDigest"],
+        release["releaseDigest"].as_str().expect("release digest")
+    );
+    assert!(
+        fixture["spec"]["workloads"]
+            .as_sequence()
+            .expect("operator workloads")
+            .iter()
+            .all(|workload| workload["image"]
+                .as_str()
+                .is_some_and(|image| image.contains("@sha256:")))
+    );
+}
+
+#[test]
+fn production_delivery_openapi_describes_raw_artifact_objects() {
+    let openapi: serde_yaml::Value =
+        serde_yaml::from_str(include_str!("../../../contracts/openapi/app-api.v1.yaml"))
+            .expect("committed application OpenAPI should parse");
+    let schema = &openapi["components"]["schemas"]["DeliveryArtifactSchema"];
+    let variants = schema["oneOf"]
+        .as_sequence()
+        .expect("delivery artifacts should be an OpenAPI oneOf");
+
+    assert!(
+        variants.iter().all(|variant| variant.get("$ref").is_some()),
+        "wire variants must be direct schema references without externally tagged wrappers"
+    );
+    assert!(variants.iter().any(|variant| {
+        variant["$ref"]
+            .as_str()
+            .is_some_and(|reference| reference.ends_with("/ServiceRelease"))
+    }));
+    assert_eq!(
+        openapi["components"]["schemas"]["DeliveryArtifactRecordRequest"]["properties"]["artifacts"]
+            ["items"]["$ref"],
+        "#/components/schemas/DeliveryArtifactSchema"
+    );
+}
+
+#[test]
 fn committed_extraction_readiness_artifacts_match_generator() {
     let schema: serde_json::Value = serde_json::from_str(include_str!(
         "../../../contracts/extraction/lenso.extraction-readiness-report.v1.schema.json"

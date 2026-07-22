@@ -1,0 +1,159 @@
+{
+  "configContract": {
+    "digest": "sha256:9bbb60525fffd2cf75533c89432947e9e8719da96432b154850abb48d517e810",
+    "reference": "contracts/config/support.v1.schema.json"
+  },
+  "contractVersions": [
+    {
+      "artifact": {
+        "digest": "sha256:3dab267502e0040fdf13f362fe2e45af0195b1f6ff005f9b2832f2bf8cf2dd6b",
+        "reference": "contracts/openapi/support.v1.yaml"
+      },
+      "contractId": "support-http",
+      "kind": "request_response",
+      "version": "v1"
+    }
+  ],
+  "migrations": [
+    {
+      "artifact": {
+        "digest": "sha256:528da7774ccb940b6ec728b389266ea527f6db3e52079b920b6a9590efceec5a",
+        "reference": "migration:support-0001"
+      },
+      "migrationId": "support-0001",
+      "phase": "expand",
+      "reversible": true
+    }
+  ],
+  "modules": [
+    {
+      "moduleId": "support-sla",
+      "moduleVersion": "2.0.0"
+    },
+    {
+      "moduleId": "support-ticket",
+      "moduleVersion": "4.0.0"
+    }
+  ],
+  "protocol": "lenso.service-release.v1",
+  "releaseDigest": "sha256:baf024e3adf2d97c422235f8dac0a2c65bd130a3f179f7aa5016e3b30880697f",
+  "releaseId": "service-release:sha256:baf024e3adf2d97c422235f8dac0a2c65bd130a3f179f7aa5016e3b30880697f",
+  "reliabilityContract": {
+    "digest": "sha256:c9f9af5308972c497cc3a79becaef07385c37d3dbda3b6f7b483fd710ddac763",
+    "reference": "contracts/reliability/support.v1.schema.json"
+  },
+  "retention": {
+    "artifactDays": 365,
+    "evidenceDays": 90
+  },
+  "rollback": {
+    "automaticAllowed": true,
+    "blockedByIrreversibleMigration": true,
+    "previousReleaseRequired": true
+  },
+  "rolloutGates": [
+    {
+      "evidenceKind": "service_reliability",
+      "gateId": "service-reliability",
+      "required": true
+    }
+  ],
+  "serviceId": "service:support",
+  "serviceVersion": "5.0.0",
+  "signatures": [
+    {
+      "signature": "sha256:59165c621dbffe8b46f41896cf6cf1df460690719004c9c92f0925c8abc1821d",
+      "signer": "ci:fixture",
+      "subjectDigest": "sha256:baf024e3adf2d97c422235f8dac0a2c65bd130a3f179f7aa5016e3b30880697f"
+    }
+  ],
+  "verificationEvidence": [
+    {
+      "digest": "sha256:e0bb798ff1223d3cec0e8473b0e4b2c93af4ebfe7d01bac98a25d0670d806d38",
+      "reference": "verification:m4-support"
+    }
+  ],
+  "workflowCompatibility": [
+    {
+      "digest": "sha256:0f11ee91f9022035f016eb0e55a180526b6fbea1b309e98f11e4a9b845c3b1a4",
+      "reference": "workflow-compatibility:support:v1"
+    }
+  ],
+  "workloads": [
+    {
+      "artifactDigest": "sha256:52a36d3b3e05682354e1f8cb66e9bc7830c68cc7fc2e0e4565240f1c472ae102",
+      "artifactReference": "ghcr.io/liorael/support",
+      "displayTag": "5.0.0",
+      "mediaType": "application/vnd.oci.image.manifest.v1+json",
+      "provenance": {
+        "builder": "https://github.com/LioRael/lenso-examples/actions",
+        "digest": "sha256:a63b13285c8777017fd4cb906f9ea925f43d1b662f713fa52c4ea50bc6e38448",
+        "inputDigests": [
+          "sha256:21b409d08ac0a474e32dc2e0e6549cc5e43f924988156e75f8b4f0832c05c307"
+        ],
+        "reference": "provenance:support-api",
+        "source": "https://github.com/LioRael/lenso-examples",
+        "subjectDigests": [
+          "sha256:52a36d3b3e05682354e1f8cb66e9bc7830c68cc7fc2e0e4565240f1c472ae102"
+        ]
+      },
+      "role": "api",
+      "sbom": {
+        "digest": "sha256:b7974b1ae3f6a93e761ab759bf63a23806fd82391054b19b9b9ddf19a68764a1",
+        "reference": "sbom:support-api"
+      },
+      "signatureSubject": "workload:support-api",
+      "workloadId": "support-api"
+    },
+    {
+      "artifactDigest": "sha256:2a005411496a11a077677b702e89a77217123d3851a47aae67b301ed450f6423",
+      "artifactReference": "ghcr.io/liorael/support",
+      "displayTag": "5.0.0",
+      "mediaType": "application/vnd.oci.image.manifest.v1+json",
+      "provenance": {
+        "builder": "https://github.com/LioRael/lenso-examples/actions",
+        "digest": "sha256:ac6acf5df0eab1a5e8af2790246c36ddcae3eade7bfb4c534688e39220a9d448",
+        "inputDigests": [
+          "sha256:21b409d08ac0a474e32dc2e0e6549cc5e43f924988156e75f8b4f0832c05c307"
+        ],
+        "reference": "provenance:support-migration",
+        "source": "https://github.com/LioRael/lenso-examples",
+        "subjectDigests": [
+          "sha256:2a005411496a11a077677b702e89a77217123d3851a47aae67b301ed450f6423"
+        ]
+      },
+      "role": "migration",
+      "sbom": {
+        "digest": "sha256:8de6edfba08f1c42e5623d3d03502436738db28bc60ee23146e282280911e5d6",
+        "reference": "sbom:support-migration"
+      },
+      "signatureSubject": "workload:support-migration",
+      "workloadId": "support-migration"
+    },
+    {
+      "artifactDigest": "sha256:3339350d617b4ee7850069c55d9e93ca3e5f792fe6d89ef870cb31ed8ff86b6f",
+      "artifactReference": "ghcr.io/liorael/support",
+      "displayTag": "5.0.0",
+      "mediaType": "application/vnd.oci.image.manifest.v1+json",
+      "provenance": {
+        "builder": "https://github.com/LioRael/lenso-examples/actions",
+        "digest": "sha256:a768c7aecae7f3ad6f4588fb436355390ec66ac5bc78c1e6a535a6a7cd7e1b02",
+        "inputDigests": [
+          "sha256:21b409d08ac0a474e32dc2e0e6549cc5e43f924988156e75f8b4f0832c05c307"
+        ],
+        "reference": "provenance:support-worker",
+        "source": "https://github.com/LioRael/lenso-examples",
+        "subjectDigests": [
+          "sha256:3339350d617b4ee7850069c55d9e93ca3e5f792fe6d89ef870cb31ed8ff86b6f"
+        ]
+      },
+      "role": "worker",
+      "sbom": {
+        "digest": "sha256:ea5095c1833320066ddbe5e769c2c5bff467d8557d19e4476c2dc1a5a4ab1a4f",
+        "reference": "sbom:support-worker"
+      },
+      "signatureSubject": "workload:support-worker",
+      "workloadId": "support-worker"
+    }
+  ]
+}

@@ -16,6 +16,7 @@ use tower_http::services::{ServeDir, ServeFile};
 use tracing::info;
 
 pub mod openapi;
+mod system_delivery;
 
 pub use openapi::openapi_document;
 

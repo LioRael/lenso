@@ -1,4 +1,6 @@
 use anyhow::Context as _;
+use kube::CustomResourceExt as _;
+use schemars::JsonSchema;
 use serde_json::{Value, json};
 use std::fs;
 use std::path::Path;
@@ -47,6 +49,62 @@ pub fn generate_contracts() -> anyhow::Result<()> {
     write_json(
         "contracts/services/lenso-system.v2.fixture.json",
         &generated_system_v2_fixture(),
+    )?;
+    write_json(
+        "contracts/delivery/lenso.service-release.v1.schema.json",
+        &generated_service_release_schema(),
+    )?;
+    write_json(
+        "contracts/delivery/lenso.config-revision.v1.schema.json",
+        &generated_delivery_schema::<lenso_service::ConfigRevision>("lenso.config-revision.v1"),
+    )?;
+    write_json(
+        "contracts/delivery/lenso.policy-evidence.v1.schema.json",
+        &generated_delivery_schema::<lenso_service::PolicyEvidence>("lenso.policy-evidence.v1"),
+    )?;
+    write_json(
+        "contracts/delivery/lenso.edge-contract.v1.schema.json",
+        &generated_delivery_schema::<lenso_service::EdgeContract>("lenso.edge-contract.v1"),
+    )?;
+    write_json(
+        "contracts/delivery/lenso.deployment-plan.v1.schema.json",
+        &generated_delivery_schema::<lenso_service::DeploymentPlan>("lenso.deployment-plan.v1"),
+    )?;
+    write_json(
+        "contracts/delivery/lenso.promotion-plan.v1.schema.json",
+        &generated_delivery_schema::<lenso_service::PromotionPlan>("lenso.promotion-plan.v1"),
+    )?;
+    write_json(
+        "contracts/delivery/lenso.canary-plan.v1.schema.json",
+        &generated_delivery_schema::<lenso_service::CanaryPlan>("lenso.canary-plan.v1"),
+    )?;
+    write_json(
+        "contracts/delivery/lenso.rollback-plan.v1.schema.json",
+        &generated_delivery_schema::<lenso_service::RollbackPlan>("lenso.rollback-plan.v1"),
+    )?;
+    write_json(
+        "contracts/delivery/lenso.coordination-outage-proof.v1.schema.json",
+        &generated_delivery_schema::<lenso_service::CoordinationOutageEvidence>(
+            "lenso.coordination-outage-proof.v1",
+        ),
+    )?;
+    write_json(
+        "contracts/delivery/lenso.delivery-console.v1.schema.json",
+        &generated_delivery_schema::<lenso_service::DeliveryConsoleProjection>(
+            "lenso.delivery-console.v1",
+        ),
+    )?;
+    write_json(
+        "contracts/delivery/support.service-release.json",
+        &generated_support_service_release(),
+    )?;
+    write_yaml(
+        "contracts/operator/lenso-autonomous-service.v1alpha1.crd.yaml",
+        &generated_autonomous_service_crd(),
+    )?;
+    write_yaml(
+        "contracts/operator/support.autonomous-service.yaml",
+        &generated_support_autonomous_service(),
     )?;
     write_json(
         "contracts/extraction/lenso.extraction-readiness-report.v1.schema.json",
@@ -200,6 +258,199 @@ pub fn generated_system_v2_schema() -> Value {
 pub fn generated_system_v2_fixture() -> Value {
     serde_json::from_str(lenso_service::MIXED_SYSTEM_V2_FIXTURE_JSON)
         .expect("packaged mixed System v2 fixture must be valid JSON")
+}
+
+pub fn generated_service_release_schema() -> Value {
+    generated_delivery_schema::<lenso_service::ServiceRelease>("lenso.service-release.v1")
+}
+
+pub fn generated_delivery_schema<T: JsonSchema>(protocol: &str) -> Value {
+    let mut schema = serde_json::to_value(schemars::schema_for!(T))
+        .expect("generated delivery schema must serialize");
+    let object = schema
+        .as_object_mut()
+        .expect("generated delivery schema root must be an object");
+    object.insert(
+        "$id".to_owned(),
+        Value::String(format!(
+            "https://contracts.lenso.local/delivery/{protocol}.schema.json"
+        )),
+    );
+    schema
+}
+
+pub fn generated_support_service_release() -> Value {
+    use lenso_service::{
+        DeliveryEvidenceReference, DeterministicTrustProvider, ReleaseContractVersion,
+        ReleaseMigration, ReleaseModule, ReleaseProvenance, ReleaseRetention,
+        ReleaseRollbackConstraints, ReleaseRolloutGate, ReleaseWorkloadRole, ServiceReleaseInput,
+        WorkloadArtifact, assemble_service_release, attach_service_release_signature,
+        extraction_input_digest,
+    };
+
+    let evidence = |reference: &str| DeliveryEvidenceReference {
+        reference: reference.to_owned(),
+        digest: extraction_input_digest(reference.as_bytes()),
+    };
+    let workload = |workload_id: &str, role: ReleaseWorkloadRole| {
+        let artifact_digest = extraction_input_digest(workload_id.as_bytes());
+        WorkloadArtifact {
+            workload_id: workload_id.to_owned(),
+            role,
+            artifact_reference: "ghcr.io/liorael/support".to_owned(),
+            artifact_digest: artifact_digest.clone(),
+            media_type: "application/vnd.oci.image.manifest.v1+json".to_owned(),
+            display_tag: Some("5.0.0".to_owned()),
+            sbom: evidence(&format!("sbom:{workload_id}")),
+            provenance: ReleaseProvenance {
+                reference: format!("provenance:{workload_id}"),
+                digest: extraction_input_digest(format!("provenance:{workload_id}").as_bytes()),
+                source: "https://github.com/LioRael/lenso-examples".to_owned(),
+                builder: "https://github.com/LioRael/lenso-examples/actions".to_owned(),
+                input_digests: vec![extraction_input_digest(b"support-source")],
+                subject_digests: vec![artifact_digest],
+            },
+            signature_subject: format!("workload:{workload_id}"),
+        }
+    };
+    let mut release = assemble_service_release(ServiceReleaseInput {
+        service_id: "service:support".to_owned(),
+        service_version: "5.0.0".to_owned(),
+        modules: vec![
+            ReleaseModule {
+                module_id: "support-ticket".to_owned(),
+                module_version: "4.0.0".to_owned(),
+            },
+            ReleaseModule {
+                module_id: "support-sla".to_owned(),
+                module_version: "2.0.0".to_owned(),
+            },
+        ],
+        workloads: vec![
+            workload("support-api", ReleaseWorkloadRole::Api),
+            workload("support-worker", ReleaseWorkloadRole::Worker),
+            workload("support-migration", ReleaseWorkloadRole::Migration),
+        ],
+        contract_versions: vec![ReleaseContractVersion {
+            contract_id: "support-http".to_owned(),
+            version: "v1".to_owned(),
+            kind: "request_response".to_owned(),
+            artifact: evidence("contracts/openapi/support.v1.yaml"),
+        }],
+        config_contract: evidence("contracts/config/support.v1.schema.json"),
+        reliability_contract: evidence("contracts/reliability/support.v1.schema.json"),
+        migrations: vec![ReleaseMigration {
+            migration_id: "support-0001".to_owned(),
+            phase: "expand".to_owned(),
+            artifact: evidence("migration:support-0001"),
+            reversible: true,
+        }],
+        workflow_compatibility: vec![evidence("workflow-compatibility:support:v1")],
+        verification_evidence: vec![evidence("verification:m4-support")],
+        rollout_gates: vec![ReleaseRolloutGate {
+            gate_id: "service-reliability".to_owned(),
+            evidence_kind: "service_reliability".to_owned(),
+            required: true,
+        }],
+        rollback: ReleaseRollbackConstraints {
+            previous_release_required: true,
+            automatic_allowed: true,
+            blocked_by_irreversible_migration: true,
+        },
+        retention: ReleaseRetention {
+            evidence_days: 90,
+            artifact_days: 365,
+        },
+    })
+    .expect("support Service Release fixture must assemble");
+    let provider = DeterministicTrustProvider::new([("ci:fixture", "fixture-signing-material")]);
+    attach_service_release_signature(&mut release, &provider, "ci:fixture")
+        .expect("support Service Release fixture must sign");
+    serde_json::to_value(release).expect("support Service Release fixture must serialize")
+}
+
+pub fn generated_autonomous_service_crd() -> serde_yaml::Value {
+    serde_yaml::to_value(lenso_operator::LensoAutonomousService::crd())
+        .expect("Autonomous Service CRD must serialize")
+}
+
+pub fn generated_support_autonomous_service() -> serde_yaml::Value {
+    use lenso_operator::{
+        LensoAutonomousService, LensoAutonomousServiceSpec, LensoAutonomousWorkload,
+        OperatorPlacement, OperatorScaling, OperatorWorkloadRole,
+    };
+
+    let release = generated_support_service_release();
+    let workloads = release["workloads"]
+        .as_array()
+        .expect("support release Workloads")
+        .iter()
+        .map(|workload| {
+            let role = match workload["role"].as_str().expect("Workload role") {
+                "api" => OperatorWorkloadRole::Api,
+                "worker" => OperatorWorkloadRole::Worker,
+                "migration" => OperatorWorkloadRole::Migration,
+                _ => OperatorWorkloadRole::Extension,
+            };
+            LensoAutonomousWorkload {
+                workload_id: workload["workloadId"]
+                    .as_str()
+                    .expect("Workload id")
+                    .to_owned(),
+                role,
+                image: format!(
+                    "{}@{}",
+                    workload["artifactReference"]
+                        .as_str()
+                        .expect("artifact reference"),
+                    workload["artifactDigest"]
+                        .as_str()
+                        .expect("artifact digest")
+                ),
+                replicas: 1,
+                port: (role == OperatorWorkloadRole::Api).then_some(8080),
+                command: Vec::new(),
+                config_map_name: Some("support-config".to_owned()),
+                secret_reference_ids: Vec::new(),
+                placement: OperatorPlacement::default(),
+                scaling: OperatorScaling {
+                    min_replicas: 1,
+                    max_replicas: 3,
+                    target_cpu_utilization: 70,
+                },
+                disruption_min_available: (role != OperatorWorkloadRole::Migration).then_some(1),
+                network_policy_enabled: true,
+                readiness_path: (role == OperatorWorkloadRole::Api)
+                    .then(|| "/health/ready".to_owned()),
+                liveness_path: (role == OperatorWorkloadRole::Api)
+                    .then(|| "/health/live".to_owned()),
+            }
+        })
+        .collect();
+    serde_yaml::to_value(LensoAutonomousService::new(
+        "support-production",
+        LensoAutonomousServiceSpec {
+            service_id: "service:support".to_owned(),
+            environment: "production".to_owned(),
+            release_id: release["releaseId"]
+                .as_str()
+                .expect("release id")
+                .to_owned(),
+            release_digest: release["releaseDigest"]
+                .as_str()
+                .expect("release digest")
+                .to_owned(),
+            config_revision_id: "config:support:production:v5".to_owned(),
+            expected_environment_revision: 31,
+            secret_references: Vec::new(),
+            policy_evidence_references: vec!["policy:production:support:v5".to_owned()],
+            evidence_references: vec!["environment-verification:staging:v5".to_owned()],
+            workloads,
+            rollout_strategy: "bounded_canary".to_owned(),
+            rollback_release_id: Some("release:support:4".to_owned()),
+        },
+    ))
+    .expect("support Autonomous Service fixture must serialize")
 }
 
 pub fn generated_extraction_readiness_schema() -> Value {

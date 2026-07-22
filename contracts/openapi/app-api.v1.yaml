@@ -1220,6 +1220,30 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /admin/runtime/deliveries/current:
+    get:
+      tags:
+      - admin-runtime
+      operationId: admin_runtime_get_delivery_projection
+      responses:
+        '200':
+          description: Read-only production delivery evidence projection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeliveryConsoleProjection'
+        '401':
+          description: Authentication is required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Runtime read capability is required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/runtime/executions/{node_id}/logs:
     get:
       tags:
@@ -3073,6 +3097,85 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /system/delivery/deliveries/{delivery_id}/artifacts:
+    post:
+      tags:
+      - system-delivery
+      operationId: system_delivery_record_artifacts
+      parameters:
+      - name: delivery_id
+        in: path
+        description: Stable production delivery identity
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeliveryArtifactRecordRequest'
+        required: true
+      responses:
+        '200':
+          description: Immutable delivery artifacts recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeliveryArtifactRecordResponse'
+        '400':
+          description: Artifact is invalid or secret-shaped
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: System Plane service authority is required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /system/delivery/policy/evaluate:
+    post:
+      tags:
+      - system-delivery
+      operationId: system_delivery_evaluate_policy
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeliveryPolicyInputs'
+        required: true
+      responses:
+        '200':
+          description: Canonical System Plane Policy Evidence
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyEvidence'
+        '400':
+          description: Canonical policy input or authority configuration is invalid
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: System Plane service authority is required
           content:
             application/problem+json:
               schema:
@@ -7656,6 +7759,222 @@ components:
           type:
           - string
           - 'null'
+    CanaryDecision:
+      type: object
+      required:
+      - protocol
+      - decisionId
+      - planId
+      - observationId
+      - decision
+      - outcome
+      - currentPercent
+      - nextPercent
+      - issues
+      - activeDegradedModes
+      - evidenceReferences
+      - effects
+      properties:
+        activeDegradedModes:
+          type: array
+          items:
+            type: string
+        currentPercent:
+          type: integer
+          format: int32
+          minimum: 0
+        decision:
+          $ref: '#/components/schemas/DeliveryDecision'
+        decisionId:
+          type: string
+        effects:
+          $ref: '#/components/schemas/DeliveryEffects'
+        evidenceReferences:
+          type: array
+          items:
+            type: string
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeliveryIssue'
+        nextPercent:
+          type: integer
+          format: int32
+          minimum: 0
+        observationId:
+          type: string
+        outcome:
+          $ref: '#/components/schemas/CanaryOutcome'
+        planId:
+          type: string
+        protocol:
+          type: string
+    CanaryOutcome:
+      type: string
+      enum:
+      - expand
+      - hold_degraded
+      - pause
+      - rollback
+      - converged
+    CanaryPlan:
+      type: object
+      required:
+      - protocol
+      - planId
+      - planDigest
+      - releaseId
+      - releaseDigest
+      - productionDeploymentPlanId
+      - productionDeploymentDigest
+      - productionDeploymentReceiptId
+      - productionDeploymentObservationId
+      - productionEnvironment
+      - productionExpectedEnvironmentRevision
+      - reliabilityContract
+      - releaseRollbackConstraints
+      - policyEvidenceId
+      - policyEvidenceDigest
+      - environmentVerificationId
+      - environmentVerificationDigest
+      - previousKnownGoodPlanId
+      - previousKnownGoodDeploymentDigest
+      - previousKnownGoodReleaseId
+      - previousKnownGoodReleaseDigest
+      - previousKnownGoodReceiptId
+      - previousKnownGoodObservationId
+      - previousKnownGoodPolicyEvidenceId
+      - previousKnownGoodPolicyEvidenceDigest
+      - previousKnownGoodGatewayPlanId
+      - previousKnownGoodGatewayPlanDigest
+      - previousKnownGoodGatewayConfigurationIdentity
+      - previousKnownGoodGatewayObservationId
+      - previousKnownGoodGatewayObservationRevision
+      - previousKnownGoodGatewayObservedAfter
+      - initialPercent
+      - maximumPercent
+      - workloadIds
+      - effects
+      properties:
+        effects:
+          $ref: '#/components/schemas/DeliveryEffects'
+        environmentVerificationDigest:
+          type: string
+        environmentVerificationId:
+          type: string
+        initialPercent:
+          type: integer
+          format: int32
+          minimum: 0
+        maximumPercent:
+          type: integer
+          format: int32
+          minimum: 0
+        planDigest:
+          type: string
+        planId:
+          type: string
+        policyEvidenceDigest:
+          type: string
+        policyEvidenceId:
+          type: string
+        previousKnownGoodDeploymentDigest:
+          type: string
+        previousKnownGoodGatewayConfigurationIdentity:
+          type: string
+        previousKnownGoodGatewayObservationId:
+          type: string
+        previousKnownGoodGatewayObservationRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        previousKnownGoodGatewayObservedAfter:
+          type: string
+        previousKnownGoodGatewayPlanDigest:
+          type: string
+        previousKnownGoodGatewayPlanId:
+          type: string
+        previousKnownGoodObservationId:
+          type: string
+        previousKnownGoodPlanId:
+          type: string
+        previousKnownGoodPolicyEvidenceDigest:
+          type: string
+        previousKnownGoodPolicyEvidenceId:
+          type: string
+        previousKnownGoodReceiptId:
+          type: string
+        previousKnownGoodReleaseDigest:
+          type: string
+        previousKnownGoodReleaseId:
+          type: string
+        productionDeploymentDigest:
+          type: string
+        productionDeploymentObservationId:
+          type: string
+        productionDeploymentPlanId:
+          type: string
+        productionDeploymentReceiptId:
+          type: string
+        productionEnvironment:
+          type: string
+        productionExpectedEnvironmentRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        protocol:
+          type: string
+        releaseDigest:
+          type: string
+        releaseId:
+          type: string
+        releaseRollbackConstraints:
+          $ref: '#/components/schemas/ReleaseRollbackConstraints'
+        reliabilityContract:
+          $ref: '#/components/schemas/DeliveryReliabilityContract'
+        workloadIds:
+          type: array
+          items:
+            type: string
+    ConfigActivationReceipt:
+      type: object
+      required:
+      - protocol
+      - receiptId
+      - planId
+      - environment
+      - environmentRevisionBefore
+      - environmentRevisionAfter
+      - targetRevisionId
+      - activation
+      - effects
+      properties:
+        activation:
+          $ref: '#/components/schemas/ConfigRevisionActivation'
+        effects:
+          $ref: '#/components/schemas/DeliveryEffects'
+        environment:
+          type: string
+        environmentRevisionAfter:
+          type: integer
+          format: int64
+          minimum: 0
+        environmentRevisionBefore:
+          type: integer
+          format: int64
+          minimum: 0
+        planId:
+          type: string
+        previousRevisionId:
+          type:
+          - string
+          - 'null'
+        protocol:
+          type: string
+        receiptId:
+          type: string
+        targetRevisionId:
+          type: string
     ConfigAuditDto:
       type: object
       description: One audit entry.
@@ -7688,6 +8007,24 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ConfigAuditDto'
+    ConfigContractDefinition:
+      type: object
+      required:
+      - protocol
+      - reference
+      - digest
+      - fields
+      properties:
+        digest:
+          type: string
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConfigField'
+        protocol:
+          type: string
+        reference:
+          type: string
     ConfigDescriptorDto:
       type: object
       description: A registered setting's static metadata.
@@ -7743,6 +8080,46 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ConfigGroupDto'
+    ConfigField:
+      type: object
+      required:
+      - path
+      - valueType
+      - required
+      - sensitivity
+      - scope
+      - activation
+      - mutable
+      properties:
+        activation:
+          $ref: '#/components/schemas/ConfigFieldActivation'
+        mutable:
+          type: boolean
+        path:
+          type: string
+        required:
+          type: boolean
+        scope:
+          $ref: '#/components/schemas/ConfigFieldScope'
+        sensitivity:
+          $ref: '#/components/schemas/ConfigFieldSensitivity'
+        valueType:
+          $ref: '#/components/schemas/ConfigValueType'
+    ConfigFieldActivation:
+      type: string
+      enum:
+      - hot
+      - restart
+    ConfigFieldScope:
+      type: string
+      enum:
+      - service
+      - workload
+    ConfigFieldSensitivity:
+      type: string
+      enum:
+      - public
+      - sensitive
     ConfigGroupDto:
       type: object
       description: Presentation metadata for a set of related settings.
@@ -7761,6 +8138,66 @@ components:
         order:
           type: integer
           format: int32
+    ConfigImpact:
+      type: object
+      required:
+      - path
+      - scope
+      - activation
+      - mutable
+      properties:
+        activation:
+          $ref: '#/components/schemas/ConfigFieldActivation'
+        mutable:
+          type: boolean
+        path:
+          type: string
+        scope:
+          $ref: '#/components/schemas/ConfigFieldScope'
+    ConfigRevision:
+      type: object
+      required:
+      - protocol
+      - revisionId
+      - revisionDigest
+      - serviceId
+      - contractReference
+      - contractDigest
+      - values
+      - secretReferences
+      - impacts
+      properties:
+        contractDigest:
+          type: string
+        contractReference:
+          type: string
+        impacts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConfigImpact'
+        protocol:
+          type: string
+        revisionDigest:
+          type: string
+        revisionId:
+          type: string
+        secretReferences:
+          type: array
+          items:
+            $ref: '#/components/schemas/SecretReference'
+        serviceId:
+          type: string
+        values:
+          type: object
+          additionalProperties: {}
+          propertyNames:
+            type: string
+    ConfigRevisionActivation:
+      type: string
+      enum:
+      - staged
+      - active
+      - rolled_back
     ConfigValueDto:
       type: object
       description: A resolved config value for the running service plus any persisted desired value.
@@ -7792,6 +8229,15 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ConfigValueDto'
+    ConfigValueType:
+      type: string
+      enum:
+      - string
+      - integer
+      - number
+      - boolean
+      - object
+      - array
     ConfigVisibilityConditionDto:
       oneOf:
       - type: object
@@ -8068,6 +8514,69 @@ components:
           type: string
         label:
           type: string
+    ContractCompatibilityInput:
+      type: object
+      required:
+      - contractId
+      - currentMajor
+      - candidateMajor
+      - consumerMigrationEvidence
+      - retiring
+      - deprecationWindowComplete
+      properties:
+        activeConsumers:
+          type: array
+          items:
+            type: string
+        candidateMajor:
+          type: integer
+          format: int32
+          minimum: 0
+        compatible:
+          type:
+          - boolean
+          - 'null'
+        consumerMigrationEvidence:
+          type: boolean
+        contractId:
+          type: string
+        currentMajor:
+          type: integer
+          format: int32
+          minimum: 0
+        deprecationWindowComplete:
+          type: boolean
+        retiring:
+          type: boolean
+    ContractRetirementEvidence:
+      type: object
+      required:
+      - contractId
+      - ready
+      - activeConsumers
+      - deprecationWindowComplete
+      properties:
+        activeConsumers:
+          type: array
+          items:
+            type: string
+        contractId:
+          type: string
+        deprecationWindowComplete:
+          type: boolean
+        ready:
+          type: boolean
+    CorsIntent:
+      type: object
+      properties:
+        allowedMethods:
+          type: array
+          items:
+            type: string
+        allowedOrigins:
+          type: array
+          items:
+            type: string
     CreateDevSessionRequest:
       type: object
       required:
@@ -8091,6 +8600,989 @@ components:
         token:
           type: string
         user_id:
+          type: string
+    DeliveryArtifactRecordEffects:
+      type: object
+      required:
+      - appendsLedger
+      properties:
+        appendsLedger:
+          type: boolean
+    DeliveryArtifactRecordRequest:
+      type: object
+      required:
+      - providerId
+      - providerProof
+      - artifacts
+      properties:
+        artifacts:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeliveryArtifactSchema'
+        providerId:
+          type: string
+        providerProof:
+          type: string
+    DeliveryArtifactRecordResponse:
+      type: object
+      required:
+      - protocol
+      - deliveryId
+      - batchSubject
+      - providerId
+      - recorded
+      - effects
+      properties:
+        batchSubject:
+          type: string
+        deliveryId:
+          type: string
+        effects:
+          $ref: '#/components/schemas/DeliveryArtifactRecordEffects'
+        protocol:
+          type: string
+        providerId:
+          type: string
+        recorded:
+          type: integer
+          minimum: 0
+    DeliveryArtifactSchema:
+      oneOf:
+      - $ref: '#/components/schemas/ServiceRelease'
+      - $ref: '#/components/schemas/ReleaseTrustEvidence'
+      - $ref: '#/components/schemas/PolicyEvidence'
+      - $ref: '#/components/schemas/ConfigRevision'
+      - $ref: '#/components/schemas/ConfigActivationReceipt'
+      - $ref: '#/components/schemas/EdgeContract'
+      - $ref: '#/components/schemas/GatewayConfigurationPlan'
+      - $ref: '#/components/schemas/GatewayObservation'
+      - $ref: '#/components/schemas/DeploymentPlan'
+      - $ref: '#/components/schemas/DeploymentReceipt'
+      - $ref: '#/components/schemas/DeploymentObservation'
+      - $ref: '#/components/schemas/EnvironmentVerification'
+      - $ref: '#/components/schemas/PromotionPlan'
+      - $ref: '#/components/schemas/PromotionApproval'
+      - $ref: '#/components/schemas/PromotionReceipt'
+      - $ref: '#/components/schemas/CanaryPlan'
+      - $ref: '#/components/schemas/CanaryDecision'
+      - $ref: '#/components/schemas/ReliabilityObservation'
+      - $ref: '#/components/schemas/RollbackPlan'
+      - $ref: '#/components/schemas/RollbackReceipt'
+    DeliveryConsoleAdapterDrift:
+      type: object
+      required:
+      - environment
+      - drifted
+      - fresh
+      properties:
+        drifted:
+          type: boolean
+        environment:
+          type: string
+        fresh:
+          type: boolean
+        nextActions:
+          type: array
+          items:
+            type: string
+    DeliveryConsoleCanaryObservation:
+      type: object
+      required:
+      - observationId
+      - observedRevision
+      - fresh
+      - observationWindowSeconds
+      - sampleCount
+      - genericProcessHealthy
+      properties:
+        availabilityBasisPoints:
+          type:
+          - integer
+          - 'null'
+          format: int32
+          minimum: 0
+        availabilityCheckPassed:
+          type:
+          - boolean
+          - 'null'
+        compensationPressure:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        dependencies:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeliveryConsoleDependencyObservation'
+        disruptionCheckPassed:
+          type:
+          - boolean
+          - 'null'
+        errorBudgetUsedBasisPoints:
+          type:
+          - integer
+          - 'null'
+          format: int32
+          minimum: 0
+        evidenceReferences:
+          type: array
+          items:
+            type: string
+        failureDomains:
+          type: object
+          additionalProperties:
+            type: boolean
+          propertyNames:
+            type: string
+        fresh:
+          type: boolean
+        genericProcessHealthy:
+          type: boolean
+        latencyP99Ms:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        observationId:
+          type: string
+        observationWindowSeconds:
+          type: integer
+          format: int64
+          minimum: 0
+        observedRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        queueBacklog:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        retryExhaustion:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        sampleCount:
+          type: integer
+          format: int64
+          minimum: 0
+        scalingCheckPassed:
+          type:
+          - boolean
+          - 'null'
+        timerLagMs:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        workflowBacklog:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        workloadLiveness:
+          type: object
+          additionalProperties:
+            type: boolean
+          propertyNames:
+            type: string
+        workloadReadiness:
+          type: object
+          additionalProperties:
+            type: boolean
+          propertyNames:
+            type: string
+    DeliveryConsoleConfiguration:
+      type: object
+      required:
+      - drifted
+      properties:
+        activeRevisionId:
+          type:
+          - string
+          - 'null'
+        desiredRevisionId:
+          type:
+          - string
+          - 'null'
+        drifted:
+          type: boolean
+        previousRevisionId:
+          type:
+          - string
+          - 'null'
+        secretReferences:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeliveryConsoleSecretReference'
+    DeliveryConsoleDependencyObservation:
+      type: object
+      required:
+      - dependencyId
+      - available
+      properties:
+        activeDegradedMode:
+          type:
+          - string
+          - 'null'
+        available:
+          type: boolean
+        dependencyId:
+          type: string
+    DeliveryConsoleDeployment:
+      type: object
+      required:
+      - environment
+      - desiredReleaseId
+      - observedReleaseId
+      - configRevisionId
+      - drifted
+      - fresh
+      properties:
+        configRevisionId:
+          type: string
+        desiredReleaseId:
+          type: string
+        drifted:
+          type: boolean
+        environment:
+          type: string
+        fresh:
+          type: boolean
+        observedReleaseId:
+          type: string
+    DeliveryConsoleEdge:
+      type: object
+      required:
+      - contractId
+      properties:
+        contractId:
+          type: string
+        publicRoutes:
+          type: array
+          items:
+            type: string
+    DeliveryConsoleIssue:
+      type: object
+      required:
+      - code
+      - message
+      - remediation
+      properties:
+        code:
+          type: string
+        evidenceReferences:
+          type: array
+          items:
+            type: string
+        message:
+          type: string
+        nextActions:
+          type: array
+          items:
+            type: string
+        remediation:
+          type: string
+    DeliveryConsolePolicy:
+      type: object
+      required:
+      - evidenceId
+      - packId
+      - decision
+      properties:
+        decision:
+          type: string
+        evidenceId:
+          type: string
+        packId:
+          type: string
+    DeliveryConsoleProjection:
+      type: object
+      required:
+      - protocol
+      - projectionDigest
+      - state
+      - configuration
+      - readOnly
+      properties:
+        adapterDrift:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeliveryConsoleAdapterDrift'
+        applyActions:
+          type: array
+          items:
+            type: string
+        canaryObservations:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeliveryConsoleCanaryObservation'
+        canaryTimeline:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeliveryConsoleTimelineEntry'
+        configuration:
+          $ref: '#/components/schemas/DeliveryConsoleConfiguration'
+        deployments:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeliveryConsoleDeployment'
+        edge:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/DeliveryConsoleEdge'
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeliveryConsoleIssue'
+        nextActions:
+          type: array
+          items:
+            type: string
+        policy:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/DeliveryConsolePolicy'
+        projectionDigest:
+          type: string
+        promotionHistory:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeliveryConsoleTimelineEntry'
+        protocol:
+          type: string
+        readOnly:
+          type: boolean
+        release:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/DeliveryConsoleRelease'
+        rollbackTimeline:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeliveryConsoleTimelineEntry'
+        runtimeStoryReferences:
+          type: array
+          items:
+            type: string
+        state:
+          $ref: '#/components/schemas/DeliveryConsoleState'
+        supplyChain:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeliveryConsoleSupplyChainWorkload'
+    DeliveryConsoleRelease:
+      type: object
+      required:
+      - serviceId
+      - releaseId
+      - releaseDigest
+      properties:
+        releaseDigest:
+          type: string
+        releaseId:
+          type: string
+        serviceId:
+          type: string
+    DeliveryConsoleSecretReference:
+      type: object
+      required:
+      - referenceId
+      - provider
+      - purpose
+      - scope
+      - status
+      properties:
+        provider:
+          type: string
+        purpose:
+          type: string
+        referenceId:
+          type: string
+        rotationRevision:
+          type:
+          - string
+          - 'null'
+        scope:
+          type: string
+        status:
+          type: string
+    DeliveryConsoleState:
+      type: string
+      enum:
+      - planned
+      - blocked
+      - staged
+      - approved
+      - canary
+      - converging
+      - ready
+      - rolling_back
+      - rolled_back
+      - paused
+      - intervention_required
+    DeliveryConsoleSupplyChainWorkload:
+      type: object
+      required:
+      - workloadId
+      - artifactDigest
+      - signatureStatus
+      - sbomReference
+      - provenanceReference
+      - provenanceSubjectMatches
+      properties:
+        artifactDigest:
+          type: string
+        provenanceReference:
+          type: string
+        provenanceSubjectMatches:
+          type: boolean
+        sbomReference:
+          type: string
+        signatureStatus:
+          type: string
+        workloadId:
+          type: string
+    DeliveryConsoleTimelineEntry:
+      type: object
+      required:
+      - protocol
+      - artifactId
+      - state
+      properties:
+        artifactId:
+          type: string
+        evidenceReferences:
+          type: array
+          items:
+            type: string
+        protocol:
+          type: string
+        state:
+          type: string
+    DeliveryDecision:
+      type: string
+      enum:
+      - passed
+      - advisory
+      - blocked
+    DeliveryEffects:
+      type: object
+      required:
+      - mutatesEnvironment
+      - mutatesConfiguration
+      - mutatesGateway
+      - mutatesDeployment
+      - appendsLedger
+      properties:
+        appendsLedger:
+          type: boolean
+        mutatesConfiguration:
+          type: boolean
+        mutatesDeployment:
+          type: boolean
+        mutatesEnvironment:
+          type: boolean
+        mutatesGateway:
+          type: boolean
+    DeliveryEvidenceReference:
+      type: object
+      required:
+      - reference
+      - digest
+      properties:
+        digest:
+          type: string
+        reference:
+          type: string
+    DeliveryIssue:
+      type: object
+      required:
+      - code
+      - message
+      - remediation
+      properties:
+        code:
+          $ref: '#/components/schemas/DeliveryIssueCode'
+        evidenceReferences:
+          type: array
+          items:
+            type: string
+        message:
+          type: string
+        nextActions:
+          type: array
+          items:
+            type: string
+        remediation:
+          type: string
+    DeliveryIssueCode:
+      type: string
+      enum:
+      - release_input_invalid
+      - mutable_artifact_reference
+      - missing_sbom
+      - missing_provenance
+      - provenance_subject_mismatch
+      - signature_missing
+      - signature_invalid
+      - signer_untrusted
+      - signer_revoked
+      - release_tampered
+      - config_contract_mismatch
+      - plaintext_secret_detected
+      - secret_reference_unresolved
+      - stale_input
+      - concurrent_mutation
+      - policy_evidence_missing
+      - policy_rule_blocked
+      - contract_incompatible
+      - migration_unsafe
+      - workflow_incompatible
+      - rollback_unsafe
+      - edge_operation_unknown
+      - edge_path_conflict
+      - edge_exposure_unsafe
+      - deployment_input_invalid
+      - migration_incomplete
+      - observation_stale
+      - approval_required
+      - approval_invalid
+      - reliability_evidence_missing
+      - canary_breach
+      - rollback_incomplete
+      - coordination_unavailable
+    DeliveryPolicyInputs:
+      type: object
+      required:
+      - release
+      - trust
+      - configContract
+      - config
+      - eligibility
+      - eligibilityInput
+      properties:
+        config:
+          $ref: '#/components/schemas/ConfigRevision'
+        configContract:
+          $ref: '#/components/schemas/ConfigContractDefinition'
+        eligibility:
+          $ref: '#/components/schemas/ProductionEligibilityEvidence'
+        eligibilityInput:
+          $ref: '#/components/schemas/ProductionEligibilityInput'
+        release:
+          $ref: '#/components/schemas/ServiceRelease'
+        trust:
+          $ref: '#/components/schemas/ReleaseTrustEvidence'
+    DeliveryReliabilityContract:
+      type: object
+      required:
+      - protocol
+      - contractId
+      - minimumObservationSeconds
+      - minimumSampleCount
+      - minimumAvailabilityBasisPoints
+      - maximumLatencyP99Ms
+      - maximumErrorBudgetUsedBasisPoints
+      - maximumQueueBacklog
+      - maximumWorkflowBacklog
+      - maximumTimerLagMs
+      - maximumRetryExhaustion
+      - maximumCompensationPressure
+      - minimumHealthyFailureDomains
+      - dependencies
+      properties:
+        contractId:
+          type: string
+        dependencies:
+          type: array
+          items:
+            $ref: '#/components/schemas/DependencyReliability'
+        maximumCompensationPressure:
+          type: integer
+          format: int64
+          minimum: 0
+        maximumErrorBudgetUsedBasisPoints:
+          type: integer
+          format: int32
+          minimum: 0
+        maximumLatencyP99Ms:
+          type: integer
+          format: int64
+          minimum: 0
+        maximumQueueBacklog:
+          type: integer
+          format: int64
+          minimum: 0
+        maximumRetryExhaustion:
+          type: integer
+          format: int64
+          minimum: 0
+        maximumTimerLagMs:
+          type: integer
+          format: int64
+          minimum: 0
+        maximumWorkflowBacklog:
+          type: integer
+          format: int64
+          minimum: 0
+        minimumAvailabilityBasisPoints:
+          type: integer
+          format: int32
+          minimum: 0
+        minimumHealthyFailureDomains:
+          type: integer
+          format: int32
+          minimum: 0
+        minimumObservationSeconds:
+          type: integer
+          format: int64
+          minimum: 0
+        minimumSampleCount:
+          type: integer
+          format: int64
+          minimum: 0
+        protocol:
+          type: string
+    DependencyCriticality:
+      type: string
+      enum:
+      - critical
+      - degradable
+      - optional
+    DependencyReliability:
+      type: object
+      required:
+      - dependencyId
+      - criticality
+      properties:
+        allowedDegradedModes:
+          type: array
+          items:
+            type: string
+        criticality:
+          $ref: '#/components/schemas/DependencyCriticality'
+        dependencyId:
+          type: string
+    DependencyReliabilityObservation:
+      type: object
+      required:
+      - dependencyId
+      - available
+      properties:
+        activeDegradedMode:
+          type:
+          - string
+          - 'null'
+        available:
+          type: boolean
+        dependencyId:
+          type: string
+    DeploymentAdapterKind:
+      type: string
+      enum:
+      - local
+      - externally_managed
+      - kubernetes
+    DeploymentObservation:
+      type: object
+      required:
+      - protocol
+      - observationId
+      - planId
+      - receiptId
+      - sourceObservationId
+      - environment
+      - desiredReleaseId
+      - observedReleaseId
+      - observedReleaseDigest
+      - desiredWorkloadDigests
+      - observedWorkloadDigests
+      - configRevisionId
+      - drifted
+      - fresh
+      - nextActions
+      properties:
+        configRevisionId:
+          type: string
+        desiredReleaseId:
+          type: string
+        desiredWorkloadDigests:
+          type: object
+          additionalProperties:
+            type: string
+          propertyNames:
+            type: string
+        drifted:
+          type: boolean
+        environment:
+          type: string
+        fresh:
+          type: boolean
+        nextActions:
+          type: array
+          items:
+            type: string
+        observationId:
+          type: string
+        observedReleaseDigest:
+          type: string
+        observedReleaseId:
+          type: string
+        observedWorkloadDigests:
+          type: object
+          additionalProperties:
+            type: string
+          propertyNames:
+            type: string
+        planId:
+          type: string
+        protocol:
+          type: string
+        receiptId:
+          type: string
+        sourceObservationId:
+          type: string
+    DeploymentPlan:
+      type: object
+      required:
+      - protocol
+      - planId
+      - planDigest
+      - adapter
+      - environment
+      - expectedEnvironmentRevision
+      - releaseId
+      - releaseDigest
+      - serviceId
+      - configRevisionId
+      - secretReferenceIds
+      - endpoints
+      - placement
+      - workloads
+      - adapterInputs
+      - gatewayPlanDigest
+      - policyEvidenceReferences
+      - rollbackCapable
+      - nextActions
+      - effects
+      properties:
+        adapter:
+          $ref: '#/components/schemas/DeploymentAdapterKind'
+        adapterInputs:
+          type: object
+          additionalProperties:
+            type: string
+          propertyNames:
+            type: string
+        configRevisionId:
+          type: string
+        effects:
+          $ref: '#/components/schemas/DeliveryEffects'
+        endpoints:
+          type: object
+          additionalProperties:
+            type: string
+          propertyNames:
+            type: string
+        environment:
+          type: string
+        expectedEnvironmentRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        gatewayPlanDigest:
+          type: string
+        nextActions:
+          type: array
+          items:
+            type: string
+        placement:
+          type: object
+          additionalProperties:
+            type: string
+          propertyNames:
+            type: string
+        planDigest:
+          type: string
+        planId:
+          type: string
+        policyEvidenceReferences:
+          type: array
+          items:
+            type: string
+        protocol:
+          type: string
+        releaseDigest:
+          type: string
+        releaseId:
+          type: string
+        rollbackCapable:
+          type: boolean
+        secretReferenceIds:
+          type: array
+          items:
+            type: string
+        serviceId:
+          type: string
+        workloads:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeploymentWorkloadPlan'
+    DeploymentReceipt:
+      type: object
+      required:
+      - protocol
+      - receiptId
+      - planId
+      - adapter
+      - environment
+      - environmentRevisionBefore
+      - environmentRevisionAfter
+      - releaseId
+      - releaseDigest
+      - configRevisionId
+      - workloadDigests
+      - gatewayPlanDigest
+      - effects
+      properties:
+        adapter:
+          $ref: '#/components/schemas/DeploymentAdapterKind'
+        configRevisionId:
+          type: string
+        effects:
+          $ref: '#/components/schemas/DeliveryEffects'
+        environment:
+          type: string
+        environmentRevisionAfter:
+          type: integer
+          format: int64
+          minimum: 0
+        environmentRevisionBefore:
+          type: integer
+          format: int64
+          minimum: 0
+        gatewayPlanDigest:
+          type: string
+        planId:
+          type: string
+        protocol:
+          type: string
+        receiptId:
+          type: string
+        releaseDigest:
+          type: string
+        releaseId:
+          type: string
+        workloadDigests:
+          type: object
+          additionalProperties:
+            type: string
+          propertyNames:
+            type: string
+    DeploymentWorkloadPlan:
+      type: object
+      required:
+      - workloadId
+      - role
+      - artifactReference
+      - artifactDigest
+      - mediaType
+      - settings
+      properties:
+        artifactDigest:
+          type: string
+        artifactReference:
+          type: string
+        mediaType:
+          type: string
+        role:
+          $ref: '#/components/schemas/ReleaseWorkloadRole'
+        settings:
+          $ref: '#/components/schemas/DeploymentWorkloadSettings'
+        workloadId:
+          type: string
+    DeploymentWorkloadSettings:
+      type: object
+      required:
+      - workloadId
+      - replicas
+      properties:
+        command:
+          type: array
+          items:
+            type: string
+        disruptionMinAvailable:
+          type:
+          - integer
+          - 'null'
+          format: int32
+          minimum: 0
+        healthPath:
+          type:
+          - string
+          - 'null'
+        port:
+          type:
+          - integer
+          - 'null'
+          format: int32
+          minimum: 0
+        replicas:
+          type: integer
+          format: int32
+          minimum: 0
+        workloadId:
+          type: string
+    EdgeAuthentication:
+      type: string
+      enum:
+      - public
+      - workload
+      - user
+      - workload_or_user
+    EdgeContract:
+      type: object
+      required:
+      - protocol
+      - edgeContractId
+      - edgeContractDigest
+      - serviceId
+      - releaseId
+      - releaseDigest
+      - operationCatalogDigest
+      - providerId
+      - providerProof
+      - routes
+      properties:
+        edgeContractDigest:
+          type: string
+        edgeContractId:
+          type: string
+        operationCatalogDigest:
+          type: string
+        protocol:
+          type: string
+        providerId:
+          type: string
+        providerProof:
+          type: string
+        releaseDigest:
+          type: string
+        releaseId:
+          type: string
+        routes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResolvedEdgeRoute'
+        serviceId:
           type: string
     EffectiveReliabilityValues:
       type: object
@@ -8170,6 +9662,148 @@ components:
           description: |-
             Capability required to read this entity. Declared now; gated only
             coarsely (AdminActor) this step. Fine-grained RBAC is a later spec.
+    EnvironmentVerification:
+      type: object
+      required:
+      - protocol
+      - verificationId
+      - verificationDigest
+      - environment
+      - environmentRevision
+      - releaseId
+      - releaseDigest
+      - workloadDigests
+      - workloadHealth
+      - configRevisionId
+      - trustEvidenceDigest
+      - policyEvidenceId
+      - policyEvidenceDigest
+      - deploymentPlanId
+      - deploymentPlanDigest
+      - deploymentReceiptId
+      - deploymentObservationId
+      - operatorObservationId
+      - operatorObservationDigest
+      - operatorObservationAuthorityId
+      - operatorObservationAuthorityProof
+      - operatorObservationClaims
+      - gatewayPlanId
+      - gatewayPlanDigest
+      - gatewayObservationId
+      - gatewayResourceUid
+      - gatewayResourceVersion
+      - gatewayAuthorityContext
+      - gatewayConfigurationIdentity
+      - gatewayObservationRevision
+      - gatewayObservationObservedAfter
+      - gatewayObservationFresh
+      - gatewayObservationProviderId
+      - gatewayObservationProviderProof
+      - topologyDigest
+      - evidenceReferences
+      - freshnessHorizonRevision
+      - decision
+      - issues
+      - effects
+      properties:
+        configRevisionId:
+          type: string
+        decision:
+          $ref: '#/components/schemas/DeliveryDecision'
+        deploymentObservationId:
+          type: string
+        deploymentPlanDigest:
+          type: string
+        deploymentPlanId:
+          type: string
+        deploymentReceiptId:
+          type: string
+        effects:
+          $ref: '#/components/schemas/DeliveryEffects'
+        environment:
+          type: string
+        environmentRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        evidenceReferences:
+          type: array
+          items:
+            type: string
+        freshnessHorizonRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        gatewayAuthorityContext:
+          type: string
+        gatewayConfigurationIdentity:
+          type: string
+        gatewayObservationFresh:
+          type: boolean
+        gatewayObservationId:
+          type: string
+        gatewayObservationObservedAfter:
+          type: string
+        gatewayObservationProviderId:
+          type: string
+        gatewayObservationProviderProof:
+          type: string
+        gatewayObservationRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        gatewayPlanDigest:
+          type: string
+        gatewayPlanId:
+          type: string
+        gatewayResourceUid:
+          type: string
+        gatewayResourceVersion:
+          type: string
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeliveryIssue'
+        operatorObservationAuthorityId:
+          type: string
+        operatorObservationAuthorityProof:
+          type: string
+        operatorObservationClaims:
+          $ref: '#/components/schemas/OperatorObservationClaims'
+        operatorObservationDigest:
+          type: string
+        operatorObservationId:
+          type: string
+        policyEvidenceDigest:
+          type: string
+        policyEvidenceId:
+          type: string
+        protocol:
+          type: string
+        releaseDigest:
+          type: string
+        releaseId:
+          type: string
+        topologyDigest:
+          type: string
+        trustEvidenceDigest:
+          type: string
+        verificationDigest:
+          type: string
+        verificationId:
+          type: string
+        workloadDigests:
+          type: object
+          additionalProperties:
+            type: string
+          propertyNames:
+            type: string
+        workloadHealth:
+          type: object
+          additionalProperties:
+            type: boolean
+          propertyNames:
+            type: string
     ErrorResponse:
       type: object
       required:
@@ -8527,6 +10161,152 @@ components:
             enum:
             - json
       description: Minimal field-type vocabulary. `Json` is the catch-all so any field renders.
+    GatewayConfigurationPlan:
+      type: object
+      required:
+      - protocol
+      - planId
+      - planDigest
+      - edgeContractId
+      - edgeContractDigest
+      - edgeReleaseId
+      - edgeReleaseDigest
+      - operationCatalogDigest
+      - edgeProviderId
+      - edgeProviderProof
+      - environment
+      - gatewayAdapter
+      - publicOrigin
+      - expectedGatewayRevision
+      - configurationIdentity
+      - routes
+      - diff
+      - drifted
+      - issues
+      - nextActions
+      - effects
+      properties:
+        configurationIdentity:
+          type: string
+        diff:
+          type: array
+          items:
+            $ref: '#/components/schemas/GatewayPlanDiffEntry'
+        drifted:
+          type: boolean
+        edgeContractDigest:
+          type: string
+        edgeContractId:
+          type: string
+        edgeProviderId:
+          type: string
+        edgeProviderProof:
+          type: string
+        edgeReleaseDigest:
+          type: string
+        edgeReleaseId:
+          type: string
+        effects:
+          $ref: '#/components/schemas/DeliveryEffects'
+        environment:
+          type: string
+        expectedGatewayRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        gatewayAdapter:
+          type: string
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeliveryIssue'
+        nextActions:
+          type: array
+          items:
+            type: string
+        operationCatalogDigest:
+          type: string
+        planDigest:
+          type: string
+        planId:
+          type: string
+        protocol:
+          type: string
+        publicOrigin:
+          type: string
+        routes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResolvedEdgeRoute'
+    GatewayObservation:
+      type: object
+      required:
+      - protocol
+      - observationId
+      - planId
+      - planDigest
+      - environment
+      - releaseId
+      - releaseDigest
+      - resourceUid
+      - resourceVersion
+      - authorityContext
+      - configurationIdentity
+      - revision
+      - observedAfter
+      - fresh
+      - providerId
+      - providerProof
+      properties:
+        authorityContext:
+          type: string
+        configurationIdentity:
+          type: string
+        environment:
+          type: string
+        fresh:
+          type: boolean
+        observationId:
+          type: string
+        observedAfter:
+          type: string
+        planDigest:
+          type: string
+        planId:
+          type: string
+        protocol:
+          type: string
+        providerId:
+          type: string
+        providerProof:
+          type: string
+        releaseDigest:
+          type: string
+        releaseId:
+          type: string
+        resourceUid:
+          type: string
+        resourceVersion:
+          type: string
+        revision:
+          type: integer
+          format: int64
+          minimum: 0
+    GatewayPlanDiffEntry:
+      type: object
+      required:
+      - subject
+      properties:
+        after:
+          type:
+          - string
+          - 'null'
+        before:
+          type:
+          - string
+          - 'null'
+        subject:
+          type: string
     LifecycleActivationJobDeclaration:
       type: object
       required:
@@ -8592,6 +10372,35 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/LifecycleStartupCheckDeclaration'
+    MigrationCompatibilityInput:
+      type: object
+      required:
+      - migrationId
+      - lineageId
+      - sequence
+      - phase
+      - verified
+      properties:
+        lineageId:
+          type: string
+        migrationId:
+          type: string
+        phase:
+          $ref: '#/components/schemas/MigrationPhase'
+        sequence:
+          type: integer
+          format: int32
+          minimum: 0
+        verified:
+          type: boolean
+    MigrationPhase:
+      type: string
+      enum:
+      - expand
+      - backfill
+      - verify
+      - contract
+      - irreversible
     ModuleHttpMethod:
       type: string
       enum:
@@ -8765,6 +10574,98 @@ components:
           type: string
         token_type:
           type: string
+    OperatorObservationClaims:
+      type: object
+      required:
+      - protocol
+      - serviceId
+      - environment
+      - deploymentPlanId
+      - deploymentPlanDigest
+      - expectedEnvironmentRevision
+      - environmentRevision
+      - authorityContext
+      - resourceUid
+      - resourceVersion
+      - desiredReleaseId
+      - desiredReleaseDigest
+      - observedReleaseId
+      - observedReleaseDigest
+      - desiredWorkloadDigests
+      - observedWorkloadDigests
+      - workloadHealth
+      - configRevisionId
+      - state
+      - rolloutPhase
+      - rollbackState
+      - drifted
+      - fresh
+      - decision
+      properties:
+        authorityContext:
+          type: string
+        configRevisionId:
+          type: string
+        decision:
+          $ref: '#/components/schemas/DeliveryDecision'
+        deploymentPlanDigest:
+          type: string
+        deploymentPlanId:
+          type: string
+        desiredReleaseDigest:
+          type: string
+        desiredReleaseId:
+          type: string
+        desiredWorkloadDigests:
+          type: object
+          additionalProperties:
+            type: string
+          propertyNames:
+            type: string
+        drifted:
+          type: boolean
+        environment:
+          type: string
+        environmentRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        expectedEnvironmentRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        fresh:
+          type: boolean
+        observedReleaseDigest:
+          type: string
+        observedReleaseId:
+          type: string
+        observedWorkloadDigests:
+          type: object
+          additionalProperties:
+            type: string
+          propertyNames:
+            type: string
+        protocol:
+          type: string
+        resourceUid:
+          type: string
+        resourceVersion:
+          type: string
+        rollbackState:
+          type: string
+        rolloutPhase:
+          type: string
+        serviceId:
+          type: string
+        state:
+          type: string
+        workloadHealth:
+          type: object
+          additionalProperties:
+            type: boolean
+          propertyNames:
+            type: string
     PageInfo:
       type: object
       required:
@@ -8928,6 +10829,82 @@ components:
           type: string
         user_id:
           type: string
+    PolicyEvidence:
+      type: object
+      required:
+      - protocol
+      - evidenceId
+      - evidenceDigest
+      - packId
+      - packDigest
+      - evaluatedSubject
+      - inputDigests
+      - decision
+      - ruleResults
+      - issues
+      - effects
+      properties:
+        decision:
+          $ref: '#/components/schemas/DeliveryDecision'
+        effects:
+          $ref: '#/components/schemas/DeliveryEffects'
+        evaluatedSubject:
+          type: string
+        evidenceDigest:
+          type: string
+        evidenceId:
+          type: string
+        inputDigests:
+          type: object
+          additionalProperties:
+            type: string
+          propertyNames:
+            type: string
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeliveryIssue'
+        packDigest:
+          type: string
+        packId:
+          type: string
+        protocol:
+          type: string
+        ruleResults:
+          type: array
+          items:
+            $ref: '#/components/schemas/PolicyRuleResult'
+    PolicyRuleResult:
+      type: object
+      required:
+      - ruleId
+      - severity
+      - decision
+      - evidenceReferences
+      - remediation
+      - nextActions
+      properties:
+        decision:
+          $ref: '#/components/schemas/DeliveryDecision'
+        evidenceReferences:
+          type: array
+          items:
+            type: string
+        nextActions:
+          type: array
+          items:
+            type: string
+        remediation:
+          type: string
+        ruleId:
+          type: string
+        severity:
+          $ref: '#/components/schemas/PolicyRuleSeverity'
+    PolicyRuleSeverity:
+      type: string
+      enum:
+      - required
+      - advisory
     ProblemErrorDetail:
       type: object
       required:
@@ -8939,6 +10916,487 @@ components:
           - 'null'
         reason:
           type: string
+    ProductionEligibilityEvidence:
+      type: object
+      required:
+      - protocol
+      - evidenceId
+      - evidenceDigest
+      - releaseId
+      - releaseDigest
+      - providerId
+      - inputDigest
+      - systemGraphDigest
+      - decision
+      - facts
+      - contractRetirement
+      - issues
+      - effects
+      properties:
+        contractRetirement:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContractRetirementEvidence'
+        decision:
+          $ref: '#/components/schemas/DeliveryDecision'
+        effects:
+          $ref: '#/components/schemas/DeliveryEffects'
+        evidenceDigest:
+          type: string
+        evidenceId:
+          type: string
+        facts:
+          type: object
+          additionalProperties:
+            type:
+            - boolean
+            - 'null'
+          propertyNames:
+            type: string
+        inputDigest:
+          type: string
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeliveryIssue'
+        protocol:
+          type: string
+        providerId:
+          type: string
+        releaseDigest:
+          type: string
+        releaseId:
+          type: string
+        systemGraphDigest:
+          type: string
+    ProductionEligibilityInput:
+      type: object
+      required:
+      - releaseId
+      - releaseDigest
+      - providerId
+      - providerProof
+      - systemGraphDigest
+      - workflows
+      - rollback
+      properties:
+        callPoliciesDeclared:
+          type:
+          - boolean
+          - 'null'
+        contracts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContractCompatibilityInput'
+        dependenciesReady:
+          type:
+          - boolean
+          - 'null'
+        edgeContractValid:
+          type:
+          - boolean
+          - 'null'
+        environmentVerificationFresh:
+          type:
+          - boolean
+          - 'null'
+        migrations:
+          type: array
+          items:
+            $ref: '#/components/schemas/MigrationCompatibilityInput'
+        providerCompatibilityVerified:
+          type:
+          - boolean
+          - 'null'
+        providerId:
+          type: string
+        providerProof:
+          type: string
+        releaseDigest:
+          type: string
+        releaseId:
+          type: string
+        reliabilityContractComplete:
+          type:
+          - boolean
+          - 'null'
+        resilienceDeclared:
+          type:
+          - boolean
+          - 'null'
+        rollback:
+          $ref: '#/components/schemas/RollbackCompatibilityInput'
+        systemGraphDigest:
+          type: string
+        tenancyModeProduction:
+          type:
+          - boolean
+          - 'null'
+        tenantContextEnforced:
+          type:
+          - boolean
+          - 'null'
+        workflows:
+          $ref: '#/components/schemas/WorkflowCompatibilityInput'
+        workloadIdentityProduction:
+          type:
+          - boolean
+          - 'null'
+    PromotionApproval:
+      type: object
+      required:
+      - protocol
+      - approvalId
+      - planDigest
+      - actor
+      - authority
+      - authorityProof
+      - issuedForTargetRevision
+      - approved
+      properties:
+        actor:
+          type: string
+        approvalId:
+          type: string
+        approved:
+          type: boolean
+        authority:
+          type: string
+        authorityProof:
+          type: string
+        issuedForTargetRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        planDigest:
+          type: string
+        protocol:
+          type: string
+    PromotionPlan:
+      type: object
+      required:
+      - protocol
+      - planId
+      - planDigest
+      - releaseId
+      - releaseDigest
+      - workloadDigests
+      - sourceEnvironment
+      - targetEnvironment
+      - sourceEnvironmentRevision
+      - targetEnvironmentRevision
+      - sourceVerificationId
+      - sourceVerificationDigest
+      - policyEvidenceId
+      - policyEvidenceDigest
+      - configRevisionId
+      - secretReferenceIds
+      - targetDeployment
+      - targetGateway
+      - sourceTopologyDigest
+      - targetTopologyDigest
+      - evidenceReferences
+      - freshnessHorizonRevision
+      - effects
+      properties:
+        configRevisionId:
+          type: string
+        effects:
+          $ref: '#/components/schemas/DeliveryEffects'
+        evidenceReferences:
+          type: array
+          items:
+            type: string
+        freshnessHorizonRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        planDigest:
+          type: string
+        planId:
+          type: string
+        policyEvidenceDigest:
+          type: string
+        policyEvidenceId:
+          type: string
+        protocol:
+          type: string
+        releaseDigest:
+          type: string
+        releaseId:
+          type: string
+        secretReferenceIds:
+          type: array
+          items:
+            type: string
+        sourceEnvironment:
+          type: string
+        sourceEnvironmentRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        sourceTopologyDigest:
+          type: string
+        sourceVerificationDigest:
+          type: string
+        sourceVerificationId:
+          type: string
+        targetDeployment:
+          $ref: '#/components/schemas/DeploymentPlan'
+        targetEnvironment:
+          type: string
+        targetEnvironmentRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        targetGateway:
+          $ref: '#/components/schemas/GatewayConfigurationPlan'
+        targetTopologyDigest:
+          type: string
+        workloadDigests:
+          type: object
+          additionalProperties:
+            type: string
+          propertyNames:
+            type: string
+    PromotionReceipt:
+      type: object
+      required:
+      - protocol
+      - receiptId
+      - planId
+      - approvalId
+      - actor
+      - sourceEnvironment
+      - targetEnvironment
+      - releaseId
+      - releaseDigest
+      - workloadDigests
+      - deploymentReceipt
+      - environmentRevisionBefore
+      - environmentRevisionAfter
+      - effects
+      properties:
+        actor:
+          type: string
+        approvalId:
+          type: string
+        deploymentReceipt:
+          $ref: '#/components/schemas/DeploymentReceipt'
+        effects:
+          $ref: '#/components/schemas/DeliveryEffects'
+        environmentRevisionAfter:
+          type: integer
+          format: int64
+          minimum: 0
+        environmentRevisionBefore:
+          type: integer
+          format: int64
+          minimum: 0
+        planId:
+          type: string
+        protocol:
+          type: string
+        receiptId:
+          type: string
+        releaseDigest:
+          type: string
+        releaseId:
+          type: string
+        sourceEnvironment:
+          type: string
+        targetEnvironment:
+          type: string
+        workloadDigests:
+          type: object
+          additionalProperties:
+            type: string
+          propertyNames:
+            type: string
+    RateIntent:
+      type: object
+      required:
+      - requests
+      - windowSeconds
+      properties:
+        requests:
+          type: integer
+          format: int32
+          minimum: 0
+        windowSeconds:
+          type: integer
+          format: int32
+          minimum: 0
+    ReleaseContractVersion:
+      type: object
+      required:
+      - contractId
+      - version
+      - kind
+      - artifact
+      properties:
+        artifact:
+          $ref: '#/components/schemas/DeliveryEvidenceReference'
+        contractId:
+          type: string
+        kind:
+          type: string
+        version:
+          type: string
+    ReleaseMigration:
+      type: object
+      required:
+      - migrationId
+      - phase
+      - artifact
+      - reversible
+      properties:
+        artifact:
+          $ref: '#/components/schemas/DeliveryEvidenceReference'
+        migrationId:
+          type: string
+        phase:
+          type: string
+        reversible:
+          type: boolean
+    ReleaseModule:
+      type: object
+      required:
+      - moduleId
+      - moduleVersion
+      properties:
+        moduleId:
+          type: string
+        moduleVersion:
+          type: string
+    ReleaseProvenance:
+      type: object
+      required:
+      - reference
+      - digest
+      - source
+      - builder
+      properties:
+        builder:
+          type: string
+        digest:
+          type: string
+        inputDigests:
+          type: array
+          items:
+            type: string
+        reference:
+          type: string
+        source:
+          type: string
+        subjectDigests:
+          type: array
+          items:
+            type: string
+    ReleaseRetention:
+      type: object
+      required:
+      - evidenceDays
+      - artifactDays
+      properties:
+        artifactDays:
+          type: integer
+          format: int32
+          minimum: 0
+        evidenceDays:
+          type: integer
+          format: int32
+          minimum: 0
+    ReleaseRollbackConstraints:
+      type: object
+      required:
+      - previousReleaseRequired
+      - automaticAllowed
+      - blockedByIrreversibleMigration
+      properties:
+        automaticAllowed:
+          type: boolean
+        blockedByIrreversibleMigration:
+          type: boolean
+        previousReleaseRequired:
+          type: boolean
+    ReleaseRolloutGate:
+      type: object
+      required:
+      - gateId
+      - evidenceKind
+      - required
+      properties:
+        evidenceKind:
+          type: string
+        gateId:
+          type: string
+        required:
+          type: boolean
+    ReleaseSignature:
+      type: object
+      required:
+      - signer
+      - subjectDigest
+      - signature
+      properties:
+        signature:
+          type: string
+        signer:
+          type: string
+        subjectDigest:
+          type: string
+    ReleaseSignerStatus:
+      type: string
+      enum:
+      - trusted
+      - untrusted
+      - revoked
+      - invalid
+    ReleaseTrustEvidence:
+      type: object
+      required:
+      - protocol
+      - releaseId
+      - releaseDigest
+      - decision
+      - evidenceDigest
+      - workloads
+      - signatures
+      - issues
+      - effects
+      properties:
+        decision:
+          $ref: '#/components/schemas/DeliveryDecision'
+        effects:
+          $ref: '#/components/schemas/DeliveryEffects'
+        evidenceDigest:
+          type: string
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeliveryIssue'
+        protocol:
+          type: string
+        releaseDigest:
+          type: string
+        releaseId:
+          type: string
+        signatures:
+          type: array
+          items:
+            $ref: '#/components/schemas/SignatureTrustEvidence'
+        workloads:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkloadTrustEvidence'
+    ReleaseWorkloadRole:
+      type: string
+      enum:
+      - api
+      - worker
+      - migration
+      - extension
     ReliabilityCheck:
       type: object
       required:
@@ -9026,6 +11484,162 @@ components:
       enum:
       - process_running
       - runtime_operational
+    ReliabilityObservation:
+      type: object
+      required:
+      - protocol
+      - observationId
+      - canaryPlanId
+      - canaryPlanDigest
+      - releaseId
+      - releaseDigest
+      - environment
+      - deploymentPlanId
+      - deploymentPlanDigest
+      - deploymentObservationId
+      - collectorId
+      - collectorProof
+      - observedRevision
+      - freshnessHorizonRevision
+      - fresh
+      - observationWindowSeconds
+      - sampleCount
+      - genericProcessHealthy
+      - workloadReadiness
+      - workloadLiveness
+      - dependencies
+      - failureDomains
+      properties:
+        availabilityBasisPoints:
+          type:
+          - integer
+          - 'null'
+          format: int32
+          minimum: 0
+        availabilityCheckPassed:
+          type:
+          - boolean
+          - 'null'
+        canaryPlanDigest:
+          type: string
+        canaryPlanId:
+          type: string
+        collectorId:
+          type: string
+        collectorProof:
+          type: string
+        compensationPressure:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        dependencies:
+          type: array
+          items:
+            $ref: '#/components/schemas/DependencyReliabilityObservation'
+        deploymentObservationId:
+          type: string
+        deploymentPlanDigest:
+          type: string
+        deploymentPlanId:
+          type: string
+        disruptionCheckPassed:
+          type:
+          - boolean
+          - 'null'
+        environment:
+          type: string
+        errorBudgetUsedBasisPoints:
+          type:
+          - integer
+          - 'null'
+          format: int32
+          minimum: 0
+        evidenceReferences:
+          type: array
+          items:
+            type: string
+        failureDomains:
+          type: object
+          additionalProperties:
+            type: boolean
+          propertyNames:
+            type: string
+        fresh:
+          type: boolean
+        freshnessHorizonRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        genericProcessHealthy:
+          type: boolean
+        latencyP99Ms:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        observationId:
+          type: string
+        observationWindowSeconds:
+          type: integer
+          format: int64
+          minimum: 0
+        observedRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        protocol:
+          type: string
+        queueBacklog:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        releaseDigest:
+          type: string
+        releaseId:
+          type: string
+        retryExhaustion:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        sampleCount:
+          type: integer
+          format: int64
+          minimum: 0
+        scalingCheckPassed:
+          type:
+          - boolean
+          - 'null'
+        timerLagMs:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        workflowBacklog:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        workloadLiveness:
+          type: object
+          additionalProperties:
+            type: boolean
+          propertyNames:
+            type: string
+        workloadReadiness:
+          type: object
+          additionalProperties:
+            type: boolean
+          propertyNames:
+            type: string
     ReliabilityProfile:
       type: string
       enum:
@@ -9172,12 +11786,347 @@ components:
       type: string
       enum:
       - forwarded
+    ResolvedEdgeRoute:
+      type: object
+      required:
+      - contractId
+      - contractVersion
+      - operationId
+      - publicPath
+      - authentication
+      - cors
+      - rate
+      - deprecated
+      - requestSchemaReference
+      - responseSchemaReference
+      properties:
+        authentication:
+          $ref: '#/components/schemas/EdgeAuthentication'
+        contractId:
+          type: string
+        contractVersion:
+          type: string
+        cors:
+          $ref: '#/components/schemas/CorsIntent'
+        deprecated:
+          type: boolean
+        operationId:
+          type: string
+        publicPath:
+          type: string
+        rate:
+          $ref: '#/components/schemas/RateIntent'
+        requestSchemaReference:
+          type: string
+        responseSchemaReference:
+          type: string
     RevokeSessionResponse:
       type: object
       required:
       - revoked
       properties:
         revoked:
+          type: boolean
+    RollbackCompatibilityInput:
+      type: object
+      required:
+      - previousReleaseId
+      - previousReleaseDigest
+      - previousDeploymentPlanId
+      - previousDeploymentPlanDigest
+      - previousConfigRevisionId
+      - previousConfigRevisionDigest
+      - previousGatewayPlanId
+      - previousGatewayPlanDigest
+      - previousGatewayConfigurationIdentity
+      - previousAdapter
+      properties:
+        adapterCapable:
+          type:
+          - boolean
+          - 'null'
+        configCompatible:
+          type:
+          - boolean
+          - 'null'
+        edgeCompatible:
+          type:
+          - boolean
+          - 'null'
+        previousAdapter:
+          type: string
+        previousConfigRevisionDigest:
+          type: string
+        previousConfigRevisionId:
+          type: string
+        previousDeploymentPlanDigest:
+          type: string
+        previousDeploymentPlanId:
+          type: string
+        previousGatewayConfigurationIdentity:
+          type: string
+        previousGatewayPlanDigest:
+          type: string
+        previousGatewayPlanId:
+          type: string
+        previousReleaseDigest:
+          type: string
+        previousReleaseId:
+          type: string
+        previousSecretReferenceIds:
+          type: array
+          items:
+            type: string
+        priorReleaseCompatible:
+          type:
+          - boolean
+          - 'null'
+        schemaCompatible:
+          type:
+          - boolean
+          - 'null'
+        secretReferencesCompatible:
+          type:
+          - boolean
+          - 'null'
+        workflowCompatible:
+          type:
+          - boolean
+          - 'null'
+    RollbackOutcome:
+      type: string
+      enum:
+      - rolled_back
+      - intervention_required
+    RollbackPlan:
+      type: object
+      required:
+      - protocol
+      - planId
+      - planDigest
+      - canaryPlanId
+      - canaryPlanDigest
+      - canaryDecisionId
+      - environment
+      - expectedEnvironmentRevision
+      - failedReleaseId
+      - failedReleaseDigest
+      - failedDeploymentPlanId
+      - failedDeploymentPlanDigest
+      - failedConfigRevisionId
+      - failedWorkloadDigests
+      - failedGatewayPlanId
+      - failedGatewayPlanDigest
+      - previousReleaseId
+      - previousReleaseDigest
+      - previousDeploymentPlanId
+      - previousDeploymentPlanDigest
+      - previousConfigRevisionId
+      - previousWorkloadDigests
+      - previousGatewayPlanId
+      - previousGatewayPlanDigest
+      - previousGatewayConfigurationIdentity
+      - previousGatewayRevision
+      - releaseRollbackConstraints
+      - safety
+      - automaticAllowed
+      - issues
+      - prohibitedActions
+      - effects
+      properties:
+        automaticAllowed:
+          type: boolean
+        canaryDecisionId:
+          type: string
+        canaryPlanDigest:
+          type: string
+        canaryPlanId:
+          type: string
+        effects:
+          $ref: '#/components/schemas/DeliveryEffects'
+        environment:
+          type: string
+        expectedEnvironmentRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        failedConfigRevisionId:
+          type: string
+        failedDeploymentPlanDigest:
+          type: string
+        failedDeploymentPlanId:
+          type: string
+        failedGatewayPlanDigest:
+          type: string
+        failedGatewayPlanId:
+          type: string
+        failedReleaseDigest:
+          type: string
+        failedReleaseId:
+          type: string
+        failedWorkloadDigests:
+          type: object
+          additionalProperties:
+            type: string
+          propertyNames:
+            type: string
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeliveryIssue'
+        planDigest:
+          type: string
+        planId:
+          type: string
+        previousConfigRevisionId:
+          type: string
+        previousDeploymentPlanDigest:
+          type: string
+        previousDeploymentPlanId:
+          type: string
+        previousGatewayConfigurationIdentity:
+          type: string
+        previousGatewayPlanDigest:
+          type: string
+        previousGatewayPlanId:
+          type: string
+        previousGatewayRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        previousReleaseDigest:
+          type: string
+        previousReleaseId:
+          type: string
+        previousWorkloadDigests:
+          type: object
+          additionalProperties:
+            type: string
+          propertyNames:
+            type: string
+        prohibitedActions:
+          type: array
+          items:
+            type: string
+        protocol:
+          type: string
+        releaseRollbackConstraints:
+          $ref: '#/components/schemas/ReleaseRollbackConstraints'
+        safety:
+          $ref: '#/components/schemas/RollbackSafetyEvidence'
+    RollbackReceipt:
+      type: object
+      required:
+      - protocol
+      - receiptId
+      - planId
+      - actor
+      - outcome
+      - restoredReleaseId
+      - restoredConfigRevisionId
+      - environmentRevisionBefore
+      - environmentRevisionAfter
+      - exposurePercent
+      - remainingRisks
+      - approvalBoundaryRequired
+      - evidenceReferences
+      - effects
+      properties:
+        actor:
+          type: string
+        approvalBoundaryRequired:
+          type: boolean
+        effects:
+          $ref: '#/components/schemas/DeliveryEffects'
+        environmentRevisionAfter:
+          type: integer
+          format: int64
+          minimum: 0
+        environmentRevisionBefore:
+          type: integer
+          format: int64
+          minimum: 0
+        evidenceReferences:
+          type: array
+          items:
+            type: string
+        exposurePercent:
+          type: integer
+          format: int32
+          minimum: 0
+        outcome:
+          $ref: '#/components/schemas/RollbackOutcome'
+        planId:
+          type: string
+        protocol:
+          type: string
+        receiptId:
+          type: string
+        remainingRisks:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeliveryIssue'
+        restoredConfigRevisionId:
+          type: string
+        restoredReleaseId:
+          type: string
+    RollbackSafetyEvidence:
+      type: object
+      required:
+      - protocol
+      - evidenceId
+      - canaryPlanId
+      - failedDeploymentPlanId
+      - previousDeploymentPlanId
+      - expectedEnvironmentRevision
+      - providerId
+      - providerProof
+      - migrationsReversible
+      - destructiveChangesAbsent
+      - workflowsDowngradeSafe
+      - configRevisionCompatible
+      - secretReferencesResolvable
+      - edgeConfigurationCompatible
+      - adapterRecoveryComplete
+      - policyApproved
+      properties:
+        adapterRecoveryComplete:
+          type: boolean
+        canaryPlanId:
+          type: string
+        configRevisionCompatible:
+          type: boolean
+        destructiveChangesAbsent:
+          type: boolean
+        edgeConfigurationCompatible:
+          type: boolean
+        evidenceId:
+          type: string
+        evidenceReferences:
+          type: array
+          items:
+            type: string
+        expectedEnvironmentRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        failedDeploymentPlanId:
+          type: string
+        migrationsReversible:
+          type: boolean
+        policyApproved:
+          type: boolean
+        previousDeploymentPlanId:
+          type: string
+        protocol:
+          type: string
+        providerId:
+          type: string
+        providerProof:
+          type: string
+        secretReferencesResolvable:
+          type: boolean
+        workflowsDowngradeSafe:
           type: boolean
     RuntimeFunctionDeclaration:
       type: object
@@ -9263,6 +12212,37 @@ components:
         name:
           type: string
           description: Stable schedule name scoped to the owning module.
+    SecretReference:
+      type: object
+      required:
+      - referenceId
+      - provider
+      - purpose
+      - scope
+      - status
+      properties:
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+          propertyNames:
+            type: string
+        provider:
+          type: string
+        purpose:
+          type: string
+        referenceId:
+          type: string
+        scope:
+          type: string
+        status:
+          $ref: '#/components/schemas/SecretReferenceStatus'
+    SecretReferenceStatus:
+      type: string
+      enum:
+      - resolved
+      - unresolved
+      - expired
     ServiceOperationIdempotency:
       type: string
       enum:
@@ -9314,6 +12294,89 @@ components:
           type:
           - string
           - 'null'
+    ServiceRelease:
+      type: object
+      required:
+      - protocol
+      - releaseId
+      - releaseDigest
+      - serviceId
+      - serviceVersion
+      - modules
+      - workloads
+      - contractVersions
+      - configContract
+      - reliabilityContract
+      - migrations
+      - workflowCompatibility
+      - verificationEvidence
+      - rolloutGates
+      - rollback
+      - retention
+      properties:
+        configContract:
+          $ref: '#/components/schemas/DeliveryEvidenceReference'
+        contractVersions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReleaseContractVersion'
+        migrations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReleaseMigration'
+        modules:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReleaseModule'
+        protocol:
+          type: string
+        releaseDigest:
+          type: string
+        releaseId:
+          type: string
+        reliabilityContract:
+          $ref: '#/components/schemas/DeliveryEvidenceReference'
+        retention:
+          $ref: '#/components/schemas/ReleaseRetention'
+        rollback:
+          $ref: '#/components/schemas/ReleaseRollbackConstraints'
+        rolloutGates:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReleaseRolloutGate'
+        serviceId:
+          type: string
+        serviceVersion:
+          type: string
+        signatures:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReleaseSignature'
+        verificationEvidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeliveryEvidenceReference'
+        workflowCompatibility:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeliveryEvidenceReference'
+        workloads:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkloadArtifact'
+    SignatureTrustEvidence:
+      type: object
+      required:
+      - signer
+      - subjectDigest
+      - status
+      properties:
+        signer:
+          type: string
+        status:
+          $ref: '#/components/schemas/ReleaseSignerStatus'
+        subjectDigest:
+          type: string
     StoryDisplayDescriptorDto:
       type: object
       required:
@@ -9355,6 +12418,21 @@ components:
             type: string
           path:
             type: string
+    WorkflowCompatibilityInput:
+      type: object
+      properties:
+        downgradeSafe:
+          type:
+          - boolean
+          - 'null'
+        inFlightCompatible:
+          type:
+          - boolean
+          - 'null'
+        newStartsCompatible:
+          type:
+          - boolean
+          - 'null'
     WorkflowCompensationDeclaration:
       type: object
       required:
@@ -9475,6 +12553,57 @@ components:
           description: Optional durable timeout applied independently to every attempt.
           minimum: 0
       additionalProperties: false
+    WorkloadArtifact:
+      type: object
+      required:
+      - workloadId
+      - role
+      - artifactReference
+      - artifactDigest
+      - mediaType
+      - sbom
+      - provenance
+      - signatureSubject
+      properties:
+        artifactDigest:
+          type: string
+        artifactReference:
+          type: string
+        displayTag:
+          type:
+          - string
+          - 'null'
+        mediaType:
+          type: string
+        provenance:
+          $ref: '#/components/schemas/ReleaseProvenance'
+        role:
+          $ref: '#/components/schemas/ReleaseWorkloadRole'
+        sbom:
+          $ref: '#/components/schemas/DeliveryEvidenceReference'
+        signatureSubject:
+          type: string
+        workloadId:
+          type: string
+    WorkloadTrustEvidence:
+      type: object
+      required:
+      - workloadId
+      - artifactDigest
+      - sbomReference
+      - provenanceReference
+      - provenanceSubjectMatches
+      properties:
+        artifactDigest:
+          type: string
+        provenanceReference:
+          type: string
+        provenanceSubjectMatches:
+          type: boolean
+        sbomReference:
+          type: string
+        workloadId:
+          type: string
 tags:
 - name: auth
   description: Auth module development session APIs
@@ -9484,3 +12613,5 @@ tags:
   description: Editable configuration console APIs
 - name: admin-data
   description: Schema-driven admin data console APIs
+- name: system-delivery
+  description: Production delivery authority APIs

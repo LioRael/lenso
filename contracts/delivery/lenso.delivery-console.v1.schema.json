@@ -1,0 +1,602 @@
+{
+  "$defs": {
+    "DeliveryConsoleAdapterDrift": {
+      "properties": {
+        "drifted": {
+          "type": "boolean"
+        },
+        "environment": {
+          "type": "string"
+        },
+        "fresh": {
+          "type": "boolean"
+        },
+        "nextActions": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "environment",
+        "drifted",
+        "fresh"
+      ],
+      "type": "object"
+    },
+    "DeliveryConsoleCanaryObservation": {
+      "properties": {
+        "availabilityBasisPoints": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "availabilityCheckPassed": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "compensationPressure": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "dependencies": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/DeliveryConsoleDependencyObservation"
+          },
+          "type": "array"
+        },
+        "disruptionCheckPassed": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "errorBudgetUsedBasisPoints": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "evidenceReferences": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "failureDomains": {
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "default": {},
+          "type": "object"
+        },
+        "fresh": {
+          "type": "boolean"
+        },
+        "genericProcessHealthy": {
+          "type": "boolean"
+        },
+        "latencyP99Ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "observationId": {
+          "type": "string"
+        },
+        "observationWindowSeconds": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "observedRevision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "queueBacklog": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "retryExhaustion": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "sampleCount": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "scalingCheckPassed": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "timerLagMs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "workflowBacklog": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "workloadLiveness": {
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "default": {},
+          "type": "object"
+        },
+        "workloadReadiness": {
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "default": {},
+          "type": "object"
+        }
+      },
+      "required": [
+        "observationId",
+        "observedRevision",
+        "fresh",
+        "observationWindowSeconds",
+        "sampleCount",
+        "genericProcessHealthy"
+      ],
+      "type": "object"
+    },
+    "DeliveryConsoleConfiguration": {
+      "properties": {
+        "activeRevisionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "desiredRevisionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "drifted": {
+          "type": "boolean"
+        },
+        "previousRevisionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "secretReferences": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/DeliveryConsoleSecretReference"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "drifted"
+      ],
+      "type": "object"
+    },
+    "DeliveryConsoleDependencyObservation": {
+      "properties": {
+        "activeDegradedMode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "dependencyId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "dependencyId",
+        "available"
+      ],
+      "type": "object"
+    },
+    "DeliveryConsoleDeployment": {
+      "properties": {
+        "configRevisionId": {
+          "type": "string"
+        },
+        "desiredReleaseId": {
+          "type": "string"
+        },
+        "drifted": {
+          "type": "boolean"
+        },
+        "environment": {
+          "type": "string"
+        },
+        "fresh": {
+          "type": "boolean"
+        },
+        "observedReleaseId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "environment",
+        "desiredReleaseId",
+        "observedReleaseId",
+        "configRevisionId",
+        "drifted",
+        "fresh"
+      ],
+      "type": "object"
+    },
+    "DeliveryConsoleEdge": {
+      "properties": {
+        "contractId": {
+          "type": "string"
+        },
+        "publicRoutes": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "contractId"
+      ],
+      "type": "object"
+    },
+    "DeliveryConsoleIssue": {
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "evidenceReferences": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "message": {
+          "type": "string"
+        },
+        "nextActions": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "remediation": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "remediation"
+      ],
+      "type": "object"
+    },
+    "DeliveryConsolePolicy": {
+      "properties": {
+        "decision": {
+          "type": "string"
+        },
+        "evidenceId": {
+          "type": "string"
+        },
+        "packId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidenceId",
+        "packId",
+        "decision"
+      ],
+      "type": "object"
+    },
+    "DeliveryConsoleRelease": {
+      "properties": {
+        "releaseDigest": {
+          "type": "string"
+        },
+        "releaseId": {
+          "type": "string"
+        },
+        "serviceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "serviceId",
+        "releaseId",
+        "releaseDigest"
+      ],
+      "type": "object"
+    },
+    "DeliveryConsoleSecretReference": {
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "purpose": {
+          "type": "string"
+        },
+        "referenceId": {
+          "type": "string"
+        },
+        "rotationRevision": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scope": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "referenceId",
+        "provider",
+        "purpose",
+        "scope",
+        "status"
+      ],
+      "type": "object"
+    },
+    "DeliveryConsoleState": {
+      "enum": [
+        "planned",
+        "blocked",
+        "staged",
+        "approved",
+        "canary",
+        "converging",
+        "ready",
+        "rolling_back",
+        "rolled_back",
+        "paused",
+        "intervention_required"
+      ],
+      "type": "string"
+    },
+    "DeliveryConsoleSupplyChainWorkload": {
+      "properties": {
+        "artifactDigest": {
+          "type": "string"
+        },
+        "provenanceReference": {
+          "type": "string"
+        },
+        "provenanceSubjectMatches": {
+          "type": "boolean"
+        },
+        "sbomReference": {
+          "type": "string"
+        },
+        "signatureStatus": {
+          "type": "string"
+        },
+        "workloadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workloadId",
+        "artifactDigest",
+        "signatureStatus",
+        "sbomReference",
+        "provenanceReference",
+        "provenanceSubjectMatches"
+      ],
+      "type": "object"
+    },
+    "DeliveryConsoleTimelineEntry": {
+      "properties": {
+        "artifactId": {
+          "type": "string"
+        },
+        "evidenceReferences": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol",
+        "artifactId",
+        "state"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://contracts.lenso.local/delivery/lenso.delivery-console.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "adapterDrift": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/DeliveryConsoleAdapterDrift"
+      },
+      "type": "array"
+    },
+    "applyActions": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "canaryObservations": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/DeliveryConsoleCanaryObservation"
+      },
+      "type": "array"
+    },
+    "canaryTimeline": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/DeliveryConsoleTimelineEntry"
+      },
+      "type": "array"
+    },
+    "configuration": {
+      "$ref": "#/$defs/DeliveryConsoleConfiguration"
+    },
+    "deployments": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/DeliveryConsoleDeployment"
+      },
+      "type": "array"
+    },
+    "edge": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DeliveryConsoleEdge"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "issues": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/DeliveryConsoleIssue"
+      },
+      "type": "array"
+    },
+    "nextActions": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "policy": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DeliveryConsolePolicy"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "projectionDigest": {
+      "type": "string"
+    },
+    "promotionHistory": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/DeliveryConsoleTimelineEntry"
+      },
+      "type": "array"
+    },
+    "protocol": {
+      "type": "string"
+    },
+    "readOnly": {
+      "type": "boolean"
+    },
+    "release": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DeliveryConsoleRelease"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "rollbackTimeline": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/DeliveryConsoleTimelineEntry"
+      },
+      "type": "array"
+    },
+    "runtimeStoryReferences": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "state": {
+      "$ref": "#/$defs/DeliveryConsoleState"
+    },
+    "supplyChain": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/DeliveryConsoleSupplyChainWorkload"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "protocol",
+    "projectionDigest",
+    "state",
+    "configuration",
+    "readOnly"
+  ],
+  "title": "DeliveryConsoleProjection",
+  "type": "object"
+}

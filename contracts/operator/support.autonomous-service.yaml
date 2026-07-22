@@ -1,0 +1,66 @@
+apiVersion: lenso.dev/v1alpha1
+kind: LensoAutonomousService
+metadata:
+  name: support-production
+spec:
+  serviceId: service:support
+  environment: production
+  releaseId: service-release:sha256:baf024e3adf2d97c422235f8dac0a2c65bd130a3f179f7aa5016e3b30880697f
+  releaseDigest: sha256:baf024e3adf2d97c422235f8dac0a2c65bd130a3f179f7aa5016e3b30880697f
+  configRevisionId: config:support:production:v5
+  expectedEnvironmentRevision: 31
+  secretReferences: []
+  policyEvidenceReferences:
+  - policy:production:support:v5
+  evidenceReferences:
+  - environment-verification:staging:v5
+  workloads:
+  - workloadId: support-api
+    role: api
+    image: ghcr.io/liorael/support@sha256:52a36d3b3e05682354e1f8cb66e9bc7830c68cc7fc2e0e4565240f1c472ae102
+    replicas: 1
+    port: 8080
+    command: []
+    configMapName: support-config
+    secretReferenceIds: []
+    placement:
+      nodeSelector: {}
+    scaling:
+      minReplicas: 1
+      maxReplicas: 3
+      targetCpuUtilization: 70
+    disruptionMinAvailable: 1
+    networkPolicyEnabled: true
+    readinessPath: /health/ready
+    livenessPath: /health/live
+  - workloadId: support-migration
+    role: migration
+    image: ghcr.io/liorael/support@sha256:2a005411496a11a077677b702e89a77217123d3851a47aae67b301ed450f6423
+    replicas: 1
+    command: []
+    configMapName: support-config
+    secretReferenceIds: []
+    placement:
+      nodeSelector: {}
+    scaling:
+      minReplicas: 1
+      maxReplicas: 3
+      targetCpuUtilization: 70
+    networkPolicyEnabled: true
+  - workloadId: support-worker
+    role: worker
+    image: ghcr.io/liorael/support@sha256:3339350d617b4ee7850069c55d9e93ca3e5f792fe6d89ef870cb31ed8ff86b6f
+    replicas: 1
+    command: []
+    configMapName: support-config
+    secretReferenceIds: []
+    placement:
+      nodeSelector: {}
+    scaling:
+      minReplicas: 1
+      maxReplicas: 3
+      targetCpuUtilization: 70
+    disruptionMinAvailable: 1
+    networkPolicyEnabled: true
+  rolloutStrategy: bounded_canary
+  rollbackReleaseId: release:support:4

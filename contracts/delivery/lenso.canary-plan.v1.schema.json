@@ -1,0 +1,329 @@
+{
+  "$defs": {
+    "DeliveryEffects": {
+      "properties": {
+        "appendsLedger": {
+          "type": "boolean"
+        },
+        "mutatesConfiguration": {
+          "type": "boolean"
+        },
+        "mutatesDeployment": {
+          "type": "boolean"
+        },
+        "mutatesEnvironment": {
+          "type": "boolean"
+        },
+        "mutatesGateway": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "mutatesEnvironment",
+        "mutatesConfiguration",
+        "mutatesGateway",
+        "mutatesDeployment",
+        "appendsLedger"
+      ],
+      "type": "object"
+    },
+    "DeliveryReliabilityContract": {
+      "properties": {
+        "contractId": {
+          "type": "string"
+        },
+        "dependencies": {
+          "items": {
+            "$ref": "#/$defs/DependencyReliability"
+          },
+          "type": "array"
+        },
+        "maximumCompensationPressure": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "maximumErrorBudgetUsedBasisPoints": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "maximumLatencyP99Ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "maximumQueueBacklog": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "maximumRetryExhaustion": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "maximumTimerLagMs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "maximumWorkflowBacklog": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "minimumAvailabilityBasisPoints": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "minimumHealthyFailureDomains": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "minimumObservationSeconds": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "minimumSampleCount": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "protocol": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol",
+        "contractId",
+        "minimumObservationSeconds",
+        "minimumSampleCount",
+        "minimumAvailabilityBasisPoints",
+        "maximumLatencyP99Ms",
+        "maximumErrorBudgetUsedBasisPoints",
+        "maximumQueueBacklog",
+        "maximumWorkflowBacklog",
+        "maximumTimerLagMs",
+        "maximumRetryExhaustion",
+        "maximumCompensationPressure",
+        "minimumHealthyFailureDomains",
+        "dependencies"
+      ],
+      "type": "object"
+    },
+    "DependencyCriticality": {
+      "enum": [
+        "critical",
+        "degradable",
+        "optional"
+      ],
+      "type": "string"
+    },
+    "DependencyReliability": {
+      "properties": {
+        "allowedDegradedModes": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "criticality": {
+          "$ref": "#/$defs/DependencyCriticality"
+        },
+        "dependencyId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "dependencyId",
+        "criticality"
+      ],
+      "type": "object"
+    },
+    "ReleaseRollbackConstraints": {
+      "properties": {
+        "automaticAllowed": {
+          "type": "boolean"
+        },
+        "blockedByIrreversibleMigration": {
+          "type": "boolean"
+        },
+        "previousReleaseRequired": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "previousReleaseRequired",
+        "automaticAllowed",
+        "blockedByIrreversibleMigration"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://contracts.lenso.local/delivery/lenso.canary-plan.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "effects": {
+      "$ref": "#/$defs/DeliveryEffects"
+    },
+    "environmentVerificationDigest": {
+      "type": "string"
+    },
+    "environmentVerificationId": {
+      "type": "string"
+    },
+    "initialPercent": {
+      "format": "uint8",
+      "maximum": 255,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "maximumPercent": {
+      "format": "uint8",
+      "maximum": 255,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "planDigest": {
+      "type": "string"
+    },
+    "planId": {
+      "type": "string"
+    },
+    "policyEvidenceDigest": {
+      "type": "string"
+    },
+    "policyEvidenceId": {
+      "type": "string"
+    },
+    "previousKnownGoodDeploymentDigest": {
+      "type": "string"
+    },
+    "previousKnownGoodGatewayConfigurationIdentity": {
+      "type": "string"
+    },
+    "previousKnownGoodGatewayObservationId": {
+      "type": "string"
+    },
+    "previousKnownGoodGatewayObservationRevision": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "previousKnownGoodGatewayObservedAfter": {
+      "type": "string"
+    },
+    "previousKnownGoodGatewayPlanDigest": {
+      "type": "string"
+    },
+    "previousKnownGoodGatewayPlanId": {
+      "type": "string"
+    },
+    "previousKnownGoodObservationId": {
+      "type": "string"
+    },
+    "previousKnownGoodPlanId": {
+      "type": "string"
+    },
+    "previousKnownGoodPolicyEvidenceDigest": {
+      "type": "string"
+    },
+    "previousKnownGoodPolicyEvidenceId": {
+      "type": "string"
+    },
+    "previousKnownGoodReceiptId": {
+      "type": "string"
+    },
+    "previousKnownGoodReleaseDigest": {
+      "type": "string"
+    },
+    "previousKnownGoodReleaseId": {
+      "type": "string"
+    },
+    "productionDeploymentDigest": {
+      "type": "string"
+    },
+    "productionDeploymentObservationId": {
+      "type": "string"
+    },
+    "productionDeploymentPlanId": {
+      "type": "string"
+    },
+    "productionDeploymentReceiptId": {
+      "type": "string"
+    },
+    "productionEnvironment": {
+      "type": "string"
+    },
+    "productionExpectedEnvironmentRevision": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "protocol": {
+      "type": "string"
+    },
+    "releaseDigest": {
+      "type": "string"
+    },
+    "releaseId": {
+      "type": "string"
+    },
+    "releaseRollbackConstraints": {
+      "$ref": "#/$defs/ReleaseRollbackConstraints"
+    },
+    "reliabilityContract": {
+      "$ref": "#/$defs/DeliveryReliabilityContract"
+    },
+    "workloadIds": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "protocol",
+    "planId",
+    "planDigest",
+    "releaseId",
+    "releaseDigest",
+    "productionDeploymentPlanId",
+    "productionDeploymentDigest",
+    "productionDeploymentReceiptId",
+    "productionDeploymentObservationId",
+    "productionEnvironment",
+    "productionExpectedEnvironmentRevision",
+    "reliabilityContract",
+    "releaseRollbackConstraints",
+    "policyEvidenceId",
+    "policyEvidenceDigest",
+    "environmentVerificationId",
+    "environmentVerificationDigest",
+    "previousKnownGoodPlanId",
+    "previousKnownGoodDeploymentDigest",
+    "previousKnownGoodReleaseId",
+    "previousKnownGoodReleaseDigest",
+    "previousKnownGoodReceiptId",
+    "previousKnownGoodObservationId",
+    "previousKnownGoodPolicyEvidenceId",
+    "previousKnownGoodPolicyEvidenceDigest",
+    "previousKnownGoodGatewayPlanId",
+    "previousKnownGoodGatewayPlanDigest",
+    "previousKnownGoodGatewayConfigurationIdentity",
+    "previousKnownGoodGatewayObservationId",
+    "previousKnownGoodGatewayObservationRevision",
+    "previousKnownGoodGatewayObservedAfter",
+    "initialPercent",
+    "maximumPercent",
+    "workloadIds",
+    "effects"
+  ],
+  "title": "CanaryPlan",
+  "type": "object"
+}

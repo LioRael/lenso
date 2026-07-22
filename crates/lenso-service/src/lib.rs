@@ -7,6 +7,7 @@ use utoipa::ToSchema;
 
 mod call_policy;
 mod delegated_context;
+mod delivery_console_projection;
 mod direct_grpc;
 mod direct_http;
 mod endpoint_resolution;
@@ -22,6 +23,7 @@ mod extraction_reconciliation;
 mod extraction_run;
 mod extraction_scaffold;
 mod extraction_verification;
+mod production_delivery;
 mod reliability_report;
 mod story_segment;
 mod workload_identity;
@@ -38,6 +40,15 @@ pub use delegated_context::{
     IdentityDecisionRecorder, JsonlIdentityDecisionRecorder, MemoryIdentityDecisionRecorder,
     ServiceContext, ServiceContextAdmission, ServiceContextPolicy,
     SystemSandboxDelegatedContextProvider, TenantCredentialRequest,
+};
+pub use delivery_console_projection::{
+    DELIVERY_ARTIFACT_BATCH_PROTOCOL, DELIVERY_CONSOLE_PROJECTION_PROTOCOL,
+    DeliveryConsoleAdapterDrift, DeliveryConsoleArtifacts, DeliveryConsoleConfiguration,
+    DeliveryConsoleDeployment, DeliveryConsoleEdge, DeliveryConsoleIssue, DeliveryConsolePolicy,
+    DeliveryConsoleProjection, DeliveryConsoleRelease, DeliveryConsoleSecretReference,
+    DeliveryConsoleState, DeliveryConsoleSupplyChainWorkload, DeliveryConsoleTimelineEntry,
+    delivery_artifact_batch_subject, load_delivery_console_projection, project_delivery_console,
+    record_delivery_artifact, record_delivery_artifacts,
 };
 
 pub mod support_grpc_v1 {
@@ -184,6 +195,7 @@ pub use extraction_verification::{
     ExtractionVerificationIssueCode, ExtractionVerificationResult, ExtractionVerificationStatus,
     extraction_verification_integrity_is_valid, verify_extraction_behavior,
 };
+pub use production_delivery::*;
 pub use reliability_report::{
     ActiveDegradedMode, RELIABILITY_REPORT_PROTOCOL, ReliabilityCheck, ReliabilityCheckState,
     ReliabilityEnforcementBoundary, ReliabilityHealthResult, ReliabilityIssueCode,

@@ -9,13 +9,16 @@ rust-version.workspace = true
 [dependencies]
 anyhow.workspace = true
 jsonschema.workspace = true
+kube = { version = "4", features = ["derive"] }
 lenso-api.workspace = true
 lenso-autonomous-service.workspace = true
 lenso-contracts.workspace = true
+lenso-operator.workspace = true
 lenso-service.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true
+schemars.workspace = true
 utoipa.workspace = true
 
 [lints]

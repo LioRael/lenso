@@ -1,0 +1,149 @@
+{
+  "$defs": {
+    "CorsIntent": {
+      "properties": {
+        "allowedMethods": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "allowedOrigins": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "EdgeAuthentication": {
+      "enum": [
+        "public",
+        "workload",
+        "user",
+        "workload_or_user"
+      ],
+      "type": "string"
+    },
+    "RateIntent": {
+      "properties": {
+        "requests": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "windowSeconds": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "requests",
+        "windowSeconds"
+      ],
+      "type": "object"
+    },
+    "ResolvedEdgeRoute": {
+      "properties": {
+        "authentication": {
+          "$ref": "#/$defs/EdgeAuthentication"
+        },
+        "contractId": {
+          "type": "string"
+        },
+        "contractVersion": {
+          "type": "string"
+        },
+        "cors": {
+          "$ref": "#/$defs/CorsIntent"
+        },
+        "deprecated": {
+          "type": "boolean"
+        },
+        "operationId": {
+          "type": "string"
+        },
+        "publicPath": {
+          "type": "string"
+        },
+        "rate": {
+          "$ref": "#/$defs/RateIntent"
+        },
+        "requestSchemaReference": {
+          "type": "string"
+        },
+        "responseSchemaReference": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "contractId",
+        "contractVersion",
+        "operationId",
+        "publicPath",
+        "authentication",
+        "cors",
+        "rate",
+        "deprecated",
+        "requestSchemaReference",
+        "responseSchemaReference"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://contracts.lenso.local/delivery/lenso.edge-contract.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "edgeContractDigest": {
+      "type": "string"
+    },
+    "edgeContractId": {
+      "type": "string"
+    },
+    "operationCatalogDigest": {
+      "type": "string"
+    },
+    "protocol": {
+      "type": "string"
+    },
+    "providerId": {
+      "type": "string"
+    },
+    "providerProof": {
+      "type": "string"
+    },
+    "releaseDigest": {
+      "type": "string"
+    },
+    "releaseId": {
+      "type": "string"
+    },
+    "routes": {
+      "items": {
+        "$ref": "#/$defs/ResolvedEdgeRoute"
+      },
+      "type": "array"
+    },
+    "serviceId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "protocol",
+    "edgeContractId",
+    "edgeContractDigest",
+    "serviceId",
+    "releaseId",
+    "releaseDigest",
+    "operationCatalogDigest",
+    "providerId",
+    "providerProof",
+    "routes"
+  ],
+  "title": "EdgeContract",
+  "type": "object"
+}
