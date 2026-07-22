@@ -1,6 +1,5 @@
 name: Build reviewed release plan
 on:
-  workflow_dispatch:
   push:
     branches: [main]
     paths:
@@ -25,8 +24,6 @@ jobs:
         with:
           app-id: ${{ vars.LENSO_RELEASE_APP_ID }}
           private-key: ${{ secrets.LENSO_RELEASE_APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: ${{ github.event.repository.name }},lenso-release
           permission-contents: write
           permission-pull-requests: write
           permission-metadata: read
@@ -38,7 +35,7 @@ jobs:
         with:
           run_install: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with: { node-version: 24.18.0 }
+        with: { node-version: 24.18.0, cache: pnpm }
       - name: Install reviewed planning toolchains
         run: |
           corepack enable
@@ -54,7 +51,7 @@ jobs:
           APP_ID: ${{ vars.LENSO_RELEASE_APP_ID }}
         run: |
           node .lenso-release/runtime/lib/repository/ready-event.js > /tmp/ready.json
-          curl --fail-with-body --max-redirs 0 --proto '=https' \
+          curl --fail-with-body --location-trusted=false --proto '=https' \
             -H "Authorization: Bearer $GH_TOKEN" -H 'Content-Type: application/json' \
             --data-binary @/tmp/ready.json "$READY_URL"
       - name: Draft and apply Tegami plan
