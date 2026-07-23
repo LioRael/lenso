@@ -1,6 +1,6 @@
 [package]
 name = "lenso-contracts"
-version = "0.3.13"
+version = "0.3.14"
 edition.workspace = true
 license = "MIT"
 description = "Shared declaration contracts for the Lenso backend framework."

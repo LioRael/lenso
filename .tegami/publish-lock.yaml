@@ -1,13 +1,13 @@
 core:changelogs:
-  - content: "---\npackages:\n  lenso-contracts:\n    type: patch\n  lenso-service:\n    type: patch\n---\n\n### Fixes\n\nRestore the complete reviewed M6 Cargo dependency closure so every unpublished\nfoundation, module, and host package is built and verified in one shadow plan.\n"
+  - content: "---\npackages:\n  lenso-contracts:\n    type: patch\n  lenso-service:\n    type: patch\n---\n\n### Fixes\n\nBind the reviewed publisher runtime that stages the complete Cargo closure\nbefore requesting its short-lived shadow preflight proof.\n"
     filename: release.md
     v: 0.0.0
 core:packages:
   - id: cargo:lenso
     updated: true
-  - id: cargo:lenso-api
-    updated: true
   - id: cargo:lenso-autonomous-service
+    updated: true
+  - id: cargo:lenso-api
     updated: true
   - id: cargo:lenso-bootstrap
     updated: true
@@ -15,13 +15,19 @@ core:packages:
       - release.md
     id: cargo:lenso-contracts
     updated: true
+  - id: cargo:lenso-worker
+    updated: true
+  - id: cargo:lenso-migrate
+    updated: true
   - changelogIds:
       - release.md
     id: cargo:lenso-service
     updated: true
-  - id: cargo:lenso-migrate
+  - id: cargo:lenso-platform-admin
     updated: true
-  - id: cargo:lenso-worker
+  - id: cargo:lenso-platform-admin-data
+    updated: true
+  - id: cargo:lenso-platform-core
     updated: true
   - id: cargo:lenso-platform-http
     updated: true
@@ -29,15 +35,9 @@ core:packages:
     updated: true
   - id: cargo:lenso-platform-module-remote
     updated: true
-  - id: cargo:lenso-platform-core
-    updated: true
-  - id: cargo:lenso-platform-runtime
+  - id: cargo:lenso-module-story
     updated: true
   - id: cargo:lenso-platform-testing
     updated: true
-  - id: cargo:lenso-module-story
-    updated: true
-  - id: cargo:lenso-platform-admin
-    updated: true
-  - id: cargo:lenso-platform-admin-data
+  - id: cargo:lenso-platform-runtime
     updated: true
