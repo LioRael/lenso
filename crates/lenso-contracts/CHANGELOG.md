@@ -1,3 +1,10 @@
+## lenso-contracts@0.3.14
+
+### Fixes
+
+Bind the reviewed publisher runtime that stages the complete Cargo closure
+before requesting its short-lived shadow preflight proof.
+
 ## lenso-contracts@0.3.13
 
 ### Fixes

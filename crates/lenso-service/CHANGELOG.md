@@ -1,3 +1,10 @@
+## lenso-service@0.1.13
+
+### Fixes
+
+Bind the reviewed publisher runtime that stages the complete Cargo closure
+before requesting its short-lived shadow preflight proof.
+
 ## lenso-service@0.1.12
 
 ### Fixes
