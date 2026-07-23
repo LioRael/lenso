@@ -190,18 +190,27 @@ async fn spire_authenticates_real_http_and_rotates_without_plane_dependencies() 
     let endpoint = std::env::var("SPIFFE_ENDPOINT_SOCKET")
         .expect("approved SPIFFE test infrastructure must expose its Workload API socket");
     let ticketing = Arc::new(
-        SpiffeWorkloadIdentityProvider::connect(
-            SpiffeWorkloadIdentityConfig::new(&endpoint, "lenso.test", "service:ticketing")
-                .unwrap(),
+        timeout(
+            Duration::from_secs(10),
+            SpiffeWorkloadIdentityProvider::connect(
+                SpiffeWorkloadIdentityConfig::new(&endpoint, "lenso.test", "service:ticketing")
+                    .unwrap(),
+            ),
         )
         .await
+        .expect("ticketing SPIFFE provider connection must complete")
         .unwrap(),
     );
     let support = Arc::new(
-        SpiffeWorkloadIdentityProvider::connect(
-            SpiffeWorkloadIdentityConfig::new(&endpoint, "lenso.test", "service:support").unwrap(),
+        timeout(
+            Duration::from_secs(10),
+            SpiffeWorkloadIdentityProvider::connect(
+                SpiffeWorkloadIdentityConfig::new(&endpoint, "lenso.test", "service:support")
+                    .unwrap(),
+            ),
         )
         .await
+        .expect("support SPIFFE provider connection must complete")
         .unwrap(),
     );
 
