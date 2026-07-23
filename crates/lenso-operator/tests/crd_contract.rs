@@ -125,6 +125,60 @@ fn autonomous_service_crd_is_distinct_and_migration_gates_dependents() {
         previous_resources.migration_jobs[0].metadata.name,
         "each immutable release needs an independent migration Job"
     );
+    let mut long_named_service = service.clone();
+    long_named_service.metadata.name = Some("service-support-production-canary".to_owned());
+    let long_named_resources =
+        build_autonomous_service_resources(&long_named_service, AutonomousMigrationGate::Pending)
+            .expect("long valid service names should build Kubernetes-valid resources");
+    let migration_job_name = long_named_resources.migration_jobs[0]
+        .metadata
+        .name
+        .as_deref()
+        .expect("Migration Job must have a name");
+    assert!(
+        migration_job_name.len() <= 63,
+        "Job names become Pod label values and must fit the 63-byte label limit"
+    );
+    assert!(
+        migration_job_name.ends_with(
+            long_named_service
+                .spec
+                .release_digest
+                .strip_prefix("sha256:")
+                .unwrap()
+                .get(..12)
+                .unwrap()
+        ),
+        "bounded Migration Job names must preserve the release digest suffix"
+    );
+    let shared_long_prefix = "migration-workload-with-a-shared-prefix-that-exceeds-the-limit-";
+    long_named_service.spec.workloads = vec![
+        autonomous_workload(
+            &format!("{shared_long_prefix}alpha"),
+            OperatorWorkloadRole::Migration,
+            None,
+        ),
+        autonomous_workload(
+            &format!("{shared_long_prefix}bravo"),
+            OperatorWorkloadRole::Migration,
+            None,
+        ),
+    ];
+    let collision_resources =
+        build_autonomous_service_resources(&long_named_service, AutonomousMigrationGate::Pending)
+            .expect("long Migration Workload names should remain independently addressable");
+    assert_eq!(collision_resources.migration_jobs.len(), 2);
+    assert_ne!(
+        collision_resources.migration_jobs[0].metadata.name,
+        collision_resources.migration_jobs[1].metadata.name,
+        "bounded Migration Job names must retain identity from the full base name"
+    );
+    assert!(collision_resources.migration_jobs.iter().all(|job| {
+        job.metadata
+            .name
+            .as_deref()
+            .is_some_and(|name| name.len() <= 63)
+    }));
 
     let migrating = observed_autonomous_service_status(
         &service,

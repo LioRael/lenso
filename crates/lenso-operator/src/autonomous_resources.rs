@@ -583,10 +583,35 @@ fn resource_name(service: &LensoAutonomousService, workload: &LensoAutonomousWor
             .chars()
             .take(12)
             .collect::<String>();
-        format!("{base}-{release_suffix}")
+        migration_job_name(&base, &release_suffix)
     } else {
         base
     }
+}
+
+fn migration_job_name(base: &str, release_suffix: &str) -> String {
+    const LABEL_VALUE_LIMIT: usize = 63;
+    const BASE_DIGEST_LENGTH: usize = 8;
+    let unbounded = format!("{base}-{release_suffix}");
+    if unbounded.len() <= LABEL_VALUE_LIMIT {
+        return unbounded;
+    }
+    let base_digest = Sha256::digest(base.as_bytes())
+        .into_iter()
+        .take(BASE_DIGEST_LENGTH / 2)
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    let base_limit = LABEL_VALUE_LIMIT
+        .saturating_sub(release_suffix.len())
+        .saturating_sub(base_digest.len())
+        .saturating_sub(2);
+    let bounded_base = base
+        .chars()
+        .take(base_limit)
+        .collect::<String>()
+        .trim_end_matches('-')
+        .to_owned();
+    format!("{bounded_base}-{base_digest}-{release_suffix}")
 }
 
 fn safe_name(value: &str) -> String {
