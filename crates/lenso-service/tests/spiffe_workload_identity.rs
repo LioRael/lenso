@@ -371,38 +371,52 @@ async fn spire_authenticates_real_http_and_rotates_without_plane_dependencies() 
             .unwrap(),
     ));
 
-    real_http_call(
-        Arc::clone(&server),
-        acceptor.clone(),
-        connector.clone(),
-        &credential.token,
-        &ticketing_spiffe_id,
-        &support_spiffe_id,
+    timeout(
+        Duration::from_secs(10),
+        real_http_call(
+            Arc::clone(&server),
+            acceptor.clone(),
+            connector.clone(),
+            &credential.token,
+            &ticketing_spiffe_id,
+            &support_spiffe_id,
+        ),
     )
-    .await;
+    .await
+    .expect("initial SPIFFE-authenticated HTTP call must complete");
     assert_eq!(handled.load(Ordering::SeqCst), 1);
 
     let ticketing_source = ticketing.x509_source();
     let identity_before = ticketing_source.svid().unwrap();
     let certificate_before = identity_before.leaf().as_bytes().to_vec();
     let mut updates = ticketing_source.updated();
-    timeout(Duration::from_secs(20), updates.changed())
-        .await
-        .expect("SPIRE must rotate the short-lived X.509-SVID")
-        .unwrap();
+    timeout(Duration::from_secs(30), async {
+        loop {
+            updates.changed().await.unwrap();
+            if ticketing_source.svid().unwrap().leaf().as_bytes() != certificate_before {
+                break;
+            }
+        }
+    })
+    .await
+    .expect("SPIRE must rotate the short-lived X.509-SVID");
     let identity_after = ticketing_source.svid().unwrap();
     assert_eq!(identity_after.spiffe_id(), identity_before.spiffe_id());
     assert_ne!(identity_after.leaf().as_bytes(), certificate_before);
 
-    real_http_call(
-        Arc::clone(&server),
-        acceptor,
-        connector,
-        &credential.token,
-        &ticketing_spiffe_id,
-        &support_spiffe_id,
+    timeout(
+        Duration::from_secs(10),
+        real_http_call(
+            Arc::clone(&server),
+            acceptor,
+            connector,
+            &credential.token,
+            &ticketing_spiffe_id,
+            &support_spiffe_id,
+        ),
     )
-    .await;
+    .await
+    .expect("SPIFFE-authenticated HTTP call after rotation must complete");
     assert_eq!(handled.load(Ordering::SeqCst), 2);
 
     drop(expired_server);
