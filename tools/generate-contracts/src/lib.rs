@@ -327,10 +327,10 @@ pub fn generated_ga_support_manifest() -> Value {
         digest: extraction_input_digest(format!("{component_id}@{version}").as_bytes()),
     };
     let components = vec![
-        component(ComponentKind::Cli, "@lenso/cli", "0.1.30"),
-        component(ComponentKind::Runtime, "lenso-service", "0.1.4"),
-        component(ComponentKind::Runtime, "lenso-autonomous-service", "0.1.0"),
-        component(ComponentKind::Contracts, "lenso-contracts", "0.3.5"),
+        component(ComponentKind::Cli, "@lenso/cli", "0.2.9"),
+        component(ComponentKind::Runtime, "lenso-service", "0.1.14"),
+        component(ComponentKind::Runtime, "lenso-autonomous-service", "0.1.10"),
+        component(ComponentKind::Contracts, "lenso-contracts", "0.3.14"),
         component(ComponentKind::Provider, "lenso-service-provider-v1", "1"),
         component(ComponentKind::Operator, "lenso-operator", "0.1.0"),
         component(
@@ -341,7 +341,7 @@ pub fn generated_ga_support_manifest() -> Value {
     ];
     let references = components.iter().map(GaComponent::reference).collect();
     let manifest = assemble_ga_support_manifest(GaSupportManifestInput {
-        status: SupportStatus::Candidate,
+        status: SupportStatus::GeneralAvailability,
         components,
         manifest_formats: vec![
             ManifestFormat {
@@ -368,14 +368,14 @@ pub fn generated_ga_support_manifest() -> Value {
             ("postgresql".into(), "18".into()),
         ]),
         documentation: DocumentationIdentity {
-            version: "m6-candidate".into(),
-            digest: extraction_input_digest(b"docs:m6-candidate"),
+            version: "m6-ga".into(),
+            digest: extraction_input_digest(b"docs:m6-ga"),
         },
         combinations: vec![SupportCombinationInput {
-            combination_id: "m6-candidate-1".into(),
+            combination_id: "m6-ga-1".into(),
             component_references: references,
             state_version: "service-store.v1".into(),
-            status: SupportStatus::Candidate,
+            status: SupportStatus::GeneralAvailability,
         }],
         upgrade_edges: vec![UpgradeEdgeInput {
             edge_id: "system-v1-v2".into(),
@@ -385,7 +385,7 @@ pub fn generated_ga_support_manifest() -> Value {
             rollback_safe: true,
         }],
     })
-    .expect("the committed candidate GA Support Manifest must be valid");
+    .expect("the committed GA Support Manifest must be valid");
     serde_json::to_value(manifest).expect("GA Support Manifest must serialize")
 }
 
