@@ -1,14 +1,14 @@
 # Lenso GA Support Manifest
 
 - Protocol: `lenso.ga-support-manifest.v1`
-- Manifest ID: `ga-support:f9af9542988f0456`
-- Manifest digest: `sha256:f9af9542988f045691e5328ce883efbde9defc36633cc8a775f0cf678ae57833`
+- Manifest ID: `ga-support:782c50dd8cd655bc`
+- Manifest digest: `sha256:782c50dd8cd655bcf7812d22b92bc562104b4f8da418c3c8b65c2add10c40a6f`
 - Status: `GeneralAvailability`
 - Documentation: `m6-ga` (`sha256:09aeded7e3eb0625b12e0df63c960c837e22e8e391ab451ec522c60d83e56fc6`)
 
 ## Components
 
-- `cli:@lenso/cli@0.2.10` — `sha256:69e954b3a37f90555200bcc48eb48d0d92a3f72db3d0e12e6bab092501a1d110`
+- `cli:@lenso/cli@0.2.12` — `sha256:24be1d0818a520c989537908c006cf98ed7f457e3f77e9a85b1b1ebb55fa1e94`
 - `runtime:lenso-autonomous-service@0.1.10` — `sha256:2a91ac572f68cab2d046b2a93d5e04c1dc81cf2b734102884d2872b39cd435e7`
 - `runtime:lenso-service@0.1.14` — `sha256:f39f8cb2be59f25af7eb265be2f09afbaac3d570afdae36ff752a3ccf1c7c42a`
 - `contracts:lenso-contracts@0.3.15` — `sha256:f93d2b9938d47be11ade3fb9675e295b02db1313dd82afbfbfaff5d41c03df19`
@@ -26,7 +26,7 @@
 
 ## Supported combinations
 
-- `m6-ga-1`: `GeneralAvailability`, state `service-store.v1`, components `cli:@lenso/cli@0.2.10`, `contracts:lenso-contracts@0.3.15`, `operator:lenso-operator@0.1.0`, `provider:lenso-service-provider-v1@1`, `runtime:lenso-autonomous-service@0.1.10`, `runtime:lenso-service@0.1.14`, `runtime_console:@lenso/runtime-console@0.1.2`
+- `m6-ga-1`: `GeneralAvailability`, state `service-store.v1`, components `cli:@lenso/cli@0.2.12`, `contracts:lenso-contracts@0.3.15`, `operator:lenso-operator@0.1.0`, `provider:lenso-service-provider-v1@1`, `runtime:lenso-autonomous-service@0.1.10`, `runtime:lenso-service@0.1.14`, `runtime_console:@lenso/runtime-console@0.1.2`
 
 ## Upgrade and skew edges
 
