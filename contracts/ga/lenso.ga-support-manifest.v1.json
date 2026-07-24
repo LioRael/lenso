@@ -76,7 +76,7 @@
     "lenso.service-restore-evidence.v1": "m6-environment-verifier",
     "lenso.support-envelope.v1": "m6-environment-verifier"
   },
-  "manifestDigest": "sha256:c5c4fe7d69b0136eba805faec20bdcc4a5df5c7b68f85e5565e9a7c1ee665d84",
+  "manifestDigest": "sha256:85270ae7dd399530011b45664ecef834d53806eb33c55fa410179bb21dbbfa1e",
   "manifestFormats": [
     {
       "kind": "provider",
@@ -95,7 +95,7 @@
       "version": "lenso.system.v2"
     }
   ],
-  "manifestId": "ga-support:c5c4fe7d69b0136e",
+  "manifestId": "ga-support:85270ae7dd399530",
   "protocol": "lenso.ga-support-manifest.v1",
   "receiptAuthorityPublicKeys": {
     "m6-environment-verifier": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA7WgM6rOq0x9vY4VJ4rP7oOxXVMuDXKpMZgqXfQZq8hM=\n-----END PUBLIC KEY-----"

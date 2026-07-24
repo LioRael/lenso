@@ -170,6 +170,7 @@
       "additionalProperties": {
         "type": "string"
       },
+      "default": {},
       "type": "object"
     },
     "manifestDigest": {
@@ -191,6 +192,7 @@
       "additionalProperties": {
         "type": "string"
       },
+      "default": {},
       "type": "object"
     },
     "stateVersions": {
@@ -220,9 +222,7 @@
     "adapterVersions",
     "documentation",
     "combinations",
-    "upgradeEdges",
-    "evidenceReceiptAuthorities",
-    "receiptAuthorityPublicKeys"
+    "upgradeEdges"
   ],
   "title": "GaSupportManifest",
   "type": "object"

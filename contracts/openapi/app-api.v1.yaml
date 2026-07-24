@@ -8877,6 +8877,11 @@ components:
       - status
       - stale
       properties:
+        details:
+          type: object
+          additionalProperties: {}
+          propertyNames:
+            type: string
         evidenceId:
           type: string
         issueCodes:

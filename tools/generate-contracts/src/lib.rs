@@ -362,9 +362,10 @@ pub fn generated_security_review_evidence_schema() -> Value {
 
 pub fn generated_ga_support_manifest() -> Value {
     use lenso_service::{
-        ComponentKind, DocumentationIdentity, GaComponent, GaSupportManifestInput, ManifestFormat,
-        ManifestKind, SupportCombinationInput, SupportStatus, UpgradeEdgeInput,
-        assemble_ga_support_manifest, extraction_input_digest,
+        ComponentKind, DocumentationIdentity, EvidenceReceiptTrust, GaComponent,
+        GaSupportManifestInput, ManifestFormat, ManifestKind, SupportCombinationInput,
+        SupportStatus, UpgradeEdgeInput, assemble_ga_support_manifest_with_trust,
+        extraction_input_digest,
     };
     use std::collections::BTreeMap;
 
@@ -388,7 +389,7 @@ pub fn generated_ga_support_manifest() -> Value {
         ),
     ];
     let references = components.iter().map(GaComponent::reference).collect();
-    let manifest = assemble_ga_support_manifest(GaSupportManifestInput {
+    let manifest = assemble_ga_support_manifest_with_trust(GaSupportManifestInput {
         status: SupportStatus::GeneralAvailability,
         components,
         manifest_formats: vec![
@@ -432,7 +433,8 @@ pub fn generated_ga_support_manifest() -> Value {
             mixed_version_references: vec![],
             rollback_safe: true,
         }],
-        evidence_receipt_authorities: [
+    }, EvidenceReceiptTrust {
+        authorities: [
             "lenso.delivery-failure-recovery-evidence.v1",
             "lenso.performance-profile.v1",
             "lenso.service-restore-evidence.v1",
@@ -448,7 +450,7 @@ pub fn generated_ga_support_manifest() -> Value {
             )
         })
         .collect(),
-        receipt_authority_public_keys: BTreeMap::from([(
+        public_keys: BTreeMap::from([(
             "m6-environment-verifier".to_owned(),
             "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA7WgM6rOq0x9vY4VJ4rP7oOxXVMuDXKpMZgqXfQZq8hM=\n-----END PUBLIC KEY-----"
                 .to_owned(),

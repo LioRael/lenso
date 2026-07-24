@@ -13,7 +13,7 @@ pub const MANIFEST_MIGRATION_PLAN_PROTOCOL: &str = "lenso.manifest-migration-pla
 pub const MANIFEST_MIGRATION_RECEIPT_PROTOCOL: &str = "lenso.manifest-migration-receipt.v1";
 pub const SERVICE_UPGRADE_PLAN_PROTOCOL: &str = "lenso.service-upgrade-plan.v1";
 pub const CONTRACT_RETIREMENT_PLAN_PROTOCOL: &str = "lenso.contract-retirement-plan.v1";
-pub const CONTRACT_RETIREMENT_RECEIPT_PROTOCOL: &str = "lenso.contract-retirement-receipt.v1";
+pub const CONTRACT_RETIREMENT_RECEIPT_PROTOCOL: &str = "lenso.contract-retirement-receipt.v2";
 pub const FAILURE_SCENARIO_EVIDENCE_PROTOCOL: &str = "lenso.failure-scenario-evidence.v1";
 
 #[derive(
@@ -149,8 +149,13 @@ pub struct GaSupportManifestInput {
     pub documentation: DocumentationIdentity,
     pub combinations: Vec<SupportCombinationInput>,
     pub upgrade_edges: Vec<UpgradeEdgeInput>,
-    pub evidence_receipt_authorities: BTreeMap<String, String>,
-    pub receipt_authority_public_keys: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct EvidenceReceiptTrust {
+    pub authorities: BTreeMap<String, String>,
+    pub public_keys: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, ToSchema)]
@@ -167,7 +172,9 @@ pub struct GaSupportManifest {
     pub documentation: DocumentationIdentity,
     pub combinations: Vec<SupportCombinationInput>,
     pub upgrade_edges: Vec<UpgradeEdgeInput>,
+    #[serde(default)]
     pub evidence_receipt_authorities: BTreeMap<String, String>,
+    #[serde(default)]
     pub receipt_authority_public_keys: BTreeMap<String, String>,
 }
 
@@ -183,8 +190,6 @@ impl GaSupportManifest {
             documentation: self.documentation,
             combinations: self.combinations,
             upgrade_edges: self.upgrade_edges,
-            evidence_receipt_authorities: self.evidence_receipt_authorities,
-            receipt_authority_public_keys: self.receipt_authority_public_keys,
         }
     }
 }
@@ -260,7 +265,14 @@ pub struct GaSupportEvaluation {
 }
 
 pub fn assemble_ga_support_manifest(
+    input: GaSupportManifestInput,
+) -> Result<GaSupportManifest, Vec<GaIssue>> {
+    assemble_ga_support_manifest_with_trust(input, EvidenceReceiptTrust::default())
+}
+
+pub fn assemble_ga_support_manifest_with_trust(
     mut input: GaSupportManifestInput,
+    trust: EvidenceReceiptTrust,
 ) -> Result<GaSupportManifest, Vec<GaIssue>> {
     input.components.sort();
     input.manifest_formats.sort();
@@ -293,13 +305,12 @@ pub fn assemble_ga_support_manifest(
                 || !valid_digest(&component.digest)
         })
         || !valid_digest(&input.documentation.digest)
-        || input.evidence_receipt_authorities.is_empty()
-        || input
-            .evidence_receipt_authorities
+        || trust
+            .authorities
             .values()
-            .any(|authority| !input.receipt_authority_public_keys.contains_key(authority))
-        || input
-            .receipt_authority_public_keys
+            .any(|authority| !trust.public_keys.contains_key(authority))
+        || trust
+            .public_keys
             .values()
             .any(|key| !key.starts_with("-----BEGIN PUBLIC KEY-----"))
         || input.combinations.iter().any(|combination| {
@@ -319,11 +330,10 @@ pub fn assemble_ga_support_manifest(
         )]);
     }
 
-    let digest = digest_json(&input);
-    Ok(GaSupportManifest {
+    let mut manifest = GaSupportManifest {
         protocol: GA_SUPPORT_MANIFEST_PROTOCOL.into(),
-        manifest_id: format!("ga-support:{}", &digest[7..23]),
-        manifest_digest: digest,
+        manifest_id: String::new(),
+        manifest_digest: String::new(),
         status: input.status,
         components: input.components,
         manifest_formats: input.manifest_formats,
@@ -332,9 +342,12 @@ pub fn assemble_ga_support_manifest(
         documentation: input.documentation,
         combinations: input.combinations,
         upgrade_edges: input.upgrade_edges,
-        evidence_receipt_authorities: input.evidence_receipt_authorities,
-        receipt_authority_public_keys: input.receipt_authority_public_keys,
-    })
+        evidence_receipt_authorities: trust.authorities,
+        receipt_authority_public_keys: trust.public_keys,
+    };
+    manifest.manifest_digest = ga_support_manifest_digest(&manifest);
+    manifest.manifest_id = format!("ga-support:{}", &manifest.manifest_digest[7..23]);
+    Ok(manifest)
 }
 
 #[must_use]
@@ -419,9 +432,22 @@ pub fn ga_support_manifest_integrity_valid(manifest: &GaSupportManifest) -> bool
     if manifest.protocol != GA_SUPPORT_MANIFEST_PROTOCOL {
         return false;
     }
-    let digest = digest_json(&manifest.clone().into_input());
+    let digest = ga_support_manifest_digest(manifest);
     manifest.manifest_digest == digest
         && manifest.manifest_id == format!("ga-support:{}", &digest[7..23])
+}
+
+fn ga_support_manifest_digest(manifest: &GaSupportManifest) -> String {
+    if manifest.evidence_receipt_authorities.is_empty()
+        && manifest.receipt_authority_public_keys.is_empty()
+    {
+        return digest_json(&manifest.clone().into_input());
+    }
+    let mut canonical = manifest.clone();
+    canonical.protocol.clear();
+    canonical.manifest_id.clear();
+    canonical.manifest_digest.clear();
+    digest_json(&canonical)
 }
 
 #[must_use]
@@ -437,17 +463,19 @@ pub fn contract_retirement_plan_integrity_is_valid(plan: &ContractRetirementPlan
 
 #[must_use]
 pub fn contract_retirement_receipt_integrity_is_valid(receipt: &ContractRetirementReceipt) -> bool {
+    let mut canonical = receipt.clone();
+    canonical.receipt_id.clear();
+    canonical.receipt_digest.clear();
+    let digest = digest_json(&canonical);
     receipt.protocol == CONTRACT_RETIREMENT_RECEIPT_PROTOCOL
         && valid_digest(&receipt.plan_digest)
-        && receipt.receipt_id
-            == format!(
-                "contract-retirement-receipt:{}",
-                &receipt.plan_digest[7..23]
-            )
+        && receipt.receipt_digest == digest
+        && receipt.receipt_id == format!("contract-retirement-receipt:{}", &digest[7..23])
         && !receipt.contract_id.trim().is_empty()
         && !receipt.retired_version.trim().is_empty()
         && !receipt.replacement_version.trim().is_empty()
         && !receipt.approver.trim().is_empty()
+        && !receipt.approval_reason.trim().is_empty()
         && receipt.retired
 }
 
@@ -469,6 +497,13 @@ pub fn render_ga_support_manifest(manifest: &GaSupportManifest) -> String {
             component.digest
         ));
     }
+    output.push_str("\n## Manifest and state formats\n\n");
+    for format in &manifest.manifest_formats {
+        output.push_str(&format!("- `{:?}`: `{}`\n", format.kind, format.version));
+    }
+    for state_version in &manifest.state_versions {
+        output.push_str(&format!("- State: `{state_version}`\n"));
+    }
     output.push_str("\n## Supported combinations\n\n");
     for combination in &manifest.combinations {
         output.push_str(&format!(
@@ -477,6 +512,17 @@ pub fn render_ga_support_manifest(manifest: &GaSupportManifest) -> String {
             combination.status,
             combination.state_version,
             combination.component_references.join("`, `")
+        ));
+    }
+    output.push_str("\n## Upgrade and skew edges\n\n");
+    for edge in &manifest.upgrade_edges {
+        output.push_str(&format!(
+            "- `{}`: `{}` -> `{}`; rollback safe `{}`; mixed versions `{}`\n",
+            edge.edge_id,
+            edge.source_format,
+            edge.target_format,
+            edge.rollback_safe,
+            edge.mixed_version_references.join("`, `"),
         ));
     }
     output.push_str(
@@ -965,11 +1011,13 @@ pub struct RetirementApproval {
 pub struct ContractRetirementReceipt {
     pub protocol: String,
     pub receipt_id: String,
+    pub receipt_digest: String,
     pub plan_digest: String,
     pub contract_id: String,
     pub retired_version: String,
     pub replacement_version: String,
     pub approver: String,
+    pub approval_reason: String,
     pub retired: bool,
 }
 
@@ -1078,16 +1126,22 @@ pub fn apply_contract_retirement(
             "Stop before mutation and request the Contract Retirement Approval Boundary.",
         ));
     }
-    Ok(ContractRetirementReceipt {
+    let mut receipt = ContractRetirementReceipt {
         protocol: CONTRACT_RETIREMENT_RECEIPT_PROTOCOL.into(),
-        receipt_id: format!("contract-retirement-receipt:{}", &plan.plan_digest[7..23]),
+        receipt_id: String::new(),
+        receipt_digest: String::new(),
         plan_digest: plan.plan_digest.clone(),
         contract_id: plan.contract_id.clone(),
         retired_version: plan.retiring_version.clone(),
         replacement_version: plan.replacement_version.clone(),
         approver: approval.approver.clone(),
+        approval_reason: approval.reason.clone(),
         retired: true,
-    })
+    };
+    let digest = digest_json(&receipt);
+    receipt.receipt_digest = digest.clone();
+    receipt.receipt_id = format!("contract-retirement-receipt:{}", &digest[7..23]);
+    Ok(receipt)
 }
 
 #[derive(

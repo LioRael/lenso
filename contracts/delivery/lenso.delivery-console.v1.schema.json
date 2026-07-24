@@ -288,6 +288,11 @@
     },
     "DeliveryConsoleGaEvidence": {
       "properties": {
+        "details": {
+          "additionalProperties": true,
+          "default": {},
+          "type": "object"
+        },
         "evidenceId": {
           "type": "string"
         },

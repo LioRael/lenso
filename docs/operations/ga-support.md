@@ -1,8 +1,8 @@
 # Lenso GA Support Manifest
 
 - Protocol: `lenso.ga-support-manifest.v1`
-- Manifest ID: `ga-support:c5c4fe7d69b0136e`
-- Manifest digest: `sha256:c5c4fe7d69b0136eba805faec20bdcc4a5df5c7b68f85e5565e9a7c1ee665d84`
+- Manifest ID: `ga-support:85270ae7dd399530`
+- Manifest digest: `sha256:85270ae7dd399530011b45664ecef834d53806eb33c55fa410179bb21dbbfa1e`
 - Status: `GeneralAvailability`
 - Documentation: `m6-ga` (`sha256:09aeded7e3eb0625b12e0df63c960c837e22e8e391ab451ec522c60d83e56fc6`)
 
@@ -16,8 +16,20 @@
 - `operator:lenso-operator@0.1.0` — `sha256:eda3f717c993979b0cb05dfa7528dd79c0ccf52cbb4a96b3a4178806cf7dd7f4`
 - `runtime_console:@lenso/runtime-console@0.1.1` — `sha256:514c7edd33302f55985aaba08f3217fd2bd52ee65e2340b8f7ec5d6f4fb6944f`
 
+## Manifest and state formats
+
+- `Provider`: `lenso.service.v1`
+- `Service`: `lenso.service.v2`
+- `System`: `lenso.system.v1`
+- `System`: `lenso.system.v2`
+- State: `service-store.v1`
+
 ## Supported combinations
 
 - `m6-ga-1`: `GeneralAvailability`, state `service-store.v1`, components `cli:@lenso/cli@0.2.9`, `contracts:lenso-contracts@0.3.15`, `operator:lenso-operator@0.1.0`, `provider:lenso-service-provider-v1@1`, `runtime:lenso-autonomous-service@0.1.10`, `runtime:lenso-service@0.1.14`, `runtime_console:@lenso/runtime-console@0.1.1`
+
+## Upgrade and skew edges
+
+- `system-v1-v2`: `lenso.system.v1` -> `lenso.system.v2`; rollback safe `true`; mixed versions ``
 
 Unknown combinations are not inferred compatible from semantic-version proximity.

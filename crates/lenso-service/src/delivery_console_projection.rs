@@ -228,6 +228,8 @@ pub struct DeliveryConsoleGaEvidence {
     #[serde(default)]
     pub subjects: BTreeMap<String, String>,
     #[serde(default)]
+    pub details: BTreeMap<String, Value>,
+    #[serde(default)]
     pub issue_codes: Vec<String>,
     #[serde(default)]
     pub next_actions: Vec<String>,
@@ -507,7 +509,7 @@ fn ga_operations(artifacts: &[Value]) -> DeliveryConsoleGaOperations {
     };
     let newest = |protocol_name: &str| summaries(protocol_name).pop();
     let mut contract_lifecycle = summaries("lenso.contract-retirement-plan.v1");
-    contract_lifecycle.extend(summaries("lenso.contract-retirement-receipt.v1"));
+    contract_lifecycle.extend(summaries("lenso.contract-retirement-receipt.v2"));
     DeliveryConsoleGaOperations {
         support_manifest: newest("lenso.ga-support-manifest.v1"),
         delivery_recovery: summaries("lenso.delivery-failure-recovery-evidence.v1"),
@@ -593,12 +595,38 @@ fn ga_evidence(artifact: &Value) -> Option<DeliveryConsoleGaEvidence> {
         }),
     )
     .collect();
+    let details = [
+        "components",
+        "manifestFormats",
+        "stateVersions",
+        "adapterVersions",
+        "combinations",
+        "upgradeEdges",
+        "activeConsumers",
+        "budgets",
+        "measurements",
+        "findings",
+        "contractVersionDigests",
+        "remainingStoryGaps",
+        "reconciliation",
+        "environmentObservation",
+    ]
+    .into_iter()
+    .filter_map(|key| {
+        artifact
+            .get(key)
+            .filter(|value| !value.is_null())
+            .cloned()
+            .map(|value| (key.to_owned(), value))
+    })
+    .collect();
     Some(DeliveryConsoleGaEvidence {
         protocol,
         evidence_id,
         status,
         stale,
         subjects,
+        details,
         issue_codes,
         next_actions: strings(artifact, "nextActions"),
     })
@@ -1284,40 +1312,44 @@ mod persistence_tests {
 
     #[test]
     fn persistence_accepts_integrity_valid_ga_support_and_rejects_tampering() {
-        let manifest = crate::assemble_ga_support_manifest(crate::GaSupportManifestInput {
-            status: crate::SupportStatus::Candidate,
-            components: vec![crate::GaComponent {
-                kind: crate::ComponentKind::Runtime,
-                component_id: "lenso-service".to_owned(),
-                version: "0.1.14".to_owned(),
-                digest: crate::extraction_input_digest(b"runtime"),
-            }],
-            manifest_formats: vec![crate::ManifestFormat {
-                kind: crate::ManifestKind::Service,
-                version: "lenso.service.v2".to_owned(),
-            }],
-            state_versions: vec!["service-store.v1".to_owned()],
-            adapter_versions: BTreeMap::from([("postgresql".to_owned(), "18".to_owned())]),
-            documentation: crate::DocumentationIdentity {
-                version: "m6-ga".to_owned(),
-                digest: crate::extraction_input_digest(b"docs"),
-            },
-            combinations: vec![crate::SupportCombinationInput {
-                combination_id: "candidate".to_owned(),
-                component_references: vec!["runtime:lenso-service@0.1.14".to_owned()],
-                state_version: "service-store.v1".to_owned(),
+        let manifest = crate::assemble_ga_support_manifest_with_trust(
+            crate::GaSupportManifestInput {
                 status: crate::SupportStatus::Candidate,
-            }],
-            upgrade_edges: Vec::new(),
-            evidence_receipt_authorities: BTreeMap::from([(
-                crate::PERFORMANCE_PROFILE_PROTOCOL.to_owned(),
-                "test-authority".to_owned(),
-            )]),
-            receipt_authority_public_keys: BTreeMap::from([(
-                "test-authority".to_owned(),
-                "-----BEGIN PUBLIC KEY-----\ntest\n-----END PUBLIC KEY-----".to_owned(),
-            )]),
-        })
+                components: vec![crate::GaComponent {
+                    kind: crate::ComponentKind::Runtime,
+                    component_id: "lenso-service".to_owned(),
+                    version: "0.1.14".to_owned(),
+                    digest: crate::extraction_input_digest(b"runtime"),
+                }],
+                manifest_formats: vec![crate::ManifestFormat {
+                    kind: crate::ManifestKind::Service,
+                    version: "lenso.service.v2".to_owned(),
+                }],
+                state_versions: vec!["service-store.v1".to_owned()],
+                adapter_versions: BTreeMap::from([("postgresql".to_owned(), "18".to_owned())]),
+                documentation: crate::DocumentationIdentity {
+                    version: "m6-ga".to_owned(),
+                    digest: crate::extraction_input_digest(b"docs"),
+                },
+                combinations: vec![crate::SupportCombinationInput {
+                    combination_id: "candidate".to_owned(),
+                    component_references: vec!["runtime:lenso-service@0.1.14".to_owned()],
+                    state_version: "service-store.v1".to_owned(),
+                    status: crate::SupportStatus::Candidate,
+                }],
+                upgrade_edges: Vec::new(),
+            },
+            crate::EvidenceReceiptTrust {
+                authorities: BTreeMap::from([(
+                    crate::PERFORMANCE_PROFILE_PROTOCOL.to_owned(),
+                    "test-authority".to_owned(),
+                )]),
+                public_keys: BTreeMap::from([(
+                    "test-authority".to_owned(),
+                    "-----BEGIN PUBLIC KEY-----\ntest\n-----END PUBLIC KEY-----".to_owned(),
+                )]),
+            },
+        )
         .expect("manifest is valid");
         let artifact = serde_json::to_value(&manifest).expect("manifest serializes");
         assert_eq!(
