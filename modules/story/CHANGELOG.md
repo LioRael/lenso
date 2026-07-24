@@ -1,3 +1,10 @@
+## lenso-module-story@0.1.17
+
+### Features
+
+Publish the M6 General Availability Support Manifest and the complete public
+package closure required by its exact supported component combination.
+
 ## lenso-module-story@0.1.14
 
 ### Fixes

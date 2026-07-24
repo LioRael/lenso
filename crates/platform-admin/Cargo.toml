@@ -1,6 +1,6 @@
 [package]
 name = "lenso-platform-admin"
-version = "0.1.14"
+version = "0.1.15"
 edition.workspace = true
 license = "MIT"
 description = "Runtime Console observability backend for the Lenso host."

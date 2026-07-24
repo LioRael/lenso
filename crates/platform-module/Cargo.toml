@@ -1,6 +1,6 @@
 [package]
 name = "lenso-platform-module"
-version = "0.1.14"
+version = "0.1.15"
 edition.workspace = true
 license = "MIT"
 description = "Module behavior seams for the Lenso backend framework."
