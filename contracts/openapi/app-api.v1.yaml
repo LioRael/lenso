@@ -8869,6 +8869,76 @@ components:
           type: array
           items:
             type: string
+    DeliveryConsoleGaEvidence:
+      type: object
+      required:
+      - protocol
+      - evidenceId
+      - status
+      - stale
+      properties:
+        details:
+          type: object
+          additionalProperties: {}
+          propertyNames:
+            type: string
+        evidenceId:
+          type: string
+        issueCodes:
+          type: array
+          items:
+            type: string
+        nextActions:
+          type: array
+          items:
+            type: string
+        protocol:
+          type: string
+        stale:
+          type: boolean
+        status:
+          type: string
+        subjects:
+          type: object
+          additionalProperties:
+            type: string
+          propertyNames:
+            type: string
+    DeliveryConsoleGaOperations:
+      type: object
+      properties:
+        contractLifecycle:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeliveryConsoleGaEvidence'
+        deliveryRecovery:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeliveryConsoleGaEvidence'
+        disasterRecovery:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/DeliveryConsoleGaEvidence'
+        performance:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/DeliveryConsoleGaEvidence'
+        restore:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/DeliveryConsoleGaEvidence'
+        securityReview:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/DeliveryConsoleGaEvidence'
+        supportEnvelope:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/DeliveryConsoleGaEvidence'
+        supportManifest:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/DeliveryConsoleGaEvidence'
     DeliveryConsoleIssue:
       type: object
       required:
@@ -8938,6 +9008,8 @@ components:
           oneOf:
           - type: 'null'
           - $ref: '#/components/schemas/DeliveryConsoleEdge'
+        gaOperations:
+          $ref: '#/components/schemas/DeliveryConsoleGaOperations'
         issues:
           type: array
           items:

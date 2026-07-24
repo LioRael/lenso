@@ -166,6 +166,13 @@
     "documentation": {
       "$ref": "#/$defs/DocumentationIdentity"
     },
+    "evidenceReceiptAuthorities": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "default": {},
+      "type": "object"
+    },
     "manifestDigest": {
       "type": "string"
     },
@@ -180,6 +187,13 @@
     },
     "protocol": {
       "type": "string"
+    },
+    "receiptAuthorityPublicKeys": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "default": {},
+      "type": "object"
     },
     "stateVersions": {
       "items": {

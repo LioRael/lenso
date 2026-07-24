@@ -1,13 +1,15 @@
 use std::collections::BTreeMap;
 
 use lenso_service::{
-    ComponentKind, ContractConsumerEvidence, ContractRetirementInput, FailureCondition,
-    FailureObservation, FailureOutcome, FailureScenarioInput, GaComponent, GaSupportManifestInput,
-    ManifestFormat, ManifestKind, ManifestMigrationInput, RetirementApproval, ServiceUpgradeInput,
-    ServiceUpgradeRuntimeObservation, SupportCombinationInput, SupportDecision, SupportStatus,
-    UpgradeEdgeInput, UpgradeWorkload, apply_contract_retirement, apply_manifest_migration,
-    assemble_ga_support_manifest, evaluate_failure_scenario, evaluate_ga_support,
-    evaluate_service_upgrade_admission, plan_contract_retirement, plan_manifest_migration,
+    ComponentKind, ContractConsumerEvidence, ContractRetirementInput, EvidenceReceiptTrust,
+    FailureCondition, FailureObservation, FailureOutcome, FailureScenarioInput, GaComponent,
+    GaSupportManifestInput, ManifestFormat, ManifestKind, ManifestMigrationInput,
+    RetirementApproval, ServiceUpgradeInput, ServiceUpgradeRuntimeObservation,
+    SupportCombinationInput, SupportDecision, SupportStatus, UpgradeEdgeInput, UpgradeWorkload,
+    apply_contract_retirement, apply_manifest_migration, assemble_ga_support_manifest,
+    assemble_ga_support_manifest_with_trust, contract_retirement_receipt_integrity_is_valid,
+    evaluate_failure_scenario, evaluate_ga_support, evaluate_service_upgrade_admission,
+    ga_support_manifest_integrity_valid, plan_contract_retirement, plan_manifest_migration,
     plan_service_upgrade,
 };
 use serde_json::json;
@@ -17,69 +19,87 @@ fn digest(value: char) -> String {
 }
 
 fn support_manifest() -> lenso_service::GaSupportManifest {
-    assemble_ga_support_manifest(GaSupportManifestInput {
-        status: SupportStatus::GeneralAvailability,
-        components: vec![
-            GaComponent {
-                kind: ComponentKind::Runtime,
-                component_id: "lenso-service".into(),
-                version: "1.0.0".into(),
-                digest: digest('a'),
-            },
-            GaComponent {
-                kind: ComponentKind::Cli,
-                component_id: "lenso-cli".into(),
-                version: "1.0.0".into(),
-                digest: digest('b'),
-            },
-        ],
-        manifest_formats: vec![
-            ManifestFormat {
-                kind: ManifestKind::Provider,
-                version: "lenso.service.v1".into(),
-            },
-            ManifestFormat {
-                kind: ManifestKind::System,
-                version: "lenso.system.v1".into(),
-            },
-            ManifestFormat {
-                kind: ManifestKind::System,
-                version: "lenso.system.v2".into(),
-            },
-            ManifestFormat {
-                kind: ManifestKind::Service,
-                version: "lenso.service.v2".into(),
-            },
-        ],
-        state_versions: vec!["service-store.v1".into(), "service-store.v2".into()],
-        adapter_versions: BTreeMap::from([
-            ("nats-jetstream".into(), "2.11".into()),
-            ("spiffe-spire".into(), "1.12".into()),
-        ]),
-        documentation: lenso_service::DocumentationIdentity {
-            version: "m6-ga".into(),
-            digest: digest('d'),
-        },
-        combinations: vec![SupportCombinationInput {
-            combination_id: "ga-1".into(),
-            component_references: vec![
-                "cli:lenso-cli@1.0.0".into(),
-                "runtime:lenso-service@1.0.0".into(),
-            ],
-            state_version: "service-store.v2".into(),
+    assemble_ga_support_manifest_with_trust(
+        GaSupportManifestInput {
             status: SupportStatus::GeneralAvailability,
-        }],
-        upgrade_edges: vec![UpgradeEdgeInput {
-            edge_id: "state-v1-v2".into(),
-            source_format: "service-store.v1".into(),
-            target_format: "service-store.v2".into(),
-            mixed_version_references: vec![
-                "runtime:lenso-service@1.0.0".into(),
-                "runtime:lenso-service@0.9.0".into(),
+            components: vec![
+                GaComponent {
+                    kind: ComponentKind::Runtime,
+                    component_id: "lenso-service".into(),
+                    version: "1.0.0".into(),
+                    digest: digest('a'),
+                },
+                GaComponent {
+                    kind: ComponentKind::Cli,
+                    component_id: "lenso-cli".into(),
+                    version: "1.0.0".into(),
+                    digest: digest('b'),
+                },
             ],
-            rollback_safe: false,
-        }],
-    })
+            manifest_formats: vec![
+                ManifestFormat {
+                    kind: ManifestKind::Provider,
+                    version: "lenso.service.v1".into(),
+                },
+                ManifestFormat {
+                    kind: ManifestKind::System,
+                    version: "lenso.system.v1".into(),
+                },
+                ManifestFormat {
+                    kind: ManifestKind::System,
+                    version: "lenso.system.v2".into(),
+                },
+                ManifestFormat {
+                    kind: ManifestKind::Service,
+                    version: "lenso.service.v2".into(),
+                },
+            ],
+            state_versions: vec!["service-store.v1".into(), "service-store.v2".into()],
+            adapter_versions: BTreeMap::from([
+                ("nats-jetstream".into(), "2.11".into()),
+                ("spiffe-spire".into(), "1.12".into()),
+            ]),
+            documentation: lenso_service::DocumentationIdentity {
+                version: "m6-ga".into(),
+                digest: digest('d'),
+            },
+            combinations: vec![SupportCombinationInput {
+                combination_id: "ga-1".into(),
+                component_references: vec![
+                    "cli:lenso-cli@1.0.0".into(),
+                    "runtime:lenso-service@1.0.0".into(),
+                ],
+                state_version: "service-store.v2".into(),
+                status: SupportStatus::GeneralAvailability,
+            }],
+            upgrade_edges: vec![UpgradeEdgeInput {
+                edge_id: "state-v1-v2".into(),
+                source_format: "service-store.v1".into(),
+                target_format: "service-store.v2".into(),
+                mixed_version_references: vec![
+                    "runtime:lenso-service@1.0.0".into(),
+                    "runtime:lenso-service@0.9.0".into(),
+                ],
+                rollback_safe: false,
+            }],
+        },
+        EvidenceReceiptTrust {
+            authorities: BTreeMap::from([
+                (
+                    "lenso.performance-profile.v1".into(),
+                    "test-authority".into(),
+                ),
+                (
+                    "lenso.service-restore-evidence.v1".into(),
+                    "test-authority".into(),
+                ),
+            ]),
+            public_keys: BTreeMap::from([(
+                "test-authority".into(),
+                "-----BEGIN PUBLIC KEY-----\ntest\n-----END PUBLIC KEY-----".into(),
+            )]),
+        },
+    )
     .expect("valid support manifest")
 }
 
@@ -88,7 +108,14 @@ fn support_manifest_is_canonical_and_unknown_combinations_fail_explicitly() {
     let manifest = support_manifest();
     let mut reordered = manifest.clone();
     reordered.components.reverse();
-    let rebuilt = assemble_ga_support_manifest(reordered.into_input()).unwrap();
+    let rebuilt = assemble_ga_support_manifest_with_trust(
+        reordered.clone().into_input(),
+        EvidenceReceiptTrust {
+            authorities: reordered.evidence_receipt_authorities,
+            public_keys: reordered.receipt_authority_public_keys,
+        },
+    )
+    .unwrap();
     assert_eq!(manifest.manifest_id, rebuilt.manifest_id);
     assert_eq!(manifest.manifest_digest, rebuilt.manifest_digest);
 
@@ -122,6 +149,24 @@ fn support_manifest_is_canonical_and_unknown_combinations_fail_explicitly() {
     );
     assert_eq!(rejected.decision, SupportDecision::Blocked);
     assert_eq!(rejected.issues[0].code.as_str(), "ga_manifest_invalid");
+}
+
+#[test]
+fn legacy_v1_support_manifest_without_receipt_trust_keeps_its_digest() {
+    let current = support_manifest();
+    let legacy = assemble_ga_support_manifest(current.into_input()).unwrap();
+    let mut encoded = serde_json::to_value(&legacy).unwrap();
+    encoded
+        .as_object_mut()
+        .unwrap()
+        .remove("evidenceReceiptAuthorities");
+    encoded
+        .as_object_mut()
+        .unwrap()
+        .remove("receiptAuthorityPublicKeys");
+    let decoded: lenso_service::GaSupportManifest = serde_json::from_value(encoded).unwrap();
+    assert!(ga_support_manifest_integrity_valid(&decoded));
+    assert_eq!(decoded.manifest_digest, legacy.manifest_digest);
 }
 
 #[test]
@@ -276,6 +321,12 @@ fn contract_retirement_blocks_active_consumers_and_requires_exact_approval() {
     let receipt = apply_contract_retirement(&ready, &ready_input, &approval).unwrap();
     assert!(receipt.retired);
     assert_eq!(receipt.contract_id, "support-http");
+    assert!(contract_retirement_receipt_integrity_is_valid(&receipt));
+    let mut tampered_receipt = receipt;
+    tampered_receipt.replacement_version = "v3".into();
+    assert!(!contract_retirement_receipt_integrity_is_valid(
+        &tampered_receipt
+    ));
 
     let mut tampered = ready;
     tampered.replacement_version = "v3".into();

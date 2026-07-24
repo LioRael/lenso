@@ -27,6 +27,19 @@ use crate::{
     rollback_plan_integrity_is_valid, secret_reference_metadata_is_safe,
     service_release_integrity_is_valid,
 };
+use crate::{
+    CONTRACT_RETIREMENT_PLAN_PROTOCOL, CONTRACT_RETIREMENT_RECEIPT_PROTOCOL,
+    ContractRetirementPlan, ContractRetirementReceipt, DELIVERY_FAILURE_RECOVERY_PROTOCOL,
+    DISASTER_RECOVERY_EVIDENCE_PROTOCOL, DeliveryFailureRecoveryEvidence, DisasterRecoveryEvidence,
+    GA_SUPPORT_MANIFEST_PROTOCOL, GaSupportManifest, PERFORMANCE_PROFILE_PROTOCOL,
+    PerformanceProfile, SECURITY_REVIEW_PROTOCOL, SERVICE_RESTORE_EVIDENCE_PROTOCOL,
+    SUPPORT_ENVELOPE_PROTOCOL, SecurityReviewEvidence, ServiceRestoreEvidence, SupportEnvelope,
+    contract_retirement_plan_integrity_is_valid, contract_retirement_receipt_integrity_is_valid,
+    delivery_failure_recovery_integrity_is_valid, disaster_recovery_evidence_integrity_is_valid,
+    ga_support_manifest_integrity_valid, performance_profile_integrity_is_valid,
+    security_review_integrity_is_valid, service_restore_integrity_is_valid,
+    support_envelope_integrity_is_valid,
+};
 
 pub const DELIVERY_CONSOLE_PROJECTION_PROTOCOL: &str = "lenso.delivery-console.v1";
 pub const DELIVERY_ARTIFACT_BATCH_PROTOCOL: &str = "lenso.delivery-artifact-batch.v1";
@@ -207,6 +220,44 @@ pub struct DeliveryConsoleCanaryObservation {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, ToSchema)]
 #[serde(rename_all = "camelCase")]
+pub struct DeliveryConsoleGaEvidence {
+    pub protocol: String,
+    pub evidence_id: String,
+    pub status: String,
+    pub stale: bool,
+    #[serde(default)]
+    pub subjects: BTreeMap<String, String>,
+    #[serde(default)]
+    pub details: BTreeMap<String, Value>,
+    #[serde(default)]
+    pub issue_codes: Vec<String>,
+    #[serde(default)]
+    pub next_actions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DeliveryConsoleGaOperations {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub support_manifest: Option<DeliveryConsoleGaEvidence>,
+    #[serde(default)]
+    pub delivery_recovery: Vec<DeliveryConsoleGaEvidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub restore: Option<DeliveryConsoleGaEvidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disaster_recovery: Option<DeliveryConsoleGaEvidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub performance: Option<DeliveryConsoleGaEvidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub support_envelope: Option<DeliveryConsoleGaEvidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub security_review: Option<DeliveryConsoleGaEvidence>,
+    #[serde(default)]
+    pub contract_lifecycle: Vec<DeliveryConsoleGaEvidence>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct DeliveryConsoleProjection {
     pub protocol: String,
     pub projection_digest: String,
@@ -238,6 +289,8 @@ pub struct DeliveryConsoleProjection {
     pub next_actions: Vec<String>,
     #[serde(default)]
     pub runtime_story_references: Vec<String>,
+    #[serde(default)]
+    pub ga_operations: DeliveryConsoleGaOperations,
     pub read_only: bool,
     #[serde(default)]
     pub apply_actions: Vec<String>,
@@ -419,6 +472,7 @@ pub fn project_delivery_console(input: DeliveryConsoleArtifacts) -> DeliveryCons
         secret_references,
     };
     let state = derive_state(&input.artifacts, !issues.is_empty(), &deployments);
+    let ga_operations = ga_operations(&input.artifacts);
     let mut projection = DeliveryConsoleProjection {
         protocol: DELIVERY_CONSOLE_PROJECTION_PROTOCOL.to_owned(),
         projection_digest: String::new(),
@@ -437,11 +491,154 @@ pub fn project_delivery_console(input: DeliveryConsoleArtifacts) -> DeliveryCons
         issues,
         next_actions,
         runtime_story_references: runtime_story_references.into_iter().collect(),
+        ga_operations,
         read_only: true,
         apply_actions: Vec::new(),
     };
     projection.projection_digest = digest(&projection);
     projection
+}
+
+fn ga_operations(artifacts: &[Value]) -> DeliveryConsoleGaOperations {
+    let summaries = |protocol_name: &str| {
+        artifacts
+            .iter()
+            .filter(|artifact| protocol(artifact) == protocol_name)
+            .filter_map(ga_evidence)
+            .collect::<Vec<_>>()
+    };
+    let newest = |protocol_name: &str| summaries(protocol_name).pop();
+    let mut contract_lifecycle = summaries("lenso.contract-retirement-plan.v1");
+    contract_lifecycle.extend(summaries("lenso.contract-retirement-receipt.v2"));
+    DeliveryConsoleGaOperations {
+        support_manifest: newest("lenso.ga-support-manifest.v1"),
+        delivery_recovery: summaries("lenso.delivery-failure-recovery-evidence.v1"),
+        restore: newest("lenso.service-restore-evidence.v1"),
+        disaster_recovery: newest("lenso.disaster-recovery-evidence.v1"),
+        performance: newest("lenso.performance-profile.v1"),
+        support_envelope: newest("lenso.support-envelope.v1"),
+        security_review: newest("lenso.security-review-evidence.v1"),
+        contract_lifecycle,
+    }
+}
+
+fn ga_evidence(artifact: &Value) -> Option<DeliveryConsoleGaEvidence> {
+    let protocol = text(artifact, "protocol")?;
+    let evidence_id = [
+        "evidenceId",
+        "profileId",
+        "envelopeId",
+        "reviewId",
+        "manifestId",
+        "planId",
+        "receiptId",
+    ]
+    .into_iter()
+    .find_map(|key| text(artifact, key))
+    .unwrap_or_else(|| "unknown".to_owned());
+    let status = ["decision", "status", "outcome"]
+        .into_iter()
+        .find_map(|key| text(artifact, key))
+        .unwrap_or_else(|| "unknown".to_owned());
+    let issue_codes = array(artifact, "issues")
+        .into_iter()
+        .filter_map(|issue| text(issue, "code"))
+        .collect::<Vec<_>>();
+    let stale = issue_codes
+        .iter()
+        .any(|code| code.contains("stale") || code.contains("freshness"));
+    let subjects = [
+        "serviceId",
+        "workloadId",
+        "releaseId",
+        "releaseDigest",
+        "configRevisionId",
+        "configRevisionDigest",
+        "contractId",
+        "contractSetDigest",
+        "deploymentId",
+        "storyId",
+        "backupId",
+        "supportManifestDigest",
+        "primaryRegion",
+        "passiveRegion",
+        "phase",
+        "observedRpoMs",
+        "observedRtoMs",
+        "recoveryTimeMs",
+        "intentionalLossBoundMs",
+        "replayBoundCount",
+        "freshnessHorizonUnixMs",
+        "upgradeStatus",
+        "rollbackStatus",
+    ]
+    .into_iter()
+    .filter_map(|key| scalar_text(artifact, key).map(|value| (key.to_owned(), value)))
+    .chain(
+        [
+            ("activeConsumerCount", "activeConsumers"),
+            ("performanceBudgetCount", "budgets"),
+            ("findingCount", "findings"),
+            ("contractVersionCount", "contractVersionDigests"),
+            ("remainingStoryGapCount", "remainingStoryGaps"),
+        ]
+        .into_iter()
+        .filter_map(|(label, key)| {
+            artifact
+                .get(key)
+                .and_then(|value| match value {
+                    Value::Array(values) => Some(values.len()),
+                    Value::Object(values) => Some(values.len()),
+                    _ => None,
+                })
+                .map(|count| (label.to_owned(), count.to_string()))
+        }),
+    )
+    .collect();
+    let details = [
+        "components",
+        "manifestFormats",
+        "stateVersions",
+        "adapterVersions",
+        "combinations",
+        "upgradeEdges",
+        "activeConsumers",
+        "budgets",
+        "measurements",
+        "findings",
+        "contractVersionDigests",
+        "remainingStoryGaps",
+        "reconciliation",
+        "environmentObservation",
+    ]
+    .into_iter()
+    .filter_map(|key| {
+        artifact
+            .get(key)
+            .filter(|value| !value.is_null())
+            .cloned()
+            .map(|value| (key.to_owned(), value))
+    })
+    .collect();
+    Some(DeliveryConsoleGaEvidence {
+        protocol,
+        evidence_id,
+        status,
+        stale,
+        subjects,
+        details,
+        issue_codes,
+        next_actions: strings(artifact, "nextActions"),
+    })
+}
+
+fn scalar_text(value: &Value, key: &str) -> Option<String> {
+    value.get(key).and_then(|value| match value {
+        Value::String(value) => Some(value.clone()),
+        Value::Number(value) => Some(value.to_string()),
+        Value::Bool(value) => Some(value.to_string()),
+        _ => None,
+    })
 }
 
 fn canary_observation(artifact: &Value) -> Option<DeliveryConsoleCanaryObservation> {
@@ -679,6 +876,61 @@ fn persisted_delivery_artifact(artifact: &Value) -> Result<Value, sqlx::Error> {
         )?,
         ROLLBACK_RECEIPT_PROTOCOL => {
             canonical_artifact::<RollbackReceipt>(artifact, "Rollback Receipt")?
+        }
+        DELIVERY_FAILURE_RECOVERY_PROTOCOL => {
+            validated_canonical_artifact::<DeliveryFailureRecoveryEvidence>(
+                artifact,
+                "Delivery Failure Recovery Evidence",
+                delivery_failure_recovery_integrity_is_valid,
+            )?
+        }
+        SERVICE_RESTORE_EVIDENCE_PROTOCOL => {
+            validated_canonical_artifact::<ServiceRestoreEvidence>(
+                artifact,
+                "Service Restore Evidence",
+                service_restore_integrity_is_valid,
+            )?
+        }
+        DISASTER_RECOVERY_EVIDENCE_PROTOCOL => {
+            validated_canonical_artifact::<DisasterRecoveryEvidence>(
+                artifact,
+                "Disaster Recovery Evidence",
+                disaster_recovery_evidence_integrity_is_valid,
+            )?
+        }
+        PERFORMANCE_PROFILE_PROTOCOL => validated_canonical_artifact::<PerformanceProfile>(
+            artifact,
+            "Performance Profile",
+            performance_profile_integrity_is_valid,
+        )?,
+        SUPPORT_ENVELOPE_PROTOCOL => validated_canonical_artifact::<SupportEnvelope>(
+            artifact,
+            "Support Envelope",
+            support_envelope_integrity_is_valid,
+        )?,
+        SECURITY_REVIEW_PROTOCOL => validated_canonical_artifact::<SecurityReviewEvidence>(
+            artifact,
+            "Security Review Evidence",
+            security_review_integrity_is_valid,
+        )?,
+        GA_SUPPORT_MANIFEST_PROTOCOL => validated_canonical_artifact::<GaSupportManifest>(
+            artifact,
+            "GA Support Manifest",
+            ga_support_manifest_integrity_valid,
+        )?,
+        CONTRACT_RETIREMENT_PLAN_PROTOCOL => {
+            validated_canonical_artifact::<ContractRetirementPlan>(
+                artifact,
+                "Contract Retirement Plan",
+                contract_retirement_plan_integrity_is_valid,
+            )?
+        }
+        CONTRACT_RETIREMENT_RECEIPT_PROTOCOL => {
+            validated_canonical_artifact::<ContractRetirementReceipt>(
+                artifact,
+                "Contract Retirement Receipt",
+                contract_retirement_receipt_integrity_is_valid,
+            )?
         }
         _ => {
             return Err(sqlx::Error::Protocol(format!(
@@ -1007,6 +1259,7 @@ fn digest(value: &impl Serialize) -> String {
 #[cfg(test)]
 mod persistence_tests {
     use super::*;
+    use std::collections::BTreeMap;
 
     #[test]
     fn persistence_rejects_unknown_delivery_protocols() {
@@ -1055,5 +1308,57 @@ mod persistence_tests {
         let error = persisted_delivery_artifact(&artifact)
             .expect_err("unknown token-bearing receipt fields must fail closed");
         assert!(error.to_string().contains("non-canonical"));
+    }
+
+    #[test]
+    fn persistence_accepts_integrity_valid_ga_support_and_rejects_tampering() {
+        let manifest = crate::assemble_ga_support_manifest_with_trust(
+            crate::GaSupportManifestInput {
+                status: crate::SupportStatus::Candidate,
+                components: vec![crate::GaComponent {
+                    kind: crate::ComponentKind::Runtime,
+                    component_id: "lenso-service".to_owned(),
+                    version: "0.1.14".to_owned(),
+                    digest: crate::extraction_input_digest(b"runtime"),
+                }],
+                manifest_formats: vec![crate::ManifestFormat {
+                    kind: crate::ManifestKind::Service,
+                    version: "lenso.service.v2".to_owned(),
+                }],
+                state_versions: vec!["service-store.v1".to_owned()],
+                adapter_versions: BTreeMap::from([("postgresql".to_owned(), "18".to_owned())]),
+                documentation: crate::DocumentationIdentity {
+                    version: "m6-ga".to_owned(),
+                    digest: crate::extraction_input_digest(b"docs"),
+                },
+                combinations: vec![crate::SupportCombinationInput {
+                    combination_id: "candidate".to_owned(),
+                    component_references: vec!["runtime:lenso-service@0.1.14".to_owned()],
+                    state_version: "service-store.v1".to_owned(),
+                    status: crate::SupportStatus::Candidate,
+                }],
+                upgrade_edges: Vec::new(),
+            },
+            crate::EvidenceReceiptTrust {
+                authorities: BTreeMap::from([(
+                    crate::PERFORMANCE_PROFILE_PROTOCOL.to_owned(),
+                    "test-authority".to_owned(),
+                )]),
+                public_keys: BTreeMap::from([(
+                    "test-authority".to_owned(),
+                    "-----BEGIN PUBLIC KEY-----\ntest\n-----END PUBLIC KEY-----".to_owned(),
+                )]),
+            },
+        )
+        .expect("manifest is valid");
+        let artifact = serde_json::to_value(&manifest).expect("manifest serializes");
+        assert_eq!(
+            persisted_delivery_artifact(&artifact).expect("manifest persists"),
+            artifact
+        );
+
+        let mut tampered = artifact;
+        tampered["status"] = serde_json::json!("general_availability");
+        persisted_delivery_artifact(&tampered).expect_err("tampered manifest fails");
     }
 }

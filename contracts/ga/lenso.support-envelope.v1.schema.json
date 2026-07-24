@@ -1,0 +1,243 @@
+{
+  "$defs": {
+    "SupportEnvelopeDecision": {
+      "enum": [
+        "passed",
+        "blocked"
+      ],
+      "type": "string"
+    },
+    "SupportEnvelopeIssue": {
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/SupportEnvelopeIssueCode"
+        },
+        "message": {
+          "type": "string"
+        },
+        "nextActions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "remediation": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "remediation",
+        "nextActions"
+      ],
+      "type": "object"
+    },
+    "SupportEnvelopeIssueCode": {
+      "enum": [
+        "scale_point_missing",
+        "topology_invalid",
+        "measurement_incomplete",
+        "budget_exceeded",
+        "environment_drift",
+        "saturation_unknown",
+        "hidden_central_dependency",
+        "cleanup_incomplete"
+      ],
+      "type": "string"
+    },
+    "SupportScalePoint": {
+      "properties": {
+        "bottlenecks": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "budgetsPassed": {
+          "type": "boolean"
+        },
+        "cleanupComplete": {
+          "type": "boolean"
+        },
+        "compatibleBaselineDigest": {
+          "type": "string"
+        },
+        "contractCount": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "environmentDigest": {
+          "type": "string"
+        },
+        "environmentDriftDetected": {
+          "type": "boolean"
+        },
+        "environmentVerification": {
+          "type": "boolean"
+        },
+        "measurementDigests": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "policyDataPlaneRequests": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "registryDataPlaneRequests": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "repeatedRunCount": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "runtimeConsoleDataPlaneRequests": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "saturationSignal": {
+          "type": "string"
+        },
+        "serviceCount": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "storeCount": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "systemPlaneDataPlaneRequests": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "telemetryDataPlaneRequests": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tenantCount": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "topologyDigest": {
+          "type": "string"
+        },
+        "varianceBasisPoints": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "workflowCount": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "workloadCount": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "serviceCount",
+        "workloadCount",
+        "storeCount",
+        "contractCount",
+        "workflowCount",
+        "tenantCount",
+        "topologyDigest",
+        "environmentDigest",
+        "compatibleBaselineDigest",
+        "environmentVerification",
+        "environmentDriftDetected",
+        "measurementDigests",
+        "budgetsPassed",
+        "repeatedRunCount",
+        "varianceBasisPoints",
+        "systemPlaneDataPlaneRequests",
+        "runtimeConsoleDataPlaneRequests",
+        "telemetryDataPlaneRequests",
+        "policyDataPlaneRequests",
+        "registryDataPlaneRequests",
+        "saturationSignal",
+        "bottlenecks",
+        "cleanupComplete"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://contracts.lenso.local/ga/lenso.support-envelope.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "adapterVersions": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "decision": {
+      "$ref": "#/$defs/SupportEnvelopeDecision"
+    },
+    "envelopeDigest": {
+      "type": "string"
+    },
+    "envelopeId": {
+      "type": "string"
+    },
+    "issues": {
+      "items": {
+        "$ref": "#/$defs/SupportEnvelopeIssue"
+      },
+      "type": "array"
+    },
+    "nextActions": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "points": {
+      "items": {
+        "$ref": "#/$defs/SupportScalePoint"
+      },
+      "type": "array"
+    },
+    "protocol": {
+      "type": "string"
+    },
+    "recommendedServiceLimit": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "supportManifestDigest": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "protocol",
+    "envelopeId",
+    "envelopeDigest",
+    "supportManifestDigest",
+    "adapterVersions",
+    "points",
+    "recommendedServiceLimit",
+    "decision",
+    "issues",
+    "nextActions"
+  ],
+  "title": "SupportEnvelope",
+  "type": "object"
+}

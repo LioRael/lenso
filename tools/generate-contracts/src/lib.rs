@@ -119,6 +119,30 @@ pub fn generate_contracts() -> anyhow::Result<()> {
         &generated_failure_scenario_evidence_schema(),
     )?;
     write_json(
+        "contracts/ga/lenso.delivery-failure-recovery-evidence.v1.schema.json",
+        &generated_delivery_failure_recovery_schema(),
+    )?;
+    write_json(
+        "contracts/ga/lenso.performance-profile.v1.schema.json",
+        &generated_performance_profile_schema(),
+    )?;
+    write_json(
+        "contracts/ga/lenso.service-restore-evidence.v1.schema.json",
+        &generated_service_restore_evidence_schema(),
+    )?;
+    write_json(
+        "contracts/ga/lenso.disaster-recovery-evidence.v1.schema.json",
+        &generated_disaster_recovery_evidence_schema(),
+    )?;
+    write_json(
+        "contracts/ga/lenso.support-envelope.v1.schema.json",
+        &generated_support_envelope_schema(),
+    )?;
+    write_json(
+        "contracts/ga/lenso.security-review-evidence.v1.schema.json",
+        &generated_security_review_evidence_schema(),
+    )?;
+    write_json(
         "contracts/ga/lenso.ga-support-manifest.v1.json",
         &generated_ga_support_manifest(),
     )?;
@@ -312,11 +336,36 @@ pub fn generated_failure_scenario_evidence_schema() -> Value {
     lenso_service::failure_scenario_evidence_schema()
 }
 
+pub fn generated_delivery_failure_recovery_schema() -> Value {
+    lenso_service::delivery_failure_recovery_schema()
+}
+
+pub fn generated_performance_profile_schema() -> Value {
+    lenso_service::performance_profile_schema()
+}
+
+pub fn generated_service_restore_evidence_schema() -> Value {
+    lenso_service::service_restore_evidence_schema()
+}
+
+pub fn generated_disaster_recovery_evidence_schema() -> Value {
+    lenso_service::disaster_recovery_evidence_schema()
+}
+
+pub fn generated_support_envelope_schema() -> Value {
+    lenso_service::support_envelope_schema()
+}
+
+pub fn generated_security_review_evidence_schema() -> Value {
+    lenso_service::security_review_evidence_schema()
+}
+
 pub fn generated_ga_support_manifest() -> Value {
     use lenso_service::{
-        ComponentKind, DocumentationIdentity, GaComponent, GaSupportManifestInput, ManifestFormat,
-        ManifestKind, SupportCombinationInput, SupportStatus, UpgradeEdgeInput,
-        assemble_ga_support_manifest, extraction_input_digest,
+        ComponentKind, DocumentationIdentity, EvidenceReceiptTrust, GaComponent,
+        GaSupportManifestInput, ManifestFormat, ManifestKind, SupportCombinationInput,
+        SupportStatus, UpgradeEdgeInput, assemble_ga_support_manifest_with_trust,
+        extraction_input_digest,
     };
     use std::collections::BTreeMap;
 
@@ -340,7 +389,7 @@ pub fn generated_ga_support_manifest() -> Value {
         ),
     ];
     let references = components.iter().map(GaComponent::reference).collect();
-    let manifest = assemble_ga_support_manifest(GaSupportManifestInput {
+    let manifest = assemble_ga_support_manifest_with_trust(GaSupportManifestInput {
         status: SupportStatus::GeneralAvailability,
         components,
         manifest_formats: vec![
@@ -369,7 +418,7 @@ pub fn generated_ga_support_manifest() -> Value {
         ]),
         documentation: DocumentationIdentity {
             version: "m6-ga".into(),
-            digest: extraction_input_digest(b"docs:m6-ga"),
+            digest: m6_documentation_digest(),
         },
         combinations: vec![SupportCombinationInput {
             combination_id: "m6-ga-1".into(),
@@ -384,9 +433,43 @@ pub fn generated_ga_support_manifest() -> Value {
             mixed_version_references: vec![],
             rollback_safe: true,
         }],
+    }, EvidenceReceiptTrust {
+        authorities: [
+            "lenso.delivery-failure-recovery-evidence.v1",
+            "lenso.performance-profile.v1",
+            "lenso.service-restore-evidence.v1",
+            "lenso.disaster-recovery-evidence.v1",
+            "lenso.support-envelope.v1",
+            "lenso.security-review-evidence.v1",
+        ]
+        .into_iter()
+        .map(|protocol| {
+            (
+                protocol.to_owned(),
+                "m6-environment-verifier".to_owned(),
+            )
+        })
+        .collect(),
+        public_keys: BTreeMap::from([(
+            "m6-environment-verifier".to_owned(),
+            "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA7WgM6rOq0x9vY4VJ4rP7oOxXVMuDXKpMZgqXfQZq8hM=\n-----END PUBLIC KEY-----"
+                .to_owned(),
+        )]),
     })
     .expect("the committed GA Support Manifest must be valid");
     serde_json::to_value(manifest).expect("GA Support Manifest must serialize")
+}
+
+fn m6_documentation_digest() -> String {
+    let documentation = [
+        include_str!("../../../docs/operations/m6/upgrade-and-contracts.md"),
+        include_str!("../../../docs/operations/m6/failure-backup-and-disaster.md"),
+        include_str!("../../../docs/operations/m6/security-and-release.md"),
+        include_str!("../../../docs/operations/m6/incident-map.md"),
+        include_str!("../../../docs/security/m6-threat-model.md"),
+    ]
+    .join("\n");
+    lenso_service::extraction_input_digest(documentation.as_bytes())
 }
 
 pub fn generated_ga_support_guidance() -> String {
