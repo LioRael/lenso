@@ -1,8 +1,8 @@
 # Lenso GA Support Manifest
 
 - Protocol: `lenso.ga-support-manifest.v1`
-- Manifest ID: `ga-support:18992be685996d9a`
-- Manifest digest: `sha256:18992be685996d9a7e7836f600cbe9e436389f09a2d23402fb7132d2857d4fc0`
+- Manifest ID: `ga-support:92812a6fdfb333b2`
+- Manifest digest: `sha256:92812a6fdfb333b229e6867d0cac8b0b757bd2f844fb9d0f12a4c49fe78740c4`
 - Status: `GeneralAvailability`
 - Documentation: `m6-ga` (`sha256:09aeded7e3eb0625b12e0df63c960c837e22e8e391ab451ec522c60d83e56fc6`)
 
