@@ -1,0 +1,264 @@
+{
+  "$defs": {
+    "DeliveryEffects": {
+      "properties": {
+        "appendsLedger": {
+          "type": "boolean"
+        },
+        "mutatesConfiguration": {
+          "type": "boolean"
+        },
+        "mutatesDeployment": {
+          "type": "boolean"
+        },
+        "mutatesEnvironment": {
+          "type": "boolean"
+        },
+        "mutatesGateway": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "mutatesEnvironment",
+        "mutatesConfiguration",
+        "mutatesGateway",
+        "mutatesDeployment",
+        "appendsLedger"
+      ],
+      "type": "object"
+    },
+    "DeliveryFailureCondition": {
+      "enum": [
+        "deployment_adapter_rejected",
+        "operator_reconciliation_failed",
+        "gateway_drift",
+        "invalid_config_revision",
+        "secret_reference_unavailable",
+        "migration_failed"
+      ],
+      "type": "string"
+    },
+    "DeliveryFailureStage": {
+      "enum": [
+        "before_apply",
+        "reconciling",
+        "partially_applied"
+      ],
+      "type": "string"
+    },
+    "DeliveryRecoveryDecision": {
+      "enum": [
+        "passed",
+        "blocked"
+      ],
+      "type": "string"
+    },
+    "DeliveryRecoveryIssue": {
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/DeliveryRecoveryIssueCode"
+        },
+        "message": {
+          "type": "string"
+        },
+        "nextActions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "remediation": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "remediation",
+        "nextActions"
+      ],
+      "type": "object"
+    },
+    "DeliveryRecoveryIssueCode": {
+      "enum": [
+        "input_invalid",
+        "pre_apply_mutation",
+        "desired_observed_state_conflated",
+        "last_valid_configuration_lost",
+        "migration_evidence_incomplete",
+        "migration_effect_would_repeat",
+        "environment_evidence_invalid",
+        "cleanup_incomplete"
+      ],
+      "type": "string"
+    },
+    "DeliveryRecoveryScope": {
+      "enum": [
+        "deterministic",
+        "environment_verification"
+      ],
+      "type": "string"
+    },
+    "DeliveryStateObservation": {
+      "properties": {
+        "desiredDigest": {
+          "type": "string"
+        },
+        "drifted": {
+          "type": "boolean"
+        },
+        "fresh": {
+          "type": "boolean"
+        },
+        "observationId": {
+          "type": "string"
+        },
+        "observedDigest": {
+          "type": "string"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "observationId",
+        "source",
+        "revision",
+        "desiredDigest",
+        "observedDigest",
+        "fresh",
+        "drifted"
+      ],
+      "type": "object"
+    },
+    "MigrationRecoveryEvidence": {
+      "properties": {
+        "completedEffects": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "interventionRequired": {
+          "type": "boolean"
+        },
+        "migrationId": {
+          "type": "string"
+        },
+        "remainingSteps": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "retrySteps": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "rollbackAllowed": {
+          "type": "boolean"
+        },
+        "stateCompatible": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "migrationId",
+        "completedEffects",
+        "remainingSteps",
+        "retrySteps",
+        "stateCompatible",
+        "rollbackAllowed",
+        "interventionRequired"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://contracts.lenso.local/ga/lenso.delivery-failure-recovery-evidence.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "condition": {
+      "$ref": "#/$defs/DeliveryFailureCondition"
+    },
+    "decision": {
+      "$ref": "#/$defs/DeliveryRecoveryDecision"
+    },
+    "desiredState": {
+      "$ref": "#/$defs/DeliveryStateObservation"
+    },
+    "effects": {
+      "$ref": "#/$defs/DeliveryEffects"
+    },
+    "evidenceDigest": {
+      "type": "string"
+    },
+    "evidenceId": {
+      "type": "string"
+    },
+    "issues": {
+      "items": {
+        "$ref": "#/$defs/DeliveryRecoveryIssue"
+      },
+      "type": "array"
+    },
+    "migration": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MigrationRecoveryEvidence"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nextActions": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "observedState": {
+      "$ref": "#/$defs/DeliveryStateObservation"
+    },
+    "protocol": {
+      "type": "string"
+    },
+    "retainedConfigRevisionId": {
+      "type": "string"
+    },
+    "scenarioId": {
+      "type": "string"
+    },
+    "scope": {
+      "$ref": "#/$defs/DeliveryRecoveryScope"
+    },
+    "stage": {
+      "$ref": "#/$defs/DeliveryFailureStage"
+    }
+  },
+  "required": [
+    "protocol",
+    "evidenceId",
+    "evidenceDigest",
+    "scenarioId",
+    "condition",
+    "stage",
+    "scope",
+    "desiredState",
+    "observedState",
+    "retainedConfigRevisionId",
+    "decision",
+    "issues",
+    "nextActions",
+    "effects"
+  ],
+  "title": "DeliveryFailureRecoveryEvidence",
+  "type": "object"
+}

@@ -119,6 +119,30 @@ pub fn generate_contracts() -> anyhow::Result<()> {
         &generated_failure_scenario_evidence_schema(),
     )?;
     write_json(
+        "contracts/ga/lenso.delivery-failure-recovery-evidence.v1.schema.json",
+        &generated_delivery_failure_recovery_schema(),
+    )?;
+    write_json(
+        "contracts/ga/lenso.performance-profile.v1.schema.json",
+        &generated_performance_profile_schema(),
+    )?;
+    write_json(
+        "contracts/ga/lenso.service-restore-evidence.v1.schema.json",
+        &generated_service_restore_evidence_schema(),
+    )?;
+    write_json(
+        "contracts/ga/lenso.disaster-recovery-evidence.v1.schema.json",
+        &generated_disaster_recovery_evidence_schema(),
+    )?;
+    write_json(
+        "contracts/ga/lenso.support-envelope.v1.schema.json",
+        &generated_support_envelope_schema(),
+    )?;
+    write_json(
+        "contracts/ga/lenso.security-review-evidence.v1.schema.json",
+        &generated_security_review_evidence_schema(),
+    )?;
+    write_json(
         "contracts/ga/lenso.ga-support-manifest.v1.json",
         &generated_ga_support_manifest(),
     )?;
@@ -310,6 +334,30 @@ pub fn generated_contract_retirement_plan_schema() -> Value {
 
 pub fn generated_failure_scenario_evidence_schema() -> Value {
     lenso_service::failure_scenario_evidence_schema()
+}
+
+pub fn generated_delivery_failure_recovery_schema() -> Value {
+    lenso_service::delivery_failure_recovery_schema()
+}
+
+pub fn generated_performance_profile_schema() -> Value {
+    lenso_service::performance_profile_schema()
+}
+
+pub fn generated_service_restore_evidence_schema() -> Value {
+    lenso_service::service_restore_evidence_schema()
+}
+
+pub fn generated_disaster_recovery_evidence_schema() -> Value {
+    lenso_service::disaster_recovery_evidence_schema()
+}
+
+pub fn generated_support_envelope_schema() -> Value {
+    lenso_service::support_envelope_schema()
+}
+
+pub fn generated_security_review_evidence_schema() -> Value {
+    lenso_service::security_review_evidence_schema()
 }
 
 pub fn generated_ga_support_manifest() -> Value {

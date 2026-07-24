@@ -1,0 +1,125 @@
+{
+  "$defs": {
+    "RestoreDecision": {
+      "enum": [
+        "passed",
+        "blocked"
+      ],
+      "type": "string"
+    },
+    "RestoreIssue": {
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/RestoreIssueCode"
+        },
+        "message": {
+          "type": "string"
+        },
+        "nextActions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "remediation": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "remediation",
+        "nextActions"
+      ],
+      "type": "object"
+    },
+    "RestoreIssueCode": {
+      "enum": [
+        "backup_integrity_invalid",
+        "backup_incomplete",
+        "encryption_boundary_invalid",
+        "target_store_not_clean",
+        "restore_state_mismatch",
+        "replay_boundary_invalid",
+        "authority_conflict",
+        "environment_evidence_invalid"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "https://contracts.lenso.local/ga/lenso.service-restore-evidence.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "backupDigest": {
+      "type": "string"
+    },
+    "backupId": {
+      "type": "string"
+    },
+    "decision": {
+      "$ref": "#/$defs/RestoreDecision"
+    },
+    "evidenceDigest": {
+      "type": "string"
+    },
+    "evidenceId": {
+      "type": "string"
+    },
+    "issues": {
+      "items": {
+        "$ref": "#/$defs/RestoreIssue"
+      },
+      "type": "array"
+    },
+    "nextActions": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "pointInTimeUnixMs": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "productionMutated": {
+      "type": "boolean"
+    },
+    "protocol": {
+      "type": "string"
+    },
+    "restoredStateDigests": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "serviceId": {
+      "type": "string"
+    },
+    "sourceStoreId": {
+      "type": "string"
+    },
+    "targetStoreId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "protocol",
+    "evidenceId",
+    "evidenceDigest",
+    "backupId",
+    "backupDigest",
+    "serviceId",
+    "sourceStoreId",
+    "targetStoreId",
+    "pointInTimeUnixMs",
+    "restoredStateDigests",
+    "decision",
+    "issues",
+    "nextActions",
+    "productionMutated"
+  ],
+  "title": "ServiceRestoreEvidence",
+  "type": "object"
+}

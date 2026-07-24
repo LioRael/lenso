@@ -207,6 +207,42 @@ pub struct DeliveryConsoleCanaryObservation {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, ToSchema)]
 #[serde(rename_all = "camelCase")]
+pub struct DeliveryConsoleGaEvidence {
+    pub protocol: String,
+    pub evidence_id: String,
+    pub status: String,
+    pub stale: bool,
+    #[serde(default)]
+    pub subjects: BTreeMap<String, String>,
+    #[serde(default)]
+    pub issue_codes: Vec<String>,
+    #[serde(default)]
+    pub next_actions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DeliveryConsoleGaOperations {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub support_manifest: Option<DeliveryConsoleGaEvidence>,
+    #[serde(default)]
+    pub delivery_recovery: Vec<DeliveryConsoleGaEvidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub restore: Option<DeliveryConsoleGaEvidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disaster_recovery: Option<DeliveryConsoleGaEvidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub performance: Option<DeliveryConsoleGaEvidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub support_envelope: Option<DeliveryConsoleGaEvidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub security_review: Option<DeliveryConsoleGaEvidence>,
+    #[serde(default)]
+    pub contract_lifecycle: Vec<DeliveryConsoleGaEvidence>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct DeliveryConsoleProjection {
     pub protocol: String,
     pub projection_digest: String,
@@ -238,6 +274,7 @@ pub struct DeliveryConsoleProjection {
     pub next_actions: Vec<String>,
     #[serde(default)]
     pub runtime_story_references: Vec<String>,
+    pub ga_operations: DeliveryConsoleGaOperations,
     pub read_only: bool,
     #[serde(default)]
     pub apply_actions: Vec<String>,
@@ -419,6 +456,7 @@ pub fn project_delivery_console(input: DeliveryConsoleArtifacts) -> DeliveryCons
         secret_references,
     };
     let state = derive_state(&input.artifacts, !issues.is_empty(), &deployments);
+    let ga_operations = ga_operations(&input.artifacts);
     let mut projection = DeliveryConsoleProjection {
         protocol: DELIVERY_CONSOLE_PROJECTION_PROTOCOL.to_owned(),
         projection_digest: String::new(),
@@ -437,11 +475,85 @@ pub fn project_delivery_console(input: DeliveryConsoleArtifacts) -> DeliveryCons
         issues,
         next_actions,
         runtime_story_references: runtime_story_references.into_iter().collect(),
+        ga_operations,
         read_only: true,
         apply_actions: Vec::new(),
     };
     projection.projection_digest = digest(&projection);
     projection
+}
+
+fn ga_operations(artifacts: &[Value]) -> DeliveryConsoleGaOperations {
+    let summaries = |protocol_name: &str| {
+        artifacts
+            .iter()
+            .filter(|artifact| protocol(artifact) == protocol_name)
+            .filter_map(ga_evidence)
+            .collect::<Vec<_>>()
+    };
+    let newest = |protocol_name: &str| summaries(protocol_name).pop();
+    let mut contract_lifecycle = summaries("lenso.contract-retirement-plan.v1");
+    contract_lifecycle.extend(summaries("lenso.contract-retirement-receipt.v1"));
+    DeliveryConsoleGaOperations {
+        support_manifest: newest("lenso.ga-support-manifest.v1"),
+        delivery_recovery: summaries("lenso.delivery-failure-recovery-evidence.v1"),
+        restore: newest("lenso.service-restore-evidence.v1"),
+        disaster_recovery: newest("lenso.disaster-recovery-evidence.v1"),
+        performance: newest("lenso.performance-profile.v1"),
+        support_envelope: newest("lenso.support-envelope.v1"),
+        security_review: newest("lenso.security-review-evidence.v1"),
+        contract_lifecycle,
+    }
+}
+
+fn ga_evidence(artifact: &Value) -> Option<DeliveryConsoleGaEvidence> {
+    let protocol = text(artifact, "protocol")?;
+    let evidence_id = [
+        "evidenceId",
+        "profileId",
+        "envelopeId",
+        "reviewId",
+        "manifestId",
+        "planId",
+        "receiptId",
+    ]
+    .into_iter()
+    .find_map(|key| text(artifact, key))
+    .unwrap_or_else(|| "unknown".to_owned());
+    let status = ["decision", "status", "outcome"]
+        .into_iter()
+        .find_map(|key| text(artifact, key))
+        .unwrap_or_else(|| "unknown".to_owned());
+    let issue_codes = array(artifact, "issues")
+        .into_iter()
+        .filter_map(|issue| text(issue, "code"))
+        .collect::<Vec<_>>();
+    let stale = issue_codes
+        .iter()
+        .any(|code| code.contains("stale") || code.contains("freshness"));
+    let subjects = [
+        "serviceId",
+        "releaseId",
+        "releaseDigest",
+        "configRevisionId",
+        "contractId",
+        "backupId",
+        "supportManifestDigest",
+        "primaryRegion",
+        "passiveRegion",
+    ]
+    .into_iter()
+    .filter_map(|key| text(artifact, key).map(|value| (key.to_owned(), value)))
+    .collect();
+    Some(DeliveryConsoleGaEvidence {
+        protocol,
+        evidence_id,
+        status,
+        stale,
+        subjects,
+        issue_codes,
+        next_actions: strings(artifact, "nextActions"),
+    })
 }
 
 fn canary_observation(artifact: &Value) -> Option<DeliveryConsoleCanaryObservation> {

@@ -8,8 +8,10 @@ use utoipa::ToSchema;
 mod call_policy;
 mod delegated_context;
 mod delivery_console_projection;
+mod delivery_failure_recovery;
 mod direct_grpc;
 mod direct_http;
+mod disaster_recovery;
 mod endpoint_resolution;
 mod event_envelope;
 mod extraction_authority_commit;
@@ -24,9 +26,13 @@ mod extraction_run;
 mod extraction_scaffold;
 mod extraction_verification;
 mod ga_support;
+mod performance_profile;
 mod production_delivery;
 mod reliability_report;
+mod security_review;
+mod service_backup;
 mod story_segment;
+mod support_envelope;
 mod workload_identity;
 
 pub use call_policy::{
@@ -51,6 +57,9 @@ pub use delivery_console_projection::{
     delivery_artifact_batch_subject, load_delivery_console_projection, project_delivery_console,
     record_delivery_artifact, record_delivery_artifacts,
 };
+pub use delivery_failure_recovery::*;
+pub use disaster_recovery::*;
+pub use performance_profile::*;
 
 pub mod support_grpc_v1 {
     tonic::include_proto!("lenso.services.support.v1");
@@ -203,10 +212,13 @@ pub use reliability_report::{
     ReliabilityEnforcementBoundary, ReliabilityHealthResult, ReliabilityIssueCode,
     ReliabilityReport, ReliabilityServiceState,
 };
+pub use security_review::*;
+pub use service_backup::*;
 pub use story_segment::{
     STORY_SEGMENT_FEED_PROTOCOL, StorySegment, StorySegmentContract, StorySegmentFeed,
     StorySegmentOperation, StorySegmentSource, StorySegmentWorkflow,
 };
+pub use support_envelope::*;
 pub use workload_identity::{
     AuthenticatedServicePrincipal, AuthenticatedTransportBinding, SpiffeWorkloadIdentityConfig,
     SpiffeWorkloadIdentityProvider, SystemSandboxWorkloadIdentityProvider, WorkloadCredential,

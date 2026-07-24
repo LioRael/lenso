@@ -1,0 +1,125 @@
+{
+  "$defs": {
+    "DisasterRecoveryDecision": {
+      "enum": [
+        "ready",
+        "passed",
+        "blocked"
+      ],
+      "type": "string"
+    },
+    "DisasterRecoveryIssue": {
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/DisasterRecoveryIssueCode"
+        },
+        "message": {
+          "type": "string"
+        },
+        "nextActions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "remediation": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "remediation",
+        "nextActions"
+      ],
+      "type": "object"
+    },
+    "DisasterRecoveryIssueCode": {
+      "enum": [
+        "restore_evidence_invalid",
+        "region_topology_invalid",
+        "primary_not_fenced",
+        "passive_not_ready",
+        "approval_invalid",
+        "recovery_budget_exceeded",
+        "identity_or_contract_mismatch",
+        "failback_plan_missing"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "https://contracts.lenso.local/ga/lenso.disaster-recovery-evidence.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "approvalBoundary": {
+      "type": "string"
+    },
+    "decision": {
+      "$ref": "#/$defs/DisasterRecoveryDecision"
+    },
+    "evidenceDigest": {
+      "type": "string"
+    },
+    "evidenceId": {
+      "type": "string"
+    },
+    "failbackSteps": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "issues": {
+      "items": {
+        "$ref": "#/$defs/DisasterRecoveryIssue"
+      },
+      "type": "array"
+    },
+    "observedRpoMs": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "observedRtoMs": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "passiveRegion": {
+      "type": "string"
+    },
+    "planDigest": {
+      "type": "string"
+    },
+    "planId": {
+      "type": "string"
+    },
+    "primaryRegion": {
+      "type": "string"
+    },
+    "protocol": {
+      "type": "string"
+    },
+    "serviceId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "protocol",
+    "evidenceId",
+    "evidenceDigest",
+    "planId",
+    "planDigest",
+    "serviceId",
+    "primaryRegion",
+    "passiveRegion",
+    "observedRpoMs",
+    "observedRtoMs",
+    "decision",
+    "issues",
+    "approvalBoundary",
+    "failbackSteps"
+  ],
+  "title": "DisasterRecoveryEvidence",
+  "type": "object"
+}

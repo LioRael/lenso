@@ -1,0 +1,410 @@
+{
+  "$defs": {
+    "PerformanceBudget": {
+      "properties": {
+        "direction": {
+          "$ref": "#/$defs/PerformanceBudgetDirection"
+        },
+        "metric": {
+          "$ref": "#/$defs/PerformanceMetric"
+        },
+        "threshold": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "unit": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "metric",
+        "unit",
+        "direction",
+        "threshold"
+      ],
+      "type": "object"
+    },
+    "PerformanceBudgetDirection": {
+      "enum": [
+        "at_most",
+        "at_least"
+      ],
+      "type": "string"
+    },
+    "PerformanceDecision": {
+      "enum": [
+        "passed",
+        "blocked"
+      ],
+      "type": "string"
+    },
+    "PerformanceIssue": {
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/PerformanceIssueCode"
+        },
+        "message": {
+          "type": "string"
+        },
+        "nextActions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "remediation": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "remediation",
+        "nextActions"
+      ],
+      "type": "object"
+    },
+    "PerformanceIssueCode": {
+      "enum": [
+        "topology_invalid",
+        "metadata_incomplete",
+        "metric_missing",
+        "budget_exceeded",
+        "variance_exceeded",
+        "hidden_data_plane_dependency",
+        "environment_evidence_insufficient"
+      ],
+      "type": "string"
+    },
+    "PerformanceMeasurement": {
+      "properties": {
+        "metric": {
+          "$ref": "#/$defs/PerformanceMetric"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "value": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "metric",
+        "unit",
+        "value"
+      ],
+      "type": "object"
+    },
+    "PerformanceMetric": {
+      "enum": [
+        "direct_call_latency",
+        "direct_call_throughput",
+        "resolver_client_overhead",
+        "publish_to_consume_latency",
+        "inbox_outbox_lag",
+        "workflow_transition_latency",
+        "workflow_timer_delay",
+        "story_freshness",
+        "console_query_latency",
+        "convergence_latency",
+        "cpu_utilization",
+        "memory_bytes",
+        "database_connections",
+        "broker_bytes"
+      ],
+      "type": "string"
+    },
+    "PerformanceProfileScope": {
+      "enum": [
+        "reduced_deterministic",
+        "environment_verification"
+      ],
+      "type": "string"
+    },
+    "PerformanceRun": {
+      "properties": {
+        "concurrency": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "datasetDigest": {
+          "type": "string"
+        },
+        "durationMs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "infrastructure": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "machine": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "measurements": {
+          "items": {
+            "$ref": "#/$defs/PerformanceMeasurement"
+          },
+          "type": "array"
+        },
+        "policyDataPlaneRequests": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "registryDataPlaneRequests": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "releaseSetDigest": {
+          "type": "string"
+        },
+        "runId": {
+          "type": "string"
+        },
+        "runtimeConsoleDataPlaneRequests": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "systemPlaneDataPlaneRequests": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "telemetryDataPlaneRequests": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "warmupMs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "runId",
+        "releaseSetDigest",
+        "datasetDigest",
+        "concurrency",
+        "durationMs",
+        "warmupMs",
+        "machine",
+        "infrastructure",
+        "measurements",
+        "systemPlaneDataPlaneRequests",
+        "runtimeConsoleDataPlaneRequests",
+        "telemetryDataPlaneRequests",
+        "policyDataPlaneRequests",
+        "registryDataPlaneRequests"
+      ],
+      "type": "object"
+    },
+    "ReferenceService": {
+      "properties": {
+        "contractId": {
+          "type": "string"
+        },
+        "releaseDigest": {
+          "type": "string"
+        },
+        "serviceId": {
+          "type": "string"
+        },
+        "storeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "serviceId",
+        "contractId",
+        "storeId",
+        "releaseDigest"
+      ],
+      "type": "object"
+    },
+    "ReferenceSystemTopology": {
+      "properties": {
+        "deploymentAdapterVersion": {
+          "type": "string"
+        },
+        "identityAdapterVersion": {
+          "type": "string"
+        },
+        "services": {
+          "items": {
+            "$ref": "#/$defs/ReferenceService"
+          },
+          "type": "array"
+        },
+        "topologyDigest": {
+          "type": "string"
+        },
+        "transportAdapterVersion": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "topologyDigest",
+        "services",
+        "transportAdapterVersion",
+        "identityAdapterVersion",
+        "deploymentAdapterVersion"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://contracts.lenso.local/ga/lenso.performance-profile.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "budgets": {
+      "items": {
+        "$ref": "#/$defs/PerformanceBudget"
+      },
+      "type": "array"
+    },
+    "decision": {
+      "$ref": "#/$defs/PerformanceDecision"
+    },
+    "issues": {
+      "items": {
+        "$ref": "#/$defs/PerformanceIssue"
+      },
+      "type": "array"
+    },
+    "nextActions": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "profileDigest": {
+      "type": "string"
+    },
+    "profileId": {
+      "type": "string"
+    },
+    "protocol": {
+      "type": "string"
+    },
+    "runs": {
+      "items": {
+        "$ref": "#/$defs/PerformanceRun"
+      },
+      "type": "array"
+    },
+    "scope": {
+      "$ref": "#/$defs/PerformanceProfileScope"
+    },
+    "supportManifestDigest": {
+      "type": "string"
+    },
+    "topology": {
+      "$ref": "#/$defs/ReferenceSystemTopology"
+    },
+    "varianceBasisPoints": {
+      "additionalProperties": false,
+      "properties": {
+        "broker_bytes": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "console_query_latency": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "convergence_latency": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cpu_utilization": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "database_connections": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "direct_call_latency": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "direct_call_throughput": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "inbox_outbox_lag": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "memory_bytes": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "publish_to_consume_latency": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "resolver_client_overhead": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "story_freshness": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "workflow_timer_delay": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "workflow_transition_latency": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "required": [
+    "protocol",
+    "profileId",
+    "profileDigest",
+    "scope",
+    "supportManifestDigest",
+    "topology",
+    "budgets",
+    "runs",
+    "varianceBasisPoints",
+    "decision",
+    "issues",
+    "nextActions"
+  ],
+  "title": "PerformanceProfile",
+  "type": "object"
+}

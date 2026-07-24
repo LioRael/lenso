@@ -286,6 +286,129 @@
       ],
       "type": "object"
     },
+    "DeliveryConsoleGaEvidence": {
+      "properties": {
+        "evidenceId": {
+          "type": "string"
+        },
+        "issueCodes": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "nextActions": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "stale": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string"
+        },
+        "subjects": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "type": "object"
+        }
+      },
+      "required": [
+        "protocol",
+        "evidenceId",
+        "status",
+        "stale"
+      ],
+      "type": "object"
+    },
+    "DeliveryConsoleGaOperations": {
+      "properties": {
+        "contractLifecycle": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/DeliveryConsoleGaEvidence"
+          },
+          "type": "array"
+        },
+        "deliveryRecovery": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/DeliveryConsoleGaEvidence"
+          },
+          "type": "array"
+        },
+        "disasterRecovery": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DeliveryConsoleGaEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "performance": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DeliveryConsoleGaEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "restore": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DeliveryConsoleGaEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "securityReview": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DeliveryConsoleGaEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "supportEnvelope": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DeliveryConsoleGaEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "supportManifest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DeliveryConsoleGaEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
     "DeliveryConsoleIssue": {
       "properties": {
         "code": {
@@ -515,6 +638,9 @@
         }
       ]
     },
+    "gaOperations": {
+      "$ref": "#/$defs/DeliveryConsoleGaOperations"
+    },
     "issues": {
       "default": [],
       "items": {
@@ -595,6 +721,7 @@
     "projectionDigest",
     "state",
     "configuration",
+    "gaOperations",
     "readOnly"
   ],
   "title": "DeliveryConsoleProjection",

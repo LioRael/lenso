@@ -1,0 +1,338 @@
+{
+  "$defs": {
+    "FindingDisposition": {
+      "enum": [
+        "open",
+        "remediated",
+        "accepted_risk",
+        "false_positive"
+      ],
+      "type": "string"
+    },
+    "RiskAcceptance": {
+      "properties": {
+        "approver": {
+          "type": "string"
+        },
+        "expiresAtUnixMs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "findingDigest": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "approver",
+        "reason",
+        "expiresAtUnixMs",
+        "findingDigest"
+      ],
+      "type": "object"
+    },
+    "SecurityFinding": {
+      "properties": {
+        "affectedSubjectDigests": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "containsSensitiveMaterial": {
+          "type": "boolean"
+        },
+        "disposition": {
+          "$ref": "#/$defs/FindingDisposition"
+        },
+        "findingDigest": {
+          "type": "string"
+        },
+        "findingId": {
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "remediationReference": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "riskAcceptance": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RiskAcceptance"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "severity": {
+          "$ref": "#/$defs/SecuritySeverity"
+        },
+        "surface": {
+          "$ref": "#/$defs/ThreatSurface"
+        }
+      },
+      "required": [
+        "findingId",
+        "findingDigest",
+        "severity",
+        "surface",
+        "affectedSubjectDigests",
+        "owner",
+        "disposition",
+        "containsSensitiveMaterial"
+      ],
+      "type": "object"
+    },
+    "SecurityReleaseSubject": {
+      "properties": {
+        "artifactDigest": {
+          "type": "string"
+        },
+        "componentId": {
+          "type": "string"
+        },
+        "provenanceDigest": {
+          "type": "string"
+        },
+        "sbomDigest": {
+          "type": "string"
+        },
+        "sourceCommit": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "componentId",
+        "version",
+        "sourceCommit",
+        "artifactDigest",
+        "provenanceDigest",
+        "sbomDigest"
+      ],
+      "type": "object"
+    },
+    "SecurityReviewDecision": {
+      "enum": [
+        "passed",
+        "blocked"
+      ],
+      "type": "string"
+    },
+    "SecurityReviewIssue": {
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/SecurityReviewIssueCode"
+        },
+        "message": {
+          "type": "string"
+        },
+        "nextActions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "remediation": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "remediation",
+        "nextActions"
+      ],
+      "type": "object"
+    },
+    "SecurityReviewIssueCode": {
+      "enum": [
+        "threat_model_incomplete",
+        "release_subject_invalid",
+        "finding_unresolved",
+        "risk_acceptance_invalid",
+        "scan_evidence_incomplete",
+        "review_stale",
+        "sensitive_material_present"
+      ],
+      "type": "string"
+    },
+    "SecurityScanEvidence": {
+      "properties": {
+        "completed": {
+          "type": "boolean"
+        },
+        "resultDigest": {
+          "type": "string"
+        },
+        "scannerId": {
+          "type": "string"
+        },
+        "scannerVersion": {
+          "type": "string"
+        },
+        "subjectDigest": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "scannerId",
+        "scannerVersion",
+        "subjectDigest",
+        "resultDigest",
+        "completed"
+      ],
+      "type": "object"
+    },
+    "SecuritySeverity": {
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low",
+        "informational"
+      ],
+      "type": "string"
+    },
+    "ThreatModelEvidence": {
+      "properties": {
+        "modelDigest": {
+          "type": "string"
+        },
+        "modelVersion": {
+          "type": "string"
+        },
+        "reviewed": {
+          "type": "boolean"
+        },
+        "surface": {
+          "$ref": "#/$defs/ThreatSurface"
+        }
+      },
+      "required": [
+        "surface",
+        "modelVersion",
+        "modelDigest",
+        "reviewed"
+      ],
+      "type": "object"
+    },
+    "ThreatSurface": {
+      "enum": [
+        "workload_identity",
+        "transport_binding",
+        "delegation",
+        "tenancy",
+        "event_replay_and_poisoning",
+        "extraction_and_cutover",
+        "workflow_controls",
+        "release_signing",
+        "secrets",
+        "backup_and_restore",
+        "admin_actions",
+        "embedded_console",
+        "policy_bypass",
+        "stale_evidence",
+        "agent_boundaries"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "https://contracts.lenso.local/ga/lenso.security-review-evidence.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "decision": {
+      "$ref": "#/$defs/SecurityReviewDecision"
+    },
+    "findings": {
+      "items": {
+        "$ref": "#/$defs/SecurityFinding"
+      },
+      "type": "array"
+    },
+    "freshnessHorizonUnixMs": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "issues": {
+      "items": {
+        "$ref": "#/$defs/SecurityReviewIssue"
+      },
+      "type": "array"
+    },
+    "nextActions": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "protocol": {
+      "type": "string"
+    },
+    "releaseSubjects": {
+      "items": {
+        "$ref": "#/$defs/SecurityReleaseSubject"
+      },
+      "type": "array"
+    },
+    "reviewDigest": {
+      "type": "string"
+    },
+    "reviewId": {
+      "type": "string"
+    },
+    "reviewedAtUnixMs": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "reviewer": {
+      "type": "string"
+    },
+    "scans": {
+      "items": {
+        "$ref": "#/$defs/SecurityScanEvidence"
+      },
+      "type": "array"
+    },
+    "supportManifestDigest": {
+      "type": "string"
+    },
+    "threatModels": {
+      "items": {
+        "$ref": "#/$defs/ThreatModelEvidence"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "protocol",
+    "reviewId",
+    "reviewDigest",
+    "supportManifestDigest",
+    "releaseSubjects",
+    "threatModels",
+    "findings",
+    "scans",
+    "reviewer",
+    "reviewedAtUnixMs",
+    "freshnessHorizonUnixMs",
+    "decision",
+    "issues",
+    "nextActions"
+  ],
+  "title": "SecurityReviewEvidence",
+  "type": "object"
+}

@@ -207,6 +207,32 @@ fn committed_ga_support_artifacts_match_the_public_generators() {
             include_str!("../../../contracts/ga/lenso.failure-scenario-evidence.v1.schema.json"),
             generate_contracts::generated_failure_scenario_evidence_schema(),
         ),
+        (
+            include_str!(
+                "../../../contracts/ga/lenso.delivery-failure-recovery-evidence.v1.schema.json"
+            ),
+            generate_contracts::generated_delivery_failure_recovery_schema(),
+        ),
+        (
+            include_str!("../../../contracts/ga/lenso.performance-profile.v1.schema.json"),
+            generate_contracts::generated_performance_profile_schema(),
+        ),
+        (
+            include_str!("../../../contracts/ga/lenso.service-restore-evidence.v1.schema.json"),
+            generate_contracts::generated_service_restore_evidence_schema(),
+        ),
+        (
+            include_str!("../../../contracts/ga/lenso.disaster-recovery-evidence.v1.schema.json"),
+            generate_contracts::generated_disaster_recovery_evidence_schema(),
+        ),
+        (
+            include_str!("../../../contracts/ga/lenso.support-envelope.v1.schema.json"),
+            generate_contracts::generated_support_envelope_schema(),
+        ),
+        (
+            include_str!("../../../contracts/ga/lenso.security-review-evidence.v1.schema.json"),
+            generate_contracts::generated_security_review_evidence_schema(),
+        ),
     ];
     for (committed, generated) in schemas {
         let committed: serde_json::Value = serde_json::from_str(committed).unwrap();
