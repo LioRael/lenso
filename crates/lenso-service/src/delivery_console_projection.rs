@@ -27,6 +27,15 @@ use crate::{
     rollback_plan_integrity_is_valid, secret_reference_metadata_is_safe,
     service_release_integrity_is_valid,
 };
+use crate::{
+    DELIVERY_FAILURE_RECOVERY_PROTOCOL, DISASTER_RECOVERY_EVIDENCE_PROTOCOL,
+    DeliveryFailureRecoveryEvidence, DisasterRecoveryEvidence, PERFORMANCE_PROFILE_PROTOCOL,
+    PerformanceProfile, SECURITY_REVIEW_PROTOCOL, SERVICE_RESTORE_EVIDENCE_PROTOCOL,
+    SUPPORT_ENVELOPE_PROTOCOL, SecurityReviewEvidence, ServiceRestoreEvidence, SupportEnvelope,
+    delivery_failure_recovery_integrity_is_valid, disaster_recovery_evidence_integrity_is_valid,
+    performance_profile_integrity_is_valid, security_review_integrity_is_valid,
+    service_restore_integrity_is_valid, support_envelope_integrity_is_valid,
+};
 
 pub const DELIVERY_CONSOLE_PROJECTION_PROTOCOL: &str = "lenso.delivery-console.v1";
 pub const DELIVERY_ARTIFACT_BATCH_PROTOCOL: &str = "lenso.delivery-artifact-batch.v1";
@@ -793,6 +802,42 @@ fn persisted_delivery_artifact(artifact: &Value) -> Result<Value, sqlx::Error> {
         ROLLBACK_RECEIPT_PROTOCOL => {
             canonical_artifact::<RollbackReceipt>(artifact, "Rollback Receipt")?
         }
+        DELIVERY_FAILURE_RECOVERY_PROTOCOL => {
+            validated_canonical_artifact::<DeliveryFailureRecoveryEvidence>(
+                artifact,
+                "Delivery Failure Recovery Evidence",
+                delivery_failure_recovery_integrity_is_valid,
+            )?
+        }
+        SERVICE_RESTORE_EVIDENCE_PROTOCOL => {
+            validated_canonical_artifact::<ServiceRestoreEvidence>(
+                artifact,
+                "Service Restore Evidence",
+                service_restore_integrity_is_valid,
+            )?
+        }
+        DISASTER_RECOVERY_EVIDENCE_PROTOCOL => {
+            validated_canonical_artifact::<DisasterRecoveryEvidence>(
+                artifact,
+                "Disaster Recovery Evidence",
+                disaster_recovery_evidence_integrity_is_valid,
+            )?
+        }
+        PERFORMANCE_PROFILE_PROTOCOL => validated_canonical_artifact::<PerformanceProfile>(
+            artifact,
+            "Performance Profile",
+            performance_profile_integrity_is_valid,
+        )?,
+        SUPPORT_ENVELOPE_PROTOCOL => validated_canonical_artifact::<SupportEnvelope>(
+            artifact,
+            "Support Envelope",
+            support_envelope_integrity_is_valid,
+        )?,
+        SECURITY_REVIEW_PROTOCOL => validated_canonical_artifact::<SecurityReviewEvidence>(
+            artifact,
+            "Security Review Evidence",
+            security_review_integrity_is_valid,
+        )?,
         _ => {
             return Err(sqlx::Error::Protocol(format!(
                 "unsupported production delivery artifact protocol `{protocol}`"

@@ -448,3 +448,10 @@ fn digest_without_identity(evidence: &SecurityReviewEvidence) -> String {
         &serde_json::to_vec(&canonical).expect("security review evidence serializes"),
     )
 }
+
+#[must_use]
+pub fn security_review_integrity_is_valid(evidence: &SecurityReviewEvidence) -> bool {
+    valid_digest(&evidence.review_digest)
+        && evidence.review_digest == digest_without_identity(evidence)
+        && evidence.review_id == format!("security-review:{}", &evidence.review_digest[7..23])
+}

@@ -267,3 +267,10 @@ fn digest_without_identity(envelope: &SupportEnvelope) -> String {
     canonical.envelope_digest.clear();
     extraction_input_digest(&serde_json::to_vec(&canonical).expect("support envelope serializes"))
 }
+
+#[must_use]
+pub fn support_envelope_integrity_is_valid(envelope: &SupportEnvelope) -> bool {
+    valid_digest(&envelope.envelope_digest)
+        && envelope.envelope_digest == digest_without_identity(envelope)
+        && envelope.envelope_id == format!("support-envelope:{}", &envelope.envelope_digest[7..23])
+}

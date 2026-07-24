@@ -477,3 +477,10 @@ fn digest_without_identity(profile: &PerformanceProfile) -> String {
         &serde_json::to_vec(&canonical).expect("performance profile serializes"),
     )
 }
+
+#[must_use]
+pub fn performance_profile_integrity_is_valid(profile: &PerformanceProfile) -> bool {
+    valid_digest(&profile.profile_digest)
+        && profile.profile_digest == digest_without_identity(profile)
+        && profile.profile_id == format!("performance-profile:{}", &profile.profile_digest[7..23])
+}

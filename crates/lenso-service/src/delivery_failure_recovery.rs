@@ -379,3 +379,16 @@ fn digest_without_identity(evidence: &DeliveryFailureRecoveryEvidence) -> String
         &serde_json::to_vec(&canonical).expect("delivery recovery evidence serializes"),
     )
 }
+
+#[must_use]
+pub fn delivery_failure_recovery_integrity_is_valid(
+    evidence: &DeliveryFailureRecoveryEvidence,
+) -> bool {
+    valid_digest(&evidence.evidence_digest)
+        && evidence.evidence_digest == digest_without_identity(evidence)
+        && evidence.evidence_id
+            == format!(
+                "delivery-failure-recovery:{}",
+                &evidence.evidence_digest[7..23]
+            )
+}

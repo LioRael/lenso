@@ -347,3 +347,10 @@ fn digest_without_evidence_identity(evidence: &DisasterRecoveryEvidence) -> Stri
     canonical.evidence_digest.clear();
     digest_json(&canonical)
 }
+
+#[must_use]
+pub fn disaster_recovery_evidence_integrity_is_valid(evidence: &DisasterRecoveryEvidence) -> bool {
+    valid_digest(&evidence.evidence_digest)
+        && evidence.evidence_digest == digest_without_evidence_identity(evidence)
+        && evidence.evidence_id == format!("disaster-recovery:{}", &evidence.evidence_digest[7..23])
+}

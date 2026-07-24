@@ -334,3 +334,10 @@ fn digest_without_identity(evidence: &ServiceRestoreEvidence) -> String {
     canonical.evidence_digest.clear();
     digest_json(&canonical)
 }
+
+#[must_use]
+pub fn service_restore_integrity_is_valid(evidence: &ServiceRestoreEvidence) -> bool {
+    valid_digest(&evidence.evidence_digest)
+        && evidence.evidence_digest == digest_without_identity(evidence)
+        && evidence.evidence_id == format!("service-restore:{}", &evidence.evidence_digest[7..23])
+}
