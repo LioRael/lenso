@@ -452,7 +452,7 @@ pub fn generated_ga_support_manifest() -> Value {
         .collect(),
         public_keys: BTreeMap::from([(
             "m6-environment-verifier".to_owned(),
-            "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA7WgM6rOq0x9vY4VJ4rP7oOxXVMuDXKpMZgqXfQZq8hM=\n-----END PUBLIC KEY-----"
+            "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAgorlaAxUtjd1ZpD49IhDNEFA0aLzJ3ryMawUOd5ZRHE=\n-----END PUBLIC KEY-----"
                 .to_owned(),
         )]),
     })
