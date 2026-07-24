@@ -299,6 +299,7 @@ pub fn service_restore_evidence_schema() -> Value {
 
 fn service_backup_integrity_valid(backup: &ServiceBackup) -> bool {
     backup.protocol == SERVICE_BACKUP_PROTOCOL
+        && valid_digest(&backup.backup_digest)
         && backup.backup_digest == digest_json(&backup.input)
         && backup.backup_id == format!("service-backup:{}", &backup.backup_digest[7..23])
 }

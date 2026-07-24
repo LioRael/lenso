@@ -639,7 +639,11 @@
       ]
     },
     "gaOperations": {
-      "$ref": "#/$defs/DeliveryConsoleGaOperations"
+      "$ref": "#/$defs/DeliveryConsoleGaOperations",
+      "default": {
+        "contractLifecycle": [],
+        "deliveryRecovery": []
+      }
     },
     "issues": {
       "default": [],
@@ -721,7 +725,6 @@
     "projectionDigest",
     "state",
     "configuration",
-    "gaOperations",
     "readOnly"
   ],
   "title": "DeliveryConsoleProjection",

@@ -230,11 +230,17 @@ pub fn evaluate_performance_profile(mut input: PerformanceProfileInput) -> Perfo
     }
 
     let required_metrics = required_metrics();
+    let budget_metrics = input
+        .budgets
+        .iter()
+        .map(|budget| budget.metric)
+        .collect::<BTreeSet<_>>();
     if !valid_digest(&input.support_manifest_digest)
         || input.topology.transport_adapter_version.trim().is_empty()
         || input.topology.identity_adapter_version.trim().is_empty()
         || input.topology.deployment_adapter_version.trim().is_empty()
         || input.budgets.len() != required_metrics.len()
+        || budget_metrics != required_metrics
         || input.variance_tolerance_basis_points == 0
     {
         issues.push(issue(
@@ -299,6 +305,12 @@ pub fn evaluate_performance_profile(mut input: PerformanceProfileInput) -> Perfo
         }
         for (metric, measurement) in metrics {
             let Some(budget) = budgets.get(&metric) else {
+                issues.push(issue(
+                    PerformanceIssueCode::MetricMissing,
+                    format!("Performance metric `{:?}` has no reviewed budget.", metric),
+                    "Define one unique budget for every required metric.",
+                    "Correct the budget set and repeat the profile.",
+                ));
                 continue;
             };
             if measurement.unit != budget.unit

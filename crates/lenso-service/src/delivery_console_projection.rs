@@ -274,6 +274,7 @@ pub struct DeliveryConsoleProjection {
     pub next_actions: Vec<String>,
     #[serde(default)]
     pub runtime_story_references: Vec<String>,
+    #[serde(default)]
     pub ga_operations: DeliveryConsoleGaOperations,
     pub read_only: bool,
     #[serde(default)]

@@ -316,24 +316,24 @@ pub fn evaluate_security_review(
         }
     }
 
-    let scanner_ids = input
-        .scans
-        .iter()
-        .filter(|scan| {
-            scan.completed
-                && valid_digest(&scan.subject_digest)
-                && valid_digest(&scan.result_digest)
-                && !scan.scanner_version.trim().is_empty()
-        })
-        .map(|scan| scan.scanner_id.as_str())
-        .collect::<BTreeSet<_>>();
     let required_scanners = BTreeSet::from([
         "dependency-audit",
         "provenance-verification",
         "secret-scan",
         "static-analysis",
     ]);
-    if !required_scanners.is_subset(&scanner_ids) {
+    let scans_complete = required_scanners.iter().all(|scanner_id| {
+        release_digests.iter().all(|release_digest| {
+            input.scans.iter().any(|scan| {
+                scan.scanner_id == *scanner_id
+                    && scan.subject_digest == *release_digest
+                    && scan.completed
+                    && valid_digest(&scan.result_digest)
+                    && !scan.scanner_version.trim().is_empty()
+            })
+        })
+    });
+    if !scans_complete {
         issues.push(issue(
             SecurityReviewIssueCode::ScanEvidenceIncomplete,
             "Required dependency, provenance, secret, or static-analysis evidence is missing.",

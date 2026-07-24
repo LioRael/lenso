@@ -212,6 +212,7 @@ pub fn evaluate_disaster_recovery(
 ) -> DisasterRecoveryEvidence {
     let mut issues = plan.issues.clone();
     if plan.protocol != DISASTER_RECOVERY_PLAN_PROTOCOL
+        || !valid_digest(&plan.plan_digest)
         || plan.plan_digest != digest_without_plan_identity(plan)
         || plan.plan_id != format!("disaster-recovery-plan:{}", &plan.plan_digest[7..23])
     {

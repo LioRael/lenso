@@ -8975,7 +8975,6 @@ components:
       - projectionDigest
       - state
       - configuration
-      - gaOperations
       - readOnly
       properties:
         adapterDrift:
