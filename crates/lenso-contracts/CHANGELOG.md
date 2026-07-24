@@ -1,3 +1,10 @@
+## lenso-contracts@0.3.15
+
+### Features
+
+Publish the M6 General Availability Support Manifest and the complete public
+package closure required by its exact supported component combination.
+
 ## lenso-contracts@0.3.14
 
 ### Fixes
