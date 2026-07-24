@@ -1,7 +1,7 @@
 {
   "schema": "lenso.release-plan.v1",
   "repository": "LioRael/lenso",
-  "sourceCommit": "8e42321fab297938cd863c0c1ef394aba73f69da",
+  "sourceCommit": "983e67e36e76270e1ed4b6a1443906154eeebb29",
   "tegamiVersion": "1.2.5",
   "publisher": {
     "workflow": ".github/workflows/publish.yml",
@@ -16,11 +16,11 @@
   "generatedFiles": [
     {
       "path": ".tegami/publish-lock.yaml",
-      "sha256": "sha256:f211b4df5e761c7fd5df4914fb9bc5234f5e6fd1d4dcbd577e07eb7ab35ff1a3"
+      "sha256": "sha256:a9303a2423e9b5d4312fd7da70dbd86e32599999b418d1488901e760b07f8cf6"
     },
     {
       "path": "Cargo.lock",
-      "sha256": "sha256:c2d227628b44fc984d02162c59ec037502ecd81473e9325598a7d67d030701ef"
+      "sha256": "sha256:c316b76d4b4be54b307b66a1277e46a0957e7db7ac33cac558867da4c8eddc23"
     },
     {
       "path": "crates/lenso-api/CHANGELOG.md",
@@ -28,7 +28,7 @@
     },
     {
       "path": "crates/lenso-api/Cargo.toml",
-      "sha256": "sha256:88e901e0c74e2213ef7c145bd54b2f0e7905ad11b46ad017f7969d22d43d10c0"
+      "sha256": "sha256:602e96baceb1654da9e248bdce98849e03d3d1057b061ec0388a321b4a163c47"
     },
     {
       "path": "crates/lenso-autonomous-service/CHANGELOG.md",
@@ -36,7 +36,7 @@
     },
     {
       "path": "crates/lenso-autonomous-service/Cargo.toml",
-      "sha256": "sha256:0d8a9739671c805d371497678cc63ca4b922b4c12d06e245084d4e92d763ea67"
+      "sha256": "sha256:770881c74ae94fd13c6be5f2973e07b16428e6a1e780577e2def08013eb561ad"
     },
     {
       "path": "crates/lenso-bootstrap/CHANGELOG.md",
@@ -44,15 +44,15 @@
     },
     {
       "path": "crates/lenso-bootstrap/Cargo.toml",
-      "sha256": "sha256:a55eb05632c0a9c5b5d02805b673f9ec41727d1caa0dc10d8937a00a82895d03"
+      "sha256": "sha256:c06eeecd59fbe0474df470acad19a4b2caadf67d5ef35dac35daa18ccf49b947"
     },
     {
       "path": "crates/lenso-contracts/CHANGELOG.md",
-      "sha256": "sha256:44874ec887877ae9665e2240aea644947ee6de326e103a9589be7b6710a31a9f"
+      "sha256": "sha256:891d48c3134b278d81abefd67e08ea62414979898aaf670450c8ff1404b53ac4"
     },
     {
       "path": "crates/lenso-contracts/Cargo.toml",
-      "sha256": "sha256:60744e23bbea7f2f896f09c8d2c631de73454e7fa5f2f79082ffa15d099d594c"
+      "sha256": "sha256:b2760b1620227247dc71f1cc87b540546a1b1c638c7e14084efd3efe9b467d75"
     },
     {
       "path": "crates/lenso-migrate/CHANGELOG.md",
@@ -60,7 +60,7 @@
     },
     {
       "path": "crates/lenso-migrate/Cargo.toml",
-      "sha256": "sha256:9242a37a12d8391a69341994d2a98cc43363ff76f95ed1021c7b59ede607710a"
+      "sha256": "sha256:002c0bad91ba2fd2e21e979d21a2ac7b3df9b72e78c402f09931f9037dd459fc"
     },
     {
       "path": "crates/lenso-service/CHANGELOG.md",
@@ -68,7 +68,7 @@
     },
     {
       "path": "crates/lenso-service/Cargo.toml",
-      "sha256": "sha256:d39a37d1b54a9e89df3ef67b7f7b9870f38326beab25c4a87c56f9f83c4a9b4e"
+      "sha256": "sha256:9885968b873d19b0f75f62f5a4044da8ea40657cf9c8e1a5592cb6ec383d5f73"
     },
     {
       "path": "crates/lenso-worker/CHANGELOG.md",
@@ -76,7 +76,7 @@
     },
     {
       "path": "crates/lenso-worker/Cargo.toml",
-      "sha256": "sha256:28512d6b0a470a97468cc23416f97b02fb98fc2e9b48d9bb87257d105045d5db"
+      "sha256": "sha256:a4c73aa82cac9305181cbca22ba0be79b40b649f594dc488eb6c4bbb0b8899ba"
     },
     {
       "path": "crates/lenso/CHANGELOG.md",
@@ -84,7 +84,7 @@
     },
     {
       "path": "crates/lenso/Cargo.toml",
-      "sha256": "sha256:0c0d4bd8d7bd9193d224561375554f950d814c79d0ce5df17fedfe66305670fa"
+      "sha256": "sha256:929007cf18f82fd8fc9274bebbdeb48bbc844ce011d2efe2825590448d58535c"
     },
     {
       "path": "crates/platform-admin-data/CHANGELOG.md",
@@ -92,7 +92,7 @@
     },
     {
       "path": "crates/platform-admin-data/Cargo.toml",
-      "sha256": "sha256:28db60a9ac3d7e08d05874872d6abb841243fa7248b83632155936713d73b4d8"
+      "sha256": "sha256:bbc71a6ac5c31f1b68e9b3bfb5da86c6981c62f5b1f9cbbe94012ba143f01753"
     },
     {
       "path": "crates/platform-admin/CHANGELOG.md",
@@ -100,7 +100,7 @@
     },
     {
       "path": "crates/platform-admin/Cargo.toml",
-      "sha256": "sha256:dd431eb64e5076ac9eb343703e437f8b275a2d586605c9833b22a34db19e4132"
+      "sha256": "sha256:69977750e792a26133b922b53c09e76e056120630141be3c5551ecccc7cb165c"
     },
     {
       "path": "crates/platform-core/CHANGELOG.md",
@@ -108,7 +108,7 @@
     },
     {
       "path": "crates/platform-core/Cargo.toml",
-      "sha256": "sha256:323ba3cef54880cd8d0571d634e1ff2297cb40fa1cc4fd8740f43e4edfac4a1c"
+      "sha256": "sha256:5a198d37bb8cba4e34199e662790962735b56b7e02ca8308d5008ff2637de980"
     },
     {
       "path": "crates/platform-http/CHANGELOG.md",
@@ -116,7 +116,7 @@
     },
     {
       "path": "crates/platform-http/Cargo.toml",
-      "sha256": "sha256:9230f6adcb9d80057660a61db922e98762a612b2aa14ac59f0926463df54b55d"
+      "sha256": "sha256:1b22b7cae619181a759c596e0a676e4a82eab77ae40fc1118158f874e341b7b3"
     },
     {
       "path": "crates/platform-module-remote/CHANGELOG.md",
@@ -124,7 +124,7 @@
     },
     {
       "path": "crates/platform-module-remote/Cargo.toml",
-      "sha256": "sha256:29a3133448cbcb174fcb6fa17fa7810328ad761fb9c9367a997dafb35472289f"
+      "sha256": "sha256:ab83f2ecebff89253dd0db7b1f4444a6c0ca498df836680e403976cd72e90afc"
     },
     {
       "path": "crates/platform-module/CHANGELOG.md",
@@ -132,7 +132,7 @@
     },
     {
       "path": "crates/platform-module/Cargo.toml",
-      "sha256": "sha256:6eae3308f26df862b77bcb4ebf6082e706d46ad88749015a3e6823ea6bd43046"
+      "sha256": "sha256:b90aa2ff03eda2438d836b8b2c7d5bbf7d5242b174a35283cf1254604310ef1f"
     },
     {
       "path": "crates/platform-runtime/CHANGELOG.md",
@@ -140,7 +140,7 @@
     },
     {
       "path": "crates/platform-runtime/Cargo.toml",
-      "sha256": "sha256:fa0d350f76cb7e7e4d962e6d2dd2687ed6031037f88ef79e9c37a50a2f56c3f6"
+      "sha256": "sha256:eb5d1898ba51858b2bf65a42333296312e76e41f990853328efbad3ade572168"
     },
     {
       "path": "crates/platform-testing/CHANGELOG.md",
@@ -148,7 +148,7 @@
     },
     {
       "path": "crates/platform-testing/Cargo.toml",
-      "sha256": "sha256:56740d6b74f4df6aebe004aa2e970b92b3567b2223cb13bf710327c49891edc9"
+      "sha256": "sha256:331977547cf724d21f5de5331fdc9218d768d6c7e118e8c583284fa87241cc81"
     },
     {
       "path": "modules/story/CHANGELOG.md",
@@ -156,183 +156,12 @@
     },
     {
       "path": "modules/story/Cargo.toml",
-      "sha256": "sha256:6359d25af4934c00a6730d7cad992cd2bd0de330a870352463bfda5ac64a77eb"
+      "sha256": "sha256:8bfa980e907948a4cf4baa20dd9a6100e4eefb393611e4893a258f14974e9337"
     }
   ],
   "packages": [
     {
       "id": "cargo:lenso-autonomous-service",
-      "previousVersion": "0.1.9",
-      "nextVersion": "0.1.10",
-      "bump": "patch",
-      "releaseGroup": "foundation",
-      "userFacing": true,
-      "dependencies": [
-        {
-          "id": "cargo:lenso-contracts",
-          "requirement": "^0.3.15",
-          "resolvedVersion": "0.3.15",
-          "source": "plan"
-        },
-        {
-          "id": "cargo:lenso-platform-core",
-          "requirement": "^0.1.15",
-          "resolvedVersion": "0.1.15",
-          "source": "plan"
-        },
-        {
-          "id": "cargo:lenso-platform-http",
-          "requirement": "^0.1.14",
-          "resolvedVersion": "0.1.14",
-          "source": "plan"
-        },
-        {
-          "id": "cargo:lenso-platform-runtime",
-          "requirement": "^0.1.12",
-          "resolvedVersion": "0.1.12",
-          "source": "plan"
-        },
-        {
-          "id": "cargo:lenso-service",
-          "requirement": "^0.1.14",
-          "resolvedVersion": "0.1.14",
-          "source": "plan"
-        }
-      ]
-    },
-    {
-      "id": "cargo:lenso-contracts",
-      "previousVersion": "0.3.14",
-      "nextVersion": "0.3.15",
-      "bump": "patch",
-      "releaseGroup": "foundation",
-      "userFacing": true,
-      "dependencies": []
-    },
-    {
-      "id": "cargo:lenso-platform-core",
-      "previousVersion": "0.1.14",
-      "nextVersion": "0.1.15",
-      "bump": "patch",
-      "releaseGroup": "foundation",
-      "userFacing": true,
-      "dependencies": [
-        {
-          "id": "cargo:lenso-contracts",
-          "requirement": "^0.3.15",
-          "resolvedVersion": "0.3.15",
-          "source": "plan"
-        }
-      ]
-    },
-    {
-      "id": "cargo:lenso-platform-http",
-      "previousVersion": "0.1.13",
-      "nextVersion": "0.1.14",
-      "bump": "patch",
-      "releaseGroup": "foundation",
-      "userFacing": true,
-      "dependencies": [
-        {
-          "id": "cargo:lenso-platform-core",
-          "requirement": "^0.1.15",
-          "resolvedVersion": "0.1.15",
-          "source": "plan"
-        }
-      ]
-    },
-    {
-      "id": "cargo:lenso-platform-module",
-      "previousVersion": "0.1.14",
-      "nextVersion": "0.1.15",
-      "bump": "patch",
-      "releaseGroup": "foundation",
-      "userFacing": true,
-      "dependencies": [
-        {
-          "id": "cargo:lenso-contracts",
-          "requirement": "^0.3.15",
-          "resolvedVersion": "0.3.15",
-          "source": "plan"
-        },
-        {
-          "id": "cargo:lenso-platform-core",
-          "requirement": "^0.1.15",
-          "resolvedVersion": "0.1.15",
-          "source": "plan"
-        },
-        {
-          "id": "cargo:lenso-platform-http",
-          "requirement": "^0.1.14",
-          "resolvedVersion": "0.1.14",
-          "source": "plan"
-        },
-        {
-          "id": "cargo:lenso-platform-runtime",
-          "requirement": "^0.1.12",
-          "resolvedVersion": "0.1.12",
-          "source": "plan"
-        }
-      ]
-    },
-    {
-      "id": "cargo:lenso-platform-module-remote",
-      "previousVersion": "0.1.14",
-      "nextVersion": "0.1.15",
-      "bump": "patch",
-      "releaseGroup": "foundation",
-      "userFacing": true,
-      "dependencies": [
-        {
-          "id": "cargo:lenso-platform-core",
-          "requirement": "^0.1.15",
-          "resolvedVersion": "0.1.15",
-          "source": "plan"
-        },
-        {
-          "id": "cargo:lenso-platform-http",
-          "requirement": "^0.1.14",
-          "resolvedVersion": "0.1.14",
-          "source": "plan"
-        },
-        {
-          "id": "cargo:lenso-platform-module",
-          "requirement": "^0.1.15",
-          "resolvedVersion": "0.1.15",
-          "source": "plan"
-        },
-        {
-          "id": "cargo:lenso-platform-runtime",
-          "requirement": "^0.1.12",
-          "resolvedVersion": "0.1.12",
-          "source": "plan"
-        }
-      ]
-    },
-    {
-      "id": "cargo:lenso-platform-runtime",
-      "previousVersion": "0.1.11",
-      "nextVersion": "0.1.12",
-      "bump": "patch",
-      "releaseGroup": "foundation",
-      "userFacing": true,
-      "dependencies": [
-        {
-          "id": "cargo:lenso-contracts",
-          "requirement": "^0.3.15",
-          "resolvedVersion": "0.3.15",
-          "source": "plan"
-        },
-        {
-          "id": "cargo:lenso-platform-core",
-          "requirement": "^0.1.15",
-          "resolvedVersion": "0.1.15",
-          "source": "plan"
-        }
-      ]
-    },
-    {
-      "id": "cargo:lenso-platform-testing",
       "previousVersion": "0.1.10",
       "nextVersion": "0.1.11",
       "bump": "patch",
@@ -340,183 +169,354 @@
       "userFacing": true,
       "dependencies": [
         {
-          "id": "cargo:lenso-platform-core",
-          "requirement": "^0.1.15",
-          "resolvedVersion": "0.1.15",
-          "source": "plan"
-        }
-      ]
-    },
-    {
-      "id": "cargo:lenso-service",
-      "previousVersion": "0.1.13",
-      "nextVersion": "0.1.14",
-      "bump": "patch",
-      "releaseGroup": "foundation",
-      "userFacing": true,
-      "dependencies": [
-        {
           "id": "cargo:lenso-contracts",
-          "requirement": "^0.3.15",
-          "resolvedVersion": "0.3.15",
-          "source": "plan"
-        }
-      ]
-    },
-    {
-      "id": "cargo:lenso-module-story",
-      "previousVersion": "0.1.16",
-      "nextVersion": "0.1.17",
-      "bump": "patch",
-      "releaseGroup": "modules",
-      "userFacing": true,
-      "dependencies": [
-        {
-          "id": "cargo:lenso-platform-core",
-          "requirement": "^0.1.15",
-          "resolvedVersion": "0.1.15",
-          "source": "plan"
-        },
-        {
-          "id": "cargo:lenso-platform-http",
-          "requirement": "^0.1.14",
-          "resolvedVersion": "0.1.14",
-          "source": "plan"
-        },
-        {
-          "id": "cargo:lenso-platform-module",
-          "requirement": "^0.1.15",
-          "resolvedVersion": "0.1.15",
-          "source": "plan"
-        },
-        {
-          "id": "cargo:lenso-service",
-          "requirement": "^0.1.14",
-          "resolvedVersion": "0.1.14",
-          "source": "plan"
-        }
-      ]
-    },
-    {
-      "id": "cargo:lenso",
-      "previousVersion": "0.3.31",
-      "nextVersion": "0.3.32",
-      "bump": "patch",
-      "releaseGroup": "host",
-      "userFacing": true,
-      "dependencies": [
-        {
-          "id": "cargo:lenso-api",
-          "requirement": "^0.1.26",
-          "resolvedVersion": "0.1.26",
-          "source": "plan"
-        },
-        {
-          "id": "cargo:lenso-bootstrap",
-          "requirement": "^0.1.25",
-          "resolvedVersion": "0.1.25",
-          "source": "plan"
-        },
-        {
-          "id": "cargo:lenso-contracts",
-          "requirement": "^0.3.15",
-          "resolvedVersion": "0.3.15",
-          "source": "plan"
-        },
-        {
-          "id": "cargo:lenso-migrate",
-          "requirement": "^0.1.24",
-          "resolvedVersion": "0.1.24",
+          "requirement": "^0.3.16",
+          "resolvedVersion": "0.3.16",
           "source": "plan"
         },
         {
           "id": "cargo:lenso-platform-core",
-          "requirement": "^0.1.15",
-          "resolvedVersion": "0.1.15",
+          "requirement": "^0.1.16",
+          "resolvedVersion": "0.1.16",
           "source": "plan"
         },
         {
           "id": "cargo:lenso-platform-http",
-          "requirement": "^0.1.14",
-          "resolvedVersion": "0.1.14",
-          "source": "plan"
-        },
-        {
-          "id": "cargo:lenso-platform-module",
-          "requirement": "^0.1.15",
-          "resolvedVersion": "0.1.15",
-          "source": "plan"
-        },
-        {
-          "id": "cargo:lenso-worker",
-          "requirement": "^0.1.24",
-          "resolvedVersion": "0.1.24",
-          "source": "plan"
-        }
-      ]
-    },
-    {
-      "id": "cargo:lenso-api",
-      "previousVersion": "0.1.25",
-      "nextVersion": "0.1.26",
-      "bump": "patch",
-      "releaseGroup": "host",
-      "userFacing": true,
-      "dependencies": [
-        {
-          "id": "cargo:lenso-bootstrap",
-          "requirement": "^0.1.25",
-          "resolvedVersion": "0.1.25",
-          "source": "plan"
-        },
-        {
-          "id": "cargo:lenso-platform-admin",
-          "requirement": "^0.1.15",
-          "resolvedVersion": "0.1.15",
-          "source": "plan"
-        },
-        {
-          "id": "cargo:lenso-platform-admin-data",
-          "requirement": "^0.1.20",
-          "resolvedVersion": "0.1.20",
-          "source": "plan"
-        },
-        {
-          "id": "cargo:lenso-platform-core",
-          "requirement": "^0.1.15",
-          "resolvedVersion": "0.1.15",
-          "source": "plan"
-        },
-        {
-          "id": "cargo:lenso-platform-http",
-          "requirement": "^0.1.14",
-          "resolvedVersion": "0.1.14",
-          "source": "plan"
-        },
-        {
-          "id": "cargo:lenso-platform-module-remote",
           "requirement": "^0.1.15",
           "resolvedVersion": "0.1.15",
           "source": "plan"
         },
         {
           "id": "cargo:lenso-platform-runtime",
-          "requirement": "^0.1.12",
-          "resolvedVersion": "0.1.12",
+          "requirement": "^0.1.13",
+          "resolvedVersion": "0.1.13",
           "source": "plan"
         },
         {
           "id": "cargo:lenso-service",
-          "requirement": "^0.1.14",
-          "resolvedVersion": "0.1.14",
+          "requirement": "^0.1.15",
+          "resolvedVersion": "0.1.15",
+          "source": "plan"
+        }
+      ]
+    },
+    {
+      "id": "cargo:lenso-contracts",
+      "previousVersion": "0.3.15",
+      "nextVersion": "0.3.16",
+      "bump": "patch",
+      "releaseGroup": "foundation",
+      "userFacing": true,
+      "dependencies": []
+    },
+    {
+      "id": "cargo:lenso-platform-core",
+      "previousVersion": "0.1.15",
+      "nextVersion": "0.1.16",
+      "bump": "patch",
+      "releaseGroup": "foundation",
+      "userFacing": true,
+      "dependencies": [
+        {
+          "id": "cargo:lenso-contracts",
+          "requirement": "^0.3.16",
+          "resolvedVersion": "0.3.16",
+          "source": "plan"
+        }
+      ]
+    },
+    {
+      "id": "cargo:lenso-platform-http",
+      "previousVersion": "0.1.14",
+      "nextVersion": "0.1.15",
+      "bump": "patch",
+      "releaseGroup": "foundation",
+      "userFacing": true,
+      "dependencies": [
+        {
+          "id": "cargo:lenso-platform-core",
+          "requirement": "^0.1.16",
+          "resolvedVersion": "0.1.16",
+          "source": "plan"
+        }
+      ]
+    },
+    {
+      "id": "cargo:lenso-platform-module",
+      "previousVersion": "0.1.15",
+      "nextVersion": "0.1.16",
+      "bump": "patch",
+      "releaseGroup": "foundation",
+      "userFacing": true,
+      "dependencies": [
+        {
+          "id": "cargo:lenso-contracts",
+          "requirement": "^0.3.16",
+          "resolvedVersion": "0.3.16",
+          "source": "plan"
+        },
+        {
+          "id": "cargo:lenso-platform-core",
+          "requirement": "^0.1.16",
+          "resolvedVersion": "0.1.16",
+          "source": "plan"
+        },
+        {
+          "id": "cargo:lenso-platform-http",
+          "requirement": "^0.1.15",
+          "resolvedVersion": "0.1.15",
+          "source": "plan"
+        },
+        {
+          "id": "cargo:lenso-platform-runtime",
+          "requirement": "^0.1.13",
+          "resolvedVersion": "0.1.13",
+          "source": "plan"
+        }
+      ]
+    },
+    {
+      "id": "cargo:lenso-platform-module-remote",
+      "previousVersion": "0.1.15",
+      "nextVersion": "0.1.16",
+      "bump": "patch",
+      "releaseGroup": "foundation",
+      "userFacing": true,
+      "dependencies": [
+        {
+          "id": "cargo:lenso-platform-core",
+          "requirement": "^0.1.16",
+          "resolvedVersion": "0.1.16",
+          "source": "plan"
+        },
+        {
+          "id": "cargo:lenso-platform-http",
+          "requirement": "^0.1.15",
+          "resolvedVersion": "0.1.15",
+          "source": "plan"
+        },
+        {
+          "id": "cargo:lenso-platform-module",
+          "requirement": "^0.1.16",
+          "resolvedVersion": "0.1.16",
+          "source": "plan"
+        },
+        {
+          "id": "cargo:lenso-platform-runtime",
+          "requirement": "^0.1.13",
+          "resolvedVersion": "0.1.13",
+          "source": "plan"
+        }
+      ]
+    },
+    {
+      "id": "cargo:lenso-platform-runtime",
+      "previousVersion": "0.1.12",
+      "nextVersion": "0.1.13",
+      "bump": "patch",
+      "releaseGroup": "foundation",
+      "userFacing": true,
+      "dependencies": [
+        {
+          "id": "cargo:lenso-contracts",
+          "requirement": "^0.3.16",
+          "resolvedVersion": "0.3.16",
+          "source": "plan"
+        },
+        {
+          "id": "cargo:lenso-platform-core",
+          "requirement": "^0.1.16",
+          "resolvedVersion": "0.1.16",
+          "source": "plan"
+        }
+      ]
+    },
+    {
+      "id": "cargo:lenso-platform-testing",
+      "previousVersion": "0.1.11",
+      "nextVersion": "0.1.12",
+      "bump": "patch",
+      "releaseGroup": "foundation",
+      "userFacing": true,
+      "dependencies": [
+        {
+          "id": "cargo:lenso-platform-core",
+          "requirement": "^0.1.16",
+          "resolvedVersion": "0.1.16",
+          "source": "plan"
+        }
+      ]
+    },
+    {
+      "id": "cargo:lenso-service",
+      "previousVersion": "0.1.14",
+      "nextVersion": "0.1.15",
+      "bump": "patch",
+      "releaseGroup": "foundation",
+      "userFacing": true,
+      "dependencies": [
+        {
+          "id": "cargo:lenso-contracts",
+          "requirement": "^0.3.16",
+          "resolvedVersion": "0.3.16",
+          "source": "plan"
+        }
+      ]
+    },
+    {
+      "id": "cargo:lenso-module-story",
+      "previousVersion": "0.1.17",
+      "nextVersion": "0.1.18",
+      "bump": "patch",
+      "releaseGroup": "modules",
+      "userFacing": true,
+      "dependencies": [
+        {
+          "id": "cargo:lenso-platform-core",
+          "requirement": "^0.1.16",
+          "resolvedVersion": "0.1.16",
+          "source": "plan"
+        },
+        {
+          "id": "cargo:lenso-platform-http",
+          "requirement": "^0.1.15",
+          "resolvedVersion": "0.1.15",
+          "source": "plan"
+        },
+        {
+          "id": "cargo:lenso-platform-module",
+          "requirement": "^0.1.16",
+          "resolvedVersion": "0.1.16",
+          "source": "plan"
+        },
+        {
+          "id": "cargo:lenso-service",
+          "requirement": "^0.1.15",
+          "resolvedVersion": "0.1.15",
+          "source": "plan"
+        }
+      ]
+    },
+    {
+      "id": "cargo:lenso",
+      "previousVersion": "0.3.32",
+      "nextVersion": "0.3.33",
+      "bump": "patch",
+      "releaseGroup": "host",
+      "userFacing": true,
+      "dependencies": [
+        {
+          "id": "cargo:lenso-api",
+          "requirement": "^0.1.27",
+          "resolvedVersion": "0.1.27",
+          "source": "plan"
+        },
+        {
+          "id": "cargo:lenso-bootstrap",
+          "requirement": "^0.1.26",
+          "resolvedVersion": "0.1.26",
+          "source": "plan"
+        },
+        {
+          "id": "cargo:lenso-contracts",
+          "requirement": "^0.3.16",
+          "resolvedVersion": "0.3.16",
+          "source": "plan"
+        },
+        {
+          "id": "cargo:lenso-migrate",
+          "requirement": "^0.1.25",
+          "resolvedVersion": "0.1.25",
+          "source": "plan"
+        },
+        {
+          "id": "cargo:lenso-platform-core",
+          "requirement": "^0.1.16",
+          "resolvedVersion": "0.1.16",
+          "source": "plan"
+        },
+        {
+          "id": "cargo:lenso-platform-http",
+          "requirement": "^0.1.15",
+          "resolvedVersion": "0.1.15",
+          "source": "plan"
+        },
+        {
+          "id": "cargo:lenso-platform-module",
+          "requirement": "^0.1.16",
+          "resolvedVersion": "0.1.16",
+          "source": "plan"
+        },
+        {
+          "id": "cargo:lenso-worker",
+          "requirement": "^0.1.25",
+          "resolvedVersion": "0.1.25",
+          "source": "plan"
+        }
+      ]
+    },
+    {
+      "id": "cargo:lenso-api",
+      "previousVersion": "0.1.26",
+      "nextVersion": "0.1.27",
+      "bump": "patch",
+      "releaseGroup": "host",
+      "userFacing": true,
+      "dependencies": [
+        {
+          "id": "cargo:lenso-bootstrap",
+          "requirement": "^0.1.26",
+          "resolvedVersion": "0.1.26",
+          "source": "plan"
+        },
+        {
+          "id": "cargo:lenso-platform-admin",
+          "requirement": "^0.1.16",
+          "resolvedVersion": "0.1.16",
+          "source": "plan"
+        },
+        {
+          "id": "cargo:lenso-platform-admin-data",
+          "requirement": "^0.1.21",
+          "resolvedVersion": "0.1.21",
+          "source": "plan"
+        },
+        {
+          "id": "cargo:lenso-platform-core",
+          "requirement": "^0.1.16",
+          "resolvedVersion": "0.1.16",
+          "source": "plan"
+        },
+        {
+          "id": "cargo:lenso-platform-http",
+          "requirement": "^0.1.15",
+          "resolvedVersion": "0.1.15",
+          "source": "plan"
+        },
+        {
+          "id": "cargo:lenso-platform-module-remote",
+          "requirement": "^0.1.16",
+          "resolvedVersion": "0.1.16",
+          "source": "plan"
+        },
+        {
+          "id": "cargo:lenso-platform-runtime",
+          "requirement": "^0.1.13",
+          "resolvedVersion": "0.1.13",
+          "source": "plan"
+        },
+        {
+          "id": "cargo:lenso-service",
+          "requirement": "^0.1.15",
+          "resolvedVersion": "0.1.15",
           "source": "plan"
         }
       ]
     },
     {
       "id": "cargo:lenso-bootstrap",
-      "previousVersion": "0.1.24",
-      "nextVersion": "0.1.25",
+      "previousVersion": "0.1.25",
+      "nextVersion": "0.1.26",
       "bump": "patch",
       "releaseGroup": "host",
       "userFacing": true,
@@ -571,166 +571,166 @@
         },
         {
           "id": "cargo:lenso-module-story",
-          "requirement": "^0.1.17",
-          "resolvedVersion": "0.1.17",
+          "requirement": "^0.1.18",
+          "resolvedVersion": "0.1.18",
           "source": "plan"
         },
         {
           "id": "cargo:lenso-platform-admin-data",
-          "requirement": "^0.1.20",
-          "resolvedVersion": "0.1.20",
+          "requirement": "^0.1.21",
+          "resolvedVersion": "0.1.21",
           "source": "plan"
         },
         {
           "id": "cargo:lenso-platform-core",
-          "requirement": "^0.1.15",
-          "resolvedVersion": "0.1.15",
+          "requirement": "^0.1.16",
+          "resolvedVersion": "0.1.16",
           "source": "plan"
         },
         {
           "id": "cargo:lenso-platform-http",
-          "requirement": "^0.1.14",
-          "resolvedVersion": "0.1.14",
+          "requirement": "^0.1.15",
+          "resolvedVersion": "0.1.15",
           "source": "plan"
         },
         {
           "id": "cargo:lenso-platform-module",
-          "requirement": "^0.1.15",
-          "resolvedVersion": "0.1.15",
+          "requirement": "^0.1.16",
+          "resolvedVersion": "0.1.16",
           "source": "plan"
         },
         {
           "id": "cargo:lenso-platform-module-remote",
-          "requirement": "^0.1.15",
-          "resolvedVersion": "0.1.15",
+          "requirement": "^0.1.16",
+          "resolvedVersion": "0.1.16",
           "source": "plan"
         },
         {
           "id": "cargo:lenso-platform-runtime",
-          "requirement": "^0.1.12",
-          "resolvedVersion": "0.1.12",
+          "requirement": "^0.1.13",
+          "resolvedVersion": "0.1.13",
           "source": "plan"
         }
       ]
     },
     {
       "id": "cargo:lenso-migrate",
-      "previousVersion": "0.1.23",
-      "nextVersion": "0.1.24",
+      "previousVersion": "0.1.24",
+      "nextVersion": "0.1.25",
       "bump": "patch",
       "releaseGroup": "host",
       "userFacing": true,
       "dependencies": [
         {
           "id": "cargo:lenso-bootstrap",
-          "requirement": "^0.1.25",
-          "resolvedVersion": "0.1.25",
+          "requirement": "^0.1.26",
+          "resolvedVersion": "0.1.26",
           "source": "plan"
         },
         {
           "id": "cargo:lenso-platform-core",
-          "requirement": "^0.1.15",
-          "resolvedVersion": "0.1.15",
+          "requirement": "^0.1.16",
+          "resolvedVersion": "0.1.16",
           "source": "plan"
         }
       ]
     },
     {
       "id": "cargo:lenso-platform-admin",
-      "previousVersion": "0.1.14",
-      "nextVersion": "0.1.15",
+      "previousVersion": "0.1.15",
+      "nextVersion": "0.1.16",
       "bump": "patch",
       "releaseGroup": "host",
       "userFacing": true,
       "dependencies": [
         {
           "id": "cargo:lenso-platform-core",
-          "requirement": "^0.1.15",
-          "resolvedVersion": "0.1.15",
+          "requirement": "^0.1.16",
+          "resolvedVersion": "0.1.16",
           "source": "plan"
         },
         {
           "id": "cargo:lenso-platform-http",
-          "requirement": "^0.1.14",
-          "resolvedVersion": "0.1.14",
-          "source": "plan"
-        },
-        {
-          "id": "cargo:lenso-platform-module",
           "requirement": "^0.1.15",
           "resolvedVersion": "0.1.15",
           "source": "plan"
         },
         {
+          "id": "cargo:lenso-platform-module",
+          "requirement": "^0.1.16",
+          "resolvedVersion": "0.1.16",
+          "source": "plan"
+        },
+        {
           "id": "cargo:lenso-service",
-          "requirement": "^0.1.14",
-          "resolvedVersion": "0.1.14",
+          "requirement": "^0.1.15",
+          "resolvedVersion": "0.1.15",
           "source": "plan"
         }
       ]
     },
     {
       "id": "cargo:lenso-platform-admin-data",
-      "previousVersion": "0.1.19",
-      "nextVersion": "0.1.20",
+      "previousVersion": "0.1.20",
+      "nextVersion": "0.1.21",
       "bump": "patch",
       "releaseGroup": "host",
       "userFacing": true,
       "dependencies": [
         {
           "id": "cargo:lenso-platform-core",
-          "requirement": "^0.1.15",
-          "resolvedVersion": "0.1.15",
+          "requirement": "^0.1.16",
+          "resolvedVersion": "0.1.16",
           "source": "plan"
         },
         {
           "id": "cargo:lenso-platform-http",
-          "requirement": "^0.1.14",
-          "resolvedVersion": "0.1.14",
-          "source": "plan"
-        },
-        {
-          "id": "cargo:lenso-platform-module",
           "requirement": "^0.1.15",
           "resolvedVersion": "0.1.15",
           "source": "plan"
         },
         {
+          "id": "cargo:lenso-platform-module",
+          "requirement": "^0.1.16",
+          "resolvedVersion": "0.1.16",
+          "source": "plan"
+        },
+        {
           "id": "cargo:lenso-service",
-          "requirement": "^0.1.14",
-          "resolvedVersion": "0.1.14",
+          "requirement": "^0.1.15",
+          "resolvedVersion": "0.1.15",
           "source": "plan"
         }
       ]
     },
     {
       "id": "cargo:lenso-worker",
-      "previousVersion": "0.1.23",
-      "nextVersion": "0.1.24",
+      "previousVersion": "0.1.24",
+      "nextVersion": "0.1.25",
       "bump": "patch",
       "releaseGroup": "host",
       "userFacing": true,
       "dependencies": [
         {
           "id": "cargo:lenso-bootstrap",
-          "requirement": "^0.1.25",
-          "resolvedVersion": "0.1.25",
+          "requirement": "^0.1.26",
+          "resolvedVersion": "0.1.26",
           "source": "plan"
         },
         {
           "id": "cargo:lenso-platform-core",
-          "requirement": "^0.1.15",
-          "resolvedVersion": "0.1.15",
+          "requirement": "^0.1.16",
+          "resolvedVersion": "0.1.16",
           "source": "plan"
         },
         {
           "id": "cargo:lenso-platform-runtime",
-          "requirement": "^0.1.12",
-          "resolvedVersion": "0.1.12",
+          "requirement": "^0.1.13",
+          "resolvedVersion": "0.1.13",
           "source": "plan"
         }
       ]
     }
   ],
-  "planId": "sha256:6500af8f41417f101e7287f446f1c960fd7b1c24abf067ee06951e6088ec2eb8"
+  "planId": "sha256:ea5f13a5520968d9e14383940d6fbc8cd6e99639cba5280b476aa09c0a9bd4ed"
 }

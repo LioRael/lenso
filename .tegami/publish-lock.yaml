@@ -1,73 +1,41 @@
 core:changelogs:
-  - content: "---\npackages:\n  lenso-autonomous-service:\n    type: patch\n  lenso-contracts:\n    type: patch\n  lenso-platform-core:\n    type: patch\n  lenso-platform-http:\n    type: patch\n  lenso-platform-module:\n    type: patch\n  lenso-platform-module-remote:\n    type: patch\n  lenso-platform-runtime:\n    type: patch\n  lenso-platform-testing:\n    type: patch\n  lenso-service:\n    type: patch\n  lenso-module-story:\n    type: patch\n  lenso:\n    type: patch\n  lenso-api:\n    type: patch\n  lenso-bootstrap:\n    type: patch\n  lenso-migrate:\n    type: patch\n  lenso-platform-admin:\n    type: patch\n  lenso-platform-admin-data:\n    type: patch\n  lenso-worker:\n    type: patch\n---\n\n### Features\n\nPublish the M6 General Availability Support Manifest and the complete public\npackage closure required by its exact supported component combination.\n"
-    filename: release.md
+  - content: "---\npackages:\n  lenso-contracts:\n    type: patch\n---\n\n### Fixes\n\nRotate the M6 environment-verification authority to a controlled signing key and\nbind the corrected GA Support Manifest to a new immutable contracts release.\n"
+    filename: m6-verifier-key.md
     v: 0.0.0
 core:packages:
-  - changelogIds:
-      - release.md
-    id: cargo:lenso
+  - id: cargo:lenso-api
+    updated: true
+  - id: cargo:lenso-autonomous-service
+    updated: true
+  - id: cargo:lenso
+    updated: true
+  - id: cargo:lenso-bootstrap
     updated: true
   - changelogIds:
-      - release.md
-    id: cargo:lenso-api
-    updated: true
-  - changelogIds:
-      - release.md
-    id: cargo:lenso-autonomous-service
-    updated: true
-  - changelogIds:
-      - release.md
-    id: cargo:lenso-bootstrap
-    updated: true
-  - changelogIds:
-      - release.md
+      - m6-verifier-key.md
     id: cargo:lenso-contracts
     updated: true
-  - changelogIds:
-      - release.md
-    id: cargo:lenso-migrate
+  - id: cargo:lenso-migrate
     updated: true
-  - changelogIds:
-      - release.md
-    id: cargo:lenso-service
+  - id: cargo:lenso-service
     updated: true
-  - changelogIds:
-      - release.md
-    id: cargo:lenso-worker
+  - id: cargo:lenso-worker
     updated: true
-  - changelogIds:
-      - release.md
-    id: cargo:lenso-platform-admin
+  - id: cargo:lenso-platform-admin-data
     updated: true
-  - changelogIds:
-      - release.md
-    id: cargo:lenso-platform-admin-data
+  - id: cargo:lenso-platform-admin
     updated: true
-  - changelogIds:
-      - release.md
-    id: cargo:lenso-platform-core
+  - id: cargo:lenso-platform-core
     updated: true
-  - changelogIds:
-      - release.md
-    id: cargo:lenso-platform-http
+  - id: cargo:lenso-platform-http
     updated: true
-  - changelogIds:
-      - release.md
-    id: cargo:lenso-platform-module
+  - id: cargo:lenso-platform-module
     updated: true
-  - changelogIds:
-      - release.md
-    id: cargo:lenso-platform-module-remote
+  - id: cargo:lenso-platform-module-remote
     updated: true
-  - changelogIds:
-      - release.md
-    id: cargo:lenso-platform-runtime
+  - id: cargo:lenso-platform-runtime
     updated: true
-  - changelogIds:
-      - release.md
-    id: cargo:lenso-platform-testing
+  - id: cargo:lenso-platform-testing
     updated: true
-  - changelogIds:
-      - release.md
-    id: cargo:lenso-module-story
+  - id: cargo:lenso-module-story
     updated: true
