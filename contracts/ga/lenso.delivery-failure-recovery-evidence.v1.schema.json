@@ -136,6 +136,41 @@
       ],
       "type": "object"
     },
+    "KubernetesRecoveryObservation": {
+      "properties": {
+        "apiServerVersion": {
+          "type": "string"
+        },
+        "clusterIdentity": {
+          "type": "string"
+        },
+        "evidenceDigest": {
+          "type": "string"
+        },
+        "gatewayAdapterVersion": {
+          "type": "string"
+        },
+        "observedResourceVersion": {
+          "type": "string"
+        },
+        "operatorVersion": {
+          "type": "string"
+        },
+        "usedRealApi": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "clusterIdentity",
+        "apiServerVersion",
+        "operatorVersion",
+        "gatewayAdapterVersion",
+        "usedRealApi",
+        "observedResourceVersion",
+        "evidenceDigest"
+      ],
+      "type": "object"
+    },
     "MigrationRecoveryEvidence": {
       "properties": {
         "completedEffects": {
@@ -195,6 +230,16 @@
     },
     "effects": {
       "$ref": "#/$defs/DeliveryEffects"
+    },
+    "environmentObservation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/KubernetesRecoveryObservation"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "evidenceDigest": {
       "type": "string"

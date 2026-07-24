@@ -43,7 +43,18 @@
         "approval_invalid",
         "recovery_budget_exceeded",
         "identity_or_contract_mismatch",
-        "failback_plan_missing"
+        "failback_plan_missing",
+        "plan_stale",
+        "active_state_changed",
+        "reconciliation_incomplete",
+        "cleanup_incomplete"
+      ],
+      "type": "string"
+    },
+    "DisasterRecoveryPhase": {
+      "enum": [
+        "cutover",
+        "failback"
       ],
       "type": "string"
     }
@@ -53,6 +64,19 @@
   "properties": {
     "approvalBoundary": {
       "type": "string"
+    },
+    "authoritativeEnvironmentCount": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "cleanupComplete": {
+      "type": "boolean"
+    },
+    "dataLossBoundMs": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
     },
     "decision": {
       "$ref": "#/$defs/DisasterRecoveryDecision"
@@ -88,6 +112,9 @@
     "passiveRegion": {
       "type": "string"
     },
+    "phase": {
+      "$ref": "#/$defs/DisasterRecoveryPhase"
+    },
     "planDigest": {
       "type": "string"
     },
@@ -100,6 +127,11 @@
     "protocol": {
       "type": "string"
     },
+    "replayBoundCount": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
     "serviceId": {
       "type": "string"
     }
@@ -110,11 +142,16 @@
     "evidenceDigest",
     "planId",
     "planDigest",
+    "phase",
     "serviceId",
     "primaryRegion",
     "passiveRegion",
     "observedRpoMs",
     "observedRtoMs",
+    "dataLossBoundMs",
+    "replayBoundCount",
+    "cleanupComplete",
+    "authoritativeEnvironmentCount",
     "decision",
     "issues",
     "approvalBoundary",

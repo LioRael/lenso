@@ -45,5 +45,5 @@ grant authority.
 7. Verify zero lost or duplicated committed effects and record observed RPO/RTO.
 
 Failback requires re-seeding the former primary, verification, fencing of the
-current authority, a fresh plan, and separate approval. Never run both regions
-as authoritative.
+current authority, a fresh plan, and separate approval at
+`single_region_disaster_failback`. Never run both regions as authoritative.

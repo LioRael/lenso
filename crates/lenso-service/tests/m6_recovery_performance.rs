@@ -4,15 +4,15 @@ use lenso_service::{
     DeliveryConsoleArtifacts, DeliveryFailureCondition, DeliveryFailureRecoveryInput,
     DeliveryFailureStage, DeliveryRecoveryDecision, DeliveryRecoveryIssueCode,
     DeliveryRecoveryScope, DeliveryStateObservation, DisasterRecoveryApproval,
-    DisasterRecoveryDecision, DisasterRecoveryObservation, DisasterRecoveryPlanInput,
-    FindingDisposition, KubernetesRecoveryObservation, MigrationRecoveryEvidence,
-    PerformanceBudget, PerformanceBudgetDirection, PerformanceDecision, PerformanceIssueCode,
-    PerformanceMeasurement, PerformanceMetric, PerformanceProfileInput, PerformanceProfileScope,
-    PerformanceRun, PostgresRestoreObservation, ReferenceService, ReferenceSystemTopology,
-    RestoreDecision, SecurityFinding, SecurityReleaseSubject, SecurityReviewDecision,
-    SecurityReviewInput, SecurityScanEvidence, SecuritySeverity, ServiceBackupInput,
-    ServiceRestoreInput, SupportEnvelopeDecision, SupportEnvelopeInput, SupportScalePoint,
-    ThreatModelEvidence, ThreatSurface, assemble_service_backup,
+    DisasterRecoveryDecision, DisasterRecoveryObservation, DisasterRecoveryPhase,
+    DisasterRecoveryPlanInput, FindingDisposition, KubernetesRecoveryObservation,
+    MigrationRecoveryEvidence, PerformanceBudget, PerformanceBudgetDirection, PerformanceDecision,
+    PerformanceIssueCode, PerformanceMeasurement, PerformanceMetric, PerformanceProfileInput,
+    PerformanceProfileScope, PerformanceRun, PostgresRestoreObservation, ReferenceService,
+    ReferenceSystemTopology, RestoreDecision, SecurityFinding, SecurityReleaseSubject,
+    SecurityReviewDecision, SecurityReviewInput, SecurityScanEvidence, SecuritySeverity,
+    ServiceBackupInput, ServiceRestoreInput, SupportEnvelopeDecision, SupportEnvelopeInput,
+    SupportScalePoint, ThreatModelEvidence, ThreatSurface, assemble_service_backup,
     evaluate_delivery_failure_recovery, evaluate_disaster_recovery, evaluate_performance_profile,
     evaluate_security_review, evaluate_service_restore, evaluate_support_envelope,
     extraction_input_digest, plan_disaster_recovery, project_delivery_console,
@@ -283,22 +283,45 @@ fn performance_profile_blocks_replicas_hidden_dependencies_and_missing_runs() {
     }
 }
 
-fn verified_restore() -> lenso_service::ServiceRestoreEvidence {
+fn verified_restore_input() -> ServiceRestoreInput {
     let state_digests = BTreeMap::from([
         ("business".to_owned(), digest("business")),
         ("inbox".to_owned(), digest("inbox")),
         ("outbox".to_owned(), digest("outbox")),
         ("stories".to_owned(), digest("stories")),
         ("workflows".to_owned(), digest("workflows")),
+        ("workflow_timers".to_owned(), digest("workflow-timers")),
+        ("compensation".to_owned(), digest("compensation")),
+        (
+            "federation_cursors".to_owned(),
+            digest("federation-cursors"),
+        ),
     ]);
     let backup = assemble_service_backup(ServiceBackupInput {
         service_id: "service:support".to_owned(),
         store_id: "postgres:support-primary".to_owned(),
+        format_version: "lenso.service-backup-format.v1".to_owned(),
         schema_version: "service-store.v2".to_owned(),
         release_digest: digest("release"),
         config_revision_digest: digest("config"),
+        contract_version_digests: BTreeMap::from([
+            (
+                "support.commands.v1".to_owned(),
+                digest("commands-contract"),
+            ),
+            ("support.events.v1".to_owned(), digest("events-contract")),
+        ]),
+        store_checkpoint_digest: digest("checkpoint"),
+        broker_position: Some(101),
+        restore_preconditions: vec![
+            "isolated passive Store".to_owned(),
+            "exact release available".to_owned(),
+        ],
         point_in_time_unix_ms: 1_721_600_000_000,
+        captured_at_unix_ms: 1_721_600_000_000,
+        freshness_horizon_unix_ms: 1_721_686_400_000,
         snapshot_digest: digest("snapshot"),
+        post_checkpoint_work_digest: digest("post-checkpoint-work"),
         encryption_key_reference: "kms://backup/support".to_owned(),
         encryption_algorithm: "aes-256-gcm".to_owned(),
         state_digests: state_digests.clone(),
@@ -309,19 +332,35 @@ fn verified_restore() -> lenso_service::ServiceRestoreEvidence {
         completed: true,
     })
     .unwrap();
-    evaluate_service_restore(ServiceRestoreInput {
+    ServiceRestoreInput {
         restored_snapshot_digest: backup.input.snapshot_digest.clone(),
         restored_release_digest: backup.input.release_digest.clone(),
         restored_config_revision_digest: backup.input.config_revision_digest.clone(),
         restored_workflow_timer_sequence: backup.input.workflow_timer_sequence,
         restored_story_sequence: backup.input.story_sequence,
-        backup,
+        backup: backup.clone(),
         target_store_id: "postgres:support-passive".to_owned(),
         target_was_clean: true,
+        expected_service_id: backup.input.service_id.clone(),
+        expected_format_version: backup.input.format_version.clone(),
+        expected_schema_version: backup.input.schema_version.clone(),
+        expected_release_digest: backup.input.release_digest.clone(),
+        expected_config_revision_digest: backup.input.config_revision_digest.clone(),
+        expected_contract_version_digests: backup.input.contract_version_digests.clone(),
+        key_reference_available: true,
+        observed_at_unix_ms: 1_721_600_010_000,
         restored_state_digests: state_digests,
+        restored_contract_version_digests: backup.input.contract_version_digests.clone(),
         replay_outbox_from_sequence: 42,
         replay_inbox_from_sequence: 54,
         authoritative_workload_count: 0,
+        business_invariants_verified: true,
+        post_checkpoint_work_reconciled: true,
+        recovery_time_ms: 45_000,
+        intentional_loss_bound_ms: 0,
+        replay_bound_count: 3,
+        remaining_story_gaps: Vec::new(),
+        cleanup_complete: true,
         postgres: PostgresRestoreObservation {
             provider: "postgresql".to_owned(),
             version: "18".to_owned(),
@@ -329,7 +368,11 @@ fn verified_restore() -> lenso_service::ServiceRestoreEvidence {
             used_real_instance: true,
             observation_digest: digest("postgres-observation"),
         },
-    })
+    }
+}
+
+fn verified_restore() -> lenso_service::ServiceRestoreEvidence {
+    evaluate_service_restore(verified_restore_input())
 }
 
 #[test]
@@ -337,13 +380,35 @@ fn backup_restore_preserves_authoritative_state_and_replay_boundaries() {
     let restore = verified_restore();
     assert_eq!(restore.decision, RestoreDecision::Passed);
     assert!(!restore.production_mutated);
-    assert_eq!(restore.restored_state_digests.len(), 5);
+    assert_eq!(restore.restored_state_digests.len(), 8);
+}
+
+#[test]
+fn backup_restore_fails_closed_for_corrupt_stale_wrong_or_unavailable_recovery_sets() {
+    let mutations: Vec<Box<dyn Fn(&mut ServiceRestoreInput)>> = vec![
+        Box::new(|input| input.backup.backup_digest = digest("corrupt")),
+        Box::new(|input| input.backup.input.completed = false),
+        Box::new(|input| input.observed_at_unix_ms = u64::MAX),
+        Box::new(|input| input.expected_service_id = "service:wrong".to_owned()),
+        Box::new(|input| input.expected_release_digest = digest("wrong-release")),
+        Box::new(|input| input.expected_format_version = "unsupported.v9".to_owned()),
+        Box::new(|input| input.key_reference_available = false),
+    ];
+    for mutate in mutations {
+        let mut input = verified_restore_input();
+        mutate(&mut input);
+        assert_eq!(
+            evaluate_service_restore(input).decision,
+            RestoreDecision::Blocked
+        );
+    }
 }
 
 #[test]
 fn disaster_recovery_requires_fencing_exact_approval_and_observed_budgets() {
     let restore = verified_restore();
     let plan = plan_disaster_recovery(DisasterRecoveryPlanInput {
+        phase: DisasterRecoveryPhase::Cutover,
         service_id: "service:support".to_owned(),
         primary_region: "cn-east-1".to_owned(),
         passive_region: "cn-east-2".to_owned(),
@@ -351,9 +416,14 @@ fn disaster_recovery_requires_fencing_exact_approval_and_observed_budgets() {
         expected_release_digest: digest("release"),
         expected_config_revision_digest: digest("config"),
         expected_contract_set_digest: digest("contracts"),
+        expected_active_state_digest: digest("active-state-cutover"),
+        authoritative_environment_count_before: 1,
+        planned_at_unix_ms: 1_721_600_005_000,
+        freshness_horizon_unix_ms: 1_721_600_020_000,
         rpo_budget_ms: 30_000,
         rto_budget_ms: 120_000,
         primary_fenced: true,
+        passive_fenced: false,
         passive_health_verified: true,
         passive_identity_verified: true,
         passive_contracts_verified: true,
@@ -368,14 +438,21 @@ fn disaster_recovery_requires_fencing_exact_approval_and_observed_budgets() {
         &plan,
         &DisasterRecoveryApproval {
             plan_digest: plan.plan_digest.clone(),
+            phase: DisasterRecoveryPhase::Cutover,
             approver: "incident-commander".to_owned(),
             reason: "pinned environment drill".to_owned(),
             approved_at_unix_ms: 1_721_600_010_000,
         },
         DisasterRecoveryObservation {
             plan_digest: plan.plan_digest.clone(),
+            phase: DisasterRecoveryPhase::Cutover,
+            observed_at_unix_ms: 1_721_600_011_000,
+            active_state_digest: digest("active-state-cutover"),
+            authoritative_environment_count: 1,
             primary_fenced: true,
+            passive_fenced: false,
             passive_became_authoritative: true,
+            primary_became_authoritative: false,
             traffic_switched: true,
             observed_rpo_ms: 10_000,
             observed_rto_ms: 60_000,
@@ -385,10 +462,75 @@ fn disaster_recovery_requires_fencing_exact_approval_and_observed_budgets() {
             workload_identity_preserved: true,
             duplicate_business_effects: 0,
             lost_committed_effects: 0,
+            requests_events_workflows_stories_verified: true,
+            cleanup_complete: true,
             evidence_digest: digest("dr-observation"),
         },
     );
     assert_eq!(evidence.decision, DisasterRecoveryDecision::Passed);
+
+    let failback = plan_disaster_recovery(DisasterRecoveryPlanInput {
+        phase: DisasterRecoveryPhase::Failback,
+        service_id: plan.input.service_id.clone(),
+        primary_region: plan.input.primary_region.clone(),
+        passive_region: plan.input.passive_region.clone(),
+        restore_evidence: plan.input.restore_evidence.clone(),
+        expected_release_digest: plan.input.expected_release_digest.clone(),
+        expected_config_revision_digest: plan.input.expected_config_revision_digest.clone(),
+        expected_contract_set_digest: plan.input.expected_contract_set_digest.clone(),
+        expected_active_state_digest: digest("active-state-failback"),
+        authoritative_environment_count_before: 1,
+        planned_at_unix_ms: 1_721_600_012_000,
+        freshness_horizon_unix_ms: 1_721_600_030_000,
+        rpo_budget_ms: 30_000,
+        rto_budget_ms: 120_000,
+        primary_fenced: false,
+        passive_fenced: true,
+        passive_health_verified: true,
+        passive_identity_verified: true,
+        passive_contracts_verified: true,
+        failback_steps: vec![
+            "fence passive".to_owned(),
+            "grant primary authority".to_owned(),
+            "switch traffic".to_owned(),
+        ],
+    });
+    assert_eq!(failback.decision, DisasterRecoveryDecision::Ready);
+    let failback_evidence = evaluate_disaster_recovery(
+        &failback,
+        &DisasterRecoveryApproval {
+            plan_digest: failback.plan_digest.clone(),
+            phase: DisasterRecoveryPhase::Failback,
+            approver: "incident-commander".to_owned(),
+            reason: "separately reviewed failback".to_owned(),
+            approved_at_unix_ms: 1_721_600_013_000,
+        },
+        DisasterRecoveryObservation {
+            plan_digest: failback.plan_digest.clone(),
+            phase: DisasterRecoveryPhase::Failback,
+            observed_at_unix_ms: 1_721_600_014_000,
+            active_state_digest: digest("active-state-failback"),
+            authoritative_environment_count: 1,
+            primary_fenced: false,
+            passive_fenced: true,
+            passive_became_authoritative: false,
+            primary_became_authoritative: true,
+            traffic_switched: true,
+            observed_rpo_ms: 5_000,
+            observed_rto_ms: 30_000,
+            release_digest: digest("release"),
+            config_revision_digest: digest("config"),
+            contract_set_digest: digest("contracts"),
+            workload_identity_preserved: true,
+            duplicate_business_effects: 0,
+            lost_committed_effects: 0,
+            requests_events_workflows_stories_verified: true,
+            cleanup_complete: true,
+            evidence_digest: digest("failback-observation"),
+        },
+    );
+    assert_eq!(failback_evidence.decision, DisasterRecoveryDecision::Passed);
+    assert_ne!(evidence.plan_digest, failback_evidence.plan_digest);
 }
 
 fn scale_point(service_count: u32) -> SupportScalePoint {
@@ -401,13 +543,30 @@ fn scale_point(service_count: u32) -> SupportScalePoint {
         tenant_count: 100,
         topology_digest: digest(&format!("topology-{service_count}")),
         environment_digest: digest("environment"),
-        measurement_digests: BTreeMap::from([
-            ("failure".to_owned(), digest("failure")),
-            ("load".to_owned(), digest("load")),
-            ("recovery".to_owned(), digest("recovery")),
-            ("resources".to_owned(), digest("resources")),
-            ("convergence".to_owned(), digest("convergence")),
-        ]),
+        compatible_baseline_digest: digest("compatible-baseline"),
+        environment_verification: true,
+        environment_drift_detected: false,
+        measurement_digests: [
+            "startup",
+            "rollout",
+            "direct_calls",
+            "events",
+            "inbox_outbox",
+            "workflows",
+            "timers",
+            "compensation",
+            "story_federation",
+            "policy",
+            "console",
+            "failure_recovery",
+            "connections",
+            "backlog",
+            "resources",
+            "evidence_freshness",
+        ]
+        .into_iter()
+        .map(|name| (name.to_owned(), digest(name)))
+        .collect(),
         budgets_passed: true,
         repeated_run_count: 3,
         variance_basis_points: 400,

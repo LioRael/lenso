@@ -4,6 +4,10 @@ Version: `m6.v1`. Authority: the exact
 `contracts/ga/lenso.ga-support-manifest.v1.json` shipped with the selected
 release. Unknown combinations are unsupported.
 
+Provider v1 remains the Host-managed compatibility path. Autonomous Service
+upgrade and recovery procedures use Service v2 artifacts and must not rename or
+reinterpret Provider authority.
+
 ## Upgrade
 
 Prerequisites:

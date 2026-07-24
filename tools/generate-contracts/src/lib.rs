@@ -417,7 +417,7 @@ pub fn generated_ga_support_manifest() -> Value {
         ]),
         documentation: DocumentationIdentity {
             version: "m6-ga".into(),
-            digest: extraction_input_digest(b"docs:m6-ga"),
+            digest: m6_documentation_digest(),
         },
         combinations: vec![SupportCombinationInput {
             combination_id: "m6-ga-1".into(),
@@ -432,9 +432,42 @@ pub fn generated_ga_support_manifest() -> Value {
             mixed_version_references: vec![],
             rollback_safe: true,
         }],
+        evidence_receipt_authorities: [
+            "lenso.delivery-failure-recovery-evidence.v1",
+            "lenso.performance-profile.v1",
+            "lenso.service-restore-evidence.v1",
+            "lenso.disaster-recovery-evidence.v1",
+            "lenso.support-envelope.v1",
+            "lenso.security-review-evidence.v1",
+        ]
+        .into_iter()
+        .map(|protocol| {
+            (
+                protocol.to_owned(),
+                "m6-environment-verifier".to_owned(),
+            )
+        })
+        .collect(),
+        receipt_authority_public_keys: BTreeMap::from([(
+            "m6-environment-verifier".to_owned(),
+            "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA7WgM6rOq0x9vY4VJ4rP7oOxXVMuDXKpMZgqXfQZq8hM=\n-----END PUBLIC KEY-----"
+                .to_owned(),
+        )]),
     })
     .expect("the committed GA Support Manifest must be valid");
     serde_json::to_value(manifest).expect("GA Support Manifest must serialize")
+}
+
+fn m6_documentation_digest() -> String {
+    let documentation = [
+        include_str!("../../../docs/operations/m6/upgrade-and-contracts.md"),
+        include_str!("../../../docs/operations/m6/failure-backup-and-disaster.md"),
+        include_str!("../../../docs/operations/m6/security-and-release.md"),
+        include_str!("../../../docs/operations/m6/incident-map.md"),
+        include_str!("../../../docs/security/m6-threat-model.md"),
+    ]
+    .join("\n");
+    lenso_service::extraction_input_digest(documentation.as_bytes())
 }
 
 pub fn generated_ga_support_guidance() -> String {

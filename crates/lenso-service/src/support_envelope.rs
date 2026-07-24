@@ -27,6 +27,7 @@ pub enum SupportEnvelopeIssueCode {
     TopologyInvalid,
     MeasurementIncomplete,
     BudgetExceeded,
+    EnvironmentDrift,
     SaturationUnknown,
     HiddenCentralDependency,
     CleanupIncomplete,
@@ -52,6 +53,9 @@ pub struct SupportScalePoint {
     pub tenant_count: u32,
     pub topology_digest: String,
     pub environment_digest: String,
+    pub compatible_baseline_digest: String,
+    pub environment_verification: bool,
+    pub environment_drift_detected: bool,
     pub measurement_digests: BTreeMap<String, String>,
     pub budgets_passed: bool,
     pub repeated_run_count: u32,
@@ -128,6 +132,8 @@ pub fn evaluate_support_envelope(mut input: SupportEnvelopeInput) -> SupportEnve
             || point.tenant_count == 0
             || !valid_digest(&point.topology_digest)
             || !valid_digest(&point.environment_digest)
+            || !valid_digest(&point.compatible_baseline_digest)
+            || !point.environment_verification
         {
             issues.push(issue(
                 SupportEnvelopeIssueCode::TopologyInvalid,
@@ -139,7 +145,27 @@ pub fn evaluate_support_envelope(mut input: SupportEnvelopeInput) -> SupportEnve
                 "Correct the scale fixture and repeat the profile.",
             ));
         }
-        if point.measurement_digests.len() < 5
+        let required_measurements = [
+            "startup",
+            "rollout",
+            "direct_calls",
+            "events",
+            "inbox_outbox",
+            "workflows",
+            "timers",
+            "compensation",
+            "story_federation",
+            "policy",
+            "console",
+            "failure_recovery",
+            "connections",
+            "backlog",
+            "resources",
+            "evidence_freshness",
+        ];
+        if required_measurements
+            .iter()
+            .any(|name| !point.measurement_digests.contains_key(*name))
             || point
                 .measurement_digests
                 .values()
@@ -155,6 +181,17 @@ pub fn evaluate_support_envelope(mut input: SupportEnvelopeInput) -> SupportEnve
                 ),
                 "Record load, resource, failure, recovery, and convergence evidence with variance.",
                 "Repeat the pinned environment runs.",
+            ));
+        }
+        if point.environment_drift_detected {
+            issues.push(issue(
+                SupportEnvelopeIssueCode::EnvironmentDrift,
+                format!(
+                    "The {}-Service point drifted from its compatible pinned baseline.",
+                    point.service_count
+                ),
+                "Report infrastructure drift separately from product budget regressions.",
+                "Restore the pinned environment and repeat the profile.",
             ));
         }
         if !point.budgets_passed {

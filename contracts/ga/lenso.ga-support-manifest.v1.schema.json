@@ -166,6 +166,12 @@
     "documentation": {
       "$ref": "#/$defs/DocumentationIdentity"
     },
+    "evidenceReceiptAuthorities": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
     "manifestDigest": {
       "type": "string"
     },
@@ -180,6 +186,12 @@
     },
     "protocol": {
       "type": "string"
+    },
+    "receiptAuthorityPublicKeys": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
     },
     "stateVersions": {
       "items": {
@@ -208,7 +220,9 @@
     "adapterVersions",
     "documentation",
     "combinations",
-    "upgradeEdges"
+    "upgradeEdges",
+    "evidenceReceiptAuthorities",
+    "receiptAuthorityPublicKeys"
   ],
   "title": "GaSupportManifest",
   "type": "object"

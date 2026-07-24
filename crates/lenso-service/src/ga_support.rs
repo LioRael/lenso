@@ -149,6 +149,8 @@ pub struct GaSupportManifestInput {
     pub documentation: DocumentationIdentity,
     pub combinations: Vec<SupportCombinationInput>,
     pub upgrade_edges: Vec<UpgradeEdgeInput>,
+    pub evidence_receipt_authorities: BTreeMap<String, String>,
+    pub receipt_authority_public_keys: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, ToSchema)]
@@ -165,6 +167,8 @@ pub struct GaSupportManifest {
     pub documentation: DocumentationIdentity,
     pub combinations: Vec<SupportCombinationInput>,
     pub upgrade_edges: Vec<UpgradeEdgeInput>,
+    pub evidence_receipt_authorities: BTreeMap<String, String>,
+    pub receipt_authority_public_keys: BTreeMap<String, String>,
 }
 
 impl GaSupportManifest {
@@ -179,6 +183,8 @@ impl GaSupportManifest {
             documentation: self.documentation,
             combinations: self.combinations,
             upgrade_edges: self.upgrade_edges,
+            evidence_receipt_authorities: self.evidence_receipt_authorities,
+            receipt_authority_public_keys: self.receipt_authority_public_keys,
         }
     }
 }
@@ -287,6 +293,15 @@ pub fn assemble_ga_support_manifest(
                 || !valid_digest(&component.digest)
         })
         || !valid_digest(&input.documentation.digest)
+        || input.evidence_receipt_authorities.is_empty()
+        || input
+            .evidence_receipt_authorities
+            .values()
+            .any(|authority| !input.receipt_authority_public_keys.contains_key(authority))
+        || input
+            .receipt_authority_public_keys
+            .values()
+            .any(|key| !key.starts_with("-----BEGIN PUBLIC KEY-----"))
         || input.combinations.iter().any(|combination| {
             combination.component_references.is_empty()
                 || combination
@@ -317,6 +332,8 @@ pub fn assemble_ga_support_manifest(
         documentation: input.documentation,
         combinations: input.combinations,
         upgrade_edges: input.upgrade_edges,
+        evidence_receipt_authorities: input.evidence_receipt_authorities,
+        receipt_authority_public_keys: input.receipt_authority_public_keys,
     })
 }
 
@@ -398,13 +415,40 @@ pub fn evaluate_ga_support(
     }
 }
 
-fn ga_support_manifest_integrity_valid(manifest: &GaSupportManifest) -> bool {
+pub fn ga_support_manifest_integrity_valid(manifest: &GaSupportManifest) -> bool {
     if manifest.protocol != GA_SUPPORT_MANIFEST_PROTOCOL {
         return false;
     }
     let digest = digest_json(&manifest.clone().into_input());
     manifest.manifest_digest == digest
         && manifest.manifest_id == format!("ga-support:{}", &digest[7..23])
+}
+
+#[must_use]
+pub fn contract_retirement_plan_integrity_is_valid(plan: &ContractRetirementPlan) -> bool {
+    valid_digest(&plan.plan_digest)
+        && plan.plan_digest
+            == plan_digest(plan, |value| {
+                value.plan_id.clear();
+                value.plan_digest.clear();
+            })
+        && plan.plan_id == format!("contract-retirement:{}", &plan.plan_digest[7..23])
+}
+
+#[must_use]
+pub fn contract_retirement_receipt_integrity_is_valid(receipt: &ContractRetirementReceipt) -> bool {
+    receipt.protocol == CONTRACT_RETIREMENT_RECEIPT_PROTOCOL
+        && valid_digest(&receipt.plan_digest)
+        && receipt.receipt_id
+            == format!(
+                "contract-retirement-receipt:{}",
+                &receipt.plan_digest[7..23]
+            )
+        && !receipt.contract_id.trim().is_empty()
+        && !receipt.retired_version.trim().is_empty()
+        && !receipt.replacement_version.trim().is_empty()
+        && !receipt.approver.trim().is_empty()
+        && receipt.retired
 }
 
 #[must_use]

@@ -20,6 +20,8 @@ check:
     just test
     just generated-check
     just arch-check
+    just m6-skills-check
+    just m6-docs-check
 
 release-check:
     just check
@@ -176,6 +178,12 @@ generated-check:
 
 arch-check:
     cargo run --locked -p arch-check
+
+m6-skills-check:
+    python3 tools/check-m6-skills.py
+
+m6-docs-check:
+    python3 tools/check-m6-docs.py
 
 ci:
     sh scripts/ci.sh

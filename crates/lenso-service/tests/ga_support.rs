@@ -79,6 +79,20 @@ fn support_manifest() -> lenso_service::GaSupportManifest {
             ],
             rollback_safe: false,
         }],
+        evidence_receipt_authorities: BTreeMap::from([
+            (
+                "lenso.performance-profile.v1".into(),
+                "test-authority".into(),
+            ),
+            (
+                "lenso.service-restore-evidence.v1".into(),
+                "test-authority".into(),
+            ),
+        ]),
+        receipt_authority_public_keys: BTreeMap::from([(
+            "test-authority".into(),
+            "-----BEGIN PUBLIC KEY-----\ntest\n-----END PUBLIC KEY-----".into(),
+        )]),
     })
     .expect("valid support manifest")
 }

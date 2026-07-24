@@ -32,6 +32,11 @@ pub enum RestoreIssueCode {
     ReplayBoundaryInvalid,
     AuthorityConflict,
     EnvironmentEvidenceInvalid,
+    RecoverySetIncompatible,
+    RecoverySetStale,
+    KeyReferenceUnavailable,
+    ReconciliationIncomplete,
+    CleanupIncomplete,
 }
 
 impl RestoreIssueCode {
@@ -46,6 +51,11 @@ impl RestoreIssueCode {
             Self::ReplayBoundaryInvalid => "restore_replay_boundary_invalid",
             Self::AuthorityConflict => "restore_authority_conflict",
             Self::EnvironmentEvidenceInvalid => "restore_environment_evidence_invalid",
+            Self::RecoverySetIncompatible => "restore_recovery_set_incompatible",
+            Self::RecoverySetStale => "restore_recovery_set_stale",
+            Self::KeyReferenceUnavailable => "restore_key_reference_unavailable",
+            Self::ReconciliationIncomplete => "restore_reconciliation_incomplete",
+            Self::CleanupIncomplete => "restore_cleanup_incomplete",
         }
     }
 }
@@ -64,11 +74,19 @@ pub struct RestoreIssue {
 pub struct ServiceBackupInput {
     pub service_id: String,
     pub store_id: String,
+    pub format_version: String,
     pub schema_version: String,
     pub release_digest: String,
     pub config_revision_digest: String,
+    pub contract_version_digests: BTreeMap<String, String>,
+    pub store_checkpoint_digest: String,
+    pub broker_position: Option<u64>,
+    pub restore_preconditions: Vec<String>,
     pub point_in_time_unix_ms: u64,
+    pub captured_at_unix_ms: u64,
+    pub freshness_horizon_unix_ms: u64,
     pub snapshot_digest: String,
+    pub post_checkpoint_work_digest: String,
     pub encryption_key_reference: String,
     pub encryption_algorithm: String,
     pub state_digests: BTreeMap<String, String>,
@@ -105,8 +123,17 @@ pub struct ServiceRestoreInput {
     pub backup: ServiceBackup,
     pub target_store_id: String,
     pub target_was_clean: bool,
+    pub expected_service_id: String,
+    pub expected_format_version: String,
+    pub expected_schema_version: String,
+    pub expected_release_digest: String,
+    pub expected_config_revision_digest: String,
+    pub expected_contract_version_digests: BTreeMap<String, String>,
+    pub key_reference_available: bool,
+    pub observed_at_unix_ms: u64,
     pub restored_snapshot_digest: String,
     pub restored_state_digests: BTreeMap<String, String>,
+    pub restored_contract_version_digests: BTreeMap<String, String>,
     pub restored_release_digest: String,
     pub restored_config_revision_digest: String,
     pub replay_outbox_from_sequence: u64,
@@ -114,6 +141,13 @@ pub struct ServiceRestoreInput {
     pub restored_workflow_timer_sequence: u64,
     pub restored_story_sequence: u64,
     pub authoritative_workload_count: u32,
+    pub business_invariants_verified: bool,
+    pub post_checkpoint_work_reconciled: bool,
+    pub recovery_time_ms: u64,
+    pub intentional_loss_bound_ms: u64,
+    pub replay_bound_count: u64,
+    pub remaining_story_gaps: Vec<String>,
+    pub cleanup_complete: bool,
     pub postgres: PostgresRestoreObservation,
 }
 
@@ -129,7 +163,15 @@ pub struct ServiceRestoreEvidence {
     pub source_store_id: String,
     pub target_store_id: String,
     pub point_in_time_unix_ms: u64,
+    pub format_version: String,
+    pub schema_version: String,
+    pub contract_version_digests: BTreeMap<String, String>,
     pub restored_state_digests: BTreeMap<String, String>,
+    pub recovery_time_ms: u64,
+    pub intentional_loss_bound_ms: u64,
+    pub replay_bound_count: u64,
+    pub remaining_story_gaps: Vec<String>,
+    pub cleanup_complete: bool,
     pub decision: RestoreDecision,
     pub issues: Vec<RestoreIssue>,
     pub next_actions: Vec<String>,
@@ -139,12 +181,34 @@ pub struct ServiceRestoreEvidence {
 pub fn assemble_service_backup(input: ServiceBackupInput) -> Result<ServiceBackup, RestoreIssue> {
     if input.service_id.trim().is_empty()
         || input.store_id.trim().is_empty()
+        || input.format_version.trim().is_empty()
         || input.schema_version.trim().is_empty()
         || input.point_in_time_unix_ms == 0
+        || input.captured_at_unix_ms == 0
+        || input.freshness_horizon_unix_ms < input.captured_at_unix_ms
         || !valid_digest(&input.release_digest)
         || !valid_digest(&input.config_revision_digest)
+        || input.contract_version_digests.is_empty()
+        || input
+            .contract_version_digests
+            .values()
+            .any(|digest| !valid_digest(digest))
+        || !valid_digest(&input.store_checkpoint_digest)
         || !valid_digest(&input.snapshot_digest)
-        || input.state_digests.len() < 5
+        || !valid_digest(&input.post_checkpoint_work_digest)
+        || input.restore_preconditions.is_empty()
+        || [
+            "business",
+            "inbox",
+            "outbox",
+            "workflows",
+            "workflow_timers",
+            "compensation",
+            "stories",
+            "federation_cursors",
+        ]
+        .into_iter()
+        .any(|partition| !input.state_digests.contains_key(partition))
         || input
             .state_digests
             .values()
@@ -205,6 +269,39 @@ pub fn evaluate_service_restore(input: ServiceRestoreInput) -> ServiceRestoreEvi
             "Provision a clean target Store.",
         ));
     }
+    if input.expected_service_id != input.backup.input.service_id
+        || input.expected_format_version != input.backup.input.format_version
+        || input.expected_schema_version != input.backup.input.schema_version
+        || input.expected_release_digest != input.backup.input.release_digest
+        || input.expected_config_revision_digest != input.backup.input.config_revision_digest
+        || input.expected_contract_version_digests != input.backup.input.contract_version_digests
+        || input.restored_contract_version_digests != input.backup.input.contract_version_digests
+    {
+        issues.push(issue(
+            RestoreIssueCode::RecoverySetIncompatible,
+            "Recovery set Service, format, schema, or Contract Versions do not match the isolated target.",
+            "Restore only the exact supported recovery-set identity.",
+            "Select a compatible recovery set or target release.",
+        ));
+    }
+    if input.observed_at_unix_ms == 0
+        || input.observed_at_unix_ms > input.backup.input.freshness_horizon_unix_ms
+    {
+        issues.push(issue(
+            RestoreIssueCode::RecoverySetStale,
+            "Recovery-set evidence is outside its reviewed freshness horizon.",
+            "Capture or explicitly review a fresh recovery set.",
+            "Refresh the backup before restore.",
+        ));
+    }
+    if !input.key_reference_available {
+        issues.push(issue(
+            RestoreIssueCode::KeyReferenceUnavailable,
+            "The opaque backup key reference is unavailable.",
+            "Resolve the key through the configured provider without exposing key material.",
+            "Restore provider access or choose another verified recovery set.",
+        ));
+    }
     if input.restored_snapshot_digest != input.backup.input.snapshot_digest
         || input.restored_state_digests != input.backup.input.state_digests
         || input.restored_release_digest != input.backup.input.release_digest
@@ -235,6 +332,22 @@ pub fn evaluate_service_restore(input: ServiceRestoreInput) -> ServiceRestoreEvi
             "Restore verification ran while an authoritative Workload could still write.",
             "Keep the restored target passive until an explicit authority cutover.",
             "Fence active writers and repeat restore verification.",
+        ));
+    }
+    if !input.business_invariants_verified || !input.post_checkpoint_work_reconciled {
+        issues.push(issue(
+            RestoreIssueCode::ReconciliationIncomplete,
+            "Business invariants or identified post-checkpoint work remain unreconciled.",
+            "Reconcile durable delivery, Workflow, compensation, Story, and federation state.",
+            "Keep the target passive and complete reconciliation.",
+        ));
+    }
+    if !input.cleanup_complete {
+        issues.push(issue(
+            RestoreIssueCode::CleanupIncomplete,
+            "Temporary restore resources are neither cleaned nor deterministically isolated.",
+            "Remove temporary credentials and processes while retaining only reviewed passive evidence.",
+            "Complete restore cleanup.",
         ));
     }
     if !input.postgres.used_real_instance
@@ -276,7 +389,15 @@ pub fn evaluate_service_restore(input: ServiceRestoreInput) -> ServiceRestoreEvi
         source_store_id: input.backup.input.store_id,
         target_store_id: input.target_store_id,
         point_in_time_unix_ms: input.backup.input.point_in_time_unix_ms,
+        format_version: input.backup.input.format_version,
+        schema_version: input.backup.input.schema_version,
+        contract_version_digests: input.backup.input.contract_version_digests,
         restored_state_digests: input.restored_state_digests,
+        recovery_time_ms: input.recovery_time_ms,
+        intentional_loss_bound_ms: input.intentional_loss_bound_ms,
+        replay_bound_count: input.replay_bound_count,
+        remaining_story_gaps: input.remaining_story_gaps,
+        cleanup_complete: input.cleanup_complete,
         decision,
         issues,
         next_actions,

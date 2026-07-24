@@ -28,13 +28,17 @@ use crate::{
     service_release_integrity_is_valid,
 };
 use crate::{
-    DELIVERY_FAILURE_RECOVERY_PROTOCOL, DISASTER_RECOVERY_EVIDENCE_PROTOCOL,
-    DeliveryFailureRecoveryEvidence, DisasterRecoveryEvidence, PERFORMANCE_PROFILE_PROTOCOL,
+    CONTRACT_RETIREMENT_PLAN_PROTOCOL, CONTRACT_RETIREMENT_RECEIPT_PROTOCOL,
+    ContractRetirementPlan, ContractRetirementReceipt, DELIVERY_FAILURE_RECOVERY_PROTOCOL,
+    DISASTER_RECOVERY_EVIDENCE_PROTOCOL, DeliveryFailureRecoveryEvidence, DisasterRecoveryEvidence,
+    GA_SUPPORT_MANIFEST_PROTOCOL, GaSupportManifest, PERFORMANCE_PROFILE_PROTOCOL,
     PerformanceProfile, SECURITY_REVIEW_PROTOCOL, SERVICE_RESTORE_EVIDENCE_PROTOCOL,
     SUPPORT_ENVELOPE_PROTOCOL, SecurityReviewEvidence, ServiceRestoreEvidence, SupportEnvelope,
+    contract_retirement_plan_integrity_is_valid, contract_retirement_receipt_integrity_is_valid,
     delivery_failure_recovery_integrity_is_valid, disaster_recovery_evidence_integrity_is_valid,
-    performance_profile_integrity_is_valid, security_review_integrity_is_valid,
-    service_restore_integrity_is_valid, support_envelope_integrity_is_valid,
+    ga_support_manifest_integrity_valid, performance_profile_integrity_is_valid,
+    security_review_integrity_is_valid, service_restore_integrity_is_valid,
+    support_envelope_integrity_is_valid,
 };
 
 pub const DELIVERY_CONSOLE_PROJECTION_PROTOCOL: &str = "lenso.delivery-console.v1";
@@ -543,17 +547,51 @@ fn ga_evidence(artifact: &Value) -> Option<DeliveryConsoleGaEvidence> {
         .any(|code| code.contains("stale") || code.contains("freshness"));
     let subjects = [
         "serviceId",
+        "workloadId",
         "releaseId",
         "releaseDigest",
         "configRevisionId",
+        "configRevisionDigest",
         "contractId",
+        "contractSetDigest",
+        "deploymentId",
+        "storyId",
         "backupId",
         "supportManifestDigest",
         "primaryRegion",
         "passiveRegion",
+        "phase",
+        "observedRpoMs",
+        "observedRtoMs",
+        "recoveryTimeMs",
+        "intentionalLossBoundMs",
+        "replayBoundCount",
+        "freshnessHorizonUnixMs",
+        "upgradeStatus",
+        "rollbackStatus",
     ]
     .into_iter()
-    .filter_map(|key| text(artifact, key).map(|value| (key.to_owned(), value)))
+    .filter_map(|key| scalar_text(artifact, key).map(|value| (key.to_owned(), value)))
+    .chain(
+        [
+            ("activeConsumerCount", "activeConsumers"),
+            ("performanceBudgetCount", "budgets"),
+            ("findingCount", "findings"),
+            ("contractVersionCount", "contractVersionDigests"),
+            ("remainingStoryGapCount", "remainingStoryGaps"),
+        ]
+        .into_iter()
+        .filter_map(|(label, key)| {
+            artifact
+                .get(key)
+                .and_then(|value| match value {
+                    Value::Array(values) => Some(values.len()),
+                    Value::Object(values) => Some(values.len()),
+                    _ => None,
+                })
+                .map(|count| (label.to_owned(), count.to_string()))
+        }),
+    )
     .collect();
     Some(DeliveryConsoleGaEvidence {
         protocol,
@@ -563,6 +601,15 @@ fn ga_evidence(artifact: &Value) -> Option<DeliveryConsoleGaEvidence> {
         subjects,
         issue_codes,
         next_actions: strings(artifact, "nextActions"),
+    })
+}
+
+fn scalar_text(value: &Value, key: &str) -> Option<String> {
+    value.get(key).and_then(|value| match value {
+        Value::String(value) => Some(value.clone()),
+        Value::Number(value) => Some(value.to_string()),
+        Value::Bool(value) => Some(value.to_string()),
+        _ => None,
     })
 }
 
@@ -838,6 +885,25 @@ fn persisted_delivery_artifact(artifact: &Value) -> Result<Value, sqlx::Error> {
             "Security Review Evidence",
             security_review_integrity_is_valid,
         )?,
+        GA_SUPPORT_MANIFEST_PROTOCOL => validated_canonical_artifact::<GaSupportManifest>(
+            artifact,
+            "GA Support Manifest",
+            ga_support_manifest_integrity_valid,
+        )?,
+        CONTRACT_RETIREMENT_PLAN_PROTOCOL => {
+            validated_canonical_artifact::<ContractRetirementPlan>(
+                artifact,
+                "Contract Retirement Plan",
+                contract_retirement_plan_integrity_is_valid,
+            )?
+        }
+        CONTRACT_RETIREMENT_RECEIPT_PROTOCOL => {
+            validated_canonical_artifact::<ContractRetirementReceipt>(
+                artifact,
+                "Contract Retirement Receipt",
+                contract_retirement_receipt_integrity_is_valid,
+            )?
+        }
         _ => {
             return Err(sqlx::Error::Protocol(format!(
                 "unsupported production delivery artifact protocol `{protocol}`"
@@ -1165,6 +1231,7 @@ fn digest(value: &impl Serialize) -> String {
 #[cfg(test)]
 mod persistence_tests {
     use super::*;
+    use std::collections::BTreeMap;
 
     #[test]
     fn persistence_rejects_unknown_delivery_protocols() {
@@ -1213,5 +1280,53 @@ mod persistence_tests {
         let error = persisted_delivery_artifact(&artifact)
             .expect_err("unknown token-bearing receipt fields must fail closed");
         assert!(error.to_string().contains("non-canonical"));
+    }
+
+    #[test]
+    fn persistence_accepts_integrity_valid_ga_support_and_rejects_tampering() {
+        let manifest = crate::assemble_ga_support_manifest(crate::GaSupportManifestInput {
+            status: crate::SupportStatus::Candidate,
+            components: vec![crate::GaComponent {
+                kind: crate::ComponentKind::Runtime,
+                component_id: "lenso-service".to_owned(),
+                version: "0.1.14".to_owned(),
+                digest: crate::extraction_input_digest(b"runtime"),
+            }],
+            manifest_formats: vec![crate::ManifestFormat {
+                kind: crate::ManifestKind::Service,
+                version: "lenso.service.v2".to_owned(),
+            }],
+            state_versions: vec!["service-store.v1".to_owned()],
+            adapter_versions: BTreeMap::from([("postgresql".to_owned(), "18".to_owned())]),
+            documentation: crate::DocumentationIdentity {
+                version: "m6-ga".to_owned(),
+                digest: crate::extraction_input_digest(b"docs"),
+            },
+            combinations: vec![crate::SupportCombinationInput {
+                combination_id: "candidate".to_owned(),
+                component_references: vec!["runtime:lenso-service@0.1.14".to_owned()],
+                state_version: "service-store.v1".to_owned(),
+                status: crate::SupportStatus::Candidate,
+            }],
+            upgrade_edges: Vec::new(),
+            evidence_receipt_authorities: BTreeMap::from([(
+                crate::PERFORMANCE_PROFILE_PROTOCOL.to_owned(),
+                "test-authority".to_owned(),
+            )]),
+            receipt_authority_public_keys: BTreeMap::from([(
+                "test-authority".to_owned(),
+                "-----BEGIN PUBLIC KEY-----\ntest\n-----END PUBLIC KEY-----".to_owned(),
+            )]),
+        })
+        .expect("manifest is valid");
+        let artifact = serde_json::to_value(&manifest).expect("manifest serializes");
+        assert_eq!(
+            persisted_delivery_artifact(&artifact).expect("manifest persists"),
+            artifact
+        );
+
+        let mut tampered = artifact;
+        tampered["status"] = serde_json::json!("general_availability");
+        persisted_delivery_artifact(&tampered).expect_err("tampered manifest fails");
     }
 }

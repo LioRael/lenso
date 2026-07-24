@@ -24,6 +24,8 @@ attestations, and production configuration.
 The normal coordinator owns protected execution refs and publisher dispatch.
 Never manually parameterize a publisher. Changed plan, ref, nonce, digest,
 package set, or publisher revision invalidates approval.
+Never introduce a long-lived registry or personal access credential; publishers
+use only the reviewed short-lived authority described by the release runbook.
 
 Shadow mode verifies exact npm, Cargo, GitHub, provenance, SBOM, receipt, and
 attestation bytes without production writes. Receipt recovery may reconcile a

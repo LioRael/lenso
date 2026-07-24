@@ -164,6 +164,8 @@ pub struct DeliveryFailureRecoveryEvidence {
     pub retained_config_revision_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub migration: Option<MigrationRecoveryEvidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment_observation: Option<KubernetesRecoveryObservation>,
     pub decision: DeliveryRecoveryDecision,
     pub issues: Vec<DeliveryRecoveryIssue>,
     pub next_actions: Vec<String>,
@@ -324,6 +326,7 @@ pub fn evaluate_delivery_failure_recovery(
         observed_state: input.observed_state,
         retained_config_revision_id: input.active_config_revision_id,
         migration: input.migration,
+        environment_observation: input.kubernetes,
         decision,
         issues,
         next_actions,

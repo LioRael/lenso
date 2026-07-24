@@ -39,6 +39,7 @@
         "topology_invalid",
         "measurement_incomplete",
         "budget_exceeded",
+        "environment_drift",
         "saturation_unknown",
         "hidden_central_dependency",
         "cleanup_incomplete"
@@ -59,6 +60,9 @@
         "cleanupComplete": {
           "type": "boolean"
         },
+        "compatibleBaselineDigest": {
+          "type": "string"
+        },
         "contractCount": {
           "format": "uint32",
           "minimum": 0,
@@ -66,6 +70,12 @@
         },
         "environmentDigest": {
           "type": "string"
+        },
+        "environmentDriftDetected": {
+          "type": "boolean"
+        },
+        "environmentVerification": {
+          "type": "boolean"
         },
         "measurementDigests": {
           "additionalProperties": {
@@ -149,6 +159,9 @@
         "tenantCount",
         "topologyDigest",
         "environmentDigest",
+        "compatibleBaselineDigest",
+        "environmentVerification",
+        "environmentDriftDetected",
         "measurementDigests",
         "budgetsPassed",
         "repeatedRunCount",

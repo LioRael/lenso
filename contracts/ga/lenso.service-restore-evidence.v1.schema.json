@@ -42,7 +42,12 @@
         "restore_state_mismatch",
         "replay_boundary_invalid",
         "authority_conflict",
-        "environment_evidence_invalid"
+        "environment_evidence_invalid",
+        "recovery_set_incompatible",
+        "recovery_set_stale",
+        "key_reference_unavailable",
+        "reconciliation_incomplete",
+        "cleanup_incomplete"
       ],
       "type": "string"
     }
@@ -56,6 +61,15 @@
     "backupId": {
       "type": "string"
     },
+    "cleanupComplete": {
+      "type": "boolean"
+    },
+    "contractVersionDigests": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
     "decision": {
       "$ref": "#/$defs/RestoreDecision"
     },
@@ -64,6 +78,14 @@
     },
     "evidenceId": {
       "type": "string"
+    },
+    "formatVersion": {
+      "type": "string"
+    },
+    "intentionalLossBoundMs": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
     },
     "issues": {
       "items": {
@@ -88,11 +110,30 @@
     "protocol": {
       "type": "string"
     },
+    "recoveryTimeMs": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "remainingStoryGaps": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "replayBoundCount": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
     "restoredStateDigests": {
       "additionalProperties": {
         "type": "string"
       },
       "type": "object"
+    },
+    "schemaVersion": {
+      "type": "string"
     },
     "serviceId": {
       "type": "string"
@@ -114,7 +155,15 @@
     "sourceStoreId",
     "targetStoreId",
     "pointInTimeUnixMs",
+    "formatVersion",
+    "schemaVersion",
+    "contractVersionDigests",
     "restoredStateDigests",
+    "recoveryTimeMs",
+    "intentionalLossBoundMs",
+    "replayBoundCount",
+    "remainingStoryGaps",
+    "cleanupComplete",
     "decision",
     "issues",
     "nextActions",
