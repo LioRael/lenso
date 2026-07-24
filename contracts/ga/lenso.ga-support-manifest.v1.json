@@ -8,7 +8,7 @@
     {
       "combinationId": "m6-ga-1",
       "componentReferences": [
-        "cli:@lenso/cli@0.2.12",
+        "cli:@lenso/cli@0.2.13",
         "contracts:lenso-contracts@0.3.15",
         "operator:lenso-operator@0.1.0",
         "provider:lenso-service-provider-v1@1",
@@ -23,9 +23,9 @@
   "components": [
     {
       "componentId": "@lenso/cli",
-      "digest": "sha256:24be1d0818a520c989537908c006cf98ed7f457e3f77e9a85b1b1ebb55fa1e94",
+      "digest": "sha256:95df550fbe9a4b1321538ff0a5fb17628ab388b61204ad7930fc4e6f1cfcea80",
       "kind": "cli",
-      "version": "0.2.12"
+      "version": "0.2.13"
     },
     {
       "componentId": "lenso-autonomous-service",
@@ -76,7 +76,7 @@
     "lenso.service-restore-evidence.v1": "m6-environment-verifier",
     "lenso.support-envelope.v1": "m6-environment-verifier"
   },
-  "manifestDigest": "sha256:782c50dd8cd655bcf7812d22b92bc562104b4f8da418c3c8b65c2add10c40a6f",
+  "manifestDigest": "sha256:92812a6fdfb333b229e6867d0cac8b0b757bd2f844fb9d0f12a4c49fe78740c4",
   "manifestFormats": [
     {
       "kind": "provider",
@@ -95,7 +95,7 @@
       "version": "lenso.system.v2"
     }
   ],
-  "manifestId": "ga-support:782c50dd8cd655bc",
+  "manifestId": "ga-support:92812a6fdfb333b2",
   "protocol": "lenso.ga-support-manifest.v1",
   "receiptAuthorityPublicKeys": {
     "m6-environment-verifier": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA7WgM6rOq0x9vY4VJ4rP7oOxXVMuDXKpMZgqXfQZq8hM=\n-----END PUBLIC KEY-----"
