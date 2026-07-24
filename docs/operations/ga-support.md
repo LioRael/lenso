@@ -1,20 +1,20 @@
 # Lenso GA Support Manifest
 
 - Protocol: `lenso.ga-support-manifest.v1`
-- Manifest ID: `ga-support:85270ae7dd399530`
-- Manifest digest: `sha256:85270ae7dd399530011b45664ecef834d53806eb33c55fa410179bb21dbbfa1e`
+- Manifest ID: `ga-support:f9af9542988f0456`
+- Manifest digest: `sha256:f9af9542988f045691e5328ce883efbde9defc36633cc8a775f0cf678ae57833`
 - Status: `GeneralAvailability`
 - Documentation: `m6-ga` (`sha256:09aeded7e3eb0625b12e0df63c960c837e22e8e391ab451ec522c60d83e56fc6`)
 
 ## Components
 
-- `cli:@lenso/cli@0.2.9` — `sha256:7d1dde3e3464cba59824d9df18d5f8a59db40efe5f6383ef0204f0dc70b2d9e2`
+- `cli:@lenso/cli@0.2.10` — `sha256:69e954b3a37f90555200bcc48eb48d0d92a3f72db3d0e12e6bab092501a1d110`
 - `runtime:lenso-autonomous-service@0.1.10` — `sha256:2a91ac572f68cab2d046b2a93d5e04c1dc81cf2b734102884d2872b39cd435e7`
 - `runtime:lenso-service@0.1.14` — `sha256:f39f8cb2be59f25af7eb265be2f09afbaac3d570afdae36ff752a3ccf1c7c42a`
 - `contracts:lenso-contracts@0.3.15` — `sha256:f93d2b9938d47be11ade3fb9675e295b02db1313dd82afbfbfaff5d41c03df19`
 - `provider:lenso-service-provider-v1@1` — `sha256:5cecee2372a80ae8bcec57cd43c1bb19d73d5a3621fa6092f0850028c086bb00`
 - `operator:lenso-operator@0.1.0` — `sha256:eda3f717c993979b0cb05dfa7528dd79c0ccf52cbb4a96b3a4178806cf7dd7f4`
-- `runtime_console:@lenso/runtime-console@0.1.1` — `sha256:514c7edd33302f55985aaba08f3217fd2bd52ee65e2340b8f7ec5d6f4fb6944f`
+- `runtime_console:@lenso/runtime-console@0.1.2` — `sha256:12ad49585fb48d1bfb1958ef1f37a3b73fe65fbabdffd8cde1abcb541b5f859c`
 
 ## Manifest and state formats
 
@@ -26,7 +26,7 @@
 
 ## Supported combinations
 
-- `m6-ga-1`: `GeneralAvailability`, state `service-store.v1`, components `cli:@lenso/cli@0.2.9`, `contracts:lenso-contracts@0.3.15`, `operator:lenso-operator@0.1.0`, `provider:lenso-service-provider-v1@1`, `runtime:lenso-autonomous-service@0.1.10`, `runtime:lenso-service@0.1.14`, `runtime_console:@lenso/runtime-console@0.1.1`
+- `m6-ga-1`: `GeneralAvailability`, state `service-store.v1`, components `cli:@lenso/cli@0.2.10`, `contracts:lenso-contracts@0.3.15`, `operator:lenso-operator@0.1.0`, `provider:lenso-service-provider-v1@1`, `runtime:lenso-autonomous-service@0.1.10`, `runtime:lenso-service@0.1.14`, `runtime_console:@lenso/runtime-console@0.1.2`
 
 ## Upgrade and skew edges
 

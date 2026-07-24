@@ -376,7 +376,7 @@ pub fn generated_ga_support_manifest() -> Value {
         digest: extraction_input_digest(format!("{component_id}@{version}").as_bytes()),
     };
     let components = vec![
-        component(ComponentKind::Cli, "@lenso/cli", "0.2.9"),
+        component(ComponentKind::Cli, "@lenso/cli", "0.2.10"),
         component(ComponentKind::Runtime, "lenso-service", "0.1.14"),
         component(ComponentKind::Runtime, "lenso-autonomous-service", "0.1.10"),
         component(ComponentKind::Contracts, "lenso-contracts", "0.3.15"),
@@ -385,7 +385,7 @@ pub fn generated_ga_support_manifest() -> Value {
         component(
             ComponentKind::RuntimeConsole,
             "@lenso/runtime-console",
-            "0.1.1",
+            "0.1.2",
         ),
     ];
     let references = components.iter().map(GaComponent::reference).collect();

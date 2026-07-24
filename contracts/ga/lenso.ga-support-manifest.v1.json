@@ -8,13 +8,13 @@
     {
       "combinationId": "m6-ga-1",
       "componentReferences": [
-        "cli:@lenso/cli@0.2.9",
+        "cli:@lenso/cli@0.2.10",
         "contracts:lenso-contracts@0.3.15",
         "operator:lenso-operator@0.1.0",
         "provider:lenso-service-provider-v1@1",
         "runtime:lenso-autonomous-service@0.1.10",
         "runtime:lenso-service@0.1.14",
-        "runtime_console:@lenso/runtime-console@0.1.1"
+        "runtime_console:@lenso/runtime-console@0.1.2"
       ],
       "stateVersion": "service-store.v1",
       "status": "general_availability"
@@ -23,9 +23,9 @@
   "components": [
     {
       "componentId": "@lenso/cli",
-      "digest": "sha256:7d1dde3e3464cba59824d9df18d5f8a59db40efe5f6383ef0204f0dc70b2d9e2",
+      "digest": "sha256:69e954b3a37f90555200bcc48eb48d0d92a3f72db3d0e12e6bab092501a1d110",
       "kind": "cli",
-      "version": "0.2.9"
+      "version": "0.2.10"
     },
     {
       "componentId": "lenso-autonomous-service",
@@ -59,9 +59,9 @@
     },
     {
       "componentId": "@lenso/runtime-console",
-      "digest": "sha256:514c7edd33302f55985aaba08f3217fd2bd52ee65e2340b8f7ec5d6f4fb6944f",
+      "digest": "sha256:12ad49585fb48d1bfb1958ef1f37a3b73fe65fbabdffd8cde1abcb541b5f859c",
       "kind": "runtime_console",
-      "version": "0.1.1"
+      "version": "0.1.2"
     }
   ],
   "documentation": {
@@ -76,7 +76,7 @@
     "lenso.service-restore-evidence.v1": "m6-environment-verifier",
     "lenso.support-envelope.v1": "m6-environment-verifier"
   },
-  "manifestDigest": "sha256:85270ae7dd399530011b45664ecef834d53806eb33c55fa410179bb21dbbfa1e",
+  "manifestDigest": "sha256:f9af9542988f045691e5328ce883efbde9defc36633cc8a775f0cf678ae57833",
   "manifestFormats": [
     {
       "kind": "provider",
@@ -95,7 +95,7 @@
       "version": "lenso.system.v2"
     }
   ],
-  "manifestId": "ga-support:85270ae7dd399530",
+  "manifestId": "ga-support:f9af9542988f0456",
   "protocol": "lenso.ga-support-manifest.v1",
   "receiptAuthorityPublicKeys": {
     "m6-environment-verifier": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA7WgM6rOq0x9vY4VJ4rP7oOxXVMuDXKpMZgqXfQZq8hM=\n-----END PUBLIC KEY-----"
