@@ -377,8 +377,8 @@ pub fn generated_ga_support_manifest() -> Value {
     };
     let components = vec![
         component(ComponentKind::Cli, "@lenso/cli", "0.2.13"),
-        component(ComponentKind::Runtime, "lenso-service", "0.1.14"),
-        component(ComponentKind::Runtime, "lenso-autonomous-service", "0.1.10"),
+        component(ComponentKind::Runtime, "lenso-service", "0.1.15"),
+        component(ComponentKind::Runtime, "lenso-autonomous-service", "0.1.11"),
         component(ComponentKind::Contracts, "lenso-contracts", "0.3.16"),
         component(ComponentKind::Provider, "lenso-service-provider-v1", "1"),
         component(ComponentKind::Operator, "lenso-operator", "0.1.0"),

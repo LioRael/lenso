@@ -12,8 +12,8 @@
         "contracts:lenso-contracts@0.3.16",
         "operator:lenso-operator@0.1.0",
         "provider:lenso-service-provider-v1@1",
-        "runtime:lenso-autonomous-service@0.1.10",
-        "runtime:lenso-service@0.1.14",
+        "runtime:lenso-autonomous-service@0.1.11",
+        "runtime:lenso-service@0.1.15",
         "runtime_console:@lenso/runtime-console@0.1.2"
       ],
       "stateVersion": "service-store.v1",
@@ -29,15 +29,15 @@
     },
     {
       "componentId": "lenso-autonomous-service",
-      "digest": "sha256:2a91ac572f68cab2d046b2a93d5e04c1dc81cf2b734102884d2872b39cd435e7",
+      "digest": "sha256:480f1595d9e74e6a0fe2bcd23c4d3a32afa280efe943507a054b75cbbdedf9c5",
       "kind": "runtime",
-      "version": "0.1.10"
+      "version": "0.1.11"
     },
     {
       "componentId": "lenso-service",
-      "digest": "sha256:f39f8cb2be59f25af7eb265be2f09afbaac3d570afdae36ff752a3ccf1c7c42a",
+      "digest": "sha256:61c9188bf346e92e9b4311907a210863b563bbc312ce7ad278719d296c8d52ae",
       "kind": "runtime",
-      "version": "0.1.14"
+      "version": "0.1.15"
     },
     {
       "componentId": "lenso-contracts",
@@ -76,7 +76,7 @@
     "lenso.service-restore-evidence.v1": "m6-environment-verifier",
     "lenso.support-envelope.v1": "m6-environment-verifier"
   },
-  "manifestDigest": "sha256:403892d7f16248736115927c01c5a8563eff79679ccf26685c4d6dd48f7c35a8",
+  "manifestDigest": "sha256:2e4b0a3ac036da8e43ae5229138728a995ae51fd36855b974d6caa5b78a90c6b",
   "manifestFormats": [
     {
       "kind": "provider",
@@ -95,7 +95,7 @@
       "version": "lenso.system.v2"
     }
   ],
-  "manifestId": "ga-support:403892d7f1624873",
+  "manifestId": "ga-support:2e4b0a3ac036da8e",
   "protocol": "lenso.ga-support-manifest.v1",
   "receiptAuthorityPublicKeys": {
     "m6-environment-verifier": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAgorlaAxUtjd1ZpD49IhDNEFA0aLzJ3ryMawUOd5ZRHE=\n-----END PUBLIC KEY-----"
