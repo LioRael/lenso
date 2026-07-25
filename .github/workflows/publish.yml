@@ -178,6 +178,9 @@ jobs:
             done
           fi
           sh scripts/publish-crates.sh
+          for package in lenso-autonomous-service $(sh scripts/publish-crate-order.sh); do
+            cargo package --locked -p "$package" --allow-dirty
+          done
       - uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6
         with:
           subject-path: target/package/*.crate
