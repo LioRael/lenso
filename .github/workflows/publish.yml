@@ -178,9 +178,32 @@ jobs:
             done
           fi
           sh scripts/publish-crates.sh
-          for package in lenso-autonomous-service $(sh scripts/publish-crate-order.sh); do
-            cargo package --locked -p "$package" --allow-dirty
-          done
+      - name: Download exact public registry artifacts for attestation
+        env:
+          PACKAGES_JSON: ${{ inputs.packages_json }}
+        run: |
+          mkdir -p target/recovery-attestations
+          node <<'NODE' > target/recovery-attestations/packages.tsv
+          const packages = JSON.parse(process.env.PACKAGES_JSON);
+          const publicArtifacts = new Map(
+            packages.map(({ id, version }) => [id.slice("cargo:".length), version]),
+          );
+          publicArtifacts.set("lenso-autonomous-service", "0.1.10");
+          publicArtifacts.set("lenso-service", "0.1.14");
+          for (const [name, version] of [...publicArtifacts].sort()) {
+            process.stdout.write(`${name}\t${version}\n`);
+          }
+          NODE
+          while IFS=$'\t' read -r package version; do
+            curl --fail --silent --show-error --location \
+              --retry 5 --retry-all-errors --connect-timeout 10 --max-time 120 \
+              --user-agent lenso-release-publish \
+              "https://crates.io/api/v1/crates/$package/$version/download" \
+              --output "target/recovery-attestations/$package-$version.crate"
+          done < target/recovery-attestations/packages.tsv
+          cp contracts/ga/lenso.ga-support-manifest.v1.json \
+            target/recovery-attestations/lenso.ga-support-manifest.v1.json
+          rm target/recovery-attestations/packages.tsv
       - uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6
         with:
-          subject-path: target/package/*.crate
+          subject-path: target/recovery-attestations/*
