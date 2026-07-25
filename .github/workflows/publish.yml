@@ -201,8 +201,11 @@ jobs:
               "https://crates.io/api/v1/crates/$package/$version/download" \
               --output "target/recovery-attestations/$package-$version.crate"
           done < target/recovery-attestations/packages.tsv
-          cp contracts/ga/lenso.ga-support-manifest.v1.json \
-            target/recovery-attestations/lenso.ga-support-manifest.v1.json
+          curl --fail --silent --show-error --location \
+            --retry 5 --retry-all-errors --connect-timeout 10 --max-time 120 \
+            --user-agent lenso-release-publish \
+            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_WORKFLOW_SHA}/contracts/ga/lenso.ga-support-manifest.v1.json" \
+            --output target/recovery-attestations/lenso.ga-support-manifest.v1.json
           rm target/recovery-attestations/packages.tsv
       - uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6
         with:
