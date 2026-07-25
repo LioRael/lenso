@@ -9,14 +9,12 @@ on:
       release_commit: { required: true, type: string }
       packages_json: { required: true, type: string }
       nonce: { required: true, type: string }
-      recover_consumed_proof: { required: true, default: false, type: boolean }
 permissions: {}
 concurrency:
   group: lenso-publish-${{ inputs.plan_id }}
   cancel-in-progress: false
 jobs:
   publish:
-    if: ${{ !inputs.recover_consumed_proof }}
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -110,103 +108,3 @@ jobs:
           LENSO_PREFLIGHT_AUTHORITY_PUBLIC_KEY: ${{ vars.LENSO_PREFLIGHT_AUTHORITY_PUBLIC_KEY }}
           RUNNER_IMAGE: ubuntu-24.04
         run: node .lenso-release/runtime/lib/repository/cli.js publish
-
-  recover:
-    if: ${{ inputs.recover_consumed_proof }}
-    runs-on: ubuntu-24.04
-    permissions:
-      attestations: write
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          ref: ${{ inputs.release_commit }}
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Verify exact reviewed recovery
-        env:
-          EXPECTED_RELEASE_COMMIT: ${{ inputs.release_commit }}
-          PACKAGES_JSON: ${{ inputs.packages_json }}
-        run: |
-          test "$(git rev-parse HEAD)" = "$EXPECTED_RELEASE_COMMIT"
-          node <<'NODE'
-          const actual = JSON.parse(process.env.PACKAGES_JSON);
-          const expected = [
-            ["cargo:lenso-autonomous-service", "0.1.11"],
-            ["cargo:lenso-contracts", "0.3.16"],
-            ["cargo:lenso-platform-core", "0.1.16"],
-            ["cargo:lenso-platform-http", "0.1.15"],
-            ["cargo:lenso-platform-module", "0.1.16"],
-            ["cargo:lenso-platform-module-remote", "0.1.16"],
-            ["cargo:lenso-platform-runtime", "0.1.13"],
-            ["cargo:lenso-platform-testing", "0.1.12"],
-            ["cargo:lenso-service", "0.1.15"],
-            ["cargo:lenso-module-story", "0.1.18"],
-            ["cargo:lenso", "0.3.33"],
-            ["cargo:lenso-api", "0.1.27"],
-            ["cargo:lenso-bootstrap", "0.1.26"],
-            ["cargo:lenso-migrate", "0.1.25"],
-            ["cargo:lenso-platform-admin", "0.1.16"],
-            ["cargo:lenso-platform-admin-data", "0.1.21"],
-            ["cargo:lenso-worker", "0.1.25"],
-          ];
-          const normalized = actual.map(({ id, version }) => [id, version]).sort();
-          if (JSON.stringify(normalized) !== JSON.stringify(expected.sort())) process.exit(1);
-          NODE
-      - name: Install reviewed Rust toolchain
-        run: |
-          rustup toolchain install 1.94.0 --profile minimal
-          rustup default 1.94.0
-      - uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18
-        id: crates-auth
-      - name: Publish exact reviewed crates
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ steps.crates-auth.outputs.token }}
-        run: |
-          if ! curl -A lenso-release-publish -fsS \
-            https://crates.io/api/v1/crates/lenso-autonomous-service/0.1.11 \
-            >/dev/null 2>&1; then
-            cargo publish --dry-run --locked -p lenso-autonomous-service --allow-dirty
-            cargo publish --locked -p lenso-autonomous-service --allow-dirty
-            for attempt in {1..12}; do
-              curl -A lenso-release-publish -fsS \
-                https://crates.io/api/v1/crates/lenso-autonomous-service/0.1.11 \
-                >/dev/null && break
-              test "$attempt" -lt 12
-              sleep 10
-            done
-          fi
-          sh scripts/publish-crates.sh
-      - name: Download exact public registry artifacts for attestation
-        env:
-          PACKAGES_JSON: ${{ inputs.packages_json }}
-        run: |
-          mkdir -p target/recovery-attestations
-          node <<'NODE' > target/recovery-attestations/packages.tsv
-          const packages = JSON.parse(process.env.PACKAGES_JSON);
-          const publicArtifacts = new Map(
-            packages.map(({ id, version }) => [id.slice("cargo:".length), version]),
-          );
-          publicArtifacts.set("lenso-autonomous-service", "0.1.10");
-          publicArtifacts.set("lenso-service", "0.1.14");
-          for (const [name, version] of [...publicArtifacts].sort()) {
-            process.stdout.write(`${name}\t${version}\n`);
-          }
-          NODE
-          while IFS=$'\t' read -r package version; do
-            curl --fail --silent --show-error --location \
-              --retry 5 --retry-all-errors --connect-timeout 10 --max-time 120 \
-              --user-agent lenso-release-publish \
-              "https://crates.io/api/v1/crates/$package/$version/download" \
-              --output "target/recovery-attestations/$package-$version.crate"
-          done < target/recovery-attestations/packages.tsv
-          curl --fail --silent --show-error --location \
-            --retry 5 --retry-all-errors --connect-timeout 10 --max-time 120 \
-            --user-agent lenso-release-publish \
-            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_WORKFLOW_SHA}/contracts/ga/lenso.ga-support-manifest.v1.json" \
-            --output target/recovery-attestations/lenso.ga-support-manifest.v1.json
-          rm target/recovery-attestations/packages.tsv
-      - uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6
-        with:
-          subject-path: target/recovery-attestations/*
