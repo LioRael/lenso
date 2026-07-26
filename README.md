@@ -38,6 +38,31 @@ Build a support ticket module for a Lenso app.
 That path should end with generated code, passing checks, and visible evidence
 in `/console`, not just a scaffold that compiles.
 
+## Runtime Console
+
+Runtime Console is the operator and verification surface bundled with a Lenso
+host. It connects generated app state, module declarations, runtime execution,
+and failure evidence so humans and coding agents can review the same system.
+
+[![Runtime Console App Lifecycle view showing services, modules, Doctor checks, App Proof, and next actions](https://lenso.dev/lenso-assets/console/app-lifecycle.png)](https://lenso.dev/lenso-assets/console/app-lifecycle.png)
+
+_App Lifecycle shows the generated services and modules alongside readiness,
+Doctor checks, App Proof, change plans, and the next safe command._
+
+[![Runtime Stories execution graph showing a request fan-out across functions, events, and services](https://lenso.dev/lenso-assets/console/runtime-story-graph.png)](https://lenso.dev/lenso-assets/console/runtime-story-graph.png)
+
+_Runtime Stories follows one business flow across requests, functions, events,
+and services without losing its correlation._
+
+[![Runtime Overview showing queue pressure, recent activity, failures, and dead letters](https://lenso.dev/lenso-assets/console/runtime-overview.png)](https://lenso.dev/lenso-assets/console/runtime-overview.png)
+
+_Runtime Overview brings queue pressure, active work, recent activity, failures,
+and dead letters into one operator workspace._
+
+These screenshots use the seeded demo dataset so the workflows are reproducible.
+Read the [Runtime Console guide](https://lenso.dev/docs/runtime-console) for the
+host setup, access controls, evidence files, and extension boundary.
+
 ## Repository Set
 
 - Backend platform: this repository owns Rust services, platform crates, modules, migrations, and contracts.
