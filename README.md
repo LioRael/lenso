@@ -2,41 +2,80 @@
 
 [![CI](https://github.com/LioRael/lenso/actions/workflows/ci.yml/badge.svg)](https://github.com/LioRael/lenso/actions/workflows/ci.yml)
 
-The Rust app framework for business systems that outgrow plain Axum.
+Agent-ready Rust business systems.
 
-Use Axum when you need HTTP routing. Star Lenso when you need the
-business-system rails around it: a runnable host, modules, migrations, admin
-APIs, Runtime Console, generated contracts, smoke checks, and a path to split
-services later.
+Lenso is a Rust-first modular app framework for composing real product shapes,
+verifying every change, and evolving stable boundaries into services. Start
+with a runnable host, services, modules, local processes, contracts, migrations,
+and Runtime Console already connected instead of assembling the surrounding
+system one library at a time.
 
-Lenso is built for modular SaaS apps, internal platforms, vertical business
-systems, independently running services, and agent-assisted module development. It gives
-humans and coding agents stable scaffolds, explicit module manifests, generated
-contracts, architecture checks, smoke checks, and a Runtime Console to verify
-that a module is connected.
+Humans and coding agents work from the same explicit model: product blueprints,
+module and service manifests, reviewable change plans, generated contracts,
+checks, App Proof, and runtime evidence.
 
-The platform is service-ready by design: build modular first, then move selected
-modules across process or service boundaries when those boundaries harden.
+Build modular first. Keep one deployable app while boundaries are changing,
+then move selected capabilities into independently delivered services when
+those boundaries are ready.
 
-## Why not Axum + yourself?
+[Read the documentation](https://lenso.dev/docs) ·
+[Follow the quickstart](https://lenso.dev/docs/quickstart) ·
+[Explore the examples](https://github.com/LioRael/lenso-examples)
 
-Axum is the HTTP layer. Lenso keeps Axum, then adds the boring
-business-system rails around it:
+## Quickstart
 
-- host starter with API, worker, migrations, Postgres, and bundled Console;
-- module manifests for routes, data, actions, lifecycle, and admin surfaces;
-- Runtime Console evidence for module state, runtime stories, and install status;
-- generated contracts, manifest lints, smoke checks, and release gates;
-- service-backed modules when a boundary is ready to leave the host.
+Install the CLI, compose a support application from a product blueprint, and
+start the generated system:
 
-The public proof point is intentionally concrete:
+```sh
+npm install -g @lenso/cli
 
-```text
-Build a support ticket module for a Lenso app.
+lenso app compose ./acme-support \
+  --blueprint support-desk \
+  --apply
+cd acme-support
+lenso dev up
 ```
 
-That path should end with generated code, passing checks, and visible evidence
-in `/console`, not just a scaffold that compiles.
+The generated application includes:
+
+- a Rust host with API, worker, migrations, and Postgres integration;
+- TypeScript or Rust services registered in a local service workspace;
+- explicit module, service, system, and contract declarations;
+- Launchpad state for services, modules, addons, and next actions;
+- Doctor, App Proof, and App Change Plan evidence;
+- Runtime Console at `/console`.
+
+Use `cargo install lenso-cli` instead when you prefer the Rust distribution of
+the same CLI.
+
+## From product blueprint to running system
+
+1. **Compose a real app.** Begin with a product blueprint that connects the
+   host, services, modules, local processes, and Launchpad state.
+2. **Extend explicit capabilities.** Add modules, services, addons, or reusable
+   capability packs through a reviewable App Change Plan.
+3. **Verify the generated system.** Doctor, App Proof, contract checks, smoke
+   checks, and Runtime Console turn generated state into reviewable evidence.
+4. **Evolve stable boundaries.** Keep the product modular, then move selected
+   capabilities across process or service boundaries without rewriting the
+   product model.
+
+## Why Lenso instead of assembling the rails yourself?
+
+Axum remains the HTTP layer. Lenso adds the business-system lifecycle around
+it:
+
+- a runnable host with API, worker, migrations, Postgres, and hosted Console;
+- manifests for routes, data, actions, events, lifecycle, dependencies, and
+  operator surfaces;
+- product blueprints, capability packs, and safe generated-state change plans;
+- Runtime Stories that correlate requests, functions, events, outbox work, and
+  service activity;
+- generated contracts, manifest lints, architecture checks, smoke checks, and
+  release gates;
+- linked modules today and service-backed modules when a boundary is ready to
+  leave the host.
 
 ## Runtime Console
 
@@ -63,66 +102,56 @@ These screenshots use the seeded demo dataset so the workflows are reproducible.
 Read the [Runtime Console guide](https://lenso.dev/docs/runtime-console) for the
 host setup, access controls, evidence files, and extension boundary.
 
-## Repository Set
+## Agent-ready development
 
-- Backend platform: this repository owns Rust services, platform crates, modules, migrations, and contracts.
-- Runtime Console: [`LioRael/lenso-runtime-console`](https://github.com/LioRael/lenso-runtime-console) owns the frontend workspace that consumes the admin APIs from this repository.
-- CLI: [`LioRael/lenso-cli`](https://github.com/LioRael/lenso-cli) owns the standalone `lenso` command and host starter template.
-
-Keep the relevant repositories checked out as siblings when working across
-backend, Console, or CLI boundaries:
-
-```text
-framework/
-  lenso/
-  lenso-cli/
-  lenso-runtime-console/
-```
-
-Repository operations notes, including branch protection and cross-repo CI
-wiring, live in [docs/repository-operations.md](docs/repository-operations.md).
-
-## Agent-Ready Module Demo
-
-Use the public skills and scaffolds to turn a product prompt into a verified
-module:
+The public proof point is intentionally concrete:
 
 ```text
 Build a support ticket module for a Lenso app.
 ```
 
-The intended loop is:
+The result should be a bounded change with generated code, passing checks, App
+Proof, and visible evidence in `/console`, not just a scaffold that compiles.
+The working loop is:
 
 ```text
-lenso-business-planning -> lenso-start -> lenso-module-authoring -> lenso module create -> checks -> /console
+product brief -> app compose -> change plan -> implementation -> checks + App Proof -> Runtime Console
 ```
 
-See [docs/agent-ready-module-demo.md](docs/agent-ready-module-demo.md).
-The runnable support-ticket and account-profile examples are guarded in
+Lenso's public skills cover business planning, app startup, linked module
+authoring, remote module authoring, and API client generation. They give coding
+agents stable entrypoints while manifests, contracts, checks, and Console
+evidence keep the result inspectable.
+
+See the [agent-ready module demo](docs/agent-ready-module-demo.md). Runnable
+support-ticket and account-profile examples are guarded in
 [`LioRael/lenso-examples`](https://github.com/LioRael/lenso-examples) by module
 smoke checks and real host API smokes.
 
-## Published Packages
+## Packages and repositories
 
-The first public Rust authoring surface is published on crates.io:
+| Surface | Role |
+| --- | --- |
+| [`lenso`](https://crates.io/crates/lenso) | Public Rust facade for module declarations, manifest lints, and the narrow host boot API. |
+| [`@lenso/cli`](https://www.npmjs.com/package/@lenso/cli) / [`lenso-cli`](https://crates.io/crates/lenso-cli) | Compose apps, manage generated state, author capabilities, run local systems, and operate modules and services. |
+| [`LioRael/lenso`](https://github.com/LioRael/lenso) | This repository: backend platform crates, built-in modules, migrations, admin APIs, runtime contracts, and architecture checks. |
+| [`LioRael/lenso-runtime-console`](https://github.com/LioRael/lenso-runtime-console) | Operator and verification UI delivered as a hosted Console artifact. |
+| [`LioRael/lenso-examples`](https://github.com/LioRael/lenso-examples) | Runnable product, module, service, and integration examples. |
+| [`lenso.dev`](https://lenso.dev) | Product documentation, guides, API reference, and agent-readable docs. |
+
+Add the Rust authoring surface directly when building a module or custom host:
 
 ```sh
-cargo add lenso@0.3.18
+cargo add lenso
 ```
 
-The `lenso` crate is the public Rust facade for module-authoring declarations
-and manifest lints. With its `host` feature enabled, it also exposes the narrow
-host boot facade used by generated host applications.
+Generated hosts enable the crate's `host` feature. Runtime Console is installed
+or refreshed with `lenso console update` and served by the host at `/console`.
 
-Runtime Console and JavaScript module packages are owned outside this backend
-repository. Runnable examples live in
-[`LioRael/lenso-examples`](https://github.com/LioRael/lenso-examples).
-
-A transitional host starter lives in
-[`LioRael/lenso-cli`](https://github.com/LioRael/lenso-cli) and is scaffolded
-with the `lenso` CLI (`lenso host init <dir>`). It shows the current API,
-worker, migration, and local Postgres shape. New starters use
-`lenso = { features = ["host"] }`.
+Keep `lenso`, `lenso-cli`, and `lenso-runtime-console` checked out as siblings
+when changing behavior across backend, CLI, and Console boundaries. Repository
+operations notes live in
+[docs/repository-operations.md](docs/repository-operations.md).
 
 ## Architecture Overview
 
