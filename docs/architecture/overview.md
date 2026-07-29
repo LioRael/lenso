@@ -55,6 +55,8 @@ The service kit is split into a few crates:
 - `lenso`: the public Rust facade crate. Its default surface re-exports declaration contracts; its `host` feature exposes the narrow API, worker, migration, and linked HTTP host boot facade.
 - `platform-http`: Axum request context middleware, auth extractors, standard JSON error responses, JSON extractor, response helpers, health routes, and the `OpenApiRouter` re-exports used for single-source OpenAPI.
 - `platform-runtime`: embedded runtime primitives for functions, triggers, queues, flows, retry policies, registry, worker execution, and store traits.
+- `platform-system-plane`: capability-neutral Core discovery, capability negotiation, common request admission, and Service-owned Enrollment Grant persistence. Production authorization reads the current grant, expiry, revocation state, and authorization epoch from the Service Store on every System Plane request; its System Sandbox adapter is local/test-only.
+- `platform-runtime-observability`: the first Service-owned System Plane Capability Provider. It publishes the exact `lenso.system-plane.runtime-observability.v1` schema digest and serves revisioned, read-only Outbox and Function queue snapshots without Console workflow or UI concepts.
 - `platform-module`: internal module behavior seams and compatibility re-exports. `ModuleBinding` is the narrow behavior seam; `LinkedBinding` is the current compile-time source; `AdminDataSource` and `AdminActionSource` support generic schema-admin reads and manifest-declared action execution. It re-exports `lenso-contracts` declaration types for backend workspace compatibility.
 - `platform-admin`: the compatibility runtime-observability backend for the Runtime Console. It only reads platform/runtime tables (`platform.outbox`, `platform.story_events`, `runtime.function_runs`) to observe every module's activity, and exposes one router the API app mounts under `/admin/runtime/*`. Story module metadata is owned by `modules/story`; the backend route implementation is being extracted from this platform crate in slices.
 - `platform-admin-data`: the schema-admin backend for module business data. It exposes generic `/admin/data/*` endpoints over injected `AdminSurface::Schema` manifests and `AdminDataSource` implementations, without depending on concrete modules.
@@ -101,6 +103,13 @@ surfaces; and performs deterministic shutdown and claim release transitions.
 Business routes and migrations remain injected Module contributions. This
 runtime does not call the Host or Provider boot paths and does not reinterpret
 Provider v1 artifacts.
+System Plane Core is mounted at `/system-plane/v1` when composed, and the
+optional Runtime Observability provider is mounted at
+`/system-plane/v1/runtime-observability`. Both use the same authenticated
+transport, Workload Identity, and active Enrollment Grant seam. Discovery and
+snapshot reads are excluded from Service Story writes. The compatibility
+`/admin/runtime/*` backend remains separate while its behaviors are extracted
+into authority-owned Capability Providers.
 Its Story evidence is exposed as an authenticated
 `lenso.story-segment-feed.v1` append-only feed. Stable evidence revisions carry
 Service, Workload, contract, tenant, causation, and Workflow identity; signed

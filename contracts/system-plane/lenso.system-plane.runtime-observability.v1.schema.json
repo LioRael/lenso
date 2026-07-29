@@ -1,0 +1,120 @@
+{
+  "$defs": {
+    "RuntimeObservabilityStatus": {
+      "enum": [
+        "healthy",
+        "degraded",
+        "failing"
+      ],
+      "type": "string"
+    },
+    "RuntimeQueueKind": {
+      "enum": [
+        "outbox",
+        "functions"
+      ],
+      "type": "string"
+    },
+    "RuntimeQueueSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "active": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "completed": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "dead": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "failed": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "oldestFailedAgeSeconds": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "oldestPendingAgeSeconds": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "pending": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "queue": {
+          "$ref": "#/$defs/RuntimeQueueKind"
+        }
+      },
+      "required": [
+        "queue",
+        "pending",
+        "active",
+        "completed",
+        "failed",
+        "dead"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://contracts.lenso.local/system-plane/lenso.system-plane.runtime-observability.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "observedAt": {
+      "type": "string"
+    },
+    "protocol": {
+      "const": "lenso.system-plane.runtime-observability.v1"
+    },
+    "queues": {
+      "items": {
+        "$ref": "#/$defs/RuntimeQueueSummary"
+      },
+      "type": "array"
+    },
+    "serviceId": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "serviceRevision": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "snapshotRevision": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/RuntimeObservabilityStatus"
+    }
+  },
+  "required": [
+    "protocol",
+    "serviceId",
+    "serviceRevision",
+    "snapshotRevision",
+    "observedAt",
+    "status",
+    "queues"
+  ],
+  "title": "Lenso Runtime Observability Snapshot",
+  "type": "object"
+}

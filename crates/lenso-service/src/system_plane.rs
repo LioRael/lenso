@@ -4,6 +4,10 @@ use serde_json::{Value, json};
 use std::collections::{BTreeSet, HashSet};
 use utoipa::ToSchema;
 
+pub mod runtime_observability;
+
+pub use runtime_observability::*;
+
 pub const CORE_PROTOCOL: &str = "lenso.system-plane.v1";
 pub const CORE_PATH: &str = "/system-plane/v1";
 

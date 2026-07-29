@@ -55,6 +55,10 @@ pub fn generate_contracts() -> anyhow::Result<()> {
         &generated_system_plane_core_schema(),
     )?;
     write_json(
+        "contracts/system-plane/lenso.system-plane.runtime-observability.v1.schema.json",
+        &generated_runtime_observability_schema(),
+    )?;
+    write_json(
         "contracts/delivery/lenso.service-release.v1.schema.json",
         &generated_service_release_schema(),
     )?;
@@ -318,6 +322,10 @@ pub fn generated_system_v2_fixture() -> Value {
 
 pub fn generated_system_plane_core_schema() -> Value {
     lenso_service::system_plane::core_document_schema()
+}
+
+pub fn generated_runtime_observability_schema() -> Value {
+    lenso_service::system_plane::runtime_observability_schema()
 }
 
 pub fn generated_service_release_schema() -> Value {

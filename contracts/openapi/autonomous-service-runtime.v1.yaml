@@ -504,6 +504,38 @@ paths:
                 $ref: '#/components/schemas/SystemPlaneErrorBody'
       security:
       - bearer_auth: []
+  /system-plane/v1/runtime-observability:
+    get:
+      tags:
+      - system-plane-runtime-observability
+      operationId: runtime_observability_snapshot
+      responses:
+        '200':
+          description: Revisioned runtime queue snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeObservabilitySnapshot'
+        '401':
+          description: Workload Identity or transport binding was not accepted
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '403':
+          description: Caller has no active enrollment grant
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '503':
+          description: Runtime observation is unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+      security:
+      - bearer_auth: []
 components:
   schemas:
     ActiveDegradedMode:
@@ -912,6 +944,44 @@ components:
           type: string
         workloadId:
           type: string
+    RuntimeObservabilitySnapshot:
+      type: object
+      required:
+      - protocol
+      - serviceId
+      - serviceRevision
+      - snapshotRevision
+      - observedAt
+      - status
+      - queues
+      properties:
+        observedAt:
+          type: string
+          format: date-time
+        protocol:
+          type: string
+        queues:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuntimeQueueSummary'
+        serviceId:
+          type: string
+          minLength: 1
+        serviceRevision:
+          type: string
+          minLength: 1
+        snapshotRevision:
+          type: string
+          minLength: 1
+        status:
+          $ref: '#/components/schemas/RuntimeObservabilityStatus'
+      additionalProperties: false
+    RuntimeObservabilityStatus:
+      type: string
+      enum:
+      - healthy
+      - degraded
+      - failing
     RuntimePhase:
       type: string
       enum:
@@ -920,6 +990,56 @@ components:
       - stopping
       - stopped
       - failed
+    RuntimeQueueKind:
+      type: string
+      enum:
+      - outbox
+      - functions
+    RuntimeQueueSummary:
+      type: object
+      required:
+      - queue
+      - pending
+      - active
+      - completed
+      - failed
+      - dead
+      properties:
+        active:
+          type: integer
+          format: int64
+          minimum: 0
+        completed:
+          type: integer
+          format: int64
+          minimum: 0
+        dead:
+          type: integer
+          format: int64
+          minimum: 0
+        failed:
+          type: integer
+          format: int64
+          minimum: 0
+        oldestFailedAgeSeconds:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        oldestPendingAgeSeconds:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        pending:
+          type: integer
+          format: int64
+          minimum: 0
+        queue:
+          $ref: '#/components/schemas/RuntimeQueueKind'
+      additionalProperties: false
     ServiceEventEvidence:
       type: object
       required:

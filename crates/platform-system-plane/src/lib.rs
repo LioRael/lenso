@@ -1,7 +1,12 @@
 //! Capability-neutral System Plane Core routing, registration, and negotiation.
 
+mod enrollment;
+
+pub use enrollment::*;
+
 use axum::{
     Extension, Json,
+    extract::FromRequestParts,
     http::{HeaderMap, HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
 };
@@ -297,7 +302,7 @@ fn valid_capability_id(value: &str) -> bool {
 pub struct SystemPlaneAccess {
     provider: Arc<dyn WorkloadIdentityProvider>,
     audience: String,
-    enrolled_console_principal: String,
+    enrollment_authorizer: Arc<dyn EnrollmentAuthorizer>,
 }
 
 impl fmt::Debug for SystemPlaneAccess {
@@ -306,10 +311,7 @@ impl fmt::Debug for SystemPlaneAccess {
             .debug_struct("SystemPlaneAccess")
             .field("provider", &self.provider)
             .field("audience", &self.audience)
-            .field(
-                "enrolled_console_principal",
-                &self.enrolled_console_principal,
-            )
+            .field("enrollment_authorizer", &self.enrollment_authorizer)
             .finish()
     }
 }
@@ -319,12 +321,12 @@ impl SystemPlaneAccess {
     pub fn new(
         provider: Arc<dyn WorkloadIdentityProvider>,
         audience: impl Into<String>,
-        enrolled_console_principal: impl Into<String>,
+        enrollment_authorizer: Arc<dyn EnrollmentAuthorizer>,
     ) -> Self {
         Self {
             provider,
             audience: audience.into(),
-            enrolled_console_principal: enrolled_console_principal.into(),
+            enrollment_authorizer,
         }
     }
 }
@@ -347,20 +349,37 @@ impl SystemPlaneRuntime {
 
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-struct SystemPlaneErrorBody {
-    code: &'static str,
-    message: String,
-    next_actions: Vec<&'static str>,
+pub struct SystemPlaneErrorBody {
+    pub code: &'static str,
+    pub message: String,
+    pub next_actions: Vec<&'static str>,
 }
 
-struct SystemPlaneError {
+#[derive(Debug)]
+pub struct SystemPlaneRejection {
     status: StatusCode,
     code: &'static str,
     message: String,
     next_action: &'static str,
 }
 
-impl IntoResponse for SystemPlaneError {
+impl SystemPlaneRejection {
+    #[must_use]
+    pub fn unavailable(
+        code: &'static str,
+        message: impl Into<String>,
+        next_action: &'static str,
+    ) -> Self {
+        Self {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            code,
+            message: message.into(),
+            next_action,
+        }
+    }
+}
+
+impl IntoResponse for SystemPlaneRejection {
     fn into_response(self) -> Response {
         let body = SystemPlaneErrorBody {
             code: self.code,
@@ -376,6 +395,79 @@ impl IntoResponse for SystemPlaneError {
             .headers_mut()
             .insert("x-lenso-error-code", HeaderValue::from_static(self.code));
         response
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct AuthorizedSystemPlaneCaller {
+    pub runtime: Arc<SystemPlaneRuntime>,
+    pub service_principal: String,
+    pub enrollment: EnrollmentAuthorization,
+}
+
+impl<S> FromRequestParts<S> for AuthorizedSystemPlaneCaller
+where
+    S: Send + Sync,
+{
+    type Rejection = SystemPlaneRejection;
+
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        _state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        let runtime = parts
+            .extensions
+            .get::<Option<Arc<SystemPlaneRuntime>>>()
+            .and_then(Clone::clone)
+            .ok_or_else(|| SystemPlaneRejection {
+                status: StatusCode::SERVICE_UNAVAILABLE,
+                code: "system_plane_unavailable",
+                message: "System Plane access is not configured for this Service".to_owned(),
+                next_action: "configure_system_plane",
+            })?;
+        let token = bearer_token(&parts.headers)?;
+        let binding = parts
+            .extensions
+            .get::<AuthenticatedTransportBinding>()
+            .ok_or_else(|| SystemPlaneRejection {
+                status: StatusCode::UNAUTHORIZED,
+                code: "system_plane_transport_binding_required",
+                message: "System Plane access requires an authenticated transport binding"
+                    .to_owned(),
+                next_action: "use_authenticated_transport",
+            })?;
+        let principal = runtime
+            .access
+            .provider
+            .verify(
+                token,
+                &WorkloadIdentityVerification::new(
+                    &runtime.access.audience,
+                    &binding.0,
+                    now_unix_ms(),
+                ),
+            )
+            .map_err(|error| SystemPlaneRejection {
+                status: StatusCode::UNAUTHORIZED,
+                code: "system_plane_workload_identity_rejected",
+                message: error.message,
+                next_action: "refresh_workload_identity",
+            })?;
+        let enrollment = runtime
+            .access
+            .enrollment_authorizer
+            .authorize(
+                &runtime.registry.document().service_id,
+                &principal.service_principal,
+                now_unix_ms(),
+            )
+            .await
+            .map_err(enrollment_rejection)?;
+        Ok(Self {
+            runtime,
+            service_principal: principal.service_principal,
+            enrollment,
+        })
     }
 }
 
@@ -402,62 +494,62 @@ where
     security(("bearer_auth" = [])),
     tag = "system-plane"
 )]
-async fn discover_core(
-    Extension(runtime): Extension<Option<Arc<SystemPlaneRuntime>>>,
-    headers: HeaderMap,
-    binding: Option<Extension<AuthenticatedTransportBinding>>,
-) -> Result<Json<CoreDocument>, SystemPlaneError> {
-    let runtime = runtime.ok_or_else(|| SystemPlaneError {
-        status: StatusCode::SERVICE_UNAVAILABLE,
-        code: "system_plane_unavailable",
-        message: "System Plane access is not configured for this Service".to_owned(),
-        next_action: "configure_system_plane",
-    })?;
-    let token = headers
+async fn discover_core(caller: AuthorizedSystemPlaneCaller) -> Json<CoreDocument> {
+    Json(caller.runtime.registry.document().clone())
+}
+
+fn bearer_token(headers: &HeaderMap) -> Result<&str, SystemPlaneRejection> {
+    headers
         .get(header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.strip_prefix("Bearer "))
         .filter(|value| !value.is_empty())
-        .ok_or_else(|| SystemPlaneError {
+        .ok_or_else(|| SystemPlaneRejection {
             status: StatusCode::UNAUTHORIZED,
             code: "system_plane_workload_identity_required",
-            message: "System Plane discovery requires a Workload Identity Bearer credential"
+            message: "System Plane access requires a Workload Identity Bearer credential"
                 .to_owned(),
             next_action: "provide_workload_identity",
-        })?;
-    let binding = binding.ok_or_else(|| SystemPlaneError {
-        status: StatusCode::UNAUTHORIZED,
-        code: "system_plane_transport_binding_required",
-        message: "System Plane discovery requires an authenticated transport binding".to_owned(),
-        next_action: "use_authenticated_transport",
-    })?;
-    let principal = runtime
-        .access
-        .provider
-        .verify(
-            token,
-            &WorkloadIdentityVerification::new(
-                &runtime.access.audience,
-                &binding.0.0,
-                now_unix_ms(),
-            ),
-        )
-        .map_err(|error| SystemPlaneError {
-            status: StatusCode::UNAUTHORIZED,
-            code: "system_plane_workload_identity_rejected",
-            message: error.message,
-            next_action: "refresh_workload_identity",
-        })?;
-    if principal.service_principal != runtime.access.enrolled_console_principal {
-        return Err(SystemPlaneError {
-            status: StatusCode::FORBIDDEN,
-            code: "system_plane_console_not_enrolled",
-            message: "Authenticated Service Principal is not the enrolled Console Service"
-                .to_owned(),
-            next_action: "complete_service_enrollment",
-        });
+        })
+}
+
+fn enrollment_rejection(error: EnrollmentError) -> SystemPlaneRejection {
+    let (status, code, next_action) = match error.code {
+        EnrollmentErrorCode::StoreUnavailable => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "system_plane_enrollment_unavailable",
+            "restore_enrollment_store",
+        ),
+        EnrollmentErrorCode::Expired => (
+            StatusCode::FORBIDDEN,
+            "system_plane_enrollment_expired",
+            "renew_service_enrollment",
+        ),
+        EnrollmentErrorCode::Revoked => (
+            StatusCode::FORBIDDEN,
+            "system_plane_enrollment_revoked",
+            "complete_service_enrollment",
+        ),
+        EnrollmentErrorCode::PrincipalMismatch => (
+            StatusCode::FORBIDDEN,
+            "system_plane_console_not_enrolled",
+            "complete_service_enrollment",
+        ),
+        EnrollmentErrorCode::NotEnrolled
+        | EnrollmentErrorCode::InvalidGrant
+        | EnrollmentErrorCode::AlreadyEnrolled
+        | EnrollmentErrorCode::StaleAuthorizationEpoch => (
+            StatusCode::FORBIDDEN,
+            "system_plane_enrollment_required",
+            "complete_service_enrollment",
+        ),
+    };
+    SystemPlaneRejection {
+        status,
+        code,
+        message: error.message,
+        next_action,
     }
-    Ok(Json(runtime.registry.document().clone()))
 }
 
 fn now_unix_ms() -> u64 {

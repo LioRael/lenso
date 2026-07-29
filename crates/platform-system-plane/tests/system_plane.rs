@@ -6,9 +6,12 @@ use lenso_service::{
     WorkloadCredentialRequest, WorkloadIdentityProvider, system_plane::CapabilityAdvertisement,
 };
 use platform_system_plane::{
-    CapabilityNegotiationIssueCode, CapabilityRequirement, SystemPlaneAccess,
-    SystemPlaneRegistryBuilder, SystemPlaneRuntime, router,
+    CapabilityNegotiationIssueCode, CapabilityRequirement, EnrollmentAuthorizer,
+    EnrollmentErrorCode, EnrollmentGrant, PostgresEnrollmentStore, SYSTEM_PLANE_MIGRATIONS,
+    SystemPlaneAccess, SystemPlaneRegistryBuilder, SystemPlaneRuntime,
+    SystemSandboxEnrollmentAuthorizer, router,
 };
+use platform_testing::TestDatabase;
 use std::{collections::BTreeSet, sync::Arc, time::Duration};
 use tower::ServiceExt as _;
 
@@ -36,6 +39,22 @@ fn registry() -> platform_system_plane::SystemPlaneRegistry {
     .register(capability(1))
     .build()
     .unwrap()
+}
+
+fn enrollment(principal: &str) -> Arc<SystemSandboxEnrollmentAuthorizer> {
+    Arc::new(
+        SystemSandboxEnrollmentAuthorizer::new(
+            "test",
+            EnrollmentGrant {
+                managed_service_id: "support".to_owned(),
+                console_service_principal: principal.to_owned(),
+                grant_revision: 1,
+                authorization_epoch: 0,
+                expires_at_unix_ms: 4_000_000_000_000,
+            },
+        )
+        .unwrap(),
+    )
 }
 
 #[test]
@@ -125,7 +144,11 @@ async fn discovery_requires_enrolled_transport_bound_workload_identity() {
     );
     let runtime = Arc::new(SystemPlaneRuntime::new(
         registry(),
-        SystemPlaneAccess::new(provider.clone(), "service:support", "service:console"),
+        SystemPlaneAccess::new(
+            provider.clone(),
+            "service:support",
+            enrollment("service:console"),
+        ),
     ));
     let app = router::<()>(Some(runtime))
         .split_for_parts()
@@ -171,7 +194,11 @@ async fn discovery_rejects_a_valid_but_unenrolled_service_principal() {
     );
     let runtime = Arc::new(SystemPlaneRuntime::new(
         registry(),
-        SystemPlaneAccess::new(provider.clone(), "service:support", "service:console"),
+        SystemPlaneAccess::new(
+            provider.clone(),
+            "service:support",
+            enrollment("service:console"),
+        ),
     ));
     let app = router::<()>(Some(runtime))
         .split_for_parts()
@@ -214,4 +241,76 @@ fn now_unix_ms() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_millis() as u64
+}
+
+#[tokio::test]
+async fn service_store_enrollment_revocation_and_transfer_advance_authority_explicitly() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    platform_core::apply_migrations(&db.pool, platform_core::PLATFORM_MIGRATIONS)
+        .await
+        .unwrap();
+    platform_core::apply_migrations(&db.pool, SYSTEM_PLANE_MIGRATIONS)
+        .await
+        .unwrap();
+    let store = PostgresEnrollmentStore::new(db.pool.clone());
+    let first = EnrollmentGrant {
+        managed_service_id: "support".to_owned(),
+        console_service_principal: "service:console".to_owned(),
+        grant_revision: 1,
+        authorization_epoch: 3,
+        expires_at_unix_ms: 4_000_000_000_000,
+    };
+    store.enroll(&first).await.unwrap();
+    assert_eq!(
+        store
+            .authorize("support", "service:console", now_unix_ms())
+            .await
+            .unwrap()
+            .authorization_epoch,
+        3
+    );
+
+    let revoked = store.revoke("support", 3, now_unix_ms()).await.unwrap();
+    assert_eq!(revoked.grant.authorization_epoch, 4);
+    assert_eq!(
+        store
+            .authorize("support", "service:console", now_unix_ms())
+            .await
+            .unwrap_err()
+            .code,
+        EnrollmentErrorCode::Revoked
+    );
+
+    let transferred = store
+        .transfer(
+            &EnrollmentGrant {
+                managed_service_id: "support".to_owned(),
+                console_service_principal: "service:new-console".to_owned(),
+                grant_revision: 2,
+                authorization_epoch: 5,
+                expires_at_unix_ms: 4_000_000_000_000,
+            },
+            4,
+        )
+        .await
+        .unwrap();
+    assert_eq!(transferred.grant.authorization_epoch, 5);
+    assert_eq!(
+        store
+            .authorize("support", "service:console", now_unix_ms())
+            .await
+            .unwrap_err()
+            .code,
+        EnrollmentErrorCode::PrincipalMismatch
+    );
+    assert!(
+        store
+            .authorize("support", "service:new-console", now_unix_ms())
+            .await
+            .is_ok()
+    );
+
+    db.cleanup().await;
 }
