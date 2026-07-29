@@ -3,10 +3,16 @@ use http::{Request, StatusCode, header};
 use http_body_util::BodyExt as _;
 use lenso_service::{
     AuthenticatedTransportBinding, SystemSandboxWorkloadIdentityProvider,
-    WorkloadCredentialRequest, WorkloadIdentityProvider, system_plane::CapabilityAdvertisement,
+    WorkloadCredentialRequest, WorkloadIdentityProvider,
+    system_plane::{
+        CapabilityAdvertisement, Ed25519EnrollmentSigner, Ed25519EnrollmentTrustStore,
+        EnrollmentCapabilityGrant, EnrollmentOffer, EnrollmentPolicyGrant, EnrollmentSignature,
+        EnrollmentSignatureAlgorithm, sign_enrollment_offer, verify_enrollment_receipt,
+    },
 };
 use platform_system_plane::{
-    CapabilityNegotiationIssueCode, CapabilityRequirement, EnrollmentAuthorizer,
+    AuthorizedSystemPlaneCaller, CapabilityNegotiationIssueCode, CapabilityRequirement,
+    EnrollmentAcceptance, EnrollmentAuthorization, EnrollmentAuthorizer, EnrollmentCeremony,
     EnrollmentErrorCode, EnrollmentGrant, PostgresEnrollmentStore, SYSTEM_PLANE_MIGRATIONS,
     SystemPlaneAccess, SystemPlaneRegistryBuilder, SystemPlaneRuntime,
     SystemSandboxEnrollmentAuthorizer, router,
@@ -45,13 +51,7 @@ fn enrollment(principal: &str) -> Arc<SystemSandboxEnrollmentAuthorizer> {
     Arc::new(
         SystemSandboxEnrollmentAuthorizer::new(
             "test",
-            EnrollmentGrant {
-                managed_service_id: "support".to_owned(),
-                console_service_principal: principal.to_owned(),
-                grant_revision: 1,
-                authorization_epoch: 0,
-                expires_at_unix_ms: 4_000_000_000_000,
-            },
+            EnrollmentGrant::system_sandbox("support", principal, 0, 4_000_000_000_000),
         )
         .unwrap(),
     )
@@ -118,6 +118,63 @@ fn negotiation_rejects_missing_features_and_unaccepted_schema_digests_independen
     assert_eq!(
         wrong_digest.issues[0].code,
         CapabilityNegotiationIssueCode::SchemaDigestMismatch
+    );
+}
+
+#[test]
+fn capability_authorization_requires_exact_enrollment_contract_digest_and_features() {
+    let identity = Arc::new(
+        SystemSandboxWorkloadIdentityProvider::new("test", "capability-grant-secret").unwrap(),
+    );
+    let runtime = Arc::new(SystemPlaneRuntime::new(
+        registry(),
+        SystemPlaneAccess::new(identity, "service:support", enrollment("service:console")),
+    ));
+    let caller = AuthorizedSystemPlaneCaller {
+        runtime,
+        service_principal: "service:console".to_owned(),
+        enrollment: EnrollmentAuthorization {
+            system_id: "customer-support".to_owned(),
+            managed_service_id: "support".to_owned(),
+            managed_service_principal: "service:support".to_owned(),
+            managed_service_revision: "release:sha256:0123456789abcdef".to_owned(),
+            console_service_principal: "service:console".to_owned(),
+            receipt_digest: digest('9'),
+            grant_revision: 1,
+            authorization_epoch: 4,
+            expires_at_unix_ms: 20_000,
+            capabilities: vec![EnrollmentCapabilityGrant {
+                contract_id: "lenso.system-plane.runtime-observability.v1".to_owned(),
+                schema_digest: digest('a'),
+                feature_ids: BTreeSet::from(["queue-summary".to_owned()]),
+            }],
+            policy: EnrollmentPolicyGrant {
+                policy_id: "support-system-plane".to_owned(),
+                policy_revision: "revision:1".to_owned(),
+                policy_digest: digest('b'),
+            },
+        },
+    };
+
+    assert!(
+        caller
+            .require_capability(
+                "lenso.system-plane.runtime-observability.v1",
+                &digest('a'),
+                ["queue-summary"],
+            )
+            .is_ok()
+    );
+    assert_eq!(
+        caller
+            .require_capability(
+                "lenso.system-plane.runtime-observability.v1",
+                &digest('c'),
+                ["queue-summary"],
+            )
+            .unwrap_err()
+            .code(),
+        "system_plane_capability_not_granted"
     );
 }
 
@@ -244,7 +301,7 @@ fn now_unix_ms() -> u64 {
 }
 
 #[tokio::test]
-async fn service_store_enrollment_revocation_and_transfer_advance_authority_explicitly() {
+async fn signed_ceremony_atomically_persists_bilateral_receipt_grant_and_audit() {
     let Some(db) = TestDatabase::create().await else {
         return;
     };
@@ -254,62 +311,133 @@ async fn service_store_enrollment_revocation_and_transfer_advance_authority_expl
     platform_core::apply_migrations(&db.pool, SYSTEM_PLANE_MIGRATIONS)
         .await
         .unwrap();
-    let store = PostgresEnrollmentStore::new(db.pool.clone());
-    let first = EnrollmentGrant {
-        managed_service_id: "support".to_owned(),
-        console_service_principal: "service:console".to_owned(),
-        grant_revision: 1,
-        authorization_epoch: 3,
-        expires_at_unix_ms: 4_000_000_000_000,
-    };
-    store.enroll(&first).await.unwrap();
-    assert_eq!(
-        store
-            .authorize("support", "service:console", now_unix_ms())
-            .await
-            .unwrap()
-            .authorization_epoch,
-        3
+    let console_signer = Arc::new(Ed25519EnrollmentSigner::new("console-key-1", [7; 32]).unwrap());
+    let next_console_signer =
+        Arc::new(Ed25519EnrollmentSigner::new("console-key-2", [8; 32]).unwrap());
+    let service_signer = Arc::new(Ed25519EnrollmentSigner::new("service-key-1", [9; 32]).unwrap());
+    let console_trust = Arc::new(
+        Ed25519EnrollmentTrustStore::new([
+            ("console-key-1", console_signer.verifying_key_bytes()),
+            ("console-key-2", next_console_signer.verifying_key_bytes()),
+        ])
+        .unwrap(),
     );
+    let service_trust =
+        Ed25519EnrollmentTrustStore::new([("service-key-1", service_signer.verifying_key_bytes())])
+            .unwrap();
+    let requested_capability = EnrollmentCapabilityGrant {
+        contract_id: "lenso.system-plane.runtime-observability.v1".to_owned(),
+        schema_digest: digest('a'),
+        feature_ids: BTreeSet::from(["queue-summary".to_owned()]),
+    };
+    let policy = EnrollmentPolicyGrant {
+        policy_id: "support-system-plane".to_owned(),
+        policy_revision: "revision:1".to_owned(),
+        policy_digest: digest('b'),
+    };
+    let offer = sign_enrollment_offer(
+        EnrollmentOffer {
+            protocol: String::new(),
+            system_id: "customer-support".to_owned(),
+            console_service_principal: "service:console".to_owned(),
+            nonce: "nonce-0123456789abcdef".to_owned(),
+            issued_at_unix_ms: 1_000,
+            expires_at_unix_ms: 20_000,
+            requested_capabilities: vec![requested_capability.clone()],
+            requested_policy: policy.clone(),
+            signature: EnrollmentSignature {
+                algorithm: EnrollmentSignatureAlgorithm::Ed25519,
+                key_id: String::new(),
+                subject_digest: String::new(),
+                value: String::new(),
+            },
+        },
+        console_signer.as_ref(),
+    )
+    .unwrap();
+    let ceremony = EnrollmentCeremony::new(
+        PostgresEnrollmentStore::new(db.pool.clone()),
+        console_trust,
+        service_signer.clone(),
+    );
+    let acceptance = EnrollmentAcceptance {
+        managed_service_id: "support".to_owned(),
+        managed_service_principal: "service:support".to_owned(),
+        managed_service_revision: "release:sha256:0123456789abcdef".to_owned(),
+        grant_revision: 1,
+        authorization_epoch: 4,
+        expires_at_unix_ms: 18_000,
+        capabilities: vec![requested_capability],
+        policy,
+    };
 
-    let revoked = store.revoke("support", 3, now_unix_ms()).await.unwrap();
-    assert_eq!(revoked.grant.authorization_epoch, 4);
+    let receipt = ceremony.accept(&offer, &acceptance, 2_000).await.unwrap();
+    let replay = ceremony.accept(&offer, &acceptance, 2_000).await.unwrap();
+    assert_eq!(receipt, replay);
+    assert!(verify_enrollment_receipt(&receipt, &offer, &service_trust, 3_000).is_ok());
+    let authorization = PostgresEnrollmentStore::new(db.pool.clone())
+        .authorize("support", "service:console", 3_000)
+        .await
+        .unwrap();
+    assert_eq!(authorization.system_id, "customer-support");
+    assert_eq!(authorization.managed_service_principal, "service:support");
+    assert_eq!(authorization.authorization_epoch, 4);
+    assert_eq!(authorization.capabilities.len(), 1);
+
+    let store = PostgresEnrollmentStore::new(db.pool.clone());
+    let revoked = store.revoke("support", 4, 4_000).await.unwrap();
+    assert_eq!(revoked.grant.authorization_epoch, 5);
     assert_eq!(
         store
-            .authorize("support", "service:console", now_unix_ms())
+            .authorize("support", "service:console", 5_000)
             .await
             .unwrap_err()
             .code,
         EnrollmentErrorCode::Revoked
     );
-
-    let transferred = store
-        .transfer(
-            &EnrollmentGrant {
-                managed_service_id: "support".to_owned(),
-                console_service_principal: "service:new-console".to_owned(),
-                grant_revision: 2,
-                authorization_epoch: 5,
-                expires_at_unix_ms: 4_000_000_000_000,
-            },
-            4,
-        )
+    let next_offer = sign_enrollment_offer(
+        EnrollmentOffer {
+            console_service_principal: "service:next-console".to_owned(),
+            nonce: "nonce-fedcba9876543210".to_owned(),
+            ..offer.clone()
+        },
+        next_console_signer.as_ref(),
+    )
+    .unwrap();
+    let next_acceptance = EnrollmentAcceptance {
+        grant_revision: 2,
+        authorization_epoch: 6,
+        ..acceptance.clone()
+    };
+    let next_receipt = ceremony
+        .accept(&next_offer, &next_acceptance, 5_000)
         .await
         .unwrap();
-    assert_eq!(transferred.grant.authorization_epoch, 5);
+    assert!(verify_enrollment_receipt(&next_receipt, &next_offer, &service_trust, 6_000).is_ok());
     assert_eq!(
         store
-            .authorize("support", "service:console", now_unix_ms())
+            .authorize("support", "service:console", 6_000)
             .await
             .unwrap_err()
             .code,
         EnrollmentErrorCode::PrincipalMismatch
     );
-    assert!(
+    assert_eq!(
         store
-            .authorize("support", "service:new-console", now_unix_ms())
+            .authorize("support", "service:next-console", 6_000)
             .await
-            .is_ok()
+            .unwrap()
+            .authorization_epoch,
+        6
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "select count(*) from platform.system_plane_enrollment_audit where managed_service_id = 'support'",
+        )
+        .fetch_one(&db.pool)
+        .await
+        .unwrap(),
+        3
     );
 
     db.cleanup().await;

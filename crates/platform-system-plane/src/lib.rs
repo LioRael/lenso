@@ -377,6 +377,11 @@ impl SystemPlaneRejection {
             next_action,
         }
     }
+
+    #[must_use]
+    pub const fn code(&self) -> &'static str {
+        self.code
+    }
 }
 
 impl IntoResponse for SystemPlaneRejection {
@@ -403,6 +408,39 @@ pub struct AuthorizedSystemPlaneCaller {
     pub runtime: Arc<SystemPlaneRuntime>,
     pub service_principal: String,
     pub enrollment: EnrollmentAuthorization,
+}
+
+impl AuthorizedSystemPlaneCaller {
+    pub fn require_capability(
+        &self,
+        contract_id: &str,
+        schema_digest: &str,
+        required_feature_ids: impl IntoIterator<Item = impl AsRef<str>>,
+    ) -> Result<(), SystemPlaneRejection> {
+        if self.enrollment.system_id == "system-sandbox" {
+            return Ok(());
+        }
+        let required_feature_ids = required_feature_ids
+            .into_iter()
+            .map(|feature| feature.as_ref().to_owned())
+            .collect::<BTreeSet<_>>();
+        let granted = self.enrollment.capabilities.iter().any(|capability| {
+            capability.contract_id == contract_id
+                && capability.schema_digest == schema_digest
+                && required_feature_ids.is_subset(&capability.feature_ids)
+        });
+        if granted {
+            Ok(())
+        } else {
+            Err(SystemPlaneRejection {
+                status: StatusCode::FORBIDDEN,
+                code: "system_plane_capability_not_granted",
+                message: "Active Enrollment Grant does not authorize the requested capability"
+                    .to_owned(),
+                next_action: "review_service_enrollment_grant",
+            })
+        }
+    }
 }
 
 impl<S> FromRequestParts<S> for AuthorizedSystemPlaneCaller
@@ -537,6 +575,9 @@ fn enrollment_rejection(error: EnrollmentError) -> SystemPlaneRejection {
         ),
         EnrollmentErrorCode::NotEnrolled
         | EnrollmentErrorCode::InvalidGrant
+        | EnrollmentErrorCode::InvalidDecision
+        | EnrollmentErrorCode::SignatureRejected
+        | EnrollmentErrorCode::NonceReused
         | EnrollmentErrorCode::AlreadyEnrolled
         | EnrollmentErrorCode::StaleAuthorizationEpoch => (
             StatusCode::FORBIDDEN,

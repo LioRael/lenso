@@ -108,13 +108,7 @@ async fn capability_route_uses_the_same_enrollment_and_workload_identity_seam_as
     let enrollment = Arc::new(
         SystemSandboxEnrollmentAuthorizer::new(
             "test",
-            EnrollmentGrant {
-                managed_service_id: "support".to_owned(),
-                console_service_principal: "service:console".to_owned(),
-                grant_revision: 1,
-                authorization_epoch: 7,
-                expires_at_unix_ms: 4_000_000_000_000,
-            },
+            EnrollmentGrant::system_sandbox("support", "service:console", 7, 4_000_000_000_000),
         )
         .unwrap(),
     );

@@ -158,7 +158,7 @@ where
     tag = "system-plane-runtime-observability"
 )]
 async fn runtime_observability_snapshot(
-    _caller: AuthorizedSystemPlaneCaller,
+    caller: AuthorizedSystemPlaneCaller,
     Extension(provider): Extension<Option<Arc<RuntimeObservabilityProvider>>>,
 ) -> Result<Json<RuntimeObservabilitySnapshot>, SystemPlaneRejection> {
     let provider = provider.ok_or_else(|| {
@@ -168,6 +168,11 @@ async fn runtime_observability_snapshot(
             "configure_runtime_observability",
         )
     })?;
+    caller.require_capability(
+        RUNTIME_OBSERVABILITY_PROTOCOL,
+        &runtime_observability_schema_digest(),
+        [RUNTIME_OBSERVABILITY_FEATURE_QUEUE_SUMMARY],
+    )?;
     provider.snapshot().await.map(Json).map_err(|_error| {
         SystemPlaneRejection::unavailable(
             "runtime_observation_failed",

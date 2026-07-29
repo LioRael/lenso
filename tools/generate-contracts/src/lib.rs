@@ -59,6 +59,14 @@ pub fn generate_contracts() -> anyhow::Result<()> {
         &generated_runtime_observability_schema(),
     )?;
     write_json(
+        "contracts/system-plane/lenso.system-plane.enrollment-offer.v1.schema.json",
+        &generated_enrollment_offer_schema(),
+    )?;
+    write_json(
+        "contracts/system-plane/lenso.system-plane.enrollment-receipt.v1.schema.json",
+        &generated_enrollment_receipt_schema(),
+    )?;
+    write_json(
         "contracts/delivery/lenso.service-release.v1.schema.json",
         &generated_service_release_schema(),
     )?;
@@ -326,6 +334,14 @@ pub fn generated_system_plane_core_schema() -> Value {
 
 pub fn generated_runtime_observability_schema() -> Value {
     lenso_service::system_plane::runtime_observability_schema()
+}
+
+pub fn generated_enrollment_offer_schema() -> Value {
+    lenso_service::system_plane::enrollment_offer_schema()
+}
+
+pub fn generated_enrollment_receipt_schema() -> Value {
+    lenso_service::system_plane::enrollment_receipt_schema()
 }
 
 pub fn generated_service_release_schema() -> Value {

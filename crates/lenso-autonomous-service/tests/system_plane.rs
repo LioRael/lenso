@@ -33,13 +33,12 @@ fn runtime(provider: Arc<SystemSandboxWorkloadIdentityProvider>) -> SystemPlaneR
             Arc::new(
                 SystemSandboxEnrollmentAuthorizer::new(
                     "test",
-                    EnrollmentGrant {
-                        managed_service_id: "support".to_owned(),
-                        console_service_principal: "service:console".to_owned(),
-                        grant_revision: 1,
-                        authorization_epoch: 0,
-                        expires_at_unix_ms: 4_000_000_000_000,
-                    },
+                    EnrollmentGrant::system_sandbox(
+                        "support",
+                        "service:console",
+                        0,
+                        4_000_000_000_000,
+                    ),
                 )
                 .unwrap(),
             ),
