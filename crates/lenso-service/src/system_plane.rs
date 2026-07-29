@@ -11,8 +11,11 @@ pub const CORE_PATH: &str = "/system-plane/v1";
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CoreDocument {
     pub protocol: String,
+    #[schema(min_length = 1)]
     pub service_id: String,
+    #[schema(min_length = 1)]
     pub service_principal: String,
+    #[schema(min_length = 1)]
     pub service_revision: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub capabilities: Vec<CapabilityAdvertisement>,
@@ -21,11 +24,15 @@ pub struct CoreDocument {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, ToSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CapabilityAdvertisement {
+    #[schema(pattern = r"^lenso\.system-plane\.[a-z0-9]+(?:[.-][a-z0-9]+)*\.v[1-9][0-9]*$")]
     pub contract_id: String,
+    #[schema(minimum = 1)]
     pub major_version: u32,
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub feature_ids: BTreeSet<String>,
+    #[schema(pattern = r"^sha256:[0-9a-f]{64}$")]
     pub schema_digest: String,
+    #[schema(pattern = r"^/system-plane/v1/[a-z0-9]+(?:[/-][a-z0-9]+)*$")]
     pub endpoint: String,
 }
 

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Lenso Autonomous Service Runtime API
-  description: Service-owned health, Reliability Reports, authenticated Story Segment Feed, and Durable Workflow surfaces
+  description: Service-owned health, Reliability Reports, authenticated System Plane discovery and Story Segment Feed, and Durable Workflow surfaces
   license:
     name: MIT
     identifier: MIT
@@ -472,6 +472,38 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /system-plane/v1:
+    get:
+      tags:
+      - system-plane
+      operationId: discover_core
+      responses:
+        '200':
+          description: Authenticated System Plane Core document
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoreDocument'
+        '401':
+          description: Workload Identity or transport binding was not accepted
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '403':
+          description: Caller is not the enrolled Console Service Principal
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '503':
+          description: System Plane access is not configured
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+      security:
+      - bearer_auth: []
 components:
   schemas:
     ActiveDegradedMode:
@@ -489,6 +521,57 @@ components:
             type: string
         mode:
           type: string
+    CapabilityAdvertisement:
+      type: object
+      required:
+      - contractId
+      - majorVersion
+      - schemaDigest
+      - endpoint
+      properties:
+        contractId:
+          type: string
+          pattern: ^lenso\.system-plane\.[a-z0-9]+(?:[.-][a-z0-9]+)*\.v[1-9][0-9]*$
+        endpoint:
+          type: string
+          pattern: ^/system-plane/v1/[a-z0-9]+(?:[/-][a-z0-9]+)*$
+        featureIds:
+          type: array
+          items:
+            type: string
+          uniqueItems: true
+        majorVersion:
+          type: integer
+          format: int32
+          minimum: 1
+        schemaDigest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+      additionalProperties: false
+    CoreDocument:
+      type: object
+      required:
+      - protocol
+      - serviceId
+      - servicePrincipal
+      - serviceRevision
+      properties:
+        capabilities:
+          type: array
+          items:
+            $ref: '#/components/schemas/CapabilityAdvertisement'
+        protocol:
+          type: string
+        serviceId:
+          type: string
+          minLength: 1
+        servicePrincipal:
+          type: string
+          minLength: 1
+        serviceRevision:
+          type: string
+          minLength: 1
+      additionalProperties: false
     EffectiveReliabilityValues:
       type: object
       required:
@@ -1016,6 +1099,21 @@ components:
           type:
           - string
           - 'null'
+    SystemPlaneErrorBody:
+      type: object
+      required:
+      - code
+      - message
+      - nextActions
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        nextActions:
+          type: array
+          items:
+            type: string
     WorkflowChildInspection:
       type: object
       required:

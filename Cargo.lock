@@ -2158,6 +2158,7 @@ dependencies = [
  "lenso-platform-core",
  "lenso-platform-http",
  "lenso-platform-runtime",
+ "lenso-platform-system-plane",
  "lenso-platform-testing",
  "lenso-service",
  "serde",
@@ -2561,6 +2562,22 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "lenso-platform-system-plane"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "http",
+ "http-body-util",
+ "lenso-service",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower",
+ "utoipa",
+ "utoipa-axum",
 ]
 
 [[package]]

@@ -10,6 +10,11 @@ mod workflow_child;
 mod workflow_compensation;
 
 pub use operations::*;
+pub use platform_system_plane::{
+    CapabilityNegotiation, CapabilityNegotiationIssue, CapabilityNegotiationIssueCode,
+    CapabilityRequirement, NegotiatedCapability, SystemPlaneAccess, SystemPlaneRegistry,
+    SystemPlaneRegistryBuilder, SystemPlaneRuntime,
+};
 pub use reliability::*;
 pub use story_feed::*;
 pub use transport::*;
@@ -56,6 +61,7 @@ pub struct ServiceRuntimeConfig {
     pub workflow_authority_verifier: Option<Arc<dyn WorkflowAuthorityVerifier>>,
     pub story_segment_feed: Option<StorySegmentFeedConfig>,
     pub reliability_observation_source: Option<Arc<dyn ReliabilityObservationSource>>,
+    pub system_plane: Option<Arc<SystemPlaneRuntime>>,
 }
 
 impl PartialEq for ServiceRuntimeConfig {
@@ -83,6 +89,11 @@ impl PartialEq for ServiceRuntimeConfig {
                 (Some(left), Some(right)) => Arc::ptr_eq(left, right),
                 _ => false,
             }
+            && match (&self.system_plane, &other.system_plane) {
+                (None, None) => true,
+                (Some(left), Some(right)) => Arc::ptr_eq(left, right),
+                _ => false,
+            }
     }
 }
 
@@ -105,6 +116,7 @@ impl ServiceRuntimeConfig {
             workflow_authority_verifier: None,
             story_segment_feed: None,
             reliability_observation_source: None,
+            system_plane: None,
         }
     }
 
@@ -120,6 +132,12 @@ impl ServiceRuntimeConfig {
         workflow_definitions: Vec<WorkflowDefinition>,
     ) -> Self {
         self.workflow_definitions = workflow_definitions;
+        self
+    }
+
+    #[must_use]
+    pub fn with_system_plane(mut self, runtime: SystemPlaneRuntime) -> Self {
+        self.system_plane = Some(Arc::new(runtime));
         self
     }
 
@@ -305,6 +323,7 @@ pub struct ServiceRuntimeState {
     story_segment_feed: Option<Arc<StorySegmentFeedConfig>>,
     reliability_contract: Option<Arc<ReliabilityContract>>,
     reliability_observation_source: Option<Arc<dyn ReliabilityObservationSource>>,
+    system_plane: Option<Arc<SystemPlaneRuntime>>,
 }
 
 #[derive(Debug, Clone)]
@@ -347,6 +366,7 @@ impl ServiceRuntimeState {
             story_segment_feed: None,
             reliability_contract: None,
             reliability_observation_source: None,
+            system_plane: None,
         }
     }
 
@@ -419,6 +439,17 @@ impl ServiceRuntimeState {
     ) -> Self {
         self.reliability_contract = contract.map(Arc::new);
         self.reliability_observation_source = observation_source;
+        self
+    }
+
+    #[must_use]
+    pub fn with_system_plane(mut self, runtime: SystemPlaneRuntime) -> Self {
+        self.system_plane = Some(Arc::new(runtime));
+        self
+    }
+
+    fn with_system_plane_runtime(mut self, runtime: Option<Arc<SystemPlaneRuntime>>) -> Self {
+        self.system_plane = runtime;
         self
     }
 
@@ -520,7 +551,8 @@ pub async fn prepare_runtime(
     .with_reliability(
         contract.reliability_contract.clone(),
         config.reliability_observation_source.clone(),
-    );
+    )
+    .with_system_plane_runtime(config.system_plane.clone());
     if let Err(error) = apply_migrations(&pool, SERVICE_RUNTIME_MIGRATIONS).await {
         state.set_phase(RuntimePhase::Failed);
         return Err(runtime_error(
@@ -964,8 +996,10 @@ pub fn service_router(
     business: OpenApiRouter<ServiceRuntimeState>,
     state: ServiceRuntimeState,
 ) -> Router {
+    let system_plane = state.system_plane.clone();
     OpenApiRouter::with_openapi(ServiceRuntimeApi::openapi())
         .merge(runtime_router())
+        .merge(platform_system_plane::router(system_plane))
         .merge(business)
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -981,7 +1015,7 @@ pub fn service_router(
     info(
         title = "Lenso Autonomous Service Runtime API",
         version = "1.0.0",
-        description = "Service-owned health, Reliability Reports, authenticated Story Segment Feed, and Durable Workflow surfaces"
+        description = "Service-owned health, Reliability Reports, authenticated System Plane discovery and Story Segment Feed, and Durable Workflow surfaces"
     ),
     components(schemas(
         RuntimeHealth,
@@ -1033,6 +1067,7 @@ fn runtime_router() -> OpenApiRouter<ServiceRuntimeState> {
 pub fn openapi_document() -> utoipa::openapi::OpenApi {
     OpenApiRouter::<ServiceRuntimeState>::with_openapi(ServiceRuntimeApi::openapi())
         .merge(runtime_router())
+        .merge(platform_system_plane::router(None))
         .to_openapi()
 }
 
@@ -1205,6 +1240,7 @@ async fn persist_story_segment(
     if response.status().is_success()
         && !path.starts_with("/health/")
         && !path.starts_with("/runtime/")
+        && !path.starts_with("/system-plane/")
     {
         let now = chrono::Utc::now();
         let segment_id = supplied_segment_id.unwrap_or_else(|| Uuid::now_v7().to_string());
