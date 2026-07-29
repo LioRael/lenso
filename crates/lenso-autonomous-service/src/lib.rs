@@ -665,6 +665,25 @@ pub async fn prepare_runtime(
     }
     if let Err(error) = apply_migrations(
         &pool,
+        platform_runtime_observability::RUNTIME_OBSERVABILITY_MIGRATIONS,
+    )
+    .await
+    {
+        state.set_phase(RuntimePhase::Failed);
+        return Err(runtime_error(
+            RuntimeErrorCode::MigrationFailed,
+            format!(
+                "Service-owned Runtime Observability migration failed: {}",
+                error.public_message
+            ),
+            format!(
+                "Verify Store `{}` Runtime Observability migration compatibility, then restart Service `{}`.",
+                validated.store_id, validated.service_id
+            ),
+        ));
+    }
+    if let Err(error) = apply_migrations(
+        &pool,
         platform_runtime_operations::RUNTIME_OPERATIONS_MIGRATIONS,
     )
     .await

@@ -536,6 +536,52 @@ paths:
                 $ref: '#/components/schemas/SystemPlaneErrorBody'
       security:
       - bearer_auth: []
+  /system-plane/v1/runtime-observability/changes:
+    get:
+      tags:
+      - system-plane-runtime-observability
+      operationId: runtime_observability_feed
+      parameters:
+      - name: cursor
+        in: query
+        description: Opaque cursor returned by a snapshot or prior feed page
+        required: true
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          minimum: 0
+      responses:
+        '200':
+          description: Runtime observation changes or an explicit Evidence Gap
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeObservationFeed'
+        '401':
+          description: Workload Identity or transport binding was not accepted
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '403':
+          description: Caller has no active enrollment grant
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '503':
+          description: Runtime observation is unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+      security:
+      - bearer_auth: []
   /system-plane/v1/runtime-operations/function-runs/{id}:
     get:
       tags:
@@ -1380,10 +1426,15 @@ components:
       - serviceId
       - serviceRevision
       - snapshotRevision
+      - schemaDigest
+      - nextCursor
       - observedAt
       - status
       - queues
       properties:
+        nextCursor:
+          type: string
+          minLength: 1
         observedAt:
           type: string
           format: date-time
@@ -1393,6 +1444,9 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/RuntimeQueueSummary'
+        schemaDigest:
+          type: string
+          minLength: 1
         serviceId:
           type: string
           minLength: 1
@@ -1411,6 +1465,99 @@ components:
       - healthy
       - degraded
       - failing
+    RuntimeObservationChange:
+      type: object
+      required:
+      - sequence
+      - queue
+      - resourceId
+      - changeKind
+      - recordedAt
+      properties:
+        changeKind:
+          $ref: '#/components/schemas/RuntimeObservationChangeKind'
+        queue:
+          $ref: '#/components/schemas/RuntimeQueueKind'
+        recordedAt:
+          type: string
+          format: date-time
+        resourceId:
+          type: string
+        sequence:
+          type: integer
+          format: int64
+          minimum: 0
+      additionalProperties: false
+    RuntimeObservationChangeKind:
+      type: string
+      enum:
+      - upserted
+      - deleted
+    RuntimeObservationContinuity:
+      type: string
+      enum:
+      - continuous
+      - reset_required
+    RuntimeObservationEvidenceGap:
+      type: object
+      required:
+      - reason
+      - message
+      - requiredAction
+      properties:
+        message:
+          type: string
+        reason:
+          $ref: '#/components/schemas/RuntimeObservationGapReason'
+        requiredAction:
+          type: string
+      additionalProperties: false
+    RuntimeObservationFeed:
+      type: object
+      required:
+      - protocol
+      - serviceId
+      - serviceRevision
+      - schemaDigest
+      - collectedAt
+      - continuity
+      - changes
+      - nextCursor
+      - hasMore
+      properties:
+        changes:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuntimeObservationChange'
+        collectedAt:
+          type: string
+          format: date-time
+        continuity:
+          $ref: '#/components/schemas/RuntimeObservationContinuity'
+        evidenceGap:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/RuntimeObservationEvidenceGap'
+        hasMore:
+          type: boolean
+        nextCursor:
+          type: string
+        protocol:
+          type: string
+        schemaDigest:
+          type: string
+        serviceId:
+          type: string
+        serviceRevision:
+          type: string
+      additionalProperties: false
+    RuntimeObservationGapReason:
+      type: string
+      enum:
+      - invalid_cursor
+      - service_revision_changed
+      - schema_changed
+      - retention_lost
     RuntimeOperationAcknowledgement:
       type: object
       required:

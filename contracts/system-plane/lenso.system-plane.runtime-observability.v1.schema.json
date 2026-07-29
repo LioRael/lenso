@@ -1,10 +1,192 @@
 {
   "$defs": {
+    "RuntimeObservabilitySnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "nextCursor": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "observedAt": {
+          "type": "string"
+        },
+        "protocol": {
+          "const": "lenso.system-plane.runtime-observability.v1"
+        },
+        "queues": {
+          "items": {
+            "$ref": "#/$defs/RuntimeQueueSummary"
+          },
+          "type": "array"
+        },
+        "schemaDigest": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "serviceId": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "serviceRevision": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "snapshotRevision": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/RuntimeObservabilityStatus"
+        }
+      },
+      "required": [
+        "protocol",
+        "serviceId",
+        "serviceRevision",
+        "snapshotRevision",
+        "schemaDigest",
+        "nextCursor",
+        "observedAt",
+        "status",
+        "queues"
+      ],
+      "type": "object"
+    },
     "RuntimeObservabilityStatus": {
       "enum": [
         "healthy",
         "degraded",
         "failing"
+      ],
+      "type": "string"
+    },
+    "RuntimeObservationChange": {
+      "additionalProperties": false,
+      "properties": {
+        "changeKind": {
+          "$ref": "#/$defs/RuntimeObservationChangeKind"
+        },
+        "queue": {
+          "$ref": "#/$defs/RuntimeQueueKind"
+        },
+        "recordedAt": {
+          "type": "string"
+        },
+        "resourceId": {
+          "type": "string"
+        },
+        "sequence": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sequence",
+        "queue",
+        "resourceId",
+        "changeKind",
+        "recordedAt"
+      ],
+      "type": "object"
+    },
+    "RuntimeObservationChangeKind": {
+      "enum": [
+        "upserted",
+        "deleted"
+      ],
+      "type": "string"
+    },
+    "RuntimeObservationContinuity": {
+      "enum": [
+        "continuous",
+        "reset_required"
+      ],
+      "type": "string"
+    },
+    "RuntimeObservationEvidenceGap": {
+      "additionalProperties": false,
+      "properties": {
+        "message": {
+          "type": "string"
+        },
+        "reason": {
+          "$ref": "#/$defs/RuntimeObservationGapReason"
+        },
+        "requiredAction": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason",
+        "message",
+        "requiredAction"
+      ],
+      "type": "object"
+    },
+    "RuntimeObservationFeed": {
+      "additionalProperties": false,
+      "properties": {
+        "changes": {
+          "items": {
+            "$ref": "#/$defs/RuntimeObservationChange"
+          },
+          "type": "array"
+        },
+        "collectedAt": {
+          "type": "string"
+        },
+        "continuity": {
+          "$ref": "#/$defs/RuntimeObservationContinuity"
+        },
+        "evidenceGap": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RuntimeObservationEvidenceGap"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "hasMore": {
+          "type": "boolean"
+        },
+        "nextCursor": {
+          "type": "string"
+        },
+        "protocol": {
+          "const": "lenso.system-plane.runtime-observability.v1"
+        },
+        "schemaDigest": {
+          "type": "string"
+        },
+        "serviceId": {
+          "type": "string"
+        },
+        "serviceRevision": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol",
+        "serviceId",
+        "serviceRevision",
+        "schemaDigest",
+        "collectedAt",
+        "continuity",
+        "changes",
+        "nextCursor",
+        "hasMore"
+      ],
+      "type": "object"
+    },
+    "RuntimeObservationGapReason": {
+      "enum": [
+        "invalid_cursor",
+        "service_revision_changed",
+        "schema_changed",
+        "retention_lost"
       ],
       "type": "string"
     },
@@ -76,45 +258,39 @@
   },
   "$id": "https://contracts.lenso.local/system-plane/lenso.system-plane.runtime-observability.v1.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "additionalProperties": false,
-  "properties": {
-    "observedAt": {
-      "type": "string"
-    },
-    "protocol": {
-      "const": "lenso.system-plane.runtime-observability.v1"
-    },
-    "queues": {
-      "items": {
-        "$ref": "#/$defs/RuntimeQueueSummary"
+  "oneOf": [
+    {
+      "properties": {
+        "document": {
+          "$ref": "#/$defs/RuntimeObservabilitySnapshot"
+        },
+        "kind": {
+          "const": "snapshot",
+          "type": "string"
+        }
       },
-      "type": "array"
+      "required": [
+        "kind",
+        "document"
+      ],
+      "type": "object"
     },
-    "serviceId": {
-      "minLength": 1,
-      "type": "string"
-    },
-    "serviceRevision": {
-      "minLength": 1,
-      "type": "string"
-    },
-    "snapshotRevision": {
-      "minLength": 1,
-      "type": "string"
-    },
-    "status": {
-      "$ref": "#/$defs/RuntimeObservabilityStatus"
+    {
+      "properties": {
+        "document": {
+          "$ref": "#/$defs/RuntimeObservationFeed"
+        },
+        "kind": {
+          "const": "feed",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "document"
+      ],
+      "type": "object"
     }
-  },
-  "required": [
-    "protocol",
-    "serviceId",
-    "serviceRevision",
-    "snapshotRevision",
-    "observedAt",
-    "status",
-    "queues"
   ],
-  "title": "Lenso Runtime Observability Snapshot",
-  "type": "object"
+  "title": "Lenso Runtime Observability Messages"
 }

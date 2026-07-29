@@ -2571,6 +2571,7 @@ name = "lenso-platform-runtime-observability"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "base64",
  "chrono",
  "http",
  "http-body-util",
@@ -2580,6 +2581,7 @@ dependencies = [
  "lenso-platform-system-plane",
  "lenso-platform-testing",
  "lenso-service",
+ "serde",
  "serde_json",
  "sha2 0.11.0",
  "sqlx",
