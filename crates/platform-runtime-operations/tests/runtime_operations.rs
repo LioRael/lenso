@@ -32,7 +32,11 @@ fn advertisement_binds_exact_runtime_operations_contract_and_features() {
     );
     assert_eq!(
         advertisement.feature_ids.into_iter().collect::<Vec<_>>(),
-        vec!["function-run-retry", "operation-evidence"]
+        vec![
+            "function-run-retry",
+            "operation-evidence",
+            "outbox-event-retry"
+        ]
     );
 }
 
@@ -61,6 +65,21 @@ async fn retry_flow_is_revision_bound_durable_idempotent_and_evidence_backed() {
     .execute(&db.pool)
     .await
     .unwrap();
+    sqlx::query(
+        r#"
+        insert into platform.outbox (
+            id, event_name, event_version, source_module, aggregate_type,
+            aggregate_id, correlation_id, occurred_at, payload, status,
+            attempts, max_attempts
+        ) values (
+            'event-1', 'tickets.notified.v1', 1, 'tickets', 'ticket',
+            'ticket-1', 'story-1', now(), '{}', 'dead', 3, 3
+        )
+        "#,
+    )
+    .execute(&db.pool)
+    .await
+    .unwrap();
     let provider = RuntimeOperationsProvider::new(
         db.pool.clone(),
         "support",
@@ -69,17 +88,22 @@ async fn retry_flow_is_revision_bound_durable_idempotent_and_evidence_backed() {
     .with_authority_verifier(Arc::new(
         SystemSandboxManagementAuthorityVerifier::new("test").unwrap(),
     ));
-    let snapshot = provider.target_snapshot("run-1", 1_000).await.unwrap();
+    let function_target = RuntimeOperationTarget {
+        kind: RuntimeOperationTargetKind::FunctionRun,
+        target_id: "run-1".to_owned(),
+    };
+    let snapshot = provider
+        .target_snapshot(&function_target, 1_000)
+        .await
+        .unwrap();
     assert_eq!(snapshot.status, RuntimeOperationTargetStatus::Dead);
+    assert_eq!(snapshot.target_name, "tickets.notify");
     let intent = ManagementIntent {
         protocol: RUNTIME_OPERATIONS_PROTOCOL.to_owned(),
         intent_id: "intent:retry-run-1".to_owned(),
         service_id: "support".to_owned(),
         service_revision: "release:sha256:0123456789abcdef".to_owned(),
-        target: RuntimeOperationTarget {
-            kind: RuntimeOperationTargetKind::FunctionRun,
-            target_id: "run-1".to_owned(),
-        },
+        target: function_target,
         desired_outcome: RuntimeOperationDesiredOutcome::Retry,
         expected_target_revision: snapshot.target_revision,
         actor: ManagementActor {
@@ -138,7 +162,7 @@ async fn retry_flow_is_revision_bound_durable_idempotent_and_evidence_backed() {
         1
     );
 
-    let mut conflicting = submission;
+    let mut conflicting = submission.clone();
     conflicting.intent.actor.subject = "operator:other".to_owned();
     conflicting.plan.intent_digest =
         lenso_service::system_plane::management_intent_digest(&conflicting.intent);
@@ -150,6 +174,50 @@ async fn retry_flow_is_revision_bound_durable_idempotent_and_evidence_backed() {
             .unwrap_err()
             .code,
         RuntimeOperationsErrorCode::IdempotencyConflict
+    );
+
+    let outbox_target = RuntimeOperationTarget {
+        kind: RuntimeOperationTargetKind::OutboxEvent,
+        target_id: "event-1".to_owned(),
+    };
+    let snapshot = provider
+        .target_snapshot(&outbox_target, 4_000)
+        .await
+        .unwrap();
+    assert_eq!(snapshot.status, RuntimeOperationTargetStatus::Dead);
+    assert_eq!(snapshot.target_name, "tickets.notified.v1");
+    let mut outbox_intent = submission.intent;
+    outbox_intent.intent_id = "intent:retry-event-1".to_owned();
+    outbox_intent.target = outbox_target;
+    outbox_intent.expected_target_revision = snapshot.target_revision;
+    outbox_intent.idempotency_key = "retry-event-1".to_owned();
+    let outbox_plan = provider.plan(&outbox_intent, 4_100).await.unwrap();
+    assert_eq!(
+        outbox_plan.expected_effects,
+        ["schedule the exact Outbox Event for one additional runtime attempt"]
+    );
+    let outbox_acknowledgement = provider
+        .submit(
+            &RuntimeOperationSubmission {
+                intent: outbox_intent,
+                plan: outbox_plan,
+            },
+            &caller,
+            4_200,
+        )
+        .await
+        .unwrap();
+    let outbox_evidence = provider
+        .evidence(&outbox_acknowledgement.operation_id)
+        .await
+        .unwrap();
+    assert_eq!(outbox_evidence.code, "outbox_event_retry_scheduled");
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("select status from platform.outbox where id = 'event-1'")
+            .fetch_one(&db.pool)
+            .await
+            .unwrap(),
+        "pending"
     );
 
     db.cleanup().await;

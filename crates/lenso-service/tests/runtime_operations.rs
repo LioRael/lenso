@@ -3,7 +3,8 @@ use lenso_service::system_plane::{
     RUNTIME_OPERATIONS_PROTOCOL, RuntimeOperationAvailabilityImpact,
     RuntimeOperationCompensationSupport, RuntimeOperationDesiredOutcome,
     RuntimeOperationPlanReceipt, RuntimeOperationRisk, RuntimeOperationTarget,
-    RuntimeOperationTargetKind, management_intent_digest, runtime_operation_plan_digest,
+    RuntimeOperationTargetKind, RuntimeOperationTargetSnapshot, RuntimeOperationTargetStatus,
+    RuntimeOperationsMessage, management_intent_digest, runtime_operation_plan_digest,
     runtime_operations_schema, runtime_operations_schema_digest,
 };
 
@@ -79,7 +80,7 @@ fn intent_and_plan_digests_bind_exact_management_inputs() {
 #[test]
 fn runtime_operations_schema_is_strict_and_digest_addressed() {
     let schema = runtime_operations_schema();
-    assert!(jsonschema::validator_for(&schema).is_ok());
+    let validator = jsonschema::validator_for(&schema).unwrap();
     assert!(
         runtime_operations_schema_digest()
             .strip_prefix("sha256:")
@@ -93,4 +94,23 @@ fn runtime_operations_schema_is_strict_and_digest_addressed() {
         schema["$defs"]["ManagementIntent"]["additionalProperties"],
         false
     );
+    let outbox_snapshot =
+        RuntimeOperationsMessage::TargetSnapshot(RuntimeOperationTargetSnapshot {
+            protocol: RUNTIME_OPERATIONS_PROTOCOL.to_owned(),
+            service_id: "support".to_owned(),
+            service_revision: "release:sha256:0123456789abcdef".to_owned(),
+            target: RuntimeOperationTarget {
+                kind: RuntimeOperationTargetKind::OutboxEvent,
+                target_id: "event-1".to_owned(),
+            },
+            target_revision: digest('d'),
+            observed_at_unix_ms: 10_000,
+            target_name: "tickets.notified.v1".to_owned(),
+            status: RuntimeOperationTargetStatus::Dead,
+            attempts: 3,
+            max_attempts: 3,
+        });
+    validator
+        .validate(&serde_json::to_value(outbox_snapshot).unwrap())
+        .unwrap();
 }

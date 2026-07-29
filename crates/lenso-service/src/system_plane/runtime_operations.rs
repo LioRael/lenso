@@ -7,12 +7,14 @@ use utoipa::ToSchema;
 pub const RUNTIME_OPERATIONS_PROTOCOL: &str = "lenso.system-plane.runtime-operations.v1";
 pub const RUNTIME_OPERATIONS_PATH: &str = "/system-plane/v1/runtime-operations";
 pub const RUNTIME_OPERATIONS_FEATURE_FUNCTION_RETRY: &str = "function-run-retry";
+pub const RUNTIME_OPERATIONS_FEATURE_OUTBOX_RETRY: &str = "outbox-event-retry";
 pub const RUNTIME_OPERATIONS_FEATURE_EVIDENCE: &str = "operation-evidence";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum RuntimeOperationTargetKind {
     FunctionRun,
+    OutboxEvent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, ToSchema)]
@@ -22,6 +24,7 @@ pub enum RuntimeOperationTargetStatus {
     Processing,
     Running,
     Completed,
+    Published,
     Failed,
     Dead,
 }
@@ -55,7 +58,7 @@ pub struct RuntimeOperationTargetSnapshot {
     pub target: RuntimeOperationTarget,
     pub target_revision: String,
     pub observed_at_unix_ms: u64,
-    pub function_name: String,
+    pub target_name: String,
     pub status: RuntimeOperationTargetStatus,
     pub attempts: u32,
     pub max_attempts: u32,

@@ -365,7 +365,8 @@
     },
     "RuntimeOperationTargetKind": {
       "enum": [
-        "function_run"
+        "function_run",
+        "outbox_event"
       ],
       "type": "string"
     },
@@ -376,9 +377,6 @@
           "format": "uint32",
           "minimum": 0,
           "type": "integer"
-        },
-        "functionName": {
-          "type": "string"
         },
         "maxAttempts": {
           "format": "uint32",
@@ -405,6 +403,9 @@
         "target": {
           "$ref": "#/$defs/RuntimeOperationTarget"
         },
+        "targetName": {
+          "type": "string"
+        },
         "targetRevision": {
           "type": "string"
         }
@@ -416,7 +417,7 @@
         "target",
         "targetRevision",
         "observedAtUnixMs",
-        "functionName",
+        "targetName",
         "status",
         "attempts",
         "maxAttempts"
@@ -429,6 +430,7 @@
         "processing",
         "running",
         "completed",
+        "published",
         "failed",
         "dead"
       ],

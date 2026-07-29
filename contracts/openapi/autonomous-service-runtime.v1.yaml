@@ -676,6 +676,51 @@ paths:
                 $ref: '#/components/schemas/SystemPlaneErrorBody'
       security:
       - bearer_auth: []
+  /system-plane/v1/runtime-operations/outbox-events/{id}:
+    get:
+      tags:
+      - system-plane-runtime-operations
+      operationId: get_outbox_event_target
+      parameters:
+      - name: id
+        in: path
+        description: Outbox Event identifier
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeOperationTargetSnapshot'
+        '401':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '403':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '404':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '503':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+      security:
+      - bearer_auth: []
   /system-plane/v1/runtime-operations/plans:
     post:
       tags:
@@ -1432,6 +1477,7 @@ components:
       type: string
       enum:
       - function_run
+      - outbox_event
     RuntimeOperationTargetSnapshot:
       type: object
       required:
@@ -1441,7 +1487,7 @@ components:
       - target
       - targetRevision
       - observedAtUnixMs
-      - functionName
+      - targetName
       - status
       - attempts
       - maxAttempts
@@ -1450,8 +1496,6 @@ components:
           type: integer
           format: int32
           minimum: 0
-        functionName:
-          type: string
         maxAttempts:
           type: integer
           format: int32
@@ -1470,6 +1514,8 @@ components:
           $ref: '#/components/schemas/RuntimeOperationTargetStatus'
         target:
           $ref: '#/components/schemas/RuntimeOperationTarget'
+        targetName:
+          type: string
         targetRevision:
           type: string
       additionalProperties: false
@@ -1480,6 +1526,7 @@ components:
       - processing
       - running
       - completed
+      - published
       - failed
       - dead
     RuntimePhase:

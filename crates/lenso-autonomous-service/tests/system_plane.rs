@@ -152,6 +152,10 @@ fn autonomous_service_openapi_publishes_core_discovery_security() {
         document["paths"]["/system-plane/v1/runtime-operations/function-runs/{id}"]["get"]
             .is_object()
     );
+    assert!(
+        document["paths"]["/system-plane/v1/runtime-operations/outbox-events/{id}"]["get"]
+            .is_object()
+    );
     assert!(document["paths"]["/system-plane/v1/runtime-operations/plans"]["post"].is_object());
     assert!(
         document["paths"]["/system-plane/v1/runtime-operations/operations"]["post"].is_object()
