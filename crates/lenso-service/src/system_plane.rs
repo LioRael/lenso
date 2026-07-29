@@ -6,9 +6,11 @@ use utoipa::ToSchema;
 
 pub mod enrollment;
 pub mod runtime_observability;
+pub mod runtime_operations;
 
 pub use enrollment::*;
 pub use runtime_observability::*;
+pub use runtime_operations::*;
 
 pub const CORE_PROTOCOL: &str = "lenso.system-plane.v1";
 pub const CORE_PATH: &str = "/system-plane/v1";

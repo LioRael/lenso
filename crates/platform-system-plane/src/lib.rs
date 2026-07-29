@@ -365,6 +365,21 @@ pub struct SystemPlaneRejection {
 
 impl SystemPlaneRejection {
     #[must_use]
+    pub fn new(
+        status: StatusCode,
+        code: &'static str,
+        message: impl Into<String>,
+        next_action: &'static str,
+    ) -> Self {
+        Self {
+            status,
+            code,
+            message: message.into(),
+            next_action,
+        }
+    }
+
+    #[must_use]
     pub fn unavailable(
         code: &'static str,
         message: impl Into<String>,

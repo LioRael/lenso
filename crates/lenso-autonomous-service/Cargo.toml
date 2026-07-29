@@ -19,6 +19,7 @@ platform-core.workspace = true
 platform-http.workspace = true
 platform-runtime.workspace = true
 platform-runtime-observability.workspace = true
+platform-runtime-operations.workspace = true
 platform-system-plane.workspace = true
 serde.workspace = true
 serde_json.workspace = true

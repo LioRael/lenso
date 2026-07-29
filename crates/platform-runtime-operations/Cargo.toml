@@ -1,0 +1,37 @@
+[package]
+name = "lenso-platform-runtime-operations"
+version = "0.1.0"
+edition.workspace = true
+license = "MIT"
+description = "Service-owned Runtime Operations System Plane Capability Provider."
+rust-version.workspace = true
+
+[lib]
+name = "platform_runtime_operations"
+path = "src/lib.rs"
+
+[dependencies]
+async-trait.workspace = true
+axum.workspace = true
+chrono.workspace = true
+lenso-service.workspace = true
+platform-core.workspace = true
+platform-system-plane.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+sqlx = { workspace = true, features = ["macros"] }
+utoipa.workspace = true
+utoipa-axum.workspace = true
+
+[dev-dependencies]
+http.workspace = true
+http-body-util = "0.1"
+jsonschema.workspace = true
+platform-runtime.workspace = true
+platform-testing.workspace = true
+tokio.workspace = true
+tower.workspace = true
+
+[lints]
+workspace = true

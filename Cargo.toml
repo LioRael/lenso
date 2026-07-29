@@ -19,6 +19,7 @@ members = [
     "crates/platform-http",
     "crates/platform-runtime",
     "crates/platform-runtime-observability",
+    "crates/platform-runtime-operations",
     "crates/platform-system-plane",
     "crates/platform-testing",
     "modules/story",
@@ -95,6 +96,7 @@ platform-module-remote = { package = "lenso-platform-module-remote", path = "cra
 platform-http = { package = "lenso-platform-http", path = "crates/platform-http", version = "0.1.15" }
 platform-runtime = { package = "lenso-platform-runtime", path = "crates/platform-runtime", version = "0.1.13" }
 platform-runtime-observability = { package = "lenso-platform-runtime-observability", path = "crates/platform-runtime-observability", version = "0.1.0" }
+platform-runtime-operations = { package = "lenso-platform-runtime-operations", path = "crates/platform-runtime-operations", version = "0.1.0" }
 platform-system-plane = { package = "lenso-platform-system-plane", path = "crates/platform-system-plane", version = "0.1.0" }
 platform-testing = { package = "lenso-platform-testing", path = "crates/platform-testing", version = "0.1.12" }
 lenso-bootstrap = { path = "crates/lenso-bootstrap", version = "0.1.26" }

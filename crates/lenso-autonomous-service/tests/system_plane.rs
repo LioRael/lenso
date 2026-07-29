@@ -2,9 +2,10 @@ use axum::{Extension, body::Body};
 use http::{Request, StatusCode, header};
 use http_body_util::BodyExt as _;
 use lenso_autonomous_service::{
-    EnrollmentGrant, RuntimeObservabilityProvider, ServiceRuntimeConfig, ServiceRuntimeState,
-    SystemPlaneAccess, SystemPlaneRegistryBuilder, SystemPlaneRuntime,
-    SystemSandboxEnrollmentAuthorizer, openapi_document, prepare_runtime, service_router,
+    EnrollmentGrant, RuntimeObservabilityProvider, RuntimeOperationsProvider, ServiceRuntimeConfig,
+    ServiceRuntimeState, SystemPlaneAccess, SystemPlaneRegistryBuilder, SystemPlaneRuntime,
+    SystemSandboxEnrollmentAuthorizer, SystemSandboxManagementAuthorityVerifier, openapi_document,
+    prepare_runtime, service_router,
 };
 use lenso_service::{
     AuthenticatedTransportBinding, AutonomousServiceContract, AutonomousServiceStore,
@@ -23,6 +24,39 @@ fn runtime(provider: Arc<SystemSandboxWorkloadIdentityProvider>) -> SystemPlaneR
         "release:sha256:0123456789abcdef",
     )
     .register(RuntimeObservabilityProvider::advertisement())
+    .build()
+    .unwrap();
+    SystemPlaneRuntime::new(
+        registry,
+        SystemPlaneAccess::new(
+            provider,
+            "service:support",
+            Arc::new(
+                SystemSandboxEnrollmentAuthorizer::new(
+                    "test",
+                    EnrollmentGrant::system_sandbox(
+                        "support",
+                        "service:console",
+                        0,
+                        4_000_000_000_000,
+                    ),
+                )
+                .unwrap(),
+            ),
+        ),
+    )
+}
+
+fn runtime_with_operations(
+    provider: Arc<SystemSandboxWorkloadIdentityProvider>,
+) -> SystemPlaneRuntime {
+    let registry = SystemPlaneRegistryBuilder::new(
+        "support",
+        "service:support",
+        "release:sha256:0123456789abcdef",
+    )
+    .register(RuntimeObservabilityProvider::advertisement())
+    .register(RuntimeOperationsProvider::advertisement())
     .build()
     .unwrap();
     SystemPlaneRuntime::new(
@@ -114,6 +148,17 @@ fn autonomous_service_openapi_publishes_core_discovery_security() {
 
     assert!(document["paths"]["/system-plane/v1"]["get"].is_object());
     assert!(document["paths"]["/system-plane/v1/runtime-observability"]["get"].is_object());
+    assert!(
+        document["paths"]["/system-plane/v1/runtime-operations/function-runs/{id}"]["get"]
+            .is_object()
+    );
+    assert!(document["paths"]["/system-plane/v1/runtime-operations/plans"]["post"].is_object());
+    assert!(
+        document["paths"]["/system-plane/v1/runtime-operations/operations"]["post"].is_object()
+    );
+    assert!(
+        document["paths"]["/system-plane/v1/runtime-operations/operations/{id}"]["get"].is_object()
+    );
     assert_eq!(
         document["paths"]["/system-plane/v1"]["get"]["security"][0]["bearer_auth"],
         serde_json::json!([])
@@ -125,7 +170,7 @@ fn autonomous_service_openapi_publishes_core_discovery_security() {
 }
 
 #[tokio::test]
-async fn prepared_autonomous_service_mounts_the_advertised_runtime_observability_provider() {
+async fn prepared_autonomous_service_mounts_advertised_runtime_capability_providers() {
     let Some(db) = TestDatabase::create().await else {
         return;
     };
@@ -133,12 +178,22 @@ async fn prepared_autonomous_service_mounts_the_advertised_runtime_observability
         SystemSandboxWorkloadIdentityProvider::new("test", "prepared-system-plane-secret").unwrap(),
     );
     let config = ServiceRuntimeConfig::new("support", "primary", "support")
-        .with_system_plane(runtime(identity.clone()))
+        .with_system_plane(runtime_with_operations(identity.clone()))
         .with_runtime_observability(RuntimeObservabilityProvider::new(
             db.pool.clone(),
             "support",
             "release:sha256:0123456789abcdef",
-        ));
+        ))
+        .with_runtime_operations(
+            RuntimeOperationsProvider::new(
+                db.pool.clone(),
+                "support",
+                "release:sha256:0123456789abcdef",
+            )
+            .with_authority_verifier(Arc::new(
+                SystemSandboxManagementAuthorityVerifier::new("test").unwrap(),
+            )),
+        );
     let state = prepare_runtime(&service(), &config, db.pool.clone(), &[])
         .await
         .unwrap();
@@ -156,6 +211,7 @@ async fn prepared_autonomous_service_mounts_the_advertised_runtime_observability
         .unwrap();
 
     let response = app
+        .clone()
         .oneshot(
             Request::get("/system-plane/v1/runtime-observability")
                 .header(
@@ -169,6 +225,19 @@ async fn prepared_autonomous_service_mounts_the_advertised_runtime_observability
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
+    let response = app
+        .oneshot(
+            Request::get("/system-plane/v1/runtime-operations/function-runs/missing")
+                .header(
+                    header::AUTHORIZATION,
+                    format!("Bearer {}", credential.token),
+                )
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
     drop(config);
     db.cleanup().await;
 }

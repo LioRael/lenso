@@ -133,6 +133,19 @@ fn committed_runtime_observability_schema_matches_generator() {
 }
 
 #[test]
+fn committed_runtime_operations_schema_matches_generator() {
+    let committed: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/system-plane/lenso.system-plane.runtime-operations.v1.schema.json"
+    ))
+    .expect("committed Runtime Operations schema should parse");
+
+    assert_eq!(
+        committed,
+        generate_contracts::generated_runtime_operations_schema()
+    );
+}
+
+#[test]
 fn committed_system_plane_enrollment_schemas_match_generators() {
     let offer: serde_json::Value = serde_json::from_str(include_str!(
         "../../../contracts/system-plane/lenso.system-plane.enrollment-offer.v1.schema.json"
