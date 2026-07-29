@@ -181,6 +181,23 @@ pub struct RuntimeOperationEvidence {
     pub message: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RuntimeOperationEvidencePage {
+    pub protocol: String,
+    pub operation_id: String,
+    pub items: Vec<RuntimeOperationEvidence>,
+    pub next_cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RuntimeOperationRecovery {
+    pub protocol: String,
+    pub acknowledgement: RuntimeOperationAcknowledgement,
+    pub latest_evidence: RuntimeOperationEvidence,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", content = "document", rename_all = "snake_case")]
 pub enum RuntimeOperationsMessage {
@@ -190,6 +207,8 @@ pub enum RuntimeOperationsMessage {
     Submission(RuntimeOperationSubmission),
     Acknowledgement(RuntimeOperationAcknowledgement),
     Evidence(RuntimeOperationEvidence),
+    EvidencePage(RuntimeOperationEvidencePage),
+    Recovery(RuntimeOperationRecovery),
 }
 
 #[must_use]
@@ -219,6 +238,8 @@ pub fn runtime_operations_schema() -> Value {
         "RuntimeOperationPlanReceipt",
         "RuntimeOperationAcknowledgement",
         "RuntimeOperationEvidence",
+        "RuntimeOperationEvidencePage",
+        "RuntimeOperationRecovery",
     ] {
         schema["$defs"][definition]["properties"]["protocol"] =
             json!({ "const": RUNTIME_OPERATIONS_PROTOCOL });

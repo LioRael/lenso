@@ -138,9 +138,10 @@ async fn retry_flow_is_revision_bound_durable_idempotent_and_evidence_backed() {
         evidence.state,
         lenso_service::system_plane::RuntimeOperationState::Succeeded
     );
+    assert_eq!(evidence.sequence, 2);
     assert_ne!(
-        evidence.target_revision_before,
-        evidence.target_revision_after.unwrap()
+        evidence.target_revision_before.as_str(),
+        evidence.target_revision_after.as_deref().unwrap()
     );
     assert_eq!(
         sqlx::query_scalar::<_, String>(
@@ -161,6 +162,36 @@ async fn retry_flow_is_revision_bound_durable_idempotent_and_evidence_backed() {
         .unwrap(),
         1
     );
+    let first_page = provider
+        .evidence_page(&acknowledgement.operation_id, None, 1)
+        .await
+        .unwrap();
+    assert_eq!(first_page.items.len(), 1);
+    assert_eq!(
+        first_page.items[0].state,
+        lenso_service::system_plane::RuntimeOperationState::Accepted
+    );
+    let cursor = first_page.next_cursor.unwrap();
+    let second_page = provider
+        .evidence_page(&acknowledgement.operation_id, Some(&cursor), 1)
+        .await
+        .unwrap();
+    assert_eq!(second_page.items, [evidence.clone()]);
+    assert!(second_page.next_cursor.is_none());
+    assert_eq!(
+        provider
+            .evidence_page("runtime-operation:other", Some(&cursor), 1)
+            .await
+            .unwrap_err()
+            .code,
+        RuntimeOperationsErrorCode::InvalidEvidenceCursor
+    );
+    let recovery = provider
+        .recover_by_idempotency_key("retry-run-1")
+        .await
+        .unwrap();
+    assert_eq!(recovery.acknowledgement, acknowledgement);
+    assert_eq!(recovery.latest_evidence, evidence);
 
     let mut conflicting = submission.clone();
     conflicting.intent.actor.subject = "operator:other".to_owned();

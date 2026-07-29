@@ -1,18 +1,23 @@
 //! Service-owned Runtime Operations Capability Provider.
 
 use async_trait::async_trait;
-use axum::{Extension, Json, extract::Path, http::StatusCode};
+use axum::{
+    Extension, Json,
+    extract::{Path, Query},
+    http::StatusCode,
+};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Utc};
 use lenso_service::system_plane::{
     ManagementIntent, RUNTIME_OPERATIONS_FEATURE_EVIDENCE,
     RUNTIME_OPERATIONS_FEATURE_FUNCTION_RETRY, RUNTIME_OPERATIONS_FEATURE_OUTBOX_RETRY,
     RUNTIME_OPERATIONS_PATH, RUNTIME_OPERATIONS_PROTOCOL, RuntimeOperationAcknowledgement,
     RuntimeOperationAvailabilityImpact, RuntimeOperationCompensationSupport,
-    RuntimeOperationDesiredOutcome, RuntimeOperationEvidence, RuntimeOperationPlanReceipt,
-    RuntimeOperationRisk, RuntimeOperationState, RuntimeOperationSubmission,
-    RuntimeOperationTarget, RuntimeOperationTargetKind, RuntimeOperationTargetSnapshot,
-    RuntimeOperationTargetStatus, management_intent_digest, runtime_operation_plan_digest,
-    runtime_operations_schema_digest,
+    RuntimeOperationDesiredOutcome, RuntimeOperationEvidence, RuntimeOperationEvidencePage,
+    RuntimeOperationPlanReceipt, RuntimeOperationRecovery, RuntimeOperationRisk,
+    RuntimeOperationState, RuntimeOperationSubmission, RuntimeOperationTarget,
+    RuntimeOperationTargetKind, RuntimeOperationTargetSnapshot, RuntimeOperationTargetStatus,
+    management_intent_digest, runtime_operation_plan_digest, runtime_operations_schema_digest,
 };
 use platform_core::Migration;
 use platform_system_plane::{
@@ -28,6 +33,8 @@ pub const RUNTIME_OPERATIONS_MIGRATIONS: &[Migration] = &[Migration {
     name: "runtime-operations/0001_create_runtime_operations",
     sql: include_str!("../migrations/0001_create_runtime_operations.sql"),
 }];
+const RUNTIME_OPERATION_EVIDENCE_CURSOR_PROTOCOL: &str =
+    "lenso.system-plane.runtime-operation-evidence-cursor.v1";
 
 #[derive(Debug, Clone)]
 pub struct RuntimeOperationsProvider {
@@ -223,14 +230,17 @@ impl RuntimeOperationsProvider {
     ) -> Result<RuntimeOperationEvidence, RuntimeOperationsError> {
         let evidence = sqlx::query_scalar::<_, serde_json::Value>(
             r#"
-            select evidence
-            from platform.system_plane_runtime_operation_evidence
-            where operation_id = $1
-            order by sequence desc
+            select evidence.evidence
+            from platform.system_plane_runtime_operation_evidence evidence
+            join platform.system_plane_runtime_operations operation_record
+              on operation_record.operation_id = evidence.operation_id
+            where evidence.operation_id = $1 and operation_record.service_id = $2
+            order by evidence.sequence desc
             limit 1
             "#,
         )
         .bind(operation_id)
+        .bind(&self.service_id)
         .fetch_optional(&self.pool)
         .await
         .map_err(store_error)?
@@ -241,6 +251,155 @@ impl RuntimeOperationsProvider {
             )
         })?;
         serde_json::from_value(evidence).map_err(serialization_error)
+    }
+
+    pub async fn evidence_page(
+        &self,
+        operation_id: &str,
+        cursor: Option<&str>,
+        limit: u32,
+    ) -> Result<RuntimeOperationEvidencePage, RuntimeOperationsError> {
+        if operation_id.trim().is_empty() || !(1..=100).contains(&limit) {
+            return Err(operation_error(
+                RuntimeOperationsErrorCode::InvalidEvidenceQuery,
+                "Operation Evidence queries require an operation identity and a limit from 1 to 100",
+            ));
+        }
+        self.ensure_operation_exists(operation_id).await?;
+        let after_sequence = if let Some(cursor) = cursor {
+            let cursor = decode_evidence_cursor(cursor)?;
+            if cursor.operation_id != operation_id {
+                return Err(operation_error(
+                    RuntimeOperationsErrorCode::InvalidEvidenceCursor,
+                    "Operation Evidence cursor belongs to a different operation",
+                ));
+            }
+            cursor.after_sequence
+        } else {
+            0
+        };
+        let fetch_limit = i64::from(limit) + 1;
+        let mut rows = sqlx::query_as::<_, (i64, serde_json::Value)>(
+            r#"
+            select evidence.sequence, evidence.evidence
+            from platform.system_plane_runtime_operation_evidence evidence
+            join platform.system_plane_runtime_operations operation_record
+              on operation_record.operation_id = evidence.operation_id
+            where evidence.operation_id = $1 and operation_record.service_id = $2
+              and evidence.sequence > $3
+            order by evidence.sequence asc
+            limit $4
+            "#,
+        )
+        .bind(operation_id)
+        .bind(&self.service_id)
+        .bind(to_i64(after_sequence)?)
+        .bind(fetch_limit)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(store_error)?;
+        if rows.is_empty() && after_sequence == 0 {
+            return Err(operation_error(
+                RuntimeOperationsErrorCode::NotFound,
+                "Runtime Operation evidence was not found",
+            ));
+        }
+        let has_more = rows.len() > limit as usize;
+        rows.truncate(limit as usize);
+        let next_cursor = if has_more {
+            rows.last()
+                .map(|(sequence, _)| {
+                    encode_evidence_cursor(&RuntimeOperationEvidenceCursor {
+                        protocol: RUNTIME_OPERATION_EVIDENCE_CURSOR_PROTOCOL.to_owned(),
+                        operation_id: operation_id.to_owned(),
+                        after_sequence: u64::try_from(*sequence).map_err(|_| {
+                            operation_error(
+                                RuntimeOperationsErrorCode::StoreUnavailable,
+                                "Operation Evidence sequence is invalid in the Service Store",
+                            )
+                        })?,
+                    })
+                })
+                .transpose()?
+        } else {
+            None
+        };
+        let items = rows
+            .into_iter()
+            .map(|(_, evidence)| serde_json::from_value(evidence).map_err(serialization_error))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(RuntimeOperationEvidencePage {
+            protocol: RUNTIME_OPERATIONS_PROTOCOL.to_owned(),
+            operation_id: operation_id.to_owned(),
+            items,
+            next_cursor,
+        })
+    }
+
+    async fn ensure_operation_exists(
+        &self,
+        operation_id: &str,
+    ) -> Result<(), RuntimeOperationsError> {
+        let exists = sqlx::query_scalar::<_, bool>(
+            r#"
+            select exists (
+                select 1
+                from platform.system_plane_runtime_operations
+                where operation_id = $1 and service_id = $2
+            )
+            "#,
+        )
+        .bind(operation_id)
+        .bind(&self.service_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(store_error)?;
+        if exists {
+            Ok(())
+        } else {
+            Err(operation_error(
+                RuntimeOperationsErrorCode::NotFound,
+                "Runtime Operation was not found",
+            ))
+        }
+    }
+
+    pub async fn recover_by_idempotency_key(
+        &self,
+        idempotency_key: &str,
+    ) -> Result<RuntimeOperationRecovery, RuntimeOperationsError> {
+        if idempotency_key.trim().is_empty() {
+            return Err(operation_error(
+                RuntimeOperationsErrorCode::InvalidEvidenceQuery,
+                "Runtime Operation recovery requires an idempotency key",
+            ));
+        }
+        let acknowledgement = sqlx::query_scalar::<_, serde_json::Value>(
+            r#"
+            select acknowledgement
+            from platform.system_plane_runtime_operations
+            where service_id = $1 and idempotency_key = $2
+            "#,
+        )
+        .bind(&self.service_id)
+        .bind(idempotency_key)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(store_error)?
+        .ok_or_else(|| {
+            operation_error(
+                RuntimeOperationsErrorCode::NotFound,
+                "Runtime Operation acknowledgement was not found",
+            )
+        })?;
+        let acknowledgement: RuntimeOperationAcknowledgement =
+            serde_json::from_value(acknowledgement).map_err(serialization_error)?;
+        let latest_evidence = self.evidence(&acknowledgement.operation_id).await?;
+        Ok(RuntimeOperationRecovery {
+            protocol: RUNTIME_OPERATIONS_PROTOCOL.to_owned(),
+            acknowledgement,
+            latest_evidence,
+        })
     }
 
     async fn persist_and_retry(
@@ -345,13 +504,40 @@ impl RuntimeOperationsProvider {
         .execute(&mut *transaction)
         .await
         .map_err(store_error)?;
+        let accepted_evidence = RuntimeOperationEvidence {
+            protocol: RUNTIME_OPERATIONS_PROTOCOL.to_owned(),
+            operation_id: operation_id.clone(),
+            sequence: 1,
+            state: RuntimeOperationState::Accepted,
+            recorded_at_unix_ms: now_unix_ms,
+            service_id: self.service_id.clone(),
+            service_revision: self.service_revision.clone(),
+            target: submission.intent.target.clone(),
+            target_revision_before: before_snapshot.target_revision.clone(),
+            target_revision_after: None,
+            code: "runtime_operation_accepted".to_owned(),
+            message: "Runtime Operation and authorization evidence were durably accepted"
+                .to_owned(),
+        };
+        sqlx::query(
+            r#"
+            insert into platform.system_plane_runtime_operation_evidence (
+                operation_id, sequence, state, evidence
+            ) values ($1, 1, 'accepted', $2)
+            "#,
+        )
+        .bind(&operation_id)
+        .bind(serde_json::to_value(&accepted_evidence).map_err(serialization_error)?)
+        .execute(&mut *transaction)
+        .await
+        .map_err(store_error)?;
         let after = retry_target(&mut transaction, &submission.intent.target).await?;
         let after_snapshot =
             snapshot(&self.service_id, &self.service_revision, after, now_unix_ms)?;
         let evidence = RuntimeOperationEvidence {
             protocol: RUNTIME_OPERATIONS_PROTOCOL.to_owned(),
             operation_id: operation_id.clone(),
-            sequence: 1,
+            sequence: 2,
             state: RuntimeOperationState::Succeeded,
             recorded_at_unix_ms: now_unix_ms,
             service_id: self.service_id.clone(),
@@ -367,7 +553,7 @@ impl RuntimeOperationsProvider {
             r#"
             insert into platform.system_plane_runtime_operation_evidence (
                 operation_id, sequence, state, evidence
-            ) values ($1, 1, 'succeeded', $2)
+            ) values ($1, 2, 'succeeded', $2)
             "#,
         )
         .bind(&operation_id)
@@ -477,6 +663,8 @@ impl ManagementAuthorityVerifier for SystemSandboxManagementAuthorityVerifier {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuntimeOperationsErrorCode {
     InvalidIntent,
+    InvalidEvidenceQuery,
+    InvalidEvidenceCursor,
     NotFound,
     TargetNotRetryable,
     StaleTargetRevision,
@@ -522,6 +710,21 @@ enum RuntimeTargetRow {
     OutboxEvent(OutboxEventRow),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RuntimeOperationEvidenceCursor {
+    protocol: String,
+    operation_id: String,
+    after_sequence: u64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RuntimeOperationEvidenceQuery {
+    cursor: Option<String>,
+    limit: Option<u32>,
+}
+
 #[must_use]
 pub fn router<S>(provider: Option<Arc<RuntimeOperationsProvider>>) -> OpenApiRouter<S>
 where
@@ -533,6 +736,8 @@ where
         .routes(routes!(plan_runtime_operation))
         .routes(routes!(submit_runtime_operation))
         .routes(routes!(get_runtime_operation_evidence))
+        .routes(routes!(get_runtime_operation_evidence_page))
+        .routes(routes!(recover_runtime_operation))
         .layer(Extension(provider))
 }
 
@@ -690,6 +895,69 @@ async fn get_runtime_operation_evidence(
     let provider = require_provider(provider)?;
     require_grant(&caller, &[RUNTIME_OPERATIONS_FEATURE_EVIDENCE])?;
     provider.evidence(&id).await.map(Json).map_err(rejection)
+}
+
+#[utoipa::path(
+    get,
+    path = "/system-plane/v1/runtime-operations/operations/{id}/evidence",
+    params(
+        ("id" = String, Path, description = "Service-owned Runtime Operation identifier"),
+        ("cursor" = Option<String>, Query, description = "Opaque cursor returned by the prior page"),
+        ("limit" = Option<u32>, Query, description = "Evidence records to return, from 1 to 100")
+    ),
+    responses(
+        (status = 200, body = RuntimeOperationEvidencePage),
+        (status = 400, body = SystemPlaneErrorBody, content_type = "application/problem+json"),
+        (status = 401, body = SystemPlaneErrorBody, content_type = "application/problem+json"),
+        (status = 403, body = SystemPlaneErrorBody, content_type = "application/problem+json"),
+        (status = 404, body = SystemPlaneErrorBody, content_type = "application/problem+json"),
+        (status = 503, body = SystemPlaneErrorBody, content_type = "application/problem+json")
+    ),
+    security(("bearer_auth" = [])),
+    tag = "system-plane-runtime-operations"
+)]
+async fn get_runtime_operation_evidence_page(
+    caller: AuthorizedSystemPlaneCaller,
+    Extension(provider): Extension<Option<Arc<RuntimeOperationsProvider>>>,
+    Path(id): Path<String>,
+    Query(query): Query<RuntimeOperationEvidenceQuery>,
+) -> Result<Json<RuntimeOperationEvidencePage>, SystemPlaneRejection> {
+    let provider = require_provider(provider)?;
+    require_grant(&caller, &[RUNTIME_OPERATIONS_FEATURE_EVIDENCE])?;
+    provider
+        .evidence_page(&id, query.cursor.as_deref(), query.limit.unwrap_or(50))
+        .await
+        .map(Json)
+        .map_err(rejection)
+}
+
+#[utoipa::path(
+    get,
+    path = "/system-plane/v1/runtime-operations/operations/by-idempotency-key/{idempotency_key}",
+    params(("idempotency_key" = String, Path, description = "Management Intent idempotency key")),
+    responses(
+        (status = 200, body = RuntimeOperationRecovery),
+        (status = 400, body = SystemPlaneErrorBody, content_type = "application/problem+json"),
+        (status = 401, body = SystemPlaneErrorBody, content_type = "application/problem+json"),
+        (status = 403, body = SystemPlaneErrorBody, content_type = "application/problem+json"),
+        (status = 404, body = SystemPlaneErrorBody, content_type = "application/problem+json"),
+        (status = 503, body = SystemPlaneErrorBody, content_type = "application/problem+json")
+    ),
+    security(("bearer_auth" = [])),
+    tag = "system-plane-runtime-operations"
+)]
+async fn recover_runtime_operation(
+    caller: AuthorizedSystemPlaneCaller,
+    Extension(provider): Extension<Option<Arc<RuntimeOperationsProvider>>>,
+    Path(idempotency_key): Path<String>,
+) -> Result<Json<RuntimeOperationRecovery>, SystemPlaneRejection> {
+    let provider = require_provider(provider)?;
+    require_grant(&caller, &[RUNTIME_OPERATIONS_FEATURE_EVIDENCE])?;
+    provider
+        .recover_by_idempotency_key(&idempotency_key)
+        .await
+        .map(Json)
+        .map_err(rejection)
 }
 
 fn require_provider(
@@ -1089,7 +1357,10 @@ fn ensure_retryable(status: RuntimeOperationTargetStatus) -> Result<(), RuntimeO
 
 fn rejection(error: RuntimeOperationsError) -> SystemPlaneRejection {
     let (status, code, next_action) = match error.code {
-        RuntimeOperationsErrorCode::InvalidIntent | RuntimeOperationsErrorCode::PlanMismatch => (
+        RuntimeOperationsErrorCode::InvalidIntent
+        | RuntimeOperationsErrorCode::InvalidEvidenceQuery
+        | RuntimeOperationsErrorCode::InvalidEvidenceCursor
+        | RuntimeOperationsErrorCode::PlanMismatch => (
             StatusCode::BAD_REQUEST,
             "runtime_operation_invalid_request",
             "rebuild_runtime_operation_plan",
@@ -1161,6 +1432,42 @@ fn canonical_digest(value: &str) -> bool {
 fn digest_json<T: Serialize>(value: &T) -> String {
     let bytes = serde_json::to_vec(value).expect("Runtime Operations value serializes");
     format!("sha256:{}", hex(&Sha256::digest(bytes)))
+}
+
+fn encode_evidence_cursor(
+    cursor: &RuntimeOperationEvidenceCursor,
+) -> Result<String, RuntimeOperationsError> {
+    serde_json::to_vec(cursor)
+        .map(|bytes| URL_SAFE_NO_PAD.encode(bytes))
+        .map_err(serialization_error)
+}
+
+fn decode_evidence_cursor(
+    encoded: &str,
+) -> Result<RuntimeOperationEvidenceCursor, RuntimeOperationsError> {
+    if encoded.is_empty() || encoded.len() > 4096 {
+        return Err(invalid_evidence_cursor());
+    }
+    let bytes = URL_SAFE_NO_PAD
+        .decode(encoded)
+        .map_err(|_| invalid_evidence_cursor())?;
+    let cursor: RuntimeOperationEvidenceCursor =
+        serde_json::from_slice(&bytes).map_err(|_| invalid_evidence_cursor())?;
+    if cursor.protocol != RUNTIME_OPERATION_EVIDENCE_CURSOR_PROTOCOL
+        || cursor.operation_id.trim().is_empty()
+        || cursor.after_sequence == 0
+        || cursor.after_sequence > i64::MAX as u64
+    {
+        return Err(invalid_evidence_cursor());
+    }
+    Ok(cursor)
+}
+
+fn invalid_evidence_cursor() -> RuntimeOperationsError {
+    operation_error(
+        RuntimeOperationsErrorCode::InvalidEvidenceCursor,
+        "Operation Evidence cursor is invalid",
+    )
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -1245,6 +1552,32 @@ mod tests {
                 .unwrap_err()
                 .code,
             RuntimeOperationsErrorCode::StoreUnavailable
+        );
+    }
+
+    #[test]
+    fn evidence_cursor_is_opaque_scoped_and_strict() {
+        let cursor = RuntimeOperationEvidenceCursor {
+            protocol: RUNTIME_OPERATION_EVIDENCE_CURSOR_PROTOCOL.to_owned(),
+            operation_id: "runtime-operation:01".to_owned(),
+            after_sequence: 2,
+        };
+        let encoded = encode_evidence_cursor(&cursor).unwrap();
+        assert_eq!(decode_evidence_cursor(&encoded).unwrap(), cursor);
+        assert_eq!(
+            decode_evidence_cursor("not-a-cursor").unwrap_err().code,
+            RuntimeOperationsErrorCode::InvalidEvidenceCursor
+        );
+
+        let invalid = RuntimeOperationEvidenceCursor {
+            protocol: "wrong".to_owned(),
+            ..cursor
+        };
+        assert_eq!(
+            decode_evidence_cursor(&encode_evidence_cursor(&invalid).unwrap())
+                .unwrap_err()
+                .code,
+            RuntimeOperationsErrorCode::InvalidEvidenceCursor
         );
     }
 }

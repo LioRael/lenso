@@ -163,6 +163,16 @@ fn autonomous_service_openapi_publishes_core_discovery_security() {
     assert!(
         document["paths"]["/system-plane/v1/runtime-operations/operations/{id}"]["get"].is_object()
     );
+    assert!(
+        document["paths"]["/system-plane/v1/runtime-operations/operations/{id}/evidence"]["get"]
+            .is_object()
+    );
+    assert!(
+        document["paths"]
+            ["/system-plane/v1/runtime-operations/operations/by-idempotency-key/{idempotency_key}"]
+            ["get"]
+            .is_object()
+    );
     assert_eq!(
         document["paths"]["/system-plane/v1"]["get"]["security"][0]["bearer_auth"],
         serde_json::json!([])

@@ -114,8 +114,11 @@ transport, Workload Identity, and active Enrollment Grant seam. Discovery and
 snapshot reads are excluded from Service Story writes. Mutations additionally
 require deployment-owned management-authority verification and persist the
 accepted operation, authorization evidence, and acknowledgement before applying
-the effect; Console resolves lost responses through the idempotency key and
-Service-owned terminal evidence instead of blind replay. The compatibility
+the effect. Each accepted operation appends accepted and terminal evidence to a
+Service-owned sequence; callers can page that sequence through opaque,
+operation-scoped cursors and recover the original acknowledgement plus latest
+evidence by idempotency key. Console therefore resolves lost responses from
+authoritative state instead of blind replay. The compatibility
 `/admin/runtime/*` backend remains separate while its behaviors are extracted
 into authority-owned Capability Providers.
 Its Story evidence is exposed as an authenticated

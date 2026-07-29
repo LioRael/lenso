@@ -631,6 +631,57 @@ paths:
                 $ref: '#/components/schemas/SystemPlaneErrorBody'
       security:
       - bearer_auth: []
+  /system-plane/v1/runtime-operations/operations/by-idempotency-key/{idempotency_key}:
+    get:
+      tags:
+      - system-plane-runtime-operations
+      operationId: recover_runtime_operation
+      parameters:
+      - name: idempotency_key
+        in: path
+        description: Management Intent idempotency key
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeOperationRecovery'
+        '400':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '401':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '403':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '404':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '503':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+      security:
+      - bearer_auth: []
   /system-plane/v1/runtime-operations/operations/{id}:
     get:
       tags:
@@ -650,6 +701,71 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RuntimeOperationEvidence'
+        '401':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '403':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '404':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '503':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+      security:
+      - bearer_auth: []
+  /system-plane/v1/runtime-operations/operations/{id}/evidence:
+    get:
+      tags:
+      - system-plane-runtime-operations
+      operationId: get_runtime_operation_evidence_page
+      parameters:
+      - name: id
+        in: path
+        description: Service-owned Runtime Operation identifier
+        required: true
+        schema:
+          type: string
+      - name: cursor
+        in: query
+        description: Opaque cursor returned by the prior page
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: Evidence records to return, from 1 to 100
+        required: false
+        schema:
+          type: integer
+          format: int32
+          minimum: 0
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeOperationEvidencePage'
+        '400':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
         '401':
           description: ''
           content:
@@ -1389,6 +1505,26 @@ components:
         targetRevisionBefore:
           type: string
       additionalProperties: false
+    RuntimeOperationEvidencePage:
+      type: object
+      required:
+      - protocol
+      - operationId
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuntimeOperationEvidence'
+        nextCursor:
+          type:
+          - string
+          - 'null'
+        operationId:
+          type: string
+        protocol:
+          type: string
+      additionalProperties: false
     RuntimeOperationPlanReceipt:
       type: object
       required:
@@ -1438,6 +1574,20 @@ components:
           type: string
         target:
           $ref: '#/components/schemas/RuntimeOperationTarget'
+      additionalProperties: false
+    RuntimeOperationRecovery:
+      type: object
+      required:
+      - protocol
+      - acknowledgement
+      - latestEvidence
+      properties:
+        acknowledgement:
+          $ref: '#/components/schemas/RuntimeOperationAcknowledgement'
+        latestEvidence:
+          $ref: '#/components/schemas/RuntimeOperationEvidence'
+        protocol:
+          type: string
       additionalProperties: false
     RuntimeOperationRisk:
       type: string

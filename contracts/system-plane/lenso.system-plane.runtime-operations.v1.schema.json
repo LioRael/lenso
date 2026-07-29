@@ -244,6 +244,35 @@
       ],
       "type": "object"
     },
+    "RuntimeOperationEvidencePage": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/RuntimeOperationEvidence"
+          },
+          "type": "array"
+        },
+        "nextCursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "operationId": {
+          "type": "string"
+        },
+        "protocol": {
+          "const": "lenso.system-plane.runtime-operations.v1"
+        }
+      },
+      "required": [
+        "protocol",
+        "operationId",
+        "items"
+      ],
+      "type": "object"
+    },
     "RuntimeOperationPlanReceipt": {
       "additionalProperties": false,
       "properties": {
@@ -312,6 +341,26 @@
         "compensationSupport",
         "approvalRequired",
         "expiresAtUnixMs"
+      ],
+      "type": "object"
+    },
+    "RuntimeOperationRecovery": {
+      "additionalProperties": false,
+      "properties": {
+        "acknowledgement": {
+          "$ref": "#/$defs/RuntimeOperationAcknowledgement"
+        },
+        "latestEvidence": {
+          "$ref": "#/$defs/RuntimeOperationEvidence"
+        },
+        "protocol": {
+          "const": "lenso.system-plane.runtime-operations.v1"
+        }
+      },
+      "required": [
+        "protocol",
+        "acknowledgement",
+        "latestEvidence"
       ],
       "type": "object"
     },
@@ -527,6 +576,38 @@
         },
         "kind": {
           "const": "evidence",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "document"
+      ],
+      "type": "object"
+    },
+    {
+      "properties": {
+        "document": {
+          "$ref": "#/$defs/RuntimeOperationEvidencePage"
+        },
+        "kind": {
+          "const": "evidence_page",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "document"
+      ],
+      "type": "object"
+    },
+    {
+      "properties": {
+        "document": {
+          "$ref": "#/$defs/RuntimeOperationRecovery"
+        },
+        "kind": {
+          "const": "recovery",
           "type": "string"
         }
       },
