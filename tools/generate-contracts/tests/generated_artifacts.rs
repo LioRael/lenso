@@ -107,6 +107,19 @@ fn committed_system_v2_artifacts_match_generator() {
 }
 
 #[test]
+fn committed_system_plane_core_schema_matches_generator() {
+    let committed: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/system-plane/lenso.system-plane.v1.schema.json"
+    ))
+    .expect("committed System Plane Core schema should parse");
+
+    assert_eq!(
+        committed,
+        generate_contracts::generated_system_plane_core_schema()
+    );
+}
+
+#[test]
 fn committed_production_delivery_artifacts_match_generators() {
     let release_schema: serde_json::Value = serde_json::from_str(include_str!(
         "../../../contracts/delivery/lenso.service-release.v1.schema.json"
