@@ -238,7 +238,14 @@ async fn prepared_autonomous_service_mounts_advertised_runtime_capability_provid
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::OK);
+    let status = response.status();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "unexpected Runtime Observability response: {}",
+        String::from_utf8_lossy(&body)
+    );
     let response = app
         .oneshot(
             Request::get("/system-plane/v1/runtime-operations/function-runs/missing")

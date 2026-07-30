@@ -191,8 +191,10 @@ async fn capability_route_uses_the_same_enrollment_and_workload_identity_seam_as
         registry,
         SystemPlaneAccess::new(identity.clone(), "service:support", enrollment),
     ));
-    let app = platform_system_plane::router::<()>(Some(system_plane))
+    let system_plane = Some(system_plane);
+    let app = platform_system_plane::router::<()>(system_plane.clone())
         .merge(router(Some(provider)))
+        .layer(Extension(system_plane))
         .split_for_parts()
         .0
         .layer(Extension(AuthenticatedTransportBinding::new(

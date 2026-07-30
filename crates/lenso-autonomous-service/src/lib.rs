@@ -31,7 +31,7 @@ pub use workflow_child::*;
 pub use workflow_compensation::*;
 
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{Request, State},
     http::StatusCode,
     middleware::{self, Next},
@@ -1107,13 +1107,15 @@ pub fn service_router(
     let system_plane = state.system_plane.clone();
     let runtime_observability = state.runtime_observability.clone();
     let runtime_operations = state.runtime_operations.clone();
-    OpenApiRouter::with_openapi(ServiceRuntimeApi::openapi())
-        .merge(runtime_router())
-        .merge(platform_system_plane::router(system_plane))
+    let system_plane_routes = platform_system_plane::router(system_plane.clone())
         .merge(platform_runtime_observability::router(
             runtime_observability,
         ))
         .merge(platform_runtime_operations::router(runtime_operations))
+        .layer(Extension(system_plane));
+    OpenApiRouter::with_openapi(ServiceRuntimeApi::openapi())
+        .merge(runtime_router())
+        .merge(system_plane_routes)
         .merge(business)
         .layer(middleware::from_fn_with_state(
             state.clone(),
