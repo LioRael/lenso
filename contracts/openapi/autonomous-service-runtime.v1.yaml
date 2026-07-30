@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Lenso Autonomous Service Runtime API
-  description: Service-owned health, Reliability Reports, authenticated Story Segment Feed, and Durable Workflow surfaces
+  description: Service-owned health, Reliability Reports, authenticated System Plane discovery and Story Segment Feed, and Durable Workflow surfaces
   license:
     name: MIT
     identifier: MIT
@@ -472,6 +472,467 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /system-plane/v1:
+    get:
+      tags:
+      - system-plane
+      operationId: discover_core
+      responses:
+        '200':
+          description: Authenticated System Plane Core document
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoreDocument'
+        '401':
+          description: Workload Identity or transport binding was not accepted
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '403':
+          description: Caller is not the enrolled Console Service Principal
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '503':
+          description: System Plane access is not configured
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+      security:
+      - bearer_auth: []
+  /system-plane/v1/runtime-observability:
+    get:
+      tags:
+      - system-plane-runtime-observability
+      operationId: runtime_observability_snapshot
+      responses:
+        '200':
+          description: Revisioned runtime queue snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeObservabilitySnapshot'
+        '401':
+          description: Workload Identity or transport binding was not accepted
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '403':
+          description: Caller has no active enrollment grant
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '503':
+          description: Runtime observation is unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+      security:
+      - bearer_auth: []
+  /system-plane/v1/runtime-observability/changes:
+    get:
+      tags:
+      - system-plane-runtime-observability
+      operationId: runtime_observability_feed
+      parameters:
+      - name: cursor
+        in: query
+        description: Opaque cursor returned by a snapshot or prior feed page
+        required: true
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          minimum: 0
+      responses:
+        '200':
+          description: Runtime observation changes or an explicit Evidence Gap
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeObservationFeed'
+        '401':
+          description: Workload Identity or transport binding was not accepted
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '403':
+          description: Caller has no active enrollment grant
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '503':
+          description: Runtime observation is unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+      security:
+      - bearer_auth: []
+  /system-plane/v1/runtime-operations/function-runs/{id}:
+    get:
+      tags:
+      - system-plane-runtime-operations
+      operationId: get_function_run_target
+      parameters:
+      - name: id
+        in: path
+        description: Function Run identifier
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeOperationTargetSnapshot'
+        '401':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '403':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '404':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '503':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+      security:
+      - bearer_auth: []
+  /system-plane/v1/runtime-operations/operations:
+    post:
+      tags:
+      - system-plane-runtime-operations
+      operationId: submit_runtime_operation
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuntimeOperationSubmission'
+        required: true
+      responses:
+        '202':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeOperationAcknowledgement'
+        '400':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '401':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '403':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '409':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '503':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+      security:
+      - bearer_auth: []
+  /system-plane/v1/runtime-operations/operations/by-idempotency-key/{idempotency_key}:
+    get:
+      tags:
+      - system-plane-runtime-operations
+      operationId: recover_runtime_operation
+      parameters:
+      - name: idempotency_key
+        in: path
+        description: Management Intent idempotency key
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeOperationRecovery'
+        '400':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '401':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '403':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '404':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '503':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+      security:
+      - bearer_auth: []
+  /system-plane/v1/runtime-operations/operations/{id}:
+    get:
+      tags:
+      - system-plane-runtime-operations
+      operationId: get_runtime_operation_evidence
+      parameters:
+      - name: id
+        in: path
+        description: Service-owned Runtime Operation identifier
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeOperationEvidence'
+        '401':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '403':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '404':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '503':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+      security:
+      - bearer_auth: []
+  /system-plane/v1/runtime-operations/operations/{id}/evidence:
+    get:
+      tags:
+      - system-plane-runtime-operations
+      operationId: get_runtime_operation_evidence_page
+      parameters:
+      - name: id
+        in: path
+        description: Service-owned Runtime Operation identifier
+        required: true
+        schema:
+          type: string
+      - name: cursor
+        in: query
+        description: Opaque cursor returned by the prior page
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: Evidence records to return, from 1 to 100
+        required: false
+        schema:
+          type: integer
+          format: int32
+          minimum: 0
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeOperationEvidencePage'
+        '400':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '401':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '403':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '404':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '503':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+      security:
+      - bearer_auth: []
+  /system-plane/v1/runtime-operations/outbox-events/{id}:
+    get:
+      tags:
+      - system-plane-runtime-operations
+      operationId: get_outbox_event_target
+      parameters:
+      - name: id
+        in: path
+        description: Outbox Event identifier
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeOperationTargetSnapshot'
+        '401':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '403':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '404':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '503':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+      security:
+      - bearer_auth: []
+  /system-plane/v1/runtime-operations/plans:
+    post:
+      tags:
+      - system-plane-runtime-operations
+      operationId: plan_runtime_operation
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ManagementIntent'
+        required: true
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeOperationPlanReceipt'
+        '400':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '401':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '403':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '409':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '503':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+      security:
+      - bearer_auth: []
 components:
   schemas:
     ActiveDegradedMode:
@@ -489,6 +950,57 @@ components:
             type: string
         mode:
           type: string
+    CapabilityAdvertisement:
+      type: object
+      required:
+      - contractId
+      - majorVersion
+      - schemaDigest
+      - endpoint
+      properties:
+        contractId:
+          type: string
+          pattern: ^lenso\.system-plane\.[a-z0-9]+(?:[.-][a-z0-9]+)*\.v[1-9][0-9]*$
+        endpoint:
+          type: string
+          pattern: ^/system-plane/v1/[a-z0-9]+(?:[/-][a-z0-9]+)*$
+        featureIds:
+          type: array
+          items:
+            type: string
+          uniqueItems: true
+        majorVersion:
+          type: integer
+          format: int32
+          minimum: 1
+        schemaDigest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+      additionalProperties: false
+    CoreDocument:
+      type: object
+      required:
+      - protocol
+      - serviceId
+      - servicePrincipal
+      - serviceRevision
+      properties:
+        capabilities:
+          type: array
+          items:
+            $ref: '#/components/schemas/CapabilityAdvertisement'
+        protocol:
+          type: string
+        serviceId:
+          type: string
+          minLength: 1
+        servicePrincipal:
+          type: string
+          minLength: 1
+        serviceRevision:
+          type: string
+          minLength: 1
+      additionalProperties: false
     EffectiveReliabilityValues:
       type: object
       required:
@@ -583,6 +1095,84 @@ components:
           type: string
         type:
           type: string
+    ManagementActor:
+      type: object
+      required:
+      - kind
+      - subject
+      - delegatedAuthorityDigest
+      properties:
+        delegatedAuthorityDigest:
+          type: string
+        kind:
+          $ref: '#/components/schemas/ManagementActorKind'
+        subject:
+          type: string
+      additionalProperties: false
+    ManagementActorKind:
+      type: string
+      enum:
+      - operator
+      - automation
+    ManagementApproval:
+      type: object
+      required:
+      - approvalId
+      - approvalDigest
+      properties:
+        approvalDigest:
+          type: string
+        approvalId:
+          type: string
+      additionalProperties: false
+    ManagementIntent:
+      type: object
+      required:
+      - protocol
+      - intentId
+      - serviceId
+      - serviceRevision
+      - target
+      - desiredOutcome
+      - expectedTargetRevision
+      - actor
+      - approvals
+      - deadlineUnixMs
+      - idempotencyKey
+      - capabilityContractId
+      - capabilitySchemaDigest
+      properties:
+        actor:
+          $ref: '#/components/schemas/ManagementActor'
+        approvals:
+          type: array
+          items:
+            $ref: '#/components/schemas/ManagementApproval'
+        capabilityContractId:
+          type: string
+        capabilitySchemaDigest:
+          type: string
+        deadlineUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        desiredOutcome:
+          $ref: '#/components/schemas/RuntimeOperationDesiredOutcome'
+        expectedTargetRevision:
+          type: string
+        idempotencyKey:
+          type: string
+        intentId:
+          type: string
+        protocol:
+          type: string
+        serviceId:
+          type: string
+        serviceRevision:
+          type: string
+        target:
+          $ref: '#/components/schemas/RuntimeOperationTarget'
+      additionalProperties: false
     ProblemErrorDetail:
       type: object
       required:
@@ -829,6 +1419,413 @@ components:
           type: string
         workloadId:
           type: string
+    RuntimeObservabilitySnapshot:
+      type: object
+      required:
+      - protocol
+      - serviceId
+      - serviceRevision
+      - snapshotRevision
+      - schemaDigest
+      - nextCursor
+      - observedAt
+      - status
+      - queues
+      properties:
+        nextCursor:
+          type: string
+          minLength: 1
+        observedAt:
+          type: string
+          format: date-time
+        protocol:
+          type: string
+        queues:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuntimeQueueSummary'
+        schemaDigest:
+          type: string
+          minLength: 1
+        serviceId:
+          type: string
+          minLength: 1
+        serviceRevision:
+          type: string
+          minLength: 1
+        snapshotRevision:
+          type: string
+          minLength: 1
+        status:
+          $ref: '#/components/schemas/RuntimeObservabilityStatus'
+      additionalProperties: false
+    RuntimeObservabilityStatus:
+      type: string
+      enum:
+      - healthy
+      - degraded
+      - failing
+    RuntimeObservationChange:
+      type: object
+      required:
+      - sequence
+      - queue
+      - resourceId
+      - changeKind
+      - recordedAt
+      properties:
+        changeKind:
+          $ref: '#/components/schemas/RuntimeObservationChangeKind'
+        queue:
+          $ref: '#/components/schemas/RuntimeQueueKind'
+        recordedAt:
+          type: string
+          format: date-time
+        resourceId:
+          type: string
+        sequence:
+          type: integer
+          format: int64
+          minimum: 0
+      additionalProperties: false
+    RuntimeObservationChangeKind:
+      type: string
+      enum:
+      - upserted
+      - deleted
+    RuntimeObservationContinuity:
+      type: string
+      enum:
+      - continuous
+      - reset_required
+    RuntimeObservationEvidenceGap:
+      type: object
+      required:
+      - reason
+      - message
+      - requiredAction
+      properties:
+        message:
+          type: string
+        reason:
+          $ref: '#/components/schemas/RuntimeObservationGapReason'
+        requiredAction:
+          type: string
+      additionalProperties: false
+    RuntimeObservationFeed:
+      type: object
+      required:
+      - protocol
+      - serviceId
+      - serviceRevision
+      - schemaDigest
+      - collectedAt
+      - continuity
+      - changes
+      - nextCursor
+      - hasMore
+      properties:
+        changes:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuntimeObservationChange'
+        collectedAt:
+          type: string
+          format: date-time
+        continuity:
+          $ref: '#/components/schemas/RuntimeObservationContinuity'
+        evidenceGap:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/RuntimeObservationEvidenceGap'
+        hasMore:
+          type: boolean
+        nextCursor:
+          type: string
+        protocol:
+          type: string
+        schemaDigest:
+          type: string
+        serviceId:
+          type: string
+        serviceRevision:
+          type: string
+      additionalProperties: false
+    RuntimeObservationGapReason:
+      type: string
+      enum:
+      - invalid_cursor
+      - service_revision_changed
+      - schema_changed
+      - retention_lost
+    RuntimeOperationAcknowledgement:
+      type: object
+      required:
+      - protocol
+      - operationId
+      - idempotencyKey
+      - intentDigest
+      - planDigest
+      - state
+      - acceptedAtUnixMs
+      - authorizationEpoch
+      - enrollmentReceiptDigest
+      properties:
+        acceptedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        authorizationEpoch:
+          type: integer
+          format: int64
+          minimum: 0
+        enrollmentReceiptDigest:
+          type: string
+        idempotencyKey:
+          type: string
+        intentDigest:
+          type: string
+        operationId:
+          type: string
+        planDigest:
+          type: string
+        protocol:
+          type: string
+        state:
+          $ref: '#/components/schemas/RuntimeOperationState'
+      additionalProperties: false
+    RuntimeOperationAvailabilityImpact:
+      type: string
+      enum:
+      - none
+    RuntimeOperationCompensationSupport:
+      type: string
+      enum:
+      - not_available
+    RuntimeOperationDesiredOutcome:
+      type: string
+      enum:
+      - retry
+    RuntimeOperationEvidence:
+      type: object
+      required:
+      - protocol
+      - operationId
+      - sequence
+      - state
+      - recordedAtUnixMs
+      - serviceId
+      - serviceRevision
+      - target
+      - targetRevisionBefore
+      - code
+      - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        operationId:
+          type: string
+        protocol:
+          type: string
+        recordedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        sequence:
+          type: integer
+          format: int64
+          minimum: 0
+        serviceId:
+          type: string
+        serviceRevision:
+          type: string
+        state:
+          $ref: '#/components/schemas/RuntimeOperationState'
+        target:
+          $ref: '#/components/schemas/RuntimeOperationTarget'
+        targetRevisionAfter:
+          type:
+          - string
+          - 'null'
+        targetRevisionBefore:
+          type: string
+      additionalProperties: false
+    RuntimeOperationEvidencePage:
+      type: object
+      required:
+      - protocol
+      - operationId
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuntimeOperationEvidence'
+        nextCursor:
+          type:
+          - string
+          - 'null'
+        operationId:
+          type: string
+        protocol:
+          type: string
+      additionalProperties: false
+    RuntimeOperationPlanReceipt:
+      type: object
+      required:
+      - protocol
+      - intentDigest
+      - planDigest
+      - serviceId
+      - serviceRevision
+      - target
+      - expectedTargetRevision
+      - expectedEffects
+      - risks
+      - availabilityImpact
+      - compensationSupport
+      - approvalRequired
+      - expiresAtUnixMs
+      properties:
+        approvalRequired:
+          type: boolean
+        availabilityImpact:
+          $ref: '#/components/schemas/RuntimeOperationAvailabilityImpact'
+        compensationSupport:
+          $ref: '#/components/schemas/RuntimeOperationCompensationSupport'
+        expectedEffects:
+          type: array
+          items:
+            type: string
+        expectedTargetRevision:
+          type: string
+        expiresAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        intentDigest:
+          type: string
+        planDigest:
+          type: string
+        protocol:
+          type: string
+        risks:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuntimeOperationRisk'
+        serviceId:
+          type: string
+        serviceRevision:
+          type: string
+        target:
+          $ref: '#/components/schemas/RuntimeOperationTarget'
+      additionalProperties: false
+    RuntimeOperationRecovery:
+      type: object
+      required:
+      - protocol
+      - acknowledgement
+      - latestEvidence
+      properties:
+        acknowledgement:
+          $ref: '#/components/schemas/RuntimeOperationAcknowledgement'
+        latestEvidence:
+          $ref: '#/components/schemas/RuntimeOperationEvidence'
+        protocol:
+          type: string
+      additionalProperties: false
+    RuntimeOperationRisk:
+      type: string
+      enum:
+      - duplicate_external_effect
+      - repeated_business_notification
+    RuntimeOperationState:
+      type: string
+      enum:
+      - accepted
+      - succeeded
+      - rejected
+      - failed
+    RuntimeOperationSubmission:
+      type: object
+      required:
+      - intent
+      - plan
+      properties:
+        intent:
+          $ref: '#/components/schemas/ManagementIntent'
+        plan:
+          $ref: '#/components/schemas/RuntimeOperationPlanReceipt'
+      additionalProperties: false
+    RuntimeOperationTarget:
+      type: object
+      required:
+      - kind
+      - targetId
+      properties:
+        kind:
+          $ref: '#/components/schemas/RuntimeOperationTargetKind'
+        targetId:
+          type: string
+      additionalProperties: false
+    RuntimeOperationTargetKind:
+      type: string
+      enum:
+      - function_run
+      - outbox_event
+    RuntimeOperationTargetSnapshot:
+      type: object
+      required:
+      - protocol
+      - serviceId
+      - serviceRevision
+      - target
+      - targetRevision
+      - observedAtUnixMs
+      - targetName
+      - status
+      - attempts
+      - maxAttempts
+      properties:
+        attempts:
+          type: integer
+          format: int32
+          minimum: 0
+        maxAttempts:
+          type: integer
+          format: int32
+          minimum: 0
+        observedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        protocol:
+          type: string
+        serviceId:
+          type: string
+        serviceRevision:
+          type: string
+        status:
+          $ref: '#/components/schemas/RuntimeOperationTargetStatus'
+        target:
+          $ref: '#/components/schemas/RuntimeOperationTarget'
+        targetName:
+          type: string
+        targetRevision:
+          type: string
+      additionalProperties: false
+    RuntimeOperationTargetStatus:
+      type: string
+      enum:
+      - pending
+      - processing
+      - running
+      - completed
+      - published
+      - failed
+      - dead
     RuntimePhase:
       type: string
       enum:
@@ -837,6 +1834,56 @@ components:
       - stopping
       - stopped
       - failed
+    RuntimeQueueKind:
+      type: string
+      enum:
+      - outbox
+      - functions
+    RuntimeQueueSummary:
+      type: object
+      required:
+      - queue
+      - pending
+      - active
+      - completed
+      - failed
+      - dead
+      properties:
+        active:
+          type: integer
+          format: int64
+          minimum: 0
+        completed:
+          type: integer
+          format: int64
+          minimum: 0
+        dead:
+          type: integer
+          format: int64
+          minimum: 0
+        failed:
+          type: integer
+          format: int64
+          minimum: 0
+        oldestFailedAgeSeconds:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        oldestPendingAgeSeconds:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        pending:
+          type: integer
+          format: int64
+          minimum: 0
+        queue:
+          $ref: '#/components/schemas/RuntimeQueueKind'
+      additionalProperties: false
     ServiceEventEvidence:
       type: object
       required:
@@ -1016,6 +2063,21 @@ components:
           type:
           - string
           - 'null'
+    SystemPlaneErrorBody:
+      type: object
+      required:
+      - code
+      - message
+      - nextActions
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        nextActions:
+          type: array
+          items:
+            type: string
     WorkflowChildInspection:
       type: object
       required:

@@ -10,6 +10,18 @@ mod workflow_child;
 mod workflow_compensation;
 
 pub use operations::*;
+pub use platform_runtime_observability::RuntimeObservabilityProvider;
+pub use platform_runtime_operations::{
+    ManagementAuthorityRequest, ManagementAuthorityVerifier, RuntimeOperationsProvider,
+    SystemSandboxManagementAuthorityVerifier, VerifiedManagementAuthority,
+};
+pub use platform_system_plane::{
+    CapabilityNegotiation, CapabilityNegotiationIssue, CapabilityNegotiationIssueCode,
+    CapabilityRequirement, EnrollmentAuthorization, EnrollmentAuthorizer, EnrollmentError,
+    EnrollmentErrorCode, EnrollmentGrant, EnrollmentRecord, NegotiatedCapability,
+    PostgresEnrollmentStore, SystemPlaneAccess, SystemPlaneRegistry, SystemPlaneRegistryBuilder,
+    SystemPlaneRuntime, SystemSandboxEnrollmentAuthorizer,
+};
 pub use reliability::*;
 pub use story_feed::*;
 pub use transport::*;
@@ -19,7 +31,7 @@ pub use workflow_child::*;
 pub use workflow_compensation::*;
 
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{Request, State},
     http::StatusCode,
     middleware::{self, Next},
@@ -56,6 +68,9 @@ pub struct ServiceRuntimeConfig {
     pub workflow_authority_verifier: Option<Arc<dyn WorkflowAuthorityVerifier>>,
     pub story_segment_feed: Option<StorySegmentFeedConfig>,
     pub reliability_observation_source: Option<Arc<dyn ReliabilityObservationSource>>,
+    pub system_plane: Option<Arc<SystemPlaneRuntime>>,
+    pub runtime_observability: Option<Arc<RuntimeObservabilityProvider>>,
+    pub runtime_operations: Option<Arc<RuntimeOperationsProvider>>,
 }
 
 impl PartialEq for ServiceRuntimeConfig {
@@ -83,6 +98,21 @@ impl PartialEq for ServiceRuntimeConfig {
                 (Some(left), Some(right)) => Arc::ptr_eq(left, right),
                 _ => false,
             }
+            && match (&self.system_plane, &other.system_plane) {
+                (None, None) => true,
+                (Some(left), Some(right)) => Arc::ptr_eq(left, right),
+                _ => false,
+            }
+            && match (&self.runtime_observability, &other.runtime_observability) {
+                (None, None) => true,
+                (Some(left), Some(right)) => Arc::ptr_eq(left, right),
+                _ => false,
+            }
+            && match (&self.runtime_operations, &other.runtime_operations) {
+                (None, None) => true,
+                (Some(left), Some(right)) => Arc::ptr_eq(left, right),
+                _ => false,
+            }
     }
 }
 
@@ -105,6 +135,9 @@ impl ServiceRuntimeConfig {
             workflow_authority_verifier: None,
             story_segment_feed: None,
             reliability_observation_source: None,
+            system_plane: None,
+            runtime_observability: None,
+            runtime_operations: None,
         }
     }
 
@@ -120,6 +153,24 @@ impl ServiceRuntimeConfig {
         workflow_definitions: Vec<WorkflowDefinition>,
     ) -> Self {
         self.workflow_definitions = workflow_definitions;
+        self
+    }
+
+    #[must_use]
+    pub fn with_system_plane(mut self, runtime: SystemPlaneRuntime) -> Self {
+        self.system_plane = Some(Arc::new(runtime));
+        self
+    }
+
+    #[must_use]
+    pub fn with_runtime_observability(mut self, provider: RuntimeObservabilityProvider) -> Self {
+        self.runtime_observability = Some(Arc::new(provider));
+        self
+    }
+
+    #[must_use]
+    pub fn with_runtime_operations(mut self, provider: RuntimeOperationsProvider) -> Self {
+        self.runtime_operations = Some(Arc::new(provider));
         self
     }
 
@@ -209,6 +260,8 @@ pub enum RuntimeErrorCode {
     DuplicateWorkflowDefinition,
     WorkflowOwnerNotDeclared,
     InvalidStorySegmentFeedConfiguration,
+    InvalidRuntimeObservabilityConfiguration,
+    InvalidRuntimeOperationsConfiguration,
 }
 
 pub const SERVICE_RUNTIME_MIGRATIONS: &[Migration] = &[
@@ -305,6 +358,9 @@ pub struct ServiceRuntimeState {
     story_segment_feed: Option<Arc<StorySegmentFeedConfig>>,
     reliability_contract: Option<Arc<ReliabilityContract>>,
     reliability_observation_source: Option<Arc<dyn ReliabilityObservationSource>>,
+    system_plane: Option<Arc<SystemPlaneRuntime>>,
+    runtime_observability: Option<Arc<RuntimeObservabilityProvider>>,
+    runtime_operations: Option<Arc<RuntimeOperationsProvider>>,
 }
 
 #[derive(Debug, Clone)]
@@ -347,6 +403,9 @@ impl ServiceRuntimeState {
             story_segment_feed: None,
             reliability_contract: None,
             reliability_observation_source: None,
+            system_plane: None,
+            runtime_observability: None,
+            runtime_operations: None,
         }
     }
 
@@ -419,6 +478,30 @@ impl ServiceRuntimeState {
     ) -> Self {
         self.reliability_contract = contract.map(Arc::new);
         self.reliability_observation_source = observation_source;
+        self
+    }
+
+    #[must_use]
+    pub fn with_system_plane(mut self, runtime: SystemPlaneRuntime) -> Self {
+        self.system_plane = Some(Arc::new(runtime));
+        self
+    }
+
+    fn with_system_plane_runtime(mut self, runtime: Option<Arc<SystemPlaneRuntime>>) -> Self {
+        self.system_plane = runtime;
+        self
+    }
+
+    fn with_runtime_observability(
+        mut self,
+        provider: Option<Arc<RuntimeObservabilityProvider>>,
+    ) -> Self {
+        self.runtime_observability = provider;
+        self
+    }
+
+    fn with_runtime_operations(mut self, provider: Option<Arc<RuntimeOperationsProvider>>) -> Self {
+        self.runtime_operations = provider;
         self
     }
 
@@ -520,7 +603,10 @@ pub async fn prepare_runtime(
     .with_reliability(
         contract.reliability_contract.clone(),
         config.reliability_observation_source.clone(),
-    );
+    )
+    .with_system_plane_runtime(config.system_plane.clone())
+    .with_runtime_observability(config.runtime_observability.clone())
+    .with_runtime_operations(config.runtime_operations.clone());
     if let Err(error) = apply_migrations(&pool, SERVICE_RUNTIME_MIGRATIONS).await {
         state.set_phase(RuntimePhase::Failed);
         return Err(runtime_error(
@@ -547,6 +633,22 @@ pub async fn prepare_runtime(
             ),
         ));
     }
+    if let Err(error) =
+        apply_migrations(&pool, platform_system_plane::SYSTEM_PLANE_MIGRATIONS).await
+    {
+        state.set_phase(RuntimePhase::Failed);
+        return Err(runtime_error(
+            RuntimeErrorCode::MigrationFailed,
+            format!(
+                "Service-owned System Plane migration failed: {}",
+                error.public_message
+            ),
+            format!(
+                "Verify Store `{}` System Plane migration compatibility, then restart Service `{}`.",
+                validated.store_id, validated.service_id
+            ),
+        ));
+    }
     if let Err(error) = apply_migrations(&pool, platform_runtime::RUNTIME_MIGRATIONS).await {
         state.set_phase(RuntimePhase::Failed);
         return Err(runtime_error(
@@ -557,6 +659,44 @@ pub async fn prepare_runtime(
             ),
             format!(
                 "Verify Store `{}` runtime migration compatibility, then restart Service `{}`.",
+                validated.store_id, validated.service_id
+            ),
+        ));
+    }
+    if let Err(error) = apply_migrations(
+        &pool,
+        platform_runtime_observability::RUNTIME_OBSERVABILITY_MIGRATIONS,
+    )
+    .await
+    {
+        state.set_phase(RuntimePhase::Failed);
+        return Err(runtime_error(
+            RuntimeErrorCode::MigrationFailed,
+            format!(
+                "Service-owned Runtime Observability migration failed: {}",
+                error.public_message
+            ),
+            format!(
+                "Verify Store `{}` Runtime Observability migration compatibility, then restart Service `{}`.",
+                validated.store_id, validated.service_id
+            ),
+        ));
+    }
+    if let Err(error) = apply_migrations(
+        &pool,
+        platform_runtime_operations::RUNTIME_OPERATIONS_MIGRATIONS,
+    )
+    .await
+    {
+        state.set_phase(RuntimePhase::Failed);
+        return Err(runtime_error(
+            RuntimeErrorCode::MigrationFailed,
+            format!(
+                "Service-owned Runtime Operations migration failed: {}",
+                error.public_message
+            ),
+            format!(
+                "Verify Store `{}` Runtime Operations migration compatibility, then restart Service `{}`.",
                 validated.store_id, validated.service_id
             ),
         ));
@@ -964,8 +1104,18 @@ pub fn service_router(
     business: OpenApiRouter<ServiceRuntimeState>,
     state: ServiceRuntimeState,
 ) -> Router {
+    let system_plane = state.system_plane.clone();
+    let runtime_observability = state.runtime_observability.clone();
+    let runtime_operations = state.runtime_operations.clone();
+    let system_plane_routes = platform_system_plane::router(system_plane.clone())
+        .merge(platform_runtime_observability::router(
+            runtime_observability,
+        ))
+        .merge(platform_runtime_operations::router(runtime_operations))
+        .layer(Extension(system_plane));
     OpenApiRouter::with_openapi(ServiceRuntimeApi::openapi())
         .merge(runtime_router())
+        .merge(system_plane_routes)
         .merge(business)
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -981,7 +1131,7 @@ pub fn service_router(
     info(
         title = "Lenso Autonomous Service Runtime API",
         version = "1.0.0",
-        description = "Service-owned health, Reliability Reports, authenticated Story Segment Feed, and Durable Workflow surfaces"
+        description = "Service-owned health, Reliability Reports, authenticated System Plane discovery and Story Segment Feed, and Durable Workflow surfaces"
     ),
     components(schemas(
         RuntimeHealth,
@@ -1033,6 +1183,9 @@ fn runtime_router() -> OpenApiRouter<ServiceRuntimeState> {
 pub fn openapi_document() -> utoipa::openapi::OpenApi {
     OpenApiRouter::<ServiceRuntimeState>::with_openapi(ServiceRuntimeApi::openapi())
         .merge(runtime_router())
+        .merge(platform_system_plane::router(None))
+        .merge(platform_runtime_observability::router(None))
+        .merge(platform_runtime_operations::router(None))
         .to_openapi()
 }
 
@@ -1205,6 +1358,7 @@ async fn persist_story_segment(
     if response.status().is_success()
         && !path.starts_with("/health/")
         && !path.starts_with("/runtime/")
+        && !path.starts_with("/system-plane/")
     {
         let now = chrono::Utc::now();
         let segment_id = supplied_segment_id.unwrap_or_else(|| Uuid::now_v7().to_string());
@@ -1296,6 +1450,84 @@ pub fn validate_runtime(
             message,
             "Configure a non-empty audience, retention window, cursor key, and reader policy.",
         ));
+    }
+    if let Some(provider) = &config.runtime_observability {
+        let invalid = provider
+            .validation_error()
+            .or_else(|| {
+                (provider.service_id() != contract.service_id)
+                    .then_some("Runtime Observability provider Service identity does not match the Service definition")
+            })
+            .or_else(|| {
+                config.system_plane.as_ref().and_then(|runtime| {
+                    (provider.service_revision()
+                        != runtime.registry.document().service_revision)
+                        .then_some("Runtime Observability provider Service revision does not match System Plane Core")
+                })
+            })
+            .or_else(|| {
+                config.system_plane.as_ref().and_then(|runtime| {
+                    (!runtime.registry.document().capabilities.contains(
+                        &RuntimeObservabilityProvider::advertisement(),
+                    ))
+                    .then_some("Runtime Observability provider capability is not advertised by System Plane Core")
+                })
+            })
+            .or_else(|| {
+                config.system_plane.is_none().then_some(
+                    "Runtime Observability provider requires System Plane Core configuration",
+                )
+            });
+        if let Some(message) = invalid {
+            return Err(runtime_error(
+                RuntimeErrorCode::InvalidRuntimeObservabilityConfiguration,
+                message,
+                "Align the provider Service identity and revision, then register its exact capability advertisement in System Plane Core.",
+            ));
+        }
+    }
+    if let Some(provider) = &config.runtime_operations {
+        let invalid = provider
+            .validation_error()
+            .or_else(|| {
+                (provider.service_id() != contract.service_id).then_some(
+                    "Runtime Operations provider Service identity does not match the Service definition",
+                )
+            })
+            .or_else(|| {
+                config.system_plane.as_ref().and_then(|runtime| {
+                    (provider.service_revision()
+                        != runtime.registry.document().service_revision)
+                        .then_some(
+                            "Runtime Operations provider Service revision does not match System Plane Core",
+                        )
+                })
+            })
+            .or_else(|| {
+                config.system_plane.as_ref().and_then(|runtime| {
+                    (!runtime
+                        .registry
+                        .document()
+                        .capabilities
+                        .contains(&RuntimeOperationsProvider::advertisement()))
+                    .then_some(
+                        "Runtime Operations provider capability is not advertised by System Plane Core",
+                    )
+                })
+            })
+            .or_else(|| {
+                config
+                    .system_plane
+                    .is_none()
+                    .then_some("Runtime Operations provider requires System Plane Core configuration")
+            });
+        if let Some(message) = invalid {
+            return Err(runtime_error(
+                RuntimeErrorCode::InvalidRuntimeOperationsConfiguration,
+                message,
+                "Align the provider Service identity and revision, then register its exact capability advertisement in System Plane Core.",
+            ));
+        }
     }
 
     let api_workload_id = one_workload(contract, WorkloadRole::API)?;

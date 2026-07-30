@@ -1,6 +1,6 @@
 {
   "schema": "lenso.repository-template.v1",
-  "sourceRevision": "b94fda985b5beba9af449afb32b2d2413caee97c",
+  "sourceRevision": "b024a157be0f723c5ee94b40615ef07de112aebe",
   "files": [
     {
       "path": ".github/workflows/publish.yml",
@@ -12,7 +12,7 @@
     },
     {
       "path": ".lenso-release/runtime/components.yaml",
-      "sha256": "sha256:59258573832efdcbbfdd85d7e340338e0e36bd3c1109782ec6bfa85735cae668"
+      "sha256": "sha256:8442ad5c6eef71d5f41da0a4848279dc1efb5130aadcd529518ac3e4c40235d3"
     },
     {
       "path": ".lenso-release/runtime/lib/config/components.js",
@@ -76,7 +76,7 @@
     },
     {
       "path": ".lenso-release/runtime/manifest.json",
-      "sha256": "sha256:327b30c5b799ccb532295a5d8fc81d4f884e316b2a6ec5f244c1cf8695b2b15a"
+      "sha256": "sha256:b5251bea7e2ae46475e693971b6584d335e0828dce2e6f8f96ceb1b6565325eb"
     },
     {
       "path": ".lenso-release/runtime/node_modules/@clack/core/LICENSE",
@@ -621,14 +621,6 @@
     {
       "path": ".lenso-release/runtime/node_modules/tegami/dist/version-request-DHxFYvna.d.ts",
       "sha256": "sha256:e6d5e81d760dbf7de2eb732747eeb94f2114d18859a35ee7e041ae230df2a793"
-    },
-    {
-      "path": ".lenso-release/runtime/node_modules/tegami/node_modules/.bin/semver",
-      "sha256": "sha256:a6e7a95c9a01c268ea74e58cfb76a7dcedd73d50988dfaad7dc66387d0203721"
-    },
-    {
-      "path": ".lenso-release/runtime/node_modules/tegami/node_modules/.bin/yaml",
-      "sha256": "sha256:e5562f55a8c4def6f4b3f4f9c3a99092bdfe770e1f8d6f1e5bcdaa4585038b68"
     },
     {
       "path": ".lenso-release/runtime/node_modules/tegami/package.json",
@@ -1604,7 +1596,7 @@
     },
     {
       "path": ".lenso-release/shadow.json",
-      "sha256": "sha256:18878ebc72e62a6756522c42f67d2ca4aaa92eae176cc09851831266d22c40c6"
+      "sha256": "sha256:7500452e10ee2cc3d006726ba6a93cf0c37fe6a937926c347819ea74cddc2aa3"
     },
     {
       "path": "scripts/publish-cargo.sh",
@@ -1616,7 +1608,7 @@
     },
     {
       "path": "scripts/release-mode.mjs",
-      "sha256": "sha256:9f3356f3e0ab12cec623a6be97b0a88446a22b78674ae817292b7f680699f3d1"
+      "sha256": "sha256:3e6f403841c2d4cd9b10d37703f66bf847d5a0f9762b5afaf2cc170b2206e950"
     },
     {
       "path": "scripts/release-plan.mjs",

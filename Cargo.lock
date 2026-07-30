@@ -2101,6 +2101,7 @@ dependencies = [
  "lenso-platform-core",
  "lenso-platform-http",
  "lenso-platform-module",
+ "lenso-service",
  "lenso-worker",
  "serde_json",
  "sqlx",
@@ -2158,6 +2159,9 @@ dependencies = [
  "lenso-platform-core",
  "lenso-platform-http",
  "lenso-platform-runtime",
+ "lenso-platform-runtime-observability",
+ "lenso-platform-runtime-operations",
+ "lenso-platform-system-plane",
  "lenso-platform-testing",
  "lenso-service",
  "serde",
@@ -2561,6 +2565,78 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "lenso-platform-runtime-observability"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "base64",
+ "chrono",
+ "http",
+ "http-body-util",
+ "jsonschema",
+ "lenso-platform-core",
+ "lenso-platform-runtime",
+ "lenso-platform-system-plane",
+ "lenso-platform-testing",
+ "lenso-service",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "sqlx",
+ "tokio",
+ "tower",
+ "utoipa",
+ "utoipa-axum",
+]
+
+[[package]]
+name = "lenso-platform-runtime-operations"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "base64",
+ "chrono",
+ "http",
+ "http-body-util",
+ "jsonschema",
+ "lenso-platform-core",
+ "lenso-platform-runtime",
+ "lenso-platform-system-plane",
+ "lenso-platform-testing",
+ "lenso-service",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "sqlx",
+ "tokio",
+ "tower",
+ "utoipa",
+ "utoipa-axum",
+]
+
+[[package]]
+name = "lenso-platform-system-plane"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "http",
+ "http-body-util",
+ "lenso-platform-core",
+ "lenso-platform-testing",
+ "lenso-service",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "thiserror",
+ "tokio",
+ "tower",
+ "utoipa",
+ "utoipa-axum",
 ]
 
 [[package]]

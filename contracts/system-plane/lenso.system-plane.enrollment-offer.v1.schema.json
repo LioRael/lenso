@@ -1,0 +1,142 @@
+{
+  "$defs": {
+    "EnrollmentCapabilityGrant": {
+      "additionalProperties": false,
+      "properties": {
+        "contractId": {
+          "pattern": "^lenso\\.system-plane\\.[a-z0-9]+(?:[.-][a-z0-9]+)*\\.v[1-9][0-9]*$",
+          "type": "string"
+        },
+        "featureIds": {
+          "items": {
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "schemaDigest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "contractId",
+        "schemaDigest",
+        "featureIds"
+      ],
+      "type": "object"
+    },
+    "EnrollmentPolicyGrant": {
+      "additionalProperties": false,
+      "properties": {
+        "policyDigest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "policyId": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "policyRevision": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "policyId",
+        "policyRevision",
+        "policyDigest"
+      ],
+      "type": "object"
+    },
+    "EnrollmentSignature": {
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "$ref": "#/$defs/EnrollmentSignatureAlgorithm"
+        },
+        "keyId": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "subjectDigest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "value": {
+          "pattern": "^[A-Za-z0-9_-]{86}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "algorithm",
+        "keyId",
+        "subjectDigest",
+        "value"
+      ],
+      "type": "object"
+    },
+    "EnrollmentSignatureAlgorithm": {
+      "enum": [
+        "ed25519"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "https://contracts.lenso.local/system-plane/lenso.system-plane.enrollment-offer.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "consoleServicePrincipal": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "expiresAtUnixMs": {
+      "format": "uint64",
+      "minimum": 1,
+      "type": "integer"
+    },
+    "issuedAtUnixMs": {
+      "format": "uint64",
+      "minimum": 1,
+      "type": "integer"
+    },
+    "nonce": {
+      "minLength": 16,
+      "type": "string"
+    },
+    "protocol": {
+      "const": "lenso.system-plane.enrollment-offer.v1"
+    },
+    "requestedCapabilities": {
+      "items": {
+        "$ref": "#/$defs/EnrollmentCapabilityGrant"
+      },
+      "type": "array"
+    },
+    "requestedPolicy": {
+      "$ref": "#/$defs/EnrollmentPolicyGrant"
+    },
+    "signature": {
+      "$ref": "#/$defs/EnrollmentSignature"
+    },
+    "systemId": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "protocol",
+    "systemId",
+    "consoleServicePrincipal",
+    "nonce",
+    "issuedAtUnixMs",
+    "expiresAtUnixMs",
+    "requestedCapabilities",
+    "requestedPolicy",
+    "signature"
+  ],
+  "title": "Lenso System Plane Enrollment Offer",
+  "type": "object"
+}

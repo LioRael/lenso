@@ -107,6 +107,66 @@ fn committed_system_v2_artifacts_match_generator() {
 }
 
 #[test]
+fn committed_system_plane_core_schema_matches_generator() {
+    let committed: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/system-plane/lenso.system-plane.v1.schema.json"
+    ))
+    .expect("committed System Plane Core schema should parse");
+
+    assert_eq!(
+        committed,
+        generate_contracts::generated_system_plane_core_schema()
+    );
+}
+
+#[test]
+fn committed_runtime_observability_schema_matches_generator() {
+    let committed: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/system-plane/lenso.system-plane.runtime-observability.v1.schema.json"
+    ))
+    .expect("committed Runtime Observability schema should parse");
+
+    assert_eq!(
+        committed,
+        generate_contracts::generated_runtime_observability_schema()
+    );
+}
+
+#[test]
+fn committed_runtime_operations_schema_matches_generator() {
+    let committed: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/system-plane/lenso.system-plane.runtime-operations.v1.schema.json"
+    ))
+    .expect("committed Runtime Operations schema should parse");
+
+    assert_eq!(
+        committed,
+        generate_contracts::generated_runtime_operations_schema()
+    );
+}
+
+#[test]
+fn committed_system_plane_enrollment_schemas_match_generators() {
+    let offer: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/system-plane/lenso.system-plane.enrollment-offer.v1.schema.json"
+    ))
+    .expect("committed Enrollment Offer schema should parse");
+    let receipt: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/system-plane/lenso.system-plane.enrollment-receipt.v1.schema.json"
+    ))
+    .expect("committed Enrollment Receipt schema should parse");
+
+    assert_eq!(
+        offer,
+        generate_contracts::generated_enrollment_offer_schema()
+    );
+    assert_eq!(
+        receipt,
+        generate_contracts::generated_enrollment_receipt_schema()
+    );
+}
+
+#[test]
 fn committed_production_delivery_artifacts_match_generators() {
     let release_schema: serde_json::Value = serde_json::from_str(include_str!(
         "../../../contracts/delivery/lenso.service-release.v1.schema.json"
