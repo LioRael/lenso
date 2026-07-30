@@ -4,7 +4,7 @@ use lenso_service::system_plane::{
     EnrollmentOffer, EnrollmentPolicyGrant, EnrollmentReceipt, EnrollmentSignature,
     EnrollmentSignatureAlgorithm, enrollment_offer_digest, enrollment_offer_schema,
     enrollment_receipt_schema, sign_enrollment_offer, sign_enrollment_receipt,
-    verify_enrollment_offer, verify_enrollment_receipt,
+    verify_enrollment_exchange, verify_enrollment_offer, verify_enrollment_receipt,
 };
 use std::collections::BTreeSet;
 
@@ -93,6 +93,15 @@ fn signed_offer_and_receipt_bind_both_service_principals_and_nonce() {
     .unwrap();
     assert_eq!(receipt.protocol, ENROLLMENT_RECEIPT_PROTOCOL);
     assert!(verify_enrollment_receipt(&receipt, &offer, &service_trust, 3_000).is_ok());
+    let exchange =
+        verify_enrollment_exchange(&offer, &receipt, &console_trust, &service_trust, 3_000)
+            .unwrap();
+    assert_eq!(exchange.offer_digest, offer.signature.subject_digest);
+    assert_eq!(exchange.receipt_digest, receipt.signature.subject_digest);
+    assert_eq!(exchange.managed_service_id, "support");
+    assert_eq!(exchange.managed_service_principal, "service:support");
+    assert_eq!(exchange.grant_revision, 1);
+    assert_eq!(exchange.authorization_epoch, 0);
     assert!(
         jsonschema::validator_for(&enrollment_offer_schema())
             .unwrap()
@@ -118,6 +127,53 @@ fn signed_offer_and_receipt_bind_both_service_principals_and_nonce() {
     let mut rebound = receipt;
     rebound.console_service_principal = "service:attacker".to_owned();
     assert!(verify_enrollment_receipt(&rebound, &offer, &service_trust, 3_000).is_err());
+}
+
+#[test]
+fn exchange_verification_rejects_an_offer_from_an_untrusted_console() {
+    let trusted_console = Ed25519EnrollmentSigner::new("console-key-1", [7; 32]).unwrap();
+    let attacker = Ed25519EnrollmentSigner::new("attacker-key-1", [8; 32]).unwrap();
+    let service_signer = Ed25519EnrollmentSigner::new("service-key-1", [9; 32]).unwrap();
+    let console_trust = Ed25519EnrollmentTrustStore::new([(
+        "console-key-1",
+        trusted_console.verifying_key_bytes(),
+    )])
+    .unwrap();
+    let service_trust =
+        Ed25519EnrollmentTrustStore::new([("service-key-1", service_signer.verifying_key_bytes())])
+            .unwrap();
+    let offer = signed_offer(&attacker);
+    let receipt = sign_enrollment_receipt(
+        EnrollmentReceipt {
+            protocol: String::new(),
+            offer_digest: enrollment_offer_digest(&offer),
+            system_id: offer.system_id.clone(),
+            managed_service_id: "support".to_owned(),
+            managed_service_principal: "service:support".to_owned(),
+            managed_service_revision: "release:sha256:0123456789abcdef".to_owned(),
+            console_service_principal: offer.console_service_principal.clone(),
+            nonce: offer.nonce.clone(),
+            issued_at_unix_ms: 2_000,
+            expires_at_unix_ms: 18_000,
+            grant_revision: 1,
+            authorization_epoch: 0,
+            granted_capabilities: vec![capability()],
+            granted_policy: policy(),
+            signature: placeholder_signature(),
+        },
+        &service_signer,
+    )
+    .unwrap();
+
+    assert!(verify_enrollment_receipt(&receipt, &offer, &service_trust, 3_000).is_ok());
+    let issues =
+        verify_enrollment_exchange(&offer, &receipt, &console_trust, &service_trust, 3_000)
+            .unwrap_err();
+    assert!(
+        issues
+            .iter()
+            .any(|issue| issue.code == EnrollmentContractIssueCode::SignerUntrusted)
+    );
 }
 
 #[test]

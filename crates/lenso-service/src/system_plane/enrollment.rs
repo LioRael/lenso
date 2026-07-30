@@ -94,6 +94,27 @@ pub struct EnrollmentReceipt {
     pub signature: EnrollmentSignature,
 }
 
+/// Identity and authorization evidence extracted only after both sides of an
+/// enrollment exchange have been cryptographically verified.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct VerifiedEnrollmentExchange {
+    #[schema(pattern = r"^sha256:[0-9a-f]{64}$")]
+    pub offer_digest: String,
+    #[schema(pattern = r"^sha256:[0-9a-f]{64}$")]
+    pub receipt_digest: String,
+    pub system_id: String,
+    pub console_service_principal: String,
+    pub managed_service_id: String,
+    pub managed_service_principal: String,
+    pub managed_service_revision: String,
+    pub expires_at_unix_ms: u64,
+    pub grant_revision: u64,
+    pub authorization_epoch: u64,
+    pub granted_capabilities: Vec<EnrollmentCapabilityGrant>,
+    pub granted_policy: EnrollmentPolicyGrant,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EnrollmentContractIssueCode {
     InvalidProtocol,
@@ -363,6 +384,38 @@ pub fn verify_enrollment_receipt(
     } else {
         Err(issues)
     }
+}
+
+/// Verifies the Console-signed Offer and Service-signed Receipt as one
+/// bilateral exchange before exposing registration evidence to a caller.
+///
+/// This is the preferred consumer boundary. Calling only
+/// [`verify_enrollment_receipt`] proves the Service signature and artifact
+/// binding, but intentionally cannot prove that the Offer signer is trusted by
+/// the Console deployment.
+pub fn verify_enrollment_exchange(
+    offer: &EnrollmentOffer,
+    receipt: &EnrollmentReceipt,
+    console_verifier: &dyn EnrollmentSignatureVerifier,
+    service_verifier: &dyn EnrollmentSignatureVerifier,
+    now_unix_ms: u64,
+) -> Result<VerifiedEnrollmentExchange, Vec<EnrollmentContractIssue>> {
+    let offer_digest = verify_enrollment_offer(offer, console_verifier, now_unix_ms)?;
+    let receipt_digest = verify_enrollment_receipt(receipt, offer, service_verifier, now_unix_ms)?;
+    Ok(VerifiedEnrollmentExchange {
+        offer_digest,
+        receipt_digest,
+        system_id: receipt.system_id.clone(),
+        console_service_principal: receipt.console_service_principal.clone(),
+        managed_service_id: receipt.managed_service_id.clone(),
+        managed_service_principal: receipt.managed_service_principal.clone(),
+        managed_service_revision: receipt.managed_service_revision.clone(),
+        expires_at_unix_ms: receipt.expires_at_unix_ms,
+        grant_revision: receipt.grant_revision,
+        authorization_epoch: receipt.authorization_epoch,
+        granted_capabilities: receipt.granted_capabilities.clone(),
+        granted_policy: receipt.granted_policy.clone(),
+    })
 }
 
 #[must_use]
