@@ -7,7 +7,8 @@ use lenso_service::{
     system_plane::{
         CapabilityAdvertisement, Ed25519EnrollmentSigner, Ed25519EnrollmentTrustStore,
         EnrollmentCapabilityGrant, EnrollmentOffer, EnrollmentPolicyGrant, EnrollmentSignature,
-        EnrollmentSignatureAlgorithm, sign_enrollment_offer, verify_enrollment_receipt,
+        EnrollmentSignatureAlgorithm, enrollment_offer_digest, sign_enrollment_offer,
+        verify_enrollment_receipt,
     },
 };
 use platform_system_plane::{
@@ -355,6 +356,10 @@ async fn signed_ceremony_atomically_persists_bilateral_receipt_grant_and_audit()
         console_signer.as_ref(),
     )
     .unwrap();
+    assert_eq!(
+        enrollment_offer_digest(&offer),
+        "sha256:2785dc552ff44d8b9980a075e02d65a2bd3957f24ab4d68c3f5434de5dabfb2f"
+    );
     let ceremony = EnrollmentCeremony::new(
         PostgresEnrollmentStore::new(db.pool.clone()),
         console_trust,
