@@ -389,6 +389,15 @@ author declarations re-exported through `lenso::system_plane` and
 Core routing, negotiation, common operation handling, and provider registration
 without concrete capability policy or Console state.
 
+`lenso::console` is available on the default facade for Module UI declarations.
+`lenso::system_plane` is enabled by the opt-in `service` feature, which is also
+included by `host`; this keeps ordinary declaration-only consumers lightweight
+while giving Service and Console hosts one canonical verification surface.
+Consumers must prefer `verify_enrollment_exchange` when accepting enrollment:
+it verifies both the Console-signed Offer and Service-signed Receipt before
+returning registry evidence, so receipt verification cannot accidentally omit
+Offer trust.
+
 The monolithic `lenso-platform-admin` and `lenso-platform-admin-data` Console
 roles are deleted after behavior moves to its authority owner. Generic
 `AdminDataSource`, action/query seams, `ModuleManifest.admin`, `AdminSurface`,
