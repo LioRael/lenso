@@ -1,3 +1,16 @@
+## lenso-service@0.1.16
+
+### Features
+
+Publish the signed System Plane enrollment, observability, and operations
+contracts, then expose the Console and System Plane authoring boundaries through
+the public `lenso` facade.
+
+### Security
+
+Require consumers to verify the Console-signed Offer and Service-signed Receipt
+as one bilateral enrollment exchange before accepting registry evidence.
+
 ## lenso-service@0.1.14
 
 ### Features
