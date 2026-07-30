@@ -1,6 +1,6 @@
 [package]
 name = "lenso-platform-runtime-observability"
-version = "0.1.0"
+version = "0.1.1"
 edition.workspace = true
 license = "MIT"
 description = "Service-owned Runtime Observability System Plane Capability Provider."

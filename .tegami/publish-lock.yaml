@@ -1,41 +1,49 @@
 core:changelogs:
-  - content: "---\npackages:\n  lenso-contracts:\n    type: patch\n---\n\n### Fixes\n\nRotate the M6 environment-verification authority to a controlled signing key and\nbind the corrected GA Support Manifest to a new immutable contracts release.\n"
-    filename: m6-verifier-key.md
+  - content: "---\npackages:\n  lenso-service:\n    type: patch\n  lenso:\n    type: patch\n---\n\n### Features\n\nPublish the signed System Plane enrollment, observability, and operations\ncontracts, then expose the Console and System Plane authoring boundaries through\nthe public `lenso` facade.\n\n### Security\n\nRequire consumers to verify the Console-signed Offer and Service-signed Receipt\nas one bilateral enrollment exchange before accepting registry evidence.\n"
+    filename: console-system-plane.md
     v: 0.0.0
 core:packages:
+  - changelogIds:
+      - console-system-plane.md
+    id: cargo:lenso
+    updated: true
   - id: cargo:lenso-api
     updated: true
   - id: cargo:lenso-autonomous-service
     updated: true
-  - id: cargo:lenso
-    updated: true
   - id: cargo:lenso-bootstrap
     updated: true
-  - changelogIds:
-      - m6-verifier-key.md
-    id: cargo:lenso-contracts
-    updated: true
+  - id: cargo:lenso-contracts
+    updated: false
   - id: cargo:lenso-migrate
     updated: true
-  - id: cargo:lenso-service
+  - changelogIds:
+      - console-system-plane.md
+    id: cargo:lenso-service
     updated: true
   - id: cargo:lenso-worker
     updated: true
+  - id: cargo:lenso-platform-core
+    updated: false
+  - id: cargo:lenso-platform-http
+    updated: false
+  - id: cargo:lenso-platform-module
+    updated: false
+  - id: cargo:lenso-platform-module-remote
+    updated: false
   - id: cargo:lenso-platform-admin-data
     updated: true
   - id: cargo:lenso-platform-admin
     updated: true
-  - id: cargo:lenso-platform-core
-    updated: true
-  - id: cargo:lenso-platform-http
-    updated: true
-  - id: cargo:lenso-platform-module
-    updated: true
-  - id: cargo:lenso-platform-module-remote
-    updated: true
   - id: cargo:lenso-platform-runtime
+    updated: false
+  - id: cargo:lenso-platform-runtime-observability
+    updated: true
+  - id: cargo:lenso-platform-runtime-operations
+    updated: true
+  - id: cargo:lenso-platform-system-plane
     updated: true
   - id: cargo:lenso-platform-testing
-    updated: true
+    updated: false
   - id: cargo:lenso-module-story
     updated: true

@@ -2088,7 +2088,7 @@ dependencies = [
 
 [[package]]
 name = "lenso"
-version = "0.3.33"
+version = "0.3.34"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2110,7 +2110,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-api"
-version = "0.1.27"
+version = "0.1.28"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2144,7 +2144,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-autonomous-service"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "async-nats",
  "async-trait",
@@ -2179,7 +2179,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-bootstrap"
-version = "0.1.26"
+version = "0.1.27"
 dependencies = [
  "async-trait",
  "lenso-module-auth",
@@ -2217,7 +2217,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-migrate"
-version = "0.1.25"
+version = "0.1.26"
 dependencies = [
  "anyhow",
  "lenso-bootstrap",
@@ -2392,7 +2392,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-module-story"
-version = "0.1.18"
+version = "0.1.19"
 dependencies = [
  "async-trait",
  "axum",
@@ -2435,7 +2435,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-platform-admin"
-version = "0.1.16"
+version = "0.1.17"
 dependencies = [
  "axum",
  "chrono",
@@ -2454,7 +2454,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-platform-admin-data"
-version = "0.1.21"
+version = "0.1.22"
 dependencies = [
  "async-trait",
  "axum",
@@ -2569,7 +2569,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-platform-runtime-observability"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "axum",
  "base64",
@@ -2594,7 +2594,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-platform-runtime-operations"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "axum",
@@ -2620,7 +2620,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-platform-system-plane"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "axum",
@@ -2652,7 +2652,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-service"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "async-trait",
  "axum",
@@ -2688,7 +2688,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-worker"
-version = "0.1.25"
+version = "0.1.26"
 dependencies = [
  "anyhow",
  "lenso-bootstrap",
