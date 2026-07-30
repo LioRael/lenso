@@ -66,6 +66,10 @@ fn signed_offer_and_receipt_bind_both_service_principals_and_nonce() {
         Ed25519EnrollmentTrustStore::new([("service-key-1", service_signer.verifying_key_bytes())])
             .unwrap();
     let offer = signed_offer(&console_signer);
+    assert_eq!(
+        enrollment_offer_digest(&offer),
+        "sha256:edb298d9438f8f4cb8b45f0dc6e6f8acb38b290163c84ed1a2dc8899f516a7f6"
+    );
     let offer_digest = verify_enrollment_offer(&offer, &console_trust, 2_000).unwrap();
     assert_eq!(offer.protocol, ENROLLMENT_OFFER_PROTOCOL);
     assert_eq!(offer.signature.subject_digest, offer_digest);
