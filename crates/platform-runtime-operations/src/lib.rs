@@ -265,7 +265,6 @@ impl RuntimeOperationsProvider {
                 "Operation Evidence queries require an operation identity and a limit from 1 to 100",
             ));
         }
-        self.ensure_operation_exists(operation_id).await?;
         let after_sequence = if let Some(cursor) = cursor {
             let cursor = decode_evidence_cursor(cursor)?;
             if cursor.operation_id != operation_id {
@@ -278,6 +277,7 @@ impl RuntimeOperationsProvider {
         } else {
             0
         };
+        self.ensure_operation_exists(operation_id).await?;
         let fetch_limit = i64::from(limit) + 1;
         let mut rows = sqlx::query_as::<_, (i64, serde_json::Value)>(
             r#"
