@@ -43,7 +43,7 @@ pub struct RemoteServiceProviderMetadata {
 #[serde(rename_all = "camelCase")]
 pub struct RemoteServiceCompatibility {
     #[serde(default)]
-    pub remote_protocol_version: Option<String>,
+    pub service_protocol_version: Option<String>,
     #[serde(default)]
     pub required_host_features: Vec<String>,
     #[serde(default)]

@@ -6,13 +6,14 @@
 
 mod admin;
 mod admin_schema;
+mod catalog;
 mod console;
 mod cron;
 mod events;
 mod http;
 mod lifecycle;
 mod manifest;
-mod module_source;
+mod module_release;
 pub mod operation;
 mod runtime;
 mod story_display;
@@ -24,6 +25,7 @@ pub use admin::{
     AdminEmbeddedSurface, AdminMetricBinding, AdminPermission, AdminSandboxPolicy, AdminSurface,
 };
 pub use admin_schema::{AdminSchema, EntitySchema, FieldSchema, FieldType};
+pub use catalog::*;
 pub use console::{
     ConsoleActionInputBinding, ConsoleActionInputValue, ConsoleArea, ConsoleContribution,
     ConsoleContributionAction, ConsoleContributionKind, ConsoleNavigation, ConsoleNavigationGroup,
@@ -41,11 +43,19 @@ pub use lifecycle::{
     LifecycleStartupCheckDeclaration, LifecycleStartupCheckKind, LifecycleSurface,
 };
 pub use manifest::{
-    ModuleCapabilityReference, ModuleManifest, ModuleManifestBuilder, ModuleManifestLint,
-    ModuleManifestLintSeverity, lint_module_manifest, lint_module_manifest_parts,
-    module_capability_references,
+    MODULE_MANIFEST_PROTOCOL, ModuleCapabilityReference, ModuleConfigActivation,
+    ModuleConfigContract, ModuleConfigField, ModuleConfigFieldType, ModuleConfigMutability,
+    ModuleConfigScope, ModuleConfigValidation, ModuleManifest, ModuleManifestBuilder,
+    ModuleManifestLint, ModuleManifestLintSeverity, ModuleMigrationActivation,
+    ModuleMigrationDeclaration, ModuleRequirement, lint_module_manifest,
+    lint_module_manifest_parts, module_capability_references,
 };
-pub use module_source::ModuleSource;
+pub use module_release::{
+    ArtifactReference, AttestationReference, LinkedModuleDelivery, MODULE_RELEASE_PROTOCOL,
+    ModuleCompatibilityDeclaration, ModuleConsoleArtifact, ModuleContractIssue, ModuleDelivery,
+    ModuleRelease, ServiceModuleDelivery, ServiceResponsibilityProfile, canonical_json,
+    digest_json,
+};
 pub use operation::{
     ServiceOperationIdempotency, ServiceOperationMetadata, ServiceOperationSafeProbe,
 };

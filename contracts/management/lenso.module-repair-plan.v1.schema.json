@@ -1,0 +1,239 @@
+{
+  "$defs": {
+    "ModuleApprovalBoundary": {
+      "additionalProperties": false,
+      "properties": {
+        "backup_evidence_digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "boundary_id": {
+          "type": "string"
+        },
+        "effect_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "required_authority": {
+          "type": "string"
+        },
+        "risk_class": {
+          "$ref": "#/$defs/ModuleRiskClass"
+        }
+      },
+      "required": [
+        "boundary_id",
+        "risk_class",
+        "required_authority",
+        "effect_ids"
+      ],
+      "type": "object"
+    },
+    "ModuleRepairAction": {
+      "oneOf": [
+        {
+          "properties": {
+            "effect_ids": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "resume",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "effect_ids"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "forward_fix",
+              "type": "string"
+            },
+            "module_release_digest": {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "module_release_digest"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "restore_workspace",
+              "type": "string"
+            },
+            "path_digests": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "kind",
+            "path_digests"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "desired_digest": {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "kind": {
+              "const": "reconcile_composition",
+              "type": "string"
+            },
+            "lock_digest": {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "desired_digest",
+            "lock_digest"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "backup_evidence_digest": {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "kind": {
+              "const": "restore_backup",
+              "type": "string"
+            },
+            "store_scope": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "backup_evidence_digest",
+            "store_scope"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "evidence_digest": {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "kind": {
+              "const": "record_intervention",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "evidence_digest"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ModuleRiskClass": {
+      "enum": [
+        "ordinary",
+        "destructive_migration",
+        "data_deletion",
+        "backup_restore",
+        "backup_waiver",
+        "trust_override"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "https://contracts.lenso.local/management/lenso.module-repair-plan.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "actions": {
+      "items": {
+        "$ref": "#/$defs/ModuleRepairAction"
+      },
+      "type": "array"
+    },
+    "application_id": {
+      "type": "string"
+    },
+    "approval_boundaries": {
+      "items": {
+        "$ref": "#/$defs/ModuleApprovalBoundary"
+      },
+      "type": "array"
+    },
+    "completed_effect_ids": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "created_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "environment_id": {
+      "type": "string"
+    },
+    "observed_state_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "original_operation_id": {
+      "type": "string"
+    },
+    "original_operation_revision": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "protocol": {
+      "const": "lenso.module-repair-plan.v1",
+      "type": "string"
+    },
+    "repair_plan_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "repair_plan_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "protocol",
+    "repair_plan_id",
+    "repair_plan_digest",
+    "original_operation_id",
+    "original_operation_revision",
+    "application_id",
+    "environment_id",
+    "observed_state_digest",
+    "completed_effect_ids",
+    "actions",
+    "approval_boundaries",
+    "created_at"
+  ],
+  "title": "LensoModuleRepairPlan",
+  "type": "object"
+}

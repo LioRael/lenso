@@ -1,5 +1,9 @@
 # Remote Module Runtime
 
+> Internal compatibility note: this document describes the legacy transport
+> implementation behind Provider-mode Services. Module Ecosystem V1 exposes
+> `service` delivery, not a public Remote Module kind.
+
 This note defines the first runtime-execution boundary for out-of-process
 modules. It is a design checkpoint, not an implementation record.
 

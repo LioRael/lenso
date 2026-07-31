@@ -1,0 +1,415 @@
+{
+  "$defs": {
+    "ArtifactReference": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "locator": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "locator",
+        "digest"
+      ],
+      "type": "object"
+    },
+    "ManagedFileType": {
+      "enum": [
+        "regular",
+        "directory",
+        "absent"
+      ],
+      "type": "string"
+    },
+    "ModuleApproval": {
+      "additionalProperties": false,
+      "properties": {
+        "actor_id": {
+          "type": "string"
+        },
+        "application_id": {
+          "type": "string"
+        },
+        "approval_id": {
+          "type": "string"
+        },
+        "boundary_id": {
+          "type": "string"
+        },
+        "environment_id": {
+          "type": "string"
+        },
+        "expected_target_revision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "issued_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "nonce": {
+          "type": "string"
+        },
+        "plan_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "risk_class": {
+          "$ref": "#/$defs/ModuleRiskClass"
+        },
+        "verified_authorities": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "protocol",
+        "approval_id",
+        "plan_digest",
+        "application_id",
+        "environment_id",
+        "expected_target_revision",
+        "boundary_id",
+        "risk_class",
+        "actor_id",
+        "verified_authorities",
+        "reason",
+        "issued_at",
+        "expires_at",
+        "nonce"
+      ],
+      "type": "object"
+    },
+    "ModuleEffectOutcome": {
+      "enum": [
+        "applied",
+        "already_applied",
+        "verified",
+        "restored",
+        "activated"
+      ],
+      "type": "string"
+    },
+    "ModuleEffectReceipt": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "committed_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "effect_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "effect_id": {
+          "type": "string"
+        },
+        "evidence_references": {
+          "items": {
+            "$ref": "#/$defs/ArtifactReference"
+          },
+          "type": "array"
+        },
+        "fencing_token": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "operation_id": {
+          "type": "string"
+        },
+        "outcome": {
+          "$ref": "#/$defs/ModuleEffectOutcome"
+        },
+        "receipt_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "receipt_id",
+        "effect_id",
+        "effect_digest",
+        "operation_id",
+        "attempt",
+        "fencing_token",
+        "outcome",
+        "evidence_references",
+        "committed_at"
+      ],
+      "type": "object"
+    },
+    "ModuleOperationError": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "evidence_references": {
+          "items": {
+            "$ref": "#/$defs/ArtifactReference"
+          },
+          "type": "array"
+        },
+        "message": {
+          "type": "string"
+        },
+        "recorded_at": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "evidence_references",
+        "recorded_at"
+      ],
+      "type": "object"
+    },
+    "ModuleOperationKind": {
+      "enum": [
+        "install",
+        "update",
+        "uninstall",
+        "delivery_transition",
+        "restore",
+        "repair"
+      ],
+      "type": "string"
+    },
+    "ModuleOperationState": {
+      "enum": [
+        "planned",
+        "awaiting_approval",
+        "ready",
+        "applying_files",
+        "files_applied",
+        "staging_configuration",
+        "migrating",
+        "verifying",
+        "activating",
+        "succeeded",
+        "blocked",
+        "cancelled",
+        "restored",
+        "repair_required",
+        "reconciled"
+      ],
+      "type": "string"
+    },
+    "ModuleRiskClass": {
+      "enum": [
+        "ordinary",
+        "destructive_migration",
+        "data_deletion",
+        "backup_restore",
+        "backup_waiver",
+        "trust_override"
+      ],
+      "type": "string"
+    },
+    "ModuleWorkspaceBackup": {
+      "additionalProperties": false,
+      "properties": {
+        "content_base64": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "content_digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "existence": {
+          "$ref": "#/$defs/PathExistence"
+        },
+        "file_type": {
+          "$ref": "#/$defs/ManagedFileType"
+        },
+        "mode": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "existence",
+        "file_type"
+      ],
+      "type": "object"
+    },
+    "PathExistence": {
+      "enum": [
+        "present",
+        "absent"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "https://contracts.lenso.local/management/lenso.module-operation.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "actor_id": {
+      "type": "string"
+    },
+    "application_id": {
+      "type": "string"
+    },
+    "approvals": {
+      "items": {
+        "$ref": "#/$defs/ModuleApproval"
+      },
+      "type": "array"
+    },
+    "attempt": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "current_lock_digest": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "effect_receipts": {
+      "items": {
+        "$ref": "#/$defs/ModuleEffectReceipt"
+      },
+      "type": "array"
+    },
+    "environment_id": {
+      "type": "string"
+    },
+    "errors": {
+      "items": {
+        "$ref": "#/$defs/ModuleOperationError"
+      },
+      "type": "array"
+    },
+    "expected_target_revision": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "fencing_token": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "idempotency_key": {
+      "type": "string"
+    },
+    "next_actions": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "operation_id": {
+      "type": "string"
+    },
+    "operation_kind": {
+      "$ref": "#/$defs/ModuleOperationKind"
+    },
+    "plan_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "policy_revision": {
+      "type": "string"
+    },
+    "protocol": {
+      "const": "lenso.module-operation.v1",
+      "type": "string"
+    },
+    "repair_operation_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "revision": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "state": {
+      "$ref": "#/$defs/ModuleOperationState"
+    },
+    "target_lock_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "verified_authorities": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "workspace_backups": {
+      "items": {
+        "$ref": "#/$defs/ModuleWorkspaceBackup"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "protocol",
+    "operation_id",
+    "idempotency_key",
+    "application_id",
+    "environment_id",
+    "plan_digest",
+    "operation_kind",
+    "expected_target_revision",
+    "target_lock_digest",
+    "actor_id",
+    "verified_authorities",
+    "policy_revision",
+    "state",
+    "revision",
+    "fencing_token",
+    "attempt",
+    "updated_at"
+  ],
+  "title": "LensoModuleOperation",
+  "type": "object"
+}

@@ -264,7 +264,7 @@
     "result": {
       "affectedReferences": [
         "autonomous_service:support",
-        "module:support-ticket"
+        "module:acme/support-ticket"
       ],
       "category": "safe",
       "changedVersion": "v2",
@@ -286,7 +286,7 @@
     "result": {
       "affectedReferences": [
         "autonomous_service:support",
-        "module:support-ticket"
+        "module:acme/support-ticket"
       ],
       "category": "needs_attention",
       "changedVersion": "v2",
@@ -308,7 +308,7 @@
     "result": {
       "affectedReferences": [
         "autonomous_service:support",
-        "module:support-ticket"
+        "module:acme/support-ticket"
       ],
       "category": "breaking",
       "changedVersion": "v2",
@@ -330,7 +330,7 @@
     "result": {
       "affectedReferences": [
         "autonomous_service:support",
-        "module:support-ticket"
+        "module:acme/support-ticket"
       ],
       "category": "blocked",
       "changedVersion": "v2",

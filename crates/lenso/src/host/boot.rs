@@ -61,6 +61,14 @@ impl HostBuilder {
     }
 
     #[must_use]
+    pub fn linked_modules(mut self, modules: impl IntoIterator<Item = HostLinkedModule>) -> Self {
+        for module in modules {
+            self.composition.add_linked_module(module);
+        }
+        self
+    }
+
+    #[must_use]
     pub fn build(self) -> HostComposition {
         self.composition
     }
@@ -83,11 +91,13 @@ impl HostBuilder {
 }
 
 /// Start the Lenso API host from environment configuration.
+///
 pub async fn run_api_from_env() -> anyhow::Result<()> {
     run_api_from_env_with_composition(HostComposition::default()).await
 }
 
 /// Start the Lenso API host with additional host-owned linked modules.
+///
 pub async fn run_api_from_env_with_composition(composition: HostComposition) -> anyhow::Result<()> {
     lenso_api::run_from_env_with_composition(composition).await
 }
@@ -147,7 +157,7 @@ mod tests {
     }
 
     fn manifest() -> ModuleManifest {
-        ModuleManifest::builder("app")
+        ModuleManifest::builder("lenso/app")
             .http_routes(vec![ModuleHttpRoute {
                 method: ModuleHttpMethod::Get,
                 path: "/v1/app/status".to_owned(),
@@ -168,16 +178,17 @@ mod tests {
             })
             .build();
 
-        let _composition: HostComposition = HostBuilder::new()
-            .linked_module(HostLinkedModule::manifest_only(
+        let composition: HostComposition = HostBuilder::new()
+            .linked_modules([HostLinkedModule::manifest_only(
                 "app",
                 manifest,
                 &[Migration {
                     name: "app/0001_init",
                     sql: "select 1;",
                 }],
-            ))
+            )])
             .build();
+        assert_eq!(composition.linked_modules().len(), 1);
     }
 
     #[test]

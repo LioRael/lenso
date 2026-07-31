@@ -68,6 +68,10 @@ The current host-facing surface is intentionally narrow:
 - `run_api_from_env_with_composition`, `run_worker_from_env_with_composition`,
   and `run_migrations_from_env_with_composition` for booting the three host
   entrypoints;
+- the API boot entrypoint may opt into the production System Plane through
+  environment configuration. It then owns a second, SPIFFE mTLS-only listener
+  and the two listeners share one shutdown lifecycle; this does not add System
+  Plane controls to `HostBuilder` or mount management routes on the Data Plane;
 - `run_api_with_embedded_worker_from_env_with_composition` for explicit
   single-process local or small-host boot when independent worker scaling is
   not needed;

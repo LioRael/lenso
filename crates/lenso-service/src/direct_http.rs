@@ -1,7 +1,7 @@
 use crate::{
     AuthenticatedServiceContext, AuthenticatedServicePrincipal, AuthenticatedTransportBinding,
     CallPolicyDeclaration, CallPolicyEvent, CallPolicyEvidence, CallPolicyFailure,
-    CallPolicyRuntime, CallPolicyTerminalOutcome, DelegatedActorContext, DelegatedContextProvider,
+    CallPolicyRuntime, CallPolicyTerminalOutcome, DelegatedActorContext, DelegatedContextVerifier,
     EndpointResolver, IdentityDecisionRecorder, ServiceContext, ServiceContextAdmission,
     ServiceContextPolicy, ServiceReference, TenantContext, WorkloadIdentityProvider,
     WorkloadIdentityVerification,
@@ -397,7 +397,7 @@ impl DirectHttpServerBinding {
         bindings: DirectHttpBindings,
         provider: Arc<dyn WorkloadIdentityProvider>,
         audience: impl Into<String>,
-        context_provider: Arc<dyn DelegatedContextProvider>,
+        context_provider: Arc<dyn DelegatedContextVerifier>,
         context_policies: impl IntoIterator<Item = (String, ServiceContextPolicy)>,
         evidence_recorder: Arc<dyn IdentityDecisionRecorder>,
         handler: F,
@@ -425,7 +425,7 @@ impl DirectHttpServerBinding {
         policy_runtime: CallPolicyRuntime,
         provider: Arc<dyn WorkloadIdentityProvider>,
         audience: impl Into<String>,
-        context_provider: Arc<dyn DelegatedContextProvider>,
+        context_provider: Arc<dyn DelegatedContextVerifier>,
         context_policies: impl IntoIterator<Item = (String, ServiceContextPolicy)>,
         evidence_recorder: Arc<dyn IdentityDecisionRecorder>,
         handler: F,
@@ -495,7 +495,7 @@ impl DirectHttpServerBinding {
     #[must_use]
     pub fn with_service_context<I, S>(
         self,
-        provider: Arc<dyn DelegatedContextProvider>,
+        provider: Arc<dyn DelegatedContextVerifier>,
         policies: I,
         recorder: Arc<dyn IdentityDecisionRecorder>,
     ) -> Self

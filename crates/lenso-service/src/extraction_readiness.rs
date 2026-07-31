@@ -3,8 +3,8 @@ use crate::{
     system_v2_graph,
 };
 use lenso_contracts::{
-    AdminSurface, ModuleHttpMethod, ModuleManifest, ModuleManifestLintSeverity, ModuleSource,
-    StoryDisplaySource, lint_module_manifest,
+    AdminSurface, ModuleHttpMethod, ModuleManifest, ModuleManifestLintSeverity, StoryDisplaySource,
+    lint_module_manifest,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -420,7 +420,7 @@ pub fn evaluate_extraction_readiness(
     ExtractionReadinessReport {
         protocol: EXTRACTION_READINESS_REPORT_PROTOCOL.to_owned(),
         analyzer_version: EXTRACTION_READINESS_ANALYZER_VERSION.to_owned(),
-        target_module: module.name.clone(),
+        target_module: module.module_id.clone(),
         system_id,
         target_owner,
         classification,
@@ -755,7 +755,7 @@ fn collect_table_access_findings(
             continue;
         };
         if owner != &access.accessor_module
-            && (owner == &module.name || access.accessor_module == module.name)
+            && (owner == &module.module_id || access.accessor_module == module.module_id)
         {
             push_finding(
                 findings,
@@ -806,7 +806,7 @@ fn collect_transaction_findings(
         if transaction
             .participating_modules
             .iter()
-            .any(|participant| participant == &module.name)
+            .any(|participant| participant == &module.module_id)
             && transaction.participating_modules.len() > 1
         {
             push_finding(
@@ -836,7 +836,7 @@ fn collect_volume_and_cursor_findings(
     findings: &mut Vec<ExtractionReadinessFinding>,
 ) {
     for (table, owner) in table_ownership {
-        if owner.as_deref() != Some(module.name.as_str()) {
+        if owner.as_deref() != Some(module.module_id.as_str()) {
             continue;
         }
         let records = data
@@ -964,17 +964,17 @@ fn collect_target_owner(
     let module_nodes = graph
         .nodes
         .iter()
-        .filter(|node| node.kind == "module" && node.id == module.name)
+        .filter(|node| node.kind == "module" && node.id == module.module_id)
         .collect::<Vec<_>>();
     let Some(module_node) = module_nodes.first() else {
         push_finding(
             findings,
             CompatibilityCategory::Blocked,
             ExtractionReadinessIssueCode::TargetModuleMissing,
-            format!("system.module.{}", module.name),
+            format!("system.module.{}", module.module_id),
             format!(
                 "Target Module `{}` is not declared in the System graph.",
-                module.name
+                module.module_id
             ),
             vec!["system:modules".to_owned(), "module:manifest".to_owned()],
             vec![
@@ -989,9 +989,9 @@ fn collect_target_owner(
             findings,
             CompatibilityCategory::Blocked,
             ExtractionReadinessIssueCode::TargetModuleMissing,
-            format!("system.module.{}", module.name),
+            format!("system.module.{}", module.module_id),
             "Target Module ownership is missing from the System graph.",
-            vec![format!("system:module/{}", module.name)],
+            vec![format!("system:module/{}", module.module_id)],
             vec!["Declare exactly one Host owner for the linked Module.".to_owned()],
         );
         return None;
@@ -1006,13 +1006,13 @@ fn collect_target_owner(
             findings,
             CompatibilityCategory::Blocked,
             ExtractionReadinessIssueCode::TargetModuleNotLinked,
-            format!("system.module.{}", module.name),
+            format!("system.module.{}", module.module_id),
             format!(
                 "Target Module `{}` is owned by `{owner}` as {}, not by the linked Host.",
-                module.name,
+                module.module_id,
                 owner_kind.unwrap_or("an unknown topology kind")
             ),
-            vec![format!("system:module/{}", module.name)],
+            vec![format!("system:module/{}", module.module_id)],
             vec!["Select a Host-owned linked Module; Provider and Autonomous Service semantics are unchanged by extraction analysis.".to_owned()],
         );
     }
@@ -1023,7 +1023,7 @@ fn collect_manifest_findings(
     module: &ModuleManifest,
     findings: &mut Vec<ExtractionReadinessFinding>,
 ) {
-    for lint in lint_module_manifest(ModuleSource::Linked, module) {
+    for lint in lint_module_manifest(module) {
         let (classification, code) = match lint.severity {
             ModuleManifestLintSeverity::Ok => continue,
             ModuleManifestLintSeverity::Warning => (
@@ -1090,7 +1090,7 @@ fn collect_boundary_findings(
                 ],
             );
         }
-        if reference.from_module != module.name && reference.to_module != module.name {
+        if reference.from_module != module.module_id && reference.to_module != module.module_id {
             push_finding(
                 findings,
                 CompatibilityCategory::Blocked,
@@ -1098,7 +1098,7 @@ fn collect_boundary_findings(
                 reference.symbol.clone(),
                 format!(
                     "Boundary evidence for `{}` does not involve target Module `{}`.",
-                    reference.symbol, module.name
+                    reference.symbol, module.module_id
                 ),
                 non_empty_references(
                     std::slice::from_ref(&reference.evidence_reference),
@@ -2081,7 +2081,7 @@ mod tests {
         StoryDisplayDescriptor, WorkflowDataContract, WorkflowDefinition, WorkflowStepDeclaration,
     };
     fn manifest() -> ModuleManifest {
-        ModuleManifest::builder("support-ticket")
+        ModuleManifest::builder("acme/support-ticket")
             .capabilities(vec!["support.tickets.read".to_owned()])
             .http_routes(vec![ModuleHttpRoute {
                 method: ModuleHttpMethod::Get,
@@ -2169,7 +2169,7 @@ mod tests {
         json!({
             "protocol": "lenso.system.v2",
             "systemId": "support-system",
-            "host": { "hostId": "support-host", "modules": ["support-ticket"] },
+            "host": { "hostId": "support-host", "modules": ["acme/support-ticket"] },
             "providers": [{
                 "providerId": "notification-provider",
                 "modules": ["notification-gateway"]
@@ -2207,7 +2207,7 @@ mod tests {
             tables: vec![
                 ExtractionDataTableEvidence {
                     table: "support.tickets".to_owned(),
-                    owner_module: Some("support-ticket".to_owned()),
+                    owner_module: Some("acme/support-ticket".to_owned()),
                     source: ExtractionDataEvidenceSource::StaticDeclaration,
                     volume: None,
                     cursor: None,
@@ -2217,7 +2217,7 @@ mod tests {
                 },
                 ExtractionDataTableEvidence {
                     table: "support.tickets".to_owned(),
-                    owner_module: Some("support-ticket".to_owned()),
+                    owner_module: Some("acme/support-ticket".to_owned()),
                     source: ExtractionDataEvidenceSource::LiveStoreObservation {
                         observation_id: "support-store-2026-07-19".to_owned(),
                         store: "host-postgres".to_owned(),
@@ -2241,14 +2241,14 @@ mod tests {
             ],
             migrations: vec![ExtractionMigrationEvidence {
                 migration: "0001_create_support_tickets".to_owned(),
-                owner_module: Some("support-ticket".to_owned()),
+                owner_module: Some("acme/support-ticket".to_owned()),
                 source: ExtractionDataEvidenceSource::StaticDeclaration,
                 evidence_references: vec![
                     "modules/support-ticket/migrations/0001_tickets.sql".to_owned(),
                 ],
             }],
             access_paths: vec![ExtractionDataAccessEvidence {
-                accessor_module: "support-ticket".to_owned(),
+                accessor_module: "acme/support-ticket".to_owned(),
                 table: "support.tickets".to_owned(),
                 access: ExtractionDataAccessKind::ReadWrite,
                 source: ExtractionDataEvidenceSource::StaticDeclaration,
@@ -2256,7 +2256,7 @@ mod tests {
             }],
             transactions: vec![ExtractionTransactionEvidence {
                 transaction: "support-ticket-update".to_owned(),
-                participating_modules: vec!["support-ticket".to_owned()],
+                participating_modules: vec!["acme/support-ticket".to_owned()],
                 source: ExtractionDataEvidenceSource::StaticDeclaration,
                 evidence_references: vec!["modules/support-ticket/src/store.rs:41".to_owned()],
             }],
@@ -2323,15 +2323,15 @@ mod tests {
             references: vec![
                 ExtractionBoundaryReference {
                     kind: ExtractionBoundaryReferenceKind::CrossModuleImport,
-                    from_module: "support-ticket".to_owned(),
-                    to_module: "support-sla".to_owned(),
+                    from_module: "acme/support-ticket".to_owned(),
+                    to_module: "acme/support-sla".to_owned(),
                     symbol: "support_sla::internal::SlaPolicy".to_owned(),
                     evidence_reference: "modules/support-ticket/src/lib.rs:12".to_owned(),
                 },
                 ExtractionBoundaryReference {
                     kind: ExtractionBoundaryReferenceKind::InProcessBoundaryCall,
-                    from_module: "support-ticket".to_owned(),
-                    to_module: "support-sla".to_owned(),
+                    from_module: "acme/support-ticket".to_owned(),
+                    to_module: "acme/support-sla".to_owned(),
                     symbol: "support_sla::public::evaluate".to_owned(),
                     evidence_reference: "modules/support-ticket/src/service.rs:41".to_owned(),
                 },
@@ -2351,7 +2351,7 @@ mod tests {
         service_data.tables.extend([
             ExtractionDataTableEvidence {
                 table: "support.sla_policies".to_owned(),
-                owner_module: Some("support-sla".to_owned()),
+                owner_module: Some("acme/support-sla".to_owned()),
                 source: ExtractionDataEvidenceSource::StaticDeclaration,
                 volume: None,
                 cursor: None,
@@ -2375,7 +2375,7 @@ mod tests {
         service_data
             .access_paths
             .push(ExtractionDataAccessEvidence {
-                accessor_module: "support-ticket".to_owned(),
+                accessor_module: "acme/support-ticket".to_owned(),
                 table: "support.sla_policies".to_owned(),
                 access: ExtractionDataAccessKind::Read,
                 source: ExtractionDataEvidenceSource::StaticDeclaration,
@@ -2385,7 +2385,10 @@ mod tests {
             .transactions
             .push(ExtractionTransactionEvidence {
                 transaction: "ticket-and-sla-update".to_owned(),
-                participating_modules: vec!["support-sla".to_owned(), "support-ticket".to_owned()],
+                participating_modules: vec![
+                    "acme/support-sla".to_owned(),
+                    "acme/support-ticket".to_owned(),
+                ],
                 source: ExtractionDataEvidenceSource::StaticDeclaration,
                 evidence_references: vec!["modules/support-ticket/src/sla.rs:52".to_owned()],
             });
@@ -2548,7 +2551,7 @@ mod tests {
     fn human_and_json_renderers_project_the_same_report() {
         let report = evaluate_extraction_readiness(&manifest(), &system(), &corrected_evidence());
         let human = render_extraction_readiness_report(&report);
-        assert!(human.contains("Extraction readiness: support-ticket"));
+        assert!(human.contains("Extraction readiness: acme/support-ticket"));
         assert!(human.contains("Result: needs_attention (ready)"));
         assert!(human.contains("writesRepositoryFiles=false"));
         assert!(human.contains("live_store_observation"));

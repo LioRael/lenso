@@ -7,7 +7,7 @@ pub struct RemoteHttpProxyRegistry {
     modules: BTreeMap<String, RemoteHttpProxyModule>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct RemoteHttpProxyModule {
     pub module_name: String,
     pub base_url: String,
@@ -15,6 +15,20 @@ pub struct RemoteHttpProxyModule {
     pub timeout_ms: u64,
     pub(crate) auth_token: Option<String>,
     pub routes: Vec<RemoteHttpProxyRoute>,
+}
+
+impl std::fmt::Debug for RemoteHttpProxyModule {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("RemoteHttpProxyModule")
+            .field("module_name", &self.module_name)
+            .field("base_url", &self.base_url)
+            .field("transport", &self.transport)
+            .field("timeout_ms", &self.timeout_ms)
+            .field("auth_configured", &self.auth_token.is_some())
+            .field("routes", &self.routes)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,7 +40,7 @@ pub struct RemoteHttpProxyRoute {
     pub story_title: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct RemoteHttpProxyMatch {
     pub module_name: String,
     pub base_url: String,
@@ -42,18 +56,36 @@ pub struct RemoteHttpProxyMatch {
     pub path_params: BTreeMap<String, String>,
 }
 
+impl std::fmt::Debug for RemoteHttpProxyMatch {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("RemoteHttpProxyMatch")
+            .field("module_name", &self.module_name)
+            .field("base_url", &self.base_url)
+            .field("transport", &self.transport)
+            .field("timeout_ms", &self.timeout_ms)
+            .field("auth_configured", &self.auth_token.is_some())
+            .field("method", &self.method)
+            .field("declared_path", &self.declared_path)
+            .field("remote_path", &self.remote_path)
+            .field("capability", &self.capability)
+            .field("display_name", &self.display_name)
+            .field("story_title", &self.story_title)
+            .field("path_params", &self.path_params)
+            .finish()
+    }
+}
+
 impl RemoteHttpProxyRegistry {
     #[must_use]
     pub fn from_modules(modules: &[Module], configs: &[RemoteModuleConfig]) -> Self {
-        let config_by_name: BTreeMap<_, _> = configs
-            .iter()
-            .map(|config| (config.name.as_str(), config))
-            .collect();
         let modules = modules
             .iter()
             .filter(|module| module.source == ModuleSource::Remote)
             .filter_map(|module| {
-                let config = config_by_name.get(module.manifest.name.as_str())?;
+                let config = configs
+                    .iter()
+                    .find(|config| config.matches_module_id(&module.manifest.module_id))?;
                 let routes = module
                     .manifest
                     .http_routes
@@ -64,9 +96,9 @@ impl RemoteHttpProxyRegistry {
                     return None;
                 }
                 Some((
-                    module.manifest.name.clone(),
+                    config.name.clone(),
                     RemoteHttpProxyModule {
-                        module_name: module.manifest.name.clone(),
+                        module_name: config.name.clone(),
                         base_url: config.base_url.clone(),
                         transport: config.transport,
                         timeout_ms: config.timeout_ms,
@@ -242,7 +274,7 @@ mod tests {
                 ],
             ),
             Module::linked(
-                ModuleManifest::builder("identity")
+                ModuleManifest::builder("lenso/identity")
                     .http_routes(vec![route(ModuleHttpMethod::Get, "/users")])
                     .build(),
                 LinkedBinding::builder().build(),

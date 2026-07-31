@@ -2,7 +2,7 @@
   "area": "data",
   "exportName": "remoteCrmConsoleModule",
   "icon": "network",
-  "id": "remote-crm",
+  "id": "fixture/remote-crm",
   "label": "Remote CRM",
   "navigation": {
     "order": 70,

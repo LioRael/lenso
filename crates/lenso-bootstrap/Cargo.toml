@@ -14,6 +14,7 @@ rust-version.workspace = true
 platform-core.workspace = true
 platform-module.workspace = true
 platform-module-remote.workspace = true
+platform-module-management.workspace = true
 platform-admin-data.workspace = true
 platform-http.workspace = true
 platform-runtime.workspace = true
@@ -30,6 +31,7 @@ reqwest.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+lenso-module-management.workspace = true
 
 [dev-dependencies]
 async-trait.workspace = true

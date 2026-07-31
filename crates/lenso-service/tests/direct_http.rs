@@ -1,7 +1,7 @@
 use http::{Method, StatusCode};
 use lenso_service::{
     CallPolicyEvent, CallPolicyFailure, CallPolicyRuntime, CallPolicyTerminalOutcome,
-    DelegatedActorCredentialRequest, DelegatedContextProvider, DirectHttpCall, DirectHttpClient,
+    DelegatedActorCredentialRequest, DelegatedContextIssuer, DirectHttpCall, DirectHttpClient,
     DirectHttpRequest, DirectHttpResponse, DirectHttpServerBinding, Endpoint, EndpointState,
     ManualCallPolicyClock, MemoryIdentityDecisionRecorder, ServiceContextPolicy, ServiceReference,
     ServiceTenancyMode, StaticEndpointResolver, SystemSandboxDelegatedContextProvider,

@@ -12,6 +12,63 @@ fn committed_error_schema_matches_generator() {
 }
 
 #[test]
+fn committed_catalog_trust_schemas_match_generators() {
+    let schemas = [
+        (
+            include_str!("../../../contracts/catalog/lenso.catalog-snapshot.v1.schema.json"),
+            generate_contracts::generated_catalog_snapshot_schema(),
+        ),
+        (
+            include_str!(
+                "../../../contracts/catalog/lenso.module-verification-profile.v1.schema.json"
+            ),
+            generate_contracts::generated_verification_profile_schema(),
+        ),
+        (
+            include_str!(
+                "../../../contracts/catalog/lenso.module-verification-receipt.v1.schema.json"
+            ),
+            generate_contracts::generated_verification_receipt_schema(),
+        ),
+        (
+            include_str!(
+                "../../../contracts/catalog/lenso.linked-provenance-receipt.v1.schema.json"
+            ),
+            generate_contracts::generated_linked_provenance_receipt_schema(),
+        ),
+    ];
+
+    for (committed, generated) in schemas {
+        let committed: serde_json::Value = serde_json::from_str(committed).unwrap();
+        assert_eq!(committed, generated);
+        assert_eq!(committed["additionalProperties"], false);
+        jsonschema::validator_for(&committed).expect("Catalog trust schema should compile");
+    }
+}
+
+#[test]
+fn committed_module_management_schemas_match_generators() {
+    for (path, generated) in generate_contracts::generated_module_management_schemas() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join(path);
+        let committed: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(&path)
+                .expect("committed management schema should be readable"),
+        )
+        .expect("committed management schema should parse");
+        assert_eq!(committed, generated, "{}", path.display());
+        assert_eq!(
+            committed["additionalProperties"],
+            false,
+            "{}",
+            path.display()
+        );
+        jsonschema::validator_for(&committed).expect("management schema should compile");
+    }
+}
+
+#[test]
 fn committed_autonomous_service_runtime_openapi_matches_generator() {
     let committed: serde_yaml::Value = serde_yaml::from_str(include_str!(
         "../../../contracts/openapi/autonomous-service-runtime.v1.yaml"
@@ -448,7 +505,7 @@ fn committed_extraction_scaffold_artifacts_match_generator() {
     );
     assert_eq!(
         scaffold["preservedIdentity"]["moduleName"],
-        serde_json::json!("support-ticket")
+        serde_json::json!("acme/support-ticket")
     );
     assert_eq!(
         scaffold["preservedIdentity"]["operationIds"],

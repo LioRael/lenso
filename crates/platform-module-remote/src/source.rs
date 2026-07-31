@@ -10,6 +10,7 @@ use platform_core::error::ErrorDetail;
 use platform_core::{AppError, AppResult, ErrorCode};
 use platform_module::{
     AdminDeclarativeComponent, AdminDeclarativeSurface, AdminSurface, Module, ModuleHttpRoute,
+    ModuleManifest,
 };
 use std::sync::Arc;
 use std::time::Duration;
@@ -47,7 +48,10 @@ impl RemoteModuleSource {
         }
         loaded
             .into_iter()
-            .find(|loaded| loaded.module.manifest.name == self.config.name)
+            .find(|loaded| {
+                self.config
+                    .matches_module_id(&loaded.module.manifest.module_id)
+            })
             .map(|loaded| loaded.module)
             .ok_or_else(|| {
                 AppError::new(
@@ -63,12 +67,12 @@ impl RemoteModuleSource {
     pub async fn load_all(&self) -> AppResult<Vec<LoadedRemoteModule>> {
         match self.fetch_manifest().await? {
             RemoteManifestEnvelope::Module(manifest) => {
-                if manifest.name != self.config.name {
+                if !self.config.matches_module_id(&manifest.module_id) {
                     return Err(AppError::new(
                         ErrorCode::Internal,
                         format!(
                             "remote module manifest name '{}' does not match configured name '{}'",
-                            manifest.name, self.config.name
+                            manifest.module_id, self.config.name
                         ),
                     ));
                 }
@@ -88,12 +92,71 @@ impl RemoteModuleSource {
                     .modules
                     .into_iter()
                     .map(|manifest| {
-                        let config = self.config.for_service_module(&manifest.name);
+                        let config = self.config.for_service_module(&manifest.module_id);
                         self.load_module(manifest, config)
                     })
                     .collect()
             }
         }
+    }
+
+    /// Verifies the live Provider descriptor against a locked Manifest, then
+    /// builds behavior exclusively from the locked copy. The endpoint can
+    /// confirm identity but can never discover or replace a Module.
+    pub async fn load_locked(
+        &self,
+        expected_service_id: &str,
+        expected_service_version: &str,
+        locked: &ModuleManifest,
+    ) -> AppResult<LoadedRemoteModule> {
+        let descriptor = match self.fetch_manifest().await? {
+            RemoteManifestEnvelope::Module(_) => {
+                return Err(AppError::new(
+                    ErrorCode::ExternalDependency,
+                    format!(
+                        "Provider descriptor for '{}' omitted Service identity",
+                        locked.module_id
+                    ),
+                ));
+            }
+            RemoteManifestEnvelope::Service(service) => {
+                if service.name != expected_service_id
+                    || service.version.as_deref() != Some(expected_service_version)
+                {
+                    return Err(AppError::new(
+                        ErrorCode::ExternalDependency,
+                        format!(
+                            "Provider descriptor Service identity for '{}' differs from the locked Service Release",
+                            locked.module_id
+                        ),
+                    ));
+                }
+                service
+                    .modules
+                    .into_iter()
+                    .find(|manifest| manifest.module_id == locked.module_id)
+                    .ok_or_else(|| {
+                        AppError::new(
+                            ErrorCode::ExternalDependency,
+                            format!(
+                                "Provider descriptor omitted locked Module '{}'",
+                                locked.module_id
+                            ),
+                        )
+                    })?
+            }
+        };
+        if descriptor != *locked {
+            return Err(AppError::new(
+                ErrorCode::ExternalDependency,
+                format!(
+                    "Provider descriptor for '{}' differs from the locked Manifest",
+                    locked.module_id
+                ),
+            ));
+        }
+
+        self.load_module(locked.clone(), self.config.clone())
     }
 
     fn load_module(

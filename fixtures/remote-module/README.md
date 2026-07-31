@@ -39,7 +39,7 @@ cargo run --locked -p remote-module-fixture
 The server listens on `127.0.0.1:4100` by default. Override it with:
 
 ```sh
-REMOTE_MODULE_ADDR=127.0.0.1:4101 cargo run --locked -p remote-module-fixture
+LENSO_SERVICE_ADDR=127.0.0.1:4101 cargo run --locked -p remote-module-fixture
 ```
 
 Run the same fixture as a native gRPC remote module:
@@ -48,17 +48,11 @@ Run the same fixture as a native gRPC remote module:
 cargo run --locked -p remote-module-fixture -- --grpc
 ```
 
-Connect it to the API in another shell:
-
-```sh
-REMOTE_MODULES=remote-crm=http://127.0.0.1:4100/lenso/module/v1 just api
-```
-
-Or connect the gRPC transport:
-
-```sh
-REMOTE_MODULES=remote-crm=grpc://127.0.0.1:4100 just api
-```
+Connect it through Runtime Console or the `/admin/modules/*` management
+interface: preview and approve an exact Module Change Plan, apply its Service
+Installation Plan with either the HTTP or gRPC endpoint binding, then restart
+API and worker. Provider endpoints are never discovered from environment
+variables.
 
 The API loads the module manifest at startup. The HTTP transport also serves
 schema-admin data through the normal `/admin/data/*` backend; the gRPC transport
@@ -89,7 +83,8 @@ fixture and API in separate shells:
 just db-up
 just migrate
 cargo run --locked -p remote-module-fixture
-REMOTE_MODULES=remote-crm=http://127.0.0.1:4100/lenso/module/v1,remote-crm-embedded=http://127.0.0.1:4100/lenso/module/v1/embedded,remote-crm-declarative=http://127.0.0.1:4100/lenso/module/v1/declarative just api
+# Apply the reviewed Module and Service Installation plans in Runtime Console.
+just api
 ```
 
 Seed and verify the remote story path:
@@ -150,11 +145,10 @@ curl \
 The failure request creates a failed `remote_proxy_call` node and keeps its
 remote error details in Inspector and Technical Operations.
 
-To load both the schema-admin module and the embedded iframe module:
-
-```sh
-REMOTE_MODULES=remote-crm=http://127.0.0.1:4100/lenso/module/v1,remote-crm-embedded=http://127.0.0.1:4100/lenso/module/v1/embedded,remote-crm-declarative=http://127.0.0.1:4100/lenso/module/v1/declarative just api
-```
+To load the schema-admin, embedded iframe, and declarative exports, select all
+three exact Module Releases in the reviewed Module Change Plan. The Provider
+descriptor may verify those selections but cannot discover or enable sibling
+exports.
 
 The embedded manifest points at the example's `/embedded/admin` page with an
 origin allowlist for the current request host, so the Runtime Console can render

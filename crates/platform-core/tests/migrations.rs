@@ -1,4 +1,5 @@
-use platform_core::{Migration, apply_migrations};
+use platform_core::{Migration, apply_migrations, apply_module_migration};
+use sha2::{Digest as _, Sha256};
 
 mod support;
 use support::TestDatabase;
@@ -34,6 +35,47 @@ async fn applies_multi_statement_migrations() {
             .expect("migration-created table should be queryable");
     assert!(!applied);
 
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn module_migration_is_idempotent_and_rejects_digest_drift() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    let sql = "create table module_migration_proof (id integer primary key)";
+    let digest = {
+        use std::fmt::Write as _;
+        let mut value = String::from("sha256:");
+        for byte in Sha256::digest(sql.as_bytes()) {
+            write!(&mut value, "{byte:02x}").unwrap();
+        }
+        value
+    };
+    apply_module_migration(&db.pool, "acme/support/1/create", &digest, sql)
+        .await
+        .unwrap();
+    apply_module_migration(&db.pool, "acme/support/1/create", &digest, sql)
+        .await
+        .unwrap();
+    let changed_sql = "create table module_migration_proof (id bigint primary key)";
+    let changed_digest = {
+        use std::fmt::Write as _;
+        let mut value = String::from("sha256:");
+        for byte in Sha256::digest(changed_sql.as_bytes()) {
+            write!(&mut value, "{byte:02x}").unwrap();
+        }
+        value
+    };
+    let drift = apply_module_migration(
+        &db.pool,
+        "acme/support/1/create",
+        &changed_digest,
+        changed_sql,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(drift.code, platform_core::ErrorCode::Conflict);
     db.cleanup().await;
 }
 

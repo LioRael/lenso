@@ -372,7 +372,7 @@ mod tests {
             .expect("manifest loads over grpc");
 
         assert_eq!(config.transport, RemoteModuleTransport::Grpc);
-        assert_eq!(module.manifest.name, "remote-grpc");
+        assert_eq!(module.manifest.module_id, "fixture/remote-grpc");
         assert_eq!(
             module
                 .manifest
@@ -709,7 +709,7 @@ mod tests {
     }
 
     fn manifest() -> ModuleManifest {
-        ModuleManifest::builder("remote-grpc")
+        ModuleManifest::builder("fixture/remote-grpc")
             .declarative_admin(AdminDeclarativeSurface {
                 pages: vec![platform_module::AdminDeclarativePage {
                     name: "overview".to_owned(),

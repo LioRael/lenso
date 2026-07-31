@@ -87,10 +87,7 @@
       "type": "object",
       "additionalProperties": true,
       "properties": {
-        "remoteProtocolVersion": {
-          "type": "string"
-        },
-        "remote_protocol_version": {
+        "serviceProtocolVersion": {
           "type": "string"
         },
         "requiredHostFeatures": {

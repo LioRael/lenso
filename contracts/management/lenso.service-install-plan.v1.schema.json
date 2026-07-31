@@ -1,0 +1,636 @@
+{
+  "$defs": {
+    "ConfigActivationIntent": {
+      "enum": [
+        "prepare",
+        "activate"
+      ],
+      "type": "string"
+    },
+    "EndpointBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_bindings": {
+          "items": {
+            "$ref": "#/$defs/ServiceTransportBinding"
+          },
+          "type": "array"
+        },
+        "binding_id": {
+          "type": "string"
+        },
+        "cache_policy": {
+          "$ref": "#/$defs/EndpointCachePolicy"
+        },
+        "identity_policy": {
+          "$ref": "#/$defs/ServiceIdentityPolicy"
+        },
+        "resolver_source": {
+          "$ref": "#/$defs/EndpointResolverSource"
+        },
+        "selection_policy": {
+          "$ref": "#/$defs/EndpointSelectionPolicy",
+          "default": {
+            "require_distinct_failure_domains": false
+          }
+        },
+        "service_ref": {
+          "$ref": "#/$defs/ServiceReference"
+        }
+      },
+      "required": [
+        "binding_id",
+        "service_ref",
+        "resolver_source",
+        "allowed_bindings",
+        "identity_policy",
+        "cache_policy"
+      ],
+      "type": "object"
+    },
+    "EndpointCachePolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "maximum_age_seconds": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "stale_if_source_unavailable_seconds": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "maximum_age_seconds"
+      ],
+      "type": "object"
+    },
+    "EndpointResolverSource": {
+      "oneOf": [
+        {
+          "properties": {
+            "endpoints": {
+              "items": {
+                "$ref": "#/$defs/StaticEndpointDeclaration"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "static",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "endpoints"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "local_process",
+              "type": "string"
+            },
+            "source_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "source_id"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "adapter_id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "adapter",
+              "type": "string"
+            },
+            "public_config": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "secret_references": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "adapter_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "EndpointSelectionPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "preferred_regions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "require_distinct_failure_domains": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "InstalledServiceExport": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_digests": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "export_key": {
+          "type": "string"
+        },
+        "manifest_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "module_id": {
+          "type": "string"
+        },
+        "module_release_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "module_version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "export_key",
+        "module_id",
+        "module_version",
+        "module_release_digest",
+        "manifest_digest"
+      ],
+      "type": "object"
+    },
+    "InstalledServiceRelease": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "immutable_locator": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "digest",
+        "immutable_locator"
+      ],
+      "type": "object"
+    },
+    "ServiceConfigBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "activation": {
+          "$ref": "#/$defs/ConfigActivationIntent"
+        },
+        "config_contract_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "config_revision_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "config_revision_id": {
+          "type": "string"
+        },
+        "owner_id": {
+          "type": "string"
+        },
+        "secret_references": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "owner_id",
+        "config_contract_digest",
+        "config_revision_id",
+        "config_revision_digest",
+        "activation"
+      ],
+      "type": "object"
+    },
+    "ServiceDesiredMode": {
+      "enum": [
+        "active",
+        "inactive"
+      ],
+      "type": "string"
+    },
+    "ServiceIdentityPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "audience": {
+          "type": "string"
+        },
+        "credential_references": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "principal": {
+          "type": "string"
+        },
+        "trust_profile": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "principal",
+        "audience",
+        "trust_profile"
+      ],
+      "type": "object"
+    },
+    "ServiceInstallation": {
+      "additionalProperties": false,
+      "properties": {
+        "config_bindings": {
+          "items": {
+            "$ref": "#/$defs/ServiceConfigBinding"
+          },
+          "type": "array"
+        },
+        "desired_mode": {
+          "$ref": "#/$defs/ServiceDesiredMode"
+        },
+        "endpoint_binding": {
+          "$ref": "#/$defs/EndpointBinding"
+        },
+        "exports": {
+          "items": {
+            "$ref": "#/$defs/InstalledServiceExport"
+          },
+          "type": "array"
+        },
+        "lifecycle_binding": {
+          "$ref": "#/$defs/ServiceLifecycleBinding"
+        },
+        "profile": {
+          "$ref": "#/$defs/ServiceResponsibilityProfile"
+        },
+        "service_ref": {
+          "$ref": "#/$defs/ServiceReference"
+        },
+        "service_release": {
+          "$ref": "#/$defs/InstalledServiceRelease"
+        }
+      },
+      "required": [
+        "service_ref",
+        "profile",
+        "desired_mode",
+        "service_release",
+        "exports",
+        "endpoint_binding",
+        "lifecycle_binding"
+      ],
+      "type": "object"
+    },
+    "ServiceInstallationChange": {
+      "oneOf": [
+        {
+          "properties": {
+            "installation": {
+              "$ref": "#/$defs/ServiceInstallation"
+            },
+            "kind": {
+              "const": "install",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "installation"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "uninstall",
+              "type": "string"
+            },
+            "service_ref": {
+              "$ref": "#/$defs/ServiceReference"
+            }
+          },
+          "required": [
+            "kind",
+            "service_ref"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ServiceInstallationPlanKind": {
+      "enum": [
+        "install",
+        "update",
+        "reuse",
+        "uninstall"
+      ],
+      "type": "string"
+    },
+    "ServiceInstallationSet": {
+      "additionalProperties": false,
+      "properties": {
+        "environment_id": {
+          "type": "string"
+        },
+        "previous_state_digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "services": {
+          "items": {
+            "$ref": "#/$defs/ServiceInstallation"
+          },
+          "type": "array"
+        },
+        "system_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol",
+        "system_id",
+        "environment_id",
+        "revision",
+        "services"
+      ],
+      "type": "object"
+    },
+    "ServiceLifecycleBinding": {
+      "oneOf": [
+        {
+          "properties": {
+            "deployment_reference": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "external",
+              "type": "string"
+            },
+            "observation_adapter_id": {
+              "type": "string"
+            },
+            "operation_adapter_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "deployment_reference",
+            "observation_adapter_id"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "local_supervisor",
+              "type": "string"
+            },
+            "readiness_timeout_seconds": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "shutdown_timeout_seconds": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "supervisor_id": {
+              "type": "string"
+            },
+            "working_directory": {
+              "type": "string"
+            },
+            "workload_artifact_digests": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "supervisor_id",
+            "workload_artifact_digests",
+            "working_directory",
+            "readiness_timeout_seconds",
+            "shutdown_timeout_seconds"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ServiceReference": {
+      "additionalProperties": false,
+      "properties": {
+        "service_id": {
+          "type": "string"
+        },
+        "system_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "system_id",
+        "service_id"
+      ],
+      "type": "object"
+    },
+    "ServiceResponsibilityProfile": {
+      "enum": [
+        "provider",
+        "autonomous"
+      ],
+      "type": "string"
+    },
+    "ServiceTransportBinding": {
+      "enum": [
+        "provider_http_json",
+        "provider_grpc",
+        "direct_http",
+        "direct_grpc",
+        "event",
+        "system_plane"
+      ],
+      "type": "string"
+    },
+    "StaticEndpointDeclaration": {
+      "additionalProperties": false,
+      "properties": {
+        "address": {
+          "type": "string"
+        },
+        "binding": {
+          "$ref": "#/$defs/ServiceTransportBinding"
+        },
+        "failure_domain": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "priority": {
+          "default": 0,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "region": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "weight": {
+          "default": 1,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "address",
+        "binding"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://contracts.lenso.local/management/lenso.service-install-plan.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "change": {
+      "$ref": "#/$defs/ServiceInstallationChange"
+    },
+    "created_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "environment_id": {
+      "type": "string"
+    },
+    "expected_revision": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "expected_state_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/ServiceInstallationPlanKind"
+    },
+    "next_actions": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "plan_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "plan_id": {
+      "type": "string"
+    },
+    "protocol": {
+      "const": "lenso.service-install-plan.v1",
+      "type": "string"
+    },
+    "required_authority": {
+      "type": "string"
+    },
+    "system_id": {
+      "type": "string"
+    },
+    "target": {
+      "$ref": "#/$defs/ServiceInstallationSet"
+    },
+    "target_revision": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "target_state_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "protocol",
+    "plan_id",
+    "plan_digest",
+    "system_id",
+    "environment_id",
+    "kind",
+    "change",
+    "expected_revision",
+    "expected_state_digest",
+    "target_revision",
+    "target_state_digest",
+    "target",
+    "required_authority",
+    "next_actions",
+    "created_at"
+  ],
+  "title": "LensoServiceInstallationPlan",
+  "type": "object"
+}

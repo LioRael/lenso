@@ -24,12 +24,13 @@ async fn manifest_matches_remote_module_protocol() {
         .unwrap();
     let manifest: Value = serde_json::from_slice(&body).unwrap();
 
-    assert_eq!(manifest["name"], "remote-crm");
+    assert_eq!(manifest["protocol"], "lenso.module-manifest.v1");
+    assert_eq!(manifest["module_id"], "fixture/remote-crm");
     assert_eq!(manifest["admin"]["kind"], "schema");
     assert_eq!(manifest["admin"]["entities"][0]["name"], "contacts");
     let console_surface_contract: Value =
         serde_json::from_str(include_str!("../console-surface.json")).unwrap();
-    assert_eq!(manifest["name"], console_surface_contract["id"]);
+    assert_eq!(manifest["module_id"], console_surface_contract["id"]);
     assert_eq!(
         manifest["console"][0]["name"],
         console_surface_contract["surfaceName"]
@@ -135,7 +136,7 @@ async fn grpc_manifest_matches_remote_module_protocol() {
     .await
     .unwrap();
 
-    assert_eq!(module.manifest.name, "remote-crm");
+    assert_eq!(module.manifest.module_id, "fixture/remote-crm");
     assert_eq!(
         module.manifest.runtime.as_ref().expect("runtime").functions[0].name,
         "remote_crm.sync_contact.v1"
@@ -187,7 +188,8 @@ async fn embedded_manifest_matches_remote_module_protocol() {
         .unwrap();
     let manifest: Value = serde_json::from_slice(&body).unwrap();
 
-    assert_eq!(manifest["name"], "remote-crm-embedded");
+    assert_eq!(manifest["protocol"], "lenso.module-manifest.v1");
+    assert_eq!(manifest["module_id"], "fixture/remote-crm-embedded");
     assert_eq!(manifest["admin"]["kind"], "embedded_custom");
     assert_eq!(manifest["http_routes"][0]["path"], "/contacts");
     assert_eq!(manifest["admin"]["runtime"], "iframe");
@@ -226,7 +228,8 @@ async fn declarative_manifest_matches_remote_module_protocol() {
         .unwrap();
     let manifest: Value = serde_json::from_slice(&body).unwrap();
 
-    assert_eq!(manifest["name"], "remote-crm-declarative");
+    assert_eq!(manifest["protocol"], "lenso.module-manifest.v1");
+    assert_eq!(manifest["module_id"], "fixture/remote-crm-declarative");
     assert_eq!(manifest["admin"]["kind"], "declarative_custom");
     assert_eq!(manifest["http_routes"][0]["path"], "/contacts");
     assert_eq!(manifest["admin"]["pages"][0]["name"], "overview");

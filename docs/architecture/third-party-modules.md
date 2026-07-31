@@ -5,19 +5,20 @@ application repository.
 
 ## Definition
 
-A third-party module is not just a Rust crate. It is a package of declarations
-and source-specific behavior that the host can inspect, authorize, and load:
+A third-party Module Release is not just a Rust crate. It is an immutable
+package the Host can inspect, authorize, and load:
 
 ```text
-module = manifest data + loading source + optional Runtime Console package
+Module Release = canonical Manifest + exactly one delivery + optional Console artifact
 ```
 
-- Manifest data is the portable contract. It declares identity, version,
+- Manifest data is the portable contract. It declares identity,
   capabilities, HTTP routes, runtime functions, admin surfaces, and console
   surfaces.
-- Loading source determines where behavior runs. `Linked` runs in the host
-  process, `Remote` runs out of process, and future `Wasm` runs in a sandboxed
-  host-controlled runtime.
+- Release delivery determines where behavior runs. `linked` is the primary
+  experience and runs in the Host. `service` binds the Module to one exact
+  Service Release/export. No public `remote`, `source`, or `bundled` value
+  exists in Module Ecosystem V1.
 - Runtime Console packages are optional frontend contributions loaded by the
   host console registry.
 
@@ -27,23 +28,16 @@ or HTTP proxy policy. Install trust is operator-owned: explicit manifest URLs ar
 treated like direct CLI installs, and official catalogs are curated before
 publication.
 
-## Default Source
+## Delivery Choice
 
-Third-party ecosystem capabilities should default to services: independently
-running providers that expose one or more modules through the existing `Remote`
-source.
+`linked` is the primary and richest Module experience for Rust applications,
+including third-party crates deliberately compiled into the Host. `service` is
+used when independent deployment, language choice, storage, or release cadence
+matters; each Service may own and export multiple Modules.
 
-`Linked` modules are for first-party application code, framework fixtures, and
-local project-owned modules that intentionally compile into the host. They can
-use `modules/<name>` and `crates/lenso-bootstrap` registration.
-
-Services are the right default for external contributors because they are
-language-independent, can be versioned and deployed separately, and keep the
-host free of third-party code execution.
-
-`Wasm` remains a future source for stronger sandbox and marketplace scenarios.
-Do not model Wasm as a variant of `Remote`; it needs separate execution,
-permission, and packaging rules.
+`wasm` remains a future delivery kind for stronger sandbox and marketplace
+scenarios and is rejected by V1 until its execution, permission, and packaging
+rules are defined.
 
 ## Contributor Package Shape
 
@@ -247,14 +241,12 @@ shape:
 ```
 
 The host may cache the manifest, lint it through `platform-module`, and reject
-or degrade modules that request unsupported surfaces. `install.env` is written
-to the host `.env` by the CLI. `install.commands` are executed only when the
-operator passes `--run-install-commands`. `install.services` are written to
-`.lenso/module-services.json`; the API and worker start those services before
-loading configured services. Host-started services are tracked with
-lock/pid files next to `module-services.json` and are stopped when the owning
-API/worker process exits; services that are already ready before startup are
-treated as external and are not stopped by the host.
+or degrade modules that request unsupported surfaces. Installation is always a
+reviewed Module Change Plan plus, for Provider delivery, an exact Service
+Installation Plan. The Service deployment adapter owns process or platform
+lifecycle; API and worker startup only compile the resulting Provider Runtime
+Plan and connect verified behavior. Module manifests cannot cause arbitrary
+commands, host environment writes, or process supervision.
 
 ## Runtime Console Package
 
@@ -392,24 +384,27 @@ member.
 Host installation should record source configuration and extension registry
 state without compiling third-party code into the application bundle.
 
-The first CLI install lane writes host-local state only:
+The legacy CLI install lane wrote host-local state including `.env` source
+configuration. Module Ecosystem V1 replaces that lane with reviewed management
+artifacts:
 
 - `.lenso/module-catalog.json`: optional local discovery entries for Available
   Modules.
-- `.env`: appends or replaces `REMOTE_MODULES=<name>=<base_url>`.
-- `.lenso/module-installs.json`: records the module source and host-local writes
-  so uninstall does not need to infer what was installed.
+- `lenso.modules.lock.json`: selects the exact Module Release and Service export.
+- `.lenso/environments/<environment>/service-installations.json`: records the
+  exact Service Release, endpoint binding, identity policy, and installed exports.
 - `.lenso/console/extensions/<module>/*.js`: copied third-party Runtime Console
   bundles.
 - `.lenso/console/extensions/registry.json`: same-origin dynamic bundle registry
   consumed by the hosted Runtime Console.
 
-Runtime Console can perform the same host-local install write through
-`POST /admin/data/available-modules/{module}/install`. The visual path is still
-an operator-reviewed install: it writes `.env`, copies declared console bundles,
-updates the extension registry, and reports restart/reload follow-up state. It
-does not install npm packages or compile third-party code into the official
-Runtime Console bundle.
+Runtime Console performs installation through the `/admin/modules/*` workflow:
+preview the immutable Module Change Plan, start the durable Operation, satisfy
+its plan-bound approval, and apply it. Provider delivery includes the exact
+Service Installation subplan. The effect adapter materializes only plan-owned
+files and evidence; catalog records and manifests cannot directly write the
+host environment, launch processes, install npm packages, or compile code into
+the official Runtime Console bundle.
 
 `pnpm demo:remote-module-install` in the `lenso-runtime-console` repository runs
 the same flow against a temporary host fixture without mutating the working tree.

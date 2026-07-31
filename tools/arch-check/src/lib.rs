@@ -26,12 +26,14 @@ pub fn run() -> anyhow::Result<()> {
         check_crates_no_module_deps(
             &root,
             &[
+                "lenso-module-management",
                 "platform-admin",
                 "platform-admin-data",
+                "platform-module-management",
                 "platform-module-remote",
             ],
         ),
-        "platform admin/remote module dependency",
+        "shared crate concrete-module dependency",
         &mut failures,
     );
     collect_result(
@@ -47,6 +49,11 @@ pub fn run() -> anyhow::Result<()> {
     collect_result(
         check_contract_artifacts_fresh(&root),
         "fresh contract artifacts",
+        &mut failures,
+    );
+    collect_result(
+        check_module_contract_reset(&root),
+        "Module Ecosystem V1 contract reset",
         &mut failures,
     );
     collect_result(
@@ -145,8 +152,8 @@ fn allowed_public_module_import(line: &str, module: &str) -> bool {
     line.contains(&format!("use {module}::public")) || line.contains(&format!("{module}::public::"))
 }
 
-/// Platform admin/remote crates must not depend on concrete modules; they work
-/// through composition-root injection and `platform-module` seams.
+/// Shared management and platform crates must not depend on concrete modules;
+/// they work through contracts, composition-root injection, and narrow seams.
 pub fn check_crates_no_module_deps(root: &Path, crates: &[&str]) -> anyhow::Result<()> {
     let module_names = module_names(root)?;
     let mut violations = Vec::new();
@@ -168,7 +175,7 @@ pub fn check_crates_no_module_deps(root: &Path, crates: &[&str]) -> anyhow::Resu
 
     ensure_empty(
         violations,
-        "platform admin/remote crates must not depend on any concrete module crate",
+        "shared management and platform crates must not depend on concrete module crates",
     )
 }
 
@@ -212,6 +219,22 @@ pub fn check_contract_artifacts_fresh(root: &Path) -> anyhow::Result<()> {
     let generated_openapi = serde_json::to_value(lenso_api::openapi_document())
         .context("OpenAPI document should serialize")?;
     let error_schema = read_json(root.join("contracts/errors/error-response.v1.schema.json"))?;
+    let module_manifest_schema =
+        read_json(root.join("contracts/modules/lenso.module-manifest.v1.schema.json"))?;
+    let module_release_schema =
+        read_json(root.join("contracts/modules/lenso.module-release.v1.schema.json"))?;
+    let catalog_snapshot_schema =
+        read_json(root.join("contracts/catalog/lenso.catalog-snapshot.v1.schema.json"))?;
+    let verification_profile_schema =
+        read_json(root.join("contracts/catalog/lenso.module-verification-profile.v1.schema.json"))?;
+    let verification_receipt_schema =
+        read_json(root.join("contracts/catalog/lenso.module-verification-receipt.v1.schema.json"))?;
+    let linked_provenance_schema =
+        read_json(root.join("contracts/catalog/lenso.linked-provenance-receipt.v1.schema.json"))?;
+    let management_schemas = generate_contracts::generated_module_management_schemas()
+        .into_iter()
+        .map(|(path, generated)| Ok((path, read_json(root.join(path))?, generated)))
+        .collect::<anyhow::Result<Vec<_>>>()?;
     let autonomous_service_schema =
         read_json(root.join("contracts/services/lenso-service.v2.schema.json"))?;
     let direct_http_bindings =
@@ -291,6 +314,41 @@ pub fn check_contract_artifacts_fresh(root: &Path) -> anyhow::Result<()> {
     }
     if error_schema != generate_contracts::generated_error_response_schema() {
         violations.push("contracts/errors/error-response.v1.schema.json is stale".to_owned());
+    }
+    if module_manifest_schema != generate_contracts::generated_module_manifest_schema() {
+        violations
+            .push("contracts/modules/lenso.module-manifest.v1.schema.json is stale".to_owned());
+    }
+    if module_release_schema != generate_contracts::generated_module_release_schema() {
+        violations
+            .push("contracts/modules/lenso.module-release.v1.schema.json is stale".to_owned());
+    }
+    if catalog_snapshot_schema != generate_contracts::generated_catalog_snapshot_schema() {
+        violations
+            .push("contracts/catalog/lenso.catalog-snapshot.v1.schema.json is stale".to_owned());
+    }
+    if verification_profile_schema != generate_contracts::generated_verification_profile_schema() {
+        violations.push(
+            "contracts/catalog/lenso.module-verification-profile.v1.schema.json is stale"
+                .to_owned(),
+        );
+    }
+    if verification_receipt_schema != generate_contracts::generated_verification_receipt_schema() {
+        violations.push(
+            "contracts/catalog/lenso.module-verification-receipt.v1.schema.json is stale"
+                .to_owned(),
+        );
+    }
+    if linked_provenance_schema != generate_contracts::generated_linked_provenance_receipt_schema()
+    {
+        violations.push(
+            "contracts/catalog/lenso.linked-provenance-receipt.v1.schema.json is stale".to_owned(),
+        );
+    }
+    for (path, committed, generated) in management_schemas {
+        if committed != generated {
+            violations.push(format!("{path} is stale"));
+        }
     }
     if autonomous_service_schema != generate_contracts::generated_autonomous_service_schema() {
         violations.push("contracts/services/lenso-service.v2.schema.json is stale".to_owned());
@@ -447,6 +505,291 @@ pub fn check_contract_artifacts_fresh(root: &Path) -> anyhow::Result<()> {
     }
 
     ensure_empty(violations, "contract artifacts must match Rust sources")
+}
+
+pub fn check_module_contract_reset(root: &Path) -> anyhow::Result<()> {
+    let manifest = read_json(root.join("contracts/modules/lenso.module-manifest.v1.schema.json"))?;
+    let release = read_json(root.join("contracts/modules/lenso.module-release.v1.schema.json"))?;
+    let service =
+        read_json(root.join("crates/lenso-service/schemas/lenso-service.v1.schema.json"))?;
+    let contracts_facade = fs::read_to_string(root.join("crates/lenso-contracts/src/lib.rs"))
+        .context("lenso-contracts facade should be readable")?;
+    let host_config = fs::read_to_string(root.join("crates/platform-core/src/config.rs"))
+        .context("Host config source should be readable")?;
+    let provider_runtime =
+        fs::read_to_string(root.join("crates/lenso-module-management/src/provider_runtime.rs"))
+            .context("Provider runtime compiler should be readable")?;
+    let provider_adapter =
+        fs::read_to_string(root.join("crates/platform-module-remote/src/provider_runtime.rs"))
+            .context("Provider runtime transport adapter should be readable")?;
+    let provider_config =
+        fs::read_to_string(root.join("crates/platform-module-remote/src/config.rs"))
+            .context("Provider runtime config should be readable")?;
+    let provider_proxy =
+        fs::read_to_string(root.join("crates/platform-module-remote/src/proxy.rs"))
+            .context("Provider proxy config should be readable")?;
+    let api_startup = fs::read_to_string(root.join("crates/lenso-api/src/lib.rs"))
+        .context("API startup source should be readable")?;
+    let worker_startup = fs::read_to_string(root.join("crates/lenso-worker/src/lib.rs"))
+        .context("worker startup source should be readable")?;
+    let bootstrap = fs::read_to_string(root.join("crates/lenso-bootstrap/src/lib.rs"))
+        .context("Host bootstrap source should be readable")?;
+    let admin_data = fs::read_to_string(root.join("crates/platform-admin-data/src/handlers.rs"))
+        .context("admin data source should be readable")?;
+    let first_user_smoke = fs::read_to_string(root.join("scripts/first-user-smoke.sh"))
+        .context("first user smoke should be readable")?;
+    let console_fixture = fs::read_to_string(root.join("scripts/runtime-console-api-fixture.sh"))
+        .context("Runtime Console API fixture should be readable")?;
+    let provider_runtime_schema =
+        read_json(root.join("contracts/management/lenso.provider-runtime-plan.v1.schema.json"))?;
+    let openapi: Value = serde_yaml::from_str(
+        &fs::read_to_string(root.join("contracts/openapi/app-api.v1.yaml"))
+            .context("committed OpenAPI should be readable")?,
+    )
+    .context("committed OpenAPI should parse")?;
+    let mut violations = Vec::new();
+
+    for (name, schema) in [("Manifest", &manifest), ("Release", &release)] {
+        if schema.get("additionalProperties") != Some(&Value::Bool(false)) {
+            violations.push(format!("{name} schema must reject unknown root fields"));
+        }
+        let properties = schema
+            .get("properties")
+            .and_then(Value::as_object)
+            .cloned()
+            .unwrap_or_default();
+        for removed in ["source", "bundled", "env", "secrets", "catalog", "install"] {
+            if properties.contains_key(removed) {
+                violations.push(format!("{name} schema exposes removed `{removed}` field"));
+            }
+        }
+    }
+
+    let delivery_kinds = release
+        .pointer("/$defs/ModuleDelivery/oneOf")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|variant| variant.pointer("/properties/kind/const"))
+        .filter_map(Value::as_str)
+        .collect::<BTreeSet<_>>();
+    if delivery_kinds != BTreeSet::from(["linked", "service"]) {
+        violations.push(format!(
+            "Module Release delivery kinds must be exactly linked/service, got {delivery_kinds:?}"
+        ));
+    }
+    if contracts_facade.contains("ModuleSource")
+        || root
+            .join("crates/lenso-contracts/src/module_source.rs")
+            .exists()
+    {
+        violations.push("public lenso-contracts must not expose ModuleSource".to_owned());
+    }
+    if host_config.contains("REMOTE_MODULES") || host_config.contains("RemoteModuleSourceConfig") {
+        violations
+            .push("public Host config must not expose Remote Module source aliases".to_owned());
+    }
+    for (surface, source) in [
+        ("Host config", host_config.as_str()),
+        ("Host bootstrap", bootstrap.as_str()),
+        ("admin data", admin_data.as_str()),
+        ("first user smoke", first_user_smoke.as_str()),
+        ("Runtime Console fixture", console_fixture.as_str()),
+    ] {
+        for removed in [
+            "LENSO_SERVICE_PROVIDERS",
+            "module-services.json",
+            "ServiceProviderSourceConfig",
+            "start_installed_remote_module_services",
+            "auth_token_env",
+        ] {
+            if source.contains(removed) {
+                violations.push(format!(
+                    "{surface} must not retain removed Provider discovery/supervisor surface `{removed}`"
+                ));
+            }
+        }
+    }
+    if root
+        .join("crates/lenso-api/tests/remote_module_smoke.rs")
+        .exists()
+    {
+        violations.push(
+            "legacy environment-discovery remote_module_smoke test must stay removed".to_owned(),
+        );
+    }
+    let admin_module_sources = openapi
+        .pointer("/components/schemas/ModuleSource/enum")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect::<BTreeSet<_>>();
+    if admin_module_sources != BTreeSet::from(["linked", "service"]) {
+        violations.push(format!(
+            "admin Module source projection must be exactly linked/service, got {admin_module_sources:?}"
+        ));
+    }
+    if openapi
+        .pointer("/paths/~1admin~1runtime~1remote-proxy-calls")
+        .is_some()
+        || openapi
+            .pointer("/paths/~1admin~1runtime~1service-proxy-calls")
+            .is_none()
+        || openapi
+            .pointer(
+                "/components/schemas/AdminModuleCompatibilityDto/properties/remoteProtocolVersion",
+            )
+            .is_some()
+        || openapi
+            .pointer(
+                "/components/schemas/AdminModuleCompatibilityDto/properties/serviceProtocolVersion",
+            )
+            .is_none()
+        || openapi
+            .pointer("/components/schemas/AdminServiceOperationLinksDto/properties/remoteCalls")
+            .is_some()
+        || openapi
+            .pointer("/components/schemas/AdminServiceOperationLinksDto/properties/serviceCalls")
+            .is_none()
+    {
+        violations.push(
+            "admin contracts must expose Service Provider paths and fields without Remote Module aliases"
+                .to_owned(),
+        );
+    }
+    for removed_path in [
+        "/paths/~1admin~1data~1available-modules~1{module}~1install/post",
+        "/paths/~1admin~1data~1available-modules~1{module}~1install/delete",
+    ] {
+        if openapi.pointer(removed_path).is_some() {
+            violations.push(
+                "catalog install mutations must stay behind reviewed /admin/modules plans"
+                    .to_owned(),
+            );
+        }
+    }
+    if service
+        .pointer("/$defs/compatibility/properties/remoteProtocolVersion")
+        .is_some()
+        || service
+            .pointer("/$defs/compatibility/properties/remote_protocol_version")
+            .is_some()
+        || service
+            .pointer("/$defs/compatibility/properties/serviceProtocolVersion")
+            .is_none()
+    {
+        violations.push(
+            "Service contract compatibility must expose serviceProtocolVersion without Remote Module aliases"
+                .to_owned(),
+        );
+    }
+    for removed in [
+        "crates/lenso-service/schemas/lenso-module.v1.schema.json",
+        "crates/lenso-service/schemas/lenso-module-release.v1.schema.json",
+    ] {
+        if root.join(removed).exists() {
+            violations.push(format!(
+                "removed handwritten schema still exists: {removed}"
+            ));
+        }
+    }
+
+    if provider_runtime_schema.pointer("/properties/protocol/const")
+        != Some(&Value::String("lenso.provider-runtime-plan.v1".to_owned()))
+        || provider_runtime_schema.get("additionalProperties") != Some(&Value::Bool(false))
+    {
+        violations.push(
+            "Provider Runtime Plan must remain a closed lenso.provider-runtime-plan.v1 contract"
+                .to_owned(),
+        );
+    }
+    for required_authority in [
+        "ApplicationModuleLock",
+        "ModulePlanningContext",
+        "ServiceInstallationSet",
+        "release_digest",
+        "manifest_digest",
+    ] {
+        if !provider_runtime.contains(required_authority) {
+            violations.push(format!(
+                "Provider runtime compiler must retain `{required_authority}` authority"
+            ));
+        }
+    }
+    for forbidden_discovery in [
+        "reqwest",
+        "LENSO_SERVICE_PROVIDERS",
+        "RemoteModule",
+        "/lenso/module/v1",
+    ] {
+        if provider_runtime.contains(forbidden_discovery) {
+            violations.push(format!(
+                "Provider runtime compiler must not perform live or legacy discovery via `{forbidden_discovery}`"
+            ));
+        }
+    }
+    if !provider_adapter.contains("&locked.manifest")
+        || !provider_adapter.contains("resolve_identity(&self.adapters, provider).await?")
+        || !provider_adapter.contains("resolve_endpoints(&self.adapters, provider).await?")
+        || !provider_adapter.contains("trait ProviderEndpointResolver")
+        || !provider_adapter.contains("trait ProviderCredentialResolver")
+        || provider_adapter.contains(".load_all()")
+    {
+        violations.push(
+            "Provider transport must verify locked Manifests and must not load discovered Modules"
+                .to_owned(),
+        );
+    }
+    for (name, startup, required_loader) in [
+        (
+            "API",
+            api_startup.as_str(),
+            "load_admin_modules_with_composition_and_provider_plan",
+        ),
+        (
+            "worker",
+            worker_startup.as_str(),
+            "load_modules_with_composition_and_provider_plan",
+        ),
+    ] {
+        if !startup.contains("provider_runtime_plan_from_workspace")
+            || !startup.contains(required_loader)
+            || startup.contains("start_installed_remote_module_services")
+        {
+            violations.push(format!(
+                "{name} startup must consume Provider Runtime Plan without the legacy Service supervisor"
+            ));
+        }
+    }
+    if host_config.contains("services: service_provider_sources_from_env()?") {
+        violations.push(
+            "Host startup must not discover Provider Services from environment variables"
+                .to_owned(),
+        );
+    }
+    if !bootstrap.contains("ProviderRuntimeAdapters::production_defaults()")
+        || !bootstrap.contains("ProviderRuntimeAdapter::with_adapters")
+    {
+        violations.push(
+            "Host composition must inject Provider endpoint and credential adapters".to_owned(),
+        );
+    }
+    if !provider_config.contains("pub(crate) auth_token: Option<String>")
+        || !provider_config.contains(".field(\"auth_configured\"")
+        || provider_config.contains(".field(\"auth_token\"")
+        || provider_proxy.contains(".field(\"auth_token\"")
+    {
+        violations.push(
+            "Provider transport credentials must stay private and redacted from Debug output"
+                .to_owned(),
+        );
+    }
+
+    ensure_empty(
+        violations,
+        "public Module contracts must use strict Manifest/Release V1 shapes",
+    )
 }
 
 pub fn check_contract_files_parse(root: &Path) -> anyhow::Result<()> {

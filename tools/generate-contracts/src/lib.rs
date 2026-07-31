@@ -6,6 +6,33 @@ use std::fs;
 use std::path::Path;
 
 pub fn generate_contracts() -> anyhow::Result<()> {
+    write_json(
+        "contracts/modules/lenso.module-manifest.v1.schema.json",
+        &generated_module_manifest_schema(),
+    )?;
+    write_json(
+        "contracts/modules/lenso.module-release.v1.schema.json",
+        &generated_module_release_schema(),
+    )?;
+    write_json(
+        "contracts/catalog/lenso.catalog-snapshot.v1.schema.json",
+        &generated_catalog_snapshot_schema(),
+    )?;
+    write_json(
+        "contracts/catalog/lenso.module-verification-profile.v1.schema.json",
+        &generated_verification_profile_schema(),
+    )?;
+    write_json(
+        "contracts/catalog/lenso.module-verification-receipt.v1.schema.json",
+        &generated_verification_receipt_schema(),
+    )?;
+    write_json(
+        "contracts/catalog/lenso.linked-provenance-receipt.v1.schema.json",
+        &generated_linked_provenance_receipt_schema(),
+    )?;
+    for (path, schema) in generated_module_management_schemas() {
+        write_json(path, &schema)?;
+    }
     write_yaml(
         "contracts/openapi/app-api.v1.yaml",
         &lenso_api::openapi_document(),
@@ -280,6 +307,347 @@ pub fn generated_autonomous_service_runtime_openapi() -> utoipa::openapi::OpenAp
 
 pub fn generated_workflow_definition_schema() -> Value {
     lenso_contracts::workflow_definition_schema()
+}
+
+pub fn generated_module_manifest_schema() -> Value {
+    generated_module_schema::<lenso_contracts::ModuleManifest>(
+        "lenso.module-manifest.v1",
+        "LensoModuleManifest",
+    )
+}
+
+pub fn generated_module_release_schema() -> Value {
+    generated_module_schema::<lenso_contracts::ModuleRelease>(
+        "lenso.module-release.v1",
+        "LensoModuleRelease",
+    )
+}
+
+pub fn generated_catalog_snapshot_schema() -> Value {
+    generated_catalog_schema::<lenso_contracts::CatalogSnapshotEnvelope>(
+        "lenso.catalog-snapshot.v1",
+        "LensoCatalogSnapshotEnvelope",
+    )
+}
+
+pub fn generated_verification_profile_schema() -> Value {
+    generated_catalog_schema::<lenso_contracts::VerificationProfile>(
+        "lenso.module-verification-profile.v1",
+        "LensoModuleVerificationProfile",
+    )
+}
+
+pub fn generated_verification_receipt_schema() -> Value {
+    generated_catalog_schema::<lenso_contracts::AttestedVerificationReceipt>(
+        "lenso.module-verification-receipt.v1",
+        "LensoModuleVerificationReceipt",
+    )
+}
+
+pub fn generated_linked_provenance_receipt_schema() -> Value {
+    generated_catalog_schema::<lenso_contracts::LinkedProvenanceReceipt>(
+        "lenso.linked-provenance-receipt.v1",
+        "LensoLinkedProvenanceReceipt",
+    )
+}
+
+pub fn generated_module_management_schemas() -> Vec<(&'static str, Value)> {
+    vec![
+        (
+            "contracts/management/lenso.linked-composition-seam.v1.schema.json",
+            generated_management_schema::<lenso_module_management::LinkedCompositionSeam>(
+                lenso_module_management::LINKED_COMPOSITION_SEAM_PROTOCOL,
+                "LensoLinkedCompositionSeam",
+            ),
+        ),
+        (
+            "contracts/management/lenso.desired-module-composition.v1.schema.json",
+            generated_management_schema::<lenso_module_management::DesiredModuleComposition>(
+                lenso_module_management::DESIRED_MODULE_COMPOSITION_PROTOCOL,
+                "LensoDesiredModuleComposition",
+            ),
+        ),
+        (
+            "contracts/management/lenso.application-module-lock.v1.schema.json",
+            generated_management_schema::<lenso_module_management::ApplicationModuleLock>(
+                lenso_module_management::APPLICATION_MODULE_LOCK_PROTOCOL,
+                "LensoApplicationModuleLock",
+            ),
+        ),
+        (
+            "contracts/management/lenso.module-resolution-conflict.v1.schema.json",
+            generated_management_schema::<lenso_module_management::ModuleResolutionConflict>(
+                lenso_module_management::MODULE_RESOLUTION_CONFLICT_PROTOCOL,
+                "LensoModuleResolutionConflict",
+            ),
+        ),
+        (
+            "contracts/management/lenso.module-planning-context.v1.schema.json",
+            generated_management_schema::<lenso_module_management::ModulePlanningContext>(
+                lenso_module_management::MODULE_PLANNING_CONTEXT_PROTOCOL,
+                "LensoModulePlanningContext",
+            ),
+        ),
+        (
+            "contracts/management/lenso.module-management-snapshot.v1.schema.json",
+            generated_management_schema::<lenso_module_management::ModuleManagementSnapshot>(
+                lenso_module_management::MODULE_MANAGEMENT_SNAPSHOT_PROTOCOL,
+                "LensoModuleManagementSnapshot",
+            ),
+        ),
+        (
+            "contracts/management/lenso.cargo-lock-candidate.v1.schema.json",
+            generated_management_schema::<lenso_module_management::CargoLockCandidate>(
+                lenso_module_management::CARGO_LOCK_CANDIDATE_PROTOCOL,
+                "LensoCargoLockCandidate",
+            ),
+        ),
+        (
+            "contracts/management/lenso.module-change-plan.v1.schema.json",
+            generated_management_schema::<lenso_module_management::ModuleChangePlan>(
+                lenso_module_management::MODULE_CHANGE_PLAN_PROTOCOL,
+                "LensoModuleChangePlan",
+            ),
+        ),
+        (
+            "contracts/management/lenso.module-repair-plan.v1.schema.json",
+            generated_management_schema::<lenso_module_management::ModuleRepairPlan>(
+                lenso_module_management::MODULE_REPAIR_PLAN_PROTOCOL,
+                "LensoModuleRepairPlan",
+            ),
+        ),
+        (
+            "contracts/management/lenso.module-environment-policy.v1.schema.json",
+            generated_management_schema::<lenso_module_management::ModuleEnvironmentPolicy>(
+                lenso_module_management::MODULE_ENVIRONMENT_POLICY_PROTOCOL,
+                "LensoModuleEnvironmentPolicy",
+            ),
+        ),
+        (
+            "contracts/management/lenso.module-approval.v1.schema.json",
+            generated_management_schema::<lenso_module_management::ModuleApproval>(
+                lenso_module_management::MODULE_APPROVAL_PROTOCOL,
+                "LensoModuleApproval",
+            ),
+        ),
+        (
+            "contracts/management/lenso.module-operation.v1.schema.json",
+            generated_management_schema::<lenso_module_management::ModuleOperation>(
+                lenso_module_management::MODULE_OPERATION_PROTOCOL,
+                "LensoModuleOperation",
+            ),
+        ),
+        (
+            "contracts/management/lenso.module-operation-journal.v1.schema.json",
+            generated_management_schema::<lenso_module_management::ModuleOperationJournal>(
+                lenso_module_management::MODULE_OPERATION_JOURNAL_PROTOCOL,
+                "LensoModuleOperationJournal",
+            ),
+        ),
+        (
+            "contracts/management/lenso.service-installations.v1.schema.json",
+            generated_management_schema::<lenso_module_management::ServiceInstallationSet>(
+                lenso_module_management::SERVICE_INSTALLATION_SET_PROTOCOL,
+                "LensoServiceInstallationSet",
+            ),
+        ),
+        (
+            "contracts/management/lenso.service-install-plan.v1.schema.json",
+            generated_management_schema::<lenso_module_management::ServiceInstallationPlan>(
+                lenso_module_management::SERVICE_INSTALLATION_PLAN_PROTOCOL,
+                "LensoServiceInstallationPlan",
+            ),
+        ),
+        (
+            "contracts/management/lenso.service-install-receipt.v1.schema.json",
+            generated_management_schema::<lenso_module_management::ServiceInstallationReceipt>(
+                lenso_module_management::SERVICE_INSTALLATION_RECEIPT_PROTOCOL,
+                "LensoServiceInstallationReceipt",
+            ),
+        ),
+        (
+            "contracts/management/lenso.provider-runtime-plan.v1.schema.json",
+            generated_management_schema::<lenso_module_management::ProviderRuntimePlan>(
+                lenso_module_management::PROVIDER_RUNTIME_PLAN_PROTOCOL,
+                "LensoProviderRuntimePlan",
+            ),
+        ),
+    ]
+}
+
+fn generated_management_schema<T: JsonSchema>(protocol: &str, title: &str) -> Value {
+    let mut schema = serde_json::to_value(schemars::schema_for!(T))
+        .expect("generated Module management schema must serialize");
+    let object = schema
+        .as_object_mut()
+        .expect("generated Module management schema root must be an object");
+    object.insert(
+        "$id".to_owned(),
+        Value::String(format!(
+            "https://contracts.lenso.local/management/{protocol}.schema.json"
+        )),
+    );
+    object.insert("title".to_owned(), Value::String(title.to_owned()));
+    if let Some(properties) = object.get_mut("properties").and_then(Value::as_object_mut)
+        && properties.contains_key("protocol")
+    {
+        properties.insert(
+            "protocol".to_owned(),
+            json!({ "type": "string", "const": protocol }),
+        );
+    }
+    apply_digest_patterns(&mut schema, "^sha256:[0-9a-f]{64}$");
+    schema
+}
+
+fn generated_catalog_schema<T: JsonSchema>(protocol: &str, title: &str) -> Value {
+    let mut schema = serde_json::to_value(schemars::schema_for!(T))
+        .expect("generated Catalog schema must serialize");
+    let object = schema
+        .as_object_mut()
+        .expect("generated Catalog schema root must be an object");
+    object.insert(
+        "$id".to_owned(),
+        Value::String(format!(
+            "https://contracts.lenso.local/catalog/{protocol}.schema.json"
+        )),
+    );
+    object.insert("title".to_owned(), Value::String(title.to_owned()));
+    tighten_catalog_schema(&mut schema, protocol);
+    schema
+}
+
+fn tighten_catalog_schema(schema: &mut Value, root_protocol: &str) {
+    const SHA256_PATTERN: &str = "^sha256:[0-9a-f]{64}$";
+    const PROTOCOLS: [(&str, &str); 4] = [
+        (
+            "CatalogSnapshot",
+            lenso_contracts::CATALOG_SNAPSHOT_PROTOCOL,
+        ),
+        (
+            "VerificationProfile",
+            lenso_contracts::VERIFICATION_PROFILE_PROTOCOL,
+        ),
+        (
+            "ModuleVerificationReceipt",
+            lenso_contracts::VERIFICATION_RECEIPT_PROTOCOL,
+        ),
+        (
+            "LinkedProvenanceReceipt",
+            lenso_contracts::LINKED_PROVENANCE_RECEIPT_PROTOCOL,
+        ),
+    ];
+
+    for (definition, protocol) in PROTOCOLS {
+        if let Some(properties) = schema
+            .get_mut("$defs")
+            .and_then(|defs| defs.get_mut(definition))
+            .and_then(|definition| definition.get_mut("properties"))
+            .and_then(Value::as_object_mut)
+        {
+            properties.insert(
+                "protocol".to_owned(),
+                json!({ "type": "string", "const": protocol }),
+            );
+        }
+    }
+    if let Some(properties) = schema.get_mut("properties").and_then(Value::as_object_mut)
+        && let Some(protocol) = properties.get_mut("protocol")
+    {
+        *protocol = json!({ "type": "string", "const": root_protocol });
+    }
+    apply_digest_patterns(schema, SHA256_PATTERN);
+}
+
+fn apply_digest_patterns(value: &mut Value, pattern: &str) {
+    match value {
+        Value::Object(object) => {
+            if let Some(properties) = object.get_mut("properties").and_then(Value::as_object_mut) {
+                for (name, property) in properties {
+                    if name == "digest" || name.ends_with("_digest") || name.ends_with("_checksum")
+                    {
+                        apply_string_pattern(property, pattern);
+                    }
+                }
+            }
+            for child in object.values_mut() {
+                apply_digest_patterns(child, pattern);
+            }
+        }
+        Value::Array(array) => {
+            for child in array {
+                apply_digest_patterns(child, pattern);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn apply_string_pattern(value: &mut Value, pattern: &str) {
+    if value.get("type").and_then(Value::as_str) == Some("string") {
+        value
+            .as_object_mut()
+            .expect("string schema must be an object")
+            .insert("pattern".to_owned(), Value::String(pattern.to_owned()));
+    }
+    for union in ["anyOf", "oneOf"] {
+        if let Some(options) = value.get_mut(union).and_then(Value::as_array_mut) {
+            for option in options {
+                apply_string_pattern(option, pattern);
+            }
+        }
+    }
+}
+
+fn generated_module_schema<T: JsonSchema>(protocol: &str, title: &str) -> Value {
+    let mut schema = serde_json::to_value(schemars::schema_for!(T))
+        .expect("generated Module schema must serialize");
+    let object = schema
+        .as_object_mut()
+        .expect("generated Module schema root must be an object");
+    object.insert(
+        "$id".to_owned(),
+        Value::String(format!(
+            "https://contracts.lenso.local/modules/{protocol}.schema.json"
+        )),
+    );
+    object.insert("title".to_owned(), Value::String(title.to_owned()));
+    tighten_module_schema(&mut schema, protocol);
+    schema
+}
+
+fn tighten_module_schema(schema: &mut Value, protocol: &str) {
+    const MODULE_ID_PATTERN: &str = "^[a-z][a-z0-9_-]*/[a-z][a-z0-9_-]*$";
+    const SHA256_PATTERN: &str = "^sha256:[0-9a-f]{64}$";
+
+    if let Some(properties) = schema.get_mut("properties").and_then(Value::as_object_mut) {
+        properties.insert(
+            "protocol".to_owned(),
+            json!({ "type": "string", "const": protocol }),
+        );
+        if let Some(module_id) = properties.get_mut("module_id") {
+            *module_id = json!({ "type": "string", "pattern": MODULE_ID_PATTERN });
+        }
+        if let Some(manifest_digest) = properties.get_mut("manifest_digest") {
+            *manifest_digest = json!({ "type": "string", "pattern": SHA256_PATTERN });
+        }
+    }
+    if let Some(manifest) = schema
+        .get_mut("$defs")
+        .and_then(|defs| defs.get_mut("ModuleManifest"))
+        .and_then(Value::as_object_mut)
+        .and_then(|manifest| manifest.get_mut("properties"))
+        .and_then(Value::as_object_mut)
+    {
+        manifest.insert(
+            "protocol".to_owned(),
+            json!({ "type": "string", "const": lenso_contracts::MODULE_MANIFEST_PROTOCOL }),
+        );
+        manifest.insert(
+            "module_id".to_owned(),
+            json!({ "type": "string", "pattern": MODULE_ID_PATTERN }),
+        );
+    }
 }
 
 pub fn generated_workflow_compatibility_artifact() -> Value {
@@ -1084,7 +1452,7 @@ fn support_ticket_extraction_module() -> lenso_contracts::ModuleManifest {
         StoryDisplaySource, WorkflowDataContract, WorkflowDefinition, WorkflowStepDeclaration,
     };
 
-    ModuleManifest::builder("support-ticket")
+    ModuleManifest::builder("acme/support-ticket")
         .capabilities(vec!["support.tickets.read".to_owned()])
         .http_routes(vec![ModuleHttpRoute {
             method: ModuleHttpMethod::Get,
@@ -1176,7 +1544,7 @@ fn support_ticket_extraction_system() -> Value {
     json!({
         "protocol": "lenso.system.v2",
         "systemId": "support-system",
-        "host": { "hostId": "support-host", "modules": ["support-ticket"] },
+        "host": { "hostId": "support-host", "modules": ["acme/support-ticket"] },
         "providers": [{
             "providerId": "notification-provider",
             "modules": ["notification-gateway"]
