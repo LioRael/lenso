@@ -13,7 +13,7 @@ lenso-platform-system-plane
 lenso-platform-runtime-observability
 lenso-platform-runtime-operations
 lenso-autonomous-service
-lenso-platform-module-remote
+lenso-platform-provider
 lenso-module-story
 lenso-bootstrap
 lenso-api

@@ -21,7 +21,7 @@
 - `crates/platform-module-remote/tests/remote_source.rs`: assert loaded remote modules register manifest-declared runtime functions.
 - `examples/remote-module/src/lib.rs`, `examples/remote-module/tests/protocol.rs`: serve the first runtime function invoke endpoint in the remote fixture.
 - `crates/platform-module-remote/Cargo.toml`, `crates/platform-module-remote/tests/remote_worker.rs`: add DB-backed worker tests for remote success, retryable failure, timeout, and host-side missing registration.
-- `docs/architecture/module-remote-runtime.md`: mark implementation steps as they land and record any non-obvious choices.
+- `docs/architecture/provider-runtime.md`: mark implementation steps as they land and record any non-obvious choices.
 
 ---
 
@@ -665,7 +665,7 @@ git commit -m "test(runtime): cover remote worker execution"
 ### Task 5: Bootstrap And Docs Checkpoint
 
 **Files:**
-- Modify: `docs/architecture/module-remote-runtime.md`
+- Modify: `docs/architecture/provider-runtime.md`
 - Inspect: `crates/app-bootstrap/src/lib.rs`
 - Inspect: `apps/worker/src/main.rs`
 
@@ -681,7 +681,7 @@ Expected: `apps/worker` calls `app_bootstrap::load_modules(&ctx).await`, then `a
 
 - [ ] **Step 2: Mark implementation order**
 
-Update `docs/architecture/module-remote-runtime.md`:
+Update `docs/architecture/provider-runtime.md`:
 
 ```markdown
 4. Register remote function handlers into `FunctionRegistry` during module
@@ -707,7 +707,7 @@ Expected: all checks pass. If `just rust-check` exposes unrelated failures, reco
 Commit:
 
 ```bash
-git add docs/architecture/module-remote-runtime.md
+git add docs/architecture/provider-runtime.md
 git commit -m "docs(runtime): checkpoint remote function execution"
 ```
 

@@ -46,6 +46,18 @@ pub async fn run_from_env_with_composition(
     runtime_config.spawn_listener();
     ctx = ctx.with_runtime_config_provider(runtime_config);
 
+    let provider_plan = lenso_bootstrap::provider_runtime_plan_from_workspace(".")
+        .context("failed to compile Provider Runtime Plan")?;
+    if let Some(provider_runtime) = lenso_bootstrap::load_provider_runtime_with_composition(
+        &composition,
+        provider_plan.as_ref(),
+    )
+    .await
+    .context("failed to load locked Provider Runtime")?
+    {
+        platform_provider::install_provider_http_proxy_registry(provider_runtime.proxy_registry());
+    }
+
     let app = try_build_router_with_composition(ctx.clone(), &composition)
         .context("failed to build API router")?;
     let address: SocketAddr = format!("{}:{}", ctx.config.http.host, ctx.config.http.port)

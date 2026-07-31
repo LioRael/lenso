@@ -13,7 +13,7 @@ rust-version.workspace = true
 [dependencies]
 platform-core.workspace = true
 platform-module.workspace = true
-platform-module-remote.workspace = true
+platform-provider.workspace = true
 platform-module-management.workspace = true
 platform-http.workspace = true
 platform-runtime.workspace = true

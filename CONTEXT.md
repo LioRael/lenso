@@ -18,11 +18,11 @@ _Avoid_: Process, container, pod
 
 **Provider**:
 A separately running integration endpoint that provides one or more Modules to a Host while relying on Host-owned runtime coordination.
-_Avoid_: Service, Remote Module
+_Avoid_: Service, Provider Module
 
 **Autonomous Service**:
 A Service that owns its runtime work, persistence, lifecycle, and release cadence while participating in a Lenso System.
-_Avoid_: Provider, Remote Module
+_Avoid_: Provider, Provider Module
 
 **Workload**:
 A process role that realizes part of a Service, such as serving APIs, executing background work, or applying migrations.
@@ -74,7 +74,7 @@ _Avoid_: Provider Protocol, internal implementation
 
 **Service Client**:
 A contract-derived caller interface that applies Lenso context, resilience, and evidence conventions without hiding the underlying Service Contract.
-_Avoid_: Host proxy, Remote Module client
+_Avoid_: Host proxy, Provider Module client
 
 ## Data Ownership
 

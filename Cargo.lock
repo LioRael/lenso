@@ -2134,10 +2134,11 @@ dependencies = [
  "lenso-platform-core",
  "lenso-platform-http",
  "lenso-platform-module",
+ "lenso-platform-provider",
  "lenso-platform-runtime",
  "lenso-platform-testing",
  "lenso-service",
- "remote-module-fixture",
+ "provider-fixture",
  "rsa",
  "serde",
  "serde_json",
@@ -2204,7 +2205,7 @@ dependencies = [
  "lenso-platform-http",
  "lenso-platform-module",
  "lenso-platform-module-management",
- "lenso-platform-module-remote",
+ "lenso-platform-provider",
  "lenso-platform-runtime",
  "lenso-platform-testing",
  "reqwest",
@@ -2540,11 +2541,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "lenso-platform-module-remote"
+name = "lenso-platform-provider"
 version = "0.1.16"
 dependencies = [
  "async-trait",
  "axum",
+ "chrono",
  "lenso-module-management",
  "lenso-platform-core",
  "lenso-platform-http",
@@ -2555,12 +2557,14 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "sqlx",
  "tokio",
  "tonic",
  "tonic-prost",
  "tracing",
  "utoipa",
+ "uuid",
 ]
 
 [[package]]
@@ -3517,6 +3521,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "95067976aca6421a523e491fce939a3e65249bac4b977adee0ee9771568e8aa3"
 
 [[package]]
+name = "provider-fixture"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "http",
+ "lenso-platform-core",
+ "lenso-platform-module",
+ "lenso-platform-provider",
+ "prost",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tokio",
+ "tonic",
+ "tonic-prost",
+ "tower",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "pulldown-cmark"
 version = "0.13.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3789,26 +3815,6 @@ name = "regex-syntax"
 version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
-
-[[package]]
-name = "remote-module-fixture"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axum",
- "http",
- "lenso-platform-module",
- "lenso-platform-module-remote",
- "prost",
- "serde",
- "serde_json",
- "tokio",
- "tonic",
- "tonic-prost",
- "tower",
- "tracing",
- "tracing-subscriber",
-]
 
 [[package]]
 name = "reqwest"

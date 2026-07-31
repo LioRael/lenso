@@ -58,7 +58,7 @@ fields to `auth.users`.
 Today `auth` is a linked module registered by `crates/lenso-bootstrap`:
 
 - Product hosts should use `LENSO_COMPOSITION_PROFILE=core` and explicitly add
-  `builtins::auth()` plus provider modules such as `builtins::auth_password()`
+  `builtins::auth()` plus authentication method Modules such as `builtins::auth_password()`
   or `builtins::auth_phone()` to their host composition.
 - The `demo` linked profile enables it by default.
 - `modules.auth.enabled = false` disables its migrations, HTTP routes, admin
@@ -110,7 +110,7 @@ a normal `auth.sessions` row without collecting PII:
 - `POST /v1/auth/anonymous/login` creates an anonymous session.
 - `auth.users.is_anonymous` marks whether the user still has only anonymous
   credentials.
-- Provider modules can call `auth::public::link_identity_to_anonymous_user_in_tx`
+- Authentication method Modules can call `auth::public::link_identity_to_anonymous_user_in_tx`
   to bind a real credential to the same auth user, which keeps downstream
   module data attached to the same `auth_user_id`.
 
@@ -180,7 +180,7 @@ later focused auth slices.
 ## Loading Model
 
 Keep core auth linked/in-process for now. Session resolution is a host trust
-boundary and runs on every request. First-party linked provider modules can sit
-beside it, as `auth-password` and `auth-phone` do. Remote modules may later
-provide external provider connectors, but they should not own host sessions or
+boundary and runs on every request. First-party linked authentication Modules can sit
+beside it, as `auth-password` and `auth-phone` do. Provider Services may later
+provide external authentication connectors, but they should not own host sessions or
 receive caller bearer tokens.

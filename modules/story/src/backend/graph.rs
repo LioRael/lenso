@@ -136,7 +136,7 @@ fn story_title(rows: &[StoryWorkRow]) -> String {
         return title;
     }
 
-    if let Some(title) = rows.iter().find_map(remote_proxy_story_title) {
+    if let Some(title) = rows.iter().find_map(provider_story_title) {
         return title;
     }
 
@@ -165,8 +165,8 @@ fn display_name_for_node(row: &StoryWorkRow) -> String {
     humanize_runtime_name(&row.name)
 }
 
-fn remote_proxy_story_title(row: &StoryWorkRow) -> Option<String> {
-    if row.item_type != "remote_proxy_call" {
+fn provider_story_title(row: &StoryWorkRow) -> Option<String> {
+    if row.item_type != "provider_call" {
         return None;
     }
 
@@ -491,7 +491,7 @@ pub(super) fn timeline_item_type(item_type: &str, status: &str, attempts: i32) -
         "http" | "http_request" => "http_request",
         "event" | "outbox_event" => "outbox_event",
         "function" | "function_run" => "function_run",
-        "remote_proxy_call" => "remote_proxy_call",
+        "provider_call" => "provider_call",
         "admin_action" => "admin_action",
         _ => "runtime",
     }

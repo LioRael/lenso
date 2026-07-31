@@ -127,7 +127,7 @@ pub fn compile_provider_runtime_plan(
                 ProviderRuntimePlanIssueCode::ReleaseMissing,
                 &path,
                 format!(
-                    "locked Provider Module {} has no exact immutable Module Release",
+                    "locked Provider Service {} has no exact immutable Module Release",
                     locked.module_id
                 ),
                 "restore the exact planning context used to create the Application Module Lock",
@@ -143,7 +143,7 @@ pub fn compile_provider_runtime_plan(
                 ProviderRuntimePlanIssueCode::ReleaseMismatch,
                 &path,
                 format!(
-                    "locked Provider Module {} does not match its immutable Module Release",
+                    "locked Provider Service {} does not match its immutable Module Release",
                     locked.module_id
                 ),
                 "re-resolve the Module graph from the verified Catalog Snapshot",

@@ -253,7 +253,7 @@ mod tests {
     use super::{HttpRequestStoryCreation, http_request_story_creation};
 
     #[test]
-    fn remote_proxy_success_creates_story_root() {
+    fn provider_success_creates_story_root() {
         assert_eq!(
             http_request_story_creation("/modules/remote-crm/http/contacts/contact_1", 200),
             HttpRequestStoryCreation::Always
@@ -261,7 +261,7 @@ mod tests {
     }
 
     #[test]
-    fn remote_proxy_client_error_creates_story_root() {
+    fn provider_client_error_creates_story_root() {
         assert_eq!(
             http_request_story_creation("/modules/remote-crm/http/contacts/contact_404", 404),
             HttpRequestStoryCreation::Always

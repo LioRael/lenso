@@ -17,7 +17,7 @@ Module Release = canonical Manifest + exactly one delivery + optional Console ar
   surfaces.
 - Release delivery determines where behavior runs. `linked` is the primary
   experience and runs in the Host. `service` binds the Module to one exact
-  Service Release/export. No public `remote`, `source`, or `bundled` value
+  Service Release/export. No public `provider`, `source`, or `bundled` value
   exists in Module Ecosystem V1.
 - Runtime Console packages are optional frontend contributions loaded by the
   host console registry.
@@ -68,7 +68,7 @@ lenso-billing-service/
 ```
 
 The exact backend language is not prescribed. The service must expose the
-service manifest and module protocol endpoints that `platform-module-remote`
+service manifest and module protocol endpoints that `platform-module-provider`
 expects.
 
 `lenso.service-package.json` is the V9 delivery manifest for handoff to
@@ -291,13 +291,13 @@ receive caller bearer tokens, or claim host-owned story/function-run records.
 
 Current service support includes:
 
-- remote manifest loading
+- provider manifest loading
 - schema-admin read data
 - schema, declarative custom, and embedded custom admin metadata
 - read-only declarative admin query values
 - declared host-owned HTTP proxy routes
-- remote runtime function execution through host-owned queues
-- persisted remote proxy calls and runtime-operation visibility
+- provider runtime function execution through host-owned queues
+- persisted provider proxy calls and runtime-operation visibility
 
 Current Runtime Console support includes:
 
@@ -353,7 +353,7 @@ writes `install.services`, writes an install receipt to
 `.lenso/console/extensions`, and updates
 `.lenso/console/extensions/registry.json` when the manifest declares console
 packages with `bundleUrl`. `module install <manifest-url>` remains a
-compatibility path for legacy remote module manifests.
+compatibility path for legacy Service-delivered Module manifests.
 `module uninstall <name>` removes the host-local service source and any
 console extension registry/install-receipt entry for that module; it leaves
 module data alone.
@@ -370,7 +370,7 @@ When a host has no local catalog, Available Modules preserves the current loaded
 service view if any services are already configured. If neither a
 local catalog nor loaded services exist, the API falls back to the
 read-only `builtin:lenso-official-module-catalog` so a fresh host has an
-official discovery source without fetching remote marketplace state.
+official discovery source without fetching provider marketplace state.
 
 If the manifest is installed from a local file or non-protocol URL, pass the
 runtime module base URL explicitly:
@@ -406,10 +406,10 @@ files and evidence; catalog records and manifests cannot directly write the
 host environment, launch processes, install npm packages, or compile code into
 the official Runtime Console bundle.
 
-`pnpm demo:remote-module-install` in the `lenso-console` repository runs
+`pnpm demo:provider-install` in the `lenso-console` repository runs
 the same flow against a temporary host fixture without mutating the working tree.
 The operator-facing walkthrough lives in
-`lenso-console/docs/remote-module-install-flow.md`.
+`lenso-console/docs/provider-install-flow.md`.
 
 The plan file is intentionally ignored by git. It is an operator/developer
 handoff artifact, not a trust database.

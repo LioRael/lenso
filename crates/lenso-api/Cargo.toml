@@ -18,6 +18,7 @@ axum.workspace = true
 chrono.workspace = true
 platform-core.workspace = true
 platform-http.workspace = true
+platform-provider.workspace = true
 platform-runtime.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -34,7 +35,7 @@ auth-password.workspace = true
 auth-phone.workspace = true
 platform-module.workspace = true
 platform-testing.workspace = true
-remote-module-fixture.workspace = true
+provider-fixture.workspace = true
 rsa.workspace = true
 serde_yaml.workspace = true
 tower = { workspace = true, features = ["util"] }

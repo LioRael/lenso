@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "fixtures/remote-module",
+    "fixtures/provider",
     "crates/lenso-contracts",
     "crates/lenso-module-management",
     "crates/lenso",
@@ -15,7 +15,7 @@ members = [
     "crates/platform-core",
     "crates/platform-module",
     "crates/platform-module-management",
-    "crates/platform-module-remote",
+    "crates/platform-provider",
     "crates/platform-http",
     "crates/platform-runtime",
     "crates/platform-runtime-observability",
@@ -95,7 +95,7 @@ lenso-module-management = { path = "crates/lenso-module-management", version = "
 platform-core = { package = "lenso-platform-core", path = "crates/platform-core", version = "0.1.16" }
 platform-module = { package = "lenso-platform-module", path = "crates/platform-module", version = "0.1.16" }
 platform-module-management = { package = "lenso-platform-module-management", path = "crates/platform-module-management", version = "0.1.0" }
-platform-module-remote = { package = "lenso-platform-module-remote", path = "crates/platform-module-remote", version = "0.1.16" }
+platform-provider = { package = "lenso-platform-provider", path = "crates/platform-provider", version = "0.1.16" }
 platform-http = { package = "lenso-platform-http", path = "crates/platform-http", version = "0.1.15" }
 platform-runtime = { package = "lenso-platform-runtime", path = "crates/platform-runtime", version = "0.1.13" }
 platform-runtime-observability = { package = "lenso-platform-runtime-observability", path = "crates/platform-runtime-observability", version = "0.1.1" }
@@ -120,7 +120,7 @@ auth-phone = { package = "lenso-module-auth-phone", version = "0.1.1" }
 story = { package = "lenso-module-story", path = "modules/story", version = "0.1.19" }
 generate-contracts = { path = "tools/generate-contracts" }
 arch-check = { path = "tools/arch-check" }
-remote-module-fixture = { path = "fixtures/remote-module" }
+provider-fixture = { path = "fixtures/provider" }
 
 [patch.crates-io]
 lenso-contracts = { path = "crates/lenso-contracts" }

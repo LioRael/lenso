@@ -7235,7 +7235,7 @@ mod tests {
     #[test]
     fn invalid_service_package_reports_protocol_and_modules() {
         let issues = validate_service_package_value(&json!({
-            "protocol": "remote-module",
+            "protocol": "retired.delivery.v0",
             "name": "support-suite-provider",
             "version": "0.2.0",
             "serviceManifest": "lenso.service.json",

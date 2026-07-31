@@ -66,7 +66,7 @@ just check
 ## Known Caveats
 
 - Source-only local smoke still requires Postgres and separate API, worker, and Runtime Console shells.
-- Remote module install is intentionally decentralized and low-friction.
+- Provider releases are pinned by the Application Module Lock and target-owned Service Installation Set.
 - Publisher trust, registry review, install history, doctor flows, bundle import/export, provenance, and signatures are not release blockers.
 EOF
 

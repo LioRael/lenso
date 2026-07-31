@@ -69,9 +69,9 @@ A thin composition root, `lenso-bootstrap`, sits above the service kit. It is th
 The Module Ecosystem V1 contract has exactly two delivery forms: Linked and
 Service. Linked is the primary in-process Module experience. A Service is an
 out-of-process owner or provider that still contains and exports Modules; it is
-not a separate peer capability model. The older `platform-module-remote`
+not a separate peer capability model. The older `platform-module-provider`
 runtime remains temporarily as an internal Provider compatibility
-implementation, but `remote`, `source`, and `bundled` are not public Module
+implementation, but `provider`, `source`, and `bundled` are not public Module
 contract values. Runtime Console, backend automation, and CLI are peer adapters
 over `lenso-module-management`; no adapter delegates lifecycle work to another.
 The target-owned `lenso.service-installations.v1` document records desired
@@ -104,10 +104,10 @@ Management Intent, time-bound Plan Receipt, durable Operation
 Acknowledgement, terminal Operation Evidence, cursor feed, and reconciliation
 states distinct. The Console may project these facts, but the managed Service
 owns its operation lifecycle and evidence.
-Enrollment is two-sided rather than remote self-registration. Public Offer,
+Enrollment is two-sided rather than provider self-registration. Public Offer,
 Receipt, and Service-owned Record contracts bind stable Service Principals,
 trust anchors, protocol compatibility, capability and operation ceilings,
-delegation policy, nonce, revision, expiry, and signature evidence. The remote
+delegation policy, nonce, revision, expiry, and signature evidence. The provider
 System Plane router exposes no activation endpoint: only a local Service
 administrative path may persist an already verified Receipt. Production Host
 startup can perform that local import from an explicitly provisioned Receipt
@@ -236,7 +236,7 @@ compensation identity, deterministic order, a request Event Contract, and a
 completion Event Contract. A controlled timeout records the completed effects
 before selecting their compensations. Each request is published through the
 owning Service Outbox with stable effect and compensation identity; the
-Workflow remains `compensating` until the remote Service reverses the business
+Workflow remains `compensating` until the provider Service reverses the business
 effect and confirms it through the declared completion Event. Restart and
 redelivery preserve at-most-once business reversal through the Service-owned
 Inbox, while a rejected compensation becomes the distinct durable
@@ -322,10 +322,10 @@ does not become a certificate authority. Direct HTTP, gRPC, and event admission
 verify signed, expiring credentials plus authenticated transport binding before
 business behavior, without a Runtime Console, Host, or System Plane lookup.
 Route proxying is specified
-separately in `docs/architecture/module-remote-http-proxy.md`. Remote runtime
+separately in `docs/architecture/module-provider-http-proxy.md`. Provider runtime
 execution and event-handler dispatch are scoped in
-`docs/architecture/module-remote-runtime.md`, with native gRPC transport scoped
-in `docs/architecture/module-remote-grpc.md`. Module install trust is
+`docs/architecture/module-provider-runtime.md`, with native gRPC transport scoped
+in `docs/architecture/module-provider-grpc.md`. Module install trust is
 operator-owned: the CLI accepts explicit manifest URLs, and official catalogs
 are curated at publication time without adding a separate host-side trust
 protocol. Linked modules that have hardened boundaries can follow
@@ -336,22 +336,22 @@ The current Provider checkpoint is intentionally narrow but complete for
 operator-visible HTTP proxying. Authentication, proxy policy, retries, runtime
 queues, Outbox delivery, and Story evidence remain Host-owned:
 
-- Remote manifests are loaded as the same `ModuleManifest` data contract used by
+- Provider manifests are loaded as the same `ModuleManifest` data contract used by
   linked modules.
-- Remote schema-admin data can be read through `/admin/data/*` when the module
+- Provider schema-admin data can be read through `/admin/data/*` when the module
   exposes `AdminSurface::Schema` and protocol-backed records.
-- Remote admin metadata can expose schema, declarative custom, or embedded
+- Provider admin metadata can expose schema, declarative custom, or embedded
   custom surfaces; the Runtime Console has read-only examples for schema,
   host-rendered declarative sections, and sandboxed iframe embedded surfaces.
-- Declared remote HTTP routes are proxied under
+- Declared provider HTTP routes are proxied under
   `/modules/{module}/http/{*path}` with host-owned auth, capability checks,
   request/response limits, header policy, error normalization, persisted call
-  history, Runtime Story nodes, Technical Operations rows, and Remote Calls
+  history, Runtime Story nodes, Technical Operations rows, and Provider Calls
   navigation.
-- Remote runtime functions execute through host-owned worker queues, retry
+- Provider runtime functions execute through host-owned worker queues, retry
   policy, Runtime Story data, and Technical Operations.
-- Remote event handlers execute through host-owned outbox dispatch: the worker
-  claims rows, invokes declared remote handlers, and keeps retry/dead-letter
+- Provider event handlers execute through host-owned outbox dispatch: the worker
+  claims rows, invokes declared provider handlers, and keeps retry/dead-letter
   state in `platform.outbox`.
 - Declarative admin actions invoke host-owned `/admin/data/{module}/actions/*`
   endpoints with manifest capability checks. Successful and failed action
@@ -426,7 +426,7 @@ Committed contract artifacts live under `contracts/`:
 
 - `contracts/openapi/app-api.v1.yaml`
 - `contracts/errors/error-response.v1.schema.json`
-- `contracts/grpc/lenso/remote/v1/remote_module.proto`
+- `contracts/grpc/lenso/provider/v1/provider.proto`
 
 When modules add emitted event payloads or registered runtime functions, their
 JSON Schema contracts belong under `contracts/events/{module}/` and

@@ -87,7 +87,7 @@ cp .env.example .env
 ```
 
 `.env.example` contains local Postgres, API, CORS, linked composition profile,
-logging, and optional OTLP defaults. Provider Modules are selected from
+logging, and optional OTLP defaults. Provider exports are selected from
 `lenso.modules.lock.json`; their exact Service releases, endpoints, and identity
 policy come from the target environment's Service Installation Set. They are
 not configured through `.env`.

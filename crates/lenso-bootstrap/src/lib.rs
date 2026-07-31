@@ -31,7 +31,7 @@ use platform_module::{
     EventHandlerRegistrationContext, LifecycleActivationRunPolicy, LifecycleStartupCheckKind,
     LinkedBinding, Module, ModuleHttpMethod, ModuleLoadStatus, ModuleManifest, ModuleSource,
 };
-use platform_module_remote::{ProviderRuntimeAdapter, ProviderRuntimeAdapters};
+use platform_provider::{ProviderRuntimeAdapter, ProviderRuntimeAdapters};
 use platform_runtime::{
     EnqueueFunctionRequest, FunctionRegistry, RUNTIME_MIGRATIONS, RuntimeClient,
     ScheduledFunctionDefinition,
@@ -595,18 +595,26 @@ pub async fn load_modules_with_composition_and_provider_plan(
     plan: Option<&lenso_module_management::ProviderRuntimePlan>,
 ) -> platform_core::AppResult<Vec<Module>> {
     let mut loaded = modules_for_config_with_composition(ctx, composition)?;
-    if let Some(plan) = plan {
-        loaded.extend(
-            ProviderRuntimeAdapter::with_adapters(
-                plan.clone(),
-                composition.provider_runtime_adapters.clone(),
-            )?
-            .load_verified()
-            .await?
-            .into_modules(),
-        );
+    if let Some(runtime) = load_provider_runtime_with_composition(composition, plan).await? {
+        loaded.extend(runtime.into_modules());
     }
     Ok(loaded)
+}
+
+pub async fn load_provider_runtime_with_composition(
+    composition: &HostComposition,
+    plan: Option<&lenso_module_management::ProviderRuntimePlan>,
+) -> platform_core::AppResult<Option<platform_provider::LoadedProviderRuntime>> {
+    let Some(plan) = plan else {
+        return Ok(None);
+    };
+    ProviderRuntimeAdapter::with_adapters(
+        plan.clone(),
+        composition.provider_runtime_adapters.clone(),
+    )?
+    .load_verified()
+    .await
+    .map(Some)
 }
 
 pub fn migrations_for_config(
@@ -1307,7 +1315,7 @@ pub fn event_handlers(modules: &[Module]) -> EventHandlerRegistry {
 }
 
 /// Build an [`EventHandlerRegistry`] with host runtime actions enabled for
-/// remote event-handler result actions.
+/// provider event-handler result actions.
 #[must_use]
 pub fn event_handlers_with_runtime_actions(
     ctx: &AppContext,

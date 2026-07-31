@@ -133,10 +133,8 @@ host bridge.
 
 The loading source axis remains separate:
 
-- Linked modules may declare any admin surface.
-- Remote modules may declare custom surfaces once the protocol and host policy
-  are implemented.
-- Wasm as a module source is separate from `EmbeddedCustom::Wasm`; one describes
+- Linked Modules may declare any admin surface.
+- Wasm as a future Module source is separate from `EmbeddedCustom::Wasm`; one describes
   how a module is loaded, the other describes how its admin UI runs.
 
 ## Implementation Order

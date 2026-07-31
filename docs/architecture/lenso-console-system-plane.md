@@ -216,7 +216,7 @@ normal plan-and-submit protocol.
 
 ## Identity, enrollment, and authorization
 
-The Console Service installs its own Auth Module and provider Modules. A Console
+The Console Service installs its own Auth Module and system-management Modules. A Console
 Operator exists only in that identity domain. A managed business Service may
 independently install its own Auth Modules; it never imports the operator, reads
 the Console browser session, or receives the original cookie, password, access

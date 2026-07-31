@@ -66,14 +66,14 @@ pub(super) type ExecutionLogTuple = (
     Vec<String>,
 );
 
-pub(super) struct AdminRemoteProxyCall {
+pub(super) struct AdminProviderCall {
     pub(super) id: String,
     pub(super) module_name: String,
     pub(super) method: String,
     pub(super) declared_path: String,
-    pub(super) remote_path: String,
+    pub(super) provider_path: String,
     pub(super) capability: Option<String>,
-    pub(super) remote_status: Option<i32>,
+    pub(super) provider_status: Option<i32>,
     pub(super) duration_ms: i64,
     pub(super) success: bool,
     pub(super) error_code: Option<String>,
