@@ -132,7 +132,7 @@ just worker
 Generated hosts serve the Runtime Console at `/console` after
 `lenso console update` installs it under `.lenso/console`. When developing
 this repository from source, run the Runtime Console from the sibling
-`../lenso-runtime-console` repository or run `just console-build-host <host-root>`.
+`../lenso-console` repository or run `just console-build-host <host-root>`.
 
 ## Install The Example Service
 

@@ -190,7 +190,7 @@ just console-build
 ```
 
 When the frontend repository is not next to this backend checkout, pass
-`RUNTIME_CONSOLE_ROOT=/path/to/lenso-runtime-console`.
+`RUNTIME_CONSOLE_ROOT=/path/to/lenso-console`.
 The build script also creates an empty extension registry when none exists.
 
 Installed third-party modules may provide already-built console bundles. The
@@ -263,7 +263,7 @@ request a package/export.
 
 ## Adding A Workspace Console Package
 
-1. Run `pnpm create:console-package <module>` in the `lenso-runtime-console`
+1. Run `pnpm create:console-package <module>` in the `lenso-console`
    repository.
 2. Copy or adapt the generated `console-surface.rs` into the Rust
    `ModuleManifest.console` declaration.

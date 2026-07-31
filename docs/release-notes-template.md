@@ -19,7 +19,7 @@
 - Service-provided modules can declare schema-admin, HTTP routes, runtime
   functions, and lifecycle activation jobs.
 - Runtime Console integration is provided by the separate
-  `lenso-runtime-console` repository.
+  `lenso-console` repository.
 - Generated contracts are committed and reproducible.
 
 ## Getting Started

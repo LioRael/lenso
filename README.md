@@ -135,7 +135,7 @@ smoke checks and real host API smokes.
 | [`lenso`](https://crates.io/crates/lenso) | Public Rust facade for module declarations, manifest lints, and the narrow host boot API. |
 | [`@lenso/cli`](https://www.npmjs.com/package/@lenso/cli) / [`lenso-cli`](https://crates.io/crates/lenso-cli) | Compose apps, manage generated state, author capabilities, run local systems, and operate modules and services. |
 | [`LioRael/lenso`](https://github.com/LioRael/lenso) | This repository: backend platform crates, built-in modules, migrations, admin APIs, runtime contracts, and architecture checks. |
-| [`LioRael/lenso-runtime-console`](https://github.com/LioRael/lenso-runtime-console) | Operator and verification UI delivered as a hosted Console artifact. |
+| [`LioRael/lenso-console`](https://github.com/LioRael/lenso-console) | Console frontend, deployable Console Service backend, extension packages, and service SDKs. |
 | [`LioRael/lenso-examples`](https://github.com/LioRael/lenso-examples) | Runnable product, module, service, and integration examples. |
 | [`lenso.dev`](https://lenso.dev) | Product documentation, guides, API reference, and agent-readable docs. |
 
@@ -148,7 +148,7 @@ cargo add lenso
 Generated hosts enable the crate's `host` feature. Runtime Console is installed
 or refreshed with `lenso console update` and served by the host at `/console`.
 
-Keep `lenso`, `lenso-cli`, and `lenso-runtime-console` checked out as siblings
+Keep `lenso`, `lenso-cli`, and `lenso-console` checked out as siblings
 when changing behavior across backend, CLI, and Console boundaries. Repository
 operations notes live in
 [docs/repository-operations.md](docs/repository-operations.md).
@@ -228,7 +228,10 @@ First-time local setup lives in [docs/getting-started.md](docs/getting-started.m
 - `infrastructure/local/`
   - Local Postgres and optional OpenTelemetry collector config.
 
-Runtime Console source lives in the sibling `../lenso-runtime-console` repository. This backend repository still owns the `/admin/runtime/*`, `/admin/data/*`, module manifest, and contract APIs that the Console consumes.
+Lenso Console source and its deployable Service backend live in the sibling
+`../lenso-console` repository. This framework repository owns the public
+contracts, module manifests, and compatible Host admin APIs that the Console
+consumes.
 
 ## Local Development
 
@@ -237,7 +240,7 @@ Prerequisites:
 - Rust toolchain compatible with the workspace (`rust-version = 1.94`).
 - `just`.
 - Docker if you want local Postgres via `just db-up`.
-- The sibling `../lenso-runtime-console` checkout if you want to work on the Runtime Console.
+- The sibling `../lenso-console` checkout if you want to work on the Runtime Console.
 
 Create local environment config:
 
@@ -291,7 +294,7 @@ Runtime Console and CLI preview shortcuts:
 
 ```sh
 # Hot reload the Console against the local API.
-cd ../lenso-runtime-console
+cd ../lenso-console
 just console-api
 
 # Copy the current Console build into any generated host for /console preview.
@@ -400,7 +403,7 @@ Generated files are source-controlled artifacts, but they are not hand-edited. U
 
 Use `just release-check` before cutting a release branch or tag. It runs the
 backend quality gate. Runtime Console release checks live in the sibling
-`lenso-runtime-console` repository. The release scope and manual smoke checklist live in
+`lenso-console` repository. The release scope and manual smoke checklist live in
 [docs/release-readiness.md](docs/release-readiness.md).
 
 Release packaging and tagging steps live in

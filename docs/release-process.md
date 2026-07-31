@@ -42,7 +42,7 @@ This writes:
 
 The source archive is generated from `git archive HEAD`, so it contains committed
 source files and excludes local build output, `.git`, `target/`, and `dist/`.
-The Runtime Console is published separately by `lenso-runtime-console` and
+The Runtime Console is published separately by `lenso-console` and
 installed into hosts with `lenso console update`.
 
 ## 4. Run The GitHub Workflow

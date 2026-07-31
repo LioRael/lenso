@@ -45,7 +45,7 @@ $summary
 - Gate: \`just release-check\` passed in the release workflow.
 - Package preflight: \`just package-readiness\` passed in the release workflow.
 - Registry uploads: controlled by the release workflow publish inputs.
-- Runtime Console artifacts are published by the separate \`lenso-runtime-console\` repository.
+- Runtime Console artifacts are published by the separate \`lenso-console\` repository.
 
 ## First Release Scope
 

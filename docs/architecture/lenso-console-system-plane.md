@@ -364,11 +364,12 @@ time-bound, auditable, and cannot perform managed-Service operations.
 
 ## Product, repository, and public surface boundaries
 
-The GitHub repository `LioRael/lenso-runtime-console` is renamed in place to
-`LioRael/lenso-console`. It becomes the complete product repository and owns the
-Console Service composition and release, Workload entrypoints, Console Shell,
-Console Service API, registry, official Console Modules, projections, intents,
-System Operations, Console Bridge, tests, OCI build, and deployment templates.
+The GitHub repository is `LioRael/lenso-console`, renamed in place from its
+former Runtime Console identity. It is the complete product repository and
+owns the Console Service composition and release, Workload entrypoints, Console
+Shell, Console Service API, registry, official Console Modules, projections,
+intents, System Operations, Console Bridge, tests, OCI build, and deployment
+templates.
 
 Other ownership remains explicit:
 
