@@ -300,7 +300,7 @@ describe("defineServiceContract", () => {
     const issues = validateServicePackage({
       modules: ["support-ticket", "support-ticket", ""],
       name: "support-suite-provider",
-      protocol: "remote-module",
+      protocol: "service-module",
       serviceManifest: "lenso.service.json",
       version: "0.2.0",
     });
@@ -398,9 +398,9 @@ describe("defineServiceContract", () => {
     const issues = validateModuleRelease({
       capabilities: ["support_ticket.read", 42],
       name: "",
-      protocol: "remote-module",
+      protocol: "service-module",
       provider: { name: "" },
-      source: "remote",
+      source: "service",
       version: "",
     });
 
@@ -408,7 +408,8 @@ describe("defineServiceContract", () => {
       "$.protocol",
       "$.name",
       "$.version",
-      "$.source",
+      "$.provider.name",
+      "$.provider.servicePackage",
       "$.capabilities[1]",
     ]);
   });
@@ -419,7 +420,7 @@ describe("defineServiceContract", () => {
       manifest: [],
       name: "",
       protocol: "lenso.module",
-      source: "remote",
+      source: "service",
       version: "",
     });
 
@@ -427,7 +428,6 @@ describe("defineServiceContract", () => {
       "$.protocol",
       "$.name",
       "$.version",
-      "$.source",
       "$.capabilities[1]",
       "$.manifest",
     ]);

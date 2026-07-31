@@ -81,7 +81,7 @@ describe("@lenso/service-kit internal delivery adapter", () => {
       runtime: {
         functions: [],
       },
-      source: "remote",
+      source: "service",
       story_display: [],
       version: "0.1.0",
     });
@@ -395,7 +395,7 @@ describe("@lenso/service-kit internal delivery adapter", () => {
         fetch(served.manifestUrl).then((response) => response.json())
       ).resolves.toMatchObject({
         name: "billing",
-        source: "remote",
+        source: "service",
       });
       await expect(
         fetch(served.statusUrl).then((response) => response.json())
@@ -538,17 +538,17 @@ describe("@lenso/service-kit internal delivery adapter", () => {
     });
     try {
       await expect(
-        fetch(`${served.baseUrl}/admin/contacts?limit=2`).then((response) =>
-          response.json()
-        )
+        fetch(
+          `${served.baseUrl}/http/admin/contacts?limit=2`
+        ).then((response) => response.json())
       ).resolves.toEqual({
         next_cursor: null,
         records: [{ email: "ada@example.com", limit: 2 }],
       });
       await expect(
-        fetch(`${served.baseUrl}/admin/contacts/contact_1`).then((response) =>
-          response.json()
-        )
+        fetch(
+          `${served.baseUrl}/http/admin/contacts/contact_1`
+        ).then((response) => response.json())
       ).resolves.toEqual({
         record: { email: "ada@example.com", id: "contact_1" },
       });
@@ -767,7 +767,7 @@ describe("@lenso/service-kit internal delivery adapter", () => {
     });
     try {
       const invokeResponse = await fetch(
-        `${served.baseUrl}/admin/actions/sync_contacts`,
+        `${served.baseUrl}/http/admin/actions/sync_contacts`,
         {
           body: JSON.stringify({ dry_run: true }),
           headers: { "content-type": "application/json" },
@@ -784,7 +784,7 @@ describe("@lenso/service-kit internal delivery adapter", () => {
       });
 
       const missingResponse = await fetch(
-        `${served.baseUrl}/admin/actions/missing`,
+        `${served.baseUrl}/http/admin/actions/missing`,
         {
           body: JSON.stringify({}),
           headers: { "content-type": "application/json" },
@@ -828,7 +828,7 @@ describe("@lenso/service-kit internal delivery adapter", () => {
     });
     try {
       const queryResponse = await fetch(
-        `${served.baseUrl}/admin/queries/health`
+        `${served.baseUrl}/http/admin/queries/health`
       );
       expect(queryResponse.status).toBe(200);
       await expect(queryResponse.json()).resolves.toEqual({
@@ -1030,7 +1030,7 @@ describe("@lenso/service-kit internal delivery adapter", () => {
     const client = connect(served.baseUrl.replace("grpc://", "http://"));
     try {
       await expect(
-        grpcUnary(client, "/lenso.remote.v1.RemoteModule/GetManifest", {})
+        grpcUnary(client, "/lenso.service.module.v1.ServiceModule/GetManifest", {})
       ).resolves.toMatchObject({
         name: "crm",
         runtime: {
@@ -1038,7 +1038,7 @@ describe("@lenso/service-kit internal delivery adapter", () => {
         },
       });
       await expect(
-        grpcUnary(client, "/lenso.remote.v1.RemoteModule/InvokeFunction", {
+        grpcUnary(client, "/lenso.service.module.v1.ServiceModule/InvokeFunction", {
           actor: { kind: "user", scopes: [] },
           attempt: 1,
           correlation_id: "corr_1",
@@ -1055,7 +1055,7 @@ describe("@lenso/service-kit internal delivery adapter", () => {
         },
       });
       await expect(
-        grpcUnary(client, "/lenso.remote.v1.RemoteModule/QueryAdminValue", {
+        grpcUnary(client, "/lenso.service.module.v1.ServiceModule/QueryAdminValue", {
           query: "health",
         })
       ).resolves.toEqual({
@@ -1065,7 +1065,7 @@ describe("@lenso/service-kit internal delivery adapter", () => {
         },
       });
       await expect(
-        grpcUnary(client, "/lenso.remote.v1.RemoteModule/HandleEvent", {
+        grpcUnary(client, "/lenso.service.module.v1.ServiceModule/HandleEvent", {
           actor: { kind: "user", scopes: [], user_id: "usr_actor" },
           aggregate_id: "usr_1",
           aggregate_type: "user",

@@ -38,7 +38,7 @@ export interface ModuleConsoleSurface {
 export interface ProviderModuleManifest {
   name: string;
   version: string;
-  source: "remote";
+  source: "service";
   compatibility?: ServiceModuleCompatibility;
   service?: ServiceModuleProviderMetadata;
   story_display: readonly ModuleStoryDisplayDescriptor[];
@@ -668,14 +668,14 @@ const sendJson = (
 };
 
 const GRPC_PATHS = {
-  getAdminRecord: "/lenso.remote.v1.RemoteModule/GetAdminRecord",
-  getManifest: "/lenso.remote.v1.RemoteModule/GetManifest",
-  handleEvent: "/lenso.remote.v1.RemoteModule/HandleEvent",
-  invokeAdminAction: "/lenso.remote.v1.RemoteModule/InvokeAdminAction",
-  invokeFunction: "/lenso.remote.v1.RemoteModule/InvokeFunction",
-  listAdminRecords: "/lenso.remote.v1.RemoteModule/ListAdminRecords",
-  proxyHttpRoute: "/lenso.remote.v1.RemoteModule/ProxyHttpRoute",
-  queryAdminValue: "/lenso.remote.v1.RemoteModule/QueryAdminValue",
+  getAdminRecord: "/lenso.service.module.v1.ServiceModule/GetAdminRecord",
+  getManifest: "/lenso.service.module.v1.ServiceModule/GetManifest",
+  handleEvent: "/lenso.service.module.v1.ServiceModule/HandleEvent",
+  invokeAdminAction: "/lenso.service.module.v1.ServiceModule/InvokeAdminAction",
+  invokeFunction: "/lenso.service.module.v1.ServiceModule/InvokeFunction",
+  listAdminRecords: "/lenso.service.module.v1.ServiceModule/ListAdminRecords",
+  proxyHttpRoute: "/lenso.service.module.v1.ServiceModule/ProxyHttpRoute",
+  queryAdminValue: "/lenso.service.module.v1.ServiceModule/QueryAdminValue",
 } as const;
 
 const grpcStatus = {
@@ -1061,7 +1061,7 @@ const handleAdminActionRequest = async ({
     return null;
   }
   const url = new URL(request.url ?? "", "http://127.0.0.1");
-  const prefix = `${basePath}/admin/actions/`;
+  const prefix = `${basePath}/http/admin/actions/`;
   if (!url.pathname.startsWith(prefix)) {
     return null;
   }
@@ -1114,7 +1114,7 @@ const handleAdminQueryRequest = async ({
     return null;
   }
   const url = new URL(request.url ?? "", "http://127.0.0.1");
-  const prefix = `${basePath}/admin/queries/`;
+  const prefix = `${basePath}/http/admin/queries/`;
   if (!url.pathname.startsWith(prefix)) {
     return null;
   }
@@ -1229,7 +1229,7 @@ const handleAdminDataRequest = async ({
   requestUrl: string;
 }): Promise<{ body: unknown; statusCode: number } | null> => {
   const url = new URL(requestUrl, "http://127.0.0.1");
-  const prefix = `${basePath}/admin/`;
+  const prefix = `${basePath}/http/admin/`;
   if (!url.pathname.startsWith(prefix)) {
     return null;
   }
@@ -1295,7 +1295,7 @@ export const defineProviderModule = (
       functions: definition.runtimeFunctions ?? [],
     },
     ...(definition.service ? { service: definition.service } : {}),
-    source: "remote",
+    source: "service",
     story_display: definition.storyDisplay ?? [],
     version: definition.version ?? "0.1.0",
   };
@@ -1660,7 +1660,7 @@ const providerManifestForServiceModule = (
     transports: service.transports,
     version: service.version,
   },
-  source: "remote",
+  source: "service",
 });
 
 export const serveModuleProvider = async (
@@ -1950,7 +1950,7 @@ export const serveModuleProviderGrpc = async (
     },
     manifestUrl: `${baseUrl}${GRPC_PATHS.getManifest}`,
     server,
-    statusUrl: `${baseUrl}/lenso.remote.v1.RemoteModule/GetStatus`,
+    statusUrl: `${baseUrl}/lenso.service.module.v1.ServiceModule/GetStatus`,
   } satisfies ServedModuleProvider;
 
   options.onReady?.(served);
