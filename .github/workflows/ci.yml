@@ -165,6 +165,7 @@ jobs:
       - name: Verify reviewed release plan and packages
         if: ${{ startsWith(github.head_ref, 'release/') }}
         run: |
+          git restore --source=HEAD -- Cargo.lock
           corepack enable
           pnpm install --frozen-lockfile
           node scripts/release-plan.mjs --verify
