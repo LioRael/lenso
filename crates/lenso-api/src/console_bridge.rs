@@ -3,8 +3,9 @@ use std::sync::Arc;
 
 use axum::extract::{Path, State};
 use axum::{Extension, Json};
+use lenso_bootstrap::{ConsoleBridgeAuthority, ConsoleBridgeGrantRequest};
 use platform_core::runtime_config::store::{load_all_values, upsert_value};
-use platform_core::{AppContext, AppError, ErrorCode, RequestContext};
+use platform_core::{AppContext, AppError, ErrorCode, RequestContext, RuntimeConfigDescriptor};
 use platform_http::responses::json;
 use platform_http::{
     ApiErrorResponse, ApiOpenApiRouter, ErrorResponse, HttpRequestContext, JsonBody, OpenApiRouter,
@@ -19,14 +20,10 @@ use serde_json::{Value, json as json_value};
 use utoipa::ToSchema;
 
 const CONSOLE_ADMIN_SCOPE: &str = "console.admin";
-const MODULE_METADATA_READ: &str = "auth.providers.read";
-const AUTH_MODULE: &str = "auth";
-const CONSOLE_ADMIN_SCOPES_KEY: &str = "auth.console_admin_user_scopes";
-const SHARED_CONFIG_SERVICE: &str = "*";
-
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub(crate) struct ConsoleBridgeRegistry {
     modules: Arc<BTreeMap<String, ConsoleBridgeModule>>,
+    authority: Arc<dyn ConsoleBridgeAuthority>,
 }
 
 impl std::fmt::Debug for ConsoleBridgeRegistry {
@@ -41,12 +38,16 @@ impl std::fmt::Debug for ConsoleBridgeRegistry {
 #[derive(Clone)]
 struct ConsoleBridgeModule {
     manifest: ModuleManifest,
+    runtime_config: Vec<RuntimeConfigDescriptor>,
     admin_data: Option<Arc<dyn AdminDataSource>>,
     admin_actions: Option<Arc<dyn AdminActionSource>>,
 }
 
 impl ConsoleBridgeRegistry {
-    pub(crate) fn from_modules(modules: Vec<Module>) -> Self {
+    pub(crate) fn from_modules(
+        modules: Vec<Module>,
+        authority: Arc<dyn ConsoleBridgeAuthority>,
+    ) -> Self {
         Self {
             modules: Arc::new(
                 modules
@@ -56,6 +57,7 @@ impl ConsoleBridgeRegistry {
                             module.manifest.module_id.clone(),
                             ConsoleBridgeModule {
                                 manifest: module.manifest,
+                                runtime_config: module.runtime_config.to_vec(),
                                 admin_data: module.admin_data,
                                 admin_actions: module.admin_actions,
                             },
@@ -63,6 +65,7 @@ impl ConsoleBridgeRegistry {
                     })
                     .collect(),
             ),
+            authority,
         }
     }
 }
@@ -149,6 +152,19 @@ async fn invoke_console_bridge(
             &request_ctx,
         )
     })?;
+    registry
+        .authority
+        .authorize(
+            &ctx,
+            &ConsoleBridgeGrantRequest {
+                module_id: module_name.clone(),
+                module_release_digest: request.module_release_digest.clone(),
+                ui_artifact_digest: request.ui_artifact_digest.clone(),
+                permission: permission.clone(),
+            },
+        )
+        .await
+        .map_err(|error| ApiErrorResponse::with_context(error, &request_ctx))?;
     validate_permission(module, &permission, &request.payload, &request_ctx)?;
 
     let data = match request.payload {
@@ -184,18 +200,31 @@ async fn invoke_console_bridge(
                 .map_err(|error| ApiErrorResponse::with_context(error, &request_ctx))?
         }
         ConsoleBridgeOperation::ConfigValues => {
-            let values = load_all_values(&ctx.db)
+            let stored = load_all_values(&ctx.db)
                 .await
-                .map_err(|error| ApiErrorResponse::with_context(error, &request_ctx))?
-                .into_iter()
-                .filter(|((service, key), _)| {
-                    service == SHARED_CONFIG_SERVICE && key == CONSOLE_ADMIN_SCOPES_KEY
-                })
-                .map(|((_, key), value)| {
+                .map_err(|error| ApiErrorResponse::with_context(error, &request_ctx))?;
+            let values = module
+                .runtime_config
+                .iter()
+                .map(|descriptor| {
+                    let service = descriptor.scope.as_service_key();
+                    let redacted = descriptor.generated.is_some();
+                    let value = if redacted {
+                        Value::Null
+                    } else {
+                        stored
+                            .get(&(service.to_owned(), descriptor.key.clone()))
+                            .cloned()
+                            .unwrap_or_else(|| descriptor.default.clone())
+                    };
                     json_value!({
-                        "key": key,
+                        "service": service,
+                        "key": descriptor.key,
                         "desired_value": value,
-                        "pending_restart": false,
+                        "editable": descriptor.editable,
+                        "pending_restart": descriptor.restart_only,
+                        "redacted": redacted,
+                        "value_type": descriptor.value_type.to_json(),
                     })
                 })
                 .collect::<Vec<_>>();
@@ -206,6 +235,29 @@ async fn invoke_console_bridge(
             key,
             value,
         } => {
+            let descriptor = module
+                .runtime_config
+                .iter()
+                .find(|descriptor| {
+                    descriptor.scope.as_service_key() == service && descriptor.key == key
+                })
+                .ok_or_else(|| {
+                    api_error(
+                        ErrorCode::NotFound,
+                        "Module configuration key was not found",
+                        &request_ctx,
+                    )
+                })?;
+            if !descriptor.editable || descriptor.generated.is_some() {
+                return Err(api_error(
+                    ErrorCode::Forbidden,
+                    "Module configuration key is not directly editable",
+                    &request_ctx,
+                ));
+            }
+            descriptor
+                .validate(&value)
+                .map_err(|error| ApiErrorResponse::with_context(error, &request_ctx))?;
             let stored = upsert_value(&ctx.db, &service, &key, &value, Some(&actor.user_id))
                 .await
                 .map_err(|error| ApiErrorResponse::with_context(error, &request_ctx))?;
@@ -272,27 +324,36 @@ fn validate_permission(
                 .is_some_and(|declared| declared == permission)
         }
         ConsoleBridgeOperation::ConfigValues => {
-            module.manifest.module_id == AUTH_MODULE && permission == "auth.users.manage"
+            !module.runtime_config.is_empty()
+                && module
+                    .manifest
+                    .capabilities
+                    .iter()
+                    .any(|value| value == permission)
         }
         ConsoleBridgeOperation::ConfigWrite { service, key, .. } => {
-            module.manifest.module_id == AUTH_MODULE
-                && permission == "auth.users.manage"
-                && service == SHARED_CONFIG_SERVICE
-                && key == CONSOLE_ADMIN_SCOPES_KEY
+            module
+                .manifest
+                .capabilities
+                .iter()
+                .any(|value| value == permission)
+                && module.runtime_config.iter().any(|descriptor| {
+                    descriptor.scope.as_service_key() == service
+                        && descriptor.key == *key
+                        && descriptor.editable
+                        && descriptor.generated.is_none()
+                })
         }
         ConsoleBridgeOperation::ContributionsResolve { .. } => module
             .manifest
             .capabilities
             .iter()
             .any(|value| value == permission),
-        ConsoleBridgeOperation::ModulesMetadata => {
-            permission == MODULE_METADATA_READ
-                && module
-                    .manifest
-                    .capabilities
-                    .iter()
-                    .any(|capability| capability == MODULE_METADATA_READ)
-        }
+        ConsoleBridgeOperation::ModulesMetadata => module
+            .manifest
+            .capabilities
+            .iter()
+            .any(|capability| capability == permission),
     };
     if valid {
         Ok(())
@@ -393,9 +454,12 @@ fn resolve_contributions(
 }
 
 fn valid_digest(value: &str) -> bool {
-    value
-        .strip_prefix("sha256:")
-        .is_some_and(|hex| hex.len() == 64 && hex.bytes().all(|byte| byte.is_ascii_hexdigit()))
+    value.strip_prefix("sha256:").is_some_and(|hex| {
+        hex.len() == 64
+            && hex
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    })
 }
 
 const fn default_limit() -> i64 {
@@ -409,11 +473,78 @@ fn api_error(code: ErrorCode, message: &'static str, ctx: &RequestContext) -> Ap
 #[cfg(test)]
 mod tests {
     use super::*;
+    use platform_core::{RuntimeConfigScope, RuntimeConfigType};
 
     #[test]
-    fn digest_binding_is_exact() {
+    fn digest_syntax_is_strict() {
         assert!(valid_digest(&format!("sha256:{}", "a".repeat(64))));
         assert!(!valid_digest(&format!("sha256:{}", "a".repeat(63))));
+        assert!(!valid_digest(&format!("sha256:{}", "A".repeat(64))));
         assert!(!valid_digest("auth-console"));
+    }
+
+    #[test]
+    fn configuration_operations_are_scoped_to_the_invoking_module() {
+        let module = ConsoleBridgeModule {
+            manifest: ModuleManifest::builder("lenso/auth")
+                .capabilities(vec!["auth.users.manage".to_owned()])
+                .build(),
+            runtime_config: vec![RuntimeConfigDescriptor {
+                key: "auth.console_admin_user_scopes".to_owned(),
+                scope: RuntimeConfigScope::Shared,
+                group: None,
+                section: None,
+                order: 0,
+                visible_when: None,
+                generated: None,
+                value_type: RuntimeConfigType::Json,
+                default: json_value!({}),
+                editable: true,
+                restart_only: true,
+                description: "fixture",
+            }],
+            admin_data: None,
+            admin_actions: None,
+        };
+        let request_ctx = RequestContext::new(
+            platform_core::RequestId::new("request"),
+            platform_core::CorrelationId::new("correlation"),
+        );
+
+        assert!(
+            validate_permission(
+                &module,
+                "auth.users.manage",
+                &ConsoleBridgeOperation::ConfigValues,
+                &request_ctx,
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_permission(
+                &module,
+                "auth.users.manage",
+                &ConsoleBridgeOperation::ConfigWrite {
+                    service: "*".to_owned(),
+                    key: "auth.console_admin_user_scopes".to_owned(),
+                    value: json_value!({}),
+                },
+                &request_ctx,
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_permission(
+                &module,
+                "auth.users.manage",
+                &ConsoleBridgeOperation::ConfigWrite {
+                    service: "*".to_owned(),
+                    key: "other.module.secret".to_owned(),
+                    value: json_value!("nope"),
+                },
+                &request_ctx,
+            )
+            .is_err()
+        );
     }
 }

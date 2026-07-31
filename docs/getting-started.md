@@ -162,12 +162,13 @@ lenso service release apply .lenso/support-suite-provider.release-plan.json
 The apply step records `.lenso/service-releases.json`; Console Services shows
 the latest release risk and recent provider history.
 
-Restart the local services and open the Runtime Console. The `support-ticket`
-module should be available through the Modules/Data surfaces, with
-`support-suite-provider` shown as its service provider.
+Restart the local services. The `support-ticket` Module is delivered by the
+`support-suite-provider` Service through the selected Provider Runtime Plan.
 
-Remote sources and Runtime Console package exports are loaded at process
-startup. After installing a module, restart the API, worker, and Runtime Console.
+Provider Runtime adapters and Linked Modules are selected at process startup.
+After changing the active Module composition, restart the API and worker. A
+separately deployed Console Service observes the resulting Service state through
+System Plane capabilities; it is not a Host-loaded package export.
 
 To run the backend part of this flow without opening the frontend:
 

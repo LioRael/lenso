@@ -52,9 +52,9 @@ Release, not an npm package installed into the hosted Console. Runtime Console
 loads the artifact in a sandboxed cross-origin iframe with `allow-scripts` only.
 The artifact receives no Host token, cookies, stores, or internal imports.
 
-The artifact and Host communicate through `lenso.console-bridge.v1`. The
+The artifact and Console Service communicate through `lenso.console-bridge.v1`. The
 handshake binds the Module identity, surface name, Module Release digest, UI
-artifact digest, granted capabilities, nonce, and expiry. The Host exposes only
+artifact digest, granted capabilities, nonce, and expiry. The Console exposes only
 typed operations authorized by the exact grant; the backend independently
 checks the operator scope and the Module declaration for every operation.
 
@@ -76,7 +76,10 @@ The Host owns:
 - runtime queues, retries, outbox publication, and Runtime Story records;
 - admin authorization and generic data/action dispatch;
 - durable Module and Service management operations;
-- Console composition grants and the Console Bridge backend.
+
+The Console Service owns Console composition grants and the Console Bridge
+backend. A managed Host does not expose that route unless it is explicitly
+composed as the Console Service with a Console-owned authority adapter.
 
 Services own their business execution and stable effect identities. They must
 not receive caller bearer tokens, impersonate Host-owned records, supervise the

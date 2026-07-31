@@ -62,11 +62,14 @@ pub(crate) fn api_router_for_context_with_composition(
         composition,
     ))
     .merge(base_router());
-    Ok(
-        lenso_bootstrap::merge_linked_http_for_context_with_composition(base, ctx, composition)?
-            .merge(crate::console_bridge::router())
-            .merge(platform_provider::router()),
-    )
+    let router =
+        lenso_bootstrap::merge_linked_http_for_context_with_composition(base, ctx, composition)?;
+    let router = if composition.console_bridge_authority().is_some() {
+        router.merge(crate::console_bridge::router())
+    } else {
+        router
+    };
+    Ok(router.merge(platform_provider::router()))
 }
 
 fn openapi_document_for_profile_with_composition(

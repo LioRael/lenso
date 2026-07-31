@@ -39,6 +39,23 @@ use platform_runtime::{
 use std::path::Path;
 use std::sync::Arc;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConsoleBridgeGrantRequest {
+    pub module_id: String,
+    pub module_release_digest: String,
+    pub ui_artifact_digest: String,
+    pub permission: String,
+}
+
+#[async_trait::async_trait]
+pub trait ConsoleBridgeAuthority: std::fmt::Debug + Send + Sync {
+    async fn authorize(
+        &self,
+        ctx: &AppContext,
+        request: &ConsoleBridgeGrantRequest,
+    ) -> platform_core::AppResult<()>;
+}
+
 struct LinkedModuleEntry {
     module_name: &'static str,
     manifest: fn() -> ModuleManifest,
@@ -57,6 +74,7 @@ const MODULES_CONFIG_GROUP: RuntimeConfigGroupDescriptor = RuntimeConfigGroupDes
 pub struct HostComposition {
     linked_modules: Vec<HostLinkedModule>,
     provider_runtime_adapters: ProviderRuntimeAdapters,
+    console_bridge_authority: Option<Arc<dyn ConsoleBridgeAuthority>>,
 }
 
 impl Default for HostComposition {
@@ -64,6 +82,7 @@ impl Default for HostComposition {
         Self {
             linked_modules: Vec::new(),
             provider_runtime_adapters: ProviderRuntimeAdapters::production_defaults(),
+            console_bridge_authority: None,
         }
     }
 }
@@ -98,6 +117,20 @@ impl HostComposition {
     #[must_use]
     pub fn provider_runtime_adapters(&self) -> &ProviderRuntimeAdapters {
         &self.provider_runtime_adapters
+    }
+
+    #[must_use]
+    pub fn with_console_bridge_authority(
+        mut self,
+        authority: Arc<dyn ConsoleBridgeAuthority>,
+    ) -> Self {
+        self.console_bridge_authority = Some(authority);
+        self
+    }
+
+    #[must_use]
+    pub fn console_bridge_authority(&self) -> Option<&Arc<dyn ConsoleBridgeAuthority>> {
+        self.console_bridge_authority.as_ref()
     }
 }
 
