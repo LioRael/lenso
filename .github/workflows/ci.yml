@@ -166,6 +166,8 @@ jobs:
         if: ${{ startsWith(github.head_ref, 'release/') }}
         run: |
           git restore --source=HEAD -- Cargo.lock
+          rm .cargo/config.toml
+          cargo fetch --locked
           corepack enable
           pnpm install --frozen-lockfile
           node scripts/release-plan.mjs --verify
