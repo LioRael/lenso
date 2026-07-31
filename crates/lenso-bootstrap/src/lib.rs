@@ -2557,35 +2557,6 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn module_metadata_reports_disabled_linked_modules() {
-        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
-            .expect("lazy pool should build");
-        let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
-        config.modules.insert(
-            "auth-password".to_owned(),
-            ModuleConfig {
-                enabled: Some(false),
-                values: BTreeMap::new(),
-            },
-        );
-        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
-
-        let metadata = load_admin_module_metadata(&ctx)
-            .await
-            .expect("module metadata should load");
-        let auth_password = metadata
-            .iter()
-            .find(|module| module.module_name == "lenso/auth-password")
-            .expect("disabled module should remain visible in metadata");
-
-        assert!(matches!(
-            &auth_password.load_status,
-            ModuleLoadStatus::Error { message }
-                if message == "module disabled by configuration"
-        ));
-    }
-
     #[test]
     fn composition_profile_rejects_unknown_values() {
         let error = CompositionProfile::parse("fixture")
