@@ -939,6 +939,10 @@ async fn available_modules_reads_official_catalog_when_no_local_catalog_exists()
         support_ticket["installState"]["serviceProvider"]["configured"],
         false
     );
+    assert!(
+        support_ticket["installState"].get("consolePlan").is_none(),
+        "managed Services must not expose the retired host extension registry"
+    );
     assert_eq!(support_ticket["status"], "ready");
 }
 

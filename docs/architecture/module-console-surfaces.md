@@ -128,8 +128,8 @@ Runtime package installation is intentionally explicit. The current
 implementation supports trusted workspace packages:
 
 1. The backend manifest declares the console surface and package/export names.
-2. The frontend package is available to the host build.
-3. The host registry imports the package export and contributes its routes.
+2. The frontend package is published as part of the reviewed Module Release.
+3. The Console Service selects trusted package exports while composing its UI.
 4. The module uses the host facade instead of private host imports.
 
 A later installable-module step should preserve those boundaries and add the
@@ -139,16 +139,15 @@ cannot be loaded.
 
 Do not add ad hoc global objects or direct host token access as a shortcut.
 Third-party Runtime Console package loading must go through the versioned host
-API and the host-owned same-origin extension registry.
+API and Console Service-owned package composition.
 
 ## Installation Contract
 
-The Runtime Console may show install and reload status from backend module
+The Runtime Console may show install and operation status from backend module
 metadata, but the browser must not install packages by itself. Installation is a
-host-owned operation: the CLI or admin API copies an already-built bundle into
-`.lenso/console/extensions/<module>/` and writes
-`.lenso/console/extensions/registry.json`. Installing a module is the operator's
-trust decision for that module's declared console bundle.
+reviewed management operation. The managed application host materializes only
+business module and Service state; Console package composition belongs to the
+Console Service release and deployment.
 
 ## Installed Package Registry
 
@@ -170,69 +169,22 @@ export const installedConsolePackages = [
 ];
 ```
 
-This registry is intentionally static. It gives Vite a real import to bundle,
+This Console-owned registry is intentionally static. It gives Vite a real import to bundle,
 lets reviewers inspect package additions in source control, and keeps unknown
 package exports visible as Missing Console Packages until the host explicitly
 trusts and registers them.
 
-## Runtime Bundle Registry
+## Console Service Ownership
 
-The API service hosts the Runtime Console from `LENSO_CONSOLE_DIST_DIR`
-(default `.lenso/console/dist`) under `/console/*`, with client-side route
-fallback to `index.html`. Runtime users install this directory with
-`lenso console update`; they should not need Node.js, pnpm, or the
-frontend source repository.
+The application API does not host the Console shell, Console packages, or an
+extension registry. It exposes target-owned management APIs and serializable
+`ModuleManifest.console` declarations. The standalone Console Service owns its
+web root, trusted package selection, package compatibility checks, and frontend
+release lifecycle.
 
-For local development or release packaging, build and install the hosted console
-dist from the sibling frontend repository:
-
-```sh
-just console-build
-```
-
-When the frontend repository is not next to this backend checkout, pass
-`RUNTIME_CONSOLE_ROOT=/path/to/lenso-console`.
-The build script also creates an empty extension registry when none exists.
-
-Installed third-party modules may provide already-built console bundles. The
-service exposes those bundles from the same origin under `/console/extensions/*`
-from `LENSO_CONSOLE_EXTENSIONS_DIR` (default `.lenso/console/extensions`); the
-Runtime Console reads
-`/console/extensions/registry.json` before creating its router and registers
-compatible bundle exports as `runtime_bundle` packages.
-Bundles that render React components must externalize React and the console host
-API to the stable same-origin host entries under `/console/extensions/host/*`.
-Console package styles should reference Lenso's Tailwind token contract at build
-time with `@reference "@lenso/runtime-console-api/theme.css"` when they need
-semantic utilities such as `bg-surface`; this is a build-time reference and must
-not be emitted as a second host theme.
-
-The first registry shape is deliberately small:
-
-```json
-{
-  "version": 1,
-  "bundles": [
-    {
-      "packageName": "@vendor/crm-console",
-      "exportName": "crmConsoleModule",
-      "entry": "/console/extensions/crm/entry.js",
-      "hostApi": "1",
-      "styles": ["/console/extensions/crm/entry.css"]
-    }
-  ]
-}
-```
-
-Rules:
-
-- Bundle entries must be same-origin URLs served by the host.
-- Bundle styles, when present, must also be same-origin CSS assets served by the
-  host and are loaded before the JavaScript bundle import.
-- `hostApi` must match the Runtime Console host API version.
-- The exported value must be a `ConsoleModule`.
-- Unsupported host API versions, cross-origin entries, and malformed exports are
-  rejected before route registration.
+This boundary means managed application hosts do not need Node.js or copied
+Console assets, and no `/console` or `/console/extensions/*` compatibility route
+is mounted by `lenso-api`.
 
 This is not arbitrary browser-side package installation. The host installation
 lane is still responsible for downloading, verifying, and placing bundle files

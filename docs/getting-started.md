@@ -28,7 +28,6 @@ cargo install lenso-cli
 lenso host init ../my-lenso-app
 cd ../my-lenso-app
 cp .env.example .env
-lenso console update
 docker compose up -d postgres
 cargo run --bin migrate
 cargo run --bin api
@@ -40,9 +39,8 @@ the API, worker, migration boot helpers, and a narrow linked HTTP route
 authoring surface; generated hosts should pin a crate version for reproducible
 builds. The starter exposes `GET /v1/app/status` plus `GET`/`POST
 /v1/app/items` as the first host-owned linked routes and data surface.
-`lenso console update` downloads the published Runtime Console artifact
-and installs it under `.lenso/console`, so `cargo run --bin api` serves
-`/console` without requiring Node.js or pnpm in the host project.
+The generated host does not embed Runtime Console assets. Deploy the standalone
+Console Service separately and connect it to the host management APIs.
 
 ## Try The Audit Log Module
 
@@ -54,15 +52,15 @@ lenso host init ../my-lenso-audit-app
 cd ../my-lenso-audit-app
 cp .env.example .env
 lenso module install audit-log
-lenso console update
 lenso serve
 ```
 
-Open `http://127.0.0.1:3000/console/modules?module=audit-log` and confirm the
-module detail shows the Data Surfaces panel with Audit Events. Open
-`http://127.0.0.1:3000/console/data` to inspect the same module data through the
-generic admin-data view. The module declares `audit_log.events.read`; grant that
-scope to real Console users when they need to read audit event rows.
+Connect the standalone Console Service to the host, open
+`/modules?module=audit-log` on the Console origin, and confirm the module detail
+shows the Data Surfaces panel with Audit Events. Open `/data` on the same origin
+to inspect the module data through the generic admin-data view. The module
+declares `audit_log.events.read`; grant that scope to real Console users when
+they need to read audit event rows.
 
 ## Enable Auth Redis Sessions In A Host
 
@@ -129,10 +127,10 @@ just api
 just worker
 ```
 
-Generated hosts serve the Runtime Console at `/console` after
-`lenso console update` installs it under `.lenso/console`. When developing
-this repository from source, run the Runtime Console from the sibling
-`../lenso-console` repository or run `just console-build-host <host-root>`.
+The application API does not embed the Runtime Console. Run the standalone
+Console Service from the sibling `../lenso-console` repository with
+`pnpm service:serve`; it owns the web application and connects to managed Lenso
+services through their management APIs.
 
 ## Install The Example Service
 

@@ -291,7 +291,7 @@ mod tests {
     #[test]
     fn console_asset_paths_do_not_create_story_roots() {
         assert_eq!(
-            http_request_story_creation("/console/extensions/crm/entry.js", 200),
+            http_request_story_creation("/api/crm/contacts", 200),
             HttpRequestStoryCreation::Never
         );
     }

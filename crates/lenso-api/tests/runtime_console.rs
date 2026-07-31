@@ -2,7 +2,6 @@ use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
 use chrono::{DateTime, Utc};
 use lenso_api::build_router;
-use platform_core::config::ConsoleConfig;
 use platform_core::{
     AppConfig, AppContext, AuthConfig, DatabaseConfig, HttpConfig, InMemoryTelemetrySpanProvider,
     LoggingEventPublisher, ModuleSourcesConfig, RedisConfig, ServiceConfig, TelemetryConfig,
@@ -1476,7 +1475,6 @@ fn test_app_config() -> AppConfig {
         http,
         telemetry: TelemetryConfig::default(),
         auth: AuthConfig::default(),
-        console: ConsoleConfig::default(),
         module_sources: ModuleSourcesConfig::default(),
         modules: BTreeMap::new(),
     }

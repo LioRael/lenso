@@ -11,10 +11,8 @@ use crate::dto::{
     AdminLaunchpadPackFitDto, AdminLaunchpadProofCheckDto, AdminLaunchpadProofDriftDto,
     AdminLaunchpadProofResponse, AdminLaunchpadProofStatus, AdminLaunchpadResponse,
     AdminLaunchpadServiceDto, AdminLaunchpadStatus, AdminModuleActivationState,
-    AdminModuleCompatibilityDto, AdminModuleConsolePackagePlanPackageDto,
-    AdminModuleConsolePackagePlanStateDto, AdminModuleGovernanceDto,
-    AdminModuleHostCompatibilityDto, AdminModuleInstallStateDto,
-    AdminModuleLinkedSourceInstallStateDto, AdminModuleMetadataDto,
+    AdminModuleCompatibilityDto, AdminModuleGovernanceDto, AdminModuleHostCompatibilityDto,
+    AdminModuleInstallStateDto, AdminModuleLinkedSourceInstallStateDto, AdminModuleMetadataDto,
     AdminModuleMetadataListResponse, AdminModuleRefreshModuleResultDto,
     AdminModuleRefreshModuleStatusDto, AdminModuleRefreshRecordDto, AdminModuleRefreshStatusDto,
     AdminModuleRegistrySnapshotCatalogDto, AdminModuleRegistrySnapshotIssueDto,
@@ -75,7 +73,6 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 const DEFAULT_LIMIT: i64 = 50;
 const MAX_LIMIT: i64 = 200;
-const CONSOLE_EXTENSION_REGISTRY_PATH: &str = ".lenso/console/extensions/registry.json";
 const HOST_CONSOLE_PACKAGE_API_VERSION: &str = "1";
 const HOST_LENSO_VERSION: &str = env!("CARGO_PKG_VERSION");
 const HOST_SERVICE_PROTOCOL_VERSION: &str = "1";
@@ -225,11 +222,8 @@ pub(crate) async fn service_modules(
     HttpRequestContext(_request_ctx): HttpRequestContext,
 ) -> Result<Json<AdminServiceModuleLifecycleResponse>, ApiErrorResponse> {
     let metadata = admin_module_metadata_snapshot().modules;
-    let install_state = AvailableModuleInstallStateContext::from_paths(
-        &metadata,
-        PathBuf::from(".env"),
-        PathBuf::from(CONSOLE_EXTENSION_REGISTRY_PATH),
-    );
+    let install_state =
+        AvailableModuleInstallStateContext::from_paths(&metadata, PathBuf::from(".env"));
     Ok(Json(
         service_module_lifecycle_response(metadata, install_state).await,
     ))
@@ -401,11 +395,8 @@ pub(crate) async fn launchpad_change_plan(
 
 fn available_modules_response() -> AdminModuleRegistrySnapshotResponse {
     let metadata = admin_module_metadata_snapshot().modules;
-    let install_state = AvailableModuleInstallStateContext::from_paths(
-        &metadata,
-        PathBuf::from(".env"),
-        PathBuf::from(CONSOLE_EXTENSION_REGISTRY_PATH),
-    );
+    let install_state =
+        AvailableModuleInstallStateContext::from_paths(&metadata, PathBuf::from(".env"));
     if let Some(response) =
         module_catalog_file_response(PathBuf::from(".lenso/module-catalog.json"), &install_state)
     {
@@ -3066,7 +3057,6 @@ struct LocalModuleReleaseProvider {
 
 #[derive(Debug)]
 struct AvailableModuleInstallStateContext {
-    console_plan: LocalConsolePackageInstallPlanState,
     linked_modules: LocalLinkedModulesEnvState,
     registered_modules: HashSet<String>,
     running_base_urls: HashMap<String, String>,
@@ -3139,89 +3129,13 @@ const fn default_service_module_health_version() -> u8 {
     1
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct LocalConsolePackageInstallPlanModule {
-    #[serde(default)]
-    base_url: Option<String>,
-    #[serde(default)]
-    console_packages: Vec<LocalConsolePackageInstallPlanPackage>,
-    #[serde(default)]
-    manifest_reference: Option<String>,
-    module_name: String,
-    #[serde(default)]
-    restart_required: Option<bool>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct LocalConsolePackageInstallPlanPackage {
-    #[serde(default)]
-    command: Option<String>,
-    export_name: String,
-    #[serde(default)]
-    key: Option<String>,
-    package_name: String,
-    #[serde(default)]
-    requested_by_module: Option<String>,
-    #[serde(default)]
-    route: Option<String>,
-    #[serde(default)]
-    status: Option<String>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct LocalRuntimeConsoleBundleRegistry {
-    #[serde(default)]
-    bundles: Vec<LocalRuntimeConsoleBundle>,
-    #[serde(default = "default_console_package_install_plan_version")]
-    version: u8,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct LocalRuntimeConsoleBundle {
-    entry: String,
-    export_name: String,
-    host_api: String,
-    #[serde(default)]
-    module_name: Option<String>,
-    package_name: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    required_capabilities: Vec<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    route: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    styles: Vec<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    version: Option<String>,
-}
-
-#[derive(Debug)]
-struct LocalConsolePackageInstallPlanState {
-    error: Option<String>,
-    exists: bool,
-    modules: HashMap<String, LocalConsolePackageInstallPlanModule>,
-    plan_file: String,
-}
-
 const fn default_module_catalog_version() -> u8 {
     1
 }
 
-const fn default_console_package_install_plan_version() -> u8 {
-    1
-}
-
 impl AvailableModuleInstallStateContext {
-    fn from_paths(
-        metadata: &[AdminModuleMetadata],
-        env_file_path: impl AsRef<FsPath>,
-        console_plan_file_path: impl AsRef<FsPath>,
-    ) -> Self {
+    fn from_paths(metadata: &[AdminModuleMetadata], env_file_path: impl AsRef<FsPath>) -> Self {
         Self {
-            console_plan: local_console_package_install_plan_state(console_plan_file_path),
             linked_modules: local_linked_modules_env_state(&env_file_path),
             registered_modules: metadata
                 .iter()
@@ -3272,7 +3186,6 @@ impl AvailableModuleInstallStateContext {
                 ModuleSource::Linked => None,
                 ModuleSource::Remote => Some(self.remote_source_state(remote_source_name)),
             },
-            console_plan: self.console_plan_state(module_name),
         }
     }
 
@@ -3316,37 +3229,6 @@ impl AvailableModuleInstallStateContext {
             self.running_base_urls.get(module_name).map(String::as_str),
             service_provider,
         );
-    }
-
-    fn console_plan_state(&self, module_name: &str) -> AdminModuleConsolePackagePlanStateDto {
-        let module_plan = self.console_plan.modules.get(module_name);
-        let packages = module_plan
-            .map(|module_plan| {
-                module_plan
-                    .console_packages
-                    .iter()
-                    .map(|package| AdminModuleConsolePackagePlanPackageDto {
-                        key: package.key.clone(),
-                        package_name: package.package_name.clone(),
-                        export_name: package.export_name.clone(),
-                        command: package.command.clone(),
-                        route: package.route.clone(),
-                        status: package.status.clone(),
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-
-        AdminModuleConsolePackagePlanStateDto {
-            plan_file: self.console_plan.plan_file.clone(),
-            exists: self.console_plan.exists,
-            readable: self.console_plan.exists && self.console_plan.error.is_none(),
-            error: self.console_plan.error.clone(),
-            module_entry_present: module_plan.is_some(),
-            package_count: packages.len(),
-            restart_required: module_plan.and_then(|module_plan| module_plan.restart_required),
-            packages,
-        }
     }
 }
 
@@ -3422,79 +3304,6 @@ fn unquote_env_value(value: &str) -> &str {
         &value[1..value.len() - 1]
     } else {
         value
-    }
-}
-
-fn local_console_package_install_plan_state(
-    console_registry_file_path: impl AsRef<FsPath>,
-) -> LocalConsolePackageInstallPlanState {
-    let console_registry_file_path = console_registry_file_path.as_ref();
-    let plan_file = console_registry_file_path.display().to_string();
-    let source = match fs::read_to_string(console_registry_file_path) {
-        Ok(source) => source,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return LocalConsolePackageInstallPlanState {
-                error: None,
-                exists: false,
-                modules: HashMap::new(),
-                plan_file,
-            };
-        }
-        Err(error) => {
-            return LocalConsolePackageInstallPlanState {
-                error: Some(format!(
-                    "runtime console extension registry could not be read: {error}"
-                )),
-                exists: true,
-                modules: HashMap::new(),
-                plan_file,
-            };
-        }
-    };
-    match serde_json::from_str::<LocalRuntimeConsoleBundleRegistry>(&source) {
-        Ok(registry) => {
-            let mut modules: HashMap<String, LocalConsolePackageInstallPlanModule> = HashMap::new();
-            for bundle in registry.bundles {
-                let Some(module_name) = bundle.module_name else {
-                    continue;
-                };
-                let key = format!("{}#{}", bundle.package_name, bundle.export_name);
-                let package = LocalConsolePackageInstallPlanPackage {
-                    command: None,
-                    export_name: bundle.export_name,
-                    key: Some(key),
-                    package_name: bundle.package_name,
-                    requested_by_module: Some(module_name.clone()),
-                    route: bundle.route,
-                    status: Some("installed".to_owned()),
-                };
-                modules
-                    .entry(module_name.clone())
-                    .or_insert_with(|| LocalConsolePackageInstallPlanModule {
-                        base_url: None,
-                        console_packages: Vec::new(),
-                        manifest_reference: None,
-                        module_name,
-                        restart_required: Some(true),
-                    })
-                    .console_packages
-                    .push(package);
-            }
-            LocalConsolePackageInstallPlanState {
-                error: None,
-                exists: true,
-                modules,
-                plan_file,
-            }
-        }
-        Err(error) => LocalConsolePackageInstallPlanState {
-            error: Some(format!(
-                "runtime console extension registry could not be parsed: {error}"
-            )),
-            exists: true,
-            modules: HashMap::new(),
-            plan_file,
-        },
     }
 }
 

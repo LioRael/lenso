@@ -52,7 +52,7 @@ $summary
 - Linked modules load through the lenso-bootstrap composition root.
 - Remote modules install through \`lenso module add <manifest-url>\`.
 - Remote module manifests can declare schema-admin, HTTP routes, runtime functions, and lifecycle activation jobs.
-- Runtime Console is served by the API from \`.lenso/console\` after \`lenso host update-console\`.
+- Runtime Console is delivered and operated as the separate Console Service.
 - Generated contracts are committed and reproducible.
 
 ## Getting Started
@@ -81,8 +81,8 @@ This release workflow uploads these artifacts:
 
 The source archive contains repository source files, committed contracts,
 examples, docs, and scripts. It does not include local build output, \`.git\`,
-\`target/\`, or \`dist/\`. Install the Runtime Console separately with
-\`lenso host update-console\`.
+\`target/\`, or \`dist/\`. Install and operate the Console Service separately from
+the \`lenso-console\` release.
 
 After extracting either archive:
 

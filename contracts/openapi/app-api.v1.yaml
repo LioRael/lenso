@@ -5106,65 +5106,6 @@ components:
           type:
           - string
           - 'null'
-    AdminModuleConsolePackagePlanPackageDto:
-      type: object
-      required:
-      - packageName
-      - exportName
-      properties:
-        command:
-          type:
-          - string
-          - 'null'
-        exportName:
-          type: string
-        key:
-          type:
-          - string
-          - 'null'
-        packageName:
-          type: string
-        route:
-          type:
-          - string
-          - 'null'
-        status:
-          type:
-          - string
-          - 'null'
-    AdminModuleConsolePackagePlanStateDto:
-      type: object
-      required:
-      - planFile
-      - exists
-      - readable
-      - moduleEntryPresent
-      - packageCount
-      - packages
-      properties:
-        error:
-          type:
-          - string
-          - 'null'
-        exists:
-          type: boolean
-        moduleEntryPresent:
-          type: boolean
-        packageCount:
-          type: integer
-          minimum: 0
-        packages:
-          type: array
-          items:
-            $ref: '#/components/schemas/AdminModuleConsolePackagePlanPackageDto'
-        planFile:
-          type: string
-        readable:
-          type: boolean
-        restartRequired:
-          type:
-          - boolean
-          - 'null'
     AdminModuleGovernanceDto:
       type: object
       required:
@@ -5199,10 +5140,7 @@ components:
       type: object
       required:
       - moduleRegistered
-      - consolePlan
       properties:
-        consolePlan:
-          $ref: '#/components/schemas/AdminModuleConsolePackagePlanStateDto'
         linkedSource:
           oneOf:
           - type: 'null'

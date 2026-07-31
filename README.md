@@ -145,8 +145,9 @@ Add the Rust authoring surface directly when building a module or custom host:
 cargo add lenso
 ```
 
-Generated hosts enable the crate's `host` feature. Runtime Console is installed
-or refreshed with `lenso console update` and served by the host at `/console`.
+Generated hosts enable the crate's `host` feature. Runtime Console is deployed
+as the standalone Console Service and connects to generated hosts through their
+management APIs.
 
 Keep `lenso`, `lenso-cli`, and `lenso-console` checked out as siblings
 when changing behavior across backend, CLI, and Console boundaries. Repository
@@ -183,10 +184,10 @@ operation for operators who want to connect a service before enabling one of
 its modules.
 
 A small first-party proof path is `audit-log`: install it by name from the
-official catalog, refresh the hosted Console, then inspect the module in
-`/console/modules?module=audit-log` and its generic admin data in `/console/data`.
-The module declares the `audit_log.events.read` data capability and surfaces
-Audit Events through the Console's Data Surfaces panel.
+official catalog, connect the standalone Console Service, then inspect the
+module at `/modules?module=audit-log` and its generic admin data at `/data` on
+the Console origin. The module declares the `audit_log.events.read` data
+capability and surfaces Audit Events through the Console's Data Surfaces panel.
 
 First-time local setup lives in [docs/getting-started.md](docs/getting-started.md).
 
@@ -290,27 +291,16 @@ Worker:
 just worker
 ```
 
-Runtime Console and CLI preview shortcuts:
+Run the standalone Console Service from its repository:
 
 ```sh
-# Hot reload the Console against the local API.
 cd ../lenso-console
-just console-api
-
-# Copy the current Console build into any generated host for /console preview.
-cd ../lenso
-just console-build-host <host-root>
-
-# Install the latest released Console artifact into a generated host.
-just host-update-console <host-root>
-
-# Serve a generated host through the local lenso-cli checkout.
-just host-serve <host-root>
+pnpm service:serve
 ```
 
-Use an absolute or relative path for `<host-root>`; it does not need to be a
-sibling directory. `LENSO_CONSOLE_BASE` stays inside the build script; host
-`.env` files do not need it.
+The application API does not embed or serve Console assets. The Console Service
+owns its frontend shell and connects to managed Lenso services through their
+management APIs.
 
 Production Console access must use real auth, not development bearer tokens.
 With `APP_ENV=production`, `dev-user:*` and `dev-service:*` tokens are ignored.

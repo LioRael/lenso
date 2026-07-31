@@ -6,7 +6,6 @@ use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
-use platform_core::config::ConsoleConfig;
 use platform_core::{
     ActorContext, ActorResolutionRequest, ActorResolver, AppConfig, AppContext, AuthConfig,
     DatabaseConfig, HttpConfig, LoggingEventPublisher, ModuleSourcesConfig, RedisConfig,
@@ -326,7 +325,6 @@ fn router_for_environment_with_actor_resolver(
         },
         telemetry: TelemetryConfig::default(),
         auth: AuthConfig::default(),
-        console: ConsoleConfig::default(),
         module_sources: ModuleSourcesConfig::default(),
         modules: Default::default(),
     };

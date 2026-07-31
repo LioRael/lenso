@@ -305,9 +305,6 @@ Current Runtime Console support includes:
 - package manifests derived into install metadata
 - module metadata showing missing frontend bundle registrations
 - low-friction service install through `lenso service install <manifest-url>`
-- service install CLI that writes local source configuration and console
-  extension registry entries
-- dynamic same-origin bundle loading from `/console/extensions/registry.json`
 - boundary checks that forbid package imports from host internals
 
 ## Deferred Support
@@ -316,6 +313,7 @@ The following are intentionally deferred:
 
 - automatic npm package installation
 - JavaScript bundle loading from module manifests
+- dynamic Console package installation
 - Wasm execution
 - embedded host bridges
 - streaming proxy protocols
@@ -346,17 +344,9 @@ The default install path is user-driven: see a module release, install the
 business module, restart the host, reload Runtime Console, and use the module.
 Provider operators can still install or upgrade the service directly with
 `lenso service install <manifest-or-package>`.
-`service install` updates host-local service configuration, applies
-manifest-declared `install.env` values, runs opted-in `install.commands`,
-writes `install.services`, writes an install receipt to
-`.lenso/module-installs.json`, copies declared console bundles to
-`.lenso/console/extensions`, and updates
-`.lenso/console/extensions/registry.json` when the manifest declares console
-packages with `bundleUrl`. `module install <manifest-url>` remains a
-compatibility path for legacy remote module manifests.
-`module uninstall <name>` removes the host-local service source and any
-console extension registry/install-receipt entry for that module; it leaves
-module data alone.
+The legacy `service install` lane updated host-local source configuration,
+environment values, commands, services, and install receipts. Module Ecosystem
+V1 replaces it with reviewed Module Change Plans and durable Operations.
 
 `.lenso/module-catalog.json` is the optional discovery list behind Available
 Modules. A host can add entries with `lenso module catalog add <manifest-url>`.
@@ -381,8 +371,8 @@ lenso service install ./lenso.service.json --base-url https://example.com/lenso/
 
 The service lane should generate a service package, not a host workspace
 member.
-Host installation should record source configuration and extension registry
-state without compiling third-party code into the application bundle.
+Host installation records reviewed Service and module state without compiling
+or serving third-party Console code from the managed application.
 
 The legacy CLI install lane wrote host-local state including `.env` source
 configuration. Module Ecosystem V1 replaces that lane with reviewed management
@@ -393,10 +383,6 @@ artifacts:
 - `lenso.modules.lock.json`: selects the exact Module Release and Service export.
 - `.lenso/environments/<environment>/service-installations.json`: records the
   exact Service Release, endpoint binding, identity policy, and installed exports.
-- `.lenso/console/extensions/<module>/*.js`: copied third-party Runtime Console
-  bundles.
-- `.lenso/console/extensions/registry.json`: same-origin dynamic bundle registry
-  consumed by the hosted Runtime Console.
 
 Runtime Console performs installation through the `/admin/modules/*` workflow:
 preview the immutable Module Change Plan, start the durable Operation, satisfy
@@ -404,7 +390,9 @@ its plan-bound approval, and apply it. Provider delivery includes the exact
 Service Installation subplan. The effect adapter materializes only plan-owned
 files and evidence; catalog records and manifests cannot directly write the
 host environment, launch processes, install npm packages, or compile code into
-the official Runtime Console bundle.
+the official Runtime Console bundle. Console UI artifacts remain part of a
+Module Release, but the Console Service owns their trusted composition and
+delivery.
 
 `pnpm demo:remote-module-install` in the `lenso-console` repository runs
 the same flow against a temporary host fixture without mutating the working tree.

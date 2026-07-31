@@ -17,8 +17,6 @@
           "packageName": "@lenso/auth-console",
           "exportName": "authConsoleModule",
           "bundleUrl": "https://cdn.jsdelivr.net/npm/@lenso/auth-console@0.1.4/dist/auth-console.js",
-          "entry": "/console/extensions/auth/auth-console.js",
-          "hostApi": "1",
           "route": "/data/auth/sessions",
           "requiredCapabilities": ["auth.users.read"],
           "styles": [
@@ -41,8 +39,6 @@
           "packageName": "@lenso/auth-provider-console",
           "exportName": "authProviderConsoleModule",
           "bundleUrl": "https://cdn.jsdelivr.net/npm/@lenso/auth-provider-console@0.1.0/dist/auth-provider-console.js",
-          "entry": "/console/extensions/auth-oauth/auth-provider-console.js",
-          "hostApi": "1",
           "route": "/data/auth/providers",
           "requiredCapabilities": [],
           "styles": [
@@ -92,8 +88,6 @@
           "packageName": "@lenso/auth-device-console",
           "exportName": "authDeviceConsoleModule",
           "bundleUrl": "https://cdn.jsdelivr.net/npm/@lenso/auth-device-console@0.1.0/dist/auth-device-console.js",
-          "entry": "/console/extensions/auth-device/auth-device-console.js",
-          "hostApi": "1",
           "route": "/data/auth/devices",
           "requiredCapabilities": ["auth_device.devices.read"],
           "styles": [
@@ -116,8 +110,6 @@
           "packageName": "@lenso/auth-provider-console",
           "exportName": "authProviderConsoleModule",
           "bundleUrl": "https://cdn.jsdelivr.net/npm/@lenso/auth-provider-console@0.1.0/dist/auth-provider-console.js",
-          "entry": "/console/extensions/auth-github/auth-provider-console.js",
-          "hostApi": "1",
           "route": "/data/auth/providers/github",
           "requiredCapabilities": [],
           "styles": [
@@ -140,8 +132,6 @@
           "packageName": "@lenso/auth-provider-console",
           "exportName": "authProviderConsoleModule",
           "bundleUrl": "https://cdn.jsdelivr.net/npm/@lenso/auth-provider-console@0.1.0/dist/auth-provider-console.js",
-          "entry": "/console/extensions/auth-google/auth-provider-console.js",
-          "hostApi": "1",
           "route": "/data/auth/providers/google",
           "requiredCapabilities": [],
           "styles": [
@@ -164,8 +154,6 @@
           "packageName": "@lenso/auth-provider-console",
           "exportName": "authProviderConsoleModule",
           "bundleUrl": "https://cdn.jsdelivr.net/npm/@lenso/auth-provider-console@0.1.0/dist/auth-provider-console.js",
-          "entry": "/console/extensions/auth-oidc/auth-provider-console.js",
-          "hostApi": "1",
           "route": "/data/auth/providers/oidc",
           "requiredCapabilities": [],
           "styles": [
@@ -194,8 +182,6 @@
           "packageName": "@lenso/organization-console",
           "exportName": "organizationConsoleModule",
           "bundleUrl": "https://cdn.jsdelivr.net/npm/@lenso/organization-console@0.1.0/dist/organization-console.js",
-          "entry": "/console/extensions/organization/organization-console.js",
-          "hostApi": "1",
           "route": "/data/organization",
           "requiredCapabilities": ["organization.read"],
           "styles": [

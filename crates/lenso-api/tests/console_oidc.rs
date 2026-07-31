@@ -5,7 +5,6 @@ use axum::body::{Body, to_bytes};
 use axum::http::{HeaderName, Request, StatusCode, header};
 use chrono::{Duration, Utc};
 use lenso_api::build_router;
-use platform_core::config::ConsoleConfig;
 use platform_core::{
     AppConfig, AppContext, AuthConfig, DatabaseConfig, HttpConfig, LoggingEventPublisher,
     ModuleConfig, ModuleSourcesConfig, RedisConfig, RuntimeConfigProvider, RuntimeConfigRegistry,
@@ -243,7 +242,6 @@ fn test_config(database_url: &str) -> AppConfig {
 
     AppConfig {
         auth: AuthConfig::default(),
-        console: ConsoleConfig::default(),
         database: DatabaseConfig {
             max_connections: 5,
             url: database_url.to_owned(),

@@ -98,7 +98,6 @@ pub struct AdminModuleInstallStateDto {
     pub module_registered: bool,
     pub linked_source: Option<AdminModuleLinkedSourceInstallStateDto>,
     pub service_provider: Option<AdminServiceProviderInstallStateDto>,
-    pub console_plan: AdminModuleConsolePackagePlanStateDto,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -858,30 +857,6 @@ pub struct AdminServiceProviderInstallStateDto {
     pub restart_pending: bool,
     pub restart_reason: Option<String>,
     pub error: Option<String>,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct AdminModuleConsolePackagePlanStateDto {
-    pub plan_file: String,
-    pub exists: bool,
-    pub readable: bool,
-    pub error: Option<String>,
-    pub module_entry_present: bool,
-    pub package_count: usize,
-    pub restart_required: Option<bool>,
-    pub packages: Vec<AdminModuleConsolePackagePlanPackageDto>,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct AdminModuleConsolePackagePlanPackageDto {
-    pub key: Option<String>,
-    pub package_name: String,
-    pub export_name: String,
-    pub command: Option<String>,
-    pub route: Option<String>,
-    pub status: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
